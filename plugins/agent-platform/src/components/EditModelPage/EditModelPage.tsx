@@ -13,9 +13,11 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
+  modelConfigEditOwner,
   modelConfigFormValues,
-  modelConfigOwner,
 } from '../../lib/modelConfigs';
+import type { OrganizationDirectory } from '../../lib/organizations';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useCloseHref } from '../../hooks/useCloseHref';
 import { NewModelPage } from '../NewModelPage';
@@ -28,8 +30,10 @@ import { NewModelPage } from '../NewModelPage';
 function editBlocker(
   modelConfig: ModelConfig,
   mayUpdate: boolean,
+  directory: OrganizationDirectory,
 ): string | undefined {
-  const owner = modelConfigOwner(modelConfig);
+  // An organization's model agent-manager wrote is edited through it.
+  const owner = modelConfigEditOwner(modelConfig, directory);
   if (owner) {
     return `This model is asserted by ${owner}, which would revert portal edits on its next run. Change it where ${owner} is configured.`;
   }
@@ -82,6 +86,12 @@ export function EditModelPage() {
       { enabled: Boolean(modelConfig) },
     );
 
+  // Which namespaces are organizations': the form saves an organization's
+  // model through agent-manager, so it waits for the answer rather than
+  // taking an organization's model for the platform's.
+  const { directory, isLoading: isLoadingDirectory } =
+    useOrganizationDirectory();
+
   const shownName = modelConfig?.getDisplayName() || name;
 
   const backLink = detailHref ? (
@@ -89,7 +99,10 @@ export function EditModelPage() {
   ) : undefined;
 
   let body;
-  if (isLoading || (modelConfig && isCheckingPermission)) {
+  if (
+    isLoading ||
+    (modelConfig && (isCheckingPermission || isLoadingDirectory))
+  ) {
     body = <LoadingIndicator label="Reading the model…" />;
   } else if (!modelConfig) {
     body =
@@ -110,7 +123,7 @@ export function EditModelPage() {
         />
       );
   } else {
-    const blocker = editBlocker(modelConfig, mayUpdate);
+    const blocker = editBlocker(modelConfig, mayUpdate, directory);
     if (!blocker) {
       return (
         <NewModelPage

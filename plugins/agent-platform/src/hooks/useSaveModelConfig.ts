@@ -15,6 +15,7 @@ import {
   buildKeySecretPatch,
   buildModelConfigManifest,
   buildModelConfigPatch,
+  isListenerRouted,
   keySecretName,
   MODEL_CONFIG_NAMESPACE,
   ModelConfigFormValues,
@@ -63,7 +64,9 @@ export type SaveModelConfigResult = {
 };
 
 /**
- * Creates or updates a ModelConfig, including its key Secret.
+ * Creates or updates a ModelConfig, including its key Secret, outside an
+ * organization's namespace: there it refuses, since an organization's model
+ * is saved through agent-manager (`useSaveOrganizationModel`).
  *
  * All writes go straight through the Kubernetes proxy with the caller's own
  * OIDC token, so the apiserver's RBAC is the authorization — and the API key
@@ -107,6 +110,14 @@ export function useSaveModelConfig() {
         original?.getNamespace() ??
         requestedNamespace ??
         MODEL_CONFIG_NAMESPACE;
+      if (isListenerRouted(namespace, directory)) {
+        // An organization's model is saved through agent-manager
+        // (`useSaveOrganizationModel`): its admins may not write the key
+        // Secret from here, and its key is entered on the credential form.
+        throw new Error(
+          `${namespace} is an organization's namespace: its models are saved through agent-manager, not written here.`,
+        );
+      }
       const plan = planKeySecret(values, {
         isEdit,
         originalProvider: original?.getProvider(),

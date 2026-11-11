@@ -52,10 +52,13 @@ import { isMarkedDefault, markedIn } from '../../lib/defaultModel';
 import { slugify } from '../../lib/slugify';
 import { OWNER_LABEL, ownerOf, tenantInSentence } from '../../lib/tenants';
 import { useModelNamespaces } from '../../hooks/useModelNamespaces';
+import { useSaveModelConfig } from '../../hooks/useSaveModelConfig';
+import { useSaveOrganizationModel } from '../../hooks/useSaveOrganizationModel';
 import {
-  type SaveModelConfigResult,
-  useSaveModelConfig,
-} from '../../hooks/useSaveModelConfig';
+  AgentManagerError,
+  AgentManagerNotConnectedError,
+} from '../../lib/agentManager';
+import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { ModelConfigFormFields } from '../ModelConfigForm';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { DefaultModelChoice } from './DefaultModelChoice';
@@ -145,8 +148,11 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   // defaults fit most models.
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
 
-  const { save, isSaving, error, reset } = useSaveModelConfig();
+  const platformSave = useSaveModelConfig();
+  const organizationSave = useSaveOrganizationModel(installation);
   const { directory } = useOrganizationDirectory();
+  // Edit of an organization's model: whether to ask for a new key.
+  const [replaceKey, setReplaceKey] = useState(false);
 
   // Where the model goes: an existing one stays where it is; a new one goes
   // to the platform unless the person picks an Organization they administer.
@@ -163,6 +169,12 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     namespace = namespaces[0] ?? MODEL_CONFIG_NAMESPACE;
   }
   const routed = isListenerRouted(namespace, directory);
+  // An organization's model is saved through agent-manager, never with a
+  // Secret written from here; the platform's with the person's own writes.
+  const organization = directory.get(namespace);
+  const { isSaving, error } = organization ? organizationSave : platformSave;
+  const { save: savePlatform, reset: resetPlatform } = platformSave;
+  const { save: saveOrganization, reset: resetOrganization } = organizationSave;
   const providers = useMemo<readonly ModelProvider[]>(() => {
     const offered = providersFor(namespace, directory);
     return offered.includes(initialValues.provider) || !edit
@@ -182,6 +194,11 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         insecureSkipTlsVerify: false,
       }));
     }
+    // An organization's key is entered on the credential form only: one
+    // typed before the owner changed is not kept.
+    if (routed && values.apiKey) {
+      setValues(prev => ({ ...prev, apiKey: '' }));
+    }
   }, [
     providers,
     values.provider,
@@ -189,6 +206,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     routed,
     values.endpoint,
     values.insecureSkipTlsVerify,
+    values.apiKey,
   ]);
 
   // The namespace's default marks as listed, for the default choice. The save
@@ -255,6 +273,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   const fieldErrors = modelConfigFieldErrors(values, {
     isEdit: Boolean(edit),
     original: edit ? initialValues : undefined,
+    routed,
   });
   // A technical name that is only empty because the display name is: the
   // display name's own problem says it all, so More options is not opened on
@@ -269,10 +288,18 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   );
   // A problem with a field behind More options opens it, so the field that
   // says what is wrong is never out of sight (nor out of the focus's reach).
-  const hasHiddenProblem = Boolean(fieldErrors.name);
+  const hasHiddenProblem = !routed && Boolean(fieldErrors.name);
   // An edit with nothing changed has nothing to save — not a field's fault,
   // so the button waits instead of pointing at one.
-  const isChanged = !edit || modelConfigFormChanged(values, initialValues);
+  const isChanged =
+    !edit ||
+    modelConfigFormChanged(values, initialValues) ||
+    (routed && replaceKey);
+  // An organization's model that goes on to the credential form: a new one,
+  // or one whose key is replaced (asked for, or a new provider's).
+  const continuesToKey =
+    routed &&
+    (!edit || replaceKey || values.provider !== edit.modelConfig.getProvider());
 
   // Where Close and Cancel leave to: the model itself when editing; else the
   // shell's Customize screen's Models tab, or, where the app binds none, the
@@ -290,17 +317,31 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     if (!isChanged) {
       return;
     }
-    reset();
-    let saved: SaveModelConfigResult;
+    resetPlatform();
+    resetOrganization();
+    let saved: { isDefault: boolean; form?: string };
     try {
-      saved = await save({
-        installation: installation!,
-        values,
-        original: edit?.modelConfig,
-        ...(edit ? {} : { namespace, makeDefault, expectedMarks: marks }),
-      });
+      saved = organization
+        ? await saveOrganization({
+            organization,
+            values,
+            original: edit?.modelConfig,
+            makeDefault,
+            replaceKey: Boolean(edit) && continuesToKey,
+          })
+        : await savePlatform({
+            installation: installation!,
+            values,
+            original: edit?.modelConfig,
+            ...(edit ? {} : { namespace, makeDefault, expectedMarks: marks }),
+          });
     } catch {
       // Left on the page: the mutation error renders in the alert below.
+      return;
+    }
+    if (saved.form) {
+      // The model is written once its key is saved there.
+      navigate(saved.form);
       return;
     }
     const label = values.displayName.trim() || values.name;
@@ -332,10 +373,14 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     installation,
     values,
     namespace,
+    organization,
+    continuesToKey,
     makeDefault,
     marks,
-    save,
-    reset,
+    savePlatform,
+    resetPlatform,
+    saveOrganization,
+    resetOrganization,
     toastApi,
     modelsLink,
     navigate,
@@ -358,7 +403,9 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   // to the frame's footer, so only the primary lives here.
   const actions = useMemo(() => {
     let label: string;
-    if (edit) {
+    if (continuesToKey) {
+      label = isSaving ? 'Preparing…' : 'Continue to the key';
+    } else if (edit) {
       label = isSaving ? 'Saving…' : 'Save changes';
     } else {
       label = isSaving ? 'Connecting…' : 'Connect model';
@@ -372,7 +419,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         {label}
       </Button>
     );
-  }, [edit, onSubmit, isSaving, isChanged]);
+  }, [edit, onSubmit, isSaving, isChanged, continuesToKey]);
   useProvidePageHeaderActions(actions);
 
   return (
@@ -481,6 +528,8 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         onMoreOptionsOpenChange={setMoreOptionsOpen}
         originalProvider={edit?.modelConfig.getProvider()}
         originalProjectID={edit ? initialValues.projectID : undefined}
+        replaceKey={replaceKey}
+        onReplaceKeyChange={setReplaceKey}
       />
 
       {!edit && installation && (
@@ -500,14 +549,68 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
       )}
 
       {error && (
-        <Alert
-          status="danger"
-          title={
-            edit ? 'Could not save the model' : 'Could not connect the model'
-          }
-          description={error.message}
+        <SaveError
+          error={error}
+          installation={installation ?? ''}
+          isEdit={Boolean(edit)}
+          organization={organization?.organization}
+          onSignedIn={resetOrganization}
         />
       )}
     </WizardFrame>
+  );
+}
+
+/**
+ * Why the save failed, in words that say what to do: agent-manager's refusal
+ * of a person who may not change the organization's models names that
+ * right, and a muster session without agent-manager offers the sign-in.
+ */
+function SaveError({
+  error,
+  installation,
+  isEdit,
+  organization,
+  onSignedIn,
+}: {
+  error: Error;
+  installation: string;
+  isEdit: boolean;
+  /** The organization the model is in, when it is one's. */
+  organization?: string;
+  onSignedIn: () => void;
+}) {
+  if (error instanceof AgentManagerNotConnectedError) {
+    return (
+      <ConnectAgentManagerAlert
+        installation={installation}
+        message={error.message}
+        action="An organization's models are saved"
+        signInRequired={error.signInRequired}
+        onSignedIn={onSignedIn}
+      />
+    );
+  }
+  if (
+    organization &&
+    error instanceof AgentManagerError &&
+    error.code === 'forbidden'
+  ) {
+    return (
+      <Alert
+        status="danger"
+        title="Not permitted"
+        description={`Only an admin of the organization ${organization} adds or changes its models. Ask one of its admins to make the change, or to make you an admin. agent-manager answered: ${error.message}`}
+      />
+    );
+  }
+  return (
+    <Alert
+      status="danger"
+      title={
+        isEdit ? 'Could not save the model' : 'Could not connect the model'
+      }
+      description={error.message}
+    />
   );
 }

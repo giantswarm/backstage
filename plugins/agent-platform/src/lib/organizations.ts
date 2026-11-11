@@ -228,7 +228,8 @@ export function memberKindLabel(kind: string): string {
 
 /**
  * `set_organization_model` without a key: a new model of the organization,
- * or `replaceCredential` on an existing one. A missing or replaced key is a
+ * a change of an existing one (an empty field keeps its value), or
+ * `replaceCredential` on an existing one. A missing or replaced key is a
  * credential request agent-manager prepares and links to the form.
  */
 export type OrganizationModelRequest = {
@@ -236,6 +237,8 @@ export type OrganizationModelRequest = {
   name: string;
   provider?: string;
   model?: string;
+  /** Moves the organization's default mark to this model. */
+  default?: boolean;
   replaceCredential?: boolean;
   /** Idempotency key: one per intended change. */
   requestId: string;

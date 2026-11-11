@@ -55,8 +55,26 @@ jest.mock('../../hooks/useSaveModelConfig', () => ({
   }),
 }));
 
+// The organizations agent-manager names for the person: `org-acme` is one.
+jest.mock('../OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () =>
+    jest.requireActual('../../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+}));
+
+jest.mock('../../hooks/useSaveOrganizationModel', () => ({
+  useSaveOrganizationModel: () => ({
+    save: jest.fn(),
+    isSaving: false,
+    error: null,
+    reset: jest.fn(),
+  }),
+}));
+
 function sonnet(
   overrides: {
+    namespace?: string;
     labels?: Record<string, string>;
     spec?: ModelConfigInterface['spec'];
   } = {},
@@ -67,7 +85,7 @@ function sonnet(
       kind: 'ModelConfig',
       metadata: {
         name: 'sonnet',
-        namespace: 'kagent',
+        namespace: overrides.namespace ?? 'kagent',
         annotations: { 'ui.giantswarm.io/display-name': 'Sonnet 4.5' },
         ...(overrides.labels ? { labels: overrides.labels } : {}),
       },
@@ -110,7 +128,7 @@ describe('EditModelPage', () => {
   beforeEach(() => {
     mockMayUpdate = true;
     mockSave.mockReset();
-    mockSave.mockResolvedValue(undefined);
+    mockSave.mockResolvedValue({ isDefault: false });
     mockUseResource.mockReturnValue({
       resource: sonnet(),
       isLoading: false,
@@ -222,6 +240,40 @@ describe('EditModelPage', () => {
       expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
     },
   );
+
+  it("opens the form for an organization's model agent-manager wrote: the form saves it through agent-manager", async () => {
+    mockUseResource.mockReturnValue({
+      resource: sonnet({
+        namespace: 'org-acme',
+        labels: { 'app.kubernetes.io/managed-by': 'agent-manager' },
+      }),
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage();
+
+    expect(
+      screen.getByRole('switch', { name: 'Enter a new key on the next page' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('This model cannot be edited from here'),
+    ).toBeNull();
+  });
+
+  it('offers no form for a platform model agent-manager wrote', async () => {
+    mockUseResource.mockReturnValue({
+      resource: sonnet({
+        labels: { 'app.kubernetes.io/managed-by': 'agent-manager' },
+      }),
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage();
+
+    expect(
+      screen.getByText(/asserted by agent-manager, which would revert/),
+    ).toBeInTheDocument();
+  });
 
   it('offers no form without permission to change the model', async () => {
     mockMayUpdate = false;

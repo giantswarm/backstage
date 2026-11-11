@@ -8,7 +8,8 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
-import { modelsRouteRef } from '../../routes';
+import { AgentManagerError } from '../../lib/agentManager';
+import { modelsRouteRef, organizationsRouteRef } from '../../routes';
 import { NewModelPage, type ModelEdit } from './NewModelPage';
 
 // The organizations agent-manager names for the person
@@ -53,6 +54,17 @@ type MockModel = {
   getLabels(): Record<string, string | undefined>;
   getOwnerReferences(): never[];
 };
+const mockOrganizationSave = jest.fn();
+let mockOrganizationError: Error | null = null;
+jest.mock('../../hooks/useSaveOrganizationModel', () => ({
+  useSaveOrganizationModel: () => ({
+    save: mockOrganizationSave,
+    isSaving: false,
+    error: mockOrganizationError,
+    reset: jest.fn(),
+  }),
+}));
+
 let mockModelConfigs: MockModel[] = [];
 jest.mock('../ModelConfigsProvider', () => ({
   useModelConfigs: () => ({
@@ -114,9 +126,18 @@ function renderPage(edit?: ModelEdit) {
           path="/customize/models/inst-1/kagent/sonnet"
           element={<p>The model's page</p>}
         />
+        <Route
+          path="/organizations/golem/org-parent/acme/credentials/:operation"
+          element={<p>The credential form</p>}
+        />
       </Routes>
     </PageHeaderActionsProvider>,
-    { mountedRoutes: { '/customize/models': modelsRouteRef } },
+    {
+      mountedRoutes: {
+        '/customize/models': modelsRouteRef,
+        '/organizations': organizationsRouteRef,
+      },
+    },
   );
 }
 
@@ -130,6 +151,12 @@ beforeEach(() => {
   mockNamespaces = ['kagent'];
   mockSave.mockReset();
   mockSave.mockResolvedValue({ isDefault: false });
+  mockOrganizationSave.mockReset();
+  mockOrganizationSave.mockResolvedValue({
+    isDefault: false,
+    form: `/organizations/golem/org-parent/acme/credentials/${'b2'.repeat(24)}`,
+  });
+  mockOrganizationError = null;
 });
 
 describe('NewModelPage', () => {
@@ -277,7 +304,7 @@ describe('NewModelPage', () => {
     ).toBeInTheDocument();
   });
 
-  it("creates an Organization's model in its namespace, through the gateway only", async () => {
+  it("creates an Organization's model through agent-manager, its key on the credential form", async () => {
     mockNamespaces = ['kagent', 'org-acme'];
     await renderPage();
 
@@ -296,20 +323,57 @@ describe('NewModelPage', () => {
         name: /Skip TLS certificate verification/,
       }),
     ).toBeNull();
+    // The key is never typed here.
+    expect(screen.queryByLabelText(/^API key/)).toBeNull();
+    expect(
+      screen.getByText(/You enter the key on the next page/),
+    ).toBeInTheDocument();
+    // agent-manager keeps no display name: the name is the model's own.
+    expect(screen.queryByLabelText(/^Technical name/)).toBeNull();
 
-    await userEvent.type(screen.getByLabelText(/^Name/), 'Acme Sonnet');
+    await userEvent.type(screen.getByLabelText(/^Name/), 'acme-sonnet');
     await userEvent.type(
       screen.getByRole('textbox', { name: /^Model/ }),
       'claude',
     );
     await userEvent.click(
-      screen.getByRole('button', { name: 'Connect model' }),
+      screen.getByRole('button', { name: 'Continue to the key' }),
     );
-    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
-    expect(mockSave.mock.calls[0][0]).toMatchObject({
-      namespace: 'org-acme',
-      values: expect.objectContaining({ endpoint: '' }),
+
+    expect(await screen.findByText('The credential form')).toBeInTheDocument();
+    expect(mockSave).not.toHaveBeenCalled();
+    expect(mockOrganizationSave).toHaveBeenCalledWith({
+      organization: {
+        namespace: 'org-acme',
+        organization: 'acme',
+        parent: 'org-parent',
+      },
+      values: expect.objectContaining({
+        name: 'acme-sonnet',
+        model: 'claude',
+        apiKey: '',
+      }),
+      original: undefined,
+      makeDefault: false,
+      replaceKey: false,
     });
+  });
+
+  it("says plainly when the person may not change an organization's models", async () => {
+    mockNamespaces = ['kagent', 'org-acme'];
+    mockOrganizationError = new AgentManagerError(
+      'forbidden',
+      'you may not create modelconfigs in org-acme',
+    );
+    await renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /Owner/ }));
+    await userEvent.click(await screen.findByRole('option', { name: 'acme' }));
+
+    expect(screen.getByText('Not permitted')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Only an admin of the organization acme/),
+    ).toBeInTheDocument();
   });
 
   it('marks each missing field itself on a blocked submit and focuses the first', async () => {
@@ -509,6 +573,100 @@ describe('NewModelPage · editing a model', () => {
         'The stored key is for Anthropic, not OpenAI (or compatible)',
       ),
     );
+  });
+});
+
+describe("NewModelPage · editing an organization's model", () => {
+  const acmeSonnet = () =>
+    new ModelConfig(
+      {
+        apiVersion: 'api.kagent.dev/v1alpha3',
+        kind: 'ModelConfig',
+        metadata: {
+          name: 'sonnet',
+          namespace: 'org-acme',
+          labels: { 'app.kubernetes.io/managed-by': 'agent-manager' },
+        },
+        spec: {
+          provider: 'Anthropic',
+          model: 'claude-sonnet-4-5',
+          apiKeySecret: 'tenant-credential-sonnet',
+          apiKeySecretKey: 'apiKey',
+          anthropic: { baseUrl: 'http://llm-listener.example' },
+        },
+      } as ModelConfigInterface,
+      'golem',
+    );
+  const editOf = (modelConfig = acmeSonnet()): ModelEdit => ({
+    installation: 'golem',
+    modelConfig,
+    detailHref: '/customize/models/inst-1/kagent/sonnet',
+  });
+
+  it('saves a change through agent-manager and keeps the key', async () => {
+    mockOrganizationSave.mockResolvedValue({ isDefault: false });
+    const modelConfig = acmeSonnet();
+    await renderPage(editOf(modelConfig));
+
+    expect(screen.queryByLabelText(/^API key/)).toBeNull();
+    const replace = screen.getByRole('switch', {
+      name: 'Enter a new key on the next page',
+    });
+    expect(replace).not.toBeChecked();
+
+    const model = screen.getByRole('textbox', { name: /^Model/ });
+    await userEvent.clear(model);
+    await userEvent.type(model, 'claude-sonnet-4-6');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(await screen.findByText("The model's page")).toBeInTheDocument();
+    expect(mockSave).not.toHaveBeenCalled();
+    expect(mockOrganizationSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        original: modelConfig,
+        replaceKey: false,
+        values: expect.objectContaining({ model: 'claude-sonnet-4-6' }),
+      }),
+    );
+  });
+
+  it('continues to the credential form for a new key', async () => {
+    await renderPage(editOf());
+
+    const save = screen.getByRole('button', { name: 'Save changes' });
+    expect(save).toBeDisabled();
+    await userEvent.click(
+      screen.getByRole('switch', { name: 'Enter a new key on the next page' }),
+    );
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Continue to the key' }),
+    );
+
+    expect(await screen.findByText('The credential form')).toBeInTheDocument();
+    expect(mockOrganizationSave).toHaveBeenCalledWith(
+      expect.objectContaining({ replaceKey: true }),
+    );
+  });
+
+  it("asks for a new key when the provider changes: the stored one is the old provider's", async () => {
+    await renderPage(editOf());
+
+    await userEvent.click(screen.getByRole('button', { name: /Provider/ }));
+    await userEvent.click(
+      await screen.findByRole('option', { name: 'OpenAI (or compatible)' }),
+    );
+
+    const replace = screen.getByRole('switch', {
+      name: 'Enter a new key on the next page',
+    });
+    expect(replace).toBeChecked();
+    expect(replace).toBeDisabled();
+    expect(
+      screen.getByText(/The stored key is for Anthropic, not OpenAI/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Continue to the key' }),
+    ).toBeEnabled();
   });
 });
 

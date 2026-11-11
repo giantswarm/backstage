@@ -537,62 +537,43 @@ describe('useSaveModelConfig', () => {
   });
 
   describe('in an Organization namespace', () => {
-    it('names the key Secret tenant-credential-<model> and sets no base URL', async () => {
-      const notFound = new Error('no secret yet');
-      notFound.name = 'NotFoundError';
-      mockPatchResource.mockRejectedValueOnce(notFound);
-      const { result } = setup();
-
-      await act(async () => {
-        await result.current.save({
-          installation: CLUSTER,
-          namespace: 'org-acme',
-          values: values({
-            provider: 'Anthropic',
-            endpoint: 'https://api.example.com',
-          }),
-        });
-      });
-
-      const [secretCall, modelConfigCall] = mockCreateResource.mock.calls;
-      expect(secretCall[0]).toMatchObject({
-        namespace: 'org-acme',
-        manifest: expect.objectContaining({
-          metadata: expect.objectContaining({
-            name: 'tenant-credential-qwen3',
-          }),
-        }),
-      });
-      expect(modelConfigCall[0].namespace).toBe('org-acme');
-      expect(modelConfigCall[0].manifest.spec).toEqual({
-        provider: 'Anthropic',
-        model: 'qwen3-8-27b',
-        apiKeySecret: 'tenant-credential-qwen3',
-        apiKeySecretKey: 'ANTHROPIC_API_KEY',
-      });
-    });
-
-    it('removes the Secret it created when admission refuses the model', async () => {
-      const notFound = new Error('no secret yet');
-      notFound.name = 'NotFoundError';
-      mockPatchResource.mockRejectedValueOnce(notFound);
-      mockCreateResource
-        .mockResolvedValueOnce(undefined)
-        .mockRejectedValueOnce(new Error('provider OpenAI is not one of them'));
+    // Its admins may not write Secrets from the portal: the model is saved
+    // through agent-manager (useSaveOrganizationModel) instead.
+    it('refuses a create there, writing nothing', async () => {
       const { result } = setup();
 
       const error = await saveError(result, {
         installation: CLUSTER,
         namespace: 'org-acme',
-        values: values(),
+        values: values({ provider: 'Anthropic' }),
       });
-      expect(error.message).toMatch(/not one of them/);
-      expect(mockDeleteResource).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: 'tenant-credential-qwen3',
-          namespace: 'org-acme',
-        }),
+
+      expect(error.message).toMatch(/saved through agent-manager/);
+      expect(mockPatchResource).not.toHaveBeenCalled();
+      expect(mockCreateResource).not.toHaveBeenCalled();
+    });
+
+    it('refuses an edit there, writing nothing', async () => {
+      const { result } = setup();
+      const original = new ModelConfig(
+        {
+          apiVersion: 'api.kagent.dev/v1alpha3',
+          kind: 'ModelConfig',
+          metadata: { name: 'qwen3', namespace: 'org-acme' },
+          spec: { provider: 'Anthropic', model: 'qwen3-8-27b' },
+        } as ModelConfigInterface,
+        CLUSTER,
       );
+
+      const error = await saveError(result, {
+        installation: CLUSTER,
+        original,
+        values: values({ provider: 'Anthropic', apiKey: 'sk-new' }),
+      });
+
+      expect(error.message).toMatch(/saved through agent-manager/);
+      expect(mockPatchResource).not.toHaveBeenCalled();
+      expect(mockCreateResource).not.toHaveBeenCalled();
     });
   });
 });

@@ -36,6 +36,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
+  modelConfigEditOwner,
   modelConfigFormValues,
   modelConfigOwner,
 } from '../../lib/modelConfigs';
@@ -121,14 +122,23 @@ function ModelFrame({
 /**
  * The tool that owns the model, and what that means here: no Edit, since the
  * tool would revert it. The page's header offers none, and this says why.
+ * An organization's model agent-manager wrote is the exception
+ * (`savesEdits`): Edit saves it through agent-manager.
  */
-function ManagedByValue({ owner }: { owner: string }) {
+function ManagedByValue({
+  owner,
+  savesEdits = false,
+}: {
+  owner: string;
+  savesEdits?: boolean;
+}) {
   return (
     <Flex direction="column" gap="1">
       <Text variant={useFactTextVariant()}>{owner}</Text>
       <Text variant="body-small" color="secondary">
-        {owner} would revert edits made here, so change the model where {owner}{' '}
-        is configured.
+        {savesEdits
+          ? `Edits made here are saved through ${owner}.`
+          : `${owner} would revert edits made here, so change the model where ${owner} is configured.`}
       </Text>
     </Flex>
   );
@@ -184,6 +194,7 @@ export function modelFacts({
   installation,
   contextWindow,
   owner,
+  ownerSavesEdits,
   defaultState,
 }: {
   modelConfig: ModelConfig;
@@ -192,6 +203,8 @@ export function modelFacts({
   contextWindow: ContextWindowLookup | undefined;
   /** The tool that asserts the model (`modelConfigOwner`), if any. */
   owner?: string;
+  /** Edits are saved through `owner` (`modelConfigEditOwner`). */
+  ownerSavesEdits?: boolean;
   /** Whether it is the default, once the namespace's models are read. */
   defaultState?: ModelDefaultState;
 }): Fact[] {
@@ -221,7 +234,7 @@ export function modelFacts({
   if (owner) {
     facts.push({
       label: 'Managed by',
-      value: <ManagedByValue owner={owner} />,
+      value: <ManagedByValue owner={owner} savesEdits={ownerSavesEdits} />,
     });
   }
   if (created) {
@@ -380,9 +393,14 @@ function ModelDetailPageContent() {
   );
   const agentsUnreachable = unreachableInstallations.includes(installation);
 
+  // An organization's model agent-manager wrote is edited through it, so
+  // agent-manager is no owner that withholds Edit.
+  const ownerSavesEdits = Boolean(
+    owner && modelConfig && !modelConfigEditOwner(modelConfig, directory),
+  );
   const isEditable =
     Boolean(modelConfig) &&
-    !owner &&
+    (!owner || ownerSavesEdits) &&
     !isUnsupportedProvider &&
     mayUpdate &&
     !isCheckingPermission;
@@ -496,6 +514,7 @@ function ModelDetailPageContent() {
     installation,
     contextWindow,
     owner,
+    ownerSavesEdits,
     defaultState,
   });
 
