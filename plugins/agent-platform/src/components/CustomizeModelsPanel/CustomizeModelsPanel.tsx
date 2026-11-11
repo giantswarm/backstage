@@ -32,12 +32,15 @@ import {
   searchModels,
   usedByLabel,
 } from '../../lib/customize';
+import type { OrganizationDirectory } from '../../lib/organizations';
+import { ownerOf, OWNER_LABEL, tenantKindOf } from '../../lib/tenants';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useModelHosting } from '../../hooks/useModelHosting';
 import { servingRouteRef } from '../../routes';
 import { useAgents } from '../AgentsDataProvider';
 import { useCustomizeData } from '../CustomizeDataProvider';
 import { useModelConfigs } from '../ModelConfigsProvider';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 import { ModelHostingHint } from '../ModelHostingHint';
 import type { ModelRow } from '../ModelsTable';
 import { useServing } from '../ServingProvider';
@@ -85,6 +88,19 @@ function ModelStatusCell({ row }: { row: Row }) {
 }
 
 /**
+ * A row's owner among its facts, where the list's models belong to more than
+ * one owner, in the words of the agents list (`ownerOf`): "Owner: Platform"
+ * or "Owner: acme", so it is not taken for the environment; another
+ * namespace already says what it is (`namespace sre-team`).
+ */
+function ownerFact(namespace: string, directory: OrganizationDirectory) {
+  const owner = ownerOf(namespace, directory);
+  return tenantKindOf(namespace, directory) === 'namespace'
+    ? owner
+    : `${OWNER_LABEL}: ${owner}`;
+}
+
+/**
  * The way into model hosting, where it is offered (`useModelHosting`): a
  * serving layer in view, or cluster-manager alone, whose GPU pools and model
  * cache are managed there too.
@@ -126,6 +142,7 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
     useModelConfigs();
   const { rows: agents, isLoading: agentsLoading } = useAgents();
   const { modelDetail: modelDetailRoute } = useCustomizePaths();
+  const { directory } = useOrganizationDirectory();
 
   const usage = useMemo(() => agentsByModel(agents), [agents]);
   const searched = useMemo(
@@ -149,6 +166,11 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
   );
   const showInstallation =
     new Set(modelRows.map(row => row.installation)).size > 1;
+  // The platform's model and an organization's can read alike ("Default ·
+  // Anthropic · claude-sonnet-4-5"): with more than one owner, each row
+  // names its own.
+  const showOwner =
+    new Set(modelRows.map(row => ownerOf(row.namespace, directory))).size > 1;
   const isPhone = usePhoneLayout();
 
   const hrefOf = (row: Row) =>
@@ -174,6 +196,7 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
             row.isDefault ? 'Default' : undefined,
             row.provider,
             row.model,
+            ...(showOwner ? [ownerFact(row.namespace, directory)] : []),
             ...(showInstallation ? [row.installation] : []),
             // At phone width the Used by column is hidden: its count joins
             // the name's line, "OpenAI · gpt-4o · 3 agents".
