@@ -64,12 +64,13 @@ const KIND_LABELS: Record<string, string> = {
 };
 
 /**
- * agent-manager's refusal of a replacement's save whose consumers changed
- * since it was prepared (`errConsumersChanged`). Its code, `conflict`, also
- * answers a save in progress, an uncertain outcome or an expired request,
- * where "start again" would be wrong, so its wording is matched.
+ * agent-manager's code for a replacement's save whose consumers, or where
+ * they send the value, changed since it was prepared (409, giantswarm/
+ * agent-manager#373). Nothing was written; only a new preparation, with a
+ * fresh `requestId`, can go on. Other conflicts (a save in progress, an
+ * uncertain outcome) keep `conflict` and must not be started again.
  */
-const CONSUMERS_CHANGED = /changed since the preparation/;
+const CONSUMERS_CHANGED = 'credential_consumers_changed';
 
 /** A replacement (`replace_organization_credential`): it writes the Secret only. */
 const isReplacement = (operation: CredentialOperation) =>
@@ -260,26 +261,19 @@ function Receipt({ result }: { result: CredentialResourceResult }) {
 function SaveError({
   installation,
   error,
-  replacement = false,
 }: {
   installation: string;
   error: Error | null;
-  /** The request is a replacement, prepared for the objects it lists. */
-  replacement?: boolean;
 }) {
   if (!error) {
     return null;
   }
-  if (
-    replacement &&
-    credentialOperationErrorCode(error) === 'conflict' &&
-    CONSUMERS_CHANGED.test(credentialOperationErrorMessage(error))
-  ) {
+  if (credentialOperationErrorCode(error) === CONSUMERS_CHANGED) {
     return (
       <Alert
         status="danger"
         title="The objects that use this credential changed"
-        description={`Since this request was prepared, an object that uses the credential, or where it sends the value, changed, so nothing was saved. Start the replacement again from the organization's tab and check where the value goes. agent-manager answered: ${credentialOperationErrorMessage(error)}`}
+        description="Since this replacement was prepared, an object that uses the credential, or where it sends the value, changed, so nothing was saved. Start the replacement again from the organization's tab: the new request lists where the value goes now."
       />
     );
   }
@@ -585,11 +579,7 @@ export function CredentialFormPage({
                 Finishing it needs no value: agent-manager completes what it
                 started.
               </Text>
-              <SaveError
-                installation={installation}
-                error={shownSaveError}
-                replacement={isReplacement(operation)}
-              />
+              <SaveError installation={installation} error={shownSaveError} />
               <Flex gap="3">
                 <Button variant="secondary" onPress={reload} isDisabled={busy}>
                   Check again
@@ -639,11 +629,7 @@ export function CredentialFormPage({
                   />
                 ))
               )}
-              <SaveError
-                installation={installation}
-                error={shownSaveError}
-                replacement={isReplacement(operation)}
-              />
+              <SaveError installation={installation} error={shownSaveError} />
               {cancel.error ? (
                 <Alert
                   status="danger"

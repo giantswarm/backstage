@@ -748,7 +748,12 @@ Secret only, for every object that reads it, and the form lists them and where
 each sends the value. With an edit of the model id, the edit is written
 first. The portal never sends `replaceCredential`. A refusal (another object
 reads another key of the Secret, an object applied from git, the objects
-changed since the request was prepared) says what to do.
+changed since the request was prepared) says what to do. The last is
+agent-manager's save answer `409` with code `credential_consumers_changed`
+(agent-manager v2.24.0-rc.7 and later): nothing was written, and the person
+starts the replacement again from the tab. Every request carries a fresh
+`requestId`, since agent-manager answers the same `requestId` with the old,
+stale operation.
 `set_organization_model` changes a model that exists, so a create first reads
 the organization's models (`list_model_configs`) and refuses a name it already
 has. A model agent-manager wrote there stays editable, since the edit goes

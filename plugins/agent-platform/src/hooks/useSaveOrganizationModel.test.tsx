@@ -3,7 +3,7 @@ import { analyticsApiRef } from '@backstage/frontend-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   ModelConfig,
@@ -280,6 +280,26 @@ describe('useSaveOrganizationModel', () => {
     ]);
     // Nothing is written until the key is saved on the form.
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+
+  it('asks for each new key with a fresh requestId, so a refused replacement starts again', async () => {
+    const callTool = await saveWith(
+      {
+        organization: PAYMENTS,
+        values: { ...VALUES, model: 'claude-sonnet-4-5' },
+        original: SONNET,
+        replaceKey: true,
+      },
+      replaced,
+    );
+    await screen.findByTestId('answer');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(callTool).toHaveBeenCalledTimes(2));
+
+    const [first, second] = callTool.mock.calls.map(
+      ([, args]) => (args as { requestId: string }).requestId,
+    );
+    expect(second).not.toBe(first);
   });
 
   it('writes the change first, then asks for the new key', async () => {

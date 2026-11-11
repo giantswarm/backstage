@@ -445,10 +445,11 @@ describe('CredentialFormPage', () => {
       const user = userEvent.setup();
       const api = fakeCredentialsApi(read(REPLACEMENT));
       api.saveOperation.mockRejectedValueOnce(
+        // agent-manager's answer since giantswarm/agent-manager#373.
         await refusal(
           409,
-          'conflict',
-          'the objects in agents-payments-x7k2q that use Secret tenant-credential-anthropic, or where they send its value, changed since the preparation; prepare it again',
+          'credential_consumers_changed',
+          'the objects that use this credential, or where they send it, changed since the replacement was prepared; prepare it again',
         ),
       );
       await renderForm(api);
