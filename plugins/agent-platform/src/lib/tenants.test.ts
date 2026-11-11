@@ -4,6 +4,7 @@ import {
   defaultTenant,
   organizationOf,
   namespacesSharingAName,
+  ownerDisplayOf,
   ownerOf,
   tenantGroups,
   tenantInSentence,
@@ -115,6 +116,31 @@ describe('ownerOf', () => {
     ['agents-none-a1b2c', 'none'],
   ])('names namespace %s as %s', (namespace, owner) => {
     expect(ownerOf(namespace, directory)).toBe(owner);
+  });
+});
+
+describe('ownerDisplayOf', () => {
+  const named = organizationDirectory([
+    {
+      namespace: 'agents-default-x7k2q',
+      organization: 'default',
+      parent: 'org-gs',
+      displayName: 'Lab',
+    },
+    {
+      namespace: 'agents-acme-x7k2q',
+      organization: 'acme',
+      parent: 'org-acme',
+    },
+  ]);
+
+  it.each([
+    ['kagent', 'Platform'],
+    ['agents-default-x7k2q', 'Lab'],
+    ['agents-acme-x7k2q', 'acme'],
+    ['team-a', 'namespace team-a'],
+  ])('names namespace %s as %s', (namespace, owner) => {
+    expect(ownerDisplayOf(namespace, named)).toBe(owner);
   });
 });
 

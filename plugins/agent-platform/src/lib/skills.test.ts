@@ -8,6 +8,7 @@ import {
   skillDetailPath,
   skillFileUrl,
   skillSourceUrl,
+  refKindOf,
 } from './skills';
 
 describe('canonicalRepoUrl', () => {
@@ -274,5 +275,18 @@ describe('skillFileUrl', () => {
         'SKILL.md',
       ),
     ).toBeUndefined();
+  });
+});
+
+describe('refKindOf', () => {
+  it.each([
+    ['main', undefined, 'branch'],
+    ['release-1.2', undefined, 'branch'],
+    ['a1b2c3d', undefined, 'commit'],
+    ['a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2', undefined, 'commit'],
+    ['v1.2.3', 'tag', 'tag'],
+    ['a1b2c3d', 'branch', 'branch'],
+  ] as const)('reads %s (refKind %p) as a %s', (ref, refKind, kind) => {
+    expect(refKindOf({ ref, ...(refKind ? { refKind } : {}) })).toBe(kind);
   });
 });

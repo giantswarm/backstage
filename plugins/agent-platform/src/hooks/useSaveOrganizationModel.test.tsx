@@ -89,6 +89,7 @@ async function saveWith(
       tool: string,
       _args: Record<string, unknown>,
       _installation: string,
+      _options?: { urlElicitation?: boolean },
     ) =>
       tool === 'x_agent-manager_list_model_configs'
         ? { modelConfigs: existing }
@@ -191,6 +192,8 @@ describe('useSaveOrganizationModel', () => {
         requestId: expect.any(String),
       },
       'gazelle',
+      // agent-manager answers the request's id, not a page to open.
+      { urlElicitation: false },
     );
     // The model is not written yet: the credential form's save tracks it.
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
@@ -261,7 +264,7 @@ describe('useSaveOrganizationModel', () => {
     expect(await screen.findByTestId('answer')).toHaveTextContent(
       `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
     );
-    expect(callTool.mock.calls.map(([tool, args]) => [tool, args])).toEqual([
+    expect(callTool.mock.calls).toEqual([
       [
         'x_agent-manager_replace_organization_credential',
         {
@@ -270,6 +273,9 @@ describe('useSaveOrganizationModel', () => {
           key: 'apiKey',
           requestId: expect.any(String),
         },
+        'gazelle',
+        // agent-manager answers the request's id, not a page to open.
+        { urlElicitation: false },
       ],
     ]);
     // Nothing is written until the key is saved on the form.

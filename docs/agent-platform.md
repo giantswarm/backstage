@@ -757,6 +757,19 @@ refuses an organization namespace, and any namespace but `kagent` while the
 portal cannot tell whether it is an organization's (agent-manager not
 reachable or its organizations not read); Edit is withheld then too.
 
+The Models routes (`ModelsRouter`) read the organization directory
+(`OrganizationDirectoryProvider`) for all of this: without it every
+organization's model reads as the platform's, and Edit is withheld for a model
+agent-manager wrote. A call that may prepare a credential request
+(`set_organization_model`, `replace_organization_credential`) declares no URL
+elicitation (`callTool` with `urlElicitation: false`, the body's
+`urlElicitation: false` at muster-backend's `/call`): agent-manager then answers
+the request's id, and the portal opens its own credential form in the same
+tab. Declared, agent-manager asks the caller to open the form's page, which the
+portal puts to the person as an external page in a new tab. Such a call also
+gets no sign-in prompt: a missing sign-in to agent-manager fails it with
+muster's answer.
+
 For a Helm-rendered model, Technical details name the release from the
 CR's `helm.toolkit.fluxcd.io/*` labels and `meta.helm.sh/*` annotations. Where
 a Flux HelmRelease rendered it, the page reads that HelmRelease with the
@@ -3016,7 +3029,17 @@ identity first): what the person typed or picked meanwhile stays, the rest is
 restored. The agent kept is the one the person picked, else the restored one,
 else the composer's preselection, which never replaces a restored agent that is
 not read yet. A `?agent=` link goes ahead of the restored agent, which goes
-ahead of the last agent used. The images, the workspace and the toolchains are
+ahead of the installation's default agent (agent-manager's `get_info`
+`defaultAgent`; listed first in the picker, marked Default), which goes ahead
+of the last agent used. A default that arrives after the person typed or
+picked does not replace the agent shown. `?agent=` takes an agent id
+(`<installation>/<namespace>/<name>`) or `<namespace>/<name>`. `#prompt=` (in
+the fragment, so the brief never reaches a server) prefills the prompt
+(trimmed, at most 2000 characters, never sent by itself, marked "From a
+link"), wins over a stored draft with a Restore offer, and is removed from the
+address once read; Sentry breadcrumbs and event URLs filter it. The link
+format: `/?agent=<id>#prompt=<url-encoded brief>`. In agent replies, such a
+link opens in the same tab; other portal links open in a new tab. The images, the workspace and the toolchains are
 not kept. The draft is removed once the session is created; a failed start
 keeps it. A connector sign-in from the notification inbox (`McpAuthDialog`)
 never leaves the page: it opens the provider in a new tab

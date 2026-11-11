@@ -194,11 +194,34 @@ export function fakeOrganizationAccess(
 /** The operation id the fake's credential requests link to. */
 export const CREDENTIAL_OPERATION = 'b2'.repeat(24);
 
+/**
+ * A credential-request tool's call that declares URL elicitation is asked to
+ * open the form's page instead (MCP input_required); the portal's muster
+ * client puts it to the person as an external page and, after the save,
+ * fails with agent-manager's message. The portal declares none for them.
+ */
+function requireNoUrlElicitation(
+  name: string,
+  args: Record<string, unknown>,
+  options: { urlElicitation?: boolean } | undefined,
+) {
+  if (options?.urlElicitation !== false) {
+    throw new Error(
+      `[agent-manager] Enter the value in the credential UI (${name} for ${String(args.secret ?? args.name)} declared URL elicitation).`,
+    );
+  }
+}
+
 /** muster's `/installations` and server list with agent-manager on gazelle. */
 export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
   let mineFailures = scenario.mineFailures ?? 0;
   const callTool = jest.fn(
-    async (name: string, args: Record<string, unknown>): Promise<unknown> => {
+    async (
+      name: string,
+      args: Record<string, unknown>,
+      _installation?: string,
+      options?: { urlElicitation?: boolean },
+    ): Promise<unknown> => {
       switch (name) {
         case 'x_agent-manager_get_info':
           return {
@@ -291,6 +314,7 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
         case 'x_agent-manager_set_organization_model':
           // A new model: agent-manager prepares a credential request for
           // its missing key and answers its operation id and form link.
+          requireNoUrlElicitation(name, args, options);
           return {
             namespace: args.namespace,
             kind: 'model',
@@ -311,6 +335,7 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
         case 'x_agent-manager_replace_organization_credential':
           // A new value for one key of a Secret: the operation writes the
           // Secret only.
+          requireNoUrlElicitation(name, args, options);
           if (scenario.replaceError) {
             throw new Error(scenario.replaceError);
           }
