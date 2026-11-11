@@ -432,6 +432,10 @@ describe('CredentialFormPage', () => {
     expect(
       await screen.findByText(/connect GitHub to open the pull request/),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText('Authorize GitHub for agent-manager'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Not saved')).not.toBeInTheDocument();
   });
 
   it('cancels the request', async () => {
