@@ -734,15 +734,31 @@ model and Edit model call `set_organization_model` as the person
 (`useSaveOrganizationModel`) and write no Secret: an organization admin has no
 `patch` on Secrets, and its key is never typed into the model form. The form
 asks for the model's name (agent-manager keeps no display name), the provider
-and the model id. A new model, an edit that asks for a new key, or one that
-changes the provider continues to the credential form
+and the model id. A new model continues to the credential form
 (`/organizations/<installation>/<parent>/<name>/credentials/<operation>`),
 which takes the key and finishes the write, then has the model and connector
-views read again; an edit that keeps the key is finished when the call
-answers. `set_organization_model` changes a model that exists, so a create
-first reads the organization's models (`list_model_configs`) and refuses a
-name it already has. A model agent-manager wrote there stays
-editable, since the edit goes through agent-manager. `useSaveModelConfig`
+views read again; an edit of the model id is finished when the call answers.
+An edit keeps the provider: the stored key is the provider's, and
+agent-manager writes a new provider and its new key in two steps, with the
+wrong key in between. A new key, from Edit model or from Replace key and
+Replace credential on the organization's Models and Connectors tabs, is
+`replace_organization_credential` on the Secret and key the object reads (a
+model's from its ModelConfig, read as the person): the request writes that
+Secret only, for every object that reads it, and the form lists them and where
+each sends the value. With an edit of the model id, the edit is written
+first. The portal never sends `replaceCredential`. A refusal (another object
+reads another key of the Secret, an object applied from git, the objects
+changed since the request was prepared) says what to do. The last is
+agent-manager's save answer `409` with code `credential_consumers_changed`
+(agent-manager v2.24.0-rc.7 and later; rc.6 answers `conflict`, shown as Not
+saved): nothing was written, the form takes no value for that request any
+more, and the person starts the replacement again from the tab. Every request carries a fresh
+`requestId`, since agent-manager answers the same `requestId` with the old,
+stale operation.
+`set_organization_model` changes a model that exists, so a create first reads
+the organization's models (`list_model_configs`) and refuses a name it already
+has. A model agent-manager wrote there stays editable, since the edit goes
+through agent-manager. `useSaveModelConfig`
 refuses an organization namespace, and any namespace but `kagent` while the
 portal cannot tell whether it is an organization's (agent-manager not
 reachable or its organizations not read); Edit is withheld then too.
@@ -751,7 +767,7 @@ The Models routes (`ModelsRouter`) read the organization directory
 (`OrganizationDirectoryProvider`) for all of this: without it every
 organization's model reads as the platform's, and Edit is withheld for a model
 agent-manager wrote. A call that may prepare a credential request
-(`set_organization_model`, `set_organization_connector`) declares no URL
+(`set_organization_model`, `replace_organization_credential`) declares no URL
 elicitation (`callTool` with `urlElicitation: false`, the body's
 `urlElicitation: false` at muster-backend's `/call`): agent-manager then answers
 the request's id, and the portal opens its own credential form in the same

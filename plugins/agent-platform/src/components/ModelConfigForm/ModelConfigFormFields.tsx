@@ -211,9 +211,18 @@ export function ModelConfigFormFields({
 
   // An organization's model keeps no display name (agent-manager writes it):
   // its name is the one the person types, and its key is entered on the
-  // credential form, never here.
-  const keyChanges =
-    routed && mode === 'edit' && originalProvider !== values.provider;
+  // credential form, never here. An existing one keeps its provider: its
+  // key is that provider's, and agent-manager writes a new provider and a
+  // new key in two steps, with the wrong key in between.
+  const providerLocked = routed && mode === 'edit';
+  let providerDescription = providerOption?.description;
+  if (providerLocked) {
+    providerDescription =
+      'It cannot be changed: the stored key is this provider’s. For another provider, add a model.';
+  } else if (routed) {
+    providerDescription =
+      'Calls go through the platform’s LLM gateway, which passes your key on and counts the usage for your organization.';
+  }
 
   return (
     <>
@@ -294,6 +303,7 @@ export function ModelConfigFormFields({
                 label: option.label,
               }))}
               selectedKey={values.provider}
+              isDisabled={providerLocked}
               onSelectionChange={key => {
                 if (key) {
                   onChange({
@@ -301,11 +311,7 @@ export function ModelConfigFormFields({
                   });
                 }
               }}
-              description={
-                routed
-                  ? 'Calls go through the platform’s LLM gateway, which passes your key on and counts the usage for your organization.'
-                  : providerOption?.description
-              }
+              description={providerDescription}
             />
             {hasEndpoint && (
               <TextField
@@ -395,8 +401,7 @@ export function ModelConfigFormFields({
             ) : (
               <Switch
                 label="Enter a new key on the next page"
-                isSelected={replaceKey || keyChanges}
-                isDisabled={keyChanges}
+                isSelected={replaceKey}
                 onChange={selected => onReplaceKeyChange?.(selected)}
               />
             )}
@@ -407,9 +412,9 @@ export function ModelConfigFormFields({
                 color="secondary"
                 style={{ marginTop: 'var(--bui-space-1)' }}
               >
-                {keyChanges
-                  ? `The stored key is for ${providerLabel(originalProvider ?? '')}, not ${providerLabel(values.provider)}: you enter a new one on the credential form.`
-                  : 'Leave it off to keep the current key. A new key replaces it once you save it on the credential form.'}
+                Leave it off to keep the current key. A new key replaces it once
+                you save it on the credential form, for every model, connector
+                or egress policy that uses the same credential.
               </Text>
             )}
           </CardBody>

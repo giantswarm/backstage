@@ -28,6 +28,7 @@ import {
   type CredentialRequest,
   useOrganizationCredentialRequest,
 } from '../../hooks/useOrganizationCredentialRequest';
+import { credentialRequestErrorMessage } from '../../lib/credentialRequestErrors';
 import type {
   AgentManagerEgressPolicy,
   AgentManagerModelConfig,
@@ -195,12 +196,15 @@ function ReplaceCredentialDialog({
       confirmLabel="Continue"
       busyLabel="Preparing…"
       isBusy={request.isPending}
-      error={request.error?.message}
+      error={
+        request.error ? credentialRequestErrorMessage(request.error) : undefined
+      }
       onConfirm={() => target && request.mutate(target.request)}
     >
       <Text>
-        You enter the new value on the next page. The current one stays in use
-        until you save it there.
+        You enter the new value on the next page, which lists every object that
+        uses this credential and where each sends it. The current value stays in
+        use until you save the new one there.
       </Text>
     </ConfirmDialog>
   );
@@ -381,6 +385,30 @@ export function ModelsTab({ installation, organization }: TabProps) {
 
 type ConnectorRow = OrganizationConnector & { id: string };
 
+/**
+ * A connector's credential Secrets and keys, once each, with the headers
+ * that send each: several headers may read the same pair.
+ */
+function credentialPairsOf(
+  connector: OrganizationConnector,
+): { secret: string; key: string; headers: string[] }[] {
+  const pairs = new Map<
+    string,
+    { secret: string; key: string; headers: string[] }
+  >();
+  for (const credential of connector.credentials) {
+    const id = `${credential.secret}/${credential.key}`;
+    const pair = pairs.get(id) ?? {
+      secret: credential.secret,
+      key: credential.key,
+      headers: [],
+    };
+    pair.headers.push(credential.header);
+    pairs.set(id, pair);
+  }
+  return [...pairs.values()];
+}
+
 /** An organization's connectors, its RemoteMCPServers. */
 export function ConnectorsTab({ installation, organization }: TabProps) {
   const connectors = useOrganizationConnectors(
@@ -444,25 +472,48 @@ export function ConnectorsTab({ installation, organization }: TabProps) {
       id: 'replace',
       label: '',
       defaultWidth: '1fr',
-      cell: row => (
-        <Cell>
-          {access.credentials && row.credentials.length > 0 && !row.curated ? (
-            <Button
-              variant="tertiary"
-              size="small"
-              aria-label={`Replace the credential of ${row.name}`}
-              onPress={() =>
-                setReplacing({
-                  label: row.name,
-                  request: { kind: 'connector-credential', name: row.name },
-                })
-              }
-            >
-              Replace credential
-            </Button>
-          ) : null}
-        </Cell>
-      ),
+      cell: row => {
+        if (!access.credentials || row.curated) {
+          return <Cell />;
+        }
+        // One Replace per Secret and key: a rotation writes that Secret
+        // only, for every object that reads it; the connector is not sent.
+        const pairs = credentialPairsOf(row);
+        return (
+          <Cell>
+            <Flex gap="1" style={{ flexWrap: 'wrap' }}>
+              {pairs.map(pair => {
+                const what =
+                  pairs.length === 1
+                    ? row.name
+                    : `${row.name} (${pair.headers.join(', ')})`;
+                return (
+                  <Button
+                    key={`${pair.secret}/${pair.key}`}
+                    variant="tertiary"
+                    size="small"
+                    aria-label={`Replace the credential of ${what}`}
+                    onPress={() =>
+                      setReplacing({
+                        label: what,
+                        request: {
+                          kind: 'credential',
+                          secret: pair.secret,
+                          key: pair.key,
+                        },
+                      })
+                    }
+                  >
+                    {pairs.length === 1
+                      ? 'Replace credential'
+                      : `Replace ${pair.headers.join(', ')}`}
+                  </Button>
+                );
+              })}
+            </Flex>
+          </Cell>
+        );
+      },
     },
   ];
   return (

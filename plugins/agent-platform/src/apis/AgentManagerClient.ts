@@ -28,7 +28,7 @@ import type {
   MemberResult,
   OrganizationListing,
   OrganizationConnector,
-  OrganizationConnectorCredentialRequest,
+  OrganizationCredentialReplacement,
   OrganizationModelRequest,
   AgentPlatformOrganization,
   OrganizationDeleteResult,
@@ -58,7 +58,7 @@ function toolchainArgs(toolchains: StartSessionRequest['toolchains']) {
  */
 const CREDENTIAL_REQUEST_TOOLS: ReadonlySet<AgentManagerTool> = new Set([
   AGENT_MANAGER_TOOLS.setOrganizationModel,
-  AGENT_MANAGER_TOOLS.setOrganizationConnector,
+  AGENT_MANAGER_TOOLS.replaceOrganizationCredential,
 ]);
 
 /**
@@ -390,9 +390,8 @@ export class AgentManagerClient {
   }
 
   /**
-   * Creates an organization's model, or asks for a new key for one. Never
-   * takes a key: one that is missing or replaced comes back as a credential
-   * request (`credentials[].formUrl`).
+   * Creates or changes an organization's model. Never takes a key: a
+   * missing one comes back as a credential request (`credentialOperation`).
    */
   setOrganizationModel(
     request: OrganizationModelRequest,
@@ -403,12 +402,16 @@ export class AgentManagerClient {
     );
   }
 
-  /** Asks for a new credential value for a connector of the organization. */
-  setOrganizationConnector(
-    request: OrganizationConnectorCredentialRequest,
+  /**
+   * Asks for a new value of one key of an organization's credential Secret
+   * (`replace_organization_credential`): a credential request that writes
+   * the Secret only, for every object that reads it.
+   */
+  replaceOrganizationCredential(
+    request: OrganizationCredentialReplacement,
   ): Promise<CredentialResourceResult> {
     return this.call<CredentialResourceResult>(
-      AGENT_MANAGER_TOOLS.setOrganizationConnector,
+      AGENT_MANAGER_TOOLS.replaceOrganizationCredential,
       { ...request },
     );
   }
