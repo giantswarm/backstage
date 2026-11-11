@@ -56,11 +56,14 @@ jest.mock('../../hooks/useSaveModelConfig', () => ({
 }));
 
 // The organizations agent-manager names for the person: `org-acme` is one.
+let mockDirectoryFailure: string | undefined;
 jest.mock('../OrganizationDirectoryProvider', () => ({
   ...jest.requireActual('../OrganizationDirectoryProvider'),
-  useOrganizationDirectory: () =>
-    jest.requireActual('../../lib/__fixtures__/organizations')
+  useOrganizationDirectory: () => ({
+    ...jest.requireActual('../../lib/__fixtures__/organizations')
       .TEST_ORGANIZATION_DIRECTORY,
+    discoveryErrors: mockDirectoryFailure ? [mockDirectoryFailure] : [],
+  }),
 }));
 
 jest.mock('../../hooks/useSaveOrganizationModel', () => ({
@@ -126,6 +129,7 @@ function renderPage() {
 
 describe('EditModelPage', () => {
   beforeEach(() => {
+    mockDirectoryFailure = undefined;
     mockMayUpdate = true;
     mockSave.mockReset();
     mockSave.mockResolvedValue({ isDefault: false });
@@ -258,6 +262,45 @@ describe('EditModelPage', () => {
     expect(
       screen.queryByText('This model cannot be edited from here'),
     ).toBeNull();
+  });
+
+  it("offers no form outside the platform's namespace while it cannot tell an organization's", async () => {
+    mockDirectoryFailure =
+      'Could not reach agent-manager on inst-1. Check your connector sign-in and try again.';
+    mockUseResource.mockReturnValue({
+      resource: sonnet({ namespace: 'agents-payments-x7k2q' }),
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage();
+
+    expect(
+      screen.getByText(
+        /Could not tell whether this model belongs to an organization/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^API key/)).toBeNull();
+  });
+
+  it('still opens the form for a platform model then', async () => {
+    mockDirectoryFailure = 'Could not reach agent-manager on inst-1.';
+    await renderPage();
+
+    expect(screen.getByLabelText(/^API key/)).toBeInTheDocument();
+  });
+
+  it("offers no form for an organization's model on a provider its gateway does not serve", async () => {
+    mockUseResource.mockReturnValue({
+      resource: sonnet({
+        namespace: 'org-acme',
+        spec: { provider: 'Ollama', model: 'qwen3', ollama: { host: 'x' } },
+      }),
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage();
+
+    expect(screen.getByText(/this one uses Ollama/)).toBeInTheDocument();
   });
 
   it('offers no form for a platform model agent-manager wrote', async () => {

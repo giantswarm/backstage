@@ -81,15 +81,17 @@ jest.mock('../../hooks/useModelNamespaces', () => ({
 jest.mock('../../lib/modelConfigs', () => ({
   ...jest.requireActual('../../lib/modelConfigs'),
   modelConfigOwner: (mc: MockModel) =>
-    mc.getLabels()['app.kubernetes.io/managed-by'] === 'Helm'
-      ? 'Helm'
-      : undefined,
+    mc.getLabels()['app.kubernetes.io/managed-by'],
 }));
 
 function mockModel(
   namespace: string,
   name: string,
-  { marked = false, helm = false } = {},
+  {
+    marked = false,
+    helm = false,
+    managedBy,
+  }: { marked?: boolean; helm?: boolean; managedBy?: string } = {},
 ): MockModel {
   return {
     getName: () => name,
@@ -99,7 +101,12 @@ function mockModel(
       marked
         ? { 'agent-platform.giantswarm.io/is-default-model-config': 'true' }
         : {},
-    getLabels: () => (helm ? { 'app.kubernetes.io/managed-by': 'Helm' } : {}),
+    getLabels: () => {
+      if (helm) {
+        return { 'app.kubernetes.io/managed-by': 'Helm' };
+      }
+      return managedBy ? { 'app.kubernetes.io/managed-by': managedBy } : {};
+    },
     getOwnerReferences: () => [],
   };
 }
@@ -356,6 +363,38 @@ describe('NewModelPage', () => {
       original: undefined,
       makeDefault: false,
       replaceKey: false,
+    });
+  });
+
+  it("moves an organization's default that agent-manager wrote, through agent-manager", async () => {
+    mockNamespaces = ['kagent', 'org-acme'];
+    mockModelConfigs = [
+      mockModel('org-acme', 'sonnet', {
+        marked: true,
+        managedBy: 'agent-manager',
+      }),
+    ];
+    await renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /Owner/ }));
+    await userEvent.click(await screen.findByRole('option', { name: 'acme' }));
+    const makeDefault = screen.getByRole('checkbox', {
+      name: 'Make this the default model',
+    });
+    expect(makeDefault).toBeEnabled();
+    await userEvent.click(makeDefault);
+    await userEvent.type(screen.getByLabelText(/^Name/), 'opus');
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /^Model/ }),
+      'claude-opus',
+    );
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Continue to the key' }),
+    );
+
+    await waitFor(() => expect(mockOrganizationSave).toHaveBeenCalledTimes(1));
+    expect(mockOrganizationSave.mock.calls[0][0]).toMatchObject({
+      makeDefault: true,
     });
   });
 
@@ -664,9 +703,17 @@ describe("NewModelPage · editing an organization's model", () => {
     expect(
       screen.getByText(/The stored key is for Anthropic, not OpenAI/),
     ).toBeInTheDocument();
-    expect(
+    await userEvent.click(
       screen.getByRole('button', { name: 'Continue to the key' }),
-    ).toBeEnabled();
+    );
+
+    expect(await screen.findByText('The credential form')).toBeInTheDocument();
+    expect(mockOrganizationSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        replaceKey: true,
+        values: expect.objectContaining({ provider: 'OpenAI' }),
+      }),
+    );
   });
 });
 

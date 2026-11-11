@@ -1,5 +1,6 @@
 export {
   OrganizationDirectoryProvider,
+  organizationsUndecided,
   useOrganizationsAvailable,
   useOrganizationDirectory,
 } from './OrganizationDirectoryProvider';

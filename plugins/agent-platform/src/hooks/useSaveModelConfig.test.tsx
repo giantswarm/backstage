@@ -17,11 +17,14 @@ import { useSaveModelConfig } from './useSaveModelConfig';
 
 // The organizations agent-manager names for the person
 // (`list_organizations`).
+let mockDirectoryFailure: string | undefined;
 jest.mock('../components/OrganizationDirectoryProvider', () => ({
   ...jest.requireActual('../components/OrganizationDirectoryProvider'),
-  useOrganizationDirectory: () =>
-    jest.requireActual('../lib/__fixtures__/organizations')
+  useOrganizationDirectory: () => ({
+    ...jest.requireActual('../lib/__fixtures__/organizations')
       .TEST_ORGANIZATION_DIRECTORY,
+    discoveryErrors: mockDirectoryFailure ? [mockDirectoryFailure] : [],
+  }),
 }));
 
 // The composition helpers are the real ones (covered by modelConfigs.test.ts);
@@ -139,6 +142,7 @@ function setup() {
 }
 
 beforeEach(() => {
+  mockDirectoryFailure = undefined;
   jest.mocked(analyticsApi.captureEvent).mockClear();
   mockCreateResource.mockReset();
   mockCreateResource.mockResolvedValue(undefined);
@@ -549,6 +553,21 @@ describe('useSaveModelConfig', () => {
       });
 
       expect(error.message).toMatch(/saved through agent-manager/);
+      expect(mockPatchResource).not.toHaveBeenCalled();
+      expect(mockCreateResource).not.toHaveBeenCalled();
+    });
+
+    it('refuses a namespace it cannot tell from an organization', async () => {
+      mockDirectoryFailure = 'Could not reach agent-manager on gazelle.';
+      const { result } = setup();
+
+      const error = await saveError(result, {
+        installation: CLUSTER,
+        namespace: 'agents-payments-x7k2q',
+        values: values({ provider: 'Anthropic' }),
+      });
+
+      expect(error.message).toMatch(/Could not tell whether/);
       expect(mockPatchResource).not.toHaveBeenCalled();
       expect(mockCreateResource).not.toHaveBeenCalled();
     });

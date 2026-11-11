@@ -44,7 +44,7 @@ import {
   modelConfigFormChanged,
   modelConfigFormValues,
   ModelConfigFormValues,
-  modelConfigOwner,
+  modelConfigEditOwner,
   type ModelProvider,
   providersFor,
 } from '../../lib/modelConfigs';
@@ -227,7 +227,8 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   );
   const markOwner = namespaceModels
     .filter(isMarkedDefault)
-    .map(mc => modelConfigOwner(mc))
+    // agent-manager moves the mark of an organization's model itself.
+    .map(mc => modelConfigEditOwner(mc, directory))
     .find(Boolean);
   const [makeDefault, setMakeDefault] = useState(false);
 

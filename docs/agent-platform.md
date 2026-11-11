@@ -740,7 +740,9 @@ changes the provider continues to the credential form
 which takes the key and finishes the write; an edit that keeps the key is
 finished when the call answers. A model agent-manager wrote there stays
 editable, since the edit goes through agent-manager. `useSaveModelConfig`
-refuses an organization namespace.
+refuses an organization namespace, and any namespace but `kagent` while the
+portal cannot tell whether it is an organization's (agent-manager not
+reachable or its organizations not read); Edit is withheld then too.
 
 For a Helm-rendered model, Technical details name the release from the
 CR's `helm.toolkit.fluxcd.io/*` labels and `meta.helm.sh/*` annotations. Where

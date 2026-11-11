@@ -13,11 +13,17 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
+  isListenerRouted,
+  LISTENER_PROVIDERS,
+  MODEL_CONFIG_NAMESPACE,
   modelConfigEditOwner,
   modelConfigFormValues,
 } from '../../lib/modelConfigs';
 import type { OrganizationDirectory } from '../../lib/organizations';
-import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
+import {
+  organizationsUndecided,
+  useOrganizationDirectory,
+} from '../OrganizationDirectoryProvider';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useCloseHref } from '../../hooks/useCloseHref';
 import { NewModelPage } from '../NewModelPage';
@@ -31,7 +37,13 @@ function editBlocker(
   modelConfig: ModelConfig,
   mayUpdate: boolean,
   directory: OrganizationDirectory,
+  /** Why it cannot be told whether the namespace is an organization's. */
+  undecided?: string,
 ): string | undefined {
+  // An organization's model must not be saved as the platform's.
+  if (undecided && modelConfig.getNamespace() !== MODEL_CONFIG_NAMESPACE) {
+    return `Could not tell whether this model belongs to an organization, whose models are saved through agent-manager. Try again once agent-manager answers. ${undecided}`;
+  }
   // An organization's model agent-manager wrote is edited through it.
   const owner = modelConfigEditOwner(modelConfig, directory);
   if (owner) {
@@ -39,6 +51,13 @@ function editBlocker(
   }
   if (!modelConfigFormValues(modelConfig)) {
     return `The edit form covers OpenAI-compatible, Anthropic, Gemini, Vertex AI and Ollama models, and this one uses ${modelConfig.getProvider()}. Manage it with kubectl.`;
+  }
+  const provider = modelConfig.getProvider();
+  if (
+    isListenerRouted(modelConfig.getNamespace() ?? '', directory) &&
+    !LISTENER_PROVIDERS.some(offered => offered === provider)
+  ) {
+    return `An organization's models use Anthropic or OpenAI through the platform's LLM gateway, and this one uses ${provider}. Manage it with kubectl.`;
   }
   if (!mayUpdate) {
     return 'You do not have permission to change this model.';
@@ -89,8 +108,8 @@ export function EditModelPage() {
   // Which namespaces are organizations': the form saves an organization's
   // model through agent-manager, so it waits for the answer rather than
   // taking an organization's model for the platform's.
-  const { directory, isLoading: isLoadingDirectory } =
-    useOrganizationDirectory();
+  const organizations = useOrganizationDirectory();
+  const { directory, isLoading: isLoadingDirectory } = organizations;
 
   const shownName = modelConfig?.getDisplayName() || name;
 
@@ -123,7 +142,12 @@ export function EditModelPage() {
         />
       );
   } else {
-    const blocker = editBlocker(modelConfig, mayUpdate, directory);
+    const blocker = editBlocker(
+      modelConfig,
+      mayUpdate,
+      directory,
+      organizationsUndecided(organizations, installation),
+    );
     if (!blocker) {
       return (
         <NewModelPage

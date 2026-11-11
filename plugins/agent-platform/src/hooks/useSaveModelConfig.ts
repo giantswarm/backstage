@@ -28,7 +28,10 @@ import {
   readNamespaceModelConfigs,
   unmarkPrevious,
 } from './defaultModelWrites';
-import { useOrganizationDirectory } from '../components/OrganizationDirectoryProvider';
+import {
+  organizationsUndecided,
+  useOrganizationDirectory,
+} from '../components/OrganizationDirectoryProvider';
 
 /**
  * Spelled out rather than `Secret.getGVK()`: the Secret class sets no `group`
@@ -88,7 +91,8 @@ export type SaveModelConfigResult = {
 export function useSaveModelConfig() {
   const kubernetesApi = useApi(kubernetesApiRef);
   const queryClient = useQueryClient();
-  const { directory } = useOrganizationDirectory();
+  const organizations = useOrganizationDirectory();
+  const { directory } = organizations;
 
   const mutation = useTrackedMutation({
     event: (_data, { original }) => ({
@@ -116,6 +120,16 @@ export function useSaveModelConfig() {
         // Secret from here, and its key is entered on the credential form.
         throw new Error(
           `${namespace} is an organization's namespace: its models are saved through agent-manager, not written here.`,
+        );
+      }
+      const undecided =
+        namespace === MODEL_CONFIG_NAMESPACE
+          ? undefined
+          : organizationsUndecided(organizations, installation);
+      if (undecided) {
+        // It may be an organization's: its key must not be written here.
+        throw new Error(
+          `Could not tell whether ${namespace} is an organization's namespace, whose models are saved through agent-manager: ${undecided}`,
         );
       }
       const plan = planKeySecret(values, {
