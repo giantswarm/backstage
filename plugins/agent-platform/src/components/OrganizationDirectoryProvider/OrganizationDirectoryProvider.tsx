@@ -220,3 +220,28 @@ export function useOrganizationDirectory(): OrganizationDirectoryValue {
 export function useOrganizationsAvailable(): boolean {
   return useOrganizationDirectory().installations.length > 0;
 }
+
+/**
+ * Why the directory cannot tell yet whether a namespace on `installation` is
+ * an organization's, or `undefined` when it can: still reading, the
+ * installation's `list_organizations` failed, or agent-manager could not be
+ * reached to learn whether the installation serves organizations at all.
+ * Where it cannot tell, an organization's namespace would pass for the
+ * platform's, so a write that must not reach an organization waits.
+ */
+export function organizationsUndecided(
+  value: OrganizationDirectoryValue,
+  installation: string,
+): string | undefined {
+  if (value.isLoading) {
+    return 'The organizations are still being read.';
+  }
+  const failure = value.failureOf(installation);
+  if (failure) {
+    return failure;
+  }
+  if (!value.installations.includes(installation)) {
+    return value.discoveryErrors[0];
+  }
+  return undefined;
+}
