@@ -1,6 +1,7 @@
 import { AgentsDataProvider } from '../AgentsDataProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { ModelDetailPage } from '../ModelDetailPage';
+import { OrganizationDirectoryProvider } from '../OrganizationDirectoryProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { ServingProvider } from '../ServingProvider';
 
@@ -10,7 +11,9 @@ import { ServingProvider } from '../ServingProvider';
  * inside exactly the agent-platform data it reads, the serving snapshot (its
  * status and serving block) and the agents ("Used by", the usage figures'
  * agent names), with the ModelConfigs the agent provider resolves each agent's
- * model through, under the plugin's query client.
+ * model through, and the organization directory (how an Organization's model
+ * is named, whether agent-manager saves its edits), under the plugin's query
+ * client.
  *
  * Not inside the Customize screen's providers: they add the skill catalogue's
  * GitHub reads and muster's polling, which the page never shows, and muster's
@@ -22,13 +25,15 @@ import { ServingProvider } from '../ServingProvider';
 export function CustomizeModelPage() {
   return (
     <QueryClientProvider>
-      <ModelConfigsProvider>
-        <ServingProvider>
-          <AgentsDataProvider>
-            <ModelDetailPage />
-          </AgentsDataProvider>
-        </ServingProvider>
-      </ModelConfigsProvider>
+      <OrganizationDirectoryProvider>
+        <ModelConfigsProvider>
+          <ServingProvider>
+            <AgentsDataProvider>
+              <ModelDetailPage />
+            </AgentsDataProvider>
+          </ServingProvider>
+        </ModelConfigsProvider>
+      </OrganizationDirectoryProvider>
     </QueryClientProvider>
   );
 }

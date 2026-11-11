@@ -38,6 +38,13 @@ export type OrganizationDirectoryValue = {
   installations: string[];
   /** Failures checking whether installations serve organizations. */
   discoveryErrors: string[];
+  /**
+   * Why it could not be learned whether `installation` serves
+   * organizations, if it could not: muster's installations unread, or that
+   * installation's agent-manager unreachable or unasked. Another
+   * installation's failure is not this one's.
+   */
+  discoveryFailureOf: (installation: string) => string | undefined;
   /** The person's organizations on one installation, once answered. */
   organizationsOf: (installation: string) => OrganizationListing | undefined;
   /** Why an installation's organizations could not be read, if they could not. */
@@ -52,6 +59,7 @@ const EMPTY: OrganizationDirectoryValue = {
   directory: EMPTY_ORGANIZATION_DIRECTORY,
   installations: [],
   discoveryErrors: [],
+  discoveryFailureOf: () => undefined,
   organizationsOf: () => undefined,
   failureOf: () => undefined,
   recheck: async () => {},
@@ -122,25 +130,33 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
     (_, index) =>
       infos[index]?.data?.capabilities?.[ORGANIZATIONS_CAPABILITY] === true,
   );
-  const discoveryErrors = [
-    ...(musterInstallations.error ? [musterInstallations.error.message] : []),
-    ...names.flatMap(installation => {
+  // Without muster's installations, no installation's answer is known.
+  const listingError = musterInstallations.error?.message;
+  // Each failure belongs to the installation it is about.
+  const installationErrors: [string, string][] = [
+    ...names.flatMap((installation): [string, string][] => {
       const presence = availability.presenceOf(installation);
       if (presence === 'unknown' && !availability.isLoading) {
         return [
-          `Could not reach agent-manager on ${installation}. Check your connector sign-in and try again.`,
+          [
+            installation,
+            `Could not reach agent-manager on ${installation}. Check your connector sign-in and try again.`,
+          ],
         ];
       }
       if (presence === 'sharedIdentity') {
         return [
-          `${installation} needs a per-user connector sign-in to read organizations.`,
+          [
+            installation,
+            `${installation} needs a per-user connector sign-in to read organizations.`,
+          ],
         ];
       }
       return [];
     }),
-    ...available.flatMap((installation, index) =>
+    ...available.flatMap((installation, index): [string, string][] =>
       infos[index]?.error
-        ? [`${installation}: ${infos[index].error.message}`]
+        ? [[installation, `${installation}: ${infos[index].error.message}`]]
         : [],
     ),
   ];
@@ -168,7 +184,10 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
       mine[index]?.error ? String(mine[index].error.message) : null,
     ]),
   );
-  const discoverySignature = JSON.stringify(discoveryErrors);
+  const discoverySignature = JSON.stringify([
+    listingError ?? null,
+    installationErrors,
+  ]);
 
   const value = useMemo<OrganizationDirectoryValue>(() => {
     const entries = JSON.parse(signature) as [
@@ -182,6 +201,10 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
     const failures = new Map(
       entries.map(([installation, , failure]) => [installation, failure]),
     );
+    const [listingFailure, installationFailures] = JSON.parse(
+      discoverySignature,
+    ) as [string | null, [string, string][]];
+    const failuresByInstallation = new Map(installationFailures);
     const directory = new Map<string, OrganizationNamespace>();
     for (const answer of answers.values()) {
       for (const organization of organizationNamespacesOf(
@@ -193,7 +216,12 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
     return {
       directory,
       installations: [...answers.keys()],
-      discoveryErrors: JSON.parse(discoverySignature) as string[],
+      discoveryErrors: [
+        ...(listingFailure ? [listingFailure] : []),
+        ...installationFailures.map(([, message]) => message),
+      ],
+      discoveryFailureOf: installation =>
+        listingFailure ?? failuresByInstallation.get(installation),
       organizationsOf: installation => answers.get(installation) ?? undefined,
       failureOf: installation => failures.get(installation) ?? undefined,
       recheck: installation =>
@@ -226,6 +254,9 @@ export function useOrganizationsAvailable(): boolean {
  * an organization's, or `undefined` when it can: still reading, the
  * installation's `list_organizations` failed, or agent-manager could not be
  * reached to learn whether the installation serves organizations at all.
+ * Only that installation's own failures count: an installation known not to
+ * run agent-manager, or whose agent-manager serves no organizations, is
+ * decided.
  * Where it cannot tell, an organization's namespace would pass for the
  * platform's, so a write that must not reach an organization waits.
  */
@@ -241,7 +272,7 @@ export function organizationsUndecided(
     return failure;
   }
   if (!value.installations.includes(installation)) {
-    return value.discoveryErrors[0];
+    return value.discoveryFailureOf(installation);
   }
   return undefined;
 }

@@ -17,6 +17,7 @@ import {
 } from '@backstage/ui';
 import type { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  DisabledAction,
   searchableIf,
   SectionHeader,
   useFieldValidation,
@@ -66,6 +67,10 @@ import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
+
+/** Why Connect model waits while the Owner choices are read. */
+const CHOOSING_OWNER_REASON =
+  'Checking which Organizations you may add a model for…';
 
 /** An existing model, for the flow to change instead of connecting a new one. */
 export type ModelEdit = {
@@ -160,6 +165,8 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     edit ? undefined : installation,
   );
   const [chosenNamespace, setChosenNamespace] = useState<string>();
+  // A new model's owners are still being learned.
+  const choosingOwner = !edit && Boolean(installation) && isLoadingNamespaces;
   let namespace: string;
   if (edit) {
     namespace = edit.modelConfig.getNamespace() ?? MODEL_CONFIG_NAMESPACE;
@@ -411,6 +418,20 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     } else {
       label = isSaving ? 'Connecting…' : 'Connect model';
     }
+    // Until the owners are known, a model sent now would go to the platform
+    // although an Organization the person administers is still to be
+    // offered: nothing loaded yet, so the button waits and says why.
+    if (choosingOwner) {
+      return (
+        <DisabledAction reason={CHOOSING_OWNER_REASON}>
+          {describedBy => (
+            <Button variant="primary" isDisabled aria-describedby={describedBy}>
+              {label}
+            </Button>
+          )}
+        </DisabledAction>
+      );
+    }
     return (
       <Button
         variant="primary"
@@ -420,7 +441,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         {label}
       </Button>
     );
-  }, [edit, onSubmit, isSaving, isChanged, continuesToKey]);
+  }, [edit, onSubmit, isSaving, isChanged, continuesToKey, choosingOwner]);
   useProvidePageHeaderActions(actions);
 
   return (

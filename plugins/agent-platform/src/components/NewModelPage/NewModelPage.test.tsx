@@ -74,8 +74,12 @@ jest.mock('../ModelConfigsProvider', () => ({
 }));
 
 let mockNamespaces = ['kagent'];
+let mockNamespacesLoading = false;
 jest.mock('../../hooks/useModelNamespaces', () => ({
-  useModelNamespaces: () => ({ namespaces: mockNamespaces, isLoading: false }),
+  useModelNamespaces: () => ({
+    namespaces: mockNamespaces,
+    isLoading: mockNamespacesLoading,
+  }),
 }));
 
 jest.mock('../../lib/modelConfigs', () => ({
@@ -156,6 +160,7 @@ beforeEach(() => {
   mockInstallationNames = ['golem'];
   mockModelConfigs = [];
   mockNamespaces = ['kagent'];
+  mockNamespacesLoading = false;
   mockSave.mockReset();
   mockSave.mockResolvedValue({ isDefault: false });
   mockOrganizationSave.mockReset();
@@ -309,6 +314,19 @@ describe('NewModelPage', () => {
     expect(
       screen.getByText(/set in a Helm release's values\. Move it there\./),
     ).toBeInTheDocument();
+  });
+
+  it('holds Connect model, saying why, until the Owner choices are known', async () => {
+    // Only the platform's so far: an Organization may still join the choices.
+    mockNamespacesLoading = true;
+    await renderPage();
+
+    const connect = screen.getByRole('button', { name: 'Connect model' });
+    expect(connect).toBeDisabled();
+    expect(connect).toHaveAccessibleDescription(
+      'Checking which Organizations you may add a model for…',
+    );
+    expect(screen.queryByRole('button', { name: /Owner/ })).toBeNull();
   });
 
   it("creates an Organization's model through agent-manager, its key on the credential form", async () => {

@@ -13,6 +13,11 @@ import { useOrganizationDirectory } from '../components/OrganizationDirectoryPro
 export type ModelNamespaces = {
   /** Where the person may add a model, the platform first. */
   namespaces: string[];
+  /**
+   * True until every candidate is known and checked: agent-manager's
+   * namespaces, which of them are Organizations', and the access reviews.
+   * Until then an Organization the person administers may still be missing.
+   */
   isLoading: boolean;
 };
 
@@ -29,7 +34,8 @@ export function useModelNamespaces(
   const kubernetesApi = useApi(kubernetesApiRef);
   const { info, isLoading: isLoadingInfo } = useAgentManagerInfo(installation);
   // The organization namespaces among them, as agent-manager names them.
-  const { directory } = useOrganizationDirectory();
+  const { directory, isLoading: isLoadingDirectory } =
+    useOrganizationDirectory();
   const organizations = (info?.namespaces?.managed ?? []).filter(namespace =>
     directory.has(namespace),
   );
@@ -72,6 +78,8 @@ export function useModelNamespaces(
     namespaces,
     isLoading:
       Boolean(installation) &&
-      (isLoadingInfo || reviews.some(review => review.isPending)),
+      (isLoadingInfo ||
+        isLoadingDirectory ||
+        reviews.some(review => review.isPending)),
   };
 }
