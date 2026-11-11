@@ -60,6 +60,10 @@ export type OrganizationsScenario = {
   access?: Partial<
     Record<'rolebindings' | 'modelconfigs' | 'secrets', boolean>
   >;
+  /** The same per namespace, over `access`, for the namespaces named. */
+  namespaceAccess?: Record<string, OrganizationsScenario['access']>;
+  /** The namespaces `get_info` lists as managed; none when left out. */
+  managed?: string[];
   /** `get_organization` answers `not_found`, as once the operator erased it. */
   organizationErased?: boolean;
   /** `get_organization`'s `erases`: what a delete would erase. */
@@ -137,22 +141,27 @@ export function listedOrganizations(
 
 /**
  * The Kubernetes proxy answering only the person's SelfSubjectAccessReviews,
- * as `access` says.
+ * as `access` and, for the namespaces it names, `namespaceAccess` say.
  */
 export function fakeOrganizationAccess(
   access: OrganizationsScenario['access'] = {},
+  namespaceAccess: OrganizationsScenario['namespaceAccess'] = {},
 ) {
   const proxy = jest.fn(
     async ({ path, init }: { path: string; init?: RequestInit }) => {
       if (!path.endsWith('/selfsubjectaccessreviews')) {
         throw new Error(`unexpected Kubernetes request ${path}`);
       }
-      const resource = JSON.parse(String(init?.body)).spec.resourceAttributes
-        .resource as keyof NonNullable<OrganizationsScenario['access']>;
-      return new Response(
-        JSON.stringify({ status: { allowed: access[resource] ?? true } }),
-        { status: 201 },
-      );
+      const { namespace, resource } = JSON.parse(String(init?.body)).spec
+        .resourceAttributes as {
+        namespace: string;
+        resource: keyof NonNullable<OrganizationsScenario['access']>;
+      };
+      const allowed =
+        namespaceAccess[namespace]?.[resource] ?? access[resource] ?? true;
+      return new Response(JSON.stringify({ status: { allowed } }), {
+        status: 201,
+      });
     },
   );
   return { proxy } as unknown as KubernetesApi;
@@ -169,7 +178,7 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
       switch (name) {
         case 'x_agent-manager_get_info':
           return {
-            namespaces: { default: 'kagent', managed: [] },
+            namespaces: { default: 'kagent', managed: scenario.managed ?? [] },
             capabilities: { organizations: true, egressPolicies: true },
           };
         case 'x_agent-manager_list_organizations':
