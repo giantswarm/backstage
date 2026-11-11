@@ -204,6 +204,12 @@ export type AgentManagerInfo = {
   muster: { url: string };
   skillsRepositories: string[];
   /**
+   * The installation's default agent, `<namespace>/<name>`: where a new
+   * session starts unless the person picks another. Empty or absent (an
+   * agent-manager before giantswarm/agent-manager#290) when there is none.
+   */
+  defaultAgent?: string;
+  /**
    * The installation's skills credential: the Secret (key `token`) in the
    * agent's namespace every agent with a git skill fetches its skills with,
    * unless it names its own `gitAuthSecretName`. Absent: such agents fetch
@@ -643,10 +649,12 @@ export function helmInstallCommand(
 /**
  * How agent-manager manages an agent: `helmrelease` — a HelmRelease it can
  * write live; `gitops` — the release is applied by a Flux Kustomization, its
- * desired state lives in git and a live write is refused; `none` — a bare
+ * desired state lives in git and a live write is refused; `platform` — the
+ * platform's own agent (labelled `agent-platform.giantswarm.io/managed-by:
+ * agent-platform`), refused in every mode, a pull request too; `none` — a bare
  * `Agent` object with no release behind it, refused as well.
  */
-export type AgentManagedBy = 'helmrelease' | 'gitops' | 'none';
+export type AgentManagedBy = 'helmrelease' | 'gitops' | 'platform' | 'none';
 
 /** What `get_agent` says about the release that owns the agent. */
 export type AgentHelmReleaseRef = {
@@ -696,10 +704,30 @@ export type AgentManagerAgent = {
   defaultWorkspace?: string;
   status?: AgentObjectStatus;
   managed: AgentManagedBy;
+  /** The installation's default agent (`get_info`'s `defaultAgent`). */
+  default?: boolean;
   helmRelease?: AgentHelmReleaseRef;
   /** The HelmRelease's inline values, when a release owns the agent. */
   values?: Record<string, unknown>;
 };
+
+/**
+ * The platform's default agent waiting for a default model: platform-owned,
+ * no ModelConfig of its own and not ready. agent-manager points it at the
+ * default ModelConfig once one is marked, so the fix is adding a model.
+ */
+export function awaitsDefaultModel(
+  agent:
+    | Pick<AgentManagerAgent, 'default' | 'managed' | 'modelConfig' | 'ready'>
+    | undefined,
+): boolean {
+  return (
+    agent?.default === true &&
+    agent.managed === 'platform' &&
+    !agent.modelConfig &&
+    agent.ready !== true
+  );
+}
 
 /** `list_model_configs`: a ModelConfig an agent may reference. */
 export type AgentManagerModelConfig = {
