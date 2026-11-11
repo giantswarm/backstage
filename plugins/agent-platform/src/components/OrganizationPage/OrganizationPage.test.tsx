@@ -690,6 +690,252 @@ describe('OrganizationPage', () => {
     ).toBeInTheDocument();
   });
 
+  describe('deleting the organization', () => {
+    const MANAGED = {
+      name: 'payments',
+      parent: 'org-acme',
+      displayName: 'Payments',
+      namespace: PAYMENTS.namespace,
+      harnesses: ['kagent'],
+      workerReplicas: 3,
+    };
+    const ERASES = {
+      namespace: PAYMENTS.namespace,
+      agents: ['triage', 'refunds'],
+      helmReleases: ['triage', 'refunds'],
+      models: ['claude-sonnet'],
+      connectors: ['jira'],
+      egressPolicies: [],
+      credentials: [
+        'tenant-credential-claude-sonnet',
+        'tenant-credential-jira',
+      ],
+      members: ['organization-admins', 'organization-editors'],
+      sessions: [
+        { agent: 'triage', running: 2, stopped: 1 },
+        { agent: 'refunds', running: 0, stopped: 3 },
+      ],
+      kept: 'session tombstones stay in the agent runtime',
+    };
+
+    async function openDelete(scenario: OrganizationsScenario) {
+      const rendered = await renderPage('', scenario);
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Delete organization' }),
+      );
+      return { ...rendered, dialog: await screen.findByRole('dialog') };
+    }
+
+    it('lists what the delete erases, what stays and the running sessions', async () => {
+      const { dialog } = await openDelete({
+        ...SCENARIO,
+        organization: MANAGED,
+        erases: ERASES,
+      });
+
+      expect(
+        await within(dialog).findByText('Agents: triage, refunds'),
+      ).toBeInTheDocument();
+      expect(
+        within(dialog).getByText(
+          'Credentials: tenant-credential-claude-sonnet, tenant-credential-jira',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        within(dialog).getByText('Egress policies: none'),
+      ).toBeInTheDocument();
+      expect(
+        within(dialog).getByText(
+          'Kept: session tombstones stay in the agent runtime.',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        within(dialog).getByText(/^Running sessions: 2 \(they stop/),
+      ).toBeInTheDocument();
+      expect(
+        within(dialog).getByText('triage: 2 sessions'),
+      ).toBeInTheDocument();
+      expect(within(dialog).queryByText(/^refunds:/)).not.toBeInTheDocument();
+    });
+
+    it('says the running sessions are unknown when agent-manager could not count them', async () => {
+      const { dialog } = await openDelete({
+        ...SCENARIO,
+        organization: MANAGED,
+        erases: {
+          ...ERASES,
+          sessions: null,
+          sessionsUnavailable: 'the agent runtime did not answer',
+        },
+      });
+
+      expect(
+        await within(dialog).findByText(
+          /^Running sessions: unknown\. agent-manager could not count them: the agent runtime did not answer/,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('erases only once the typed name matches parent/name', async () => {
+      const { dialog, callTool } = await openDelete({
+        ...SCENARIO,
+        organization: MANAGED,
+        erases: ERASES,
+      });
+      const confirm = within(dialog).getByRole('button', {
+        name: 'Delete organization',
+      });
+      const field = await within(dialog).findByLabelText(
+        'Type org-acme/payments to confirm',
+      );
+
+      expect(confirm).toBeDisabled();
+      await userEvent.type(field, 'payments');
+      expect(confirm).toBeDisabled();
+      await userEvent.clear(field);
+      await userEvent.type(field, 'org-acme/payments');
+      await waitFor(() => expect(confirm).toBeEnabled());
+      await userEvent.click(confirm);
+
+      await waitFor(() =>
+        expect(toolCalls(callTool, 'delete_organization')).toEqual([
+          {
+            namespace: 'org-acme',
+            name: 'payments',
+            confirm: 'org-acme/payments',
+          },
+        ]),
+      );
+      expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'AgentPlatform.organizationErased' }),
+      );
+    });
+
+    it("shows agent-manager's refusal in its own words", async () => {
+      const { dialog } = await openDelete({
+        ...SCENARIO,
+        organization: MANAGED,
+        erases: ERASES,
+        deleteError:
+          'forbidden: you may not delete agentplatformorganizations in org-acme',
+      });
+      await userEvent.type(
+        await within(dialog).findByLabelText(
+          'Type org-acme/payments to confirm',
+        ),
+        'org-acme/payments',
+      );
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Delete organization' }),
+      );
+
+      expect(
+        await within(dialog).findByText(
+          /you may not delete agentplatformorganizations in org-acme/,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('opens the pull request for an organization applied from git, without a typed name', async () => {
+      const { dialog, callTool } = await openDelete({
+        ...SCENARIO,
+        organization: {
+          ...MANAGED,
+          gitops: 'flux-giantswarm/agent-platform-organizations',
+        },
+        erases: ERASES,
+      });
+
+      expect(
+        within(dialog).queryByLabelText('Type org-acme/payments to confirm'),
+      ).not.toBeInTheDocument();
+      const open = within(dialog).getByRole('button', {
+        name: 'Open pull request',
+      });
+      await waitFor(() => expect(open).toBeEnabled());
+      await userEvent.click(open);
+
+      expect(
+        await within(dialog).findByRole('link', {
+          name: /Review pull request/,
+        }),
+      ).toHaveAttribute(
+        'href',
+        'https://github.com/giantswarm/gazelle-configs/pull/42',
+      );
+      expect(toolCalls(callTool, 'delete_organization')).toEqual([
+        { namespace: 'org-acme', name: 'payments', mode: 'commit' },
+      ]);
+    });
+
+    it('offers Erase now on Pending erase, with the typed name', async () => {
+      const { callTool } = await renderPage('', {
+        ...SCENARIO,
+        organization: {
+          ...MANAGED,
+          gitops: 'flux-giantswarm/agent-platform-organizations',
+          orphaned: { status: 'True', reason: 'DeleteMerged' },
+        },
+        erases: ERASES,
+      });
+
+      expect(await screen.findByText('Pending erase')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Delete organization' }),
+      ).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Erase now' }));
+      const dialog = await screen.findByRole('dialog');
+      await userEvent.type(
+        await within(dialog).findByLabelText(
+          'Type org-acme/payments to confirm',
+        ),
+        'org-acme/payments',
+      );
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Erase organization' }),
+      );
+
+      await waitFor(() =>
+        expect(toolCalls(callTool, 'delete_organization')).toEqual([
+          {
+            namespace: 'org-acme',
+            name: 'payments',
+            confirm: 'org-acme/payments',
+            mode: 'commit',
+          },
+        ]),
+      );
+    });
+
+    it('offers neither Delete nor Erase now on Missing from git', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        organization: {
+          ...MANAGED,
+          gitops: 'flux-giantswarm/agent-platform-organizations',
+          orphaned: { status: 'True', reason: 'MissingFromGit' },
+        },
+      });
+
+      expect(await screen.findByText('Missing from git')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Erase now' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Delete organization' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('offers no delete to a person who does not manage the organization', async () => {
+      await renderPage('', SCENARIO);
+
+      expect(await screen.findByText('payments-team')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Delete organization' }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   describe('what the person may do', () => {
     const MEMBER_ONLY = {
       ...SCENARIO,

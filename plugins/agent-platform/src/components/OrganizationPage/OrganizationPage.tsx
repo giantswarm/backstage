@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Button, Flex, Link } from '@backstage/ui';
@@ -16,11 +17,15 @@ import {
   useOrganizations,
 } from '../../hooks/useOrganization';
 import { agentManagerBlocker } from '../../lib/agentManager';
-import type { OrganizationNamespace } from '../../lib/organizations';
+import {
+  organizationDeleteMode,
+  type OrganizationNamespace,
+} from '../../lib/organizations';
 import { organizationsRouteRef } from '../../routes';
 import { MembersTab } from './MembersTab';
 import { ConnectorsTab, EgressTab, ModelsTab } from './ResourceTabs';
 import { ORGANIZATION_PAGE_TABS } from './organizationTabs';
+import { OrganizationDeleteDialog } from './OrganizationDeleteDialog';
 import { OrganizationStatusAlert } from './OrganizationStatusAlert';
 
 export type OrganizationPageProps = {
@@ -73,6 +78,7 @@ export function OrganizationPage({
   });
   const basePath = useSplatBasePath();
   const { search } = useLocation();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const object = details.data?.organization ?? listed?.organization;
   const status = object ?? listed;
@@ -187,6 +193,18 @@ export function OrganizationPage({
     );
   }
 
+  // Only a person who manages it deletes it; the mode follows its state.
+  const deleteMode =
+    listed?.permissions.manage && object
+      ? organizationDeleteMode(object)
+      : undefined;
+  const deleteAction =
+    deleteMode === 'delete' || deleteMode === 'pull-request' ? (
+      <Button variant="secondary" onPress={() => setConfirmingDelete(true)}>
+        Delete organization
+      </Button>
+    ) : undefined;
+
   const organization: OrganizationNamespace = {
     namespace,
     organization: name,
@@ -200,9 +218,30 @@ export function OrganizationPage({
       meta={`${namespace} · ${parent} · ${installation}`}
       tabs={ORGANIZATION_PAGE_TABS}
       tabsBasePath={basePath}
+      actions={deleteAction}
     >
       <Flex direction="column" gap="5">
-        {status && <OrganizationStatusAlert organization={status} />}
+        {status && (
+          <OrganizationStatusAlert
+            organization={status}
+            onEraseNow={
+              deleteMode === 'erase'
+                ? () => setConfirmingDelete(true)
+                : undefined
+            }
+          />
+        )}
+        {deleteMode && confirmingDelete && (
+          <OrganizationDeleteDialog
+            installation={installation}
+            parent={parent}
+            name={name}
+            title={title}
+            mode={deleteMode}
+            isOpen
+            onOpenChange={setConfirmingDelete}
+          />
+        )}
         <Routes>
           <Route
             index

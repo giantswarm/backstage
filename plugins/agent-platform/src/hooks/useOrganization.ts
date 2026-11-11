@@ -8,6 +8,8 @@ import {
   type MemberRequest,
   type MemberResult,
   type OrganizationConnector,
+  type OrganizationDeleteMode,
+  type OrganizationDeleteResult,
   type OrganizationDetails,
   type OrganizationMember,
   type OrganizationListing,
@@ -237,4 +239,84 @@ export function useOrganizationMemberWrites(
   });
 
   return { add, remove };
+}
+
+/**
+ * `get_organization` read afresh, for the delete dialog: what a delete
+ * erases now, and the running sessions it stops. Mounted only while the
+ * dialog is open, so every opening asks again.
+ */
+export function useOrganizationErasure(
+  installation: string,
+  parent: string,
+  name: string,
+): OrganizationRead<OrganizationDetails> {
+  const client = useAgentManagerClient(installation);
+  const enabled = Boolean(client);
+  const query = useQuery({
+    queryKey: musterOrganizationQueryKey(installation, parent, name),
+    enabled,
+    queryFn: () => client!.getOrganization(parent, name),
+    refetchOnMount: 'always',
+    retry: false,
+  });
+  return {
+    data: query.isFetching ? undefined : query.data,
+    isLoading: enabled && (query.isFetching || isAwaitingData(query)),
+    failure: query.error ? classifyReadFailure(query.error) : undefined,
+  };
+}
+
+/**
+ * Deletes an organization as the person (`delete_organization`): a pull
+ * request for one applied from git, the erasure with the typed name
+ * otherwise or once that pull request merged. agent-manager checks the
+ * name again; its refusal is the mutation's error, in its own words.
+ */
+export function useOrganizationDeletion(
+  installation: string,
+  parent: string,
+  name: string,
+) {
+  const client = useAgentManagerClient(installation);
+  const queryClient = useQueryClient();
+  return useTrackedMutation<
+    OrganizationDeleteResult,
+    Error,
+    { mode: OrganizationDeleteMode; confirm?: string }
+  >({
+    event: (result, { mode }) => {
+      if (mode === 'pull-request') {
+        return result.commit?.pullRequest
+          ? {
+              name: 'AgentPlatform.organizationDeleteRequested',
+              attributes: {},
+            }
+          : null;
+      }
+      return result.deleted
+        ? { name: 'AgentPlatform.organizationErased', attributes: {} }
+        : null;
+    },
+    mutationFn: ({ mode, confirm }) => {
+      if (!client) {
+        throw new Error('agent-manager is not reachable on this installation.');
+      }
+      return client.deleteOrganization({
+        parent,
+        name,
+        ...(mode === 'pull-request' ? {} : { confirm }),
+        ...(mode === 'delete' ? {} : { mode: 'commit' as const }),
+      });
+    },
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: musterOrganizationQueryKey(installation, parent, name),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: musterOrganizationsQueryKey(installation),
+        }),
+      ]),
+  });
 }
