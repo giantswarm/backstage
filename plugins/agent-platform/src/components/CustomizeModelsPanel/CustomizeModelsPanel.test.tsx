@@ -63,7 +63,12 @@ jest.mock('../ModelConfigsProvider', () => ({
 // The organization namespaces agent-manager names, by namespace.
 let mockDirectory = new Map<
   string,
-  { namespace: string; organization: string; parent: string }
+  {
+    namespace: string;
+    organization: string;
+    parent: string;
+    displayName?: string;
+  }
 >();
 jest.mock('../OrganizationDirectoryProvider', () => ({
   useOrganizationDirectory: () => ({ directory: mockDirectory }),
@@ -149,7 +154,12 @@ describe('CustomizeModelsPanel', () => {
     mockDirectory = new Map([
       [
         orgNamespace,
-        { namespace: orgNamespace, organization: 'default', parent: 'org-gs' },
+        {
+          namespace: orgNamespace,
+          organization: 'default',
+          parent: 'org-gs',
+          displayName: 'Lab',
+        },
       ],
     ]);
     const platform = {
@@ -172,7 +182,7 @@ describe('CustomizeModelsPanel', () => {
       'Default · Anthropic · claude-sonnet-4-5 · Owner: Platform',
     );
     expect(rows[1]).toHaveTextContent(
-      'Default · Anthropic · claude-sonnet-4-5 · Owner: default',
+      'Default · Anthropic · claude-sonnet-4-5 · Owner: Lab',
     );
     mockDirectory = new Map();
   });

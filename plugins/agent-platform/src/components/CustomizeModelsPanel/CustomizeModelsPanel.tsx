@@ -33,7 +33,12 @@ import {
   usedByLabel,
 } from '../../lib/customize';
 import type { OrganizationDirectory } from '../../lib/organizations';
-import { ownerOf, OWNER_LABEL, tenantKindOf } from '../../lib/tenants';
+import {
+  ownerDisplayOf,
+  ownerOf,
+  OWNER_LABEL,
+  tenantKindOf,
+} from '../../lib/tenants';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useModelHosting } from '../../hooks/useModelHosting';
 import { servingRouteRef } from '../../routes';
@@ -89,12 +94,12 @@ function ModelStatusCell({ row }: { row: Row }) {
 
 /**
  * A row's owner among its facts, where the list's models belong to more than
- * one owner, in the words of the agents list (`ownerOf`): "Owner: Platform"
- * or "Owner: acme", so it is not taken for the environment; another
+ * one owner, by the organization's display name (`ownerDisplayOf`): "Owner:
+ * Platform" or "Owner: Lab", so it is not taken for the environment; another
  * namespace already says what it is (`namespace sre-team`).
  */
 function ownerFact(namespace: string, directory: OrganizationDirectory) {
-  const owner = ownerOf(namespace, directory);
+  const owner = ownerDisplayOf(namespace, directory);
   return tenantKindOf(namespace, directory) === 'namespace'
     ? owner
     : `${OWNER_LABEL}: ${owner}`;
