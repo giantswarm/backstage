@@ -193,13 +193,11 @@ const COMMIT_ID_RE = /^[0-9a-f]{7,40}$|^[0-9a-f]{64}$/i;
  * What a skill's `ref` is: `refKind` where the source says, else a commit
  * for a commit id (skill-manager names no kind), else a branch.
  */
-export function refKindOf(
-  skill: Pick<DiscoveredSkill, 'ref' | 'refKind'>,
-): RefKind {
+export function refKindOf(skill: { ref?: string; refKind?: RefKind }): RefKind {
   if (skill.refKind) {
     return skill.refKind;
   }
-  return COMMIT_ID_RE.test(skill.ref.trim()) ? 'commit' : 'branch';
+  return COMMIT_ID_RE.test((skill.ref ?? '').trim()) ? 'commit' : 'branch';
 }
 
 /** Each kind of ref as a label. */
@@ -215,7 +213,9 @@ export const REF_KIND_LABELS: Record<RefKind, string> = {
  * endpoint refuses the rest).
  */
 export function canProposeSkillChange(
-  skill: Pick<DiscoveredSkill, 'repoUrl' | 'readOnly' | 'ref' | 'refKind'>,
+  skill: Pick<DiscoveredSkill, 'repoUrl' | 'readOnly' | 'refKind'> & {
+    ref?: string;
+  },
 ): boolean {
   return (
     !skill.readOnly &&
