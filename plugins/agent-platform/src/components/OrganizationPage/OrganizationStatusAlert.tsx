@@ -1,4 +1,4 @@
-import { Alert, Flex, Text } from '@backstage/ui';
+import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
   CommitSha,
@@ -25,6 +25,8 @@ const useStyles = makeStyles({
 
 export type OrganizationStatusAlertProps = {
   organization: OrganizationStatus;
+  /** Offered on Pending erase only, to a person who manages it. */
+  onEraseNow?: () => void;
 };
 
 /**
@@ -38,6 +40,7 @@ export type OrganizationStatusAlertProps = {
  */
 export function OrganizationStatusAlert({
   organization,
+  onEraseNow,
 }: OrganizationStatusAlertProps) {
   const classes = useStyles();
   if (organization.deleting) {
@@ -94,6 +97,13 @@ export function OrganizationStatusAlert({
               workers are stopped. Its agents, connectors, credentials and
               members are kept until it is erased.
             </Text>
+            {onEraseNow && (
+              <div>
+                <Button variant="secondary" onPress={onEraseNow}>
+                  Erase now
+                </Button>
+              </div>
+            )}
             {technical}
           </Flex>
         }

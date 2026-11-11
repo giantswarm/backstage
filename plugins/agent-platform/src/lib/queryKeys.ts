@@ -347,6 +347,26 @@ export function musterOrganizationQueryKey(
   ] as const;
 }
 
+/**
+ * `get_organization` as the delete dialog reads it, for what a delete erases.
+ * Its own key: the page prefers `musterOrganizationQueryKey`'s organization
+ * over the listing, so a preview kept there would hide a newer listing.
+ */
+export function musterOrganizationErasureQueryKey(
+  installation: string,
+  parent: string,
+  name: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'agent-manager-organization-erasure',
+    installation,
+    parent,
+    name,
+  ] as const;
+}
+
 /** `list_organization_members` of one organization namespace. */
 export function musterOrganizationMembersQueryKey(
   installation: string,

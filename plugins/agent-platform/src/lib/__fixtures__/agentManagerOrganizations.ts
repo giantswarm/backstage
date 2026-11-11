@@ -6,6 +6,8 @@ import type {
   AgentPlatformOrganization,
   ListedOrganization,
   MemberResult,
+  OrganizationDeleteResult,
+  OrganizationErasure,
   OrganizationConnector,
   OrganizationMember,
   OrganizationNamespace,
@@ -45,6 +47,13 @@ export type OrganizationsScenario = {
    */
   organization?: AgentPlatformOrganization;
   /**
+   * `false`: the person may read `organization` but not manage it
+   * (`permissions.manage` false). The listing still carries its summary, so
+   * a test pins that the page decides on `manage`, not on having the object.
+   * Managed when left out.
+   */
+  manage?: boolean;
+  /**
    * What the person's access reviews in an organization namespace answer,
    * by resource; an organization admin's (all allowed) when left out.
    */
@@ -53,6 +62,15 @@ export type OrganizationsScenario = {
   >;
   /** `get_organization` answers `not_found`, as once the operator erased it. */
   organizationErased?: boolean;
+  /** `get_organization`'s `erases`: what a delete would erase. */
+  erases?: OrganizationErasure;
+  /**
+   * What `delete_organization` answers; `deleted` with `confirm`, the pull
+   * request in mode commit, when left out.
+   */
+  deleteResult?: Partial<OrganizationDeleteResult>;
+  /** What `delete_organization` fails with, as muster passes it on. */
+  deleteError?: string;
   /** A prepared credential request answered without its operation id. */
   withoutOperation?: boolean;
   /** What `remove_organization_member` fails with, as muster passes it on. */
@@ -70,14 +88,19 @@ export function listedOrganizations(
   const managed = scenario.organization;
   const isManaged = (parent: string, name: string) =>
     managed?.parent === parent && managed?.name === name;
+  const manages = scenario.manage ?? true;
   const listed: ListedOrganization[] = (scenario.mine?.organizations ?? []).map(
     organization => {
-      const manage = isManaged(organization.parent, organization.organization);
+      const readable = isManaged(
+        organization.parent,
+        organization.organization,
+      );
+      const manage = readable && manages;
       return {
         name: organization.organization,
         parent: organization.parent,
         namespace: organization.namespace,
-        ...(manage
+        ...(readable
           ? {
               displayName: managed?.displayName,
               orphaned: managed?.orphaned,
@@ -102,7 +125,7 @@ export function listedOrganizations(
       namespace: managed.namespace,
       orphaned: managed.orphaned,
       deleting: managed.deleting,
-      permissions: { manage: true, member: false },
+      permissions: { manage: manages, member: false },
       organization: managed,
     });
   }
@@ -163,13 +186,45 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
               'not_found: get AgentPlatformOrganization org-acme/payments',
             );
           }
+          // agent-manager answers the organization's fields and `erases`
+          // side by side.
           if (scenario.organization) {
-            return { organization: scenario.organization };
+            return {
+              ...scenario.organization,
+              ...(scenario.erases ? { erases: scenario.erases } : {}),
+            };
           }
           // A member may not read the AgentPlatformOrganization itself.
           throw new Error(
             'forbidden: you may not get agentplatformorganizations in org-acme: agent-platform:organizations-admin grants it',
           );
+        case 'x_agent-manager_delete_organization': {
+          if (scenario.deleteError) {
+            throw new Error(scenario.deleteError);
+          }
+          const confirmed =
+            args.confirm === `${String(args.namespace)}/${String(args.name)}`;
+          const result: OrganizationDeleteResult = {
+            organization: scenario.organization!,
+            ...(scenario.erases ? { erases: scenario.erases } : {}),
+            deleted: confirmed,
+            ...(args.mode === 'commit' && !args.confirm
+              ? {
+                  commit: {
+                    repository: 'giantswarm/gazelle-configs',
+                    base: 'main',
+                    branch: 'agent-manager/delete-payments',
+                    pullRequest:
+                      'https://github.com/giantswarm/gazelle-configs/pull/42',
+                    number: 42,
+                    review: 'the platform team reviews it',
+                  },
+                }
+              : {}),
+            ...scenario.deleteResult,
+          };
+          return result;
+        }
         case 'x_agent-manager_list_organization_members':
           return { namespace: args.namespace, members: scenario.members ?? [] };
         case 'x_agent-manager_add_organization_member':
