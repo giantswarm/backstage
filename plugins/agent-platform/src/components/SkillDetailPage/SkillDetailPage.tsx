@@ -42,6 +42,8 @@ import {
   canonicalSkillId,
   canProposeSkillChange,
   readOnlyReason,
+  REF_KIND_LABELS,
+  refKindOf,
   isSkillContentReadable,
   resolveSkillDetailPath,
   sameCommit,
@@ -458,7 +460,7 @@ function SkillPage({
       ),
     },
     {
-      label: (skill.refKind ?? 'branch') === 'branch' ? 'Branch' : 'Ref',
+      label: REF_KIND_LABELS[refKindOf(skill)],
       value: skill.ref,
     },
     {

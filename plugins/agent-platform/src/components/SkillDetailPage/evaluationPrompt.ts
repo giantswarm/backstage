@@ -1,5 +1,5 @@
 import { inlineData } from '../../lib/promptData';
-import type { DiscoveredSkill } from '../../lib/skills';
+import { type DiscoveredSkill, refKindOf } from '../../lib/skills';
 
 /**
  * The first message of a skill-evaluation session: which skill, exactly where
@@ -23,7 +23,7 @@ export function evaluationPrompt(
   } = {},
 ): string {
   const file = skill.path ? `${inlineData(skill.path)}/SKILL.md` : 'SKILL.md';
-  const refNoun = (skill.refKind ?? 'branch') === 'branch' ? 'branch' : 'ref';
+  const refNoun = refKindOf(skill) === 'branch' ? 'branch' : 'ref';
   return [
     `Please evaluate the skill "${inlineData(skill.name)}".`,
     `It lives in ${skill.repoUrl}, file ${file}, at commit ${skill.commit} (${refNoun} ${skill.ref}).`,

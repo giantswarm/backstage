@@ -20,7 +20,7 @@ export interface DiscoveredSkill {
   path: string;
   /** Git ref (branch, tag or commit) the skill was discovered on. */
   ref: string;
-  /** What `ref` is; absent reads as a branch. */
+  /** What `ref` is; absent, read from its shape ({@link refKindOf}). */
   refKind?: RefKind;
   /**
    * The head commit of `ref` when the skill was read — the immutable reference
@@ -186,17 +186,40 @@ export function canProposeSkillTo(repoUrl: string): boolean {
   return repoUrl.startsWith('https://github.com/');
 }
 
+/** A full or short commit id. */
+const COMMIT_ID_RE = /^[0-9a-f]{7,40}$|^[0-9a-f]{64}$/i;
+
+/**
+ * What a skill's `ref` is: `refKind` where the source says, else a commit
+ * for a commit id (skill-manager names no kind), else a branch.
+ */
+export function refKindOf(
+  skill: Pick<DiscoveredSkill, 'ref' | 'refKind'>,
+): RefKind {
+  if (skill.refKind) {
+    return skill.refKind;
+  }
+  return COMMIT_ID_RE.test(skill.ref.trim()) ? 'commit' : 'branch';
+}
+
+/** Each kind of ref as a label. */
+export const REF_KIND_LABELS: Record<RefKind, string> = {
+  branch: 'Branch',
+  tag: 'Tag',
+  commit: 'Commit',
+};
+
 /**
  * Whether the portal can propose a change to this skill: a github.com
  * repository, not a read-only source, read on a branch (the pull-request
  * endpoint refuses the rest).
  */
 export function canProposeSkillChange(
-  skill: Pick<DiscoveredSkill, 'repoUrl' | 'readOnly' | 'refKind'>,
+  skill: Pick<DiscoveredSkill, 'repoUrl' | 'readOnly' | 'ref' | 'refKind'>,
 ): boolean {
   return (
     !skill.readOnly &&
-    (skill.refKind ?? 'branch') === 'branch' &&
+    refKindOf(skill) === 'branch' &&
     canProposeSkillTo(skill.repoUrl)
   );
 }
@@ -208,7 +231,7 @@ export function readOnlyReason(
   if (skill.readOnly) {
     return 'This skill comes from a read-only source.';
   }
-  if ((skill.refKind ?? 'branch') !== 'branch') {
+  if (refKindOf(skill) !== 'branch') {
     return `This skill is read at ${skill.ref}, not a branch.`;
   }
   return "This skill's repository is not on github.com, and the portal proposes changes as GitHub pull requests. Change the skill in its repository.";

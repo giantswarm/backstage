@@ -753,7 +753,7 @@ describe('SkillDetailPage', () => {
     expect(mockUseSkillContent).not.toHaveBeenCalled();
   });
 
-  it('shows a read-only skill at a tag: no Edit, Evaluate, why, and the tag as a ref', async () => {
+  it('shows a read-only skill at a tag: no Edit, Evaluate, why, and the tag', async () => {
     mockCatalog = {
       ...loaded,
       skills: [{ ...skill, ref: 'v1.2.3', refKind: 'tag', readOnly: true }],
@@ -771,8 +771,23 @@ describe('SkillDetailPage', () => {
       screen.getByRole('button', { name: 'Evaluate with skill-evaluator' }),
     ).toBeInTheDocument();
     const facts = screen.getByRole('region', { name: 'Where it lives' });
-    expect(within(facts).getByText('Ref')).toBeInTheDocument();
+    expect(within(facts).getByText('Tag')).toBeInTheDocument();
     expect(within(facts).getByText('v1.2.3')).toBeInTheDocument();
+  });
+
+  it('labels a commit ref Commit, its kind unnamed, and offers no Edit', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [{ ...skill, ref: 'a1b2c3d' }],
+    };
+    await renderPage();
+
+    const facts = screen.getByRole('region', { name: 'Where it lives' });
+    expect(within(facts).getByText('Commit')).toBeInTheDocument();
+    expect(within(facts).queryByText('Branch')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Edit' }),
+    ).not.toBeInTheDocument();
   });
 
   it('shows a skill outside github.com read-only: no Edit, a report-only Evaluate, and why', async () => {

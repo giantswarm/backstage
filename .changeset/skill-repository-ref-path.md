@@ -21,3 +21,5 @@ pull-request base. A `path` that does not exist fails that source. A URL
 listed twice is read once, by its first entry, and is read-only when any entry
 says so. Evaluate works for every skill; one the portal cannot change gets a
 report-only evaluation.
+
+A skill page labels its ref Branch, Tag or Commit. Skills of a read-only skill-manager source offer no Edit. The skills list no longer shows the raw error when skill-manager cannot be reached.

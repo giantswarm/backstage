@@ -415,7 +415,9 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
     mockCatalog = {
       ...loaded,
       skills: [],
-      error: new Error('skill-manager is unreachable'),
+      error: new Error(
+        'MCP error -32000: dial tcp 10.96.0.12:8080: connect: connection refused',
+      ),
       proposalTargets: [],
     };
     await renderPanel();
@@ -423,6 +425,8 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
     expect(
       screen.getByText('Could not read the skill repositories'),
     ).toBeInTheDocument();
+    expect(screen.getByText('Try again in a moment.')).toBeInTheDocument();
+    expect(screen.queryByText(/connection refused/)).not.toBeInTheDocument();
     expect(
       screen.queryByText('No skill repository takes new skills here.'),
     ).not.toBeInTheDocument();

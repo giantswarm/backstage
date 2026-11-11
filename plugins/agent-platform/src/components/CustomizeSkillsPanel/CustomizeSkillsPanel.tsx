@@ -298,7 +298,7 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
         <Alert
           status="danger"
           title="Could not read the skill repositories"
-          description={skillCatalog.error.message}
+          description="Try again in a moment."
         />
       )}
       {!skillCatalog.error && skillCatalog.failedRepositories.length > 0 && (
