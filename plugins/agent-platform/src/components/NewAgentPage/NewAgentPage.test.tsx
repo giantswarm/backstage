@@ -261,13 +261,6 @@ describe('NewAgentPage tags', () => {
     expect(formTags).toEqual(['a', 'b', 'c']);
   });
 
-  it('marks only the optional fields, not Name', async () => {
-    await renderPage();
-
-    expect(screen.getByLabelText(/^Name/)).toBeInTheDocument();
-    expect(screen.queryByText('Required')).not.toBeInTheDocument();
-  });
-
   it('adds what is typed on leaving the field', async () => {
     await renderPage();
 

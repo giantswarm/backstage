@@ -20,6 +20,7 @@ import {
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
 import { useFormHarnessRuntime } from '../../hooks/useFormHarnessRuntime';
+import { underlyingModelLine } from '../../hooks/useUnderlyingModel';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { CreateAgentAssist } from '../CreateAgentAssist';
 import { AgentAvatarPreview } from '../AgentAvatarPreview';
@@ -242,31 +243,25 @@ function NewAgentPageContent() {
     state.modelDisplayName ??
     listedModel?.getDisplayName() ??
     state.modelConfigName;
-  // People think in provider and model, so the line leads with them; the
-  // ModelConfig's own name, which an admin may have chosen to abstract the
-  // model ("The Cheap One"), is one hover or focus away when it differs.
-  const providerAndModel = listedModel
-    ? [listedModel.getProvider(), listedModel.getModel()]
-        .filter(Boolean)
-        .join(' · ') || undefined
-    : undefined;
-  const runsOn = providerAndModel ?? modelName;
-  const configName =
-    providerAndModel && modelName && modelName !== listedModel?.getModel()
-      ? modelName
+  // The line keeps the ModelConfig's name -- an admin may abstract the model
+  // on purpose ("The Cheap One") -- and offers the model it runs one hover or
+  // focus away (PO decision L6). Not when the name already is the model.
+  const underlyingModel =
+    listedModel && listedModel.getModel() !== modelName
+      ? underlyingModelLine(listedModel)
       : undefined;
   let modelSummary: ReactNode;
-  if (runsOn) {
+  if (modelName) {
     modelSummary = (
       <>
-        Runs on {runsOn}
-        {configName && (
+        Runs on {modelName}
+        {underlyingModel && (
           <InfoHint
-            label={`Which model config runs ${runsOn}`}
+            label={`Which model ${modelName} runs`}
             size="medium"
             className={classes.modelHint}
           >
-            {`Model config: ${configName}`}
+            {`Underlying model: ${underlyingModel}`}
           </InfoHint>
         )}{' '}
         · change under More options
@@ -303,6 +298,7 @@ function NewAgentPageContent() {
           <div style={{ flex: 1, minWidth: 0 }}>
             <TextField
               label="Name"
+              isRequired
               value={state.name}
               onChange={setName}
               placeholder="e.g. Support triage"

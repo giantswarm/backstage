@@ -456,19 +456,17 @@ describe('EditAgentPage', () => {
 
     // More options: the agent's model preselected, only its namespace's
     // models offered; its technical name and runtime fixed.
-    expect(
-      screen.getByText(/Runs on Anthropic · opus-4-7-model/),
-    ).toBeInTheDocument();
-    // The line leads with provider and model; the ModelConfig's name is
-    // behind an info button beside it, and on the picked card.
+    expect(screen.getByText(/Runs on Claude Opus/)).toBeInTheDocument();
+    // The line keeps the ModelConfig's name; the model it runs is behind an
+    // info button beside it (PO decision L6), and on the picked card.
     const modelHint = screen.getByRole('button', {
-      name: 'Which model config runs Anthropic · opus-4-7-model',
+      name: 'Which model Claude Opus runs',
     });
     // A bui tooltip opens on keyboard focus: a key press sets the modality.
     await userEvent.keyboard('{Shift}');
     act(() => modelHint.focus());
     expect(
-      await screen.findByText('Model config: Claude Opus'),
+      await screen.findByText('Underlying model: opus-4-7-model · Anthropic'),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('radio', { name: 'Select model Claude Opus' }),
