@@ -57,6 +57,16 @@ function toolchainArgs(toolchains: StartSessionRequest['toolchains']) {
  * names the person, not a ServiceAccount. No agent-manager URL, no REST client:
  * the portal knows agent-manager only as `x_agent-manager_<tool>` in muster.
  */
+/**
+ * A call that may prepare a credential request declares no URL elicitation:
+ * agent-manager then answers the request's id (`credentialOperation`) as its
+ * result, and the portal opens its own credential form in place. Declared,
+ * agent-manager asks muster's caller to open the form's page instead, which
+ * the portal would put to the person as an external page in a new tab, and
+ * the call would end in an error after the save.
+ */
+const CREDENTIAL_REQUEST_CALL = { urlElicitation: false } as const;
+
 export class AgentManagerClient {
   constructor(
     private readonly musterApi: MusterApi,
@@ -66,14 +76,22 @@ export class AgentManagerClient {
   private async call<T>(
     tool: AgentManagerTool,
     args: Record<string, unknown>,
+    options?: { urlElicitation?: boolean },
   ): Promise<T> {
     let result: unknown;
     try {
-      result = await this.musterApi.callTool(
-        agentManagerToolName(tool),
-        args,
-        this.installation,
-      );
+      result = await (options
+        ? this.musterApi.callTool(
+            agentManagerToolName(tool),
+            args,
+            this.installation,
+            options,
+          )
+        : this.musterApi.callTool(
+            agentManagerToolName(tool),
+            args,
+            this.installation,
+          ));
     } catch (error) {
       throw classifyAgentManagerError(error);
     }
@@ -383,6 +401,7 @@ export class AgentManagerClient {
     return this.call<CredentialResourceResult>(
       AGENT_MANAGER_TOOLS.setOrganizationModel,
       { ...request },
+      CREDENTIAL_REQUEST_CALL,
     );
   }
 
@@ -393,6 +412,7 @@ export class AgentManagerClient {
     return this.call<CredentialResourceResult>(
       AGENT_MANAGER_TOOLS.setOrganizationConnector,
       { ...request },
+      CREDENTIAL_REQUEST_CALL,
     );
   }
 }
