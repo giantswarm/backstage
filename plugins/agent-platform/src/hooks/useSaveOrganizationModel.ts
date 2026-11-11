@@ -7,6 +7,10 @@ import { preparedCredentialOperation } from '../lib/credentialOperations';
 import type { ModelConfigFormValues } from '../lib/modelConfigs';
 import type { OrganizationNamespace } from '../lib/organizations';
 import { organizationCredentialsRouteRef } from '../routes';
+import {
+  AgentManagerError,
+  AgentManagerNotConnectedError,
+} from '../lib/agentManager';
 import { credentialRequestErrorMessage } from '../lib/credentialRequestErrors';
 import { invalidateModelReads } from './defaultModelWrites';
 import { modelKeyReference } from './modelKeyReference';
@@ -178,10 +182,20 @@ export function useSaveOrganizationModel(installation: string | undefined) {
         }
         return { isDefault, changed, form: formOf(operation) };
       } catch (error) {
-        const why = credentialRequestErrorMessage(error as Error);
         if (!changed) {
-          throw new Error(why, { cause: error });
+          // Nothing was written: the page says why, with the sign-in to
+          // agent-manager or the refusal of a person without the right.
+          if (
+            error instanceof AgentManagerNotConnectedError ||
+            (error instanceof AgentManagerError && error.code === 'forbidden')
+          ) {
+            throw error;
+          }
+          throw new Error(credentialRequestErrorMessage(error as Error), {
+            cause: error,
+          });
         }
+        const why = credentialRequestErrorMessage(error as Error);
         await invalidateModelReads(queryClient, installation, namespace);
         throw new Error(
           `The model change is saved, but the new key could not be asked for. ${why}`,

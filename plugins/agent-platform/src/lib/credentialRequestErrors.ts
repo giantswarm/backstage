@@ -7,7 +7,7 @@ import { AgentManagerError } from './agentManager';
  * refusal has no code of its own (`conflict`), so its wording is matched;
  * a rewording falls back to the generic conflict sentence.
  */
-const OTHER_KEY = /reads key \S+ of Secret \S+, which a write of key/;
+const OTHER_KEY = /reads key \S* of Secret \S+, which a write of key/;
 
 /**
  * Why agent-manager refused to prepare a credential request, in words that
@@ -23,7 +23,7 @@ export function credentialRequestErrorMessage(error: Error): string {
     case 'forbidden':
       return `Only an admin of the organization replaces its credentials. ${answer}`;
     case 'not_found':
-      return `Nothing in the organization reads this credential any more, so there is nothing to replace. Read the list again. ${answer}`;
+      return `agent-manager found nothing to replace: no object of the organization reads this credential any more, or the organization is gone. Read the list again. ${answer}`;
     case 'gitops_owned':
       return `An object that uses this credential is applied from git, which would undo a change made here. Change the credential with a pull request to the organization's repository. ${answer}`;
     case 'invalid_request':

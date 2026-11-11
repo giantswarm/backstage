@@ -748,10 +748,11 @@ Secret only, for every object that reads it, and the form lists them and where
 each sends the value. With an edit of the model id, the edit is written
 first. The portal never sends `replaceCredential`. A refusal (another object
 reads another key of the Secret, an object applied from git, the objects
-changed since the request was prepared) says what to do. `set_organization_model` changes a model that exists, so a create
-first reads the organization's models (`list_model_configs`) and refuses a
-name it already has. A model agent-manager wrote there stays
-editable, since the edit goes through agent-manager. `useSaveModelConfig`
+changed since the request was prepared) says what to do.
+`set_organization_model` changes a model that exists, so a create first reads
+the organization's models (`list_model_configs`) and refuses a name it already
+has. A model agent-manager wrote there stays editable, since the edit goes
+through agent-manager. `useSaveModelConfig`
 refuses an organization namespace, and any namespace but `kagent` while the
 portal cannot tell whether it is an organization's (agent-manager not
 reachable or its organizations not read); Edit is withheld then too.

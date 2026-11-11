@@ -69,6 +69,7 @@ function Harness({ input }: { input: SaveOrganizationModelInput }) {
       {answer && <p data-testid="answer">{answer}</p>}
       {error && (
         <p data-testid="error">
+          {error.name}:{' '}
           {error instanceof AgentManagerError ? error.code : error.message}
         </p>
       )}
@@ -322,6 +323,26 @@ describe('useSaveOrganizationModel', () => {
 
     expect(await screen.findByTestId('error')).toHaveTextContent(
       /The model change is saved, but the new key could not be asked for\. Another object reads a different key of the same Secret/,
+    );
+  });
+
+  it('keeps the sign-in to agent-manager when a new key alone cannot be asked for', async () => {
+    await saveWith(
+      {
+        organization: PAYMENTS,
+        values: { ...VALUES, model: 'claude-sonnet-4-5' },
+        original: SONNET,
+        replaceKey: true,
+      },
+      async () => {
+        throw new Error(
+          'tool not found: x_agent-manager_replace_organization_credential',
+        );
+      },
+    );
+
+    expect(await screen.findByTestId('error')).toHaveTextContent(
+      'AgentManagerNotConnectedError',
     );
   });
 

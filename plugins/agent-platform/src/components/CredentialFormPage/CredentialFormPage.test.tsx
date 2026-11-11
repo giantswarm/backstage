@@ -390,6 +390,8 @@ describe('CredentialFormPage', () => {
       expect(value).not.toHaveAccessibleDescription(
         expect.stringContaining('replaces'),
       );
+      expect(screen.getByText('Sets')).toBeInTheDocument();
+      expect(screen.queryByText('Replaces')).not.toBeInTheDocument();
     });
 
     it('says the value is saved for the objects that use it', async () => {
@@ -416,6 +418,27 @@ describe('CredentialFormPage', () => {
           /The new value of Secret tenant-credential-anthropic is saved/,
         ),
       ).toBeInTheDocument();
+    });
+
+    it('does not say to start again on a conflict that is not a change of its objects', async () => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi(read(REPLACEMENT));
+      api.saveOperation.mockRejectedValueOnce(
+        await refusal(
+          409,
+          'conflict',
+          'credential save is in progress; retry after it finishes',
+        ),
+      );
+      await renderForm(api);
+
+      await user.type(await screen.findByLabelText(/^Value/), VALUE);
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(await screen.findByText('Not saved')).toBeInTheDocument();
+      expect(
+        screen.queryByText('The objects that use this credential changed'),
+      ).not.toBeInTheDocument();
     });
 
     it('says to prepare it again when the objects that use it changed', async () => {

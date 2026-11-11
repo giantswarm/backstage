@@ -63,6 +63,14 @@ const KIND_LABELS: Record<string, string> = {
   credential: 'Credential',
 };
 
+/**
+ * agent-manager's refusal of a replacement's save whose consumers changed
+ * since it was prepared (`errConsumersChanged`). Its code, `conflict`, also
+ * answers a save in progress, an uncertain outcome or an expired request,
+ * where "start again" would be wrong, so its wording is matched.
+ */
+const CONSUMERS_CHANGED = /changed since the preparation/;
+
 /** A replacement (`replace_organization_credential`): it writes the Secret only. */
 const isReplacement = (operation: CredentialOperation) =>
   operation.result?.kind === 'credential';
@@ -138,7 +146,13 @@ function Confirmation({
           </Text>
         </Fact>
         {replacement ? (
-          <Fact label="Replaces">
+          <Fact
+            label={
+              requestedPairs(operation).every(pair => pair.state === 'missing')
+                ? 'Sets'
+                : 'Replaces'
+            }
+          >
             {requestedPairs(operation).map(pair => (
               <Text key={pairId(pair)} as="p">
                 The value of Secret {pair.secret}, key {pair.key}. No model,
@@ -256,7 +270,11 @@ function SaveError({
   if (!error) {
     return null;
   }
-  if (replacement && credentialOperationErrorCode(error) === 'conflict') {
+  if (
+    replacement &&
+    credentialOperationErrorCode(error) === 'conflict' &&
+    CONSUMERS_CHANGED.test(credentialOperationErrorMessage(error))
+  ) {
     return (
       <Alert
         status="danger"
