@@ -23,6 +23,7 @@ import {
 import { useAgentManagerEgressPolicies } from '../../hooks/useAgentManagerEgressPolicies';
 import { useAgentManagerModelConfigs } from '../../hooks/useAgentManagerModelConfigs';
 import { useOrganizationConnectors } from '../../hooks/useOrganization';
+import { useOrganizationAccess } from '../../hooks/useOrganizationAccess';
 import {
   type CredentialRequest,
   useOrganizationCredentialRequest,
@@ -218,6 +219,7 @@ export function ModelsTab({ installation, organization }: TabProps) {
     organization.namespace,
   );
   const request = useOrganizationCredentialRequest(installation, organization);
+  const access = useOrganizationAccess(installation, organization.namespace);
   const [adding, setAdding] = useState(false);
   const [replacing, setReplacing] = useState<{
     label: string;
@@ -243,16 +245,16 @@ export function ModelsTab({ installation, organization }: TabProps) {
       />
     </>
   );
-  const addModel = (
+  const addModel = access.models ? (
     <Button variant="secondary" onPress={() => setAdding(true)}>
       Add model
     </Button>
-  );
+  ) : undefined;
 
-  if (models.isLoading || models.failure) {
+  if (models.isLoading || access.isLoading || models.failure) {
     return (
       <ReadState
-        isLoading={models.isLoading}
+        isLoading={models.isLoading || access.isLoading}
         failure={models.failure}
         noun="models"
       />
@@ -263,7 +265,11 @@ export function ModelsTab({ installation, organization }: TabProps) {
       <>
         <EmptyStateCard
           title="This organization has no model yet"
-          description="Add a model with your own key to run agents. The key is entered once and never shown back."
+          description={
+            access.models
+              ? 'Add a model with your own key to run agents. The key is entered once and never shown back.'
+              : 'An admin of the organization adds a model with its own key to run agents.'
+          }
           actions={addModel}
         />
         {dialogs}
@@ -324,19 +330,21 @@ export function ModelsTab({ installation, organization }: TabProps) {
       defaultWidth: '1fr',
       cell: row => (
         <Cell>
-          <Button
-            variant="tertiary"
-            size="small"
-            aria-label={`Replace the key of ${row.name}`}
-            onPress={() =>
-              setReplacing({
-                label: row.name,
-                request: { kind: 'model-key', name: row.name },
-              })
-            }
-          >
-            Replace key
-          </Button>
+          {access.credentials ? (
+            <Button
+              variant="tertiary"
+              size="small"
+              aria-label={`Replace the key of ${row.name}`}
+              onPress={() =>
+                setReplacing({
+                  label: row.name,
+                  request: { kind: 'model-key', name: row.name },
+                })
+              }
+            >
+              Replace key
+            </Button>
+          ) : null}
         </Cell>
       ),
     },
@@ -380,14 +388,15 @@ export function ConnectorsTab({ installation, organization }: TabProps) {
     organization.namespace,
   );
   const request = useOrganizationCredentialRequest(installation, organization);
+  const access = useOrganizationAccess(installation, organization.namespace);
   const [replacing, setReplacing] = useState<{
     label: string;
     request: CredentialRequest;
   }>();
-  if (connectors.isLoading || connectors.failure) {
+  if (connectors.isLoading || access.isLoading || connectors.failure) {
     return (
       <ReadState
-        isLoading={connectors.isLoading}
+        isLoading={connectors.isLoading || access.isLoading}
         failure={connectors.failure}
         noun="connectors"
       />
@@ -437,7 +446,7 @@ export function ConnectorsTab({ installation, organization }: TabProps) {
       defaultWidth: '1fr',
       cell: row => (
         <Cell>
-          {row.credentials.length > 0 && !row.curated ? (
+          {access.credentials && row.credentials.length > 0 && !row.curated ? (
             <Button
               variant="tertiary"
               size="small"

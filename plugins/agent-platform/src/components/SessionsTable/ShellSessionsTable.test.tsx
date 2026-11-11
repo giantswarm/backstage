@@ -20,7 +20,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 // The organizations agent-manager names for the person
-// (`list_my_organizations`).
+// (`list_organizations`).
 jest.mock('../OrganizationDirectoryProvider', () => ({
   ...jest.requireActual('../OrganizationDirectoryProvider'),
   useOrganizationDirectory: () =>

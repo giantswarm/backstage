@@ -12,7 +12,7 @@ import { modelsRouteRef } from '../../routes';
 import { NewModelPage, type ModelEdit } from './NewModelPage';
 
 // The organizations agent-manager names for the person
-// (`list_my_organizations`).
+// (`list_organizations`).
 jest.mock('../OrganizationDirectoryProvider', () => ({
   ...jest.requireActual('../OrganizationDirectoryProvider'),
   useOrganizationDirectory: () =>

@@ -63,7 +63,7 @@ export const AGENT_MANAGER_TOOLS = {
   listModelConfigs: 'list_model_configs',
   listEgressPolicies: 'list_egress_policies',
   startSession: 'start_session',
-  listMyOrganizations: 'list_my_organizations',
+  listOrganizations: 'list_organizations',
   getOrganization: 'get_organization',
   listOrganizationMembers: 'list_organization_members',
   addOrganizationMember: 'add_organization_member',
