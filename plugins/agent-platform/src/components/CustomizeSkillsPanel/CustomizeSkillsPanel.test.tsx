@@ -411,6 +411,23 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('names only the read error when the catalog could not be read', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [],
+      error: new Error('skill-manager is unreachable'),
+      proposalTargets: [],
+    };
+    await renderPanel();
+
+    expect(
+      screen.getByText('Could not read the skill repositories'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('No skill repository takes new skills here.'),
+    ).not.toBeInTheDocument();
+  });
+
   it('offers Add skill when one configured repository is on github.com', async () => {
     mockCatalog = {
       ...loaded,

@@ -367,8 +367,16 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             description="A platform admin has to configure a skill repository first."
           />
         )}
+      {!targetsLoading && repositories.length === 0 && catalog.error && (
+        <Alert
+          status="danger"
+          title="Could not read the skill repositories"
+          description={catalog.error.message}
+        />
+      )}
       {!targetsLoading &&
         repositories.length === 0 &&
+        !catalog.error &&
         catalog.hasRepositories && (
           <EmptyStateCard
             title="No repository to propose to"

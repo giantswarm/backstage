@@ -67,6 +67,7 @@ jest.mock('../../hooks/useCreateSession', () => ({
 // repositories it offers as targets (the portal's: its github.com entries).
 let mockCatalogSkills: DiscoveredSkill[] = [];
 let mockCatalogLoading = false;
+let mockCatalogError: Error | null = null;
 // skill-manager's targets, when set; otherwise the portal's sources decide.
 let mockProposalTargets: string[] | undefined;
 // The sources as gs-backend describes them: proposable when writable, on
@@ -91,6 +92,7 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
   useSkillCatalog: () => ({
     skills: mockCatalogSkills,
     isLoading: mockCatalogLoading,
+    error: mockCatalogError,
     hasRepositories: mockRepositories.length > 0,
     sources: mockSources(),
     proposalTargets:
@@ -177,6 +179,7 @@ beforeEach(() => {
   mockRepositories = [REPO];
   mockRefKinds = {};
   mockCatalogLoading = false;
+  mockCatalogError = null;
   mockMetaAgents = {};
   mockCatalogSkills = [];
   mockProposalTargets = undefined;
@@ -475,6 +478,22 @@ describe('AddSkillPage', () => {
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Open pull request' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('names the read error, not a missing repository, when the catalog could not be read', async () => {
+    mockCatalogError = new Error('skill-manager is unreachable');
+    mockProposalTargets = [];
+    await renderPage();
+
+    expect(
+      screen.getByText('Could not read the skill repositories'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('skill-manager is unreachable'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('No repository to propose to'),
     ).not.toBeInTheDocument();
   });
 

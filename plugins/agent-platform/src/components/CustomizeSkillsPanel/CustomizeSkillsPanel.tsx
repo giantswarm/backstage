@@ -378,10 +378,12 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
   // a skill to, and the reason is the configuration, not the person.
   const cannotAddHere =
     !skillCatalog.isLoading && offGitHub.length > 0 && proposable.length === 0;
-  // Sources configured, none taking new skills (read-only, or not read on a
-  // branch): Add skill is hidden, and this says why.
+  // Sources configured and read, none taking new skills (read-only, or not
+  // read on a branch): Add skill is hidden, and this says why. A catalog that
+  // could not be read knows no targets, so its error says why instead.
   const noneTakesSkills =
     !skillCatalog.isLoading &&
+    !skillCatalog.error &&
     skillCatalog.hasRepositories &&
     offGitHub.length === 0 &&
     proposable.length === 0;
