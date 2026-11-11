@@ -7,8 +7,8 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
-  type AgentPlatformOrganization,
   ORPHANED_DELETE_MERGED,
+  type OrganizationStatus,
 } from '../../lib/organizations';
 
 const useStyles = makeStyles({
@@ -24,7 +24,7 @@ const useStyles = makeStyles({
 });
 
 export type OrganizationStatusAlertProps = {
-  organization: AgentPlatformOrganization;
+  organization: OrganizationStatus;
 };
 
 /**

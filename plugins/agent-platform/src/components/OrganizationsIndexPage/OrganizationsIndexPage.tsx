@@ -12,7 +12,7 @@ import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 /**
  * Who can add a person to an organization, when agent-manager's answer does
- * not say it (`list_my_organizations`' `none`).
+ * not say it (`list_organizations`' `none`).
  */
 const NO_ORGANIZATION_HINT =
   'An admin of an organization adds you, or someone with the agent-platform:organizations-admin role creates one with you as its first admin.';
@@ -23,10 +23,10 @@ function sentence(text: string): string {
 }
 
 /**
- * The organizations the signed-in person belongs to, on every installation
- * whose agent-manager serves the organization tools: the place everyone uses
- * agents through. A person in none is told who can add them, in
- * agent-manager's words.
+ * The organizations the signed-in person manages or belongs to, on every
+ * installation whose agent-manager serves the organization tools: the place
+ * everyone uses agents through. A person in none is told who can add them,
+ * in agent-manager's words.
  */
 export function OrganizationsIndexPage() {
   const {
@@ -110,20 +110,30 @@ export function OrganizationsIndexPage() {
             <PageSection key={installation} title={installation}>
               <List aria-label={`Your organizations on ${installation}`}>
                 {answer.organizations.map(organization => {
+                  const id = `${organization.parent}/${organization.name}`;
                   const href = detailRoute?.({
                     installation,
                     parent: organization.parent,
-                    name: organization.organization,
+                    name: organization.name,
                   });
+                  const label = organization.displayName || organization.name;
                   return (
                     <ListRow
-                      key={organization.namespace}
-                      id={organization.namespace}
+                      key={id}
+                      id={id}
                       href={href}
-                      textValue={organization.organization}
-                      description={`${organization.parent} · ${organization.namespace}`}
+                      textValue={label}
+                      description={[
+                        organization.parent,
+                        organization.namespace,
+                        organization.permissions.manage
+                          ? 'you manage it'
+                          : undefined,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
                     >
-                      {organization.organization}
+                      {label}
                     </ListRow>
                   );
                 })}

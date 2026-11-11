@@ -1,12 +1,15 @@
+import type { KubernetesApi } from '@backstage/plugin-kubernetes-react';
 import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 
 import type { AgentManagerModelConfig } from '../agentManager';
 import type {
   AgentPlatformOrganization,
+  ListedOrganization,
   MemberResult,
-  MyOrganizations,
   OrganizationConnector,
   OrganizationMember,
+  OrganizationNamespace,
+  OrganizationListing,
 } from '../organizations';
 
 /**
@@ -15,9 +18,14 @@ import type {
  * (giantswarm/agent-manager `internal/organizations`).
  */
 export type OrganizationsScenario = {
-  /** `list_my_organizations`. */
-  mine?: MyOrganizations;
-  /** How many `list_my_organizations` calls fail first, as a timeout would. */
+  /**
+   * The organizations the person belongs to, as `list_organizations` lists
+   * them for a member; `organization` below is listed as one they manage.
+   */
+  mine?: { organizations: OrganizationNamespace[]; none?: string };
+  /** The status `list_organizations` gives a member with each of `mine`. */
+  memberStatus?: Pick<ListedOrganization, 'orphaned' | 'deleting'>;
+  /** How many `list_organizations` calls fail first, as a timeout would. */
   mineFailures?: number;
   /** `list_organization_members`. */
   members?: OrganizationMember[];
@@ -36,6 +44,13 @@ export type OrganizationsScenario = {
    * without it the call is refused, as for a member.
    */
   organization?: AgentPlatformOrganization;
+  /**
+   * What the person's access reviews in an organization namespace answer,
+   * by resource; an organization admin's (all allowed) when left out.
+   */
+  access?: Partial<
+    Record<'rolebindings' | 'modelconfigs' | 'secrets', boolean>
+  >;
   /** `get_organization` answers `not_found`, as once the operator erased it. */
   organizationErased?: boolean;
   /** A prepared credential request answered without its operation id. */
@@ -43,6 +58,82 @@ export type OrganizationsScenario = {
   /** What `remove_organization_member` fails with, as muster passes it on. */
   removeError?: string;
 };
+
+/**
+ * `list_organizations` for a scenario: the organizations the person belongs
+ * to with their status only, and the one `get_organization` answers, if
+ * any, as one they manage.
+ */
+export function listedOrganizations(
+  scenario: OrganizationsScenario,
+): OrganizationListing {
+  const managed = scenario.organization;
+  const isManaged = (parent: string, name: string) =>
+    managed?.parent === parent && managed?.name === name;
+  const listed: ListedOrganization[] = (scenario.mine?.organizations ?? []).map(
+    organization => {
+      const manage = isManaged(organization.parent, organization.organization);
+      return {
+        name: organization.organization,
+        parent: organization.parent,
+        namespace: organization.namespace,
+        ...(manage
+          ? {
+              displayName: managed?.displayName,
+              orphaned: managed?.orphaned,
+              deleting: managed?.deleting,
+              organization: managed,
+            }
+          : scenario.memberStatus),
+        permissions: { manage, member: true },
+      };
+    },
+  );
+  if (
+    managed &&
+    !listed.some(organization =>
+      isManaged(organization.parent, organization.name),
+    )
+  ) {
+    listed.push({
+      name: managed.name,
+      parent: managed.parent,
+      displayName: managed.displayName,
+      namespace: managed.namespace,
+      orphaned: managed.orphaned,
+      deleting: managed.deleting,
+      permissions: { manage: true, member: false },
+      organization: managed,
+    });
+  }
+  return {
+    organizations: listed,
+    ...(scenario.mine?.none ? { none: scenario.mine.none } : {}),
+  };
+}
+
+/**
+ * The Kubernetes proxy answering only the person's SelfSubjectAccessReviews,
+ * as `access` says.
+ */
+export function fakeOrganizationAccess(
+  access: OrganizationsScenario['access'] = {},
+) {
+  const proxy = jest.fn(
+    async ({ path, init }: { path: string; init?: RequestInit }) => {
+      if (!path.endsWith('/selfsubjectaccessreviews')) {
+        throw new Error(`unexpected Kubernetes request ${path}`);
+      }
+      const resource = JSON.parse(String(init?.body)).spec.resourceAttributes
+        .resource as keyof NonNullable<OrganizationsScenario['access']>;
+      return new Response(
+        JSON.stringify({ status: { allowed: access[resource] ?? true } }),
+        { status: 201 },
+      );
+    },
+  );
+  return { proxy } as unknown as KubernetesApi;
+}
 
 /** The operation id the fake's credential requests link to. */
 export const CREDENTIAL_OPERATION = 'b2'.repeat(24);
@@ -58,14 +149,14 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
             namespaces: { default: 'kagent', managed: [] },
             capabilities: { organizations: true, egressPolicies: true },
           };
-        case 'x_agent-manager_list_my_organizations':
+        case 'x_agent-manager_list_organizations':
           if (mineFailures > 0) {
             mineFailures -= 1;
             throw new Error(
               'backend_error: the API server did not answer in time',
             );
           }
-          return scenario.mine ?? { organizations: [] };
+          return listedOrganizations(scenario);
         case 'x_agent-manager_get_organization':
           if (scenario.organizationErased) {
             throw new Error(

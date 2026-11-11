@@ -7,13 +7,13 @@ import {
   ORGANIZATIONS_CAPABILITY,
   type MemberRequest,
   type MemberResult,
-  type MyOrganizations,
   type OrganizationConnector,
   type OrganizationDetails,
   type OrganizationMember,
+  type OrganizationListing,
 } from '../lib/organizations';
 import {
-  musterMyOrganizationsQueryKey,
+  musterOrganizationsQueryKey,
   musterOrganizationConnectorsQueryKey,
   musterOrganizationMembersQueryKey,
   musterOrganizationQueryKey,
@@ -72,26 +72,36 @@ export function useOrganizationsSupported(installation: string | undefined): {
 }
 
 /**
- * `list_my_organizations` on one installation: the organizations the person
- * belongs to, and who can add them when there is none. Asked only where
- * agent-manager serves the organization tools.
+ * `list_organizations` on one installation: the organizations the person
+ * manages or belongs to, each with their permissions, and who can add them
+ * when there is none. Asked only where agent-manager serves the organization
+ * tools.
  */
-export function useMyOrganizations(
+export function useOrganizations(
   installation: string | undefined,
-): OrganizationRead<MyOrganizations> &
-  Omit<ReturnType<typeof useOrganizationsSupported>, 'isLoading'> {
+): OrganizationRead<OrganizationListing> &
+  Omit<ReturnType<typeof useOrganizationsSupported>, 'isLoading'> & {
+    /** Reads `list_organizations` again. */
+    refetch: () => Promise<unknown>;
+  } {
   const client = useAgentManagerClient(installation);
   const { supported, infoError, recheck } =
     useOrganizationsSupported(installation);
   const enabled = Boolean(client) && supported === true;
   const query = useQuery({
-    queryKey: musterMyOrganizationsQueryKey(installation ?? ''),
+    queryKey: musterOrganizationsQueryKey(installation ?? ''),
     enabled,
-    queryFn: () => client!.listMyOrganizations(),
+    queryFn: () => client!.listOrganizations(),
     staleTime: 60_000,
     retry: false,
   });
-  return { ...readOf(enabled, query), supported, infoError, recheck };
+  return {
+    ...readOf(enabled, query),
+    supported,
+    infoError,
+    recheck,
+    refetch: query.refetch,
+  };
 }
 
 const ERASING_POLL_INTERVAL_MS = 10_000;
@@ -101,9 +111,9 @@ function isNotFound(error: unknown): boolean {
 }
 
 /**
- * `get_organization`: the organization object, for its display name and its
- * state. Only an organizations-admin may read it; a member's read is refused,
- * and the page names the organization by its name then. While the
+ * `get_organization`: the organization object and what a delete would erase.
+ * Only an organizations-admin may read it, so it is asked only when
+ * `list_organizations` says the person manages the organization. While the
  * organization is deleting it is read again every 10 s, until the read
  * answers `not_found`: the operator erased it.
  */
@@ -111,9 +121,10 @@ export function useOrganizationDetails(
   installation: string,
   parent: string,
   name: string,
+  options: { enabled?: boolean } = {},
 ): OrganizationRead<OrganizationDetails> {
   const client = useAgentManagerClient(installation);
-  const enabled = Boolean(client);
+  const enabled = Boolean(client) && (options.enabled ?? true);
   const query = useQuery({
     queryKey: musterOrganizationQueryKey(installation, parent, name),
     enabled,
