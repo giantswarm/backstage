@@ -27,6 +27,7 @@ import { useAgentToolset } from '../../hooks/useAgentToolset';
 import { useReachCatalogue } from '../../hooks/useReachCatalogue';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { underlyingModelLine } from '../../hooks/useUnderlyingModel';
+import { modelLabel } from '../../lib/modelLabel';
 import {
   harnessChoiceOf,
   PLATFORM_DEFAULT_LABEL,
@@ -592,12 +593,11 @@ function ModelFact({
   if (!modelConfigName) {
     return isFailing ? <FailureMarker /> : <Text variant="body-small">—</Text>;
   }
-  // The ModelConfig's name — its friendly one where it carries one — as in the
-  // create flow's "Runs on …": an admin may abstract the model on purpose
-  // ("The Cheap One"), so the name stays (PO decision L6). The model it runs
-  // is the secondary line below, unless the name already says it; neither
-  // when the ModelConfig cannot be read, which is normal for a non-admin.
-  const label = modelConfig?.getDisplayName() ?? modelConfigName;
+  // Named as in the create flow's "Runs on …" (`modelLabel`). The model it
+  // runs is the secondary line below, unless the name already says it;
+  // neither when the ModelConfig cannot be read, which is normal for a
+  // non-admin.
+  const label = modelLabel(modelConfig) ?? modelConfigName;
   const underlyingModel =
     modelConfig && modelConfig.getModel() !== label
       ? underlyingModelLine(modelConfig)

@@ -24,6 +24,8 @@ type FakeModelConfig = {
   getName: () => string;
   getNamespace: () => string;
   getDisplayName: () => string;
+  getDisplayNameAnnotation: () => string;
+  isPersonalChatGptLogin: () => boolean;
   getModel: () => string;
   getProvider: () => string;
   getReadiness: () => 'accepted' | 'notAccepted';
@@ -45,6 +47,8 @@ function modelConfig(
     getName: () => name,
     getNamespace: () => namespace,
     getDisplayName: () => displayName,
+    getDisplayNameAnnotation: () => displayName,
+    isPersonalChatGptLogin: () => false,
     getModel: () => `${name}-model`,
     getProvider: () => 'Anthropic',
     getReadiness: () => (rejected ? 'notAccepted' : 'accepted'),

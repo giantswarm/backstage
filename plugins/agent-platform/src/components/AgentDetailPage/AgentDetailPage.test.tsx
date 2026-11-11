@@ -3214,7 +3214,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expect(within(facts).queryByText('Created by')).not.toBeInTheDocument();
     });
 
-    it('keeps the ModelConfig name without a display name, the model below it', async () => {
+    it('names the model it runs when the ModelConfig has no display name', async () => {
       stubResources(
         { resource: makeAgent() },
         { resource: makeModelConfig({ displayName: null }) },
@@ -3225,14 +3225,10 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       const facts = screen.getByRole('complementary', {
         name: 'About this agent',
       });
-      // An admin may abstract the model behind the name: the name leads, the
-      // model never replaces it.
       expect(
-        within(facts).getByRole('link', { name: 'opus-4-7' }),
+        within(facts).getByRole('link', { name: 'claude-opus-4-7' }),
       ).toBeInTheDocument();
-      expect(
-        within(facts).getByText('claude-opus-4-7 · Anthropic'),
-      ).toBeInTheDocument();
+      expect(within(facts).queryByText('opus-4-7')).not.toBeInTheDocument();
     });
 
     it('folds the Kubernetes detail into a "Technical details" fold-out, not a switch', async () => {

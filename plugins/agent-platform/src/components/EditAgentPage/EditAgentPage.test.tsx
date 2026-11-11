@@ -90,6 +90,8 @@ function modelConfig(name: string, namespace: string, displayName: string) {
     getName: () => name,
     getNamespace: () => namespace,
     getDisplayName: () => displayName,
+    getDisplayNameAnnotation: () => displayName,
+    isPersonalChatGptLogin: () => false,
     getModel: () => `${name}-model`,
     getProvider: () => 'Anthropic',
   };

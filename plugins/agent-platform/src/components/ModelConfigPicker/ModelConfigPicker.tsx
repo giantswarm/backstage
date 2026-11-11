@@ -8,6 +8,7 @@ import {
 
 import { newModelRouteRef } from '../../routes';
 import { useAgentManagerModelConfigs } from '../../hooks/useAgentManagerModelConfigs';
+import { modelLabel } from '../../lib/modelLabel';
 import { tenantInSentence } from '../../lib/tenants';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
@@ -101,7 +102,7 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
       selectModelConfig(
         preselected.getName(),
         preselected.getNamespace() ?? '',
-        preselected.getDisplayName(),
+        modelLabel(preselected),
       );
     }
   }, [preselected, state.modelConfigName, selectModelConfig]);
@@ -243,6 +244,8 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
                   const name = mc.getName();
                   const modelNamespace = mc.getNamespace() ?? '';
                   const provider = mc.getProvider();
+                  const choiceLabel = modelLabel(mc) ?? name;
+                  const model = mc.getModel();
                   const isDefault = isReportedDefault(mc, reported);
                   const problem = unresolvedReason(mc, reported);
 
@@ -251,26 +254,28 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
                       key={`${modelNamespace}/${name}`}
                       role="radio"
                       selected={isPicked(mc)}
-                      ariaLabel={`Select model ${mc.getDisplayName()}${
+                      ariaLabel={`Select model ${choiceLabel}${
                         isDefault ? ', default' : ''
                       }${problem ? ', not accepted' : ''}`}
                       onSelect={() =>
-                        selectModelConfig(
-                          name,
-                          modelNamespace,
-                          mc.getDisplayName(),
-                        )
+                        selectModelConfig(name, modelNamespace, choiceLabel)
                       }
                     >
-                      <Text weight="bold">{mc.getDisplayName()}</Text>
+                      <Text weight="bold">{choiceLabel}</Text>
                       {isDefault && (
                         <Text variant="body-small" color="secondary">
                           Default
                         </Text>
                       )}
                       <Text variant="body-x-small" color="secondary">
-                        <span className={classes.code}>{mc.getModel()}</span>
-                        {provider ? ` · ${provider}` : ''}
+                        {model && model !== choiceLabel ? (
+                          <>
+                            <span className={classes.code}>{model}</span>
+                            {provider ? ` · ${provider}` : ''}
+                          </>
+                        ) : (
+                          provider
+                        )}
                       </Text>
                       {problem && (
                         <ModelReadinessLabel
