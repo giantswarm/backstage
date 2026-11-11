@@ -16,6 +16,7 @@ import {
   toolCalls,
   type OrganizationsScenario,
 } from '../../lib/__fixtures__/agentManagerOrganizations';
+import { musterOrganizationsQueryKey } from '../../lib/queryKeys';
 import { organizationsRouteRef } from '../../routes';
 import { OrganizationPage } from './OrganizationPage';
 
@@ -141,7 +142,7 @@ async function renderPage(tab: string, scenario: OrganizationsScenario) {
       mountedRoutes: { '/organizations': organizationsRouteRef },
     },
   );
-  return { callTool };
+  return { callTool, queryClient };
 }
 
 beforeEach(() => {
@@ -871,6 +872,52 @@ describe('OrganizationPage', () => {
           action: 'AgentPlatform.organizationDeleteRequested',
         }),
       );
+    });
+
+    it('shows Pending erase from a newer listing after the delete dialog was opened and closed', async () => {
+      const scenario: OrganizationsScenario = {
+        ...SCENARIO,
+        organization: {
+          ...MANAGED,
+          gitops: 'flux-giantswarm/agent-platform-organizations',
+        },
+        erases: ERASES,
+      };
+      const { dialog, queryClient } = await openDelete(scenario);
+      const open = within(dialog).getByRole('button', {
+        name: 'Open pull request',
+      });
+      await waitFor(() => expect(open).toBeEnabled());
+      await userEvent.click(open);
+      await within(dialog).findByRole('link', { name: /Review pull request/ });
+      // The footer's Close, not the header's close icon.
+      await userEvent.click(
+        within(dialog)
+          .getAllByRole('button', { name: 'Close' })
+          .find(button => button.textContent === 'Close')!,
+      );
+      await waitFor(() =>
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+      );
+
+      // The pull request merged: the listing now says Pending erase.
+      scenario.organization = {
+        ...scenario.organization!,
+        orphaned: { status: 'True', reason: 'DeleteMerged' },
+      };
+      await act(() =>
+        queryClient.invalidateQueries({
+          queryKey: musterOrganizationsQueryKey('gazelle'),
+        }),
+      );
+
+      expect(await screen.findByText('Pending erase')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Erase now' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Delete organization' }),
+      ).not.toBeInTheDocument();
     });
 
     it("shows agent-manager's next step when the delete pull request is open already", async () => {

@@ -17,6 +17,7 @@ import {
 import {
   musterOrganizationsQueryKey,
   musterOrganizationConnectorsQueryKey,
+  musterOrganizationErasureQueryKey,
   musterOrganizationMembersQueryKey,
   musterOrganizationQueryKey,
 } from '../lib/queryKeys';
@@ -244,7 +245,9 @@ export function useOrganizationMemberWrites(
 /**
  * `get_organization` read afresh, for the delete dialog: what a delete
  * erases now, and the running sessions it stops. Mounted only while the
- * dialog is open, so every opening asks again.
+ * dialog is open, so every opening asks again. It is kept under its own key
+ * and dropped once the dialog closes: in the page's `get_organization` key
+ * it would hide a newer status from `list_organizations`.
  */
 export function useOrganizationErasure(
   installation: string,
@@ -254,10 +257,11 @@ export function useOrganizationErasure(
   const client = useAgentManagerClient(installation);
   const enabled = Boolean(client);
   const query = useQuery({
-    queryKey: musterOrganizationQueryKey(installation, parent, name),
+    queryKey: musterOrganizationErasureQueryKey(installation, parent, name),
     enabled,
     queryFn: () => client!.getOrganization(parent, name),
     refetchOnMount: 'always',
+    gcTime: 0,
     retry: false,
   });
   return {
