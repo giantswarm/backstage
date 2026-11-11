@@ -418,6 +418,8 @@ export function CredentialFormPage({
         );
         save.reset();
         reload();
+      } else if (code === CONSUMERS_CHANGED) {
+        setValues({});
       } else if (code === 'outcome_unknown') {
         setValues({});
         setNotice(
@@ -514,14 +516,21 @@ export function CredentialFormPage({
     );
   }
 
+  // A replacement whose objects changed since it was prepared cannot be
+  // saved any more: the same request would be refused again. The form goes,
+  // and the way back to the organization's tab, where it starts again,
+  // shows.
+  const stale = credentialOperationErrorCode(save.error) === CONSUMERS_CHANGED;
   const takesValues =
     !receipt &&
     !cancelled &&
+    !stale &&
     (operation.state === 'pending' ||
       (operation.state === 'uncertain' && operation.mode === 'apply'));
   const finishes =
     !receipt &&
     !cancelled &&
+    !stale &&
     (operation.state === 'saving' ||
       (operation.state === 'uncertain' && operation.mode === 'commit'));
   const complete =
@@ -661,6 +670,9 @@ export function CredentialFormPage({
               </Flex>
             </Flex>
           </PageSection>
+        ) : null}
+        {stale ? (
+          <SaveError installation={installation} error={save.error} />
         ) : null}
         {!takesValues && !finishes && backLink ? <Flex>{backLink}</Flex> : null}
       </Flex>

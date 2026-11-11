@@ -750,8 +750,9 @@ first. The portal never sends `replaceCredential`. A refusal (another object
 reads another key of the Secret, an object applied from git, the objects
 changed since the request was prepared) says what to do. The last is
 agent-manager's save answer `409` with code `credential_consumers_changed`
-(agent-manager v2.24.0-rc.7 and later): nothing was written, and the person
-starts the replacement again from the tab. Every request carries a fresh
+(agent-manager v2.24.0-rc.7 and later; rc.6 answers `conflict`, shown as Not
+saved): nothing was written, the form takes no value for that request any
+more, and the person starts the replacement again from the tab. Every request carries a fresh
 `requestId`, since agent-manager answers the same `requestId` with the old,
 stale operation.
 `set_organization_model` changes a model that exists, so a create first reads

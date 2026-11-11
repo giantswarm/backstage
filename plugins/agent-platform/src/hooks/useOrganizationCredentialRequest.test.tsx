@@ -25,17 +25,20 @@ const PAYMENTS = {
 function Replace() {
   const request = useOrganizationCredentialRequest('gazelle', PAYMENTS);
   return (
-    <button
-      onClick={() =>
-        request.mutate({
-          kind: 'credential',
-          secret: 'tenant-credential-jira',
-          key: 'token',
-        })
-      }
-    >
-      Replace
-    </button>
+    <>
+      {request.error ? <p>{request.error.message}</p> : null}
+      <button
+        onClick={() =>
+          request.mutate({
+            kind: 'credential',
+            secret: 'tenant-credential-jira',
+            key: 'token',
+          })
+        }
+      >
+        Replace
+      </button>
+    </>
   );
 }
 
@@ -85,5 +88,7 @@ describe('useOrganizationCredentialRequest', () => {
     expect(first).toEqual(expect.any(String));
     expect(second).toEqual(expect.any(String));
     expect(second).not.toBe(first);
+    // Answered with the request's id, not a page to open: nothing failed.
+    expect(screen.queryByText(/credential UI/)).toBeNull();
   });
 });

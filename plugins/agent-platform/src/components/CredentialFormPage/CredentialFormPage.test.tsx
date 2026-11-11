@@ -455,6 +455,9 @@ describe('CredentialFormPage', () => {
       await renderForm(api);
 
       await user.type(await screen.findByLabelText(/^Value/), VALUE);
+      const backLinks = screen.getAllByRole('link', {
+        name: 'Back to payments',
+      }).length;
       await user.click(screen.getByRole('button', { name: 'Save' }));
 
       expect(
@@ -465,6 +468,35 @@ describe('CredentialFormPage', () => {
           /Start the replacement again from the organization's tab/,
         ),
       ).toBeInTheDocument();
+      // The same request would be refused again: no value, no Save, and the
+      // way back to the tab where it starts again.
+      expect(screen.queryByLabelText(/^Value/)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+      expect(
+        screen.getAllByRole('link', { name: 'Back to payments' }),
+      ).toHaveLength(backLinks + 1);
+      expect(api.saveOperation).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps an older agent-manager's conflict as Not saved, whatever its text", async () => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi(read(REPLACEMENT));
+      api.saveOperation.mockRejectedValueOnce(
+        await refusal(
+          409,
+          'conflict',
+          'the objects in agents-payments-x7k2q that use Secret tenant-credential-anthropic, or where they send its value, changed since the preparation; prepare it again',
+        ),
+      );
+      await renderForm(api);
+
+      await user.type(await screen.findByLabelText(/^Value/), VALUE);
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(await screen.findByText('Not saved')).toBeInTheDocument();
+      expect(
+        screen.queryByText('The objects that use this credential changed'),
+      ).not.toBeInTheDocument();
     });
   });
 
