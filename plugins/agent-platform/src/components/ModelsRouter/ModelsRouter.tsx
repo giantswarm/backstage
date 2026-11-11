@@ -55,6 +55,7 @@ import {
   servingRouteRef,
 } from '../../routes';
 import { RouteRefRedirect } from '../RouteRefRedirect';
+import { OrganizationDirectoryProvider } from '../OrganizationDirectoryProvider';
 
 /**
  * Model hosting's tabs inside the shell, named per the prototype where the
@@ -308,54 +309,71 @@ const EditRedirect = () => <Navigate to="." replace />;
  * The model's page mounts only the agent-platform data it reads
  * (`CustomizeModelPage`); the views share the tab's providers. Both share one
  * query client, so the list's reads are cache hits on the page.
+ *
+ * Every route is under the organization directory, as AgentsRouter's are:
+ * which namespaces are Organizations' decides where Connect a model may put
+ * a model, how a model's owner is named and whether a save goes through
+ * agent-manager. The Customize page mounts its tabs' routers outside its own
+ * providers, so without this no namespace would be an Organization's here.
+ * Its reads share the query client's cache with the sidebar's directory.
  */
 export const ModelsRouter = () => {
   return (
-    <Routes>
-      <Route path="new" element={withProviders(<NewModelPage />)} />
-      <Route
-        path="hosting/serve"
-        element={withProviders(<ServeModelRoute />)}
-      />
-      <Route
-        path="hosting/import"
-        element={withProviders(<ImportModelRoute />)}
-      />
-      <Route path="hosting/pull" element={withProviders(<PullModelRoute />)} />
-      <Route
-        path="hosting/add-backend"
-        element={withProviders(<AddModelBackendRoute />)}
-      />
-      <Route
-        path="hosting/capacity/add-pool"
-        element={withProviders(<AddGpuNodePoolRoute />)}
-      />
-      <Route path="hosting/*" element={withProviders(<ShellModelHosting />)} />
-      <Route
-        path=":installation/:namespace/:name/edit"
-        element={withProviders(
-          <ModelRoute>
-            <EditModelPage />
-          </ModelRoute>,
-        )}
-      />
-      <Route
-        path=":installation/:namespace/:name/edit/*"
-        element={
-          <ModelRoute>
-            <EditRedirect />
-          </ModelRoute>
-        }
-      />
-      <Route
-        path=":installation/:namespace/:name/*"
-        element={
-          <ModelRoute>
-            <CustomizeModelPage />
-          </ModelRoute>
-        }
-      />
-      <Route path="*" element={<ShellCustomizeRedirect tab="models" />} />
-    </Routes>
+    <QueryClientProvider>
+      <OrganizationDirectoryProvider>
+        <Routes>
+          <Route path="new" element={withProviders(<NewModelPage />)} />
+          <Route
+            path="hosting/serve"
+            element={withProviders(<ServeModelRoute />)}
+          />
+          <Route
+            path="hosting/import"
+            element={withProviders(<ImportModelRoute />)}
+          />
+          <Route
+            path="hosting/pull"
+            element={withProviders(<PullModelRoute />)}
+          />
+          <Route
+            path="hosting/add-backend"
+            element={withProviders(<AddModelBackendRoute />)}
+          />
+          <Route
+            path="hosting/capacity/add-pool"
+            element={withProviders(<AddGpuNodePoolRoute />)}
+          />
+          <Route
+            path="hosting/*"
+            element={withProviders(<ShellModelHosting />)}
+          />
+          <Route
+            path=":installation/:namespace/:name/edit"
+            element={withProviders(
+              <ModelRoute>
+                <EditModelPage />
+              </ModelRoute>,
+            )}
+          />
+          <Route
+            path=":installation/:namespace/:name/edit/*"
+            element={
+              <ModelRoute>
+                <EditRedirect />
+              </ModelRoute>
+            }
+          />
+          <Route
+            path=":installation/:namespace/:name/*"
+            element={
+              <ModelRoute>
+                <CustomizeModelPage />
+              </ModelRoute>
+            }
+          />
+          <Route path="*" element={<ShellCustomizeRedirect tab="models" />} />
+        </Routes>
+      </OrganizationDirectoryProvider>
+    </QueryClientProvider>
   );
 };
