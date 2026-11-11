@@ -250,6 +250,7 @@ describe('ToolPage', () => {
       'x_aws-root_list_buckets',
       {},
       'gazelle',
+      { signal: expect.any(AbortSignal) },
     );
   });
 

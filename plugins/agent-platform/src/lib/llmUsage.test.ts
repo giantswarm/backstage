@@ -966,6 +966,49 @@ describe('buildLlmUsage', () => {
     );
   });
 
+  it('stacks the daily tokens as fresh input, cache reads, cache writes and output', () => {
+    // A point at midnight of 10 Sep totals 9 Sep; today's row is the partial.
+    const at = Date.UTC(2026, 8, 10) / 1000;
+    const day = (type: string, value: string): MimirMatrixSample => ({
+      metric: { gen_ai_token_type: type },
+      values: [[at, value]],
+    });
+    const usage = buildLlmUsage({
+      ...base,
+      cost: [],
+      tokens: [],
+      tokensPerDay: [
+        day('input', '1000'),
+        day('input_cache_read', '800'),
+        day('input_cache_write', '150'),
+        day('output', '20'),
+      ],
+      tokensToday: [
+        sample({ gen_ai_token_type: 'input' }, '500'),
+        sample({ gen_ai_token_type: 'input_cache_read' }, '450'),
+      ],
+    });
+
+    expect(usage.tokensPerDay.series).toContain('fresh_input');
+    expect(usage.tokensPerDay.series).not.toContain('input');
+    expect(usage.tokensPerDay.rows).toEqual([
+      {
+        day: '2026-09-09',
+        fresh_input: 50,
+        input_cache_read: 800,
+        input_cache_write: 150,
+        output: 20,
+      },
+      {
+        day: '2026-09-10',
+        fresh_input: 50,
+        input_cache_read: 450,
+        input_cache_write: 0,
+        output: 0,
+      },
+    ]);
+  });
+
   it('reports only a blended rate when cost carries no token type', () => {
     const usage = buildLlmUsage({
       ...base,

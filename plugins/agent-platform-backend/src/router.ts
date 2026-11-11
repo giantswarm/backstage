@@ -44,6 +44,7 @@ import { SessionStateReader } from './sessionStates';
 import { SessionUsageReader } from './sessionUsage';
 import { MimirQuerier, readModelCost } from './modelCost';
 import { createAvatarRouter } from './avatarRouter';
+import { createCredentialOperationsRouter } from './credentialOperationsRouter';
 import { createTryRouter } from './tryRouter';
 import { kagentErrorHandler } from './kagentErrorHandler';
 import { createKagentCallHistogram } from './kagent/metrics';
@@ -1325,6 +1326,11 @@ export async function createRouter(
       res.status(202).json({ status: 'pending' });
     }
   });
+
+  // agent-manager's credential operations as the person: the organization
+  // credential form's confirmation, save and cancel
+  // (credentialOperationsRouter.ts).
+  router.use(createCredentialOperationsRouter({ config }));
 
   // The one served-model call the browser cannot make itself: a try of a
   // served model against the installation's models Gateway (tryRouter.ts).

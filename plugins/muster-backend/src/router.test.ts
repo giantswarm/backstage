@@ -8,6 +8,7 @@ import {
   EndpointProbeResult,
   markReported,
   MusterAuthRequiredError,
+  MusterInputRequiredError,
   MusterMcpClient,
   ReachabilityCache,
   MusterToolError,
@@ -655,6 +656,18 @@ describe('createRouter', () => {
         checkedAt: 1,
       });
       await new Promise(resolve => setTimeout(resolve, 0));
+      // Unreachable only after a second failed probe in a row.
+      void cache.refresh(
+        'https://muster.golem.example.io/.well-known/oauth-protected-resource',
+      );
+      pending.get(
+        'https://muster.golem.example.io/.well-known/oauth-protected-resource',
+      )!({
+        reachable: false,
+        reason: 'no answer within 3000 ms',
+        checkedAt: 1,
+      });
+      await new Promise(resolve => setTimeout(resolve, 0));
 
       const response = await request(probing).get('/installations');
 
@@ -667,6 +680,240 @@ describe('createRouter', () => {
         }),
       ]);
       expect(response.body.installations[0]).not.toHaveProperty('reason');
+    });
+
+    describe('a call to an installation', () => {
+      const golemProbe =
+        'https://muster.golem.example.io/.well-known/oauth-protected-resource';
+      const gazelleProbe =
+        'https://muster.gazelle.example.io/.well-known/oauth-protected-resource';
+      const token = [
+        Buffer.from('{"alg":"none"}').toString('base64url'),
+        Buffer.from(
+          JSON.stringify({
+            sub: 'ada',
+            exp: Math.floor(Date.now() / 1000) + 600,
+          }),
+        ).toString('base64url'),
+        'sig',
+      ].join('.');
+
+      /** golem probed `times` times with the same answer, once by default. */
+      async function settled(
+        golem: EndpointProbeResult | undefined,
+        times = golem?.reachable === false ? 2 : 1,
+      ) {
+        const { cache, pending } = controlledCache();
+        const probing = await buildMultiApp(twoMusters, {
+          reachability: cache,
+        });
+        pending.get(gazelleProbe)!({ reachable: true, checkedAt: 1 });
+        if (golem) {
+          for (let probe = 0; probe < times; probe += 1) {
+            if (probe > 0) {
+              void cache.refresh(golemProbe);
+            }
+            pending.get(golemProbe)!(golem);
+            await new Promise(resolve => setTimeout(resolve, 0));
+          }
+        }
+        await new Promise(resolve => setTimeout(resolve, 0));
+        return probing;
+      }
+
+      it('one failed probe still lets the call through: a distant muster may have answered late', async () => {
+        const probing = await settled(
+          {
+            reachable: false,
+            reason: 'no answer within 5000 ms',
+            checkedAt: 1,
+          },
+          1,
+        );
+        callTool.mockResolvedValueOnce({ mcpServers: [] });
+
+        const response = await request(probing)
+          .get('/servers?installation=golem')
+          .set(MUSTER_AUTH_HEADER, token);
+
+        expect(response.status).toBe(200);
+        expect(callTool).toHaveBeenCalledTimes(1);
+      });
+
+      it('the probe reports unreachable fails at once with the probe reason, without calling muster', async () => {
+        const probing = await settled({
+          reachable: false,
+          reason: 'no answer within 3000 ms',
+          checkedAt: 1,
+        });
+
+        const response = await request(probing)
+          .get('/servers?installation=golem')
+          .set(MUSTER_AUTH_HEADER, token);
+
+        expect(response.status).toBe(503);
+        expect(response.body.error.message).toBe(
+          'golem did not answer: not reachable from this portal (no answer within 3000 ms)',
+        );
+        expect(callTool).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['while the first probe is in flight', undefined],
+        ['the probe reports reachable', { reachable: true, checkedAt: 1 }],
+      ])('is made %s', async (_label, golem) => {
+        const probing = await settled(golem as EndpointProbeResult | undefined);
+        callTool.mockResolvedValueOnce({ mcpServers: [] });
+
+        const response = await request(probing)
+          .get('/servers?installation=golem')
+          .set(MUSTER_AUTH_HEADER, token);
+
+        expect(response.status).toBe(200);
+        expect(callTool).toHaveBeenCalledTimes(1);
+      });
+
+      it('the probe reports unreachable still lists it, and its status as unavailable, at once', async () => {
+        const probing = await settled({
+          reachable: false,
+          reason: 'no answer within 3000 ms',
+          checkedAt: 1,
+        });
+
+        const installations = await request(probing).get('/installations');
+        const status = await request(probing)
+          .get('/auth/status?installation=golem')
+          .set(MUSTER_AUTH_HEADER, token);
+
+        expect(installations.body.installations).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ name: 'golem', reachable: false }),
+          ]),
+        );
+        expect(status.status).toBe(200);
+        expect(status.body).toEqual({
+          servers: [],
+          unavailable: true,
+          message:
+            'golem did not answer: not reachable from this portal (no answer within 3000 ms)',
+        });
+        expect(getResource).not.toHaveBeenCalled();
+      });
+
+      it('probes again at once when a call fails while the probe still says reachable', async () => {
+        const { cache, pending, probe } = controlledCache();
+        const probing = await buildMultiApp(twoMusters, {
+          reachability: cache,
+        });
+        pending.get(gazelleProbe)!({ reachable: true, checkedAt: Date.now() });
+        pending.get(golemProbe)!({ reachable: true, checkedAt: Date.now() });
+        await new Promise(resolve => setTimeout(resolve, 0));
+        callTool.mockRejectedValueOnce(
+          new MusterUnreachableError(
+            'golem',
+            'the connection failed (ECONNREFUSED)',
+          ),
+        );
+
+        const response = await request(probing)
+          .get('/servers?installation=golem')
+          .set(MUSTER_AUTH_HEADER, token);
+
+        expect(response.status).toBe(503);
+        expect(probe).toHaveBeenCalledTimes(3);
+        expect(probe).toHaveBeenLastCalledWith(golemProbe);
+      });
+
+      it('probes again at once when the status read fails while the probe still says reachable', async () => {
+        const { cache, pending, probe } = controlledCache();
+        const probing = await buildMultiApp(twoMusters, {
+          reachability: cache,
+        });
+        pending.get(gazelleProbe)!({ reachable: true, checkedAt: Date.now() });
+        pending.get(golemProbe)!({ reachable: true, checkedAt: Date.now() });
+        await new Promise(resolve => setTimeout(resolve, 0));
+        getResource.mockRejectedValueOnce(
+          new MusterUnreachableError(
+            'golem',
+            'the connection failed (ECONNREFUSED)',
+          ),
+        );
+
+        const response = await request(probing)
+          .get('/auth/status?installation=golem')
+          .set(MUSTER_AUTH_HEADER, token);
+
+        expect(response.status).toBe(200);
+        expect(response.body.unavailable).toBe(true);
+        expect(probe).toHaveBeenCalledTimes(3);
+        expect(probe).toHaveBeenLastCalledWith(golemProbe);
+      });
+
+      it('does not probe again for its own refusal', async () => {
+        const { cache, pending, probe } = controlledCache();
+        const probing = await buildMultiApp(twoMusters, {
+          reachability: cache,
+        });
+        pending.get(gazelleProbe)!({ reachable: true, checkedAt: 1 });
+        const unreachable = {
+          reachable: false,
+          reason: 'no answer within 5000 ms',
+          checkedAt: Date.now(),
+        };
+        pending.get(golemProbe)!(unreachable);
+        await new Promise(resolve => setTimeout(resolve, 0));
+        void cache.refresh(golemProbe);
+        pending.get(golemProbe)!(unreachable);
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        const response = await request(probing)
+          .get('/servers?installation=golem')
+          .set(MUSTER_AUTH_HEADER, token);
+
+        expect(response.status).toBe(503);
+        expect(probe).toHaveBeenCalledTimes(3);
+      });
+
+      it('logs nothing for the refused call: the probe logged the state change', async () => {
+        const logger = mockServices.logger.mock();
+        const { cache, pending } = controlledCache();
+        const router = await createRouter({
+          logger,
+          config: mockServices.rootConfig({
+            data: { muster: { installations: twoMusters } },
+          }),
+          client: mockClient,
+          reachability: cache,
+          httpAuth: mockServices.httpAuth(),
+        });
+        const probing = expressApp();
+        probing.use(router);
+        probing.use(
+          MiddlewareFactory.create({
+            logger,
+            config: mockServices.rootConfig(),
+          }).error(),
+        );
+        for (let probe = 0; probe < 2; probe += 1) {
+          if (probe > 0) {
+            void cache.refresh(golemProbe);
+          }
+          pending.get(golemProbe)!({
+            reachable: false,
+            reason: 'no answer within 5000 ms',
+            checkedAt: 1,
+          });
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
+        const response = await request(probing)
+          .get('/servers?installation=golem')
+          .set(MUSTER_AUTH_HEADER, token);
+
+        expect(response.status).toBe(503);
+        expect(logger.warn).not.toHaveBeenCalled();
+        expect(logger.error).not.toHaveBeenCalled();
+      });
     });
 
     it('derives the probe URL next to the /mcp endpoint', () => {
@@ -1481,7 +1728,14 @@ describe('createRouter', () => {
         .send({ name: 'core_service_list', arguments: {} });
 
       expect(response.status).toBe(200);
-      expect(callTool).toHaveBeenCalledWith('core_service_list', {}, {});
+      expect(callTool).toHaveBeenCalledWith(
+        'core_service_list',
+        {},
+        {
+          urlElicitation: true,
+          signal: expect.any(AbortSignal),
+        },
+      );
     });
 
     it('executes a mutating-looking core tool without any gate', async () => {
@@ -1495,7 +1749,7 @@ describe('createRouter', () => {
       expect(callTool).toHaveBeenCalledWith(
         'core_service_stop',
         { name: 'k8s' },
-        {},
+        { urlElicitation: true, signal: expect.any(AbortSignal) },
       );
     });
 
@@ -1553,8 +1807,102 @@ describe('createRouter', () => {
       expect(callTool).toHaveBeenCalledWith(
         'x_agent-manager_start_session',
         {},
-        asPerson,
+        {
+          ...asPerson,
+          urlElicitation: true,
+          signal: expect.any(AbortSignal),
+        },
       );
+    });
+
+    it('cancels the muster call when the page goes away', async () => {
+      let signal: AbortSignal | undefined;
+      callTool.mockImplementation(
+        (_name: string, _args: unknown, options: { signal?: AbortSignal }) =>
+          new Promise(resolve => {
+            signal = options.signal;
+            signal?.addEventListener('abort', () => resolve({}));
+          }),
+      );
+
+      await request(await personApp())
+        .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send({ name: 'x_github_get_me', arguments: {} })
+        .timeout(200)
+        .catch(() => undefined);
+
+      for (let i = 0; i < 50 && !signal?.aborted; i++) {
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      expect(signal?.aborted).toBe(true);
+    });
+
+    it("passes the person's answer to muster's URL elicitation on", async () => {
+      callTool.mockResolvedValue({ ok: true });
+      const input = {
+        inputResponses: { muster_sign_in: { action: 'decline' } },
+        requestState: '{"server":"github"}',
+      };
+
+      const response = await request(await personApp())
+        .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send({ name: 'x_github_get_me', arguments: {}, input });
+
+      expect(response.status).toBe(200);
+      expect(callTool).toHaveBeenCalledWith(
+        'x_github_get_me',
+        {},
+        {
+          ...asPerson,
+          urlElicitation: true,
+          input,
+          signal: expect.any(AbortSignal),
+        },
+      );
+    });
+
+    it('refuses an answer that is not one', async () => {
+      const response = await request(await personApp())
+        .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send({
+          name: 'x_github_get_me',
+          input: { inputResponses: { muster_sign_in: { action: 'yes' } } },
+        });
+
+      expect(response.status).toBe(400);
+      expect(callTool).not.toHaveBeenCalled();
+    });
+
+    it("answers muster's input_required with 428, its elicitations and requestState", async () => {
+      const elicitations = [
+        {
+          key: 'muster_sign_in',
+          url: 'https://muster/oauth/proxy/start?state=abc',
+          message: 'Sign in to github to continue.',
+        },
+      ];
+      callTool.mockRejectedValue(
+        new MusterInputRequiredError(elicitations, 'opaque', {
+          tool: 'x_github_get_me',
+          installation: 'gazelle',
+        }),
+      );
+
+      const response = await request(await personApp())
+        .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send({ name: 'x_github_get_me', arguments: {} });
+
+      expect(response.status).toBe(428);
+      expect(response.body.error).toMatchObject({
+        name: 'MusterInputRequiredError',
+        message: 'Sign in to github to continue.',
+        elicitations,
+        requestState: 'opaque',
+      });
     });
 
     // cluster-manager's delete_node_pool answers its structured refusal as a

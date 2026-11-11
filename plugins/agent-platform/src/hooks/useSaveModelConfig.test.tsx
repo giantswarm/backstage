@@ -16,7 +16,7 @@ import {
 import { useSaveModelConfig } from './useSaveModelConfig';
 
 // The organizations agent-manager names for the person
-// (`list_my_organizations`).
+// (`list_organizations`).
 jest.mock('../components/OrganizationDirectoryProvider', () => ({
   ...jest.requireActual('../components/OrganizationDirectoryProvider'),
   useOrganizationDirectory: () =>

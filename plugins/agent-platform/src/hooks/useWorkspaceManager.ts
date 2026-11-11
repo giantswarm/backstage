@@ -6,7 +6,7 @@ import { useMusterPluginApi } from './useMusterPluginApi';
 import {
   useMusterServerAvailability,
   type MusterServerPresence,
-} from './useMusterServerAvailability';
+} from '@giantswarm/backstage-plugin-muster';
 
 /**
  * workspace-manager's tools on one installation, as the signed-in person —

@@ -224,6 +224,6 @@ describe('New agent: the organization picker', () => {
     expect(
       await screen.findByText(/the only organization you belong to on gazelle/),
     ).toHaveTextContent(/^Organization: payments,/);
-    expect(toolCalls(callTool, 'list_my_organizations')).toHaveLength(2);
+    expect(toolCalls(callTool, 'list_organizations')).toHaveLength(2);
   });
 });

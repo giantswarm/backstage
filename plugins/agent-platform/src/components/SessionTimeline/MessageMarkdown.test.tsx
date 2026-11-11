@@ -1,5 +1,7 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { useState } from 'react';
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { newSessionExternalRouteRef } from '../../routes';
 import { MessageMarkdown } from './MessageMarkdown';
 
@@ -13,6 +15,55 @@ describe('MessageMarkdown', () => {
     expect(screen.queryByRole('link', { name: 'Grill log' })).toBeNull();
     expect(screen.getByText(file)).toBeInTheDocument();
     expect(screen.getByText(/session file/)).toBeInTheDocument();
+  });
+
+  it('sets every paragraph at 14px, the size of the user’s own message', async () => {
+    const { container } = await renderInTestApp(
+      <MessageMarkdown
+        text={[
+          'A plain paragraph with `code`.',
+          '',
+          '- a loose list item',
+          '',
+          '- whose text is a paragraph',
+          '',
+          '> A quoted paragraph.',
+        ].join('\n')}
+      />,
+    );
+
+    const paragraphs = container.querySelectorAll('p');
+    expect(paragraphs).toHaveLength(4);
+    // 0.875rem, as jsdom computes it.
+    paragraphs.forEach(p => expect(p).toHaveStyle({ fontSize: '14px' }));
+  });
+
+  it('keeps the elements of a reply while more of it streams in', async () => {
+    function Streaming() {
+      const [text, setText] = useState(
+        '<details><summary>Plan</summary>\n\nStep one.\n\n</details>',
+      );
+      return (
+        <>
+          <button onClick={() => setText(t => `${t}\n\nMore text.`)}>
+            Stream
+          </button>
+          <MessageMarkdown text={text} />
+        </>
+      );
+    }
+    await renderInTestApp(<Streaming />);
+
+    const details = screen.getByText('Plan').closest('details')!;
+    await userEvent.click(screen.getByText('Plan'));
+    expect(details).toHaveAttribute('open');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Stream' }));
+
+    expect(await screen.findByText('More text.')).toBeInTheDocument();
+    // The same element, still open: not remounted by the new chunk.
+    expect(screen.getByText('Plan').closest('details')).toBe(details);
+    expect(details).toHaveAttribute('open');
   });
 
   it('keeps whole words in table cells, so a wide table scrolls instead', async () => {

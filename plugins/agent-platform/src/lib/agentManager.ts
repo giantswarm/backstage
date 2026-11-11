@@ -17,8 +17,10 @@ import {
   parseToolErrorCode,
   AGENT_MANAGER_SERVER,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { musterSignInRequiredOf } from '@giantswarm/backstage-plugin-muster';
-import type { MusterServerPresence } from '../hooks/useMusterServerAvailability';
+import {
+  type MusterServerPresence,
+  musterSignInRequiredOf,
+} from '@giantswarm/backstage-plugin-muster';
 
 /** The MCPServer name muster registers agent-manager under. */
 export { AGENT_MANAGER_SERVER };
@@ -61,12 +63,14 @@ export const AGENT_MANAGER_TOOLS = {
   listModelConfigs: 'list_model_configs',
   listEgressPolicies: 'list_egress_policies',
   startSession: 'start_session',
-  listMyOrganizations: 'list_my_organizations',
+  listOrganizations: 'list_organizations',
   getOrganization: 'get_organization',
   listOrganizationMembers: 'list_organization_members',
   addOrganizationMember: 'add_organization_member',
   removeOrganizationMember: 'remove_organization_member',
   listOrganizationConnectors: 'list_organization_connectors',
+  setOrganizationModel: 'set_organization_model',
+  setOrganizationConnector: 'set_organization_connector',
 } as const;
 
 export type AgentManagerTool =
