@@ -69,7 +69,7 @@ function Harness({ input }: { input: SaveOrganizationModelInput }) {
       {answer && <p data-testid="answer">{answer}</p>}
       {error && (
         <p data-testid="error">
-          {error instanceof AgentManagerError ? error.code : 'other'}
+          {error instanceof AgentManagerError ? error.code : error.message}
         </p>
       )}
     </>
@@ -79,13 +79,18 @@ function Harness({ input }: { input: SaveOrganizationModelInput }) {
 async function saveWith(
   input: SaveOrganizationModelInput,
   answer: () => Promise<unknown>,
+  /** The organization's models `list_model_configs` answers. */
+  existing: { name: string }[] = [],
 ) {
   const callTool = jest.fn(
     async (
-      _tool: string,
+      tool: string,
       _args: Record<string, unknown>,
       _installation: string,
-    ) => answer(),
+    ) =>
+      tool === 'x_agent-manager_list_model_configs'
+        ? { modelConfigs: existing }
+        : answer(),
   );
   await renderInTestApp(
     <TestApiProvider
@@ -106,6 +111,13 @@ async function saveWith(
   );
   await userEvent.click(screen.getByRole('button', { name: 'Save' }));
   return callTool;
+}
+
+/** The arguments of each `set_organization_model` call. */
+function setCalls(callTool: jest.Mock) {
+  return callTool.mock.calls
+    .filter(([tool]) => tool === 'x_agent-manager_set_organization_model')
+    .map(([, args]) => args);
 }
 
 const pending = async () => ({
@@ -152,6 +164,19 @@ describe('useSaveOrganizationModel', () => {
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
+  it('refuses a create on a name the organization already has, changing nothing', async () => {
+    const callTool = await saveWith(
+      { organization: PAYMENTS, values: VALUES },
+      pending,
+      [{ name: 'claude-sonnet' }],
+    );
+
+    expect(await screen.findByTestId('error')).toHaveTextContent(
+      'already has a model named claude-sonnet',
+    );
+    expect(setCalls(callTool)).toEqual([]);
+  });
+
   it('moves the default mark to the new model when asked', async () => {
     const callTool = await saveWith(
       { organization: PAYMENTS, values: VALUES, makeDefault: true },
@@ -159,7 +184,7 @@ describe('useSaveOrganizationModel', () => {
     );
 
     await screen.findByTestId('answer');
-    expect(callTool.mock.calls[0][1]).toMatchObject({ default: true });
+    expect(setCalls(callTool)[0]).toMatchObject({ default: true });
   });
 
   it('finishes an edit that keeps the key, with no form', async () => {

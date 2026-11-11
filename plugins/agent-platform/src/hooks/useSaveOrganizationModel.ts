@@ -41,6 +41,9 @@ export type SaveOrganizationModelResult = {
  * leads to the portal's credential form, which takes the key and finishes
  * the write. An edit that keeps the key is finished when the call answers.
  *
+ * A create first reads the organization's models, since the tool changes a
+ * model that exists instead of refusing it.
+ *
  * The tool sets the provider, the model id and the default mark only; the
  * other fields of the form do not apply to an organization's model (its
  * endpoint is the platform's LLM gateway).
@@ -81,6 +84,17 @@ export function useSaveOrganizationModel(installation: string | undefined) {
         );
       }
       const name = original?.getName() ?? values.name.trim();
+      if (!original) {
+        // set_organization_model changes a model that exists: a create
+        // must not land on one. Read fresh, as the person; agent-manager
+        // has no create-only write, so a model made in between still wins.
+        const existing = await client.listModelConfigs(organization.namespace);
+        if (existing.some(model => model.name === name)) {
+          throw new Error(
+            `The organization ${organization.organization} already has a model named ${name}. Choose another name, or edit that model.`,
+          );
+        }
+      }
       const result = await client.setOrganizationModel({
         namespace: organization.namespace,
         name,

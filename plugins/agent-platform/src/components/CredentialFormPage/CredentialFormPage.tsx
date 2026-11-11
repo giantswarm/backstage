@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Link, PasswordField, Text } from '@backstage/ui';
@@ -28,7 +28,11 @@ import {
   otherReferences,
   requestedPairs,
 } from '../../lib/credentialOperations';
-import { agentManagerCredentialOperationQueryKey } from '../../lib/queryKeys';
+import {
+  agentManagerCredentialOperationQueryKey,
+  musterOrganizationConnectorsQueryKey,
+} from '../../lib/queryKeys';
+import { invalidateModelReads } from '../../hooks/defaultModelWrites';
 import {
   organizationDetailRouteRef,
   organizationsRouteRef,
@@ -279,6 +283,7 @@ export function CredentialFormPage({
     ? operationParam
     : undefined;
   const api = useApi(agentManagerCredentialsApiRef);
+  const queryClient = useQueryClient();
   const query = useOperation(installation, operationId);
   const reload = () => {
     query.refetch();
@@ -336,6 +341,23 @@ export function CredentialFormPage({
     onSuccess: result => {
       setValues({});
       setReceipt(result);
+      // The save wrote the model or connector the request was for: the
+      // lists and pages that show it read it again rather than serve the
+      // cache from before (the QueryClient is persisted).
+      const namespace =
+        result.namespace ?? loaded?.operation.organization.namespace;
+      if (!namespace) {
+        return undefined;
+      }
+      return Promise.all([
+        invalidateModelReads(queryClient, installation, namespace),
+        queryClient.invalidateQueries({
+          queryKey: musterOrganizationConnectorsQueryKey(
+            installation,
+            namespace,
+          ),
+        }),
+      ]);
     },
     onError: error => {
       const code = credentialOperationErrorCode(error);

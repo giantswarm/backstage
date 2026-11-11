@@ -737,8 +737,11 @@ asks for the model's name (agent-manager keeps no display name), the provider
 and the model id. A new model, an edit that asks for a new key, or one that
 changes the provider continues to the credential form
 (`/organizations/<installation>/<parent>/<name>/credentials/<operation>`),
-which takes the key and finishes the write; an edit that keeps the key is
-finished when the call answers. A model agent-manager wrote there stays
+which takes the key and finishes the write, then has the model and connector
+views read again; an edit that keeps the key is finished when the call
+answers. `set_organization_model` changes a model that exists, so a create
+first reads the organization's models (`list_model_configs`) and refuses a
+name it already has. A model agent-manager wrote there stays
 editable, since the edit goes through agent-manager. `useSaveModelConfig`
 refuses an organization namespace, and any namespace but `kagent` while the
 portal cannot tell whether it is an organization's (agent-manager not
