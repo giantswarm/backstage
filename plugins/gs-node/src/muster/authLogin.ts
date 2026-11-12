@@ -204,10 +204,8 @@ const INFRASTRUCTURE_ERROR_NAMES = [
  * muster deliberately declining a tool call. Tool-level refusals arrive as a
  * plain `Error` carrying muster's own message (thrown by
  * MusterMcpClient.unwrapTextContent on `isError`), but for a tool error whose
- * known kind is a failure (`status` 5xx: a timeout, a lost connection, a
- * missing tool, a rollout's interruption). A tool error of no known kind
- * answers 502 too, but counts as a refusal here, as the manager's own
- * words; everything here is a broken
+ * kind muster's own failure names (`status` 5xx: a timeout, a lost
+ * connection, a missing tool, a rollout's interruption); everything here is a broken
  * dependency, and must keep its 5xx so it reaches Sentry instead of being
  * rendered to the user as a policy decision.
  */
@@ -221,18 +219,11 @@ export function isInfrastructureError(error: unknown): boolean {
     return true;
   }
   const candidate = error as
-    | {
-        name?: string;
-        statusCode?: unknown;
-        code?: unknown;
-        status?: unknown;
-        kind?: unknown;
-      }
+    | { name?: string; statusCode?: unknown; code?: unknown; status?: unknown }
     | undefined;
   // A MusterToolError whose kind is muster's own failure, not a refusal.
   if (
     candidate?.name === 'MusterToolError' &&
-    typeof candidate.kind === 'string' &&
     typeof candidate.status === 'number' &&
     candidate.status >= 500
   ) {

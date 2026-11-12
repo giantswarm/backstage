@@ -62,6 +62,19 @@ export type ModelManagerRefusalCode =
   (typeof MODEL_MANAGER_REFUSAL_CODES)[number];
 
 /**
+ * model-manager's failures, by the status word its tools prefix them with:
+ * not refusals of the request but a state of the whole server. `no_backend`:
+ * no host backend is registered for it to serve from.
+ */
+export const MODEL_MANAGER_FAILURE_CODES = ['no_backend'] as const;
+
+export type ModelManagerFailureCode =
+  (typeof MODEL_MANAGER_FAILURE_CODES)[number];
+
+/** Any known server's failure. */
+export type McpToolFailure = ModelManagerFailureCode;
+
+/**
  * workspace-manager's refusals, by their wording (`toolError` in its
  * internal/api): the operation, then the class. The `forbidden:` and
  * Kubernetes `is forbidden:` shapes are the membership refusals of its two
@@ -109,6 +122,24 @@ const REFUSALS_BY_SERVER = new Map<
       )?.[0],
   ],
 ]);
+
+const FAILURES_BY_SERVER = new Map<
+  string,
+  (message: string) => McpToolFailure | undefined
+>([[MODEL_MANAGER_SERVER, codeIn(MODEL_MANAGER_FAILURE_CODES)]]);
+
+/**
+ * The failure a tool error of `server` is, or undefined: for a server whose
+ * failures are not known here, or an error that is none of them.
+ */
+export function mcpToolFailureOf(
+  server: string | undefined,
+  message: string,
+): McpToolFailure | undefined {
+  return server === undefined
+    ? undefined
+    : FAILURES_BY_SERVER.get(server)?.(message);
+}
 
 /**
  * The refusal a tool error of `server` is, or undefined: for a server whose

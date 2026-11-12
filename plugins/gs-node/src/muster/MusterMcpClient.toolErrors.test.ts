@@ -158,16 +158,26 @@ describe('MusterMcpClient tool errors', () => {
     expect(error).toMatchObject({ kind, status, server: 'model-manager' });
   });
 
-  it('answers any other tool error 502, without a kind', async () => {
+  it("leaves an MCP server's own capitalised muster wording unknown", async () => {
+    const { error } = await toolError(
+      'Interrupted: context canceled',
+      'x_kubernetes_get',
+    );
+
+    expect(error).not.toHaveProperty('kind');
+    expect(error).not.toHaveProperty('status');
+  });
+
+  it('leaves any other tool error without a kind or status: a 500', async () => {
     const { error } = await toolError(
       'Failed to list executions: unable to parse requirement: values[0][muster.giantswarm.io/workflow]: Invalid value: "a b"',
     );
 
     expect(error).not.toHaveProperty('kind');
-    expect(error.status).toBe(502);
+    expect(error).not.toHaveProperty('status');
   });
 
-  it('answers a refusal of a connector write 422, the same text of another tool 502', async () => {
+  it('answers a refusal of a connector write 422, the same text of another tool 500', async () => {
     const refusal = "MCP server 'jira' already exists";
 
     expect(
@@ -178,7 +188,7 @@ describe('MusterMcpClient tool errors', () => {
     });
     expect(
       (await toolError(refusal, 'core_mcpserver_get')).error,
-    ).toMatchObject({ status: 502 });
+    ).not.toHaveProperty('status');
   });
 
   it("keeps muster's sign-in a 401", async () => {

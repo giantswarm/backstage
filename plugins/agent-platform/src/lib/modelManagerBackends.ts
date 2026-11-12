@@ -17,6 +17,7 @@
  */
 
 import {
+  type ModelManagerFailureCode,
   type ModelManagerRefusalCode,
   parseToolErrorCode,
   MODEL_MANAGER_SERVER,
@@ -255,7 +256,10 @@ export function isValidEndpoint(value: string): boolean {
  * (and an answer without one) keeps the class name.
  */
 export const MODEL_MANAGER_ERROR_NAMES: Readonly<
-  Record<ModelManagerRefusalCode | 'backend_error', string>
+  Record<
+    ModelManagerRefusalCode | ModelManagerFailureCode | 'backend_error',
+    string
+  >
 > = {
   not_found: 'NotFoundError',
   forbidden: 'ForbiddenError',
@@ -263,6 +267,7 @@ export const MODEL_MANAGER_ERROR_NAMES: Readonly<
   conflict: 'ConflictError',
   does_not_fit: 'PreconditionFailedError',
   backend_error: 'ServiceUnavailableError',
+  no_backend: 'ServiceUnavailableError',
   invalid_request: 'InputError',
 };
 
