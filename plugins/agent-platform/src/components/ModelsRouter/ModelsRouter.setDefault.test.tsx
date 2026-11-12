@@ -13,6 +13,8 @@ import {
 import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
 import {
   DateTimeZoneProvider,
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
   PageHeaderActionsProvider,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -115,7 +117,7 @@ const PAYMENTS = {
 
 const MARK = 'agent-platform.giantswarm.io/is-default-model-config';
 
-function model(name: string, { marked = false } = {}) {
+function model(name: string, { marked = false, keyless = false } = {}) {
   return new ModelConfig(
     {
       apiVersion: 'api.kagent.dev/v1alpha3',
@@ -126,12 +128,14 @@ function model(name: string, { marked = false } = {}) {
         labels: { 'app.kubernetes.io/managed-by': 'agent-manager' },
         ...(marked ? { annotations: { [MARK]: 'true' } } : {}),
       },
-      spec: {
-        provider: 'Anthropic',
-        model: 'claude-sonnet-4-6',
-        apiKeySecret: `tenant-credential-${name}`,
-        apiKeySecretKey: 'apiKey',
-      },
+      spec: keyless
+        ? { provider: 'Ollama', model: 'qwen3', ollama: { host: 'x' } }
+        : {
+            provider: 'Anthropic',
+            model: 'claude-sonnet-4-6',
+            apiKeySecret: `tenant-credential-${name}`,
+            apiKeySecretKey: 'apiKey',
+          },
     } as ModelConfigInterface,
     'gazelle',
   );
@@ -147,8 +151,11 @@ const Location = () => {
   return <p data-testid="location">{pathname}</p>;
 };
 
-async function renderModelPage(scenario: Partial<OrganizationsScenario>) {
-  mockModel = model('claude-sonnet');
+async function renderModelPage(
+  scenario: Partial<OrganizationsScenario>,
+  { keyless = false } = {},
+) {
+  mockModel = model('claude-sonnet', { keyless });
   mockListed = [mockModel, model('gpt', { marked: true })];
   const { api, callTool } = fakeOrganizationsMuster({
     mine: { organizations: [PAYMENTS] },
@@ -160,6 +167,8 @@ async function renderModelPage(scenario: Partial<OrganizationsScenario>) {
         [musterApiRef, api],
         [kubernetesApiRef, { proxy: kubernetesProxy } as never],
         [analyticsApiRef, mockApis.analytics.mock()],
+        // The sign-in to agent-manager asks before it opens muster's page.
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
       ]}
     >
       <DateTimeZoneProvider timeZone="local">
@@ -203,10 +212,12 @@ describe('ModelsRouter · Set as default on an organization model', () => {
     const user = userEvent.setup();
     const callTool = await renderModelPage({ modelKeyPresent: true });
 
-    await user.click(await setAsDefault());
+    const button = await setAsDefault();
+    expect(screen.getByText(/The default for .* is gpt\./)).toBeInTheDocument();
     expect(
       screen.queryByText(/make it the default where agent-manager/),
     ).toBeNull();
+    await user.click(button);
 
     await waitFor(() =>
       expect(toolCalls(callTool, 'set_organization_model')).toEqual([
@@ -230,6 +241,35 @@ describe('ModelsRouter · Set as default on an organization model', () => {
     expect(await screen.findByTestId('location')).toHaveTextContent(
       `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
     );
+  });
+
+  it('offers the sign-in when the session is not connected to agent-manager', async () => {
+    const user = userEvent.setup();
+    await renderModelPage({
+      modelError: 'tool not found: x_agent-manager_set_organization_model',
+    });
+
+    await user.click(await setAsDefault());
+
+    expect(
+      await screen.findByText(/Connect to|Sign in to/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Could not make this the default model'),
+    ).toBeNull();
+  });
+
+  it('does not give a keyless model a key Secret to move the mark', async () => {
+    const user = userEvent.setup();
+    const callTool = await renderModelPage(
+      { modelKeyPresent: true },
+      { keyless: true },
+    );
+
+    await user.click(await setAsDefault());
+
+    expect(await screen.findByText(/names no key Secret/)).toBeInTheDocument();
+    expect(toolCalls(callTool, 'set_organization_model')).toEqual([]);
   });
 
   it('says who may set the default when agent-manager refuses the person', async () => {

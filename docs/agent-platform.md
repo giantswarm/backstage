@@ -780,12 +780,15 @@ muster's answer.
 `set_organization_model` with the model's name and `default: true`, as the
 person: agent-manager puts the mark on it and takes it off every other model of
 the organization, two marks included. The portal patches no ModelConfig there,
-and the call sends only the namespace, the name, `default` and a request id,
-no key (agent-manager 2.24.0 takes all four). Only a model whose key Secret is missing answers a credential request; the
-page then opens the credential form, whose save finishes the move. A model
-agent-manager wrote offers Set as default, and its Default model fact no longer
-sends the person to agent-manager's configuration. A person agent-manager
-refuses sees "Not permitted" with who can make the change.
+and the call sends only the namespace, the name, `default` and a request id, no
+key (agent-manager 2.24.0 takes all four). Only a model whose key Secret is
+missing answers a credential request; the page then opens the credential form,
+whose save finishes the move. A model that names no key Secret is refused before
+the call, since agent-manager would give it one. A model agent-manager wrote
+offers Set as default, and its Default model fact no longer sends the person to
+agent-manager's configuration. A person agent-manager refuses sees "Not
+permitted" with who can make the change, and a session without agent-manager
+gets the sign-in.
 
 For a Helm-rendered model, Technical details name the release from the
 CR's `helm.toolkit.fluxcd.io/*` labels and `meta.helm.sh/*` annotations. Where

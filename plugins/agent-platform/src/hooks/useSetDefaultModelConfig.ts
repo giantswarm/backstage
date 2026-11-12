@@ -86,15 +86,32 @@ export function useSetDefaultModelConfig() {
             'agent-manager is not reachable on this installation, and an organization’s default model is set through it.',
           );
         }
-        const result = await new AgentManagerClient(
-          musterApi,
-          installation,
-        ).setOrganizationModel({
-          namespace,
-          name: target,
-          default: true,
-          requestId: crypto.randomUUID(),
-        });
+        // agent-manager gives a model that names no key Secret one, and asks
+        // for its key: a keyless model (one written outside the portal) is
+        // not changed that way to move a mark.
+        if (!modelConfig.getApiKeySecret()) {
+          throw new Error(
+            `Model ${target} names no key Secret, and agent-manager would give it one and ask for its key to make it the default. Make it the default where it is configured.`,
+          );
+        }
+        let result;
+        try {
+          result = await new AgentManagerClient(
+            musterApi,
+            installation,
+          ).setOrganizationModel({
+            namespace,
+            name: target,
+            default: true,
+            requestId: crypto.randomUUID(),
+          });
+        } catch (error) {
+          // agent-manager writes the new mark before it takes the others
+          // off: a failure in between leaves two marks, which the page
+          // shows once it reads the models again.
+          await invalidateModelReads(queryClient, installation, namespace);
+          throw error;
+        }
         const operation = preparedCredentialOperation(result);
         if (operation) {
           const form = formLink?.({
