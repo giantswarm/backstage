@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { Select } from '@backstage/ui';
 
 import type { AgentRow } from '../AgentsDataProvider';
 import type { Toolchain, ToolchainPick } from '../../lib/toolchainManager';
@@ -157,6 +158,23 @@ describe('ToolchainPicker', () => {
     const tooltip = await screen.findByRole('tooltip');
     expect(tooltip).toHaveTextContent('Toolchains');
     expect(tooltip).toHaveTextContent('go latest');
+  });
+
+  it('ends in the caret of the selects beside it', () => {
+    render(
+      <>
+        <Select aria-label="Agent" options={[{ value: 'a', label: 'A' }]} />
+        <Harness onChange={jest.fn()} />
+      </>,
+    );
+    const caretOf = (button: HTMLElement) =>
+      [...button.querySelectorAll('svg path')].pop()?.getAttribute('d');
+
+    const selectCaret = caretOf(screen.getByRole('button', { name: /Agent/ }));
+    expect(selectCaret).toMatch(/^M/);
+    expect(caretOf(screen.getByRole('button', { name: /^Toolchains:/ }))).toBe(
+      selectCaret,
+    );
   });
 
   it('renders nothing where agent-manager mounts no toolchains', () => {

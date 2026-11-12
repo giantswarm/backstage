@@ -11,7 +11,7 @@ import {
   TooltipTrigger,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
+import { RiArrowDownSLine } from '@remixicon/react';
 
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
 import { useToolchains } from '../../hooks/useToolchainManager';
@@ -38,6 +38,11 @@ const useStyles = makeStyles({
   trigger: {
     flex: '0 0 auto',
     fontVariantNumeric: 'tabular-nums',
+  },
+  // The caret of the agent and workspace selects beside it: bui's Select
+  // draws `RiArrowDownSLine` in the secondary colour.
+  caret: {
+    color: 'var(--bui-fg-secondary)',
   },
   // Nothing picked: the icon alone, quieter.
   triggerEmpty: {
@@ -188,7 +193,7 @@ export function ToolchainPicker({
           variant="tertiary"
           size="small"
           iconStart={<ToolboxIcon />}
-          iconEnd={<ExpandMoreIcon />}
+          iconEnd={<RiArrowDownSLine aria-hidden className={classes.caret} />}
           className={
             picks.length > 0
               ? classes.trigger
