@@ -94,6 +94,12 @@ describe('modelManagerBackends', () => {
         .name,
     ).toBe('PreconditionFailedError');
     expect(
+      classifyModelManagerToolError(new Error('forbidden: configmaps')).name,
+    ).toBe('ForbiddenError');
+    expect(
+      classifyModelManagerToolError(new Error('no_backend: 0 backends')).name,
+    ).toBe('ServiceUnavailableError');
+    expect(
       classifyModelManagerToolError(new Error('something else entirely')).name,
     ).toBe('ModelManagerToolError');
 
