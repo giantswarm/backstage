@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 import {
   Alert,
   Button,
@@ -15,8 +15,10 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentManagerInfo } from '../../../hooks/useAgentManager';
+import { listOf } from '../../../lib/listOf';
 import {
   CREATE_AGENTS_ROLE_REASON,
+  createAgentsBlockedIn,
   ORGANIZATIONS_CAPABILITY,
 } from '../../../lib/organizations';
 import {
@@ -138,6 +140,8 @@ export function useOwnerField({
   const heldBlockedError = useSelectFieldError(
     heldBlocked ? fieldErrors.tenant : undefined,
   );
+  // The line under the picker that names them, which describes it.
+  const blockedNoteId = useId();
   // `get_info` failed, or there is no muster plugin to ask, which the
   // Environment field explains (no Check again then: there is nothing to
   // read again).
@@ -288,6 +292,8 @@ export function useOwnerField({
     dropdownKind === 'organization'
       ? [...byKind.organization, ...blocked]
       : byKind[dropdownKind];
+  const showsBlockedNote =
+    dropdownKind === 'organization' && blocked.length > 0;
 
   const dropdown =
     dropdownKind === 'platform' ? null : (
@@ -299,6 +305,10 @@ export function useOwnerField({
             ? { 'aria-label': TENANT_KIND_LABELS[dropdownKind] }
             : { label, description })}
           {...heldBlockedError.selectProps}
+          aria-describedby={
+            heldBlockedError.selectProps['aria-describedby'] ??
+            (showsBlockedNote ? blockedNoteId : undefined)
+          }
           isRequired
           searchable={searchableIf(dropdownChoices)}
           options={dropdownChoices.map(namespace => {
@@ -328,7 +338,21 @@ export function useOwnerField({
             }
           }}
         />
-        {heldBlockedError.message}
+        {heldBlockedError.message ??
+          (showsBlockedNote ? (
+            // In sight without opening the list: a keyboard skips the
+            // disabled options, and their reason with them.
+            <Text
+              as="p"
+              id={blockedNoteId}
+              variant="body-small"
+              color="secondary"
+            >
+              {createAgentsBlockedIn(
+                blocked.map(namespace => ownerOf(namespace, directory)),
+              )}
+            </Text>
+          ) : null)}
       </Flex>
     );
 
@@ -357,14 +381,6 @@ export function useOwnerField({
       </Flex>
     ),
   };
-}
-
-/** `names` as a sentence lists them: `a`, `a and b`, `a, b and c`. */
-function listOf(names: string[]): string {
-  return new Intl.ListFormat('en', {
-    style: 'long',
-    type: 'conjunction',
-  }).format(names);
 }
 
 /** `text` with its first letter capitalized, as a sentence starts. */

@@ -10,6 +10,8 @@
  * never parsed.
  */
 
+import { listOf } from './listOf';
+
 /** `get_info`'s capability for the organization tools. */
 export const ORGANIZATIONS_CAPABILITY = 'organizations';
 
@@ -200,14 +202,23 @@ export function mayCreateAgentsIn(
  * admin) creates them.
  */
 export const CREATE_AGENTS_ROLE_REASON =
-  'You need the editor role here to create agents.';
+  'Needs the editor role to create agents.';
+
+/**
+ * Under the Organization picker, while it holds organizations it does not
+ * let the person pick: which ones, and why, without opening the list (a
+ * keyboard skips the disabled options).
+ */
+export function createAgentsBlockedIn(organizations: string[]): string {
+  return `You may not create agents in ${listOf(organizations)}: you need the editor role there.`;
+}
 
 /**
  * The New agent form's problem when the organization it holds is one the
  * person may not create agents in (as a draft brought it back).
  */
 export function createAgentsRefusedIn(organization: string): string {
-  return `You may not create agents in ${organization}: that needs the editor role in it. Choose another organization, or ask an admin of ${organization} for the editor role.`;
+  return `You may not create agents in ${organization}: you need the editor role there. Choose another organization, or ask an admin of ${organization} for it.`;
 }
 
 /**

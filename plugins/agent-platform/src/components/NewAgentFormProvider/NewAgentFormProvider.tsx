@@ -727,10 +727,26 @@ export function NewAgentFormProvider({
       state.tenantChoicesBlocked?.includes(state.tenant)
     ) {
       // Held, as a draft brought it back, but the person may not create
-      // agents there: never submitted.
-      fieldErrors.tenant = createAgentsRefusedIn(
-        ownerOf(state.tenant, directory),
-      );
+      // agents there: never submitted. Where they may create in none of
+      // their organizations, there is no other one to choose.
+      fieldErrors.tenant =
+        state.tenantChoices?.length === 0
+          ? createAgentsRefusedOn(state.installation)
+          : createAgentsRefusedIn(ownerOf(state.tenant, directory));
+    } else if (
+      !edit &&
+      state.installation &&
+      state.tenant &&
+      state.tenantChoices === undefined &&
+      state.tenantChoicesUnread !== 'unlisted'
+    ) {
+      // Held, as a draft brought it back, before agent-manager said where
+      // the person may create (or where it could not say): not submitted
+      // until it is known to be one of theirs.
+      fieldErrors.tenant =
+        state.tenantChoicesUnread === 'failed'
+          ? 'Could not read where you may create agents.'
+          : 'Still reading where you may create agents.';
     } else if (
       !edit &&
       state.installation &&

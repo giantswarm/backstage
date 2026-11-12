@@ -265,13 +265,20 @@ describe('New agent: organizations the person may not create agents in', () => {
     await waitFor(() =>
       expect(form()).toHaveTextContent(`tenant=${PAYMENTS.namespace} error=`),
     );
-    await user.click(screen.getByRole('button', { name: /Organization$/ }));
+    // Said under the picker without opening it, and tied to it.
+    const picker = screen.getByRole('button', { name: /Organization$/ });
+    expect(picker).toHaveAccessibleDescription(
+      expect.stringContaining(
+        'You may not create agents in risk: you need the editor role there.',
+      ),
+    );
+    await user.click(picker);
     const payments = screen.getByRole('option', { name: 'payments' });
     const risk = screen.getByRole('option', { name: 'risk' });
     expect(payments).not.toHaveAttribute('aria-disabled');
     expect(risk).toHaveAttribute('aria-disabled', 'true');
     expect(risk).toHaveAccessibleDescription(
-      'You need the editor role here to create agents.',
+      'Needs the editor role to create agents.',
     );
 
     // A press on it picks nothing.
@@ -348,7 +355,7 @@ describe('New agent: organizations the person may not create agents in', () => {
     );
 
     const problem =
-      'You may not create agents in risk: that needs the editor role in it. Choose another organization, or ask an admin of risk for the editor role.';
+      'You may not create agents in risk: you need the editor role there. Choose another organization, or ask an admin of risk for it.';
     await waitFor(() =>
       expect(form()).toHaveTextContent(
         `tenant=${RISK.namespace} error=${problem}`,
@@ -358,5 +365,28 @@ describe('New agent: organizations the person may not create agents in', () => {
     expect(
       screen.getByRole('button', { name: /Organization$/ }),
     ).toHaveAccessibleDescription(expect.stringContaining(problem));
+  });
+
+  it('does not take a preselected organization where the person may create agents in none, and offers no other', async () => {
+    await renderStep(
+      {
+        mine: { organizations: [PAYMENTS, RISK] },
+        createAgents: { [PAYMENTS.namespace]: false, [RISK.namespace]: false },
+        models,
+      },
+      { preselect: RISK.namespace },
+    );
+
+    await waitFor(() =>
+      expect(form()).toHaveTextContent(
+        `tenant=${RISK.namespace} error=You may not create agents in your organizations on gazelle: that needs the editor role in an organization. Choose another environment`,
+      ),
+    );
+    expect(
+      screen.getByText(
+        'You may not create agents in your organizations on gazelle',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Organization$/ })).toBeNull();
   });
 });
