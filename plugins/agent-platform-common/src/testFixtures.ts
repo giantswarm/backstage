@@ -74,6 +74,8 @@ import tasksApprovalJson from './kagent/__fixtures__/tasks.approval.json';
 import tasksAskUserPendingJson from './kagent/__fixtures__/tasks.ask-user-pending.json';
 import tasksAskUserJson from './kagent/__fixtures__/tasks.ask-user.json';
 import tasksClaudeHarnessJson from './kagent/__fixtures__/tasks.claude-harness-1.1.json';
+import tasksGoAdkThoughtJson from './kagent/__fixtures__/tasks.go-adk-thought.json';
+import tasksKagentA2aCanonicalJson from './kagent/__fixtures__/tasks.kagent-a2a-canonical.json';
 import tasksKagent4a91c273Json from './kagent/__fixtures__/tasks.kagent-4a91c273.json';
 import tasksBareArrayJson from './kagent/__fixtures__/tasks.bare-array.json';
 import tasksDataNotArrayJson from './kagent/__fixtures__/tasks.data-not-array.json';
@@ -129,6 +131,21 @@ export const tasksAskUser: TaskEnvelopeFixture =
 export const tasksBareArray: unknown = tasksBareArrayJson as unknown;
 /** `ListTasksResponse` of a completed claude Harness turn on kagent 1.1. */
 export const tasksClaudeHarness: unknown = tasksClaudeHarnessJson as unknown;
+/**
+ * `ListTasksResponse` of a turn as kagent's Go ADK runtime stores it for a model
+ * that reasons (Bedrock): text parts marked `kagent.dev/a2a/thought` ahead of a
+ * tool call and ahead of the answer. Built from the runtime's metadata mapping
+ * (`go/adk/pkg/a2a/metadata.go` in kagent), not recorded: no installation has
+ * stored the marker yet.
+ */
+export const tasksGoAdkThought: unknown = tasksGoAdkThoughtJson as unknown;
+/**
+ * `ListTasksResponse` in `kagent.dev/a2a` metadata only, from the ADK runtime
+ * with an Anthropic model: tool calls carry `part-type`, the answer is a plain
+ * text part, and nothing is marked as reasoning.
+ */
+export const tasksKagentA2aCanonical: unknown =
+  tasksKagentA2aCanonicalJson as unknown;
 /** A kagent API v2 (ADK runtime) task list, one usage bag per model call. */
 export const tasksKagent4a91c273: unknown = tasksKagent4a91c273Json as unknown;
 /**

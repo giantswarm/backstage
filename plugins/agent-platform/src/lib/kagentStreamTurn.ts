@@ -13,7 +13,6 @@ import {
   isFunctionResponsePart,
   isInternalToolName,
   isRecord,
-  isThoughtPart,
   parsePart,
   readFunctionCall,
   readFunctionResponse,
@@ -21,7 +20,7 @@ import {
   readKagentMetadataString,
   readMessageText,
   readAttachment,
-  readPartText,
+  splitMessageParts,
   unwrapProxiedCall,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 
@@ -132,6 +131,14 @@ export type StreamTurn = {
    * it would show from mid-word. Cleared by the next complete artifact.
    */
   skipPartialArtifacts?: boolean;
+  /**
+   * Where the partial chunks of an artifact began: its id, and the length of
+   * {@link items} when its first chunk arrived. Its complete copy replaces the
+   * text items those chunks were flushed into since (at a switch between
+   * reasoning and answer), so they neither show twice nor keep an item with no
+   * id the poll could pair. Internal.
+   */
+  partialArtifact?: { artifactId?: string; itemIndex: number };
   /** Calls awaiting their response, by function-call id. Internal. */
   openCalls: { callId: string; itemIndex: number }[];
   /** Monotonic id source for {@link items}. Internal. */
@@ -325,63 +332,64 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
         'author',
       );
 
-      let text = '';
+      // The text read since the last call, as runs of one kind: an artifact can
+      // carry the model's reasoning and then its answer, each its own item.
+      const runs: TextRun[] = [];
       /**
        * Emit the complete message this event carries, at the position reached
        * so far.
        *
        * Only chunks that arrived *as artifacts* are what a complete artifact
-       * supersedes, and the run they build is the one without a `messageId`. A
-       * run opened by a message is someone else's sentence: this event has no
+       * supersedes: the open run without a `messageId`, and the items flushed
+       * from this artifact's chunks before it ({@link StreamTurn.partialArtifact}).
+       * A run opened by a message is someone else's sentence: this event has no
        * complete copy of it, so discarding it would erase it outright.
        *
        * Where that message is the same text (the Python flow: it arrived whole
        * on a status-update, and this event only repeats it), its run is flushed
-       * under the message's own id, and `pushTextItem` drops this copy as the
-       * adjacent repeat.
+       * under the message's own id, and `pushTextRuns` drops this copy as the
+       * repeat.
        */
       const emitComplete = () => {
         next.skipPartialArtifacts = false;
         const live = next.live;
-        if (!live || live.messageId !== undefined) {
+        const chunkRun = live?.messageId === undefined ? live : undefined;
+        if (!chunkRun) {
           flushLiveRun(next);
         }
         next.live = undefined;
-        if (!text) {
-          return;
-        }
-        // A run that is this same text knows the author when the artifact
-        // does not say.
-        const repeats = live?.text.trim() === text.trim();
-        pushTextItem(
+        const [superseded] = dropPartialArtifactItems(next, artifactId);
+        // The chunks knew the author when the complete copy does not say.
+        pushTextRuns(
           next,
-          'agent-message',
-          text,
+          runs,
           artifactId,
-          artifactAuthor ?? (repeats ? live?.author : undefined),
+          artifactAuthor ?? chunkRun?.author ?? superseded?.author,
         );
-        text = '';
+        runs.length = 0;
       };
 
-      for (const rawPart of parts) {
-        const part = parsePart(rawPart);
-        if (!part) {
-          continue;
-        }
-        const partText = readPartText(part);
-        if (partText !== undefined) {
-          text += partText;
+      for (const segment of splitMessageParts(parts)) {
+        if (segment.kind === 'text') {
+          const kind = textKind(segment.isThought);
+          runs.push({ kind, text: segment.text });
           if (partial === true && !next.skipPartialArtifacts) {
+            if (next.partialArtifact?.artifactId !== artifactId) {
+              next.partialArtifact = undefined;
+            }
+            if (!next.partialArtifact) {
+              // Whatever is open is not this artifact's: it keeps its place
+              // ahead of the chunks.
+              flushLiveRun(next);
+              next.partialArtifact = {
+                artifactId,
+                itemIndex: next.items.length,
+              };
+            }
             // Appended as the parts are read rather than after the loop: a
             // `function_call` later in this same event must not take its item
             // slot ahead of the text that came before it.
-            appendLiveText(
-              next,
-              'agent-message',
-              partText,
-              undefined,
-              artifactAuthor,
-            );
+            appendLiveText(next, kind, segment.text, undefined, artifactAuthor);
           }
           continue;
         }
@@ -391,7 +399,7 @@ export function applyStreamEvent(turn: StreamTurn, data: unknown): StreamTurn {
         if (isComplete) {
           emitComplete();
         }
-        ingestDataPart(next, part, artifactAuthor, artifactId);
+        ingestDataPart(next, segment.part, artifactAuthor, artifactId);
       }
 
       if (isComplete) {
@@ -455,7 +463,11 @@ function readAgentMessage(value: unknown): A2aMessageWire | undefined {
 
 /**
  * A complete message: text parts merge into runs exactly as `buildTimeline`
- * merges them, data parts become call items.
+ * merges them (`splitMessageParts`), data parts become call items.
+ *
+ * False when nothing of it was put on screen because it is already there: a
+ * message whose items are, or whose text only repeats the items that end the
+ * turn (the Go flow's terminal status update, see {@link pushTextRuns}).
  */
 function ingestCompleteMessage(
   turn: StreamTurn,
@@ -475,48 +487,36 @@ function ingestCompleteMessage(
     return true;
   }
   const author = readKagentMetadataString(message.metadata, 'author');
-  const parts = Array.isArray(message.parts) ? message.parts : [];
 
-  let textRun: { isThought: boolean; chunks: string[] } | undefined;
-  const flushRun = () => {
-    if (!textRun) {
+  // Whether this copy put anything on screen, and whether it held text that
+  // was not put there because it repeats what is.
+  let rendered = false;
+  let repeated = false;
+  const runs: TextRun[] = [];
+  const flushRuns = () => {
+    if (!runs.some(run => run.text.trim())) {
+      runs.length = 0;
       return;
     }
-    const text = textRun.chunks.join('').trim();
-    const wasThought = textRun.isThought;
-    textRun = undefined;
-    if (!text) {
-      return;
+    if (pushTextRuns(turn, runs, message.messageId, author)) {
+      rendered = true;
+    } else {
+      repeated = true;
     }
-    pushTextItem(
-      turn,
-      wasThought ? 'reasoning' : 'agent-message',
-      text,
-      message.messageId,
-      author,
-    );
+    runs.length = 0;
   };
 
-  for (const rawPart of parts) {
-    const part = parsePart(rawPart);
-    if (!part) {
+  for (const segment of splitMessageParts(message.parts)) {
+    if (segment.kind === 'text') {
+      runs.push({ kind: textKind(segment.isThought), text: segment.text });
       continue;
     }
-    const text = readPartText(part);
-    if (text !== undefined) {
-      const isThought = isThoughtPart(part);
-      if (textRun && textRun.isThought !== isThought) {
-        flushRun();
-      }
-      textRun ??= { isThought, chunks: [] };
-      textRun.chunks.push(text);
-      continue;
-    }
-    flushRun();
-    ingestDataPart(turn, part, author, message.messageId);
+    flushRuns();
+    rendered = true;
+    ingestDataPart(turn, segment.part, author, message.messageId);
   }
-  flushRun();
-  return true;
+  flushRuns();
+  return rendered || !repeated;
 }
 
 /**
@@ -535,24 +535,21 @@ function ingestIncrementalMessage(turn: StreamTurn, message: A2aMessageWire) {
     return;
   }
   const author = readKagentMetadataString(message.metadata, 'author');
-  const parts = Array.isArray(message.parts) ? message.parts : [];
-  for (const rawPart of parts) {
-    const part = parsePart(rawPart);
-    if (!part) {
-      continue;
-    }
-    const text = readPartText(part);
-    if (text !== undefined) {
+  for (const segment of splitMessageParts(message.parts)) {
+    if (segment.kind === 'text') {
       appendLiveText(
         turn,
-        isThoughtPart(part) ? 'reasoning' : 'agent-message',
-        text,
+        textKind(segment.isThought),
+        segment.text,
         message.messageId,
         author,
       );
       continue;
     }
-    ingestDataPart(turn, part, author, message.messageId);
+    // A call, its result or a file ends the run, as it does in the poll, so
+    // the text after it is the next item there too.
+    flushLiveRun(turn);
+    ingestDataPart(turn, segment.part, author, message.messageId);
   }
 }
 
@@ -726,36 +723,122 @@ function flushLiveRun(turn: StreamTurn) {
   pushTextItem(turn, live.kind, live.text, live.messageId, live.author);
 }
 
+/** A run of text of one kind, as it becomes an item. */
+type TextRun = { kind: LiveRun['kind']; text: string };
+
+function textKind(isThought: boolean): LiveRun['kind'] {
+  return isThought ? 'reasoning' : 'agent-message';
+}
+
+function isTextItem(
+  item: TimelineItem,
+): item is Extract<TimelineItem, { kind: LiveRun['kind'] }> {
+  return item.kind === 'agent-message' || item.kind === 'reasoning';
+}
+
+/**
+ * A run closed on its own, unless it repeats the item before it.
+ *
+ * The Go flow can deliver the same response twice — as the `partial: false`
+ * artifact and again on the terminal status update — under two different ids,
+ * the artifact's and the message's. Identical adjacent text is the tell.
+ */
 function pushTextItem(
   turn: StreamTurn,
-  kind: 'agent-message' | 'reasoning',
+  kind: LiveRun['kind'],
   text: string,
   messageId: string | undefined,
   author: string | undefined,
 ) {
-  const trimmed = text.trim();
-  if (!trimmed) {
-    return;
+  pushTextRuns(turn, [{ kind, text }], messageId, author);
+}
+
+/**
+ * The text runs of one complete message, up to a call or to its end, as items
+ * — unless they repeat the items the turn ends with, one for one, in kind and
+ * text. Returns whether they were pushed.
+ *
+ * The repeat is the Go flow's: the complete artifact, and the terminal status
+ * update after it carrying the same response under another id. A message of
+ * reasoning and answer is two items, so comparing the last item alone would
+ * show both again. Blank runs are skipped, as `buildTimeline` skips them.
+ */
+function pushTextRuns(
+  turn: StreamTurn,
+  runs: readonly TextRun[],
+  messageId: string | undefined,
+  author: string | undefined,
+): boolean {
+  const kept = runs
+    .map(run => ({ kind: run.kind, text: run.text.trim() }))
+    .filter(run => run.text);
+  if (kept.length === 0) {
+    return false;
   }
-  // The Go flow can deliver the same response twice — as the `partial: false`
-  // artifact and again on the terminal status update — under two different ids,
-  // the artifact's and the message's. Identical adjacent text is the tell.
-  const last = turn.items.at(-1);
-  if (last && last.kind === kind && last.text === trimmed) {
-    return;
+  const tail = turn.items.slice(-kept.length);
+  const repeats =
+    tail.length === kept.length &&
+    tail.every(
+      (item, index) =>
+        isTextItem(item) &&
+        item.kind === kept[index].kind &&
+        item.text === kept[index].text,
+    );
+  if (repeats) {
+    return false;
   }
-  turn.items = [
-    ...turn.items,
-    {
-      kind,
-      id: `stream:${turn.nextItemId}`,
-      taskIndex: 0,
-      messageId,
-      author,
-      text: trimmed,
-    },
-  ];
-  turn.nextItemId += 1;
+  const added: TimelineItem[] = kept.map((run, index) => ({
+    kind: run.kind,
+    id: `stream:${turn.nextItemId + index}`,
+    taskIndex: 0,
+    messageId,
+    author,
+    text: run.text,
+  }));
+  turn.items = [...turn.items, ...added];
+  turn.nextItemId += added.length;
+  return true;
+}
+
+/**
+ * Take out the text items flushed from an artifact's partial chunks, now that
+ * its complete copy is here to replace them, and return them.
+ *
+ * Only items without a `messageId` from where the chunks began are the
+ * artifact's: a call between them stays, and so does text a message brought.
+ * The open calls' positions move with the items they point at.
+ */
+function dropPartialArtifactItems(
+  turn: StreamTurn,
+  artifactId: string | undefined,
+): TimelineItem[] {
+  const start = turn.partialArtifact;
+  if (!start || start.artifactId !== artifactId) {
+    return [];
+  }
+  turn.partialArtifact = undefined;
+  const isChunk = (item: TimelineItem, index: number) =>
+    index >= start.itemIndex &&
+    isTextItem(item) &&
+    item.messageId === undefined;
+  const dropped = turn.items.filter(isChunk);
+  if (dropped.length === 0) {
+    return [];
+  }
+  const newIndex: number[] = [];
+  let kept = 0;
+  turn.items.forEach((item, index) => {
+    newIndex[index] = kept;
+    if (!isChunk(item, index)) {
+      kept += 1;
+    }
+  });
+  turn.items = turn.items.filter((item, index) => !isChunk(item, index));
+  turn.openCalls = turn.openCalls.map(open => ({
+    ...open,
+    itemIndex: newIndex[open.itemIndex],
+  }));
+  return dropped;
 }
 
 /**

@@ -1775,12 +1775,19 @@ matches it. Tests lay them out with `mockCollapsibleLayout` from
 | Entry                | Where it comes from                                                        |
 | -------------------- | -------------------------------------------------------------------------- |
 | User / agent message | `role` plus text parts, rendered as markdown                               |
-| Reasoning            | a text part flagged `{adk,kagent}_thought` (history before harness 1.1)    |
+| Reasoning            | a text part flagged `kagent.dev/a2a/thought`, or `{adk,kagent}_thought`    |
 | Tool call            | a `function_call` data part, with its `function_response` folded in        |
 | Delegation           | a `function_call` whose name contains `__NS__`, plus the child's own usage |
 | Approval             | ADK's `adk_request_confirmation`, with the user's verdict                  |
 | Failed turn          | a task in state `failed`/`rejected`, with the reason from `status.message` |
 | Attachment           | a file part, previewed only when its own bytes say it is an allowed image  |
+
+**Reasoning shows only where kagent marks it.** kagent's Go ADK runtime sets
+`kagent.dev/a2a/thought` on the reasoning a model returns as thought parts
+(Bedrock). The Python ADK runtime and the harnesses drop the marker, so their
+reasoning, if the model produces any, reads as the agent's answer
+([kagent-dev/kagent#2986](https://github.com/kagent-dev/kagent/issues/2986)).
+History stored by controllers before 1.1 carries `{adk,kagent}_thought`.
 
 **Calls through Muster are unwrapped** (`unwrapProxiedCall`,
 [klaus-gateway#163](https://github.com/giantswarm/klaus-gateway/issues/163)), so

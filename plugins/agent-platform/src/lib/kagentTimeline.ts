@@ -13,7 +13,6 @@ import {
   isFunctionResponsePart,
   isInternalToolName,
   isRecord,
-  isThoughtPart,
   KagentAttachment,
   normalizeTimestamp,
   parseHistoryEntry,
@@ -27,8 +26,8 @@ import {
   readAttachmentPreview,
   readUsageReport,
   readNestedTokenUsage,
-  readPartText,
   readTurnStatus,
+  splitMessageParts,
   TokenUsage,
   TurnStatus,
   unwrapProxiedCall,
@@ -516,58 +515,37 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
 
       // Text of the same kind is merged so a multi-part reply is one bubble, but a
       // switch between prose and reasoning (or a tool call in between) breaks the
-      // run — that boundary is meaningful.
-      let textRun: { isThought: boolean; chunks: string[] } | undefined;
-      const flushText = () => {
-        if (!textRun) {
-          return;
-        }
-        const text = textRun.chunks.join('').trim();
-        const wasThought = textRun.isThought;
-        textRun = undefined;
-        if (!text) {
-          return;
-        }
-        // Reasoning is reasoning whoever emitted it; otherwise the role decides.
-        let kind: 'reasoning' | 'user-message' | 'agent-message';
-        if (wasThought) {
-          kind = 'reasoning';
-        } else if (isUser) {
-          kind = 'user-message';
-        } else {
-          kind = 'agent-message';
-        }
-
-        items.push({
-          id: `${taskIndex}:${entryIndex}:${items.length}`,
-          at,
-          author,
-          taskIndex,
-          messageId: message.messageId,
-          kind,
-          text,
-        });
-      };
-
-      parts.forEach(rawPart => {
-        const part = parsePart(rawPart);
-        if (!part) {
-          return;
-        }
-
-        const text = readPartText(part);
-        if (text !== undefined) {
-          const isThought = isThoughtPart(part);
-          if (textRun && textRun.isThought !== isThought) {
-            flushText();
+      // run — that boundary is meaningful. The stream splits a message the same
+      // way, through the same `splitMessageParts`.
+      splitMessageParts(parts).forEach(segment => {
+        if (segment.kind === 'text') {
+          const text = segment.text.trim();
+          if (!text) {
+            return;
           }
-          textRun ??= { isThought, chunks: [] };
-          textRun.chunks.push(text);
+          // Reasoning is reasoning whoever emitted it; otherwise the role decides.
+          let kind: 'reasoning' | 'user-message' | 'agent-message';
+          if (segment.isThought) {
+            kind = 'reasoning';
+          } else if (isUser) {
+            kind = 'user-message';
+          } else {
+            kind = 'agent-message';
+          }
+          items.push({
+            id: `${taskIndex}:${entryIndex}:${items.length}`,
+            at,
+            author,
+            taskIndex,
+            messageId: message.messageId,
+            kind,
+            text,
+          });
           return;
         }
+        const { part, rawPart } = segment;
 
         if (isFunctionResponsePart(part)) {
-          flushText();
           const response = readFunctionResponse(part);
           const openIndex = response.id
             ? openCalls.findIndex(open => open.callId === response.id)
@@ -647,7 +625,6 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
           // Conversation, not working: a file someone attached belongs with the
           // message it came with, so it is never one of `ACTIVITY_KINDS` and the
           // Hidden setting does not remove it.
-          flushText();
           const preview = previewFor(rawPart, attachment);
           items.push({
             kind: 'attachment',
@@ -667,13 +644,11 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
         }
 
         if (!isFunctionCallPart(part)) {
-          // Something we have no renderer for. Silently ignored: the timeline is
-          // about what the agent said and did, and an unknown part type is not
-          // evidence of either.
+          // Not reached: `splitMessageParts` passes on only calls, results and
+          // files, and leaves out every part nothing renders.
           return;
         }
 
-        flushText();
         const call = readFunctionCall(part);
 
         // An approval request is a call to ADK's confirmation tool, wrapping the
@@ -745,8 +720,6 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
           }
         }
       });
-
-      flushText();
     });
 
     // Last in its turn: whatever the agent managed to say or do before it ended
@@ -983,12 +956,12 @@ function readDecision(
  * Decides whether a decision message already contains the user's own words, in
  * which case they render from the text part and `ask_user_answers` is not needed.
  *
- * **Blank text does not count.** `flushText` drops a run that trims to nothing, so
+ * **Blank text does not count.** `buildTimeline` drops a run that trims to nothing, so
  * treating a `{ text: '' }` part as words would lose the reply twice over: the
  * `ask_user_answers` fallback skipped because "there is text", and the text itself
  * dropped for being empty — the exact "the user's answer vanished" symptom this
- * fallback exists to prevent. The predicate has to agree with what `flushText`
- * will keep.
+ * fallback exists to prevent. The predicate has to agree with what
+ * `buildTimeline` will keep.
  */
 function hasTextPart(parts: unknown[]): boolean {
   return parts.some(rawPart => Boolean(parsePart(rawPart)?.text?.trim()));

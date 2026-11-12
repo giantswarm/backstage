@@ -195,6 +195,57 @@ describe('applyStreamEvent on A2A v1 StreamResponse frames', () => {
     ]);
   });
 
+  it('streams the reasoning kagent’s Go ADK runtime marks apart from the answer', () => {
+    // The runtime copies ADK's thought flag to `kagent.dev/a2a/thought` and drops
+    // every adk_ key, so the canonical marker is the only one on the wire.
+    const thought = (text: string) => ({
+      text,
+      metadata: { 'kagent.dev/a2a/thought': true },
+    });
+    const artifact = (artifactId: string, parts: unknown[]) => ({
+      artifactUpdate: {
+        taskId,
+        contextId: 'c1',
+        artifact: { artifactId, parts },
+        lastChunk: true,
+      },
+    });
+    const turn = [
+      artifact('art-call', [
+        thought('One list call on namespaces answers it.'),
+        {
+          data: { id: 'call-1', name: 'kubectl_get', args: {} },
+          metadata: { 'kagent.dev/a2a/part-type': 'function_call' },
+        },
+      ]),
+      artifact('art-reply', [
+        thought('The list returned 12 items.'),
+        { text: 'There are 12 namespaces.' },
+      ]),
+      {
+        statusUpdate: {
+          taskId,
+          contextId: 'c1',
+          status: { state: 'TASK_STATE_COMPLETED' },
+        },
+      },
+    ].reduce<StreamTurn>(
+      (state, event) => applyStreamEvent(state, event),
+      createStreamTurn('sent-1'),
+    );
+
+    expect(
+      turn.items.map(item =>
+        'text' in item ? [item.kind, item.text] : [item.kind],
+      ),
+    ).toEqual([
+      ['reasoning', 'One list call on namespaces answers it.'],
+      ['tool-call'],
+      ['reasoning', 'The list returned 12 items.'],
+      ['agent-message', 'There are 12 namespaces.'],
+    ]);
+  });
+
   it('keys what an artifact completes by its id, which is how the poll reads it back', () => {
     // As recorded on kagent: a call and the reply, each its own artifact, the
     // reply in chunks without a partial stamp and whole on its `lastChunk`.
@@ -686,6 +737,135 @@ describe('applyStreamEvent', () => {
 
       expect(turn.live?.text).toBe('Token by token.');
       expect(turn.items).toEqual([]);
+    });
+
+    describe('reasoning marked kagent.dev/a2a/thought', () => {
+      const thought = (text: string) => ({
+        kind: 'text',
+        text,
+        metadata: { 'kagent.dev/a2a/thought': true },
+      });
+      const settled = (turn: StreamTurn) =>
+        turn.items.map(item =>
+          'text' in item ? [item.kind, item.text, item.messageId] : [item.kind],
+        );
+
+      it('streams as reasoning, then settles once under the artifact’s id', () => {
+        const streaming = fold([
+          artifactUpdate([thought('Checking the ')], { partial: true }),
+          artifactUpdate([thought('ingress.')], { partial: true }),
+        ]);
+
+        expect(streaming.live).toEqual(
+          expect.objectContaining({
+            kind: 'reasoning',
+            text: 'Checking the ingress.',
+          }),
+        );
+
+        const turn = fold(
+          [
+            artifactUpdate([textPart('It is ')], { partial: true }),
+            artifactUpdate(
+              [thought('Checking the ingress.'), textPart('It is healthy.')],
+              { partial: false },
+            ),
+          ],
+          streaming,
+        );
+
+        // The reasoning was flushed with no id when the answer began. The
+        // complete artifact replaces it, so it carries the id the poll pairs.
+        expect(turn.live).toBeUndefined();
+        expect(settled(turn)).toEqual([
+          ['reasoning', 'Checking the ingress.', 'a-1'],
+          ['agent-message', 'It is healthy.', 'a-1'],
+        ]);
+      });
+
+      it('shows chunks that alternate reasoning and answer once each', () => {
+        // Interleaved thinking: a thought block between text blocks.
+        const turn = fold([
+          artifactUpdate([thought('A.')], { partial: true }),
+          artifactUpdate([textPart('B.')], { partial: true }),
+          artifactUpdate([thought('C.')], { partial: true }),
+          artifactUpdate([textPart('D.')], { partial: true }),
+          artifactUpdate(
+            [thought('A.'), textPart('B.'), thought('C.'), textPart('D.')],
+            { partial: false },
+          ),
+        ]);
+
+        expect(settled(turn)).toEqual([
+          ['reasoning', 'A.', 'a-1'],
+          ['agent-message', 'B.', 'a-1'],
+          ['reasoning', 'C.', 'a-1'],
+          ['agent-message', 'D.', 'a-1'],
+        ]);
+      });
+
+      it('does not show reasoning and answer again when the terminal status update repeats them', () => {
+        const turn = fold([
+          artifactUpdate([thought('Checking.'), textPart('It is healthy.')], {
+            partial: false,
+          }),
+          statusUpdate(
+            agentMessage([thought('Checking.'), textPart('It is healthy.')]),
+            { final: true, state: 'completed' },
+          ),
+        ]);
+
+        expect(settled(turn)).toEqual([
+          ['reasoning', 'Checking.', 'a-1'],
+          ['agent-message', 'It is healthy.', 'a-1'],
+        ]);
+      });
+
+      it('does not show a message’s reasoning and answer again when an artifact repeats them', () => {
+        // The Python flow: the message arrives on a status update, and the
+        // artifact after it repeats it under its own id.
+        const turn = fold([
+          statusUpdate(
+            agentMessage([thought('Checking.'), textPart('It is healthy.')]),
+          ),
+          artifactUpdate([thought('Checking.'), textPart('It is healthy.')], {
+            lastChunk: true,
+          }),
+        ]);
+
+        expect(settled(turn)).toEqual([
+          ['reasoning', 'Checking.', 'reply-1'],
+          ['agent-message', 'It is healthy.', 'reply-1'],
+        ]);
+      });
+
+      it('keeps a call between the chunks answerable once their items are replaced', () => {
+        const turn = fold([
+          artifactUpdate([thought('Look it up.')], { partial: true }),
+          statusUpdate(agentMessage([callPart('call-1', 'kubectl_get')])),
+          artifactUpdate([textPart('Found.')], { partial: true }),
+          artifactUpdate([thought('Look it up.'), textPart('Found.')], {
+            partial: false,
+          }),
+          statusUpdate(
+            agentMessage(
+              [responsePart('call-1', 'kubectl_get', { output: 'ok' })],
+              'reply-2',
+            ),
+          ),
+        ]);
+
+        const calls = turn.items.filter(item => item.kind === 'tool-call');
+        expect(calls).toEqual([
+          expect.objectContaining({
+            isPending: false,
+            result: { output: 'ok' },
+          }),
+        ]);
+        expect(
+          turn.items.filter(item => 'text' in item).map(item => item.messageId),
+        ).toEqual(['a-1', 'a-1']);
+      });
     });
 
     it('emits the complete artifact as an item and closes the run', () => {

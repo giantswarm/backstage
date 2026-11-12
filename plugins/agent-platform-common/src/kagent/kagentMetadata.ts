@@ -6,6 +6,7 @@ const A2A_PREFIX = 'kagent.dev/a2a/';
 const CANONICAL_KEYS: Readonly<Record<string, string>> = {
   type: `${A2A_PREFIX}part-type`,
   usage_metadata: `${A2A_PREFIX}usage`,
+  thought: `${A2A_PREFIX}thought`,
 };
 
 const TIMELINE_POSITION_KEYS = [
@@ -33,14 +34,19 @@ const NOTICE_KEYS = ['kagent.dev/notice', `${A2A_PREFIX}notice`];
  * then `adk_`, then `kagent_`. A key holding `null`, nothing, or a value
  * `accept` rejects is skipped, so the next spelling still gets its turn.
  *
- * Callers ask for the legacy, unprefixed key (`type`, `usage_metadata`); the
- * canonical name for it comes from {@link CANONICAL_KEYS}.
+ * Callers ask for the legacy, unprefixed key (`type`, `usage_metadata`,
+ * `thought`); the canonical name for it comes from {@link CANONICAL_KEYS}.
  *
- * **`thought`, `author` and `partial` have no canonical name.** kagent 1.1
- * deletes every `adk_*` key at the runtime boundary and no longer stamps
- * `thought` on text parts, so on 1.1 these read as undefined: reasoning renders
- * as the agent's answer and replies carry no author. Stored task history from
- * older controllers still has them. A streamed chunk falls back to the A2A
+ * **`thought` is canonical again, but rarely set.** kagent 1.1 deletes every
+ * `adk_*` key at the runtime boundary, and for a while stamped no reasoning
+ * marker at all. The contract now has `kagent.dev/a2a/thought`, but only the Go
+ * ADK runtime writes it, and only for models whose adapter returns reasoning
+ * as thought parts (Bedrock). The Python ADK runtime and the harnesses still
+ * drop it, so their reasoning reads as the agent's answer (kagent-dev/kagent#2986).
+ *
+ * **`author` and `partial` have no canonical name.** On 1.1 they read as
+ * undefined, so replies carry no author. Stored task history from older
+ * controllers still has them. A streamed chunk falls back to the A2A
  * `lastChunk` flag for `partial`.
  *
  * **Both legacy prefixes really do occur, on the same installation.** Two

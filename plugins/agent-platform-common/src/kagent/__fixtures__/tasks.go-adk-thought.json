@@ -1,0 +1,108 @@
+{
+  "tasks": [
+    {
+      "id": "01a1b3c0-4d2e-7a10-9b3c-5e6f7a8b9c01",
+      "contextId": "6f2c1a7e-3b4d-4e8f-9a0b-1c2d3e4f5a6b",
+      "status": {
+        "state": "TASK_STATE_COMPLETED",
+        "timestamp": "2026-11-05T09:12:08.402117Z"
+      },
+      "artifacts": [
+        {
+          "artifactId": "01a1b3c0-5110-7c2a-8d4e-6f7a8b9c0d12",
+          "parts": [
+            {
+              "text": "The user wants the namespace count. One list call on namespaces answers it.",
+              "metadata": {
+                "kagent.dev/a2a/thought": true
+              }
+            },
+            {
+              "data": {
+                "id": "tooluse_7Hq2LmXo4Rk9VbN3cTpW",
+                "name": "x_mcp-kubernetes_list",
+                "args": {
+                  "resourceType": "namespace"
+                }
+              },
+              "metadata": {
+                "kagent.dev/a2a/part-type": "function_call"
+              }
+            }
+          ],
+          "metadata": {
+            "kagent.dev/a2a/usage": {
+              "promptTokenCount": 3120,
+              "candidatesTokenCount": 96,
+              "thoughtsTokenCount": 41
+            },
+            "kagent.dev/a2a/timeline-position": "2026-11-05T09:12:03.118402Z"
+          }
+        },
+        {
+          "artifactId": "01a1b3c0-5a44-7e01-9f2b-7a8b9c0d1e23",
+          "parts": [
+            {
+              "data": {
+                "id": "tooluse_7Hq2LmXo4Rk9VbN3cTpW",
+                "name": "x_mcp-kubernetes_list",
+                "response": {
+                  "output": "{\"kind\":\"NamespaceList\",\"totalItems\":12}"
+                }
+              },
+              "metadata": {
+                "kagent.dev/a2a/part-type": "function_response"
+              }
+            }
+          ],
+          "metadata": {
+            "kagent.dev/a2a/timeline-position": "2026-11-05T09:12:04.551930Z"
+          }
+        },
+        {
+          "artifactId": "01a1b3c0-6c8f-7b5d-a03c-8b9c0d1e2f34",
+          "parts": [
+            {
+              "text": "The list returned totalItems 12, so the answer is 12.",
+              "metadata": {
+                "kagent.dev/a2a/thought": true
+              }
+            },
+            {
+              "text": "The management cluster has 12 namespaces."
+            }
+          ],
+          "metadata": {
+            "kagent.dev/a2a/usage": {
+              "promptTokenCount": 3410,
+              "candidatesTokenCount": 38,
+              "thoughtsTokenCount": 19
+            },
+            "kagent.dev/a2a/timeline-position": "2026-11-05T09:12:08.391204Z"
+          }
+        }
+      ],
+      "history": [
+        {
+          "messageId": "m-1793869920001",
+          "contextId": "6f2c1a7e-3b4d-4e8f-9a0b-1c2d3e4f5a6b",
+          "taskId": "01a1b3c0-4d2e-7a10-9b3c-5e6f7a8b9c01",
+          "role": "ROLE_USER",
+          "parts": [
+            {
+              "text": "How many namespaces does the management cluster have?"
+            }
+          ],
+          "metadata": {
+            "kagent.dev/a2a/timeline-position": "2026-11-05T09:12:00.001877Z"
+          }
+        }
+      ],
+      "metadata": {
+        "kagent.dev/a2a/task-created-at": "2026-11-05T09:12:00.001877Z"
+      }
+    }
+  ],
+  "pageSize": 100,
+  "totalSize": 1
+}
