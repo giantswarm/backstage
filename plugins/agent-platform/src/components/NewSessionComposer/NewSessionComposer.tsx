@@ -991,12 +991,12 @@ export function NewSessionComposer({
   );
 
   // A sole startable agent is no choice, unless unavailable ones are listed
-  // beside it with their reasons or the picker also holds its footer action:
-  // it is named, not offered.
-  const fixedAgent =
-    soleAgent && listed.length === 1 && !pickerFooterAction
-      ? selectedAgent
-      : undefined;
+  // beside it with their reasons or the picker also holds its footer action.
+  // Once every agent is read, it is named rather than offered; while more may
+  // come, it stays a disabled picker.
+  const noChoice =
+    Boolean(soleAgent) && listed.length === 1 && !pickerFooterAction;
+  const fixedAgent = noChoice && !isLoadingAgents ? selectedAgent : undefined;
 
   const picker = (
     <>
@@ -1060,7 +1060,7 @@ export function NewSessionComposer({
               filter: () => true,
             },
           })}
-          isDisabled={isStarting}
+          isDisabled={isStarting || noChoice}
         />
       )}
       {offersWorkspaces && selectedAgent && (

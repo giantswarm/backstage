@@ -571,6 +571,14 @@ describe('NewSessionComposer', () => {
         ).not.toBeInTheDocument();
       });
 
+      it('keeps a disabled picker while more agents may come', () => {
+        // Named now, it would turn into a picker as the others are read.
+        renderComposer({ agents: [sre], isLoadingAgents: true });
+
+        expect(agentPicker()).toBeDisabled();
+        expect(agentPicker()).toHaveTextContent('SRE Agent');
+      });
+
       it('stays enabled once there is a real choice', () => {
         renderComposer({ agents: [sre, issues] });
 
