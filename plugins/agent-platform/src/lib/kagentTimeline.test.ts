@@ -781,6 +781,50 @@ describe('buildTimeline', () => {
       });
     });
 
+    it('names the muster tool behind call_tool and its own arguments', () => {
+      const proxied = structuredClone(approval) as typeof approval;
+      const confirm = proxied.data[0].history.find(
+        item => item.messageId === 'm-confirm-1',
+      ) as unknown as {
+        parts: { data: { args: { originalFunctionCall: object } } }[];
+      };
+      confirm.parts[0].data.args.originalFunctionCall = {
+        id: 'call-rollback-1',
+        name: 'call_tool',
+        args: {
+          name: 'x_site-control_schedule_rollback',
+          arguments: { release: 'v1.2.3', window: 'tonight' },
+        },
+      };
+
+      const { items } = timelineFor(proxied);
+
+      expect(items[1]).toEqual(
+        expect.objectContaining({
+          kind: 'approval',
+          toolName: 'x_site-control_schedule_rollback',
+          via: 'Muster',
+          args: { release: 'v1.2.3', window: 'tonight' },
+        }),
+      );
+    });
+
+    it('leaves the runtime’s confirmation hint out of the agent’s prose', () => {
+      // The v1 runtime sends its hint ("…responding with a FunctionResponse…")
+      // as the text of the input-required message; the approval says what is
+      // asked.
+      const { items } = timelineFor(kagent4a91c273);
+
+      expect(kinds(items)).toContain('approval');
+      expect(
+        items.some(
+          item =>
+            item.kind === 'agent-message' &&
+            item.text.includes('FunctionResponse'),
+        ),
+      ).toBe(false);
+    });
+
     it('reads a rejection', () => {
       const rejected = withDecision(approval, { decision_type: 'reject' });
 
