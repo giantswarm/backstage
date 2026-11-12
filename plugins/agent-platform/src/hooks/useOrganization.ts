@@ -7,14 +7,17 @@ import {
   ORGANIZATIONS_CAPABILITY,
   type MemberRequest,
   type MemberResult,
-  type MyOrganizations,
   type OrganizationConnector,
+  type OrganizationDeleteMode,
+  type OrganizationDeleteResult,
   type OrganizationDetails,
   type OrganizationMember,
+  type OrganizationListing,
 } from '../lib/organizations';
 import {
-  musterMyOrganizationsQueryKey,
+  musterOrganizationsQueryKey,
   musterOrganizationConnectorsQueryKey,
+  musterOrganizationErasureQueryKey,
   musterOrganizationMembersQueryKey,
   musterOrganizationQueryKey,
 } from '../lib/queryKeys';
@@ -72,26 +75,36 @@ export function useOrganizationsSupported(installation: string | undefined): {
 }
 
 /**
- * `list_my_organizations` on one installation: the organizations the person
- * belongs to, and who can add them when there is none. Asked only where
- * agent-manager serves the organization tools.
+ * `list_organizations` on one installation: the organizations the person
+ * manages or belongs to, each with their permissions, and who can add them
+ * when there is none. Asked only where agent-manager serves the organization
+ * tools.
  */
-export function useMyOrganizations(
+export function useOrganizations(
   installation: string | undefined,
-): OrganizationRead<MyOrganizations> &
-  Omit<ReturnType<typeof useOrganizationsSupported>, 'isLoading'> {
+): OrganizationRead<OrganizationListing> &
+  Omit<ReturnType<typeof useOrganizationsSupported>, 'isLoading'> & {
+    /** Reads `list_organizations` again. */
+    refetch: () => Promise<unknown>;
+  } {
   const client = useAgentManagerClient(installation);
   const { supported, infoError, recheck } =
     useOrganizationsSupported(installation);
   const enabled = Boolean(client) && supported === true;
   const query = useQuery({
-    queryKey: musterMyOrganizationsQueryKey(installation ?? ''),
+    queryKey: musterOrganizationsQueryKey(installation ?? ''),
     enabled,
-    queryFn: () => client!.listMyOrganizations(),
+    queryFn: () => client!.listOrganizations(),
     staleTime: 60_000,
     retry: false,
   });
-  return { ...readOf(enabled, query), supported, infoError, recheck };
+  return {
+    ...readOf(enabled, query),
+    supported,
+    infoError,
+    recheck,
+    refetch: query.refetch,
+  };
 }
 
 const ERASING_POLL_INTERVAL_MS = 10_000;
@@ -101,9 +114,9 @@ function isNotFound(error: unknown): boolean {
 }
 
 /**
- * `get_organization`: the organization object, for its display name and its
- * state. Only an organizations-admin may read it; a member's read is refused,
- * and the page names the organization by its name then. While the
+ * `get_organization`: the organization object and what a delete would erase.
+ * Only an organizations-admin may read it, so it is asked only when
+ * `list_organizations` says the person manages the organization. While the
  * organization is deleting it is read again every 10 s, until the read
  * answers `not_found`: the operator erased it.
  */
@@ -111,9 +124,10 @@ export function useOrganizationDetails(
   installation: string,
   parent: string,
   name: string,
+  options: { enabled?: boolean } = {},
 ): OrganizationRead<OrganizationDetails> {
   const client = useAgentManagerClient(installation);
-  const enabled = Boolean(client);
+  const enabled = Boolean(client) && (options.enabled ?? true);
   const query = useQuery({
     queryKey: musterOrganizationQueryKey(installation, parent, name),
     enabled,
@@ -226,4 +240,87 @@ export function useOrganizationMemberWrites(
   });
 
   return { add, remove };
+}
+
+/**
+ * `get_organization` read afresh, for the delete dialog: what a delete
+ * erases now, and the running sessions it stops. Mounted only while the
+ * dialog is open, so every opening asks again. It is kept under its own key
+ * and dropped once the dialog closes: in the page's `get_organization` key
+ * it would hide a newer status from `list_organizations`.
+ */
+export function useOrganizationErasure(
+  installation: string,
+  parent: string,
+  name: string,
+): OrganizationRead<OrganizationDetails> {
+  const client = useAgentManagerClient(installation);
+  const enabled = Boolean(client);
+  const query = useQuery({
+    queryKey: musterOrganizationErasureQueryKey(installation, parent, name),
+    enabled,
+    queryFn: () => client!.getOrganization(parent, name),
+    refetchOnMount: 'always',
+    gcTime: 0,
+    retry: false,
+  });
+  return {
+    data: query.isFetching ? undefined : query.data,
+    isLoading: enabled && (query.isFetching || isAwaitingData(query)),
+    failure: query.error ? classifyReadFailure(query.error) : undefined,
+  };
+}
+
+/**
+ * Deletes an organization as the person (`delete_organization`): a pull
+ * request for one applied from git, the erasure with the typed name
+ * otherwise or once that pull request merged. agent-manager checks the
+ * name again; its refusal is the mutation's error, in its own words.
+ */
+export function useOrganizationDeletion(
+  installation: string,
+  parent: string,
+  name: string,
+) {
+  const client = useAgentManagerClient(installation);
+  const queryClient = useQueryClient();
+  return useTrackedMutation<
+    OrganizationDeleteResult,
+    Error,
+    { mode: OrganizationDeleteMode; confirm?: string }
+  >({
+    event: (result, { mode }) => {
+      if (mode === 'pull-request') {
+        return result.commit?.pullRequest
+          ? {
+              name: 'AgentPlatform.organizationDeleteRequested',
+              attributes: {},
+            }
+          : null;
+      }
+      return result.deleted
+        ? { name: 'AgentPlatform.organizationErased', attributes: {} }
+        : null;
+    },
+    mutationFn: ({ mode, confirm }) => {
+      if (!client) {
+        throw new Error('agent-manager is not reachable on this installation.');
+      }
+      return client.deleteOrganization({
+        parent,
+        name,
+        ...(mode === 'pull-request' ? {} : { confirm }),
+        ...(mode === 'delete' ? {} : { mode: 'commit' as const }),
+      });
+    },
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: musterOrganizationQueryKey(installation, parent, name),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: musterOrganizationsQueryKey(installation),
+        }),
+      ]),
+  });
 }

@@ -19,6 +19,8 @@ export type CredentialReference = {
   url?: string;
   /** EgressPolicy: the origins it sends the value to. */
   origins?: string[];
+  /** ModelConfig: the provider it sends the value to. */
+  provider?: string;
   /** A Flux Kustomization applies the object from git. */
   fromGit?: boolean;
 };
@@ -42,8 +44,12 @@ export type CredentialCommit = {
   number?: number;
 };
 
-/** agent-manager's names of the objects a credential operation writes. */
-export type CredentialResourceKind = 'model' | 'connector' | 'egressPolicy';
+/**
+ * agent-manager's names of the objects a credential operation writes;
+ * `credential` is a replacement, which writes the Secret only.
+ */
+export type CredentialResourceKind =
+  'model' | 'connector' | 'egressPolicy' | 'credential';
 
 /** What a save answers, and what the operation will write. */
 export type CredentialResourceResult = {
@@ -51,6 +57,8 @@ export type CredentialResourceResult = {
   kind?: CredentialResourceKind;
   name?: string;
   created?: boolean;
+  /** Models only: the organization's default model after the write. */
+  defaultModel?: string;
   note?: string;
   pending?: boolean;
   /** The id of the credential operation a pending write prepared. */
@@ -96,6 +104,32 @@ export type CredentialValue = { secret: string; key: string; value: string };
 
 /** agent-manager's operation ids. */
 export const CREDENTIAL_OPERATION_PATTERN = /^[a-f0-9]{48}$/;
+
+/**
+ * The credential operation a write prepared, or `undefined` when the write
+ * is finished (the credential already exists). Refuses an answer that says
+ * a request is pending without its id, and an id this portal does not
+ * recognize: neither can be opened on the form.
+ */
+export function preparedCredentialOperation(
+  result: CredentialResourceResult,
+): string | undefined {
+  const operation = result.credentialOperation;
+  if (!operation) {
+    if (result.pending) {
+      throw new Error(
+        'agent-manager answered a credential request without its id.',
+      );
+    }
+    return undefined;
+  }
+  if (!CREDENTIAL_OPERATION_PATTERN.test(operation)) {
+    throw new Error(
+      'agent-manager answered a credential request id this portal does not recognize.',
+    );
+  }
+  return operation;
+}
 
 /**
  * The Secret and key pairs the operation asks for, once each: what the
@@ -186,6 +220,11 @@ export function destinations(operation: CredentialOperation): string[] {
     }
     if (ref.url) {
       out.add(ref.url);
+    }
+    // A replacement lists the models that read the Secret, each by the
+    // provider it sends the value to.
+    if (ref.kind === 'ModelConfig' && ref.provider) {
+      out.add(ref.provider);
     }
   }
   return [...out].sort();

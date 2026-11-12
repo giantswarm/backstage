@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Link, PasswordField, Text } from '@backstage/ui';
@@ -28,7 +28,11 @@ import {
   otherReferences,
   requestedPairs,
 } from '../../lib/credentialOperations';
-import { agentManagerCredentialOperationQueryKey } from '../../lib/queryKeys';
+import {
+  agentManagerCredentialOperationQueryKey,
+  musterOrganizationConnectorsQueryKey,
+} from '../../lib/queryKeys';
+import { invalidateModelReads } from '../../hooks/defaultModelWrites';
 import {
   organizationDetailRouteRef,
   organizationsRouteRef,
@@ -56,7 +60,21 @@ const KIND_LABELS: Record<string, string> = {
   model: 'Model',
   connector: 'Connector',
   egressPolicy: 'Egress policy',
+  credential: 'Credential',
 };
+
+/**
+ * agent-manager's code for a replacement's save whose consumers, or where
+ * they send the value, changed since it was prepared (409, giantswarm/
+ * agent-manager#373). Nothing was written; only a new preparation, with a
+ * fresh `requestId`, can go on. Other conflicts (a save in progress, an
+ * uncertain outcome) keep `conflict` and must not be started again.
+ */
+const CONSUMERS_CHANGED = 'credential_consumers_changed';
+
+/** A replacement (`replace_organization_credential`): it writes the Secret only. */
+const isReplacement = (operation: CredentialOperation) =>
+  operation.result?.kind === 'credential';
 
 const kindLabel = (kind: string) => KIND_LABELS[kind] ?? kind;
 
@@ -117,6 +135,7 @@ function Confirmation({
   const others = otherReferences(operation);
   const sentTo = destinations(operation);
   const { organization, parent, namespace } = operation.organization;
+  const replacement = isReplacement(operation);
   return (
     <PageSection title="What you are about to save">
       <Flex direction="column" gap="3">
@@ -127,19 +146,36 @@ function Confirmation({
               .join(' · ')}
           </Text>
         </Fact>
-        <Fact label="Asked by">
-          {asking.length === 0 ? (
-            <Text color="secondary">No object is named.</Text>
-          ) : (
-            asking.map(o => (
-              <Text key={`${o.kind}/${o.name}`} as="p">
-                {kindLabel(o.kind)} {o.name} (
-                {o.action === 'create' ? 'new' : 'changed'})
+        {replacement ? (
+          <Fact
+            label={
+              requestedPairs(operation).every(pair => pair.state === 'missing')
+                ? 'Sets'
+                : 'Replaces'
+            }
+          >
+            {requestedPairs(operation).map(pair => (
+              <Text key={pairId(pair)} as="p">
+                The value of Secret {pair.secret}, key {pair.key}. No model,
+                connector or egress policy is changed.
               </Text>
-            ))
-          )}
-        </Fact>
-        <Fact label="Also used by">
+            ))}
+          </Fact>
+        ) : (
+          <Fact label="Asked by">
+            {asking.length === 0 ? (
+              <Text color="secondary">No object is named.</Text>
+            ) : (
+              asking.map(o => (
+                <Text key={`${o.kind}/${o.name}`} as="p">
+                  {kindLabel(o.kind)} {o.name} (
+                  {o.action === 'create' ? 'new' : 'changed'})
+                </Text>
+              ))
+            )}
+          </Fact>
+        )}
+        <Fact label={replacement ? 'Used by' : 'Also used by'}>
           {others.length === 0 ? (
             <Text>No other object of the organization reads it.</Text>
           ) : (
@@ -190,20 +226,29 @@ function Confirmation({
 
 function Receipt({ result }: { result: CredentialResourceResult }) {
   const pr = result.commit?.pullRequest;
+  let saved: string;
+  if (result.kind === 'credential') {
+    saved = pr
+      ? `The new value of Secret ${result.name ?? ''} is in the pull request, encrypted. It applies once it merges.`
+      : `The new value of Secret ${result.name ?? ''} is saved: every object that uses it now does so with it. The value is not shown again.`;
+  } else {
+    saved = `${
+      result.kind
+        ? `${kindLabel(result.kind)} ${result.name ?? ''}`
+        : 'The object'
+    } ${
+      pr
+        ? 'and its encrypted credential are in the pull request. They apply once it merges.'
+        : 'has its credential. The value is not shown again.'
+    }`;
+  }
   return (
     <Alert
       status="success"
       title={pr ? 'Pull request opened' : 'Credential saved'}
       description={
         <Flex direction="column" gap="1">
-          <Text>
-            {result.kind
-              ? `${kindLabel(result.kind)} ${result.name ?? ''}`
-              : 'The object'}{' '}
-            {pr
-              ? 'and its encrypted credential are in the pull request. They apply once it merges.'
-              : 'has its credential. The value is not shown again.'}
-          </Text>
+          <Text>{saved}</Text>
           {pr ? <Link href={pr}>{pr}</Link> : null}
           {result.note ? <Text color="secondary">{result.note}</Text> : null}
         </Flex>
@@ -222,6 +267,15 @@ function SaveError({
 }) {
   if (!error) {
     return null;
+  }
+  if (credentialOperationErrorCode(error) === CONSUMERS_CHANGED) {
+    return (
+      <Alert
+        status="danger"
+        title="The objects that use this credential changed"
+        description="Since this replacement was prepared, an object that uses the credential, or where it sends the value, changed, so nothing was saved. Start the replacement again from the organization's tab: the new request lists where the value goes now."
+      />
+    );
   }
   if (credentialOperationErrorCode(error) === 'auth_required') {
     return (
@@ -279,6 +333,7 @@ export function CredentialFormPage({
     ? operationParam
     : undefined;
   const api = useApi(agentManagerCredentialsApiRef);
+  const queryClient = useQueryClient();
   const query = useOperation(installation, operationId);
   const reload = () => {
     query.refetch();
@@ -336,6 +391,23 @@ export function CredentialFormPage({
     onSuccess: result => {
       setValues({});
       setReceipt(result);
+      // The save wrote the model or connector the request was for: the
+      // lists and pages that show it read it again rather than serve the
+      // cache from before (the QueryClient is persisted).
+      const namespace =
+        result.namespace ?? loaded?.operation.organization.namespace;
+      if (!namespace) {
+        return undefined;
+      }
+      return Promise.all([
+        invalidateModelReads(queryClient, installation, namespace),
+        queryClient.invalidateQueries({
+          queryKey: musterOrganizationConnectorsQueryKey(
+            installation,
+            namespace,
+          ),
+        }),
+      ]);
     },
     onError: error => {
       const code = credentialOperationErrorCode(error);
@@ -346,6 +418,8 @@ export function CredentialFormPage({
         );
         save.reset();
         reload();
+      } else if (code === CONSUMERS_CHANGED) {
+        setValues({});
       } else if (code === 'outcome_unknown') {
         setValues({});
         setNotice(
@@ -442,14 +516,21 @@ export function CredentialFormPage({
     );
   }
 
+  // A replacement whose objects changed since it was prepared cannot be
+  // saved any more: the same request would be refused again. The form goes,
+  // and the way back to the organization's tab, where it starts again,
+  // shows.
+  const stale = credentialOperationErrorCode(save.error) === CONSUMERS_CHANGED;
   const takesValues =
     !receipt &&
     !cancelled &&
+    !stale &&
     (operation.state === 'pending' ||
       (operation.state === 'uncertain' && operation.mode === 'apply'));
   const finishes =
     !receipt &&
     !cancelled &&
+    !stale &&
     (operation.state === 'saving' ||
       (operation.state === 'uncertain' && operation.mode === 'commit'));
   const complete =
@@ -589,6 +670,9 @@ export function CredentialFormPage({
               </Flex>
             </Flex>
           </PageSection>
+        ) : null}
+        {stale ? (
+          <SaveError installation={installation} error={save.error} />
         ) : null}
         {!takesValues && !finishes && backLink ? <Flex>{backLink}</Flex> : null}
       </Flex>

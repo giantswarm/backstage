@@ -321,12 +321,12 @@ export function musterAgentManagerEgressPoliciesQueryKey(
   ] as const;
 }
 
-/** `list_my_organizations` on one installation: the person's organizations. */
-export function musterMyOrganizationsQueryKey(installation: string) {
+/** `list_organizations` on one installation: the person's organizations. */
+export function musterOrganizationsQueryKey(installation: string) {
   return [
     'muster',
     'agent-platform',
-    'agent-manager-my-organizations',
+    'agent-manager-organizations',
     installation,
   ] as const;
 }
@@ -341,6 +341,26 @@ export function musterOrganizationQueryKey(
     'muster',
     'agent-platform',
     'agent-manager-organization',
+    installation,
+    parent,
+    name,
+  ] as const;
+}
+
+/**
+ * `get_organization` as the delete dialog reads it, for what a delete erases.
+ * Its own key: the page prefers `musterOrganizationQueryKey`'s organization
+ * over the listing, so a preview kept there would hide a newer listing.
+ */
+export function musterOrganizationErasureQueryKey(
+  installation: string,
+  parent: string,
+  name: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'agent-manager-organization-erasure',
     installation,
     parent,
     name,

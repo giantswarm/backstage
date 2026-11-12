@@ -14,11 +14,16 @@ import http from 'isomorphic-git/http/node';
 import { InputError } from '@backstage/errors';
 import { createHash } from 'node:crypto';
 import { parseFrontmatter } from './frontmatter';
-import { DiscoveredSkill, SkillDiscoverySnapshot } from './discoverAgentSkills';
+import {
+  DiscoveredSkill,
+  RefKind,
+  SkillDiscoverySnapshot,
+} from './discoverAgentSkills';
 import { pluginsOf } from './discoverPlugins';
 import {
   assignSkillFiles,
   gitBlobSha,
+  parseConfiguredRef,
   MAX_INLINE_FILE_BYTES,
   repositoryFilePath,
   SkillFileList,
@@ -55,12 +60,70 @@ export class GitFetchError extends Error {
 
 const SKILL_FILE = 'SKILL.md';
 
-/** What a clone resolved to: the branch read and its head commit. */
+/** What a clone resolved to: the ref read and its commit. */
 export interface GitCloneResult {
   /** Full commit id HEAD pointed at — the pin an agent carries. */
   commit: string;
-  /** The branch that was read (the remote's default branch when none given). */
+  /** The ref that was read (the remote's default branch when none given). */
   ref: string;
+  /** What `ref` is; a branch when absent. */
+  refKind?: RefKind;
+}
+
+/** A ref the server advertises, as `listServerRefs` answers it. */
+export interface ServerRef {
+  ref: string;
+  oid: string;
+  peeled?: string;
+}
+
+/** A full SHA-1 commit id: isomorphic-git fetches no SHA-256 one. */
+const SHA1_RE = /^[0-9a-f]{40}$/;
+
+/**
+ * What a configured ref is on the server and what to fetch for it, by the
+ * rules the GitHub provider applies (`githubRefKind`): a full commit id is
+ * fetched as itself (the server must allow it, as GitHub and Gitea do);
+ * `refs/heads/<name>` and `refs/tags/<name>` must be that branch or tag; a
+ * plain name must be exactly one of them. Throws a `GitFetchError` for a
+ * name that is both, a SHA-256 commit id and a ref the server does not have.
+ */
+export function classifyRemoteRef(
+  refs: ServerRef[],
+  ref: string,
+  repoUrl: string,
+): { kind: RefKind; fetchRef: string; oid: string } {
+  const { form, name } = parseConfiguredRef(ref);
+  if (form === 'commit') {
+    if (!SHA1_RE.test(name)) {
+      throw new GitFetchError(
+        400,
+        `Ref ${ref} is a SHA-256 commit id, which is not supported for ${repoUrl}; configure a branch or tag.`,
+      );
+    }
+    return { kind: 'commit', fetchRef: name, oid: name };
+  }
+  const byName = new Map(refs.map(r => [r.ref, r] as const));
+  const branch = form === 'tag' ? undefined : byName.get(`refs/heads/${name}`);
+  const tag = form === 'branch' ? undefined : byName.get(`refs/tags/${name}`);
+  if (branch && tag) {
+    throw new GitFetchError(
+      422,
+      `Ref ${ref} is both a branch and a tag of ${repoUrl}: configure refs/heads/${name} or refs/tags/${name}.`,
+    );
+  }
+  if (branch) {
+    return { kind: 'branch', fetchRef: branch.ref, oid: branch.oid };
+  }
+  if (tag) {
+    // An annotated tag's commit is its peeled id.
+    const peeled = tag.peeled ?? byName.get(`${tag.ref}^{}`)?.oid;
+    return { kind: 'tag', fetchRef: tag.ref, oid: peeled ?? tag.oid };
+  }
+  throw new GitFetchError(
+    404,
+    `Ref ${ref} is not a branch, tag or full commit id of ${repoUrl}.`,
+  );
 }
 
 /**
@@ -126,9 +189,57 @@ function abortableBody(
 /** The real client: isomorphic-git over Node's http(s), no git binary. */
 const isomorphicGitClient: GitClient = {
   async clone(dir, repoUrl, ref, signal) {
+    const client = signal ? abortableHttp(signal) : http;
+    // A commit id or a branch named in full is fetched at once; a plain name
+    // or a tag is looked up in the server's refs first (one more round trip),
+    // which a plain name needs to tell a branch from a tag of the same name.
+    const configured = ref ? parseConfiguredRef(ref) : undefined;
+    let target: { kind: RefKind; fetchRef: string; oid?: string } | undefined;
+    if (ref && configured?.form === 'commit') {
+      target = classifyRemoteRef([], ref, repoUrl);
+    } else if (ref && configured?.form === 'branch') {
+      target = { kind: 'branch', fetchRef: ref };
+    } else if (ref) {
+      target = classifyRemoteRef(
+        await git.listServerRefs({
+          http: client,
+          url: repoUrl,
+          protocolVersion: 1,
+          peelTags: true,
+        }),
+        ref,
+        repoUrl,
+      );
+    }
+    if (ref && target && (target.kind !== 'branch' || !target.oid)) {
+      // Exactly that ref, depth 1, checked out detached: `git.clone` resolves
+      // a short name tag-first and only checks out branches.
+      await git.init({ fs, dir });
+      await git.addRemote({ fs, dir, remote: 'origin', url: repoUrl });
+      const { fetchHead } = await git.fetch({
+        fs,
+        http: client,
+        dir,
+        remote: 'origin',
+        ref: target.fetchRef,
+        singleBranch: true,
+        depth: 1,
+        tags: false,
+      });
+      const oid = target.oid ?? fetchHead;
+      if (!oid) {
+        throw new GitFetchError(
+          404,
+          `Ref ${ref} is not a branch of ${repoUrl}.`,
+        );
+      }
+      await git.checkout({ fs, dir, ref: oid, force: true });
+      const commit = await git.resolveRef({ fs, dir, ref: 'HEAD' });
+      return { commit, ref, refKind: target.kind };
+    }
     await git.clone({
       fs,
-      http: signal ? abortableHttp(signal) : http,
+      http: client,
       dir,
       url: repoUrl,
       ref: ref || undefined,
@@ -141,7 +252,7 @@ const isomorphicGitClient: GitClient = {
     // must name that branch, never ''.
     const branch =
       ref || (await git.currentBranch({ fs, dir, fullname: false })) || 'HEAD';
-    return { commit, ref: branch };
+    return { commit, ref: branch, refKind: 'branch' };
   },
 };
 
@@ -298,6 +409,7 @@ interface ScannedFile {
  */
 async function walkCheckout(
   rootDir: string,
+  scanPath = '',
 ): Promise<{ skills: ScannedSkill[]; files: ScannedFile[] }> {
   const skills: ScannedSkill[] = [];
   const files: ScannedFile[] = [];
@@ -324,7 +436,25 @@ async function walkCheckout(
     }
   }
 
-  await walk(rootDir, '');
+  if (scanPath) {
+    // Only below `scanPath`, still reported repository-relative; nothing
+    // above it, plugin manifests included. A symlink on the way is not
+    // followed, and a missing directory is a configuration error.
+    let dir = rootDir;
+    for (const segment of scanPath.split('/')) {
+      dir = path.join(dir, segment);
+      const stat = await lstat(dir).catch(() => undefined);
+      if (!stat?.isDirectory()) {
+        throw new GitFetchError(
+          404,
+          `${scanPath} does not exist in the repository.`,
+        );
+      }
+    }
+    await walk(dir, scanPath);
+  } else {
+    await walk(rootDir, '');
+  }
   return { skills, files };
 }
 
@@ -452,6 +582,11 @@ export async function discoverAgentSkillsFromGit(options: {
   ref?: string;
   /** The commit the head must be; any head when absent. */
   commit?: string;
+  /**
+   * Directory to scan, repository-relative ('' or absent: the whole tree).
+   * Skills keep their repository-relative paths.
+   */
+  scanPath?: string;
   /** A repository-relative file whose bytes to keep whatever the budget. */
   mustRead?: string;
   /** Aborts the clone (the read guard's deadline). */
@@ -474,7 +609,9 @@ export async function discoverAgentSkillsFromGit(options: {
       throw movedOn(cloned, repoUrl, commit);
     }
 
-    const walked = await walkCheckout(dir);
+    // Said only for a configured ref; the default branch is a branch.
+    const refKind = ref ? { refKind: cloned.refKind ?? 'branch' } : {};
+    const walked = await walkCheckout(dir, options.scanPath ?? '');
     const scanned = walked.skills;
     const { files, fileContents } = await listCheckoutFiles(
       await realpath(dir),
@@ -494,6 +631,7 @@ export async function discoverAgentSkillsFromGit(options: {
         repoUrl,
         path: s.path,
         ref: cloned.ref,
+        ...refKind,
         commit: cloned.commit,
         // Read from the checkout just now.
         contentReadable: true,
@@ -517,6 +655,7 @@ export async function discoverAgentSkillsFromGit(options: {
         },
       ),
       ref: cloned.ref,
+      ...refKind,
       commit: cloned.commit,
       // A full checkout was scanned; nothing can be missing.
       truncated: false,

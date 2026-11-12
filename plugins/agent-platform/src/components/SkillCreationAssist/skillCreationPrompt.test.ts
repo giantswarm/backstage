@@ -68,6 +68,18 @@ describe('skillCreationPrompt', () => {
     expect(prompt.length).toBeLessThanOrEqual(MESSAGE_TEXT_MAX_LENGTH);
   });
 
+  it('names the directory and branch a new skill goes to', () => {
+    const prompt = skillCreationPrompt({
+      kind: 'create',
+      repoUrl: SKILL.repoUrl,
+      path: 'skills',
+      branch: 'develop',
+    });
+
+    expect(prompt).toContain('in a new directory below skills/');
+    expect(prompt).toContain('against develop');
+  });
+
   it('carries a draft within the budget whole', () => {
     const prompt = skillCreationPrompt({
       kind: 'update',

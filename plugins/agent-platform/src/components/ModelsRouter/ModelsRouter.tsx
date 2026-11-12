@@ -17,6 +17,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { QueryClientProvider } from '../QueryClientProvider';
+import { OrganizationDirectoryProvider } from '../OrganizationDirectoryProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { ServingProvider, useServing } from '../ServingProvider';
 import { ServedModelRowsProvider } from '../ServedModelRowsProvider';
@@ -291,25 +292,8 @@ function ModelRoute({ children }: { children: ReactNode }) {
 /** An unknown step of a model's edit: the edit itself, its nearest parent. */
 const EditRedirect = () => <Navigate to="." replace />;
 
-/**
- * Content of the Customize screen's Models tab below its list (a descendant
- * `<Routes>`, so the paths here are relative — no leading slash — matching
- * AgentsRouter): one model's page at `<installation>/<namespace>/<name>` with
- * its tabs, its edit at `…/<name>/edit`, the create flow at `new` and Model
- * hosting at `hosting/…`, its create flows framing themselves. `new` and
- * `hosting` are reserved words: no installation can be named so.
- *
- * One `<Routes>`, so react-router ranks every path against the model page's
- * three dynamic segments: a static segment outranks a dynamic one at the
- * same depth, and `ModelRoute` keeps any deeper address under `new` or
- * `hosting` from reading as a model on an installation named so.
- * ModelsRouter.test.tsx holds the rankings.
- *
- * The model's page mounts only the agent-platform data it reads
- * (`CustomizeModelPage`); the views share the tab's providers. Both share one
- * query client, so the list's reads are cache hits on the page.
- */
-export const ModelsRouter = () => {
+/** The Models tab's routes, inside the router's providers. */
+const ModelsRoutes = () => {
   return (
     <Routes>
       <Route path="new" element={withProviders(<NewModelPage />)} />
@@ -357,5 +341,39 @@ export const ModelsRouter = () => {
       />
       <Route path="*" element={<ShellCustomizeRedirect tab="models" />} />
     </Routes>
+  );
+};
+
+/**
+ * Content of the Customize screen's Models tab below its list (a descendant
+ * `<Routes>`, so the paths here are relative — no leading slash — matching
+ * AgentsRouter): one model's page at `<installation>/<namespace>/<name>` with
+ * its tabs, its edit at `…/<name>/edit`, the create flow at `new` and Model
+ * hosting at `hosting/…`, its create flows framing themselves. `new` and
+ * `hosting` are reserved words: no installation can be named so.
+ *
+ * One `<Routes>`, so react-router ranks every path against the model page's
+ * three dynamic segments: a static segment outranks a dynamic one at the
+ * same depth, and `ModelRoute` keeps any deeper address under `new` or
+ * `hosting` from reading as a model on an installation named so.
+ * ModelsRouter.test.tsx holds the rankings.
+ *
+ * The model's page mounts only the agent-platform data it reads
+ * (`CustomizeModelPage`); the views share the tab's providers. Both share one
+ * query client, so the list's reads are cache hits on the page.
+ *
+ * Every route reads the organization directory (`list_organizations`): which
+ * namespace is an organization's decides where New model offers a model, that
+ * an organization's model is saved through agent-manager, and that the model
+ * page and Edit model edit a model agent-manager wrote there. Without it, the
+ * directory is empty and every organization's model reads as the platform's.
+ */
+export const ModelsRouter = () => {
+  return (
+    <QueryClientProvider>
+      <OrganizationDirectoryProvider>
+        <ModelsRoutes />
+      </OrganizationDirectoryProvider>
+    </QueryClientProvider>
   );
 };

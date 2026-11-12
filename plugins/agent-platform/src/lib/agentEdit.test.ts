@@ -508,6 +508,27 @@ describe('the edit wizard (formStateOfAgent, editStateOfForm)', () => {
       expect(update.skills).toBeUndefined();
     });
 
+    it('writes a package moved to the commit shown at that commit, in place', () => {
+      const current = withPlugins();
+      const update = updateOf(
+        current,
+        editStateOfForm(current, {
+          ...seedPlugins(current),
+          selectedPlugins: [
+            { plugin: CATALOG_REVIEW, skills: ['go-review', 'helm-review'] },
+          ],
+        }),
+      );
+      expect(update.plugins).toEqual([
+        {
+          path: 'plugins/review',
+          git: { url: `${REPO}.git`, commit: OTHER },
+          skills: ['go-review', 'helm-review'],
+        },
+        ELSEWHERE,
+      ]);
+    });
+
     it('clears the list when every plugin is dropped', () => {
       const current = withPlugins();
       const update = updateOf(

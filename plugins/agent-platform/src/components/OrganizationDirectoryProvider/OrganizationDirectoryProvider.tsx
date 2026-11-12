@@ -17,14 +17,15 @@ import { AGENT_MANAGER_SERVER } from '../../lib/agentManager';
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
 import {
   musterAgentManagerInfoQueryKey,
-  musterMyOrganizationsQueryKey,
+  musterOrganizationsQueryKey,
 } from '../../lib/queryKeys';
 import {
   EMPTY_ORGANIZATION_DIRECTORY,
   ORGANIZATIONS_CAPABILITY,
-  type MyOrganizations,
+  organizationNamespacesOf,
   type OrganizationDirectory,
   type OrganizationNamespace,
+  type OrganizationListing,
 } from '../../lib/organizations';
 
 export type OrganizationDirectoryValue = {
@@ -38,7 +39,7 @@ export type OrganizationDirectoryValue = {
   /** Failures checking whether installations serve organizations. */
   discoveryErrors: string[];
   /** The person's organizations on one installation, once answered. */
-  organizationsOf: (installation: string) => MyOrganizations | undefined;
+  organizationsOf: (installation: string) => OrganizationListing | undefined;
   /** Why an installation's organizations could not be read, if they could not. */
   failureOf: (installation: string) => string | undefined;
   /** Reads an installation's organizations again (Check again). */
@@ -62,8 +63,8 @@ const OrganizationDirectoryContext =
 
 /**
  * Reads, on every installation whose agent-manager reports the
- * `organizations` capability, the organizations the signed-in person belongs
- * to (`list_my_organizations`, as the person). What every page below names
+ * `organizations` capability, the organizations the signed-in person manages
+ * or belongs to (`list_organizations`, as the person). What every page below names
  * an agent's organization by: the namespace's labels, as agent-manager
  * answers them, never the namespace's name.
  *
@@ -145,10 +146,10 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
   ];
   const mine = useQueries({
     queries: supported.map(installation => ({
-      queryKey: musterMyOrganizationsQueryKey(installation),
+      queryKey: musterOrganizationsQueryKey(installation),
       enabled: Boolean(musterApi),
       queryFn: () =>
-        new AgentManagerClient(musterApi!, installation).listMyOrganizations(),
+        new AgentManagerClient(musterApi!, installation).listOrganizations(),
       staleTime: 60_000,
       retry: false,
     })),
@@ -172,7 +173,7 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
   const value = useMemo<OrganizationDirectoryValue>(() => {
     const entries = JSON.parse(signature) as [
       string,
-      MyOrganizations | null,
+      OrganizationListing | null,
       string | null,
     ][];
     const answers = new Map(
@@ -183,7 +184,9 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
     );
     const directory = new Map<string, OrganizationNamespace>();
     for (const answer of answers.values()) {
-      for (const organization of answer?.organizations ?? []) {
+      for (const organization of organizationNamespacesOf(
+        answer ?? undefined,
+      )) {
         directory.set(organization.namespace, organization);
       }
     }
@@ -195,7 +198,7 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
       failureOf: installation => failures.get(installation) ?? undefined,
       recheck: installation =>
         queryClient.refetchQueries({
-          queryKey: musterMyOrganizationsQueryKey(installation),
+          queryKey: musterOrganizationsQueryKey(installation),
         }),
       isLoading,
     };
@@ -208,7 +211,7 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
   );
 }
 
-/** The organizations the person belongs to, as the provider above read them. */
+/** The organizations the person manages or belongs to, as read above. */
 export function useOrganizationDirectory(): OrganizationDirectoryValue {
   return useContext(OrganizationDirectoryContext);
 }
@@ -216,4 +219,29 @@ export function useOrganizationDirectory(): OrganizationDirectoryValue {
 /** Whether any installation reports support for Agent Platform organizations. */
 export function useOrganizationsAvailable(): boolean {
   return useOrganizationDirectory().installations.length > 0;
+}
+
+/**
+ * Why the directory cannot tell yet whether a namespace on `installation` is
+ * an organization's, or `undefined` when it can: still reading, the
+ * installation's `list_organizations` failed, or agent-manager could not be
+ * reached to learn whether the installation serves organizations at all.
+ * Where it cannot tell, an organization's namespace would pass for the
+ * platform's, so a write that must not reach an organization waits.
+ */
+export function organizationsUndecided(
+  value: OrganizationDirectoryValue,
+  installation: string,
+): string | undefined {
+  if (value.isLoading) {
+    return 'The organizations are still being read.';
+  }
+  const failure = value.failureOf(installation);
+  if (failure) {
+    return failure;
+  }
+  if (!value.installations.includes(installation)) {
+    return value.discoveryErrors[0];
+  }
+  return undefined;
 }
