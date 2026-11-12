@@ -54,6 +54,8 @@ import {
   AgentManagerNotConnectedError,
 } from '../../lib/agentManager';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useDeleteModelConfig } from '../../hooks/useDeleteModelConfig';
 import { clientLookupOf } from '../../lib/serving';
@@ -211,6 +213,9 @@ function SetDefaultError({
   /** Clears the refusal once the person signed in to agent-manager. */
   onSignedIn: () => void;
 }) {
+  if (error instanceof PortalSessionEndedError) {
+    return <PortalSessionEndedAlert />;
+  }
   // The call declares no URL elicitation, so a missing sign-in comes back
   // as this error, with the sign-in offered here.
   if (error instanceof AgentManagerNotConnectedError) {

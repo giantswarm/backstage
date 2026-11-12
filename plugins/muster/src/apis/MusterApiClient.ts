@@ -1118,12 +1118,21 @@ export class MusterApiClient implements MusterApi {
     installation: string | undefined,
   ): Promise<T> {
     if (!response.ok) {
-      const { message, details, kind } =
-        (
-          errorData as {
-            error?: { message?: string; details?: unknown; kind?: unknown };
-          }
-        )?.error ?? {};
+      const {
+        message,
+        details,
+        kind,
+        name: errorName,
+      } = (
+        errorData as {
+          error?: {
+            message?: string;
+            details?: unknown;
+            kind?: unknown;
+            name?: unknown;
+          };
+        }
+      )?.error ?? {};
       const { reason, server } = unauthorizedBodyOf(errorData);
       if (
         reason === 'token_expired' ||
@@ -1146,7 +1155,13 @@ export class MusterApiClient implements MusterApi {
       }
       const error: Error =
         response.status === 401
-          ? new MusterUnauthorizedError(text, reason, server, installation)
+          ? new MusterUnauthorizedError(
+              text,
+              reason,
+              server,
+              installation,
+              typeof errorName === 'string' ? errorName : undefined,
+            )
           : Object.assign(new Error(text), { status: response.status });
       if (response.status === 403) error.name = 'ForbiddenError';
       if (response.status === 404) error.name = 'NotFoundError';
