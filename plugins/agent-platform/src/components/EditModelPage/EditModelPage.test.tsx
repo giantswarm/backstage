@@ -56,14 +56,20 @@ jest.mock('../../hooks/useSaveModelConfig', () => ({
 }));
 
 // The organizations agent-manager names for the person: `org-acme` is one.
+// A discovery failure belongs to the installation it names (`inst-1` unless
+// a case says otherwise).
 let mockDirectoryFailure: string | undefined;
+let mockFailingInstallation = 'inst-1';
 jest.mock('../OrganizationDirectoryProvider', () => ({
   ...jest.requireActual('../OrganizationDirectoryProvider'),
   useOrganizationDirectory: () => ({
     ...jest.requireActual('../../lib/__fixtures__/organizations')
       .TEST_ORGANIZATION_DIRECTORY,
     discoveryErrors: mockDirectoryFailure ? [mockDirectoryFailure] : [],
-    discoveryFailureOf: () => mockDirectoryFailure,
+    discoveryFailureOf: (installation: string) =>
+      installation === mockFailingInstallation
+        ? mockDirectoryFailure
+        : undefined,
   }),
 }));
 
@@ -131,6 +137,7 @@ function renderPage() {
 describe('EditModelPage', () => {
   beforeEach(() => {
     mockDirectoryFailure = undefined;
+    mockFailingInstallation = 'inst-1';
     mockMayUpdate = true;
     mockSave.mockReset();
     mockSave.mockResolvedValue({ isDefault: false });
@@ -281,6 +288,25 @@ describe('EditModelPage', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText(/^API key/)).toBeNull();
+  });
+
+  it("opens the form outside the platform's namespace when the failure is another installation's", async () => {
+    mockFailingInstallation = 'inst-2';
+    mockDirectoryFailure =
+      'Could not reach agent-manager on inst-2. Check your connector sign-in and try again.';
+    mockUseResource.mockReturnValue({
+      resource: sonnet({ namespace: 'agents-payments-x7k2q' }),
+      isLoading: false,
+      errors: [],
+    });
+    await renderPage();
+
+    expect(screen.getByLabelText(/^API key/)).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        /Could not tell whether this model belongs to an organization/,
+      ),
+    ).toBeNull();
   });
 
   it('still opens the form for a platform model then', async () => {

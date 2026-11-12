@@ -13,12 +13,15 @@ import { modelsRouteRef, organizationsRouteRef } from '../../routes';
 import { NewModelPage, type ModelEdit } from './NewModelPage';
 
 // The organizations agent-manager names for the person
-// (`list_organizations`).
+// (`list_organizations`), and why they could not be read, when a case says.
+let mockDirectoryFailure: string | undefined;
 jest.mock('../OrganizationDirectoryProvider', () => ({
   ...jest.requireActual('../OrganizationDirectoryProvider'),
-  useOrganizationDirectory: () =>
-    jest.requireActual('../../lib/__fixtures__/organizations')
+  useOrganizationDirectory: () => ({
+    ...jest.requireActual('../../lib/__fixtures__/organizations')
       .TEST_ORGANIZATION_DIRECTORY,
+    failureOf: () => mockDirectoryFailure,
+  }),
 }));
 
 let mockInstallationNames = ['golem'];
@@ -161,6 +164,7 @@ beforeEach(() => {
   mockModelConfigs = [];
   mockNamespaces = ['kagent'];
   mockNamespacesLoading = false;
+  mockDirectoryFailure = undefined;
   mockSave.mockReset();
   mockSave.mockResolvedValue({ isDefault: false });
   mockOrganizationSave.mockReset();
@@ -327,6 +331,28 @@ describe('NewModelPage', () => {
       'Checking which Organizations you may add a model for…',
     );
     expect(screen.queryByRole('button', { name: /Owner/ })).toBeNull();
+  });
+
+  it("says a new model goes to the platform when the environment's Organizations could not be read", async () => {
+    mockDirectoryFailure =
+      'backend_error: the API server did not answer in time';
+    await renderPage();
+
+    expect(screen.getByText('Organizations unknown')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Could not learn which Organizations you may add a model for on golem, so this model goes to the platform\. backend_error: the API server did not answer in time/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Connect model' }),
+    ).not.toHaveAccessibleDescription();
+  });
+
+  it('says nothing of Organizations once they are read', async () => {
+    await renderPage();
+
+    expect(screen.queryByText('Organizations unknown')).toBeNull();
   });
 
   it("creates an Organization's model through agent-manager, its key on the credential form", async () => {

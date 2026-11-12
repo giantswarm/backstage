@@ -188,16 +188,27 @@ describe('Connect a model, under the Models tab: the owner', () => {
       namespaceAccess: { [PAYMENTS.namespace]: { modelconfigs: false } },
     });
 
-    // Connect model is held until the owners are known, then offered.
+    // Connect model is held, saying why, until the owners are known.
+    const connect = await screen.findByRole('button', {
+      name: 'Connect model',
+    });
+    expect(connect).toBeDisabled();
+    expect(connect).toHaveAccessibleDescription(
+      'Checking which Organizations you may add a model for…',
+    );
+    // Both access reviews asked and answered, then it is offered.
+    await waitFor(() =>
+      expect(reviewedNamespaces(proxy)).toEqual(
+        ['kagent', PAYMENTS.namespace].sort(),
+      ),
+    );
+    await Promise.all(proxy.mock.results.map(result => result.value));
     await waitFor(() =>
       expect(
         screen.getByRole('button', { name: 'Connect model' }),
       ).toBeEnabled(),
     );
     expect(toolCalls(callTool, 'list_organizations')).toHaveLength(1);
-    expect(reviewedNamespaces(proxy)).toEqual(
-      ['kagent', PAYMENTS.namespace].sort(),
-    );
     expect(screen.queryByRole('button', { name: /Owner/ })).toBeNull();
   });
 });

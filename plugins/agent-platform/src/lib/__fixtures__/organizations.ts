@@ -35,5 +35,6 @@ export const TEST_ORGANIZATION_DIRECTORY: OrganizationDirectoryValue = {
   organizationsOf: () => undefined,
   failureOf: () => undefined,
   recheck: async () => {},
+  isLoadingOf: () => false,
   isLoading: false,
 };

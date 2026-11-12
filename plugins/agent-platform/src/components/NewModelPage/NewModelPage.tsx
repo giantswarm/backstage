@@ -63,7 +63,10 @@ import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { ModelConfigFormFields } from '../ModelConfigForm';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { DefaultModelChoice } from './DefaultModelChoice';
-import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
+import {
+  organizationsUndecided,
+  useOrganizationDirectory,
+} from '../OrganizationDirectoryProvider';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
@@ -155,7 +158,8 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
 
   const platformSave = useSaveModelConfig();
   const organizationSave = useSaveOrganizationModel(installation);
-  const { directory } = useOrganizationDirectory();
+  const organizationDirectory = useOrganizationDirectory();
+  const { directory } = organizationDirectory;
   // Edit of an organization's model: whether to ask for a new key.
   const [replaceKey, setReplaceKey] = useState(false);
 
@@ -166,7 +170,13 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   );
   const [chosenNamespace, setChosenNamespace] = useState<string>();
   // A new model's owners are still being learned.
-  const choosingOwner = !edit && Boolean(installation) && isLoadingNamespaces;
+  const choosingOwner = isLoadingNamespaces;
+  // Why the installation's Organizations stay unknown once read, if they
+  // do: a new model then goes to the platform, and the page says so.
+  const ownersUnknown =
+    !edit && installation && !choosingOwner
+      ? organizationsUndecided(organizationDirectory, installation)
+      : undefined;
   let namespace: string;
   if (edit) {
     namespace = edit.modelConfig.getNamespace() ?? MODEL_CONFIG_NAMESPACE;
@@ -416,29 +426,27 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     } else {
       label = isSaving ? 'Connecting…' : 'Connect model';
     }
-    // Until the owners are known, a model sent now would go to the platform
-    // although an Organization the person administers is still to be
-    // offered: nothing loaded yet, so the button waits and says why.
-    if (choosingOwner) {
-      return (
-        <DisabledAction reason={CHOOSING_OWNER_REASON}>
-          {describedBy => (
-            <Button variant="primary" isDisabled aria-describedby={describedBy}>
-              {label}
-            </Button>
-          )}
-        </DisabledAction>
-      );
-    }
-    return (
+    const primary = (describedBy?: string) => (
       <Button
         variant="primary"
         onPress={onSubmit}
-        isDisabled={isSaving || !isChanged}
+        isDisabled={choosingOwner || isSaving || !isChanged}
+        aria-describedby={describedBy}
       >
         {label}
       </Button>
     );
+    // Until the owners are known, a model sent now would go to the platform
+    // although an Organization the person administers is still to be
+    // offered: the button waits and says why.
+    if (choosingOwner) {
+      return (
+        <DisabledAction reason={CHOOSING_OWNER_REASON}>
+          {primary}
+        </DisabledAction>
+      );
+    }
+    return primary();
   }, [edit, onSubmit, isSaving, isChanged, continuesToKey, choosingOwner]);
   useProvidePageHeaderActions(actions);
 
@@ -507,6 +515,14 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
             </Flex>
           </CardBody>
         </Card>
+      )}
+
+      {ownersUnknown && (
+        <Alert
+          status="warning"
+          title="Organizations unknown"
+          description={`Could not learn which Organizations you may add a model for on ${installation}, so this model goes to the platform. ${ownersUnknown}`}
+        />
       )}
 
       {!edit && installation && namespaces.length > 1 && (
