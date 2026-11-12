@@ -30,6 +30,7 @@ import {
 import { slugify } from '../../lib/slugify';
 import {
   defaultTenant,
+  ownerOf,
   tenantGroups,
   tenantKindOf,
   type TenantKind,
@@ -52,6 +53,8 @@ import {
   toolsetProblems,
 } from '../../lib/toolset';
 import {
+  createAgentsRefusedIn,
+  createAgentsRefusedOn,
   ORGANIZATIONS_CAPABILITY,
   type OrganizationDirectory,
 } from '../../lib/organizations';
@@ -80,6 +83,13 @@ export type NewAgentFormState = {
    * namespace). `undefined` until it has answered.
    */
   tenantChoices?: string[];
+  /**
+   * Creating only: the organization namespaces the person belongs to but may
+   * not create agents in (`list_organizations`' `createAgents` false), which
+   * the Organization field shows disabled with the reason. Never part of
+   * {@link tenantChoices}. Set with them; not kept in the draft.
+   */
+  tenantChoicesBlocked?: string[];
   /**
    * Creating only: why there are no {@link tenantChoices} to pick from:
    * agent-manager's `get_info` could not be read on the installation
@@ -238,9 +248,12 @@ export type NewAgentFormContextValue = TagsFieldUpdaters & {
    * Sets {@link NewAgentFormState.tenantChoices}. The tenant held stays when
    * it is still a choice; else the person's own last pick, when it is one
    * (it survives an environment change); else the platform, or the first
-   * choice offered where the platform is none.
+   * choice offered where the platform is none. `blocked` sets
+   * {@link NewAgentFormState.tenantChoicesBlocked}; a held tenant that is
+   * blocked stays held, so the form refuses it with the reason instead of
+   * moving the agent to another organization unseen.
    */
-  setTenantChoices: (choices: string[]) => void;
+  setTenantChoices: (choices: string[], blocked?: string[]) => void;
   /** Sets {@link NewAgentFormState.tenantChoicesUnread}. */
   setTenantChoicesUnread: (unread: TenantChoicesUnread | undefined) => void;
   /** Picks the tenant; a model of another namespace is dropped. */
@@ -630,6 +643,7 @@ export function NewAgentFormProvider({
     // egress is read again, like the tenant choices.
     const {
       tenantChoices: _choices,
+      tenantChoicesBlocked: _blocked,
       tenantChoicesUnread: _unread,
       droppedEgress: _dropped,
       egressSetByPlatform: _setByPlatform,
@@ -638,7 +652,12 @@ export function NewAgentFormProvider({
     return { state: kept, slugEdited };
   }, [state, slugEdited]);
   const onRestore = useCallback((draft: NewAgentDraft) => {
-    setState({ ...initialState, ...draft.state, tenantChoices: undefined });
+    setState({
+      ...initialState,
+      ...draft.state,
+      tenantChoices: undefined,
+      tenantChoicesBlocked: undefined,
+    });
     setSlugEdited(draft.slugEdited);
   }, []);
   const draft = useSessionDraft<NewAgentDraft>({
@@ -704,10 +723,26 @@ export function NewAgentFormProvider({
     if (
       !edit &&
       state.installation &&
+      state.tenant &&
+      state.tenantChoicesBlocked?.includes(state.tenant)
+    ) {
+      // Held, as a draft brought it back, but the person may not create
+      // agents there: never submitted.
+      fieldErrors.tenant = createAgentsRefusedIn(
+        ownerOf(state.tenant, directory),
+      );
+    } else if (
+      !edit &&
+      state.installation &&
       !state.tenant &&
       state.tenantChoicesUnread !== 'unlisted'
     ) {
-      if (state.tenantChoices?.length === 0) {
+      if (
+        state.tenantChoices?.length === 0 &&
+        state.tenantChoicesBlocked?.length
+      ) {
+        fieldErrors.tenant = createAgentsRefusedOn(state.installation);
+      } else if (state.tenantChoices?.length === 0) {
         fieldErrors.tenant = byOrganization
           ? `You belong to no organization on ${state.installation}. Choose another environment, or ask to be added to an organization.`
           : `You may not create agents on ${state.installation}. Choose another environment, or ask your platform team for the agent-platform:editor role.`;
@@ -783,6 +818,7 @@ export function NewAgentFormProvider({
           ...prev,
           installation,
           tenantChoices: undefined,
+          tenantChoicesBlocked: undefined,
           tenantChoicesUnread: undefined,
           tenant: undefined,
           defaultWorkspace: '',
@@ -793,18 +829,27 @@ export function NewAgentFormProvider({
           harness: undefined,
           droppedHarness: prev.harness?.name ?? prev.droppedHarness,
         })),
-      setTenantChoices: choices =>
+      setTenantChoices: (choices, blocked = []) =>
         setState(prev => {
+          const sameBlocked =
+            (prev.tenantChoicesBlocked ?? []).join(',') === blocked.join(',');
           if (
             prev.tenantChoices?.join(',') === choices.join(',') &&
+            sameBlocked &&
             (prev.tenant === undefined
               ? choices.length === 0
-              : choices.includes(prev.tenant))
+              : choices.includes(prev.tenant) || blocked.includes(prev.tenant))
           ) {
             return prev;
           }
           let tenant = prev.tenant;
-          if (!tenant || !choices.includes(tenant)) {
+          // A held tenant the person may not create agents in stays held:
+          // the form refuses it with the reason, rather than moving the
+          // agent to another organization without a word.
+          if (
+            !tenant ||
+            !(choices.includes(tenant) || blocked.includes(tenant))
+          ) {
             const own = prev.ownTenant;
             tenant =
               own && choices.includes(own)
@@ -812,7 +857,12 @@ export function NewAgentFormProvider({
                 : defaultTenant(choices, directory);
           }
           return withTenant(
-            { ...prev, tenantChoices: choices, tenantChoicesUnread: undefined },
+            {
+              ...prev,
+              tenantChoices: choices,
+              tenantChoicesBlocked: blocked.length > 0 ? blocked : undefined,
+              tenantChoicesUnread: undefined,
+            },
             tenant,
           );
         }),

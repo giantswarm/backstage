@@ -76,26 +76,45 @@ function model(
   };
 }
 
-/** The Organization field and the model picker, as step 1 places them. */
-function Step() {
-  const { state, setInstallation } = useNewAgentForm();
+/**
+ * The Organization field and the model picker, as step 1 places them, and
+ * what the form holds. `preselect` is picked before agent-manager answers,
+ * as a page or a restored draft brings one.
+ */
+function Step({ preselect }: { preselect?: string }) {
+  const { state, setInstallation, selectTenant, fieldErrors } =
+    useNewAgentForm();
   useTenantChoicesSync();
   // Every problem shows at once, as after a blocked Continue.
   const owner = useOwnerField({ errorFor: (_field, problem) => problem });
   useEffect(() => {
     if (!state.installation) {
       setInstallation('gazelle');
+    } else if (preselect && state.tenant === undefined) {
+      selectTenant(preselect);
     }
-  }, [state.installation, setInstallation]);
+  }, [
+    state.installation,
+    state.tenant,
+    setInstallation,
+    selectTenant,
+    preselect,
+  ]);
   return state.installation ? (
     <>
       {owner.field}
       <ModelConfigPicker />
+      <output aria-label="form">
+        {`tenant=${state.tenant ?? ''} error=${fieldErrors.tenant ?? ''}`}
+      </output>
     </>
   ) : null;
 }
 
-async function renderStep(scenario: OrganizationsScenario) {
+async function renderStep(
+  scenario: OrganizationsScenario,
+  { preselect }: { preselect?: string } = {},
+) {
   mockListed = Object.values(scenario.models ?? {}).flat();
   const { api, callTool } = fakeOrganizationsMuster(scenario);
   const queryClient = new QueryClient({
@@ -106,7 +125,7 @@ async function renderStep(scenario: OrganizationsScenario) {
       <QueryClientProvider client={queryClient}>
         <OrganizationDirectoryProvider>
           <NewAgentFormProvider>
-            <Step />
+            <Step preselect={preselect} />
           </NewAgentFormProvider>
         </OrganizationDirectoryProvider>
       </QueryClientProvider>
@@ -225,5 +244,119 @@ describe('New agent: the organization picker', () => {
       await screen.findByText(/the only organization you belong to on gazelle/),
     ).toHaveTextContent(/^Organization: payments,/);
     expect(toolCalls(callTool, 'list_organizations')).toHaveLength(2);
+  });
+});
+
+describe('New agent: organizations the person may not create agents in', () => {
+  const models = {
+    [PAYMENTS.namespace]: [model('sonnet', PAYMENTS.namespace, true)],
+    [RISK.namespace]: [model('opus', RISK.namespace, true)],
+  };
+  const form = () => screen.getByRole('status', { name: 'form' });
+
+  it('shows one without createAgents disabled, with the reason, and keeps the other picked', async () => {
+    const user = userEvent.setup();
+    await renderStep({
+      mine: { organizations: [PAYMENTS, RISK] },
+      createAgents: { [PAYMENTS.namespace]: true, [RISK.namespace]: false },
+      models,
+    });
+
+    await waitFor(() =>
+      expect(form()).toHaveTextContent(`tenant=${PAYMENTS.namespace} error=`),
+    );
+    await user.click(screen.getByRole('button', { name: /Organization$/ }));
+    const payments = screen.getByRole('option', { name: 'payments' });
+    const risk = screen.getByRole('option', { name: 'risk' });
+    expect(payments).not.toHaveAttribute('aria-disabled');
+    expect(risk).toHaveAttribute('aria-disabled', 'true');
+    expect(risk).toHaveAccessibleDescription(
+      'You need the editor role here to create agents.',
+    );
+
+    // A press on it picks nothing.
+    await user.click(risk);
+    await user.keyboard('{Escape}');
+    expect(form()).toHaveTextContent(`tenant=${PAYMENTS.namespace} error=`);
+  });
+
+  it('keeps an organization selectable when agent-manager does not say (no createAgents)', async () => {
+    const user = userEvent.setup();
+    await renderStep({
+      mine: { organizations: [PAYMENTS, RISK] },
+      // Only payments is answered; risk comes without the field, as from an
+      // agent-manager older than it.
+      createAgents: { [PAYMENTS.namespace]: true },
+      models,
+    });
+
+    await user.click(
+      await screen.findByRole('button', { name: /Organization$/ }),
+    );
+    const risk = screen.getByRole('option', { name: 'risk' });
+    expect(risk).not.toHaveAttribute('aria-disabled');
+    await user.click(risk);
+    await waitFor(() =>
+      expect(form()).toHaveTextContent(`tenant=${RISK.namespace} error=`),
+    );
+  });
+
+  it('keeps the only organization a line when createAgents is true', async () => {
+    await renderStep({
+      mine: { organizations: [PAYMENTS] },
+      createAgents: { [PAYMENTS.namespace]: true },
+      models,
+    });
+
+    expect(
+      await screen.findByText(/the only organization you belong to on gazelle/),
+    ).toHaveTextContent(/^Organization: payments,/);
+    expect(form()).toHaveTextContent(`tenant=${PAYMENTS.namespace} error=`);
+  });
+
+  it('says so, with no picker, when the person may create agents in none of their organizations', async () => {
+    await renderStep({
+      mine: { organizations: [PAYMENTS, RISK] },
+      createAgents: { [PAYMENTS.namespace]: false, [RISK.namespace]: false },
+      models,
+    });
+
+    expect(
+      await screen.findByText(
+        'You may not create agents in your organizations on gazelle',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'You belong to payments and risk, where you may use agents but not create them. Creating agents needs the editor role in an organization, which its admins can give you.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Organization$/ })).toBeNull();
+    expect(form()).toHaveTextContent(
+      'tenant= error=You may not create agents in your organizations on gazelle: that needs the editor role in an organization.',
+    );
+  });
+
+  it('does not take a preselected organization the person may not create agents in, and says why', async () => {
+    await renderStep(
+      {
+        mine: { organizations: [PAYMENTS, RISK] },
+        createAgents: { [PAYMENTS.namespace]: true, [RISK.namespace]: false },
+        models,
+      },
+      { preselect: RISK.namespace },
+    );
+
+    const problem =
+      'You may not create agents in risk: that needs the editor role in it. Choose another organization, or ask an admin of risk for the editor role.';
+    await waitFor(() =>
+      expect(form()).toHaveTextContent(
+        `tenant=${RISK.namespace} error=${problem}`,
+      ),
+    );
+    // Shown at the field, tied to it, without a Continue first.
+    expect(
+      screen.getByRole('button', { name: /Organization$/ }),
+    ).toHaveAccessibleDescription(expect.stringContaining(problem));
   });
 });

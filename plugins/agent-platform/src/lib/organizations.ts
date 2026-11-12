@@ -173,7 +173,50 @@ export type OrganizationPermissions = {
   manage: boolean;
   /** `list` on Agents in the organization namespace: a member of any role. */
   member: boolean;
+  /**
+   * `create` on Agents in the organization namespace: an editor or an admin,
+   * not a user. Absent from an agent-manager older than the field, where it
+   * is not known: never read a missing one as `false`
+   * ({@link mayCreateAgentsIn}).
+   */
+  createAgents?: boolean;
 };
+
+/**
+ * Whether the New agent form lets the person pick an organization they
+ * belong to: unless agent-manager says they may not create agents in it. An
+ * agent-manager that does not say keeps it selectable, and the create call
+ * gets its own answer.
+ */
+export function mayCreateAgentsIn(
+  organization: Pick<ListedOrganization, 'permissions'>,
+): boolean {
+  return organization.permissions.createAgents !== false;
+}
+
+/**
+ * Why the New agent form does not let the person pick an organization they
+ * belong to, beside it: `agent-platform:user` uses agents, an editor (or an
+ * admin) creates them.
+ */
+export const CREATE_AGENTS_ROLE_REASON =
+  'You need the editor role here to create agents.';
+
+/**
+ * The New agent form's problem when the organization it holds is one the
+ * person may not create agents in (as a draft brought it back).
+ */
+export function createAgentsRefusedIn(organization: string): string {
+  return `You may not create agents in ${organization}: that needs the editor role in it. Choose another organization, or ask an admin of ${organization} for the editor role.`;
+}
+
+/**
+ * The New agent form's problem when the person belongs to organizations on
+ * an environment but may create agents in none of them.
+ */
+export function createAgentsRefusedOn(installation: string): string {
+  return `You may not create agents in your organizations on ${installation}: that needs the editor role in an organization. Choose another environment, or ask an admin of your organization for the editor role.`;
+}
 
 /**
  * One organization of `list_organizations`. A member who does not manage it
