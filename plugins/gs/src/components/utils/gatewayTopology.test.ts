@@ -26,6 +26,7 @@ function inputs(
     routeStatusParentInfo: [],
     routeAccepted: [],
     routeResolvedRefs: [],
+    routeRuleBackendInfo: [],
     ...overrides,
   };
 }
@@ -379,5 +380,142 @@ describe('buildGatewayTopology', () => {
     // The only Accepted series was NaN, so nothing usable was exported, and
     // without a status entry the condition counts as not reported.
     expect(routes[0].parents[0].accepted).toEqual({ status: 'not-reported' });
+  });
+
+  describe('backends', () => {
+    const parentInfo = [sample({ ...route, ...publicParent })];
+
+    // As exported on a test cluster: a 90/10 split, the second backend in
+    // another namespace, and a redirect rule without backends.
+    const splitRule = sample({
+      ...route,
+      match_path_type: 'PathPrefix',
+      match_path: '/',
+      backend0_kind: 'Service',
+      backend0_name: 'app-v1',
+      backend0_port: '80',
+      backend0_weight: '90',
+      backend1_kind: 'Service',
+      backend1_name: 'app-v2',
+      backend1_namespace: 'other',
+      backend1_port: '80',
+      backend1_weight: '10',
+    });
+    const redirectRule = sample({
+      ...route,
+      match_path_type: 'PathPrefix',
+      match_path: '/old',
+    });
+
+    it('lists the backends of all rules with the weights of a split', () => {
+      const { routes } = buildGatewayTopology(
+        inputs({
+          routeParentInfo: parentInfo,
+          routeRuleBackendInfo: [splitRule, redirectRule],
+        }),
+      );
+      expect(routes[0].backends).toEqual({
+        status: 'available',
+        backends: [
+          {
+            kind: 'Service',
+            namespace: 'other',
+            name: 'app-v2',
+            port: '80',
+            weight: '10',
+          },
+          {
+            kind: 'Service',
+            namespace: 'team-a',
+            name: 'app-v1',
+            port: '80',
+            weight: '90',
+          },
+        ],
+        mayHaveMore: false,
+      });
+    });
+
+    it('drops the weight of a single backend and lists a backend shared by rules once', () => {
+      const single = (path: string) =>
+        sample({
+          ...route,
+          match_path: path,
+          backend0_name: 'app',
+          backend0_port: '8080',
+          backend0_weight: '1',
+        });
+      const { routes } = buildGatewayTopology(
+        inputs({
+          routeParentInfo: parentInfo,
+          routeRuleBackendInfo: [single('/a'), single('/b')],
+        }),
+      );
+      expect(routes[0].backends).toEqual({
+        status: 'available',
+        backends: [
+          {
+            kind: 'Service',
+            namespace: 'team-a',
+            name: 'app',
+            port: '8080',
+            weight: undefined,
+          },
+        ],
+        mayHaveMore: false,
+      });
+    });
+
+    it('says a rule with three backends may have more', () => {
+      const { routes } = buildGatewayTopology(
+        inputs({
+          routeParentInfo: parentInfo,
+          routeRuleBackendInfo: [
+            sample({
+              ...route,
+              backend0_name: 'b0',
+              backend1_name: 'b1',
+              backend2_name: 'b2',
+            }),
+          ],
+        }),
+      );
+      expect(routes[0].backends).toMatchObject({
+        status: 'available',
+        mayHaveMore: true,
+      });
+    });
+
+    it('reports a route with only a redirect rule as having no backends', () => {
+      const { routes } = buildGatewayTopology(
+        inputs({
+          routeParentInfo: parentInfo,
+          routeRuleBackendInfo: [redirectRule],
+        }),
+      );
+      expect(routes[0].backends).toEqual({
+        status: 'available',
+        backends: [],
+        mayHaveMore: false,
+      });
+    });
+
+    it('tells a cluster without the metric apart from a failed load and a missing route', () => {
+      const otherRoute = sample({ namespace: 'team-b', name: 'other' });
+      const of = (routeRuleBackendInfo: MimirMetricSample[] | undefined) =>
+        buildGatewayTopology(
+          inputs({ routeParentInfo: parentInfo, routeRuleBackendInfo }),
+        ).routes[0].backends;
+
+      expect(of([])).toEqual({
+        status: 'not-available',
+        cause: 'not-exported',
+      });
+      expect(of(undefined)).toEqual({
+        status: 'not-available',
+        cause: 'load-failed',
+      });
+      expect(of([otherRoute])).toEqual({ status: 'not-reported' });
+    });
   });
 });

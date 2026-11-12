@@ -66,12 +66,37 @@ export interface HttpRouteParent {
   resolvedRefs: ConditionState;
 }
 
+export interface HttpRouteBackend {
+  /** `Service` unless the backendRef names another kind. */
+  kind: string;
+  /** The backendRef namespace, or the route's when the backendRef has none. */
+  namespace: string;
+  name: string;
+  port?: string;
+  /** Only set when the rule splits traffic between several backends. */
+  weight?: string;
+}
+
+/**
+ * The backends of a route, as far as the metrics can tell. The metric exports
+ * the first three backendRefs of each rule, so a rule with three may have more.
+ * `not-available` with `not-exported` means the cluster does not export the
+ * metric at all: its Gateway API bundle predates the gateway-api-state-metrics
+ * app.
+ */
+export type HttpRouteBackends =
+  | { status: 'available'; backends: HttpRouteBackend[]; mayHaveMore: boolean }
+  | { status: 'not-reported' }
+  | { status: 'not-available'; cause: 'load-failed' | 'not-exported' };
+
 export interface HttpRoute {
   id: string;
   namespace: string;
   name: string;
   /** Undefined when the hostnames could not be loaded. */
   hostnames: string[] | undefined;
+  /** Undefined only in test fixtures that leave the backends out. */
+  backends?: HttpRouteBackends;
   parents: HttpRouteParent[];
 }
 
@@ -94,6 +119,12 @@ export interface GatewayTopologyInputs {
   routeStatusParentInfo: MimirMetricSample[] | undefined;
   routeAccepted: MimirMetricSample[] | undefined;
   routeResolvedRefs: MimirMetricSample[] | undefined;
+  /**
+   * One series per HTTPRoute rule with its first three backendRefs. Empty when
+   * the cluster does not export the metric: every HTTPRoute has at least one
+   * rule, so a cluster with routes always has series once it exports it.
+   */
+  routeRuleBackendInfo: MimirMetricSample[] | undefined;
 }
 
 export interface GatewayTopology {
@@ -326,7 +357,92 @@ function buildGateways(inputs: GatewayTopologyInputs): Gateway[] {
   return Array.from(gateways.values()).sort((a, b) => a.id.localeCompare(b.id));
 }
 
+/** The metric exports `backend0_*` to `backend2_*` per rule. */
+const exportedBackendsPerRule = 3;
+
+/**
+ * Collects the distinct backends of each route from its rule series. A weight
+ * is kept only for a rule that splits traffic, where it carries meaning.
+ */
+function indexRouteBackends(
+  samples: MimirMetricSample[],
+): Map<
+  string,
+  { backends: Map<string, HttpRouteBackend>; mayHaveMore: boolean }
+> {
+  const byRoute = new Map<
+    string,
+    { backends: Map<string, HttpRouteBackend>; mayHaveMore: boolean }
+  >();
+  for (const sample of samples) {
+    const { namespace, name } = sample.metric;
+    if (!namespace || !name) continue;
+    const key = objectKey(namespace, name);
+    let entry = byRoute.get(key);
+    if (!entry) {
+      entry = { backends: new Map(), mayHaveMore: false };
+      byRoute.set(key, entry);
+    }
+    const ruleBackends: HttpRouteBackend[] = [];
+    for (let i = 0; i < exportedBackendsPerRule; i++) {
+      const backendName = sample.metric[`backend${i}_name`];
+      if (!backendName) continue;
+      ruleBackends.push({
+        kind: sample.metric[`backend${i}_kind`] || 'Service',
+        namespace: sample.metric[`backend${i}_namespace`] || namespace,
+        name: backendName,
+        port: sample.metric[`backend${i}_port`] || undefined,
+        weight: sample.metric[`backend${i}_weight`] || undefined,
+      });
+    }
+    if (ruleBackends.length === exportedBackendsPerRule) {
+      entry.mayHaveMore = true;
+    }
+    for (const backend of ruleBackends) {
+      const backendKey = [
+        backend.kind,
+        backend.namespace,
+        backend.name,
+        backend.port ?? '',
+      ].join('/');
+      if (entry.backends.has(backendKey)) continue;
+      entry.backends.set(backendKey, {
+        ...backend,
+        weight: ruleBackends.length > 1 ? backend.weight : undefined,
+      });
+    }
+  }
+  return byRoute;
+}
+
+function routeBackends(
+  inputs: GatewayTopologyInputs,
+  byRoute: ReturnType<typeof indexRouteBackends> | undefined,
+  key: string,
+): HttpRouteBackends {
+  if (!inputs.routeRuleBackendInfo || !byRoute) {
+    return { status: 'not-available', cause: 'load-failed' };
+  }
+  if (inputs.routeRuleBackendInfo.length === 0) {
+    return { status: 'not-available', cause: 'not-exported' };
+  }
+  const entry = byRoute.get(key);
+  if (!entry) return { status: 'not-reported' };
+  return {
+    status: 'available',
+    backends: Array.from(entry.backends.values()).sort((a, b) =>
+      `${a.namespace}/${a.name}/${a.port ?? ''}`.localeCompare(
+        `${b.namespace}/${b.name}/${b.port ?? ''}`,
+      ),
+    ),
+    mayHaveMore: entry.mayHaveMore,
+  };
+}
+
 function buildRoutes(inputs: GatewayTopologyInputs): HttpRoute[] {
+  const backendsByRoute = inputs.routeRuleBackendInfo
+    ? indexRouteBackends(inputs.routeRuleBackendInfo)
+    : undefined;
   const accepted = inputs.routeAccepted
     ? indexRouteConditions(inputs.routeAccepted)
     : undefined;
@@ -390,6 +506,7 @@ function buildRoutes(inputs: GatewayTopologyInputs): HttpRoute[] {
       hostnames: inputs.routeHostnameInfo
         ? Array.from(hostnames).sort()
         : undefined,
+      backends: routeBackends(inputs, backendsByRoute, route.id),
       parents: route.parents.sort((a, b) =>
         `${a.kind}/${a.namespace}/${a.name}/${a.sectionName}/${a.port ?? ''}`.localeCompare(
           `${b.kind}/${b.namespace}/${b.name}/${b.sectionName}/${b.port ?? ''}`,
