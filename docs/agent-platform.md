@@ -790,6 +790,20 @@ agent-manager's configuration. A person agent-manager refuses sees "Not
 permitted" with who can make the change, and a session without agent-manager
 gets the sign-in.
 
+**A refused portal session** (`PortalSessionEndedError`, `lib/portalSession.ts`).
+The portal's backend refuses a session token it cannot verify, for example
+after a restart of a portal without a database, whose signing keys live in
+memory: a 401 whose body names Backstage's `AuthenticationError`, before any
+plugin route runs. `AgentManagerClient` (through muster-backend, where muster's
+`MusterUnauthorizedError` keeps the body's `errorName`) and the credential
+form's client turn it into an error that says, in plain words, that the
+session ended and to reload the page to sign in again; nothing was sent. The
+credential form, New and Edit model and the model page show it with a Sign in
+again button (`PortalSessionEndedAlert`). The credential form drops a typed
+value, and its request stays open: a reload of the same address opens it again.
+The status and the error's name decide, never the text; the credential route's
+own `AuthenticationError` (no installation token) is cured by the same sign-in.
+
 For a Helm-rendered model, Technical details name the release from the
 CR's `helm.toolkit.fluxcd.io/*` labels and `meta.helm.sh/*` annotations. Where
 a Flux HelmRelease rendered it, the page reads that HelmRelease with the

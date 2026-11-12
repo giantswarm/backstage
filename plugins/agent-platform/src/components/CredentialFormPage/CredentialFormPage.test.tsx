@@ -3,7 +3,7 @@ import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
 import { ResponseError } from '@backstage/errors';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 // eslint-disable-next-line @backstage/no-mixed-plugin-imports -- The GitHub connection prompt reads the connector through the Muster API.
 import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -26,6 +26,10 @@ import type {
 } from '../../lib/credentialOperations';
 import { organizationsRouteRef } from '../../routes';
 import { CredentialFormPage } from './CredentialFormPage';
+import {
+  PortalSessionEndedError,
+  portalSessionError,
+} from '../../lib/portalSession';
 
 const OPERATION = 'a1'.repeat(24);
 const VALUE = 'sk-ant-api03-never-shown';
@@ -516,6 +520,66 @@ describe('CredentialFormPage', () => {
     ).toBeInTheDocument();
     await waitFor(() => expect(api.getOperation).toHaveBeenCalledTimes(2));
     expect(await screen.findByLabelText(/^Value/)).toHaveValue('');
+  });
+
+  describe('when the portal refuses the session token', () => {
+    // A restart of a portal without a database loses the keys it signed the
+    // session token with; nothing reaches agent-manager.
+    it('says the session ended and to sign in again, and drops the value', async () => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi();
+      api.saveOperation.mockRejectedValueOnce(
+        portalSessionError(
+          await refusal(401, 'x', 'Failed user token verification').then(
+            error =>
+              Object.assign(error, {
+                body: {
+                  ...error.body,
+                  error: { ...error.body.error, name: 'AuthenticationError' },
+                },
+              }),
+          ),
+        ),
+      );
+      await renderForm(api);
+
+      const value = await screen.findByLabelText(/^Value/);
+      await user.type(value, VALUE);
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(
+        await screen.findByText('Your portal session ended'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Sign in again' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/token verification/)).toBeNull();
+      expect(screen.queryByText('Not saved')).toBeNull();
+      expect(screen.getByLabelText(/^Value/)).toHaveValue('');
+      expect(document.body.innerHTML).not.toContain(VALUE);
+    });
+
+    it('opens the same request again after the sign-in, from its address', async () => {
+      const refused = fakeCredentialsApi(async () => {
+        throw new PortalSessionEndedError();
+      });
+      const first = await renderForm(refused);
+      expect(
+        await screen.findByText('Your portal session ended'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/this page opens it again after the sign-in/),
+      ).toBeInTheDocument();
+      first.clear();
+      cleanup();
+
+      // The reload: the same address, a session the portal accepts.
+      const api = fakeCredentialsApi();
+      await renderForm(api);
+
+      expect(await screen.findByLabelText(/^Value/)).toBeInTheDocument();
+      expect(api.getOperation).toHaveBeenCalledWith('gazelle', OPERATION);
+    });
   });
 
   it('keeps the value on a refusal that a retry may fix', async () => {
