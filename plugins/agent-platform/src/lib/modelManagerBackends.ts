@@ -258,6 +258,7 @@ export const MODEL_MANAGER_ERROR_NAMES: Readonly<
   Record<ModelManagerRefusalCode | 'backend_error', string>
 > = {
   not_found: 'NotFoundError',
+  forbidden: 'ForbiddenError',
   unsupported: 'ForbiddenError',
   conflict: 'ConflictError',
   does_not_fit: 'PreconditionFailedError',

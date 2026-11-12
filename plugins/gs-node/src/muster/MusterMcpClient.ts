@@ -16,6 +16,7 @@ import {
 import {
   type McpToolRefusal,
   mcpToolRefusalOf,
+  MODEL_MANAGER_SERVER,
   musterServerOfTool,
   MUSTER_INPUT_REQUIRED_STATUS,
   type MusterInputAnswer,
@@ -395,7 +396,9 @@ function authRequiredOf(
  * - `client_not_connected` -- muster held no connection to the MCP server;
  * - `tool_not_found` -- this muster has no such tool;
  * - `sign_in_declined` -- the person declined or dismissed the sign-in muster
- *   asked them for (a URL elicitation), so the tool did not run.
+ *   asked them for (a URL elicitation), so the tool did not run;
+ * - `no_backend` -- model-manager has no host backend registered to serve
+ *   from ({@link SERVER_FAILURES}).
  */
 export type MusterToolErrorKind =
   | McpToolRefusal
@@ -404,11 +407,21 @@ export type MusterToolErrorKind =
   | 'timeout'
   | 'client_not_connected'
   | 'tool_not_found'
-  | 'sign_in_declined';
+  | 'sign_in_declined'
+  | 'no_backend';
+
+/**
+ * The status of a tool error whose kind is unknown. Muster or an MCP server
+ * behind it answered the call with an error the portal has no word for: a
+ * failure upstream of the backend, so 502, not an internal error of its own.
+ * It is at or above the 500 at which `MiddlewareFactory.error()` logs an
+ * error, so it still reaches Sentry and a new shape of failure is seen.
+ */
+export const MUSTER_UNKNOWN_TOOL_ERROR_STATUS = 502;
 
 /**
  * The status each kind of tool error is answered with; any other tool error
- * has none, which the error middleware answers 500. Refusals are answers to
+ * is answered {@link MUSTER_UNKNOWN_TOOL_ERROR_STATUS}. Refusals are answers to
  * the person's request, below the 500 at which `MiddlewareFactory.error()`
  * logs an error and the root logger ships it to Sentry. The rest are faults
  * on the platform's side and stay reported, but for `interrupted`: the client
@@ -444,12 +457,13 @@ export const MUSTER_TOOL_ERROR_STATUS: Record<MusterToolErrorKind, number> = {
   client_not_connected: 503,
   tool_not_found: 502,
   sign_in_declined: 412,
+  no_backend: 503,
 };
 
 /**
  * muster's connector writes and their dry run, whose refusals are
  * `connector_refused` ({@link CONNECTOR_REFUSALS}). Reads (`get`, `list`,
- * `detect`) and `delete` keep the 500 of an unknown tool error.
+ * `detect`) and `delete` keep the 502 of an unknown tool error.
  */
 const CONNECTOR_WRITE_TOOLS = new Set([
   'core_mcpserver_create',
@@ -461,7 +475,7 @@ const CONNECTOR_WRITE_TOOLS = new Set([
  * The texts muster answers a refusal of a connector write with: a tool error
  * carries no structured reason, and muster reports its own failures as tool
  * errors too (a Kubernetes API error, a webhook that could not be called, a
- * Secret it could not write), which must stay 500 and reach Sentry. So only
+ * Secret it could not write), which must stay 5xx and reach Sentry. So only
  * these count, from muster's `internal/mcpserver` and `internal/callerwrite`:
  *
  * - the API server or the caller's RBAC refused the write (`Permission
@@ -493,17 +507,28 @@ const CONNECTOR_FAILURES = [/Removing the server failed too/];
 
 /**
  * muster's own texts for its failures of a call, as its aggregator words them
- * (wrapped in `Tool execution failed: …`, or on their own).
+ * (wrapped in `Tool execution failed: …`, or on their own), in either case:
+ * muster answers `Tool not found: x` for a meta-tool's target and
+ * `tool not found: x` for an aggregated tool.
  */
 const MUSTER_FAILURES: Array<[RegExp, MusterToolErrorKind]> = [
-  [/^interrupted: /, 'interrupted'],
-  [/no answer within the server's timeout/, 'timeout'],
-  [/\bclient not connected\b/, 'client_not_connected'],
-  [/\btool not found\b/, 'tool_not_found'],
+  [/^interrupted: /i, 'interrupted'],
+  [/no answer within the server's timeout/i, 'timeout'],
+  [/\bclient not connected\b/i, 'client_not_connected'],
+  [/\btool not found\b/i, 'tool_not_found'],
   [
-    /\bthe person answered (decline|cancel) to signing in\b/,
+    /\bthe person answered (decline|cancel) to signing in\b/i,
     'sign_in_declined',
   ],
+];
+
+/**
+ * The failures, not refusals, an MCP server words with its own status word,
+ * by server: they are a state of the whole server, not an answer to the
+ * person's request.
+ */
+const SERVER_FAILURES: Array<[string, RegExp, MusterToolErrorKind]> = [
+  [MODEL_MANAGER_SERVER, /^no_backend:/, 'no_backend'],
 ];
 
 /**
@@ -519,9 +544,17 @@ export function musterToolErrorKindOf(
   if (options.interrupted) {
     return 'interrupted';
   }
-  const serverRefusal = mcpToolRefusalOf(musterServerOfTool(tool), message);
+  const server = musterServerOfTool(tool);
+  const serverRefusal = mcpToolRefusalOf(server, message);
   if (serverRefusal) {
     return serverRefusal;
+  }
+  const serverFailure = SERVER_FAILURES.find(
+    ([failureServer, pattern]) =>
+      failureServer === server && pattern.test(message),
+  );
+  if (serverFailure) {
+    return serverFailure[2];
   }
   if (
     CONNECTOR_WRITE_TOOLS.has(tool) &&
@@ -555,10 +588,12 @@ export interface MusterToolCall {
  * with the message.
  *
  * So do the `tool`, the MCP `server` it belongs to, the `installation`, and
- * the `kind` of failure with its `status` where it is a known one; the log
- * line and its Sentry event carry them as extra data, which groups the event
- * by kind and tool (`normalizeSentryEvent` in backend-common). Never the
- * call's arguments, which may carry secrets.
+ * the `kind` of failure where it is a known one; the log line and its Sentry
+ * event carry them as extra data, which groups the event by kind and tool
+ * (`normalizeSentryEvent` in backend-common). Never the call's arguments,
+ * which may carry secrets. `status` is the kind's
+ * ({@link MUSTER_TOOL_ERROR_STATUS}), or
+ * {@link MUSTER_UNKNOWN_TOOL_ERROR_STATUS} without one.
  */
 export class MusterToolError extends Error {
   readonly name: string = 'MusterToolError';
@@ -567,23 +602,25 @@ export class MusterToolError extends Error {
   declare readonly server?: string;
   declare readonly installation?: string;
   declare readonly kind?: MusterToolErrorKind;
-  declare readonly status?: number;
+  declare readonly status: number;
 
   constructor(message: string, details: string[] = [], call?: MusterToolCall) {
     super(message);
     this.details = details;
-    if (call) {
-      const server = musterServerOfTool(call.tool);
-      const kind = musterToolErrorKindOf(message, call.tool, {
-        interrupted: call.interrupted,
-      });
-      Object.assign(this, {
-        tool: call.tool,
-        ...(server ? { server } : {}),
-        installation: call.installation,
-        ...(kind ? { kind, status: MUSTER_TOOL_ERROR_STATUS[kind] } : {}),
-      });
-    }
+    const kind = call
+      ? musterToolErrorKindOf(message, call.tool, {
+          interrupted: call.interrupted,
+        })
+      : undefined;
+    const server = call ? musterServerOfTool(call.tool) : undefined;
+    Object.assign(this, {
+      ...(call ? { tool: call.tool, installation: call.installation } : {}),
+      ...(server ? { server } : {}),
+      ...(kind ? { kind } : {}),
+      status: kind
+        ? MUSTER_TOOL_ERROR_STATUS[kind]
+        : MUSTER_UNKNOWN_TOOL_ERROR_STATUS,
+    });
   }
 }
 

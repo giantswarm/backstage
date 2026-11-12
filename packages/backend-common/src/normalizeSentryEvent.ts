@@ -90,6 +90,7 @@ const SERVER_KINDS = new Set([
   'timeout',
   'client_not_connected',
   'tool_not_found',
+  'no_backend',
 ]);
 
 /**

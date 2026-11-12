@@ -49,9 +49,12 @@ Agent Platform's MCP servers (`mcpToolRefusalOf` in `gs-common`) and muster's
 refusals of a connector write answer 4xx and stay out of Sentry. A muster
 rollout's `interrupted` is logged at `info` and answered 503 by
 `reportedErrorHandler()`. A timeout (504), a server muster holds no connection
-to (503) and a missing tool (502) are reported. `normalizeSentryEvent` groups
-the events as `['MusterToolError', <kind>, <server>]` for those three, which
-belong to a whole server, and as `['MusterToolError', <kind>, <tool>]`
+to (503), a missing tool (502) and a model-manager with no backend
+(`no_backend`, 503) are reported. A tool error of no known kind is answered
+502 (`MUSTER_UNKNOWN_TOOL_ERROR_STATUS`), a failure upstream of the portal,
+and reported too. `normalizeSentryEvent` groups the events as
+`['MusterToolError', <kind>, <server>]` for those four, which belong to a
+whole server, and as `['MusterToolError', <kind>, <tool>]`
 otherwise, the tool without an Organization's or a workflow's name, or by the
 message with its quoted values replaced where the kind is unknown. It tags
 `tool` and `server`.

@@ -130,22 +130,44 @@ describe('MusterMcpClient tool errors', () => {
       'tool_not_found',
       502,
     ],
+    [
+      'Tool not found: x_cluster-manager_create_node_pool',
+      'tool_not_found',
+      502,
+    ],
   ])('answers %j as %s, %d', async (text, kind, status) => {
     const { error } = await toolError(text);
 
     expect(error).toMatchObject({ kind, status, message: text });
   });
 
-  it('leaves any other tool error without a kind or status: a 500', async () => {
+  it.each([
+    [
+      'forbidden: list presets in org-acme: configmaps is forbidden: User "u" cannot list resource "configmaps"',
+      'forbidden',
+      403,
+    ],
+    [
+      'no_backend: no backend registered on model-manager: 0 valid backend documents in namespace agent-platform',
+      'no_backend',
+      503,
+    ],
+  ])("answers model-manager's %j as %s, %d", async (text, kind, status) => {
+    const { error } = await toolError(text, 'x_model-manager_list_models');
+
+    expect(error).toMatchObject({ kind, status, server: 'model-manager' });
+  });
+
+  it('answers any other tool error 502, without a kind', async () => {
     const { error } = await toolError(
       'Failed to list executions: unable to parse requirement: values[0][muster.giantswarm.io/workflow]: Invalid value: "a b"',
     );
 
     expect(error).not.toHaveProperty('kind');
-    expect(error).not.toHaveProperty('status');
+    expect(error.status).toBe(502);
   });
 
-  it('answers a refusal of a connector write 422, the same text of another tool 500', async () => {
+  it('answers a refusal of a connector write 422, the same text of another tool 502', async () => {
     const refusal = "MCP server 'jira' already exists";
 
     expect(
@@ -156,7 +178,7 @@ describe('MusterMcpClient tool errors', () => {
     });
     expect(
       (await toolError(refusal, 'core_mcpserver_get')).error,
-    ).not.toHaveProperty('status');
+    ).toMatchObject({ status: 502 });
   });
 
   it("keeps muster's sign-in a 401", async () => {
@@ -315,6 +337,9 @@ describe('musterToolErrorKindOf', () => {
   it("leaves another server's code-prefixed error unknown", () => {
     expect(
       musterToolErrorKindOf('not_found: no such pod', 'x_kubernetes_get'),
+    ).toBeUndefined();
+    expect(
+      musterToolErrorKindOf('no_backend: x', 'x_agent-manager_list_agents'),
     ).toBeUndefined();
     expect(
       musterToolErrorKindOf('does_not_fit: x', 'x_agent-manager_update_agent'),

@@ -53,6 +53,7 @@ export const MODEL_MANAGER_REFUSAL_CODES = [
   'not_found',
   'invalid_request',
   'conflict',
+  'forbidden',
   'unsupported',
   'does_not_fit',
 ] as const;

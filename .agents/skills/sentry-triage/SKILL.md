@@ -236,7 +236,7 @@ Say what you checked and its limits: the window, which installations, whether a 
 **Sentry**
 
 - **"Users Impacted" is always 0 on `-backend` projects** — backend events carry no user. Count people with TelemetryDeck instead.
-- **One Sentry issue can hold several causes.** Sentry groups an exception by its stack trace, so, for example, every `MusterToolError` the muster backend turns into a 500 lands in the same issue whatever its message. Size only your cause — `search_issue_events` with a message filter — not the issue's total.
+- **One Sentry issue can hold several causes.** Sentry groups an exception by its stack trace, so, for example, every `MusterToolError` of no known kind, which the muster backend answers 502, lands in the same issue whatever its message. Size only your cause — `search_issue_events` with a message filter — not the issue's total.
 - **Count page loads, not events.** A page that sends one request per row reports several events with the same timestamp per load; distinct timestamps are page loads.
 - **`search_issue_events` returns at most 100 events.** If you get exactly 100, query again for events older than the oldest one, to know whether you saw the whole window.
 

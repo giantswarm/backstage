@@ -1959,7 +1959,7 @@ describe('createRouter', () => {
         .set(MUSTER_AUTH_HEADER, 'user-token')
         .send({ name: 'x_cluster-manager_delete_node_pool', arguments: {} });
 
-      expect(response.status).toBe(500);
+      expect(response.status).toBe(502);
       expect(response.body.error).toMatchObject({
         name: 'MusterToolError',
         message: 'node pool gpu-l4 still runs 1 node(s)',
@@ -2128,8 +2128,9 @@ describe('createRouter', () => {
       expect(response.body.error.message).toBe(message);
     });
 
-    // muster's own failures are tool errors too: they stay 500 and reach
-    // Sentry rather than read as the person's mistake.
+    // muster's own failures are tool errors too: they stay 5xx (the 502 of a
+    // tool error of no known kind) and reach Sentry rather than read as the
+    // person's mistake.
     it.each([
       'Failed to create MCP server: etcdserver: request timed out',
       'Failed to update MCP server: Internal error occurred: failed calling webhook "mcpservers.muster.giantswarm.io": connection refused',
@@ -2138,12 +2139,12 @@ describe('createRouter', () => {
       "Cannot store the client credentials of MCP server 'jira': it has no UID to own the Secret",
       'Cannot store the client credentials of MCP server \'jira\': Permission denied: your user may not create Secret "jira-oauth-client-ab12c" (secrets) in namespace "muster". Removing the server failed too, so it is left behind without its client: delete MCP server \'jira\' (connection refused)',
       'unknown args: [clientCredentials]. Allowed args: [name url]',
-    ])("leaves muster's failure %j a 500", async message => {
+    ])("leaves muster's failure %j a 502", async message => {
       rejectWith(message);
 
       const response = await create();
 
-      expect(response.status).toBe(500);
+      expect(response.status).toBe(502);
     });
 
     it('keeps the stack of the tool error it answers 422', async () => {
@@ -2177,7 +2178,7 @@ describe('createRouter', () => {
       'core_mcpserver_list',
       'core_mcpserver_detect',
       'core_mcpserver_delete',
-    ])("leaves %s's tool error a 500", async name => {
+    ])("leaves %s's tool error a 502", async name => {
       rejectWith('not found');
 
       const response = await request(await personApp())
@@ -2185,7 +2186,7 @@ describe('createRouter', () => {
         .set(MUSTER_AUTH_HEADER, 'user-token')
         .send({ name, arguments: { name: 'jira' } });
 
-      expect(response.status).toBe(500);
+      expect(response.status).toBe(502);
     });
 
     it('leaves an outage a 5xx', async () => {
@@ -2245,7 +2246,7 @@ describe('createRouter', () => {
 
       const response = await sweep({ name: 'x_marge_sweep', arguments: {} });
 
-      expect(response.status).toBe(500);
+      expect(response.status).toBe(502);
       expect(response.body.error).toMatchObject({
         name: 'MusterToolError',
         message: 'no team file for "x"',
@@ -2615,7 +2616,7 @@ describe('createRouter', () => {
 
       const response = await call(callApp, LIVE);
 
-      expect(response.status).toBe(500);
+      expect(response.status).toBe(502);
       expect(response.body.error.reason).toBeUndefined();
     });
   });
