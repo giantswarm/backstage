@@ -7,9 +7,11 @@ import {
   Popover,
   Select,
   Text,
+  Tooltip,
+  TooltipTrigger,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import BuildIcon from '@material-ui/icons/Build';
+import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
 import { useToolchains } from '../../hooks/useToolchainManager';
@@ -17,24 +19,37 @@ import {
   TOOLCHAINS_CAPABILITY,
   imageTag,
   samePicks,
+  toolchainLabel,
   toolchainsLabel,
   type Toolchain,
   type ToolchainPick,
 } from '../../lib/toolchainManager';
 import type { AgentRow } from '../AgentsDataProvider';
+import { ToolboxIcon } from './ToolboxIcon';
 
 /** The version option that follows the toolchain's newest release. */
 const LATEST = 'latest';
 
 const useStyles = makeStyles({
+  // An icon, the number of picks and a caret, at a fixed width: the agent
+  // and workspace beside it keep their room however many are picked
+  // (giantswarm/giantswarm#39204). The names are in the tooltip and the
+  // popover.
   trigger: {
-    maxWidth: 280,
-    minWidth: 0,
-    '& > span': {
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap',
-    },
+    flex: '0 0 auto',
+    fontVariantNumeric: 'tabular-nums',
+  },
+  // Nothing picked: the icon alone, quieter.
+  triggerEmpty: {
+    color: 'var(--bui-fg-secondary)',
+  },
+  // On elements inside the tooltip: bui's `Tooltip` drops a `className`.
+  tooltipHeading: {
+    display: 'block',
+    fontWeight: 'bold',
+  },
+  tooltipLine: {
+    display: 'block',
   },
   content: {
     padding: 'var(--bui-space-3)',
@@ -166,16 +181,38 @@ export function ToolchainPicker({
 
   return (
     <DialogTrigger>
-      <Button
-        variant="tertiary"
-        size="small"
-        iconStart={<BuildIcon />}
-        className={classes.trigger}
-        isDisabled={isDisabled}
-        aria-label={`Toolchains: ${summary}`}
-      >
-        {summary}
-      </Button>
+      {/* Inside the dialog's trigger, so its press still reaches the button:
+          react-aria's tooltip trigger only adds hover and focus handling. */}
+      <TooltipTrigger delay={200}>
+        <Button
+          variant="tertiary"
+          size="small"
+          iconStart={<ToolboxIcon />}
+          iconEnd={<ExpandMoreIcon />}
+          className={
+            picks.length > 0
+              ? classes.trigger
+              : `${classes.trigger} ${classes.triggerEmpty}`
+          }
+          isDisabled={isDisabled}
+          aria-label={`Toolchains: ${summary}`}
+          aria-haspopup="dialog"
+        >
+          {picks.length > 0 ? picks.length : null}
+        </Button>
+        <Tooltip>
+          <span className={classes.tooltipHeading}>Toolchains</span>
+          {picks.length > 0 ? (
+            picks.map(pick => (
+              <span key={pick.name} className={classes.tooltipLine}>
+                {toolchainLabel(pick)}
+              </span>
+            ))
+          ) : (
+            <span className={classes.tooltipLine}>None</span>
+          )}
+        </Tooltip>
+      </TooltipTrigger>
       {/* bui's Popover does not pass a name on, so the content is the named
           dialog. */}
       <Popover placement="bottom start">

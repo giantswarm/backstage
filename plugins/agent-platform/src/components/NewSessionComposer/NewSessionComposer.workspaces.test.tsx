@@ -181,7 +181,6 @@ describe('NewSessionComposer workspaces', () => {
     unmount();
     renderComposer();
     expect(workspacePicker()).toHaveTextContent('platform-mix');
-    expect(screen.getByText('Last used with Claude Code')).toBeInTheDocument();
   });
 
   describe('on an agent with a default workspace', () => {
@@ -192,7 +191,6 @@ describe('NewSessionComposer workspaces', () => {
       renderComposer({ agents: [withDefault] });
 
       expect(workspacePicker()).toHaveTextContent('platform-mcp');
-      expect(screen.getByText('Claude Code’s default')).toBeInTheDocument();
       await userEvent.type(field(), 'List the repositories');
       await userEvent.click(startButton());
       expect(onStart).toHaveBeenCalledWith(
@@ -212,9 +210,6 @@ describe('NewSessionComposer workspaces', () => {
       );
       renderComposer({ agents: [withDefault] });
       expect(workspacePicker()).toHaveTextContent('platform-mix');
-      expect(
-        screen.getByText('Last used with Claude Code'),
-      ).toBeInTheDocument();
     });
 
     it('keeps a last choice of "No workspace" over the default', async () => {
@@ -270,11 +265,17 @@ describe('NewSessionComposer workspaces', () => {
     expect(workspacePicker()).toHaveTextContent('No workspace');
   });
 
-  it('is labelled like the agent picker where the pickers head the box', () => {
+  it('shows a folder rather than a label where the pickers head the box, and no word on the preset', () => {
     mockWorkspacesOf.mockReturnValue([mix]);
+    window.localStorage.setItem(
+      'gs-agent-platform-last-workspace',
+      JSON.stringify({ [claude.id]: 'platform-mix' }),
+    );
     renderComposer({ pickerPlacement: 'top', pickerLabel: () => 'Agent' });
 
-    expect(screen.getByText('Workspace')).toBeInTheDocument();
+    expect(workspacePicker()).toHaveTextContent('platform-mix');
+    expect(screen.queryByText('Workspace')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Last used with/)).not.toBeInTheDocument();
   });
 
   it('starts with the toolchains the person changed, beside the workspace', async () => {

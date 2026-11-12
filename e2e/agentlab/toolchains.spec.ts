@@ -1,4 +1,4 @@
-import type { Response } from '@playwright/test';
+import type { Locator, Response } from '@playwright/test';
 
 import {
   completeDexLogin,
@@ -43,6 +43,15 @@ const agentName = `E2E Toolchains ${stamp}`;
 const agentSlug = `e2e-toolchains-${stamp}`;
 
 type StartedToolchain = { name: string; version?: string; image: string };
+
+/** Whether any text in the element is cut off, by an ellipsis or a clip. */
+function isCutOff(locator: Locator): Promise<boolean> {
+  return locator.evaluate(element =>
+    [element, ...Array.from(element.querySelectorAll('*'))].some(
+      node => node.scrollWidth > node.clientWidth + 1,
+    ),
+  );
+}
 
 /** `go`'s published versions as the Toolchains tab lists them, or why not. */
 async function goVersions(
@@ -222,8 +231,59 @@ test('a session started from the portal with an older go mounts that version', a
       !offered,
       "agent-manager reports no `toolchains` capability: its toolchains.repository is not set in the lab's values",
     );
-    await toolchains.click();
     const choice = admin.getByRole('dialog', { name: 'Toolchains' });
+    const closeChoice = () =>
+      // The first Escape may only leave a version select, the next the popover.
+      expect(async () => {
+        await admin.keyboard.press('Escape');
+        await expect(choice).toBeHidden({ timeout: 1_000 });
+      }).toPass({ timeout: 10_000 });
+
+    // Every toolchain picked: the button counts them, its name lists them,
+    // and the agent and workspace beside it stay readable
+    // (giantswarm/giantswarm#39204).
+    await toolchains.click();
+    const boxes = choice.getByRole('checkbox');
+    const offeredCount = await boxes.count();
+    for (let i = 0; i < offeredCount; i++) {
+      const box = boxes.nth(i);
+      if (!(await box.isChecked())) {
+        await box.locator('xpath=ancestor::label').click();
+      }
+    }
+    await closeChoice();
+    await expect(toolchains).toHaveText(String(offeredCount));
+    const agentPicker = dialog.getByRole('button', { name: /^Agent\b/ });
+    await expect(agentPicker).toContainText(agentName);
+    expect(await isCutOff(agentPicker), 'the agent name is cut off').toBe(
+      false,
+    );
+    const workspacePicker = dialog.getByRole('button', {
+      name: /^Workspace\b/,
+    });
+    if ((await workspacePicker.count()) > 0) {
+      // A long workspace name may end in an ellipsis, but the picker keeps
+      // room for more than its icon.
+      expect((await workspacePicker.boundingBox())?.width).toBeGreaterThan(80);
+    }
+    await test
+      .info()
+      .attach(`the New session dialog with all ${offeredCount} toolchains`, {
+        body: await admin.screenshot(),
+        contentType: 'image/png',
+      });
+    // Back to the agent's defaults; there is nothing to reset when every
+    // offered toolchain is one.
+    await toolchains.click();
+    const reset = choice.getByRole('button', {
+      name: /^Use .*defaults$|^Mount no toolchains$/,
+    });
+    if ((await reset.count()) > 0) {
+      await reset.click();
+    }
+    await closeChoice();
+
+    await toolchains.click();
     const goBox = choice.getByRole('checkbox', { name: 'go' });
     if (!(await goBox.isChecked())) {
       // The label around the (visually hidden) input takes the click.
@@ -231,12 +291,11 @@ test('a session started from the portal with an older go mounts that version', a
     }
     await choice.getByRole('button', { name: /go version/ }).click();
     await admin.getByRole('option', { name: older, exact: true }).click();
-    // The first Escape leaves the version select, the next the popover.
-    await expect(async () => {
-      await admin.keyboard.press('Escape');
-      await expect(choice).toBeHidden({ timeout: 1_000 });
-    }).toPass({ timeout: 10_000 });
-    await expect(toolchains).toContainText(`go ${older}`);
+    await closeChoice();
+    // The button shows how many; its name says which.
+    await expect(toolchains).toHaveAccessibleName(
+      new RegExp(`\\bgo ${older.replace(/\./g, '\\.')}\\b`),
+    );
     await test
       .info()
       .attach('the New session dialog with go at its older version', {

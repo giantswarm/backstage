@@ -112,6 +112,13 @@ describe('ToolchainPicker', () => {
       { name: 'go' },
       { name: 'node' },
     ]);
+    // The button says how many, its name says which.
+    expect(
+      screen.getByRole('button', {
+        name: 'Toolchains: go latest, node latest',
+        hidden: true,
+      }),
+    ).toHaveTextContent(/^2$/);
 
     await userEvent.click(
       within(dialog).getByRole('checkbox', { name: 'node' }),
@@ -131,9 +138,25 @@ describe('ToolchainPicker', () => {
 
     expect(onChange).toHaveBeenLastCalledWith([]);
     await userEvent.keyboard('{Escape}');
+    // Nothing picked: the icon alone, no count.
     expect(
       screen.getByRole('button', { name: 'Toolchains: No toolchains' }),
-    ).toBeInTheDocument();
+    ).toHaveTextContent(/^$/);
+  });
+
+  it('counts the picks in the button and lists them in its tooltip', async () => {
+    const user = userEvent.setup();
+    render(<Harness onChange={jest.fn()} />);
+
+    const trigger = screen.getByRole('button', {
+      name: 'Toolchains: go latest',
+    });
+    expect(trigger).toHaveTextContent(/^1$/);
+    await user.tab();
+    expect(trigger).toHaveFocus();
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip).toHaveTextContent('Toolchains');
+    expect(tooltip).toHaveTextContent('go latest');
   });
 
   it('renders nothing where agent-manager mounts no toolchains', () => {
