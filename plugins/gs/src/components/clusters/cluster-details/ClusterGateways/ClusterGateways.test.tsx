@@ -15,6 +15,7 @@ const healthy: HttpRoute = {
   namespace: 'team-a',
   name: 'healthy',
   hostnames: ['healthy.example.com'],
+  backends: { status: 'not-reported' },
   parents: [
     {
       ...parent,
@@ -29,6 +30,7 @@ const broken: HttpRoute = {
   namespace: 'team-z',
   name: 'broken',
   hostnames: ['broken.example.com'],
+  backends: { status: 'not-reported' },
   parents: [
     {
       ...parent,
@@ -335,9 +337,7 @@ describe('<ClusterGatewaysContent />', () => {
       ]);
       expect(screen.getByText('Backend external')).toBeInTheDocument();
       expect(
-        screen.getByText(
-          'Only the first three backends of each rule are shown.',
-        ),
+        screen.getByText('This route may have more backends than shown.'),
       ).toBeInTheDocument();
     });
 
@@ -361,7 +361,7 @@ describe('<ClusterGatewaysContent />', () => {
       ]);
       expect(
         screen.getByText(
-          'Backends need the gateway-api-state-metrics app of the Gateway API bundle on this cluster.',
+          'Backends need a newer Gateway API bundle on this cluster.',
         ),
       ).toBeInTheDocument();
       expect(screen.getByText('Not available')).toBeInTheDocument();
@@ -384,7 +384,7 @@ describe('<ClusterGatewaysContent />', () => {
         ),
       ).toBeInTheDocument();
       expect(
-        screen.queryByText(/gateway-api-state-metrics app/),
+        screen.queryByText(/newer Gateway API bundle/),
       ).not.toBeInTheDocument();
     });
   });

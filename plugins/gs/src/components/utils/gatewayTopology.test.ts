@@ -419,21 +419,56 @@ describe('buildGatewayTopology', () => {
         backends: [
           {
             kind: 'Service',
-            namespace: 'other',
-            name: 'app-v2',
-            port: '80',
-            weight: '10',
-          },
-          {
-            kind: 'Service',
             namespace: 'team-a',
             name: 'app-v1',
             port: '80',
             weight: '90',
           },
+          {
+            kind: 'Service',
+            namespace: 'other',
+            name: 'app-v2',
+            port: '80',
+            weight: '10',
+          },
         ],
         mayHaveMore: false,
       });
+    });
+
+    it('drops a weight that is ambiguous across rules, in any series order', () => {
+      const split = (path: string, weight: string) =>
+        sample({
+          ...route,
+          match_path: path,
+          backend0_name: 'app',
+          backend0_port: '80',
+          backend0_weight: weight,
+          backend1_name: 'canary',
+          backend1_port: '80',
+          backend1_weight: '10',
+        });
+      const alone = sample({
+        ...route,
+        match_path: '/c',
+        backend0_name: 'app',
+        backend0_port: '80',
+        backend0_weight: '1',
+      });
+      for (const series of [
+        [split('/a', '90'), alone],
+        [alone, split('/a', '90')],
+        [split('/a', '90'), split('/b', '50')],
+      ]) {
+        const { routes } = buildGatewayTopology(
+          inputs({ routeParentInfo: parentInfo, routeRuleBackendInfo: series }),
+        );
+        const backends =
+          routes[0].backends.status === 'available'
+            ? routes[0].backends.backends
+            : [];
+        expect(backends.find(b => b.name === 'app')?.weight).toBeUndefined();
+      }
     });
 
     it('drops the weight of a single backend and lists a backend shared by rules once', () => {

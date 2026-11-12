@@ -25,10 +25,9 @@ export const BackendList = ({
   backends,
   routeNamespace,
 }: {
-  backends: HttpRouteBackends | undefined;
+  backends: HttpRouteBackends;
   routeNamespace: string;
 }) => {
-  if (!backends) return <>—</>;
   if (backends.status === 'not-available') {
     return (
       <Text variant="body-medium" color="secondary">
@@ -46,7 +45,7 @@ export const BackendList = ({
   if (backends.backends.length === 0) {
     return (
       <Text variant="body-medium" color="secondary">
-        None
+        No backends
       </Text>
     );
   }
@@ -62,7 +61,7 @@ export const BackendList = ({
       })}
       {backends.mayHaveMore ? (
         <Text variant="body-small" color="secondary">
-          Only the first three backends of each rule are shown.
+          This route may have more backends than shown.
         </Text>
       ) : null}
     </Flex>

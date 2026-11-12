@@ -46,7 +46,7 @@ function toRouteRows(routes: HttpRoute[]): RouteParentRow[] {
 
 /** The backend names of a route, for the search. */
 function backendNames(route: HttpRoute): string[] {
-  return route.backends?.status === 'available'
+  return route.backends.status === 'available'
     ? route.backends.backends.map(backend => backend.name)
     : [];
 }
@@ -94,7 +94,7 @@ function backendsUnavailableCause(
 ): 'load-failed' | 'not-exported' | undefined {
   let notExported = false;
   for (const { backends } of routes) {
-    if (backends?.status !== 'not-available') continue;
+    if (backends.status !== 'not-available') continue;
     if (backends.cause === 'load-failed') return 'load-failed';
     notExported = true;
   }
@@ -104,8 +104,7 @@ function backendsUnavailableCause(
 const backendsUnavailableNotice = {
   'load-failed':
     'The backends could not be loaded. They are retried automatically.',
-  'not-exported':
-    'Backends need the gateway-api-state-metrics app of the Gateway API bundle on this cluster.',
+  'not-exported': 'Backends need a newer Gateway API bundle on this cluster.',
 };
 
 const unavailableNotice = {

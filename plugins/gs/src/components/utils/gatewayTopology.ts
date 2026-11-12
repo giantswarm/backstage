@@ -85,7 +85,12 @@ export interface HttpRouteBackend {
  * app.
  */
 export type HttpRouteBackends =
-  | { status: 'available'; backends: HttpRouteBackend[]; mayHaveMore: boolean }
+  | {
+      status: 'available';
+      backends: HttpRouteBackend[];
+      /** A rule has three backends, so the route may have more than shown. */
+      mayHaveMore: boolean;
+    }
   | { status: 'not-reported' }
   | { status: 'not-available'; cause: 'load-failed' | 'not-exported' };
 
@@ -95,8 +100,7 @@ export interface HttpRoute {
   name: string;
   /** Undefined when the hostnames could not be loaded. */
   hostnames: string[] | undefined;
-  /** Undefined only in test fixtures that leave the backends out. */
-  backends?: HttpRouteBackends;
+  backends: HttpRouteBackends;
   parents: HttpRouteParent[];
 }
 
@@ -360,27 +364,36 @@ function buildGateways(inputs: GatewayTopologyInputs): Gateway[] {
 /** The metric exports `backend0_*` to `backend2_*` per rule. */
 const exportedBackendsPerRule = 3;
 
+type RouteBackendsEntry = {
+  backends: Map<string, HttpRouteBackend>;
+  /** How many rules each backend is in, to tell when its weight is ambiguous. */
+  ruleCount: Map<string, number>;
+  mayHaveMore: boolean;
+  routeNamespace: string;
+};
+
 /**
- * Collects the distinct backends of each route from its rule series. A weight
- * is kept only for a rule that splits traffic, where it carries meaning.
+ * Collects the distinct backends of each route from its rule series. The
+ * column shows backends per route, not per rule, so a weight is only kept when
+ * it is unambiguous: the backend is in a single rule, and that rule splits
+ * traffic between several backends.
  */
 function indexRouteBackends(
   samples: MimirMetricSample[],
-): Map<
-  string,
-  { backends: Map<string, HttpRouteBackend>; mayHaveMore: boolean }
-> {
-  const byRoute = new Map<
-    string,
-    { backends: Map<string, HttpRouteBackend>; mayHaveMore: boolean }
-  >();
+): Map<string, RouteBackendsEntry> {
+  const byRoute = new Map<string, RouteBackendsEntry>();
   for (const sample of samples) {
     const { namespace, name } = sample.metric;
     if (!namespace || !name) continue;
     const key = objectKey(namespace, name);
     let entry = byRoute.get(key);
     if (!entry) {
-      entry = { backends: new Map(), mayHaveMore: false };
+      entry = {
+        backends: new Map(),
+        ruleCount: new Map(),
+        mayHaveMore: false,
+        routeNamespace: namespace,
+      };
       byRoute.set(key, entry);
     }
     const ruleBackends: HttpRouteBackend[] = [];
@@ -405,11 +418,21 @@ function indexRouteBackends(
         backend.name,
         backend.port ?? '',
       ].join('/');
+      entry.ruleCount.set(
+        backendKey,
+        (entry.ruleCount.get(backendKey) ?? 0) + 1,
+      );
       if (entry.backends.has(backendKey)) continue;
       entry.backends.set(backendKey, {
         ...backend,
         weight: ruleBackends.length > 1 ? backend.weight : undefined,
       });
+    }
+  }
+  for (const entry of byRoute.values()) {
+    for (const [backendKey, count] of entry.ruleCount) {
+      const backend = entry.backends.get(backendKey);
+      if (backend && count > 1) backend.weight = undefined;
     }
   }
   return byRoute;
@@ -428,12 +451,13 @@ function routeBackends(
   }
   const entry = byRoute.get(key);
   if (!entry) return { status: 'not-reported' };
+  // The route's own namespace first, as most backendRefs omit the namespace.
+  const sortKey = (backend: HttpRouteBackend) =>
+    `${backend.namespace === entry.routeNamespace ? 0 : 1}/${backend.namespace}/${backend.name}/${backend.port ?? ''}/${backend.kind}`;
   return {
     status: 'available',
     backends: Array.from(entry.backends.values()).sort((a, b) =>
-      `${a.namespace}/${a.name}/${a.port ?? ''}`.localeCompare(
-        `${b.namespace}/${b.name}/${b.port ?? ''}`,
-      ),
+      sortKey(a).localeCompare(sortKey(b)),
     ),
     mayHaveMore: entry.mayHaveMore,
   };
@@ -462,7 +486,14 @@ function buildRoutes(inputs: GatewayTopologyInputs): HttpRoute[] {
     let entry = routes.get(key);
     if (!entry) {
       entry = {
-        route: { id: key, namespace, name, hostnames: [], parents: [] },
+        route: {
+          id: key,
+          namespace,
+          name,
+          hostnames: [],
+          backends: { status: 'not-reported' },
+          parents: [],
+        },
         parentKeys: new Set(),
         hostnames: new Set(),
       };
