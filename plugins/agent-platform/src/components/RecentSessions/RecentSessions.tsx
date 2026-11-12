@@ -224,7 +224,7 @@ function SessionItem({
               {row.title}
             </Text>
             {(row.agentName || workspaceName) && (
-              <Text as="div" variant="body-x-small" color="secondary" truncate>
+              <Text as="div" variant="body-small" color="secondary" truncate>
                 {[row.agentName, workspaceName].filter(Boolean).join(' · ')}
               </Text>
             )}
@@ -254,7 +254,7 @@ function SessionItem({
 function GroupHeader({ id, label }: { id: string; label: string }) {
   return (
     <Box px="2">
-      <Text id={id} variant="body-x-small" color="secondary" weight="bold">
+      <Text id={id} variant="body-small" color="secondary" weight="bold">
         {label}
       </Text>
     </Box>
@@ -390,7 +390,7 @@ function RecentSessionsList({
     <Flex px="2" align="center" gap="2">
       <Link
         href={allSessionsHref}
-        variant="body-x-small"
+        variant="body-small"
         aria-current={pathname === allSessionsHref ? 'page' : undefined}
       >
         All sessions
@@ -406,7 +406,7 @@ function RecentSessionsList({
         </Link>
       )}
       {grouped.recentOverflow > 0 && (
-        <Text variant="body-x-small" color="secondary">
+        <Text variant="body-small" color="secondary">
           {`${grouped.recentOverflow} more`}
         </Text>
       )}
@@ -441,7 +441,7 @@ function RecentSessionsList({
                   href={`${allSessionsHref}${sessionsListSearch({
                     state: 'pinned',
                   })}`}
-                  variant="body-x-small"
+                  variant="body-small"
                 >
                   {grouped.pinnedOverflow} more pinned
                 </Link>
