@@ -26,10 +26,14 @@ import type {
 } from '../../lib/credentialOperations';
 import { organizationsRouteRef } from '../../routes';
 import { CredentialFormPage } from './CredentialFormPage';
-import {
-  PortalSessionEndedError,
-  portalSessionError,
-} from '../../lib/portalSession';
+import { PortalSessionEndedError } from '../../lib/portalSession';
+
+// Sign in again reloads the page, which jsdom cannot.
+const mockReloadPage = jest.fn();
+jest.mock('../../lib/portalSession', () => ({
+  ...jest.requireActual('../../lib/portalSession'),
+  reloadPage: () => mockReloadPage(),
+}));
 
 const OPERATION = 'a1'.repeat(24);
 const VALUE = 'sk-ant-api03-never-shown';
@@ -528,19 +532,9 @@ describe('CredentialFormPage', () => {
     it('says the session ended and to sign in again, and drops the value', async () => {
       const user = userEvent.setup();
       const api = fakeCredentialsApi();
-      api.saveOperation.mockRejectedValueOnce(
-        portalSessionError(
-          await refusal(401, 'x', 'Failed user token verification').then(
-            error =>
-              Object.assign(error, {
-                body: {
-                  ...error.body,
-                  error: { ...error.body.error, name: 'AuthenticationError' },
-                },
-              }),
-          ),
-        ),
-      );
+      // What the client answers for the portal's refusal of the session
+      // token (AgentManagerCredentialsApi.test.ts).
+      api.saveOperation.mockRejectedValueOnce(new PortalSessionEndedError());
       await renderForm(api);
 
       const value = await screen.findByLabelText(/^Value/);
@@ -557,6 +551,25 @@ describe('CredentialFormPage', () => {
       expect(screen.queryByText('Not saved')).toBeNull();
       expect(screen.getByLabelText(/^Value/)).toHaveValue('');
       expect(document.body.innerHTML).not.toContain(VALUE);
+
+      await user.click(screen.getByRole('button', { name: 'Sign in again' }));
+      expect(mockReloadPage).toHaveBeenCalledTimes(1);
+    });
+
+    it('says the session ended when a cancel is refused, not "Not cancelled"', async () => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi();
+      api.cancelOperation.mockRejectedValueOnce(new PortalSessionEndedError());
+      await renderForm(api);
+
+      await user.click(
+        await screen.findByRole('button', { name: 'Cancel request' }),
+      );
+
+      expect(
+        await screen.findByText('Your portal session ended'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Not cancelled')).toBeNull();
     });
 
     it('opens the same request again after the sign-in, from its address', async () => {

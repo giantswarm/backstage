@@ -9,7 +9,10 @@ import {
   ModelConfig,
   type ModelConfigInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
+import {
+  musterApiRef,
+  MusterUnauthorizedError,
+} from '@giantswarm/backstage-plugin-muster';
 
 import { CREDENTIAL_OPERATION } from '../lib/__fixtures__/agentManagerOrganizations';
 import { AgentManagerError } from '../lib/agentManager';
@@ -327,6 +330,58 @@ describe('useSaveOrganizationModel', () => {
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'AgentPlatform.modelUpdated' }),
     );
+  });
+
+  describe('when the portal refuses the session token on the new key', () => {
+    const refused = () =>
+      new MusterUnauthorizedError(
+        'Failed user token verification',
+        undefined,
+        undefined,
+        'gazelle',
+        'AuthenticationError',
+      );
+
+    it('keeps the session error, for the page to offer the sign-in', async () => {
+      await saveWith(
+        {
+          organization: PAYMENTS,
+          values: { ...VALUES, model: 'claude-sonnet-4-5' },
+          original: SONNET,
+          replaceKey: true,
+        },
+        async () => {
+          throw refused();
+        },
+      );
+
+      expect(await screen.findByTestId('error')).toHaveTextContent(
+        /^PortalSessionEndedError:/,
+      );
+    });
+
+    it('says the change is saved and the session ended, without "nothing was sent"', async () => {
+      await saveWith(
+        {
+          organization: PAYMENTS,
+          values: VALUES,
+          original: SONNET,
+          replaceKey: true,
+        },
+        async tool => {
+          if (tool === 'x_agent-manager_replace_organization_credential') {
+            throw refused();
+          }
+          return present();
+        },
+      );
+
+      const error = await screen.findByTestId('error');
+      expect(error).toHaveTextContent(
+        /The model change is saved, but the new key could not be asked for\. Your portal session ended: reload the page to sign in again/,
+      );
+      expect(error).not.toHaveTextContent(/nothing was sent/);
+    });
   });
 
   it('says the change is saved when the new key cannot be asked for', async () => {

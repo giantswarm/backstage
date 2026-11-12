@@ -67,3 +67,11 @@ export function portalSessionError<T>(error: T): T | PortalSessionEndedError {
     ? new PortalSessionEndedError({ cause: error })
     : error;
 }
+
+/**
+ * Reloads the page, which signs the person in to the portal again: the
+ * portal's sign-in issues a new session token.
+ */
+export function reloadPage(): void {
+  window.location.reload();
+}

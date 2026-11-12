@@ -663,7 +663,11 @@ export function CredentialFormPage({
                 ))
               )}
               <SaveError installation={installation} error={shownSaveError} />
-              {cancel.error ? (
+              {cancel.error instanceof PortalSessionEndedError ? (
+                <PortalSessionEndedAlert afterSignIn={AFTER_SIGN_IN} />
+              ) : null}
+              {cancel.error &&
+              !(cancel.error instanceof PortalSessionEndedError) ? (
                 <Alert
                   status="danger"
                   title="Not cancelled"

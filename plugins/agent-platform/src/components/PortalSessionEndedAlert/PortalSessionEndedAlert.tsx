@@ -1,11 +1,9 @@
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 
-import { PORTAL_SESSION_ENDED_MESSAGE } from '../../lib/portalSession';
-
-/** Reloads the page, which signs the person in to the portal again. */
-function reloadPage() {
-  window.location.reload();
-}
+import {
+  PORTAL_SESSION_ENDED_MESSAGE,
+  reloadPage,
+} from '../../lib/portalSession';
 
 /**
  * The portal refused the person's session token (`PortalSessionEndedError`):
@@ -16,11 +14,8 @@ function reloadPage() {
  */
 export function PortalSessionEndedAlert({
   afterSignIn,
-  onSignIn = reloadPage,
 }: {
   afterSignIn?: string;
-  /** Signs in again; a reload of the page unless a test says otherwise. */
-  onSignIn?: () => void;
 }) {
   return (
     <Alert
@@ -30,7 +25,7 @@ export function PortalSessionEndedAlert({
         <Flex direction="column" gap="2" align="start">
           <Text variant="body-small">{PORTAL_SESSION_ENDED_MESSAGE}</Text>
           {afterSignIn ? <Text variant="body-small">{afterSignIn}</Text> : null}
-          <Button variant="secondary" size="small" onPress={onSignIn}>
+          <Button variant="secondary" size="small" onPress={() => reloadPage()}>
             Sign in again
           </Button>
         </Flex>

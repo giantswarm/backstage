@@ -799,8 +799,12 @@ plugin route runs. `AgentManagerClient` (through muster-backend, where muster's
 form's client turn it into an error that says, in plain words, that the
 session ended and to reload the page to sign in again; nothing was sent. The
 credential form, New and Edit model and the model page show it with a Sign in
-again button (`PortalSessionEndedAlert`). The credential form drops a typed
-value, and its request stays open: a reload of the same address opens it again.
+again button (`PortalSessionEndedAlert`); the organization page's dialogs say
+it in words only (giantswarm/backstage#3492). The credential form drops a typed
+value, and its request stays open: a reload of the same address opens it
+again. Agent Platform reads that go neither through `AgentManagerClient` nor
+the credential form's client (the kagent routes, muster's own reads) still
+show the backend's text (giantswarm/backstage#3506).
 The status and the error's name decide, never the text; the credential route's
 own `AuthenticationError` (no installation token) is cured by the same sign-in.
 

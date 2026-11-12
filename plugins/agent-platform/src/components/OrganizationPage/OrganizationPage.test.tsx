@@ -6,7 +6,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
-import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
+import {
+  musterApiRef,
+  MusterUnauthorizedError,
+} from '@giantswarm/backstage-plugin-muster';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -18,7 +21,6 @@ import {
 } from '../../lib/__fixtures__/agentManagerOrganizations';
 import { musterOrganizationsQueryKey } from '../../lib/queryKeys';
 import { organizationsRouteRef } from '../../routes';
-import { MusterUnauthorizedError } from '@giantswarm/backstage-plugin-muster';
 import { OrganizationPage } from './OrganizationPage';
 
 const PAYMENTS = {
