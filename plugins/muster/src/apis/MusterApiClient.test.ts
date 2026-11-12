@@ -1203,13 +1203,44 @@ describe('MusterApiClient URL elicitations', () => {
     );
   }
 
+  const ELICIT = { urlElicitation: true } as const;
+
+  it("declares no URL elicitation by default, and fails with muster's sign-in 401", async () => {
+    const consentApi = consent('accept');
+    const { client, fetchMock } = setup({ consent: consentApi });
+    answerCalls(
+      fetchMock,
+      errorResponse(401, {
+        error: {
+          name: 'UnauthorizedError',
+          message: "auth_required: server 'github' requires authentication",
+          reason: 'server_sign_in_required',
+          server: 'github',
+        },
+      }),
+    );
+
+    const error: unknown = await client
+      .callTool('x_github_get_me', {}, 'open')
+      .catch(e => e);
+
+    expect(musterSignInRequiredOf(error)).toEqual({
+      server: 'github',
+      installation: 'open',
+    });
+    expect(callBodies(fetchMock)).toEqual([
+      { name: 'x_github_get_me', arguments: {}, urlElicitation: false },
+    ]);
+    expect(consentApi.open).not.toHaveBeenCalled();
+  });
+
   it('puts the page to the person and sends the call again with their answer', async () => {
     const consentApi = consent('accept');
     const { client, fetchMock } = setup({ consent: consentApi });
     answerCalls(fetchMock, inputRequired(), okResponse({ me: 'octocat' }));
 
     await expect(
-      client.callTool('x_github_get_me', { a: 1 }, 'open'),
+      client.callTool('x_github_get_me', { a: 1 }, 'open', ELICIT),
     ).resolves.toEqual({ me: 'octocat' });
 
     expect(consentApi.open).toHaveBeenCalledWith({
@@ -1220,10 +1251,12 @@ describe('MusterApiClient URL elicitations', () => {
     expect(callBodies(fetchMock)[0]).toEqual({
       name: 'x_github_get_me',
       arguments: { a: 1 },
+      urlElicitation: true,
     });
     expect(callBodies(fetchMock)[1]).toEqual({
       name: 'x_github_get_me',
       arguments: { a: 1 },
+      urlElicitation: true,
       input: {
         inputResponses: { muster_sign_in: { action: 'accept' } },
         requestState: 'opaque-state',
@@ -1231,51 +1264,112 @@ describe('MusterApiClient URL elicitations', () => {
     });
   });
 
-  it("answers muster with the person's decline, and throws muster's answer", async () => {
+  it.each(['decline', 'cancel'] as const)(
+    "answers muster with the person's %s, and fails with the sign-in 401",
+    async action => {
+      const consentApi = consent(action);
+      const { client, fetchMock } = setup({ consent: consentApi });
+      const message = `The tool did not run: the person answered ${action} to signing in to github.`;
+      answerCalls(
+        fetchMock,
+        inputRequired(),
+        errorResponse(412, {
+          error: { name: 'MusterToolError', message, kind: 'sign_in_declined' },
+        }),
+      );
+
+      const error: unknown = await client
+        .callTool('x_github_get_me', {}, 'open', ELICIT)
+        .catch(e => e);
+
+      expect(error).toBeInstanceOf(MusterUnauthorizedError);
+      expect(error).toMatchObject({ message });
+      expect(musterSignInRequiredOf(error)).toEqual({
+        server: 'github',
+        installation: 'open',
+      });
+      expect(callBodies(fetchMock)[1].input.inputResponses).toEqual({
+        muster_sign_in: { action },
+      });
+    },
+  );
+
+  it("keeps muster's answer to a declined sign-in on a tool no connector owns", async () => {
     const consentApi = consent('decline');
+    const { client, fetchMock } = setup({ consent: consentApi });
+    const message =
+      'The tool did not run: the person answered decline to signing in to github.';
+    answerCalls(
+      fetchMock,
+      inputRequired(),
+      errorResponse(412, {
+        error: { name: 'MusterToolError', message, kind: 'sign_in_declined' },
+      }),
+    );
+
+    const error: unknown = await client
+      .callTool('workflow_deploy', {}, 'open', ELICIT)
+      .catch(e => e);
+
+    expect(error).not.toBeInstanceOf(MusterUnauthorizedError);
+    expect(error).toMatchObject({
+      message,
+      status: 412,
+      kind: 'sign_in_declined',
+    });
+  });
+
+  it('cancels, without a dialog, a page muster asks for again in the same action', async () => {
+    const consentApi = consent('accept');
     const { client, fetchMock } = setup({ consent: consentApi });
     answerCalls(
       fetchMock,
       inputRequired(),
-      errorResponse(500, {
+      inputRequired(),
+      errorResponse(412, {
         error: {
           name: 'MusterToolError',
-          message:
-            'The tool did not run: the person answered decline to signing in to github.',
+          message: 'the person answered cancel to signing in to github',
+          kind: 'sign_in_declined',
         },
       }),
     );
 
     await expect(
-      client.callTool('x_github_get_me', {}, 'open'),
-    ).rejects.toThrow('the person answered decline');
-    expect(callBodies(fetchMock)[1].input.inputResponses).toEqual({
-      muster_sign_in: { action: 'decline' },
+      client.callTool('x_github_get_me', {}, 'open', ELICIT),
+    ).rejects.toBeInstanceOf(MusterUnauthorizedError);
+
+    expect(consentApi.open).toHaveBeenCalledTimes(1);
+    expect(callBodies(fetchMock)[2].input.inputResponses).toEqual({
+      muster_sign_in: { action: 'cancel' },
     });
   });
 
-  it('does not ask about the same page again while the answer stands', async () => {
-    const consentApi = consent('cancel');
+  it("asks again on the person's next action, after a decline", async () => {
+    const consentApi = consent('decline', 'accept');
     const { client, fetchMock } = setup({ consent: consentApi });
-    const cancelled = () =>
-      errorResponse(500, {
-        error: { name: 'MusterToolError', message: 'cancelled' },
-      });
     answerCalls(
       fetchMock,
       inputRequired(),
-      cancelled(),
+      errorResponse(412, {
+        error: {
+          name: 'MusterToolError',
+          message: 'declined',
+          kind: 'sign_in_declined',
+        },
+      }),
       inputRequired(),
-      cancelled(),
+      okResponse({ me: 'octocat' }),
     );
 
-    await client.callTool('x_github_get_me', {}, 'open').catch(() => {});
-    await client.callTool('x_github_get_me', {}, 'open').catch(() => {});
+    await client
+      .callTool('x_github_get_me', {}, 'open', ELICIT)
+      .catch(() => {});
+    await expect(
+      client.callTool('x_github_get_me', {}, 'open', ELICIT),
+    ).resolves.toEqual({ me: 'octocat' });
 
-    expect(consentApi.open).toHaveBeenCalledTimes(1);
-    expect(callBodies(fetchMock)[3].input.inputResponses).toEqual({
-      muster_sign_in: { action: 'cancel' },
-    });
+    expect(consentApi.open).toHaveBeenCalledTimes(2);
   });
 
   it('asks again when another server asks for the same page', async () => {
@@ -1289,8 +1383,8 @@ describe('MusterApiClient URL elicitations', () => {
       okResponse({}),
     );
 
-    await client.callTool('x_github_get_me', {}, 'open');
-    await client.callTool('x_miro_get_board', {}, 'open');
+    await client.callTool('x_github_get_me', {}, 'open', ELICIT);
+    await client.callTool('x_miro_get_board', {}, 'open', ELICIT);
 
     expect(consentApi.open).toHaveBeenCalledTimes(2);
     expect(consentApi.open).toHaveBeenLastCalledWith(
@@ -1313,7 +1407,10 @@ describe('MusterApiClient URL elicitations', () => {
     answerCalls(fetchMock, inputRequired());
 
     await expect(
-      client.callTool('x_github_get_me', {}, 'open', { signal: abort.signal }),
+      client.callTool('x_github_get_me', {}, 'open', {
+        ...ELICIT,
+        signal: abort.signal,
+      }),
     ).rejects.toMatchObject({ name: 'AbortError' });
     expect(callBodies(fetchMock)).toHaveLength(1);
     const [, init] = fetchMock.mock.calls.find(([url]) =>
@@ -1322,15 +1419,16 @@ describe('MusterApiClient URL elicitations', () => {
     expect((init as RequestInit).signal).toBe(abort.signal);
   });
 
-  it('gives up after a few rounds of the same question', async () => {
+  it('gives up after a few rounds of the same question, asking the person once', async () => {
     const consentApi = consent('accept');
     const { client, fetchMock } = setup({ consent: consentApi });
     answerCalls(fetchMock);
 
     await expect(
-      client.callTool('x_github_get_me', {}, 'open'),
+      client.callTool('x_github_get_me', {}, 'open', ELICIT),
     ).rejects.toBeInstanceOf(MusterInputRequiredError);
     expect(callBodies(fetchMock)).toHaveLength(4);
+    expect(consentApi.open).toHaveBeenCalledTimes(1);
   });
 
   it('declares no URL elicitation when asked not to, and puts no page to the person', async () => {
@@ -1359,7 +1457,7 @@ describe('MusterApiClient URL elicitations', () => {
     answerCalls(fetchMock, inputRequired());
 
     const error: unknown = await client
-      .callTool('x_github_get_me', {}, 'open')
+      .callTool('x_github_get_me', {}, 'open', ELICIT)
       .catch(e => e);
 
     expect(error).toBeInstanceOf(MusterInputRequiredError);
@@ -1379,9 +1477,30 @@ describe('MusterApiClient URL elicitations', () => {
       client.callToolWithProgress(
         'x_marge_sweep',
         {},
-        { installation: 'open', onProgress: () => {} },
+        { installation: 'open', onProgress: () => {}, ...ELICIT },
       ),
     ).resolves.toEqual({ swept: 1 });
     expect(callBodies(fetchMock)[1].input.requestState).toBe('opaque-state');
+  });
+
+  it('declares no URL elicitation on a progress call by default', async () => {
+    const consentApi = consent('accept');
+    const { client, fetchMock } = setup({ consent: consentApi });
+    answerCalls(
+      fetchMock,
+      streamResponse(['{"type":"result","result":{"swept":1}}\n']),
+    );
+
+    await expect(
+      client.callToolWithProgress(
+        'x_marge_sweep',
+        {},
+        { installation: 'open', onProgress: () => {} },
+      ),
+    ).resolves.toEqual({ swept: 1 });
+    expect(callBodies(fetchMock)).toEqual([
+      { name: 'x_marge_sweep', arguments: {}, urlElicitation: false },
+    ]);
+    expect(consentApi.open).not.toHaveBeenCalled();
   });
 });

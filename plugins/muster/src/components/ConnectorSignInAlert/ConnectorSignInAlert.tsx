@@ -14,6 +14,7 @@ import {
   authStatusQueryKey,
   isSignInStatus,
   isSsoServer,
+  signInRefusalOf,
   useServerSignIn,
 } from '../shared/useServerSignIn';
 import { useConnectorLabel } from '../shared/hooks/useConnectorLabels';
@@ -71,6 +72,9 @@ export function ConnectorSignInAlert({
   const isSso =
     entries.length > 0 &&
     entries.every(entry => entry !== undefined && isSsoServer(entry));
+  const isRefused =
+    entries.length > 0 &&
+    entries.every(entry => signInRefusalOf(entry) !== undefined);
   const where = joinNames(installations);
   // The title and the sentence name it once, as the first environment's
   // muster does; each environment's row, as its own does.
@@ -78,18 +82,12 @@ export function ConnectorSignInAlert({
   return (
     <Alert
       status="info"
-      title={
-        isSso
-          ? `Could not connect to ${label}`
-          : `Sign in to ${label} to ${purpose}`
-      }
+      title={alertTitle({ isSso, isRefused, label, purpose })}
       data-testid="connector-sign-in"
       description={
         <Flex direction="column" gap="2">
           <Text variant="body-small">
-            {isSso
-              ? `The ${label} connector reads this with your portal sign-in, and it has not connected on ${where} yet. This fills in once it does.`
-              : `The ${label} connector reads this with your own sign-in, and you have not signed in to it on ${where} yet. Sign in once; this fills in by itself.`}
+            {alertText({ isSso, isRefused, label, where })}
           </Text>
           <ShowMore
             items={installations}
@@ -114,6 +112,38 @@ export function ConnectorSignInAlert({
       }
     />
   );
+}
+
+type AlertCase = { isSso: boolean; isRefused: boolean; label: string };
+
+function alertTitle({
+  isSso,
+  isRefused,
+  label,
+  purpose,
+}: AlertCase & { purpose: string }): string {
+  if (isSso) {
+    return `Could not connect to ${label}`;
+  }
+  if (isRefused) {
+    return `Cannot sign in to ${label}`;
+  }
+  return `Sign in to ${label} to ${purpose}`;
+}
+
+function alertText({
+  isSso,
+  isRefused,
+  label,
+  where,
+}: AlertCase & { where: string }): string {
+  if (isSso) {
+    return `The ${label} connector reads this with your portal sign-in, and it has not connected on ${where} yet. This fills in once it does.`;
+  }
+  if (isRefused) {
+    return `The ${label} connector reads this with your own sign-in, and it cannot be signed in to from this portal session on ${where}. Each environment says why.`;
+  }
+  return `The ${label} connector reads this with your own sign-in, and you have not signed in to it on ${where} yet. Sign in once; this fills in by itself.`;
 }
 
 function InstallationSignIn({

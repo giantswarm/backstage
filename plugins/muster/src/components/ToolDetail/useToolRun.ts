@@ -77,6 +77,7 @@ export function useToolRun(
       const startedAt = performance.now();
       const result = await musterApi.callTool(name, args, installation, {
         signal: abort.signal,
+        urlElicitation: true,
       });
       return { result, durationMs: Math.round(performance.now() - startedAt) };
     },
