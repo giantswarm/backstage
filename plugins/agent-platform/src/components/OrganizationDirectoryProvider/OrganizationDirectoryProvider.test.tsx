@@ -2,10 +2,12 @@ import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 import {
   musterApiRef,
   musterInstallationsQueryKey,
+  MusterUnauthorizedError,
 } from '@giantswarm/backstage-plugin-muster';
 
 import { fakeOrganizationsMuster } from '../../lib/__fixtures__/agentManagerOrganizations';
@@ -20,8 +22,17 @@ const INSTALLATIONS = ['gazelle', 'golem', 'ozone', 'kestrel'];
 /** What the directory can tell about each installation. */
 function Probe() {
   const value = useOrganizationDirectory();
+  const signIn = value.signInOf('gazelle');
   return (
     <ul>
+      {signIn && (
+        <li>
+          {`gazelle sign-in: ${signIn.message}`}
+          <button type="button" onClick={() => value.recheck('gazelle')}>
+            Signed in
+          </button>
+        </li>
+      )}
       {INSTALLATIONS.map(installation => (
         <li key={installation}>
           {`${installation}: ${
@@ -146,5 +157,37 @@ describe('OrganizationDirectoryProvider', () => {
     );
     expect(await screen.findByText('ozone: decided')).toBeInTheDocument();
     expect(screen.getByText('gazelle: decided')).toBeInTheDocument();
+  });
+
+  it('tells a missing sign-in from a failure, and reads again once it is given', async () => {
+    const { api, callTool } = fakeOrganizationsMuster({
+      mine: { organizations: [] },
+    });
+    const SIGN_IN =
+      "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.";
+    const answer = callTool.getMockImplementation()!;
+    let signedIn = false;
+    callTool.mockImplementation(async (name: string, ...rest: unknown[]) => {
+      if (name === 'x_agent-manager_get_info' && !signedIn) {
+        throw new MusterUnauthorizedError(
+          SIGN_IN,
+          'server_sign_in_required',
+          'agent-manager',
+          'gazelle',
+        );
+      }
+      return (answer as (...args: unknown[]) => unknown)(name, ...rest);
+    });
+    await renderProbe(api);
+
+    expect(
+      await screen.findByText(`gazelle sign-in: ${SIGN_IN}`),
+    ).toBeInTheDocument();
+
+    signedIn = true;
+    await userEvent.click(screen.getByRole('button', { name: 'Signed in' }));
+
+    expect(await screen.findByText('gazelle: decided')).toBeInTheDocument();
+    expect(screen.queryByText(/gazelle sign-in/)).toBeNull();
   });
 });

@@ -32,6 +32,7 @@ export const TEST_ORGANIZATION_DIRECTORY: OrganizationDirectoryValue = {
   installations: [],
   discoveryErrors: [],
   discoveryFailureOf: () => undefined,
+  signInOf: () => undefined,
   organizationsOf: () => undefined,
   failureOf: () => undefined,
   recheck: async () => {},

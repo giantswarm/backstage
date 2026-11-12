@@ -13,7 +13,10 @@ import {
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AgentManagerClient } from '../../apis/AgentManagerClient';
-import { AGENT_MANAGER_SERVER } from '../../lib/agentManager';
+import {
+  AGENT_MANAGER_SERVER,
+  AgentManagerNotConnectedError,
+} from '../../lib/agentManager';
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
 import {
   musterAgentManagerInfoQueryKey,
@@ -45,11 +48,21 @@ export type OrganizationDirectoryValue = {
    * unasked. Another installation's failure is not this one's.
    */
   discoveryFailureOf: (installation: string) => string | undefined;
+  /**
+   * The person's sign-in to agent-manager on `installation` is missing, so
+   * its organizations could not be read, if so: what the read was answered,
+   * and whether muster asked for the sign-in (rather than answering "not
+   * connected" some other way). A sign-in, then `recheck`, decides it.
+   */
+  signInOf: (installation: string) => AgentManagerSignIn | undefined;
   /** The person's organizations on one installation, once answered. */
   organizationsOf: (installation: string) => OrganizationListing | undefined;
   /** Why an installation's organizations could not be read, if they could not. */
   failureOf: (installation: string) => string | undefined;
-  /** Reads an installation's organizations again (Check again). */
+  /**
+   * Reads an installation's organizations again (Check again), and whether
+   * it serves them (after a sign-in).
+   */
   recheck: (installation: string) => Promise<void>;
   /** True while an installation's answer is still to come. */
   isLoading: boolean;
@@ -57,11 +70,18 @@ export type OrganizationDirectoryValue = {
   isLoadingOf: (installation: string) => boolean;
 };
 
+/** A missing sign-in to agent-manager on one installation. */
+export type AgentManagerSignIn = {
+  message: string;
+  signInRequired: boolean;
+};
+
 const EMPTY: OrganizationDirectoryValue = {
   directory: EMPTY_ORGANIZATION_DIRECTORY,
   installations: [],
   discoveryErrors: [],
   discoveryFailureOf: () => undefined,
+  signInOf: () => undefined,
   organizationsOf: () => undefined,
   failureOf: () => undefined,
   recheck: async () => {},
@@ -150,10 +170,22 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
         `${installation} needs a per-user connector sign-in to read organizations.`;
     }
   }
+  // The installations whose agent-manager wants the person's sign-in, from
+  // its `get_info` or its `list_organizations`.
+  const signIns: Record<string, AgentManagerSignIn> = {};
+  const noteSignIn = (installation: string, error: unknown) => {
+    if (error instanceof AgentManagerNotConnectedError) {
+      signIns[installation] = {
+        message: error.message,
+        signInRequired: error.signInRequired,
+      };
+    }
+  };
   available.forEach((installation, index) => {
     const error = infos[index]?.error;
     if (error) {
       installationErrors[installation] = `${installation}: ${error.message}`;
+      noteSignIn(installation, error);
     }
   });
   const mine = useQueries({
@@ -166,6 +198,9 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
       retry: false,
     })),
   });
+  supported.forEach((installation, index) =>
+    noteSignIn(installation, mine[index]?.error),
+  );
 
   const isListing = Boolean(musterApi) && isAwaitingData(musterInstallations);
   // Each installation whose own reads are still out: its server list, its
@@ -200,6 +235,7 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
     // the muster plugin nothing is listed and nothing is held.
     listed: musterInstallations.data ? names : null,
     installationErrors,
+    signIns,
   });
   const loadingSignature = JSON.stringify([
     isListing,
@@ -222,6 +258,7 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
       listingError: string | null;
       listed: string[] | null;
       installationErrors: Record<string, string>;
+      signIns: Record<string, AgentManagerSignIn>;
     };
     const [listing, loading] = JSON.parse(loadingSignature) as [
       boolean,
@@ -251,12 +288,19 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
         }
         return discovery.installationErrors[installation];
       },
+      signInOf: installation => discovery.signIns[installation],
       organizationsOf: installation => answers.get(installation) ?? undefined,
       failureOf: installation => failures.get(installation) ?? undefined,
-      recheck: installation =>
-        queryClient.refetchQueries({
-          queryKey: musterOrganizationsQueryKey(installation),
-        }),
+      recheck: async installation => {
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: musterAgentManagerInfoQueryKey(installation),
+          }),
+          queryClient.refetchQueries({
+            queryKey: musterOrganizationsQueryKey(installation),
+          }),
+        ]);
+      },
       isLoading,
       isLoadingOf: installation => listing || loading.includes(installation),
     };

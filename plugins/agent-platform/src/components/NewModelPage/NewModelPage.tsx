@@ -173,10 +173,23 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   const choosingOwner = isLoadingNamespaces;
   // Why the installation's Organizations stay unknown once read, if they
   // do: a new model then goes to the platform, and the page says so.
+  // The person has not signed in to agent-manager there: which Organizations
+  // they may add a model for is unknown until they do, so the button waits
+  // and the page offers the sign-in.
+  const ownerSignIn =
+    !edit && installation
+      ? organizationDirectory.signInOf(installation)
+      : undefined;
   const ownersUnknown =
-    !edit && installation && !choosingOwner
+    !edit && installation && !choosingOwner && !ownerSignIn
       ? organizationsUndecided(organizationDirectory, installation)
       : undefined;
+  let heldReason: string | undefined;
+  if (ownerSignIn) {
+    heldReason = `Sign in on ${installation} first: the connector tells which Organizations you may add a model for.`;
+  } else if (choosingOwner) {
+    heldReason = CHOOSING_OWNER_REASON;
+  }
   let namespace: string;
   if (edit) {
     namespace = edit.modelConfig.getNamespace() ?? MODEL_CONFIG_NAMESPACE;
@@ -430,7 +443,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
       <Button
         variant="primary"
         onPress={onSubmit}
-        isDisabled={choosingOwner || isSaving || !isChanged}
+        isDisabled={Boolean(heldReason) || isSaving || !isChanged}
         aria-describedby={describedBy}
       >
         {label}
@@ -439,15 +452,11 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     // Until the owners are known, a model sent now would go to the platform
     // although an Organization the person administers is still to be
     // offered: the button waits and says why.
-    if (choosingOwner) {
-      return (
-        <DisabledAction reason={CHOOSING_OWNER_REASON}>
-          {primary}
-        </DisabledAction>
-      );
+    if (heldReason) {
+      return <DisabledAction reason={heldReason}>{primary}</DisabledAction>;
     }
     return primary();
-  }, [edit, onSubmit, isSaving, isChanged, continuesToKey, choosingOwner]);
+  }, [edit, onSubmit, isSaving, isChanged, continuesToKey, heldReason]);
   useProvidePageHeaderActions(actions);
 
   return (
@@ -515,6 +524,16 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
             </Flex>
           </CardBody>
         </Card>
+      )}
+
+      {ownerSignIn && installation && (
+        <ConnectAgentManagerAlert
+          installation={installation}
+          message={ownerSignIn.message}
+          action="Which Organizations you may add a model for is read"
+          signInRequired={ownerSignIn.signInRequired}
+          onSignedIn={() => organizationDirectory.recheck(installation)}
+        />
       )}
 
       {ownersUnknown && (

@@ -15,13 +15,41 @@ import { NewModelPage, type ModelEdit } from './NewModelPage';
 // The organizations agent-manager names for the person
 // (`list_organizations`), and why they could not be read, when a case says.
 let mockDirectoryFailure: string | undefined;
+// agent-manager there wants the person's sign-in, when a case says.
+let mockSignIn: { message: string; signInRequired: boolean } | undefined;
+const mockRecheck = jest.fn(async () => {});
 jest.mock('../OrganizationDirectoryProvider', () => ({
   ...jest.requireActual('../OrganizationDirectoryProvider'),
   useOrganizationDirectory: () => ({
     ...jest.requireActual('../../lib/__fixtures__/organizations')
       .TEST_ORGANIZATION_DIRECTORY,
     failureOf: () => mockDirectoryFailure,
+    signInOf: () => mockSignIn,
+    recheck: mockRecheck,
   }),
+}));
+
+// The alert's own sign-in is the muster plugin's: what it calls once the
+// sign-in lands is what matters here.
+jest.mock('../ConnectAgentManagerAlert', () => ({
+  ConnectAgentManagerAlert: ({
+    installation,
+    message,
+    onSignedIn,
+  }: {
+    installation: string;
+    message: string;
+    onSignedIn?: () => void;
+  }) => (
+    <div>
+      sign in to agent-manager on {installation}: {message}
+      {onSignedIn && (
+        <button type="button" onClick={onSignedIn}>
+          Sign-in lands
+        </button>
+      )}
+    </div>
+  ),
 }));
 
 let mockInstallationNames = ['golem'];
@@ -165,6 +193,8 @@ beforeEach(() => {
   mockNamespaces = ['kagent'];
   mockNamespacesLoading = false;
   mockDirectoryFailure = undefined;
+  mockSignIn = undefined;
+  mockRecheck.mockClear();
   mockSave.mockReset();
   mockSave.mockResolvedValue({ isDefault: false });
   mockOrganizationSave.mockReset();
@@ -347,6 +377,29 @@ describe('NewModelPage', () => {
     expect(
       screen.getByRole('button', { name: 'Connect model' }),
     ).not.toHaveAccessibleDescription();
+  });
+
+  it('holds Connect model and offers the sign-in while agent-manager there wants it', async () => {
+    const message =
+      "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.";
+    mockSignIn = { message, signInRequired: true };
+    await renderPage();
+
+    const connect = screen.getByRole('button', { name: 'Connect model' });
+    expect(connect).toBeDisabled();
+    expect(connect).toHaveAccessibleDescription(
+      'Sign in on golem first: the connector tells which Organizations you may add a model for.',
+    );
+    expect(
+      screen.getByText(`sign in to agent-manager on golem: ${message}`),
+    ).toBeInTheDocument();
+    // Not a failure that sends the model to the platform.
+    expect(screen.queryByText('Organizations unknown')).toBeNull();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Sign-in lands' }),
+    );
+    expect(mockRecheck).toHaveBeenCalledWith('golem');
   });
 
   it('says nothing of Organizations once they are read', async () => {
