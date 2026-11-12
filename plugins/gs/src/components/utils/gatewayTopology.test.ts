@@ -501,6 +501,51 @@ describe('buildGatewayTopology', () => {
       });
     });
 
+    it('drops equal weights, which the API server defaults to 1', () => {
+      const { routes } = buildGatewayTopology(
+        inputs({
+          routeParentInfo: parentInfo,
+          routeRuleBackendInfo: [
+            sample({
+              ...route,
+              backend0_name: 'b0',
+              backend0_weight: '1',
+              backend1_name: 'b1',
+              backend1_weight: '1',
+            }),
+          ],
+        }),
+      );
+      const backends =
+        routes[0].backends.status === 'available'
+          ? routes[0].backends.backends
+          : [];
+      expect(backends.map(b => [b.name, b.weight])).toEqual([
+        ['b0', undefined],
+        ['b1', undefined],
+      ]);
+    });
+
+    it('sorts a name before its longer variants', () => {
+      const { routes } = buildGatewayTopology(
+        inputs({
+          routeParentInfo: parentInfo,
+          routeRuleBackendInfo: [
+            sample({
+              ...route,
+              backend0_name: 'api-canary',
+              backend1_name: 'api',
+            }),
+          ],
+        }),
+      );
+      const backends =
+        routes[0].backends.status === 'available'
+          ? routes[0].backends.backends
+          : [];
+      expect(backends.map(b => b.name)).toEqual(['api', 'api-canary']);
+    });
+
     it('says a rule with three backends may have more', () => {
       const { routes } = buildGatewayTopology(
         inputs({

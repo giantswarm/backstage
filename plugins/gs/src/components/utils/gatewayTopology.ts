@@ -375,8 +375,9 @@ type RouteBackendsEntry = {
 /**
  * Collects the distinct backends of each route from its rule series. The
  * column shows backends per route, not per rule, so a weight is only kept when
- * it is unambiguous: the backend is in a single rule, and that rule splits
- * traffic between several backends.
+ * it is unambiguous and says something: the backend is in a single rule, and
+ * that rule splits traffic unevenly between several backends. The API server
+ * defaults every weight to 1, so equal weights are the plain case.
  */
 function indexRouteBackends(
   samples: MimirMetricSample[],
@@ -411,6 +412,8 @@ function indexRouteBackends(
     if (ruleBackends.length === exportedBackendsPerRule) {
       entry.mayHaveMore = true;
     }
+    const unevenSplit =
+      new Set(ruleBackends.map(backend => backend.weight)).size > 1;
     for (const backend of ruleBackends) {
       const backendKey = [
         backend.kind,
@@ -425,7 +428,7 @@ function indexRouteBackends(
       if (entry.backends.has(backendKey)) continue;
       entry.backends.set(backendKey, {
         ...backend,
-        weight: ruleBackends.length > 1 ? backend.weight : undefined,
+        weight: unevenSplit ? backend.weight : undefined,
       });
     }
   }
@@ -451,14 +454,27 @@ function routeBackends(
   }
   const entry = byRoute.get(key);
   if (!entry) return { status: 'not-reported' };
-  // The route's own namespace first, as most backendRefs omit the namespace.
-  const sortKey = (backend: HttpRouteBackend) =>
-    `${backend.namespace === entry.routeNamespace ? 0 : 1}/${backend.namespace}/${backend.name}/${backend.port ?? ''}/${backend.kind}`;
+  // The route's own namespace first, as most backendRefs omit the namespace,
+  // then by namespace, name, port and kind, compared field by field.
+  const sortFields = (backend: HttpRouteBackend) => [
+    backend.namespace === entry.routeNamespace ? '0' : '1',
+    backend.namespace,
+    backend.name,
+    backend.port ?? '',
+    backend.kind,
+  ];
+  const compareBackends = (a: HttpRouteBackend, b: HttpRouteBackend) => {
+    const fa = sortFields(a);
+    const fb = sortFields(b);
+    for (let i = 0; i < fa.length; i++) {
+      const order = fa[i].localeCompare(fb[i], undefined, { numeric: true });
+      if (order !== 0) return order;
+    }
+    return 0;
+  };
   return {
     status: 'available',
-    backends: Array.from(entry.backends.values()).sort((a, b) =>
-      sortKey(a).localeCompare(sortKey(b)),
-    ),
+    backends: Array.from(entry.backends.values()).sort(compareBackends),
     mayHaveMore: entry.mayHaveMore,
   };
 }
