@@ -14,8 +14,16 @@ function OrganizationRoute() {
   if (!installation || !parent || !name) {
     return null;
   }
+  // One page per organization: its state (an open delete dialog, a delete
+  // it made) belongs to that organization and must not carry over when the
+  // address names another, as it would with the page reused.
   return (
-    <OrganizationPage installation={installation} parent={parent} name={name} />
+    <OrganizationPage
+      key={`${installation}/${parent}/${name}`}
+      installation={installation}
+      parent={parent}
+      name={name}
+    />
   );
 }
 

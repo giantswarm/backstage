@@ -79,6 +79,9 @@ export function OrganizationPage({
   const basePath = useSplatBasePath();
   const { search } = useLocation();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // A delete this page made: an organization without a namespace can be
+  // erased before the list is read again, and then is no longer listed.
+  const [deletedHere, setDeletedHere] = useState(false);
 
   const object = details.data?.organization ?? listed?.organization;
   const status = object ?? listed;
@@ -131,7 +134,10 @@ export function OrganizationPage({
   }
   // The read keeps the last organization it had; `not_found` after one that
   // was deleting is the end of its erasure.
-  if (object?.deleting && details.failure?.code === 'not_found') {
+  if (
+    (object?.deleting && details.failure?.code === 'not_found') ||
+    (deletedHere && !listed && !mine.isLoading)
+  ) {
     return (
       <ShellPage title={title} {...frame}>
         <EmptyStateCard
@@ -142,6 +148,47 @@ export function OrganizationPage({
       </ShellPage>
     );
   }
+  // Only a person who manages it deletes it; the mode follows its state.
+  // Offered with or without its organization namespace: agent-manager
+  // deletes it by its parent namespace and name, and one whose namespace
+  // the operator never created is still to be removed.
+  const deleteMode =
+    listed?.permissions.manage && object
+      ? organizationDeleteMode(object)
+      : undefined;
+  const deleteAction =
+    deleteMode === 'delete' || deleteMode === 'pull-request' ? (
+      <Button variant="secondary" onPress={() => setConfirmingDelete(true)}>
+        Delete organization
+      </Button>
+    ) : undefined;
+  // Its state (Pending erase with Erase now, Missing from git) and the
+  // delete dialog, above whichever body the page shows.
+  const deletion = (
+    <>
+      {status && (
+        <OrganizationStatusAlert
+          organization={status}
+          onEraseNow={
+            deleteMode === 'erase' ? () => setConfirmingDelete(true) : undefined
+          }
+        />
+      )}
+      {deleteMode && confirmingDelete && (
+        <OrganizationDeleteDialog
+          installation={installation}
+          parent={parent}
+          name={name}
+          title={title}
+          mode={deleteMode}
+          isOpen
+          onOpenChange={setConfirmingDelete}
+          onDeleted={() => setDeletedHere(true)}
+        />
+      )}
+    </>
+  );
+
   if (!namespace) {
     if (mine.failure) {
       return (
@@ -163,12 +210,15 @@ export function OrganizationPage({
     }
     if (listed) {
       return (
-        <ShellPage title={title} {...frame}>
-          <EmptyStateCard
-            title={`${title} has no namespace yet`}
-            description={`agent-manager lists ${name} in ${parent} on ${installation}, and the operator has not created its organization namespace yet.`}
-            actions={backLink}
-          />
+        <ShellPage title={title} {...frame} actions={deleteAction}>
+          <Flex direction="column" gap="5">
+            {deletion}
+            <EmptyStateCard
+              title={`${title} has no namespace yet`}
+              description={`agent-manager lists ${name} in ${parent} on ${installation}, and the operator has not created its organization namespace yet.`}
+              actions={backLink}
+            />
+          </Flex>
         </ShellPage>
       );
     }
@@ -193,18 +243,6 @@ export function OrganizationPage({
     );
   }
 
-  // Only a person who manages it deletes it; the mode follows its state.
-  const deleteMode =
-    listed?.permissions.manage && object
-      ? organizationDeleteMode(object)
-      : undefined;
-  const deleteAction =
-    deleteMode === 'delete' || deleteMode === 'pull-request' ? (
-      <Button variant="secondary" onPress={() => setConfirmingDelete(true)}>
-        Delete organization
-      </Button>
-    ) : undefined;
-
   const organization: OrganizationNamespace = {
     namespace,
     organization: name,
@@ -221,27 +259,7 @@ export function OrganizationPage({
       actions={deleteAction}
     >
       <Flex direction="column" gap="5">
-        {status && (
-          <OrganizationStatusAlert
-            organization={status}
-            onEraseNow={
-              deleteMode === 'erase'
-                ? () => setConfirmingDelete(true)
-                : undefined
-            }
-          />
-        )}
-        {deleteMode && confirmingDelete && (
-          <OrganizationDeleteDialog
-            installation={installation}
-            parent={parent}
-            name={name}
-            title={title}
-            mode={deleteMode}
-            isOpen
-            onOpenChange={setConfirmingDelete}
-          />
-        )}
+        {deletion}
         <Routes>
           <Route
             index
