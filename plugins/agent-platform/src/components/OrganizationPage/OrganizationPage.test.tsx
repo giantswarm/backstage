@@ -1212,6 +1212,104 @@ describe('OrganizationPage', () => {
       expect(toolCalls(callTool, 'get_organization')).toHaveLength(0);
     });
 
+    // The operator never created its namespace: agent-manager still deletes
+    // it by its parent namespace and name, and previews no erasure.
+    const WITHOUT_NAMESPACE = {
+      name: 'payments',
+      parent: 'org-acme',
+      displayName: 'Payments',
+      harnesses: ['kagent'],
+      workerReplicas: 0,
+    };
+
+    it('deletes an organization the person manages that has no namespace yet', async () => {
+      const { callTool } = await renderPage('', {
+        ...SCENARIO,
+        mine: { organizations: [] },
+        organization: WITHOUT_NAMESPACE,
+      });
+
+      expect(
+        await screen.findByText('Payments has no namespace yet'),
+      ).toBeInTheDocument();
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Delete organization' }),
+      );
+      const dialog = await screen.findByRole('dialog');
+      expect(
+        await within(dialog).findByText(
+          /has no organization namespace yet, so there are no agents/,
+        ),
+      ).toBeInTheDocument();
+      expect(within(dialog).queryByText(/^Running sessions/)).toBeNull();
+      const confirm = within(dialog).getByRole('button', {
+        name: 'Delete organization',
+      });
+      expect(confirm).toBeDisabled();
+      await userEvent.type(
+        within(dialog).getByLabelText('Type org-acme/payments to confirm'),
+        'org-acme/payments',
+      );
+      await waitFor(() => expect(confirm).toBeEnabled());
+      await userEvent.click(confirm);
+
+      await waitFor(() =>
+        expect(toolCalls(callTool, 'delete_organization')).toEqual([
+          {
+            namespace: 'org-acme',
+            name: 'payments',
+            confirm: 'org-acme/payments',
+          },
+        ]),
+      );
+    });
+
+    it('opens the pull request for one applied from git that has no namespace yet', async () => {
+      const { callTool } = await renderPage('', {
+        ...SCENARIO,
+        mine: { organizations: [] },
+        organization: { ...WITHOUT_NAMESPACE, gitops: true },
+      });
+
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Delete organization' }),
+      );
+      const dialog = await screen.findByRole('dialog');
+      await userEvent.click(
+        await within(dialog).findByRole('button', {
+          name: 'Open pull request',
+        }),
+      );
+
+      await waitFor(() =>
+        expect(toolCalls(callTool, 'delete_organization')).toEqual([
+          { namespace: 'org-acme', name: 'payments', mode: 'commit' },
+        ]),
+      );
+    });
+
+    it('offers no Delete to a member who does not manage one without a namespace', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        mine: {
+          organizations: [
+            {
+              namespace: '',
+              organization: 'payments',
+              parent: 'org-acme',
+            },
+          ],
+        },
+      });
+
+      expect(
+        await screen.findByText(/has no namespace yet/),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Delete organization' }),
+      ).toBeNull();
+    });
+
     it('says an organization the person manages has no namespace yet, rather than that they are no member', async () => {
       await renderPage('', {
         ...SCENARIO,

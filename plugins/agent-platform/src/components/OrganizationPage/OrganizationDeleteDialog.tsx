@@ -263,6 +263,15 @@ export function OrganizationDeleteDialog({
             <RunningSessions erasure={erases} />
           </>
         )}
+        {erasure.data && !erases && !pullRequest && (
+          // agent-manager previews an erasure only once the organization
+          // namespace exists: without one, nothing runs in it to erase.
+          <Text variant="body-medium">
+            {title} has no organization namespace yet, so there are no agents,
+            models, connectors, credentials or members to erase and no session
+            stops. The delete removes the organization itself.
+          </Text>
+        )}
         {!viaPullRequest && (
           <TextField
             label={`Type ${expected} to confirm`}

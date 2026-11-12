@@ -142,6 +142,46 @@ export function OrganizationPage({
       </ShellPage>
     );
   }
+  // Only a person who manages it deletes it; the mode follows its state.
+  // Offered with or without its organization namespace: agent-manager
+  // deletes it by its parent namespace and name, and one whose namespace
+  // the operator never created is still to be removed.
+  const deleteMode =
+    listed?.permissions.manage && object
+      ? organizationDeleteMode(object)
+      : undefined;
+  const deleteAction =
+    deleteMode === 'delete' || deleteMode === 'pull-request' ? (
+      <Button variant="secondary" onPress={() => setConfirmingDelete(true)}>
+        Delete organization
+      </Button>
+    ) : undefined;
+  // Its state (Pending erase with Erase now, Missing from git) and the
+  // delete dialog, above whichever body the page shows.
+  const deletion = (
+    <>
+      {status && (
+        <OrganizationStatusAlert
+          organization={status}
+          onEraseNow={
+            deleteMode === 'erase' ? () => setConfirmingDelete(true) : undefined
+          }
+        />
+      )}
+      {deleteMode && confirmingDelete && (
+        <OrganizationDeleteDialog
+          installation={installation}
+          parent={parent}
+          name={name}
+          title={title}
+          mode={deleteMode}
+          isOpen
+          onOpenChange={setConfirmingDelete}
+        />
+      )}
+    </>
+  );
+
   if (!namespace) {
     if (mine.failure) {
       return (
@@ -163,12 +203,15 @@ export function OrganizationPage({
     }
     if (listed) {
       return (
-        <ShellPage title={title} {...frame}>
-          <EmptyStateCard
-            title={`${title} has no namespace yet`}
-            description={`agent-manager lists ${name} in ${parent} on ${installation}, and the operator has not created its organization namespace yet.`}
-            actions={backLink}
-          />
+        <ShellPage title={title} {...frame} actions={deleteAction}>
+          <Flex direction="column" gap="5">
+            {deletion}
+            <EmptyStateCard
+              title={`${title} has no namespace yet`}
+              description={`agent-manager lists ${name} in ${parent} on ${installation}, and the operator has not created its organization namespace yet.`}
+              actions={backLink}
+            />
+          </Flex>
         </ShellPage>
       );
     }
@@ -193,18 +236,6 @@ export function OrganizationPage({
     );
   }
 
-  // Only a person who manages it deletes it; the mode follows its state.
-  const deleteMode =
-    listed?.permissions.manage && object
-      ? organizationDeleteMode(object)
-      : undefined;
-  const deleteAction =
-    deleteMode === 'delete' || deleteMode === 'pull-request' ? (
-      <Button variant="secondary" onPress={() => setConfirmingDelete(true)}>
-        Delete organization
-      </Button>
-    ) : undefined;
-
   const organization: OrganizationNamespace = {
     namespace,
     organization: name,
@@ -221,27 +252,7 @@ export function OrganizationPage({
       actions={deleteAction}
     >
       <Flex direction="column" gap="5">
-        {status && (
-          <OrganizationStatusAlert
-            organization={status}
-            onEraseNow={
-              deleteMode === 'erase'
-                ? () => setConfirmingDelete(true)
-                : undefined
-            }
-          />
-        )}
-        {deleteMode && confirmingDelete && (
-          <OrganizationDeleteDialog
-            installation={installation}
-            parent={parent}
-            name={name}
-            title={title}
-            mode={deleteMode}
-            isOpen
-            onOpenChange={setConfirmingDelete}
-          />
-        )}
+        {deletion}
         <Routes>
           <Route
             index
