@@ -72,11 +72,11 @@ describe('SignedInElsewhereAlert', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('says the person signed in from another browser and offers to sign in again', async () => {
+  it('says the person signed in somewhere else and offers to sign in again', async () => {
     await renderAlert({ reason: 'signed-in-elsewhere' });
 
     const alert = screen.getByRole('alert');
-    expect(alert).toHaveTextContent('You signed in from another browser');
+    expect(alert).toHaveTextContent('You signed in somewhere else');
     expect(alert).toHaveTextContent('Sign in again here to keep working.');
     expect(
       screen.getByRole('button', { name: 'Sign in again' }),

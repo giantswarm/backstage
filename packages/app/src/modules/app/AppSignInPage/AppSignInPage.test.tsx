@@ -176,7 +176,7 @@ describe('AppSignInPage', () => {
         await screen.findByRole('button', { name: button }),
       ).toBeInTheDocument();
       const notice = screen.getByRole('alert');
-      expect(notice).toHaveTextContent('You signed in from another browser');
+      expect(notice).toHaveTextContent('You signed in somewhere else');
       expect(notice).toHaveTextContent('Sign in again here to keep working.');
     },
   );
@@ -197,7 +197,7 @@ describe('AppSignInPage', () => {
         await screen.findByRole('button', { name: button }),
       ).toBeInTheDocument();
       expect(
-        screen.queryByText('You signed in from another browser'),
+        screen.queryByText('You signed in somewhere else'),
       ).not.toBeInTheDocument();
     },
   );

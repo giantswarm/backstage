@@ -1,7 +1,7 @@
 import { Alert, Box } from '@backstage/ui';
 import { useMainSessionEnd } from '@giantswarm/backstage-plugin-gs';
 
-export const SIGNED_IN_ELSEWHERE_TITLE = 'You signed in from another browser';
+export const SIGNED_IN_ELSEWHERE_TITLE = 'You signed in somewhere else';
 export const SIGNED_IN_ELSEWHERE_DESCRIPTION =
   'Sign in again here to keep working.';
 
