@@ -253,11 +253,10 @@ test('a session started from the portal with an older go mounts that version', a
     }
     await closeChoice();
     await expect(toolchains).toHaveText(String(offeredCount));
-    const agentPicker = dialog.getByRole('button', { name: /^Agent\b/ });
-    await expect(agentPicker).toContainText(agentName);
-    expect(await isCutOff(agentPicker), 'the agent name is cut off').toBe(
-      false,
-    );
+    // The agent's page offers no other agent: it is named, not a picker.
+    const agentLabel = dialog.getByRole('group', { name: 'Agent' });
+    await expect(agentLabel).toContainText(agentName);
+    expect(await isCutOff(agentLabel), 'the agent name is cut off').toBe(false);
     const workspacePicker = dialog.getByRole('button', {
       name: /^Workspace\b/,
     });

@@ -86,12 +86,40 @@ const useStyles = makeStyles(theme => ({
   },
   // Kept compact rather than filling the row, matching the prototype: the prompt
   // is the hero and the knobs are secondary, which a full-width picker undoes.
-  // It gives way only once the workspace beside it is down to its folder: the
-  // agent is the first thing to read in the row (giantswarm/giantswarm#39204).
+  // As wide as its name needs, up to 260px. Short of room, it and the
+  // workspace beside it share the row equally, so both names stay readable
+  // (giantswarm/giantswarm#39204); bui's `width: 100%` would take the cap.
   agentSelect: {
-    flex: '0 1 auto',
-    maxWidth: 260,
+    flex: '1 1 0',
+    width: 'auto',
     minWidth: 0,
+    maxWidth: 'max-content',
+    '& .bui-SelectTrigger': {
+      maxWidth: 260,
+    },
+  },
+  // The agent where there is no other to choose: its avatar and name, sized
+  // and shared as the select would be, without a select's caret.
+  agentFixed: {
+    flex: '1 1 0',
+    minWidth: 0,
+    maxWidth: 'max-content',
+    display: 'flex',
+  },
+  agentFixedContent: {
+    display: 'flex',
+    alignItems: 'center',
+    minWidth: 0,
+    maxWidth: 260,
+    minHeight: '2rem',
+    paddingInline: 'var(--bui-space-1) var(--bui-space-2)',
+    fontSize: 'var(--bui-font-size-3)',
+    color: 'var(--bui-fg-primary)',
+  },
+  agentFixedName: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   // The agent-first invitation, per the prototype's Main artboard: while no
   // agent is chosen the picker carries an accent ring and a soft glow, so the
@@ -113,6 +141,10 @@ const useStyles = makeStyles(theme => ({
     display: 'flex',
     alignItems: 'center',
     flexWrap: 'wrap',
+    // Each picker at its own width, so the row wraps rather than sharing.
+    '& > *': {
+      flexBasis: 'auto',
+    },
     gap: 'var(--bui-space-2)',
     paddingBottom: 'var(--bui-space-2)',
     borderBottom: '1px solid var(--bui-border-1)',
@@ -958,68 +990,79 @@ export function NewSessionComposer({
     />
   );
 
+  // A sole startable agent is no choice, unless unavailable ones are listed
+  // beside it with their reasons or the picker also holds its footer action:
+  // it is named, not offered.
+  const fixedAgent =
+    soleAgent && listed.length === 1 && !pickerFooterAction
+      ? selectedAgent
+      : undefined;
+
   const picker = (
     <>
-      <Select
-        ref={agentSelectRef}
-        aria-label="Agent"
-        className={
-          awaitingAgent
-            ? `${classes.agentSelect} ${classes.agentSelectAttention}`
-            : classes.agentSelect
-        }
-        isInvalid={showAgentMissing}
-        // `leadingIcon` only reaches the options; the trigger has its own
-        // slot, and without this the chosen agent loses the avatar it had
-        // in the list.
-        icon={selectedAgent ? renderAvatar(selectedAgent) : undefined}
-        options={pickerOptions}
-        selectedKey={selectedKey}
-        onSelectionChange={key => {
-          setSearchText('');
-          const id = key ? String(key) : undefined;
-          if (id === FOOTER_ACTION_ID) {
-            pickerFooterAction?.onAction();
-            return;
+      {fixedAgent ? (
+        <div className={classes.agentFixed} role="group" aria-label="Agent">
+          <div className={classes.agentFixedContent} title={fixedAgent.name}>
+            {renderAvatar(fixedAgent)}
+            <span className={classes.agentFixedName}>{fixedAgent.name}</span>
+          </div>
+        </div>
+      ) : (
+        <Select
+          ref={agentSelectRef}
+          aria-label="Agent"
+          className={
+            awaitingAgent
+              ? `${classes.agentSelect} ${classes.agentSelectAttention}`
+              : classes.agentSelect
           }
-          touched.current = true;
-          setSelectedId(id && agentIdOfOption(id));
-          setPickedOptionId(id);
-        }}
-        onOpenChange={isOpen => {
-          setOpenedWith(
-            isOpen
-              ? { recent: recentAgentIds, favorites: favoriteAgentIds }
-              : undefined,
-          );
-          if (!isOpen) {
+          isInvalid={showAgentMissing}
+          // `leadingIcon` only reaches the options; the trigger has its own
+          // slot, and without this the chosen agent loses the avatar it had
+          // in the list.
+          icon={selectedAgent ? renderAvatar(selectedAgent) : undefined}
+          options={pickerOptions}
+          selectedKey={selectedKey}
+          onSelectionChange={key => {
             setSearchText('');
-          }
-        }}
-        placeholder={pickerPlaceholder}
-        // The search text is held here so the options can be the matches,
-        // agents found by name first, and so the Recent and Favorites groups
-        // can step aside while a search is typed. Without `groupByNamespace`
-        // the box keeps bui's own placeholder.
-        {...(isSearchable && {
-          search: {
-            inputValue: searchText,
-            onInputChange: setSearchText,
-            placeholder: groupByNamespace
-              ? `Search ${listed.length} agents`
-              : undefined,
-            // `matched` already is the search's result.
-            filter: () => true,
-          },
-        })}
-        // A sole startable agent is no choice, unless unavailable ones
-        // are listed beside it with their reasons or the picker also
-        // holds its footer action.
-        isDisabled={
-          isStarting ||
-          (Boolean(soleAgent) && listed.length === 1 && !pickerFooterAction)
-        }
-      />
+            const id = key ? String(key) : undefined;
+            if (id === FOOTER_ACTION_ID) {
+              pickerFooterAction?.onAction();
+              return;
+            }
+            touched.current = true;
+            setSelectedId(id && agentIdOfOption(id));
+            setPickedOptionId(id);
+          }}
+          onOpenChange={isOpen => {
+            setOpenedWith(
+              isOpen
+                ? { recent: recentAgentIds, favorites: favoriteAgentIds }
+                : undefined,
+            );
+            if (!isOpen) {
+              setSearchText('');
+            }
+          }}
+          placeholder={pickerPlaceholder}
+          // The search text is held here so the options can be the matches,
+          // agents found by name first, and so the Recent and Favorites groups
+          // can step aside while a search is typed. Without `groupByNamespace`
+          // the box keeps bui's own placeholder.
+          {...(isSearchable && {
+            search: {
+              inputValue: searchText,
+              onInputChange: setSearchText,
+              placeholder: groupByNamespace
+                ? `Search ${listed.length} agents`
+                : undefined,
+              // `matched` already is the search's result.
+              filter: () => true,
+            },
+          })}
+          isDisabled={isStarting}
+        />
+      )}
       {offersWorkspaces && selectedAgent && (
         <WorkspacePicker
           key={selectedAgent.id}

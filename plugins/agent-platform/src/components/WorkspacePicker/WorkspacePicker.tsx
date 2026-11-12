@@ -19,14 +19,19 @@ import type { AgentRow } from '../AgentsDataProvider';
 const NO_WORKSPACE_ID = 'workspace:none';
 
 const useStyles = makeStyles({
-  // Compact like the agent picker beside it: the prompt stays the hero.
-  // The first picker in the row to give way when it is short of room, down
-  // to its folder and caret, before the agent does (giantswarm/giantswarm#39204).
+  // Compact like the agent picker beside it: the prompt stays the hero. As
+  // wide as its name needs, up to 240px; short of room, it shares the row
+  // equally with the agent, down to its folder and caret
+  // (giantswarm/giantswarm#39204).
   select: {
-    flex: '0 1000 auto',
-    maxWidth: 240,
+    flex: '1 1 0',
+    width: 'auto',
     // The folder, the caret's box and bui's gaps.
     minWidth: 76,
+    maxWidth: 'max-content',
+    '& .bui-SelectTrigger': {
+      maxWidth: 240,
+    },
   },
 });
 
