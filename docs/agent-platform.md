@@ -434,6 +434,13 @@ drops a repository whatever selects it, a pick by name included, and the
 manager keeps an exclusion that names no selected repository (it leaves
 nothing out until a filter selects that name).
 
+Creating a workspace takes any name, such as "My workspace", and fills in the
+technical name from it (`my-workspace`: lowercase letters, digits and dashes,
+at most 40 characters), shown under the field as on agent creation. The
+technical name is the workspace's name in workspace-manager, which stores no
+other; a technical name of the person's own goes under **Advanced options**,
+and from then on the name no longer changes it.
+
 The editor (`/customize/workspaces/new`, `…/<installation>/<organization>/<name>/edit`)
 shows a source's exclusions under **Exclusions**: each a tag to remove, what
 they leave out now, and a field that offers the repositories the source

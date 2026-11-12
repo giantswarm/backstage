@@ -180,9 +180,13 @@ describe('WorkspaceEditorPage', () => {
     });
     await render(fake);
 
+    // Any name: the technical name is filled in from it.
     fireEvent.change(await screen.findByRole('textbox', { name: /^Name/ }), {
-      target: { value: 'platform-mcp' },
+      target: { value: 'Platform MCP' },
     });
+    expect(screen.getByText(/Its technical name is/)).toHaveTextContent(
+      'Its technical name is platform-mcp; it cannot be changed once the workspace exists.',
+    );
     fireEvent.change(source(0).getByRole('textbox', { name: /^Owner/ }), {
       target: { value: 'acme' },
     });
@@ -357,13 +361,13 @@ describe('WorkspaceEditorPage', () => {
     await render(fake);
 
     const name = await screen.findByRole('textbox', { name: /^Name/ });
-    fireEvent.change(name, { target: { value: 'Platform MCP' } });
+    fireEvent.change(name, { target: { value: '!!!' } });
     expect(
-      screen.queryByText(/Use lowercase letters, digits and dashes only/),
+      screen.queryByText('Use at least one letter or digit.'),
     ).not.toBeInTheDocument();
     fireEvent.blur(name);
     expect(
-      await screen.findByText(/Use lowercase letters, digits and dashes only/),
+      await screen.findByText('Use at least one letter or digit.'),
     ).toBeInTheDocument();
     // A field not yet left stays quiet.
     expect(screen.queryByText('Owner is required')).not.toBeInTheDocument();
@@ -659,16 +663,43 @@ describe('WorkspaceEditorPage', () => {
         expect.stringContaining('A workspace named taken exists on lab.'),
       ),
     );
+  });
 
-    // An invalid name says so once typing pauses, with one to try.
+  it('takes a technical name of the person’s own, and checks it there', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+    });
+    await render(fake);
+    const name = await screen.findByRole('textbox', { name: /^Name/ });
     fireEvent.change(name, { target: { value: 'Platform MCP' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced options' }));
+    const technical = await screen.findByRole('textbox', {
+      name: /^Technical name/,
+    });
+    expect(technical).toHaveValue('platform-mcp');
+
+    // An invalid technical name says so once typing pauses, with one to try.
+    fireEvent.change(technical, { target: { value: 'Bad_Name' } });
     await act(async () => {
       jest.advanceTimersByTime(600);
     });
     await waitFor(() =>
-      expect(name).toHaveAccessibleDescription(
-        expect.stringContaining('Try “platform-mcp”.'),
+      expect(technical).toHaveAccessibleDescription(
+        expect.stringContaining('Try “bad-name”.'),
       ),
+    );
+    expect(name).not.toHaveAccessibleDescription(
+      expect.stringContaining('Try'),
+    );
+
+    // From then on the name no longer changes it.
+    fireEvent.change(technical, { target: { value: 'mcp-servers' } });
+    fireEvent.change(name, { target: { value: 'Something else' } });
+    expect(technical).toHaveValue('mcp-servers');
+    expect(screen.getByText(/Its technical name is/)).toHaveTextContent(
+      'mcp-servers',
     );
   });
 

@@ -36,6 +36,7 @@ import {
   emptySource,
   fieldOfManagerMessage,
   managerMessageText,
+  suggestName,
   type SourceDraft,
   type WorkspaceDraft,
 } from '../../lib/workspaceDraft';
@@ -76,6 +77,10 @@ const useStyles = makeStyles({
       fontSize: 'var(--bui-font-size-2)',
       pointerEvents: 'none',
     },
+  },
+  technicalName: {
+    marginTop: 'var(--bui-space-1)',
+    overflowWrap: 'anywhere',
   },
 });
 
@@ -243,10 +248,45 @@ function WorkspaceEditor({
     [draft, update],
   );
 
-  const problems = useMemo(
-    () => (draft ? draftProblems(draft, isEdit) : {}),
-    [draft, isEdit],
+  // The technical name is filled in from the name until the person types one
+  // of their own, as on agent creation.
+  const [nameEdited, setNameEdited] = useState(false);
+  const onNameChange = useCallback(
+    (displayName: string) => {
+      if (draft) {
+        update({
+          ...draft,
+          displayName,
+          name: nameEdited ? draft.name : suggestName(displayName),
+        });
+      }
+    },
+    [draft, update, nameEdited],
   );
+  const onTechnicalNameChange = useCallback(
+    (technicalName: string) => {
+      if (draft) {
+        setNameEdited(true);
+        update({ ...draft, name: technicalName });
+      }
+    },
+    [draft, update],
+  );
+
+  const problems = useMemo(() => {
+    if (!draft) {
+      return {};
+    }
+    const found = draftProblems(draft, isEdit);
+    if (!isEdit && !draft.name.trim()) {
+      if (nameEdited) {
+        found.name = 'Enter a technical name.';
+      } else if (draft.displayName.trim()) {
+        found.name = 'Use at least one letter or digit.';
+      }
+    }
+    return found;
+  }, [draft, isEdit, nameEdited]);
   const validation = useFieldValidation();
   // A field the person left shows its problem at once; the rest on save.
   const [touched, setTouched] = useState<ReadonlySet<string>>(new Set());
@@ -428,6 +468,9 @@ function WorkspaceEditor({
         problem={problem}
         errorFor={errorFor}
         touch={touch}
+        nameEdited={nameEdited}
+        onNameChange={onNameChange}
+        onTechnicalNameChange={onTechnicalNameChange}
         onNameBlur={nameAvailability.checkNow}
         nameAvailable={nameAvailability.state === 'available'}
         update={update}
@@ -551,6 +594,10 @@ type EditorBodyProps = {
   errorFor: (field: string) => string | undefined;
   /** Marks a field the person left, so its problem shows at once. */
   touch: (field: string) => void;
+  /** Whether the person typed a technical name of their own. */
+  nameEdited: boolean;
+  onNameChange: (displayName: string) => void;
+  onTechnicalNameChange: (name: string) => void;
   onNameBlur: () => void;
   nameAvailable: boolean;
   update: (draft: WorkspaceDraft) => void;
@@ -575,6 +622,9 @@ function EditorBody({
   problem,
   errorFor,
   touch,
+  nameEdited,
+  onNameChange,
+  onTechnicalNameChange,
   onNameBlur,
   nameAvailable,
   update,
@@ -612,7 +662,14 @@ function EditorBody({
     return <Skeleton width="100%" height={240} />;
   }
 
+  // A problem with the technical name shows on the field it comes from: the
+  // name, until the person types a technical name of their own.
   const nameError = errorFor('name');
+  const technicalName = draft.name.trim();
+  const onBlurName = () => {
+    touch('name');
+    onNameBlur();
+  };
   return (
     <Flex direction="column" gap="4">
       {!isEdit && (
@@ -643,18 +700,26 @@ function EditorBody({
           <TextField
             label="Name"
             isRequired
-            description="Lowercase letters, digits and dashes, up to 40 characters. It can’t be changed later."
-            value={draft.name}
-            onChange={value => update({ ...draft, name: value })}
-            onBlur={() => {
-              touch('name');
-              onNameBlur();
-            }}
-            {...fieldErrorProps(nameError)}
+            value={draft.displayName}
+            onChange={onNameChange}
+            onBlur={onBlurName}
+            placeholder="e.g. Platform repositories"
+            {...fieldErrorProps(nameEdited ? undefined : nameError)}
           />
+          {technicalName && (
+            <Text
+              as="p"
+              variant="body-small"
+              color="secondary"
+              className={classes.technicalName}
+            >
+              Its technical name is <code>{technicalName}</code>; it cannot be
+              changed once the workspace exists.
+            </Text>
+          )}
           {nameAvailable && !nameError && (
             <Text variant="body-small" color="success" role="status">
-              {draft.name.trim()} is available
+              {technicalName} is available
             </Text>
           )}
         </Flex>
@@ -680,30 +745,45 @@ function EditorBody({
       )}
 
       <SimpleAccordion title="Advanced options" headingLevel={2}>
-        <Flex direction="column" gap="2">
-          <Text variant="body-small" weight="bold">
-            Disk space
-          </Text>
-          <Text
-            variant="body-small"
-            color="secondary"
-            data-testid="storage-estimate"
-          >
-            {disk}
-          </Text>
-          <div style={{ maxWidth: 240 }} className={classes.unitField}>
+        <Flex direction="column" gap="4">
+          {!isEdit && (
             <TextField
-              label="Minimum size"
-              inputMode="numeric"
-              // The unit drawn after the number is no text a screen reader
-              // reads: the description names it.
-              description="The disk never gets smaller than this many GiB. 0 means automatic sizing only. Raise it if agents need a lot of room, for example for large builds."
-              value={draft.minimumGiB}
-              onChange={value => update({ ...draft, minimumGiB: value })}
-              onBlur={() => touch('sizing.minimum')}
-              {...fieldErrorProps(errorFor('sizing.minimum'))}
+              label="Technical name"
+              secondaryLabel="filled in from the name"
+              isRequired
+              value={draft.name}
+              onChange={onTechnicalNameChange}
+              onBlur={onBlurName}
+              placeholder="platform-repositories"
+              description="Lowercase letters, digits and dashes, up to 40 characters. Used in links and resource names."
+              {...fieldErrorProps(nameEdited ? nameError : undefined)}
             />
-          </div>
+          )}
+          <Flex direction="column" gap="2">
+            <Text variant="body-small" weight="bold">
+              Disk space
+            </Text>
+            <Text
+              variant="body-small"
+              color="secondary"
+              data-testid="storage-estimate"
+            >
+              {disk}
+            </Text>
+            <div style={{ maxWidth: 240 }} className={classes.unitField}>
+              <TextField
+                label="Minimum size"
+                inputMode="numeric"
+                // The unit drawn after the number is no text a screen reader
+                // reads: the description names it.
+                description="The disk never gets smaller than this many GiB. 0 means automatic sizing only. Raise it if agents need a lot of room, for example for large builds."
+                value={draft.minimumGiB}
+                onChange={value => update({ ...draft, minimumGiB: value })}
+                onBlur={() => touch('sizing.minimum')}
+                {...fieldErrorProps(errorFor('sizing.minimum'))}
+              />
+            </div>
+          </Flex>
         </Flex>
       </SimpleAccordion>
 

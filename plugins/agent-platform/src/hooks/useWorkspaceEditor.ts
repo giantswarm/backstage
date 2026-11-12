@@ -268,6 +268,7 @@ export function useSourcePreview(
     client,
     organization,
     {
+      displayName: '',
       name: '',
       sources: enabled ? [source] : [],
       minimumGiB: '',

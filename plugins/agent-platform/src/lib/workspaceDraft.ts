@@ -29,6 +29,12 @@ export type SourceDraft = {
 };
 
 export type WorkspaceDraft = {
+  /**
+   * The name as the person types it, free-form; only the form holds it. The
+   * technical name is filled in from it.
+   */
+  displayName: string;
+  /** The technical name: the workspace's name in the manager. */
   name: string;
   sources: SourceDraft[];
   /** The disk's minimum size in GiB, as typed; empty or 0 is automatic only. */
@@ -118,6 +124,7 @@ export function emptySource(provider = ''): SourceDraft {
 
 export function emptyDraft(provider = ''): WorkspaceDraft {
   return {
+    displayName: '',
     name: '',
     sources: [emptySource(provider)],
     minimumGiB: '',
@@ -128,6 +135,7 @@ export function emptyDraft(provider = ''): WorkspaceDraft {
 /** A stored workspace as the form's draft. */
 export function draftFromWorkspace(workspace: Workspace): WorkspaceDraft {
   return {
+    displayName: workspace.name,
     name: workspace.name,
     sources: workspace.sources.map(source => ({
       ...emptySource(source.provider),
