@@ -41,7 +41,10 @@ function render(
 
 function givenConfig(repositories: string[]) {
   jest.mocked(useSignedInConfig).mockReturnValue({
-    config: { getOptionalStringArray: () => repositories },
+    config: {
+      getOptional: () => repositories,
+      getOptionalStringArray: () => repositories,
+    },
     isLoading: false,
   } as never);
 }

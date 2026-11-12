@@ -359,6 +359,7 @@ function NewAgentSkillsPageContent() {
     toggleSkill,
     removeKeptSkill,
     togglePlugin,
+    selectAllPluginSkills,
     togglePluginSkill,
     removeKeptPlugin,
     isComplete,
@@ -620,8 +621,10 @@ function NewAgentSkillsPageContent() {
 
         <PluginCards
           plugins={plugins}
+          catalog={skills}
           selected={state.selectedPlugins}
           onTogglePlugin={togglePlugin}
+          onSelectAllPluginSkills={selectAllPluginSkills}
           onTogglePluginSkill={togglePluginSkill}
         />
 

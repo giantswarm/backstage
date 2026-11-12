@@ -439,7 +439,11 @@ function pluginEntriesOfForm(
     } else if (place && picked && !written.has(place)) {
       const { skills: pinnedSkills = [], ...source } = entry;
       const skills = picked.skills;
-      if (skills.join(',') === pinnedSkills.join(',')) {
+      if (picked.plugin.commit !== entry.git?.commit) {
+        // Moved to the commit the skills step shows (every skill of a
+        // package, read at that commit): written as picked there.
+        entries.push(pluginEntryOf(picked));
+      } else if (skills.join(',') === pinnedSkills.join(',')) {
         entries.push(entry);
       } else {
         entries.push(skills.length > 0 ? { ...source, skills } : source);

@@ -24,6 +24,8 @@ export type OrganizationNamespace = {
   organization: string;
   /** The parent namespace it lives in (`agent-platform.giantswarm.io/parent`). */
   parent: string;
+  /** The display name (`agent-platform.giantswarm.io/display-name`), if set. */
+  displayName?: string;
 };
 
 /** A condition of the organization as the operator reports it. */
@@ -32,6 +34,12 @@ export type OrganizationCondition = {
   reason?: string;
   message?: string;
 };
+
+/**
+ * The operator's reason for `orphaned` `True` once the organization's delete
+ * pull request merged; any other is Missing from git.
+ */
+export const ORPHANED_DELETE_MERGED = 'DeleteMerged';
 
 /** `get_organization`'s organization. */
 export type AgentPlatformOrganization = {
@@ -55,7 +63,102 @@ export type AgentPlatformOrganization = {
   deleting?: boolean;
   /** The step of the erasure the operator is on, while `deleting`. */
   erasureStep?: string;
+  /**
+   * The Flux Kustomization that applies the organization: it is changed in
+   * git, so a delete is a pull request.
+   */
+  gitops?: string;
 };
+
+/** One agent's sessions an erase deletes. */
+export type OrganizationAgentSessions = {
+  agent: string;
+  /** CREATING or READY: they stop. */
+  running: number;
+  /** SUSPENDED or FAILED: they lose their worker snapshots. */
+  stopped: number;
+};
+
+/**
+ * What deleting an organization erases, as the person can read it in the
+ * organization namespace (`get_organization`'s `erases`).
+ */
+export type OrganizationErasure = {
+  namespace: string;
+  agents: string[];
+  helmReleases: string[];
+  models: string[];
+  connectors: string[];
+  egressPolicies: string[];
+  /** The credential Secrets the models, connectors and policies name. */
+  credentials: string[];
+  /** The RoleBindings to the organization's roles. */
+  members: string[];
+  snapshotPrefix?: string;
+  /** Only agents with a session; `null` when they could not be listed. */
+  sessions: OrganizationAgentSessions[] | null;
+  /** Why `sessions` is `null`. */
+  sessionsUnavailable?: string;
+  /** What a delete does not erase. */
+  kept: string;
+  /** What the person may not read there, with why. */
+  unreadable?: string[];
+};
+
+/** The pull request a delete in mode commit opened. */
+export type OrganizationCommit = {
+  repository: string;
+  base: string;
+  branch: string;
+  pullRequest?: string;
+  number?: number;
+  author?: string;
+  /** Who reviews it. */
+  review?: string;
+  /** What the merge alone does not do. */
+  liveSteps?: string[];
+  /** git carries the delete already: no pull request was opened. */
+  unchanged?: boolean;
+};
+
+/** `delete_organization`'s answer. */
+export type OrganizationDeleteResult = {
+  organization: AgentPlatformOrganization;
+  erases?: OrganizationErasure;
+  deleted: boolean;
+  next?: string;
+  commit?: OrganizationCommit;
+};
+
+/** What a delete of an organization does, from its own state. */
+export type OrganizationDeleteMode =
+  /** Deleted live: the operator erases it. */
+  | 'delete'
+  /** Applied from git: a pull request removes its file. */
+  | 'pull-request'
+  /** Its delete pull request merged (Pending erase): erased now. */
+  | 'erase';
+
+/**
+ * The delete an organization offers, or none: none while it is erasing or
+ * Missing from git.
+ */
+export function organizationDeleteMode(
+  organization: Pick<
+    AgentPlatformOrganization,
+    'deleting' | 'orphaned' | 'gitops'
+  >,
+): OrganizationDeleteMode | undefined {
+  if (organization.deleting) {
+    return undefined;
+  }
+  if (organization.orphaned?.status === 'True') {
+    return organization.orphaned.reason === ORPHANED_DELETE_MERGED
+      ? 'erase'
+      : undefined;
+  }
+  return organization.gitops ? 'pull-request' : 'delete';
+}
 
 /**
  * What the person may do with a listed organization, as the API server
@@ -107,6 +210,9 @@ export function organizationNamespacesOf(
             namespace: organization.namespace,
             organization: organization.name,
             parent: organization.parent,
+            ...(organization.displayName
+              ? { displayName: organization.displayName }
+              : {}),
           },
         ]
       : [],
@@ -123,15 +229,11 @@ export type OrganizationStatus = Pick<
   | 'lastAppliedRevisionUrl'
 >;
 
-/**
- * The operator's reason for `orphaned` `True` once the organization's delete
- * pull request merged; any other is Missing from git.
- */
-export const ORPHANED_DELETE_MERGED = 'DeleteMerged';
-
 /** `get_organization`: the organization, and what a delete would erase. */
 export type OrganizationDetails = {
   organization: AgentPlatformOrganization;
+  /** Absent until the operator created the organization namespace. */
+  erases?: OrganizationErasure;
 };
 
 /** The roles of an organization, as the member tools take them. */
@@ -228,23 +330,32 @@ export function memberKindLabel(kind: string): string {
 
 /**
  * `set_organization_model` without a key: a new model of the organization,
- * or `replaceCredential` on an existing one. A missing or replaced key is a
- * credential request agent-manager prepares and links to the form.
+ * or a change of an existing one (an empty field keeps its value). A missing
+ * key is a credential request agent-manager prepares and links to the form;
+ * a new key for an existing model is `replace_organization_credential`.
  */
 export type OrganizationModelRequest = {
   namespace: string;
   name: string;
   provider?: string;
   model?: string;
-  replaceCredential?: boolean;
+  /** Moves the organization's default mark to this model. */
+  default?: boolean;
   /** Idempotency key: one per intended change. */
   requestId: string;
 };
 
-/** `set_organization_connector` with `replaceCredential`: a new credential value for an existing connector. */
-export type OrganizationConnectorCredentialRequest = {
+/**
+ * `replace_organization_credential`: a new value for one key of a credential
+ * Secret of the organization. The operation writes the Secret only, never
+ * the models, connectors or egress policies that read it.
+ */
+export type OrganizationCredentialReplacement = {
   namespace: string;
-  name: string;
-  replaceCredential: true;
+  /** The credential Secret, by name. */
+  secret: string;
+  /** The key of that Secret the objects read. */
+  key: string;
+  /** Idempotency key: one per intended change. */
   requestId: string;
 };

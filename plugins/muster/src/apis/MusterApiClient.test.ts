@@ -1333,6 +1333,27 @@ describe('MusterApiClient URL elicitations', () => {
     expect(callBodies(fetchMock)).toHaveLength(4);
   });
 
+  it('declares no URL elicitation when asked not to, and puts no page to the person', async () => {
+    const consentApi = consent('accept');
+    const { client, fetchMock } = setup({ consent: consentApi });
+    answerCalls(fetchMock, okResponse({ credentialOperation: 'op' }));
+
+    await expect(
+      client.callTool('x_agent-manager_set_organization_model', {}, 'open', {
+        urlElicitation: false,
+      }),
+    ).resolves.toEqual({ credentialOperation: 'op' });
+
+    expect(callBodies(fetchMock)).toEqual([
+      {
+        name: 'x_agent-manager_set_organization_model',
+        arguments: {},
+        urlElicitation: false,
+      },
+    ]);
+    expect(consentApi.open).not.toHaveBeenCalled();
+  });
+
   it('throws the elicitation when the app has no consent dialog', async () => {
     const { client, fetchMock } = setup();
     answerCalls(fetchMock, inputRequired());

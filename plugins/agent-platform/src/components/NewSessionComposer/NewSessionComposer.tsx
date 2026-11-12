@@ -62,6 +62,9 @@ import { ToolchainPicker } from '../ToolchainPicker';
 import { toolchainEntry, type ToolchainPick } from '../../lib/toolchainManager';
 import { WorkspaceStartNotice } from '../WorkspaceStartNotice';
 
+/** What the picker says on the installation's default agent (`leadingAgentId`). */
+const DEFAULT_AGENT_TAG = 'Default';
+
 /** Rows the textarea shows before and after it expands. */
 const COLLAPSED_ROWS = 1;
 const EXPANDED_ROWS = 3;
@@ -203,6 +206,12 @@ export type NewSessionComposerProps = {
    * offer are skipped.
    */
   favoriteAgentIds?: string[];
+  /**
+   * The agent listed first, ahead of the Recent group, while the search box is
+   * empty: the installation's default agent. Only read with
+   * `groupByNamespace`; an id not on offer is skipped.
+   */
+  leadingAgentId?: string;
   /** Gives the picker a search box whatever the number of agents. */
   searchable?: boolean;
   /** What the picker says while no agent is selected. */
@@ -435,6 +444,7 @@ export function NewSessionComposer({
   groupByNamespace = false,
   recentAgentIds,
   favoriteAgentIds,
+  leadingAgentId,
   searchable,
   pickerPlaceholder = 'Select an agent',
   pickerPlacement = 'controls',
@@ -463,7 +473,11 @@ export function NewSessionComposer({
   const buildAvatarUrl = useAgentAvatarUrl();
   const [ownPrompt, setOwnPrompt] = useState(initialPrompt ?? '');
   const prompt = controlledPrompt ?? ownPrompt;
+  // Whether the person has typed: a default that arrives later no longer
+  // replaces an agent they saw selected while typing.
+  const typed = useRef(false);
   const setPrompt = (next: string) => {
+    typed.current = true;
     if (controlledPrompt === undefined) {
       setOwnPrompt(next);
     }
@@ -521,12 +535,15 @@ export function NewSessionComposer({
   // routinely absent at mount and shows up a moment later. Seeding once meant the
   // picker still said "Select an agent", defeating the whole point of remembering.
   //
-  // Render-phase, and gated on the user not having touched the picker, so this can
-  // never overwrite a deliberate choice — including a deliberate *clearing*.
+  // Render-phase, and gated on the user not having touched the picker or typed,
+  // so this can never overwrite a deliberate choice — including a deliberate
+  // *clearing* — or switch the agent under someone writing to it.
   const touched = useRef(false);
   const adopted = useRef(effectiveDefault?.id);
   if (
     !touched.current &&
+    // Typing keeps the agent shown; an empty picker still takes one.
+    (!typed.current || selectedId === undefined) &&
     effectiveDefault &&
     adopted.current !== effectiveDefault.id
   ) {
@@ -660,27 +677,43 @@ export function NewSessionComposer({
     const toOption = (agent: AgentRow) => optionsByAgentId.get(agent.id)!;
 
     if (groupByNamespace) {
-      const recent = isSearching
-        ? []
-        : (shownRecentIds ?? [])
-            .map(id => listed.find(agent => agent.id === id))
-            .filter((agent): agent is AgentRow => agent !== undefined);
+      if (isSearching) {
+        return matched.map(toOption);
+      }
+      // Out of its namespace's group, so it is listed once there; Recent and
+      // Favorites keep it, as they keep every agent of theirs.
+      const leading = listed.find(agent => agent.id === leadingAgentId);
+      const rest = leading ? listed.filter(agent => agent !== leading) : listed;
+      const recent = (shownRecentIds ?? [])
+        .map(id => listed.find(agent => agent.id === id))
+        .filter((agent): agent is AgentRow => agent !== undefined);
       // Every favorite on offer, uncapped, in display order as Customize
       // lists them: the person's own shortlist matters more than keeping the
       // namespace groups near the top.
-      const favoriteIds = new Set(isSearching ? [] : shownFavoriteIds);
+      const favoriteIds = new Set(shownFavoriteIds);
       const favorites = listed.filter(agent => favoriteIds.has(agent.id));
-      const namespaces = [
-        ...new Set(listed.map(agent => agent.namespace)),
-      ].sort((a, b) => a.localeCompare(b));
+      // Said on the option itself: the installation's default agent.
+      const leadingOptions = leading
+        ? [
+            {
+              ...toOption(leading),
+              description: [DEFAULT_AGENT_TAG, toOption(leading).description]
+                .filter(Boolean)
+                .join(' · '),
+            },
+          ]
+        : [];
+      // Grouped or flat by every agent on offer, the leading one included.
       if (
-        isSearching ||
-        (recent.length === 0 &&
-          favorites.length === 0 &&
-          namespaces.length <= 1)
+        recent.length === 0 &&
+        favorites.length === 0 &&
+        new Set(listed.map(agent => agent.namespace)).size <= 1
       ) {
-        return matched.map(toOption);
+        return [...leadingOptions, ...rest.map(toOption)];
       }
+      const namespaces = [...new Set(rest.map(agent => agent.namespace))].sort(
+        (a, b) => a.localeCompare(b),
+      );
       const repeated = (title: string, prefix: string, group: AgentRow[]) =>
         group.length > 0
           ? [
@@ -694,11 +727,12 @@ export function NewSessionComposer({
             ]
           : [];
       return [
+        ...leadingOptions,
         ...repeated('Recent', RECENT_OPTION_PREFIX, recent),
         ...repeated('Favorites', FAVORITE_OPTION_PREFIX, favorites),
         ...namespaces.map(namespace => ({
           title: namespace,
-          options: listed
+          options: rest
             .filter(agent => agent.namespace === namespace)
             .map(toOption),
         })),
@@ -724,6 +758,7 @@ export function NewSessionComposer({
     multipleInstallations,
     optionsByAgentId,
     groupByNamespace,
+    leadingAgentId,
     shownRecentIds,
     shownFavoriteIds,
     isSearching,
