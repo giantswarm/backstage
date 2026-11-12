@@ -159,6 +159,35 @@ describe('ProviderConnectPrompt', () => {
     ).toBeInTheDocument();
   });
 
+  it("shows muster's reason, and no sign-in, for a grant that cannot pass", async () => {
+    const fake = twoProviders();
+    const reason =
+      "Cannot sign in to 'github': your login method cannot be checked here.";
+    fake.getAuthStatus.mockResolvedValue({
+      servers: [{ name: 'workspace-manager', status: 'connected' }],
+      providerApps: [
+        { name: 'github', status: 'auth_required', error: reason },
+        {
+          name: 'gitlab-lab',
+          status: 'auth_required',
+          auth_tool: 'core_auth_login',
+        },
+      ],
+    });
+    renderHost(fake);
+
+    const github = await screen.findByTestId('provider-connect-github');
+    expect(await within(github).findByText(reason)).toBeInTheDocument();
+    expect(within(github).queryByRole('button')).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('provider-connect-gitlab-lab')).getByRole(
+        'button',
+        { name: /Sign in to GitLab/ },
+      ),
+    ).toBeInTheDocument();
+    expect(fake.signInServer).not.toHaveBeenCalled();
+  });
+
   it("starts each instance's own App grant and connects it alone", async () => {
     const fake = twoProviders();
     const { onConnected } = renderHost(fake);
