@@ -303,7 +303,12 @@ function CollapsedSummary({
           />
         </span>
       );
-    case 'approval':
+    case 'approval': {
+      // The proposed tool names what needs approving, which is the point of
+      // the row. For a question it is always `ask_user` — noise.
+      const proposedTool = item.asks === 'approval' ? item.toolName : undefined;
+      const owner =
+        proposedTool && !technical ? connectorOf?.(proposedTool) : undefined;
       return (
         <span className={classes.triggerContent}>
           <span className={classes.rowTitle}>
@@ -311,16 +316,21 @@ function CollapsedSummary({
               ? 'User input requested'
               : 'Approval requested'}
           </span>
-          {/* The proposed tool names what needs approving, which is the point of
-              the row. For a question it is always `ask_user` — noise. */}
-          {item.asks === 'approval' && item.toolName && (
+          {proposedTool && (
             <span className={technical ? classes.summary : classes.rowTitle}>
-              {technical ? item.toolName : humanizeToolName(item.toolName)}
+              {technical
+                ? proposedTool
+                : humanizeToolName(owner?.tool ?? proposedTool)}
             </span>
+          )}
+          {owner && <Badge size="small">{owner.connector}</Badge>}
+          {technical && proposedTool && item.via && (
+            <Badge size="small">via {item.via}</Badge>
           )}
           <ApprovalVerdict item={item} />
         </span>
       );
+    }
     default:
       return null;
   }

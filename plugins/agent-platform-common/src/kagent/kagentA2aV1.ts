@@ -402,7 +402,7 @@ export function toWireMessage(raw: unknown): Wire | undefined {
     return undefined;
   }
   const message = parsed.data;
-  const parts = (Array.isArray(message.parts) ? message.parts : [])
+  let parts = (Array.isArray(message.parts) ? message.parts : [])
     .map(toWirePart)
     .filter((part): part is Wire => Boolean(part));
 
@@ -415,7 +415,17 @@ export function toWireMessage(raw: unknown): Wire | undefined {
         parts.push(decision);
       }
     } else {
-      parts.push(...hitlRequestParts(hitl));
+      const request = hitlRequestParts(hitl);
+      // The runtime's hint is an instruction to an API client ("respond with a
+      // FunctionResponse…"), not something the agent said; the request renders
+      // as an approval card instead.
+      const hint = asNonEmptyString(hitl.hint);
+      if (request.length > 0 && hint) {
+        parts = parts.filter(
+          part => !(part.kind === 'text' && part.text === hint),
+        );
+      }
+      parts.push(...request);
     }
   }
 

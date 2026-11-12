@@ -9,6 +9,7 @@ import {
   describeSessionState,
   historyWithPendingPrompt,
   isAgentToolName,
+  type FunctionCall,
   isFunctionCallPart,
   isFunctionResponsePart,
   isInternalToolName,
@@ -103,8 +104,14 @@ export type TimelineItem =
        * matching on a tool name, and kagent's own UI branches at the same point.
        */
       asks: 'approval' | 'input';
-      /** The tool the agent proposed to run, when the payload named one. */
+      /**
+       * The tool the agent proposed to run, when the payload named one. For a
+       * call proposed through muster's `call_tool` this is the **inner** tool,
+       * as on a tool call.
+       */
       toolName?: string;
+      /** The proxy the proposed call would travel through, when it names one. */
+      via?: string;
       /**
        * The questions themselves, when this is an `ask_user`.
        *
@@ -689,6 +696,10 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
         if (call.name === CONFIRMATION_TOOL_NAME) {
           const proposed = readProposedCall(call.args);
           const isQuestion = proposed?.name === ASK_USER_TOOL_NAME;
+          // Looked through muster's `call_tool` as an executed call is, so the
+          // card names the tool that would run rather than the proxy.
+          const effective: (FunctionCall & { via?: string }) | undefined =
+            proposed && !isQuestion ? unwrapProxiedCall(proposed) : proposed;
           openApprovalIndex = items.length;
           items.push({
             kind: 'approval',
@@ -697,11 +708,12 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
             author,
             taskIndex,
             asks: isQuestion ? 'input' : 'approval',
-            toolName: proposed?.name,
+            toolName: effective?.name,
+            ...(effective?.via ? { via: effective.via } : {}),
             questions: isQuestion
               ? readAskUserQuestions(proposed?.args)
               : undefined,
-            args: proposed?.args,
+            args: effective?.args,
           });
           return;
         }
