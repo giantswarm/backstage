@@ -282,10 +282,9 @@ describe('human in the loop on the v1 wire', () => {
     const prompt = task.status?.message as Wire;
     expect(prompt.role).toBe('agent');
     const parts = (prompt.parts as Wire[]).map(parsePart);
-    // The runtime's hint is not prose from the agent and is dropped; the
-    // request becomes an ADK-style confirmation of the proposed call, which is
-    // what the answer panel and the timeline read.
-    expect(parts.some(part => part?.kind === 'text')).toBe(false);
+    // The hint stays as prose; the request becomes an ADK-style confirmation of
+    // the proposed call, which is what the answer panel and the timeline read.
+    expect(parts[0]).toEqual(expect.objectContaining({ kind: 'text' }));
     const confirmation = parts.find(part => part && isFunctionCallPart(part))!;
     const call = readFunctionCall(confirmation);
     expect(call.name).toBe(CONFIRMATION_TOOL_NAME);
@@ -301,41 +300,6 @@ describe('human in the loop on the v1 wire', () => {
         }),
       }),
     );
-  });
-
-  it('drops only the hint from an approval request, not other prose', () => {
-    const hint = 'Please approve or reject the tool call call_tool().';
-    const message = toWireMessage({
-      messageId: 'm1',
-      role: 'ROLE_AGENT',
-      parts: [{ text: 'I need to roll back.' }, { text: hint }],
-      extensions: [HITL_EXTENSION_URI],
-      metadata: {
-        [HITL_EXTENSION_URI]: {
-          type: 'tool_approval_request',
-          hint,
-          tools: [{ id: 'a1', name: 'call_tool', args: {} }],
-        },
-      },
-    })!;
-    const texts = (message.parts as Wire[])
-      .filter(part => part.kind === 'text')
-      .map(part => part.text);
-    expect(texts).toEqual(['I need to roll back.']);
-  });
-
-  it('keeps the hint of a request it cannot render', () => {
-    const hint = 'Please approve or reject.';
-    const message = toWireMessage({
-      messageId: 'm1',
-      role: 'ROLE_AGENT',
-      parts: [{ text: hint }],
-      extensions: [HITL_EXTENSION_URI],
-      metadata: {
-        [HITL_EXTENSION_URI]: { type: 'tool_approval_request', hint },
-      },
-    })!;
-    expect(message.parts).toEqual([{ kind: 'text', text: hint }]);
   });
 
   it('turns a question into an ask_user confirmation carrying the questions', () => {

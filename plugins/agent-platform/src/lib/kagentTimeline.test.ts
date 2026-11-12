@@ -809,6 +809,22 @@ describe('buildTimeline', () => {
       );
     });
 
+    it('leaves the runtime’s confirmation hint out of the agent’s prose', () => {
+      // The v1 runtime sends its hint ("…responding with a FunctionResponse…")
+      // as the text of the input-required message; the approval says what is
+      // asked.
+      const { items } = timelineFor(kagent4a91c273);
+
+      expect(kinds(items)).toContain('approval');
+      expect(
+        items.some(
+          item =>
+            item.kind === 'agent-message' &&
+            item.text.includes('FunctionResponse'),
+        ),
+      ).toBe(false);
+    });
+
     it('reads a rejection', () => {
       const rejected = withDecision(approval, { decision_type: 'reject' });
 

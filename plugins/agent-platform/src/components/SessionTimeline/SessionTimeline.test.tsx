@@ -1633,6 +1633,31 @@ describe('TimelineEntry — the connector of a tool call (UX review M2)', () => 
     expect(panel).toHaveTextContent('web-0');
   });
 
+  it('says an approval goes through muster when no connector matches', async () => {
+    await renderInTestApp(<TimelineEntry item={approval} />);
+
+    const row = screen.getByRole('button', { name: /Approval requested/ });
+    expect(row).toHaveTextContent('via Muster');
+  });
+
+  it('folds out a proxied approval without arguments, to read the exact tool', async () => {
+    const { args: _args, ...argless } = approval as TimelineItem & {
+      args?: unknown;
+    };
+    await renderInTestApp(
+      <TimelineEntry
+        item={argless as TimelineItem}
+        connectorOf={connectorOf}
+      />,
+    );
+
+    const row = screen.getByRole('button', { name: /Approval requested/ });
+    await userEvent.click(row);
+    expect(panelFor(row)).toHaveTextContent(
+      'x_agentlab-mcp-kubernetes_delete_pod',
+    );
+  });
+
   it('keeps the exact name and the proxy on a technical approval', async () => {
     await renderInTestApp(
       <TimelineEntry item={approval} connectorOf={connectorOf} technical />,
