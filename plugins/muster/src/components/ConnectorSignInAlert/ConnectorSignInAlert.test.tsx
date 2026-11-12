@@ -204,6 +204,35 @@ describe('ConnectorSignInAlert', () => {
     expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull();
   });
 
+  it("says a sign-in cannot pass, with muster's reason and no Sign in", async () => {
+    const reason =
+      "Cannot sign in to 'cluster-manager': your login method cannot be checked here.";
+    const { api } = await renderAlert(
+      {},
+      {
+        servers: [
+          {
+            name: 'cluster-manager',
+            status: 'auth_required',
+            kind: 'grant',
+            error: reason,
+          },
+        ],
+      },
+    );
+
+    expect(
+      await screen.findByText('Cannot sign in to cluster-manager'),
+    ).toBeInTheDocument();
+    expect(await screen.findByText(reason)).toBeInTheDocument();
+    expect(
+      screen.queryByText('Sign in to cluster-manager to see GPU node pools'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Sign in once/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull();
+    expect(api.signInServer).not.toHaveBeenCalled();
+  });
+
   it('names each environment that needs the sign-in', async () => {
     await renderAlert({ installations: ['gazelle', 'golem'] });
 
