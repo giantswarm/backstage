@@ -321,6 +321,29 @@ Two things that bite:
   `scrollToBottom()` writing to `document.scrollingElement`, an auto-follow —
   breaks the moment its content moves into a scroll container of its own.
 
+## ResizeObserver callbacks
+
+**A `ResizeObserver` callback does not change the size of an observed element
+that is no deeper in the tree than the one it was called for**: that element
+itself, an ancestor, or any element at the same depth or above, watched by any
+observer. Resizing a descendant is fine. Setting `style.height` or
+`style.width` there, or state that re-renders such an element to another size
+(autosizing, measuring then collapsing, equal-height layouts), makes an
+observation the browser leaves undelivered in that frame. It reports
+`ResizeObserver loop completed with undelivered notifications`: Sentry filters
+it, but the webpack dev overlay shows it, and it fills the console. Observing a
+wrapper does not help when its size follows.
+
+- Defer the write to `requestAnimationFrame`, and cancel a pending frame on
+  cleanup.
+- Ignore entries whose observed dimension did not change: an autosizing field
+  watches its width and sets its height.
+- Size with CSS where it can: `field-sizing: content`, grid or flex.
+- Measure a box the write does not affect.
+
+`useAutosizeTextarea` in `@giantswarm/backstage-plugin-ui-react` does the first
+two.
+
 ## Storybook
 
 The [Backstage Storybook](https://backstage.io/storybook/) allows to explore the
