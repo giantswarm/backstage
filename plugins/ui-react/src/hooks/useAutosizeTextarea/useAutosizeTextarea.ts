@@ -68,6 +68,9 @@ function createMirror(): HTMLTextAreaElement {
  *
  * Re-measures when the value changes (typing, or a value set from outside) and
  * when the field's width changes, since that rewraps the text.
+ *
+ * Finds the textarea once, at mount: it has to be in the container then and
+ * stay the same element.
  */
 export function useAutosizeTextarea(
   containerRef: RefObject<HTMLElement>,

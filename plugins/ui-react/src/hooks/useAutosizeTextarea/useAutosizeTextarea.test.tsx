@@ -78,10 +78,8 @@ describe('useAutosizeTextarea', () => {
     deliver(textarea, 250);
     jest.runOnlyPendingTimers();
 
-    textarea.style.height = '';
     deliver(textarea, 250);
-    jest.runOnlyPendingTimers();
-    expect(textarea.style.height).toBe('');
+    expect(jest.getTimerCount()).toBe(0);
   });
 
   it('cancels a pending frame on unmount', () => {

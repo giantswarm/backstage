@@ -323,13 +323,16 @@ Two things that bite:
 
 ## ResizeObserver callbacks
 
-**A `ResizeObserver` callback does not change the size of an element it, or
-another observer, watches.** Setting `style.height` or `style.width` there, or
-state that re-renders the element to another size (autosizing, measuring then
-collapsing, equal-height layouts), makes a new observation the browser leaves
-undelivered in that frame. Chrome reports it as `ResizeObserver loop completed
-with undelivered notifications`: harmless, but the webpack dev overlay shows it
-and it reaches Sentry. Observing a wrapper does not help when its size follows.
+**A `ResizeObserver` callback does not change the size of an observed element
+that is no deeper in the tree than the one it was called for**: that element
+itself, an ancestor, or any element at the same depth or above, watched by any
+observer. Resizing a descendant is fine. Setting `style.height` or
+`style.width` there, or state that re-renders such an element to another size
+(autosizing, measuring then collapsing, equal-height layouts), makes an
+observation the browser leaves undelivered in that frame. It reports
+`ResizeObserver loop completed with undelivered notifications`: Sentry filters
+it, but the webpack dev overlay shows it, and it fills the console. Observing a
+wrapper does not help when its size follows.
 
 - Defer the write to `requestAnimationFrame`, and cancel a pending frame on
   cleanup.
