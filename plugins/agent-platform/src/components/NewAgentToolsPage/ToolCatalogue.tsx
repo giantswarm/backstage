@@ -227,6 +227,13 @@ function ServerPanel({
   );
 }
 
+/** The order a group's summary counts its connectors' connections in. */
+const CONNECTION_ORDER: readonly ConnectorConnection[] = [
+  'not-connected',
+  'partial',
+  'deactivated',
+];
+
 /** What a connector's row says after its name, before what is picked. */
 export function serverSummary(bucket: ServerBucket): string {
   if (bucket.needsSignIn) {
@@ -382,8 +389,11 @@ export function groupSummary(
     if (awaiting > 0) {
       parts.push(`${awaiting} awaiting sign-in`);
     }
-    for (const [connection, count] of connections) {
-      parts.push(`${count} ${connectionLabel(connection).toLowerCase()}`);
+    for (const connection of CONNECTION_ORDER) {
+      const count = connections.get(connection);
+      if (count) {
+        parts.push(`${count} ${connectionLabel(connection).toLowerCase()}`);
+      }
     }
   }
   if (group.platformAdministration.length > 0) {

@@ -100,7 +100,16 @@ test.describe('the Tools step and a connector muster does not reach', () => {
     });
     await expect(notConnected).not.toContainText('0 tools');
 
-    // The catalogue's group counts them by the same words.
+    // The catalogue's group counts them by the same words. The individual
+    // tools open only under Only the tools I choose below: a preset or
+    // chat-only keeps the selection off.
+    await admin
+      .getByRole('radiogroup', { name: 'What it may do' })
+      .getByRole('radio', { name: /Only the tools I choose below/ })
+      .check();
+    await admin
+      .getByRole('button', { name: 'Choose individual tools instead' })
+      .click();
     await expect(
       admin.getByRole('button', { name: /^Registered connectors — / }),
     ).toHaveAccessibleName(/\d+ not connected.*\d+ deactivated/);

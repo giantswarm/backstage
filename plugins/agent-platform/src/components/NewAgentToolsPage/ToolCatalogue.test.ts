@@ -62,9 +62,9 @@ describe('groupSummary', () => {
     expect(
       groupSummary(
         group([
+          bucket('docs', { connection: 'deactivated' }),
           bucket('jira', { connection: 'not-connected' }),
           bucket('wiki', { connection: 'not-connected' }),
-          bucket('docs', { connection: 'deactivated' }),
         ]),
         new Set(),
       ),
