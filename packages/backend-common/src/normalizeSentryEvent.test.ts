@@ -232,7 +232,12 @@ describe('normalizeSentryEvent', () => {
       };
     }
 
-    it.each(['timeout', 'client_not_connected', 'tool_not_found'])(
+    it.each([
+      'timeout',
+      'client_not_connected',
+      'tool_not_found',
+      'no_backend',
+    ])(
       'groups %s by server, whatever the tool, message and installation',
       kind => {
         const [first, second] = [
@@ -276,6 +281,26 @@ describe('normalizeSentryEvent', () => {
       );
 
       expect(prometheus).not.toEqual(kubernetes);
+    });
+
+    it("groups a meta-tool's missing target by its message, not all in one", () => {
+      const fingerprintOf = (target: string) =>
+        normalizeSentryEvent(
+          toolErrorEvent(`Tool not found: ${target}`, {
+            kind: 'tool_not_found',
+            tool: 'describe_tool',
+          }),
+        ).fingerprint;
+
+      const [name, kind, group] =
+        fingerprintOf('x_cluster-manager_create_node_pool') ?? [];
+      expect([name, kind]).toEqual(['MusterToolError', 'tool_not_found']);
+      expect(group).toContain(
+        'Tool not found: x_cluster-manager_create_node_pool',
+      );
+      expect(fingerprintOf('x_kubernetes_get')).not.toEqual(
+        fingerprintOf('x_cluster-manager_create_node_pool'),
+      );
     });
 
     it("groups another kind by tool, without an Organization's or a workflow's name", () => {
