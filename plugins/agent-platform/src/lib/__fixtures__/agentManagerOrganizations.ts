@@ -84,6 +84,13 @@ export type OrganizationsScenario = {
   replaceError?: string;
   /** The Secret a replacement names does not exist yet. */
   secretMissing?: boolean;
+  /**
+   * `set_organization_model` on a model whose key Secret exists: the write
+   * is finished, with no credential request.
+   */
+  modelKeyPresent?: boolean;
+  /** What `set_organization_model` fails with. */
+  modelError?: string;
 };
 
 /**
@@ -312,9 +319,28 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
         case 'x_agent-manager_list_egress_policies':
           return { egressPolicies: scenario.egressPolicies ?? [] };
         case 'x_agent-manager_set_organization_model':
+          requireNoUrlElicitation(name, args, options);
+          if (scenario.modelError) {
+            throw new Error(scenario.modelError);
+          }
+          if (scenario.modelKeyPresent) {
+            // A change of a model whose key exists: written at once.
+            return {
+              namespace: args.namespace,
+              kind: 'model',
+              name: args.name,
+              ...(args.default ? { defaultModel: args.name } : {}),
+              credentials: [
+                {
+                  secret: `tenant-credential-${String(args.name)}`,
+                  key: 'apiKey',
+                  state: 'present',
+                },
+              ],
+            };
+          }
           // A new model: agent-manager prepares a credential request for
           // its missing key and answers its operation id and form link.
-          requireNoUrlElicitation(name, args, options);
           return {
             namespace: args.namespace,
             kind: 'model',
