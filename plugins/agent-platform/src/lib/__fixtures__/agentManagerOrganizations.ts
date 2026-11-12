@@ -27,6 +27,12 @@ export type OrganizationsScenario = {
   mine?: { organizations: OrganizationNamespace[]; none?: string };
   /** The status `list_organizations` gives a member with each of `mine`. */
   memberStatus?: Pick<ListedOrganization, 'orphaned' | 'deleting'>;
+  /**
+   * `permissions.createAgents` of each of `mine`, by organization namespace;
+   * left out of the listing for a namespace not named, as an agent-manager
+   * older than the field answers.
+   */
+  createAgents?: Record<string, boolean>;
   /** How many `list_organizations` calls fail first, as a timeout would. */
   mineFailures?: number;
   /** `list_organization_members`. */
@@ -116,6 +122,7 @@ export function listedOrganizations(
         organization.organization,
       );
       const manage = readable && manages;
+      const createAgents = scenario.createAgents?.[organization.namespace];
       return {
         name: organization.organization,
         parent: organization.parent,
@@ -128,7 +135,11 @@ export function listedOrganizations(
               organization: managed,
             }
           : scenario.memberStatus),
-        permissions: { manage, member: true },
+        permissions: {
+          manage,
+          member: true,
+          ...(createAgents === undefined ? {} : { createAgents }),
+        },
       };
     },
   );
