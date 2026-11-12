@@ -20,13 +20,13 @@ const NO_WORKSPACE_ID = 'workspace:none';
 
 const useStyles = makeStyles({
   // Compact like the agent picker beside it: the prompt stays the hero.
-  // The one picker in the row that gives way when it is short of room — a
-  // long name ends in an ellipsis — while the agent keeps its width
-  // (giantswarm/giantswarm#39204).
+  // The first picker in the row to give way when it is short of room, down
+  // to its folder and caret, before the agent does (giantswarm/giantswarm#39204).
   select: {
-    flex: '0 1 auto',
+    flex: '0 1000 auto',
     maxWidth: 240,
-    minWidth: 0,
+    // The folder, the caret's box and bui's gaps.
+    minWidth: 76,
   },
 });
 

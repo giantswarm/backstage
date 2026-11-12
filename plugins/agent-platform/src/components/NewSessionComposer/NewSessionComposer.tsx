@@ -86,11 +86,12 @@ const useStyles = makeStyles(theme => ({
   },
   // Kept compact rather than filling the row, matching the prototype: the prompt
   // is the hero and the knobs are secondary, which a full-width picker undoes.
-  // It does not give way to the workspace or toolchains beside it: the
+  // It gives way only once the workspace beside it is down to its folder: the
   // agent is the first thing to read in the row (giantswarm/giantswarm#39204).
   agentSelect: {
-    flex: '0 0 auto',
+    flex: '0 1 auto',
     maxWidth: 260,
+    minWidth: 0,
   },
   // The agent-first invitation, per the prototype's Main artboard: while no
   // agent is chosen the picker carries an accent ring and a soft glow, so the
