@@ -1,5 +1,7 @@
 import type { Page } from '@playwright/test';
+import { connectorRow } from './connectors';
 import {
+  connectToMuster,
   expect,
   expectWizardStep,
   fillAgentDetails,
@@ -12,6 +14,7 @@ import {
   NEEDS_KUBECONFIG,
   PLATFORM_NAMESPACE,
 } from './kubectl';
+import { lab } from './lab';
 
 /**
  * The New agent wizard's Tools step names a connector muster does not reach
@@ -113,5 +116,31 @@ test.describe('the Tools step and a connector muster does not reach', () => {
     await expect(
       admin.getByRole('button', { name: /^Registered connectors — / }),
     ).toHaveAccessibleName(/\d+ not connected.*\d+ deactivated/);
+  });
+
+  test('counts no tools for them on the Connectors list and page', async ({
+    admin,
+  }) => {
+    await open(admin, `/customize/connectors?installation=${lab.installation}`);
+    await connectToMuster(admin, admin.getByRole('grid'));
+    for (const name of ['E2E Tools Deactivated', 'E2E Tools Not Connected']) {
+      const row = connectorRow(admin, name);
+      await expect(row).toBeVisible({ timeout: 60_000 });
+      // The Tools cell holds the table's sign for no value, not "0 tools".
+      await expect(row.getByRole('gridcell', { name: '—' })).toBeVisible();
+      await expect(row).not.toContainText('0 tools');
+    }
+
+    await open(
+      admin,
+      `/customize/connectors/${lab.installation}/${NOT_CONNECTED}`,
+    );
+    await expect(
+      admin.getByText(/^This connector .+, so its tools cannot be shown\.$/),
+    ).toBeVisible({ timeout: 60_000 });
+    // Nothing to count: the tab carries no "(0)".
+    await expect(
+      admin.getByRole('tab', { name: 'Tools', exact: true }),
+    ).toBeVisible();
   });
 });

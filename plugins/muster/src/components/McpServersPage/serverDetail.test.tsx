@@ -16,6 +16,7 @@ import {
   hasHealthDetails,
   HealthDetails,
   ServerConfig,
+  noToolsExplanation,
   ServerTools,
 } from './serverDetail';
 
@@ -312,6 +313,27 @@ describe('ServerTools', () => {
 });
 
 describe('ServerTools with no tools to show', () => {
+  it('says plainly that a connector muster is not connected to shows no tools', async () => {
+    await renderTools(makeServer(SIGV4_SPEC, 'Disconnected'));
+    expect(
+      await screen.findByText(
+        'This connector is disconnected, so its tools cannot be shown.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('names a failed or connecting connector’s state, not a guess', async () => {
+    expect(noToolsExplanation(makeServer(SIGV4_SPEC, 'Failed'))).toBe(
+      'This connector failed to connect, so its tools cannot be shown.',
+    );
+    expect(noToolsExplanation(makeServer(SIGV4_SPEC, 'Connecting'))).toBe(
+      'This connector is still connecting, so its tools cannot be shown.',
+    );
+    expect(noToolsExplanation(makeServer(SIGV4_SPEC, 'Connected'))).toBe(
+      'No tools exposed (the connector may be down or unreachable).',
+    );
+  });
+
   it('does not send a sigv4 server’s user to a sign-in that cannot exist', async () => {
     // muster keeps a rejected sigv4 credential in `Failed`, but the CR status
     // is one read behind the aggregator — so the guard is the auth type, not
