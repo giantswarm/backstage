@@ -25,6 +25,7 @@ import {
   MUSTER_INPUT_REQUIRED_STATUS,
   MUSTER_TOKEN_EXPIRED_TEXT,
   MUSTER_TOKEN_REASONS,
+  musterServerOfTool,
   type MusterInputAnswer,
   readJwtClaims,
 } from '@giantswarm/backstage-plugin-gs-common';
@@ -185,6 +186,17 @@ function sameHolder(a: string, b: string): boolean {
  */
 const MAX_ELICITATION_ROUNDS = 3;
 
+/**
+ * muster's answer to a call whose sign-in the person declined, dismissed or
+ * did not finish: gs-node's `sign_in_declined` tool error.
+ */
+function isSignInDeclined(error: unknown): error is Error {
+  return (
+    error instanceof Error &&
+    (error as { kind?: unknown }).kind === 'sign_in_declined'
+  );
+}
+
 /** A muster-backend answer; a failed one with its body, read once. */
 type Answer = { response: Response; errorData?: unknown };
 
@@ -232,7 +244,7 @@ export class MusterApiClient implements MusterApi {
   private readonly authProvidersApi?: MusterAuthProvidersApi;
   private readonly kubernetesApi?: KubernetesApi;
   private readonly kubernetesAuthProvidersApi?: KubernetesAuthProvidersApi;
-  private readonly elicitations?: UrlElicitationAnswers;
+  private readonly consentApi?: ExternalUrlConsentApi;
   /**
    * The backend's `/installations`, read once per client for the token
    * decision on installations the frontend config does not list (derived
@@ -268,9 +280,7 @@ export class MusterApiClient implements MusterApi {
     this.authProvidersApi = options.authProvidersApi;
     this.kubernetesApi = options.kubernetesApi;
     this.kubernetesAuthProvidersApi = options.kubernetesAuthProvidersApi;
-    this.elicitations = options.externalUrlConsentApi
-      ? new UrlElicitationAnswers(options.externalUrlConsentApi)
-      : undefined;
+    this.consentApi = options.externalUrlConsentApi;
   }
 
   async listInstallations(): Promise<MusterInstallationsResponse> {
@@ -453,14 +463,18 @@ export class MusterApiClient implements MusterApi {
   }
 
   /**
-   * Calls a tool as the person. The call declares URL mode elicitation (MCP
-   * 2026-07-28): when muster answers that the person must open a page first
-   * -- a sign-in to the tool's server, a server's own page such as a
-   * credential form -- the page is put to the person in the consent dialog,
-   * and the call is sent again with their answer. Declined or dismissed,
-   * muster answers the call's error. `signal` cancels the call, the retry
-   * muster holds until a sign-in completes included. With
-   * `urlElicitation: false` the call declares none and is sent once.
+   * Calls a tool as the person. By default the call declares no URL
+   * elicitation and is sent once: a sign-in it needs fails it with
+   * muster's 401, which the page answers with its inline sign-in.
+   *
+   * With `urlElicitation: true` -- for a call the person started with a
+   * click, never a read the page makes on its own -- the call declares URL
+   * mode elicitation (MCP 2026-07-28): when muster answers that the person
+   * must open a page first (a sign-in to the tool's server, a server's own
+   * page) the page is put to them in the consent dialog, once per action,
+   * and the call is sent again with their answer. A declined or dismissed
+   * sign-in fails the call like a sign-in it needs. `signal` cancels the
+   * call, the retry muster holds until a sign-in completes included.
    */
   async callTool(
     name: string,
@@ -468,24 +482,25 @@ export class MusterApiClient implements MusterApi {
     installation?: string,
     options?: { signal?: AbortSignal; urlElicitation?: boolean },
   ): Promise<unknown> {
-    if (options?.urlElicitation === false) {
+    if (!options?.urlElicitation) {
       return this.post<unknown>(
         '/call',
         { name, arguments: args, urlElicitation: false },
         installation,
-        options.signal,
+        options?.signal,
       );
     }
     return this.withElicitations(
       name,
+      installation,
       input =>
         this.post<unknown>(
           '/call',
           { name, arguments: args, ...(input ? { input } : {}) },
           installation,
-          options?.signal,
+          options.signal,
         ),
-      options?.signal,
+      options.signal,
     );
   }
 
@@ -496,37 +511,57 @@ export class MusterApiClient implements MusterApi {
       installation?: string;
       onProgress: (progress: MusterToolProgress) => void;
       signal?: AbortSignal;
+      urlElicitation?: boolean;
     },
   ): Promise<unknown> {
+    if (!options.urlElicitation) {
+      return this.runWithProgress(name, args, options, undefined);
+    }
     return this.withElicitations(
       name,
+      options.installation,
       input => this.runWithProgress(name, args, options, input),
       options.signal,
     );
   }
 
   /**
-   * Runs `call`, and while muster answers it with URL elicitations the
-   * person can be asked about, asks and runs it again with the answers.
+   * Runs `call` for one action of the person, and while muster answers it
+   * with URL elicitations they can be asked about, asks and runs it again
+   * with the answers. A sign-in they declined, dismissed or did not finish
+   * ends in {@link MusterUnauthorizedError} `server_sign_in_required`, the
+   * error of a sign-in the call needs: the page offers its sign-in.
    */
   private async withElicitations<T>(
     name: string,
+    installation: string | undefined,
     call: (input: MusterInputAnswer | undefined) => Promise<T>,
     signal: AbortSignal | undefined,
   ): Promise<T> {
+    const answers = this.consentApi
+      ? new UrlElicitationAnswers(this.consentApi)
+      : undefined;
     let input: MusterInputAnswer | undefined;
     for (let round = 0; ; round++) {
       try {
         return await call(input);
       } catch (error) {
+        if (input && isSignInDeclined(error)) {
+          throw new MusterUnauthorizedError(
+            error.message,
+            'server_sign_in_required',
+            musterServerOfTool(name),
+            installation,
+          );
+        }
         if (
           !(error instanceof MusterInputRequiredError) ||
-          !this.elicitations ||
+          !answers ||
           round >= MAX_ELICITATION_ROUNDS
         ) {
           throw error;
         }
-        input = await this.elicitations.answer(
+        input = await answers.answer(
           name,
           error.elicitations,
           error.requestState,
@@ -543,6 +578,7 @@ export class MusterApiClient implements MusterApi {
       installation?: string;
       onProgress: (progress: MusterToolProgress) => void;
       signal?: AbortSignal;
+      urlElicitation?: boolean;
     },
     input: MusterInputAnswer | undefined,
   ): Promise<unknown> {
@@ -554,6 +590,7 @@ export class MusterApiClient implements MusterApi {
         body: JSON.stringify({
           name,
           arguments: args,
+          ...(options.urlElicitation ? {} : { urlElicitation: false }),
           ...(input ? { input } : {}),
         }),
         signal: options.signal,

@@ -129,7 +129,7 @@ describe('ToolDetailPanel', () => {
         'core_echo',
         expect.objectContaining({ message: 'hi' }),
         undefined,
-        { signal: expect.any(AbortSignal) },
+        { signal: expect.any(AbortSignal), urlElicitation: true },
       ),
     );
     expect(
