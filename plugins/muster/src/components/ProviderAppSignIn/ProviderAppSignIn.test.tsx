@@ -97,6 +97,21 @@ describe('ProviderAppSignIn', () => {
     expect(screen.getByRole('button', { name: 'Connect' })).toBeEnabled();
   });
 
+  it("shows muster's reason, and no Connect, for a sign-in that cannot pass", async () => {
+    const reason =
+      "Cannot sign in to 'chatgpt': your login method cannot be checked here.";
+    const { api } = makeMuster({
+      name: 'chatgpt',
+      status: 'auth_required',
+      error: reason,
+    });
+    await renderRow(api);
+
+    expect(await screen.findByText(reason)).toBeInTheDocument();
+    expect(screen.getByText('Not connected')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
   it('shows a code muster reports outstanding, with its page and a copy button', async () => {
     const { api } = makeMuster({
       name: 'chatgpt',

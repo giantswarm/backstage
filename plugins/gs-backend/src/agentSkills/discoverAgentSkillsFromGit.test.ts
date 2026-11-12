@@ -17,6 +17,7 @@ import {
   GitClient,
   GitFetchError,
   scanSkillsTree,
+  classifyRemoteRef,
   toGitFetchError,
 } from './discoverAgentSkillsFromGit';
 import { gitBlobSha, MAX_INLINE_FILE_BYTES } from './skillFiles';
@@ -155,6 +156,65 @@ describe('discoverAgentSkillsFromGit', () => {
         skills: [{ name: 'runbook', description: 'Runs books.' }],
       },
     ]);
+  });
+
+  it('scans only below scanPath, keeping repository-relative paths', async () => {
+    const result = await discoverAgentSkillsFromGit({
+      repoUrl: 'http://gitserver.lab.local/platform.git',
+      scanPath: 'skills',
+      gitClient: fakeClone({
+        demo: '---\nname: demo\n---\n',
+        'skills/overview': '---\nname: overview\n---\n',
+        'skillset/x': '---\nname: x\n---\n',
+      }),
+    });
+
+    expect(result.skills.map(s => s.path)).toEqual(['skills/overview']);
+    expect([...result.contents.keys()]).toEqual(['skills/overview']);
+    expect([...(result.files?.keys() ?? [])]).toEqual(['skills/overview']);
+  });
+
+  it('keeps nothing above scanPath, a plugin manifest included', async () => {
+    const result = await discoverAgentSkillsFromGit({
+      repoUrl: 'http://gitserver.lab.local/platform.git',
+      scanPath: 'skills',
+      gitClient: fakeCloneFiles({
+        'plugin.json': '{}',
+        'other/.claude-plugin/plugin.json': '{}',
+        'skills/overview/SKILL.md': '---\nname: overview\n---\n',
+      }),
+    });
+
+    expect(result.plugins).toEqual([]);
+    expect(result.skills.map(s => s.path)).toEqual(['skills/overview']);
+  });
+
+  it('reports what a configured ref is', async () => {
+    const result = await discoverAgentSkillsFromGit({
+      repoUrl: 'http://gitserver.lab.local/platform.git',
+      ref: 'v1.2.3',
+      gitClient: fakeClone({ a: '---\nname: a\n---\n' }, {
+        commit: HEAD,
+        ref: 'v1.2.3',
+        refKind: 'tag',
+      } as never),
+    });
+
+    expect(result.refKind).toBe('tag');
+    expect(result.skills[0].refKind).toBe('tag');
+  });
+
+  it('refuses a scanPath that does not exist, as a configuration error', async () => {
+    await expect(
+      discoverAgentSkillsFromGit({
+        repoUrl: 'http://gitserver.lab.local/platform.git',
+        scanPath: 'skills/missing',
+        gitClient: fakeClone({ demo: '---\nname: demo\n---\n' }),
+      }),
+    ).rejects.toMatchObject({
+      status: 404,
+      message: 'skills/missing does not exist in the repository.',
+    });
   });
 
   it('discovers skills from a checkout, pins each to the head commit and keeps every SKILL.md', async () => {
@@ -657,5 +717,79 @@ describe('toGitFetchError', () => {
   it('passes an existing GitFetchError through', () => {
     const original = new GitFetchError(404, 'gone');
     expect(toGitFetchError(original, url, undefined)).toBe(original);
+  });
+});
+
+describe('classifyRemoteRef', () => {
+  const url = 'http://gitserver.lab.local/skills.git';
+  const TAG_OBJECT = 'b'.repeat(40);
+  const refs = [
+    { ref: 'HEAD', oid: HEAD },
+    { ref: 'refs/heads/main', oid: HEAD },
+    { ref: 'refs/heads/release/1', oid: HEAD },
+    { ref: 'refs/tags/v1.2.3', oid: TAG_OBJECT, peeled: HEAD },
+    { ref: 'refs/tags/light', oid: HEAD },
+  ];
+
+  it.each([
+    ['main', { kind: 'branch', fetchRef: 'refs/heads/main', oid: HEAD }],
+    [
+      'release/1',
+      { kind: 'branch', fetchRef: 'refs/heads/release/1', oid: HEAD },
+    ],
+    // An annotated tag checks out the commit it points at.
+    ['v1.2.3', { kind: 'tag', fetchRef: 'refs/tags/v1.2.3', oid: HEAD }],
+    ['light', { kind: 'tag', fetchRef: 'refs/tags/light', oid: HEAD }],
+    [HEAD, { kind: 'commit', fetchRef: HEAD, oid: HEAD }],
+  ])('%s', (ref, expected) => {
+    expect(classifyRemoteRef(refs, ref, url)).toEqual(expected);
+  });
+
+  it('peels an annotated tag advertised the protocol-v1 way', () => {
+    expect(
+      classifyRemoteRef(
+        [
+          { ref: 'refs/tags/v1', oid: TAG_OBJECT },
+          { ref: 'refs/tags/v1^{}', oid: HEAD },
+        ],
+        'v1',
+        url,
+      ).oid,
+    ).toBe(HEAD);
+  });
+
+  it('reads a ref named in full as exactly that branch or tag', () => {
+    const both = [
+      { ref: 'refs/heads/v1', oid: HEAD },
+      { ref: 'refs/tags/v1', oid: TAG_OBJECT },
+    ];
+    expect(classifyRemoteRef(both, 'refs/heads/v1', url).kind).toBe('branch');
+    expect(classifyRemoteRef(both, 'refs/tags/v1', url).kind).toBe('tag');
+  });
+
+  it.each([
+    ['nope', 404, /is not a branch, tag or full commit id/],
+    ['abc1234', 404, /is not a branch, tag or full commit id/],
+    ['c'.repeat(64), 400, /SHA-256 commit id, which is not supported/],
+  ])('refuses %s', (ref, status, message) => {
+    expect(() => classifyRemoteRef(refs, ref, url)).toThrow(
+      expect.objectContaining({
+        status,
+        message: expect.stringMatching(message),
+      }),
+    );
+  });
+
+  it('refuses a plain name that is both a branch and a tag', () => {
+    expect(() =>
+      classifyRemoteRef(
+        [
+          { ref: 'refs/heads/v1', oid: HEAD },
+          { ref: 'refs/tags/v1', oid: TAG_OBJECT },
+        ],
+        'v1',
+        url,
+      ),
+    ).toThrow(/both a branch and a tag/);
   });
 });

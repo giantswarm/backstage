@@ -265,6 +265,25 @@ describe('NewSessionComposer', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
+    it('keeps the agent shown while the person types when another default arrives', async () => {
+      const { rerender } = renderComposer({
+        agents: [sre, issues],
+        defaultAgent: sre,
+      });
+
+      await userEvent.type(field(), 'check');
+      rerender(
+        <NewSessionComposer
+          agents={[sre, issues]}
+          defaultAgent={issues}
+          isStarting={false}
+          onStart={onStart}
+        />,
+      );
+
+      expect(agentPicker()).toHaveTextContent('SRE Agent');
+    });
+
     it('drops the message once an agent is chosen', async () => {
       renderComposer({ agents: [sre, issues] });
 
@@ -904,6 +923,25 @@ describe('opt-in picker options', () => {
       .filter(text => text === 'kagent' || text === 'research');
 
     expect(headings).toEqual(['kagent', 'research']);
+    expect(
+      within(screen.getByRole('group', { name: 'research' })).getByRole(
+        'option',
+        { name: /Research Agent/ },
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the namespace headings when the leading agent is alone in its namespace', async () => {
+    renderComposer({
+      // sre alone in kagent, research in research: two namespaces on offer.
+      agents: [sre, research],
+      groupByNamespace: true,
+      leadingAgentId: sre.id,
+    });
+
+    await userEvent.click(agentPicker());
+
+    expect(screen.getAllByRole('option')[0]).toHaveTextContent('SRE Agent');
     expect(
       within(screen.getByRole('group', { name: 'research' })).getByRole(
         'option',

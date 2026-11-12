@@ -178,6 +178,30 @@ function SsoExplanation({ text }: { text: string }) {
 }
 
 /**
+ * The state a list shows for a server whose sign-in cannot pass for this
+ * session ({@link AuthActionParts} `refused`).
+ */
+export const SIGN_IN_REFUSED_STATUS = {
+  label: 'Cannot sign in',
+  tone: 'danger',
+} as const;
+
+/** muster's reason a sign-in cannot pass, shown as it says it. */
+function SignInRefusal({ reason }: { reason: string }) {
+  const classes = useStyles();
+  return (
+    <Text
+      as="p"
+      variant="body-small"
+      color="danger"
+      className={classes.fullRow}
+    >
+      {reason}
+    </Text>
+  );
+}
+
+/**
  * The wait of a sign-in this tab started, or `undefined` when there is none:
  * what the flow says beside its way back into the sign-in page.
  */
@@ -202,6 +226,8 @@ function signInWait(
  * - `sso`: an SSO-managed server (token forwarding/exchange) that refused the
  *   person's sign-in: an explanation, no button.
  *   It never waits on a sign-in, since there is nothing to sign in to.
+ * - `refused`: muster reports that a sign-in cannot pass for this session
+ *   (`ServerSignInState.signInRefusal`): its reason, no button and no link.
  * - `sign-in`: muster reports a sign-in is needed, or one this tab started is
  *   outstanding. `gate` withholds it with a reason; `wait` is the outstanding
  *   flow.
@@ -211,6 +237,7 @@ function signInWait(
 export type AuthActionParts =
   | { kind: 'none' }
   | { kind: 'sso'; explanation: string }
+  | { kind: 'refused'; reason: string }
   | { kind: 'sign-in'; gate?: string; wait?: SignInWait }
   | { kind: 'sign-out' };
 
@@ -241,6 +268,9 @@ export function authActionParts(
           explanation: ssoExplanationText(serverName, state, noun),
         }
       : { kind: 'none' };
+  }
+  if (state.signInRefusal) {
+    return { kind: 'refused', reason: state.signInRefusal };
   }
   // `isWaiting` keeps the row alive while a sign-in this tab started is
   // outstanding, whatever the polled status currently claims -- and whether or
@@ -485,6 +515,14 @@ export function ServerSignIn({
     );
   }
 
+  if (parts.kind === 'refused') {
+    return (
+      <div className={classes.root}>
+        <SignInRefusal reason={parts.reason} />
+      </div>
+    );
+  }
+
   return (
     <div className={classes.root}>
       {showName ? (
@@ -577,6 +615,13 @@ export function ServerAuthActions({
         <div className={classes.inActionRow}>
           <SsoExplanation text={parts.explanation} />
           <Messages state={state} />
+        </div>
+      );
+    case 'refused':
+      return (
+        <div className={classes.inActionRow}>
+          {name}
+          <SignInRefusal reason={parts.reason} />
         </div>
       );
     case 'sign-in':

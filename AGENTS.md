@@ -199,6 +199,9 @@ package role:
 - A new frontend or backend plugin: the `backstage-frontend-plugin` and
   `backstage-backend-plugin` skills, which need `BACKSTAGE_AGENT_SKILLS_DIR`.
 - Updating Backstage: the `backstage-update` skill.
+- Platform skills: the skills in giantswarm/agent-platform `skills/` describe
+  the Agent Platform pages. A change to what an agent or a person can do, see or
+  configure there comes with a pull request updating them, linked from this one.
 
 ## Pull requests
 

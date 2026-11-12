@@ -1,12 +1,15 @@
 import { memo, useMemo } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Link as BackstageLink } from '@backstage/core-components';
 import { EntityRefLink } from '@backstage/plugin-catalog-react';
 import { makeStyles } from '@material-ui/core';
 import { Text } from '@backstage/ui';
 import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 import { STABLE_CLASS_NAMES } from '../../lib/stableClassNames';
+import { isNewSessionLink } from '../../lib/newSessionLink';
+import { newSessionExternalRouteRef } from '../../routes';
 import {
   ConnectorSignInAction,
   useConnectorSignInLink,
@@ -150,11 +153,13 @@ const useStyles = makeStyles(theme => ({
 /**
  * Where a link in agent prose should go.
  *
- * Same routing the AI chat makes: another origin opens externally with the
- * usual warning affordance, a catalog path becomes an entity link, and any
- * other same-origin web path navigates within the app. Session filesystem
- * paths remain text. A connector sign-in muster
- * issued in the session is the exception: a sign-in action.
+ * Another origin, or a backend `/api/…` URL, opens in a new tab with the usual
+ * external affordance, a fragment stays on the page, a catalog path becomes
+ * an entity link, a session filesystem path stays text, an agent's link to
+ * start a session (`/?agent=…#prompt=…`) lands on that screen in this tab, and
+ * any other same-origin link opens in the app in a new tab, query and fragment
+ * kept. A connector sign-in muster issued in the session is the exception: a
+ * sign-in action.
  */
 function MarkdownLink({
   href,
@@ -166,6 +171,7 @@ function MarkdownLink({
   // A connector sign-in muster issued in this session is shown as the action
   // it is, not as the opaque URL (giantswarm/giantswarm#38774).
   const signIn = useConnectorSignInLink(href);
+  const home = useRouteRef(newSessionExternalRouteRef)?.();
   if (signIn) {
     return <ConnectorSignInAction link={signIn} />;
   }
@@ -173,28 +179,39 @@ function MarkdownLink({
     return <>{children}</>;
   }
 
+  // A fragment (a footnote, a heading in the same reply) stays on this page.
+  if (href.startsWith('#')) {
+    return <a href={href}>{children}</a>;
+  }
+
   let url: URL;
   try {
-    url = new URL(href, window.location.origin);
+    // Relative to this page, as the browser would read it.
+    url = new URL(href, window.location.href);
   } catch {
     return <>{children}</>;
   }
 
-  if (url.origin !== window.location.origin) {
+  // Another origin, or a backend URL the app's router does not serve (an
+  // `/api/…` download): the browser fetches it, in a new tab.
+  if (
+    url.origin !== window.location.origin ||
+    /^\/+api(?:\/|$)/.test(url.pathname)
+  ) {
     return <ExternalLink href={href}>{children}</ExternalLink>;
   }
+  // One leading slash: `//host` in a router link would leave the portal.
+  const pathname = url.pathname.replace(/^\/{2,}/, '/');
 
-  if (/^\/(?:workspace|data\/workspace)(?:\/|$)/.test(url.pathname)) {
+  if (/^\/(?:workspace|data\/workspace)(?:\/|$)/.test(pathname)) {
     return (
       <span title="This path is inside the agent session, not a portal page.">
-        {children} (<code>{url.pathname}</code>, session file)
+        {children} (<code>{pathname}</code>, session file)
       </span>
     );
   }
 
-  const catalogMatch = url.pathname.match(
-    /^\/catalog\/([^/]+)\/([^/]+)\/([^/]+)/,
-  );
+  const catalogMatch = pathname.match(/^\/catalog\/([^/]+)\/([^/]+)\/([^/]+)/);
   if (catalogMatch) {
     const [, namespace, kind, name] = catalogMatch;
     return (
@@ -208,8 +225,14 @@ function MarkdownLink({
     );
   }
 
-  return (
-    <BackstageLink to={url.pathname} target="_blank" rel="noopener noreferrer">
+  const to = `${pathname}${url.search}${url.hash}`;
+  // A link to start a session (an agent's handover) lands on that screen in
+  // this tab; any other page opens in a new one, so the session and what is
+  // typed in it stay.
+  return isNewSessionLink(url, home) ? (
+    <BackstageLink to={to}>{children}</BackstageLink>
+  ) : (
+    <BackstageLink to={to} target="_blank" rel="noopener noreferrer">
       {children}
     </BackstageLink>
   );

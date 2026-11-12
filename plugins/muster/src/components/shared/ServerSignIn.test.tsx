@@ -489,6 +489,28 @@ describe('ServerSignIn', () => {
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 
+  it("shows muster's reason, and no sign-in, for a sign-in that cannot pass", async () => {
+    const api = makeApi({
+      status: {
+        name: 'pro',
+        status: 'auth_required',
+        kind: 'grant',
+        error:
+          "Cannot sign in to 'pro': your login method cannot be checked here.",
+      },
+    });
+    await renderSignIn(api);
+
+    expect(
+      await screen.findByText(
+        "Cannot sign in to 'pro': your login method cannot be checked here.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(api.signInServer).not.toHaveBeenCalled();
+  });
+
   it('explains SSO-managed servers instead of offering a sign-in', async () => {
     const api = makeApi({
       status: {
@@ -733,6 +755,26 @@ describe('ServerAuthActions', () => {
         name: 'Open sign-in page (opens in a new tab)',
       }),
     ).toBeInTheDocument();
+  });
+
+  it("shows muster's reason in place of Sign in for a sign-in that cannot pass", async () => {
+    const api = makeApi({
+      status: {
+        name: 'pro',
+        status: 'reauth_required',
+        kind: 'grant',
+        error:
+          "Cannot sign in to 'pro': your login method cannot be checked here.",
+      },
+    });
+    await renderAuthActions(api);
+
+    expect(
+      await screen.findByText(
+        "Cannot sign in to 'pro': your login method cannot be checked here.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
   /**

@@ -304,10 +304,8 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     modelConfigFormChanged(values, initialValues) ||
     (routed && replaceKey);
   // An organization's model that goes on to the credential form: a new one,
-  // or one whose key is replaced (asked for, or a new provider's).
-  const continuesToKey =
-    routed &&
-    (!edit || replaceKey || values.provider !== edit.modelConfig.getProvider());
+  // or one whose key is replaced.
+  const continuesToKey = routed && (!edit || replaceKey);
 
   // Where Close and Cancel leave to: the model itself when editing; else the
   // shell's Customize screen's Models tab, or, where the app binds none, the

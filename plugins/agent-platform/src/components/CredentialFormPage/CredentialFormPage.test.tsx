@@ -22,6 +22,7 @@ import { fakeOrganizationsMuster } from '../../lib/__fixtures__/agentManagerOrga
 import type {
   CredentialOperation,
   CredentialOperationRead,
+  CredentialResourceResult,
 } from '../../lib/credentialOperations';
 import { organizationsRouteRef } from '../../routes';
 import { CredentialFormPage } from './CredentialFormPage';
@@ -101,7 +102,7 @@ function fakeCredentialsApi(
 ) {
   return {
     getOperation: jest.fn(reader),
-    saveOperation: jest.fn(async () => ({
+    saveOperation: jest.fn(async (): Promise<CredentialResourceResult> => ({
       kind: 'model' as const,
       name: 'claude-sonnet',
       credentials: [
@@ -306,6 +307,197 @@ describe('CredentialFormPage', () => {
         ],
       ),
     );
+  });
+
+  describe('a replacement of a credential', () => {
+    // replace_organization_credential: the Secret only, for the objects
+    // stored when it was prepared.
+    const REPLACEMENT: CredentialOperation = {
+      ...CONFIRMATION,
+      changes: [],
+      references: [
+        {
+          kind: 'ModelConfig',
+          name: 'claude-sonnet',
+          key: 'api-key',
+          provider: 'Anthropic',
+        },
+        {
+          kind: 'EgressPolicy',
+          name: 'anthropic-egress',
+          key: 'api-key',
+          origins: ['https://api.anthropic.com:443'],
+        },
+      ],
+      result: {
+        kind: 'credential',
+        name: 'tenant-credential-anthropic',
+        pending: true,
+        credentials: [
+          {
+            secret: 'tenant-credential-anthropic',
+            key: 'api-key',
+            state: 'replace',
+          },
+        ],
+      },
+    };
+
+    it('says it writes the Secret only, for every object that uses it, and where each sends it', async () => {
+      await renderForm(fakeCredentialsApi(read(REPLACEMENT)));
+
+      expect(
+        await screen.findByText(
+          /The value of Secret tenant-credential-anthropic, key api-key\. No model, connector or egress policy is changed\./,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Used by')).toBeInTheDocument();
+      expect(
+        screen.getByText(/Model claude-sonnet, key api-key/),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/Egress policy anthropic-egress, key api-key/),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Anthropic')).toBeInTheDocument();
+      expect(
+        screen.getByText('https://api.anthropic.com:443'),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText(/^Value/)).toHaveAccessibleDescription(
+        expect.stringContaining('It replaces the current value once saved.'),
+      );
+    });
+
+    it('asks for the value, not a new one, when the Secret does not exist yet', async () => {
+      await renderForm(
+        fakeCredentialsApi(
+          read({
+            ...REPLACEMENT,
+            result: {
+              ...REPLACEMENT.result,
+              credentials: [
+                {
+                  secret: 'tenant-credential-anthropic',
+                  key: 'api-key',
+                  state: 'missing',
+                },
+              ],
+            },
+          }),
+        ),
+      );
+
+      const value = await screen.findByLabelText(/^Value/);
+      expect(value).not.toHaveAccessibleDescription(
+        expect.stringContaining('replaces'),
+      );
+      expect(screen.getByText('Sets')).toBeInTheDocument();
+      expect(screen.queryByText('Replaces')).not.toBeInTheDocument();
+    });
+
+    it('says the value is saved for the objects that use it', async () => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi(read(REPLACEMENT));
+      api.saveOperation.mockResolvedValueOnce({
+        kind: 'credential',
+        name: 'tenant-credential-anthropic',
+        credentials: [
+          {
+            secret: 'tenant-credential-anthropic',
+            key: 'api-key',
+            state: 'present',
+          },
+        ],
+      });
+      await renderForm(api);
+
+      await user.type(await screen.findByLabelText(/^Value/), VALUE);
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(
+        await screen.findByText(
+          /The new value of Secret tenant-credential-anthropic is saved/,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('does not say to start again on a conflict that is not a change of its objects', async () => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi(read(REPLACEMENT));
+      api.saveOperation.mockRejectedValueOnce(
+        await refusal(
+          409,
+          'conflict',
+          'credential save is in progress; retry after it finishes',
+        ),
+      );
+      await renderForm(api);
+
+      await user.type(await screen.findByLabelText(/^Value/), VALUE);
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(await screen.findByText('Not saved')).toBeInTheDocument();
+      expect(
+        screen.queryByText('The objects that use this credential changed'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('says to prepare it again when the objects that use it changed', async () => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi(read(REPLACEMENT));
+      api.saveOperation.mockRejectedValueOnce(
+        // agent-manager's answer since giantswarm/agent-manager#373.
+        await refusal(
+          409,
+          'credential_consumers_changed',
+          'the objects that use this credential, or where they send it, changed since the replacement was prepared; prepare it again',
+        ),
+      );
+      await renderForm(api);
+
+      await user.type(await screen.findByLabelText(/^Value/), VALUE);
+      const backLinks = screen.getAllByRole('link', {
+        name: 'Back to payments',
+      }).length;
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(
+        await screen.findByText('The objects that use this credential changed'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /Start the replacement again from the organization's tab/,
+        ),
+      ).toBeInTheDocument();
+      // The same request would be refused again: no value, no Save, and the
+      // way back to the tab where it starts again.
+      expect(screen.queryByLabelText(/^Value/)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+      expect(
+        screen.getAllByRole('link', { name: 'Back to payments' }),
+      ).toHaveLength(backLinks + 1);
+      expect(api.saveOperation).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps an older agent-manager's conflict as Not saved, whatever its text", async () => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi(read(REPLACEMENT));
+      api.saveOperation.mockRejectedValueOnce(
+        await refusal(
+          409,
+          'conflict',
+          'the objects in agents-payments-x7k2q that use Secret tenant-credential-anthropic, or where they send its value, changed since the preparation; prepare it again',
+        ),
+      );
+      await renderForm(api);
+
+      await user.type(await screen.findByLabelText(/^Value/), VALUE);
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(await screen.findByText('Not saved')).toBeInTheDocument();
+      expect(
+        screen.queryByText('The objects that use this credential changed'),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it('reads the request again when it changed, and asks for the value again', async () => {

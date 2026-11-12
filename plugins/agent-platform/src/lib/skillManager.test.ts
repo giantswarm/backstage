@@ -140,6 +140,32 @@ describe('catalogFromSkillManager', () => {
     expect(catalog.truncated).toBe(true);
   });
 
+  it('marks the skills of a read-only source read-only', () => {
+    const catalog = catalogFromSkillManager({
+      repositories: [
+        {
+          repoUrl: 'https://github.com/giantswarm/agent-platform',
+          ref: 'main',
+          readOnly: true,
+          commit,
+          truncated: false,
+          skills: [{ name: 'a', description: '', path: 'a' }],
+        },
+        {
+          repoUrl: 'https://github.com/acme/skills',
+          ref: 'main',
+          commit,
+          truncated: false,
+          skills: [{ name: 'b', description: '', path: 'b' }],
+        },
+      ],
+    });
+    expect(catalog.skills.map(skill => skill.readOnly)).toEqual([
+      true,
+      undefined,
+    ]);
+  });
+
   it('offers only writable, readable, whole-repository sources as targets', () => {
     const repo = (repoUrl: string, extra: object = {}) => ({
       repoUrl,
