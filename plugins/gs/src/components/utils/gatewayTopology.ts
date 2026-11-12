@@ -81,8 +81,7 @@ export interface HttpRouteBackend {
  * The backends of a route, as far as the metrics can tell. The metric exports
  * the first three backendRefs of each rule, so a rule with three may have more.
  * `not-available` with `not-exported` means the cluster does not export the
- * metric at all: its Gateway API bundle predates the gateway-api-state-metrics
- * app.
+ * metric at all: its Gateway API bundle predates it.
  */
 export type HttpRouteBackends =
   | {
@@ -366,77 +365,118 @@ const exportedBackendsPerRule = 3;
 
 type RouteBackendsEntry = {
   backends: Map<string, HttpRouteBackend>;
-  /** How many rules each backend is in, to tell when its weight is ambiguous. */
-  ruleCount: Map<string, number>;
   mayHaveMore: boolean;
   routeNamespace: string;
 };
 
+type RuleBackends = { backends: HttpRouteBackend[] };
+
+function backendKeyOf(backend: HttpRouteBackend): string {
+  return [
+    backend.kind,
+    backend.namespace,
+    backend.name,
+    backend.port ?? '',
+  ].join('/');
+}
+
+/**
+ * One rule of a route, identified by its rule labels alone. Several series
+ * can carry the same rule: two exporter replicas, or an old and a new pod
+ * during a rollout, differ only in scrape labels such as `pod`.
+ */
+function ruleKeyOf(labels: Record<string, string>): string {
+  const ruleLabels = Object.keys(labels)
+    .filter(
+      key =>
+        key === 'rule_name' ||
+        key.startsWith('match_') ||
+        /^backend\d+_/.test(key),
+    )
+    .sort();
+  return ruleLabels.map(key => `${key}=${labels[key]}`).join(',');
+}
+
 /**
  * Collects the distinct backends of each route from its rule series. The
- * column shows backends per route, not per rule, so a weight is only kept when
- * it is unambiguous and says something: the backend is in a single rule, and
- * that rule splits traffic unevenly between several backends. The API server
- * defaults every weight to 1, so equal weights are the plain case.
+ * column shows backends per route, not per rule, so weights are only kept
+ * where they are unambiguous and say something: for a rule that splits
+ * traffic unevenly, and only if none of its backends is in another rule too,
+ * the rule lists no backend twice, and it has fewer backends than the metric
+ * exports (with three, more may exist that the weights are relative to). Then
+ * all of the rule's weights are shown together, so a weight never shows
+ * without the ones it is relative to. The API server defaults every weight to
+ * 1, so a missing weight counts as 1 and equal weights are the plain case.
  */
 function indexRouteBackends(
   samples: MimirMetricSample[],
 ): Map<string, RouteBackendsEntry> {
-  const byRoute = new Map<string, RouteBackendsEntry>();
+  const rulesByRoute = new Map<
+    string,
+    { namespace: string; rules: Map<string, RuleBackends> }
+  >();
   for (const sample of samples) {
     const { namespace, name } = sample.metric;
     if (!namespace || !name) continue;
     const key = objectKey(namespace, name);
-    let entry = byRoute.get(key);
-    if (!entry) {
-      entry = {
-        backends: new Map(),
-        ruleCount: new Map(),
-        mayHaveMore: false,
-        routeNamespace: namespace,
-      };
-      byRoute.set(key, entry);
+    let route = rulesByRoute.get(key);
+    if (!route) {
+      route = { namespace, rules: new Map() };
+      rulesByRoute.set(key, route);
     }
-    const ruleBackends: HttpRouteBackend[] = [];
+    const ruleKey = ruleKeyOf(sample.metric);
+    if (route.rules.has(ruleKey)) continue;
+    const backends: HttpRouteBackend[] = [];
     for (let i = 0; i < exportedBackendsPerRule; i++) {
       const backendName = sample.metric[`backend${i}_name`];
       if (!backendName) continue;
-      ruleBackends.push({
+      backends.push({
         kind: sample.metric[`backend${i}_kind`] || 'Service',
         namespace: sample.metric[`backend${i}_namespace`] || namespace,
         name: backendName,
         port: sample.metric[`backend${i}_port`] || undefined,
-        weight: sample.metric[`backend${i}_weight`] || undefined,
+        weight: sample.metric[`backend${i}_weight`] || '1',
       });
     }
-    if (ruleBackends.length === exportedBackendsPerRule) {
-      entry.mayHaveMore = true;
-    }
-    const unevenSplit =
-      new Set(ruleBackends.map(backend => backend.weight)).size > 1;
-    for (const backend of ruleBackends) {
-      const backendKey = [
-        backend.kind,
-        backend.namespace,
-        backend.name,
-        backend.port ?? '',
-      ].join('/');
-      entry.ruleCount.set(
-        backendKey,
-        (entry.ruleCount.get(backendKey) ?? 0) + 1,
-      );
-      if (entry.backends.has(backendKey)) continue;
-      entry.backends.set(backendKey, {
-        ...backend,
-        weight: unevenSplit ? backend.weight : undefined,
-      });
-    }
+    route.rules.set(ruleKey, { backends });
   }
-  for (const entry of byRoute.values()) {
-    for (const [backendKey, count] of entry.ruleCount) {
-      const backend = entry.backends.get(backendKey);
-      if (backend && count > 1) backend.weight = undefined;
+
+  const byRoute = new Map<string, RouteBackendsEntry>();
+  for (const [key, route] of rulesByRoute) {
+    const rules = Array.from(route.rules.values());
+    // In how many rules each backend is.
+    const ruleCount = new Map<string, number>();
+    for (const rule of rules) {
+      for (const backendKey of new Set(rule.backends.map(backendKeyOf))) {
+        ruleCount.set(backendKey, (ruleCount.get(backendKey) ?? 0) + 1);
+      }
     }
+    const entry: RouteBackendsEntry = {
+      backends: new Map(),
+      mayHaveMore: rules.some(
+        rule => rule.backends.length === exportedBackendsPerRule,
+      ),
+      routeNamespace: route.namespace,
+    };
+    for (const rule of rules) {
+      const keys = rule.backends.map(backendKeyOf);
+      const showWeights =
+        rule.backends.length < exportedBackendsPerRule &&
+        new Set(keys).size === keys.length &&
+        new Set(rule.backends.map(backend => backend.weight)).size > 1 &&
+        rule.backends.every(
+          backend => ruleCount.get(backendKeyOf(backend)) === 1,
+        );
+      for (const backend of rule.backends) {
+        const backendKey = backendKeyOf(backend);
+        if (entry.backends.has(backendKey)) continue;
+        entry.backends.set(backendKey, {
+          ...backend,
+          weight: showWeights ? backend.weight : undefined,
+        });
+      }
+    }
+    byRoute.set(key, entry);
   }
   return byRoute;
 }

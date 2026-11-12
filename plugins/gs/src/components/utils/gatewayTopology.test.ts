@@ -501,6 +501,129 @@ describe('buildGatewayTopology', () => {
       });
     });
 
+    it('counts a rule once when several pods export it', () => {
+      const fromPod = (pod: string) =>
+        sample({
+          ...route,
+          pod,
+          match_path: '/',
+          backend0_name: 'app-v1',
+          backend0_weight: '90',
+          backend1_name: 'app-v2',
+          backend1_weight: '10',
+        });
+      const { routes } = buildGatewayTopology(
+        inputs({
+          routeParentInfo: parentInfo,
+          routeRuleBackendInfo: [fromPod('ksm-a'), fromPod('ksm-b')],
+        }),
+      );
+      const backends =
+        routes[0].backends.status === 'available'
+          ? routes[0].backends.backends
+          : [];
+      expect(backends.map(b => [b.name, b.weight])).toEqual([
+        ['app-v1', '90'],
+        ['app-v2', '10'],
+      ]);
+    });
+
+    it('drops all weights of a rule when one of its backends is in another rule', () => {
+      const { routes } = buildGatewayTopology(
+        inputs({
+          routeParentInfo: parentInfo,
+          routeRuleBackendInfo: [
+            sample({
+              ...route,
+              match_path: '/a',
+              backend0_name: 'x',
+              backend0_weight: '90',
+              backend1_name: 'y',
+              backend1_weight: '10',
+            }),
+            sample({ ...route, match_path: '/b', backend0_name: 'y' }),
+          ],
+        }),
+      );
+      const backends =
+        routes[0].backends.status === 'available'
+          ? routes[0].backends.backends
+          : [];
+      expect(backends.map(b => [b.name, b.weight])).toEqual([
+        ['x', undefined],
+        ['y', undefined],
+      ]);
+    });
+
+    const weightsOf = (series: ReturnType<typeof sample>[]) => {
+      const { routes } = buildGatewayTopology(
+        inputs({ routeParentInfo: parentInfo, routeRuleBackendInfo: series }),
+      );
+      return routes[0].backends.status === 'available'
+        ? routes[0].backends.backends.map(b => [b.name, b.weight])
+        : [];
+    };
+
+    it('treats a missing weight as the default 1', () => {
+      expect(
+        weightsOf([
+          sample({
+            ...route,
+            backend0_name: 'a',
+            backend0_weight: '1',
+            backend1_name: 'b',
+          }),
+        ]),
+      ).toEqual([
+        ['a', undefined],
+        ['b', undefined],
+      ]);
+      expect(
+        weightsOf([
+          sample({
+            ...route,
+            backend0_name: 'a',
+            backend1_name: 'b',
+            backend1_weight: '3',
+          }),
+        ]),
+      ).toEqual([
+        ['a', '1'],
+        ['b', '3'],
+      ]);
+    });
+
+    it('shows no weights for a rule that lists a backend twice or may have more backends', () => {
+      expect(
+        weightsOf([
+          sample({
+            ...route,
+            backend0_name: 'x',
+            backend0_weight: '90',
+            backend1_name: 'x',
+            backend1_weight: '10',
+          }),
+        ]),
+      ).toEqual([['x', undefined]]);
+      expect(
+        weightsOf([
+          sample({
+            ...route,
+            backend0_name: 'b0',
+            backend0_weight: '5',
+            backend1_name: 'b1',
+            backend1_weight: '1',
+            backend2_name: 'b2',
+            backend2_weight: '1',
+          }),
+        ]),
+      ).toEqual([
+        ['b0', undefined],
+        ['b1', undefined],
+        ['b2', undefined],
+      ]);
+    });
+
     it('drops equal weights, which the API server defaults to 1', () => {
       const { routes } = buildGatewayTopology(
         inputs({
