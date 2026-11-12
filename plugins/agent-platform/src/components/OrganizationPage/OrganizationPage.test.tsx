@@ -1268,7 +1268,10 @@ describe('OrganizationPage', () => {
       const { callTool } = await renderPage('', {
         ...SCENARIO,
         mine: { organizations: [] },
-        organization: { ...WITHOUT_NAMESPACE, gitops: true },
+        organization: {
+          ...WITHOUT_NAMESPACE,
+          gitops: 'flux-giantswarm/agent-platform-organizations',
+        },
       });
 
       await userEvent.click(
