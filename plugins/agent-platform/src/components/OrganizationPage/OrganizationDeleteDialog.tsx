@@ -28,6 +28,8 @@ export type OrganizationDeleteDialogProps = {
   mode: OrganizationDeleteMode;
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
+  /** agent-manager answered that the organization is deleted. */
+  onDeleted?: () => void;
 };
 
 function plural(count: number, noun: string): string {
@@ -165,6 +167,7 @@ export function OrganizationDeleteDialog({
   mode,
   isOpen,
   onOpenChange,
+  onDeleted,
 }: OrganizationDeleteDialogProps) {
   const erasure = useOrganizationErasure(installation, parent, name);
   const deletion = useOrganizationDeletion(installation, parent, name);
@@ -173,6 +176,11 @@ export function OrganizationDeleteDialog({
   const expected = `${parent}/${name}`;
   const viaPullRequest = mode === 'pull-request';
   const erases = erasure.data?.erases;
+  // agent-manager previews an erasure only once the organization namespace
+  // exists: without one, nothing runs in it to erase or stop.
+  const noNamespace = Boolean(
+    erasure.data && !erasure.data.organization.namespace && !erases,
+  );
   const failure = deletion.error
     ? classifyCommitFailure(classifyReadFailure(deletion.error))
     : undefined;
@@ -231,6 +239,7 @@ export function OrganizationDeleteDialog({
           {
             onSuccess: result => {
               if (!viaPullRequest && result.deleted) {
+                onDeleted?.();
                 onOpenChange(false);
               }
             },
@@ -242,8 +251,10 @@ export function OrganizationDeleteDialog({
         {viaPullRequest && !pullRequest && (
           <Text variant="body-medium">
             This organization is applied from git, so agent-manager opens a pull
-            request as you that removes it. Its workers stop once the pull
-            request is merged; it is erased only when you then choose Erase now.
+            request as you that removes it.{' '}
+            {noNamespace
+              ? 'It is erased only when you then choose Erase now.'
+              : 'Its workers stop once the pull request is merged; it is erased only when you then choose Erase now.'}
           </Text>
         )}
         {erasure.isLoading && (
@@ -263,13 +274,11 @@ export function OrganizationDeleteDialog({
             <RunningSessions erasure={erases} />
           </>
         )}
-        {erasure.data && !erases && !pullRequest && (
-          // agent-manager previews an erasure only once the organization
-          // namespace exists: without one, nothing runs in it to erase.
+        {noNamespace && !pullRequest && (
           <Text variant="body-medium">
             {title} has no organization namespace yet, so there are no agents,
             models, connectors, credentials or members to erase and no session
-            stops. The delete removes the organization itself.
+            stops: only the organization itself goes.
           </Text>
         )}
         {!viaPullRequest && (

@@ -79,6 +79,9 @@ export function OrganizationPage({
   const basePath = useSplatBasePath();
   const { search } = useLocation();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // A delete this page made: an organization without a namespace can be
+  // erased before the list is read again, and then is no longer listed.
+  const [deletedHere, setDeletedHere] = useState(false);
 
   const object = details.data?.organization ?? listed?.organization;
   const status = object ?? listed;
@@ -131,7 +134,10 @@ export function OrganizationPage({
   }
   // The read keeps the last organization it had; `not_found` after one that
   // was deleting is the end of its erasure.
-  if (object?.deleting && details.failure?.code === 'not_found') {
+  if (
+    (object?.deleting && details.failure?.code === 'not_found') ||
+    (deletedHere && !listed && !mine.isLoading)
+  ) {
     return (
       <ShellPage title={title} {...frame}>
         <EmptyStateCard
@@ -177,6 +183,7 @@ export function OrganizationPage({
           mode={deleteMode}
           isOpen
           onOpenChange={setConfirmingDelete}
+          onDeleted={() => setDeletedHere(true)}
         />
       )}
     </>
