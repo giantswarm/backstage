@@ -6,7 +6,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
-import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
+import {
+  musterApiRef,
+  MusterUnauthorizedError,
+} from '@giantswarm/backstage-plugin-muster';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -582,6 +585,51 @@ describe('OrganizationPage', () => {
     expect(await screen.findByTestId('location')).toHaveTextContent(
       `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
     );
+  });
+
+  // The portal restarted and lost the keys it signed the session token
+  // with: its backend refuses the token before muster-backend runs.
+  it('says the portal session ended, in plain words, when the portal refuses the session token', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderPage('/models', {
+      ...SCENARIO,
+      models: {},
+    });
+    const answer = callTool.getMockImplementation()!;
+    callTool.mockImplementation(async (name, args, installation, options) => {
+      if (name === 'x_agent-manager_set_organization_model') {
+        throw new MusterUnauthorizedError(
+          'Failed user token verification',
+          undefined,
+          undefined,
+          'gazelle',
+          'AuthenticationError',
+        );
+      }
+      return answer(name, args, installation, options);
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Add model' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /Name/ }),
+      'claude',
+    );
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /Model/ }),
+      'claude-sonnet-4-6',
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Continue to the key' }),
+    );
+
+    expect(
+      await within(dialog).findByText(/Your portal session ended/),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/Reload the page to sign in again/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/token verification/)).toBeNull();
   });
 
   it('says what is missing before it asks agent-manager for a model', async () => {

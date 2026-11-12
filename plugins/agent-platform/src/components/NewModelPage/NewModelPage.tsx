@@ -60,6 +60,8 @@ import {
   AgentManagerNotConnectedError,
 } from '../../lib/agentManager';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 import { ModelConfigFormFields } from '../ModelConfigForm';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { DefaultModelChoice } from './DefaultModelChoice';
@@ -635,6 +637,9 @@ function SaveError({
   organization?: string;
   onSignedIn: () => void;
 }) {
+  if (error instanceof PortalSessionEndedError) {
+    return <PortalSessionEndedAlert />;
+  }
   if (error instanceof AgentManagerNotConnectedError) {
     return (
       <ConnectAgentManagerAlert

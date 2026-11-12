@@ -120,6 +120,34 @@ describe('MusterApiClient tool errors', () => {
   });
 });
 
+describe('MusterApiClient refused session token', () => {
+  // The portal's backend refuses the session token before muster-backend
+  // runs (Backstage's AuthenticationError): the name stays with the 401, so
+  // a page tells it from muster-backend's own refusals.
+  it("keeps the name the answer gives a 401's error", async () => {
+    const { client, fetchMock } = setup();
+    fetchMock.mockResolvedValue(
+      errorResponse(401, {
+        error: {
+          name: 'AuthenticationError',
+          message: 'Failed user token verification',
+        },
+      }),
+    );
+
+    const error: unknown = await client
+      .callTool('x_agent-manager_set_organization_model', {}, 'open')
+      .catch(e => e);
+
+    expect(error).toBeInstanceOf(MusterUnauthorizedError);
+    expect(error).toMatchObject({
+      status: 401,
+      errorName: 'AuthenticationError',
+      reason: undefined,
+    });
+  });
+});
+
 describe('MusterApiClient response status', () => {
   it("keeps the status of an answer that is not muster-backend's own", async () => {
     const { client, fetchMock } = setup();

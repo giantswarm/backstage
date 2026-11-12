@@ -21,6 +21,10 @@ import {
   type MusterServerPresence,
   musterSignInRequiredOf,
 } from '@giantswarm/backstage-plugin-muster';
+import {
+  isPortalSessionRefusal,
+  PortalSessionEndedError,
+} from './portalSession';
 
 /** The MCPServer name muster registers agent-manager under. */
 export { AGENT_MANAGER_SERVER };
@@ -611,9 +615,15 @@ export function looksNotConnected(message: string): boolean {
 export function classifyAgentManagerError(error: unknown): Error {
   if (
     error instanceof AgentManagerError ||
-    error instanceof AgentManagerNotConnectedError
+    error instanceof AgentManagerNotConnectedError ||
+    error instanceof PortalSessionEndedError
   ) {
     return error;
+  }
+  // The portal refused the person's session token before muster-backend
+  // ran: no sign-in to agent-manager fixes it, a sign-in to the portal does.
+  if (isPortalSessionRefusal(error)) {
+    return new PortalSessionEndedError({ cause: error });
   }
   const message = error instanceof Error ? error.message : String(error);
   if (musterSignInRequiredOf(error)) {
