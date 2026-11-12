@@ -292,7 +292,7 @@ describe('ModelDetailPage', () => {
   beforeEach(() => {
     mockListedModels = [];
     mockSetDefault.mockReset();
-    mockSetDefault.mockResolvedValue(undefined);
+    mockSetDefault.mockResolvedValue({});
     mockSetDefaultError = null;
     mockLlmUsageInstallations = [];
     mockMayUpdate = true;

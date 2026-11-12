@@ -19,6 +19,13 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   fetchResourceList: (...args: unknown[]) => mockFetchResourceList(...args),
 }));
 
+// The platform namespace's path: no organization, so no credential form to
+// link to (the organization path is covered through the Models router).
+jest.mock('@backstage/frontend-plugin-api', () => ({
+  ...jest.requireActual('@backstage/frontend-plugin-api'),
+  useRouteRef: () => undefined,
+}));
+
 const MARK = 'agent-platform.giantswarm.io/is-default-model-config';
 const analyticsApi = mockApis.analytics.mock();
 

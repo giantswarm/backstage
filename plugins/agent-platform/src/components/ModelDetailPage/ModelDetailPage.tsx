@@ -49,6 +49,7 @@ import { markedIn, defaultIn, listed } from '../../lib/defaultModel';
 import { tenantInSentence } from '../../lib/tenants';
 import { useSetDefaultModelConfig } from '../../hooks/useSetDefaultModelConfig';
 import { modelProblem } from '../../lib/modelProblem';
+import { AgentManagerError } from '../../lib/agentManager';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useDeleteModelConfig } from '../../hooks/useDeleteModelConfig';
 import { clientLookupOf } from '../../lib/serving';
@@ -188,6 +189,41 @@ function DefaultModelValue({
   );
 }
 
+/**
+ * Why the default did not move. agent-manager's refusal of a person who may
+ * not change an organization's models names who can; any other failure is
+ * said as it came.
+ */
+function SetDefaultError({
+  error,
+  organization,
+}: {
+  error: Error;
+  /** The organization the model is in, when it is one's. */
+  organization?: string;
+}) {
+  if (
+    organization &&
+    error instanceof AgentManagerError &&
+    error.code === 'forbidden'
+  ) {
+    return (
+      <Alert
+        status="danger"
+        title="Not permitted"
+        description={`Only an admin of the organization ${organization} sets its default model. Ask one of its admins to make the change, or to make you an admin. agent-manager answered: ${error.message}`}
+      />
+    );
+  }
+  return (
+    <Alert
+      status="danger"
+      title="Could not make this the default model"
+      description={error.message}
+    />
+  );
+}
+
 /** Overview's plain facts: what it calls, where, who owns it, and since when. */
 export function modelFacts({
   modelConfig,
@@ -228,7 +264,14 @@ export function modelFacts({
   if (defaultState) {
     facts.push({
       label: 'Default model',
-      value: <DefaultModelValue state={defaultState} owner={owner} />,
+      value: (
+        <DefaultModelValue
+          state={defaultState}
+          // An owner whose edits are saved through it (agent-manager, for an
+          // organization's model) is no reason to move the mark elsewhere.
+          owner={ownerSavesEdits ? undefined : owner}
+        />
+      ),
     });
   }
   if (owner) {
@@ -342,6 +385,11 @@ function ModelDetailPageContent() {
     directory,
     name,
   ]);
+  // An organization's model agent-manager wrote is edited, and made the
+  // default, through it: agent-manager is no owner that withholds either.
+  const ownerSavesEdits = Boolean(
+    owner && modelConfig && !modelConfigEditOwner(modelConfig, directory),
+  );
   const settingDefault = useSetDefaultModelConfig();
   const { setDefault, isSetting, reset: resetSetDefault } = settingDefault;
   const canSetDefault =
@@ -354,10 +402,19 @@ function ModelDetailPageContent() {
       return;
     }
     resetSetDefault();
+    let form: string | undefined;
     try {
-      await setDefault({ modelConfig, expected: defaultState.otherMarks });
+      ({ form } = await setDefault({
+        modelConfig,
+        expected: defaultState.otherMarks,
+      }));
     } catch {
       // Left on the page: the error renders in the alert above the tabs.
+      return;
+    }
+    if (form) {
+      // The model has no key yet: the move finishes on the credential form.
+      navigate(form);
       return;
     }
     toastApi.post({
@@ -366,7 +423,14 @@ function ModelDetailPageContent() {
       status: 'success',
       timeout: 6000,
     });
-  }, [modelConfig, defaultState, resetSetDefault, setDefault, toastApi]);
+  }, [
+    modelConfig,
+    defaultState,
+    resetSetDefault,
+    setDefault,
+    toastApi,
+    navigate,
+  ]);
 
   // Read here, above the tabs, so Used by and the Usage tab share one
   // result. Only for a model there is: the not-found and error frames
@@ -393,11 +457,6 @@ function ModelDetailPageContent() {
   );
   const agentsUnreachable = unreachableInstallations.includes(installation);
 
-  // An organization's model agent-manager wrote is edited through it, so
-  // agent-manager is no owner that withholds Edit.
-  const ownerSavesEdits = Boolean(
-    owner && modelConfig && !modelConfigEditOwner(modelConfig, directory),
-  );
   const isEditable =
     Boolean(modelConfig) &&
     (!owner || ownerSavesEdits) &&
@@ -422,7 +481,7 @@ function ModelDetailPageContent() {
           <Button
             variant="secondary"
             onPress={onSetDefault}
-            isDisabled={Boolean(owner) || isSetting}
+            isDisabled={(Boolean(owner) && !ownerSavesEdits) || isSetting}
           >
             {isSetting ? 'Setting as default…' : 'Set as default'}
           </Button>
@@ -441,6 +500,7 @@ function ModelDetailPageContent() {
       canSetDefault,
       onSetDefault,
       owner,
+      ownerSavesEdits,
       isSetting,
       isEditable,
       modelEditRoute,
@@ -535,10 +595,9 @@ function ModelDetailPageContent() {
       })}
     >
       {settingDefault.error && (
-        <Alert
-          status="danger"
-          title="Could not make this the default model"
-          description={settingDefault.error.message}
+        <SetDefaultError
+          error={settingDefault.error}
+          organization={directory.get(namespace)?.organization}
         />
       )}
       <Routes>
