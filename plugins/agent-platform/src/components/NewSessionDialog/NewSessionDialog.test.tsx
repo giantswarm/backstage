@@ -65,7 +65,7 @@ describe('NewSessionDialog', () => {
 
     expect(screen.getByText('New session')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Start' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Agent/ })).toHaveTextContent(
+    expect(screen.getByRole('group', { name: 'Agent' })).toHaveTextContent(
       'SRE Agent',
     );
     expect(screen.getByRole('textbox', { name: 'Prompt' })).toHaveFocus();
