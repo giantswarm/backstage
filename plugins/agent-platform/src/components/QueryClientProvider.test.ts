@@ -348,6 +348,15 @@ describe('shouldRetryQuery', () => {
     expect(shouldRetryQuery(0, error)).toBe(false);
   });
 
+  it.each(['forbidden: configmaps', 'no_backend: 0 backends'])(
+    "never retries model-manager's %j",
+    message => {
+      expect(
+        shouldRetryQuery(0, classifyModelManagerToolError(new Error(message))),
+      ).toBe(false);
+    },
+  );
+
   it('never retries a write kagent rejected', () => {
     expect(
       shouldRetryQuery(

@@ -130,10 +130,42 @@ describe('MusterMcpClient tool errors', () => {
       'tool_not_found',
       502,
     ],
+    [
+      'Tool not found: x_cluster-manager_create_node_pool',
+      'tool_not_found',
+      502,
+    ],
   ])('answers %j as %s, %d', async (text, kind, status) => {
     const { error } = await toolError(text);
 
     expect(error).toMatchObject({ kind, status, message: text });
+  });
+
+  it.each([
+    [
+      'forbidden: list presets in org-acme: configmaps is forbidden: User "u" cannot list resource "configmaps"',
+      'forbidden',
+      403,
+    ],
+    [
+      'no_backend: no backend registered on model-manager: 0 valid backend documents in namespace agent-platform',
+      'no_backend',
+      503,
+    ],
+  ])("answers model-manager's %j as %s, %d", async (text, kind, status) => {
+    const { error } = await toolError(text, 'x_model-manager_list_models');
+
+    expect(error).toMatchObject({ kind, status, server: 'model-manager' });
+  });
+
+  it("leaves an MCP server's own capitalised muster wording unknown", async () => {
+    const { error } = await toolError(
+      'Interrupted: context canceled',
+      'x_kubernetes_get',
+    );
+
+    expect(error).not.toHaveProperty('kind');
+    expect(error).not.toHaveProperty('status');
   });
 
   it('leaves any other tool error without a kind or status: a 500', async () => {
@@ -315,6 +347,9 @@ describe('musterToolErrorKindOf', () => {
   it("leaves another server's code-prefixed error unknown", () => {
     expect(
       musterToolErrorKindOf('not_found: no such pod', 'x_kubernetes_get'),
+    ).toBeUndefined();
+    expect(
+      musterToolErrorKindOf('no_backend: x', 'x_agent-manager_list_agents'),
     ).toBeUndefined();
     expect(
       musterToolErrorKindOf('does_not_fit: x', 'x_agent-manager_update_agent'),
