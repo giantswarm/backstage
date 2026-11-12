@@ -20,8 +20,11 @@ import type {
   RemoteMCPServer,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  CONNECTOR_REACH_LABELS,
   connectorDisplayNames,
+  mcpServerStateSeverity,
   TOOL_GROUPS,
+  type MCPServerState,
   type FilterToolsResponse,
   type ToolGroupKey,
   type ToolSummary,
@@ -508,6 +511,8 @@ export interface ServerInfo {
   toolNamePrefix: string;
   /** The CR's `.status.state`, e.g. `Auth Required`. */
   state?: string;
+  /** Whether the CR is deactivated (`spec.suspended`). */
+  suspended?: boolean;
   /** Whether the server declares per-user OAuth (`spec.auth.type: oauth`). */
   oauth: boolean;
   /**
@@ -694,6 +699,14 @@ export interface ServerBucket {
   canSignIn: boolean;
   /** `.status.state` of the CR (the worst one, for a family). */
   state?: string;
+  /**
+   * Whether muster can reach it, as the Customize page's Connection says
+   * ({@link connectionOf}); absent while it is connected, and for a server no
+   * CR describes.
+   */
+  connection?: ConnectorConnection;
+  /** The `x_<segment>` prefixes of its tools, every member's for a family. */
+  toolNamePrefixes?: string[];
   /** Present when muster listed tools for a server no CR describes. */
   unknownServer: boolean;
   /** The CRs' tags, every member's for a family; none when absent. */
@@ -707,21 +720,54 @@ export function bucketLabel(
   return bucket.displayName ?? bucket.name;
 }
 
+/** A connector muster does not reach in full: the Customize page's terms. */
+export type ConnectorConnection = 'not-connected' | 'partial' | 'deactivated';
+
+/** How a connector's connection reads, as the Customize page's Connection. */
+export function connectionLabel(connection: ConnectorConnection): string {
+  return CONNECTOR_REACH_LABELS[connection];
+}
+
 /**
- * The state a connector shows in place of its tool count: muster holds no
- * connection to it (`Disconnected`, `Failed`) and lists none of its tools, so
- * "0 tools" would read as a connector without tools. Undefined otherwise,
- * including while it awaits a sign-in, which has its own wording.
+ * How muster reaches a connector's CRs, by the rule of the Customize page's
+ * `connectorReach`: a single server is deactivated when suspended, else not
+ * connected unless its state's severity is `ok`; a family is partly connected
+ * while some members are `ok`, not connected while none is. Undefined when
+ * it is connected.
  */
-export function notConnectedState(
-  bucket: Pick<ServerBucket, 'needsSignIn' | 'tools' | 'state'>,
-): 'Disconnected' | 'Failed' | undefined {
-  if (bucket.needsSignIn || bucket.tools.length > 0) {
-    return undefined;
+export function connectionOf(
+  members: readonly Pick<ServerInfo, 'state' | 'suspended'>[],
+  isFamily: boolean,
+): ConnectorConnection | undefined {
+  const healthy = members.filter(
+    member =>
+      mcpServerStateSeverity(member.state as MCPServerState | undefined) ===
+      'ok',
+  ).length;
+  if (isFamily) {
+    if (healthy === members.length) {
+      return undefined;
+    }
+    return healthy > 0 ? 'partial' : 'not-connected';
   }
-  return bucket.state === 'Disconnected' || bucket.state === 'Failed'
-    ? bucket.state
-    : undefined;
+  if (members.some(member => member.suspended)) {
+    return 'deactivated';
+  }
+  return healthy === members.length ? undefined : 'not-connected';
+}
+
+/**
+ * The connection a connector shows in place of its tool count: it is not
+ * connected (in full) and lists none of its tools, so "0 tools" would read as
+ * a connector without tools. Undefined otherwise, including while it awaits
+ * a sign-in, which has its own wording.
+ */
+export function shownConnection(
+  bucket: Pick<ServerBucket, 'needsSignIn' | 'tools' | 'connection'>,
+): ConnectorConnection | undefined {
+  return bucket.needsSignIn || bucket.tools.length > 0
+    ? undefined
+    : bucket.connection;
 }
 
 export interface CatalogueGroup {
@@ -794,7 +840,12 @@ export function buildCatalogue(
     servers.map(server => [server.name, surfaceName(server)] as const),
   );
   const labels = connectorLabels(servers);
+  const members = new Map<string, ServerInfo[]>();
   for (const server of servers) {
+    members.set(surfaceName(server), [
+      ...(members.get(surfaceName(server)) ?? []),
+      server,
+    ]);
     const name = surfaceName(server);
     const existing = buckets.get(name);
     const needsSignIn =
@@ -806,6 +857,12 @@ export function buildCatalogue(
       existing.needsSignIn = existing.needsSignIn || needsSignIn;
       existing.canSignIn = existing.canSignIn || server.oauth;
       existing.state = worstState(existing.state, server.state);
+      existing.toolNamePrefixes = [
+        ...new Set([
+          ...(existing.toolNamePrefixes ?? []),
+          server.toolNamePrefix,
+        ]),
+      ];
       if (server.tags?.length) {
         existing.tags = [
           ...new Set([...(existing.tags ?? []), ...server.tags]),
@@ -822,6 +879,7 @@ export function buildCatalogue(
       needsSignIn,
       canSignIn: server.oauth || needsSignIn,
       state: server.state,
+      toolNamePrefixes: [server.toolNamePrefix],
       unknownServer: false,
       ...(server.tags?.length ? { tags: [...server.tags] } : {}),
       group: server.group,
@@ -875,7 +933,13 @@ export function buildCatalogue(
     // Tools listed means the session sees the server: the CR-level state is
     // then stale for this caller, and the sign-in offer would be misleading.
     const needsSignIn = rest.tools.length === 0 && rest.needsSignIn;
-    group(key).servers.push({ ...rest, needsSignIn });
+    const crs = members.get(rest.name);
+    const connection = crs ? connectionOf(crs, rest.isFamily) : undefined;
+    group(key).servers.push({
+      ...rest,
+      needsSignIn,
+      ...(connection ? { connection } : {}),
+    });
   }
 
   for (const entry of groups.values()) {

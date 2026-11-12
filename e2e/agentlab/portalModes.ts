@@ -83,6 +83,7 @@ export const SHELL_SPECS = [
   'usage-cost.spec.ts',
   'usage-older-data-unavailable.spec.ts',
   'usage-time-window.spec.ts',
+  'wizard-tools-connection.spec.ts',
   'wizard-tools-layout.spec.ts',
   'workflows.spec.ts',
   'workspace-detail.spec.ts',

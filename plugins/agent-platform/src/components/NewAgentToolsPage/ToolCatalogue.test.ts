@@ -27,24 +27,32 @@ function group(servers: ServerBucket[]): CatalogueGroup {
 }
 
 describe('serverSummary', () => {
-  it('names a disconnected or failed connector’s state instead of 0 tools', () => {
-    expect(serverSummary(bucket('jira', { state: 'Disconnected' }))).toBe(
-      'disconnected, no tools listed',
+  it('names a connector’s connection instead of 0 tools', () => {
+    expect(serverSummary(bucket('jira', { connection: 'not-connected' }))).toBe(
+      'not connected, no tools listed',
     );
-    expect(serverSummary(bucket('jira', { state: 'Failed' }))).toBe(
-      'failed, no tools listed',
+    expect(serverSummary(bucket('jira', { connection: 'deactivated' }))).toBe(
+      'deactivated, no tools listed',
+    );
+    expect(serverSummary(bucket('k8s', { connection: 'partial' }))).toBe(
+      'partly connected, no tools listed',
     );
   });
 
   it('counts the tools of a connected one, and asks for a sign-in', () => {
-    expect(serverSummary(bucket('jira', { state: 'Connected' }))).toBe(
-      '0 tools',
-    );
+    expect(serverSummary(bucket('jira'))).toBe('0 tools');
     expect(
-      serverSummary(bucket('jira', { tools: [tool('x_jira_search')] })),
+      serverSummary(
+        bucket('jira', {
+          connection: 'not-connected',
+          tools: [tool('x_jira_search')],
+        }),
+      ),
     ).toBe('1 tool');
     expect(
-      serverSummary(bucket('jira', { needsSignIn: true, state: 'Failed' })),
+      serverSummary(
+        bucket('jira', { needsSignIn: true, connection: 'not-connected' }),
+      ),
     ).toBe('sign in to see its tools');
   });
 });
@@ -54,20 +62,30 @@ describe('groupSummary', () => {
     expect(
       groupSummary(
         group([
-          bucket('jira', { state: 'Disconnected' }),
-          bucket('wiki', { state: 'Failed' }),
+          bucket('jira', { connection: 'not-connected' }),
+          bucket('wiki', { connection: 'not-connected' }),
+          bucket('docs', { connection: 'deactivated' }),
         ]),
         new Set(),
       ),
-    ).toBe('2 connectors · 2 not connected');
+    ).toBe('3 connectors · 2 not connected · 1 deactivated');
   });
 
-  it('keeps the tool count beside them when others list tools', () => {
+  it('keeps the tool count while some connector could list tools', () => {
     expect(
       groupSummary(
         group([
-          bucket('jira', { state: 'Disconnected' }),
-          bucket('wiki', { state: 'Connected', tools: [tool('x_wiki_get')] }),
+          bucket('jira', { connection: 'not-connected' }),
+          bucket('wiki'),
+        ]),
+        new Set(),
+      ),
+    ).toBe('2 connectors · 0 tools · 1 not connected');
+    expect(
+      groupSummary(
+        group([
+          bucket('jira', { connection: 'not-connected' }),
+          bucket('wiki', { tools: [tool('x_wiki_get')] }),
         ]),
         new Set(),
       ),

@@ -17,14 +17,17 @@ import {
 import {
   bucketLabel,
   countNoun,
-  notConnectedState,
+  connectionLabel,
+  shownConnection,
   type ServerBucket,
 } from '../../lib/toolset';
 import {
   type ConnectorChoice,
+  type ConnectorState,
   connectorState,
   readOnlyFits,
   readOnlySelectors,
+  unlistedPicks,
 } from './connectorChoice';
 
 /** Connectors shown before *Show more*: a few rows of the two-column grid. */
@@ -59,19 +62,24 @@ const useStyles = makeStyles(theme => ({
 /** What sits under a connector's name: its tools, and how much is picked. */
 function connectorLine(
   bucket: ServerBucket,
-  choice: ConnectorChoice,
-  picked: number,
+  { choice, picked, unlisted }: ConnectorState,
 ) {
   if (bucket.needsSignIn) {
     return choice === 'all'
       ? 'All, once signed in'
       : 'Sign in to list its tools';
   }
-  const notConnected = notConnectedState(bucket);
-  if (notConnected) {
-    return choice === 'all'
-      ? `${notConnected}: all, once connected`
-      : `${notConnected}: no tools listed`;
+  const connection = shownConnection(bucket);
+  if (connection) {
+    const label = connectionLabel(connection);
+    if (choice === 'all') {
+      return connection === 'deactivated'
+        ? `${label}: all, once activated`
+        : `${label}: all, once connected`;
+    }
+    return unlisted > 0
+      ? `${label}: ${countNoun(unlisted, 'chosen tool')} not listed`
+      : `${label}: no tools listed`;
   }
   const total = countNoun(bucket.tools.length, 'tool');
   if (choice === 'all') {
@@ -85,11 +93,14 @@ function connectorLine(
 
 function ConnectorCard({
   bucket,
+  connectors,
   selected,
   disabled,
   onChoose,
 }: {
   bucket: ServerBucket;
+  /** Every connector, to tell whose its unlisted picks are. */
+  connectors: readonly ServerBucket[];
   selected: ReadonlySet<string>;
   disabled: boolean;
   onChoose: (
@@ -98,7 +109,12 @@ function ConnectorCard({
   ) => void;
 }) {
   const classes = useStyles();
-  const { choice, picked } = connectorState(bucket, selected);
+  const state = connectorState(
+    bucket,
+    selected,
+    unlistedPicks(bucket, selected, connectors).length,
+  );
+  const { choice } = state;
   const readOnlyCount = readOnlySelectors(bucket).length;
   const name = bucketLabel(bucket);
   return (
@@ -110,7 +126,7 @@ function ConnectorCard({
       <Flex direction="column" gap="0" className={classes.name}>
         <Text weight="bold">{name}</Text>
         <Text variant="body-small" color="secondary">
-          {connectorLine(bucket, choice, picked)}
+          {connectorLine(bucket, state)}
         </Text>
       </Flex>
       <ToggleButtonGroup
@@ -211,6 +227,7 @@ export function ConnectorGrid({
                 <ConnectorCard
                   key={bucket.name}
                   bucket={bucket}
+                  connectors={connectors}
                   selected={selected}
                   disabled={disabled}
                   onChoose={onChoose}

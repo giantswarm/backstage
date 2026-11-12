@@ -1,6 +1,7 @@
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 import {
-  notConnectedState,
+  connectionOf,
+  shownConnection,
   bindsGateway,
   bucketLabel,
   buildCatalogue,
@@ -846,29 +847,83 @@ describe('catalogueInventory', () => {
   });
 });
 
-describe('notConnectedState', () => {
-  const bucket = (
-    state: string | undefined,
-    extra: { needsSignIn?: boolean; tools?: ToolSummary[] } = {},
-  ) => ({ state, needsSignIn: false, tools: [], ...extra });
-
-  it('names a connector muster is not connected to and lists nothing for', () => {
-    expect(notConnectedState(bucket('Disconnected'))).toBe('Disconnected');
-    expect(notConnectedState(bucket('Failed'))).toBe('Failed');
+describe('connectionOf', () => {
+  it('reads a server as the Customize page does', () => {
+    expect(connectionOf([{ state: 'Connected' }], false)).toBeUndefined();
+    expect(connectionOf([{ state: 'Auth Required' }], false)).toBeUndefined();
+    for (const state of [
+      'Disconnected',
+      'Failed',
+      'Stopped',
+      'Starting',
+      'Connecting',
+      undefined,
+    ]) {
+      expect(connectionOf([{ state }], false)).toBe('not-connected');
+    }
+    expect(
+      connectionOf([{ state: 'Disconnected', suspended: true }], false),
+    ).toBe('deactivated');
   });
 
-  it('leaves a connected, signing-in or listing connector to its tool count', () => {
-    expect(notConnectedState(bucket('Connected'))).toBeUndefined();
-    expect(notConnectedState(bucket(undefined))).toBeUndefined();
+  it('reads a family partly connected while some member is', () => {
     expect(
-      notConnectedState(bucket('Disconnected', { needsSignIn: true })),
-    ).toBeUndefined();
+      connectionOf([{ state: 'Awaiting Session' }, { state: 'Failed' }], true),
+    ).toBe('partial');
     expect(
-      notConnectedState(
-        bucket('Failed', {
-          tools: [{ name: 'x_jira_search', description: '' } as ToolSummary],
-        }),
-      ),
+      connectionOf([{ state: 'Stopped' }, { state: 'Disconnected' }], true),
+    ).toBe('not-connected');
+    expect(
+      connectionOf([{ state: 'Connected' }, { state: 'Running' }], true),
     ).toBeUndefined();
+  });
+});
+
+describe('shownConnection', () => {
+  const bucket = (
+    extra: { needsSignIn?: boolean; tools?: ToolSummary[] } = {},
+  ) => ({
+    connection: 'not-connected' as const,
+    needsSignIn: false,
+    tools: [],
+    ...extra,
+  });
+
+  it('shows the connection of a connector that lists nothing', () => {
+    expect(shownConnection(bucket())).toBe('not-connected');
+  });
+
+  it('leaves a signing-in or listing connector to its own line', () => {
+    expect(shownConnection(bucket({ needsSignIn: true }))).toBeUndefined();
+    expect(
+      shownConnection(bucket({ tools: [{ name: 'x_jira_search' }] })),
+    ).toBeUndefined();
+  });
+});
+
+describe('buildCatalogue connections', () => {
+  it('carries each connector’s connection and tool-name prefixes', () => {
+    const [infra, , registered] = buildCatalogue(
+      [],
+      [
+        ...SERVERS,
+        {
+          name: 'jira',
+          group: 'registered',
+          toolNamePrefix: 'x_jira',
+          state: 'Disconnected',
+          suspended: true,
+          oauth: false,
+        },
+      ],
+      [],
+    );
+    expect(infra.servers[0]).toMatchObject({
+      connection: 'partial',
+      toolNamePrefixes: ['x_kubernetes'],
+    });
+    const byName = new Map(registered.servers.map(b => [b.name, b]));
+    expect(byName.get('jira')?.connection).toBe('deactivated');
+    expect(byName.get('pro')?.connection).toBeUndefined();
   });
 });
