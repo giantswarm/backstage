@@ -707,6 +707,23 @@ export function bucketLabel(
   return bucket.displayName ?? bucket.name;
 }
 
+/**
+ * The state a connector shows in place of its tool count: muster holds no
+ * connection to it (`Disconnected`, `Failed`) and lists none of its tools, so
+ * "0 tools" would read as a connector without tools. Undefined otherwise,
+ * including while it awaits a sign-in, which has its own wording.
+ */
+export function notConnectedState(
+  bucket: Pick<ServerBucket, 'needsSignIn' | 'tools' | 'state'>,
+): 'Disconnected' | 'Failed' | undefined {
+  if (bucket.needsSignIn || bucket.tools.length > 0) {
+    return undefined;
+  }
+  return bucket.state === 'Disconnected' || bucket.state === 'Failed'
+    ? bucket.state
+    : undefined;
+}
+
 export interface CatalogueGroup {
   key: PickerGroupKey;
   title: string;

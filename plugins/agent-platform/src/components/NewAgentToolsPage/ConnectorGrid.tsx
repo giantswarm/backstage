@@ -14,7 +14,12 @@ import {
   ShowMore,
 } from '@giantswarm/backstage-plugin-ui-react';
 
-import { bucketLabel, countNoun, type ServerBucket } from '../../lib/toolset';
+import {
+  bucketLabel,
+  countNoun,
+  notConnectedState,
+  type ServerBucket,
+} from '../../lib/toolset';
 import {
   type ConnectorChoice,
   connectorState,
@@ -61,6 +66,12 @@ function connectorLine(
     return choice === 'all'
       ? 'All, once signed in'
       : 'Sign in to list its tools';
+  }
+  const notConnected = notConnectedState(bucket);
+  if (notConnected) {
+    return choice === 'all'
+      ? `${notConnected}: all, once connected`
+      : `${notConnected}: no tools listed`;
   }
   const total = countNoun(bucket.tools.length, 'tool');
   if (choice === 'all') {

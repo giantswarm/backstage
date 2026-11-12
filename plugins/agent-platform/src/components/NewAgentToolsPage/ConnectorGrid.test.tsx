@@ -37,4 +37,34 @@ describe('ConnectorGrid', () => {
     expect(screen.getByLabelText('Connector jira')).toBeInTheDocument();
     expect(screen.queryByLabelText('Connector app-0')).toBeNull();
   });
+
+  it('shows a disconnected connector’s state instead of 0 tools', () => {
+    render(
+      <ConnectorGrid
+        connectors={[{ ...bucket('jira'), state: 'Disconnected' }]}
+        selected={new Set()}
+        disabled={false}
+        onChoose={jest.fn()}
+      />,
+    );
+
+    const card = screen.getByLabelText('Connector jira');
+    expect(card).toHaveTextContent('Disconnected: no tools listed');
+    expect(card).not.toHaveTextContent('0 tools');
+  });
+
+  it('says a whole failed connector is chosen for once it connects', () => {
+    render(
+      <ConnectorGrid
+        connectors={[{ ...bucket('jira'), state: 'Failed' }]}
+        selected={new Set(['server:jira'])}
+        disabled={false}
+        onChoose={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText('Connector jira')).toHaveTextContent(
+      'Failed: all, once connected',
+    );
+  });
 });

@@ -1,5 +1,6 @@
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 import {
+  notConnectedState,
   bindsGateway,
   bucketLabel,
   buildCatalogue,
@@ -842,5 +843,32 @@ describe('catalogueInventory', () => {
     });
     expect(countNoun(1, 'tool')).toBe('1 tool');
     expect(countNoun(2, 'tool')).toBe('2 tools');
+  });
+});
+
+describe('notConnectedState', () => {
+  const bucket = (
+    state: string | undefined,
+    extra: { needsSignIn?: boolean; tools?: ToolSummary[] } = {},
+  ) => ({ state, needsSignIn: false, tools: [], ...extra });
+
+  it('names a connector muster is not connected to and lists nothing for', () => {
+    expect(notConnectedState(bucket('Disconnected'))).toBe('Disconnected');
+    expect(notConnectedState(bucket('Failed'))).toBe('Failed');
+  });
+
+  it('leaves a connected, signing-in or listing connector to its tool count', () => {
+    expect(notConnectedState(bucket('Connected'))).toBeUndefined();
+    expect(notConnectedState(bucket(undefined))).toBeUndefined();
+    expect(
+      notConnectedState(bucket('Disconnected', { needsSignIn: true })),
+    ).toBeUndefined();
+    expect(
+      notConnectedState(
+        bucket('Failed', {
+          tools: [{ name: 'x_jira_search', description: '' } as ToolSummary],
+        }),
+      ),
+    ).toBeUndefined();
   });
 });

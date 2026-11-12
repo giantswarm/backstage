@@ -14,6 +14,7 @@ import {
   CatalogueGroup,
   countNoun,
   groupWorkflows,
+  notConnectedState,
   selectorForTool,
   ServerBucket,
   serverSelector,
@@ -224,6 +225,17 @@ function ServerPanel({
   );
 }
 
+/** What a connector's row says after its name, before what is picked. */
+export function serverSummary(bucket: ServerBucket): string {
+  if (bucket.needsSignIn) {
+    return 'sign in to see its tools';
+  }
+  const notConnected = notConnectedState(bucket);
+  return notConnected
+    ? `${notConnected.toLowerCase()}, no tools listed`
+    : countNoun(bucket.tools.length, 'tool');
+}
+
 function serverEntries(
   group: CatalogueGroup,
   props: Pick<
@@ -233,9 +245,7 @@ function serverEntries(
 ): DisclosureEntry[] {
   return group.servers.map(bucket => {
     const whole = props.selected.has(serverSelector(bucket.name));
-    const summary = bucket.needsSignIn
-      ? 'sign in to see its tools'
-      : countNoun(bucket.tools.length, 'tool');
+    const summary = serverSummary(bucket);
     return {
       key: `${group.key}/${bucket.name}`,
       trigger: `${bucketLabel(bucket)} — ${summary}${pickedSuffix(
@@ -352,12 +362,18 @@ export function groupSummary(
       0,
     );
     const awaiting = group.servers.filter(bucket => bucket.needsSignIn).length;
+    const notConnected = group.servers.filter(bucket =>
+      notConnectedState(bucket),
+    ).length;
     // "0 tools" next to "1 awaiting sign-in" would read as a contradiction.
-    if (tools > 0 || awaiting === 0) {
+    if (tools > 0 || (awaiting === 0 && notConnected === 0)) {
       parts.push(countNoun(tools, 'tool'));
     }
     if (awaiting > 0) {
       parts.push(`${awaiting} awaiting sign-in`);
+    }
+    if (notConnected > 0) {
+      parts.push(`${notConnected} not connected`);
     }
   }
   if (group.platformAdministration.length > 0) {
