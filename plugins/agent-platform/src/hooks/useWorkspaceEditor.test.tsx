@@ -19,7 +19,6 @@ const client = new WorkspaceManagerClient(
 );
 
 const draft: WorkspaceDraft = {
-  displayName: 'Platform MCP',
   name: 'platform-mcp',
   sources: [{ ...emptySource('github'), owner: 'acme', languages: ['Go'] }],
   minimumGiB: '',

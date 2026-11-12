@@ -147,7 +147,6 @@ function SaveButton({ edit }: { edit?: { resourceVersion: string } }) {
       onClick={() =>
         save.mutate({
           draft: {
-            displayName: 'Platform MCP',
             name: 'platform-mcp',
             sources: [{ ...emptySource('github'), owner: 'example-org' }],
             minimumGiB: '',
