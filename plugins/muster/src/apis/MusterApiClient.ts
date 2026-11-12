@@ -496,7 +496,12 @@ export class MusterApiClient implements MusterApi {
       input =>
         this.post<unknown>(
           '/call',
-          { name, arguments: args, ...(input ? { input } : {}) },
+          {
+            name,
+            arguments: args,
+            urlElicitation: true,
+            ...(input ? { input } : {}),
+          },
           installation,
           options.signal,
         ),
@@ -529,8 +534,11 @@ export class MusterApiClient implements MusterApi {
    * Runs `call` for one action of the person, and while muster answers it
    * with URL elicitations they can be asked about, asks and runs it again
    * with the answers. A sign-in they declined, dismissed or did not finish
-   * ends in {@link MusterUnauthorizedError} `server_sign_in_required`, the
-   * error of a sign-in the call needs: the page offers its sign-in.
+   * on a connector's tool ends in {@link MusterUnauthorizedError}
+   * `server_sign_in_required` for that connector, the error of a sign-in the
+   * call needs: the page offers its sign-in. On a tool no connector owns (a
+   * workflow, a core tool) it ends in muster's own answer, which names no
+   * server the page could offer.
    */
   private async withElicitations<T>(
     name: string,
@@ -546,11 +554,12 @@ export class MusterApiClient implements MusterApi {
       try {
         return await call(input);
       } catch (error) {
-        if (input && isSignInDeclined(error)) {
+        const server = musterServerOfTool(name);
+        if (input && server && isSignInDeclined(error)) {
           throw new MusterUnauthorizedError(
             error.message,
             'server_sign_in_required',
-            musterServerOfTool(name),
+            server,
             installation,
           );
         }
@@ -590,7 +599,7 @@ export class MusterApiClient implements MusterApi {
         body: JSON.stringify({
           name,
           arguments: args,
-          ...(options.urlElicitation ? {} : { urlElicitation: false }),
+          urlElicitation: options.urlElicitation === true,
           ...(input ? { input } : {}),
         }),
         signal: options.signal,

@@ -1251,10 +1251,12 @@ describe('MusterApiClient URL elicitations', () => {
     expect(callBodies(fetchMock)[0]).toEqual({
       name: 'x_github_get_me',
       arguments: { a: 1 },
+      urlElicitation: true,
     });
     expect(callBodies(fetchMock)[1]).toEqual({
       name: 'x_github_get_me',
       arguments: { a: 1 },
+      urlElicitation: true,
       input: {
         inputResponses: { muster_sign_in: { action: 'accept' } },
         requestState: 'opaque-state',
@@ -1291,6 +1293,31 @@ describe('MusterApiClient URL elicitations', () => {
       });
     },
   );
+
+  it("keeps muster's answer to a declined sign-in on a tool no connector owns", async () => {
+    const consentApi = consent('decline');
+    const { client, fetchMock } = setup({ consent: consentApi });
+    const message =
+      'The tool did not run: the person answered decline to signing in to github.';
+    answerCalls(
+      fetchMock,
+      inputRequired(),
+      errorResponse(412, {
+        error: { name: 'MusterToolError', message, kind: 'sign_in_declined' },
+      }),
+    );
+
+    const error: unknown = await client
+      .callTool('workflow_deploy', {}, 'open', ELICIT)
+      .catch(e => e);
+
+    expect(error).not.toBeInstanceOf(MusterUnauthorizedError);
+    expect(error).toMatchObject({
+      message,
+      status: 412,
+      kind: 'sign_in_declined',
+    });
+  });
 
   it('cancels, without a dialog, a page muster asks for again in the same action', async () => {
     const consentApi = consent('accept');
