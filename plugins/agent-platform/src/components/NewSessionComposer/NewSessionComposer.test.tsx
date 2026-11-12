@@ -514,20 +514,40 @@ describe('NewSessionComposer', () => {
         expect(agentPicker()).toHaveTextContent('Platform Agent');
       });
 
-      it('does not undo a deliberate clearing', async () => {
+      it('keeps a picked agent over a default that arrives later', async () => {
         const { rerender } = renderComposer({
-          agents: [sre, platform],
+          agents: [sre, platform, issues],
           defaultAgent: sre,
         });
-        expect(agentPicker()).toHaveTextContent('SRE Agent');
-
-        // Touching the picker at all marks the selection as the user's, so a
-        // re-resolved default cannot reinstate itself.
         await userEvent.click(agentPicker());
-        await userEvent.keyboard('{Escape}');
-        rerenderWith(rerender, { agents: [sre, platform], defaultAgent: sre });
+        await userEvent.click(
+          screen.getByRole('option', { name: /Platform Agent/ }),
+        );
 
-        expect(agentPicker()).toHaveTextContent('SRE Agent');
+        // A pick marks the selection as the person's: another default,
+        // resolved later, does not replace it.
+        rerenderWith(rerender, {
+          agents: [sre, platform, issues],
+          defaultAgent: issues,
+        });
+
+        expect(agentPicker()).toHaveTextContent('Platform Agent');
+      });
+
+      it('selects the sole agent left after the picked one has gone', async () => {
+        // The picked agent stops being ready: what remains is no choice, and a
+        // disabled picker with nothing in it would be a dead end.
+        const { rerender } = renderComposer({ agents: [sre, platform] });
+        await userEvent.click(agentPicker());
+        await userEvent.click(
+          screen.getByRole('option', { name: /Platform Agent/ }),
+        );
+
+        rerenderWith(rerender, { agents: [sre] });
+        await userEvent.type(field(), 'check');
+
+        expect(fixedAgent()).toHaveTextContent('SRE Agent');
+        expect(startButton()).toBeEnabled();
       });
     });
 

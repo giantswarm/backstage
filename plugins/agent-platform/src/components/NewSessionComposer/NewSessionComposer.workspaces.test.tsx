@@ -295,7 +295,7 @@ describe('NewSessionComposer workspaces', () => {
     });
 
     await userEvent.click(
-      screen.getByRole('button', { name: 'Toolchains: go latest' }),
+      screen.getByRole('button', { name: 'Toolchains: 1 selected' }),
     );
     await userEvent.click(screen.getByRole('button', { name: /go version/ }));
     await userEvent.click(screen.getByRole('option', { name: '0.1.0' }));

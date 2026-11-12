@@ -9,7 +9,6 @@ import {
   toolchainEntry,
   toolchainManagerToolName,
   toolchainLabel,
-  toolchainsLabel,
 } from './toolchainManager';
 
 describe('toolchainManager', () => {
@@ -41,13 +40,6 @@ describe('toolchainManager', () => {
       { name: 'node' },
     ]);
     expect(defaultToolchainsOf(undefined)).toEqual([]);
-  });
-
-  it('says a set of toolchains in a line', () => {
-    expect(
-      toolchainsLabel([{ name: 'go', version: 'v0.1.0' }, { name: 'node' }]),
-    ).toBe('go 0.1.0, node latest');
-    expect(toolchainsLabel([])).toBe('No toolchains');
   });
 
   it('says one toolchain with its version, or latest', () => {

@@ -78,7 +78,7 @@ describe('ToolchainPicker', () => {
     render(<Harness onChange={onChange} />);
 
     const trigger = screen.getByRole('button', {
-      name: 'Toolchains: go latest',
+      name: 'Toolchains: 1 selected',
     });
     await userEvent.click(trigger);
     const dialog = await screen.findByRole('dialog', { name: 'Toolchains' });
@@ -103,7 +103,7 @@ describe('ToolchainPicker', () => {
     render(<Harness onChange={onChange} />);
 
     await userEvent.click(
-      screen.getByRole('button', { name: 'Toolchains: go latest' }),
+      screen.getByRole('button', { name: 'Toolchains: 1 selected' }),
     );
     const dialog = await screen.findByRole('dialog', { name: 'Toolchains' });
     await userEvent.click(
@@ -113,10 +113,10 @@ describe('ToolchainPicker', () => {
       { name: 'go' },
       { name: 'node' },
     ]);
-    // The button says how many, its name says which.
+    // The button and its name say how many.
     expect(
       screen.getByRole('button', {
-        name: 'Toolchains: go latest, node latest',
+        name: 'Toolchains: 2 selected',
         hidden: true,
       }),
     ).toHaveTextContent(/^2$/);
@@ -132,7 +132,7 @@ describe('ToolchainPicker', () => {
     render(<Harness onChange={onChange} />);
 
     await userEvent.click(
-      screen.getByRole('button', { name: 'Toolchains: go latest' }),
+      screen.getByRole('button', { name: 'Toolchains: 1 selected' }),
     );
     const dialog = await screen.findByRole('dialog', { name: 'Toolchains' });
     await userEvent.click(within(dialog).getByRole('checkbox', { name: 'go' }));
@@ -141,7 +141,7 @@ describe('ToolchainPicker', () => {
     await userEvent.keyboard('{Escape}');
     // Nothing picked: the icon alone, no count.
     expect(
-      screen.getByRole('button', { name: 'Toolchains: No toolchains' }),
+      screen.getByRole('button', { name: 'Toolchains: none selected' }),
     ).toHaveTextContent(/^$/);
   });
 
@@ -150,7 +150,7 @@ describe('ToolchainPicker', () => {
     render(<Harness onChange={jest.fn()} />);
 
     const trigger = screen.getByRole('button', {
-      name: 'Toolchains: go latest',
+      name: 'Toolchains: 1 selected',
     });
     expect(trigger).toHaveTextContent(/^1$/);
     await user.tab();
@@ -158,6 +158,9 @@ describe('ToolchainPicker', () => {
     const tooltip = await screen.findByRole('tooltip');
     expect(tooltip).toHaveTextContent('Toolchains');
     expect(tooltip).toHaveTextContent('go latest');
+    // Which ones, said once: the name has the count, the tooltip the names.
+    expect(trigger).toHaveAccessibleDescription(/go latest/);
+    expect(trigger).not.toHaveAccessibleName(/go/);
   });
 
   it('ends in the caret of the selects beside it', () => {

@@ -86,24 +86,19 @@ const useStyles = makeStyles(theme => ({
   },
   // Kept compact rather than filling the row, matching the prototype: the prompt
   // is the hero and the knobs are secondary, which a full-width picker undoes.
-  // As wide as its name needs, up to 260px. Short of room, it and the
-  // workspace beside it share the row equally, so both names stay readable
-  // (giantswarm/giantswarm#39204); bui's `width: 100%` would take the cap.
+  // At most 260px; at least its avatar and caret. How it shares a row is the
+  // row's: `controlsPickers` and `pickerRow`.
   agentSelect: {
-    flex: '1 1 0',
-    width: 'auto',
-    minWidth: 0,
-    maxWidth: 'max-content',
+    // The avatar, the caret's box and bui's gaps.
+    minWidth: 82,
     '& .bui-SelectTrigger': {
       maxWidth: 260,
     },
   },
-  // The agent where there is no other to choose: its avatar and name, sized
-  // and shared as the select would be, without a select's caret.
+  // The agent where there is no other to choose: its avatar and name, without
+  // a select's caret. At least its avatar and a few letters.
   agentFixed: {
-    flex: '1 1 0',
-    minWidth: 0,
-    maxWidth: 'max-content',
+    minWidth: 64,
     display: 'flex',
   },
   agentFixedContent: {
@@ -141,13 +136,29 @@ const useStyles = makeStyles(theme => ({
     display: 'flex',
     alignItems: 'center',
     flexWrap: 'wrap',
-    // Each picker at its own width, so the row wraps rather than sharing.
-    '& > *': {
-      flexBasis: 'auto',
+    // Each picker as wide as its name needs, so the row wraps rather than
+    // sharing. bui's Select is `width: 100%`.
+    '& > .bui-Select, & > $agentFixed': {
+      flex: '0 1 auto',
+      width: 'auto',
     },
     gap: 'var(--bui-space-2)',
     paddingBottom: 'var(--bui-space-2)',
     borderBottom: '1px solid var(--bui-border-1)',
+  },
+  // The pickers in the box's one-line controls row: each as wide as its name
+  // needs, and short of room the agent and workspace share it equally, so
+  // both stay readable (giantswarm/giantswarm#39204). The toolchains button
+  // keeps its width.
+  controlsPickers: {
+    display: 'flex',
+    alignItems: 'center',
+    minWidth: 0,
+    '& > .bui-Select, & > $agentFixed': {
+      flex: '1 1 0',
+      width: 'auto',
+      maxWidth: 'max-content',
+    },
   },
   pickerLabel: {
     paddingInlineStart: 'var(--bui-space-1)',
@@ -586,6 +597,18 @@ export function NewSessionComposer({
     setPickedOptionId(undefined);
   }
 
+  // A sole startable agent is no choice, unless unavailable ones are listed
+  // beside it with their reasons or the picker also holds its footer action.
+  // There is nothing to keep a person's earlier choice against, so it is the
+  // selection: a pick of an agent that has since gone, or a stale default,
+  // would leave a disabled picker with nothing selected.
+  const noChoice =
+    Boolean(soleAgent) && listed.length === 1 && !pickerFooterAction;
+  if (noChoice && soleAgent && selectedId !== soleAgent.id) {
+    setSelectedId(soleAgent.id);
+    setPickedOptionId(undefined);
+  }
+
   // The Recent and Favorites groups as they were when the picker opened. Both
   // can change while it is open: favorites are read from the user-settings
   // backend after the first render, and a session started elsewhere changes
@@ -990,12 +1013,8 @@ export function NewSessionComposer({
     />
   );
 
-  // A sole startable agent is no choice, unless unavailable ones are listed
-  // beside it with their reasons or the picker also holds its footer action.
-  // Once every agent is read, it is named rather than offered; while more may
-  // come, it stays a disabled picker.
-  const noChoice =
-    Boolean(soleAgent) && listed.length === 1 && !pickerFooterAction;
+  // Once every agent is read, a sole agent is named rather than offered;
+  // while more may come, it stays a disabled picker.
   const fixedAgent = noChoice && !isLoadingAgents ? selectedAgent : undefined;
 
   const picker = (
@@ -1196,7 +1215,11 @@ export function NewSessionComposer({
                 field
               )
             }
-            leading={pickerOnTop ? undefined : picker}
+            leading={
+              pickerOnTop ? undefined : (
+                <div className={classes.controlsPickers}>{picker}</div>
+              )
+            }
             trailing={
               <>
                 <ButtonIcon

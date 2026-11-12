@@ -301,13 +301,6 @@ export function toolchainLabel(pick: ToolchainPick): string {
   return `${pick.name} ${pick.version ? imageTag(pick.version) : 'latest'}`;
 }
 
-/** "go 0.1.0, node latest": a set of toolchains in a line. */
-export function toolchainsLabel(picks: readonly ToolchainPick[]): string {
-  return picks.length === 0
-    ? 'No toolchains'
-    : picks.map(toolchainLabel).join(', ');
-}
-
 /** Whether two sets of toolchains mount the same images. */
 export function samePicks(
   a: readonly ToolchainPick[],

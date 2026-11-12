@@ -20,7 +20,6 @@ import {
   imageTag,
   samePicks,
   toolchainLabel,
-  toolchainsLabel,
   type Toolchain,
   type ToolchainPick,
 } from '../../lib/toolchainManager';
@@ -182,7 +181,6 @@ export function ToolchainPicker({
 
   const change = (next: ToolchainPick[]) =>
     onChange(samePicks(next, defaults) ? undefined : next);
-  const summary = toolchainsLabel(picks);
 
   return (
     <DialogTrigger>
@@ -200,7 +198,11 @@ export function ToolchainPicker({
               : `${classes.trigger} ${classes.triggerEmpty}`
           }
           isDisabled={isDisabled}
-          aria-label={`Toolchains: ${summary}`}
+          // The count, as the button shows it: the tooltip, which opens on
+          // focus too, is its description and says which, once.
+          aria-label={`Toolchains: ${
+            picks.length > 0 ? `${picks.length} selected` : 'none selected'
+          }`}
           aria-haspopup="dialog"
         >
           {picks.length > 0 ? picks.length : null}

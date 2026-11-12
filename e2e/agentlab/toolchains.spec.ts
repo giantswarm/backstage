@@ -232,15 +232,19 @@ test('a session started from the portal with an older go mounts that version', a
       "agent-manager reports no `toolchains` capability: its toolchains.repository is not set in the lab's values",
     );
     const choice = admin.getByRole('dialog', { name: 'Toolchains' });
-    const closeChoice = () =>
-      // The first Escape may only leave a version select, the next the popover.
-      expect(async () => {
+    // Escape closes an open version select first, then the popover. One
+    // more than that would close the New session dialog behind it.
+    const closeChoice = async () => {
+      if (await admin.getByRole('listbox').isVisible()) {
         await admin.keyboard.press('Escape');
-        await expect(choice).toBeHidden({ timeout: 1_000 });
-      }).toPass({ timeout: 10_000 });
+        await expect(admin.getByRole('listbox')).toBeHidden();
+      }
+      await admin.keyboard.press('Escape');
+      await expect(choice).toBeHidden();
+    };
 
-    // Every toolchain picked: the button counts them, its name lists them,
-    // and the agent and workspace beside it stay readable
+    // Every toolchain picked: the button counts them, and the agent and
+    // workspace beside it stay readable
     // (giantswarm/giantswarm#39204).
     await toolchains.click();
     const boxes = choice.getByRole('checkbox');
@@ -257,13 +261,21 @@ test('a session started from the portal with an older go mounts that version', a
     const agentLabel = dialog.getByRole('group', { name: 'Agent' });
     await expect(agentLabel).toContainText(agentName);
     expect(await isCutOff(agentLabel), 'the agent name is cut off').toBe(false);
+    // react-aria names the select by its value and its label: "<workspace>
+    // Workspace". A long name may end in an ellipsis, but the picker keeps
+    // room for more than its icon. A lab without the workspace-manager has
+    // no workspace picker; the run says so.
     const workspacePicker = dialog.getByRole('button', {
-      name: /^Workspace\b/,
+      name: /\bWorkspace$/,
     });
     if ((await workspacePicker.count()) > 0) {
-      // A long workspace name may end in an ellipsis, but the picker keeps
-      // room for more than its icon.
       expect((await workspacePicker.boundingBox())?.width).toBeGreaterThan(80);
+    } else {
+      test.info().annotations.push({
+        type: 'skipped check',
+        description:
+          "the workspace picker's width: no workspace-manager in the lab",
+      });
     }
     await test
       .info()
@@ -291,8 +303,9 @@ test('a session started from the portal with an older go mounts that version', a
     await choice.getByRole('button', { name: /go version/ }).click();
     await admin.getByRole('option', { name: older, exact: true }).click();
     await closeChoice();
-    // The button shows how many; its name says which.
-    await expect(toolchains).toHaveAccessibleName(
+    // The button shows how many; its tooltip says which.
+    await toolchains.hover();
+    await expect(admin.getByRole('tooltip')).toContainText(
       new RegExp(`\\bgo ${older.replace(/\./g, '\\.')}\\b`),
     );
     await test

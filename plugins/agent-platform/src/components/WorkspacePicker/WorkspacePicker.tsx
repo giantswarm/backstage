@@ -19,16 +19,12 @@ import type { AgentRow } from '../AgentsDataProvider';
 const NO_WORKSPACE_ID = 'workspace:none';
 
 const useStyles = makeStyles({
-  // Compact like the agent picker beside it: the prompt stays the hero. As
-  // wide as its name needs, up to 240px; short of room, it shares the row
-  // equally with the agent, down to its folder and caret
-  // (giantswarm/giantswarm#39204).
+  // Compact like the agent picker beside it: the prompt stays the hero. At
+  // most 240px; at least its folder and caret. How it shares a row with the
+  // agent is the row's (giantswarm/giantswarm#39204).
   select: {
-    flex: '1 1 0',
-    width: 'auto',
     // The folder, the caret's box and bui's gaps.
     minWidth: 76,
-    maxWidth: 'max-content',
     '& .bui-SelectTrigger': {
       maxWidth: 240,
     },
@@ -63,9 +59,6 @@ export type WorkspacePickerProps = {
   isDisabled?: boolean;
 };
 
-/** Where a preset came from. */
-type PresetSource = 'last' | 'default';
-
 /**
  * The workspace a new session with `agent` starts preset to: the one last
  * chosen with the agent in this browser, else the agent's default workspace,
@@ -77,18 +70,13 @@ export function presetWorkspace(
   remembered: string | null | undefined,
   agentDefault: string | undefined,
   workspaces: Workspace[],
-): { workspace: Workspace; source: PresetSource } | undefined {
+): Workspace | undefined {
   if (remembered === null) {
     return undefined;
   }
   const listed = (name: string | undefined) =>
     name ? workspaces.find(workspace => workspace.name === name) : undefined;
-  const last = listed(remembered);
-  if (last) {
-    return { workspace: last, source: 'last' };
-  }
-  const fallback = listed(agentDefault);
-  return fallback ? { workspace: fallback, source: 'default' } : undefined;
+  return listed(remembered) ?? listed(agentDefault);
 }
 
 /**
@@ -113,12 +101,11 @@ export function WorkspacePicker({
   const [searchText, setSearchText] = useState('');
 
   // The preset is adopted once the workspaces are listed, unless the person
-  // chose meanwhile.
+  // chose meanwhile; either way, once.
   const touched = useRef(false);
-  const [isPreset, setIsPreset] = useState(false);
   const remembered = lastWorkspaceOf(agent.id);
   useEffect(() => {
-    if (touched.current || isPreset) {
+    if (touched.current) {
       return;
     }
     const found = presetWorkspace(
@@ -127,10 +114,10 @@ export function WorkspacePicker({
       workspaces,
     );
     if (found) {
-      setIsPreset(true);
-      onChange(found.workspace);
+      touched.current = true;
+      onChange(found);
     }
-  }, [workspaces, remembered, agent.defaultWorkspace, isPreset, onChange]);
+  }, [workspaces, remembered, agent.defaultWorkspace, onChange]);
 
   const multipleOrganizations =
     new Set(workspaces.map(workspace => workspace.organization)).size > 1;
