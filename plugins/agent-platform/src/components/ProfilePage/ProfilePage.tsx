@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   configApiRef,
   identityApiRef,
@@ -76,6 +76,10 @@ export function ProfilePage() {
     useApi(configApiRef).getOptionalString('app.releaseVersion');
   const profile = useProfileInfo();
   const { installations, isLoading: installationsLoading } = useInstallations();
+  const environments = useMemo(
+    () => installations.map(({ name, pipeline }) => ({ name, pipeline })),
+    [installations],
+  );
 
   const displayName = profile?.displayName?.trim() || undefined;
   const email = profile?.email?.trim() || undefined;
@@ -128,11 +132,7 @@ export function ProfilePage() {
             {installationsLoading ? (
               <LoadingIndicator label="Reading the environments…" />
             ) : (
-              <EnvironmentToggles
-                installations={installations.map(
-                  installation => installation.name,
-                )}
-              />
+              <EnvironmentToggles installations={environments} />
             )}
           </section>
         )}

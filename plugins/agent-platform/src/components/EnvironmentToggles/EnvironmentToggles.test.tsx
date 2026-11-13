@@ -1,7 +1,6 @@
 import { useSyncExternalStore } from 'react';
-import { errorApiRef } from '@backstage/frontend-plugin-api';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ClusterAccessStatusEntry } from '@giantswarm/backstage-plugin-gs';
 import { EnvironmentToggles } from './EnvironmentToggles';
@@ -35,11 +34,20 @@ const mockMutedApi = {
   }),
 };
 
+// The real shared state labels and tones; the stores and the sign-in reduced
+// to test doubles.
 jest.mock('@giantswarm/backstage-plugin-gs', () => {
+  const actual = jest.requireActual('@giantswarm/backstage-plugin-gs');
   const { createApiRef } = jest.requireActual('@backstage/frontend-plugin-api');
   return {
+    CLUSTER_ACCESS_OFF_LABEL: actual.CLUSTER_ACCESS_OFF_LABEL,
+    CLUSTER_ACCESS_STATE_LABELS: actual.CLUSTER_ACCESS_STATE_LABELS,
+    CLUSTER_ACCESS_STATE_ORDER: actual.CLUSTER_ACCESS_STATE_ORDER,
+    CLUSTER_ACCESS_STATE_TONES: actual.CLUSTER_ACCESS_STATE_TONES,
+    CLUSTER_ACCESS_SUMMARY_LABELS: actual.CLUSTER_ACCESS_SUMMARY_LABELS,
+    showsAccessReason: actual.showsAccessReason,
     mutedInstallationsApiRef: createApiRef({ id: 'test.muted' }),
-    gsAuthProvidersApiRef: createApiRef({ id: 'test.auth-providers' }),
+    useSignInAgain: () => mockSignIn,
     useMutedInstallations: () =>
       useSyncExternalStore(mockMuted.subscribe, mockMuted.get),
     useClusterAccessStatus: () =>
@@ -48,7 +56,6 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => {
 });
 
 const gs = jest.requireMock('@giantswarm/backstage-plugin-gs');
-const errorPost = jest.fn();
 
 function entry(
   installation: string,
@@ -58,17 +65,17 @@ function entry(
   return { installation, state, reason, lastChecked: 0 };
 }
 
-async function renderToggles(installations: string[]) {
-  await renderInTestApp(<EnvironmentToggles installations={installations} />, {
-    apis: [
-      [gs.mutedInstallationsApiRef, mockMutedApi],
-      [
-        gs.gsAuthProvidersApiRef,
-        { getMainAuthApi: () => ({ signIn: mockSignIn }) },
-      ],
-      [errorApiRef, { post: errorPost, error$: jest.fn() }],
-    ] as never,
-  });
+async function renderToggles(
+  installations: (string | { name: string; pipeline?: string })[],
+) {
+  await renderInTestApp(
+    <EnvironmentToggles
+      installations={installations.map(item =>
+        typeof item === 'string' ? { name: item } : item,
+      )}
+    />,
+    { apis: [[gs.mutedInstallationsApiRef, mockMutedApi]] as never },
+  );
 }
 
 function chip(name: RegExp | string) {
@@ -83,46 +90,95 @@ beforeEach(() => {
   mockMuted.set([]);
   mockEntries.set([]);
   mockMutedApi.setMutedMany.mockClear();
-  mockSignIn.mockReset().mockResolvedValue(undefined);
-  errorPost.mockClear();
+  mockSignIn.mockClear();
 });
 
 describe('EnvironmentToggles', () => {
-  it('shows every environment as a toggle with its health, and counts health among the ones on', async () => {
+  it('shows every environment as a toggle with the shared state labels, counting health among the ones on', async () => {
     mockMuted.set(['dingo', 'elver']);
     mockEntries.set([
       entry('alba', 'healthy'),
+      entry('dingo', 'healthy'),
       entry('gazelle', 'healthy'),
-      entry('glean', 'degraded', 'API unreachable (timeout)'),
+      entry('glean', 'degraded', 'Access forbidden'),
     ]);
-    await renderToggles(['alba', 'dingo', 'elver', 'gazelle', 'glean']);
+    await renderToggles([
+      { name: 'alba', pipeline: 'stable' },
+      'dingo',
+      'elver',
+      'gazelle',
+      'glean',
+    ]);
 
-    expect(chip('alba, healthy')).toHaveAttribute('aria-pressed', 'true');
-    expect(chip('dingo, off')).toHaveAttribute('aria-pressed', 'false');
-    const glean = chip('glean, unreachable: API unreachable (timeout)');
-    expect(glean).toHaveAttribute('aria-pressed', 'true');
-    expect(glean.closest('li')).toHaveAttribute(
-      'title',
-      'Unreachable: API unreachable (timeout).',
+    expect(chip('alba (stable), Healthy')).toHaveAttribute(
+      'aria-pressed',
+      'true',
     );
-    expect(glean.querySelector('[data-tone="danger"]')).toHaveAttribute(
+    expect(chip('alba (stable), Healthy').closest('li')).toHaveAttribute(
+      'title',
+      'Environment alba (stable). Healthy.',
+    );
+    // Off is not probed: no health, even with a stale probe result.
+    const dingo = chip('dingo, Off');
+    expect(dingo).toHaveAttribute('aria-pressed', 'false');
+    expect(dingo.closest('li')).toHaveAttribute(
+      'title',
+      'Environment dingo. Off: the portal does not check or read it.',
+    );
+    expect(dingo.querySelector('[data-tone="neutral"]')).not.toHaveAttribute(
+      'data-ring',
+    );
+    const glean = chip('glean, Degraded: Access forbidden');
+    expect(glean).toHaveAttribute('aria-pressed', 'true');
+    expect(glean.querySelector('[data-tone="warning"]')).toHaveAttribute(
       'data-ring',
       'true',
     );
-    expect(
-      chip('dingo, off').querySelector('[data-tone="neutral"]'),
-    ).not.toHaveAttribute('data-ring');
 
-    expect(summary()).toBe('3 of 5 on2 healthy1 unreachable');
+    expect(summary()).toBe('3 of 5 on1 degraded2 healthy');
   });
 
-  it('labels the states the access check has not settled', async () => {
+  it('lists the reason of each environment that needs attention under the chips', async () => {
+    mockEntries.set([
+      entry('alba', 'healthy'),
+      entry('glean', 'degraded', 'API unreachable (timeout)'),
+      entry('grizzly', 'session-expired'),
+    ]);
+    await renderToggles([
+      'alba',
+      { name: 'glean', pipeline: 'testing' },
+      'grizzly',
+    ]);
+
+    const list = screen.getByRole('list', {
+      name: 'Environments that need attention',
+    });
+    expect(
+      within(list)
+        .getAllByRole('listitem')
+        .map(item => item.textContent),
+    ).toEqual([
+      'glean (testing): Degraded, API unreachable (timeout)',
+      'grizzly: Session expired',
+    ]);
+  });
+
+  it('shows no attention list while nothing needs it', async () => {
+    mockEntries.set([entry('alba', 'healthy')]);
+    await renderToggles(['alba']);
+
+    expect(
+      screen.queryByRole('list', { name: 'Environments that need attention' }),
+    ).toBeNull();
+  });
+
+  it('labels the states the access probe has not settled, and counts no healthy ones', async () => {
     mockEntries.set([entry('alba', 'connecting')]);
     await renderToggles(['alba', 'cedar']);
 
-    expect(chip('alba, checking…')).toBeInTheDocument();
-    expect(chip('cedar, not checked')).toBeInTheDocument();
-    expect(summary()).toBe('2 of 2 on0 healthy1 checking…1 not checked');
+    expect(chip('alba, Connecting…')).toBeInTheDocument();
+    expect(chip('cedar, Not checked')).toBeInTheDocument();
+    expect(summary()).toBe('2 of 2 on1 connecting1 not checked');
   });
 
   it('renders every environment of a large fleet, with no reveal control', async () => {
@@ -141,14 +197,14 @@ describe('EnvironmentToggles', () => {
     mockEntries.set([entry('alba', 'healthy')]);
     await renderToggles(['alba', 'cedar']);
 
-    await userEvent.click(chip('alba, healthy'));
+    await userEvent.click(chip('alba, Healthy'));
     expect(mockMutedApi.setMutedMany).toHaveBeenLastCalledWith(['alba'], true);
-    expect(chip('alba, off')).toHaveAttribute('aria-pressed', 'false');
-    expect(summary()).toBe('1 of 2 on0 healthy1 not checked');
+    expect(chip('alba, Off')).toHaveAttribute('aria-pressed', 'false');
+    expect(summary()).toBe('1 of 2 on1 not checked');
 
-    await userEvent.click(chip('alba, off'));
+    await userEvent.click(chip('alba, Off'));
     expect(mockMutedApi.setMutedMany).toHaveBeenLastCalledWith(['alba'], false);
-    expect(chip('alba, healthy')).toHaveAttribute('aria-pressed', 'true');
+    expect(chip('alba, Healthy')).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('turns all off with an Undo back to the previous selection, and all on', async () => {
@@ -173,6 +229,19 @@ describe('EnvironmentToggles', () => {
     expect(screen.getByRole('button', { name: 'All on' })).toBeDisabled();
   });
 
+  it('drops the Undo once an environment is turned on elsewhere', async () => {
+    await renderToggles(['alba', 'cedar']);
+    await userEvent.click(screen.getByRole('button', { name: 'All off' }));
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument();
+
+    // Another tab, or the classic widget, turns one on and off again.
+    act(() => mockMuted.set(['alba']));
+    act(() => mockMuted.set(['alba', 'cedar']));
+
+    expect(screen.getByText(/All environments are off/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+  });
+
   it('offers no Undo when everything was already off', async () => {
     mockMuted.set(['alba']);
     await renderToggles(['alba']);
@@ -181,7 +250,7 @@ describe('EnvironmentToggles', () => {
     expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
   });
 
-  it('offers Sign in again while a session has expired', async () => {
+  it('offers the shared Sign in again while a session has expired', async () => {
     mockEntries.set([
       entry('alba', 'session-expired', 'Your session expired'),
       entry('cedar', 'healthy'),
@@ -189,9 +258,9 @@ describe('EnvironmentToggles', () => {
     await renderToggles(['alba', 'cedar']);
 
     expect(
-      chip('alba, session expired: Your session expired'),
+      chip('alba, Session expired: Your session expired'),
     ).toBeInTheDocument();
-    expect(summary()).toBe('2 of 2 on1 healthy1 session expired');
+    expect(summary()).toBe('2 of 2 on1 session expired1 healthy');
     await userEvent.click(
       screen.getByRole('button', { name: 'Sign in again' }),
     );

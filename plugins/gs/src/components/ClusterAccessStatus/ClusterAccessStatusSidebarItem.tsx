@@ -1,6 +1,6 @@
 import { MouseEvent, useMemo, useState } from 'react';
 import { SidebarItem, useSidebarPinState } from '@backstage/core-components';
-import { useApi, errorApiRef } from '@backstage/core-plugin-api';
+import { useApi } from '@backstage/core-plugin-api';
 import { Switch } from '@backstage/ui';
 import {
   Box,
@@ -13,50 +13,37 @@ import {
 import CloudIcon from '@material-ui/icons/CloudQueue';
 import FiberManualRecordIcon from '@material-ui/icons/FiberManualRecord';
 import {
+  CLUSTER_ACCESS_OFF_LABEL,
+  CLUSTER_ACCESS_STATE_LABELS,
+  CLUSTER_ACCESS_STATE_ORDER,
+  CLUSTER_ACCESS_STATE_TONES,
+  CLUSTER_ACCESS_SUMMARY_LABELS,
   ClusterAccessState,
   ClusterAccessStatusEntry,
+  ClusterAccessTone,
+  showsAccessReason,
   useClusterAccessStatus,
+  useSignInAgain,
 } from '../../apis/clusterAccessStatus';
 import {
   mutedInstallationsApiRef,
   useMutedInstallations,
 } from '../../apis/mutedInstallations';
-import { gsAuthProvidersApiRef } from '../../apis/auth/types';
 
-const STATE_COLORS: Record<ClusterAccessState, string> = {
-  connecting: '#9e9e9e',
-  healthy: '#2e7d32',
-  degraded: '#f9a825',
-  'session-expired': '#c62828',
+// The classic widget's hex for each shared tone (MUI icons take a colour).
+const TONE_COLORS: Record<ClusterAccessTone, string> = {
+  neutral: '#9e9e9e',
+  success: '#2e7d32',
+  warning: '#f9a825',
+  danger: '#c62828',
 };
+
+const stateColor = (state: ClusterAccessState) =>
+  TONE_COLORS[CLUSTER_ACCESS_STATE_TONES[state]];
 
 // A muted installation is switched off app-wide: not probed, not fetched. Shown
 // greyed with an "Off" caption and its toggle in the off position.
 const MUTED_COLOR = '#bdbdbd';
-const MUTED_LABEL = 'Off';
-
-const STATE_LABELS: Record<ClusterAccessState, string> = {
-  connecting: 'Connecting…',
-  healthy: 'Healthy',
-  degraded: 'Degraded',
-  'session-expired': 'Session expired',
-};
-
-// Lowercase wording used in the header count summary ("1 degraded · 4 healthy").
-const SUMMARY_LABELS: Record<ClusterAccessState, string> = {
-  connecting: 'connecting',
-  healthy: 'healthy',
-  degraded: 'degraded',
-  'session-expired': 'session expired',
-};
-
-// Severity order shared by the summary and the row list -- worst first.
-const STATE_ORDER: ClusterAccessState[] = [
-  'session-expired',
-  'degraded',
-  'connecting',
-  'healthy',
-];
 
 const useStyles = makeStyles(theme => ({
   popover: {
@@ -110,14 +97,16 @@ const useStyles = makeStyles(theme => ({
 
 /**
  * Computes the worst (most actionable) state across all tracked clusters, using
- * the shared {@link STATE_ORDER} severity ranking: session-expired wins over
+ * the shared {@link CLUSTER_ACCESS_STATE_ORDER} severity ranking: session-expired wins over
  * degraded, because an expired main session is the one thing the user can
  * immediately fix; `connecting` ranks above plain healthy so the badge reflects
  * in-flight probes on startup, but below any real problem. No entries → healthy.
  */
 function overallState(entries: ClusterAccessStatusEntry[]): ClusterAccessState {
   return (
-    STATE_ORDER.find(state => entries.some(e => e.state === state)) ?? 'healthy'
+    CLUSTER_ACCESS_STATE_ORDER.find(state =>
+      entries.some(e => e.state === state),
+    ) ?? 'healthy'
   );
 }
 
@@ -144,11 +133,13 @@ export function summarize(entries: ClusterAccessStatusEntry[]): SummaryPart[] {
     return [{ key: 'healthy', label: `All ${total} healthy`, muted: true }];
   }
 
-  return STATE_ORDER.filter(state => counts[state] > 0).map(state => ({
-    key: state,
-    label: `${counts[state]} ${SUMMARY_LABELS[state]}`,
-    muted: state === 'healthy',
-  }));
+  return CLUSTER_ACCESS_STATE_ORDER.filter(state => counts[state] > 0).map(
+    state => ({
+      key: state,
+      label: `${counts[state]} ${CLUSTER_ACCESS_SUMMARY_LABELS[state]}`,
+      muted: state === 'healthy',
+    }),
+  );
 }
 
 function StatusDot({ color }: { color: string }) {
@@ -166,11 +157,7 @@ function StatusDot({ color }: { color: string }) {
 export function ClusterAccessStatusSidebarItem() {
   const classes = useStyles();
   const mutedApi = useApi(mutedInstallationsApiRef);
-  // The main auth API is resolved only for "Sign in again": a portal without a
-  // main auth provider (`gs.authProvider` unset) has none, and resolving it
-  // at render would throw and take the sidebar down.
-  const authProvidersApi = useApi(gsAuthProvidersApiRef);
-  const errorApi = useApi(errorApiRef);
+  const signInAgain = useSignInAgain();
   // In the mobile sidebar the item is a full-width row in the Menu overlay, so
   // the popover opens above it instead of to its right.
   const { isMobile } = useSidebarPinState();
@@ -189,7 +176,7 @@ export function ClusterAccessStatusSidebarItem() {
     [entries],
   );
   const sessionExpired = state === 'session-expired';
-  const badgeColor = entries.length === 0 ? MUTED_COLOR : STATE_COLORS[state];
+  const badgeColor = entries.length === 0 ? MUTED_COLOR : stateColor(state);
 
   // One row per accessed *or* muted installation, sorted by name. A muted
   // installation isn't probed (so it has no status entry) but is still listed so
@@ -208,18 +195,17 @@ export function ClusterAccessStatusSidebarItem() {
         return {
           installation,
           dotColor: MUTED_COLOR,
-          caption: MUTED_LABEL,
+          caption: CLUSTER_ACCESS_OFF_LABEL,
           enabled: false,
         };
       }
       const entry = entryByInstallation.get(installation)!;
-      const caption =
-        entry.state === 'degraded' || entry.state === 'session-expired'
-          ? (entry.reason ?? STATE_LABELS[entry.state])
-          : undefined;
+      const caption = showsAccessReason(entry.state)
+        ? (entry.reason ?? CLUSTER_ACCESS_STATE_LABELS[entry.state])
+        : undefined;
       return {
         installation,
-        dotColor: STATE_COLORS[entry.state],
+        dotColor: stateColor(entry.state),
         caption,
         enabled: true,
       };
@@ -278,7 +264,7 @@ export function ClusterAccessStatusSidebarItem() {
                 {index > 0 && ' · '}
                 <span
                   style={
-                    part.muted ? undefined : { color: STATE_COLORS[part.key] }
+                    part.muted ? undefined : { color: stateColor(part.key) }
                   }
                 >
                   {part.label}
@@ -332,9 +318,7 @@ export function ClusterAccessStatusSidebarItem() {
                 fullWidth
                 onClick={() => {
                   setAnchorEl(null);
-                  Promise.resolve()
-                    .then(() => authProvidersApi.getMainAuthApi().signIn())
-                    .catch(error => errorApi.post(error));
+                  signInAgain();
                 }}
               >
                 Sign in again

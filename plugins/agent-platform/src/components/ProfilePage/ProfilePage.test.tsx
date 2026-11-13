@@ -16,10 +16,14 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
 
 // Tested on its own; here it shows which environments the page hands it.
 jest.mock('../EnvironmentToggles', () => ({
-  EnvironmentToggles: ({ installations }: { installations: string[] }) => (
+  EnvironmentToggles: ({
+    installations,
+  }: {
+    installations: { name: string; pipeline?: string }[];
+  }) => (
     <ul aria-label="Environment toggles">
-      {installations.map(name => (
-        <li key={name}>{name}</li>
+      {installations.map(({ name, pipeline }) => (
+        <li key={name}>{pipeline ? `${name} (${pipeline})` : name}</li>
       ))}
     </ul>
   ),
@@ -124,9 +128,22 @@ describe('ProfilePage', () => {
       'The environments this portal talks to. Turn one off and the portal shows nothing from it.',
     );
     expect(within(section).getAllByRole('listitem')).toHaveLength(300);
+    expect(within(section).getAllByRole('listitem')[0]).toHaveTextContent(
+      'inst-1',
+    );
     expect(
       within(section).queryByRole('button', { name: /Show all/ }),
     ).toBeNull();
+  });
+
+  it("hands each environment's pipeline to the toggles", async () => {
+    mockInstallations = [{ name: 'gazelle', pipeline: 'stable' }];
+    await renderPage();
+
+    const section = screen.getByRole('region', { name: 'Environments' });
+    expect(within(section).getByRole('listitem')).toHaveTextContent(
+      'gazelle (stable)',
+    );
   });
 
   it('leaves the installations section out when none are configured', async () => {

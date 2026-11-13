@@ -55,7 +55,10 @@ test('switches environments off and on from Profile and settings', async ({
   await expect(first).toHaveAttribute('aria-pressed', 'true');
   await first.click();
   await expect(first).toHaveAttribute('aria-pressed', 'false');
-  await expect(first).toHaveAccessibleName(`${name}, off`);
+  // The name, its pipeline where the config knows it, and the state.
+  await expect(first).toHaveAccessibleName(
+    new RegExp(`^${name}( \\([^)]+\\))?, Off$`),
+  );
   await expect(summary).toContainText(`${total - 1} of ${total} on`);
   expect(await mutedSet(page)).toEqual([name]);
 

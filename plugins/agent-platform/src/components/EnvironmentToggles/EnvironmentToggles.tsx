@@ -1,13 +1,19 @@
-import { useMemo, useState } from 'react';
-import { errorApiRef, useApi } from '@backstage/frontend-plugin-api';
+import { useEffect, useMemo, useState } from 'react';
+import { useApi } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Text, ToggleButton } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import {
-  type ClusterAccessStatusEntry,
-  gsAuthProvidersApiRef,
+  CLUSTER_ACCESS_OFF_LABEL,
+  CLUSTER_ACCESS_STATE_LABELS,
+  CLUSTER_ACCESS_STATE_ORDER,
+  CLUSTER_ACCESS_STATE_TONES,
+  CLUSTER_ACCESS_SUMMARY_LABELS,
+  type ClusterAccessState,
   mutedInstallationsApiRef,
+  showsAccessReason,
   useClusterAccessStatus,
   useMutedInstallations,
+  useSignInAgain,
 } from '@giantswarm/backstage-plugin-gs';
 import {
   StatusDot,
@@ -16,96 +22,76 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
- * What an environment's chip says about it. `off`: switched off, so not
- * checked. `unknown`: on, but no check result, as for an environment without
- * the token broker that the person is not signed in to.
+ * A chip's health: the access probe's state while it is on, `off` while it is
+ * switched off (and so not probed), and `not-checked` while it is on without
+ * a probe result, as for an installation without the token broker that the
+ * person is not signed in to, which the classic widget does not list at all.
  */
-export type EnvironmentHealth =
-  | 'off'
-  | 'unknown'
-  | 'checking'
-  | 'healthy'
-  | 'unreachable'
-  | 'session-expired';
+export type EnvironmentHealth = ClusterAccessState | 'off' | 'not-checked';
 
-const HEALTH_DOT: Record<
-  EnvironmentHealth,
-  { tone: StatusDotTone; ring?: boolean }
-> = {
-  off: { tone: 'neutral' },
-  unknown: { tone: 'neutral' },
-  checking: { tone: 'neutral', ring: true },
-  healthy: { tone: 'success' },
-  unreachable: { tone: 'danger', ring: true },
-  'session-expired': { tone: 'danger', ring: true },
-};
+const NOT_CHECKED_LABEL = 'Not checked';
 
-/** The health word in a chip's accessible name. */
-const HEALTH_WORDS: Record<EnvironmentHealth, string> = {
-  off: 'off',
-  unknown: 'not checked',
-  checking: 'checking…',
-  healthy: 'healthy',
-  unreachable: 'unreachable',
-  'session-expired': 'session expired',
-};
+function healthLabel(health: EnvironmentHealth): string {
+  if (health === 'off') {
+    return CLUSTER_ACCESS_OFF_LABEL;
+  }
+  if (health === 'not-checked') {
+    return NOT_CHECKED_LABEL;
+  }
+  return CLUSTER_ACCESS_STATE_LABELS[health];
+}
 
-type EnvironmentChip = {
+function healthTone(health: EnvironmentHealth): StatusDotTone {
+  return health === 'off' || health === 'not-checked'
+    ? 'neutral'
+    : CLUSTER_ACCESS_STATE_TONES[health];
+}
+
+/**
+ * A ring for a state that is in flight or needs attention, so it differs from
+ * the filled dots by shape as well as colour.
+ */
+function healthRing(health: EnvironmentHealth): boolean {
+  return (
+    health === 'connecting' ||
+    health === 'degraded' ||
+    health === 'session-expired'
+  );
+}
+
+export type EnvironmentItem = {
   name: string;
+  /** The installation's pipeline, such as `stable` or `testing`. */
+  pipeline?: string;
+};
+
+type EnvironmentChip = EnvironmentItem & {
   on: boolean;
   health: EnvironmentHealth;
-  /** Why it is unreachable or its session expired, from the access check. */
+  /** Why it is degraded or its session expired, from the access probe. */
   reason?: string;
 };
 
-export function environmentHealth(
-  on: boolean,
-  entry: ClusterAccessStatusEntry | undefined,
-): EnvironmentHealth {
-  if (!on) {
-    return 'off';
-  }
-  switch (entry?.state) {
-    case undefined:
-      return 'unknown';
-    case 'connecting':
-      return 'checking';
-    case 'healthy':
-      return 'healthy';
-    case 'degraded':
-      return 'unreachable';
-    case 'session-expired':
-      return 'session-expired';
-    default:
-      return 'unknown';
-  }
+function displayName({ name, pipeline }: EnvironmentItem): string {
+  return pipeline ? `${name} (${pipeline})` : name;
 }
 
-function chipTitle({ health, reason }: EnvironmentChip): string {
-  switch (health) {
-    case 'off':
-      return 'Off. The portal does not check or read this environment.';
-    case 'unknown':
-      return 'Not checked. The portal has no access result for this environment.';
-    case 'checking':
-      return 'Checking access to this environment.';
-    case 'healthy':
-      return 'Healthy.';
-    case 'unreachable':
-      return `Unreachable: ${reason ?? 'the access check failed'}.`;
-    case 'session-expired':
-      return `Session expired: ${reason ?? 'sign in again to reach it'}.`;
-    default:
-      return '';
-  }
-}
-
+/** The chip's accessible name: the environment, its pipeline, its health. */
 function chipLabel(chip: EnvironmentChip): string {
-  const word = HEALTH_WORDS[chip.health];
-  return chip.reason &&
-    (chip.health === 'unreachable' || chip.health === 'session-expired')
-    ? `${chip.name}, ${word}: ${chip.reason}`
-    : `${chip.name}, ${word}`;
+  const health = healthLabel(chip.health);
+  return chip.reason
+    ? `${displayName(chip)}, ${health}: ${chip.reason}`
+    : `${displayName(chip)}, ${health}`;
+}
+
+function chipTitle(chip: EnvironmentChip): string {
+  const subject = `Environment ${displayName(chip)}.`;
+  if (chip.health === 'off') {
+    return `${subject} Off: the portal does not check or read it.`;
+  }
+  return chip.reason
+    ? `${subject} ${healthLabel(chip.health)}: ${chip.reason}.`
+    : `${subject} ${healthLabel(chip.health)}.`;
 }
 
 const useStyles = makeStyles({
@@ -117,29 +103,36 @@ const useStyles = makeStyles({
     flexWrap: 'wrap',
     gap: 'var(--bui-space-2)',
   },
-  // The chip is a bui ToggleButton, outlined while off and filled in the
-  // shell's link blue while on (mockup, variant B).
+  // The chip is a bui ToggleButton: outlined while off, filled while on in
+  // the pair a bui primary button paints, which flips with the theme (mockup,
+  // variant B). The solid tokens are deprecated for `--bui-accent-*`, but the
+  // shell's accent is the bright #009fff, under which white text fails
+  // contrast (the precedent: UserMessage's bubble).
   chip: {
     height: 40,
     gap: 'var(--bui-space-2)',
     padding: '0 var(--bui-space-3)',
     borderRadius: 'var(--bui-radius-2)',
-    boxShadow: 'inset 0 0 0 1px var(--agent-shell-input-border, #c4d3dc)',
+    boxShadow: 'inset 0 0 0 1px var(--bui-border-2)',
     background: 'var(--bui-bg-app)',
     color: 'var(--bui-fg-secondary)',
     fontWeight: 'var(--bui-font-weight-regular)' as never,
     fontSize: 'var(--bui-font-size-4)',
     '&[data-hovered]:not([data-selected])': {
-      background: 'var(--bui-bg-neutral-1)',
-      boxShadow: 'inset 0 0 0 1px var(--agent-shell-link, #00609c)',
+      background: 'var(--bui-bg-neutral-2)',
+      boxShadow: 'inset 0 0 0 1px var(--bui-ring)',
+      color: 'var(--bui-fg-primary)',
     },
     '&[data-selected], &[data-pressed]': {
-      background: 'var(--agent-shell-link, #00609c)',
+      // eslint-disable-next-line @backstage/no-deprecated-bui-tokens -- see above
+      background: 'var(--bui-bg-solid)',
       boxShadow: 'none',
-      color: '#ffffff',
+      // eslint-disable-next-line @backstage/no-deprecated-bui-tokens -- see above
+      color: 'var(--bui-fg-solid)',
     },
     '&[data-selected][data-hovered]': {
-      background: 'var(--agent-shell-link-hover, #002645)',
+      // eslint-disable-next-line @backstage/no-deprecated-bui-tokens -- see above
+      background: 'var(--bui-bg-solid-hover)',
     },
     '&[data-focus-visible]': {
       outline: '2px solid var(--bui-ring)',
@@ -149,37 +142,47 @@ const useStyles = makeStyles({
       height: 44,
     },
   },
-  // A white halo keeps the dot readable on the filled chip.
+  // A halo in the chip's text colour keeps the dot readable on the filled
+  // chip, in either theme.
   dot: {
     display: 'inline-flex',
     borderRadius: '50%',
     '[data-selected] > * > &': {
-      boxShadow: '0 0 0 2px #ffffff',
+      // eslint-disable-next-line @backstage/no-deprecated-bui-tokens -- the chip's text colour, see above
+      boxShadow: '0 0 0 2px var(--bui-fg-solid)',
     },
+  },
+  attention: {
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 'var(--bui-space-1)',
   },
 });
 
 export type EnvironmentTogglesProps = {
-  /** Every configured installation, by name, in display order. */
-  installations: string[];
+  /** Every configured installation, in display order. */
+  installations: EnvironmentItem[];
 };
 
 /**
  * The environments this portal talks to, each a toggle chip with its access
  * health. It reads and writes the same stores as the classic sidebar's
- * Cluster access widget: the switched-off set (`mutedInstallationsApiRef`,
- * which every fleet read and the access probe skip) and the probe's health
+ * Cluster access widget, and names the states with the same shared labels and
+ * tones: the switched-off set (`mutedInstallationsApiRef`, which every fleet
+ * read and the access probe skip) and the probe's results
  * (`useClusterAccessStatus`), so both always agree.
  */
 export function EnvironmentToggles({ installations }: EnvironmentTogglesProps) {
   const classes = useStyles();
   const mutedApi = useApi(mutedInstallationsApiRef);
-  const authProvidersApi = useApi(gsAuthProvidersApiRef);
-  const errorApi = useApi(errorApiRef);
+  const signInAgain = useSignInAgain();
   const muted = useMutedInstallations();
   const entries = useClusterAccessStatus();
-  // The selection "All off" replaced, for its Undo, until anything else
-  // changes the selection.
+  // The selection "All off" replaced, for its Undo. Dropped once anything
+  // turns an environment on, here, in another tab or in the classic widget.
   const [beforeAllOff, setBeforeAllOff] = useState<string[] | undefined>();
 
   const chips = useMemo<EnvironmentChip[]>(() => {
@@ -187,37 +190,43 @@ export function EnvironmentToggles({ installations }: EnvironmentTogglesProps) {
     const entryByName = new Map(
       entries.map(entry => [entry.installation, entry]),
     );
-    return installations.map(name => {
-      const on = !mutedSet.has(name);
-      const entry = entryByName.get(name);
-      const health = environmentHealth(on, entry);
+    return installations.map(item => {
+      const on = !mutedSet.has(item.name);
+      const entry = on ? entryByName.get(item.name) : undefined;
+      let health: EnvironmentHealth = 'off';
+      if (on) {
+        health = entry?.state ?? 'not-checked';
+      }
       return {
-        name,
+        ...item,
         on,
         health,
         reason:
-          health === 'unreachable' || health === 'session-expired'
-            ? entry?.reason
-            : undefined,
+          entry && showsAccessReason(entry.state) ? entry.reason : undefined,
       };
     });
   }, [installations, muted, entries]);
 
-  const count = (health: EnvironmentHealth) =>
-    chips.filter(chip => chip.health === health).length;
+  const names = useMemo(
+    () => installations.map(item => item.name),
+    [installations],
+  );
   const onCount = chips.filter(chip => chip.on).length;
-  const healthy = count('healthy');
-  const unreachable = count('unreachable');
-  const expired = count('session-expired');
-  const checking = count('checking');
-  const unknown = count('unknown');
   const allOn = onCount === chips.length;
   const allOff = onCount === 0;
+  const counts = (health: EnvironmentHealth) =>
+    chips.filter(chip => chip.health === health).length;
+  const notChecked = counts('not-checked');
+  const attention = chips.filter(
+    chip => chip.health === 'degraded' || chip.health === 'session-expired',
+  );
+  const expired = counts('session-expired') > 0;
 
-  const setOn = (names: string[], on: boolean) => {
-    setBeforeAllOff(undefined);
-    mutedApi.setMutedMany(names, !on);
-  };
+  useEffect(() => {
+    if (!allOff) {
+      setBeforeAllOff(undefined);
+    }
+  }, [allOff]);
 
   return (
     <Flex direction="column" gap="3">
@@ -239,35 +248,26 @@ export function EnvironmentToggles({ installations }: EnvironmentTogglesProps) {
             </Text>{' '}
             of {chips.length} on
           </Text>
-          {onCount > 0 && (
-            <StatusDot tone="success" label={`${healthy} healthy`} />
-          )}
-          {unreachable > 0 && (
-            <StatusDot
-              tone="danger"
-              ring
-              label={`${unreachable} unreachable`}
-            />
-          )}
-          {expired > 0 && (
-            <StatusDot
-              tone="danger"
-              ring
-              label={`${expired} session expired`}
-            />
-          )}
-          {checking > 0 && (
-            <StatusDot tone="neutral" ring label={`${checking} checking…`} />
-          )}
-          {unknown > 0 && (
-            <StatusDot tone="neutral" label={`${unknown} not checked`} />
+          {CLUSTER_ACCESS_STATE_ORDER.map(state => {
+            const count = counts(state);
+            return count > 0 ? (
+              <StatusDot
+                key={state}
+                tone={healthTone(state)}
+                ring={healthRing(state)}
+                label={`${count} ${CLUSTER_ACCESS_SUMMARY_LABELS[state]}`}
+              />
+            ) : null;
+          })}
+          {notChecked > 0 && (
+            <StatusDot tone="neutral" label={`${notChecked} not checked`} />
           )}
         </Flex>
         <Flex gap="2" role="group" aria-label="Turn all environments on or off">
           <Button
             variant="secondary"
             isDisabled={allOn}
-            onPress={() => setOn(installations, true)}
+            onPress={() => mutedApi.setMutedMany(names, false)}
           >
             All on
           </Button>
@@ -275,33 +275,38 @@ export function EnvironmentToggles({ installations }: EnvironmentTogglesProps) {
             variant="secondary"
             isDisabled={allOff}
             onPress={() => {
-              const before = chips
-                .filter(chip => chip.on)
-                .map(chip => chip.name);
-              mutedApi.setMutedMany(installations, true);
-              setBeforeAllOff(before);
+              setBeforeAllOff(
+                chips.filter(chip => chip.on).map(chip => chip.name),
+              );
+              mutedApi.setMutedMany(names, true);
             }}
           >
             All off
           </Button>
         </Flex>
       </Flex>
-      {/* Every environment, wrapping: a fleet of 50 is a few rows of chips,
-          and a cap would hide the ones a person turns on (product decision). */}
+      {/* Every environment, wrapping, with no window and no search: a portal
+          has dozens of environments, not hundreds, and a cap would hide the
+          ones a person turns on (product decision). */}
       <ul aria-label="Environments" className={classes.list}>
         {chips.map(chip => (
-          // The state in a plain title on the item, since react-aria drops a
-          // button's: a bui Tooltip would cover the neighbouring chips.
+          // The tooltip is a plain title on the item, since react-aria drops
+          // a button's; the same facts are in the button's accessible name and,
+          // for a problem, in the list under the chips.
           <li key={chip.name} title={chipTitle(chip)}>
             <ToggleButton
               className={classes.chip}
               size="medium"
               isSelected={chip.on}
-              onChange={on => setOn([chip.name], on)}
+              onChange={on => mutedApi.setMutedMany([chip.name], !on)}
               aria-label={chipLabel(chip)}
               iconStart={
                 <span className={classes.dot}>
-                  <StatusDot {...HEALTH_DOT[chip.health]} size={10} />
+                  <StatusDot
+                    tone={healthTone(chip.health)}
+                    ring={healthRing(chip.health)}
+                    size={10}
+                  />
                 </span>
               }
             >
@@ -310,6 +315,25 @@ export function EnvironmentToggles({ installations }: EnvironmentTogglesProps) {
           </li>
         ))}
       </ul>
+      {attention.length > 0 && (
+        <ul
+          aria-label="Environments that need attention"
+          className={classes.attention}
+        >
+          {attention.map(chip => (
+            <li key={chip.name}>
+              <StatusDot
+                tone={healthTone(chip.health)}
+                ring
+                wrap
+                label={`${displayName(chip)}: ${healthLabel(chip.health)}${
+                  chip.reason ? `, ${chip.reason}` : ''
+                }`}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
       {allOff && (
         <Alert
           status="warning"
@@ -320,7 +344,7 @@ export function EnvironmentToggles({ installations }: EnvironmentTogglesProps) {
               <Button
                 variant="tertiary"
                 size="small"
-                onPress={() => setOn(beforeAllOff, true)}
+                onPress={() => mutedApi.setMutedMany(beforeAllOff, false)}
               >
                 Undo
               </Button>
@@ -328,16 +352,9 @@ export function EnvironmentToggles({ installations }: EnvironmentTogglesProps) {
           }
         />
       )}
-      {expired > 0 && (
+      {expired && (
         <Flex>
-          <Button
-            variant="primary"
-            onPress={() => {
-              Promise.resolve()
-                .then(() => authProvidersApi.getMainAuthApi().signIn())
-                .catch(error => errorApi.post(error));
-            }}
-          >
+          <Button variant="primary" onPress={signInAgain}>
             Sign in again
           </Button>
         </Flex>
