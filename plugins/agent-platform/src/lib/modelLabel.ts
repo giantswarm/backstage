@@ -5,9 +5,8 @@ import type { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react'
  * own ChatGPT login, else the ModelConfig's display name, else the model it
  * configures, else its resource name.
  *
- * An admin's display name wins, since an admin may name a model on purpose
- * ("The Cheap One") rather than after what it runs (PO decision L6). Without
- * one, the model says more than a resource name such as "anthropic".
+ * An admin's display name takes precedence because it may intentionally
+ * abstract the underlying model.
  */
 export function modelLabel(
   modelConfig: ModelConfig | undefined,

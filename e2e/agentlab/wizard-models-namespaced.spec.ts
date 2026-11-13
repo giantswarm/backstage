@@ -22,20 +22,21 @@ test('a person with a namespaced kagent RoleBinding picks a model in the New age
   await expectWizardStep(dev, 'Details');
 
   await expect(
-    dev.getByText(`Runs on ${lab.defaultModel}`),
+    dev.getByText(`Runs on ${lab.defaultModelLabel}`, { exact: false }),
     'the platform default is preselected from the kagent namespace',
   ).toBeVisible({ timeout: 60_000 });
   await openWizardMoreOptions(dev);
   const models = dev.getByRole('radiogroup', { name: 'Model' });
   const platformDefault = models.getByRole('radio', {
-    name: lab.defaultModel,
+    name: `Select model ${lab.defaultModelLabel}, default`,
+    exact: true,
   });
   await expect(
     platformDefault,
     'the ModelConfigs of the kagent namespace are offered',
   ).toBeVisible({ timeout: 60_000 });
-  await platformDefault.check();
-  await expect(platformDefault).toBeChecked();
+  await platformDefault.click();
+  await expect(platformDefault).toHaveAttribute('aria-checked', 'true');
 
   await expect(
     dev.getByText(/^Could not read (models|\d+ environments?)$/),

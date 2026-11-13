@@ -9,6 +9,7 @@ import {
   Harness,
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Connector icons use the connector catalog's shared renderer.
 import { ConnectorLogo } from '@giantswarm/backstage-plugin-muster';
 import {
   CollapsibleMarkdown,
@@ -604,15 +605,8 @@ function ModelFact({
   if (!modelConfigName) {
     return isFailing ? <FailureMarker /> : <Text variant="body-small">—</Text>;
   }
-  // Named as in the create flow's "Runs on …" (`modelLabel`). The model it
-  // runs is the secondary line below, unless the name already says it;
-  // neither when the ModelConfig cannot be read, which is normal for a
-  // non-admin.
   const label = modelLabel(modelConfig) ?? modelConfigName;
-  const underlyingModel =
-    modelConfig && modelConfig.getModel() !== label
-      ? underlyingModelLine(modelConfig)
-      : undefined;
+  const underlyingModel = underlyingModelLine(modelConfig, label);
   // The model's page, where the ModelConfig could be read: for a reader who
   // cannot read it (normal for a non-admin), the page could only say so. The
   // ModelConfig sits in the agent's namespace; without one there is no page

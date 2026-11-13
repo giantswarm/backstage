@@ -5,6 +5,7 @@ import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Agent editing uses the shared Muster API and authentication types.
 import {
   MCPServer,
   musterApiRef,
@@ -459,17 +460,15 @@ describe('EditAgentPage', () => {
     // More options: the agent's model preselected, only its namespace's
     // models offered; its technical name and runtime fixed.
     expect(screen.getByText(/Runs on Claude Opus/)).toBeInTheDocument();
-    // The line keeps the ModelConfig's name; the model it runs is behind an
-    // info button beside it (PO decision L6), and on the picked card.
     const modelHint = screen.getByRole('button', {
-      name: 'Which model Claude Opus runs',
+      name: 'Model details for Claude Opus',
     });
     // A bui tooltip opens on keyboard focus: a key press sets the modality.
     await userEvent.keyboard('{Shift}');
     act(() => modelHint.focus());
-    expect(
-      await screen.findByText('Underlying model: opus-4-7-model · Anthropic'),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      'opus-4-7-model · Anthropic',
+    );
     expect(
       screen.getByRole('radio', { name: 'Select model Claude Opus' }),
     ).toHaveAttribute('aria-checked', 'true');

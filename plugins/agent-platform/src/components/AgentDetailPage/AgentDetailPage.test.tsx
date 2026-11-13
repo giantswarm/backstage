@@ -3265,6 +3265,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
         within(facts).getByRole('link', { name: 'claude-opus-4-7' }),
       ).toBeInTheDocument();
       expect(within(facts).queryByText('opus-4-7')).not.toBeInTheDocument();
+      expect(within(facts).getByText('Anthropic')).toBeInTheDocument();
     });
 
     it('folds the Kubernetes detail into a "Technical details" fold-out, not a switch', async () => {

@@ -1,4 +1,7 @@
-import type { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  ModelConfig,
+  type ModelConfigInterface,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 import { modelLabel } from './modelLabel';
 
 function fakeModelConfig({
@@ -10,14 +13,31 @@ function fakeModelConfig({
   model?: string;
   chatGpt?: boolean;
 }): ModelConfig {
-  return {
-    getName: () => 'anthropic',
-    getDisplayName: () =>
-      chatGpt ? 'ChatGPT (your subscription)' : (displayName ?? 'anthropic'),
-    getDisplayNameAnnotation: () => displayName,
-    getModel: () => model,
-    isPersonalChatGptLogin: () => chatGpt,
-  } as unknown as ModelConfig;
+  return new ModelConfig(
+    {
+      apiVersion: 'api.kagent.dev/v1alpha3',
+      kind: 'ModelConfig',
+      metadata: {
+        name: 'anthropic',
+        namespace: 'kagent',
+        annotations:
+          displayName === undefined
+            ? undefined
+            : { 'ui.giantswarm.io/display-name': displayName },
+      },
+      spec:
+        model === undefined
+          ? undefined
+          : {
+              provider: chatGpt ? 'OpenAI' : 'Anthropic',
+              model,
+              ...(chatGpt
+                ? { openAI: { credentialType: 'chatgptOAuth' } }
+                : {}),
+            },
+    } as unknown as ModelConfigInterface,
+    'gazelle',
+  );
 }
 
 describe('modelLabel', () => {
@@ -38,14 +58,37 @@ describe('modelLabel', () => {
     );
   });
 
-  it('falls back to the resource name when the model is not set', () => {
+  it('falls back to the resource name for an incomplete resource without a spec', () => {
     expect(modelLabel(fakeModelConfig({}))).toBe('anthropic');
   });
+
+  it.each(['', '   '])(
+    'ignores a blank display-name annotation %j',
+    displayName => {
+      expect(
+        modelLabel(
+          fakeModelConfig({ displayName, model: 'claude-sonnet-4-6' }),
+        ),
+      ).toBe('claude-sonnet-4-6');
+    },
+  );
 
   it("names a person's own ChatGPT login as such", () => {
     expect(modelLabel(fakeModelConfig({ chatGpt: true, model: 'gpt-5' }))).toBe(
       'ChatGPT (your subscription)',
     );
+  });
+
+  it('keeps the personal ChatGPT label over an admin display name', () => {
+    expect(
+      modelLabel(
+        fakeModelConfig({
+          chatGpt: true,
+          model: 'gpt-5',
+          displayName: 'Custom name',
+        }),
+      ),
+    ).toBe('ChatGPT (your subscription)');
   });
 
   it('is undefined without a ModelConfig', () => {
