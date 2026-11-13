@@ -3,6 +3,7 @@ import { act, renderHook } from '@testing-library/react';
 import { TestApiProvider } from '@backstage/frontend-test-utils';
 import { openLoginPopup } from '@backstage/core-app-api';
 import { ConfigApi, OAuthRequestApi } from '@backstage/core-plugin-api';
+import { ExternalUrlConsentManager } from '@giantswarm/backstage-plugin-ui-react';
 import { GSAuthProviders } from './GSAuthProviders';
 import {
   MainSessionEndStore,
@@ -125,6 +126,7 @@ describe('the main sign-in session end', () => {
       configApi,
       discoveryApi,
       oauthRequestApi,
+      externalUrlConsentApi: new ExternalUrlConsentManager(jest.fn()),
     });
     // Short-lived, so the next read refreshes it.
     refreshAnswer = () => jsonResponse(200, session(60));
@@ -153,6 +155,7 @@ describe('the main sign-in session end', () => {
       configApi,
       discoveryApi,
       oauthRequestApi,
+      externalUrlConsentApi: new ExternalUrlConsentManager(jest.fn()),
     });
     refreshAnswer = () => jsonResponse(401, CLAIMED);
 
@@ -169,6 +172,7 @@ describe('the main sign-in session end', () => {
       configApi,
       discoveryApi,
       oauthRequestApi,
+      externalUrlConsentApi: new ExternalUrlConsentManager(jest.fn()),
     });
     refreshAnswer = () => jsonResponse(401, CLAIMED);
     await providers.getMainAuthApi().getBackstageIdentity({ optional: true });
