@@ -3725,13 +3725,15 @@ Summing them counted cached input twice and halved the rate: on `gazelle`,
 claude-sonnet-5-5 read $0.30/1M where $0.59/1M was right
 (giantswarm/giantswarm#38457).
 
-An older gateway leaves the cache types out of `input`, and subtracting them
-there would inflate the rate about tenfold. The totals tell the two apart:
-inside `input`, the cache types cannot exceed it (on `gazelle` they sit at
-99.8–99.998% of it per agent and model), while outside it a cache-heavy mix
-has them at many times `input`. So `deriveTokenRates` subtracts them only when
-they are at most 1% above `input`. A 7-day window that straddles the upgrade
-holds both conventions and can be off either way until it rolls past.
+Usage requires agentgateway v1.5.0 or later with cache-inclusive token
+semantics, including for the retained metrics in the selected window. Cache
+reads and writes are always excluded from token totals, the cache-read share
+is reads divided by `input`, and fresh input is `input` minus both cache
+types, clamped to zero. Each series is extrapolated independently, so cache
+totals can exceed `input` without changing how the tokens are counted. There
+is no convention detection or tolerance. Metrics from an older gateway that
+excludes cache tokens from `input` produce understated token totals and
+inflated rate estimates.
 
 Even counted once, the blend is the window's token mix, not the session's.
 Over a week most input is cache reads, which Claude models price at a tenth of
