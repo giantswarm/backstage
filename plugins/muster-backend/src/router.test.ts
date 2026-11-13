@@ -435,6 +435,9 @@ describe('createRouter', () => {
   });
 
   it('caches nothing for the guest user, whom several people share', async () => {
+    callTool.mockResolvedValue({
+      mcpServers: [{ name: 'gazelle-mcp-prometheus', state: 'Connected' }],
+    });
     mockGetMcpUsage.mockResolvedValue({ available: true });
     mockGetMcpToolLatency.mockResolvedValue({ available: true, tools: [] });
     const guest = mockCredentials.user.header('user:default/guest');
@@ -448,23 +451,39 @@ describe('createRouter', () => {
 
     expect(mockGetMcpUsage).toHaveBeenCalledTimes(2);
     expect(mockGetMcpToolLatency).toHaveBeenCalledTimes(2);
-  });
-
-  it('looks the prometheus server up again after a read through it failed', async () => {
-    callTool.mockResolvedValue({
-      mcpServers: [{ name: 'gazelle-mcp-prometheus', state: 'Connected' }],
-    });
-    mockGetMcpUsage
-      .mockResolvedValueOnce({ available: false, reason: 'query failed' })
-      .mockResolvedValueOnce({ available: true });
-
-    await request(app).get('/usage?hours=720');
-    await request(app).get('/usage?hours=720');
-
     expect(
       callTool.mock.calls.filter(([name]) => name === 'core_mcpserver_list'),
-    ).toHaveLength(2);
+    ).toHaveLength(4);
   });
+
+  it.each(['/usage', '/usage/tool-latency'])(
+    'discovers a replacement prometheus server after %s failed',
+    async route => {
+      callTool
+        .mockResolvedValueOnce({
+          mcpServers: [{ name: 'old-mcp-prometheus', state: 'Connected' }],
+        })
+        .mockResolvedValueOnce({
+          mcpServers: [{ name: 'new-mcp-prometheus', state: 'Connected' }],
+        });
+      const read = route === '/usage' ? mockGetMcpUsage : mockGetMcpToolLatency;
+      read
+        .mockResolvedValueOnce({ available: false, reason: 'query failed' })
+        .mockResolvedValueOnce({ available: true });
+
+      await request(app).get(`${route}?hours=720`).expect(200);
+      await request(app).get(`${route}?hours=720`).expect(200);
+
+      expect(
+        callTool.mock.calls.filter(([name]) => name === 'core_mcpserver_list'),
+      ).toHaveLength(2);
+      expect(
+        read.mock.calls.map(
+          ([, installation]) => installation.prometheusServer,
+        ),
+      ).toEqual(['old-mcp-prometheus', 'new-mcp-prometheus']);
+    },
+  );
 
   it('finds the prometheus server once for the usage reads a page makes', async () => {
     callTool.mockResolvedValue({

@@ -51,7 +51,7 @@ import { UsageCache, usageCacheKey } from './usageCache';
 
 const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
 
-/** The user `auth-backend-module-gs` signs in anyone it cannot match. */
+/** A shared identity cannot safely own a cached authorization result. */
 const SHARED_GUEST_USER = 'user:default/guest';
 
 /**
@@ -1126,10 +1126,8 @@ export async function createRouter(
   const prometheusServerCache = new UsageCache<string | undefined>();
 
   /**
-   * The Backstage user a usage answer is cached for, or none for the guest
-   * user, which the sign-in resolver gives several people at once (no
-   * verified email, no catalog user): a hit would answer one of them with
-   * what muster answered another, so their reads are not cached.
+   * The authenticated Backstage user, excluding the shared guest identity:
+   * a cache hit must not give one person another person's usage answer.
    */
   const usageReader = async (
     req: express.Request,

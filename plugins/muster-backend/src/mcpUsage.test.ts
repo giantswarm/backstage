@@ -866,7 +866,12 @@ describe('grouped usage counts', () => {
           ].join('\n');
         },
       );
-      const usage = await getMcpUsage(client, INSTALLATION, {}, hours);
+      const { usage, complete } = await readMcpUsage(
+        client,
+        INSTALLATION,
+        {},
+        hours,
+      );
       await getMcpToolLatency(client, INSTALLATION, {}, hours);
       expect(reads).toHaveLength(3);
       expect(reads.every(args => args.unlimited === 'true')).toBe(true);
@@ -890,7 +895,7 @@ describe('grouped usage counts', () => {
         ),
       ).toBe(15);
       expect(usage.data_start).toBeUndefined();
-      expect(isPartialUsage(usage)).toBe(false);
+      expect(complete).toBe(true);
     },
   );
 
@@ -911,14 +916,20 @@ describe('grouped usage counts', () => {
         return 'Result Type: matrix\nResult:';
       },
     );
-    const usage = await getMcpUsage(client, INSTALLATION, {}, 720, ['a']);
+    const { usage, complete } = await readMcpUsage(
+      client,
+      INSTALLATION,
+      {},
+      720,
+      ['a'],
+    );
     expect(queries[0]).toContain('mcpserver_name="a"');
     expect(queries).toContain(
       'sum by (outcome) (increase(muster_downstream_tool_calls_total[24h]))',
     );
     expect(usage.totals.calls).toBe(0);
     expect(usage.data_start).toBeDefined();
-    expect(isPartialUsage(usage)).toBe(false);
+    expect(complete).toBe(true);
   });
 });
 
