@@ -1083,6 +1083,12 @@ function AgentDetailPageContent() {
                 onAddSkills={canEditAgent ? openEdit : undefined}
                 isGitOpsOwned={agentManagerGate.isGitOpsOwned}
                 isPlatformOwned={isPlatformOwned}
+                releaseWithheld={
+                  managerAgent?.releaseWithheld ??
+                  (managerAgent?.managed === 'unknown'
+                    ? 'Release details are not available to your account.'
+                    : undefined)
+                }
               />
             }
           />
