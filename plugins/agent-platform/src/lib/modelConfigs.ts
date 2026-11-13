@@ -382,6 +382,19 @@ export type ModelConfigValidationOptions = {
   routed?: boolean;
 };
 
+export function modelNameError(
+  name: string,
+  routed = false,
+): string | undefined {
+  if (!name.trim()) {
+    return routed ? 'Enter a name for the model.' : 'Enter a technical name.';
+  }
+  if (name.length > 63 || !DNS_LABEL_PATTERN.test(name)) {
+    return `${routed ? 'The name' : 'Technical name'} must be lowercase letters, numbers and hyphens (max 63 characters), e.g. qwen3-vllm`;
+  }
+  return undefined;
+}
+
 /**
  * Validation problems by the field each belongs to; empty when the form can
  * be saved. The form shows each on its own field.
@@ -405,13 +418,8 @@ export function modelConfigFieldErrors(
     errors.displayName = 'Enter a name for the model.';
   }
 
-  if (!values.name.trim()) {
-    errors.name = options.routed
-      ? 'Enter a name for the model.'
-      : 'Enter a technical name.';
-  } else if (values.name.length > 63 || !DNS_LABEL_PATTERN.test(values.name)) {
-    errors.name = `${options.routed ? 'The name' : 'Technical name'} must be lowercase letters, numbers and hyphens (max 63 characters), e.g. qwen3-vllm`;
-  }
+  const nameError = modelNameError(values.name, options.routed);
+  if (nameError) errors.name = nameError;
 
   if (!values.model.trim()) {
     errors.model = 'Enter the model id.';

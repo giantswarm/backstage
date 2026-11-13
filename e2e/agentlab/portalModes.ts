@@ -103,6 +103,7 @@ export const SHELL_SPECS = [
  * {@link SHELL_SPECS}, they need a lab in `shell` mode.
  */
 export const MOBILE_SPECS = [
+  'organization-credentials.spec.ts',
   'mobile-hosting.spec.ts',
   'mobile-model-page.spec.ts',
   'mobile-navigation.spec.ts',
