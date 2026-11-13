@@ -222,9 +222,10 @@ test('the selected workspace repositories keep filter exclusions, column names a
   const writes = await stageEditor(admin, true);
   const picker = admin.getByTestId('repository-picker');
   const table = picker.getByRole('table', { name: 'Selected repositories' });
-  await expect(
-    table.getByRole('columnheader').allTextContents(),
-  ).resolves.toEqual(['Repository', 'Selection']);
+  await expect(table.getByRole('columnheader')).toHaveText([
+    'Repository',
+    'Selection',
+  ]);
   const alpha = table.getByRole('checkbox', { name: 'alpha', exact: true });
   await alpha.focus();
   await admin.keyboard.press('Space');
