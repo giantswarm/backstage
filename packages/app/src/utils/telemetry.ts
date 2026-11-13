@@ -1,4 +1,3 @@
-import sha256 from 'crypto-js/sha256';
 import {
   AGENT_PAGE_TABS,
   MODEL_PAGE_TABS,
@@ -983,15 +982,4 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
     ...payload,
     path: route,
   };
-}
-
-export function getGuestUserEntityRef(profile: {
-  email?: string;
-  displayName?: string;
-}): string {
-  const userHash = sha256(
-    profile.email ?? profile.displayName ?? '',
-  ).toString();
-
-  return `user:default/guest#${userHash}`;
 }

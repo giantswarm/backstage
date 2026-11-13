@@ -40,6 +40,9 @@ import { serverListEntries, serverListRows } from '../../lib/serverList';
 import type { ServerListEntry } from '../../lib/serverList';
 import { isRegisteredRow, MUSTER_DESCRIPTION } from '../../lib/connectorTags';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- The portal session is the gs plugin's main sign-in.
+import { useMainSessionEnd } from '@giantswarm/backstage-plugin-gs';
+import { SESSION_ENDED_DESCRIPTION } from '../../lib/sessionEnded';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
 import {
@@ -688,9 +691,17 @@ function ConnectorsTable({
 
 function Panel({ search }: CustomizeConnectorsPanelProps) {
   const { activeInstallation, isLoading } = useMusterInstance();
+  const sessionEnd = useMainSessionEnd();
 
   let body;
-  if (isLoading) {
+  if (sessionEnd && (isLoading || !activeInstallation)) {
+    body = (
+      <EmptyStateCard
+        title="Could not read your connectors"
+        description={SESSION_ENDED_DESCRIPTION}
+      />
+    );
+  } else if (isLoading) {
     body = <LoadingIndicator label="Reading your connectors…" />;
   } else if (!activeInstallation) {
     body = (

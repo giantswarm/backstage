@@ -7,6 +7,7 @@ import {
 } from '@backstage/core-plugin-api';
 import { readPortals } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { ShellSignInPage } from '../../agentShell/ShellSignInPage';
+import { SignedInElsewhereNotice } from '../../agentShell/SignedInElsewhereNotice';
 import { shellSignInProviders, signInProviders } from '../signInProviders';
 
 /**
@@ -43,10 +44,13 @@ export function AppSignInPage(props: {
   // an instant popup). Several show the chooser; an existing
   // session with any of them is still picked up silently.
   return (
-    <SignInPage
-      {...props}
-      auto={page.providers.length === 1}
-      providers={page.providers}
-    />
+    <>
+      <SignedInElsewhereNotice padded />
+      <SignInPage
+        {...props}
+        auto={page.providers.length === 1}
+        providers={page.providers}
+      />
+    </>
   );
 }

@@ -3,6 +3,7 @@ import {
   AuthRequestOptions,
   ConfigApi,
   OAuthRequestApi,
+  SessionState,
 } from '@backstage/core-plugin-api';
 import {
   AuthApi,
@@ -11,7 +12,9 @@ import {
   GSAuthProvidersApi,
   GSAuthProvidersApiCreateOptions,
   gsAuthProvidersApiRef,
+  MainSessionEnd,
 } from './types';
+import { MainSessionEndStore } from './mainSessionEnd';
 import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
 import {
   ClusterToken,
@@ -144,6 +147,10 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   // Whether a person started what runs now: only then may a cluster-token
   // mint open the main sign-in.
   private readonly hasUserGesture: () => boolean;
+
+  // Recorded by the main provider's connectors, cleared once either of its
+  // APIs holds a session again.
+  private readonly mainSessionEnd = new MainSessionEndStore();
 
   constructor(options: GSAuthProvidersApiCreateOptions) {
     this.configApi = options.configApi;
@@ -507,6 +514,9 @@ export class GSAuthProviders implements GSAuthProvidersApi {
       signInConnectorMemory: isMainProvider
         ? this.signInConnectorMemory
         : undefined,
+      onSessionEnded: isMainProvider
+        ? reason => this.mainSessionEnd.record(reason)
+        : undefined,
       sessionTransform: toOAuth2Session,
       popupOptions: {
         size: {
@@ -518,6 +528,15 @@ export class GSAuthProviders implements GSAuthProvidersApi {
 
     const defaultScopes = getOIDCScopes(this.configApi);
     const authApi = OAuth2.create({ authConnector, defaultScopes });
+    if (isMainProvider) {
+      // The main API and the fallback card share one backend session: a
+      // sign-in through either one restores it.
+      authApi.sessionState$().subscribe(state => {
+        if (state === SessionState.SignedIn) {
+          this.mainSessionEnd.clear();
+        }
+      });
+    }
     const lasting = new LastingIdTokens({
       authApi,
       refresh: async minLifetimeLeft => {
@@ -607,6 +626,10 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     );
 
     return [...kubernetesAuthProviders, ...this.mcpAuthProviders];
+  }
+
+  getMainSessionEnd(): MainSessionEnd {
+    return this.mainSessionEnd;
   }
 
   getBrokerCoveredInstallations(): string[] {

@@ -75,7 +75,7 @@ export type {
   SignedIn,
   SignInNoun,
 } from './useServerSignIn';
-export { toneColors, severityTone, VIOLET } from './tones';
+export { toneColors, severityTone, SEVERITY_DOT_TONE, VIOLET } from './tones';
 export type { Tone, ToneColors } from './tones';
 export { useServerPageLinks } from './useServerPageLinks';
 export type {
