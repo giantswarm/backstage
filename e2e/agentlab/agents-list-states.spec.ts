@@ -5,7 +5,8 @@ import { lab } from './lab';
 /**
  * Customize › Agents explains a list that is empty or still incomplete: an
  * environment without kagent, an environment whose inventory probe was refused, and a list whose rows are in
- * while another environment is still being read.
+ * while another environment is still being read, with no second bar while the
+ * Last used sort waits for its first read.
  *
  * The lab runs kagent, answers its probe and is the only environment, so each
  * state is staged at the browser and everything else is real: the probe's
@@ -176,14 +177,13 @@ test('an environment that refused its inventory probe shows the gate naming it, 
   ).toHaveCount(0);
 });
 
-test('rows in while another environment is still read show the loading-more bar over the list', async ({
-  labAgent,
-  signInAs,
-}) => {
-  const page = await signInAs(lab.users.admin);
-  await dropPersistedCaches(page);
-  // A second environment, cloned from the lab's: the home stays the lab
-  // (the first entry with the main sign-in provider).
+/**
+ * Adds a second environment to the signed-in config, cloned from the lab's
+ * (the home stays the lab: the first entry with the main sign-in provider),
+ * and holds every request to it: it is still being read for as long as the
+ * test looks. Returns the held requests.
+ */
+async function addSlowEnvironment(page: Page): Promise<Route[]> {
   await page.route('**/api/gs/config', async route => {
     const response = await route.fetch();
     const config = (await response.json()) as {
@@ -204,8 +204,6 @@ test('rows in while another environment is still read show the loading-more bar 
       },
     });
   });
-  // Every request to the second environment stays pending: it is still being
-  // read for as long as the test looks.
   const held: Route[] = [];
   await page.route('**/api/kubernetes/proxy/**', async route => {
     if (isClusterRequest(route, SLOW_INSTALLATION)) {
@@ -214,6 +212,16 @@ test('rows in while another environment is still read show the loading-more bar 
     }
     await route.fallback();
   });
+  return held;
+}
+
+test('rows in while another environment is still read show the loading-more bar over the list', async ({
+  labAgent,
+  signInAs,
+}) => {
+  const page = await signInAs(lab.users.admin);
+  await dropPersistedCaches(page);
+  const held = await addSlowEnvironment(page);
 
   await open(page, '/customize/agents');
 
@@ -225,5 +233,70 @@ test('rows in while another environment is still read show the loading-more bar 
     page.getByRole('progressbar', { name: 'Loading more agents' }),
     'a thin bar says more agents may still arrive',
   ).toBeVisible();
+  expect(held.length, 'the second environment was asked').toBeGreaterThan(0);
+});
+
+test('Last used waiting for its first read shows one progress bar, not the loading-more bar with it', async ({
+  labAgent,
+  signInAs,
+}) => {
+  const page = await signInAs(lab.users.admin);
+  await dropPersistedCaches(page);
+  // The person's stored sort: the list waits for the sessions before it
+  // shows, so it never reorders under them.
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      'gs-agent-platform-agents-sort',
+      JSON.stringify('lastUsed'),
+    );
+  });
+  const held = await addSlowEnvironment(page);
+  // The lab's session list stays pending until released: Last used waits
+  // for as long as the test looks.
+  const heldSessions: Route[] = [];
+  let releaseSessions = false;
+  await page.route(
+    url => url.pathname.endsWith('/kagent/sessions'),
+    async route => {
+      if (releaseSessions) {
+        await route.fallback();
+        return;
+      }
+      heldSessions.push(route);
+    },
+  );
+  const thinBar = page.getByRole('progressbar', {
+    name: 'Loading more agents',
+  });
+
+  await open(page, '/customize/agents');
+
+  const reading = page.getByRole('progressbar', {
+    name: 'Reading your agents…',
+  });
+  await expect(reading, 'the panel says it is reading the agents').toBeVisible({
+    timeout: 60_000,
+  });
+  await expect
+    .poll(() => heldSessions.length, { timeout: 60_000 })
+    .toBeGreaterThan(0);
+  // Time for the lab's rows to land and for the bar's 250 ms delay: the old
+  // panel laid the thin bar over the indicator by then.
+  await page.waitForTimeout(2_000);
+  await expect(reading).toBeVisible();
+  await expect(thinBar, 'no thin bar over the loading indicator').toHaveCount(
+    0,
+  );
+
+  // The sessions answer: the list shows, the thin bar over it, since the
+  // second environment is still being read.
+  releaseSessions = true;
+  await Promise.all(heldSessions.map(route => route.fallback()));
+  await expect(
+    rosterLinkOf(page, labAgent.name),
+    'the list shows once Last used has its first read',
+  ).toBeVisible({ timeout: 60_000 });
+  await expect(thinBar, 'the thin bar is over the list').toBeVisible();
+  await expect(reading).toHaveCount(0);
   expect(held.length, 'the second environment was asked').toBeGreaterThan(0);
 });
