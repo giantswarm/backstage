@@ -5,8 +5,7 @@ import type {
 import type { AgentRow } from '../components/AgentsDataProvider';
 import {
   deriveTokenRates,
-  sumDistinctTokens,
-  sumInputTokens,
+  isCacheTokenType,
   type TokenRates,
 } from './costEstimate';
 import { WINDOW_DAYS } from './llmUsageQueries';
@@ -315,42 +314,20 @@ function sumBy(
 }
 
 /**
- * Sum a token vector by `key`, counting each token once.
- *
- * A gateway since v1.5.0 counts both cache types inside `input` as well as on
- * their own, an older one beside it. Which holds is decided per series (the
- * labels without `gen_ai_token_type`) by {@link sumDistinctTokens}, and only
- * then are the series added up by `key`, so every table and the totals are
- * sums of the same per-series counts and agree with each other.
+ * Sum a token vector by `key`, counting each token once: the gateway counts
+ * both cache types inside `input` as well as on their own, so they are left
+ * out of every total (`isCacheTokenType`).
  */
 function sumTokensBy(
   samples: MimirMetricSample[] | undefined,
   key: (labels: Record<string, string>) => string,
 ): Map<string, number> {
-  const bySeries = new Map<
-    string,
-    { group: string; types: Record<string, number> }
-  >();
-  for (const sample of samples ?? []) {
-    const value = instantValue(sample);
-    if (value === undefined) {
-      continue;
-    }
-    const labels = sample.metric ?? {};
-    const { gen_ai_token_type: type = '', ...rest } = labels;
-    const id = JSON.stringify(
-      Object.entries(rest).sort(([a], [b]) => a.localeCompare(b)),
-    );
-    const entry = bySeries.get(id) ?? { group: key(labels), types: {} };
-    entry.types[type] = (entry.types[type] ?? 0) + value;
-    bySeries.set(id, entry);
-  }
-
-  const totals = new Map<string, number>();
-  for (const { group, types } of bySeries.values()) {
-    totals.set(group, (totals.get(group) ?? 0) + sumDistinctTokens(types));
-  }
-  return totals;
+  return sumBy(
+    samples?.filter(
+      sample => !isCacheTokenType(sample.metric?.gen_ai_token_type),
+    ),
+    key,
+  );
 }
 
 function sumValues(totals: Map<string, number>): number {
@@ -445,8 +422,7 @@ export function reduceTokenTypes(
 }
 
 /**
- * Cache reads over every input token, each counted once: `input` alone on a
- * gateway that counts the cache types inside it, all three otherwise.
+ * Cache reads over every input token: `input`, which holds the cache types.
  *
  * The figure that says whether prompt caching is paying off: cache reads are
  * priced at a fraction of fresh input, so this falling towards zero is a bill
@@ -454,12 +430,7 @@ export function reduceTokenTypes(
  * not the same as caching being broken.
  */
 export function cacheReadShare(types: TokenTypeTotals): number | undefined {
-  const input = sumInputTokens({
-    input: types.input,
-    input_cache_read: types.inputCacheRead,
-    input_cache_write: types.inputCacheWrite,
-  });
-  return percent(types.inputCacheRead, input);
+  return percent(types.inputCacheRead, types.input);
 }
 
 /**
@@ -1313,10 +1284,8 @@ export const FRESH_INPUT_SERIES = 'fresh_input';
 /**
  * Replace the `input` series of a daily series by token type with
  * {@link FRESH_INPUT_SERIES}: input that was neither read from nor written to
- * cache. On a gateway since v1.5.0 `input` holds both cache types, so only
- * fresh input stacks with the cache types and output to every token, once.
- * The convention is decided per day by {@link sumInputTokens}: on an older
- * gateway `input` already is fresh input.
+ * cache. `input` holds both cache types, so only fresh input stacks with
+ * the cache types and output to every token, once.
  */
 export function withFreshInput(daily: LlmDailySeries): LlmDailySeries {
   if (!daily.series.includes('input')) {
@@ -1326,14 +1295,12 @@ export function withFreshInput(daily: LlmDailySeries): LlmDailySeries {
   const rows = daily.rows.map(row => {
     const cacheRead = seriesValue(row, 'input_cache_read');
     const cacheWrite = seriesValue(row, 'input_cache_write');
-    const input = sumInputTokens({
-      input: seriesValue(row, 'input'),
-      input_cache_read: cacheRead,
-      input_cache_write: cacheWrite,
-    });
-    // Within the convention check's tolerance the cache types may exceed
-    // `input` a little; that is no fresh input, not a negative amount.
-    const fresh = Math.max(input - cacheRead - cacheWrite, 0);
+    // `increase()` extrapolates each series on its own, so the cache types can
+    // come out a little above `input`: that is no fresh input, not less.
+    const fresh = Math.max(
+      seriesValue(row, 'input') - cacheRead - cacheWrite,
+      0,
+    );
     const next: LlmDailyEntry = { ...row, [FRESH_INPUT_SERIES]: fresh };
     delete next.input;
     return next;
