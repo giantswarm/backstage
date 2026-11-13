@@ -2,4 +2,4 @@
 '@giantswarm/backstage-plugin-muster-backend': patch
 ---
 
-Read connector usage with grouped call counts and native histogram quantiles while preserving daily buckets and query failure fallbacks.
+Read connector usage with grouped call counts while preserving daily buckets, cacheable histogram range queries and query failure fallbacks.

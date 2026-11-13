@@ -9,16 +9,15 @@ const installation = {
 
 type Call = { tool: string; arguments: Record<string, unknown> };
 
-function fixture(optimized: boolean, nativeValue = '4.6') {
+function fixture(optimized: boolean, histogramValue?: string) {
   const calls: Call[] = [];
   const client = {
     callTool: async (tool: string, arguments_: Record<string, unknown>) => {
       calls.push({ tool, arguments: arguments_ });
       const query = String(arguments_.query);
-      const native = query.startsWith('histogram_quantile(');
       const combined = query.includes('sum by (mcpserver_name, tool, outcome)');
-      if (!optimized && (native || combined)) throw new Error('query failed');
-      const end = Date.parse(String(arguments_.time ?? arguments_.end)) / 1000;
+      if (!optimized && combined) throw new Error('query failed');
+      const end = Date.parse(String(arguments_.end)) / 1000;
       const start = Date.parse(String(arguments_.start)) / 1000;
       const dimensions = query.match(/sum by \(([^)]+)\)/)![1].split(', ');
       const rows = [
@@ -43,17 +42,10 @@ function fixture(optimized: boolean, nativeValue = '4.6') {
             ] as const)
           : ([['', row.count]] as const)) {
           const labels = { ...row, le } as Record<string, unknown>;
-          const names = native
-            ? dimensions.filter(name => name !== 'le')
-            : dimensions;
+          const names = dimensions;
           const key = names.map(name => `${name}="${labels[name]}"`).join(', ');
           groups.set(key, (groups.get(key) ?? 0) + value);
         }
-      }
-      if (native) {
-        return `Result Type: vector\nResult: ${[...groups.keys()]
-          .map(labels => `{${labels}} => ${nativeValue} @[${end}]`)
-          .join('\n')}`;
       }
       const step = arguments_.step === '1h' ? 3600 : 86400;
       const timestamp = Math.ceil(Date.now() / (step * 1000)) * step;
@@ -63,7 +55,10 @@ function fixture(optimized: boolean, nativeValue = '4.6') {
           ([labels, value]) =>
             `{${labels}} =>\n${points
               .filter(time => time >= start && time <= end)
-              .map(time => `${value} @[${time}]`)
+              .map(
+                time =>
+                  `${query.includes('_bucket') && histogramValue !== undefined ? histogramValue : value} @[${time}]`,
+              )
               .join('\n')}`,
         )
         .join('\n')}`;
@@ -100,7 +95,7 @@ describe('optimized usage queries', () => {
       expect(isPartialUsage(actual)).toBe(false);
       expect(
         optimized.calls.some(call => call.tool.endsWith('execute_query')),
-      ).toBe(hours !== 49);
+      ).toBe(false);
     },
   );
 
@@ -145,7 +140,7 @@ describe('optimized usage queries', () => {
     expect(actual).toEqual(expected);
   });
 
-  it('uses three reads for the unfiltered page and an explicit window end', async () => {
+  it('uses three cacheable range reads for the unfiltered page', async () => {
     const { client, calls } = fixture(true);
     await getMcpUsage(client, installation, { authToken: 'fixture' }, 720);
     const latency = await getMcpToolLatency(client, installation, {}, 720);
@@ -154,11 +149,12 @@ describe('optimized usage queries', () => {
       { tool: 'read', p95_seconds: 4.6 },
       { tool: 'write', p95_seconds: 4.6 },
     ]);
+    expect(calls.every(call => call.tool.endsWith('execute_range_query'))).toBe(
+      true,
+    );
     expect(
-      calls
-        .filter(call => call.tool.endsWith('execute_query'))
-        .map(call => call.arguments.time),
-    ).toEqual(['2026-11-13T00:00:00.000Z', '2026-11-13T00:00:00.000Z']);
+      calls.every(call => call.arguments.end === '2026-11-13T00:00:00.000Z'),
+    ).toBe(true);
     expect(calls[0].arguments.query).toContain('[24h]');
   });
 

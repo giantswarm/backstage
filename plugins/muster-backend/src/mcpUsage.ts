@@ -541,27 +541,7 @@ async function openUsageQueries(
   ): Promise<Map<string, number | null>> => {
     const grouping = groupLabel ? `${groupLabel}, le` : 'le';
     const bucketsQuery = `sum by (${grouping}) (increase(${metric}[${step}]))`;
-    if (startSeconds % stepSeconds === 0 && endSeconds % stepSeconds === 0) {
-      try {
-        const series = await runQuery(QUERY_TOOL, {
-          query: `histogram_quantile(0.95, sum_over_time((${bucketsQuery})[${
-            rangeHours
-          }h:${step}]))`,
-          time: new Date(endSeconds * 1000).toISOString(),
-        });
-        return new Map(
-          series.map(entry => {
-            const value = entry.points[0]?.value;
-            return [
-              groupLabel ? (entry.labels[groupLabel] ?? '') : '',
-              value !== undefined && Number.isFinite(value) ? value : null,
-            ];
-          }),
-        );
-      } catch {
-        // Range reads preserve availability when the long-window store path fails.
-      }
-    }
+
     return new Map(
       [...bucketTotals(await rangeQuery(bucketsQuery), groupLabel)].map(
         ([group, buckets]) => [group, quantileFromBuckets(0.95, buckets)],
