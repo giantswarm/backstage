@@ -9,9 +9,10 @@ import type { ExternalUrlConsentApi } from '@giantswarm/backstage-plugin-ui-reac
 
 /**
  * muster answered a tool call with URL elicitations (MCP 2026-07-28
- * `input_required`): the tool has not run. {@link MusterApiClient} puts them
- * to the person and sends the call again; this reaches a caller only when it
- * could not (no consent dialog in the app, or muster kept asking).
+ * `input_required`): the tool has not run. For a call that declares URL
+ * elicitation {@link MusterApiClient} puts them to the person and sends the
+ * call again; this reaches a caller only when it could not (no consent dialog
+ * in the app, or muster kept asking).
  */
 export class MusterInputRequiredError extends Error {
   override readonly name = 'MusterInputRequiredError';
@@ -27,31 +28,19 @@ export class MusterInputRequiredError extends Error {
 }
 
 /**
- * How long the person's answer to a page stands for the same page: muster
- * keeps a pending sign-in's link for minutes, and a page that polls a tool
- * would otherwise put the same page to the person on every poll. A new link
- * is asked about again.
- */
-export const ELICITATION_ANSWER_REUSE_MS = 2 * 60_000;
-
-/**
- * Puts the URL elicitations of a call to the person through the portal's
- * consent dialog, one after another, and answers each with the person's
- * choice (`accept` opens the page). An answer stands for its page, asked by
- * the same server, for {@link ELICITATION_ANSWER_REUSE_MS}: the page is not
- * opened again, and neither is the dialog. Another server asking for the same
- * page is asked about: the person answered the server the dialog named.
+ * Puts the URL elicitations of one person's action -- a call they started
+ * with a click, and its retries -- to them through the portal's consent
+ * dialog, one after another, and answers each with their choice (`accept`
+ * opens the page). A page is put to them once per action: when muster asks
+ * for it again (a sign-in they accepted and did not finish), it is answered
+ * `cancel` without a dialog, and the call ends in muster's answer to that
+ * until they act again. Concurrent actions asking for the same page share
+ * one dialog ({@link ExternalUrlConsentApi.open}).
  */
 export class UrlElicitationAnswers {
-  private readonly answers = new Map<
-    string,
-    { action: MusterElicitationAction; until: number }
-  >();
+  private readonly asked = new Set<string>();
 
-  constructor(
-    private readonly consentApi: ExternalUrlConsentApi,
-    private readonly now: () => number = Date.now,
-  ) {}
+  constructor(private readonly consentApi: ExternalUrlConsentApi) {}
 
   /** The retry's answer to the elicitations of a call of `tool`. */
   async answer(
@@ -77,19 +66,14 @@ export class UrlElicitationAnswers {
   ): Promise<MusterElicitationAction> {
     const requester = musterServerOfTool(tool) ?? 'muster';
     const key = JSON.stringify([requester, elicitation.url]);
-    const kept = this.answers.get(key);
-    if (kept && kept.until > this.now()) {
-      return kept.action;
+    if (this.asked.has(key)) {
+      return 'cancel';
     }
-    const action = await this.consentApi.open({
+    this.asked.add(key);
+    return this.consentApi.open({
       url: elicitation.url,
       requester,
       message: elicitation.message,
     });
-    this.answers.set(key, {
-      action,
-      until: this.now() + ELICITATION_ANSWER_REUSE_MS,
-    });
-    return action;
   }
 }

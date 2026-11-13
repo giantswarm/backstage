@@ -13,6 +13,7 @@ import {
   type PollingQuery,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { musterServerListQueryKey } from '../../hooks/useMusterServerAvailability';
 import { musterApiRef } from '../../apis';
 import { musterPollingOptions } from '../../lib/musterPolling';
 import type { McpServerListResponse, ToolSummary } from '../../apis/types';
@@ -170,7 +171,7 @@ export function NewConnectorTestPage() {
   // becoming visible on top: the client keeps focus refetches off and
   // `staleTime` at 0). Not after muster refused the person either.
   const { data: runtimeData } = useQuery({
-    queryKey: ['muster', 'servers', installation],
+    queryKey: musterServerListQueryKey(installation),
     queryFn: () => musterApi.listServers(installation),
     enabled: Boolean(installation && serverName),
     ...musterPollingOptions(

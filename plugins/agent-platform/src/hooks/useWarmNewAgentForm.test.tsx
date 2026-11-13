@@ -4,13 +4,11 @@ import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   musterApiRef,
+  musterServerListQueryKey,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
 
-import {
-  musterAgentManagerInfoQueryKey,
-  musterServersQueryKey,
-} from '../lib/queryKeys';
+import { musterAgentManagerInfoQueryKey } from '../lib/queryKeys';
 import {
   NewAgentFormProvider,
   useNewAgentForm,
@@ -20,7 +18,7 @@ import { useOwnerField } from '../components/NewAgentPage/hooks/useOwnerField';
 import { useWarmNewAgentForm } from './useWarmNewAgentForm';
 
 // The organizations agent-manager names for the person
-// (`list_my_organizations`).
+// (`list_organizations`).
 jest.mock('../components/OrganizationDirectoryProvider', () => ({
   ...jest.requireActual('../components/OrganizationDirectoryProvider'),
   useOrganizationDirectory: () =>
@@ -87,7 +85,7 @@ describe('useWarmNewAgentForm', () => {
       ).toEqual({ namespaces: { default: 'kagent', managed: ['org-acme'] } }),
     );
     expect(
-      queryClient.getQueryData(musterServersQueryKey('gazelle')),
+      queryClient.getQueryData(musterServerListQueryKey('gazelle')),
     ).toBeDefined();
     expect(calls).toEqual(['gazelle']);
   });
@@ -103,7 +101,7 @@ describe('useWarmNewAgentForm', () => {
 
     await waitFor(() => expect(calls).toEqual(['gazelle']));
     expect(
-      queryClient.getQueryData(musterServersQueryKey('alpha')),
+      queryClient.getQueryData(musterServerListQueryKey('alpha')),
     ).toBeUndefined();
   });
 
@@ -113,7 +111,7 @@ describe('useWarmNewAgentForm', () => {
     await new Promise(resolve => setTimeout(resolve, 20));
     expect(calls).toEqual([]);
     expect(
-      queryClient.getQueryData(musterServersQueryKey('gazelle')),
+      queryClient.getQueryData(musterServerListQueryKey('gazelle')),
     ).toBeUndefined();
   });
 

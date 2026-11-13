@@ -3,9 +3,10 @@ import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
 import { ResponseError } from '@backstage/errors';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 // eslint-disable-next-line @backstage/no-mixed-plugin-imports -- The GitHub connection prompt reads the connector through the Muster API.
+import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
 import {
   ExternalUrlConsentManager,
@@ -21,9 +22,18 @@ import { fakeOrganizationsMuster } from '../../lib/__fixtures__/agentManagerOrga
 import type {
   CredentialOperation,
   CredentialOperationRead,
+  CredentialResourceResult,
 } from '../../lib/credentialOperations';
 import { organizationsRouteRef } from '../../routes';
 import { CredentialFormPage } from './CredentialFormPage';
+import { PortalSessionEndedError } from '../../lib/portalSession';
+
+// Sign in again reloads the page, which jsdom cannot.
+const mockReloadPage = jest.fn();
+jest.mock('../../lib/portalSession', () => ({
+  ...jest.requireActual('../../lib/portalSession'),
+  reloadPage: () => mockReloadPage(),
+}));
 
 const OPERATION = 'a1'.repeat(24);
 const VALUE = 'sk-ant-api03-never-shown';
@@ -100,7 +110,7 @@ function fakeCredentialsApi(
 ) {
   return {
     getOperation: jest.fn(reader),
-    saveOperation: jest.fn(async () => ({
+    saveOperation: jest.fn(async (): Promise<CredentialResourceResult> => ({
       kind: 'model' as const,
       name: 'claude-sonnet',
       credentials: [
@@ -238,6 +248,31 @@ describe('CredentialFormPage', () => {
     );
   });
 
+  it('has the model views read the saved model again', async () => {
+    const user = userEvent.setup();
+    const api = fakeCredentialsApi();
+    const queryClient = await renderForm(api);
+    // The models list as read before the save, still fresh.
+    const gvk = ModelConfig.getGVK();
+    const listKey = [
+      'cluster',
+      'gazelle',
+      'list',
+      gvk.group,
+      gvk.apiVersion,
+      gvk.plural,
+    ];
+    queryClient.setQueryData(listKey, []);
+
+    await user.type(await screen.findByLabelText(/^Value/), VALUE);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Credential saved')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(queryClient.getQueryState(listKey)?.isInvalidated).toBe(true),
+    );
+  });
+
   it('asks for every value before it saves, and saves them all at once', async () => {
     const user = userEvent.setup();
     const twoPairs: CredentialOperation = {
@@ -282,6 +317,197 @@ describe('CredentialFormPage', () => {
     );
   });
 
+  describe('a replacement of a credential', () => {
+    // replace_organization_credential: the Secret only, for the objects
+    // stored when it was prepared.
+    const REPLACEMENT: CredentialOperation = {
+      ...CONFIRMATION,
+      changes: [],
+      references: [
+        {
+          kind: 'ModelConfig',
+          name: 'claude-sonnet',
+          key: 'api-key',
+          provider: 'Anthropic',
+        },
+        {
+          kind: 'EgressPolicy',
+          name: 'anthropic-egress',
+          key: 'api-key',
+          origins: ['https://api.anthropic.com:443'],
+        },
+      ],
+      result: {
+        kind: 'credential',
+        name: 'tenant-credential-anthropic',
+        pending: true,
+        credentials: [
+          {
+            secret: 'tenant-credential-anthropic',
+            key: 'api-key',
+            state: 'replace',
+          },
+        ],
+      },
+    };
+
+    it('says it writes the Secret only, for every object that uses it, and where each sends it', async () => {
+      await renderForm(fakeCredentialsApi(read(REPLACEMENT)));
+
+      expect(
+        await screen.findByText(
+          /The value of Secret tenant-credential-anthropic, key api-key\. No model, connector or egress policy is changed\./,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Used by')).toBeInTheDocument();
+      expect(
+        screen.getByText(/Model claude-sonnet, key api-key/),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/Egress policy anthropic-egress, key api-key/),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Anthropic')).toBeInTheDocument();
+      expect(
+        screen.getByText('https://api.anthropic.com:443'),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText(/^Value/)).toHaveAccessibleDescription(
+        expect.stringContaining('It replaces the current value once saved.'),
+      );
+    });
+
+    it('asks for the value, not a new one, when the Secret does not exist yet', async () => {
+      await renderForm(
+        fakeCredentialsApi(
+          read({
+            ...REPLACEMENT,
+            result: {
+              ...REPLACEMENT.result,
+              credentials: [
+                {
+                  secret: 'tenant-credential-anthropic',
+                  key: 'api-key',
+                  state: 'missing',
+                },
+              ],
+            },
+          }),
+        ),
+      );
+
+      const value = await screen.findByLabelText(/^Value/);
+      expect(value).not.toHaveAccessibleDescription(
+        expect.stringContaining('replaces'),
+      );
+      expect(screen.getByText('Sets')).toBeInTheDocument();
+      expect(screen.queryByText('Replaces')).not.toBeInTheDocument();
+    });
+
+    it('says the value is saved for the objects that use it', async () => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi(read(REPLACEMENT));
+      api.saveOperation.mockResolvedValueOnce({
+        kind: 'credential',
+        name: 'tenant-credential-anthropic',
+        credentials: [
+          {
+            secret: 'tenant-credential-anthropic',
+            key: 'api-key',
+            state: 'present',
+          },
+        ],
+      });
+      await renderForm(api);
+
+      await user.type(await screen.findByLabelText(/^Value/), VALUE);
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(
+        await screen.findByText(
+          /The new value of Secret tenant-credential-anthropic is saved/,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('does not say to start again on a conflict that is not a change of its objects', async () => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi(read(REPLACEMENT));
+      api.saveOperation.mockRejectedValueOnce(
+        await refusal(
+          409,
+          'conflict',
+          'credential save is in progress; retry after it finishes',
+        ),
+      );
+      await renderForm(api);
+
+      await user.type(await screen.findByLabelText(/^Value/), VALUE);
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(await screen.findByText('Not saved')).toBeInTheDocument();
+      expect(
+        screen.queryByText('The objects that use this credential changed'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('says to prepare it again when the objects that use it changed', async () => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi(read(REPLACEMENT));
+      api.saveOperation.mockRejectedValueOnce(
+        // agent-manager's answer since giantswarm/agent-manager#373.
+        await refusal(
+          409,
+          'credential_consumers_changed',
+          'the objects that use this credential, or where they send it, changed since the replacement was prepared; prepare it again',
+        ),
+      );
+      await renderForm(api);
+
+      await user.type(await screen.findByLabelText(/^Value/), VALUE);
+      const backLinks = screen.getAllByRole('link', {
+        name: 'Back to payments',
+      }).length;
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(
+        await screen.findByText('The objects that use this credential changed'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /Start the replacement again from the organization's tab/,
+        ),
+      ).toBeInTheDocument();
+      // The same request would be refused again: no value, no Save, and the
+      // way back to the tab where it starts again.
+      expect(screen.queryByLabelText(/^Value/)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+      expect(
+        screen.getAllByRole('link', { name: 'Back to payments' }),
+      ).toHaveLength(backLinks + 1);
+      expect(api.saveOperation).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps an older agent-manager's conflict as Not saved, whatever its text", async () => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi(read(REPLACEMENT));
+      api.saveOperation.mockRejectedValueOnce(
+        await refusal(
+          409,
+          'conflict',
+          'the objects in agents-payments-x7k2q that use Secret tenant-credential-anthropic, or where they send its value, changed since the preparation; prepare it again',
+        ),
+      );
+      await renderForm(api);
+
+      await user.type(await screen.findByLabelText(/^Value/), VALUE);
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(await screen.findByText('Not saved')).toBeInTheDocument();
+      expect(
+        screen.queryByText('The objects that use this credential changed'),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it('reads the request again when it changed, and asks for the value again', async () => {
     const user = userEvent.setup();
     const api = fakeCredentialsApi();
@@ -298,6 +524,75 @@ describe('CredentialFormPage', () => {
     ).toBeInTheDocument();
     await waitFor(() => expect(api.getOperation).toHaveBeenCalledTimes(2));
     expect(await screen.findByLabelText(/^Value/)).toHaveValue('');
+  });
+
+  describe('when the portal refuses the session token', () => {
+    // A restart of a portal without a database loses the keys it signed the
+    // session token with; nothing reaches agent-manager.
+    it('says the session ended and to sign in again, and drops the value', async () => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi();
+      // What the client answers for the portal's refusal of the session
+      // token (AgentManagerCredentialsApi.test.ts).
+      api.saveOperation.mockRejectedValueOnce(new PortalSessionEndedError());
+      await renderForm(api);
+
+      const value = await screen.findByLabelText(/^Value/);
+      await user.type(value, VALUE);
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(
+        await screen.findByText('Your portal session ended'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Sign in again' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/token verification/)).toBeNull();
+      expect(screen.queryByText('Not saved')).toBeNull();
+      expect(screen.getByLabelText(/^Value/)).toHaveValue('');
+      expect(document.body.innerHTML).not.toContain(VALUE);
+
+      await user.click(screen.getByRole('button', { name: 'Sign in again' }));
+      expect(mockReloadPage).toHaveBeenCalledTimes(1);
+    });
+
+    it('says the session ended when a cancel is refused, not "Not cancelled"', async () => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi();
+      api.cancelOperation.mockRejectedValueOnce(new PortalSessionEndedError());
+      await renderForm(api);
+
+      await user.click(
+        await screen.findByRole('button', { name: 'Cancel request' }),
+      );
+
+      expect(
+        await screen.findByText('Your portal session ended'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Not cancelled')).toBeNull();
+    });
+
+    it('opens the same request again after the sign-in, from its address', async () => {
+      const refused = fakeCredentialsApi(async () => {
+        throw new PortalSessionEndedError();
+      });
+      const first = await renderForm(refused);
+      expect(
+        await screen.findByText('Your portal session ended'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/this page opens it again after the sign-in/),
+      ).toBeInTheDocument();
+      first.clear();
+      cleanup();
+
+      // The reload: the same address, a session the portal accepts.
+      const api = fakeCredentialsApi();
+      await renderForm(api);
+
+      expect(await screen.findByLabelText(/^Value/)).toBeInTheDocument();
+      expect(api.getOperation).toHaveBeenCalledWith('gazelle', OPERATION);
+    });
   });
 
   it('keeps the value on a refusal that a retry may fix', async () => {
@@ -406,6 +701,10 @@ describe('CredentialFormPage', () => {
     expect(
       await screen.findByText(/connect GitHub to open the pull request/),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText('Authorize GitHub for agent-manager'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Not saved')).not.toBeInTheDocument();
   });
 
   it('cancels the request', async () => {

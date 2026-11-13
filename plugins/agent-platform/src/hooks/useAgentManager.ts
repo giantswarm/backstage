@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { queryOptions, useQueries, useQuery } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AgentManagerClient } from '../apis/AgentManagerClient';
@@ -13,7 +13,7 @@ import {
   useMusterServerAvailability,
   type MusterServerAvailability,
   type MusterServerPresence,
-} from './useMusterServerAvailability';
+} from '@giantswarm/backstage-plugin-muster';
 
 /**
  * agent-manager's tools on one installation, as the signed-in person —
@@ -31,6 +31,23 @@ export function useAgentManagerClient(
         : undefined,
     [musterApi, installation],
   );
+}
+
+/**
+ * `get_info` of one installation as a query: every reader shares one cache
+ * entry, so they share its options too. Installation configuration read
+ * through the person's session: a minute of staleness is fine.
+ */
+export function agentManagerInfoQuery(
+  musterApi: ReturnType<typeof useMusterPluginApi>,
+  installation: string,
+) {
+  return queryOptions({
+    queryKey: musterAgentManagerInfoQueryKey(installation),
+    queryFn: () => new AgentManagerClient(musterApi!, installation).getInfo(),
+    staleTime: 60_000,
+    retry: false,
+  });
 }
 
 export type AgentManagerInfoState = {
@@ -55,13 +72,11 @@ export type AgentManagerInfoState = {
 export function useAgentManagerInfo(
   installation: string | undefined,
 ): AgentManagerInfoState {
+  const musterApi = useMusterPluginApi();
   const client = useAgentManagerClient(installation);
   const { data, error, isPending, fetchStatus, refetch } = useQuery({
-    queryKey: musterAgentManagerInfoQueryKey(installation ?? ''),
+    ...agentManagerInfoQuery(musterApi, installation ?? ''),
     enabled: Boolean(client),
-    queryFn: () => client!.getInfo(),
-    staleTime: 60_000,
-    retry: false,
   });
   const isLoading = isAwaitingData({ isPending, fetchStatus });
   return {
@@ -107,13 +122,10 @@ export function useCreatesAgentsNowhere(installations: string[]): {
   // agent-manager as the person.
   const infos = useQueries({
     queries: installations.map(installation => ({
-      queryKey: musterAgentManagerInfoQueryKey(installation),
+      ...agentManagerInfoQuery(musterApi, installation),
       enabled:
         Boolean(musterApi) &&
         availability.presenceOf(installation) === 'available',
-      queryFn: () => new AgentManagerClient(musterApi!, installation).getInfo(),
-      staleTime: 60_000,
-      retry: false,
     })),
   });
   const isAvailable = (index: number) =>
@@ -135,4 +147,45 @@ export function useCreatesAgentsNowhere(installations: string[]): {
       ),
     isLoading,
   };
+}
+
+/**
+ * The ids (`<installation>/<namespace>/<name>`) of the default agents of
+ * `installations` (home first), as each one's agent-manager answers
+ * `get_info` (`defaultAgent`): agent-manager decides which agent that is, the
+ * portal does not resolve it again. Asked only where muster reaches
+ * agent-manager as the person, and of the other installations only when the
+ * home one names none. An installation whose answer has none, or that has not
+ * answered, contributes nothing.
+ */
+export function useDefaultAgentIds(installations: string[]): Set<string> {
+  const musterApi = useMusterPluginApi();
+  const availability = useAgentManagerAvailability(installations);
+  const reachable = (installation: string) =>
+    Boolean(musterApi) && availability.presenceOf(installation) === 'available';
+  const [home = '', ...others] = installations;
+  const homeInfo = useQuery({
+    ...agentManagerInfoQuery(musterApi, home),
+    enabled: Boolean(home) && reachable(home),
+  });
+  const homeDefault = homeInfo.data?.defaultAgent?.trim() ?? '';
+  // The others once the home installation has answered without one, or is
+  // known not to be reached.
+  const homeSettled = reachable(home)
+    ? !isAwaitingData(homeInfo)
+    : !availability.isLoading;
+  const askOthers = !homeDefault && homeSettled;
+  const otherDefaults = useQueries({
+    queries: others.map(installation => ({
+      ...agentManagerInfoQuery(musterApi, installation),
+      enabled: askOthers && reachable(installation),
+    })),
+    combine: results =>
+      results.map(result => result.data?.defaultAgent?.trim() ?? ''),
+  });
+  const ids = [homeDefault, ...otherDefaults]
+    .map((ref, index) => (ref ? `${installations[index]}/${ref}` : ''))
+    .filter(Boolean)
+    .join(',');
+  return useMemo(() => new Set(ids ? ids.split(',') : []), [ids]);
 }

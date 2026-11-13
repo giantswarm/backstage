@@ -11,13 +11,13 @@ import { lab } from './lab';
 
 /**
  * A tool call muster answers with an MCP URL elicitation (protocol
- * 2026-07-28 `input_required`): the portal declares URL mode on every tool
- * call, so a run of a `lab-oauth-fixture` tool whose sign-in the person lost
- * (signed out in another tab while its page stays open) puts muster's sign-in
- * page to the person in the consent dialog, and the call is sent again with
- * their answer. Accepted, the page opens in a new tab, the Dex sign-in
- * completes there and the run shows its result; declined, muster answers the
- * call's error and nothing opens.
+ * 2026-07-28 `input_required`): the portal declares URL mode on a call the
+ * person started with a click, so a Run of a `lab-oauth-fixture` tool whose
+ * sign-in the person lost (signed out in another tab while its page stays
+ * open) puts muster's sign-in page to the person in the consent dialog, and
+ * the call is sent again with their answer. Accepted, the page opens in a
+ * new tab, the Dex sign-in completes there and the run shows its result;
+ * declined, muster answers the call's error and nothing opens.
  */
 
 const FIXTURE = 'lab-oauth-fixture';

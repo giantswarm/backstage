@@ -9,6 +9,7 @@ export * from './authLogin';
 export * from './serverGateway';
 export * from './musterUnauthorized';
 export * from './musterUnreachable';
+export { MUSTER_CONNECT_TIMEOUT_MS } from './musterFetch';
 export type { ConnectorName } from '@giantswarm/backstage-plugin-gs-common';
 export {
   isMusterInputAnswer,

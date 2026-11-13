@@ -1,4 +1,3 @@
-import type { StatusDotTone } from '@giantswarm/backstage-plugin-ui-react';
 import { countNoun, joinNames } from '@giantswarm/backstage-plugin-ui-react';
 import {
   MCPServer,
@@ -17,6 +16,7 @@ import {
   needsSignIn,
   PORTAL_ONLY_LABEL,
   portalOnlyStatus,
+  SEVERITY_DOT_TONE,
   SSO_REFUSED_STATUS,
   type StatusText,
 } from '../shared';
@@ -29,13 +29,6 @@ export const SHELL_AUTH_LABELS: Record<ServerAuthMode, string> = {
   'token-exchange': 'Company login',
   sigv4: 'Shared AWS identity',
   unknown: 'Other sign-in',
-};
-
-const SEVERITY_TONE: Record<MCPServerSeverity, StatusDotTone> = {
-  ok: 'success',
-  warning: 'warning',
-  error: 'danger',
-  unknown: 'neutral',
 };
 
 /** The server that speaks for a row: itself, or a family's representative. */
@@ -67,6 +60,26 @@ export function toolsLabel(entry: ServerListEntry): string | undefined {
   return countNoun(entry.toolCount, 'tool');
 }
 
+/** What the Tools column shows where there is nothing to count. */
+export const NO_TOOLS_VALUE = '—';
+
+/**
+ * Whether a row's tool count means nothing: the connector is not reached
+ * (not connected, deactivated, awaiting a sign-in) and lists no tools, so
+ * "0 tools" would read as a connector without tools.
+ */
+export function toolsUnavailable(
+  entry: Pick<ServerListEntry, 'toolCount'>,
+  reach: ConnectorReach | undefined,
+): boolean {
+  return (
+    reach !== undefined &&
+    reach !== 'connected' &&
+    reach !== 'portal-only' &&
+    !(entry.toolCount && entry.toolCount > 0)
+  );
+}
+
 /**
  * A row's state: for one server, this person's sign-in when muster reports one
  * that asks something of them or a connect with their portal sign-in still
@@ -89,7 +102,7 @@ export function connectorStatus(
         healthy === servers.length
           ? 'Connected'
           : `${healthy} of ${servers.length} connected`,
-      tone: SEVERITY_TONE[
+      tone: SEVERITY_DOT_TONE[
         servers
           .map(s => mcpServerStateSeverity(s.getState()))
           .reduce<MCPServerSeverity>(worstSeverity, 'ok')
@@ -123,7 +136,7 @@ export function connectorStatus(
   if (severity === 'ok') {
     return { label: 'Connected', tone: 'success' };
   }
-  return { label: state ?? 'Unknown', tone: SEVERITY_TONE[severity] };
+  return { label: state ?? 'Unknown', tone: SEVERITY_DOT_TONE[severity] };
 }
 
 /** Whether a person can reach a connector's tools now, in a few buckets. */

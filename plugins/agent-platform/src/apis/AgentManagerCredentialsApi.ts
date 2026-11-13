@@ -10,6 +10,8 @@ import {
 
 import { ResponseError } from '@backstage/errors';
 
+import { portalSessionError } from '../lib/portalSession';
+
 import { getInstallationOidcToken } from '../lib/installationOidcToken';
 import type {
   CredentialOperation,
@@ -165,7 +167,9 @@ export class AgentManagerCredentialsClient implements AgentManagerCredentialsApi
       },
     );
     if (!response.ok) {
-      throw await ResponseError.fromResponse(response);
+      // A refused session token is said as one: nothing reached
+      // agent-manager, and a sign-in to the portal is the way on.
+      throw portalSessionError(await ResponseError.fromResponse(response));
     }
     return response;
   }

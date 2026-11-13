@@ -17,8 +17,15 @@ import {
   parseToolErrorCode,
   AGENT_MANAGER_SERVER,
 } from '@giantswarm/backstage-plugin-gs-common';
-import { musterSignInRequiredOf } from '@giantswarm/backstage-plugin-muster';
-import type { MusterServerPresence } from '../hooks/useMusterServerAvailability';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Agent-manager calls share Muster's connection and sign-in contract.
+import {
+  type MusterServerPresence,
+  musterSignInRequiredOf,
+} from '@giantswarm/backstage-plugin-muster';
+import {
+  isPortalSessionRefusal,
+  PortalSessionEndedError,
+} from './portalSession';
 
 /** The MCPServer name muster registers agent-manager under. */
 export { AGENT_MANAGER_SERVER };
@@ -61,14 +68,15 @@ export const AGENT_MANAGER_TOOLS = {
   listModelConfigs: 'list_model_configs',
   listEgressPolicies: 'list_egress_policies',
   startSession: 'start_session',
-  listMyOrganizations: 'list_my_organizations',
+  listOrganizations: 'list_organizations',
   getOrganization: 'get_organization',
+  deleteOrganization: 'delete_organization',
   listOrganizationMembers: 'list_organization_members',
   addOrganizationMember: 'add_organization_member',
   removeOrganizationMember: 'remove_organization_member',
   listOrganizationConnectors: 'list_organization_connectors',
   setOrganizationModel: 'set_organization_model',
-  setOrganizationConnector: 'set_organization_connector',
+  replaceOrganizationCredential: 'replace_organization_credential',
 } as const;
 
 export type AgentManagerTool =
@@ -199,7 +207,16 @@ export type AgentManagerInfo = {
   harness: { name: string };
   /** The muster MCP URL composed into every agent; empty = the chart default. */
   muster: { url: string };
-  skillsRepositories: string[];
+  /** A URL, or `{ url, ref?, path?, readOnly? }`. */
+  skillsRepositories: Array<
+    string | { url: string; ref?: string; path?: string; readOnly?: boolean }
+  >;
+  /**
+   * The installation's default agent, `<namespace>/<name>`: where a new
+   * session starts unless the person picks another. Empty or absent (an
+   * agent-manager before giantswarm/agent-manager#290) when there is none.
+   */
+  defaultAgent?: string;
   /**
    * The installation's skills credential: the Secret (key `token`) in the
    * agent's namespace every agent with a git skill fetches its skills with,
@@ -269,6 +286,7 @@ export type AgentStatus = {
   namespace: string;
   verdict: AgentStatusVerdict;
   summary: string;
+  releaseWithheld?: string;
   agent?: AgentObjectStatus;
   helmRelease?: {
     exists: boolean;
@@ -599,9 +617,15 @@ export function looksNotConnected(message: string): boolean {
 export function classifyAgentManagerError(error: unknown): Error {
   if (
     error instanceof AgentManagerError ||
-    error instanceof AgentManagerNotConnectedError
+    error instanceof AgentManagerNotConnectedError ||
+    error instanceof PortalSessionEndedError
   ) {
     return error;
+  }
+  // The portal refused the person's session token before muster-backend
+  // ran: no sign-in to agent-manager fixes it, a sign-in to the portal does.
+  if (isPortalSessionRefusal(error)) {
+    return new PortalSessionEndedError({ cause: error });
   }
   const message = error instanceof Error ? error.message : String(error);
   if (musterSignInRequiredOf(error)) {
@@ -640,10 +664,14 @@ export function helmInstallCommand(
 /**
  * How agent-manager manages an agent: `helmrelease` — a HelmRelease it can
  * write live; `gitops` — the release is applied by a Flux Kustomization, its
- * desired state lives in git and a live write is refused; `none` — a bare
- * `Agent` object with no release behind it, refused as well.
+ * desired state lives in git and a live write is refused; `platform` — the
+ * platform's own agent (labelled `agent-platform.giantswarm.io/managed-by:
+ * agent-platform`), refused in every mode, a pull request too; `none` — a bare
+ * `Agent` object with no release behind it, refused as well; `unknown` means
+ * Flux details are withheld, with the reason in `releaseWithheld`.
  */
-export type AgentManagedBy = 'helmrelease' | 'gitops' | 'none';
+export type AgentManagedBy =
+  'helmrelease' | 'gitops' | 'platform' | 'none' | 'unknown';
 
 /** What `get_agent` says about the release that owns the agent. */
 export type AgentHelmReleaseRef = {
@@ -693,10 +721,31 @@ export type AgentManagerAgent = {
   defaultWorkspace?: string;
   status?: AgentObjectStatus;
   managed: AgentManagedBy;
+  /** The installation's default agent (`get_info`'s `defaultAgent`). */
+  default?: boolean;
   helmRelease?: AgentHelmReleaseRef;
+  releaseWithheld?: string;
   /** The HelmRelease's inline values, when a release owns the agent. */
   values?: Record<string, unknown>;
 };
+
+/**
+ * The platform's default agent waiting for a default model: platform-owned,
+ * no ModelConfig of its own and not ready. agent-manager points it at the
+ * default ModelConfig once one is marked, so the fix is adding a model.
+ */
+export function awaitsDefaultModel(
+  agent:
+    | Pick<AgentManagerAgent, 'default' | 'managed' | 'modelConfig' | 'ready'>
+    | undefined,
+): boolean {
+  return (
+    agent?.default === true &&
+    agent.managed === 'platform' &&
+    !agent.modelConfig &&
+    agent.ready !== true
+  );
+}
 
 /** `list_model_configs`: a ModelConfig an agent may reference. */
 export type AgentManagerModelConfig = {

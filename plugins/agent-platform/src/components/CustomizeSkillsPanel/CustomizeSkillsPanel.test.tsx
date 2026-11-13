@@ -399,12 +399,36 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
     await renderPanel();
 
     expect(
+      screen.getByText('No skill repository takes new skills here.'),
+    ).toBeInTheDocument();
+    expect(
       screen.queryByRole('link', { name: /Add skill/ }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByText(
         /Adding skills here needs a github\.com skill repository/,
       ),
+    ).not.toBeInTheDocument();
+  });
+
+  it('names only the read error when the catalog could not be read', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [],
+      error: new Error(
+        'MCP error -32000: dial tcp 10.96.0.12:8080: connect: connection refused',
+      ),
+      proposalTargets: [],
+    };
+    await renderPanel();
+
+    expect(
+      screen.getByText('Could not read the skill repositories'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Try again in a moment.')).toBeInTheDocument();
+    expect(screen.queryByText(/connection refused/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('No skill repository takes new skills here.'),
     ).not.toBeInTheDocument();
   });
 

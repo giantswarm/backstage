@@ -39,7 +39,8 @@
     "@giantswarm/backstage-plugin-gs-common": "^0.23.0",
     "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.10",
     "@modelcontextprotocol/client": "2.4.0",
-    "node-fetch": "^3.3.2"
+    "node-fetch": "^3.3.2",
+    "undici": "^8.10.2"
   },
   "devDependencies": {
     "@backstage/backend-test-utils": "backstage:^",

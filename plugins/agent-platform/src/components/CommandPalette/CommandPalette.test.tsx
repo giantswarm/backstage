@@ -358,6 +358,36 @@ describe('CommandPalette', () => {
     expect(within(listbox).queryByText('confluence')).not.toBeInTheDocument();
   });
 
+  it('dates a session by its local creation day, with the year only when it is another', async () => {
+    mockSessions = {
+      ...mockSessions,
+      rows: [
+        {
+          ...session('s-new', 'Rotate the SSO keys'),
+          createdAt: new Date().toISOString(),
+        },
+        {
+          ...session('s-old', 'Audit the SSO groups'),
+          createdAt: new Date(2025, 9, 3, 12).toISOString(),
+        },
+      ],
+    };
+    const input = await openPalette();
+    await userEvent.type(input, 'sso');
+
+    const listbox = screen.getByRole('listbox', { name: 'Results' });
+    const optionOf = (title: string) =>
+      within(listbox)
+        .getByText(title)
+        .closest('[role="option"]') as HTMLElement;
+    expect(
+      within(optionOf('Rotate the SSO keys')).getByText('Today'),
+    ).toBeVisible();
+    expect(
+      within(optionOf('Audit the SSO groups')).getByText('3 Oct 2025'),
+    ).toBeVisible();
+  });
+
   it('narrows to one kind through the filter chips', async () => {
     const input = await openPalette();
     await userEvent.type(input, 'sso');

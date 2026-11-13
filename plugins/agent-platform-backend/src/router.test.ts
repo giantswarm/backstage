@@ -262,6 +262,14 @@ describe('createRouter', () => {
         checkedAt: 1,
       });
       await new Promise(resolve => setTimeout(resolve, 0));
+      // Unreachable only after a second failed probe in a row.
+      void cache.refresh('https://agentgateway.golem.example.io');
+      pending.get('https://agentgateway.golem.example.io')!({
+        reachable: false,
+        reason: 'DNS lookup failed (ENOTFOUND)',
+        checkedAt: 1,
+      });
+      await new Promise(resolve => setTimeout(resolve, 0));
 
       const response = await request(probing).get('/kagent/installations');
 

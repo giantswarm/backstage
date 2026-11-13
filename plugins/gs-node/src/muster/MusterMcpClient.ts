@@ -14,7 +14,9 @@ import {
   StreamableHTTPClientTransport,
 } from '@modelcontextprotocol/client';
 import {
+  type McpToolFailure,
   type McpToolRefusal,
+  mcpToolFailureOf,
   mcpToolRefusalOf,
   musterServerOfTool,
   MUSTER_INPUT_REQUIRED_STATUS,
@@ -37,6 +39,7 @@ import {
 } from './authLogin';
 import { PendingSignIns } from './pendingSignIns';
 import { MusterUnreachableError } from './musterUnreachable';
+import { createMusterFetch } from './musterFetch';
 import { markReported } from '../errors';
 import {
   FREQUENT_LOST_SESSIONS,
@@ -394,10 +397,14 @@ function authRequiredOf(
  * - `client_not_connected` -- muster held no connection to the MCP server;
  * - `tool_not_found` -- this muster has no such tool;
  * - `sign_in_declined` -- the person declined or dismissed the sign-in muster
- *   asked them for (a URL elicitation), so the tool did not run.
+ *   asked them for (a URL elicitation), so the tool did not run;
+ * - the failures of the Agent Platform's MCP servers that are a state of the
+ *   whole server (model-manager's `no_backend`), as `mcpToolFailureOf` in
+ *   gs-common names them.
  */
 export type MusterToolErrorKind =
   | McpToolRefusal
+  | McpToolFailure
   | 'connector_refused'
   | 'interrupted'
   | 'timeout'
@@ -443,6 +450,7 @@ export const MUSTER_TOOL_ERROR_STATUS: Record<MusterToolErrorKind, number> = {
   client_not_connected: 503,
   tool_not_found: 502,
   sign_in_declined: 412,
+  no_backend: 503,
 };
 
 /**
@@ -492,13 +500,16 @@ const CONNECTOR_FAILURES = [/Removing the server failed too/];
 
 /**
  * muster's own texts for its failures of a call, as its aggregator words them
- * (wrapped in `Tool execution failed: …`, or on their own).
+ * (wrapped in `Tool execution failed: …`, or on their own). A missing tool in
+ * either case: `tool not found: x` for an aggregated tool, `Tool not found:
+ * x` for a meta-tool's target. The others match muster's case only, so that
+ * an MCP server's own `Interrupted: …` is not read as muster's.
  */
 const MUSTER_FAILURES: Array<[RegExp, MusterToolErrorKind]> = [
   [/^interrupted: /, 'interrupted'],
   [/no answer within the server's timeout/, 'timeout'],
   [/\bclient not connected\b/, 'client_not_connected'],
-  [/\btool not found\b/, 'tool_not_found'],
+  [/\btool not found\b/i, 'tool_not_found'],
   [
     /\bthe person answered (decline|cancel) to signing in\b/,
     'sign_in_declined',
@@ -518,9 +529,14 @@ export function musterToolErrorKindOf(
   if (options.interrupted) {
     return 'interrupted';
   }
-  const serverRefusal = mcpToolRefusalOf(musterServerOfTool(tool), message);
+  const server = musterServerOfTool(tool);
+  const serverRefusal = mcpToolRefusalOf(server, message);
   if (serverRefusal) {
     return serverRefusal;
+  }
+  const serverFailure = mcpToolFailureOf(server, message);
+  if (serverFailure) {
+    return serverFailure;
   }
   if (
     CONNECTOR_WRITE_TOOLS.has(tool) &&
@@ -691,6 +707,9 @@ export interface ToolCallClient extends ClosableMcpClient {
   close(): Promise<void>;
 }
 
+/** One connection pool for every muster, with the connect timeout. */
+const musterFetch = createMusterFetch();
+
 /**
  * An official MCP SDK client of muster. It speaks protocol 2026-07-28 where
  * muster does, whose calls carry their own capabilities; an `input_required`
@@ -702,6 +721,7 @@ async function connectToolCallClient(
 ): Promise<ToolCallClient> {
   const transport = new StreamableHTTPClientTransport(new URL(url), {
     requestInit: { headers },
+    fetch: musterFetch,
   });
   const client = new SdkClient(
     { name: 'muster-backend', version: '1.0.0' },
@@ -748,6 +768,7 @@ export class MusterMcpClient {
           type: 'http',
           url: installation.url,
           headers,
+          fetch: musterFetch,
         },
       }),
     private readonly toolCallClientFactory: (

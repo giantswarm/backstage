@@ -20,8 +20,3 @@ export function musterMargeListQueryKey(installation: string, teams: string[]) {
 export function musterMargeListScopeKey(installation: string) {
   return ['muster', 'bot-prs', 'marge-list', installation] as const;
 }
-
-/** `core_mcpserver_list` of one installation's muster: whether it lists marge. */
-export function musterServersQueryKey(installation: string) {
-  return ['muster', 'bot-prs', 'mcp-servers', installation] as const;
-}

@@ -22,13 +22,13 @@ test('a person with a namespaced kagent RoleBinding picks a model in the New age
   await expectWizardStep(dev, 'Details');
 
   await expect(
-    dev.getByText('Runs on default-model-config'),
+    dev.getByText(`Runs on ${lab.defaultModel}`),
     'the platform default is preselected from the kagent namespace',
   ).toBeVisible({ timeout: 60_000 });
   await openWizardMoreOptions(dev);
   const models = dev.getByRole('radiogroup', { name: 'Model' });
   const platformDefault = models.getByRole('radio', {
-    name: /default-model-config/,
+    name: lab.defaultModel,
   });
   await expect(
     platformDefault,

@@ -27,9 +27,8 @@ const sonnet: ModelRow = {
 };
 const qwen: ModelRow = {
   ...sonnet,
-  id: 'golem/engineering/qwen',
+  id: 'golem/support/qwen',
   name: 'qwen',
-  namespace: 'engineering',
   displayName: 'Qwen 2.5',
   provider: 'Ollama',
   model: 'qwen2.5:32b',
@@ -60,6 +59,19 @@ jest.mock('../ModelConfigsProvider', () => ({
     hasInstallations: true,
     unreachableInstallations: mockUnreachableInstallations,
   }),
+}));
+// The organization namespaces agent-manager names, by namespace.
+let mockDirectory = new Map<
+  string,
+  {
+    namespace: string;
+    organization: string;
+    parent: string;
+    displayName?: string;
+  }
+>();
+jest.mock('../OrganizationDirectoryProvider', () => ({
+  useOrganizationDirectory: () => ({ directory: mockDirectory }),
 }));
 jest.mock('../AgentsDataProvider', () => ({
   useAgents: () => ({ rows: agents, isLoading: false }),
@@ -135,6 +147,65 @@ describe('CustomizeModelsPanel', () => {
     const rows = screen.getAllByRole('row').slice(1);
     expect(rows[0]).toHaveTextContent(/Default · Anthropic/);
     expect(rows[1]).not.toHaveTextContent('Default');
+  });
+
+  it('names the namespace of models that share a name, and only theirs', async () => {
+    const otherSonnet = {
+      ...sonnet,
+      id: 'golem/engineering/sonnet',
+      namespace: 'engineering',
+    };
+    mockModelRows = [sonnet, otherSonnet, qwen];
+    await renderPanel();
+
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows[0]).toHaveTextContent(/namespace support · support/);
+    expect(rows[1]).toHaveTextContent(/namespace engineering · engineering/);
+    expect(rows[2]).not.toHaveTextContent(/namespace support · support/);
+  });
+
+  it('names each model’s owner once the list spans more than one', async () => {
+    const orgNamespace = 'agents-default-x7k2q';
+    mockDirectory = new Map([
+      [
+        orgNamespace,
+        {
+          namespace: orgNamespace,
+          organization: 'default',
+          parent: 'org-gs',
+          displayName: 'Lab',
+        },
+      ],
+    ]);
+    const platform = {
+      ...sonnet,
+      id: 'golem/kagent/anthropic',
+      name: 'anthropic',
+      namespace: 'kagent',
+      isDefault: true,
+    };
+    const organization = {
+      ...platform,
+      id: `golem/${orgNamespace}/anthropic`,
+      namespace: orgNamespace,
+    };
+    mockModelRows = [platform, organization];
+    await renderPanel();
+
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows[0]).toHaveTextContent(
+      'Default · Anthropic · claude-sonnet-4-5 · Owner: Platform',
+    );
+    expect(rows[1]).toHaveTextContent(
+      'Default · Anthropic · claude-sonnet-4-5 · Owner: Lab',
+    );
+    mockDirectory = new Map();
+  });
+
+  it('names no owner while every model has the same one', async () => {
+    await renderPanel();
+
+    expect(screen.queryByText(/Owner:/)).not.toBeInTheDocument();
   });
 
   it('makes each name a link to the model (M21)', async () => {

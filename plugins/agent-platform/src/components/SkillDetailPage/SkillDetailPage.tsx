@@ -40,7 +40,10 @@ import { SKILL_MD } from '../../lib/skillFiles';
 import {
   canonicalRepoUrl,
   canonicalSkillId,
-  canProposeSkillTo,
+  canProposeSkillChange,
+  readOnlyReason,
+  REF_KIND_LABELS,
+  refKindOf,
   isSkillContentReadable,
   resolveSkillDetailPath,
   sameCommit,
@@ -134,7 +137,7 @@ function OverviewTab({
         <Alert
           status="info"
           title="Read-only in the portal"
-          description="This skill's repository is not on github.com, and the portal proposes changes as GitHub pull requests. Change or evaluate the skill in its repository."
+          description={readOnlyReason(skill)}
         />
       )}
       {!readable && (
@@ -394,11 +397,10 @@ function SkillPage({
     setUpdateTargets(behind);
   }, [behind]);
 
-  // Edit and Evaluate both end in a pull request (the portal's own, or the
-  // evaluator's), and pull requests are github.com only — the skill-PR
-  // endpoint refuses any other repository. A skill elsewhere is read-only
-  // here, and the Overview says why.
-  const proposable = canProposeSkillTo(skill.repoUrl);
+  // Edit ends in a pull request, which the skill-PR endpoint takes only for a
+  // writable github.com source read on a branch. Any other skill is
+  // read-only here (Evaluate then only reports), and the Overview says why.
+  const proposable = canProposeSkillChange(skill);
 
   // "Evaluate with …" exists only where the Skill Evaluator role is
   // configured and resolves to an agent that can take a session (decisions
@@ -412,7 +414,10 @@ function SkillPage({
     error: evaluateError,
   } = useMetaAgentHandoff('skillEvaluation', 'skillDetail');
   const onEvaluate = useCallback(() => {
-    startEvaluation(evaluationPrompt(skill)).catch(() => {});
+    // A skill the portal proposes no change to is evaluated report-only.
+    startEvaluation(
+      evaluationPrompt(skill, { reportOnly: !canProposeSkillChange(skill) }),
+    ).catch(() => {});
   }, [startEvaluation, skill]);
 
   // Editing is the add-skill flow, prefilled from the SKILL.md; it opens a
@@ -454,7 +459,10 @@ function SkillPage({
         skillMdPath
       ),
     },
-    { label: 'Branch', value: skill.ref },
+    {
+      label: REF_KIND_LABELS[refKindOf(skill)],
+      value: skill.ref,
+    },
     {
       // The catalog's head, not a pin: "pinned" is each agent's own commit
       // (UX review M19). It opens the skill's folder at that commit.
@@ -498,7 +506,8 @@ function SkillPage({
   // secondary actions first, the primary last, all at the header's right.
   // "Update agents" only while some agent pins an older commit; with none
   // behind, the Used by tab says so in a line instead.
-  const canEvaluate = Boolean(evaluator) && proposable;
+  // Evaluating works for any skill; one without pull requests gets a report.
+  const canEvaluate = Boolean(evaluator);
   const evaluateLabel = `Evaluate with ${evaluator?.name}`;
   const canUpdateAgents = !agentsLoading && behind.length > 0;
   let actions: ReactNode;

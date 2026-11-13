@@ -1,6 +1,11 @@
 import { expect, open, test } from './fixtures';
 import { lab } from './lab';
-import { KUBECONFIG, kubectl, NEEDS_KUBECONFIG } from './kubectl';
+import {
+  KUBECONFIG,
+  kubectl,
+  labOrganizationNamespace,
+  NEEDS_KUBECONFIG,
+} from './kubectl';
 
 /**
  * An organization's model key, entered on the Dev Portal's credential form
@@ -22,9 +27,7 @@ import { KUBECONFIG, kubectl, NEEDS_KUBECONFIG } from './kubectl';
  * `organization-admins` binds the admin's group.
  */
 
-const [PARENT, ORGANIZATION] = (
-  process.env.AGENTLAB_ORGANIZATION ?? 'agentlab-organizations/default'
-).split('/');
+const { parent: PARENT, name: ORGANIZATION } = lab.organization;
 const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(4, 12);
 const MODEL = `e2e-cred-${stamp}`;
 const SECRET = `tenant-credential-${MODEL}`;
@@ -32,16 +35,13 @@ const KEY = `sk-ant-e2e-${stamp}-never-shown`;
 const BASE = `/organizations/${lab.installation}/${PARENT}/${ORGANIZATION}`;
 
 async function organizationNamespace(): Promise<string> {
-  const { stdout } = await kubectl([
-    'get',
-    'agentplatformorganization',
-    '-n',
-    PARENT,
-    ORGANIZATION,
-    '-o',
-    'jsonpath={.status.namespace}',
-  ]);
-  return stdout.trim();
+  const namespace = await labOrganizationNamespace();
+  if (!namespace) {
+    throw new Error(
+      `the lab has no organization ${PARENT}/${ORGANIZATION} (AGENTLAB_ORGANIZATION)`,
+    );
+  }
+  return namespace;
 }
 
 test('organization credentials: a model key is entered on the form, saved as the person and never shown back', async ({
