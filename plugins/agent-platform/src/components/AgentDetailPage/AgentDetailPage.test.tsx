@@ -191,7 +191,7 @@ jest.mock('../../hooks/useAgentManager', () => ({
 // `get_agent`, which the page reads for one thing only: whether agent-manager
 // can write to this agent at all (`managed`). Undefined is the unread case —
 // not connected, refused, still in flight — where the actions stay offered.
-let managerAgent: { managed: string } | undefined;
+let managerAgent: { managed: string; releaseWithheld?: string } | undefined;
 let isReadingManagerAgent = false;
 
 jest.mock('../../hooks/useAgentManagerAgent', () => ({
@@ -2371,6 +2371,37 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
   });
 
   describe('the frame', () => {
+    it('omits unavailable deployment details without changing the Agent readiness', async () => {
+      const releaseWithheld =
+        'Reading the release details needs the agent-platform:editor role.';
+      withAgentManager('unknown');
+      managerAgent = { managed: 'unknown', releaseWithheld };
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+      expectHeaderReadiness('Ready');
+      await openTechnicalDetails();
+
+      expect(screen.queryByText(releaseWithheld)).toBeNull();
+      expect(screen.queryByText('Deployed by')).toBeNull();
+      expect(screen.queryByText("Reconciling this agent's chart")).toBeNull();
+      expect(screen.queryByText(/^HelmRelease /)).toBeNull();
+    });
+
+    it('omits deployment details for unknown management without a permission notice', async () => {
+      withAgentManager('unknown');
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+      await openTechnicalDetails();
+
+      expect(screen.queryByText('Deployed by')).toBeNull();
+      expect(
+        screen.queryByText(/Release details are not available/),
+      ).toBeNull();
+      expect(screen.queryByText("Reconciling this agent's chart")).toBeNull();
+    });
+
     it('heads the page with the platform-standard frame, once', async () => {
       stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
 
