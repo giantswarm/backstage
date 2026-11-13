@@ -111,13 +111,12 @@ export type LinkedAgent<T extends AgentRow> =
  * installation first):
  *
  * - the agent with that id;
- * - for `namespace/name`, the first agent of that namespace and name that can
- *   start a session, else the first one listed;
- * - for `installation/namespace/name` where `installation` is none of
- *   `installations` (every installation the portal knows), the one agent of
- *   that namespace and name. An agent reads its installation's name from
- *   agent-manager, which may call it otherwise than the portal does. Several
- *   such agents are `ambiguous`: no installation is picked for the person.
+ * - for `namespace/name`, or `installation/namespace/name` where
+ *   `installation` is none of `installations` (every installation the portal
+ *   knows), the one agent of that namespace and name. An agent reads its
+ *   installation's name from agent-manager, which may call it otherwise than
+ *   the portal does. Several such agents are `ambiguous`: no installation is
+ *   picked for the person.
  *
  * An installation the portal knows is never swapped for another. `isOffered`
  * tells an agent that can start a session from one that cannot.
@@ -150,10 +149,7 @@ export function resolveLinkedAgent<T extends AgentRow>(
   if (matches.length === 0) {
     return { status: 'missing' };
   }
-  if (parts.length === 3) {
-    return matches.length === 1 ? verdict(matches[0]) : { status: 'ambiguous' };
-  }
-  return verdict(matches.find(isOffered) ?? matches[0]);
+  return matches.length === 1 ? verdict(matches[0]) : { status: 'ambiguous' };
 }
 
 /** The longest `?agent=` value a notice repeats. */

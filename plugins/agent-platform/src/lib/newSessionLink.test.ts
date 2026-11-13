@@ -89,7 +89,26 @@ describe('resolveLinkedAgent', () => {
     ).toEqual({ status: 'found', agent: other });
   });
 
-  it('finds the first agent of that namespace and name', () => {
+  it('finds the one agent of that namespace and name', () => {
+    expect(
+      resolveLinkedAgent(
+        [home, solo],
+        'kagent/sre-agent',
+        offered,
+        installations,
+      ),
+    ).toEqual({ status: 'found', agent: solo });
+    expect(
+      resolveLinkedAgent(
+        [home, solo],
+        'kagent/sre-agent',
+        () => false,
+        installations,
+      ),
+    ).toEqual({ status: 'unavailable', agent: solo });
+  });
+
+  it('picks no installation when several have the namespace and name a link names', () => {
     expect(
       resolveLinkedAgent(
         [home, other],
@@ -97,10 +116,8 @@ describe('resolveLinkedAgent', () => {
         offered,
         installations,
       ),
-    ).toEqual({ status: 'found', agent: home });
-  });
-
-  it('prefers an agent that can start, and says when none can', () => {
+    ).toEqual({ status: 'ambiguous' });
+    // Even when only one of them can start a session.
     expect(
       resolveLinkedAgent(
         [home, other],
@@ -108,7 +125,10 @@ describe('resolveLinkedAgent', () => {
         a => a !== home,
         installations,
       ),
-    ).toEqual({ status: 'found', agent: other });
+    ).toEqual({ status: 'ambiguous' });
+  });
+
+  it('says when the agent cannot start', () => {
     expect(
       resolveLinkedAgent([home], home.id, () => false, installations),
     ).toEqual({ status: 'unavailable', agent: home });

@@ -1137,6 +1137,25 @@ describe('AgentPlatformHome', () => {
         );
       });
 
+      it('picks no environment for a namespace and name several environments have', async () => {
+        const golemSre: AgentRow = {
+          ...sre,
+          id: 'golem/kagent/sre-agent',
+          installation: 'golem',
+        };
+        mockUseAgents.mockReturnValue({
+          ...loadedAgents,
+          installations: ['gazelle', 'golem'],
+          rows: [sre, research, docs, general, golemSre],
+        });
+        await render({ url: '/?agent=kagent%2Fsre-agent' });
+
+        expect(agentPicker()).toHaveTextContent('General Assistant');
+        expect(document.body).toHaveTextContent(
+          'More than one environment has the agent kagent/sre-agent; choose one. General Assistant is selected instead.',
+        );
+      });
+
       it('picks no environment for a link several environments match', async () => {
         const golemSre: AgentRow = {
           ...sre,

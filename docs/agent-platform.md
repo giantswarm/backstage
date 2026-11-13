@@ -3139,9 +3139,10 @@ ahead of the installation's default agent (agent-manager's `get_info`
 `defaultAgent`; listed first in the picker, marked Default), which goes ahead
 of the last agent used. A default that arrives after the person typed or
 picked does not replace the agent shown. `?agent=` takes an agent id
-(`<installation>/<namespace>/<name>`) or `<namespace>/<name>`; an id whose
-installation is none of the portal's configured installations (the name
-agent-manager's `get_info` reports may differ) matches by namespace and name
+(`<installation>/<namespace>/<name>`) or `<namespace>/<name>`. A
+`<namespace>/<name>`, or an id whose installation is none of the portal's
+configured installations (the name agent-manager's `get_info` reports may
+differ), matches by namespace and name among the agents in scope
 when exactly one agent has them; when several do, none is selected. A linked
 agent that is not selected is said in a warning above the composer, by cause
 (not found, several matches, cannot start, its environment unreachable,
