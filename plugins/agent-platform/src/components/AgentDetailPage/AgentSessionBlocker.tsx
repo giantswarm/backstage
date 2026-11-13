@@ -13,7 +13,14 @@ export function NoModelYetText() {
   return (
     <Text variant="body-small">
       No model yet. Add one under{' '}
-      {models ? <Link href={models}>Models</Link> : 'Models'}.
+      {models ? (
+        <Link href={models} variant="body-small">
+          Models
+        </Link>
+      ) : (
+        'Models'
+      )}
+      .
     </Text>
   );
 }

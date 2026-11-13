@@ -10,7 +10,7 @@ import {
   useApi,
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
-import { Alert, Box, Container, Flex, Text } from '@backstage/ui';
+import { Box, Container, Flex, Text } from '@backstage/ui';
 import {
   InventoryFailureGate,
   useInstallationInventory,
@@ -20,8 +20,6 @@ import { makeStyles } from '@material-ui/core/styles';
 
 import { useFavoriteAgentIds } from '../../hooks/useFavoriteAgents';
 import { useDefaultAgentIds } from '../../hooks/useAgentManager';
-import { useAgentManagerAgent } from '../../hooks/useAgentManagerAgent';
-import { awaitsDefaultModel } from '../../lib/agentManager';
 import { useLinkedPrompt } from '../../hooks/useLinkedPrompt';
 import {
   findLinkedAgent,
@@ -30,7 +28,10 @@ import {
 import { recentAgents } from '../../lib/recentAgents';
 import { agentDetailRouteRef, sessionDetailRouteRef } from '../../routes';
 import { AgentReachLine } from '../AgentReachLine';
-import { NoModelYetText } from '../AgentDetailPage/AgentSessionBlocker';
+import {
+  blockedDefaultAgents,
+  DefaultAgentsBlockedAlert,
+} from '../DefaultAgentsBlockedAlert';
 import { SESSION_NAME_MAX_LENGTH } from '../SessionDetailPage/SessionRenameDialog';
 import { AgentPlatformCookieAuth } from '../AgentPlatformCookieAuth';
 import {
@@ -181,29 +182,20 @@ function AgentPlatformHomeContent({
       ),
     [agents, defaultAgentIds],
   );
-  // A default agent that cannot start for want of a model, on any
-  // installation listing agents: the picker only says it is unavailable.
+  // The default agents that cannot start, on every installation listing
+  // agents: the picker only says each is unavailable, and they share one
+  // display name, so the alert names their environments and namespaces.
   const agentInstallations = useMemo(
     () => [...new Set(agents.map(agent => agent.installation))],
     [agents],
   );
-  const anyDefaultAgentIds = useDefaultAgentIds(agentInstallations);
-  const unreadyDefault = agents.find(
-    agent =>
-      anyDefaultAgentIds.has(agent.id) &&
-      agent.readiness !== 'ready' &&
-      !agent.modelConfigId,
+  const everyDefaultAgentId = useDefaultAgentIds(agentInstallations, {
+    everywhere: true,
+  });
+  const blockedDefaults = useMemo(
+    () => blockedDefaultAgents(agents, everyDefaultAgentId),
+    [agents, everyDefaultAgentId],
   );
-  const { agent: unreadyDefaultManaged } = useAgentManagerAgent(
-    unreadyDefault?.installation,
-    unreadyDefault?.namespace ?? '',
-    unreadyDefault?.technicalName ?? '',
-    { enabled: Boolean(unreadyDefault) },
-  );
-  const awaitingModel =
-    unreadyDefault && awaitsDefaultModel(unreadyDefaultManaged)
-      ? unreadyDefault
-      : undefined;
   // The composer's pick, only while it can still be started: it reports a
   // pick, never that the agent left the offer (its installation turned out
   // not to start sessions as the person, or it stopped being ready).
@@ -317,14 +309,7 @@ function AgentPlatformHomeContent({
               onSelectedAgentChange: setSelectedAgent,
             }}
           />
-          {awaitingModel && (
-            <Alert
-              status="info"
-              icon
-              title={`${awaitingModel.name} cannot start sessions`}
-              description={<NoModelYetText />}
-            />
-          )}
+          <DefaultAgentsBlockedAlert blocked={blockedDefaults} />
           {/* The Main artboard's order: composer (recent agents or reach
               line under it), then the Slack banner. The read warnings stand
               between the two only when they have something to say — they
