@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Flex, Link, Text } from '@backstage/ui';
 import {
+  countNoun,
   groupNames,
   joinNames,
   SimpleAccordion,
@@ -26,10 +27,15 @@ export type DefaultAgentsBlockedAlertProps = {
  * and namespace.
  *
  * The title counts them; the description groups them by reason and names the
- * environments of each (`No model yet on a, b and c. Add one under Models.`),
- * and for more than one agent, every agent — environment, namespace and
- * reason, linked to its page — sits behind a disclosure, as
- * `UnreachableInstallationsAlert` lists its environments.
+ * environments of each (`No model yet on a, b, c. Add one under Models.`, the
+ * first five then `and N more`), and for more than one agent, every agent —
+ * environment, namespace and reason, linked to its page — sits behind a
+ * disclosure, as `UnreachableInstallationsAlert` lists its environments.
+ * Agent-manager names one default agent per environment, so an environment
+ * stands for one agent in the sentences.
+ *
+ * A failed agent makes it a warning, as `UnreachableInstallationsAlert` is;
+ * agents that only wait for a model, which adding one fixes, keep it info.
  */
 export function DefaultAgentsBlockedAlert({
   blocked,
@@ -42,12 +48,15 @@ export function DefaultAgentsBlockedAlert({
 
   const count = blocked.length;
   const names = [...new Set(blocked.map(({ agent }) => agent.name))];
-  let title = `${count} default agents cannot start sessions`;
+  let title = `${countNoun(count, 'default agent')} cannot start sessions`;
   if (count === 1) {
     title = `${names[0]} cannot start sessions`;
   } else if (names.length === 1) {
-    title = `${count} ${names[0]} agents cannot start sessions`;
+    title = `${countNoun(count, `${names[0]} agent`)} cannot start sessions`;
   }
+  const status = blocked.some(({ reason }) => reason === 'failed')
+    ? 'warning'
+    : 'info';
 
   const hrefOf = ({ agent }: BlockedDefaultAgent) =>
     agentDetailRoute?.({
@@ -77,7 +86,7 @@ export function DefaultAgentsBlockedAlert({
     );
     return (
       <Alert
-        status="info"
+        status={status}
         icon
         title={title}
         description={
@@ -89,7 +98,7 @@ export function DefaultAgentsBlockedAlert({
             ) : (
               <>
                 Failed on {placeNode}
-                {entry.message ? `: ${entry.message}` : '.'}
+                {entry.message ? `: ${sentence(entry.message)}` : '.'}
               </>
             )}
           </Text>
@@ -99,12 +108,12 @@ export function DefaultAgentsBlockedAlert({
   }
 
   const environmentsOf = (entries: BlockedDefaultAgent[]) =>
-    joinNames([...new Set(entries.map(({ agent }) => agent.installation))]);
+    joinNames(entries.map(({ agent }) => agent.installation));
   const noModel = blocked.filter(entry => entry.reason === 'no-model');
   const failed = blocked.filter(entry => entry.reason === 'failed');
   const failureGroups = groupNames(
     failed,
-    ({ agent }) => agent.id,
+    ({ agent }) => agent.installation,
     entry => entry.message ?? '',
   );
   const lines: ReactNode[] = [];
@@ -122,17 +131,18 @@ export function DefaultAgentsBlockedAlert({
       )}, for different reasons that the list below names.`,
     );
   } else {
-    for (const { group, names: ids } of failureGroups) {
-      const entries = failed.filter(({ agent }) => ids.includes(agent.id));
+    for (const { group, names: environments } of failureGroups) {
       lines.push(
-        `Failed on ${environmentsOf(entries)}${group ? `: ${group}` : '.'}`,
+        `Failed on ${joinNames(environments)}${
+          group ? `: ${sentence(group)}` : '.'
+        }`,
       );
     }
   }
 
   return (
     <Alert
-      status="info"
+      status={status}
       icon
       title={title}
       description={
@@ -142,7 +152,10 @@ export function DefaultAgentsBlockedAlert({
               {line}
             </Text>
           ))}
-          <SimpleAccordion title={`All ${count} agents`} headingLevel={4}>
+          <SimpleAccordion
+            title={`All ${countNoun(count, 'agent')}`}
+            headingLevel={4}
+          >
             <Flex direction="column" gap="1" role="list">
               {blocked.map(entry => {
                 const href = hrefOf(entry);
@@ -178,5 +191,10 @@ function reasonText({ reason, message }: BlockedDefaultAgent): string {
   if (reason === 'no-model') {
     return 'No model yet.';
   }
-  return message ? `Failed: ${message}` : 'Failed.';
+  return message ? `Failed: ${sentence(message)}` : 'Failed.';
+}
+
+/** The controller's message as a sentence: one full stop at its end. */
+function sentence(message: string): string {
+  return /[.!?]$/.test(message) ? message : `${message}.`;
 }

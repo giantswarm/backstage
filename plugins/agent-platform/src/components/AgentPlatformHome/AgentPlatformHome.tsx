@@ -20,6 +20,7 @@ import { makeStyles } from '@material-ui/core/styles';
 
 import { useFavoriteAgentIds } from '../../hooks/useFavoriteAgents';
 import { useDefaultAgentIds } from '../../hooks/useAgentManager';
+import { useAgentManagerAgents } from '../../hooks/useAgentManagerAgents';
 import { useLinkedPrompt } from '../../hooks/useLinkedPrompt';
 import {
   findLinkedAgent,
@@ -30,6 +31,7 @@ import { agentDetailRouteRef, sessionDetailRouteRef } from '../../routes';
 import { AgentReachLine } from '../AgentReachLine';
 import {
   blockedDefaultAgents,
+  defaultAgentsToRead,
   DefaultAgentsBlockedAlert,
 } from '../DefaultAgentsBlockedAlert';
 import { SESSION_NAME_MAX_LENGTH } from '../SessionDetailPage/SessionRenameDialog';
@@ -182,19 +184,36 @@ function AgentPlatformHomeContent({
       ),
     [agents, defaultAgentIds],
   );
-  // The default agents that cannot start, on every installation listing
-  // agents: the picker only says each is unavailable, and they share one
-  // display name, so the alert names their environments and namespaces.
-  const agentInstallations = useMemo(
-    () => [...new Set(agents.map(agent => agent.installation))],
+  // The default agents that cannot start: the picker only says each is
+  // unavailable, and they share one display name, so the alert names their
+  // environments and namespaces. Only an environment with an agent that is
+  // not ready can hold one, so only those are asked for their default agent.
+  const unreadyInstallations = useMemo(
+    () => [
+      ...new Set(
+        agents
+          .filter(agent => agent.readiness !== 'ready')
+          .map(agent => agent.installation),
+      ),
+    ],
     [agents],
   );
-  const everyDefaultAgentId = useDefaultAgentIds(agentInstallations, {
+  const unreadyDefaultIds = useDefaultAgentIds(unreadyInstallations, {
     everywhere: true,
   });
+  const managedToRead = useMemo(
+    () =>
+      defaultAgentsToRead(agents, unreadyDefaultIds).map(agent => ({
+        installation: agent.installation,
+        namespace: agent.namespace,
+        name: agent.technicalName,
+      })),
+    [agents, unreadyDefaultIds],
+  );
+  const managedReadings = useAgentManagerAgents(managedToRead);
   const blockedDefaults = useMemo(
-    () => blockedDefaultAgents(agents, everyDefaultAgentId),
-    [agents, everyDefaultAgentId],
+    () => blockedDefaultAgents(agents, unreadyDefaultIds, managedReadings),
+    [agents, unreadyDefaultIds, managedReadings],
   );
   // The composer's pick, only while it can still be started: it reports a
   // pick, never that the agent left the offer (its installation turned out
