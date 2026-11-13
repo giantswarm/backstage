@@ -23,10 +23,31 @@ const useStyles = makeStyles({
   },
 });
 
+/**
+ * Pending erase: the organization's delete pull request merged (Orphaned,
+ * reason DeleteMerged) and it is not being erased yet. Its files are gone from
+ * git, so nothing on its page is changed any more: the page offers reading and
+ * Erase now only.
+ */
+export function isPendingErase(
+  organization: Pick<OrganizationStatus, 'deleting' | 'orphaned'>,
+): boolean {
+  return (
+    !organization.deleting &&
+    organization.orphaned?.status === 'True' &&
+    organization.orphaned.reason === ORPHANED_DELETE_MERGED
+  );
+}
+
 export type OrganizationStatusAlertProps = {
   organization: OrganizationStatus;
   /** Offered on Pending erase only, to a person who manages it. */
   onEraseNow?: () => void;
+  /**
+   * The id of the line that says, on Pending erase, why the page's changes
+   * are off: the disabled controls name it with `aria-describedby`.
+   */
+  changesOffId?: string;
 };
 
 /**
@@ -41,6 +62,7 @@ export type OrganizationStatusAlertProps = {
 export function OrganizationStatusAlert({
   organization,
   onEraseNow,
+  changesOffId,
 }: OrganizationStatusAlertProps) {
   const classes = useStyles();
   if (organization.deleting) {
@@ -84,7 +106,7 @@ export function OrganizationStatusAlert({
     </SimpleAccordion>
   ) : null;
 
-  if (orphaned.reason === ORPHANED_DELETE_MERGED) {
+  if (isPendingErase(organization)) {
     return (
       <Alert
         status="info"
@@ -96,6 +118,15 @@ export function OrganizationStatusAlert({
               The pull request that deletes this organization is merged, and its
               workers are stopped. Its agents, connectors, credentials and
               members are kept until it is erased.
+            </Text>
+            <Text
+              as="p"
+              variant="body-medium"
+              className={classes.inherit}
+              id={changesOffId}
+            >
+              Its delete is merged, so its members, models and credentials can
+              no longer be changed.
             </Text>
             {onEraseNow && (
               <div>

@@ -57,7 +57,12 @@ import {
   mutedInstallationsApiRef,
   MutedInstallationsStore,
 } from './apis/mutedInstallations';
+import { FIXTURE_INSTALLATION } from '@giantswarm/backstage-plugin-gs-common';
 import { DiscoveryApiClient } from './apis/discovery/DiscoveryApiClient';
+import {
+  getInstallationsConfigSnapshot,
+  subscribeInstallationsConfig,
+} from './apis/installations';
 import {
   ContainerRegistryClient,
   containerRegistryApiRef,
@@ -144,8 +149,30 @@ const clusterAccessStatusApi = ApiBlueprint.make({
   params: defineParams =>
     defineParams({
       api: clusterAccessStatusApiRef,
-      deps: {},
-      factory: () => ClusterAccessStatusStore.create(),
+      deps: { configApi: configApiRef },
+      factory: ({ configApi }) => {
+        const store = ClusterAccessStatusStore.create();
+        // `gs.fixtures: true`: the fixture Kubernetes API serves the fixture
+        // installation without a sign-in, so its access is healthy once the
+        // config names it. Any other installation keeps its own access
+        // state. Outside production builds only (docs/fixtures.md).
+        if (
+          process.env.NODE_ENV !== 'production' &&
+          configApi.getOptionalBoolean('gs.fixtures')
+        ) {
+          const recordHealthy = () => {
+            const configured = getInstallationsConfigSnapshot()?.some(
+              installation => installation.name === FIXTURE_INSTALLATION,
+            );
+            if (configured) {
+              store.recordHealthy(FIXTURE_INSTALLATION);
+            }
+          };
+          recordHealthy();
+          subscribeInstallationsConfig(recordHealthy);
+        }
+        return store;
+      },
     }),
 });
 

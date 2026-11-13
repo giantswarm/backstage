@@ -3,6 +3,10 @@ import { AuthenticationError, InputError } from '@backstage/errors';
 import express from 'express';
 import Router from 'express-promise-router';
 import { errorResponseBody } from '@giantswarm/backstage-plugin-gs-node';
+import {
+  AGENT_MANAGER_AUTH_HEADER,
+  CREDENTIAL_OPERATION_PATTERN,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import { readInstallationBaseDomain } from './installationDomain';
 
 /**
@@ -20,12 +24,6 @@ import { readInstallationBaseDomain } from './installationDomain';
  * and every answer is `Cache-Control: no-store`.
  */
 
-/** Header carrying the person's installation token. Must match AGENT_MANAGER_AUTH_HEADER in plugins/agent-platform. */
-export const AGENT_MANAGER_AUTH_HEADER =
-  'backstage-agent-manager-authorization';
-
-/** agent-manager's operation ids: 48 lower-case hex characters. */
-const OPERATION_PATTERN = /^[a-f0-9]{48}$/;
 const MAX_VALUES = 16;
 const MAX_NAME_LENGTH = 253;
 const MAX_VALUE_LENGTH = 16 * 1024;
@@ -176,16 +174,12 @@ function answerError(
   res.status(status).json(errorResponseBody(error, req, status));
 }
 
-/** Gateway answers for a request that may have reached agent-manager. */
-const GATEWAY_STATUSES = new Set([502, 503, 504]);
-
 const OUTCOME_UNKNOWN_MESSAGE =
   'agent-manager did not answer the save; it may still complete';
 
 /**
- * agent-manager's error answer, `{error: {code, message}}`, passed on. A save
- * refused by a gateway in front of agent-manager (no agent-manager body) may
- * still have run: the gateway's status, with code `outcome_unknown`.
+ * An error with agent-manager's code is passed on. A POST without that code
+ * may have completed, so its outcome must be checked before another save.
  */
 async function forwardError(
   req: express.Request,
@@ -208,22 +202,12 @@ async function forwardError(
     // A body that is not agent-manager's JSON (a gateway's page) keeps the
     // generic message.
   }
-  if (
-    code === undefined &&
-    req.method === 'POST' &&
-    GATEWAY_STATUSES.has(upstream.status)
-  ) {
-    answerError(
-      req,
-      res,
-      upstream.status,
-      'outcome_unknown',
-      OUTCOME_UNKNOWN_MESSAGE,
-    );
-    return;
-  }
   const status =
     upstream.status >= 400 && upstream.status < 600 ? upstream.status : 502;
+  if (!code && req.method === 'POST') {
+    answerError(req, res, status, 'outcome_unknown', OUTCOME_UNKNOWN_MESSAGE);
+    return;
+  }
   answerError(
     req,
     res,
@@ -244,7 +228,7 @@ export function createCredentialOperationsRouter(
 
   const target = (req: express.Request) => {
     const operation = String(req.params.operation);
-    if (!OPERATION_PATTERN.test(operation)) {
+    if (!CREDENTIAL_OPERATION_PATTERN.test(operation)) {
       throw new InputError('operation must be an agent-manager operation id');
     }
     const installation = req.query.installation;
@@ -314,8 +298,10 @@ export function createCredentialOperationsRouter(
         req,
         res,
         502,
-        'backend_error',
-        'agent-manager answered something other than JSON',
+        req.method === 'POST' ? 'outcome_unknown' : 'backend_error',
+        req.method === 'POST'
+          ? OUTCOME_UNKNOWN_MESSAGE
+          : 'agent-manager answered something other than JSON',
       );
       return;
     }

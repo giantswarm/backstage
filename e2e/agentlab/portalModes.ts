@@ -48,6 +48,7 @@ export const SHELL_SPECS = [
   'notification-inbox.spec.ts',
   'organization-credentials.spec.ts',
   'organizations.spec.ts',
+  'profile-environments.spec.ts',
   'provider-connect.spec.ts',
   'muster-namespaced.spec.ts',
   'new-agent-draft.spec.ts',
@@ -102,6 +103,7 @@ export const SHELL_SPECS = [
  * {@link SHELL_SPECS}, they need a lab in `shell` mode.
  */
 export const MOBILE_SPECS = [
+  'organization-credentials.spec.ts',
   'mobile-hosting.spec.ts',
   'mobile-model-page.spec.ts',
   'mobile-navigation.spec.ts',

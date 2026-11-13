@@ -5,14 +5,98 @@ so its pages render made-up data without their backends: for local
 development, design reviews and layout checks. Fixture code never ships in a
 production build.
 
-| Flag                     | Plugin                       | Fixture implementation                                                               |
-| ------------------------ | ---------------------------- | ------------------------------------------------------------------------------------ |
-| `plans.fixtures: true`   | plans (Hive, the plan list)  | `plugins/plans/src/apis/PlansFixtureApi.ts`, `plugins/plans/src/lib/hiveFixtures.ts` |
-| `roadmap.fixtures: true` | roadmap (Hive's Roadmap tab) | `plugins/roadmap/src/apis/RoadmapFixtureApi.ts`                                      |
+| Flag                           | Plugin                                                                                 | Fixture implementation                                                               |
+| ------------------------------ | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `plans.fixtures: true`         | plans (Hive, the plan list)                                                            | `plugins/plans/src/apis/PlansFixtureApi.ts`, `plugins/plans/src/lib/hiveFixtures.ts` |
+| `roadmap.fixtures: true`       | roadmap (Hive's Roadmap tab)                                                           | `plugins/roadmap/src/apis/RoadmapFixtureApi.ts`                                      |
+| `muster.fixtures: true`        | muster (`MusterApi`), and every tool call through it                                   | `plugins/muster/src/apis/fixtures/`, plus the fixture MCP servers of other plugins   |
+| `agentPlatform.fixtures: true` | agent-platform (`KagentApi`, `ModelManagerApi`, `AgentManagerCredentialsApi`)          | `plugins/agent-platform/src/apis/fixtures/`                                          |
+| `gs.fixtures: true`            | the Kubernetes API of the installations (`kubernetesApiRef`), and their cluster access | `packages/app/src/modules/kubernetes/fixtures/KubernetesFixtureApi.ts`               |
 
 Set the flags in `app-config.local.yaml` and run `yarn start`. In a production
 build (`NODE_ENV=production`, what `backstage-cli package build` and the image
 use) the flags have no effect.
+
+## Fixture mode
+
+`yarn fixtures start` runs the portal with the Agent Platform's fixture flags
+(`gs`, `muster`, `agentPlatform`) on and the guest signed in, without a cluster
+or a person
+(`app-config.fixtures.yaml` on top of `app-config.yaml`; no `.env` and no
+`app-config.local.yaml`). It is made for agents checking pages, several at a
+time, each in its own checkout:
+
+```bash
+yarn fixtures start     # prints the portal's URL once it answers
+yarn fixtures status    # the running server's state, as JSON
+yarn fixtures stop
+```
+
+- The ports come from the operating system, never 3000 or 7007;
+  `FIXTURES_APP_PORT` and `FIXTURES_BACKEND_PORT` choose them instead. Both
+  servers bind `127.0.0.1`.
+- The state is in `.fixtures-server.json` at the checkout's root (the URLs, the
+  ports, the process ids, a token), the generated port config, the log and a
+  lock in `.fixtures-server/`. Both are gitignored.
+- `start` in a checkout whose server runs reuses it and prints its URL; `start`
+  and `stop` take the lock, so concurrent starts spawn one server. A process
+  counts as the checkout's server only while its command line carries the
+  state's token, so `stop` never signals a process that took over a stale
+  process id.
+- The server stops on its own once no `start` has asked for it for
+  `FIXTURES_IDLE_MINUTES` (default 60), and at once when `.fixtures-server.json`
+  no longer names it. A start that fails stops what it started. Stop the
+  server when you are done: a frontend and a backend per checkout are heavy.
+- `--config <file>` adds a config on top, for example to turn on Hive and its
+  fixtures (`app.extensions` must then repeat `app-config.yaml`'s list, which
+  Backstage replaces rather than merges). A relative path is read from the
+  directory you run the command in; from a workspace directory, run
+  `yarn run -T fixtures …`.
+
+### The installation
+
+Fixture mode serves one made-up installation, `meadow`
+(`FIXTURE_INSTALLATION` in `@giantswarm/backstage-plugin-gs-common`, which
+every fixture API reads; a test checks that `gs.installations` in
+`app-config.fixtures.yaml` names it and no other). A call for any other
+installation fails with a console error, in every fixture API.
+With `gs.fixtures` the fixture Kubernetes API answers for it without a
+cluster: `/version` answers, `/apis` lists the API groups of the portal's resource classes
+(kagent's and muster's among them; model hosting's and Cluster API's are left
+out, so those components read as absent in the installation inventory),
+discovery answers the versions the classes support (the newest preferred),
+every list is empty, a
+read of one object is not found, and access reviews are allowed. Its cluster
+access is healthy from the start, and it has no metrics backend
+(`mimirEnabled: false`). Any other request, a write among them, fails with a
+501 and a console error.
+
+If the backend fails with "Invalid app bundle schema", a production build of
+the app in `packages/app/dist` predates a config schema change: delete the
+directory and start again.
+
+### Tool calls through muster
+
+Most Agent Platform backends (agent-manager, workspace-manager,
+toolchain-manager, skill-manager, cluster-manager, the model-manager tools) are
+MCP servers the pages call through `musterApi.callTool()`. In fixture mode the
+fixture `MusterApi` dispatches each call by its name, `x_<server>_<tool>`, to a
+handler of a fixture MCP server, and lists those servers as connected and their
+tools in the catalogue. A call no handler answers fails with "Fixture mode has
+no handler for the tool …", in the console and as the page's error state, never
+as an empty result: add the handler.
+
+A plugin contributes its servers with an extension that attaches to
+`FIXTURE_MCP_SERVERS.attachTo` (`api:muster/muster`, input `fixtureServers`)
+with a data ref of the id `FIXTURE_MCP_SERVERS.dataRefId`, both from
+gs-common, and loads its handler modules with a dynamic `import()` behind the
+production check, as agent-platform's
+`muster-fixture-servers:agent-platform` does (`plugins/agent-platform/src/plugin.tsx`):
+one module per server under `src/apis/fixtures/mcpServers/`, a `FixtureMcpServer`
+whose `tools` map a tool's own name to its handler. The handlers live with the
+plugin that calls the tools, and each declares the answer type its client
+reads (`ListWorkspacesAnswer`, `ToolchainList`, …), so a change to it breaks
+the fixture's build.
 
 ## Adding a fixture mode
 

@@ -10,6 +10,7 @@
  * them until the usage summary needed the same arithmetic server-side.
  */
 export * from './agentShellFlag';
+export * from './credentialOperations';
 export * from './organizationsFlag';
 export * from './portals';
 export * from './metaAgents';

@@ -7,6 +7,7 @@ import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 // eslint-disable-next-line @backstage/no-mixed-plugin-imports -- The GitHub connection prompt reads the connector through the Muster API.
 import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- The GitHub connection prompt uses the Muster API.
 import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
 import {
   ExternalUrlConsentManager,
@@ -27,6 +28,7 @@ import type {
 import { organizationsRouteRef } from '../../routes';
 import { CredentialFormPage } from './CredentialFormPage';
 import { PortalSessionEndedError } from '../../lib/portalSession';
+import { agentManagerCredentialOperationQueryKey } from '../../lib/queryKeys';
 
 // Sign in again reloads the page, which jsdom cannot.
 const mockReloadPage = jest.fn();
@@ -164,6 +166,45 @@ async function renderForm(
 
 describe('CredentialFormPage', () => {
   beforeEach(() => analyticsApi.captureEvent.mockClear());
+
+  it.each(['"3"', '"4"'])(
+    'clears input and blocks writes while refreshing the confirmation to %s',
+    async etag => {
+      const user = userEvent.setup();
+      let finishRead!: (result: CredentialOperationRead) => void;
+      const api = fakeCredentialsApi();
+      api.getOperation
+        .mockResolvedValueOnce({ operation: CONFIRMATION, etag: '"3"' })
+        .mockImplementation(
+          () =>
+            new Promise(resolve => {
+              finishRead = resolve;
+            }),
+        );
+      await renderForm(api);
+      await user.type(await screen.findByLabelText(/^Value/), VALUE);
+      await user.click(screen.getByRole('button', { name: 'Check again' }));
+      expect(screen.getByLabelText(/^Value/)).toHaveValue('');
+      expect(screen.getByLabelText(/^Value/)).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+      expect(
+        screen.getByRole('button', { name: 'Cancel request' }),
+      ).toBeDisabled();
+      finishRead({ operation: CONFIRMATION, etag });
+      await waitFor(() =>
+        expect(screen.getByLabelText(/^Value/)).toBeEnabled(),
+      );
+      await user.type(screen.getByLabelText(/^Value/), VALUE);
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+      await screen.findByText('Credential saved');
+      expect(api.saveOperation).toHaveBeenCalledWith(
+        'gazelle',
+        OPERATION,
+        etag,
+        expect.any(Array),
+      );
+    },
+  );
 
   it('opens the request the link names and shows what the value is for before it takes one', async () => {
     let resolve!: (value: CredentialOperationRead) => void;
@@ -519,10 +560,10 @@ describe('CredentialFormPage', () => {
     await user.type(await screen.findByLabelText(/^Value/), VALUE);
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    expect(
-      await screen.findByText('Check the request again'),
-    ).toBeInTheDocument();
     await waitFor(() => expect(api.getOperation).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.queryByText('Check the request again')).toBeNull(),
+    );
     expect(await screen.findByLabelText(/^Value/)).toHaveValue('');
   });
 
@@ -623,11 +664,13 @@ describe('CredentialFormPage', () => {
     await user.type(await screen.findByLabelText(/^Value/), VALUE);
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    expect(
-      await screen.findByText(/The save may still complete/),
-    ).toBeInTheDocument();
     expect(screen.queryByText('Not saved')).not.toBeInTheDocument();
     await waitFor(() => expect(api.getOperation).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Check the request again'),
+      ).not.toBeInTheDocument(),
+    );
   });
 
   it.each([
@@ -723,6 +766,127 @@ describe('CredentialFormPage', () => {
       '"3"',
     );
     expect(api.saveOperation).not.toHaveBeenCalled();
+  });
+
+  it('recovers a stale cancellation with the current version and clears values and notices', async () => {
+    const user = userEvent.setup();
+    const api = fakeCredentialsApi();
+    api.cancelOperation.mockRejectedValueOnce(
+      await refusal(412, 'precondition_failed', 'changed'),
+    );
+    api.getOperation
+      .mockResolvedValueOnce({ operation: CONFIRMATION, etag: '"3"' })
+      .mockResolvedValue({ operation: CONFIRMATION, etag: '"4"' });
+    await renderForm(api);
+    await user.type(await screen.findByLabelText(/^Value/), VALUE);
+    await user.click(screen.getByRole('button', { name: 'Cancel request' }));
+    await waitFor(() => expect(api.getOperation).toHaveBeenCalledTimes(2));
+    expect(screen.getByLabelText(/^Value/)).toHaveValue('');
+    expect(screen.queryByText('Not cancelled')).toBeNull();
+    expect(screen.queryByText('Check the request again')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Cancel request' }));
+    await screen.findByText('Request cancelled');
+    expect(api.cancelOperation).toHaveBeenLastCalledWith(
+      'gazelle',
+      OPERATION,
+      '"4"',
+    );
+    expect(api.getOperation).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['save', 'cancel'] as const)(
+    'keeps the local %s result when the subsequent read fails',
+    async action => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi();
+      api.getOperation
+        .mockResolvedValueOnce({ operation: CONFIRMATION, etag: '"3"' })
+        .mockRejectedValue(new Error('read failed'));
+      const queryClient = await renderForm(api);
+      await user.type(await screen.findByLabelText(/^Value/), VALUE);
+      await user.click(
+        screen.getByRole('button', {
+          name: action === 'save' ? 'Save' : 'Cancel request',
+        }),
+      );
+      await screen.findByText(
+        action === 'save' ? 'Credential saved' : 'Request cancelled',
+      );
+      expect(api.getOperation).toHaveBeenCalledTimes(1);
+      await queryClient.refetchQueries({
+        queryKey: agentManagerCredentialOperationQueryKey('gazelle', OPERATION),
+      });
+      await waitFor(() => expect(api.getOperation).toHaveBeenCalledTimes(2));
+      expect(screen.queryByText(/Could not read the request/)).toBeNull();
+      expect(screen.queryByLabelText(/^Value/)).toBeNull();
+    },
+  );
+
+  it.each(['save', 'cancel'] as const)(
+    'prefers the local %s result over a contradictory read',
+    async action => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi();
+      api.getOperation
+        .mockResolvedValueOnce({ operation: CONFIRMATION, etag: '"3"' })
+        .mockResolvedValue({
+          operation: {
+            ...CONFIRMATION,
+            state: action === 'save' ? 'cancelled' : 'complete',
+          },
+          etag: '"4"',
+        });
+      const queryClient = await renderForm(api);
+      await user.type(await screen.findByLabelText(/^Value/), VALUE);
+      await user.click(
+        screen.getByRole('button', {
+          name: action === 'save' ? 'Save' : 'Cancel request',
+        }),
+      );
+      await screen.findByText(
+        action === 'save' ? 'Credential saved' : 'Request cancelled',
+      );
+      expect(api.getOperation).toHaveBeenCalledTimes(1);
+      await queryClient.refetchQueries({
+        queryKey: agentManagerCredentialOperationQueryKey('gazelle', OPERATION),
+      });
+      await waitFor(() => expect(api.getOperation).toHaveBeenCalledTimes(2));
+      expect(
+        screen.queryByText(
+          action === 'save' ? 'Request cancelled' : 'Credential saved',
+        ),
+      ).toBeNull();
+      expect(screen.queryByLabelText(/^Value/)).toBeNull();
+    },
+  );
+
+  it('clears an unknown-outcome notice on a successful retry without rendering the stale uncertain state', async () => {
+    const user = userEvent.setup();
+    const api = fakeCredentialsApi(
+      read({ ...CONFIRMATION, state: 'uncertain' }),
+    );
+    api.saveOperation.mockRejectedValueOnce(
+      await refusal(502, 'outcome_unknown', 'unknown'),
+    );
+    await renderForm(api);
+    await user.type(await screen.findByLabelText(/^Value/), VALUE);
+    api.getOperation.mockRejectedValue(new Error('read failed'));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(api.getOperation).toHaveBeenCalledTimes(2));
+    api.getOperation.mockImplementation(
+      read({ ...CONFIRMATION, state: 'uncertain' }),
+    );
+    await user.click(
+      await screen.findByRole('button', { name: 'Check again' }),
+    );
+    await user.type(await screen.findByLabelText(/^Value/), VALUE);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await screen.findByText('Credential saved');
+    expect(screen.queryByText('Check the request again')).toBeNull();
+    expect(
+      screen.queryByText('An earlier save of this request did not finish'),
+    ).toBeNull();
+    expect(screen.queryByLabelText(/^Value/)).toBeNull();
   });
 
   it('says a request that is gone is gone', async () => {

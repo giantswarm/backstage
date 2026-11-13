@@ -30,6 +30,38 @@ const MARKERS = [
     source: 'plugins/roadmap/src/apis/RoadmapFixtureApi.ts',
     marker: 'The change is proven in the lab',
   },
+  {
+    source: 'plugins/muster/src/apis/fixtures/MusterFixtureApi.ts',
+    marker: 'Fixture mode has no handler for the tool',
+  },
+  {
+    source: 'plugins/agent-platform/src/apis/fixtures/notInFixtures.ts',
+    marker: 'Fixture mode does not answer',
+  },
+  {
+    source: 'plugins/agent-platform/src/apis/fixtures/KagentFixtureApi.ts',
+    marker: 'kagent streamMessage',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/ModelManagerFixtureApi.ts',
+    marker: 'model-manager pullModel',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/AgentManagerCredentialsFixtureApi.ts',
+    marker: 'agent-manager getOperation',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/mcpServers/agentManager.ts',
+    marker: 'oci://registry.example.com/charts/agent',
+  },
+  {
+    source:
+      'packages/app/src/modules/kubernetes/fixtures/KubernetesFixtureApi.ts',
+    marker: 'Fixture mode does not answer the Kubernetes request',
+  },
 ];
 
 const root = path.resolve(import.meta.dirname, '..');

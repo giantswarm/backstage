@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Organization requests use the Muster API.
 import {
   musterApiRef,
   MusterUnauthorizedError,
@@ -378,6 +379,160 @@ describe('OrganizationPage', () => {
     });
   });
 
+  describe('changes on Pending erase', () => {
+    const WHY =
+      'Its delete is merged, so its members, models and credentials can no longer be changed.';
+    const ORGANIZATION = {
+      name: 'payments',
+      parent: 'org-acme',
+      namespace: PAYMENTS.namespace,
+      harnesses: ['kagent'],
+      workerReplicas: 3,
+    };
+    const PENDING_ERASE: OrganizationsScenario = {
+      ...SCENARIO,
+      organization: {
+        ...ORGANIZATION,
+        gitops: 'flux-giantswarm/agent-platform-organizations',
+        orphaned: { status: 'True', reason: 'DeleteMerged' },
+      },
+    };
+    const IN_GIT: OrganizationsScenario = {
+      ...SCENARIO,
+      organization: {
+        ...ORGANIZATION,
+        gitops: 'flux-giantswarm/agent-platform-organizations',
+        orphaned: { status: 'False', reason: 'InInventory' },
+      },
+    };
+    const ERASING: OrganizationsScenario = {
+      ...SCENARIO,
+      organization: {
+        ...ORGANIZATION,
+        gitops: 'flux-giantswarm/agent-platform-organizations',
+        orphaned: { status: 'True', reason: 'DeleteMerged' },
+        deleting: true,
+      },
+    };
+    const MISSING_FROM_GIT: OrganizationsScenario = {
+      ...SCENARIO,
+      organization: {
+        ...ORGANIZATION,
+        gitops: 'flux-giantswarm/agent-platform-organizations',
+        orphaned: { status: 'True', reason: 'MissingFromGit' },
+      },
+    };
+
+    /** Every control that changes something on the tab, once it is read. */
+    const writeControls: Record<string, () => Promise<HTMLElement[]>> = {
+      '': async () => [
+        await screen.findByRole('button', { name: /^Remove payments-team/ }),
+        screen.getByRole('button', { name: /^Remove jane@example.com/ }),
+        screen.getByRole('radio', { name: 'A group' }),
+        screen.getByRole('radio', { name: /A person/ }),
+        screen.getByRole('textbox', { name: /Group/ }),
+        screen.getByRole('button', { name: 'Add group' }),
+      ],
+      '/models': async () => [
+        await screen.findByRole('button', { name: 'Add model' }),
+        screen.getByRole('button', {
+          name: 'Replace the key of claude-sonnet',
+        }),
+        screen.getByRole('button', { name: 'Replace the key of gpt' }),
+      ],
+      '/connectors': async () => [
+        await screen.findByRole('button', {
+          name: 'Replace the credential of jira',
+        }),
+      ],
+    };
+
+    it.each([
+      ['Members', ''],
+      ['Models', '/models'],
+      ['Connectors', '/connectors'],
+    ])('turns every change on %s off and says why', async (_tab, path) => {
+      await renderPage(path, PENDING_ERASE);
+
+      expect(await screen.findByText(WHY)).toBeInTheDocument();
+      const controls = await writeControls[path]();
+      for (const control of controls) {
+        expect(control).toBeDisabled();
+      }
+      // A button names the reason; a form field keeps its own help.
+      const buttons = controls.filter(control => control.tagName === 'BUTTON');
+      expect(buttons.length).toBeGreaterThan(0);
+      for (const button of buttons) {
+        expect(button).toHaveAccessibleDescription(WHY);
+      }
+      // Erase now stays.
+      expect(screen.getByRole('button', { name: 'Erase now' })).toBeEnabled();
+    });
+
+    it.each([
+      ['Members', '', 'in git', IN_GIT],
+      ['Models', '/models', 'in git', IN_GIT],
+      ['Connectors', '/connectors', 'in git', IN_GIT],
+      ['Members', '', 'Missing from git', MISSING_FROM_GIT],
+      ['Models', '/models', 'Missing from git', MISSING_FROM_GIT],
+      ['Connectors', '/connectors', 'Missing from git', MISSING_FROM_GIT],
+      // Erasing is not Pending erase: the page offers what it offered before.
+      ['Members', '', 'Erasing', ERASING],
+      ['Models', '/models', 'Erasing', ERASING],
+      ['Connectors', '/connectors', 'Erasing', ERASING],
+    ])(
+      'offers every change on %s while it is %s',
+      async (_tab, path, _state, scenario) => {
+        await renderPage(path, scenario);
+
+        const controls = await writeControls[path]();
+        for (const control of controls) {
+          expect(control).toBeEnabled();
+        }
+        expect(screen.queryByText(WHY)).not.toBeInTheDocument();
+      },
+    );
+
+    it.each([
+      ['Remove', '', /^Remove payments-team/],
+      ['Add a model', '/models', /^Add model$/],
+      ['Replace key', '/models', /^Replace the key of gpt$/],
+      ['Replace credential', '/connectors', /^Replace the credential of jira$/],
+    ])(
+      'closes an open %s dialog once the organization turns Pending erase',
+      async (_dialog, path, opener) => {
+        const scenario: OrganizationsScenario = { ...IN_GIT };
+        const { queryClient } = await renderPage(path, scenario);
+        await userEvent.click(
+          await screen.findByRole('button', { name: opener }),
+        );
+        expect(await screen.findByRole('dialog')).toBeInTheDocument();
+
+        scenario.organization = PENDING_ERASE.organization;
+        await act(() =>
+          queryClient.invalidateQueries({
+            queryKey: musterOrganizationsQueryKey('gazelle'),
+          }),
+        );
+
+        expect(await screen.findByText(WHY)).toBeInTheDocument();
+        await waitFor(() =>
+          expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+        );
+      },
+    );
+
+    it('lists the egress policies on Pending erase, a tab with nothing to change', async () => {
+      await renderPage('/egress', PENDING_ERASE);
+
+      expect(await screen.findByText('payments-api')).toBeInTheDocument();
+      expect(screen.getByText(WHY)).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /^(Add|Remove|Replace|Edit)/ }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it('shows the members agent-manager lists, each with its role, from the organization namespace it names', async () => {
     const { callTool } = await renderPage('', SCENARIO);
 
@@ -547,6 +702,54 @@ describe('OrganizationPage', () => {
     expect(within(gpt).queryByText('Default')).toBeNull();
   });
 
+  it('hides key replacement for managed models', async () => {
+    await renderPage('/models', {
+      ...SCENARIO,
+      models: {
+        [PAYMENTS.namespace]: SCENARIO.models![PAYMENTS.namespace].map(
+          model => ({
+            ...model,
+            managedBy: 'platform',
+          }),
+        ),
+      },
+    });
+    await screen.findByRole('rowheader', { name: /claude-sonnet/ });
+    expect(
+      screen.queryByRole('button', { name: /Replace the key/ }),
+    ).toBeNull();
+  });
+
+  it('closes the model dialog and refreshes after an immediate write', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderPage('/models', {
+      ...SCENARIO,
+      modelKeyPresent: true,
+    });
+    await user.click(await screen.findByRole('button', { name: 'Add model' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /Name/ }),
+      'claude',
+    );
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /Model/ }),
+      'claude-sonnet-4-6',
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Continue to the key' }),
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(toolCalls(callTool, 'set_organization_model')).toHaveLength(1);
+    expect(toolCalls(callTool, 'list_model_configs').length).toBeGreaterThan(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.modelCreated',
+        attributes: {},
+      }),
+    );
+  });
+
   it("asks for the organization's own key when it has no model, on the credential form", async () => {
     const user = userEvent.setup();
     const { callTool } = await renderPage('/models', {
@@ -585,6 +788,7 @@ describe('OrganizationPage', () => {
     expect(await screen.findByTestId('location')).toHaveTextContent(
       `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
     );
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
   // The portal restarted and lost the keys it signed the session token

@@ -546,6 +546,22 @@ only when the records reach back before it.
 `/profile` shows who is signed in and the environments the portal
 talks to. Other settings stay in the classic settings.
 
+Its Environments section lists every configured installation as a toggle
+chip, all at once, named with its pipeline in the chip's accessible name and
+tooltip. A chip that is off switches the environment off app-wide: the access
+probe skips it and no page reads from it. **All on** and **All off** set every
+chip, and the notice after **All off** offers **Undo** until an environment is
+turned on again, here or elsewhere. The dot on a chip that is on shows the
+access probe's state, with the same labels and colours as the classic
+sidebar's Cluster access widget: Healthy, Degraded, Session expired (with
+**Sign in again**) or Connecting…, plus Not checked for an installation without
+the token broker that the person is not signed in to. Degraded and expired
+environments are listed under the chips with the probe's reason. A chip that
+is off shows a grey dot, since it is not checked, and the summary counts
+states among the chips that are on. The section shares its state with the
+classic widget: the switched-off set in the browser's `localStorage`
+(`gs-muted-installations`) and the probe's results, so both always agree.
+
 ---
 
 ## Overview of the create flow
@@ -771,6 +787,27 @@ saved): nothing was written, the form takes no value for that request any
 more, and the person starts the replacement again from the tab. Every request carries a fresh
 `requestId`, since agent-manager answers the same `requestId` with the old,
 stale operation.
+
+If the credential already exists, Add model completes the write, closes the
+dialog, refreshes the lists and reports the completed model write. Managed
+models do not offer Replace key.
+Organization model names use the same 63-character validation as the model
+form. A prepared operation needs the bound credential route; a missing route
+shows an error with instructions for the portal administrator.
+
+Each credential request has its own form state, including when another request
+opens in the same browser tab. Check again clears entered values and prevents
+saving or cancellation until the confirmation has loaded. Save and Cancel
+reload a changed confirmation and clear entered values; a successful read or
+write clears the recovery notice. A local save receipt or cancellation remains
+visible if another read fails; success does not start an extra confirmation
+read. Pending and uncertain apply operations
+take values; saving and uncertain commit operations finish with no values.
+An unreadable POST success or an error without agent-manager's code has code
+`outcome_unknown`. Only the credential route accepts JSON bodies up to 2 MiB,
+covering 16 maximum-length escaped values and names; other routes retain their
+existing limits.
+
 `set_organization_model` changes a model that exists, so a create first reads
 the organization's models (`list_model_configs`) and refuses a name it already
 has. A model agent-manager wrote there stays editable, since the edit goes
