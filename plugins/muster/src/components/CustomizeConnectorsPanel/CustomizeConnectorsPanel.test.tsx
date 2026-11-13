@@ -289,6 +289,16 @@ describe('CustomizeConnectorsPanel', () => {
     expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
   });
 
+  it('leaves the sign-in column out where a sign-in has no button: a refused SSO one', async () => {
+    api.getAuthStatus.mockImplementation(async () => ssoFailedAuthStatus());
+    await renderPanel();
+
+    expect(
+      await within(rowOf('kubernetes')).findByText('Cannot connect'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
+  });
+
   it('signs in from the row without opening the connector', async () => {
     const user = userEvent.setup();
     await renderPanel();

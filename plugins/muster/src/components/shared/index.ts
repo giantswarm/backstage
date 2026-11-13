@@ -64,6 +64,7 @@ export {
   isSsoRefused,
   isSsoServer,
   needsSignIn,
+  signInRefusalOf,
   useServerNeedsSignIn,
   useServerSignIn,
 } from './useServerSignIn';

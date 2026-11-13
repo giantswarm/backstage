@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useMemo } from 'react';
+import { makeStyles, Theme } from '@material-ui/core';
 import { useQuery } from '@tanstack/react-query';
 import { useApi } from '@backstage/frontend-plugin-api';
 import {
@@ -54,6 +55,7 @@ import {
   isSsoRefused,
   needsSignIn,
   SessionGate,
+  signInRefusalOf,
   SignInStatusActions,
   SignInStatusText,
   StatusWithHint,
@@ -85,12 +87,6 @@ import {
   CONNECTORS_DEFAULT_SORT,
   sortConnectorRows,
 } from './sortConnectorRows';
-import {
-  type SignInStatusBoard,
-  useBoardSignInStatus,
-  usePublishSignInStatus,
-  useSignInStatusBoard,
-} from './signInStatusBoard';
 
 export type CustomizeConnectorsPanelProps = {
   search: string;
@@ -108,6 +104,11 @@ type Row = {
   signInServer?: string;
   /** Why that sign-in cannot help now (a deactivated connector). */
   signInGate?: string;
+  /**
+   * Whether that sign-in has a button: muster asks for it and has not
+   * refused it. An SSO connector that refused the sign-in has only its hint.
+   */
+  signInButton?: boolean;
   reach?: ConnectorReach;
   tags: string[];
 };
@@ -183,14 +184,24 @@ function ConnectorName({
   );
 }
 
+/** What the row's sign-in hook is called with, wherever the row shows it. */
+function signInStatusOptions(row: SignInRow, installation: string) {
+  return {
+    noun: 'connector' as const,
+    serverName: row.signInServer,
+    displayName: row.entry.displayName,
+    installation,
+    status: row.status,
+    signInGate: row.signInGate,
+  };
+}
+
 function ConnectorStatusCell({
   row,
   installation,
-  board,
 }: {
   row: Row;
   installation: string;
-  board: SignInStatusBoard;
 }) {
   if (!hasSignIn(row)) {
     if (!row.status.label) {
@@ -211,33 +222,20 @@ function ConnectorStatusCell({
       </Cell>
     );
   }
-  return (
-    <SignInStatusCell row={row} installation={installation} board={board} />
-  );
+  return <SignInStatusCell row={row} installation={installation} />;
 }
 
-/**
- * The state of a row with a sign-in. Holds the row's one sign-in hook, so the
- * answer to a click on the button in the next column reaches the state.
- */
+/** The state of a row with a sign-in, as the sign-in's answers change it. */
 function SignInStatusCell({
   row,
   installation,
-  board,
 }: {
   row: SignInRow;
   installation: string;
-  board: SignInStatusBoard;
 }) {
-  const signInStatus = useServerSignInStatus({
-    noun: 'connector',
-    serverName: row.signInServer,
-    displayName: row.entry.displayName,
-    installation,
-    status: row.status,
-    signInGate: row.signInGate,
-  });
-  usePublishSignInStatus(board, row.id, signInStatus);
+  const signInStatus = useServerSignInStatus(
+    signInStatusOptions(row, installation),
+  );
   return (
     <Cell>
       {/* The row opens the connector; the hint must not. */}
@@ -251,23 +249,52 @@ function SignInStatusCell({
   );
 }
 
+const useSignInCellStyles = makeStyles((theme: Theme) => ({
+  // A label wider than the column (a larger font, "Open sign-in page")
+  // wraps inside the button instead of being cut off.
+  cell: {
+    '& .bui-Button': {
+      flexShrink: 1,
+      minWidth: 0,
+      height: 'auto',
+      minHeight: '2rem',
+      paddingBlock: theme.spacing(0.5),
+      textAlign: 'start',
+    },
+  },
+}));
+
 /**
  * The sign-in's buttons, in a column of their own: they line up across rows,
- * beside the state rather than under it.
+ * beside the state rather than under it. The same sign-in as the state's,
+ * whose answers both cells read.
  */
 function ConnectorSignInCell({
   row,
-  board,
+  installation,
 }: {
   row: Row;
-  board: SignInStatusBoard;
+  installation: string;
 }) {
-  const signInStatus = useBoardSignInStatus(board, row.id);
-  if (!signInStatus || signInStatus.parts.kind !== 'sign-in') {
+  if (!hasSignIn(row) || !row.signInButton) {
     return <Cell />;
   }
+  return <SignInActionsCell row={row} installation={installation} />;
+}
+
+function SignInActionsCell({
+  row,
+  installation,
+}: {
+  row: SignInRow;
+  installation: string;
+}) {
+  const classes = useSignInCellStyles();
+  const signInStatus = useServerSignInStatus(
+    signInStatusOptions(row, installation),
+  );
   return (
-    <Cell>
+    <Cell className={classes.cell}>
       <StopRowPress>
         <SignInStatusActions signInStatus={signInStatus} />
       </StopRowPress>
@@ -276,10 +303,27 @@ function ConnectorSignInCell({
 }
 
 /**
- * Room for the widest of the sign-in's buttons, "Open sign-in page" with its
- * new-tab icon, and the cell's padding.
+ * A column whose header is read to a screen reader only, from the column's
+ * own label and sizes.
  */
-const SIGN_IN_COLUMN_WIDTH = 184;
+function withHiddenLabel<T extends { id: string | number }>(
+  column: ColumnConfig<T>,
+): ColumnConfig<T> {
+  return {
+    ...column,
+    header: () => (
+      <Column
+        id={column.id}
+        width={column.width}
+        defaultWidth={column.defaultWidth}
+        minWidth={column.minWidth}
+        maxWidth={column.maxWidth}
+      >
+        <VisuallyHidden>{column.label}</VisuallyHidden>
+      </Column>
+    ),
+  };
+}
 
 /** Keeps a press inside to itself: the row around it opens the connector. */
 function StopRowPress({ children }: { children: ReactNode }) {
@@ -314,14 +358,9 @@ function SignInStackedRow({
   row: SignInRow;
   installation: string;
 }) {
-  const signInStatus = useServerSignInStatus({
-    noun: 'connector',
-    serverName: row.signInServer,
-    displayName: row.entry.displayName,
-    installation,
-    status: row.status,
-    signInGate: row.signInGate,
-  });
+  const signInStatus = useServerSignInStatus(
+    signInStatusOptions(row, installation),
+  );
   const { parts } = signInStatus;
   // Only a sign-in has buttons: an empty actions slot would still take its
   // gap at the end of line 1.
@@ -452,7 +491,6 @@ function ConnectorsTable({
   const hasSession = session.authenticated || !requiresAuth;
   const links = useServerPageLinks();
   const musterApi = useApi(musterApiRef);
-  const signInBoard = useSignInStatusBoard();
 
   const catalogue = useToolCatalogue(installation, hasSession);
   const authStatus = useQuery({
@@ -540,7 +578,12 @@ function ConnectorsTable({
         tools: toolsLabel(entry),
         status: connectorStatus(entry, status),
         ...(asksSignIn && server?.canAuthenticateInteractively()
-          ? { signInServer: entry.id }
+          ? {
+              signInServer: entry.id,
+              signInButton: Boolean(
+                status && needsSignIn(status) && !signInRefusalOf(status),
+              ),
+            }
           : {}),
         ...(server?.getSuspended()
           ? { signInGate: deactivatedSignInGate('connector') }
@@ -652,26 +695,21 @@ function ConnectorsTable({
       isSortable: true,
       defaultWidth: '1.3fr',
       cell: row => (
-        <ConnectorStatusCell
-          row={row}
-          installation={installation}
-          board={signInBoard}
-        />
+        <ConnectorStatusCell row={row} installation={installation} />
       ),
     },
-    {
+    withHiddenLabel<Row>({
       id: 'signIn',
       label: 'Actions',
-      width: SIGN_IN_COLUMN_WIDTH,
-      // No room taken where no connector asks for a sign-in.
-      isHidden: !rows.some(hasSignIn),
-      header: () => (
-        <Column id="signIn" width={SIGN_IN_COLUMN_WIDTH}>
-          <VisuallyHidden>Actions</VisuallyHidden>
-        </Column>
+      defaultWidth: '1.2fr',
+      // "Sign in" on one line; a longer label wraps.
+      minWidth: 112,
+      // No room taken where no connector offers a sign-in.
+      isHidden: !rows.some(row => row.signInButton),
+      cell: row => (
+        <ConnectorSignInCell row={row} installation={installation} />
       ),
-      cell: row => <ConnectorSignInCell row={row} board={signInBoard} />,
-    },
+    }),
   ];
 
   // The list is never empty (the platform's own connectors and muster are
