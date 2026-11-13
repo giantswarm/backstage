@@ -75,7 +75,9 @@ import {
   type MusterSessionState,
   musterStatus,
   rowServer,
+  NO_TOOLS_VALUE,
   toolsLabel,
+  toolsUnavailable,
   unsearchedToolsNotes,
 } from './connectorRows';
 import {
@@ -307,7 +309,9 @@ function ConnectorStackedRow({
         <TagList tags={row.tags} max={ROW_TAGS_MAX} />
       ) : null,
       row.auth,
-      row.tools ?? (toolsPending ? '…' : ''),
+      toolsUnavailable(row.entry, row.reach)
+        ? ''
+        : (row.tools ?? (toolsPending ? '…' : '')),
     ],
   };
   if (hasSignIn(row)) {
@@ -570,7 +574,13 @@ function ConnectorsTable({
       isSortable: true,
       defaultWidth: '1fr',
       cell: row => (
-        <CellText title={row.tools ?? (isAwaitingData(catalogue) ? '…' : '')} />
+        <CellText
+          title={
+            toolsUnavailable(row.entry, row.reach)
+              ? NO_TOOLS_VALUE
+              : (row.tools ?? (isAwaitingData(catalogue) ? '…' : ''))
+          }
+        />
       ),
     },
     {

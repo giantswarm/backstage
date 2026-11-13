@@ -149,6 +149,21 @@ describe('CustomizeModelsPanel', () => {
     expect(rows[1]).not.toHaveTextContent('Default');
   });
 
+  it('names the namespace of models that share a name, and only theirs', async () => {
+    const otherSonnet = {
+      ...sonnet,
+      id: 'golem/engineering/sonnet',
+      namespace: 'engineering',
+    };
+    mockModelRows = [sonnet, otherSonnet, qwen];
+    await renderPanel();
+
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows[0]).toHaveTextContent(/namespace support · support/);
+    expect(rows[1]).toHaveTextContent(/namespace engineering · engineering/);
+    expect(rows[2]).not.toHaveTextContent(/namespace support · support/);
+  });
+
   it('names each model’s owner once the list spans more than one', async () => {
     const orgNamespace = 'agents-default-x7k2q';
     mockDirectory = new Map([

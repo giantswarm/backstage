@@ -17,6 +17,7 @@ import {
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
+  DateComponent,
   InfoCard,
   INITIAL_ROWS,
   LoadingIndicator,
@@ -66,17 +67,6 @@ export type ModelCachePanelProps = {
 /** The empty state: no claim stands, nothing is billed. */
 export const NO_MODEL_CACHE =
   'No cluster keeps a model cache, so nothing is billed for cached weights.';
-
-/** `18 Sept 2026` — since when a claim stands. */
-export function describeSince(created: string | undefined): string {
-  return created
-    ? new Date(created).toLocaleDateString(undefined, {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      })
-    : '—';
-}
 
 /** Where a claim stands: its zone once Bound, else its phase. */
 export function describeWhere(row: ModelCacheRow): string {
@@ -138,7 +128,7 @@ export function sortModelCacheRowsBy(
         return `${row.installation} ${row.cluster.name} ${row.claim.name}`;
       case 'cluster':
         return `${row.cluster.name} ${row.claim.name}`;
-      case 'since':
+      case 'created':
         return row.claim.created ?? '';
       default:
         return `${row.claim.name} ${row.installation} ${row.cluster.name}`;
@@ -159,7 +149,8 @@ export const CACHE_READ_ONLY_REASON =
  *
  * - Line 1: the claim, its size, and a ⋯ menu holding Remove cache
  *   (destructive, so in the menu).
- * - Line 2: cluster · zone · environment · what it costs a month · since when.
+ * - Line 2: cluster · zone · environment · what it costs a month · when it
+ *   was created.
  * - Under them: what uses it, the volume, the size's tier, and — where the
  *   claim cannot be removed here — why, in words.
  */
@@ -193,7 +184,11 @@ export function modelCacheStackedRow(
       describeWhere(row),
       showInstallation ? row.installation : undefined,
       price ?? 'no price',
-      claim.created ? `since ${describeSince(claim.created)}` : undefined,
+      claim.created ? (
+        <>
+          created <DateComponent value={claim.created} relative />
+        </>
+      ) : undefined,
     ],
     details: (
       <Flex direction="column" gap="1">
@@ -322,10 +317,19 @@ function getColumnConfig(
       ),
     },
     {
-      id: 'since',
-      label: 'Since',
+      id: 'created',
+      label: 'Created',
       isSortable: true,
-      cell: row => <CellText title={describeSince(row.claim.created)} />,
+      cell: row =>
+        row.claim.created ? (
+          <Cell>
+            <Text variant="body-medium">
+              <DateComponent value={row.claim.created} relative />
+            </Text>
+          </Cell>
+        ) : (
+          <CellText title="—" />
+        ),
     },
     {
       id: 'use',
@@ -371,7 +375,7 @@ function getColumnConfig(
  * (giantswarm/backstage#2493): a claim is a gp3 volume that outlives every
  * pool and the serving slice by design and is billed every month it exists,
  * filled or not — so the card names each with its size, tier and monthly
- * list price as cluster-manager reads them, since when it stands, and what
+ * list price as cluster-manager reads them, when it was created, and what
  * uses it. **Remove cache** opens the confirm; an installation whose
  * cluster-manager predates the tool shows its claims read-only.
  */

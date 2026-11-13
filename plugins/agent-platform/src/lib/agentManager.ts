@@ -17,10 +17,15 @@ import {
   parseToolErrorCode,
   AGENT_MANAGER_SERVER,
 } from '@giantswarm/backstage-plugin-gs-common';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Agent-manager calls share Muster's connection and sign-in contract.
 import {
   type MusterServerPresence,
   musterSignInRequiredOf,
 } from '@giantswarm/backstage-plugin-muster';
+import {
+  isPortalSessionRefusal,
+  PortalSessionEndedError,
+} from './portalSession';
 
 /** The MCPServer name muster registers agent-manager under. */
 export { AGENT_MANAGER_SERVER };
@@ -281,6 +286,7 @@ export type AgentStatus = {
   namespace: string;
   verdict: AgentStatusVerdict;
   summary: string;
+  releaseWithheld?: string;
   agent?: AgentObjectStatus;
   helmRelease?: {
     exists: boolean;
@@ -611,9 +617,15 @@ export function looksNotConnected(message: string): boolean {
 export function classifyAgentManagerError(error: unknown): Error {
   if (
     error instanceof AgentManagerError ||
-    error instanceof AgentManagerNotConnectedError
+    error instanceof AgentManagerNotConnectedError ||
+    error instanceof PortalSessionEndedError
   ) {
     return error;
+  }
+  // The portal refused the person's session token before muster-backend
+  // ran: no sign-in to agent-manager fixes it, a sign-in to the portal does.
+  if (isPortalSessionRefusal(error)) {
+    return new PortalSessionEndedError({ cause: error });
   }
   const message = error instanceof Error ? error.message : String(error);
   if (musterSignInRequiredOf(error)) {
@@ -655,9 +667,11 @@ export function helmInstallCommand(
  * desired state lives in git and a live write is refused; `platform` — the
  * platform's own agent (labelled `agent-platform.giantswarm.io/managed-by:
  * agent-platform`), refused in every mode, a pull request too; `none` — a bare
- * `Agent` object with no release behind it, refused as well.
+ * `Agent` object with no release behind it, refused as well; `unknown` means
+ * Flux details are withheld, with the reason in `releaseWithheld`.
  */
-export type AgentManagedBy = 'helmrelease' | 'gitops' | 'platform' | 'none';
+export type AgentManagedBy =
+  'helmrelease' | 'gitops' | 'platform' | 'none' | 'unknown';
 
 /** What `get_agent` says about the release that owns the agent. */
 export type AgentHelmReleaseRef = {
@@ -710,6 +724,7 @@ export type AgentManagerAgent = {
   /** The installation's default agent (`get_info`'s `defaultAgent`). */
   default?: boolean;
   helmRelease?: AgentHelmReleaseRef;
+  releaseWithheld?: string;
   /** The HelmRelease's inline values, when a release owns the agent. */
   values?: Record<string, unknown>;
 };

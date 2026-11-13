@@ -158,7 +158,10 @@ export function SelectedRail({
         </Text>
       )}
       {notes && (
-        <Text variant="body-x-small" color="secondary">
+        <Text
+          variant={problems.length > 0 ? 'body-small' : 'body-x-small'}
+          color={problems.length > 0 ? 'danger' : 'secondary'}
+        >
           {notes}
         </Text>
       )}

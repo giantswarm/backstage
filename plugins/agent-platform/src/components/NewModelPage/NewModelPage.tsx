@@ -17,6 +17,7 @@ import {
 } from '@backstage/ui';
 import type { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  DisabledAction,
   searchableIf,
   SectionHeader,
   useFieldValidation,
@@ -59,13 +60,22 @@ import {
   AgentManagerNotConnectedError,
 } from '../../lib/agentManager';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 import { ModelConfigFormFields } from '../ModelConfigForm';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { DefaultModelChoice } from './DefaultModelChoice';
-import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
+import {
+  organizationsUndecided,
+  useOrganizationDirectory,
+} from '../OrganizationDirectoryProvider';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
+
+/** Why Connect model waits while the Owner choices are read. */
+const CHOOSING_OWNER_REASON =
+  'Checking which Organizations you may add a model for…';
 
 /** An existing model, for the flow to change instead of connecting a new one. */
 export type ModelEdit = {
@@ -150,7 +160,8 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
 
   const platformSave = useSaveModelConfig();
   const organizationSave = useSaveOrganizationModel(installation);
-  const { directory } = useOrganizationDirectory();
+  const organizationDirectory = useOrganizationDirectory();
+  const { directory } = organizationDirectory;
   // Edit of an organization's model: whether to ask for a new key.
   const [replaceKey, setReplaceKey] = useState(false);
 
@@ -160,6 +171,27 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     edit ? undefined : installation,
   );
   const [chosenNamespace, setChosenNamespace] = useState<string>();
+  // A new model's owners are still being learned.
+  const choosingOwner = isLoadingNamespaces;
+  // Why the installation's Organizations stay unknown once read, if they
+  // do: a new model then goes to the platform, and the page says so.
+  // The person has not signed in to agent-manager there: which Organizations
+  // they may add a model for is unknown until they do, so the button waits
+  // and the page offers the sign-in.
+  const ownerSignIn =
+    !edit && installation
+      ? organizationDirectory.signInOf(installation)
+      : undefined;
+  const ownersUnknown =
+    !edit && installation && !choosingOwner && !ownerSignIn
+      ? organizationsUndecided(organizationDirectory, installation)
+      : undefined;
+  let heldReason: string | undefined;
+  if (ownerSignIn) {
+    heldReason = `Sign in on ${installation} first: the connector tells which Organizations you may add a model for.`;
+  } else if (choosingOwner) {
+    heldReason = CHOOSING_OWNER_REASON;
+  }
   let namespace: string;
   if (edit) {
     namespace = edit.modelConfig.getNamespace() ?? MODEL_CONFIG_NAMESPACE;
@@ -409,16 +441,24 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     } else {
       label = isSaving ? 'Connecting…' : 'Connect model';
     }
-    return (
+    const primary = (describedBy?: string) => (
       <Button
         variant="primary"
         onPress={onSubmit}
-        isDisabled={isSaving || !isChanged}
+        isDisabled={Boolean(heldReason) || isSaving || !isChanged}
+        aria-describedby={describedBy}
       >
         {label}
       </Button>
     );
-  }, [edit, onSubmit, isSaving, isChanged, continuesToKey]);
+    // Until the owners are known, a model sent now would go to the platform
+    // although an Organization the person administers is still to be
+    // offered: the button waits and says why.
+    if (heldReason) {
+      return <DisabledAction reason={heldReason}>{primary}</DisabledAction>;
+    }
+    return primary();
+  }, [edit, onSubmit, isSaving, isChanged, continuesToKey, heldReason]);
   useProvidePageHeaderActions(actions);
 
   return (
@@ -486,6 +526,24 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
             </Flex>
           </CardBody>
         </Card>
+      )}
+
+      {ownerSignIn && installation && (
+        <ConnectAgentManagerAlert
+          installation={installation}
+          message={ownerSignIn.message}
+          action="Which Organizations you may add a model for is read"
+          signInRequired={ownerSignIn.signInRequired}
+          onSignedIn={() => organizationDirectory.recheck(installation)}
+        />
+      )}
+
+      {ownersUnknown && (
+        <Alert
+          status="warning"
+          title="Organizations unknown"
+          description={`Could not learn which Organizations you may add a model for on ${installation}, so this model goes to the platform. ${ownersUnknown}`}
+        />
       )}
 
       {!edit && installation && namespaces.length > 1 && (
@@ -579,6 +637,9 @@ function SaveError({
   organization?: string;
   onSignedIn: () => void;
 }) {
+  if (error instanceof PortalSessionEndedError) {
+    return <PortalSessionEndedAlert />;
+  }
   if (error instanceof AgentManagerNotConnectedError) {
     return (
       <ConnectAgentManagerAlert

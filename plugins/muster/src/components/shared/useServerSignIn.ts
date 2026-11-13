@@ -81,6 +81,31 @@ export function needsSignIn(status: ServerAuthStatus): boolean {
 }
 
 /**
+ * muster's reason a sign-in cannot pass for this session, when it reports
+ * one: a `grant` server, or a provider App, waiting for a sign-in with no
+ * `auth_tool` and an `error`. muster issues no sign-in link for it, so the
+ * reason is shown as is and nothing is offered. It is muster's answer to
+ * this read only: another session of the person may still sign in.
+ */
+export function signInRefusalOf(
+  status: ServerAuthStatus | undefined,
+  providerApp?: ProviderAppAuthStatus,
+): string | undefined {
+  const entry = providerApp ?? status;
+  if (!entry?.error || entry.auth_tool) {
+    return undefined;
+  }
+  if (providerApp) {
+    return providerApp.status === 'auth_required'
+      ? providerApp.error
+      : undefined;
+  }
+  return status?.kind === 'grant' && NEEDS_LOGIN.includes(status.status)
+    ? status.error
+    : undefined;
+}
+
+/**
  * Whether an SSO server refused the person's sign-in: muster's attempt failed
  * and the server is not connected in this session. The flag alone is not
  * enough, since muster keeps it per person and another session's failure
@@ -300,6 +325,11 @@ export interface ServerSignInState {
   signInTabOpened: boolean;
   /** Muster's message for a refused (or unrecognised) login attempt. */
   error?: string;
+  /**
+   * Why a sign-in cannot pass for this session, as `auth://status` says
+   * ({@link signInRefusalOf}): shown in place of the sign-in, never with it.
+   */
+  signInRefusal?: string;
   /**
    * Why `auth://status` cannot be read, while a sign-in is outstanding. Also
    * reported as `error` when no answer to a click outranks it; set apart so a
@@ -838,6 +868,7 @@ export function useServerSignIn(
       (signOutResult?.status === 'signed_out'
         ? signedOutNote(options.noun)
         : undefined),
+    signInRefusal: signInRefusalOf(status, providerApp),
     isSsoManaged: status ? isSsoServer(status) : false,
     isSsoRefused: status ? isSsoRefused(status) : false,
     needsLogin: status ? needsSignIn(status) : false,

@@ -13,6 +13,7 @@ import {
 import {
   CONNECTING_POLL_INTERVAL_MS,
   connectingPollInterval,
+  signInRefusalOf,
   useServerSignIn,
 } from './useServerSignIn';
 
@@ -828,5 +829,75 @@ describe('connectingPollInterval', () => {
       }),
     ).toBe(false);
     expect(connectingPollInterval(undefined)).toBe(false);
+  });
+});
+
+describe('signInRefusalOf', () => {
+  const REFUSAL =
+    "Cannot sign in to 'pro': your login method cannot be checked here.";
+
+  it.each([
+    ['auth_required', 'auth_required'],
+    ['reauth_required', 'reauth_required'],
+  ] as const)(
+    'reads a grant server in %s with an error and no auth_tool',
+    (_, status) => {
+      expect(
+        signInRefusalOf({ name: 'pro', status, kind: 'grant', error: REFUSAL }),
+      ).toBe(REFUSAL);
+    },
+  );
+
+  it.each([
+    [
+      'a server that offers the sign-in',
+      { auth_tool: 'core_auth_login', kind: 'grant' as const },
+    ],
+    ['an SSO server', { kind: 'sso' as const }],
+    ['a server from a muster without kind', {}],
+  ])('reads none for %s', (_, fields) => {
+    expect(
+      signInRefusalOf({
+        name: 'pro',
+        status: 'auth_required',
+        error: REFUSAL,
+        ...fields,
+      }),
+    ).toBeUndefined();
+  });
+
+  it('reads none for a connected grant server', () => {
+    expect(
+      signInRefusalOf({
+        name: 'pro',
+        status: 'connected',
+        kind: 'grant',
+        error: REFUSAL,
+      }),
+    ).toBeUndefined();
+  });
+
+  it('reads a provider App waiting for a sign-in with an error and no auth_tool', () => {
+    const app = {
+      name: 'github',
+      status: 'auth_required' as const,
+      error: REFUSAL,
+    };
+    expect(
+      signInRefusalOf(
+        { name: 'github', status: 'auth_required', error: REFUSAL },
+        app,
+      ),
+    ).toBe(REFUSAL);
+  });
+
+  it('reads none for a provider App with a code outstanding', () => {
+    const app = { name: 'chatgpt', status: 'pending' as const, error: REFUSAL };
+    expect(
+      signInRefusalOf(
+        { name: 'chatgpt', status: 'auth_required', error: REFUSAL },
+        app,
+      ),
+    ).toBeUndefined();
   });
 });

@@ -1,7 +1,10 @@
 import { useEffect } from 'react';
 
 import { useAgentManagerInfo } from '../../../hooks/useAgentManager';
-import { ORGANIZATIONS_CAPABILITY } from '../../../lib/organizations';
+import {
+  mayCreateAgentsIn,
+  ORGANIZATIONS_CAPABILITY,
+} from '../../../lib/organizations';
 import {
   type TenantChoicesUnread,
   useNewAgentForm,
@@ -51,20 +54,45 @@ export function useTenantChoicesSync(): TenantChoicesSync {
     byOrganization &&
     Boolean(installation) &&
     Boolean(organizations.failureOf(installation ?? ''));
+  // The organizations the person belongs to: those they may create agents in
+  // are the choices, the others are shown disabled. A `createAgents` that
+  // agent-manager does not send is not known, and keeps the organization a
+  // choice (`mayCreateAgentsIn`).
+  const memberships = mine?.organizations.flatMap(organization =>
+    organization.permissions.member && organization.namespace
+      ? [{ namespace: organization.namespace, organization }]
+      : [],
+  );
   const choices = byOrganization
-    ? mine?.organizations.flatMap(organization =>
-        organization.permissions.member && organization.namespace
-          ? [organization.namespace]
-          : [],
+    ? memberships?.flatMap(({ namespace, organization }) =>
+        mayCreateAgentsIn(organization) ? [namespace] : [],
       )
     : info?.namespaces?.managed;
-  const choicesKey = choices?.join(',');
-  const heldKey = state.tenantChoices?.join(',');
+  const blocked = byOrganization
+    ? memberships?.flatMap(({ namespace, organization }) =>
+        mayCreateAgentsIn(organization) ? [] : [namespace],
+      )
+    : undefined;
+  // Both lists in one key, so a change of either is taken.
+  const choicesKey =
+    choices === undefined
+      ? undefined
+      : `${choices.join(',')}|${(blocked ?? []).join(',')}`;
+  const heldKey =
+    state.tenantChoices === undefined
+      ? undefined
+      : `${state.tenantChoices.join(',')}|${(
+          state.tenantChoicesBlocked ?? []
+        ).join(',')}`;
   const isTaking = choicesKey !== undefined && heldKey !== choicesKey;
 
   useEffect(() => {
     if (choicesKey !== undefined && heldKey !== choicesKey) {
-      setTenantChoices(choicesKey ? choicesKey.split(',') : []);
+      const [taken, notTaken] = choicesKey.split('|');
+      setTenantChoices(
+        taken ? taken.split(',') : [],
+        notTaken ? notTaken.split(',') : [],
+      );
     }
   }, [choicesKey, heldKey, setTenantChoices]);
 

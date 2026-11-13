@@ -19,6 +19,7 @@ import {
   parseHistoryEntry,
   parsePart,
   readFunctionCall,
+  readProposedCall,
   readFunctionResponse,
   readKagentMetadataString,
   readKagentTimelinePosition,
@@ -34,6 +35,11 @@ import {
   unwrapProxiedCall,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 
+import {
+  readAskUserQuestions,
+  readConfirmationHints,
+  withoutHints,
+} from './kagentConfirmation';
 import { readWorkspaceNotice, WorkspaceNotice } from './workspaceNotice';
 
 /** Fields every timeline item carries. */
@@ -103,8 +109,14 @@ export type TimelineItem =
        * matching on a tool name, and kagent's own UI branches at the same point.
        */
       asks: 'approval' | 'input';
-      /** The tool the agent proposed to run, when the payload named one. */
+      /**
+       * The tool the agent proposed to run, when the payload named one. For a
+       * call proposed through muster's `call_tool` this is the **inner** tool,
+       * as on a tool call.
+       */
       toolName?: string;
+      /** The proxy the proposed call would travel through, when it names one. */
+      via?: string;
       /**
        * The questions themselves, when this is an `ask_user`.
        *
@@ -473,6 +485,7 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
       }
 
       const parts = Array.isArray(message.parts) ? message.parts : [];
+      const hints = isUser ? [] : readConfirmationHints(parts);
 
       // A verdict arrives as a data part on a *user* message. The verdict itself is
       // shown on the approval card rather than as a message of its own — but the
@@ -522,8 +535,9 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
         if (!textRun) {
           return;
         }
-        const text = textRun.chunks.join('').trim();
         const wasThought = textRun.isThought;
+        const joined = textRun.chunks.join('').trim();
+        const text = wasThought ? joined : withoutHints(joined, hints);
         textRun = undefined;
         if (!text) {
           return;
@@ -698,6 +712,7 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
             taskIndex,
             asks: isQuestion ? 'input' : 'approval',
             toolName: proposed?.name,
+            ...(proposed?.via ? { via: proposed.via } : {}),
             questions: isQuestion
               ? readAskUserQuestions(proposed?.args)
               : undefined,
@@ -851,63 +866,6 @@ function makeCallItem(input: {
     toolName: name ?? 'unknown tool',
     ...(via ? { via } : {}),
   };
-}
-
-/**
- * The tool an approval request is asking about.
- *
- * kagent wraps it as `args.originalFunctionCall` on the `adk_request_confirmation`
- * call (`buildApprovalMessage` in kagent's UI reads the same field).
- */
-function readProposedCall(
-  args: unknown,
-): { name?: string; args?: unknown } | undefined {
-  if (!args || typeof args !== 'object') {
-    return undefined;
-  }
-  const original = (args as { originalFunctionCall?: unknown })
-    .originalFunctionCall;
-  if (!original || typeof original !== 'object') {
-    return undefined;
-  }
-  const record = original as { name?: unknown; args?: unknown };
-  return {
-    name: typeof record.name === 'string' ? record.name : undefined,
-    args: record.args,
-  };
-}
-
-/**
- * The questions an `ask_user` call is putting to the user.
- *
- * Shape on the wire, from a live session on an internal installation:
- * `args: { questions: [{ question: "…" }] }` — one entry per question, and a real
- * `ask_user` can ask several at once.
- *
- * Anything that doesn't match is skipped rather than coerced: a question rendered
- * from a guessed field would put words in the agent's mouth, and the raw args are
- * still shown when nothing here matches.
- */
-function readAskUserQuestions(args: unknown): string[] {
-  if (!args || typeof args !== 'object') {
-    return [];
-  }
-  const { questions } = args as { questions?: unknown };
-  if (!Array.isArray(questions)) {
-    return [];
-  }
-  return questions
-    .map(entry => {
-      if (typeof entry === 'string') {
-        return entry;
-      }
-      if (entry && typeof entry === 'object') {
-        const { question } = entry as { question?: unknown };
-        return typeof question === 'string' ? question : undefined;
-      }
-      return undefined;
-    })
-    .filter((text): text is string => Boolean(text && text.trim()));
 }
 
 /**

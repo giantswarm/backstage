@@ -44,7 +44,7 @@ describe('useToolRun', () => {
       'workflow_deploy',
       { app: 'shop' },
       'gazelle',
-      { signal: expect.any(AbortSignal) },
+      { signal: expect.any(AbortSignal), urlElicitation: true },
     );
     expect(result.current.lastResult?.result).toEqual({ deployed: 'shop' });
     expect(onRan).toHaveBeenCalledTimes(1);
