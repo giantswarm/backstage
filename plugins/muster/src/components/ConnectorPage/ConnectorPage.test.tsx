@@ -671,6 +671,26 @@ describe('ConnectorPage', () => {
     expect(tools.querySelector('[data-count="loading"]')).toBeNull();
   });
 
+  it('counts no tools for a connector muster is not connected to, and says why', async () => {
+    mockServers = [makeServer({ name: 'jira', state: 'Disconnected' })];
+    const api = makeApi();
+    api.filterTools.mockResolvedValue({
+      total: 0,
+      filtered_count: 0,
+      truncated: false,
+      tools: [],
+    } as never);
+    await renderAt(`${BASE}/jira`, { api });
+
+    expect(
+      await screen.findByText(
+        'This connector is disconnected, so its tools cannot be shown.',
+      ),
+    ).toBeInTheDocument();
+    const tools = screen.getByRole('tab', { name: 'Tools' });
+    expect(tools.querySelector('[data-count]')).toBeNull();
+  });
+
   it('lists a few tools without search or filter, each a link to its page', async () => {
     await renderAt(`${BASE}/jira`);
 

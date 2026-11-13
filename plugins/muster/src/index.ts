@@ -113,6 +113,7 @@ export {
   useServerNeedsSignIn,
   toneColors,
   severityTone,
+  SEVERITY_DOT_TONE,
   VIOLET,
 } from './components/shared';
 export type {
@@ -138,7 +139,10 @@ export {
   useMusterCustomizeCounts,
 } from './components/CustomizeMusterProvider';
 export type { MusterCustomizeCounts } from './components/CustomizeMusterProvider';
-export { CustomizeConnectorsPanel } from './components/CustomizeConnectorsPanel';
+export {
+  CONNECTOR_REACH_LABELS,
+  CustomizeConnectorsPanel,
+} from './components/CustomizeConnectorsPanel';
 export { ConnectorLogo } from './components/ConnectorLogo';
 export type { ConnectorLogoProps } from './components/ConnectorLogo';
 export { ConnectorLogoStack } from './components/ConnectorLogoStack';
@@ -146,7 +150,10 @@ export type {
   ConnectorLogoStackItem,
   ConnectorLogoStackProps,
 } from './components/ConnectorLogoStack';
-export type { CustomizeConnectorsPanelProps } from './components/CustomizeConnectorsPanel';
+export type {
+  ConnectorReach,
+  CustomizeConnectorsPanelProps,
+} from './components/CustomizeConnectorsPanel';
 export { CustomizeWorkflowsPanel } from './components/CustomizeWorkflowsPanel';
 export type { CustomizeWorkflowsPanelProps } from './components/CustomizeWorkflowsPanel';
 export {
