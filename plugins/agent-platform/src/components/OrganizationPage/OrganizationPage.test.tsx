@@ -379,8 +379,11 @@ describe('OrganizationPage', () => {
     });
   });
 
-  describe('changes on Pending erase', () => {
-    const WHY = 'Its members, models and credentials can no longer be changed.';
+  describe('changes on Pending erase and on Erasing', () => {
+    const WHY =
+      'Its delete is merged, so its members, models and credentials can no longer be changed.';
+    const WHY_ERASING =
+      'It is being erased, so its members, models and credentials can no longer be changed.';
     const ORGANIZATION = {
       name: 'payments',
       parent: 'org-acme',
@@ -402,6 +405,23 @@ describe('OrganizationPage', () => {
         ...ORGANIZATION,
         gitops: 'flux-giantswarm/agent-platform-organizations',
         orphaned: { status: 'False', reason: 'InInventory' },
+      },
+    };
+    const ERASING: OrganizationsScenario = {
+      ...SCENARIO,
+      organization: {
+        ...ORGANIZATION,
+        gitops: 'flux-giantswarm/agent-platform-organizations',
+        orphaned: { status: 'True', reason: 'DeleteMerged' },
+        deleting: true,
+      },
+    };
+    const MISSING_FROM_GIT: OrganizationsScenario = {
+      ...SCENARIO,
+      organization: {
+        ...ORGANIZATION,
+        gitops: 'flux-giantswarm/agent-platform-organizations',
+        orphaned: { status: 'True', reason: 'MissingFromGit' },
       },
     };
 
@@ -455,15 +475,73 @@ describe('OrganizationPage', () => {
       ['Members', ''],
       ['Models', '/models'],
       ['Connectors', '/connectors'],
-    ])('offers every change on %s while it is in git', async (_tab, path) => {
-      await renderPage(path, IN_GIT);
+    ])(
+      'turns every change on %s off while it is being erased',
+      async (_tab, path) => {
+        await renderPage(path, ERASING);
 
-      const controls = await writeControls[path]();
-      for (const control of controls) {
-        expect(control).toBeEnabled();
-      }
-      expect(screen.queryByText(WHY)).not.toBeInTheDocument();
-    });
+        expect(await screen.findByText(WHY_ERASING)).toBeInTheDocument();
+        const controls = await writeControls[path]();
+        for (const control of controls) {
+          expect(control).toBeDisabled();
+        }
+        const buttons = controls.filter(
+          control => control.tagName === 'BUTTON',
+        );
+        for (const button of buttons) {
+          expect(button).toHaveAccessibleDescription(WHY_ERASING);
+        }
+      },
+    );
+
+    it.each([
+      ['Members', '', 'in git', IN_GIT],
+      ['Models', '/models', 'in git', IN_GIT],
+      ['Connectors', '/connectors', 'in git', IN_GIT],
+      ['Members', '', 'Missing from git', MISSING_FROM_GIT],
+      ['Models', '/models', 'Missing from git', MISSING_FROM_GIT],
+      ['Connectors', '/connectors', 'Missing from git', MISSING_FROM_GIT],
+    ])(
+      'offers every change on %s while it is %s',
+      async (_tab, path, _state, scenario) => {
+        await renderPage(path, scenario);
+
+        const controls = await writeControls[path]();
+        for (const control of controls) {
+          expect(control).toBeEnabled();
+        }
+        expect(screen.queryByText(WHY)).not.toBeInTheDocument();
+      },
+    );
+
+    it.each([
+      ['Remove', '', /^Remove payments-team/],
+      ['Add a model', '/models', /^Add model$/],
+      ['Replace key', '/models', /^Replace the key of gpt$/],
+      ['Replace credential', '/connectors', /^Replace the credential of jira$/],
+    ])(
+      'closes an open %s dialog once the organization turns Pending erase',
+      async (_dialog, path, opener) => {
+        const scenario: OrganizationsScenario = { ...IN_GIT };
+        const { queryClient } = await renderPage(path, scenario);
+        await userEvent.click(
+          await screen.findByRole('button', { name: opener }),
+        );
+        expect(await screen.findByRole('dialog')).toBeInTheDocument();
+
+        scenario.organization = PENDING_ERASE.organization;
+        await act(() =>
+          queryClient.invalidateQueries({
+            queryKey: musterOrganizationsQueryKey('gazelle'),
+          }),
+        );
+
+        expect(await screen.findByText(WHY)).toBeInTheDocument();
+        await waitFor(() =>
+          expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+        );
+      },
+    );
 
     it('lists the egress policies on Pending erase, a tab with nothing to change', async () => {
       await renderPage('/egress', PENDING_ERASE);

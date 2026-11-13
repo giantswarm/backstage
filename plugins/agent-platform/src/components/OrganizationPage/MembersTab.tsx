@@ -267,7 +267,8 @@ export function MembersTab({
         {body}
       </PageSection>
       <ConfirmDialog
-        isOpen={removing !== undefined}
+        // Closed when the changes turn off: its confirm would write.
+        isOpen={removing !== undefined && changesDisabledBy === undefined}
         onOpenChange={open => {
           if (!open) {
             setRemoving(undefined);

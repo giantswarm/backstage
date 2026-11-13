@@ -39,13 +39,25 @@ export function isPendingErase(
   );
 }
 
+/**
+ * Whether the organization's page turns its changes off: on Pending erase,
+ * and while it is being erased (Erasing). Its alert then holds the line that
+ * says why.
+ */
+export function changesAreOff(
+  organization: Pick<OrganizationStatus, 'deleting' | 'orphaned'>,
+): boolean {
+  return organization.deleting === true || isPendingErase(organization);
+}
+
 export type OrganizationStatusAlertProps = {
   organization: OrganizationStatus;
   /** Offered on Pending erase only, to a person who manages it. */
   onEraseNow?: () => void;
   /**
-   * The id of the line that says, on Pending erase, why the page's changes are
-   * off: the disabled controls name it with `aria-describedby`.
+   * The id of the line that says, on Pending erase and on Erasing, why the
+   * page's changes are off: the disabled controls name it with
+   * `aria-describedby`.
    */
   changesOffId?: string;
 };
@@ -77,6 +89,15 @@ export function OrganizationStatusAlert({
               This organization is deleted and is being erased. Its workers are
               stopped.
             </Text>
+            <Text
+              as="p"
+              variant="body-medium"
+              className={classes.inherit}
+              id={changesOffId}
+            >
+              It is being erased, so its members, models and credentials can no
+              longer be changed.
+            </Text>
             {organization.erasureStep && (
               <SimpleAccordion title="Technical details" headingLevel={3}>
                 <Text as="p" variant="body-small" className={classes.inherit}>
@@ -106,7 +127,7 @@ export function OrganizationStatusAlert({
     </SimpleAccordion>
   ) : null;
 
-  if (orphaned.reason === ORPHANED_DELETE_MERGED) {
+  if (isPendingErase(organization)) {
     return (
       <Alert
         status="info"
@@ -125,7 +146,8 @@ export function OrganizationStatusAlert({
               className={classes.inherit}
               id={changesOffId}
             >
-              Its members, models and credentials can no longer be changed.
+              Its delete is merged, so its members, models and credentials can
+              no longer be changed.
             </Text>
             {onEraseNow && (
               <div>

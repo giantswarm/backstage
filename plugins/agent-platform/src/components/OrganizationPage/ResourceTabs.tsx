@@ -246,10 +246,11 @@ export function ModelsTab({
     label: string;
     request: CredentialRequest;
   }>();
+  // A dialog open when the changes turn off closes: its confirm would write.
   const dialogs = (
     <>
       <AddModelDialog
-        isOpen={adding}
+        isOpen={adding && !off}
         onOpenChange={open => {
           setAdding(open);
           request.reset();
@@ -257,7 +258,7 @@ export function ModelsTab({
         request={request}
       />
       <ReplaceCredentialDialog
-        target={replacing}
+        target={off ? undefined : replacing}
         onClose={() => {
           setReplacing(undefined);
           request.reset();
@@ -287,15 +288,19 @@ export function ModelsTab({
     );
   }
   if (models.modelConfigs.length === 0) {
+    // With the changes off no model is added any more; the status alert
+    // above says why.
+    let emptyDescription: string | undefined;
+    if (!off) {
+      emptyDescription = access.models
+        ? 'Add a model with your own key to run agents. The key is entered once and never shown back.'
+        : 'An admin of the organization adds a model with its own key to run agents.';
+    }
     return (
       <>
         <EmptyStateCard
           title="This organization has no model yet"
-          description={
-            access.models
-              ? 'Add a model with your own key to run agents. The key is entered once and never shown back.'
-              : 'An admin of the organization adds a model with its own key to run agents.'
-          }
+          description={emptyDescription}
           actions={addModel}
         />
         {dialogs}
@@ -563,7 +568,8 @@ export function ConnectorsTab({
         />
       )}
       <ReplaceCredentialDialog
-        target={replacing}
+        // Closed when the changes turn off: its confirm would write.
+        target={changesDisabledBy === undefined ? replacing : undefined}
         onClose={() => {
           setReplacing(undefined);
           request.reset();
