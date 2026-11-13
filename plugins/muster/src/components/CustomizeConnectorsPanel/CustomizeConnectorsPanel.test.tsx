@@ -260,6 +260,45 @@ describe('CustomizeConnectorsPanel', () => {
     expect(rowOf('Muster')).toBeInTheDocument();
   });
 
+  it('puts the sign-in in a column of its own, beside the state', async () => {
+    await renderPanel();
+
+    const github = rowOf('github');
+    const state = (await within(github).findByText('Sign in needed')).closest(
+      '[role="gridcell"], [role="cell"], td',
+    );
+    const button = within(github).getByRole('button', { name: 'Sign in' });
+    const buttonCell = button.closest('[role="gridcell"], [role="cell"], td');
+    expect(state).not.toBeNull();
+    expect(buttonCell).not.toBeNull();
+    expect(buttonCell).not.toBe(state);
+    expect(state?.nextElementSibling).toBe(buttonCell);
+    // Its header names it for a screen reader only.
+    expect(
+      screen.getByRole('columnheader', { name: 'Actions' }),
+    ).toBeInTheDocument();
+  });
+
+  it('leaves the sign-in column out where no connector asks for a sign-in', async () => {
+    mockAuthenticated = false;
+    await renderPanel();
+
+    expect(
+      await screen.findByRole('columnheader', { name: /^Status/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
+  });
+
+  it('leaves the sign-in column out where a sign-in has no button: a refused SSO one', async () => {
+    api.getAuthStatus.mockImplementation(async () => ssoFailedAuthStatus());
+    await renderPanel();
+
+    expect(
+      await within(rowOf('kubernetes')).findByText('Cannot connect'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
+  });
+
   it('signs in from the row without opening the connector', async () => {
     const user = userEvent.setup();
     await renderPanel();
@@ -1464,7 +1503,7 @@ describe('CustomizeConnectorsPanel', () => {
       ).toBeInTheDocument();
     });
 
-    it('gives an outstanding sign-in a line of its own, so the name keeps its width', async () => {
+    it("keeps an outstanding sign-in's button in the row's actions, where Sign in was", async () => {
       await renderPanel();
 
       await screen.findByText('Sign in needed');
@@ -1477,11 +1516,11 @@ describe('CustomizeConnectorsPanel', () => {
         name: 'Reopen sign-in page',
       });
       expect(within(github).getByText('Signing in…')).toBeInTheDocument();
-      // Under the description, not in the actions at the end of line 1.
+      // At the end of line 1, not under the description.
       expect(
         within(github).getByText('Repositories and pull requests')
           .parentElement,
-      ).toContainElement(reopen);
+      ).not.toContainElement(reopen);
     });
 
     it('keeps the table on a wide viewport', async () => {

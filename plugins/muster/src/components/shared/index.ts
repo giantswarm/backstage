@@ -38,12 +38,10 @@ export {
 } from './ServerSignIn';
 export type { ServerAuthActionsProps, ServerSignInProps } from './ServerSignIn';
 export {
-  ServerSignInStatus,
   SignInStatusActions,
   SignInStatusText,
   StatusWithHint,
 } from './ServerSignInStatus';
-export type { ServerSignInStatusProps } from './ServerSignInStatus';
 export {
   connectorNamesQueryKey,
   useConnectorLabel,
@@ -66,6 +64,7 @@ export {
   isSsoRefused,
   isSsoServer,
   needsSignIn,
+  signInRefusalOf,
   useServerNeedsSignIn,
   useServerSignIn,
 } from './useServerSignIn';

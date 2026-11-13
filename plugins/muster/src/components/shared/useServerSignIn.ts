@@ -7,6 +7,8 @@ import {
   musterApiRef,
   ProviderAppAuthStatus,
   ServerAuthStatus,
+  ServerSignInResult,
+  ServerSignOutResult,
 } from '../../apis';
 import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
 import { useConnectorLabel } from './hooks/useConnectorLabels';
@@ -258,11 +260,37 @@ interface SignInAttempt {
   id: number;
 }
 
-/** The last click's {@link SignInAttempt.id}, across every surface. */
+/**
+ * The last Sign in or Sign out click's id ({@link SignInAttempt.id},
+ * {@link ClickAnswer.id}), across every surface.
+ */
 let lastSignInAttemptId = 0;
 
 function pendingKey(installation: string | undefined, serverName: string) {
   return ['muster', 'pending-sign-in', installation, serverName] as const;
+}
+
+/**
+ * The last Sign in or Sign out click on a server and muster's answer to it.
+ * Held in the react-query cache like {@link PendingSignIn}, so every surface
+ * showing the server says the same: a table's state and its button in
+ * another cell, a row and the dialog over it. Only the latest click speaks:
+ * a new one replaces the entry, and an earlier click's late answer is dropped.
+ */
+type ClickAnswer = {
+  /** The click, numbered with {@link SignInAttempt.id}. */
+  id: number;
+  /** True until muster answers. */
+  inFlight: boolean;
+  /** The request itself failed: the answer, if any, is lost. */
+  failure?: string;
+} & (
+  | { action: 'sign-in'; result?: ServerSignInResult }
+  | { action: 'sign-out'; result?: ServerSignOutResult }
+);
+
+function answerKey(installation: string | undefined, serverName: string) {
+  return ['muster', 'sign-in-answer', installation, serverName] as const;
 }
 
 /**
@@ -530,6 +558,30 @@ export function useServerSignIn(
     [queryClient, installation, pendingName],
   );
 
+  const { data: clickAnswer } = useQuery<ClickAnswer | null>({
+    queryKey: answerKey(installation, pendingName),
+    // Cache-only, as the pending entry: the mutations below write it. Kept
+    // for react-query's default while no surface shows the server, unlike
+    // the wait, which must outlive them.
+    queryFn: () =>
+      queryClient.getQueryData<ClickAnswer | null>(
+        answerKey(installation, pendingName),
+      ) ?? null,
+    staleTime: Infinity,
+  });
+  /** Starts a click's entry, replacing any earlier click's. */
+  const startAnswer = (start: ClickAnswer) =>
+    queryClient.setQueryData(answerKey(installation, pendingName), start);
+  /** Records muster's answer, while the entry is still that click's. */
+  const finishAnswer = (id: number, finish: Partial<ClickAnswer>) =>
+    queryClient.setQueryData<ClickAnswer | null>(
+      answerKey(installation, pendingName),
+      current =>
+        current && current.id === id
+          ? ({ ...current, ...finish, inFlight: false } as ClickAnswer)
+          : current,
+    );
+
   const authUrl = pending?.authUrl;
   const clientIdMethod = pending?.clientIdMethod;
   const isWaiting = Boolean(pending);
@@ -619,7 +671,16 @@ export function useServerSignIn(
     untrackedReason: 'An authentication step, not a portal action.',
     mutationFn: (_attempt: SignInAttempt) =>
       musterApi.signInServer(target, installation),
+    onMutate: attempt => {
+      startAnswer({ action: 'sign-in', id: attempt.id, inFlight: true });
+    },
+    onError: (error, attempt) => {
+      finishAnswer(attempt.id, {
+        failure: `Sign-in request failed: ${error.message}`,
+      });
+    },
     onSuccess: (result, attempt) => {
+      finishAnswer(attempt.id, { result });
       if (result.status === 'connected') {
         setPending(null);
         queryClient.invalidateQueries({ queryKey: ['muster'] });
@@ -697,13 +758,21 @@ export function useServerSignIn(
   const signOut = useTrackedMutation({
     event: null,
     untrackedReason: 'An authentication step, not a portal action.',
-    mutationFn: () => musterApi.signOutServer(target, installation),
-    onSuccess: result => {
+    mutationFn: (_click: { id: number }) =>
+      musterApi.signOutServer(target, installation),
+    onMutate: click => {
+      startAnswer({ action: 'sign-out', id: click.id, inFlight: true });
+    },
+    onSuccess: (result, click) => {
+      finishAnswer(click.id, { result });
       if (result.status !== 'error') {
         queryClient.invalidateQueries({ queryKey: ['muster'] });
       }
     },
-    onError: () => {
+    onError: (error, click) => {
+      finishAnswer(click.id, {
+        failure: `Sign-out request failed: ${error.message}`,
+      });
       queryClient.invalidateQueries({ queryKey: ['muster'] });
     },
   });
@@ -805,8 +874,8 @@ export function useServerSignIn(
     }
   }, [providerApp, pending, setPending]);
 
-  // Feedback (`note`/`error`) intentionally lives in the mutation rather than the
-  // shared pending entry, and is intentionally NOT reset when the reported status
+  // Feedback (`note`/`error`) lives in the click's answer entry rather than the
+  // pending entry, and is intentionally NOT reset when the reported status
   // moves on:
   //
   // - It cannot pin a row open, because `idle` in ServerSignIn ignores it -- that
@@ -815,15 +884,14 @@ export function useServerSignIn(
   //   refusing with something specific (a rate limit) and the next poll flipping
   //   the entry to SSO-managed is exactly the sequence where the message matters
   //   most, and it would be wiped before it could be read.
-  //
-  // Accepted limit: it is per-row state, so collapsing a DisclosureAccordion
-  // drops it (unlike the pending sign-in). A dropped confirmation is recoverable
-  // -- clicking again re-reports it -- whereas a dropped wait was not, which is
-  // why only the wait was moved into the cache.
-  const signInResult = signIn.data;
+  const signInAnswer =
+    clickAnswer?.action === 'sign-in' ? clickAnswer : undefined;
+  const signOutAnswer =
+    clickAnswer?.action === 'sign-out' ? clickAnswer : undefined;
+  const signInResult = signInAnswer?.result;
   const isFailure =
     signInResult?.status === 'error' || signInResult?.status === 'unknown';
-  const signOutResult = signOut.data;
+  const signOutResult = signOutAnswer?.result;
   const isSignOutFailure =
     signOutResult?.status === 'error' || signOutResult?.status === 'unknown';
 
@@ -833,7 +901,7 @@ export function useServerSignIn(
     status,
     providerApp,
     deviceCode,
-    isPending: signIn.isPending,
+    isPending: Boolean(signInAnswer?.inFlight),
     authUrl,
     clientIdMethod,
     isWaiting,
@@ -848,13 +916,9 @@ export function useServerSignIn(
     // above its own "connect to muster" gate).
     error:
       (isFailure ? signInResult?.message : undefined) ??
-      (signIn.error
-        ? `Sign-in request failed: ${signIn.error.message}`
-        : undefined) ??
+      signInAnswer?.failure ??
       (isSignOutFailure ? signOutResult?.message : undefined) ??
-      (signOut.error
-        ? `Sign-out request failed: ${signOut.error.message}`
-        : undefined) ??
+      signOutAnswer?.failure ??
       (pending ? statusUnreadable : undefined),
     statusUnreadable: pending ? statusUnreadable : undefined,
     // 'connected' with the alert still up is a real combination (the two come
@@ -873,12 +937,11 @@ export function useServerSignIn(
     isSsoRefused: status ? isSsoRefused(status) : false,
     needsLogin: status ? needsSignIn(status) : false,
     isConnected: status?.status === 'connected',
-    isSigningOut: signOut.isPending,
-    // Each action resets the other's feedback: after a sign-out, a lingering
+    isSigningOut: Boolean(signOutAnswer?.inFlight),
+    // Each action replaces the other's feedback: after a sign-out, a lingering
     // "already connected" note from an earlier sign-in would contradict what
     // just happened (and vice versa) -- only the latest action gets to speak.
     signIn: () => {
-      signOut.reset();
       // A new click answers for itself: a landing an earlier click reported
       // and no status read has shown yet is no longer waited for.
       landedByClickRef.current = false;
@@ -897,8 +960,8 @@ export function useServerSignIn(
       }
     },
     signOut: () => {
-      signIn.reset();
-      signOut.mutate();
+      lastSignInAttemptId += 1;
+      signOut.mutate({ id: lastSignInAttemptId });
     },
   };
 }
