@@ -49,16 +49,18 @@ const TOOL_FAILED_TEXTS: RegExp[] = [
 
 /**
  * The words of a model provider's error, by source: kagent's model clients
- * prefix their errors by provider, the Claude Harness passes Claude Code's
- * `API Error: <n>` through, and Gemini answers `Error <n>, Message: …`. They
- * say who answered, not why: the same prefixes carry a prompt that outgrew the
- * context window, so they count only together with one of the
- * {@link UNAVAILABLE_SIGNALS}.
+ * prefix their errors by provider, the Go ADK's A2A server quotes a model
+ * client's error as `llm error response (code <code>): "<error>"`, the Claude
+ * Harness passes Claude Code's `API Error: <n>` through, and Gemini answers
+ * `Error <n>, Message: …`. They say who answered, not why: the same prefixes
+ * carry a prompt that outgrew the context window, so they count only together
+ * with the provider's answer for unavailability ({@link hasUnavailableAnswer}).
  */
 const MODEL_PROVIDER_TEXTS: RegExp[] = [
   /\bOpenAI (chat completion|responses) request failed\b/i,
   /\banthropic API error\b/i,
   /\bSAP AI Core request failed\b/i,
+  /\bllm error response( \(code \w+\))?: "/,
   /\boperation error Bedrock Runtime\b/i,
   /\bAPI Error: \d{3}\b/,
   /^Error \d{3}, Message: /m,
@@ -76,6 +78,25 @@ const UNAVAILABLE_SIGNALS: RegExp[] = [
 ];
 
 /**
+ * The HTTP status in the Anthropic and OpenAI Go SDKs' errors,
+ * `<METHOD> "<url>": <status> <status text> …`. Where it is present it is the
+ * provider's answer: other numbers in the text, such as a message index in a
+ * 400's `messages.404.content`, say nothing about it.
+ */
+const SDK_HTTP_STATUS = /": (\d{3}) [A-Z]/;
+
+const UNAVAILABLE_STATUS = /^(401|403|404|408|429|5\d\d)$/;
+
+/** Whether the provider's answer says the model cannot be had. */
+function hasUnavailableAnswer(text: string): boolean {
+  const status = SDK_HTTP_STATUS.exec(text)?.[1];
+  if (status) {
+    return UNAVAILABLE_STATUS.test(status);
+  }
+  return UNAVAILABLE_SIGNALS.some(pattern => pattern.test(text));
+}
+
+/**
  * The model is unavailable whoever says so: a missing provider key or
  * endpoint, an SAP AI Core without a deployment, LiteLLM's typed errors for
  * unavailability (the Python ADK), or the providers' own error codes for it.
@@ -85,7 +106,7 @@ const MODEL_UNAVAILABLE_TEXTS: RegExp[] = [
   /\bSAP AI Core requires\b/,
   /\bno running orchestration deployment found in SAP AI Core\b/i,
   /\blitellm\.(RateLimit|NotFound|Authentication|PermissionDenied|ServiceUnavailable|InternalServer|APIConnection|Timeout)Error\b/,
-  /\b(model_not_found|overloaded_error|rate_limit_error|RESOURCE_EXHAUSTED)\b/,
+  /\b(model_not_found|authentication_error|permission_error|overloaded_error|rate_limit_error|RESOURCE_EXHAUSTED)\b/,
 ];
 
 /**
@@ -123,11 +144,38 @@ export function classifyFailureText(
   if (
     MODEL_UNAVAILABLE_TEXTS.some(pattern => pattern.test(text)) ||
     (MODEL_PROVIDER_TEXTS.some(pattern => pattern.test(text)) &&
-      UNAVAILABLE_SIGNALS.some(pattern => pattern.test(text)))
+      hasUnavailableAnswer(text))
   ) {
     return 'model-unavailable';
   }
   return 'other';
+}
+
+/** The providers' and LiteLLM's names for a refused key or permission. */
+const CREDENTIALS_REFUSED_TEXTS: RegExp[] = [
+  /\b(authentication_error|permission_error)\b/,
+  /\blitellm\.(Authentication|PermissionDenied)Error\b/,
+];
+
+const CREDENTIALS_REFUSED_SIGNALS = /\b(401|403|Unauthorized|Forbidden)\b/;
+
+/**
+ * Whether a `model-unavailable` failure is the provider refusing the agent's
+ * credentials (unauthorised or forbidden), rather than failing to answer.
+ * `false` for any failure of another class.
+ */
+export function isCredentialsRefusedText(text: string | undefined): boolean {
+  if (!text || classifyFailureText(text) !== 'model-unavailable') {
+    return false;
+  }
+  if (CREDENTIALS_REFUSED_TEXTS.some(pattern => pattern.test(text))) {
+    return true;
+  }
+  const status = SDK_HTTP_STATUS.exec(text)?.[1];
+  if (status) {
+    return status === '401' || status === '403';
+  }
+  return CREDENTIALS_REFUSED_SIGNALS.test(text);
 }
 
 /**
