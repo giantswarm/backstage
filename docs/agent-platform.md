@@ -434,6 +434,15 @@ drops a repository whatever selects it, a pick by name included, and the
 manager keeps an exclusion that names no selected repository (it leaves
 nothing out until a filter selects that name).
 
+Creating a workspace takes any name, such as "My workspace", and fills in the
+technical name from it (`my-workspace`: lowercase letters, digits and dashes,
+at most 40 characters, with `slugify` as on agent and model creation), named in
+the field's description. The technical name is the workspace's name in
+workspace-manager, which stores no other. A technical name of the person's own
+goes under **Advanced options**; from then on the name no longer changes it,
+until it is cleared. A name with no Latin letter or digit leaves it empty, and
+saving opens Advanced options on it.
+
 The editor (`/customize/workspaces/new`, `…/<installation>/<organization>/<name>/edit`)
 shows a source's exclusions under **Exclusions**: each a tag to remove, what
 they leave out now, and a field that offers the repositories the source
@@ -789,6 +798,24 @@ offers Set as default, and its Default model fact no longer sends the person to
 agent-manager's configuration. A person agent-manager refuses sees "Not
 permitted" with who can make the change, and a session without agent-manager
 gets the sign-in.
+
+**A refused portal session** (`PortalSessionEndedError`, `lib/portalSession.ts`).
+The portal's backend refuses a session token it cannot verify, for example
+after a restart of a portal without a database, whose signing keys live in
+memory: a 401 whose body names Backstage's `AuthenticationError`, before any
+plugin route runs. `AgentManagerClient` (through muster-backend, where muster's
+`MusterUnauthorizedError` keeps the body's `errorName`) and the credential
+form's client turn it into an error that says, in plain words, that the
+session ended and to reload the page to sign in again; nothing was sent. The
+credential form, New and Edit model and the model page show it with a Sign in
+again button (`PortalSessionEndedAlert`); the organization page's dialogs say
+it in words only (giantswarm/backstage#3492). The credential form drops a typed
+value, and its request stays open: a reload of the same address opens it
+again. Agent Platform reads that go neither through `AgentManagerClient` nor
+the credential form's client (the kagent routes, muster's own reads) still
+show the backend's text (giantswarm/backstage#3506).
+The status and the error's name decide, never the text; the credential route's
+own `AuthenticationError` (no installation token) is cured by the same sign-in.
 
 For a Helm-rendered model, Technical details name the release from the
 CR's `helm.toolkit.fluxcd.io/*` labels and `meta.helm.sh/*` annotations. Where

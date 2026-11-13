@@ -12,6 +12,7 @@ import {
   AgentManagerNotConnectedError,
 } from '../lib/agentManager';
 import { credentialRequestErrorMessage } from '../lib/credentialRequestErrors';
+import { PortalSessionEndedError } from '../lib/portalSession';
 import { invalidateModelReads } from './defaultModelWrites';
 import { modelKeyReference } from './modelKeyReference';
 import { useAgentManagerClient } from './useAgentManager';
@@ -187,6 +188,7 @@ export function useSaveOrganizationModel(installation: string | undefined) {
           // agent-manager or the refusal of a person without the right.
           if (
             error instanceof AgentManagerNotConnectedError ||
+            error instanceof PortalSessionEndedError ||
             (error instanceof AgentManagerError && error.code === 'forbidden')
           ) {
             throw error;
@@ -195,7 +197,12 @@ export function useSaveOrganizationModel(installation: string | undefined) {
             cause: error,
           });
         }
-        const why = credentialRequestErrorMessage(error as Error);
+        // A refused portal session: the change before it was saved, so the
+        // session message's "nothing was sent" does not stand here.
+        const why =
+          error instanceof PortalSessionEndedError
+            ? 'Your portal session ended: reload the page to sign in again, then ask for the new key.'
+            : credentialRequestErrorMessage(error as Error);
         await invalidateModelReads(queryClient, installation, namespace);
         throw new Error(
           `The model change is saved, but the new key could not be asked for. ${why}`,

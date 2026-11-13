@@ -64,6 +64,7 @@ export const SHELL_SPECS = [
   'serving-order.spec.ts',
   'serving-sign-in.spec.ts',
   'serving-state.spec.ts',
+  'session-approval-muster-tool.spec.ts',
   'session-expiry.spec.ts',
   'session-export.spec.ts',
   'session-images.spec.ts',
