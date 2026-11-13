@@ -188,13 +188,16 @@ test('a session started from the portal with an older go mounts that version', a
     'get',
     'harnesses.api.kagent.dev,modelconfigs.api.kagent.dev',
     '-o',
-    'jsonpath={range .items[*]}{.kind}/{.metadata.name}\t{.metadata.annotations.ui\\.giantswarm\\.io/display-name}{"\\n"}{end}',
+    'jsonpath={range .items[*]}{.kind}/{.metadata.name}\t{.metadata.annotations.ui\\.giantswarm\\.io/display-name}\t{.spec.model}{"\\n"}{end}',
   ]);
   const objects = new Map(
     stdout
       .split('\n')
       .filter(Boolean)
-      .map(line => line.split('\t') as [string, string]),
+      .map(line => {
+        const [name, displayName, model] = line.split('\t');
+        return [name, displayName?.trim() ? displayName : model] as const;
+      }),
   );
   test.skip(
     !objects.has('Harness/codex'),

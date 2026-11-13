@@ -1,4 +1,4 @@
-import { useId, useMemo } from 'react';
+import { type ReactNode, useId, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { RouteFunc, useRouteRef } from '@backstage/frontend-plugin-api';
 import {
@@ -17,6 +17,8 @@ import {
   StatusDot,
   TOUCH_MEDIA,
 } from '@giantswarm/backstage-plugin-ui-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- The portal session is the gs plugin's main sign-in.
+import { useMainSessionEnd } from '@giantswarm/backstage-plugin-gs';
 import { SESSION_STATE_LABELS } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
@@ -310,6 +312,32 @@ function RecentSessionsList({
   // No installation answered: not "No sessions yet". With one that answered
   // empty, the empty line stands and the Sessions page names the rest.
   const readFailed = nothingRead;
+  // Without the portal session the list cannot be read: neither "No
+  // sessions yet" nor a retry, which needs the session the shell's banner
+  // offers to restore.
+  const sessionEnd = useMainSessionEnd();
+  let emptyLine: ReactNode;
+  if (sessionEnd) {
+    emptyLine = (
+      <Box px="2">
+        <Text variant="body-small" color="secondary">
+          Sign in again to see your sessions.
+        </Text>
+      </Box>
+    );
+  } else if (readFailed) {
+    emptyLine = (
+      <RecentSessionsReadError onRetry={retry} isRetrying={isRetrying} />
+    );
+  } else {
+    emptyLine = (
+      <Box px="2">
+        <Text variant="body-small" color="secondary">
+          No sessions yet
+        </Text>
+      </Box>
+    );
+  }
   const { pinnedIds, isPinned, togglePin } = usePinnedSessions();
 
   // Every installation that has a session, not only the listed ones: the rail
@@ -478,18 +506,7 @@ function RecentSessionsList({
           !hasTimeGroups && (
             <>
               <GroupHeader id={`${baseId}-empty`} label="Sessions" />
-              {readFailed ? (
-                <RecentSessionsReadError
-                  onRetry={retry}
-                  isRetrying={isRetrying}
-                />
-              ) : (
-                <Box px="2">
-                  <Text variant="body-small" color="secondary">
-                    No sessions yet
-                  </Text>
-                </Box>
-              )}
+              {emptyLine}
             </>
           )}
         {allSessionsLink}
@@ -498,16 +515,8 @@ function RecentSessionsList({
   }
 
   let body;
-  if (readFailed) {
-    body = <RecentSessionsReadError onRetry={retry} isRetrying={isRetrying} />;
-  } else if (recent.length === 0) {
-    body = (
-      <Box px="2">
-        <Text variant="body-small" color="secondary">
-          No sessions yet
-        </Text>
-      </Box>
-    );
+  if (readFailed || recent.length === 0) {
+    body = emptyLine;
   } else {
     body = (
       <ul className={classes.list} aria-labelledby={`${baseId}-recent`}>

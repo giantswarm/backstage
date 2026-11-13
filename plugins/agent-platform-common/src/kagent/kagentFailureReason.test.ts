@@ -1,5 +1,6 @@
 import {
   classifyFailureText,
+  isCredentialsRefusedText,
   readInstanceFailureReason,
   readTaskFailureReason,
 } from './kagentFailureReason';
@@ -52,6 +53,12 @@ describe('classifyFailureText', () => {
     ['Error 404, Message: Publisher Model `gemini-9` was not found'],
     ['{"code": "model_not_found"}'],
     ['anthropic API error: 401 Unauthorized invalid x-api-key'],
+    // the Go ADK's A2A server, quoting a model client's streamed error
+    [
+      'llm error response (code STREAM_ERROR): "POST \\"http://agentgateway.agent-platform.svc:8081/v1/messages\\": 401 Unauthorized (Request-ID: req_011CgszuDCqiu7fWDhLTw29G) {\\"type\\":\\"error\\",\\"error\\":{\\"type\\":\\"authentication_error\\",\\"message\\":\\"invalid x-api-key\\"},\\"request_id\\":\\"req_011CgszuDCqiu7fWDhLTw29G\\"}"',
+    ],
+    ['llm error response: "anthropic API error: 529 overloaded"'],
+    ['{"type":"error","error":{"type":"permission_error"}}'],
     ['litellm.ServiceUnavailableError: the model is overloaded'],
   ])('reads %s as model-unavailable', text => {
     expect(classifyFailureText(text)).toBe('model-unavailable');
@@ -76,6 +83,9 @@ describe('classifyFailureText', () => {
 
   it.each([
     ['Harness runtime execution failed'],
+    [
+      'anthropic API error: POST "https://api.anthropic.com/v1/messages": 400 Bad Request {"message":"Invalid field: authentication_error"}',
+    ],
     ['Claude execution failed'],
     ['Codex execution failed'],
     ['output_validation_failed: root agent produced no result artifact'],
@@ -94,6 +104,18 @@ describe('classifyFailureText', () => {
     ],
     ['API Error: 400 {"type":"invalid_request_error"}'],
     [
+      'llm error response (code STREAM_ERROR): "POST \\"http://agentgateway.agent-platform.svc:8081/v1/messages\\": 400 Bad Request (Request-ID: req_011CgszuDCqiu7fWDhLTw29G) {\\"type\\":\\"error\\",\\"error\\":{\\"type\\":\\"invalid_request_error\\",\\"message\\":\\"max_tokens: must be greater than or equal to 1\\"}}"',
+    ],
+    [
+      'llm error response (code STREAM_ERROR): "POST \\"http://agentgateway.agent-platform.svc:8081/v1/messages\\": 400 Bad Request {\\"type\\":\\"error\\",\\"error\\":{\\"type\\":\\"invalid_request_error\\",\\"message\\":\\"prompt is too long: 210000 tokens > 200000 maximum\\"}}"',
+    ],
+    // A streamed error says who answered, not that the model is unavailable.
+    ['llm error response (code STREAM_ERROR): "unexpected EOF"'],
+    // The SDK's status is the answer; a message index is not a status.
+    [
+      'llm error response (code STREAM_ERROR): "POST \\"http://agentgateway.agent-platform.svc:8081/v1/messages\\": 400 Bad Request {\\"type\\":\\"error\\",\\"error\\":{\\"type\\":\\"invalid_request_error\\",\\"message\\":\\"messages.403: `tool_use` ids were found without `tool_result` blocks immediately after\\"}}"',
+    ],
+    [
       'OpenAI chat completion request failed: 404 maximum context length is 128000 tokens',
     ],
     ['litellm.ContextWindowExceededError: input is too long'],
@@ -107,6 +129,41 @@ describe('classifyFailureText', () => {
     [undefined],
   ])('reads %s as other', text => {
     expect(classifyFailureText(text)).toBe('other');
+  });
+});
+
+describe('isCredentialsRefusedText', () => {
+  it.each([
+    [
+      'llm error response (code STREAM_ERROR): "POST \\"http://agentgateway.agent-platform.svc:8081/v1/messages\\": 401 Unauthorized (Request-ID: req_1) {\\"type\\":\\"error\\",\\"error\\":{\\"type\\":\\"authentication_error\\",\\"message\\":\\"invalid x-api-key\\"}}"',
+    ],
+    [
+      'OpenAI chat completion request failed: POST "https://api.openai.com/v1/chat/completions": 401 Unauthorized {"code": "invalid_api_key"}',
+    ],
+    ['{"type":"error","error":{"type":"permission_error"}}'],
+    ['litellm.AuthenticationError: AnthropicException - invalid x-api-key'],
+    ['litellm.PermissionDeniedError: model access denied'],
+    ['anthropic API error: forbidden'],
+    ['anthropic API error: 403 Forbidden'],
+  ])('reads %s as refused credentials', text => {
+    expect(isCredentialsRefusedText(text)).toBe(true);
+  });
+
+  it.each([
+    ['llm error response: "anthropic API error: 529 overloaded"'],
+    [
+      'OpenAI chat completion request failed: POST "https://api.openai.com/v1/chat/completions": 429 Too Many Requests {"message":"authentication_error retry limit reached"}',
+    ],
+    [
+      'OpenAI chat completion request failed: POST "https://api.openai.com/v1/chat/completions": 429 Too Many Requests {"message": "Limit 403, Used 403"}',
+    ],
+    ['litellm.RateLimitError: too many requests'],
+    // A 403 that is not the provider's answer, in a failure of another class.
+    ['failed to connect MCP client for github: 403 Forbidden'],
+    [''],
+    [undefined],
+  ])('does not read %s as refused credentials', text => {
+    expect(isCredentialsRefusedText(text)).toBe(false);
   });
 });
 

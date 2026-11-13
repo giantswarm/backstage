@@ -3,10 +3,7 @@ import { mockApis } from '@backstage/frontend-test-utils';
 import type { StorageValueSnapshot } from '@backstage/core-plugin-api';
 import type { SignalApi } from '@backstage/plugin-signals-react';
 import type { JsonValue } from '@backstage/types';
-import {
-  ABSENT_FRESH_MS,
-  RoamingSettingsStorage,
-} from './RoamingSettingsStorage';
+import { RoamingSettingsStorage } from './RoamingSettingsStorage';
 
 const BASE_URL = 'http://localhost:7007/api/user-settings';
 const KEY_URL = `${BASE_URL}/buckets/default.agent-platform/keys/someSetting`;
@@ -114,32 +111,25 @@ describe('RoamingSettingsStorage', () => {
 
   describe('a key the backend does not hold', () => {
     const notFound = () => Promise.resolve(json({ error: 'not found' }, 404));
-    let now: number;
 
-    beforeEach(() => {
-      now = 0;
-      jest.spyOn(Date, 'now').mockImplementation(() => now);
-    });
-
-    afterEach(() => jest.restoreAllMocks());
-
-    it('answers another subscription from the 404 for a minute', async () => {
+    it('reads it again for a subscription that starts after the 404 answered', async () => {
+      // A 404 is not kept: a writer subscribing later starts from what is
+      // stored then, whatever an announcement it may have missed said.
       const { storage, fetch } = setup();
-      fetch.mockImplementation(notFound);
+      fetch.mockImplementationOnce(notFound);
 
       watch(storage);
       await settle();
-      now = ABSENT_FRESH_MS - 1;
+      fetch.mockResolvedValueOnce(json({ value: 'Muted' }));
       const { seen } = watch(storage);
       await settle();
 
-      expect(fetch).toHaveBeenCalledTimes(1);
-      expect(seen).toEqual([{ key: 'someSetting', presence: 'absent' }]);
-
-      now = ABSENT_FRESH_MS;
-      watch(storage);
-      await settle();
       expect(fetch).toHaveBeenCalledTimes(2);
+      expect(seen.at(-1)).toEqual({
+        key: 'someSetting',
+        presence: 'present',
+        value: 'Muted',
+      });
     });
 
     it('shares one read between subscriptions that start together', async () => {
@@ -209,7 +199,7 @@ describe('RoamingSettingsStorage', () => {
       ]);
     });
 
-    it('reads every time without the signals channel to announce a store', async () => {
+    it('shares a read in flight without the signals channel too', async () => {
       const { storage, fetch } = setup({ withSignals: false });
       fetch.mockImplementation(notFound);
 
@@ -219,7 +209,7 @@ describe('RoamingSettingsStorage', () => {
       watch(storage);
       await settle();
 
-      expect(fetch).toHaveBeenCalledTimes(3);
+      expect(fetch).toHaveBeenCalledTimes(2);
     });
   });
 

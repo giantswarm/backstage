@@ -69,6 +69,7 @@ export const SHELL_SPECS = [
   'session-export.spec.ts',
   'session-images.spec.ts',
   'session-jump-to-bottom.spec.ts',
+  'session-model-failure.spec.ts',
   'session-runtime-lost.spec.ts',
   'session-stream-resubscribe.spec.ts',
   'session-state-column.spec.ts',
@@ -84,7 +85,9 @@ export const SHELL_SPECS = [
   'usage-cost.spec.ts',
   'usage-older-data-unavailable.spec.ts',
   'usage-time-window.spec.ts',
+  'wizard-tools-connection.spec.ts',
   'wizard-tools-layout.spec.ts',
+  'wizard-models-namespaced.spec.ts',
   'workflows.spec.ts',
   'workspace-detail.spec.ts',
   'workspace-flows.spec.ts',
@@ -106,7 +109,9 @@ export const MOBILE_SPECS = [
   'mobile-sessions.spec.ts',
   'mobile-tool-page.spec.ts',
   'mobile-wizard.spec.ts',
+  'wizard-models-namespaced.spec.ts',
   'mobile-workflow.spec.ts',
+  'session-model-failure.spec.ts',
 ] as const;
 
 const globs = (specs: readonly string[]) => specs.map(spec => `**/${spec}`);

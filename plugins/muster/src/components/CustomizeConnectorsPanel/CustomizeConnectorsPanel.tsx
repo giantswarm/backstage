@@ -40,6 +40,9 @@ import { serverListEntries, serverListRows } from '../../lib/serverList';
 import type { ServerListEntry } from '../../lib/serverList';
 import { isRegisteredRow, MUSTER_DESCRIPTION } from '../../lib/connectorTags';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- The portal session is the gs plugin's main sign-in.
+import { useMainSessionEnd } from '@giantswarm/backstage-plugin-gs';
+import { SESSION_ENDED_DESCRIPTION } from '../../lib/sessionEnded';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
 import {
@@ -72,7 +75,9 @@ import {
   type MusterSessionState,
   musterStatus,
   rowServer,
+  NO_TOOLS_VALUE,
   toolsLabel,
+  toolsUnavailable,
   unsearchedToolsNotes,
 } from './connectorRows';
 import {
@@ -304,7 +309,9 @@ function ConnectorStackedRow({
         <TagList tags={row.tags} max={ROW_TAGS_MAX} />
       ) : null,
       row.auth,
-      row.tools ?? (toolsPending ? '…' : ''),
+      toolsUnavailable(row.entry, row.reach)
+        ? ''
+        : (row.tools ?? (toolsPending ? '…' : '')),
     ],
   };
   if (hasSignIn(row)) {
@@ -567,7 +574,13 @@ function ConnectorsTable({
       isSortable: true,
       defaultWidth: '1fr',
       cell: row => (
-        <CellText title={row.tools ?? (isAwaitingData(catalogue) ? '…' : '')} />
+        <CellText
+          title={
+            toolsUnavailable(row.entry, row.reach)
+              ? NO_TOOLS_VALUE
+              : (row.tools ?? (isAwaitingData(catalogue) ? '…' : ''))
+          }
+        />
       ),
     },
     {
@@ -678,9 +691,17 @@ function ConnectorsTable({
 
 function Panel({ search }: CustomizeConnectorsPanelProps) {
   const { activeInstallation, isLoading } = useMusterInstance();
+  const sessionEnd = useMainSessionEnd();
 
   let body;
-  if (isLoading) {
+  if (sessionEnd && (isLoading || !activeInstallation)) {
+    body = (
+      <EmptyStateCard
+        title="Could not read your connectors"
+        description={SESSION_ENDED_DESCRIPTION}
+      />
+    );
+  } else if (isLoading) {
     body = <LoadingIndicator label="Reading your connectors…" />;
   } else if (!activeInstallation) {
     body = (

@@ -671,6 +671,26 @@ describe('ConnectorPage', () => {
     expect(tools.querySelector('[data-count="loading"]')).toBeNull();
   });
 
+  it('counts no tools for a connector muster is not connected to, and says why', async () => {
+    mockServers = [makeServer({ name: 'jira', state: 'Disconnected' })];
+    const api = makeApi();
+    api.filterTools.mockResolvedValue({
+      total: 0,
+      filtered_count: 0,
+      truncated: false,
+      tools: [],
+    } as never);
+    await renderAt(`${BASE}/jira`, { api });
+
+    expect(
+      await screen.findByText(
+        'This connector is disconnected, so its tools cannot be shown.',
+      ),
+    ).toBeInTheDocument();
+    const tools = screen.getByRole('tab', { name: 'Tools' });
+    expect(tools.querySelector('[data-count]')).toBeNull();
+  });
+
   it('lists a few tools without search or filter, each a link to its page', async () => {
     await renderAt(`${BASE}/jira`);
 
@@ -1080,6 +1100,128 @@ describe('ConnectorPage', () => {
     expect(
       screen.getByText('No connector “nope” on gazelle'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('ConnectorPage Tools tab', () => {
+  const NO_TOOLS = {
+    total: 0,
+    filtered_count: 0,
+    truncated: false,
+    tools: [],
+  };
+
+  it('warns that a failed connector exposes no tools', async () => {
+    mockServers = [
+      ...makeServers(),
+      makeServer({ name: 'linear', state: 'Failed' }),
+    ];
+    await renderAt(`${BASE}/linear`);
+
+    const explanation = await screen.findByText(
+      'This connector failed to connect, so its tools cannot be shown.',
+    );
+    expect(explanation.closest('[data-status]')).toHaveAttribute(
+      'data-status',
+      'warning',
+    );
+  });
+
+  it('warns when every instance of a connector failed', async () => {
+    mockServers = [
+      makeServer({
+        name: 'walrus-mcp-kubernetes',
+        family: 'kubernetes',
+        mc: 'walrus',
+        state: 'Failed',
+        labels: INFRASTRUCTURE,
+      }),
+      makeServer({
+        name: 'gazelle-mcp-kubernetes',
+        family: 'kubernetes',
+        mc: 'gazelle',
+        state: 'Failed',
+        labels: INFRASTRUCTURE,
+      }),
+    ];
+    const api = makeApi();
+    api.filterTools.mockResolvedValue(NO_TOOLS);
+    await renderAt(`${BASE}/kubernetes`, { api });
+
+    const explanation = await screen.findByText(
+      'No tools exposed — every instance of this connector failed to connect.',
+    );
+    expect(explanation.closest('[data-status]')).toHaveAttribute(
+      'data-status',
+      'warning',
+    );
+  });
+
+  it('says plainly that no instance offers tools while one has not failed', async () => {
+    const api = makeApi();
+    api.filterTools.mockResolvedValue(NO_TOOLS);
+    await renderAt(`${BASE}/kubernetes`, { api });
+
+    const explanation = await screen.findByText(
+      'No instance offers tools right now.',
+    );
+    expect(explanation.closest('[data-status]')).toBeNull();
+  });
+
+  it('keeps the failure plain while the sign-in error alert says something is wrong', async () => {
+    mockServers = [
+      ...makeServers().filter(server => server.getName() !== 'jira'),
+      makeServer({
+        name: 'jira',
+        state: 'Failed',
+        spec: {
+          auth: {
+            type: 'oauth',
+            authorizationServer: {
+              issuer: 'https://auth.jira.example.test',
+              grantScope: 'subject',
+            },
+          },
+        },
+      }),
+    ];
+    const api = makeApi();
+    api.getAuthStatus.mockResolvedValue({
+      servers: [{ name: 'jira', status: 'connected' }],
+    } as never);
+    api.filterTools.mockResolvedValue(NO_TOOLS);
+    (api as Record<string, unknown>).signOutServer = jest.fn(async () => {
+      throw new Error('network down');
+    });
+    await renderAt(`${BASE}/jira`, { api });
+
+    const explanation = await screen.findByText(
+      'This connector failed to connect, so its tools cannot be shown.',
+    );
+    expect(explanation.closest('[data-status]')).toHaveAttribute(
+      'data-status',
+      'warning',
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await userEvent.click(
+      await screen.findByRole('menuitem', { name: 'Sign out' }),
+    );
+
+    const error = await screen.findByText(
+      'Sign-out request failed: network down',
+    );
+    expect(error.closest('[data-status]')).toHaveAttribute(
+      'data-status',
+      'danger',
+    );
+    expect(
+      screen
+        .getByText(
+          'This connector failed to connect, so its tools cannot be shown.',
+        )
+        .closest('[data-status]'),
+    ).toBeNull();
   });
 });
 
