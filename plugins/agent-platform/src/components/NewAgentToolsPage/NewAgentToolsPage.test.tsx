@@ -4,6 +4,7 @@ import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent, { UserEvent } from '@testing-library/user-event';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- The wizard reads its connector catalogue through the Muster API.
 import {
   MCPServer,
   musterApiRef,
@@ -924,7 +925,7 @@ describe('NewAgentToolsPage', () => {
       expect(access('agent-manager', 'Read-only')).toBeDisabled();
       // pro's tools are not listed before a sign-in; All still works.
       expect(connector('pro')).toHaveTextContent(
-        'Its tools are listed once you sign in; All works without a sign-in.',
+        'You can choose All now. Its tools show after you sign in.',
       );
       expect(access('pro', 'Read-only')).toBeDisabled();
       await user.click(access('pro', 'All'));
@@ -955,7 +956,7 @@ describe('NewAgentToolsPage', () => {
 
       expect(toolsetOutput()).toBe('tool:x_kubernetes_delete_pod');
       expect(connector('kubernetes')).toHaveTextContent(
-        'Selected: 1 of 2 tools.',
+        'Selected: 1 of 2 tools. Tools added later are not included.',
       );
       expect(access('kubernetes', 'Read-only')).not.toBeChecked();
       expect(access('kubernetes', 'All')).not.toBeChecked();
@@ -989,7 +990,6 @@ describe('NewAgentToolsPage', () => {
       expect(tool('x_kubernetes_get_pods')).toBeChecked();
       expect(tool('x_kubernetes_delete_pod')).toBeChecked();
 
-      // Unticking a tool the connector covers writes out the rest.
       await user.click(tool('x_kubernetes_get_pods'));
       expect(toolsetOutput()).toBe('tool:x_kubernetes_delete_pod');
       expect(tool('x_kubernetes_get_pods')).not.toBeChecked();
@@ -1544,7 +1544,6 @@ describe('NewAgentToolsPage', () => {
       );
       expect(screen.queryByText('Too many selectors')).not.toBeInTheDocument();
 
-      // With the individual tools closed, Continue focuses the line by it.
       await user.click(continueButton());
       expect(document.activeElement).toHaveTextContent(
         'This toolset lists 33 selectors but an agent may list at most 32',

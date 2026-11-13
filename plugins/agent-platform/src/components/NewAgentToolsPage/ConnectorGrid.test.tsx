@@ -79,7 +79,7 @@ describe('ConnectorGrid', () => {
     const card = screen.getByRole('group', { name: 'Connector pro' });
     expect(card).toHaveTextContent('Sign-in needed');
     expect(card).toHaveTextContent(
-      'Its tools are listed once you sign in; All works without a sign-in.',
+      'You can choose All now. Its tools show after you sign in.',
     );
     expect(card).toHaveTextContent(
       'Selected: all tools, including ones added later.',
@@ -87,5 +87,30 @@ describe('ConnectorGrid', () => {
     const all = screen.getByRole('radio', { name: 'All' });
     expect(all).toBeChecked();
     expect(all.querySelector('svg')).not.toBeNull();
+  });
+
+  it('explains that partial selection excludes tools added later', () => {
+    const tools: ServerBucket['tools'] = ['read', 'write', 'delete'].map(
+      name => ({
+        name: `x_jira_${name}`,
+        summary: name,
+        server: 'jira',
+        kind: 'tool',
+      }),
+    );
+    render(
+      <ConnectorGrid
+        connectors={[{ ...bucket('jira'), tools, state: 'Connected' }]}
+        selected={new Set(['tool:x_jira_read', 'tool:x_jira_write'])}
+        disabled={false}
+        onChoose={jest.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole('group', { name: 'Connector jira' }),
+    ).toHaveTextContent(
+      'Selected: 2 of 3 tools. Tools added later are not included.',
+    );
   });
 });

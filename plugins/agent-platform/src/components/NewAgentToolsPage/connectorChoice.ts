@@ -1,3 +1,4 @@
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Connector status and tool effects are owned by the Muster plugin.
 import {
   CONNECTOR_REACH_LABELS,
   type ConnectorReach,
@@ -417,13 +418,6 @@ export function presetBaseOf(
 }
 
 /**
- * The selection a preset-based toolset shows as: the preset written out
- * ({@link materialize}) with the selectors beside it added on top — a
- * `server:x` replacing what the preset covers of x, any other selector added
- * unless a `server:` already holds it. Toolset selectors only union, so this
- * is exactly what the toolset selects.
- */
-/**
  * The selection without the tool selectors a `server:` selector beside them
  * already covers. Selectors only union, so those add nothing but still count
  * against the inline cap.
@@ -467,6 +461,11 @@ export function toggleCatalogueSelector(
   return withoutCovered(toggleSelector([...selection], selector), groups);
 }
 
+/**
+ * The selection a preset-based toolset shows as: the preset written out
+ * ({@link materialize}) with the selectors beside it added on top. A
+ * `server:x` replaces what the preset covers of x; selectors only union.
+ */
 export function expandSelection(
   coverage: readonly string[],
   extras: readonly string[],

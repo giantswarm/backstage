@@ -40,8 +40,6 @@ const useStyles = makeStyles(theme => ({
     gap: theme.spacing(1.25),
     gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
   },
-  // One layout for every card: the text, then the access choices. In a grid
-  // row the cards share a height, so the choices sit on one line at the foot.
   card: {
     display: 'flex',
     flexDirection: 'column',
@@ -72,7 +70,7 @@ function toolsLine(
   readOnlyCount: number,
 ): string {
   if (bucket.needsSignIn) {
-    return 'Its tools are listed once you sign in; All works without a sign-in.';
+    return 'You can choose All now. Its tools show after you sign in.';
   }
   if (bucket.tools.length === 0) {
     return status.reach === 'connected'
@@ -115,7 +113,7 @@ function selectionLine(
       return `Selected: ${picked} of ${countNoun(
         bucket.tools.length,
         'tool',
-      )}.`;
+      )}. Tools added later are not included.`;
     default:
       return undefined;
   }
