@@ -322,7 +322,7 @@ export function SignInFlow({
   prominent?: boolean;
   /**
    * The buttons alone, for a status cell: the wait and the notes are said by
-   * the status beside them (`ServerSignInStatus`).
+   * the status beside them (`SignInStatusText`).
    */
   compact?: boolean;
 }) {
