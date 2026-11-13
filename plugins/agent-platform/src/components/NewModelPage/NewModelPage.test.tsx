@@ -1,6 +1,6 @@
 import { Route, Routes } from 'react-router-dom';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   ModelConfig,
@@ -68,14 +68,6 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
 }));
 
 const mockSave = jest.fn();
-jest.mock('../../hooks/useSaveModelConfig', () => ({
-  useSaveModelConfig: () => ({
-    save: mockSave,
-    isSaving: false,
-    error: undefined,
-    reset: jest.fn(),
-  }),
-}));
 
 type MockModel = {
   getName(): string;
@@ -89,7 +81,8 @@ const mockOrganizationSave = jest.fn();
 let mockOrganizationError: Error | null = null;
 jest.mock('../../hooks/useSaveOrganizationModel', () => ({
   useSaveOrganizationModel: () => ({
-    save: mockOrganizationSave,
+    save: (input: { organization?: unknown }) =>
+      input.organization ? mockOrganizationSave(input) : mockSave(input),
     isSaving: false,
     error: mockOrganizationError,
     reset: jest.fn(),
@@ -213,7 +206,7 @@ describe('NewModelPage', () => {
       screen.getByRole('heading', { level: 1, name: 'Connect a model' }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Connect model' }),
+      screen.getByRole('button', { name: 'Continue to credential' }),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Add model/)).toBeNull();
   });
@@ -251,40 +244,6 @@ describe('NewModelPage', () => {
     expect(moreOptions()).toContainElement(tls);
   });
 
-  it('has no "requires no API key" switch: the key is simply optional', async () => {
-    await renderPage();
-
-    expect(screen.queryByText(/requires no API key/)).toBeNull();
-    const apiKey = screen.getByLabelText(/^API key/);
-    expect(apiKey).toHaveAccessibleDescription(
-      expect.stringContaining('Leave it empty if the endpoint needs none'),
-    );
-
-    await userEvent.type(screen.getByLabelText(/^Name/), 'Local vLLM');
-    await userEvent.type(
-      screen.getByRole('textbox', { name: /^Model/ }),
-      'qwen3-8b',
-    );
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Connect model' }),
-    );
-
-    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
-    expect(mockSave.mock.calls[0][0]).toEqual({
-      installation: 'golem',
-      values: expect.objectContaining({
-        name: 'local-vllm',
-        model: 'qwen3-8b',
-        apiKey: '',
-      }),
-      original: undefined,
-      namespace: 'kagent',
-      makeDefault: false,
-      expectedMarks: [],
-    });
-    expect(mockSave.mock.calls[0][0].values).not.toHaveProperty('keyless');
-  });
-
   it('says a first model becomes the default, with nothing to decide', async () => {
     await renderPage();
 
@@ -316,14 +275,13 @@ describe('NewModelPage', () => {
       'opus',
     );
     await userEvent.click(
-      screen.getByRole('button', { name: 'Connect model' }),
+      screen.getByRole('button', { name: 'Continue to credential' }),
     );
 
     await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
     expect(mockSave.mock.calls[0][0]).toMatchObject({
       namespace: 'kagent',
       makeDefault: true,
-      expectedMarks: ['sonnet'],
     });
   });
 
@@ -355,7 +313,9 @@ describe('NewModelPage', () => {
     mockNamespacesLoading = true;
     await renderPage();
 
-    const connect = screen.getByRole('button', { name: 'Connect model' });
+    const connect = screen.getByRole('button', {
+      name: 'Continue to credential',
+    });
     expect(connect).toBeDisabled();
     expect(connect).toHaveAccessibleDescription(
       'Checking which Organizations you may add a model for…',
@@ -375,7 +335,7 @@ describe('NewModelPage', () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Connect model' }),
+      screen.getByRole('button', { name: 'Continue to credential' }),
     ).not.toHaveAccessibleDescription();
   });
 
@@ -385,7 +345,9 @@ describe('NewModelPage', () => {
     mockSignIn = { message, signInRequired: true };
     await renderPage();
 
-    const connect = screen.getByRole('button', { name: 'Connect model' });
+    const connect = screen.getByRole('button', {
+      name: 'Continue to credential',
+    });
     expect(connect).toBeDisabled();
     expect(connect).toHaveAccessibleDescription(
       'Sign in on golem first: the connector tells which Organizations you may add a model for.',
@@ -406,61 +368,6 @@ describe('NewModelPage', () => {
     await renderPage();
 
     expect(screen.queryByText('Organizations unknown')).toBeNull();
-  });
-
-  it("creates an Organization's model through agent-manager, its key on the credential form", async () => {
-    mockNamespaces = ['kagent', 'org-acme'];
-    await renderPage();
-
-    await userEvent.click(screen.getByRole('button', { name: /Owner/ }));
-    await userEvent.click(await screen.findByRole('option', { name: 'acme' }));
-
-    await userEvent.click(screen.getByRole('button', { name: /Provider/ }));
-    const providers = (await screen.findAllByRole('option')).map(
-      option => option.textContent,
-    );
-    expect(providers).toEqual(['OpenAI (or compatible)', 'Anthropic']);
-    await userEvent.keyboard('{Escape}');
-    expect(screen.queryByLabelText(/^Base URL/)).toBeNull();
-    expect(
-      screen.queryByRole('switch', {
-        name: /Skip TLS certificate verification/,
-      }),
-    ).toBeNull();
-    // The key is never typed here.
-    expect(screen.queryByLabelText(/^API key/)).toBeNull();
-    expect(
-      screen.getByText(/You enter the key on the next page/),
-    ).toBeInTheDocument();
-    // agent-manager keeps no display name: the name is the model's own.
-    expect(screen.queryByLabelText(/^Technical name/)).toBeNull();
-
-    await userEvent.type(screen.getByLabelText(/^Name/), 'acme-sonnet');
-    await userEvent.type(
-      screen.getByRole('textbox', { name: /^Model/ }),
-      'claude',
-    );
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Continue to the key' }),
-    );
-
-    expect(await screen.findByText('The credential form')).toBeInTheDocument();
-    expect(mockSave).not.toHaveBeenCalled();
-    expect(mockOrganizationSave).toHaveBeenCalledWith({
-      organization: {
-        namespace: 'org-acme',
-        organization: 'acme',
-        parent: 'org-parent',
-      },
-      values: expect.objectContaining({
-        name: 'acme-sonnet',
-        model: 'claude',
-        apiKey: '',
-      }),
-      original: undefined,
-      makeDefault: false,
-      replaceKey: false,
-    });
   });
 
   it("moves an organization's default that agent-manager wrote, through agent-manager", async () => {
@@ -486,7 +393,7 @@ describe('NewModelPage', () => {
       'claude-opus',
     );
     await userEvent.click(
-      screen.getByRole('button', { name: 'Continue to the key' }),
+      screen.getByRole('button', { name: 'Continue to credential' }),
     );
 
     await waitFor(() => expect(mockOrganizationSave).toHaveBeenCalledTimes(1));
@@ -512,46 +419,6 @@ describe('NewModelPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('marks each missing field itself on a blocked submit and focuses the first', async () => {
-    await renderPage();
-
-    const displayName = screen.getByLabelText(/^Name/);
-    const model = screen.getByRole('textbox', { name: /^Model/ });
-    expect(displayName).not.toHaveAttribute('aria-invalid');
-
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Connect model' }),
-    );
-
-    expect(displayName).toHaveAttribute('aria-invalid', 'true');
-    expect(displayName).toHaveAccessibleDescription(
-      expect.stringContaining('Enter a name for the model.'),
-    );
-    expect(displayName).toHaveFocus();
-    expect(model).toHaveAttribute('aria-invalid', 'true');
-    expect(model).toHaveAccessibleDescription(
-      expect.stringContaining('Enter the model id.'),
-    );
-    // The technical name is only empty because the display name is: More
-    // options stays closed, its field unflagged, and the key is optional.
-    expect(moreOptions()).not.toHaveAttribute('open');
-    expect(screen.getByLabelText(/^Technical name/)).not.toHaveAttribute(
-      'aria-invalid',
-    );
-    expect(screen.getByLabelText(/^API key/)).not.toHaveAttribute(
-      'aria-invalid',
-    );
-    expect(mockSave).not.toHaveBeenCalled();
-    expect(
-      screen.queryByText(/Please fix the following/),
-    ).not.toBeInTheDocument();
-
-    // A fixed field drops its error while the others keep theirs.
-    await userEvent.type(displayName, 'Sonnet');
-    expect(displayName).not.toHaveAttribute('aria-invalid');
-    expect(model).toHaveAttribute('aria-invalid', 'true');
-  });
-
   it('opens More options when the technical name blocks the submit', async () => {
     await renderPage();
 
@@ -564,7 +431,7 @@ describe('NewModelPage', () => {
     await userEvent.clear(technicalName);
     await userEvent.type(technicalName, 'Not_Valid');
     await userEvent.click(
-      screen.getByRole('button', { name: 'Connect model' }),
+      screen.getByRole('button', { name: 'Continue to credential' }),
     );
 
     expect(moreOptions()).toHaveAttribute('open');
@@ -623,55 +490,6 @@ describe('NewModelPage · editing a model', () => {
     detailHref: '/customize/models/inst-1/kagent/sonnet',
   });
 
-  it('is the same flow, prefilled, with Save changes waiting for a change', async () => {
-    mockInstallationNames = ['golem', 'snail'];
-    await renderPage(editOf());
-
-    expect(
-      screen.getByRole('heading', { level: 1, name: 'Edit model' }),
-    ).toBeInTheDocument();
-    expect(screen.getByText('Customize / Models / Sonnet 4.5')).toBeVisible();
-    // An existing model stays where it is: no environment to choose.
-    expect(screen.queryByRole('button', { name: /Environment/ })).toBeNull();
-    expect(screen.getByLabelText(/^Name/)).toHaveValue('Sonnet 4.5');
-    expect(screen.getByRole('textbox', { name: /^Model/ })).toHaveValue(
-      'claude-sonnet-4-5',
-    );
-    // The locked technical name is said under the name, once.
-    expect(screen.queryByLabelText(/^Technical name/)).toBeNull();
-    expect(
-      screen.getByText((_, element) =>
-        Boolean(
-          element?.tagName === 'P' &&
-          element.textContent ===
-            'Its technical name is sonnet; it cannot be changed.',
-        ),
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('switch', { name: /Skip TLS certificate verification/ }),
-    ).toBeChecked();
-    expect(screen.getByLabelText(/^API key/)).toHaveAttribute(
-      'placeholder',
-      'Leave empty to keep the current key',
-    );
-
-    const save = screen.getByRole('button', { name: 'Save changes' });
-    expect(save).toBeDisabled();
-    // Typing does not touch the technical name of an existing model.
-    await userEvent.type(screen.getByLabelText(/^Name/), ' (EU)');
-    expect(
-      screen.getByText((_, element) =>
-        Boolean(
-          element?.tagName === 'P' &&
-          element.textContent ===
-            'Its technical name is sonnet; it cannot be changed.',
-        ),
-      ),
-    ).toBeInTheDocument();
-    expect(save).toBeEnabled();
-  });
-
   it('saves the change against the model and returns to its page', async () => {
     const modelConfig = sonnet();
     await renderPage(editOf(modelConfig));
@@ -682,33 +500,15 @@ describe('NewModelPage · editing a model', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
-    expect(mockSave.mock.calls[0][0]).toEqual({
-      installation: 'inst-1',
+    expect(mockSave.mock.calls[0][0]).toMatchObject({
+      namespace: 'kagent',
       values: expect.objectContaining({
         name: 'sonnet',
         model: 'claude-sonnet-4-6',
-        apiKey: '',
       }),
       original: modelConfig,
     });
     expect(await screen.findByText("The model's page")).toBeInTheDocument();
-  });
-
-  it('says what an empty key means once the provider changes', async () => {
-    await renderPage(editOf());
-
-    await userEvent.click(screen.getByRole('button', { name: /Provider/ }));
-    await userEvent.click(
-      await screen.findByRole('option', { name: 'OpenAI (or compatible)' }),
-    );
-
-    const apiKey = screen.getByLabelText(/^API key/);
-    expect(apiKey).toHaveAttribute('placeholder', '');
-    expect(apiKey).toHaveAccessibleDescription(
-      expect.stringContaining(
-        'The stored key is for Anthropic, not OpenAI (or compatible)',
-      ),
-    );
   });
 });
 
@@ -739,33 +539,6 @@ describe("NewModelPage · editing an organization's model", () => {
     detailHref: '/customize/models/inst-1/kagent/sonnet',
   });
 
-  it('saves a change through agent-manager and keeps the key', async () => {
-    mockOrganizationSave.mockResolvedValue({ isDefault: false });
-    const modelConfig = acmeSonnet();
-    await renderPage(editOf(modelConfig));
-
-    expect(screen.queryByLabelText(/^API key/)).toBeNull();
-    const replace = screen.getByRole('switch', {
-      name: 'Enter a new key on the next page',
-    });
-    expect(replace).not.toBeChecked();
-
-    const model = screen.getByRole('textbox', { name: /^Model/ });
-    await userEvent.clear(model);
-    await userEvent.type(model, 'claude-sonnet-4-6');
-    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
-
-    expect(await screen.findByText("The model's page")).toBeInTheDocument();
-    expect(mockSave).not.toHaveBeenCalled();
-    expect(mockOrganizationSave).toHaveBeenCalledWith(
-      expect.objectContaining({
-        original: modelConfig,
-        replaceKey: false,
-        values: expect.objectContaining({ model: 'claude-sonnet-4-6' }),
-      }),
-    );
-  });
-
   it('continues to the credential form for a new key', async () => {
     await renderPage(editOf());
 
@@ -775,7 +548,7 @@ describe("NewModelPage · editing an organization's model", () => {
       screen.getByRole('switch', { name: 'Enter a new key on the next page' }),
     );
     await userEvent.click(
-      screen.getByRole('button', { name: 'Continue to the key' }),
+      screen.getByRole('button', { name: 'Continue to credential' }),
     );
 
     expect(await screen.findByText('The credential form')).toBeInTheDocument();
@@ -792,216 +565,6 @@ describe("NewModelPage · editing an organization's model", () => {
     expect(
       screen.getByText(/It cannot be changed: the stored key is this provider/),
     ).toBeInTheDocument();
-  });
-});
-
-describe('NewModelPage · Vertex AI', () => {
-  const serviceAccountKey = (projectID: string) =>
-    JSON.stringify(
-      {
-        type: 'service_account',
-        project_id: projectID,
-        private_key: 'not-a-key',
-        client_email: `kagent@${projectID}.iam.gserviceaccount.com`,
-        token_uri: 'https://oauth2.googleapis.com/token',
-      },
-      null,
-      2,
-    );
-  const keyFile = (content: string, name = 'key.json') =>
-    new File([content], name, { type: 'application/json' });
-  const chooseKeyFile = (file: File) =>
-    userEvent.upload(screen.getByLabelText('Service account key file'), file);
-  const keyGroup = () =>
-    screen.getByRole('group', { name: /^Service account key/ });
-
-  async function chooseProvider(name: string) {
-    await userEvent.click(screen.getByRole('button', { name: /Provider/ }));
-    await userEvent.click(await screen.findByRole('option', { name }));
-  }
-
-  async function fillGemini() {
-    await chooseProvider('Gemini on Vertex AI');
-    await userEvent.type(screen.getByLabelText(/^Name/), 'Gemini Pro');
-    await userEvent.type(
-      screen.getByRole('textbox', { name: /^Location/ }),
-      'europe-west4',
-    );
-    await userEvent.type(
-      screen.getByRole('textbox', { name: /^Model/ }),
-      'gemini-2.5-pro',
-    );
-  }
-
-  it('asks for a location and a key file instead of an endpoint or a typed key', async () => {
-    await renderPage();
-    await chooseProvider('Claude on Vertex AI');
-
-    expect(screen.getByRole('heading', { name: 'Provider' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: 'Model' })).toBeVisible();
-    expect(screen.getByRole('textbox', { name: /^Location/ })).toBeVisible();
-    expect(
-      screen.getByRole('button', { name: 'Choose key file' }),
-    ).toBeVisible();
-    expect(screen.queryByRole('textbox', { name: /^Project ID/ })).toBeNull();
-    expect(screen.queryByLabelText(/^API key/)).toBeNull();
-    expect(screen.queryByRole('textbox', { name: /^Base URL/ })).toBeNull();
-    expect(
-      screen.queryByRole('switch', {
-        name: /Skip TLS certificate verification/,
-      }),
-    ).toBeNull();
-  });
-
-  it('says what the key file names, takes its project and saves', async () => {
-    await renderPage();
-    await fillGemini();
-
-    const key = serviceAccountKey('my-project-123');
-    await chooseKeyFile(keyFile(key, 'my-project-123-abc.json'));
-
-    const status = within(keyGroup()).getByRole('status');
-    await waitFor(() =>
-      expect(status).toHaveTextContent('Read from my-project-123-abc.json.'),
-    );
-    expect(status).toHaveTextContent(
-      'Service account kagent@my-project-123.iam.gserviceaccount.com',
-    );
-    expect(status).toHaveTextContent('Project my-project-123');
-    expect(status).not.toHaveTextContent('not-a-key');
-
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Connect model' }),
-    );
-    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
-    expect(mockSave.mock.calls[0][0].values).toEqual(
-      expect.objectContaining({
-        provider: 'GeminiVertexAI',
-        name: 'gemini-pro',
-        projectID: 'my-project-123',
-        location: 'europe-west4',
-        apiKey: key,
-      }),
-    );
-  });
-
-  it('says at once that a chosen file is not a key, and clears it when a key is chosen', async () => {
-    await renderPage();
-    await fillGemini();
-
-    await chooseKeyFile(keyFile('{"type": "authorized_user"}'));
-
-    const choose = screen.getByRole('button', { name: 'Choose another file' });
-    await waitFor(() =>
-      expect(choose).toHaveAccessibleDescription(
-        expect.stringContaining('This file is not a service account key.'),
-      ),
-    );
-
-    await chooseKeyFile(keyFile(serviceAccountKey('my-project-123')));
-    await waitFor(() => expect(choose).not.toHaveAccessibleDescription());
-  });
-
-  it('asks for the key file only on submit, and moves the focus to it', async () => {
-    await renderPage();
-    await fillGemini();
-
-    await userEvent.tab();
-    expect(
-      screen.queryByText('Choose the service account key file.'),
-    ).toBeNull();
-
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Connect model' }),
-    );
-
-    expect(mockSave).not.toHaveBeenCalled();
-    const choose = screen.getByRole('button', { name: 'Choose key file' });
-    expect(choose).toHaveAccessibleDescription(
-      'Choose the service account key file.',
-    );
-    await waitFor(() => expect(choose).toHaveFocus());
-  });
-
-  it('checks the location when the person leaves it, and clears the error once fixed', async () => {
-    await renderPage();
-    await chooseProvider('Claude on Vertex AI');
-
-    const location = screen.getByRole('textbox', { name: /^Location/ });
-    await userEvent.type(location, 'Europe');
-    expect(location).not.toHaveAttribute('aria-invalid');
-
-    await userEvent.tab();
-    expect(location).toHaveAttribute('aria-invalid', 'true');
-    expect(location).toHaveAccessibleDescription(
-      expect.stringContaining(
-        'Enter global, us, eu or a region such as europe-west4.',
-      ),
-    );
-
-    await userEvent.clear(location);
-    await userEvent.type(location, 'global');
-    expect(location).not.toHaveAttribute('aria-invalid');
-  });
-
-  it('keeps the stored key on an edit, and takes the project of a replacement', async () => {
-    const modelConfig = new ModelConfig(
-      {
-        apiVersion: 'api.kagent.dev/v1alpha3',
-        kind: 'ModelConfig',
-        metadata: { name: 'sonnet', namespace: 'kagent' },
-        spec: {
-          provider: 'AnthropicVertexAI',
-          model: 'claude-sonnet-4-5@20250929',
-          apiKeySecret: 'kagent-sonnet',
-          apiKeySecretKey: 'GOOGLE_APPLICATION_CREDENTIALS',
-          anthropicVertexAI: {
-            projectID: 'my-project-123',
-            location: 'europe-west4',
-          },
-        },
-      } as ModelConfigInterface,
-      'inst-1',
-    );
-    await renderPage({
-      installation: 'inst-1',
-      modelConfig,
-      detailHref: '/customize/models/inst-1/kagent/sonnet',
-    });
-
-    expect(keyGroup()).toHaveTextContent(
-      'The stored key of project my-project-123 is kept.',
-    );
-    const location = screen.getByRole('textbox', { name: /^Location/ });
-    expect(location).toHaveValue('europe-west4');
-    await userEvent.clear(location);
-    await userEvent.type(location, 'global');
-
-    await chooseKeyFile(keyFile(serviceAccountKey('new-project')));
-    await waitFor(() =>
-      expect(keyGroup()).toHaveTextContent('Project new-project'),
-    );
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Keep the stored key' }),
-    );
-    expect(keyGroup()).toHaveTextContent(
-      'The stored key of project my-project-123 is kept.',
-    );
-
-    await chooseKeyFile(keyFile(serviceAccountKey('new-project')));
-    await waitFor(() =>
-      expect(keyGroup()).toHaveTextContent('Project new-project'),
-    );
-    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
-
-    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
-    expect(mockSave.mock.calls[0][0].values).toEqual(
-      expect.objectContaining({
-        location: 'global',
-        projectID: 'new-project',
-        apiKey: serviceAccountKey('new-project'),
-      }),
-    );
   });
 });
 

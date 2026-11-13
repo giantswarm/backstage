@@ -6,25 +6,14 @@ import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react
 import {
   Agent,
   CustomResourceMatcher,
-  deleteResource,
   fetchResourceList,
   ModelConfig,
   useSelfSubjectAccessReview,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
-import {
-  keySecretName,
-  MODEL_CONFIG_NAMESPACE,
-  modelConfigOwner,
-} from '../lib/modelConfigs';
+import { modelConfigEditOwner } from '../lib/modelConfigs';
 import { useOrganizationDirectory } from '../components/OrganizationDirectoryProvider';
-
-const SECRET_GVK: CustomResourceMatcher = {
-  group: '',
-  apiVersion: 'v1',
-  plural: 'secrets',
-  isCore: true,
-};
+import { useAgentManagerClient } from './useAgentManager';
 
 /**
  * Deleting one ModelConfig, and the checks that decide whether to offer it.
@@ -52,12 +41,15 @@ const SECRET_GVK: CustomResourceMatcher = {
 export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
   const kubernetesApi = useApi(kubernetesApiRef);
   const queryClient = useQueryClient();
-  const { directory } = useOrganizationDirectory();
 
   const cluster = modelConfig?.cluster ?? '';
+  const client = useAgentManagerClient(cluster);
+  const { directory } = useOrganizationDirectory();
   const name = modelConfig?.getName();
   const namespace = modelConfig?.getNamespace();
-  const owner = modelConfig ? modelConfigOwner(modelConfig) : undefined;
+  const owner = modelConfig
+    ? modelConfigEditOwner(modelConfig, directory)
+    : undefined;
 
   const { allowed: isAllowed, isLoading: isCheckingPermission } =
     useSelfSubjectAccessReview(
@@ -142,55 +134,12 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
       }
 
       const gvk = modelConfig.getResolvedGVK();
-      let deleted = true;
-      try {
-        await deleteResource({
-          kubernetesApi,
-          cluster,
-          gvk,
-          name,
-          namespace,
-        });
-      } catch (error) {
-        // Already gone — someone else deleted it, or an earlier attempt got
-        // further than its error suggested. Either way the goal is met.
-        if ((error as Error).name !== 'NotFoundError') {
-          throw error;
-        }
-        deleted = false;
+      if (!client || !namespace) {
+        throw new Error('agent-manager is not reachable on this installation.');
       }
-
-      const invalidated = [gvk];
-
-      // The key Secret rides along only when it is ours: named by the
-      // portal/agentlab convention, i.e. 1:1 with this model. A foreign Secret
-      // the CR referenced (hand-provisioned, possibly shared) stays. Best
-      // effort — the model is gone by now, and an orphaned key Secret is
-      // inert, so a failure here must not report the deletion as failed.
-      if (
-        modelConfig.getApiKeySecret() ===
-        keySecretName(name, namespace ?? MODEL_CONFIG_NAMESPACE, directory)
-      ) {
-        try {
-          await deleteResource({
-            kubernetesApi,
-            cluster,
-            gvk: SECRET_GVK,
-            name: keySecretName(
-              name,
-              namespace ?? MODEL_CONFIG_NAMESPACE,
-              directory,
-            ),
-            namespace,
-          });
-          invalidated.push(SECRET_GVK);
-        } catch {
-          // Keep the Secret.
-        }
-      }
-
-      await invalidateReads(invalidated);
-      return { deleted };
+      const result = await client.deleteModel(namespace, name);
+      await invalidateReads([gvk]);
+      return { deleted: Boolean(result.deleted) };
     },
   });
 

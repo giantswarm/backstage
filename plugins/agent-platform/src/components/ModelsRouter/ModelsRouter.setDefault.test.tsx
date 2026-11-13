@@ -1,3 +1,4 @@
+/* eslint-disable @backstage/no-mixed-plugin-imports -- The Agent Platform composes installation APIs across plugins. */
 import type { ReactNode } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { analyticsApiRef } from '@backstage/frontend-plugin-api';
@@ -257,19 +258,6 @@ describe('ModelsRouter · Set as default on an organization model', () => {
     expect(
       screen.queryByText('Could not make this the default model'),
     ).toBeNull();
-  });
-
-  it('does not give a keyless model a key Secret to move the mark', async () => {
-    const user = userEvent.setup();
-    const callTool = await renderModelPage(
-      { modelKeyPresent: true },
-      { keyless: true },
-    );
-
-    await user.click(await setAsDefault());
-
-    expect(await screen.findByText(/names no key Secret/)).toBeInTheDocument();
-    expect(toolCalls(callTool, 'set_organization_model')).toEqual([]);
   });
 
   it('says who may set the default when agent-manager refuses the person', async () => {

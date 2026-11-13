@@ -4,9 +4,18 @@ import type { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react'
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import { preparedCredentialOperation } from '../lib/credentialOperations';
-import type { ModelConfigFormValues } from '../lib/modelConfigs';
+import {
+  MODEL_CONFIG_NAMESPACE,
+  isVertexAIProvider,
+  modelConfigFormChanged,
+  modelConfigFormValues,
+  type ModelConfigFormValues,
+} from '../lib/modelConfigs';
 import type { OrganizationNamespace } from '../lib/organizations';
-import { organizationCredentialsRouteRef } from '../routes';
+import {
+  organizationCredentialsRouteRef,
+  modelCredentialsRouteRef,
+} from '../routes';
 import {
   AgentManagerError,
   AgentManagerNotConnectedError,
@@ -19,7 +28,8 @@ import { useAgentManagerClient } from './useAgentManager';
 
 export type SaveOrganizationModelInput = {
   /** The organization namespace the model is in, or goes to. */
-  organization: OrganizationNamespace;
+  organization?: OrganizationNamespace;
+  namespace?: string;
   values: ModelConfigFormValues;
   /** The model being edited; absent for a create. */
   original?: ModelConfig;
@@ -66,6 +76,7 @@ export function useSaveOrganizationModel(installation: string | undefined) {
   const client = useAgentManagerClient(installation);
   const queryClient = useQueryClient();
   const formLink = useRouteRef(organizationCredentialsRouteRef);
+  const platformFormLink = useRouteRef(modelCredentialsRouteRef);
 
   const mutation = useTrackedMutation<
     SaveOrganizationModelResult,
@@ -86,6 +97,7 @@ export function useSaveOrganizationModel(installation: string | undefined) {
     },
     mutationFn: async ({
       organization,
+      namespace: requestedNamespace,
       values,
       original,
       makeDefault = false,
@@ -93,16 +105,20 @@ export function useSaveOrganizationModel(installation: string | undefined) {
     }) => {
       if (!client || !installation) {
         throw new Error(
-          'agent-manager is not reachable on this installation, and an organization’s model is saved through it.',
+          'agent-manager is not reachable on this installation. Models are saved through it.',
         );
       }
+      const namespace =
+        organization?.namespace ?? requestedNamespace ?? MODEL_CONFIG_NAMESPACE;
       const formOf = (operation: string) => {
-        const form = formLink?.({
-          installation,
-          parent: organization.parent,
-          name: organization.organization,
-          operation,
-        });
+        const form = organization
+          ? formLink?.({
+              installation,
+              parent: organization.parent,
+              name: organization.organization,
+              operation,
+            })
+          : platformFormLink?.({ installation, namespace, operation });
         if (!form) {
           throw new Error(
             'The key is entered on the credential form, and this portal has none.',
@@ -110,22 +126,37 @@ export function useSaveOrganizationModel(installation: string | undefined) {
         }
         return form;
       };
-      const { namespace } = organization;
+      const configuration = {
+        ...(isVertexAIProvider(values.provider)
+          ? {
+              projectID: values.projectID.trim(),
+              location: values.location.trim(),
+            }
+          : {}),
+        ...(!organization
+          ? {
+              endpoint: values.endpoint.trim(),
+              insecureSkipTLSVerify: values.insecureSkipTlsVerify,
+            }
+          : {}),
+        displayName: values.displayName.trim(),
+      };
 
       if (!original) {
         const name = values.name.trim();
-        // set_organization_model changes a model that exists: a create
-        // must not land on one. Read fresh, as the person; agent-manager
-        // has no create-only write, so a model made in between still wins.
+        // The fresh read gives immediate feedback; create guards the write race.
         const existing = await client.listModelConfigs(namespace);
         if (existing.some(model => model.name === name)) {
           throw new Error(
-            `The organization ${organization.organization} already has a model named ${name}. Choose another name, or edit that model.`,
+            `The namespace ${namespace} already has a model named ${name}. Choose another name, or edit that model.`,
           );
         }
         const result = await client.setOrganizationModel({
           namespace,
           name,
+          create: true,
+          ...configuration,
+          noCredential: values.provider === 'Ollama' || values.noCredential,
           provider: values.provider,
           model: values.model.trim(),
           ...(makeDefault ? { default: true } : {}),
@@ -145,14 +176,19 @@ export function useSaveOrganizationModel(installation: string | undefined) {
         );
       }
       const model = values.model.trim();
+      const initial = modelConfigFormValues(original);
+      if (!initial)
+        throw new Error('This provider cannot be edited through this form.');
       let changed = false;
       let isDefault = false;
-      if (model !== (original.getModel() ?? '')) {
+      if (modelConfigFormChanged(values, initial)) {
         const result = await client.setOrganizationModel({
           namespace,
           name,
           provider: values.provider,
           model,
+          ...configuration,
+          noCredential: !original.getApiKeySecret(),
           requestId: crypto.randomUUID(),
         });
         isDefault = result.defaultModel === name;
@@ -210,7 +246,7 @@ export function useSaveOrganizationModel(installation: string | undefined) {
         );
       }
     },
-    onSuccess: ({ form, changed }, { organization, original }) => {
+    onSuccess: ({ form, changed }, { organization, namespace, original }) => {
       // Invalidate rather than edit the cache: the QueryClient is persisted.
       // A request still to be finished on the form is reread there.
       const wrote = original ? changed : !form;
@@ -220,7 +256,7 @@ export function useSaveOrganizationModel(installation: string | undefined) {
       return invalidateModelReads(
         queryClient,
         installation,
-        organization.namespace,
+        organization?.namespace ?? namespace ?? MODEL_CONFIG_NAMESPACE,
       );
     },
   });
