@@ -16,7 +16,6 @@ import {
   HIDE_INSTALLATION,
   isSoleInstallation,
 } from '../../lib/soleInstallation';
-import { InstallationScopeNote } from '../InstallationScopeNote';
 import { NotReachableInstallationsNote } from '../NotReachableInstallationsNote';
 import { SessionsDataProvider, useSessions } from '../SessionsDataProvider';
 import { SessionsTable } from '../SessionsTable';
@@ -158,8 +157,6 @@ function SessionsIndexPageContent() {
   return (
     <SessionsFrame>
       <Flex direction="column" gap="3">
-        <InstallationScopeNote component="kagent" />
-
         {/* Same gate as the Agents tab: the installation this tab reads could
             not be asked whether it runs kagent. Renders nothing otherwise. */}
         <InstallationInventoryGate context="Which environments run kagent is read through their Kubernetes API." />

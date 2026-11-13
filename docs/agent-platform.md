@@ -1302,12 +1302,29 @@ templates; `agent-deployment` no longer exists in
 
 ## The installation scope
 
-Sessions, Agents, Models, Connectors, Workflows and Usage share **one
-installation scope**: `'all'` (the default) or one pinned installation. It is a
-module store in the `gs` plugin (`useInstallationScope`,
-`plugins/gs/src/apis/installationScope/`) read through `useSyncExternalStore`,
-not a React context, because the muster tabs are a different plugin with their
-own providers.
+Each view with an Environment selector has an **installation scope**:
+`'all'` (the default) or one pinned installation. There are two, siblings that
+never read each other's choice: **Customize** (`customize`: every tab and page
+under `/customize`, Models included) and **Usage** (`usage`). Each is a module
+store in the `gs` plugin (`useInstallationScope`,
+`plugins/gs/src/apis/installationScope/`) rather than a React context of one
+plugin, because the muster views are a different plugin with their own
+providers.
+
+- **Opt-in.** A view reads a pin only below a `SharedInstallationScope`,
+  which `CustomizePage`, `ModelsRouter` and the legacy-address redirect mount
+  for `customize`, and `UsageRouter` for `usage` (a nested mount of the same
+  scope shares the outer one). It holds the `?installation=` value, the store
+  snapshot and the URL writer. Everywhere
+  else `useInstallationScope` answers `'all'`, reads neither the URL nor the
+  store (so a pin or a query-string change does not re-render it), and its
+  `setScope` does nothing: the shell rail's recent sessions, the notification
+  inbox and the command palette (`AgentPlatformProviders`), the Sessions page,
+  the start screen and the Bot PRs page read every environment, whatever was
+  chosen on Customize or Usage. A new page follows the pin only when it mounts a
+  selector and opts in. The cost: with a pin set, the rail still reads agents,
+  model configs and sessions from every kagent environment, a token per
+  environment, as it does with no pin.
 
 The scope is set by `EnvironmentSelect` (and `UsageScopeBar` on Usage), shown
 only with more than one environment. It offers every
@@ -1316,12 +1333,16 @@ its state; a portal with one installation renders no selector. "Not reachable
 from this portal" comes from the kagent backend's probe on kagent-backed lists
 and from the muster backend's probe on Connectors and Workflows.
 
-- **Sources, in order.** `?installation=` wins while present. Otherwise the
-  store, mirrored to localStorage as `muster-installation` (the muster picker's
-  old key). A stored value naming the _home_ installation reads as `'all'`,
+- **Sources, in order** (below `SharedInstallationScope`). `?installation=`
+  wins while present: the same parameter on both scopes' pages, each read
+  only by its own. Otherwise the scope's store, mirrored to localStorage as
+  `muster-installation` for Customize (the muster picker's old key) and
+  `usage-installation` for Usage. A stored value naming the _home_ installation reads as `'all'`,
   because the old picker wrote its default there for everyone.
   `useInstallationScopeUrlSync` reconciles URL and store; `setScope` writes
-  store, localStorage and URL at once.
+  store, localStorage and URL at once. A stale restored pin, and a pin on an
+  environment switched off in Cluster access, are forgotten where the shared
+  scope is read, the first time a view with a selector renders.
 - **Usage reads one installation, never the fleet.** Under `'all'` it reports
   on the home installation and says so; see
   [One installation at a time](#one-installation-at-a-time).
@@ -1339,6 +1360,8 @@ and from the muster backend's probe on Connectors and Workflows.
   scope and writes no default back.
 - **Naming.** Detail pages carry an `InstallationChip`; the new-session picker
   names installations once agents span more than one (`agentOptionLabel`).
+- **Sessions narrow on their own.** The Sessions page has its own
+  Environment filter instead (see [The Sessions tab](#the-sessions-tab)).
 
 The tabs share one react-query client, so the inventory is read once per page
 load.
@@ -1348,6 +1371,14 @@ load.
 `/sessions` lists the person's kagent sessions across the fleet
 (`SessionsTable`); a session starts on the shell's start screen (see "Starting
 a session"). Renaming and deleting are described below.
+
+The list reads every environment, whatever a Customize page pinned (see
+[The installation scope](#the-installation-scope)). Its filter bar
+(`sessionFacets`, `SessionsTable/filters.ts`) narrows it by State, Environment,
+Organization, Agent and Pinned; Environment is offered once the sessions come
+from more than one environment, and stays while it has a pick, so a pick can
+be undone after the list drops its Environment column. Like the other filters
+it starts at all and is not stored or written to the URL.
 
 ### The first-run state
 
@@ -3592,7 +3623,8 @@ labels its figures as one person's own (see [the Usage tab](#the-usage-tab)).
 `/usage` has routed tabs, Overview at the bare path; an unknown view redirects
 to Overview, and the old `/agent-platform/usage/…` addresses (`overview`, `mcp`,
 `technical`) redirect to their view. `UsageScopeBar` sets the
-environment and the window: the last 7, 30 or 90 days, or a calendar month
+environment (Usage's own choice, independent of Customize's; see
+[The installation scope](#the-installation-scope)) and the window: the last 7, 30 or 90 days, or a calendar month
 (`?window=7d`, `?window=2026-10`; `lib/usageWindow.ts`). The window control is
 `UsageWindowSelect`: a select labelled "Time range" with "Last 7 days", "Last
 30 days" and "Last 90 days", then this month so far and the two before it, the

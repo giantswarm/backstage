@@ -2,12 +2,14 @@ export {
   ALL_INSTALLATIONS,
   INSTALLATION_SCOPE_SEARCH_PARAM,
   INSTALLATION_SCOPE_STORAGE_KEY,
+  USAGE_INSTALLATION_SCOPE_STORAGE_KEY,
   getInstallationScopeSnapshot,
   readStoredInstallationScope,
   setInstallationScope,
   subscribeInstallationScope,
   __resetInstallationScopeForTests,
   type InstallationScope,
+  type InstallationScopeId,
   type InstallationScopeState,
 } from './installationScopeStore';
 export {
@@ -26,3 +28,4 @@ export {
   type UseInstallationScopeResult,
 } from './useInstallationScope';
 export { useInstallationScopeUrlSync } from './useInstallationScopeUrlSync';
+export { SharedInstallationScope } from './SharedInstallationScope';

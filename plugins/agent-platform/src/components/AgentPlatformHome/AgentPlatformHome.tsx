@@ -38,7 +38,6 @@ import {
   useAgents,
   type AgentRow,
 } from '../AgentsDataProvider';
-import { InstallationScopeNote } from '../InstallationScopeNote';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import {
   isStartableAgent,
@@ -147,7 +146,6 @@ function AgentPlatformHomeContent({
     rows: agents,
     isLoading,
     unreachableInstallations,
-    kagentMissing,
     inventoryFailure,
   } = useAgents();
   const { refresh: refreshInventory } = useInstallationInventory();
@@ -328,13 +326,10 @@ function AgentPlatformHomeContent({
             />
           )}
           {/* The Main artboard's order: composer (recent agents or reach
-              line under it), then the Slack banner. The scope notes and the
-              read warning stand between the two only when they have something
-              to say — they render nothing otherwise — and they belong under
-              the composer, whose empty state points at "the warning below". */}
-          {/* The kagent-missing card in place of the composer names the
-              environment; the scope note would say it twice. */}
-          {!kagentMissing && <InstallationScopeNote component="kagent" />}
+              line under it), then the Slack banner. The read warnings stand
+              between the two only when they have something to say — they
+              render nothing otherwise — and they belong under the composer,
+              whose empty state points at "the warning below". */}
           {/* The failure Customize › Agents explains, from the same value:
               the one the composer's silence leaves to it. */}
           {inventoryFailure && (
