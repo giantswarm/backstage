@@ -70,9 +70,6 @@ jest.mock('../ServingProvider', () => ({
   ServingProvider: mockPassThrough,
 }));
 
-jest.mock('../InstallationScopeNote', () => ({
-  InstallationScopeNote: () => <div data-testid="installation-scope-note" />,
-}));
 let mockSlackConfigured = false;
 jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-gs-react'),
@@ -415,13 +412,6 @@ describe('AgentPlatformHome', () => {
     });
   });
 
-  it('says which installation scope the composer reads', async () => {
-    await render();
-
-    expect(screen.getByTestId('installation-scope-note')).toBeInTheDocument();
-    expect(screen.queryByTestId('inventory-gate')).not.toBeInTheDocument();
-  });
-
   it('explains an environment that could not be asked whether it runs kagent', async () => {
     mockUseAgents.mockReturnValue({
       ...loadedAgents,
@@ -457,11 +447,6 @@ describe('AgentPlatformHome', () => {
     // Composer first, then the banner (DOCUMENT_POSITION_FOLLOWING).
     expect(
       prompt.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      screen
-        .getByTestId('installation-scope-note')
-        .compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 
@@ -555,41 +540,6 @@ describe('AgentPlatformHome', () => {
 
   describe('when the environments in scope have no agent to start', () => {
     const prompt = () => screen.queryByRole('textbox', { name: 'Prompt' });
-
-    it('says a pinned environment has no kagent, even while the rest still loads', async () => {
-      mockUseAgents.mockReturnValue({
-        ...agentsOver(
-          [
-            environment('golem', { home: true }),
-            environment('dingo', { kagent: false }),
-          ],
-          'dingo',
-        ),
-        isLoading: true,
-      });
-      await render();
-
-      expect(
-        screen.getByRole('heading', {
-          name: 'kagent is not installed on dingo',
-        }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText(
-          'Agents run on environments with kagent. Choose another environment, or enable the Agent Platform on dingo.',
-        ),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole('link', { name: 'Go to Installations' }),
-      ).toHaveAttribute('href', '/installations');
-      expect(prompt()).not.toBeInTheDocument();
-      // No loading indicator, not even the one still in its delay.
-      expect(screen.queryByTestId('progress')).not.toBeInTheDocument();
-      // The card names the environment; the scope note would say it again.
-      expect(
-        screen.queryByTestId('installation-scope-note'),
-      ).not.toBeInTheDocument();
-    });
 
     it('names the only environment when it has no kagent, with no other to choose', async () => {
       mockUseAgents.mockReturnValue(
@@ -736,17 +686,6 @@ describe('AgentPlatformHome', () => {
       expect(screen.getByText('Inventory gate: dingo')).toBeInTheDocument();
       expect(screen.queryByText(/runs kagent/)).not.toBeInTheDocument();
       expect(screen.queryByText(/is not installed/)).not.toBeInTheDocument();
-      expect(prompt()).not.toBeInTheDocument();
-    });
-
-    it('leaves a pin the portal does not know to the scope note', async () => {
-      mockUseAgents.mockReturnValue(
-        agentsOver([environment('golem', { home: true })], 'old-lab'),
-      );
-      await render();
-
-      expect(screen.getByTestId('installation-scope-note')).toBeInTheDocument();
-      expect(screen.queryByText(/kagent/)).not.toBeInTheDocument();
       expect(prompt()).not.toBeInTheDocument();
     });
 

@@ -55,12 +55,6 @@ jest.mock('../../hooks/useFleetSessionStates', () => ({
   }),
 }));
 
-// The scope note reads the section scope from gs; none of the page's branches
-// depend on it, so it renders nothing here.
-jest.mock('../InstallationScopeNote', () => ({
-  InstallationScopeNote: () => null,
-}));
-
 // The inventory gate reads the installation inventory and the section scope
 // from gs (kubernetes proxy, cluster-access status); it is covered by its own
 // tests there and renders nothing in this page's state branches.
@@ -502,7 +496,6 @@ describe('SessionsIndexPage with one installation to list from', () => {
   };
 
   it.each([
-    ['pinned in the header', { scope: 'gazelle', installations: ['gazelle'] }],
     [
       'the only one running kagent',
       { scope: 'all', installations: ['gazelle'] },

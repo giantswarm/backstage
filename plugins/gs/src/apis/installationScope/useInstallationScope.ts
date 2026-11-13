@@ -1,24 +1,29 @@
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo } from 'react';
 import type { InstallationInventoryEntry } from '../installationInventory/types';
 import { useInstallationInventory } from '../installationInventory/useInstallationInventory';
 import { useInstallations } from '../installations/useInstallations';
 import { useMutedInstallations } from '../mutedInstallations';
 import {
   ALL_INSTALLATIONS,
-  getInstallationScopeSnapshot,
-  INSTALLATION_SCOPE_SEARCH_PARAM,
-  setInstallationScope,
-  subscribeInstallationScope,
   type InstallationScope,
+  type InstallationScopeState,
 } from './installationScopeStore';
 import { selectPlatformInstallations } from './scopeSelection';
-import { useWriteScopeParam } from './useWriteScopeParam';
+import { useSharedInstallationScope } from './SharedInstallationScope';
+
+/** The store as a view outside `SharedInstallationScope` sees it. */
+const UNSHARED_STATE: InstallationScopeState = {
+  scope: ALL_INSTALLATIONS,
+  restored: false,
+};
 
 export type UseInstallationScopeResult = {
   /** `'all'`, or the name of the pinned installation. */
   scope: InstallationScope;
-  /** Pins one installation, or `'all'`: store, localStorage and URL at once. */
+  /**
+   * Pins one installation, or `'all'`: store, localStorage and URL at once.
+   * Does nothing outside a `SharedInstallationScope`.
+   */
   setScope: (next: InstallationScope) => void;
   /**
    * The platform installations the selector offers, home first: every
@@ -39,7 +44,11 @@ export type UseInstallationScopeResult = {
 };
 
 /**
- * The Agent Platform section's one installation scope, for every tab.
+ * The installation scope the Environment selector pins, shared by the views
+ * that render one (the Customize page, Models, Usage). It is read only below a
+ * `SharedInstallationScope`; any other view (the rail, Sessions, the start
+ * screen, the command palette) reads `'all'`, so a pin made on a Customize
+ * page never narrows it.
  *
  * Two sources, one answer: `?installation=` in the URL wins while it is
  * present (a deep link narrows the very first render, before anything else
@@ -59,14 +68,12 @@ export type UseInstallationScopeResult = {
  * Runs under whichever react-query client is in context, for the inventory.
  */
 export function useInstallationScope(): UseInstallationScopeResult {
-  const [searchParams] = useSearchParams();
-  const writeScopeParam = useWriteScopeParam();
-  const urlScope = searchParams.get(INSTALLATION_SCOPE_SEARCH_PARAM);
-  const state = useSyncExternalStore(
-    subscribeInstallationScope,
-    getInstallationScopeSnapshot,
-    getInstallationScopeSnapshot,
-  );
+  const shared = useSharedInstallationScope();
+  const urlScope = shared?.urlScope ?? null;
+  const state = shared?.state ?? UNSHARED_STATE;
+  const writeScopeParam = shared?.writeScopeParam;
+  const readState = shared?.readState;
+  const setStored = shared?.setStored;
   const { isLoading } = useInstallations();
   const inventory = useInstallationInventory();
   const { home, entries } = inventory;
@@ -108,19 +115,17 @@ export function useInstallationScope(): UseInstallationScopeResult {
   );
   const restoredStale = pendingRestore && isStaleRestore(state.scope);
   useEffect(() => {
-    if (!pendingRestore) {
+    if (!pendingRestore || !readState || !setStored) {
       return;
     }
     // Re-read: another effect of the same commit (the URL sync adopting a deep
     // link) may already have set the store, and must not be overwritten.
-    const live = getInstallationScopeSnapshot();
+    const live = readState();
     if (!live.restored) {
       return;
     }
-    setInstallationScope(
-      isStaleRestore(live.scope) ? ALL_INSTALLATIONS : live.scope,
-    );
-  }, [pendingRestore, isStaleRestore]);
+    setStored(isStaleRestore(live.scope) ? ALL_INSTALLATIONS : live.scope);
+  }, [pendingRestore, isStaleRestore, readState, setStored]);
   const storedScope = restoredStale ? ALL_INSTALLATIONS : state.scope;
   const pinned = urlScope ?? storedScope;
 
@@ -146,10 +151,13 @@ export function useInstallationScope(): UseInstallationScopeResult {
   // would otherwise read as a deep link and adopt right back.
   const setScope = useCallback(
     (next: InstallationScope) => {
-      setInstallationScope(next);
+      if (!writeScopeParam || !setStored) {
+        return;
+      }
+      setStored(next);
       writeScopeParam(next);
     },
-    [writeScopeParam],
+    [writeScopeParam, setStored],
   );
 
   // Forget the pin for real -- store, localStorage and the URL alike -- so a
