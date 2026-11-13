@@ -107,6 +107,16 @@ const SORT_NAME_STYLE: CSSProperties = {
   fontSize: 'var(--bui-font-size-3)',
 };
 
+/**
+ * The Sort trigger, as wide as its longest value ("Recently added") needs,
+ * whatever is picked: a pick never changes where the filter bar wraps.
+ */
+const SORT_STYLE: CSSProperties = {
+  flex: 'none',
+  width: '11.5rem',
+  marginLeft: 'auto',
+};
+
 /** Two lines, then an ellipsis: what a phone row shows of a long text. */
 const TWO_LINES = {
   display: '-webkit-box',
@@ -986,6 +996,9 @@ function AgentsPanelContent({
   );
 
   let body;
+  // Whether `body` is the list: only a list gets the "loading more" bar over
+  // it, so no other indicator ever shares the panel with it.
+  let showsList = false;
   if (rows.length === 0 && unknownPin) {
     // A pin the portal does not know (a stale `?installation=` deep link): no
     // inventory to ask, and nothing else on the panel can say why it is empty.
@@ -1081,6 +1094,7 @@ function AgentsPanelContent({
   } else if (favorites.length === 0) {
     // No favorites in view: one list, no headings — the artboard's ungrouped
     // presentation.
+    showsList = true;
     body = (
       <AgentGroup
         key={pageKey}
@@ -1090,6 +1104,7 @@ function AgentsPanelContent({
       />
     );
   } else {
+    showsList = true;
     body = (
       <>
         <AgentGroup
@@ -1117,7 +1132,8 @@ function AgentsPanelContent({
       {/* Under the page's search, so the bar stays put when a pick hides the
           recent-agent cards. */}
       {!isLoading && (
-        <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
+        // Top-aligned: once the filters wrap, Sort stays on their first row.
+        <Flex align="start" gap="2" style={{ flexWrap: 'wrap' }}>
           <CatalogFilterBar
             dimensions={filters.dimensions}
             onSelect={filters.select}
@@ -1139,7 +1155,7 @@ function AgentsPanelContent({
                   onSort(String(key) as AgentSort);
                 }
               }}
-              style={{ flex: 'none', width: 'auto', marginLeft: 'auto' }}
+              style={SORT_STYLE}
             />
           )}
         </Flex>
@@ -1161,7 +1177,7 @@ function AgentsPanelContent({
       />
       <AgentsHelperBanner />
       {showCards && <LastUsedAgents states={sessionStates} />}
-      {rows.length > 0 ? (
+      {showsList ? (
         <Flex direction="column" gap="5" className={classes.listFrame}>
           {/* Rows are in, but more environments are still being read: a thin
               bar rather than a skeleton. */}
