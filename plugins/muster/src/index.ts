@@ -139,6 +139,8 @@ export {
 } from './components/CustomizeMusterProvider';
 export type { MusterCustomizeCounts } from './components/CustomizeMusterProvider';
 export { CustomizeConnectorsPanel } from './components/CustomizeConnectorsPanel';
+export { CONNECTOR_REACH_LABELS } from './components/CustomizeConnectorsPanel/connectorRows';
+export type { ConnectorReach } from './components/CustomizeConnectorsPanel/connectorRows';
 export { ConnectorLogo } from './components/ConnectorLogo';
 export type { ConnectorLogoProps } from './components/ConnectorLogo';
 export { ConnectorLogoStack } from './components/ConnectorLogoStack';
