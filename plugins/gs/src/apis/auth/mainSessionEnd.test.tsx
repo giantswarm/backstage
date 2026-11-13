@@ -11,6 +11,7 @@ import {
 } from './mainSessionEnd';
 import { gsAuthProvidersApiRef } from './types';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
+import { ExternalUrlConsentManager } from '@giantswarm/backstage-plugin-ui-react';
 
 jest.mock('@backstage/core-app-api', () => ({
   ...jest.requireActual('@backstage/core-app-api'),
@@ -125,6 +126,7 @@ describe('the main sign-in session end', () => {
       configApi,
       discoveryApi,
       oauthRequestApi,
+      externalUrlConsentApi: new ExternalUrlConsentManager(jest.fn()),
     });
     // Short-lived, so the next read refreshes it.
     refreshAnswer = () => jsonResponse(200, session(60));
@@ -153,6 +155,7 @@ describe('the main sign-in session end', () => {
       configApi,
       discoveryApi,
       oauthRequestApi,
+      externalUrlConsentApi: new ExternalUrlConsentManager(jest.fn()),
     });
     refreshAnswer = () => jsonResponse(401, CLAIMED);
 
@@ -169,6 +172,7 @@ describe('the main sign-in session end', () => {
       configApi,
       discoveryApi,
       oauthRequestApi,
+      externalUrlConsentApi: new ExternalUrlConsentManager(jest.fn()),
     });
     refreshAnswer = () => jsonResponse(401, CLAIMED);
     await providers.getMainAuthApi().getBackstageIdentity({ optional: true });
