@@ -3,6 +3,7 @@ import { act, renderHook } from '@testing-library/react';
 import { TestApiProvider } from '@backstage/frontend-test-utils';
 import { openLoginPopup } from '@backstage/core-app-api';
 import { ConfigApi, OAuthRequestApi } from '@backstage/core-plugin-api';
+import { ExternalUrlConsentManager } from '@giantswarm/backstage-plugin-ui-react';
 import { GSAuthProviders } from './GSAuthProviders';
 import {
   MainSessionEndStore,
