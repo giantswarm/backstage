@@ -65,7 +65,8 @@ test('an agent explains withheld release details and keeps its readiness at desk
     });
   });
 
-  await open(admin, detailPath!);
+  await agentLink.click();
+  await expect(admin).toHaveURL(new RegExp(`${detailPath}$`));
   const details = admin.getByRole('button', {
     name: 'Technical details',
     exact: true,
