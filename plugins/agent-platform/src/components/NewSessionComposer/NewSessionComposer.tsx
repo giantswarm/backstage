@@ -328,6 +328,13 @@ export type NewSessionComposerProps = {
    */
   collapsible?: boolean;
   autoFocus?: boolean;
+  /**
+   * Focuses the prompt field with the caret after its text, once, as soon as
+   * it takes input (on an agent-first surface: once an agent is selected),
+   * unless the person has used the picker first. For a prompt a link brought,
+   * which the person goes on writing.
+   */
+  focusPromptAtEnd?: boolean;
   isStarting: boolean;
   /**
    * Why the last start failed. An `AgentManagerNotConnectedError` (sessions
@@ -507,6 +514,7 @@ export function NewSessionComposer({
   defaultAgent,
   collapsible = false,
   autoFocus = false,
+  focusPromptAtEnd = false,
   isStarting,
   error,
   acceptsImages = false,
@@ -870,6 +878,26 @@ export function NewSessionComposer({
   // Agent-first and nothing chosen yet: the prompt field and Start wait,
   // visibly, for the picker.
   const awaitingAgent = agentFirst && !selectedAgent;
+
+  const promptFocused = useRef(false);
+  useEffect(() => {
+    if (
+      !focusPromptAtEnd ||
+      awaitingAgent ||
+      promptFocused.current ||
+      touched.current
+    ) {
+      return;
+    }
+    const textarea = fieldRef.current?.querySelector('textarea');
+    if (!textarea || textarea.disabled) {
+      return;
+    }
+    promptFocused.current = true;
+    textarea.focus();
+    const end = textarea.value.length;
+    textarea.setSelectionRange(end, end);
+  }, [focusPromptAtEnd, awaitingAgent]);
 
   // Read for the agent chosen, so one that cannot take images says so the
   // moment an image meets it — or the moment it is chosen with images already

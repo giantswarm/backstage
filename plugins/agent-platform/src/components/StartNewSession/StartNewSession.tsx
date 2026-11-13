@@ -90,7 +90,8 @@ export type StartNewSessionProps = {
    * A prompt a link brought (`#prompt=`): the field starts with it, marked as
    * coming from a link, and it wins over a stored draft, prompt and agent
    * alike — the link is the newer intent; a note offers the draft back.
-   * Without it the draft's precedence above holds.
+   * The field takes the focus, the caret after the prompt. Without it the
+   * draft's precedence above holds.
    */
   linkedPrompt?: string;
   /**
@@ -440,6 +441,8 @@ export function StartNewSession({
       prompt={draftPrompt}
       onPromptChange={onPromptChange}
       onSelectedAgentChange={onSelectedAgentChange}
+      // The person goes on writing a prompt a link brought.
+      focusPromptAtEnd={linkedPrompt !== undefined}
       agents={agents}
       isLoadingAgents={isLoadingMoreAgents}
       // The caller's agent (a `?agent=` link, the person's latest explicit

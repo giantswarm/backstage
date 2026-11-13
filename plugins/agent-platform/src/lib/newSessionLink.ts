@@ -94,21 +94,35 @@ export function linkedPromptOf(raw: string | null): string | undefined {
 
 /**
  * The agent a `?agent=` value names among `agents` (in their order, home
- * installation first): the one with that id, else — for a link that names it
- * as `namespace/name` — the first of that namespace and name. Only agents
- * `isOffered` accepts count.
+ * installation first): the one with that id, else the first of its namespace
+ * and name, for a link that names it as `namespace/name` or prefixes an
+ * installation that is none of `installations` (an agent reads its
+ * installation's name from agent-manager, which may call it otherwise than the
+ * portal does). An installation the portal knows is never swapped for another.
+ * Only agents `isOffered` accepts count.
  */
 export function findLinkedAgent<T extends AgentRow>(
   agents: readonly T[],
   ref: string | null,
   isOffered: (agent: T) => boolean,
+  installations: readonly string[] = [],
 ): T | undefined {
   if (!ref) {
     return undefined;
   }
   const offered = agents.filter(isOffered);
-  return (
-    offered.find(agent => agent.id === ref) ??
-    offered.find(agent => `${agent.namespace}/${agent.technicalName}` === ref)
-  );
+  const byId = offered.find(agent => agent.id === ref);
+  if (byId) {
+    return byId;
+  }
+  const parts = ref.split('/');
+  if (parts.length === 3 && installations.includes(parts[0])) {
+    return undefined;
+  }
+  const namespacedName = parts.slice(-2).join('/');
+  return parts.length === 2 || parts.length === 3
+    ? offered.find(
+        agent => `${agent.namespace}/${agent.technicalName}` === namespacedName,
+      )
+    : undefined;
 }

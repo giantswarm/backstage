@@ -144,13 +144,25 @@ function AgentPlatformHomeContent({
   const displayName = useDisplayName();
   const {
     rows: agents,
+    installations,
     isLoading,
+    isLoadingMore,
     unreachableInstallations,
     inventoryFailure,
   } = useAgents();
   const { refresh: refreshInventory } = useInstallationInventory();
   const { rows: sessions } = useSessions();
   const [selectedAgent, setSelectedAgent] = useState<AgentRow>();
+  const [pickedByPerson, setPickedByPerson] = useState(false);
+  const onSelectedAgentChange = useCallback(
+    (agent: AgentRow | undefined, selection: { byPerson: boolean }) => {
+      setSelectedAgent(agent);
+      if (selection.byPerson) {
+        setPickedByPerson(true);
+      }
+    },
+    [],
+  );
   const navigate = useNavigate();
   // `?agent=<id>` (a "New session" link from elsewhere, e.g. Customize →
   // Agents, or one an agent wrote) preselects that agent, when it is one that
@@ -158,9 +170,45 @@ function AgentPlatformHomeContent({
   const [searchParams] = useSearchParams();
   const requestedAgentId = searchParams.get(NEW_SESSION_AGENT_PARAM);
   const requestedAgent = useMemo(
-    () => findLinkedAgent(agents, requestedAgentId, isStartableAgent),
-    [agents, requestedAgentId],
+    () =>
+      findLinkedAgent(
+        agents,
+        requestedAgentId,
+        isStartableAgent,
+        installations,
+      ),
+    [agents, requestedAgentId, installations],
   );
+  // A linked agent that cannot be selected is said, once every installation
+  // has answered, until the person picks an agent themselves.
+  const linkedAgentProblem = useMemo(() => {
+    if (
+      !requestedAgentId ||
+      requestedAgent ||
+      isLoading ||
+      isLoadingMore ||
+      pickedByPerson
+    ) {
+      return undefined;
+    }
+    const unavailable = findLinkedAgent(
+      agents,
+      requestedAgentId,
+      () => true,
+      installations,
+    );
+    return unavailable
+      ? `${unavailable.name} cannot start sessions right now.`
+      : `The link names the agent "${requestedAgentId}", which you cannot use here.`;
+  }, [
+    agents,
+    installations,
+    isLoading,
+    isLoadingMore,
+    pickedByPerson,
+    requestedAgent,
+    requestedAgentId,
+  ]);
   // `#prompt=` prefills the prompt; the person still starts the session.
   const linkedPrompt = useLinkedPrompt();
   // The installation's default agent, as agent-manager names it: preselected
@@ -281,6 +329,18 @@ function AgentPlatformHomeContent({
                 : 'Choose an agent, then say what you need.'}
             </Text>
           </Flex>
+          {linkedAgentProblem && (
+            <Alert
+              status="warning"
+              icon
+              title="The linked agent is not selected"
+              description={`${linkedAgentProblem} ${
+                startingWith
+                  ? `${startingWith.name} is selected instead.`
+                  : 'Choose an agent to start.'
+              }`}
+            />
+          )}
           <StartNewSession
             // A link followed while the page is open starts the composer over
             // from its prompt.
@@ -314,7 +374,7 @@ function AgentPlatformHomeContent({
               promptPlaceholder,
               renderPickerAccessory: pickerAccessory,
               renderFooter,
-              onSelectedAgentChange: setSelectedAgent,
+              onSelectedAgentChange,
             }}
           />
           {awaitingModel && (

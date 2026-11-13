@@ -3139,11 +3139,16 @@ ahead of the installation's default agent (agent-manager's `get_info`
 `defaultAgent`; listed first in the picker, marked Default), which goes ahead
 of the last agent used. A default that arrives after the person typed or
 picked does not replace the agent shown. `?agent=` takes an agent id
-(`<installation>/<namespace>/<name>`) or `<namespace>/<name>`. `#prompt=` (in
+(`<installation>/<namespace>/<name>`) or `<namespace>/<name>`; an id whose
+installation the portal does not know (the name agent-manager's `get_info`
+reports may differ) matches by namespace and name. A linked agent that is
+unknown or cannot start is not selected, and a warning above the composer says
+so until the person picks an agent. `#prompt=` (in
 the fragment, so the brief never reaches a server) prefills the prompt
 (trimmed, at most 2000 characters, never sent by itself, marked "From a
-link"), wins over a stored draft with a Restore offer, and is removed from the
-address once read; Sentry breadcrumbs and event URLs filter it. The link
+link"), puts the focus in the field with the caret after the text once an
+agent is selected, wins over a stored draft with a Restore offer, and is removed
+from the address once read; Sentry breadcrumbs and event URLs filter it. The link
 format: `/?agent=<id>#prompt=<url-encoded brief>`. In agent replies, such a
 link opens in the same tab; other portal links open in a new tab. The images, the workspace and the toolchains are
 not kept. The draft is removed once the session is created; a failed start

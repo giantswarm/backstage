@@ -94,4 +94,30 @@ describe('findLinkedAgent', () => {
     expect(findLinkedAgent([home], home.id, () => false)).toBeUndefined();
     expect(findLinkedAgent([home], null, offered)).toBeUndefined();
   });
+
+  it('finds the agent by namespace and name under an installation the portal does not know', () => {
+    // agent-manager may report an installation name the portal does not use.
+    expect(
+      findLinkedAgent([home, other], 'agent-platform/agents/helper', offered, [
+        'golem',
+        'gazelle',
+      ]),
+    ).toBe(home);
+  });
+
+  it('never swaps a known installation for another', () => {
+    expect(
+      findLinkedAgent([other], 'golem/agents/helper', offered, [
+        'golem',
+        'gazelle',
+      ]),
+    ).toBeUndefined();
+  });
+
+  it('finds nothing for a reference of another shape', () => {
+    expect(findLinkedAgent([home], 'helper', offered)).toBeUndefined();
+    expect(
+      findLinkedAgent([home], 'x/golem/agents/helper', offered),
+    ).toBeUndefined();
+  });
 });
