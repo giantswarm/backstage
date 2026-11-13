@@ -41,10 +41,37 @@ describe('lazyApi', () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
+  it('answers a method name with the same function every time', () => {
+    const api = lazyApi(async () => new Counter());
+
+    expect(api.increment).toBe(api.increment);
+  });
+
   it('is not a thenable', async () => {
     const api = lazyApi(async () => new Counter());
 
     expect((api as unknown as { then?: unknown }).then).toBeUndefined();
     await expect(Promise.resolve(api)).resolves.toBe(api);
+  });
+
+  it('converts, serializes and compares like a plain object', () => {
+    const api = lazyApi(async () => new Counter());
+
+    expect(String(api)).toBe('[object Object]');
+    expect(JSON.stringify(api)).toBe('{}');
+    expect(`${api}`).toBe('[object Object]');
+    // Not an asymmetric matcher: Jest compares it as an empty object.
+    expect(api).toEqual({});
+  });
+
+  it('refuses an API with optional methods in its type', () => {
+    interface Optional {
+      get(): Promise<string>;
+      maybe?(): Promise<string>;
+    }
+    const load = async (): Promise<Optional> => ({ get: async () => 'x' });
+
+    // @ts-expect-error optional members cannot be told apart before loading
+    expect(lazyApi(load)).toBeDefined();
   });
 });
