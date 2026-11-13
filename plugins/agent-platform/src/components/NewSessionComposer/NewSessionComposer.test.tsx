@@ -87,6 +87,8 @@ function renderComposer(
 const field = () => screen.getByRole('textbox', { name: 'Prompt' });
 const startButton = () => screen.getByRole('button', { name: 'Start' });
 const agentPicker = () => screen.getByRole('button', { name: /Agent/ });
+/** A sole agent, named rather than offered. */
+const fixedAgent = () => screen.getByRole('group', { name: 'Agent' });
 
 beforeEach(() => {
   onStart.mockReset();
@@ -124,7 +126,7 @@ describe('NewSessionComposer', () => {
       renderComposer({ collapsible: true });
 
       expect(startButton()).toBeInTheDocument();
-      expect(agentPicker()).toBeInTheDocument();
+      expect(fixedAgent()).toBeInTheDocument();
     });
 
     it('shows a prompt it starts with whole', () => {
@@ -263,6 +265,25 @@ describe('NewSessionComposer', () => {
 
       expect(agentPicker()).toHaveTextContent('Issue Tracker');
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('keeps the agent shown while the person types when another default arrives', async () => {
+      const { rerender } = renderComposer({
+        agents: [sre, issues],
+        defaultAgent: sre,
+      });
+
+      await userEvent.type(field(), 'check');
+      rerender(
+        <NewSessionComposer
+          agents={[sre, issues]}
+          defaultAgent={issues}
+          isStarting={false}
+          onStart={onStart}
+        />,
+      );
+
+      expect(agentPicker()).toHaveTextContent('SRE Agent');
     });
 
     it('drops the message once an agent is chosen', async () => {
@@ -420,13 +441,13 @@ describe('NewSessionComposer', () => {
     });
 
     it('falls back to a sole agent when the default is not on offer', async () => {
-      // Otherwise this is a dead end: one agent available, none selected, and the
-      // picker disabled because there is nothing to choose.
+      // Otherwise this is a dead end: one agent available, none selected, and
+      // nothing to choose.
       renderComposer({ agents: [sre], defaultAgent: platform });
 
       await userEvent.type(field(), 'check');
 
-      expect(agentPicker()).toHaveTextContent('SRE Agent');
+      expect(fixedAgent()).toHaveTextContent('SRE Agent');
       expect(startButton()).toBeEnabled();
     });
 
@@ -479,7 +500,7 @@ describe('NewSessionComposer', () => {
 
         rerenderWith(rerender, { agents: [sre], defaultAgent: sre });
 
-        expect(agentPicker()).toHaveTextContent('SRE Agent');
+        expect(fixedAgent()).toHaveTextContent('SRE Agent');
       });
 
       it('does not overwrite an agent the user already chose', async () => {
@@ -493,20 +514,40 @@ describe('NewSessionComposer', () => {
         expect(agentPicker()).toHaveTextContent('Platform Agent');
       });
 
-      it('does not undo a deliberate clearing', async () => {
+      it('keeps a picked agent over a default that arrives later', async () => {
         const { rerender } = renderComposer({
-          agents: [sre],
+          agents: [sre, platform, issues],
           defaultAgent: sre,
         });
-        expect(agentPicker()).toHaveTextContent('SRE Agent');
-
-        // Touching the picker at all marks the selection as the user's, so a
-        // re-resolved default cannot reinstate itself.
         await userEvent.click(agentPicker());
-        await userEvent.keyboard('{Escape}');
-        rerenderWith(rerender, { agents: [sre], defaultAgent: sre });
+        await userEvent.click(
+          screen.getByRole('option', { name: /Platform Agent/ }),
+        );
 
-        expect(agentPicker()).toHaveTextContent('SRE Agent');
+        // A pick marks the selection as the person's: another default,
+        // resolved later, does not replace it.
+        rerenderWith(rerender, {
+          agents: [sre, platform, issues],
+          defaultAgent: issues,
+        });
+
+        expect(agentPicker()).toHaveTextContent('Platform Agent');
+      });
+
+      it('selects the sole agent left after the picked one has gone', async () => {
+        // The picked agent stops being ready: what remains is no choice, and a
+        // disabled picker with nothing in it would be a dead end.
+        const { rerender } = renderComposer({ agents: [sre, platform] });
+        await userEvent.click(agentPicker());
+        await userEvent.click(
+          screen.getByRole('option', { name: /Platform Agent/ }),
+        );
+
+        rerenderWith(rerender, { agents: [sre] });
+        await userEvent.type(field(), 'check');
+
+        expect(fixedAgent()).toHaveTextContent('SRE Agent');
+        expect(startButton()).toBeEnabled();
       });
     });
 
@@ -538,13 +579,24 @@ describe('NewSessionComposer', () => {
     });
 
     describe('a picker with nothing to choose', () => {
-      it('preselects a sole agent and disables the control', () => {
-        // A dropdown with a single item is not a choice. It still names the agent,
-        // which is what confirms the target inside the agent-page dialog.
+      it('names a sole agent instead of offering a picker', () => {
+        // A dropdown with a single item is not a choice. The agent is still
+        // named, which is what confirms the target inside the agent-page
+        // dialog.
         renderComposer({ agents: [sre] });
 
-        expect(agentPicker()).toHaveTextContent('SRE Agent');
+        expect(fixedAgent()).toHaveTextContent('SRE Agent');
+        expect(
+          screen.queryByRole('button', { name: /Agent/ }),
+        ).not.toBeInTheDocument();
+      });
+
+      it('keeps a disabled picker while more agents may come', () => {
+        // Named now, it would turn into a picker as the others are read.
+        renderComposer({ agents: [sre], isLoadingAgents: true });
+
         expect(agentPicker()).toBeDisabled();
+        expect(agentPicker()).toHaveTextContent('SRE Agent');
       });
 
       it('stays enabled once there is a real choice', () => {
@@ -557,8 +609,7 @@ describe('NewSessionComposer', () => {
         // Two agents but one non-ready is still no choice at all.
         renderComposer({ agents: [sre, broken] });
 
-        expect(agentPicker()).toBeDisabled();
-        expect(agentPicker()).toHaveTextContent('SRE Agent');
+        expect(fixedAgent()).toHaveTextContent('SRE Agent');
       });
     });
 
@@ -904,6 +955,25 @@ describe('opt-in picker options', () => {
       .filter(text => text === 'kagent' || text === 'research');
 
     expect(headings).toEqual(['kagent', 'research']);
+    expect(
+      within(screen.getByRole('group', { name: 'research' })).getByRole(
+        'option',
+        { name: /Research Agent/ },
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the namespace headings when the leading agent is alone in its namespace', async () => {
+    renderComposer({
+      // sre alone in kagent, research in research: two namespaces on offer.
+      agents: [sre, research],
+      groupByNamespace: true,
+      leadingAgentId: sre.id,
+    });
+
+    await userEvent.click(agentPicker());
+
+    expect(screen.getAllByRole('option')[0]).toHaveTextContent('SRE Agent');
     expect(
       within(screen.getByRole('group', { name: 'research' })).getByRole(
         'option',
@@ -1415,7 +1485,7 @@ describe('opt-in picker options', () => {
   it('keeps a sole agent without a footer action as no choice', () => {
     renderComposer({ agents: [sre] });
 
-    expect(agentPicker()).toBeDisabled();
+    expect(fixedAgent()).toHaveTextContent('SRE Agent');
   });
 
   it('says nothing matches rather than offering only the footer action', async () => {

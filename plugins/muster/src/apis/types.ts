@@ -696,19 +696,31 @@ export interface MusterApi {
    * the trust boundary is the downstream MCP server's deployment (e.g.
    * mcp-kubernetes is deployed read-only), not the portal. `signal` cancels
    * the call, also while it waits on the person's sign-in.
+   *
+   * By default the call declares no URL elicitation: a sign-in muster needs
+   * fails it with a 401 `server_sign_in_required`, which the page answers
+   * with its inline sign-in, and a tool whose page the caller opens itself
+   * answers its result (agent-manager's credential request answers its
+   * operation id, and the portal opens its own credential form in place).
+   *
+   * `urlElicitation: true` is for a call the person started with a click,
+   * never one the page makes on its own (a read, a poll): the page muster
+   * asks the person to open is put to them in the consent dialog, once per
+   * action, and the call is sent again with their answer. A sign-in they
+   * declined, dismissed or did not finish fails the call with the same 401.
    */
   callTool(
     name: string,
     args: Record<string, unknown>,
     installation?: string,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; urlElicitation?: boolean },
   ): Promise<unknown>;
   /**
    * {@link callTool} for a tool that reports progress while it works: each
    * progress notification reaches `onProgress` as it arrives, and the call
    * lasts as long as the tool keeps reporting. `signal` cancels it. An
    * answer cut before its result arrived rejects with
-   * {@link MusterAnswerCutError}.
+   * {@link MusterAnswerCutError}. `urlElicitation` as for {@link callTool}.
    */
   callToolWithProgress(
     name: string,
@@ -717,6 +729,7 @@ export interface MusterApi {
       installation?: string;
       onProgress: (progress: MusterToolProgress) => void;
       signal?: AbortSignal;
+      urlElicitation?: boolean;
     },
   ): Promise<unknown>;
   /**

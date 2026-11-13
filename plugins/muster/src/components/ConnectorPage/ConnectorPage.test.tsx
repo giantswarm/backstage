@@ -855,6 +855,37 @@ describe('ConnectorPage', () => {
     expect(headerButtons()).toEqual(signedOutHeader);
   });
 
+  it("says a sign-in that cannot pass hides the tools, with muster's reason and no Sign in", async () => {
+    const reason =
+      "Cannot sign in to 'jira': your login method cannot be checked here.";
+    const api = makeApi();
+    api.getAuthStatus.mockResolvedValue({
+      servers: [
+        { name: 'jira', status: 'auth_required', kind: 'grant', error: reason },
+      ],
+    } as never);
+    api.filterTools.mockResolvedValue({
+      total: 0,
+      filtered_count: 0,
+      truncated: false,
+      tools: [],
+    });
+    await renderAt(`${BASE}/jira`, { api });
+
+    expect(
+      await screen.findByText(
+        'You cannot sign in to this connector here, so its tools stay hidden.',
+      ),
+    ).toBeInTheDocument();
+    expect(await screen.findByText(reason)).toBeInTheDocument();
+    expect(
+      screen.queryByText('Sign in to this connector to see its tools.'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Sign in' }),
+    ).not.toBeInTheDocument();
+  });
+
   describe('a connector whose sign-in serves one session', () => {
     beforeEach(() => {
       mockServers = [

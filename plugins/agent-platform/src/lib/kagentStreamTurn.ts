@@ -24,6 +24,7 @@ import {
   readPartText,
   unwrapProxiedCall,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { readConfirmationHints, withoutHints } from './kagentConfirmation';
 
 import { TimelineItem } from './kagentTimeline';
 import { readWorkspaceNotice } from './workspaceNotice';
@@ -476,14 +477,16 @@ function ingestCompleteMessage(
   }
   const author = readKagentMetadataString(message.metadata, 'author');
   const parts = Array.isArray(message.parts) ? message.parts : [];
+  const hints = readConfirmationHints(parts);
 
   let textRun: { isThought: boolean; chunks: string[] } | undefined;
   const flushRun = () => {
     if (!textRun) {
       return;
     }
-    const text = textRun.chunks.join('').trim();
     const wasThought = textRun.isThought;
+    const joined = textRun.chunks.join('').trim();
+    const text = wasThought ? joined : withoutHints(joined, hints);
     textRun = undefined;
     if (!text) {
       return;

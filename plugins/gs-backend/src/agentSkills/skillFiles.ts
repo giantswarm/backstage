@@ -269,3 +269,38 @@ export function assignSkillFiles(
   }
   return lists;
 }
+
+/** Whether a repository-relative path is at or below `scanPath` ('' = all). */
+export function isBelowPath(path: string, scanPath: string): boolean {
+  return (
+    scanPath === '' || path === scanPath || path.startsWith(`${scanPath}/`)
+  );
+}
+
+/** A full commit id (SHA-1 or SHA-256). */
+export const COMMIT_ID_RE = /^[0-9a-f]{40}$|^[0-9a-f]{64}$/;
+
+/**
+ * A configured skill-source `ref`, split by the form it takes: a full commit
+ * id, `refs/heads/<name>` (a branch), `refs/tags/<name>` (a tag), or a plain
+ * name that may be either. Both providers classify a ref from this, so the
+ * same configuration reads the same commit on GitHub and on any git host.
+ */
+export interface ConfiguredRef {
+  form: 'commit' | 'branch' | 'tag' | 'name';
+  /** The commit id, or the branch or tag name without its `refs/…/`. */
+  name: string;
+}
+
+export function parseConfiguredRef(ref: string): ConfiguredRef {
+  if (COMMIT_ID_RE.test(ref)) {
+    return { form: 'commit', name: ref };
+  }
+  if (ref.startsWith('refs/heads/')) {
+    return { form: 'branch', name: ref.slice('refs/heads/'.length) };
+  }
+  if (ref.startsWith('refs/tags/')) {
+    return { form: 'tag', name: ref.slice('refs/tags/'.length) };
+  }
+  return { form: 'name', name: ref };
+}

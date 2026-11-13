@@ -216,6 +216,19 @@ export function ProviderAppSignIn({
     );
   }
 
+  if (signIn.signInRefusal) {
+    return (
+      <Flex direction="column" gap="1" data-state="refused">
+        <Text variant="body-small" color="secondary">
+          Not connected
+        </Text>
+        <Text variant="body-small" color="danger">
+          {signIn.signInRefusal}
+        </Text>
+      </Flex>
+    );
+  }
+
   let connectLabel = state === 'failed' ? 'Try again' : 'Connect';
   if (signIn.isPending) {
     connectLabel = 'Connecting…';

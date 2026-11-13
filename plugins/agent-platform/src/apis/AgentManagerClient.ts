@@ -28,9 +28,12 @@ import type {
   MemberResult,
   OrganizationListing,
   OrganizationConnector,
-  OrganizationConnectorCredentialRequest,
+  OrganizationCredentialReplacement,
   OrganizationModelRequest,
+  AgentPlatformOrganization,
+  OrganizationDeleteResult,
   OrganizationDetails,
+  OrganizationErasure,
   OrganizationMembers,
 } from '../lib/organizations';
 
@@ -43,6 +46,20 @@ function toolchainArgs(toolchains: StartSessionRequest['toolchains']) {
   if (!toolchains) return {};
   return toolchains.length > 0 ? { toolchains } : { noToolchains: true };
 }
+
+/**
+ * The tools that may prepare a credential request. Their calls declare no URL
+ * elicitation: agent-manager then answers the request's id
+ * (`credentialOperation`) as its result, and the portal opens its own
+ * credential form in place. Declared, agent-manager asks muster's caller to
+ * open the form's page instead, which the portal would put to the person as
+ * an external page in a new tab, and the call would end in an error after the
+ * save. A new such tool belongs here.
+ */
+const CREDENTIAL_REQUEST_TOOLS: ReadonlySet<AgentManagerTool> = new Set([
+  AGENT_MANAGER_TOOLS.setOrganizationModel,
+  AGENT_MANAGER_TOOLS.replaceOrganizationCredential,
+]);
 
 /**
  * agent-manager's tools on one installation, called as the signed-in person.
@@ -70,6 +87,9 @@ export class AgentManagerClient {
         agentManagerToolName(tool),
         args,
         this.installation,
+        ...(CREDENTIAL_REQUEST_TOOLS.has(tool)
+          ? [{ urlElicitation: false }]
+          : []),
       );
     } catch (error) {
       throw classifyAgentManagerError(error);
@@ -291,12 +311,41 @@ export class AgentManagerClient {
     return { ...result, organizations: result.organizations ?? [] };
   }
 
-  /** One organization, by its parent namespace and name. */
-  getOrganization(parent: string, name: string): Promise<OrganizationDetails> {
-    return this.call<OrganizationDetails>(AGENT_MANAGER_TOOLS.getOrganization, {
-      namespace: parent,
-      name,
-    });
+  /**
+   * One organization, by its parent namespace and name, and what a delete
+   * would erase. agent-manager answers the organization's fields and
+   * `erases` side by side.
+   */
+  async getOrganization(
+    parent: string,
+    name: string,
+  ): Promise<OrganizationDetails> {
+    const { erases, ...organization } = await this.call<
+      AgentPlatformOrganization & { erases?: OrganizationErasure }
+    >(AGENT_MANAGER_TOOLS.getOrganization, { namespace: parent, name });
+    return { organization, ...(erases ? { erases } : {}) };
+  }
+
+  /**
+   * Deletes an organization as the person. Without `confirm` it opens the
+   * pull request that removes it from git (`mode: commit`); with `confirm`
+   * (`parent/name`, as typed) it erases it.
+   */
+  deleteOrganization(request: {
+    parent: string;
+    name: string;
+    confirm?: string;
+    mode?: 'commit';
+  }): Promise<OrganizationDeleteResult> {
+    return this.call<OrganizationDeleteResult>(
+      AGENT_MANAGER_TOOLS.deleteOrganization,
+      {
+        namespace: request.parent,
+        name: request.name,
+        ...(request.confirm ? { confirm: request.confirm } : {}),
+        ...(request.mode ? { mode: request.mode } : {}),
+      },
+    );
   }
 
   /** An organization's members: groups first, each with its role. */
@@ -341,9 +390,8 @@ export class AgentManagerClient {
   }
 
   /**
-   * Creates an organization's model, or asks for a new key for one. Never
-   * takes a key: one that is missing or replaced comes back as a credential
-   * request (`credentials[].formUrl`).
+   * Creates or changes an organization's model. Never takes a key: a
+   * missing one comes back as a credential request (`credentialOperation`).
    */
   setOrganizationModel(
     request: OrganizationModelRequest,
@@ -354,12 +402,16 @@ export class AgentManagerClient {
     );
   }
 
-  /** Asks for a new credential value for a connector of the organization. */
-  setOrganizationConnector(
-    request: OrganizationConnectorCredentialRequest,
+  /**
+   * Asks for a new value of one key of an organization's credential Secret
+   * (`replace_organization_credential`): a credential request that writes
+   * the Secret only, for every object that reads it.
+   */
+  replaceOrganizationCredential(
+    request: OrganizationCredentialReplacement,
   ): Promise<CredentialResourceResult> {
     return this.call<CredentialResourceResult>(
-      AGENT_MANAGER_TOOLS.setOrganizationConnector,
+      AGENT_MANAGER_TOOLS.replaceOrganizationCredential,
       { ...request },
     );
   }

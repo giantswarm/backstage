@@ -33,9 +33,15 @@ gh release view v2.92.2 -R giantswarm/backstage --json tagName,isPrerelease,body
 ```
 
 Read the full description of every pull request in the release, in parallel
-(`gh pr view <n> -R giantswarm/backstage --json title,body,files`). The
-"What is the effect of this change to users?" section is the best starting
-point, when there is one.
+(`gh pr view <n> -R giantswarm/backstage --json title,body,files`). Two
+sections of the template help most, when a PR has them:
+
+- `Effect on end users`, between the `end-user-summary` markers: the
+  starting point for the description.
+- `UI impact`: its pages, by route template, say where in the portal the
+  change shows, and its "shows" condition is a precondition to name. Labels
+  in its check steps still need the grep that Descriptions asks for. Its
+  score and reach rank PRs for a manual test and tell a reader nothing.
 
 A line without a PR link and author comes from a backport line, where
 git-cliff resolves neither. The squash commit's subject still ends in the PR

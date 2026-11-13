@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Page, Route } from '@playwright/test';
 import {
   createAgentInWizard,
   deleteAgentInPortal,
@@ -51,6 +51,64 @@ test('Customize · Models lists the lab default ModelConfig and offers Connect a
     ).toHaveCount(0);
   } else {
     await expect(hosting).toHaveAttribute('href', '/customize/models/hosting');
+  }
+});
+
+/**
+ * Connect a model holds its button until the owners are known
+ * (giantswarm/giantswarm#39199): the lab's admin administers the lab's
+ * organization, so the Owner field offers it beside Platform, and until the
+ * person's organizations are read a model sent would go to the platform.
+ * `list_organizations` is held back here, so the wait is seen.
+ */
+test('Connect a model waits for the Owner choices, then offers the lab organization', async ({
+  admin,
+}) => {
+  let release: () => void = () => {};
+  const held = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  let asked = false;
+  await admin.route('**/api/muster/call**', async (route: Route) => {
+    const call = route.request().postDataJSON() as { name?: string } | null;
+    if (call?.name === 'x_agent-manager_list_organizations') {
+      asked = true;
+      await held;
+    }
+    await route.fallback();
+  });
+  try {
+    await open(admin, '/customize/models/new');
+    await expect
+      .poll(() => asked, {
+        message:
+          "the page reads the person's organizations (agent-manager's list_organizations)",
+      })
+      .toBe(true);
+    const connect = admin.getByRole('button', { name: 'Connect model' });
+    await expect(connect).toBeDisabled();
+    await expect(connect).toHaveAccessibleDescription(
+      'Checking which Organizations you may add a model for…',
+    );
+
+    release();
+    await expect(connect, 'offered once the owners are known').toBeEnabled();
+    await admin.getByRole('button', { name: /Owner/ }).click();
+    await expect(
+      admin.getByRole('option', { name: 'Platform', exact: true }),
+    ).toBeVisible();
+    await admin
+      .getByRole('option', { name: lab.organization.name, exact: true })
+      .click();
+    // An organization's model: its key goes on the credential form, so the
+    // page asks for none. Not sent: that would create the model.
+    await expect(
+      admin.getByRole('button', { name: 'Continue to the key' }),
+    ).toBeVisible();
+    await expect(admin.getByLabel(/^API key/)).toHaveCount(0);
+  } finally {
+    release();
+    await admin.unroute('**/api/muster/call**');
   }
 });
 

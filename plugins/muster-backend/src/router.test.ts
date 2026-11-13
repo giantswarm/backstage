@@ -1863,6 +1863,45 @@ describe('createRouter', () => {
       );
     });
 
+    it('declares no URL elicitation for a page that opens the page itself', async () => {
+      callTool.mockResolvedValue({ credentialOperation: 'op' });
+
+      const response = await request(await personApp())
+        .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send({
+          name: 'x_agent-manager_set_organization_model',
+          arguments: { name: 'claude' },
+          urlElicitation: false,
+        });
+
+      expect(response.status).toBe(200);
+      expect(callTool).toHaveBeenCalledWith(
+        'x_agent-manager_set_organization_model',
+        { name: 'claude' },
+        { ...asPerson, signal: expect.any(AbortSignal) },
+      );
+    });
+
+    it.each([
+      [
+        'an answer to an elicitation it does not declare',
+        {
+          urlElicitation: false,
+          input: { inputResponses: { muster_sign_in: { action: 'accept' } } },
+        },
+      ],
+      ['a urlElicitation that is not a boolean', { urlElicitation: 'no' }],
+    ])('refuses %s', async (_case, body) => {
+      const response = await request(await personApp())
+        .post('/call')
+        .set(MUSTER_AUTH_HEADER, 'user-token')
+        .send({ name: 'x_github_get_me', arguments: {}, ...body });
+
+      expect(response.status).toBe(400);
+      expect(callTool).not.toHaveBeenCalled();
+    });
+
     it('refuses an answer that is not one', async () => {
       const response = await request(await personApp())
         .post('/call')
