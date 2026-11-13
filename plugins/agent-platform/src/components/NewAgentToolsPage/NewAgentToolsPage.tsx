@@ -76,6 +76,7 @@ import {
   needsIndividualTools,
   presetBaseOf,
   toggleCatalogueSelector,
+  unlistedPicks,
   withConnectorChoice,
   withoutCovered,
 } from './connectorChoice';
@@ -589,8 +590,15 @@ export function NewAgentToolsPage() {
   // choose below.
   const chooseConnector = useCallback(
     (bucket: ServerBucket, choice: Exclude<ConnectorChoice, 'partial'>) =>
-      commit(withConnectorChoice(base, bucket, choice)),
-    [commit, base],
+      commit(
+        withConnectorChoice(
+          base,
+          bucket,
+          choice,
+          unlistedPicks(bucket, base, connectors),
+        ),
+      ),
+    [commit, base, connectors],
   );
   const toggleSelected = useCallback(
     (selector: string) => {

@@ -877,7 +877,7 @@ describe('NewAgentToolsPage', () => {
       expect(connector('pro')).toHaveTextContent('Sign-in needed');
       expect(connector('broken')).toHaveTextContent('Not connected');
       expect(connector('broken')).toHaveTextContent(
-        'It lists no tools while it is not connected.',
+        'Not connected: no tools listed',
       );
       expect(connector('quiet')).toHaveTextContent('Connected');
       expect(connector('quiet')).toHaveTextContent(

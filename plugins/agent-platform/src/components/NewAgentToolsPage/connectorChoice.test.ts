@@ -1,3 +1,4 @@
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Connector choices consume Muster's tool catalogue contract.
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 
 import type { CatalogueGroup, ServerBucket } from '../../lib/toolset';
@@ -16,6 +17,7 @@ import {
   readOnlySelectors,
   materialize,
   toggleCatalogueSelector,
+  unlistedPicks,
   withConnectorChoice,
   withoutCovered,
 } from './connectorChoice';
@@ -86,13 +88,14 @@ describe('a connector’s choice', () => {
     expect(connectorState(JIRA, new Set(['server:jira']))).toEqual({
       choice: 'all',
       picked: 0,
+      unlisted: 0,
     });
     expect(
       connectorState(
         JIRA,
         new Set(['tool:x_jira_get_issue', 'tool:x_jira_search']),
       ),
-    ).toEqual({ choice: 'read-only', picked: 2 });
+    ).toEqual({ choice: 'read-only', picked: 2, unlisted: 0 });
     // One read-only tool short, or a write tool on top: neither option.
     expect(
       connectorState(JIRA, new Set(['tool:x_jira_get_issue'])).choice,
@@ -106,7 +109,7 @@ describe('a connector’s choice', () => {
           'tool:x_jira_create_issue',
         ]),
       ),
-    ).toEqual({ choice: 'partial', picked: 3 });
+    ).toEqual({ choice: 'partial', picked: 3, unlisted: 0 });
     expect(connectorState(JIRA, new Set(['preset:read-only'])).choice).toBe(
       'none',
     );
@@ -549,5 +552,42 @@ describe('a whole connector beside its single tools', () => {
     ).toBe(
       'This toolset needs 37 selectors but may list at most 32; most come from kagent (21) and jira (16), where All already covers the single tools listed beside it, so remove those.',
     );
+  });
+});
+
+describe('a connector’s unlisted picks', () => {
+  const jira = {
+    ...bucket('jira', []),
+    connection: 'not-connected' as const,
+    toolNamePrefixes: ['x_jira'],
+  };
+  const jiraCloud = {
+    ...bucket('jira-cloud', []),
+    toolNamePrefixes: ['x_jira_cloud'],
+  };
+
+  it('finds the tools picked from a connector that lists none now', () => {
+    expect(
+      unlistedPicks(
+        jira,
+        ['tool:x_jira_search', 'tool:x_jira_cloud_get', 'server:wiki'],
+        [jira, jiraCloud],
+      ),
+    ).toEqual(['tool:x_jira_search']);
+  });
+
+  it('reads them as picks of the connector, and drops them on a choice', () => {
+    const toolset = ['tool:x_jira_search', 'server:wiki'];
+    const unlisted = unlistedPicks(jira, toolset, [jira]);
+
+    expect(connectorState(jira, new Set(toolset), unlisted.length)).toEqual({
+      choice: 'partial',
+      picked: 0,
+      unlisted: 1,
+    });
+    expect(withConnectorChoice(toolset, jira, 'all', unlisted)).toEqual([
+      'server:wiki',
+      'server:jira',
+    ]);
   });
 });

@@ -14,6 +14,9 @@ import {
   CatalogueGroup,
   countNoun,
   groupWorkflows,
+  connectionLabel,
+  type ConnectorConnection,
+  shownConnection,
   selectorForTool,
   ServerBucket,
   serverSelector,
@@ -234,6 +237,24 @@ function ServerPanel({
   );
 }
 
+/** The order a group's summary counts its connectors' connections in. */
+const CONNECTION_ORDER: readonly ConnectorConnection[] = [
+  'not-connected',
+  'partial',
+  'deactivated',
+];
+
+/** What a connector's row says after its name, before what is picked. */
+export function serverSummary(bucket: ServerBucket): string {
+  if (bucket.needsSignIn) {
+    return 'sign in to see its tools';
+  }
+  const connection = shownConnection(bucket);
+  return connection
+    ? `${connectionLabel(connection).toLowerCase()}, no tools listed`
+    : countNoun(bucket.tools.length, 'tool');
+}
+
 function serverEntries(
   group: CatalogueGroup,
   props: Pick<
@@ -243,9 +264,7 @@ function serverEntries(
 ): DisclosureEntry[] {
   return group.servers.map(bucket => {
     const whole = props.selected.has(serverSelector(bucket.name));
-    const summary = bucket.needsSignIn
-      ? 'sign in to see its tools'
-      : countNoun(bucket.tools.length, 'tool');
+    const summary = serverSummary(bucket);
     return {
       key: `${group.key}/${bucket.name}`,
       trigger: `${bucketLabel(bucket)} — ${summary}${pickedSuffix(
@@ -362,12 +381,29 @@ export function groupSummary(
       0,
     );
     const awaiting = group.servers.filter(bucket => bucket.needsSignIn).length;
-    // "0 tools" next to "1 awaiting sign-in" would read as a contradiction.
-    if (tools > 0 || awaiting === 0) {
+    const connections = new Map<ConnectorConnection, number>();
+    for (const bucket of group.servers) {
+      const connection = shownConnection(bucket);
+      if (connection) {
+        connections.set(connection, (connections.get(connection) ?? 0) + 1);
+      }
+    }
+    const notListing =
+      awaiting + [...connections.values()].reduce((sum, n) => sum + n, 0);
+    // A connector awaiting a sign-in or not connected lists no tools by
+    // design: "0 tools" beside it would read as a contradiction, so the count
+    // shows only while some connector could list tools.
+    if (tools > 0 || notListing < group.servers.length) {
       parts.push(countNoun(tools, 'tool'));
     }
     if (awaiting > 0) {
       parts.push(`${awaiting} awaiting sign-in`);
+    }
+    for (const connection of CONNECTION_ORDER) {
+      const count = connections.get(connection);
+      if (count) {
+        parts.push(`${count} ${connectionLabel(connection).toLowerCase()}`);
+      }
     }
   }
   if (group.platformAdministration.length > 0) {

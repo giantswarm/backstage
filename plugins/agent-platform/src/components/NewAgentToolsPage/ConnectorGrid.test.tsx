@@ -113,4 +113,60 @@ describe('ConnectorGrid', () => {
       'Selected: 2 of 3 tools. Tools added later are not included.',
     );
   });
+
+  function renderGrid(
+    connectors: ServerBucket[],
+    selected: string[] = [],
+  ): void {
+    render(
+      <ConnectorGrid
+        connectors={connectors}
+        selected={new Set(selected)}
+        disabled={false}
+        onChoose={jest.fn()}
+      />,
+    );
+  }
+
+  it('shows a not-connected connector’s connection instead of 0 tools', () => {
+    renderGrid([{ ...bucket('jira'), connection: 'not-connected' }]);
+
+    const card = screen.getByLabelText('Connector jira');
+    expect(card).toHaveTextContent('Not connected: no tools listed');
+    expect(card).not.toHaveTextContent('0 tools');
+  });
+
+  it('says a whole connector is chosen for once it connects, or is activated', () => {
+    renderGrid(
+      [
+        { ...bucket('jira'), connection: 'partial' },
+        { ...bucket('wiki'), connection: 'deactivated' },
+      ],
+      ['server:jira', 'server:wiki'],
+    );
+
+    expect(screen.getByLabelText('Connector jira')).toHaveTextContent(
+      'Partly connected: all, once connected',
+    );
+    expect(screen.getByLabelText('Connector wiki')).toHaveTextContent(
+      'Deactivated: all, once activated',
+    );
+  });
+
+  it('counts the tools chosen from it that it cannot list now', () => {
+    renderGrid(
+      [
+        {
+          ...bucket('jira'),
+          connection: 'not-connected',
+          toolNamePrefixes: ['x_jira'],
+        },
+      ],
+      ['tool:x_jira_search', 'tool:x_wiki_get'],
+    );
+
+    expect(screen.getByLabelText('Connector jira')).toHaveTextContent(
+      'Not connected: 1 chosen tool not listed',
+    );
+  });
 });

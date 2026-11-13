@@ -493,13 +493,25 @@ function ConnectorPageContent({
     shown: (count ?? 0) > 0,
   }));
 
+  // A connector muster holds no connection to has nothing to count: "Tools
+  // (0)" would read as a connector without tools.
+  const reached =
+    row.kind === 'core' ||
+    (singular
+      ? !singular.getSuspended() &&
+        mcpServerStateSeverity(singular.getState()) === 'ok'
+      : members.some(
+          server => mcpServerStateSeverity(server.getState()) === 'ok',
+        ));
+  const toolsCount = tools.tools?.length;
+  let toolsTabCount: RouteTabSpec['count'] = toolsCount;
+  if (tools.isLoading) {
+    toolsTabCount = 'loading';
+  } else if (!reached && !toolsCount) {
+    toolsTabCount = undefined;
+  }
   const tabs: RouteTabSpec[] = [
-    {
-      id: 'tools',
-      path: '',
-      title: 'Tools',
-      count: tools.isLoading ? 'loading' : tools.tools?.length,
-    },
+    { id: 'tools', path: '', title: 'Tools', count: toolsTabCount },
   ];
   // Every other tab by its path, one of `CONNECTOR_PAGE_TAB_PATHS`.
   const addTab = (
