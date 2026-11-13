@@ -16,7 +16,9 @@ for (const scope of ['platform', 'organization'] as const) {
     test.setTimeout(6 * 60_000);
     const namespace =
       scope === 'platform' ? 'kagent' : await labOrganizationNamespace();
-    expect(namespace).not.toBe('');
+    if (!namespace) {
+      throw new Error('The lab organization namespace is missing.');
+    }
     const name = `e2e-vertex-${scope}-${Date.now()}`;
     const secret = `tenant-credential-${name}`;
     const provider =
