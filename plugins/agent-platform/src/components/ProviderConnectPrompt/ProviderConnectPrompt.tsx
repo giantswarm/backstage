@@ -210,6 +210,14 @@ function MusterGrant({
     );
   }
 
+  if (signIn.signInRefusal) {
+    return (
+      <Text variant="body-small" color="danger">
+        {signIn.signInRefusal}
+      </Text>
+    );
+  }
+
   return (
     <Flex direction="column" gap="1">
       {signIn.error && (

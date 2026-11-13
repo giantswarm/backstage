@@ -6,7 +6,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
-import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
+import {
+  musterApiRef,
+  MusterUnauthorizedError,
+} from '@giantswarm/backstage-plugin-muster';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -582,6 +585,51 @@ describe('OrganizationPage', () => {
     expect(await screen.findByTestId('location')).toHaveTextContent(
       `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
     );
+  });
+
+  // The portal restarted and lost the keys it signed the session token
+  // with: its backend refuses the token before muster-backend runs.
+  it('says the portal session ended, in plain words, when the portal refuses the session token', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderPage('/models', {
+      ...SCENARIO,
+      models: {},
+    });
+    const answer = callTool.getMockImplementation()!;
+    callTool.mockImplementation(async (name, args, installation, options) => {
+      if (name === 'x_agent-manager_set_organization_model') {
+        throw new MusterUnauthorizedError(
+          'Failed user token verification',
+          undefined,
+          undefined,
+          'gazelle',
+          'AuthenticationError',
+        );
+      }
+      return answer(name, args, installation, options);
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Add model' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /Name/ }),
+      'claude',
+    );
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /Model/ }),
+      'claude-sonnet-4-6',
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Continue to the key' }),
+    );
+
+    expect(
+      await within(dialog).findByText(/Your portal session ended/),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/Reload the page to sign in again/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/token verification/)).toBeNull();
   });
 
   it('says what is missing before it asks agent-manager for a model', async () => {
@@ -1210,6 +1258,170 @@ describe('OrganizationPage', () => {
         await screen.findByRole('heading', { name: 'Payments' }),
       ).toBeInTheDocument();
       expect(toolCalls(callTool, 'get_organization')).toHaveLength(0);
+    });
+
+    // The operator never created its namespace: agent-manager still deletes
+    // it by its parent namespace and name, and previews no erasure.
+    const WITHOUT_NAMESPACE = {
+      name: 'payments',
+      parent: 'org-acme',
+      displayName: 'Payments',
+      harnesses: ['kagent'],
+      workerReplicas: 0,
+    };
+
+    it('deletes an organization the person manages that has no namespace yet', async () => {
+      const { callTool } = await renderPage('', {
+        ...SCENARIO,
+        mine: { organizations: [] },
+        organization: WITHOUT_NAMESPACE,
+      });
+
+      expect(
+        await screen.findByText('Payments has no namespace yet'),
+      ).toBeInTheDocument();
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Delete organization' }),
+      );
+      const dialog = await screen.findByRole('dialog');
+      expect(
+        await within(dialog).findByText(
+          /has no organization namespace yet, so there are no agents/,
+        ),
+      ).toBeInTheDocument();
+      expect(within(dialog).queryByText(/^Running sessions/)).toBeNull();
+      const confirm = within(dialog).getByRole('button', {
+        name: 'Delete organization',
+      });
+      expect(confirm).toBeDisabled();
+      await userEvent.type(
+        within(dialog).getByLabelText('Type org-acme/payments to confirm'),
+        'org-acme/payments',
+      );
+      await waitFor(() => expect(confirm).toBeEnabled());
+      await userEvent.click(confirm);
+
+      await waitFor(() =>
+        expect(toolCalls(callTool, 'delete_organization')).toEqual([
+          {
+            namespace: 'org-acme',
+            name: 'payments',
+            confirm: 'org-acme/payments',
+          },
+        ]),
+      );
+    });
+
+    it('opens the pull request for one applied from git that has no namespace yet', async () => {
+      const { callTool } = await renderPage('', {
+        ...SCENARIO,
+        mine: { organizations: [] },
+        organization: {
+          ...WITHOUT_NAMESPACE,
+          gitops: 'flux-giantswarm/agent-platform-organizations',
+        },
+      });
+
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Delete organization' }),
+      );
+      const dialog = await screen.findByRole('dialog');
+      await userEvent.click(
+        await within(dialog).findByRole('button', {
+          name: 'Open pull request',
+        }),
+      );
+
+      await waitFor(() =>
+        expect(toolCalls(callTool, 'delete_organization')).toEqual([
+          { namespace: 'org-acme', name: 'payments', mode: 'commit' },
+        ]),
+      );
+    });
+
+    it('offers no Delete to a person who reads one without a namespace but does not manage it', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        mine: { organizations: [] },
+        organization: WITHOUT_NAMESPACE,
+        manage: false,
+      });
+
+      expect(
+        await screen.findByText('Payments has no namespace yet'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Delete organization' }),
+      ).toBeNull();
+    });
+
+    it('offers Erase now on Pending erase for one without a namespace', async () => {
+      const { callTool } = await renderPage('', {
+        ...SCENARIO,
+        mine: { organizations: [] },
+        organization: {
+          ...WITHOUT_NAMESPACE,
+          gitops: 'flux-giantswarm/agent-platform-organizations',
+          orphaned: { status: 'True', reason: 'DeleteMerged' },
+        },
+      });
+
+      expect(await screen.findByText('Pending erase')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Erase now' }));
+      const dialog = await screen.findByRole('dialog');
+      await userEvent.type(
+        await within(dialog).findByLabelText(
+          'Type org-acme/payments to confirm',
+        ),
+        'org-acme/payments',
+      );
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Erase organization' }),
+      );
+
+      await waitFor(() =>
+        expect(toolCalls(callTool, 'delete_organization')).toEqual([
+          {
+            namespace: 'org-acme',
+            name: 'payments',
+            confirm: 'org-acme/payments',
+            mode: 'commit',
+          },
+        ]),
+      );
+    });
+
+    it('says it is erased when it is gone from the list right after its delete', async () => {
+      const scenario: OrganizationsScenario = {
+        ...SCENARIO,
+        mine: { organizations: [] },
+        organization: WITHOUT_NAMESPACE,
+      };
+      await renderPage('', scenario);
+
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Delete organization' }),
+      );
+      const dialog = await screen.findByRole('dialog');
+      await userEvent.type(
+        await within(dialog).findByLabelText(
+          'Type org-acme/payments to confirm',
+        ),
+        'org-acme/payments',
+      );
+      // No namespace to erase: the operator is done before the list is read
+      // again, which then no longer lists it.
+      scenario.deleteResult = { organization: WITHOUT_NAMESPACE };
+      const confirm = within(dialog).getByRole('button', {
+        name: 'Delete organization',
+      });
+      await waitFor(() => expect(confirm).toBeEnabled());
+      delete scenario.organization;
+      await userEvent.click(confirm);
+
+      // Gone from the list, it is named by its name, as its address says.
+      expect(await screen.findByText('payments is erased')).toBeInTheDocument();
+      expect(screen.queryByText(/You are not a member/)).toBeNull();
     });
 
     it('says an organization the person manages has no namespace yet, rather than that they are no member', async () => {

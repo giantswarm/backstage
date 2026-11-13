@@ -27,6 +27,12 @@ export type OrganizationsScenario = {
   mine?: { organizations: OrganizationNamespace[]; none?: string };
   /** The status `list_organizations` gives a member with each of `mine`. */
   memberStatus?: Pick<ListedOrganization, 'orphaned' | 'deleting'>;
+  /**
+   * `permissions.createAgents` of each of `mine`, by organization namespace;
+   * left out of the listing for a namespace not named, as an agent-manager
+   * older than the field answers.
+   */
+  createAgents?: Record<string, boolean>;
   /** How many `list_organizations` calls fail first, as a timeout would. */
   mineFailures?: number;
   /** `list_organization_members`. */
@@ -60,6 +66,10 @@ export type OrganizationsScenario = {
   access?: Partial<
     Record<'rolebindings' | 'modelconfigs' | 'secrets', boolean>
   >;
+  /** The same per namespace, over `access`, for the namespaces named. */
+  namespaceAccess?: Record<string, OrganizationsScenario['access']>;
+  /** The namespaces `get_info` lists as managed; none when left out. */
+  managed?: string[];
   /** `get_organization` answers `not_found`, as once the operator erased it. */
   organizationErased?: boolean;
   /** `get_organization`'s `erases`: what a delete would erase. */
@@ -84,6 +94,13 @@ export type OrganizationsScenario = {
   replaceError?: string;
   /** The Secret a replacement names does not exist yet. */
   secretMissing?: boolean;
+  /**
+   * `set_organization_model` on a model whose key Secret exists: the write
+   * is finished, with no credential request.
+   */
+  modelKeyPresent?: boolean;
+  /** What `set_organization_model` fails with. */
+  modelError?: string;
 };
 
 /**
@@ -105,6 +122,7 @@ export function listedOrganizations(
         organization.organization,
       );
       const manage = readable && manages;
+      const createAgents = scenario.createAgents?.[organization.namespace];
       return {
         name: organization.organization,
         parent: organization.parent,
@@ -117,7 +135,11 @@ export function listedOrganizations(
               organization: managed,
             }
           : scenario.memberStatus),
-        permissions: { manage, member: true },
+        permissions: {
+          manage,
+          member: true,
+          ...(createAgents === undefined ? {} : { createAgents }),
+        },
       };
     },
   );
@@ -146,11 +168,12 @@ export function listedOrganizations(
 
 /**
  * The Kubernetes proxy answering only the person's SelfSubjectAccessReviews,
- * as `access` says.
+ * as `access` and, for the namespaces it names, `namespaceAccess` say.
  */
 export function fakeOrganizationAccess(
   access: OrganizationsScenario['access'] = {},
   modelKeys: OrganizationsScenario['modelKeys'] = {},
+  namespaceAccess: OrganizationsScenario['namespaceAccess'] = {},
 ) {
   const proxy = jest.fn(
     async ({ path, init }: { path: string; init?: RequestInit }) => {
@@ -180,12 +203,16 @@ export function fakeOrganizationAccess(
       if (!path.endsWith('/selfsubjectaccessreviews')) {
         throw new Error(`unexpected Kubernetes request ${path}`);
       }
-      const resource = JSON.parse(String(init?.body)).spec.resourceAttributes
-        .resource as keyof NonNullable<OrganizationsScenario['access']>;
-      return new Response(
-        JSON.stringify({ status: { allowed: access[resource] ?? true } }),
-        { status: 201 },
-      );
+      const { namespace, resource } = JSON.parse(String(init?.body)).spec
+        .resourceAttributes as {
+        namespace: string;
+        resource: keyof NonNullable<OrganizationsScenario['access']>;
+      };
+      const allowed =
+        namespaceAccess[namespace]?.[resource] ?? access[resource] ?? true;
+      return new Response(JSON.stringify({ status: { allowed } }), {
+        status: 201,
+      });
     },
   );
   return { proxy } as unknown as KubernetesApi;
@@ -225,7 +252,7 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
       switch (name) {
         case 'x_agent-manager_get_info':
           return {
-            namespaces: { default: 'kagent', managed: [] },
+            namespaces: { default: 'kagent', managed: scenario.managed ?? [] },
             capabilities: { organizations: true, egressPolicies: true },
           };
         case 'x_agent-manager_list_organizations':
@@ -312,9 +339,28 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
         case 'x_agent-manager_list_egress_policies':
           return { egressPolicies: scenario.egressPolicies ?? [] };
         case 'x_agent-manager_set_organization_model':
+          requireNoUrlElicitation(name, args, options);
+          if (scenario.modelError) {
+            throw new Error(scenario.modelError);
+          }
+          if (scenario.modelKeyPresent) {
+            // A change of a model whose key exists: written at once.
+            return {
+              namespace: args.namespace,
+              kind: 'model',
+              name: args.name,
+              ...(args.default ? { defaultModel: args.name } : {}),
+              credentials: [
+                {
+                  secret: `tenant-credential-${String(args.name)}`,
+                  key: 'apiKey',
+                  state: 'present',
+                },
+              ],
+            };
+          }
           // A new model: agent-manager prepares a credential request for
           // its missing key and answers its operation id and form link.
-          requireNoUrlElicitation(name, args, options);
           return {
             namespace: args.namespace,
             kind: 'model',

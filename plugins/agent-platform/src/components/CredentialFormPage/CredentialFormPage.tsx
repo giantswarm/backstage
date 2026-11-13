@@ -38,6 +38,8 @@ import {
   organizationsRouteRef,
 } from '../../routes';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 
 export type CredentialFormPageProps = {
   installation: string;
@@ -77,6 +79,10 @@ const isReplacement = (operation: CredentialOperation) =>
   operation.result?.kind === 'credential';
 
 const kindLabel = (kind: string) => KIND_LABELS[kind] ?? kind;
+
+/** The request outlives the session: its id is in this page's address. */
+const AFTER_SIGN_IN =
+  'The request stays open for a while: this page opens it again after the sign-in, and you enter the value then.';
 
 /**
  * The confirmation, read fresh for every visit: kept out of the persisted
@@ -268,6 +274,9 @@ function SaveError({
   if (!error) {
     return null;
   }
+  if (error instanceof PortalSessionEndedError) {
+    return <PortalSessionEndedAlert afterSignIn={AFTER_SIGN_IN} />;
+  }
   if (credentialOperationErrorCode(error) === CONSUMERS_CHANGED) {
     return (
       <Alert
@@ -411,7 +420,10 @@ export function CredentialFormPage({
     },
     onError: error => {
       const code = credentialOperationErrorCode(error);
-      if (code === 'precondition_failed') {
+      if (error instanceof PortalSessionEndedError) {
+        // Nothing was sent; the value is not kept for after the sign-in.
+        setValues({});
+      } else if (code === 'precondition_failed') {
         setValues({});
         setNotice(
           'The request changed since you opened it. Check it again, then enter the value again.',
@@ -462,6 +474,18 @@ export function CredentialFormPage({
     return (
       <ShellPage title="Enter a credential" {...frame}>
         <ShellPageFactsSkeleton />
+      </ShellPage>
+    );
+  }
+
+  if (
+    query.isError &&
+    !query.isFetching &&
+    query.error instanceof PortalSessionEndedError
+  ) {
+    return (
+      <ShellPage title="Enter a credential" {...frame}>
+        <PortalSessionEndedAlert afterSignIn={AFTER_SIGN_IN} />
       </ShellPage>
     );
   }
@@ -639,7 +663,11 @@ export function CredentialFormPage({
                 ))
               )}
               <SaveError installation={installation} error={shownSaveError} />
-              {cancel.error ? (
+              {cancel.error instanceof PortalSessionEndedError ? (
+                <PortalSessionEndedAlert afterSignIn={AFTER_SIGN_IN} />
+              ) : null}
+              {cancel.error &&
+              !(cancel.error instanceof PortalSessionEndedError) ? (
                 <Alert
                   status="danger"
                   title="Not cancelled"

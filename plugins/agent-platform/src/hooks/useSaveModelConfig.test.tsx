@@ -24,6 +24,7 @@ jest.mock('../components/OrganizationDirectoryProvider', () => ({
     ...jest.requireActual('../lib/__fixtures__/organizations')
       .TEST_ORGANIZATION_DIRECTORY,
     discoveryErrors: mockDirectoryFailure ? [mockDirectoryFailure] : [],
+    discoveryFailureOf: () => mockDirectoryFailure,
   }),
 }));
 

@@ -1607,6 +1607,66 @@ describe('TimelineEntry — the connector of a tool call (UX review M2)', () => 
     });
     expect(row).toHaveTextContent('via Muster');
   });
+
+  const approval = {
+    kind: 'approval',
+    id: 'a',
+    taskIndex: 0,
+    asks: 'approval',
+    toolName: 'x_agentlab-mcp-kubernetes_delete_pod',
+    via: 'Muster',
+    args: { namespace: 'default', name: 'web-0' },
+  } as TimelineItem;
+
+  it('names the proposed tool and its connector on an approval, with its arguments one fold-out away', async () => {
+    await renderInTestApp(
+      <TimelineEntry item={approval} connectorOf={connectorOf} />,
+    );
+
+    const row = screen.getByRole('button', { name: /Approval requested/ });
+    expect(row).toHaveTextContent('Delete pod');
+    expect(row).toHaveTextContent('kubernetes');
+    expect(row).not.toHaveTextContent('Call tool');
+    await userEvent.click(row);
+    const panel = panelFor(row);
+    expect(panel).toHaveTextContent('x_agentlab-mcp-kubernetes_delete_pod');
+    expect(panel).toHaveTextContent('web-0');
+  });
+
+  it('says an approval goes through muster when no connector matches', async () => {
+    await renderInTestApp(<TimelineEntry item={approval} />);
+
+    const row = screen.getByRole('button', { name: /Approval requested/ });
+    expect(row).toHaveTextContent('via Muster');
+  });
+
+  it('folds out a proxied approval without arguments, to read the exact tool', async () => {
+    const { args: _args, ...argless } = approval as TimelineItem & {
+      args?: unknown;
+    };
+    await renderInTestApp(
+      <TimelineEntry
+        item={argless as TimelineItem}
+        connectorOf={connectorOf}
+      />,
+    );
+
+    const row = screen.getByRole('button', { name: /Approval requested/ });
+    await userEvent.click(row);
+    expect(panelFor(row)).toHaveTextContent(
+      'x_agentlab-mcp-kubernetes_delete_pod',
+    );
+  });
+
+  it('keeps the exact name and the proxy on a technical approval', async () => {
+    await renderInTestApp(
+      <TimelineEntry item={approval} connectorOf={connectorOf} technical />,
+    );
+
+    const row = screen.getByRole('button', { name: /Approval requested/ });
+    expect(row).toHaveTextContent('x_agentlab-mcp-kubernetes_delete_pod');
+    expect(row).toHaveTextContent('via Muster');
+  });
 });
 
 describe('SessionTimeline — a long user message', () => {

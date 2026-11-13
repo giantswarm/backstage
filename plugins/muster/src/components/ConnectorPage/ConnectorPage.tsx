@@ -465,7 +465,9 @@ function ConnectorPageContent({
     signInGate = (
       <Flex direction="column" gap="2" align="start">
         <Text as="p" variant="body-medium">
-          Sign in to this connector to see its tools.
+          {signIn.signInRefusal
+            ? 'You cannot sign in to this connector here, so its tools stay hidden.'
+            : 'Sign in to this connector to see its tools.'}
         </Text>
         <ServerAuthActions
           noun="connector"

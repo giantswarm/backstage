@@ -13,7 +13,10 @@ import {
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AgentManagerClient } from '../../apis/AgentManagerClient';
-import { AGENT_MANAGER_SERVER } from '../../lib/agentManager';
+import {
+  AGENT_MANAGER_SERVER,
+  AgentManagerNotConnectedError,
+} from '../../lib/agentManager';
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
 import {
   musterAgentManagerInfoQueryKey,
@@ -38,24 +41,52 @@ export type OrganizationDirectoryValue = {
   installations: string[];
   /** Failures checking whether installations serve organizations. */
   discoveryErrors: string[];
+  /**
+   * Why it could not be learned whether `installation` serves
+   * organizations, if it could not: muster's installations unread, the
+   * installation not among them, or its agent-manager unreachable or
+   * unasked. Another installation's failure is not this one's.
+   */
+  discoveryFailureOf: (installation: string) => string | undefined;
+  /**
+   * The person's sign-in to agent-manager on `installation` is missing, so
+   * its organizations could not be read, if so: what the read was answered,
+   * and whether muster asked for the sign-in (rather than answering "not
+   * connected" some other way). A sign-in, then `recheck`, decides it.
+   */
+  signInOf: (installation: string) => AgentManagerSignIn | undefined;
   /** The person's organizations on one installation, once answered. */
   organizationsOf: (installation: string) => OrganizationListing | undefined;
   /** Why an installation's organizations could not be read, if they could not. */
   failureOf: (installation: string) => string | undefined;
-  /** Reads an installation's organizations again (Check again). */
+  /**
+   * Reads an installation's organizations again (Check again), and whether
+   * it serves them (after a sign-in).
+   */
   recheck: (installation: string) => Promise<void>;
   /** True while an installation's answer is still to come. */
   isLoading: boolean;
+  /** True while `installation`'s answer is still to come. */
+  isLoadingOf: (installation: string) => boolean;
+};
+
+/** A missing sign-in to agent-manager on one installation. */
+export type AgentManagerSignIn = {
+  message: string;
+  signInRequired: boolean;
 };
 
 const EMPTY: OrganizationDirectoryValue = {
   directory: EMPTY_ORGANIZATION_DIRECTORY,
   installations: [],
   discoveryErrors: [],
+  discoveryFailureOf: () => undefined,
+  signInOf: () => undefined,
   organizationsOf: () => undefined,
   failureOf: () => undefined,
   recheck: async () => {},
   isLoading: false,
+  isLoadingOf: () => false,
 };
 
 const OrganizationDirectoryContext =
@@ -122,28 +153,41 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
     (_, index) =>
       infos[index]?.data?.capabilities?.[ORGANIZATIONS_CAPABILITY] === true,
   );
-  const discoveryErrors = [
-    ...(musterInstallations.error ? [musterInstallations.error.message] : []),
-    ...names.flatMap(installation => {
-      const presence = availability.presenceOf(installation);
-      if (presence === 'unknown' && !availability.isLoading) {
-        return [
-          `Could not reach agent-manager on ${installation}. Check your connector sign-in and try again.`,
-        ];
-      }
-      if (presence === 'sharedIdentity') {
-        return [
-          `${installation} needs a per-user connector sign-in to read organizations.`,
-        ];
-      }
-      return [];
-    }),
-    ...available.flatMap((installation, index) =>
-      infos[index]?.error
-        ? [`${installation}: ${infos[index].error.message}`]
-        : [],
-    ),
-  ];
+  // Never read, muster's installations leave every installation's answer
+  // unknown; a failed refetch keeps the last list, which still decides.
+  const listingError = musterInstallations.data
+    ? undefined
+    : musterInstallations.error?.message;
+  // Each failure belongs to the installation it is about.
+  const installationErrors: Record<string, string> = {};
+  for (const installation of names) {
+    const presence = availability.presenceOf(installation);
+    if (presence === 'unknown' && availability.failedOf(installation)) {
+      installationErrors[installation] =
+        `Could not reach agent-manager on ${installation}. Check your connector sign-in and try again.`;
+    } else if (presence === 'sharedIdentity') {
+      installationErrors[installation] =
+        `${installation} needs a per-user connector sign-in to read organizations.`;
+    }
+  }
+  // The installations whose agent-manager wants the person's sign-in, from
+  // its `get_info` or its `list_organizations`.
+  const signIns: Record<string, AgentManagerSignIn> = {};
+  const noteSignIn = (installation: string, error: unknown) => {
+    if (error instanceof AgentManagerNotConnectedError) {
+      signIns[installation] = {
+        message: error.message,
+        signInRequired: error.signInRequired,
+      };
+    }
+  };
+  available.forEach((installation, index) => {
+    const error = infos[index]?.error;
+    if (error) {
+      installationErrors[installation] = `${installation}: ${error.message}`;
+      noteSignIn(installation, error);
+    }
+  });
   const mine = useQueries({
     queries: supported.map(installation => ({
       queryKey: musterOrganizationsQueryKey(installation),
@@ -154,9 +198,24 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
       retry: false,
     })),
   });
+  supported.forEach((installation, index) =>
+    noteSignIn(installation, mine[index]?.error),
+  );
 
+  const isListing = Boolean(musterApi) && isAwaitingData(musterInstallations);
+  // Each installation whose own reads are still out: its server list, its
+  // `get_info`, its `list_organizations`.
+  const loadingInstallations = [
+    ...names.filter(
+      installation =>
+        availability.presenceOf(installation) === 'unknown' &&
+        !availability.failedOf(installation),
+    ),
+    ...available.filter((_, index) => isAwaitingData(infos[index])),
+    ...supported.filter((_, index) => isAwaitingData(mine[index])),
+  ];
   const isLoading =
-    (Boolean(musterApi) && isAwaitingData(musterInstallations)) ||
+    isListing ||
     availability.isLoading ||
     infos.some(query => isAwaitingData(query)) ||
     mine.some(query => isAwaitingData(query));
@@ -168,7 +227,20 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
       mine[index]?.error ? String(mine[index].error.message) : null,
     ]),
   );
-  const discoverySignature = JSON.stringify(discoveryErrors);
+  const discoverySignature = JSON.stringify({
+    listingError: listingError ?? null,
+    // Once muster has listed its installations, one it does not list is
+    // unknown, not decided: agent-manager is reached through muster only,
+    // so whether it serves organizations there cannot be learned. Without
+    // the muster plugin nothing is listed and nothing is held.
+    listed: musterInstallations.data ? names : null,
+    installationErrors,
+    signIns,
+  });
+  const loadingSignature = JSON.stringify([
+    isListing,
+    [...new Set(loadingInstallations)],
+  ]);
 
   const value = useMemo<OrganizationDirectoryValue>(() => {
     const entries = JSON.parse(signature) as [
@@ -182,6 +254,16 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
     const failures = new Map(
       entries.map(([installation, , failure]) => [installation, failure]),
     );
+    const discovery = JSON.parse(discoverySignature) as {
+      listingError: string | null;
+      listed: string[] | null;
+      installationErrors: Record<string, string>;
+      signIns: Record<string, AgentManagerSignIn>;
+    };
+    const [listing, loading] = JSON.parse(loadingSignature) as [
+      boolean,
+      string[],
+    ];
     const directory = new Map<string, OrganizationNamespace>();
     for (const answer of answers.values()) {
       for (const organization of organizationNamespacesOf(
@@ -193,16 +275,36 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
     return {
       directory,
       installations: [...answers.keys()],
-      discoveryErrors: JSON.parse(discoverySignature) as string[],
+      discoveryErrors: [
+        ...(discovery.listingError ? [discovery.listingError] : []),
+        ...Object.values(discovery.installationErrors),
+      ],
+      discoveryFailureOf: installation => {
+        if (discovery.listingError) {
+          return discovery.listingError;
+        }
+        if (discovery.listed && !discovery.listed.includes(installation)) {
+          return `muster does not list ${installation}, so whether it serves organizations is unknown.`;
+        }
+        return discovery.installationErrors[installation];
+      },
+      signInOf: installation => discovery.signIns[installation],
       organizationsOf: installation => answers.get(installation) ?? undefined,
       failureOf: installation => failures.get(installation) ?? undefined,
-      recheck: installation =>
-        queryClient.refetchQueries({
-          queryKey: musterOrganizationsQueryKey(installation),
-        }),
+      recheck: async installation => {
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: musterAgentManagerInfoQueryKey(installation),
+          }),
+          queryClient.refetchQueries({
+            queryKey: musterOrganizationsQueryKey(installation),
+          }),
+        ]);
+      },
       isLoading,
+      isLoadingOf: installation => listing || loading.includes(installation),
     };
-  }, [signature, discoverySignature, isLoading, queryClient]);
+  }, [signature, discoverySignature, loadingSignature, isLoading, queryClient]);
 
   return (
     <OrganizationDirectoryContext.Provider value={value}>
@@ -226,6 +328,9 @@ export function useOrganizationsAvailable(): boolean {
  * an organization's, or `undefined` when it can: still reading, the
  * installation's `list_organizations` failed, or agent-manager could not be
  * reached to learn whether the installation serves organizations at all.
+ * Only that installation's own reads and failures count: an installation
+ * known not to run agent-manager, or whose agent-manager serves no
+ * organizations, is decided; one muster does not list is not.
  * Where it cannot tell, an organization's namespace would pass for the
  * platform's, so a write that must not reach an organization waits.
  */
@@ -233,7 +338,7 @@ export function organizationsUndecided(
   value: OrganizationDirectoryValue,
   installation: string,
 ): string | undefined {
-  if (value.isLoading) {
+  if (value.isLoadingOf(installation)) {
     return 'The organizations are still being read.';
   }
   const failure = value.failureOf(installation);
@@ -241,7 +346,7 @@ export function organizationsUndecided(
     return failure;
   }
   if (!value.installations.includes(installation)) {
-    return value.discoveryErrors[0];
+    return value.discoveryFailureOf(installation);
   }
   return undefined;
 }

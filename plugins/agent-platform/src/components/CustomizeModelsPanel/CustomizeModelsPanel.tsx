@@ -171,6 +171,7 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
   );
   const showInstallation =
     new Set(modelRows.map(row => row.installation)).size > 1;
+  const sharedNames = useMemo(() => sharedDisplayNames(modelRows), [modelRows]);
   // The platform's model and an organization's can read alike ("Default ·
   // Anthropic · claude-sonnet-4-5"): with more than one owner, each row
   // names its own.
@@ -203,6 +204,7 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
             row.model,
             ...(showOwner ? [ownerFact(row.namespace, directory)] : []),
             ...(showInstallation ? [row.installation] : []),
+            ...(sharedNames.has(displayNameKey(row)) ? [row.namespace] : []),
             // At phone width the Used by column is hidden: its count joins
             // the name's line, "OpenAI · gpt-4o · 3 agents".
             ...(isPhone ? [row.usedBy] : []),
@@ -305,4 +307,23 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
       <ModelHostingHint />
     </Flex>
   );
+}
+
+function displayNameKey(row: ModelRow): string {
+  return `${row.installation}/${row.displayName}`;
+}
+
+/**
+ * The installation-scoped display names more than one ModelConfig carries:
+ * those rows add their namespace, the only thing telling them apart.
+ */
+function sharedDisplayNames(rows: readonly ModelRow[]): Set<string> {
+  const seen = new Set<string>();
+  const shared = new Set<string>();
+  for (const row of rows) {
+    const key = displayNameKey(row);
+    if (seen.has(key)) shared.add(key);
+    seen.add(key);
+  }
+  return shared;
 }
