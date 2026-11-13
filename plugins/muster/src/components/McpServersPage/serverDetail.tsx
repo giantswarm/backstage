@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useState } from 'react';
 import { makeStyles, Theme } from '@material-ui/core';
 import {
+  Alert,
   Box,
   Flex,
   Link,
@@ -422,6 +423,22 @@ export function HealthDetails({ server }: { server: MCPServer }) {
 }
 
 /**
+ * Why a connector lists no tools, and how loud to say it: `warning` for a
+ * connector that failed to connect. Other states that hold no connection
+ * (stopped, disconnected, connecting) are usually passing, so they stay
+ * `neutral`.
+ */
+export type NoToolsExplanation = {
+  text: string;
+  tone: 'warning' | 'neutral';
+};
+
+const neutral = (text: string): NoToolsExplanation => ({
+  text,
+  tone: 'neutral',
+});
+
+/**
  * Why a server's tool list is empty, most deliberate cause first.
  *
  * Deactivated wins over everything: muster keeps the server disconnected on
@@ -436,29 +453,65 @@ export function HealthDetails({ server }: { server: MCPServer }) {
  * Ready condition says about it (a token exchange broken for every caller
  * reads differently from an endpoint that does not answer).
  */
-export function noToolsExplanation(server: MCPServer): string {
+export function noToolsExplanation(server: MCPServer): NoToolsExplanation {
   if (server.getSuspended()) {
-    return `No tools exposed — this connector is deactivated.${activateHint(
-      server,
-    )}`;
+    return neutral(
+      `No tools exposed — this connector is deactivated.${activateHint(
+        server,
+      )}`,
+    );
   }
   const state = server.getState();
   if (state === 'Awaiting Session') {
-    return 'No tools exposed yet — this connector connects per session with your identity; its tools appear once Muster has connected it for you.';
+    return neutral(
+      'No tools exposed yet — this connector connects per session with your identity; its tools appear once Muster has connected it for you.',
+    );
   }
   const authGated =
     state === 'Auth Required' && server.canAuthenticateInteractively();
   if (authGated) {
-    return 'No tools exposed — you are not signed in to this connector. Use “Sign in” in its actions.';
+    return neutral(
+      'No tools exposed — you are not signed in to this connector. Use “Sign in” in its actions.',
+    );
   }
   const explanation = server.getStateExplanation();
-  if (state === 'Failed' && explanation) {
-    return `No tools exposed — ${explanation}`;
+  if (state === 'Failed') {
+    return {
+      text: explanation
+        ? `No tools exposed — ${explanation}`
+        : `${notConnectedSentence(state)}, so its tools cannot be shown.`,
+      tone: 'warning',
+    };
   }
   if (mcpServerStateSeverity(state) !== 'ok') {
-    return `${notConnectedSentence(state)}, so its tools cannot be shown.`;
+    return neutral(
+      `${notConnectedSentence(state)}, so its tools cannot be shown.`,
+    );
   }
-  return 'No tools exposed (the connector may be down or unreachable).';
+  return neutral(
+    'No tools exposed (the connector may be down or unreachable).',
+  );
+}
+
+/**
+ * Why a connector of several instances lists no tools: a warning when every
+ * instance failed, as for a single failed connector.
+ */
+export function noInstanceToolsExplanation(
+  servers: MCPServer[],
+): NoToolsExplanation {
+  if (
+    servers.length > 0 &&
+    servers.every(
+      server => !server.getSuspended() && server.getState() === 'Failed',
+    )
+  ) {
+    return {
+      text: 'No tools exposed — every instance of this connector failed to connect.',
+      tone: 'warning',
+    };
+  }
+  return neutral('No instance offers tools right now.');
 }
 
 /** What muster reports of a connector it holds no connection to. */
@@ -513,7 +566,12 @@ export function ServerTools({
 
   const tools = data?.tools ?? [];
   if (tools.length === 0) {
-    return <Note>{noToolsExplanation(server)}</Note>;
+    const empty = noToolsExplanation(server);
+    return empty.tone === 'warning' ? (
+      <Alert status="warning" description={empty.text} />
+    ) : (
+      <Note>{empty.text}</Note>
+    );
   }
 
   return (
