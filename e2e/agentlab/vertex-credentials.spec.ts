@@ -1,4 +1,5 @@
 import { generateKeyPairSync } from 'node:crypto';
+import type { Request } from '@playwright/test';
 import { expect, open, test } from './fixtures';
 import { lab } from './lab';
 import {
@@ -37,6 +38,22 @@ for (const scope of ['platform', 'organization'] as const) {
       private_key: privateKey,
       token_uri: 'https://oauth2.googleapis.com/token',
     });
+    const kubernetesWrites: { method: string; pathname: string }[] = [];
+    const recordKubernetesWrite = (request: Request) => {
+      const method = request.method();
+      const pathname = new URL(request.url()).pathname;
+      if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return;
+      if (!pathname.startsWith('/api/kubernetes/proxy/')) return;
+      // Authorization reviews do not persist Kubernetes objects.
+      if (
+        /\/apis\/authorization\.k8s\.io\/v1\/selfsubject(?:access|rules)reviews$/.test(
+          pathname,
+        )
+      )
+        return;
+      kubernetesWrites.push({ method, pathname });
+    };
+    admin.on('request', recordKubernetesWrite);
     try {
       await open(admin, '/customize/models/new');
       await admin.getByRole('button', { name: /Owner/ }).click();
@@ -49,6 +66,11 @@ for (const scope of ['platform', 'organization'] as const) {
       await admin.getByRole('textbox', { name: /^Name/ }).fill(name);
       await admin.getByRole('button', { name: /^Provider/ }).click();
       await admin.getByRole('option', { name: label, exact: true }).click();
+      await expect(
+        admin.getByText(
+          /LLM gateway metering, rate limits and spend reporting are unavailable/,
+        ),
+      ).toBeVisible();
       await admin
         .getByRole('textbox', { name: /Google Cloud project/ })
         .fill('vertex-test');
@@ -91,7 +113,12 @@ for (const scope of ['platform', 'organization'] as const) {
       expect(
         await admin.evaluate(() => JSON.stringify({ ...window.localStorage })),
       ).not.toContain(privateKey);
+      expect(
+        kubernetesWrites,
+        'portal model onboarding uses manager operations',
+      ).toEqual([]);
     } finally {
+      admin.off('request', recordKubernetesWrite);
       await kubectl([
         'delete',
         'modelconfig',

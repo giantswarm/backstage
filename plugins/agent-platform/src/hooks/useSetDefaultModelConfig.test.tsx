@@ -11,6 +11,7 @@ import {
 import { useSetDefaultModelConfig } from './useSetDefaultModelConfig';
 
 const mockCallTool = jest.fn();
+const analyticsApi = mockApis.analytics.mock();
 const mockDescribeTool = jest.fn(async () => ({
   inputSchema: {
     properties: Object.fromEntries(
@@ -36,7 +37,7 @@ jest.mock('@backstage/frontend-plugin-api', () => ({
 
 function setup() {
   const wrapper = ({ children }: PropsWithChildren) => (
-    <TestApiProvider apis={[[analyticsApiRef, mockApis.analytics()]]}>
+    <TestApiProvider apis={[[analyticsApiRef, analyticsApi]]}>
       <QueryClientProvider
         client={
           new QueryClient({ defaultOptions: { mutations: { retry: false } } })
@@ -61,6 +62,7 @@ const model = new ModelConfig(
 
 beforeEach(() => {
   mockCallTool.mockReset();
+  analyticsApi.captureEvent.mockClear();
 });
 
 it('sets the installation default through agent-manager without a credential value', async () => {
@@ -80,6 +82,13 @@ it('sets the installation default through agent-manager without a credential val
     'gazelle',
     { urlElicitation: false },
   );
+  expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+  expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+    expect.objectContaining({
+      action: 'AgentPlatform.defaultModelSet',
+      attributes: {},
+    }),
+  );
 });
 
 it('opens the credential form when the default operation needs a missing credential', async () => {
@@ -96,6 +105,7 @@ it('opens the credential form when the default operation needs a missing credent
     });
   });
   expect(saved).toEqual({ form: '/credential-form' });
+  expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
 });
 
 it('refuses a manager without the model credential contract before issuing a write', async () => {
@@ -107,4 +117,16 @@ it('refuses a manager without the model credential contract before issuing a wri
     ).rejects.toThrow('model credential operations');
   });
   expect(mockCallTool).not.toHaveBeenCalled();
+  expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+});
+
+it('does not report a default change when the manager refuses it', async () => {
+  mockCallTool.mockRejectedValue(new Error('forbidden'));
+  const { result } = setup();
+  await act(async () => {
+    await expect(
+      result.current.setDefault({ modelConfig: model, expected: [] }),
+    ).rejects.toThrow();
+  });
+  expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
 });

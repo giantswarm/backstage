@@ -4,7 +4,7 @@ import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
 import { ResponseError } from '@backstage/errors';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 // eslint-disable-next-line @backstage/no-mixed-plugin-imports -- The GitHub connection prompt reads the connector through the Muster API.
 import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -167,6 +167,55 @@ async function renderForm(
 
 describe('CredentialFormPage', () => {
   beforeEach(() => analyticsApi.captureEvent.mockClear());
+
+  it('discards a file read that finishes after the confirmation is refreshed', async () => {
+    const confirmation: CredentialOperation = {
+      ...CONFIRMATION,
+      result: {
+        ...CONFIRMATION.result,
+        credentials: [
+          {
+            secret: 'tenant-credential-vertex',
+            key: 'GOOGLE_APPLICATION_CREDENTIALS',
+            state: 'missing',
+            inputFormat: 'google-service-account-json',
+          },
+        ],
+      },
+    };
+    const api = fakeCredentialsApi(read(confirmation));
+    await renderForm(api);
+    const input = await screen.findByLabelText('Service account key file');
+    const raw = JSON.stringify({
+      type: 'service_account',
+      project_id: 'vertex-test',
+      client_email: 'late@vertex-test.iam.gserviceaccount.com',
+      private_key: 'synthetic-private-key',
+    });
+    let finishRead!: (value: string) => void;
+    const file = new File([raw], 'vertex.json', { type: 'application/json' });
+    Object.defineProperty(file, 'text', {
+      value: () =>
+        new Promise<string>(resolve => {
+          finishRead = resolve;
+        }),
+    });
+    await userEvent.upload(input, file);
+    await userEvent.click(screen.getByRole('button', { name: 'Check again' }));
+    await waitFor(() => expect(api.getOperation).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled(),
+    );
+    await act(async () => {
+      finishRead(raw);
+    });
+    expect(screen.queryByText(/late@vertex-test/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(api.saveOperation).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText(/Choose the service account key file/),
+    ).toBeInTheDocument();
+  });
 
   it.each(['"3"', '"4"'])(
     'clears input and blocks writes while refreshing the confirmation to %s',

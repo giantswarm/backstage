@@ -110,12 +110,15 @@ export function ModelConfigFormFields({
   // A stored credential is bound to its provider.
   const providerLocked = mode === 'edit';
   let providerDescription = providerOption?.description;
-  if (providerLocked) {
+  if (isVertexAI) {
+    providerDescription =
+      'Calls use Google Vertex AI through the platform credential provider. LLM gateway metering, rate limits and spend reporting are unavailable.';
+    if (providerLocked) {
+      providerDescription += ' To use another provider, add a model.';
+    }
+  } else if (providerLocked) {
     providerDescription =
       'It cannot be changed: the stored key is this provider’s. For another provider, add a model.';
-  } else if (isVertexAI) {
-    providerDescription =
-      'Calls use Google Vertex AI through the platform credential provider. LLM gateway usage and spend are not available yet.';
   } else if (routed) {
     providerDescription =
       'Calls go through the platform’s LLM gateway, which passes your key on and counts the usage for your organization.';
