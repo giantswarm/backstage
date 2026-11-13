@@ -98,6 +98,36 @@ plugin that calls the tools, and each declares the answer type its client
 reads (`ListWorkspacesAnswer`, `ToolchainList`, …), so a change to it breaks
 the fixture's build.
 
+### The data set
+
+Every fixture API and tool handler reads one data set, so the pages tell one
+story: the agents an organization lists are the agents whose sessions kagent
+lists. It is in `@giantswarm/backstage-plugin-gs-common/fixtures`
+(`plugins/gs-common/src/fixtures/`), a subpath of its own that only fixture
+modules and tests import (`giantswarm/no-fixture-imports` fails on any other import):
+
+- `baseDataSet()` is the base data set, built once from a fixed seed:
+  three installations (`meadow` first, reachable; one unreachable, one not
+  probed yet), and in each organizations, agents, connectors, sessions,
+  workflows and executions in every state their pages know. Names are made of
+  plant words, never a real installation, customer or repository.
+- `createFixtureDataSet(settings)` builds another one: per list a `count`
+  (per parent, such as agents per organization), a least `nameLength` (cut at
+  63, a Kubernetes name's limit) and the `states` the items take in turn.
+  `meadow` keeps its name whatever the length. The same `seed` and `now`
+  build the same data set.
+- The records are plain, not any client's answer. Each plugin maps them onto
+  the types its clients read, next to its fixtures, through the parsers the
+  real answers go through where there are any: muster's in
+  `plugins/muster/src/apis/fixtures/musterFixtureData.ts` (MCP servers as
+  objects and as muster lists them, installations, workflows, executions),
+  agent-platform's in
+  `plugins/agent-platform/src/apis/fixtures/agentPlatformFixtureData.ts`
+  (Agent objects, agent-manager's agents and organizations, kagent sessions).
+
+A page that reads a new field or shows a new state extends a builder or a
+mapper in the same pull request, and the base data set gets the state.
+
 ## Adding a fixture mode
 
 The pattern keeps the fixture code out of the production bundle, fixed at build

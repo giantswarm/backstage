@@ -58,6 +58,19 @@ const MARKERS = [
     marker: 'oci://registry.example.com/charts/agent',
   },
   {
+    source: 'plugins/gs-common/src/fixtures/builders.ts',
+    marker: 'A builder needs at least one state.',
+  },
+  {
+    source: 'plugins/muster/src/apis/fixtures/musterFixtureData.ts',
+    marker: 'The server did not answer within the timeout.',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/agentPlatformFixtureData.ts',
+    marker: 'The worker running the session stopped answering.',
+  },
+  {
     source:
       'packages/app/src/modules/kubernetes/fixtures/KubernetesFixtureApi.ts',
     marker: 'Fixture mode does not answer the Kubernetes request',
