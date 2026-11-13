@@ -1164,8 +1164,9 @@ function AgentsPanelContent({
       {rows.length > 0 ? (
         <Flex direction="column" gap="5" className={classes.listFrame}>
           {/* Rows are in, but more environments are still being read: a thin
-              bar rather than a skeleton. */}
-          {isLoadingMore && (
+              bar rather than a skeleton. Not while Last used waits for its
+              first read, whose indicator stands for the whole panel. */}
+          {isLoadingMore && ordered && (
             <div className={classes.loadingMore}>
               <Progress aria-label="Loading more agents" />
             </div>
