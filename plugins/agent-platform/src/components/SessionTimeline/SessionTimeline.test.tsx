@@ -429,10 +429,12 @@ describe('SessionTimeline', () => {
       // read, this session rendered as two user messages with nothing under them.
       await render(tasksFailed, 'gpt6');
 
-      expect(screen.getAllByText('Could not reach the model')).toHaveLength(2);
+      expect(
+        screen.getAllByText('Could not get an answer from the model'),
+      ).toHaveLength(2);
       expect(
         screen.getAllByText(
-          /The model provider could not answer this agent’s request/,
+          /Try again, or ask your platform team for help if this continues/,
         ),
       ).toHaveLength(2);
       expect(screen.getAllByText('gpt6').length).toBeGreaterThan(0);
@@ -447,7 +449,9 @@ describe('SessionTimeline', () => {
         screen.queryByTestId('timeline-work-summary'),
       ).not.toBeInTheDocument();
       expect(
-        screen.queryByRole('button', { name: /Could not reach the model/ }),
+        screen.queryByRole('button', {
+          name: /Could not get an answer from the model/,
+        }),
       ).not.toBeInTheDocument();
     });
   });
@@ -1134,10 +1138,12 @@ describe('SessionTimeline — a turn the model provider failed', () => {
       <TimelineEntry item={providerFailedTurn(INVALID_KEY)} />,
     );
 
-    expect(screen.getByText('Could not reach the model')).toBeInTheDocument();
+    expect(
+      screen.getByText('Could not get an answer from the model'),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(
-        'The model provider refused this agent’s credentials, so the agent could not answer. Check the agent’s model, or ask your platform team for help.',
+        'The agent could not access its model. Ask your platform team to check the model’s credentials and permissions.',
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText('This turn failed')).not.toBeInTheDocument();
@@ -1161,6 +1167,25 @@ describe('SessionTimeline — a turn the model provider failed', () => {
     expect(screen.getByText(INVALID_KEY)).toBeVisible();
   });
 
+  it('opens and closes technical details from the keyboard without losing focus', async () => {
+    const user = userEvent.setup();
+    await renderInTestApp(
+      <TimelineEntry item={providerFailedTurn(INVALID_KEY)} />,
+    );
+    const details = screen.getByRole('button', { name: 'Technical details' });
+    await user.tab();
+    expect(details).toHaveFocus();
+    expect(screen.queryByText(INVALID_KEY)).not.toBeInTheDocument();
+    await user.keyboard('{Enter}');
+    expect(details).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText(INVALID_KEY)).toBeVisible();
+    expect(details).toHaveFocus();
+    await user.keyboard(' ');
+    expect(details).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText(INVALID_KEY)).not.toBeInTheDocument();
+    expect(details).toHaveFocus();
+  });
+
   it('says the provider could not answer when it did not refuse the credentials', async () => {
     await renderInTestApp(
       <TimelineEntry
@@ -1172,10 +1197,12 @@ describe('SessionTimeline — a turn the model provider failed', () => {
 
     expect(
       screen.getByText(
-        /^The model provider could not answer this agent’s request\./,
+        /^Try again, or ask your platform team for help if this continues\./,
       ),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/refused this agent’s credentials/)).toBeNull();
+    expect(
+      screen.queryByText(/check the model’s credentials and permissions/),
+    ).toBeNull();
   });
 });
 
