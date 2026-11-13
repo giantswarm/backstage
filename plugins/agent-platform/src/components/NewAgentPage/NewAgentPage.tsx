@@ -21,6 +21,7 @@ import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
 import { useFormHarnessRuntime } from '../../hooks/useFormHarnessRuntime';
 import { underlyingModelLine } from '../../hooks/useUnderlyingModel';
+import { modelLabel } from '../../lib/modelLabel';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { CreateAgentAssist } from '../CreateAgentAssist';
 import { AgentAvatarPreview } from '../AgentAvatarPreview';
@@ -240,16 +241,8 @@ function NewAgentPageContent() {
       )
     : undefined;
   const modelName =
-    state.modelDisplayName ??
-    listedModel?.getDisplayName() ??
-    state.modelConfigName;
-  // The line keeps the ModelConfig's name -- an admin may abstract the model
-  // on purpose ("The Cheap One") -- and offers the model it runs one hover or
-  // focus away (PO decision L6). Not when the name already is the model.
-  const underlyingModel =
-    listedModel && listedModel.getModel() !== modelName
-      ? underlyingModelLine(listedModel)
-      : undefined;
+    modelLabel(listedModel) ?? state.modelDisplayName ?? state.modelConfigName;
+  const underlyingModel = underlyingModelLine(listedModel, modelName);
   let modelSummary: ReactNode;
   if (modelName) {
     modelSummary = (
@@ -257,11 +250,11 @@ function NewAgentPageContent() {
         Runs on {modelName}
         {underlyingModel && (
           <InfoHint
-            label={`Which model ${modelName} runs`}
+            label={`Model details for ${modelName}`}
             size="medium"
             className={classes.modelHint}
           >
-            {`Underlying model: ${underlyingModel}`}
+            {underlyingModel}
           </InfoHint>
         )}{' '}
         · change under More options

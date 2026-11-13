@@ -15,7 +15,10 @@ export {
   gsFallbackSignInAuthApiRef,
   gsAuthProvidersApiRef,
   type GSAuthProvidersApi,
+  type MainSessionEnd,
+  type MainSessionEndReason,
 } from './apis/auth/types';
+export { useMainSessionEnd } from './apis/auth/mainSessionEnd';
 export {
   LocalStorageSignInConnectorMemory,
   SIGN_IN_CONNECTOR_STORAGE_KEY,

@@ -8,6 +8,8 @@ import {
   mockDesktopLayout,
   mockPhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- The portal session is the gs plugin's main sign-in.
+import { gsAuthProvidersApiRef } from '@giantswarm/backstage-plugin-gs';
 import { musterApiRef } from '../../apis';
 import { stubImageLoad } from '../ConnectorLogo/stubImageLoad';
 import type { AuthStatusResponse } from '../../apis/types';
@@ -176,6 +178,11 @@ let queryClient: QueryClient;
 /** The person's answer in the external URL consent dialog. */
 const consentOpen = jest.fn();
 
+const mainSessionEnd = {
+  reason: jest.fn((): 'signed-in-elsewhere' | undefined => undefined),
+  subscribe: () => () => {},
+};
+
 async function renderPanel(search = '') {
   return renderInPanelApp(<CustomizeConnectorsPanel search={search} />);
 }
@@ -192,6 +199,7 @@ async function renderInPanelApp(ui: ReactNode) {
       apis: [
         [musterApiRef, api],
         [externalUrlConsentApiRef, { open: consentOpen }],
+        [gsAuthProvidersApiRef, { getMainSessionEnd: () => mainSessionEnd }],
       ],
       mountedRoutes: {
         '/customize/connectors': mcpServersRouteRef,
@@ -940,6 +948,26 @@ describe('CustomizeConnectorsPanel', () => {
     await renderPanel();
 
     expect(screen.getByText('No connectors here')).toBeInTheDocument();
+  });
+
+  it('does not claim no muster runs once the portal session ended', async () => {
+    mockInstance = { activeInstallation: undefined };
+    mainSessionEnd.reason.mockReturnValue('signed-in-elsewhere');
+    try {
+      await renderPanel();
+
+      expect(
+        screen.getByText('Could not read your connectors'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'Your session in this browser ended. Sign in again to see them.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('No connectors here')).not.toBeInTheDocument();
+    } finally {
+      mainSessionEnd.reason.mockReturnValue(undefined);
+    }
   });
 
   describe('at list scale', () => {

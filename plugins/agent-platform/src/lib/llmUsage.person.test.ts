@@ -1,3 +1,4 @@
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Mimir sample types are owned by the GS plugin.
 import type { MimirMetricSample } from '@giantswarm/backstage-plugin-gs';
 import { buildLlmUsage, reduceByPerson } from './llmUsage';
 
@@ -78,7 +79,7 @@ describe('reduceByPerson', () => {
         }),
         ...typed('bob@lab.local', {
           input: '100',
-          input_cache_read: '800',
+          input_cache_read: '110',
           output: '20',
         }),
       ],
@@ -86,7 +87,7 @@ describe('reduceByPerson', () => {
 
     expect(rows.map(row => [row.label, row.tokens])).toEqual([
       ['alice@lab.local', 1020],
-      ['bob@lab.local', 920],
+      ['bob@lab.local', 120],
     ]);
   });
 

@@ -43,7 +43,6 @@ import {
   ShellPage,
   ShellPageBadgeSkeleton,
   StatusDot,
-  type StatusDotTone,
   TagList,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -102,6 +101,7 @@ import {
   portalOnlyStatus,
   ServerAuthActions,
   serverStateLabel,
+  SEVERITY_DOT_TONE,
   StatusWithHint,
   SessionGate,
   useConnectorIcon,
@@ -152,14 +152,6 @@ function MusterEndpoint({ endpoint }: { endpoint: string }) {
     </>
   );
 }
-
-/** The page's dot tones for muster's severities, as the list's dots read. */
-const SEVERITY_DOT_TONE: Record<MCPServerSeverity, StatusDotTone> = {
-  ok: 'success',
-  warning: 'warning',
-  error: 'danger',
-  unknown: 'neutral',
-};
 
 /**
  * The line under the connector's name: its description; for muster, what it

@@ -11,7 +11,10 @@ import {
   SubRouteRef,
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
-import type { PlatformComponent } from '@giantswarm/backstage-plugin-gs';
+import {
+  type PlatformComponent,
+  useMainSessionEnd,
+} from '@giantswarm/backstage-plugin-gs';
 import { ButtonLink, Flex, SearchField } from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
 import {
@@ -261,11 +264,16 @@ function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
     () => new URLSearchParams(location.search).get('q') ?? '',
   );
 
-  const tabCounts: Partial<Record<CustomizeTabId, RouteTabCount>> = {
-    ...counts,
-    connectors: musterCounts.connectors,
-    workflows: musterCounts.workflows,
-  };
+  const sessionEnd = useMainSessionEnd();
+  // Without the portal session nothing can be read, and a count of 0 would
+  // claim there is nothing: the counts are left out.
+  const tabCounts: Partial<Record<CustomizeTabId, RouteTabCount>> = sessionEnd
+    ? {}
+    : {
+        ...counts,
+        connectors: musterCounts.connectors,
+        workflows: musterCounts.workflows,
+      };
   const tabs = CUSTOMIZE_TABS.filter(
     candidate =>
       candidate.id === tab.id ||

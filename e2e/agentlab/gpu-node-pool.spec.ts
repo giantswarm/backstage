@@ -788,8 +788,6 @@ test.describe('models: the model cache is the cluster’s and billed while it st
     await snapshot(page, 'gpu-pool-cache-cost-line');
     await cancelAddPool(page);
 
-    // The kept claim: on Model hosting's Model cache tab, with its size, cost
-    // and since when.
     await page.getByRole('tab', { name: 'Model cache' }).click();
     await expect(page).toHaveURL(/\/customize\/models\/hosting\/cache/);
     const card = page.getByTestId('model-cache-panel');
@@ -801,6 +799,16 @@ test.describe('models: the model cache is the cluster’s and billed while it st
     await expect(row).toContainText('$27.37/month');
     await expect(row).toContainText('eu-central-1b');
     await expect(row).toContainText('Kept — nothing mounts it');
+    const created = row.locator('time');
+    await expect(created).toHaveText(/ ago$/);
+    await expect(created).toHaveAttribute(
+      'datetime',
+      '2026-09-17T06:59:00.000Z',
+    );
+    await expect(created).toHaveAttribute(
+      'title',
+      /2026, \d{2}:\d{2}:\d{2} \S+/,
+    );
     await snapshot(page, 'gpu-pool-cache-card');
 
     // Remove cache: the confirm names what goes and what stops, and calls the tool once acknowledged.

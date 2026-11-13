@@ -1,10 +1,18 @@
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Connector status and tool effects are owned by the Muster plugin.
 import {
+  CONNECTOR_REACH_LABELS,
+  type ConnectorReach,
+  mcpServerStateSeverity,
+  type MCPServerState,
+  SEVERITY_DOT_TONE,
   toolEffect,
   type ToolSummary,
 } from '@giantswarm/backstage-plugin-muster';
+import type { StatusDotTone } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   bucketLabel,
+  connectionLabel,
   type CatalogueGroup,
   EXCLUSIVE_PRESETS,
   MAX_INLINE_SELECTORS,
@@ -14,6 +22,8 @@ import {
   selectorForTool,
   type ServerBucket,
   serverSelector,
+  shownConnection,
+  toggleSelector,
 } from '../../lib/toolset';
 
 /**
@@ -101,6 +111,51 @@ export function readOnlySelectors(bucket: ServerBucket): string[] {
 /** Whether read-only access to a connector fits inline at all. */
 export function readOnlyFits(bucket: ServerBucket): boolean {
   return readOnlySelectors(bucket).length <= MAX_INLINE_SELECTORS;
+}
+
+export type ConnectorStatus = {
+  reach: Extract<
+    ConnectorReach,
+    'connected' | 'sign-in' | 'not-connected' | 'partial' | 'deactivated'
+  >;
+  label: string;
+  tone: StatusDotTone;
+};
+
+/**
+ * Whether this person can reach the connector's tools now, in the words of
+ * the Customize connectors list (`CONNECTOR_REACH_LABELS`): listed tools mean
+ * it answers, whatever its resource's state says.
+ */
+export function connectorStatus(bucket: ServerBucket): ConnectorStatus {
+  if (bucket.needsSignIn) {
+    return {
+      reach: 'sign-in',
+      label: CONNECTOR_REACH_LABELS['sign-in'],
+      tone: 'warning',
+    };
+  }
+  const connection = shownConnection(bucket);
+  if (connection) {
+    return {
+      reach: connection,
+      label: connectionLabel(connection),
+      tone: connection === 'deactivated' ? 'neutral' : 'warning',
+    };
+  }
+  const severity = mcpServerStateSeverity(bucket.state as MCPServerState);
+  if (bucket.tools.length > 0 || severity === 'ok') {
+    return {
+      reach: 'connected',
+      label: CONNECTOR_REACH_LABELS.connected,
+      tone: 'success',
+    };
+  }
+  return {
+    reach: 'not-connected',
+    label: CONNECTOR_REACH_LABELS['not-connected'],
+    tone: SEVERITY_DOT_TONE[severity],
+  };
 }
 
 export type ConnectorChoice = 'none' | 'read-only' | 'all' | 'partial';
@@ -431,11 +486,53 @@ export function presetBaseOf(
 }
 
 /**
+ * The selection without the tool selectors a `server:` selector beside them
+ * already covers. Selectors only union, so those add nothing but still count
+ * against the inline cap.
+ */
+export function withoutCovered(
+  selection: readonly string[],
+  groups: readonly CatalogueGroup[],
+): string[] {
+  const owner = connectorOfSelector(groups);
+  const whole = new Set(
+    selection.filter(selector => parseSelector(selector)?.kind === 'server'),
+  );
+  return selection.filter(selector => {
+    const connector = owner.get(selector);
+    return !(connector && whole.has(serverSelector(connector)));
+  });
+}
+
+/**
+ * A tick in the individual tools. The whole connector replaces its single
+ * tools; a tool it covers shows ticked, and unticking it writes the
+ * connector out as its other tools, as a change to a preset does.
+ */
+export function toggleCatalogueSelector(
+  selection: readonly string[],
+  selector: string,
+  groups: readonly CatalogueGroup[],
+): string[] {
+  const connector = connectorOfSelector(groups).get(selector);
+  const whole = connector ? serverSelector(connector) : undefined;
+  if (whole && selection.includes(whole)) {
+    const bucket = connectorsOf(groups).find(entry => entry.name === connector);
+    const others = (bucket?.tools ?? [])
+      .map(selectorForTool)
+      .filter(entry => entry !== selector && !selection.includes(entry));
+    return [
+      ...selection.filter(entry => entry !== whole && entry !== selector),
+      ...others,
+    ];
+  }
+  return withoutCovered(toggleSelector([...selection], selector), groups);
+}
+
+/**
  * The selection a preset-based toolset shows as: the preset written out
- * ({@link materialize}) with the selectors beside it added on top — a
- * `server:x` replacing what the preset covers of x, any other selector added
- * unless a `server:` already holds it. Toolset selectors only union, so this
- * is exactly what the toolset selects.
+ * ({@link materialize}) with the selectors beside it added on top. A
+ * `server:x` replaces what the preset covers of x; selectors only union.
  */
 export function expandSelection(
   coverage: readonly string[],
@@ -539,6 +636,7 @@ export function inlineCapProblem(
     .map(group => ({
       name: contributorName(group),
       count: group.selectors.length + (group.whole ? 1 : 0),
+      whole: group.whole !== undefined,
     }))
     .filter(entry => entry.count > 1)
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
@@ -552,5 +650,12 @@ export function inlineCapProblem(
     names.length === 1
       ? names[0]
       : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
-  return `${need}; most come from ${list}, so choose All or fewer tools there.`;
+  const withAll = contributors.filter(entry => entry.whole).length;
+  if (withAll === 0) {
+    return `${need}; most come from ${list}, so choose All or fewer tools there.`;
+  }
+  if (withAll === contributors.length) {
+    return `${need}; most come from ${list}, where All already covers the single tools listed beside it, so remove those.`;
+  }
+  return `${need}; most come from ${list}, so choose All or fewer tools there, and remove single tools listed beside All, which covers them.`;
 }
