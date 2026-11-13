@@ -1467,3 +1467,13 @@ export async function extensionDisabled(
     );
   }, extension);
 }
+
+/** New session's prompt field. */
+export function newSessionPrompt(page: Page): Locator {
+  return page.getByRole('textbox', { name: 'Prompt' });
+}
+
+/** New session's agent picker: the trigger of its listbox. */
+export function newSessionAgentPicker(page: Page): Locator {
+  return page.locator('button[aria-haspopup="listbox"]').first();
+}

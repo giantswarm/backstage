@@ -5,7 +5,7 @@ import type { AgentRow } from '../components/AgentsDataProvider';
  * composer: an `AgentRow` id (`installation/namespace/name`), which is no
  * personal data — the same reference the picker's own state holds. A link
  * that cannot know the installation (one an agent writes) may name the agent
- * as `namespace/name` alone ({@link findLinkedAgent}).
+ * as `namespace/name` alone ({@link resolveLinkedAgent}).
  */
 export const NEW_SESSION_AGENT_PARAM = 'agent';
 
@@ -92,23 +92,84 @@ export function linkedPromptOf(raw: string | null): string | undefined {
   return prompt ? prompt : undefined;
 }
 
+/** What a `?agent=` value names among the agents listed ({@link resolveLinkedAgent}). */
+export type LinkedAgent<T extends AgentRow> =
+  /** An agent that can start a session. */
+  | { status: 'found'; agent: T }
+  /** An agent that is listed but cannot start a session. */
+  | { status: 'unavailable'; agent: T }
+  /** Several agents of that namespace and name, on different installations. */
+  | { status: 'ambiguous' }
+  /**
+   * No agent listed; `installation` is the one the link names, when the
+   * portal knows it.
+   */
+  | { status: 'missing'; installation?: string };
+
 /**
  * The agent a `?agent=` value names among `agents` (in their order, home
- * installation first): the one with that id, else — for a link that names it
- * as `namespace/name` — the first of that namespace and name. Only agents
- * `isOffered` accepts count.
+ * installation first):
+ *
+ * - the agent with that id;
+ * - for `namespace/name`, or `installation/namespace/name` where
+ *   `installation` is none of `installations` (every installation the portal
+ *   knows), the one agent of that namespace and name. An agent reads its
+ *   installation's name from agent-manager, which may call it otherwise than
+ *   the portal does. Several such agents are `ambiguous`: no installation is
+ *   picked for the person.
+ *
+ * An installation the portal knows is never swapped for another. `isOffered`
+ * tells an agent that can start a session from one that cannot.
  */
-export function findLinkedAgent<T extends AgentRow>(
+export function resolveLinkedAgent<T extends AgentRow>(
   agents: readonly T[],
-  ref: string | null,
+  ref: string,
   isOffered: (agent: T) => boolean,
-): T | undefined {
-  if (!ref) {
+  installations: readonly string[],
+): LinkedAgent<T> {
+  const verdict = (agent: T): LinkedAgent<T> =>
+    isOffered(agent)
+      ? { status: 'found', agent }
+      : { status: 'unavailable', agent };
+  const byId = agents.find(agent => agent.id === ref);
+  if (byId) {
+    return verdict(byId);
+  }
+  const parts = ref.split('/');
+  if (parts.length !== 2 && parts.length !== 3) {
+    return { status: 'missing' };
+  }
+  if (parts.length === 3 && installations.includes(parts[0])) {
+    return { status: 'missing', installation: parts[0] };
+  }
+  const namespacedName = parts.slice(-2).join('/');
+  const matches = agents.filter(
+    agent => `${agent.namespace}/${agent.technicalName}` === namespacedName,
+  );
+  if (matches.length === 0) {
+    return { status: 'missing' };
+  }
+  return matches.length === 1 ? verdict(matches[0]) : { status: 'ambiguous' };
+}
+
+/** The longest `?agent=` value a notice repeats. */
+export const LINKED_AGENT_SHOWN_MAX_LENGTH = 80;
+
+const KUBERNETES_NAME = '[a-z0-9]([-a-z0-9.]*[a-z0-9])?';
+const AGENT_REF = new RegExp(`^${KUBERNETES_NAME}(/${KUBERNETES_NAME}){1,2}$`);
+
+/**
+ * A `?agent=` value as a notice may repeat it: only when it reads as an agent
+ * reference (Kubernetes names, `namespace/name` or
+ * `installation/namespace/name`), cut to
+ * {@link LINKED_AGENT_SHOWN_MAX_LENGTH} characters; `undefined` otherwise, so a
+ * crafted link cannot put its own sentence into the portal's warning.
+ */
+export function shownLinkedAgentRef(ref: string): string | undefined {
+  if (!AGENT_REF.test(ref)) {
     return undefined;
   }
-  const offered = agents.filter(isOffered);
-  return (
-    offered.find(agent => agent.id === ref) ??
-    offered.find(agent => `${agent.namespace}/${agent.technicalName}` === ref)
-  );
+  return ref.length > LINKED_AGENT_SHOWN_MAX_LENGTH
+    ? `${ref.slice(0, LINKED_AGENT_SHOWN_MAX_LENGTH - 1)}…`
+    : ref;
 }

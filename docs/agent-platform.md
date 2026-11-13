@@ -3139,11 +3139,24 @@ ahead of the installation's default agent (agent-manager's `get_info`
 `defaultAgent`; listed first in the picker, marked Default), which goes ahead
 of the last agent used. A default that arrives after the person typed or
 picked does not replace the agent shown. `?agent=` takes an agent id
-(`<installation>/<namespace>/<name>`) or `<namespace>/<name>`. `#prompt=` (in
-the fragment, so the brief never reaches a server) prefills the prompt
-(trimmed, at most 2000 characters, never sent by itself, marked "From a
-link"), wins over a stored draft with a Restore offer, and is removed from the
-address once read; Sentry breadcrumbs and event URLs filter it. The link
+(`<installation>/<namespace>/<name>`) or `<namespace>/<name>`. A
+`<namespace>/<name>`, or an id whose installation is none of the portal's
+configured installations (the name agent-manager's `get_info` reports may
+differ), matches by namespace and name among the agents in scope
+when exactly one agent has them; when several do, none is selected. A linked
+agent that is not selected is said in a warning above the composer, by cause
+(not found, several matches, cannot start, its environment unreachable,
+switched off in Cluster access or outside the selected environment), once every
+environment has answered, until the person picks another agent or closes it.
+The warning repeats the `?agent=` value only when it reads as an agent
+reference, cut to 80 characters. A linked agent that arrives late replaces the
+agent shown even after the person typed, unless they picked one. `#prompt=` (in the
+fragment, so the brief never reaches a server) prefills the prompt (trimmed, at
+most 2000 characters, never sent by itself, marked "From a link"), puts the
+focus in the field with the caret after the text once the linked agent is
+settled, unless the person has pressed a key or a pointer on the page by then,
+wins over a stored draft with a Restore offer, and is removed
+from the address once read; Sentry breadcrumbs and event URLs filter it. The link
 format: `/?agent=<id>#prompt=<url-encoded brief>`. In agent replies, such a
 link opens in the same tab; other portal links open in a new tab. The images, the workspace and the toolchains are
 not kept. The draft is removed once the session is created; a failed start

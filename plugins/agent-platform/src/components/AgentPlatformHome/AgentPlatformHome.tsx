@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   EmptyStateCard,
   ShellDocumentTitle,
@@ -10,10 +17,13 @@ import {
   useApi,
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
-import { Alert, Box, Container, Flex, Text } from '@backstage/ui';
+import { Alert, Box, ButtonIcon, Container, Flex, Text } from '@backstage/ui';
+import CloseIcon from '@material-ui/icons/Close';
 import {
+  ALL_INSTALLATIONS,
   InventoryFailureGate,
   useInstallationInventory,
+  useInstallations,
 } from '@giantswarm/backstage-plugin-gs';
 
 import { makeStyles } from '@material-ui/core/styles';
@@ -24,8 +34,10 @@ import { useAgentManagerAgent } from '../../hooks/useAgentManagerAgent';
 import { awaitsDefaultModel } from '../../lib/agentManager';
 import { useLinkedPrompt } from '../../hooks/useLinkedPrompt';
 import {
-  findLinkedAgent,
+  type LinkedAgent,
   NEW_SESSION_AGENT_PARAM,
+  resolveLinkedAgent,
+  shownLinkedAgentRef,
 } from '../../lib/newSessionLink';
 import { recentAgents } from '../../lib/recentAgents';
 import { agentDetailRouteRef, sessionDetailRouteRef } from '../../routes';
@@ -129,6 +141,57 @@ function pickerLabel(): string {
   return 'Select agent';
 }
 
+/**
+ * Why the agent a link names is not selected, by cause; `undefined` when
+ * there is nothing to say.
+ */
+function linkedAgentProblem(
+  linked: LinkedAgent<AgentRow>,
+  ref: string,
+  {
+    unreachableInstallations,
+    kagentSwitchedOff,
+    scope,
+  }: {
+    unreachableInstallations: string[];
+    kagentSwitchedOff: string[];
+    scope: string;
+  },
+): ReactNode {
+  const shown = shownLinkedAgentRef(ref);
+  const named = shown ? <code>{shown}</code> : undefined;
+  switch (linked.status) {
+    case 'found':
+      return undefined;
+    case 'unavailable':
+      return `${linked.agent.name} cannot start sessions right now.`;
+    case 'ambiguous':
+      return <>More than one environment has the agent {named}; choose one.</>;
+    case 'missing':
+    default: {
+      const { installation } = linked;
+      if (installation && unreachableInstallations.includes(installation)) {
+        return `The linked agent is on ${installation}, which cannot be reached right now.`;
+      }
+      if (installation && kagentSwitchedOff.includes(installation)) {
+        return `The linked agent is on ${installation}, which is switched off in Cluster access.`;
+      }
+      if (
+        installation &&
+        scope !== ALL_INSTALLATIONS &&
+        scope !== installation
+      ) {
+        return `The linked agent is on ${installation}, outside the environment selected.`;
+      }
+      return named ? (
+        <>No agent {named} was found.</>
+      ) : (
+        'The agent the link names was not found.'
+      );
+    }
+  }
+}
+
 export type AgentPlatformHomeProps = {
   /**
    * Where "Manage agents", the agent picker's last entry, leads; the entry is
@@ -144,25 +207,76 @@ function AgentPlatformHomeContent({
   const displayName = useDisplayName();
   const {
     rows: agents,
+    scope,
     isLoading,
+    isLoadingMore,
     unreachableInstallations,
+    kagentSwitchedOff,
     inventoryFailure,
   } = useAgents();
+  // Every installation the portal knows, in scope or not, read or not: a link
+  // naming one of them is never matched on another.
+  const { installations: configuredInstallations, isLoading: isLoadingConfig } =
+    useInstallations();
+  const knownInstallations = useMemo(
+    () => configuredInstallations.map(installation => installation.name),
+    [configuredInstallations],
+  );
   const { refresh: refreshInventory } = useInstallationInventory();
   const { rows: sessions } = useSessions();
   const [selectedAgent, setSelectedAgent] = useState<AgentRow>();
   const navigate = useNavigate();
+  // `#prompt=` prefills the prompt; the person still starts the session.
+  const linkedPrompt = useLinkedPrompt();
   // `?agent=<id>` (a "New session" link from elsewhere, e.g. Customize →
   // Agents, or one an agent wrote) preselects that agent, when it is one that
   // can be started.
   const [searchParams] = useSearchParams();
   const requestedAgentId = searchParams.get(NEW_SESSION_AGENT_PARAM);
-  const requestedAgent = useMemo(
-    () => findLinkedAgent(agents, requestedAgentId, isStartableAgent),
-    [agents, requestedAgentId],
+  const linked = useMemo(
+    () =>
+      requestedAgentId && !isLoadingConfig
+        ? resolveLinkedAgent(
+            agents,
+            requestedAgentId,
+            isStartableAgent,
+            knownInstallations,
+          )
+        : undefined,
+    [agents, requestedAgentId, isLoadingConfig, knownInstallations],
   );
-  // `#prompt=` prefills the prompt; the person still starts the session.
-  const linkedPrompt = useLinkedPrompt();
+  const requestedAgent = linked?.status === 'found' ? linked.agent : undefined;
+  // More installations are still read, so the linked agent may yet arrive.
+  const isLoadingAgents = isLoading || isLoadingMore || isLoadingConfig;
+  const linkedAgentPending =
+    Boolean(requestedAgentId) && !requestedAgent && isLoadingAgents;
+  // The link the person picked an agent or closed the notice under: that
+  // answers the notice of that link only, not one followed later in the
+  // same tab.
+  const link = `${linkedPrompt.key}|${requestedAgentId ?? ''}`;
+  const linkRef = useRef(link);
+  linkRef.current = link;
+  const [answeredUnder, setAnsweredUnder] = useState<string>();
+  const onSelectedAgentChange = useCallback(
+    (agent: AgentRow | undefined, selection: { byPerson: boolean }) => {
+      setSelectedAgent(agent);
+      if (selection.byPerson) {
+        setAnsweredUnder(linkRef.current);
+      }
+    },
+    [],
+  );
+  // A linked agent that cannot be selected is said, once every installation
+  // has answered, until the person picks another agent or closes the notice.
+  // (A pick of the agent already selected is not reported by the picker.)
+  const linkedNotice =
+    linked && requestedAgentId && !isLoadingAgents && answeredUnder !== link
+      ? linkedAgentProblem(linked, requestedAgentId, {
+          unreachableInstallations,
+          kagentSwitchedOff,
+          scope,
+        })
+      : undefined;
   // The installation's default agent, as agent-manager names it: preselected
   // when nothing else is, and listed first. The home installation's wins.
   const startableInstallations = useMemo(
@@ -281,11 +395,36 @@ function AgentPlatformHomeContent({
                 : 'Choose an agent, then say what you need.'}
             </Text>
           </Flex>
+          {linkedNotice && (
+            <Alert
+              status="warning"
+              icon
+              title="The linked agent is not selected"
+              customActions={
+                <ButtonIcon
+                  variant="tertiary"
+                  size="small"
+                  icon={<CloseIcon fontSize="small" />}
+                  aria-label="Close"
+                  onPress={() => setAnsweredUnder(link)}
+                />
+              }
+              description={
+                <>
+                  {linkedNotice}{' '}
+                  {startingWith
+                    ? `${startingWith.name} is selected instead.`
+                    : 'Choose an agent to start.'}
+                </>
+              }
+            />
+          )}
           <StartNewSession
             // A link followed while the page is open starts the composer over
             // from its prompt.
             key={linkedPrompt.key}
             linkedPrompt={linkedPrompt.prompt}
+            linkedAgentPending={linkedAgentPending}
             suggestedAgent={defaultAgent}
             entryPoint="home"
             layout="standalone"
@@ -304,6 +443,7 @@ function AgentPlatformHomeContent({
               pickerPlacement: 'top',
               pickerLabel,
               defaultAgent: requestedAgent,
+              defaultOverridesTyping: Boolean(requestedAgent),
               showUnavailable: true,
               groupByNamespace: true,
               recentAgentIds,
@@ -314,7 +454,7 @@ function AgentPlatformHomeContent({
               promptPlaceholder,
               renderPickerAccessory: pickerAccessory,
               renderFooter,
-              onSelectedAgentChange: setSelectedAgent,
+              onSelectedAgentChange,
             }}
           />
           {awaitingModel && (
