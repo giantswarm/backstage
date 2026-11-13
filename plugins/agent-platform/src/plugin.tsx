@@ -1,5 +1,6 @@
 import {
   ApiBlueprint,
+  type ConfigApi,
   configApiRef,
   coreExtensionData,
   createExtension,
@@ -21,6 +22,7 @@ import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
 // eslint-disable-next-line @backstage/no-mixed-plugin-imports -- the fixture MCP servers' type; erased at build time.
 import type { FixtureMcpServersLoader } from '@giantswarm/backstage-plugin-muster';
 import { lazyApi } from '@giantswarm/backstage-plugin-ui-react';
+import { FIXTURE_MCP_SERVERS } from '@giantswarm/backstage-plugin-gs-common';
 import {
   AGENT_SHELL_ON,
   ORGANIZATIONS_FLAG,
@@ -335,6 +337,15 @@ const organizationsPage = PageBlueprint.make({
   },
 });
 
+/**
+ * Whether `agentPlatform.fixtures` swaps an API for its fixture
+ * (docs/fixtures.md). Each factory checks `process.env.NODE_ENV` itself,
+ * before this, so the bundler drops the fixture import from production builds.
+ */
+function fixturesOn(configApi: ConfigApi): boolean {
+  return configApi.getOptionalBoolean('agentPlatform.fixtures') === true;
+}
+
 // Client for the kagent REST API, via the agent-platform-backend proxy. The
 // kubernetes APIs are dependencies because each installation's Dex ID token is
 // minted through them (kubernetesApi.getCluster →
@@ -353,10 +364,7 @@ const kagentApi = ApiBlueprint.make({
         kubernetesAuthProvidersApi: kubernetesAuthProvidersApiRef,
       },
       factory: ({ configApi, ...deps }) => {
-        if (
-          process.env.NODE_ENV !== 'production' &&
-          configApi.getOptionalBoolean('agentPlatform.fixtures')
-        ) {
+        if (process.env.NODE_ENV !== 'production' && fixturesOn(configApi)) {
           return lazyApi(async () => {
             const { KagentFixtureApi } =
               await import('./apis/fixtures/KagentFixtureApi');
@@ -384,10 +392,7 @@ const agentManagerCredentialsApi = ApiBlueprint.make({
         kubernetesAuthProvidersApi: kubernetesAuthProvidersApiRef,
       },
       factory: ({ configApi, ...deps }) => {
-        if (
-          process.env.NODE_ENV !== 'production' &&
-          configApi.getOptionalBoolean('agentPlatform.fixtures')
-        ) {
+        if (process.env.NODE_ENV !== 'production' && fixturesOn(configApi)) {
           return lazyApi(async () => {
             const { AgentManagerCredentialsFixtureApi } =
               await import('./apis/fixtures/AgentManagerCredentialsFixtureApi');
@@ -417,10 +422,7 @@ const modelManagerApi = ApiBlueprint.make({
         kubernetesAuthProvidersApi: kubernetesAuthProvidersApiRef,
       },
       factory: ({ configApi, ...deps }) => {
-        if (
-          process.env.NODE_ENV !== 'production' &&
-          configApi.getOptionalBoolean('agentPlatform.fixtures')
-        ) {
+        if (process.env.NODE_ENV !== 'production' && fixturesOn(configApi)) {
           return lazyApi(async () => {
             const { ModelManagerFixtureApi } =
               await import('./apis/fixtures/ModelManagerFixtureApi');
@@ -432,19 +434,14 @@ const modelManagerApi = ApiBlueprint.make({
     }),
 });
 
-// muster's `fixtureMcpServersDataRef` and the input it reads, defined here by
-// the same id rather than imported: extension data is matched by id, and many
-// tests mock the muster package wholesale, which would leave an imported ref
-// undefined when this module loads. `plugin.fixtures.test.ts` pins both to
-// muster's.
-export const fixtureMcpServersDataRef =
+// muster's `fixtureMcpServersDataRef`, made from the id both plugins read in
+// gs-common rather than imported from muster: extension data is matched by
+// id, and many tests mock the muster package wholesale, which would leave an
+// imported ref undefined when this module loads.
+const fixtureMcpServersDataRef =
   createExtensionDataRef<FixtureMcpServersLoader>().with({
-    id: 'muster.fixture-mcp-servers',
+    id: FIXTURE_MCP_SERVERS.dataRefId,
   });
-export const FIXTURE_MCP_SERVERS_ATTACH_POINT = {
-  id: 'api:muster/muster',
-  input: 'fixtureServers',
-} as const;
 
 // The tools of the MCP servers the agent-platform pages call through muster,
 // answered by the fixture `MusterApi` when `muster.fixtures` is on. Outside
@@ -452,7 +449,7 @@ export const FIXTURE_MCP_SERVERS_ATTACH_POINT = {
 // dropped from a production build (docs/fixtures.md).
 const fixtureMcpServers = createExtension({
   kind: 'muster-fixture-servers',
-  attachTo: FIXTURE_MCP_SERVERS_ATTACH_POINT,
+  attachTo: FIXTURE_MCP_SERVERS.attachTo,
   output: [fixtureMcpServersDataRef],
   factory: () => [
     fixtureMcpServersDataRef(async () => {

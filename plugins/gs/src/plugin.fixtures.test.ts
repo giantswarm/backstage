@@ -31,10 +31,11 @@ describe('api:gs/cluster-access-status', () => {
     __resetInstallationsConfigForTests();
   });
 
-  it('reports every configured installation healthy with gs.fixtures', () => {
+  it('reports the fixture installation healthy with gs.fixtures, and no other', () => {
     const api = createStatusApi(true);
     setInstallationsConfig([
       { name: 'meadow', pipeline: 'testing', authProvider: 'serviceAccount' },
+      { name: 'elsewhere', pipeline: 'testing', authProvider: 'oidc' },
     ]);
 
     expect(api.getSnapshot()).toEqual([

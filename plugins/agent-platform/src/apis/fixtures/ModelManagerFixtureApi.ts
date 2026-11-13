@@ -10,6 +10,7 @@ import type {
   ModelManagerSearchResult,
 } from '../../lib/modelManager';
 import type { ModelManagerApi, TryServedModelResult } from '../ModelManagerApi';
+import { served } from './fixtureIdentity';
 import { notInFixtures } from './notInFixtures';
 
 /**
@@ -18,19 +19,23 @@ import { notInFixtures } from './notInFixtures';
  * write fail with {@link notInFixtures} until the fixtures answer them.
  */
 export class ModelManagerFixtureApi implements ModelManagerApi {
-  async getBackend(): Promise<ModelManagerBackend> {
+  async getBackend(installation: string): Promise<ModelManagerBackend> {
+    served(installation);
     throw notInFixtures('model-manager getBackend');
   }
 
-  async listBackends(): Promise<ModelManagerBackend[]> {
+  async listBackends(installation: string): Promise<ModelManagerBackend[]> {
+    served(installation);
     return [];
   }
 
-  async listModels(): Promise<ModelManagerModel[]> {
+  async listModels(installation: string): Promise<ModelManagerModel[]> {
+    served(installation);
     return [];
   }
 
-  async listLoaded(): Promise<ModelManagerLoadedModel[]> {
+  async listLoaded(installation: string): Promise<ModelManagerLoadedModel[]> {
+    served(installation);
     return [];
   }
 
@@ -38,55 +43,70 @@ export class ModelManagerFixtureApi implements ModelManagerApi {
     throw notInFixtures('model-manager pullModel');
   }
 
-  async loadModel(): Promise<ModelManagerModel> {
+  async loadModel(installation: string): Promise<ModelManagerModel> {
+    served(installation);
     throw notInFixtures('model-manager loadModel');
   }
 
-  async fitCheck(): Promise<ModelManagerFitResult> {
+  async fitCheck(installation: string): Promise<ModelManagerFitResult> {
+    served(installation);
     throw notInFixtures('model-manager fitCheck');
   }
 
-  async listPresets(): Promise<ModelManagerPreset[]> {
+  async listPresets(installation: string): Promise<ModelManagerPreset[]> {
+    served(installation);
     return [];
   }
 
-  async searchModels(): Promise<ModelManagerSearchResult[]> {
+  async searchModels(
+    installation: string,
+  ): Promise<ModelManagerSearchResult[]> {
+    served(installation);
     return [];
   }
 
-  async listNodes(): Promise<ModelManagerNode[]> {
+  async listNodes(installation: string): Promise<ModelManagerNode[]> {
+    served(installation);
     return [];
   }
 
-  async unloadModel(): Promise<void> {
+  async unloadModel(installation: string): Promise<void> {
+    served(installation);
     throw notInFixtures('model-manager unloadModel');
   }
 
-  async tryModel(): Promise<TryServedModelResult> {
+  async tryModel(installation: string): Promise<TryServedModelResult> {
+    served(installation);
     throw notInFixtures('model-manager tryModel');
   }
 
-  async deleteModel(): Promise<void> {
+  async deleteModel(installation: string): Promise<void> {
+    served(installation);
     throw notInFixtures('model-manager deleteModel');
   }
 
-  async wireModel(): Promise<ModelConfigRef | undefined> {
+  async wireModel(installation: string): Promise<ModelConfigRef | undefined> {
+    served(installation);
     throw notInFixtures('model-manager wireModel');
   }
 
-  async unwireModel(): Promise<void> {
+  async unwireModel(installation: string): Promise<void> {
+    served(installation);
     throw notInFixtures('model-manager unwireModel');
   }
 
-  async listJobs(): Promise<ModelManagerJob[]> {
+  async listJobs(installation: string): Promise<ModelManagerJob[]> {
+    served(installation);
     return [];
   }
 
-  async getJob(): Promise<ModelManagerJob> {
+  async getJob(installation: string): Promise<ModelManagerJob> {
+    served(installation);
     throw notInFixtures('model-manager getJob');
   }
 
-  async cancelJob(): Promise<ModelManagerJob> {
+  async cancelJob(installation: string): Promise<ModelManagerJob> {
+    served(installation);
     throw notInFixtures('model-manager cancelJob');
   }
 }

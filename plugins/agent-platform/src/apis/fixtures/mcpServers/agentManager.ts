@@ -6,6 +6,7 @@ import {
   AGENT_MANAGER_TOOLS,
   type AgentManagerInfo,
 } from '../../../lib/agentManager';
+import type { ListModelConfigsAnswer } from '../../AgentManagerClient';
 import { FIXTURE_INSTALLATION } from '../fixtureIdentity';
 
 /** What the fixture agent-manager composes and can do. */
@@ -41,6 +42,8 @@ export const agentManager: FixtureMcpServer = {
   server: AGENT_MANAGER_SERVER,
   tools: {
     [AGENT_MANAGER_TOOLS.getInfo]: () => info,
-    [AGENT_MANAGER_TOOLS.listModelConfigs]: () => ({ modelConfigs: [] }),
+    [AGENT_MANAGER_TOOLS.listModelConfigs]: (): ListModelConfigsAnswer => ({
+      modelConfigs: [],
+    }),
   },
 };

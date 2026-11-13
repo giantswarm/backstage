@@ -3,6 +3,7 @@ import type {
   CredentialResourceResult,
 } from '../../lib/credentialOperations';
 import type { AgentManagerCredentialsApi } from '../AgentManagerCredentialsApi';
+import { served } from './fixtureIdentity';
 import { notInFixtures } from './notInFixtures';
 
 /**
@@ -11,15 +12,18 @@ import { notInFixtures } from './notInFixtures';
  * every call fails with {@link notInFixtures}.
  */
 export class AgentManagerCredentialsFixtureApi implements AgentManagerCredentialsApi {
-  async getOperation(): Promise<CredentialOperationRead> {
+  async getOperation(installation: string): Promise<CredentialOperationRead> {
+    served(installation);
     throw notInFixtures('agent-manager getOperation');
   }
 
-  async saveOperation(): Promise<CredentialResourceResult> {
+  async saveOperation(installation: string): Promise<CredentialResourceResult> {
+    served(installation);
     throw notInFixtures('agent-manager saveOperation');
   }
 
-  async cancelOperation(): Promise<void> {
+  async cancelOperation(installation: string): Promise<void> {
+    served(installation);
     throw notInFixtures('agent-manager cancelOperation');
   }
 }

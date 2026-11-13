@@ -14,7 +14,7 @@ import type {
   RawSessionBodies,
   StreamEnd,
 } from '../types';
-import { FIXTURE_INSTALLATION, FIXTURE_USER } from './fixtureIdentity';
+import { FIXTURE_INSTALLATION, FIXTURE_USER, served } from './fixtureIdentity';
 import { notInFixtures } from './notInFixtures';
 
 /**
@@ -27,31 +27,44 @@ export class KagentFixtureApi implements KagentApi {
     return [{ name: FIXTURE_INSTALLATION, reachable: true }];
   }
 
-  async listSessions(): Promise<KagentSession[]> {
+  async listSessions(installation: string): Promise<KagentSession[]> {
+    served(installation);
     return [];
   }
 
-  async listSessionsIfComplete(): Promise<KagentSession[] | undefined> {
+  async listSessionsIfComplete(
+    installation: string,
+  ): Promise<KagentSession[] | undefined> {
+    served(installation);
     return [];
   }
 
-  async getSessionDetail(): Promise<KagentSessionDetail | undefined> {
+  async getSessionDetail(
+    installation: string,
+  ): Promise<KagentSessionDetail | undefined> {
+    served(installation);
     return undefined;
   }
 
-  async listSessionTasks(): Promise<A2aTaskWire[]> {
+  async listSessionTasks(installation: string): Promise<A2aTaskWire[]> {
+    served(installation);
     return [];
   }
 
-  async getRawSession(): Promise<RawSessionBodies> {
+  async getRawSession(installation: string): Promise<RawSessionBodies> {
+    served(installation);
     return { sessionBody: null, tasksBody: null };
   }
 
-  async listSessionStates(): Promise<SessionStatesResponse> {
+  async listSessionStates(
+    installation: string,
+  ): Promise<SessionStatesResponse> {
+    served(installation);
     return { evaluatedAt: Date.now(), states: [], unreadable: [], skipped: 0 };
   }
 
-  async getSessionUsage(): Promise<SessionUsageResponse> {
+  async getSessionUsage(installation: string): Promise<SessionUsageResponse> {
+    served(installation);
     const now = Date.now();
     const windowDays = 30;
     return {
@@ -79,9 +92,10 @@ export class KagentFixtureApi implements KagentApi {
   }
 
   async getModelCost(
-    _installation: string,
+    installation: string,
     days: number,
   ): Promise<ModelCostResponse> {
+    served(installation);
     return {
       status: 'actual',
       windowDays: days,
@@ -92,43 +106,53 @@ export class KagentFixtureApi implements KagentApi {
     };
   }
 
-  async cancelTask(): Promise<void> {
+  async cancelTask(installation: string): Promise<void> {
+    served(installation);
     throw notInFixtures('kagent cancelTask');
   }
 
-  async deleteSession(): Promise<void> {
+  async deleteSession(installation: string): Promise<void> {
+    served(installation);
     throw notInFixtures('kagent deleteSession');
   }
 
-  async renameSession(): Promise<void> {
+  async renameSession(installation: string): Promise<void> {
+    served(installation);
     throw notInFixtures('kagent renameSession');
   }
 
-  async sendMessage(): Promise<void> {
+  async sendMessage(installation: string): Promise<void> {
+    served(installation);
     throw notInFixtures('kagent sendMessage');
   }
 
-  async streamMessage(): Promise<StreamEnd> {
+  async streamMessage(installation: string): Promise<StreamEnd> {
+    served(installation);
     throw notInFixtures('kagent streamMessage');
   }
 
-  async answerConfirmation(): Promise<void> {
+  async answerConfirmation(installation: string): Promise<void> {
+    served(installation);
     throw notInFixtures('kagent answerConfirmation');
   }
 
-  async streamAnswer(): Promise<StreamEnd> {
+  async streamAnswer(installation: string): Promise<StreamEnd> {
+    served(installation);
     throw notInFixtures('kagent streamAnswer');
   }
 
-  async subscribeToTask(): Promise<StreamEnd> {
+  async subscribeToTask(installation: string): Promise<StreamEnd> {
+    served(installation);
     throw notInFixtures('kagent subscribeToTask');
   }
 
-  async getIdentity(): Promise<KagentIdentity> {
+  async getIdentity(installation: string): Promise<KagentIdentity> {
+    served(installation);
     return { sub: FIXTURE_USER.sub, email: FIXTURE_USER.email };
   }
 
-  async listAgentNamespaces(): Promise<string[]> {
+  async listAgentNamespaces(installation: string): Promise<string[]> {
+    served(installation);
     return [];
   }
 }

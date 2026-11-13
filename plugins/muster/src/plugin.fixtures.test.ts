@@ -2,18 +2,15 @@ import { ApiBlueprint, createExtension } from '@backstage/frontend-plugin-api';
 import { createExtensionTester } from '@backstage/frontend-test-utils';
 import { mockApis } from '@backstage/test-utils';
 
-import {
-  FIXTURE_MCP_SERVERS_ATTACH_POINT,
-  fixtureMcpServersDataRef,
-  MusterApi,
-  MusterApiClient,
-} from './apis';
+import { FIXTURE_MCP_SERVERS } from '@giantswarm/backstage-plugin-gs-common';
+
+import { fixtureMcpServersDataRef, MusterApi, MusterApiClient } from './apis';
 import { musterPlugin } from './plugin';
 
 const fixtureServers = createExtension({
   kind: 'muster-fixture-servers',
   name: 'test',
-  attachTo: FIXTURE_MCP_SERVERS_ATTACH_POINT,
+  attachTo: FIXTURE_MCP_SERVERS.attachTo,
   output: [fixtureMcpServersDataRef],
   factory: () => [
     fixtureMcpServersDataRef(async () => [

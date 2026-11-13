@@ -36,25 +36,36 @@ yarn fixtures stop
   `FIXTURES_APP_PORT` and `FIXTURES_BACKEND_PORT` choose them instead. Both
   servers bind `127.0.0.1`.
 - The state is in `.fixtures-server.json` at the checkout's root (the URLs, the
-  ports, the process id), the generated port config and the log in
-  `.fixtures-server/`. Both are gitignored.
-- `start` in a checkout whose server runs reuses it and prints its URL. The
-  server stops on its own once no `start` has asked for it for
-  `FIXTURES_IDLE_MINUTES` (default 60). Stop it when you are done: a frontend
-  and a backend per checkout are heavy.
+  ports, the process ids, a token), the generated port config, the log and a
+  lock in `.fixtures-server/`. Both are gitignored.
+- `start` in a checkout whose server runs reuses it and prints its URL; `start`
+  and `stop` take the lock, so concurrent starts spawn one server. A process
+  counts as the checkout's server only while its command line carries the
+  state's token, so `stop` never signals a process that took over a stale
+  process id.
+- The server stops on its own once no `start` has asked for it for
+  `FIXTURES_IDLE_MINUTES` (default 60), and at once when `.fixtures-server.json`
+  no longer names it. A start that fails stops what it started. Stop the
+  server when you are done: a frontend and a backend per checkout are heavy.
 - `--config <file>` adds a config on top, for example to turn on Hive and its
   fixtures (`app.extensions` must then repeat `app-config.yaml`'s list, which
-  Backstage replaces rather than merges).
+  Backstage replaces rather than merges). A relative path is read from the
+  directory you run the command in; from a workspace directory, run
+  `yarn run -T fixtures …`.
 
 ### The installation
 
-Fixture mode serves one made-up installation, `meadow`, named in
-`gs.installations` of `app-config.fixtures.yaml` and by every fixture API.
+Fixture mode serves one made-up installation, `meadow`
+(`FIXTURE_INSTALLATION` in `@giantswarm/backstage-plugin-gs-common`, which
+every fixture API reads; a test checks that `gs.installations` in
+`app-config.fixtures.yaml` names it and no other). A call for any other
+installation fails with a console error, in every fixture API.
 With `gs.fixtures` the fixture Kubernetes API answers for it without a
-cluster: `/apis` lists the API groups of the portal's resource classes
+cluster: `/version` answers, `/apis` lists the API groups of the portal's resource classes
 (kagent's and muster's among them; model hosting's and Cluster API's are left
 out, so those components read as absent in the installation inventory),
-discovery answers the versions the classes support, every list is empty, a
+discovery answers the versions the classes support (the newest preferred),
+every list is empty, a
 read of one object is not found, and access reviews are allowed. Its cluster
 access is healthy from the start, and it has no metrics backend
 (`mimirEnabled: false`). Any other request, a write among them, fails with a
@@ -76,12 +87,16 @@ no handler for the tool …", in the console and as the page's error state, neve
 as an empty result: add the handler.
 
 A plugin contributes its servers with an extension that attaches to
-`api:muster/muster`, input `fixtureServers`, and loads its handler modules with
-a dynamic `import()` behind the production check, as agent-platform's
+`FIXTURE_MCP_SERVERS.attachTo` (`api:muster/muster`, input `fixtureServers`)
+with a data ref of the id `FIXTURE_MCP_SERVERS.dataRefId`, both from
+gs-common, and loads its handler modules with a dynamic `import()` behind the
+production check, as agent-platform's
 `muster-fixture-servers:agent-platform` does (`plugins/agent-platform/src/plugin.tsx`):
 one module per server under `src/apis/fixtures/mcpServers/`, a `FixtureMcpServer`
 whose `tools` map a tool's own name to its handler. The handlers live with the
-plugin that calls the tools, so they are typed with its client's types.
+plugin that calls the tools, and each declares the answer type its client
+reads (`ListWorkspacesAnswer`, `ToolchainList`, …), so a change to it breaks
+the fixture's build.
 
 ## Adding a fixture mode
 

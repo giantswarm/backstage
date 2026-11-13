@@ -68,4 +68,22 @@ describe('MusterFixtureApi', () => {
       expect.objectContaining({ tools: [], filtered_count: 0 }),
     );
   });
+
+  it('fails a call for an installation it does not serve, loudly', async () => {
+    const consoleError = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+
+    await expect(
+      api.callTool('x_agent-manager_get_info', {}, 'elsewhere'),
+    ).rejects.toThrow('Fixture mode serves no installation elsewhere');
+    await expect(api.listServers('elsewhere')).rejects.toThrow(
+      'Fixture mode serves no installation elsewhere',
+    );
+    expect(getInfo).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ installation: 'elsewhere' }),
+    );
+    expect(consoleError).toHaveBeenCalledTimes(2);
+  });
 });

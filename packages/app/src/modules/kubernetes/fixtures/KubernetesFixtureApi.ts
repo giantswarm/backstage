@@ -1,9 +1,8 @@
 import type { KubernetesApi } from '@backstage/plugin-kubernetes-react';
 import * as kubernetesReact from '@giantswarm/backstage-plugin-kubernetes-react';
+import { sortVersions } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { FIXTURE_INSTALLATION } from '@giantswarm/backstage-plugin-gs-common';
 import { MCPServer, MusterWorkflow } from '@giantswarm/backstage-plugin-muster';
-
-/** The one installation fixture mode serves, as in `app-config.fixtures.yaml`. */
-export const FIXTURE_INSTALLATION = 'meadow';
 
 /**
  * The API groups the fixture installation serves beyond the ones every
@@ -180,7 +179,12 @@ export class KubernetesFixtureApi implements KubernetesApi {
     );
   }
 
-  private groups() {
+  /**
+   * The API groups the resources belong to, each with every version a class
+   * supports, newest first and preferred, as an API server prefers its
+   * newest.
+   */
+  private readonly groups = (() => {
     const versions = new Map<string, Set<string>>();
     for (const resource of this.resources.filter(r => !r.isCore)) {
       const set = versions.get(resource.group) ?? new Set<string>();
@@ -188,17 +192,16 @@ export class KubernetesFixtureApi implements KubernetesApi {
       versions.set(resource.group, set);
     }
     return [...versions].map(([name, set]) => {
-      const groupVersions = [...set].map(version => ({
-        groupVersion: `${name}/${version}`,
-        version,
-      }));
+      const groupVersions = sortVersions([...set])
+        .reverse()
+        .map(version => ({ groupVersion: `${name}/${version}`, version }));
       return {
         name,
         versions: groupVersions,
         preferredVersion: groupVersions[0],
       };
     });
-  }
+  })();
 
   private resourceList(group: string, version: string) {
     const resources = this.resources.filter(
@@ -213,7 +216,8 @@ export class KubernetesFixtureApi implements KubernetesApi {
       resources: resources.map(r => ({
         name: r.plural,
         singularName: r.kind.toLowerCase(),
-        namespaced: true,
+        // No `namespaced`: the classes do not say their scope, and nothing
+        // in the portal reads it from discovery.
         kind: r.kind,
         verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete'],
       })),
@@ -223,11 +227,19 @@ export class KubernetesFixtureApi implements KubernetesApi {
   /** A GET the fixtures answer, or undefined. */
   private read(path: string): Response | undefined {
     const segments = path.split('/').filter(Boolean);
+    if (path === '/version') {
+      return json({
+        major: '1',
+        minor: '33',
+        gitVersion: 'v1.33.0',
+        platform: 'linux/amd64',
+      });
+    }
     if (path === '/apis') {
       return json({
         kind: 'APIGroupList',
         apiVersion: 'v1',
-        groups: this.groups(),
+        groups: this.groups,
       });
     }
     let group: string;
@@ -237,7 +249,7 @@ export class KubernetesFixtureApi implements KubernetesApi {
       [group, version, rest] = ['', segments[1], segments.slice(2)];
     } else if (segments[0] === 'apis' && segments.length >= 2) {
       if (segments.length === 2) {
-        const found = this.groups().find(g => g.name === segments[1]);
+        const found = this.groups.find(g => g.name === segments[1]);
         return found
           ? json({ kind: 'APIGroup', apiVersion: 'v1', ...found })
           : statusResponse(404, 'NotFound', `No API group ${segments[1]}.`);

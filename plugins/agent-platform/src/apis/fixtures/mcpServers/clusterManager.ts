@@ -6,6 +6,7 @@ import {
   CLUSTER_MANAGER_TOOLS,
   type ClusterManagerInfo,
 } from '../../../lib/clusterManager';
+import type { ListClustersAnswer } from '../../ClusterManagerClient';
 
 const info: ClusterManagerInfo = {
   version: '1.0.0-fixture',
@@ -21,6 +22,8 @@ export const clusterManager: FixtureMcpServer = {
   server: CLUSTER_MANAGER_SERVER,
   tools: {
     [CLUSTER_MANAGER_TOOLS.getInfo]: () => info,
-    [CLUSTER_MANAGER_TOOLS.listClusters]: () => ({ clusters: [] }),
+    [CLUSTER_MANAGER_TOOLS.listClusters]: (): ListClustersAnswer => ({
+      clusters: [],
+    }),
   },
 };

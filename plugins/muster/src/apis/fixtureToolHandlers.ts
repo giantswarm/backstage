@@ -2,6 +2,7 @@ import {
   createExtensionDataRef,
   createExtensionInput,
 } from '@backstage/frontend-plugin-api';
+import { FIXTURE_MCP_SERVERS } from '@giantswarm/backstage-plugin-gs-common';
 
 /**
  * What a fixture tool handler is called with besides the tool's arguments:
@@ -41,23 +42,17 @@ export type FixtureMcpServersLoader = () => Promise<FixtureMcpServer[]>;
 /**
  * Data of an extension that contributes fixture MCP servers to the fixture
  * `MusterApi` (docs/fixtures.md). A plugin whose pages call an MCP server's
- * tools through muster attaches one to `api:muster/muster`, input
- * `fixtureServers`, and loads its handler modules with a dynamic `import()`
+ * tools through muster attaches one to `FIXTURE_MCP_SERVERS.attachTo`
+ * (`@giantswarm/backstage-plugin-gs-common`), and loads its handler modules with a dynamic `import()`
  * behind `process.env.NODE_ENV !== 'production'`, so no handler code reaches a
  * production build.
  */
 export const fixtureMcpServersDataRef =
   createExtensionDataRef<FixtureMcpServersLoader>().with({
-    id: 'muster.fixture-mcp-servers',
+    id: FIXTURE_MCP_SERVERS.dataRefId,
   });
 
 /** The `fixtureServers` input of `api:muster/muster`. */
 export const fixtureMcpServersInput = createExtensionInput([
   fixtureMcpServersDataRef,
 ]);
-
-/** The extension id and input a fixture MCP server contribution attaches to. */
-export const FIXTURE_MCP_SERVERS_ATTACH_POINT = {
-  id: 'api:muster/muster',
-  input: 'fixtureServers',
-} as const;

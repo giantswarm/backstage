@@ -1,3 +1,9 @@
+// eslint-disable-next-line no-restricted-imports
+import { resolve } from 'path';
+import { ConfigReader } from '@backstage/config';
+import { loadConfig } from '@backstage/config-loader';
+import { FIXTURE_INSTALLATION } from '@giantswarm/backstage-plugin-gs-common';
+
 import { KubernetesFixtureApi } from './KubernetesFixtureApi';
 
 describe('KubernetesFixtureApi', () => {
@@ -33,6 +39,25 @@ describe('KubernetesFixtureApi', () => {
     ).json();
     expect(resources.resources.map((r: { name: string }) => r.name)).toEqual(
       expect.arrayContaining(['mcpservers', 'workflows']),
+    );
+  });
+
+  it('prefers the newest version of a group, as an API server does', async () => {
+    const group = await (await get('/apis/source.toolkit.fluxcd.io')).json();
+
+    expect(group.preferredVersion).toEqual({
+      groupVersion: 'source.toolkit.fluxcd.io/v1',
+      version: 'v1',
+    });
+    expect(group.versions[0]).toEqual(group.preferredVersion);
+  });
+
+  it('answers the server version', async () => {
+    const response = await get('/version');
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(
+      expect.objectContaining({ gitVersion: expect.stringMatching(/^v1\./) }),
     );
   });
 
@@ -76,7 +101,7 @@ describe('KubernetesFixtureApi', () => {
       path: '/apis/muster.giantswarm.io/v1alpha1/namespaces/muster/mcpservers',
       init: { method: 'POST', body: '{}' },
     });
-    const unknown = await get('/version');
+    const unknown = await get('/healthz');
 
     expect(write.status).toBe(501);
     expect(unknown.status).toBe(501);
@@ -89,5 +114,20 @@ describe('KubernetesFixtureApi', () => {
     ]);
     await expect(api.getCluster('elsewhere')).resolves.toBeUndefined();
     expect((await get('/apis', 'elsewhere')).status).toBe(404);
+  });
+});
+
+describe('app-config.fixtures.yaml', () => {
+  it('names the installation every fixture API serves, and only that one', async () => {
+    const root = resolve(__dirname, '../../../../../..');
+    const { appConfigs } = await loadConfig({
+      configRoot: root,
+      configTargets: [{ path: resolve(root, 'app-config.fixtures.yaml') }],
+    });
+    const config = ConfigReader.fromConfigs(appConfigs);
+
+    expect(config.getConfig('gs.installations').keys()).toEqual([
+      FIXTURE_INSTALLATION,
+    ]);
   });
 });

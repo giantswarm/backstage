@@ -2,10 +2,7 @@ import { ApiBlueprint } from '@backstage/frontend-plugin-api';
 import { createExtensionTester } from '@backstage/frontend-test-utils';
 import { mockApis } from '@backstage/test-utils';
 // eslint-disable-next-line @backstage/no-mixed-plugin-imports -- fixture MCP servers are muster's.
-import {
-  FIXTURE_MCP_SERVERS_ATTACH_POINT as MUSTER_ATTACH_POINT,
-  fixtureMcpServersDataRef as musterFixtureMcpServersDataRef,
-} from '@giantswarm/backstage-plugin-muster';
+import { fixtureMcpServersDataRef } from '@giantswarm/backstage-plugin-muster';
 
 import {
   AgentManagerCredentialsClient,
@@ -14,11 +11,7 @@ import {
   type KagentApi,
   type ModelManagerApi,
 } from './apis';
-import {
-  agentPlatformPlugin,
-  FIXTURE_MCP_SERVERS_ATTACH_POINT,
-  fixtureMcpServersDataRef,
-} from './plugin';
+import { agentPlatformPlugin } from './plugin';
 
 type FixtureApiId =
   | 'api:agent-platform/kagent'
@@ -76,15 +69,23 @@ describe('agent-platform fixture mode', () => {
     await expect(models.listBackends('meadow')).resolves.toEqual([]);
   });
 
-  it("defines muster's fixture data ref and attach point by the same ids", () => {
-    expect(fixtureMcpServersDataRef.id).toBe(musterFixtureMcpServersDataRef.id);
-    expect(FIXTURE_MCP_SERVERS_ATTACH_POINT).toEqual(MUSTER_ATTACH_POINT);
+  it('fails a call for an installation it does not serve, loudly', async () => {
+    const consoleError = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    const kagent = createApi('api:agent-platform/kagent', true) as KagentApi;
+
+    await expect(kagent.listSessions('elsewhere')).rejects.toThrow(
+      'Fixture mode serves no installation elsewhere',
+    );
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    consoleError.mockRestore();
   });
 
   it("contributes the MCP servers its pages call to muster's fixtures", async () => {
     const load = createExtensionTester(
       agentPlatformPlugin.getExtension('muster-fixture-servers:agent-platform'),
-    ).get(musterFixtureMcpServersDataRef);
+    ).get(fixtureMcpServersDataRef);
 
     const servers = await load();
 

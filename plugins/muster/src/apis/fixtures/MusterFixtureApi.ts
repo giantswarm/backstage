@@ -1,3 +1,5 @@
+import { FIXTURE_INSTALLATION } from '@giantswarm/backstage-plugin-gs-common';
+
 import type {
   FixtureMcpServer,
   FixtureToolHandler,
@@ -30,9 +32,6 @@ import type {
   WorkflowStats,
 } from '../types';
 
-/** The one installation fixture mode serves. */
-export const FIXTURE_INSTALLATION = 'meadow';
-
 /**
  * The error a tool call fails with when no fixture MCP server answers it. A
  * call fixture mode cannot answer must show, never read as an empty result:
@@ -45,6 +44,31 @@ export class FixtureToolMissingError extends Error {
     );
     this.name = 'FixtureToolMissingError';
   }
+}
+
+/**
+ * The error of a call for an installation fixture mode does not serve. Like
+ * the fixture Kubernetes API's 404, so a page that targets the wrong
+ * installation fails instead of showing the fixture installation's data.
+ */
+export class FixtureInstallationUnknownError extends Error {
+  constructor(installation: string) {
+    super(
+      `Fixture mode serves no installation ${installation}, only ${FIXTURE_INSTALLATION}.`,
+    );
+    this.name = 'NotFoundError';
+  }
+}
+
+/** The installation a call targets, failing loudly for one not served. */
+function served(installation: string | undefined): string {
+  if (installation !== undefined && installation !== FIXTURE_INSTALLATION) {
+    const error = new FixtureInstallationUnknownError(installation);
+    // eslint-disable-next-line no-console
+    console.error(error.message);
+    throw error;
+  }
+  return FIXTURE_INSTALLATION;
 }
 
 type Tool = {
@@ -118,6 +142,7 @@ export class MusterFixtureApi implements MusterApi {
     installation: string | undefined,
     signal: AbortSignal | undefined,
   ): Promise<unknown> {
+    const target = served(installation);
     const tool = this.tools.get(name);
     if (!tool) {
       const error = new FixtureToolMissingError(name);
@@ -125,10 +150,7 @@ export class MusterFixtureApi implements MusterApi {
       console.error(error.message, { args, installation });
       throw error;
     }
-    return tool.handler(args, {
-      installation: installation ?? FIXTURE_INSTALLATION,
-      signal,
-    });
+    return tool.handler(args, { installation: target, signal });
   }
 
   async listInstallations(): Promise<MusterInstallationsResponse> {
@@ -151,6 +173,7 @@ export class MusterFixtureApi implements MusterApi {
   async listExecutions(
     options: ListExecutionsOptions = {},
   ): Promise<WorkflowExecutionListResponse> {
+    served(options.installation);
     return {
       executions: [],
       total: 0,
@@ -160,13 +183,21 @@ export class MusterFixtureApi implements MusterApi {
     };
   }
 
-  async getExecution(executionId: string): Promise<WorkflowExecution> {
+  async getExecution(
+    executionId: string,
+    installation?: string,
+  ): Promise<WorkflowExecution> {
+    served(installation);
     const error = new Error(`No execution ${executionId} in fixture mode.`);
     error.name = 'NotFoundError';
     throw error;
   }
 
-  async getWorkflowStats(name: string): Promise<WorkflowStats> {
+  async getWorkflowStats(
+    name: string,
+    installation?: string,
+  ): Promise<WorkflowStats> {
+    served(installation);
     return {
       workflow_name: name,
       runs: 0,
@@ -181,7 +212,10 @@ export class MusterFixtureApi implements MusterApi {
     };
   }
 
-  async getMcpUsage(options: { hours?: number } = {}): Promise<McpUsage> {
+  async getMcpUsage(
+    options: { installation?: string; hours?: number } = {},
+  ): Promise<McpUsage> {
+    served(options.installation);
     return {
       available: true,
       range_hours: options.hours ?? 24,
@@ -200,12 +234,14 @@ export class MusterFixtureApi implements MusterApi {
   }
 
   async getMcpToolLatency(
-    options: { hours?: number } = {},
+    options: { installation?: string; hours?: number } = {},
   ): Promise<McpToolLatency> {
+    served(options.installation);
     return { available: true, range_hours: options.hours ?? 24, tools: [] };
   }
 
-  async listServers(): Promise<McpServerListResponse> {
+  async listServers(installation?: string): Promise<McpServerListResponse> {
+    served(installation);
     return {
       mcpServers: this.servers.map(server => ({
         name: server,
@@ -217,17 +253,24 @@ export class MusterFixtureApi implements MusterApi {
     };
   }
 
-  async listConnectorNames(): Promise<ConnectorNamesResponse> {
+  async listConnectorNames(
+    installation?: string,
+  ): Promise<ConnectorNamesResponse> {
+    served(installation);
     return { servers: [] };
   }
 
-  async getServerInfo(): Promise<MusterServerInfoResponse> {
+  async getServerInfo(
+    installation?: string,
+  ): Promise<MusterServerInfoResponse> {
+    served(installation);
     return {};
   }
 
   async filterTools(
     options: FilterToolsOptions = {},
   ): Promise<FilterToolsResponse> {
+    served(options.installation);
     const all = this.toolSummaries(options.pattern, options.query);
     const { items, truncated } = page(all, options);
     return {
@@ -239,26 +282,31 @@ export class MusterFixtureApi implements MusterApi {
   }
 
   async filterResources(
-    _options?: FilterCapabilitiesOptions,
+    options: FilterCapabilitiesOptions = {},
   ): Promise<FilterResourcesResponse> {
+    served(options.installation);
     return { total: 0, filtered_count: 0, truncated: false, resources: [] };
   }
 
   async filterPrompts(
-    _options?: FilterCapabilitiesOptions,
+    options: FilterCapabilitiesOptions = {},
   ): Promise<FilterPromptsResponse> {
+    served(options.installation);
     return { total: 0, filtered_count: 0, truncated: false, prompts: [] };
   }
 
-  async listTools(): Promise<ListToolsResponse> {
+  async listTools(installation?: string): Promise<ListToolsResponse> {
+    served(installation);
     return { tools: this.toolSummaries(), servers_requiring_auth: [] };
   }
 
-  async listCoreTools(): Promise<FilterToolsResponse> {
+  async listCoreTools(installation?: string): Promise<FilterToolsResponse> {
+    served(installation);
     return { total: 0, filtered_count: 0, truncated: false, tools: [] };
   }
 
-  async describeTool(name: string): Promise<ToolDetail> {
+  async describeTool(name: string, installation?: string): Promise<ToolDetail> {
+    served(installation);
     const tool = this.tools.get(name);
     if (!tool) {
       const error = new Error(`No tool ${name} in fixture mode.`);
@@ -290,26 +338,37 @@ export class MusterFixtureApi implements MusterApi {
     return this.dispatch(name, args, options.installation, options.signal);
   }
 
-  async signIn(): Promise<boolean> {
+  async signIn(installation?: string): Promise<boolean> {
+    served(installation);
     return true;
   }
 
-  async authHeaders(): Promise<Record<string, string>> {
+  async authHeaders(installation?: string): Promise<Record<string, string>> {
+    served(installation);
     return {};
   }
 
-  async getAuthStatus(): Promise<AuthStatusResponse> {
+  async getAuthStatus(installation?: string): Promise<AuthStatusResponse> {
+    served(installation);
     return {
       servers: this.servers.map(name => ({ name, status: 'connected' })),
     };
   }
 
-  async signInServer(server: SignInTarget): Promise<ServerSignInResult> {
+  async signInServer(
+    server: SignInTarget,
+    installation?: string,
+  ): Promise<ServerSignInResult> {
+    served(installation);
     const name = typeof server === 'string' ? server : server.app;
     return { status: 'connected', message: `${name} is connected.` };
   }
 
-  async signOutServer(server: SignInTarget): Promise<ServerSignOutResult> {
+  async signOutServer(
+    server: SignInTarget,
+    installation?: string,
+  ): Promise<ServerSignOutResult> {
+    served(installation);
     const name = typeof server === 'string' ? server : server.app;
     return { status: 'signed_out', message: `Signed out of ${name}.` };
   }
