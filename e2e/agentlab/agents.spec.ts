@@ -27,9 +27,16 @@ const rosterWait = 2 * 60_000;
 
 test('an agent explains withheld release details and keeps its readiness at desktop and phone widths', async ({
   admin,
-  labAgent,
 }) => {
   test.setTimeout(rosterWait + 60_000);
+  await open(admin, '/customize/agents');
+  const agentLink = admin
+    .locator(`a[href^="/customize/agents/${lab.installation}/"]`)
+    .first();
+  await expect(agentLink).toBeVisible({ timeout: rosterWait });
+  const detailPath = await agentLink.getAttribute('href');
+  expect(detailPath).toBeTruthy();
+  const [, , , , namespace, name] = detailPath!.split('/');
   const releaseWithheld =
     'Reading the release details needs the agent-platform:editor role.';
   let answered = 0;
@@ -40,7 +47,7 @@ test('an agent explains withheld release details and keeps its readiness at desk
     } | null;
     if (
       call?.name !== 'x_agent-manager_get_agent' ||
-      call.arguments?.name !== labAgent.slug
+      call.arguments?.name !== name
     ) {
       await route.fallback();
       return;
@@ -48,8 +55,8 @@ test('an agent explains withheld release details and keeps its readiness at desk
     answered++;
     await route.fulfill({
       json: {
-        name: labAgent.slug,
-        namespace: labAgent.detailPath.split('/')[4],
+        name,
+        namespace,
         exists: true,
         ready: true,
         managed: 'unknown',
@@ -58,7 +65,7 @@ test('an agent explains withheld release details and keeps its readiness at desk
     });
   });
 
-  await open(admin, labAgent.detailPath);
+  await open(admin, detailPath!);
   const details = admin.getByRole('button', {
     name: 'Technical details',
     exact: true,
