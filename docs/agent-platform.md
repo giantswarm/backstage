@@ -707,7 +707,7 @@ condition names and the controller's messages stay in Technical details,
 which open on arrival; the alert's Show conditions reopens them and scrolls
 them into view.
 
-The model form (`NewModelPage`, `ModelConfigFormFields`, `EditModelPage`) collects only model metadata. OpenAI, Anthropic, Gemini, Ollama and the native AnthropicVertexAI and GeminiVertexAI providers are editable. Vertex models take a Google project and location; their direct Google calls are unmetered by the LLM gateway. Other unsupported providers remain read-only.
+The model form (`NewModelPage`, `ModelConfigFormFields`, `EditModelPage`) collects only model metadata. OpenAI, Anthropic, Gemini, Ollama and the native AnthropicVertexAI and GeminiVertexAI providers are editable. Vertex models take a Google project and location; LLM gateway metering, rate limits and spend reporting are unavailable for their direct Google calls. Other unsupported providers remain read-only.
 
 **Every model write goes through agent-manager.** Installation and organization models use `set_organization_model`, `replace_organization_credential` and `delete_organization_object` as the person. The portal checks the manager tool schema and refuses an incompatible version. It never creates, patches or deletes model credential Secrets through its Kubernetes client. Installation writes require cluster-admin authorization; organization writes require the organization admin role. Helm and Flux ownership guards still apply. Deleting a model retains its credential Secret.
 

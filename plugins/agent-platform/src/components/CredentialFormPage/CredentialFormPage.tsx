@@ -411,13 +411,19 @@ export function CredentialFormPage({
   const queryClient = useQueryClient();
   const query = useOperation(installation, operationId);
   const [values, setValues] = useState<Record<string, string>>({});
+  const inputRevision = useRef(0);
+  const formInputRevision = inputRevision.current;
   const [receipt, setReceipt] = useState<CredentialResourceResult>();
   const [cancelled, setCancelled] = useState(false);
   const [notice, setNotice] = useState<string>();
   const scope = useRef<HTMLDivElement>(null);
   const validation = useFieldValidation(scope);
-  const reload = async () => {
+  const clearValues = () => {
+    inputRevision.current += 1;
     setValues({});
+  };
+  const reload = async () => {
+    clearValues();
     validation.reset();
     const result = await query.refetch();
     if (result.isSuccess && result.data) {
@@ -480,7 +486,7 @@ export function CredentialFormPage({
       return api.saveOperation(installation, operationId, loaded.etag, entered);
     },
     onSuccess: result => {
-      setValues({});
+      clearValues();
       setReceipt(result);
       setNotice(undefined);
       const savedNamespace =
@@ -502,19 +508,19 @@ export function CredentialFormPage({
       const code = credentialOperationErrorCode(error);
       if (error instanceof PortalSessionEndedError) {
         // Nothing was sent; the value is not kept for after the sign-in.
-        setValues({});
+        clearValues();
       } else if (code === 'precondition_failed') {
-        setValues({});
+        clearValues();
         setNotice(
           'The request changed since you opened it. Check it again, then enter the value again.',
         );
         save.reset();
         reload();
       } else if (code === CONSUMERS_CHANGED) {
-        setValues({});
+        clearValues();
         setStale(true);
       } else if (code === 'outcome_unknown') {
-        setValues({});
+        clearValues();
         setNotice(
           'agent-manager did not answer in time. The save may still complete: check the request again before you enter anything.',
         );
@@ -534,13 +540,13 @@ export function CredentialFormPage({
       return api.cancelOperation(installation, operationId, loaded.etag);
     },
     onSuccess: () => {
-      setValues({});
+      clearValues();
       setCancelled(true);
       setNotice(undefined);
     },
     onError: error => {
       if (credentialOperationErrorCode(error) === 'precondition_failed') {
-        setValues({});
+        clearValues();
         setNotice(
           'The request changed since you opened it. Check it again, then enter the value again.',
         );
@@ -732,15 +738,16 @@ export function CredentialFormPage({
                 pairs.map(pair =>
                   pair.inputFormat === 'google-service-account-json' ? (
                     <ServiceAccountKeyField
-                      key={pairId(pair)}
+                      key={`${pairId(pair)}/${formInputRevision}`}
                       isDisabled={busy}
                       value={values[pairId(pair)] ?? ''}
-                      onChange={value =>
+                      onChange={value => {
+                        if (formInputRevision !== inputRevision.current) return;
                         setValues(current => ({
                           ...current,
                           [pairId(pair)]: value,
-                        }))
-                      }
+                        }));
+                      }}
                       isRequired
                       description="Upload the Google service-account JSON key for this model. It is stored in the confirmed namespace and exchanged for short-lived Google tokens."
                       error={

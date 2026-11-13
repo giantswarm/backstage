@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useId,
   useRef,
   useState,
@@ -77,6 +78,13 @@ export function ServiceAccountKeyField({
   const [fileName, setFileName] = useState<string>();
   const [readError, setReadError] = useState<string>();
   const [dragging, setDragging] = useState(false);
+  const readVersion = useRef(0);
+  useEffect(() => {
+    if (isDisabled) readVersion.current += 1;
+    return () => {
+      readVersion.current += 1;
+    };
+  }, [isDisabled]);
 
   const shownError = readError ?? error;
   const summary = value ? serviceAccountKeySummary(value) : undefined;
@@ -85,6 +93,8 @@ export function ServiceAccountKeyField({
     if (!file || isDisabled) {
       return;
     }
+    const version = ++readVersion.current;
+    onChange('');
     if (file.size > MAX_KEY_FILE_BYTES) {
       setFileName(undefined);
       setReadError(
@@ -94,10 +104,12 @@ export function ServiceAccountKeyField({
     }
     try {
       const text = await file.text();
+      if (version !== readVersion.current) return;
       setFileName(file.name);
       setReadError(undefined);
       onChange(text);
     } catch {
+      if (version !== readVersion.current) return;
       setFileName(undefined);
       setReadError(`Could not read ${file.name}. Choose the file again.`);
     }
@@ -117,6 +129,7 @@ export function ServiceAccountKeyField({
   };
 
   const clear = () => {
+    readVersion.current += 1;
     setFileName(undefined);
     setReadError(undefined);
     onChange('');

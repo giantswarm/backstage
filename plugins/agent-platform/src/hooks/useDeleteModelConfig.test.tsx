@@ -222,4 +222,23 @@ it('deletes through agent-manager without a model or Secret write from the porta
   });
   expect(mockDeleteModel).toHaveBeenCalledWith(NAMESPACE, 'qwen3');
   expect(mockDeleteResource).not.toHaveBeenCalled();
+  expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+  expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+    expect.objectContaining({
+      action: 'AgentPlatform.modelDeleted',
+      attributes: {},
+    }),
+  );
+});
+
+it('does not report a deletion when the manager refuses it', async () => {
+  mockDeleteModel.mockRejectedValue(new Error('forbidden'));
+  const { result } = setup();
+  await act(async () => {
+    await expect(result.current.deleteModelConfig()).rejects.toThrow(
+      'forbidden',
+    );
+  });
+  expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  expect(mockDeleteResource).not.toHaveBeenCalled();
 });
