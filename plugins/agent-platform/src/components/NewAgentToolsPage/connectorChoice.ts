@@ -15,9 +15,6 @@ import {
   connectionLabel,
   type CatalogueGroup,
   EXCLUSIVE_PRESETS,
-  MAX_INLINE_SELECTORS,
-  MAX_INLINE_BYTES,
-  toolsetByteLength,
   parseSelector,
   presetNameOf,
   PRESET_FULL,
@@ -113,13 +110,10 @@ export function readOnlySelectors(bucket: ServerBucket): string[] {
 /** Whether read-only access to a connector fits inline at all. */
 export function readOnlyFits(
   bucket: ServerBucket,
-  maxSelectors = MAX_INLINE_SELECTORS,
+  maxSelectors?: number,
 ): boolean {
   const selectors = readOnlySelectors(bucket);
-  return (
-    selectors.length <= maxSelectors &&
-    toolsetByteLength(selectors) <= MAX_INLINE_BYTES
-  );
+  return maxSelectors === undefined || selectors.length <= maxSelectors;
 }
 
 export type ConnectorStatus = {
@@ -639,7 +633,7 @@ function contributorName(group: RailGroup): string {
 export function inlineCapProblem(
   toolset: readonly string[],
   groups: readonly CatalogueGroup[],
-  maxSelectors = MAX_INLINE_SELECTORS,
+  maxSelectors: number,
 ): string {
   const contributors = railGroups(toolset, groups)
     .filter(group => group.key !== PRESETS_KEY)

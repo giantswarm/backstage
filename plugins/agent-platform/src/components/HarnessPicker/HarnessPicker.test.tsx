@@ -22,6 +22,10 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   useResources: (...args: unknown[]) => mockUseResources(...args),
 }));
 
+jest.mock('../../hooks/useToolsetSelectorLimit', () => ({
+  useToolsetSelectorLimit: () => 128,
+}));
+
 jest.mock('../../hooks/useAgentManager', () => ({
   useAgentManagerInfo: () => ({
     info: {

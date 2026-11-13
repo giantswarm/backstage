@@ -45,25 +45,6 @@ export const TOOLSET_HEADER = 'X-Muster-Toolset';
  */
 export const MUSTER_MCP_SERVER_NAME = 'muster';
 
-/**
- * Fallback for installations whose create_agent schema does not declare maxItems.
- */
-export const MAX_INLINE_SELECTORS = 128;
-export const MAX_INLINE_BYTES = 8192;
-
-export function toolsetByteLength(selectors: readonly string[]): number {
-  return new Blob([selectors.join(',')]).size;
-}
-
-export function toolsetByteProblem(
-  selectors: readonly string[],
-): string | undefined {
-  const bytes = toolsetByteLength(selectors);
-  return bytes > MAX_INLINE_BYTES
-    ? `This toolset uses ${bytes} bytes but may use at most ${MAX_INLINE_BYTES}, so remove tools under Selected or use a preset.`
-    : undefined;
-}
-
 export const SELECTOR_KINDS = ['preset', 'server', 'workflow', 'tool'] as const;
 export type SelectorKind = (typeof SELECTOR_KINDS)[number];
 
@@ -140,28 +121,24 @@ export function selectorProblem(raw: string): string | undefined {
 }
 
 /**
- * Everything wrong with a whole toolset, for the step to block Continue on.
- * Empty when the toolset is acceptable. An empty list is not reported here:
+ * Selector grammar and advertised count problems for immediate feedback.
+ * An empty list is not reported here:
  * the step reads "nothing chosen yet" as its own state. `describeCap` words
  * the cap problem where the catalogue can say what to reduce.
  */
 export function toolsetProblems(
   selectors: string[],
   describeCap?: (selectors: string[]) => string,
-  maxSelectors = MAX_INLINE_SELECTORS,
+  maxSelectors?: number,
 ): string[] {
   const problems = selectors
     .map(selectorProblem)
     .filter((problem): problem is string => problem !== undefined);
-  if (selectors.length > maxSelectors) {
+  if (maxSelectors !== undefined && selectors.length > maxSelectors) {
     problems.push(
       describeCap?.(selectors) ??
         `This toolset needs ${selectors.length} selectors but may list at most ${maxSelectors}, so choose fewer connectors or tools.`,
     );
-  }
-  const byteProblem = toolsetByteProblem(selectors);
-  if (byteProblem) {
-    problems.push(byteProblem);
   }
   return problems;
 }

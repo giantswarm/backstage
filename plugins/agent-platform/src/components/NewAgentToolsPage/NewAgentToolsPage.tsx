@@ -38,7 +38,6 @@ import {
   buildCatalogue,
   catalogueInventory,
   countNoun,
-  toolsetByteProblem,
   presetNameOf,
   presetSelector,
   PRESET_FULL,
@@ -177,16 +176,12 @@ function connectorsHint({
 function blockedLine(
   toolset: readonly string[],
   problems: readonly string[],
-  maxSelectors: number,
+  maxSelectors: number | undefined,
 ): string {
-  if (toolset.length > maxSelectors) {
+  if (maxSelectors !== undefined && toolset.length > maxSelectors) {
     return `This toolset lists ${toolset.length} selectors but an agent may list at most ${maxSelectors}, so remove ${
       toolset.length - maxSelectors
     } or more under Selected, or choose All for a connector instead of single tools.`;
-  }
-  const byteProblem = toolsetByteProblem(toolset);
-  if (byteProblem) {
-    return byteProblem;
   }
   const invalid = Math.max(problems.length, 1);
   return invalid === 1
@@ -426,8 +421,10 @@ export function NewAgentToolsPage() {
         ? toolsetProblems
         : problemsOf(
             state.toolset,
-            selectors =>
-              inlineCapProblem(selectors, groups, maxInlineSelectors),
+            maxInlineSelectors === undefined
+              ? undefined
+              : selectors =>
+                  inlineCapProblem(selectors, groups, maxInlineSelectors),
             maxInlineSelectors,
           ),
     [toolsetProblems, state.toolset, groups, maxInlineSelectors],
@@ -436,12 +433,11 @@ export function NewAgentToolsPage() {
   // (QA R2-1); the cap problem already says what to reduce, so that refusal is
   // not shown beside it. Any other resolution error still is.
   const overCap =
+    maxInlineSelectors !== undefined &&
     problems.length > 0 &&
-    (state.toolset.length > maxInlineSelectors ||
-      Boolean(toolsetByteProblem(state.toolset)));
-  const limitTitle = toolsetByteProblem(state.toolset)
-    ? 'Toolset is too large'
-    : 'Too many selectors';
+    state.toolset.length > maxInlineSelectors;
+  const serverProblem = overCap ? undefined : resolution.error;
+  const canContinue = isToolsetValid && !resolution.isLoading && !serverProblem;
   // A preset that cannot be shown per connector cannot be changed from there
   // either: its selection stays off until the author picks Only the tools I
   // choose below.
@@ -706,7 +702,7 @@ export function NewAgentToolsPage() {
     setProblemFocusRequest(count => count + 1);
   }, []);
   const onContinue = useCallback(() => {
-    if (!isToolsetValid) {
+    if (!canContinue) {
       const target = problemsAlert.current ?? blockedNote.current;
       target?.scrollIntoView?.({ block: 'center' });
       target?.focus();
@@ -715,7 +711,7 @@ export function NewAgentToolsPage() {
     if (reviewLink) {
       navigate(reviewLink());
     }
-  }, [isToolsetValid, reviewLink, navigate]);
+  }, [canContinue, reviewLink, navigate]);
 
   // The frame's footer carries Cancel and Back; only the primary lives here.
   const actions = useMemo(
@@ -749,7 +745,6 @@ export function NewAgentToolsPage() {
     onShowDetails: selectionOff ? undefined : showResolvedList,
     signInNote: (
       <SignInToolNote
-        maxSelectors={maxInlineSelectors}
         signIn={signIn}
         onRemove={() => setSignInToolDeclined(true)}
         onAddBack={() => setSignInToolDeclined(false)}
@@ -997,7 +992,7 @@ export function NewAgentToolsPage() {
                           status="danger"
                           title={
                             overCap
-                              ? limitTitle
+                              ? 'Too many selectors'
                               : 'The toolset cannot be applied as it is'
                           }
                           description={problems.join(' ')}
@@ -1014,10 +1009,19 @@ export function NewAgentToolsPage() {
                       />
                     )}
                     {!(overCap && resolution.status === 'error') && (
-                      <ToolsetResolutionList
-                        resolution={resolution}
-                        servers={servers}
-                      />
+                      <div
+                        ref={
+                          problems.length === 0 && serverProblem
+                            ? problemsAlert
+                            : undefined
+                        }
+                        tabIndex={serverProblem ? -1 : undefined}
+                      >
+                        <ToolsetResolutionList
+                          resolution={resolution}
+                          servers={servers}
+                        />
+                      </div>
                     )}
                   </Flex>
                 </section>
@@ -1027,7 +1031,7 @@ export function NewAgentToolsPage() {
         )}
 
         {/* The rail says why too; this sits by Continue, where it is blocked. */}
-        {!isToolsetValid && (
+        {!canContinue && (
           <Flex
             ref={blockedNote}
             tabIndex={-1}
@@ -1036,8 +1040,26 @@ export function NewAgentToolsPage() {
             gap="1"
           >
             <Text as="p" color="danger">
-              {blockedLine(state.toolset, toolsetProblems, maxInlineSelectors)}
+              {serverProblem ??
+                (resolution.isLoading
+                  ? 'Checking the selected tools…'
+                  : blockedLine(
+                      state.toolset,
+                      toolsetProblems,
+                      maxInlineSelectors,
+                    ))}
             </Text>
+            {serverProblem && resolution.refetch && (
+              <Button
+                variant="tertiary"
+                size="small"
+                onPress={() => {
+                  void resolution.refetch?.();
+                }}
+              >
+                Check again
+              </Button>
+            )}
             {!selectionOff && (
               <Button variant="tertiary" size="small" onPress={showProblems}>
                 Show the problem

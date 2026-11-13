@@ -1,12 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { AGENT_MANAGER_TOOLS, agentManagerToolName } from '../lib/agentManager';
-import { MAX_INLINE_SELECTORS } from '../lib/toolset';
 import { useMusterPluginApi } from './useMusterPluginApi';
 
 export function useToolsetSelectorLimit(
   installation: string | undefined,
-): number {
+): number | undefined {
   const musterApi = useMusterPluginApi();
   const { data } = useQuery({
     queryKey: ['muster', 'agent-platform', 'toolset-schema', installation],
@@ -21,10 +20,10 @@ export function useToolsetSelectorLimit(
         Number.isSafeInteger(maximum) &&
         maximum > 0
         ? maximum
-        : MAX_INLINE_SELECTORS;
+        : null;
     },
     staleTime: 60_000,
     retry: false,
   });
-  return data ?? MAX_INLINE_SELECTORS;
+  return data ?? undefined;
 }

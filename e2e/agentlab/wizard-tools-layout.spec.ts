@@ -85,6 +85,9 @@ test('toolsets accept 36 selectors and explain the byte limit beside Continue', 
   await expect(
     admin.getByText('Too many selectors', { exact: true }),
   ).toBeHidden();
+  await expect(
+    admin.getByText('Checking the selected tools…', { exact: true }),
+  ).toBeHidden();
   await admin
     .getByRole('button', { name: 'Continue', exact: true })
     .first()
@@ -112,7 +115,7 @@ test('toolsets accept 36 selectors and explain the byte limit beside Continue', 
     .getByRole('button', { name: 'Add selector', exact: true })
     .click();
   const reason =
-    'This toolset uses 8193 bytes but may use at most 8192, so remove tools under Selected or use a preset.';
+    'toolset encodes to 8193 bytes, more than the 8192 allowed inline; define a preset';
   for (const width of [1440, 375]) {
     await admin.setViewportSize({ width, height: 900 });
     await expect(
