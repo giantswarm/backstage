@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 import {
   Alert,
   Button,
@@ -11,10 +11,16 @@ import {
 import {
   searchableIf,
   useGroupFieldError,
+  useSelectFieldError,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentManagerInfo } from '../../../hooks/useAgentManager';
-import { ORGANIZATIONS_CAPABILITY } from '../../../lib/organizations';
+import { listOf } from '../../../lib/listOf';
+import {
+  CREATE_AGENTS_ROLE_REASON,
+  createAgentsBlockedIn,
+  ORGANIZATIONS_CAPABILITY,
+} from '../../../lib/organizations';
 import {
   ACCESS_GRANT_HINT,
   OWNER_LABEL,
@@ -37,7 +43,7 @@ const ORGANIZATION_DESCRIPTION =
 
 /**
  * Who can add a person to an organization, when agent-manager's answer does
- * not say it (`list_my_organizations`' `none`).
+ * not say it (`list_organizations`' `none`).
  */
 const NO_ORGANIZATION_HINT =
   'An admin of an organization adds you, or someone with the agent-platform:organizations-admin role creates one with you as its first admin.';
@@ -64,6 +70,9 @@ export type OwnerFieldOptions = {
 };
 
 const quiet: TenantErrorFor = () => undefined;
+
+/** No blocked organizations, one array for every render. */
+const NONE: string[] = [];
 
 export type OwnerField = {
   /**
@@ -120,6 +129,19 @@ export function useOwnerField({
   // The places as the form holds them, so the field never shows a pick the
   // form does not hold.
   const managed = state.tenantChoices;
+  // The organizations the person belongs to but may not create agents in:
+  // shown disabled, with the reason.
+  const blocked = state.tenantChoicesBlocked ?? NONE;
+  // A held organization the person may not create agents in, as a draft
+  // brought it back: its problem shows at once, not only after Continue,
+  // since nothing the person did put it there.
+  const heldBlocked =
+    state.tenant !== undefined && blocked.includes(state.tenant);
+  const heldBlockedError = useSelectFieldError(
+    heldBlocked ? fieldErrors.tenant : undefined,
+  );
+  // The line under the picker that names them, which describes it.
+  const blockedNoteId = useId();
   // `get_info` failed, or there is no muster plugin to ask, which the
   // Environment field explains (no Check again then: there is nothing to
   // read again).
@@ -194,25 +216,43 @@ export function useOwnerField({
   }
 
   if (managed.length === 0) {
+    let nowhere: ReactNode;
+    if (blocked.length > 0) {
+      // Organizations, but none to create agents in: no picker of disabled
+      // options, a plain statement instead.
+      nowhere = (
+        <Alert
+          status="warning"
+          title={`You may not create agents in your organizations on ${installation}`}
+          description={`You belong to ${listOf(
+            blocked.map(namespace => ownerOf(namespace, directory)),
+          )}, where you may use agents but not create them. Creating agents needs the editor role in an organization, which its admins can give you.`}
+        />
+      );
+    } else if (byOrganization) {
+      nowhere = (
+        <Alert
+          status="warning"
+          title={`You belong to no organization on ${installation}`}
+          description={capitalize(mine?.none ?? NO_ORGANIZATION_HINT)}
+        />
+      );
+    } else {
+      nowhere = (
+        <Alert
+          status="warning"
+          title="You may not create agents here"
+          description={`On ${installation}, you may create agents neither for the platform nor for an organization. ${ACCESS_GRANT_HINT}`}
+        />
+      );
+    }
     return {
       inMain: true,
       field: (
         <LabelledField label={label} description={description}>
           {blockGroup(
             <Flex direction="column" gap="2">
-              {byOrganization ? (
-                <Alert
-                  status="warning"
-                  title={`You belong to no organization on ${installation}`}
-                  description={capitalize(mine?.none ?? NO_ORGANIZATION_HINT)}
-                />
-              ) : (
-                <Alert
-                  status="warning"
-                  title="You may not create agents here"
-                  description={`On ${installation}, you may create agents neither for the platform nor for an organization. ${ACCESS_GRANT_HINT}`}
-                />
-              )}
+              {nowhere}
               {blockError.message}
             </Flex>,
             true,
@@ -222,7 +262,7 @@ export function useOwnerField({
     };
   }
 
-  if (managed.length === 1) {
+  if (managed.length === 1 && blocked.length === 0) {
     // Nothing to choose: a line says who owns it.
     return {
       inMain: false,
@@ -238,6 +278,8 @@ export function useOwnerField({
     };
   }
 
+  // The kinds offered are those of the choices; the blocked organizations
+  // only join the Organization dropdown, after the ones the person may pick.
   const { kinds, byKind } = tenantGroups(managed, directory);
   const offersKind = kinds.length > 1;
   // One is always picked once there are choices (`setTenantChoices`).
@@ -246,37 +288,72 @@ export function useOwnerField({
     : kinds[0];
   // The kind whose dropdown shows: the one chosen, or the only one.
   const dropdownKind = offersKind ? pickedKind : kinds[0];
-  const dropdownChoices = byKind[dropdownKind];
+  const dropdownChoices =
+    dropdownKind === 'organization'
+      ? [...byKind.organization, ...blocked]
+      : byKind[dropdownKind];
+  const showsBlockedNote =
+    dropdownKind === 'organization' && blocked.length > 0;
 
   const dropdown =
     dropdownKind === 'platform' ? null : (
-      <Select
-        // Labelled by the radio it belongs to, or as the field where it is
-        // the field.
-        {...(offersKind
-          ? { 'aria-label': TENANT_KIND_LABELS[dropdownKind] }
-          : { label, description })}
-        isRequired
-        searchable={searchableIf(dropdownChoices)}
-        options={dropdownChoices.map(namespace => ({
-          id: namespace,
-          // Under Other namespace, the namespace's own name.
-          label:
-            dropdownKind === 'namespace'
-              ? namespace
-              : ownerOf(namespace, directory),
-        }))}
-        selectedKey={
-          state.tenant && dropdownChoices.includes(state.tenant)
-            ? state.tenant
-            : null
-        }
-        onSelectionChange={key => {
-          if (key) {
-            selectTenant(String(key));
+      <Flex direction="column" gap="1">
+        <Select
+          // Labelled by the radio it belongs to, or as the field where it is
+          // the field.
+          {...(offersKind
+            ? { 'aria-label': TENANT_KIND_LABELS[dropdownKind] }
+            : { label, description })}
+          {...heldBlockedError.selectProps}
+          aria-describedby={
+            heldBlockedError.selectProps['aria-describedby'] ??
+            (showsBlockedNote ? blockedNoteId : undefined)
           }
-        }}
-      />
+          isRequired
+          searchable={searchableIf(dropdownChoices)}
+          options={dropdownChoices.map(namespace => {
+            const isBlocked = blocked.includes(namespace);
+            return {
+              id: namespace,
+              // Under Other namespace, the namespace's own name.
+              label:
+                dropdownKind === 'namespace'
+                  ? namespace
+                  : ownerOf(namespace, directory),
+              // Shown, not picked: the reason is the option's description,
+              // so it is read with it, not told by its colour alone.
+              ...(isBlocked
+                ? { disabled: true, description: CREATE_AGENTS_ROLE_REASON }
+                : {}),
+            };
+          })}
+          selectedKey={
+            state.tenant && dropdownChoices.includes(state.tenant)
+              ? state.tenant
+              : null
+          }
+          onSelectionChange={key => {
+            if (key) {
+              selectTenant(String(key));
+            }
+          }}
+        />
+        {heldBlockedError.message ??
+          (showsBlockedNote ? (
+            // In sight without opening the list: a keyboard skips the
+            // disabled options, and their reason with them.
+            <Text
+              as="p"
+              id={blockedNoteId}
+              variant="body-small"
+              color="secondary"
+            >
+              {createAgentsBlockedIn(
+                blocked.map(namespace => ownerOf(namespace, directory)),
+              )}
+            </Text>
+          ) : null)}
+      </Flex>
     );
 
   if (!offersKind) {

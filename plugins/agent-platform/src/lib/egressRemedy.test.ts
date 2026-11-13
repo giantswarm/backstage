@@ -89,6 +89,16 @@ describe('egressRemedyKind', () => {
     ).toBe('neutral');
   });
 
+  it('offers no edit for the platform’s own agent', () => {
+    expect(
+      egressRemedyKind({
+        ...editable,
+        canCommit: true,
+        agent: { namespace: 'kagent', managed: 'platform' },
+      }),
+    ).toBe('neutral');
+  });
+
   it('says an agent from Git outside agent-manager’s directory is changed there', () => {
     expect(
       egressRemedyKind({

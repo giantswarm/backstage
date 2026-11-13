@@ -1225,6 +1225,7 @@ describe('WorkflowPage', () => {
         'workflow_deploy',
         expect.objectContaining({ app: 'shop' }),
         'gazelle',
+        { signal: expect.any(AbortSignal), urlElicitation: true },
       ),
     );
     expect(

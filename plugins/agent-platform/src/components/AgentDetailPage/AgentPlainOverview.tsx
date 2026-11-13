@@ -9,6 +9,7 @@ import {
   Harness,
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Connector identity is owned by the Muster plugin.
 import { ConnectorLogo } from '@giantswarm/backstage-plugin-muster';
 import {
   CollapsibleMarkdown,
@@ -236,12 +237,14 @@ function SkillsSection({
   onUpdateSkills,
   onAddSkills,
   isGitOpsOwned,
+  isPlatformOwned = false,
 }: {
   agent: Agent;
   installation: string;
   onUpdateSkills?: () => void;
   onAddSkills?: () => void;
   isGitOpsOwned: boolean;
+  isPlatformOwned?: boolean;
 }) {
   const classes = useStyles();
   const skills = agent.getSkills();
@@ -261,6 +264,11 @@ function SkillsSection({
           <Text variant="body-medium" color="secondary">
             No skills yet. Skills add know-how and procedures.
           </Text>
+          {isPlatformOwned && (
+            <Text variant="body-small" color="secondary">
+              It is owned by the platform, so it is read-only.
+            </Text>
+          )}
           {isGitOpsOwned && (
             <Text variant="body-small" color="secondary">
               {onAddSkills
@@ -492,6 +500,9 @@ export type AgentPlainOverviewProps = {
   /** Opens the edit page, where skills are added. Absent when not editable. */
   onAddSkills?: () => void;
   isGitOpsOwned: boolean;
+  /** The platform's own agent (`managed: 'platform'`): read-only. */
+  isPlatformOwned?: boolean;
+  releaseDetailsUnavailable?: boolean;
 };
 
 /**
@@ -514,6 +525,8 @@ export function AgentPlainOverview({
   onUpdateSkills,
   onAddSkills,
   isGitOpsOwned,
+  isPlatformOwned,
+  releaseDetailsUnavailable,
 }: AgentPlainOverviewProps) {
   const classes = useStyles();
   const failure = agent.getFailure();
@@ -550,6 +563,7 @@ export function AgentPlainOverview({
         onUpdateSkills={onUpdateSkills}
         onAddSkills={onAddSkills}
         isGitOpsOwned={isGitOpsOwned}
+        isPlatformOwned={isPlatformOwned}
       />
 
       <ConnectorsSection agent={agent} isFailing={failure?.field === 'tools'} />
@@ -564,6 +578,7 @@ export function AgentPlainOverview({
           modelServing={modelServing}
           failure={failure}
           toolsHref={toolsHref}
+          releaseDetailsUnavailable={releaseDetailsUnavailable}
         />
       </TechnicalDetailsFoldOut>
     </div>

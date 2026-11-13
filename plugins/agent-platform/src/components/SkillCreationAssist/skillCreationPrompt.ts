@@ -15,6 +15,10 @@ export type SkillCreationTarget =
       kind: 'create';
       /** The repository the form would propose to. */
       repoUrl: string;
+      /** The directory new skills go below (the source's scanned `path`). */
+      path?: string;
+      /** The branch to propose to; the default branch when absent. */
+      branch?: string;
       /** The name typed so far, if any. */
       name?: string;
       /** The description typed so far, if any. */
@@ -134,7 +138,11 @@ export function skillCreationPrompt(target: SkillCreationTarget): string {
   ].filter(Boolean);
   const draft = target.instructions?.trim();
   return [
-    `I'd like to create a new skill in ${target.repoUrl}. It may need more than a SKILL.md — reference files, scripts or data next to it.`,
+    `I'd like to create a new skill in ${target.repoUrl}${
+      target.path
+        ? `, in a new directory below ${inlineData(target.path)}/`
+        : ''
+    }. It may need more than a SKILL.md — reference files, scripts or data next to it.`,
     ...(known.length > 0 ? [known.join('\n')] : []),
     ...(draft
       ? [
@@ -143,6 +151,8 @@ export function skillCreationPrompt(target: SkillCreationTarget): string {
       : []),
     `Ask me ${
       draft ? 'what is missing' : 'what the skill is for'
-    } before you write anything. Then propose it as a pull request to that repository and link it here.`,
+    } before you write anything. Then propose it as a pull request to that repository${
+      target.branch ? ` against ${inlineData(target.branch)}` : ''
+    } and link it here.`,
   ].join('\n\n');
 }

@@ -536,6 +536,29 @@ describe('updateVerdictOf', () => {
     });
   });
 
+  it('blocks the platform’s own agent, even where agent-manager can commit', () => {
+    expect(
+      updateVerdictOf({
+        ...base,
+        canCommit: true,
+        read: {
+          agent: {
+            name: 'default-agent',
+            namespace: 'kagent',
+            exists: true,
+            ready: true,
+            managed: 'platform',
+            default: true,
+          },
+          isLoading: false,
+        },
+      }),
+    ).toEqual({
+      kind: 'blocked',
+      reason: 'It is owned by the platform, so it is read-only.',
+    });
+  });
+
   it('offers a live write when a read failed in another way, as Agent detail does', () => {
     expect(
       updateVerdictOf({

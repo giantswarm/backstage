@@ -434,6 +434,15 @@ drops a repository whatever selects it, a pick by name included, and the
 manager keeps an exclusion that names no selected repository (it leaves
 nothing out until a filter selects that name).
 
+Creating a workspace takes any name, such as "My workspace", and fills in the
+technical name from it (`my-workspace`: lowercase letters, digits and dashes,
+at most 40 characters, with `slugify` as on agent and model creation), named in
+the field's description. The technical name is the workspace's name in
+workspace-manager, which stores no other. A technical name of the person's own
+goes under **Advanced options**; from then on the name no longer changes it,
+until it is cleared. A name with no Latin letter or digit leaves it empty, and
+saving opens Advanced options on it.
+
 The editor (`/customize/workspaces/new`, `…/<installation>/<organization>/<name>/edit`)
 shows a source's exclusions under **Exclusions**: each a tag to remove, what
 they leave out now, and a field that offers the repositories the source
@@ -728,6 +737,86 @@ anything but the portal; the model page names the owner in a "Managed by"
 fact. A CR without markers (applied with kubectl) is editable. The portal
 labels what it creates `app.kubernetes.io/managed-by: giantswarm-backstage`.
 
+**An organization's model is saved through agent-manager.** In an
+organization namespace (one agent-manager's `list_organizations` names), New
+model and Edit model call `set_organization_model` as the person
+(`useSaveOrganizationModel`) and write no Secret: an organization admin has no
+`patch` on Secrets, and its key is never typed into the model form. The form
+asks for the model's name (agent-manager keeps no display name), the provider
+and the model id. A new model continues to the credential form
+(`/organizations/<installation>/<parent>/<name>/credentials/<operation>`),
+which takes the key and finishes the write, then has the model and connector
+views read again; an edit of the model id is finished when the call answers.
+An edit keeps the provider: the stored key is the provider's, and
+agent-manager writes a new provider and its new key in two steps, with the
+wrong key in between. A new key, from Edit model or from Replace key and
+Replace credential on the organization's Models and Connectors tabs, is
+`replace_organization_credential` on the Secret and key the object reads (a
+model's from its ModelConfig, read as the person): the request writes that
+Secret only, for every object that reads it, and the form lists them and where
+each sends the value. With an edit of the model id, the edit is written
+first. The portal never sends `replaceCredential`. A refusal (another object
+reads another key of the Secret, an object applied from git, the objects
+changed since the request was prepared) says what to do. The last is
+agent-manager's save answer `409` with code `credential_consumers_changed`
+(agent-manager v2.24.0-rc.7 and later; rc.6 answers `conflict`, shown as Not
+saved): nothing was written, the form takes no value for that request any
+more, and the person starts the replacement again from the tab. Every request carries a fresh
+`requestId`, since agent-manager answers the same `requestId` with the old,
+stale operation.
+`set_organization_model` changes a model that exists, so a create first reads
+the organization's models (`list_model_configs`) and refuses a name it already
+has. A model agent-manager wrote there stays editable, since the edit goes
+through agent-manager. `useSaveModelConfig`
+refuses an organization namespace, and any namespace but `kagent` while the
+portal cannot tell whether it is an organization's (agent-manager not
+reachable or its organizations not read); Edit is withheld then too.
+
+The Models routes (`ModelsRouter`) read the organization directory
+(`OrganizationDirectoryProvider`) for all of this: without it every
+organization's model reads as the platform's, and Edit is withheld for a model
+agent-manager wrote. A call that may prepare a credential request
+(`set_organization_model`, `replace_organization_credential`) declares no URL
+elicitation (`callTool` with `urlElicitation: false`, the body's
+`urlElicitation: false` at muster-backend's `/call`): agent-manager then answers
+the request's id, and the portal opens its own credential form in the same
+tab. Declared, agent-manager asks the caller to open the form's page, which the
+portal puts to the person as an external page in a new tab. Such a call also
+gets no sign-in prompt: a missing sign-in to agent-manager fails it with
+muster's answer.
+
+**Set as default on an organization's model** (`useSetDefaultModelConfig`) is
+`set_organization_model` with the model's name and `default: true`, as the
+person: agent-manager puts the mark on it and takes it off every other model of
+the organization, two marks included. The portal patches no ModelConfig there,
+and the call sends only the namespace, the name, `default` and a request id, no
+key (agent-manager 2.24.0 takes all four). Only a model whose key Secret is
+missing answers a credential request; the page then opens the credential form,
+whose save finishes the move. A model that names no key Secret is refused before
+the call, since agent-manager would give it one. A model agent-manager wrote
+offers Set as default, and its Default model fact no longer sends the person to
+agent-manager's configuration. A person agent-manager refuses sees "Not
+permitted" with who can make the change, and a session without agent-manager
+gets the sign-in.
+
+**A refused portal session** (`PortalSessionEndedError`, `lib/portalSession.ts`).
+The portal's backend refuses a session token it cannot verify, for example
+after a restart of a portal without a database, whose signing keys live in
+memory: a 401 whose body names Backstage's `AuthenticationError`, before any
+plugin route runs. `AgentManagerClient` (through muster-backend, where muster's
+`MusterUnauthorizedError` keeps the body's `errorName`) and the credential
+form's client turn it into an error that says, in plain words, that the
+session ended and to reload the page to sign in again; nothing was sent. The
+credential form, New and Edit model and the model page show it with a Sign in
+again button (`PortalSessionEndedAlert`); the organization page's dialogs say
+it in words only (giantswarm/backstage#3492). The credential form drops a typed
+value, and its request stays open: a reload of the same address opens it
+again. Agent Platform reads that go neither through `AgentManagerClient` nor
+the credential form's client (the kagent routes, muster's own reads) still
+show the backend's text (giantswarm/backstage#3506).
+The status and the error's name decide, never the text; the credential route's
+own `AuthenticationError` (no installation token) is cured by the same sign-in.
+
 For a Helm-rendered model, Technical details name the release from the
 CR's `helm.toolkit.fluxcd.io/*` labels and `meta.helm.sh/*` annotations. Where
 a Flux HelmRelease rendered it, the page reads that HelmRelease with the
@@ -958,6 +1047,34 @@ A selected skill becomes a chart 1.x `skills[]` entry,
 `skillEntryOf`). The portal sends the commit, never a branch, so what the
 person picked runs until they update it. Root-level skills omit `path`; agents
 without skills omit `skills`. There is no per-skill credential.
+
+**Plugins.** The Skills step lists the plugins of the same repositories below
+the skills (`PluginCards`), Claude Code plugins and Agent Plugins packages as
+two groups, one row per plugin, with a search over the plugins' names and
+their skills' names and descriptions that opens every plugin with a matching
+skill. A plugin becomes a `plugins[]` entry pinned like a skill,
+`{ path, git: { url, commit }, skills? }` (`lib/plugins.ts`, `pluginEntryOf`).
+
+- A Claude Code plugin (`.claude-plugin/plugin.json` only) has one checkbox and
+  no selection: it loads whole, with its commands, hooks and subagents, on the
+  `claude` Harness only. Its row folds out its skills without checkboxes, read
+  from the skill catalogue.
+- An Agent Plugins package (a root `plugin.json`) loads only the skills named in
+  `skills`, on every Harness. A directory with both manifests is one, `claude`
+  included, because kagent reads the root manifest first. Its row folds out its
+  skills as cards to pick, and its checkbox picks every skill it lists at the
+  commit shown (mixed while only some are), pinning the package to that
+  commit, an edited agent's too. agent-manager takes no marker for the whole
+  package (giantswarm/giantswarm#39190), so the entry names each skill, and a
+  skill added to the package later is not included until it is picked.
+- An edited agent's entry without `skills` for a package pinned to an older
+  commit (picked while the directory was a Claude Code plugin there, where it
+  loads whole) shows the package checked and its skills checked and disabled.
+  Clearing the checkbox removes the entry; skills picked afterwards are pinned
+  to the latest commit. The same entry at the commit shown loads nothing, and
+  its row says so. Picked names the package no longer lists are named under
+  the row and left out of its count. A Claude Code row whose pinned entry
+  names skills says the agent loads only those.
 
 **Private skill repositories.** Discovery reads GitHub's `private` flag of
 each repository (`GET /agent-skills` answers `private`), and the Skills step
@@ -2959,7 +3076,17 @@ identity first): what the person typed or picked meanwhile stays, the rest is
 restored. The agent kept is the one the person picked, else the restored one,
 else the composer's preselection, which never replaces a restored agent that is
 not read yet. A `?agent=` link goes ahead of the restored agent, which goes
-ahead of the last agent used. The images, the workspace and the toolchains are
+ahead of the installation's default agent (agent-manager's `get_info`
+`defaultAgent`; listed first in the picker, marked Default), which goes ahead
+of the last agent used. A default that arrives after the person typed or
+picked does not replace the agent shown. `?agent=` takes an agent id
+(`<installation>/<namespace>/<name>`) or `<namespace>/<name>`. `#prompt=` (in
+the fragment, so the brief never reaches a server) prefills the prompt
+(trimmed, at most 2000 characters, never sent by itself, marked "From a
+link"), wins over a stored draft with a Restore offer, and is removed from the
+address once read; Sentry breadcrumbs and event URLs filter it. The link
+format: `/?agent=<id>#prompt=<url-encoded brief>`. In agent replies, such a
+link opens in the same tab; other portal links open in a new tab. The images, the workspace and the toolchains are
 not kept. The draft is removed once the session is created; a failed start
 keeps it. A connector sign-in from the notification inbox (`McpAuthDialog`)
 never leaves the page: it opens the provider in a new tab

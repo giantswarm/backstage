@@ -19,7 +19,10 @@ import {
 } from './helpers';
 import type { SessionRow } from '../SessionsDataProvider';
 
+let mockSessionEnd: 'signed-in-elsewhere' | undefined;
+
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
+  useMainSessionEnd: () => mockSessionEnd,
   applyInstallationScope: (installations: string[]) => installations,
   useInstallations: () => ({
     installations: [{ name: 'gazelle' }],
@@ -673,6 +676,30 @@ describe('RecentSessions', () => {
 
     expect(await screen.findByText('No sessions yet')).toBeInTheDocument();
   });
+
+  it.each([
+    ['the home list', false],
+    ['the shell rail', true],
+  ])(
+    'asks for a sign-in in %s, not claiming no sessions, once the portal session ended',
+    async (_where, shellRail) => {
+      mockSessionEnd = 'signed-in-elsewhere';
+      listSessions.mockResolvedValue([]);
+      try {
+        await renderRecent({ shellRail });
+
+        expect(
+          await screen.findByText('Sign in again to see your sessions.'),
+        ).toBeInTheDocument();
+        expect(screen.queryByText('No sessions yet')).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', { name: 'Try again' }),
+        ).not.toBeInTheDocument();
+      } finally {
+        mockSessionEnd = undefined;
+      }
+    },
+  );
 
   describe('when the sessions could not be read', () => {
     /** kagent down for a moment, as the API client reports it. */

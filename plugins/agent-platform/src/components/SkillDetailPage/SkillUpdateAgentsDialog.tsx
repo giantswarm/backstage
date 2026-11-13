@@ -33,7 +33,7 @@ import {
   useUpdateAgent,
   type UpdateAgentState,
 } from '../../hooks/useUpdateAgent';
-import type { MusterServerPresence } from '../../hooks/useMusterServerAvailability';
+import type { MusterServerPresence } from '@giantswarm/backstage-plugin-muster';
 import { agentManagerBlocker, type AgentUpdate } from '../../lib/agentManager';
 import type { AgentRow } from '../AgentsDataProvider';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
@@ -161,6 +161,12 @@ export function updateVerdictOf({
       signInRequired: read.failure.signInRequired,
     };
   }
+  if (read.agent?.managed === 'platform') {
+    return {
+      kind: 'blocked',
+      reason: 'It is owned by the platform, so it is read-only.',
+    };
+  }
   if (read.agent?.managed === 'gitops') {
     if (isInfoLoading) {
       return { kind: 'checking' };
@@ -219,7 +225,10 @@ function VerdictProbe({
     reachable ? agent.installation : undefined,
   );
   const release = read.agent?.helmRelease;
-  const isGitOps = read.agent?.managed === 'gitops';
+  // Neither is asked: a pull request needs no access, the platform's own
+  // agent is never written.
+  const skipsAccess =
+    read.agent?.managed === 'gitops' || read.agent?.managed === 'platform';
   const { allowed: mayUpdate, isLoading: isCheckingPermission } =
     useSelfSubjectAccessReview(
       agent.installation,
@@ -231,7 +240,7 @@ function VerdictProbe({
         name: release?.name ?? agent.technicalName,
         verb: 'update',
       },
-      { enabled: reachable && !read.isLoading && !isGitOps },
+      { enabled: reachable && !read.isLoading && !skipsAccess },
     );
 
   const verdict = updateVerdictOf({

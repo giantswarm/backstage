@@ -25,9 +25,16 @@ const INSTALLATION: MusterInstallationConfig = {
 function fakeClient(
   handler: (tool: string, args: Record<string, unknown>) => unknown,
   beforeWindow?: (args: Record<string, unknown>) => unknown,
+  groupedCounts?: (args: Record<string, unknown>) => string,
 ): MusterMcpClient {
   return {
     callTool: async (tool: string, args: Record<string, unknown>) => {
+      if (
+        String(args.query).includes('sum by (mcpserver_name, tool, outcome)')
+      ) {
+        if (groupedCounts) return groupedCounts(args);
+        throw new Error('grouped query unavailable');
+      }
       if (
         tool.endsWith('execute_range_query') &&
         Date.parse(String(args.end)) < Date.now()
@@ -824,6 +831,94 @@ describe('getMcpUsage', () => {
     const usage = await getMcpUsage(client, INSTALLATION, {}, 24);
     expect(usage.available).toBe(false);
     expect(usage.reason).toMatch(/upstream exploded/);
+  });
+});
+
+describe('grouped usage counts', () => {
+  it.each([24, 49, 168, 720, 2160])(
+    'reuses count rows for %s hours',
+    async hours => {
+      const reads: Record<string, unknown>[] = [];
+      const client = fakeClient(
+        (tool, args) => {
+          if (tool === 'core_mcpserver_list') return SERVER_LIST;
+          reads.push(args);
+          return 'Result Type: matrix\nResult:';
+        },
+        undefined,
+        args => {
+          reads.push(args);
+          const step = hours > 48 ? 86400 : 3600;
+          const last =
+            Date.parse(String(args.end)) / 1000 - ((hours * 3600) % step);
+          const first = last - step;
+          return [
+            'Result Type: matrix',
+            'Result: {mcpserver_name="a", tool="read", outcome="ok"} =>',
+            `4 @[${first}]`,
+            `6 @[${last}]`,
+            '{mcpserver_name="b", tool="read", outcome="ok"} =>',
+            `3 @[${last}]`,
+            '{mcpserver_name="a", tool="write", outcome="error"} =>',
+            `2 @[${last}]`,
+            '{mcpserver_name="old", tool="old", outcome="ok"} =>',
+            `5 @[${Date.parse(String(args.start)) / 1000}]`,
+          ].join('\n');
+        },
+      );
+      const usage = await getMcpUsage(client, INSTALLATION, {}, hours);
+      await getMcpToolLatency(client, INSTALLATION, {}, hours);
+      expect(reads).toHaveLength(3);
+      expect(reads.every(args => args.unlimited === 'true')).toBe(true);
+      expect(usage.totals).toMatchObject({
+        calls: 15,
+        errors: 2,
+        distinct_tools: 2,
+      });
+      expect(usage.top_tools).toEqual([
+        { tool: 'read', calls: 13, errors: 0, p95_seconds: null },
+        { tool: 'write', calls: 2, errors: 2, p95_seconds: null },
+      ]);
+      expect(usage.servers).toEqual([
+        { server: 'a', calls: 12, errors: 2, p95_seconds: null },
+        { server: 'b', calls: 3, errors: 0, p95_seconds: null },
+      ]);
+      expect(
+        usage.buckets.reduce(
+          (sum, bucket) => sum + bucket.ok + bucket.error,
+          0,
+        ),
+      ).toBe(15);
+      expect(usage.data_start).toBeUndefined();
+      expect(isPartialUsage(usage)).toBe(false);
+    },
+  );
+
+  it('reads installation coverage separately from filtered counts', async () => {
+    const queries: string[] = [];
+    const client = fakeClient(
+      (tool, args) => {
+        if (tool === 'core_mcpserver_list') return SERVER_LIST;
+        queries.push(String(args.query));
+        const end = Date.parse(String(args.end)) / 1000;
+        return String(args.query).includes('sum by (outcome)')
+          ? `Result Type: matrix\nResult: {outcome="ok"} =>\n1 @[${end}]`
+          : 'Result Type: matrix\nResult:';
+      },
+      undefined,
+      args => {
+        queries.push(String(args.query));
+        return 'Result Type: matrix\nResult:';
+      },
+    );
+    const usage = await getMcpUsage(client, INSTALLATION, {}, 720, ['a']);
+    expect(queries[0]).toContain('mcpserver_name="a"');
+    expect(queries).toContain(
+      'sum by (outcome) (increase(muster_downstream_tool_calls_total[24h]))',
+    );
+    expect(usage.totals.calls).toBe(0);
+    expect(usage.data_start).toBeDefined();
+    expect(isPartialUsage(usage)).toBe(false);
   });
 });
 
