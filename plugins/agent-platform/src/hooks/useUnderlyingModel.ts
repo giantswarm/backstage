@@ -10,18 +10,15 @@ type ModelSpec = {
 };
 
 /**
- * The model a ModelConfig runs, from its spec, as one line:
- * `claude-sonnet-4-6 · Anthropic`. Undefined when the spec names neither (or
- * the ModelConfig is not known).
- *
- * The ModelConfig's own name stays what people see — an admin may abstract the
- * model on purpose ("The Cheap One") — and this line is the progressive
- * disclosure beside it (PO decision L6).
+ * The model and provider as one line, omitting a model already shown in the
+ * label. Provider information remains available when the label is the model.
  */
 export function underlyingModelLine(
   modelConfig: ModelSpec | undefined,
+  label?: string,
 ): string | undefined {
-  const line = [modelConfig?.getModel(), modelConfig?.getProvider()]
+  const model = modelConfig?.getModel();
+  const line = [model !== label ? model : undefined, modelConfig?.getProvider()]
     .filter(Boolean)
     .join(' · ');
   return line || undefined;

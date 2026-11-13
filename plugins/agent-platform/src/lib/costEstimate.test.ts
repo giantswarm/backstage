@@ -26,18 +26,6 @@ describe('deriveTokenRates', () => {
     expect(rates.blended).toBeCloseTo(19 / 12_000_000);
   });
 
-  it('adds the cache types to an input count that leaves them out', () => {
-    // A gateway before v1.5.0: `input` is fresh input alone, and the cache
-    // types are far above it.
-    const rates = deriveTokenRates(
-      { input: 3, input_cache_read: 1, output: 15 },
-      { input: 1_000_000, input_cache_read: 10_000_000, output: 1_000_000 },
-    );
-
-    expect(rates.input).toBeCloseTo(4 / 11_000_000);
-    expect(rates.blended).toBeCloseTo(19 / 12_000_000);
-  });
-
   it('reads cache types a hair above input as inside it', () => {
     // `increase()` extrapolates each series on its own, so a count holding
     // the cache types can come out just below them.
@@ -52,6 +40,21 @@ describe('deriveTokenRates', () => {
     );
 
     expect(rates.blended).toBeCloseTo(19 / 11_999_000);
+  });
+
+  it('keeps cache tokens inside input when their totals exceed it', () => {
+    const rates = deriveTokenRates(
+      { input: 3, input_cache_read: 1, input_cache_write: 2, output: 15 },
+      {
+        input: 1_000_000,
+        input_cache_read: 900_000,
+        input_cache_write: 200_000,
+        output: 100_000,
+      },
+    );
+
+    expect(rates.input).toBeCloseTo(6 / 1_000_000, 12);
+    expect(rates.blended).toBeCloseTo(21 / 1_100_000, 12);
   });
 
   it('returns no rate at all when nothing was priced', () => {

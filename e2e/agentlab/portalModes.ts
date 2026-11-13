@@ -86,6 +86,7 @@ export const SHELL_SPECS = [
   'usage-time-window.spec.ts',
   'wizard-tools-connection.spec.ts',
   'wizard-tools-layout.spec.ts',
+  'wizard-models-namespaced.spec.ts',
   'workflows.spec.ts',
   'workspace-detail.spec.ts',
   'workspace-flows.spec.ts',
@@ -107,6 +108,7 @@ export const MOBILE_SPECS = [
   'mobile-sessions.spec.ts',
   'mobile-tool-page.spec.ts',
   'mobile-wizard.spec.ts',
+  'wizard-models-namespaced.spec.ts',
   'mobile-workflow.spec.ts',
 ] as const;
 
