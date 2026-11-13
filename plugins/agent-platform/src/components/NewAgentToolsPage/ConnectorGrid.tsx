@@ -19,8 +19,6 @@ import {
 import {
   bucketLabel,
   countNoun,
-  MAX_INLINE_SELECTORS,
-  MAX_INLINE_BYTES,
   connectionLabel,
   shownConnection,
   type ServerBucket,
@@ -103,7 +101,7 @@ function toolsLine(
 function readOnlyUnavailable(
   bucket: ServerBucket,
   readOnlyCount: number,
-  maxSelectors: number,
+  maxSelectors: number | undefined,
 ): string | undefined {
   if (bucket.needsSignIn || bucket.tools.length === 0) {
     return undefined;
@@ -111,11 +109,8 @@ function readOnlyUnavailable(
   if (readOnlyCount === 0) {
     return 'None of its tools only read, so Read-only cannot be picked.';
   }
-  if (readOnlyCount > maxSelectors) {
+  if (maxSelectors !== undefined && readOnlyCount > maxSelectors) {
     return `Its read-only tools are more than the ${maxSelectors} an agent may list one by one, so choose All.`;
-  }
-  if (!readOnlyFits(bucket, maxSelectors)) {
-    return `Its read-only tools exceed the ${MAX_INLINE_BYTES}-byte toolset limit. Choose fewer tools or use a preset.`;
   }
   return undefined;
 }
@@ -152,7 +147,7 @@ function ConnectorCard({
   onChoose,
 }: {
   bucket: ServerBucket;
-  maxSelectors: number;
+  maxSelectors?: number;
   /** Every connector, to tell whose its unlisted picks are. */
   connectors: readonly ServerBucket[];
   selected: ReadonlySet<string>;
@@ -250,7 +245,7 @@ function ConnectorCard({
  */
 export function ConnectorGrid({
   connectors,
-  maxSelectors = MAX_INLINE_SELECTORS,
+  maxSelectors,
   selected,
   disabled,
   onChoose,

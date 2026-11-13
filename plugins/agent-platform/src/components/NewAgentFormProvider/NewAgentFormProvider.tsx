@@ -324,14 +324,14 @@ export type NewAgentFormContextValue = TagsFieldUpdaters & {
   /** Sets {@link NewAgentFormState.signInToolDeclined}. */
   setSignInToolDeclined: (declined: boolean) => void;
   /**
-   * True when the toolset can be applied: none of the selectors malformed and
-   * no more than the inline cap. The empty selection is valid — it is no tools.
-   * What the Tools step's Continue and the review page's deploy gate on.
+   * Whether selectors satisfy the grammar and the advertised count. The empty
+   * selection represents no tools. Server validation checks the remaining
+   * constraints.
    */
   isToolsetValid: boolean;
   /** Why the toolset cannot be applied, empty when it can. */
   toolsetProblems: string[];
-  maxInlineSelectors: number;
+  maxInlineSelectors?: number;
   reset: () => void;
   /**
    * The kept draft has been looked for (see `persistDraft`): until then the

@@ -410,16 +410,17 @@ export class MusterApiClient implements MusterApi {
     if (offset !== undefined) {
       searchParams.set('offset', String(offset));
     }
-    // One `toolset=` entry per selector: a selector never contains a comma or
-    // whitespace (the grammar forbids both), so the repeated parameter is
-    // unambiguous and the backend rebuilds the list in order.
-    for (const selector of toolset ?? []) {
-      searchParams.append('toolset', selector);
-    }
     if (includePresets !== undefined) {
       searchParams.set('include_presets', String(includePresets));
     }
     const qs = searchParams.toString();
+    if (toolset !== undefined) {
+      return this.post<FilterToolsResponse>(
+        `/tools/filter${qs ? `?${qs}` : ''}`,
+        { toolset },
+        installation,
+      );
+    }
     return this.get<FilterToolsResponse>(
       `/tools/filter${qs ? `?${qs}` : ''}`,
       installation,

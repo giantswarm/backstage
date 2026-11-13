@@ -51,7 +51,7 @@ it.each([17, 32, 128])(
   },
 );
 
-it('keeps the compatibility fallback when the schema cannot be read', async () => {
+it('leaves the cap unspecified when the schema cannot be read', async () => {
   const describeTool = jest.fn().mockRejectedValue(new Error('offline'));
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -67,6 +67,6 @@ it('keeps the compatibility fallback when the schema cannot be read', async () =
     wrapper,
   });
   await waitFor(() => expect(describeTool).toHaveBeenCalled());
-  expect(result.current).toBe(128);
+  expect(result.current).toBeUndefined();
   client.clear();
 });

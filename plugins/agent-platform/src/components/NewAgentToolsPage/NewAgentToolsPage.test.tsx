@@ -203,6 +203,7 @@ const PRESETS = [
 ];
 
 type Scenario = {
+  selectorLimit?: number;
   /** Whether the caller's session is signed in to `pro`. */
   signedIn: boolean;
   /** Whether this muster evaluates toolsets (echoes `toolset`) at all. */
@@ -222,6 +223,7 @@ type Scenario = {
  * visible only after the sign-in.
  */
 function makeMusterApi(scenario: Scenario) {
+  const maximum = scenario.selectorLimit ?? 128;
   const base = [
     ...(scenario.baseTools ?? TOOLS),
     ...(scenario.extraTools ?? []),
@@ -233,11 +235,11 @@ function makeMusterApi(scenario: Scenario) {
       throw new Error(scenario.resolutionFails);
     }
     // Muster's own inline cap, refused with the whole selector list.
-    if (selectors.length > 128) {
+    if (selectors.length > maximum) {
       throw new Error(
         `toolset [${selectors.join(',')}] has ${
           selectors.length
-        } selectors, more than the 128 allowed inline; define a preset`,
+        } selectors, more than the ${maximum} allowed inline; define a preset`,
       );
     }
     const matched = new Set<ToolSummary>();
@@ -351,6 +353,12 @@ function makeMusterApi(scenario: Scenario) {
 
   return {
     api: {
+      describeTool: jest.fn(async () => ({
+        name: 'x_agent-manager_create_agent',
+        inputSchema: {
+          properties: { toolset: { maxItems: maximum } },
+        },
+      })),
       filterTools,
       listTools,
       getAuthStatus,
@@ -673,9 +681,10 @@ describe('NewAgentToolsPage', () => {
       expect(toolsetOutput()).toBe('preset:read-only');
 
       // Read-only covers kubernetes' one read-only tool: shown as Read-only.
-      await waitFor(() =>
-        expect(access('kubernetes', 'Read-only')).toBeChecked(),
-      );
+      await waitFor(() => {
+        expect(access('kubernetes', 'Read-only')).toBeChecked();
+        expect(access('kubernetes', 'Read-only')).toBeEnabled();
+      });
       expect(access('agent-manager', 'All')).not.toBeChecked();
       expect(
         screen.getByText(
@@ -1050,7 +1059,7 @@ describe('NewAgentToolsPage', () => {
     /** 40 read-only connectors, listed after the fixture's three: the read-only
      * preset written out is 42 selectors. */
     const MANY_READ_ONLY: ToolSummary[] = Array.from(
-      { length: 128 },
+      { length: 40 },
       (_, i) => ({
         name: `x_svc${String(i).padStart(2, '0')}_get`,
         summary: `App ${i}`,
@@ -1065,14 +1074,16 @@ describe('NewAgentToolsPage', () => {
         signedIn: false,
         evaluatesToolsets: true,
         extraTools: MANY_READ_ONLY,
+        selectorLimit: 32,
       });
       await renderStep({ api });
       const user = userEvent.setup();
       await connectorsListed();
       await user.click(level('Read-only tools'));
-      await waitFor(() =>
-        expect(access('kubernetes', 'Read-only')).toBeChecked(),
-      );
+      await waitFor(() => {
+        expect(access('kubernetes', 'Read-only')).toBeChecked();
+        expect(access('kubernetes', 'Read-only')).toBeEnabled();
+      });
 
       // The QA repro: written out, this would be 43 selectors.
       await user.click(access('agent-manager', 'All'));
@@ -1103,23 +1114,25 @@ describe('NewAgentToolsPage', () => {
         signedIn: false,
         evaluatesToolsets: true,
         extraTools: MANY_READ_ONLY,
+        selectorLimit: 32,
       });
       await renderStep({ api });
       const user = userEvent.setup();
       await connectorsListed();
       await user.click(level('Read-only tools'));
-      await waitFor(() =>
-        expect(access('kubernetes', 'Read-only')).toBeChecked(),
-      );
+      await waitFor(() => {
+        expect(access('kubernetes', 'Read-only')).toBeChecked();
+        expect(access('kubernetes', 'Read-only')).toBeEnabled();
+      });
 
       // "Read-only everywhere but kubernetes" has no selector: written out,
       // it is 41 selectors, one per connector plus the workflow.
       await user.click(access('kubernetes', 'Read-only'));
-      expect(toolsetOutput()?.split(' | ')).toHaveLength(129);
+      expect(toolsetOutput()?.split(' | ')).toHaveLength(41);
       await expectContinueBlocked(user);
       expect(
         within(summaryBar()).getByText(
-          'This toolset needs 129 selectors but may list at most 128, so choose fewer connectors or tools.',
+          'This toolset needs 41 selectors but may list at most 32, so choose fewer connectors or tools.',
         ),
       ).toBeInTheDocument();
 
@@ -1136,16 +1149,18 @@ describe('NewAgentToolsPage', () => {
         signedIn: false,
         evaluatesToolsets: true,
         extraTools: MANY_READ_ONLY,
+        selectorLimit: 32,
       });
       await renderStep({ api, roundTrip: true });
       const user = userEvent.setup();
       await connectorsListed();
       await user.click(level('Read-only tools'));
-      await waitFor(() =>
-        expect(access('kubernetes', 'Read-only')).toBeChecked(),
-      );
+      await waitFor(() => {
+        expect(access('kubernetes', 'Read-only')).toBeChecked();
+        expect(access('kubernetes', 'Read-only')).toBeEnabled();
+      });
       await user.click(access('kubernetes', 'Read-only'));
-      expect(toolsetOutput()?.split(' | ')).toHaveLength(129);
+      expect(toolsetOutput()?.split(' | ')).toHaveLength(41);
 
       // Back to another step and here again: the step mounts afresh.
       await user.click(screen.getByRole('button', { name: 'Leave the step' }));
@@ -1164,14 +1179,16 @@ describe('NewAgentToolsPage', () => {
         signedIn: false,
         evaluatesToolsets: true,
         extraTools: MANY_READ_ONLY,
+        selectorLimit: 32,
       });
       await renderStep({ api });
       const user = userEvent.setup();
       await connectorsListed();
       await user.click(level('Read-only tools'));
-      await waitFor(() =>
-        expect(access('kubernetes', 'Read-only')).toBeChecked(),
-      );
+      await waitFor(() => {
+        expect(access('kubernetes', 'Read-only')).toBeChecked();
+        expect(access('kubernetes', 'Read-only')).toBeEnabled();
+      });
       await user.click(access('agent-manager', 'All'));
       expect(toolsetOutput()).toBe('preset:read-only | server:agent-manager');
 
@@ -1497,13 +1514,15 @@ describe('NewAgentToolsPage', () => {
       const { api } = makeMusterApi({
         signedIn: false,
         evaluatesToolsets: true,
+        resolutionFails:
+          'toolset encodes to 8193 bytes, more than the 8192 allowed inline; define a preset',
       });
       await renderStep({ api, toolset: [`tool:${'é'.repeat(4094)}`] });
       const user = userEvent.setup();
       await connectorsListed();
       const reason =
-        'This toolset uses 8193 bytes but may use at most 8192, so remove tools under Selected or use a preset.';
-      expect(screen.getAllByText(reason).length).toBeGreaterThan(0);
+        'toolset encodes to 8193 bytes, more than the 8192 allowed inline; define a preset';
+      await screen.findAllByText(reason);
       await expectContinueBlocked(user);
       expect(document.activeElement).toHaveTextContent(reason);
       await user.click(
@@ -1511,7 +1530,7 @@ describe('NewAgentToolsPage', () => {
       );
       await waitFor(() =>
         expect(document.activeElement).toHaveTextContent(
-          'Toolset is too large',
+          'Could not resolve the toolset',
         ),
       );
     });
@@ -1602,11 +1621,12 @@ describe('NewAgentToolsPage', () => {
     });
 
     it('still shows a resolution error that is not the cap', async () => {
-      const { api } = makeMusterApi({
+      const scenario: Scenario = {
         signedIn: false,
         evaluatesToolsets: true,
         resolutionFails: 'muster is unreachable',
-      });
+      };
+      const { api } = makeMusterApi(scenario);
       await renderStep({ api });
       const user = userEvent.setup();
       await connectorsListed();
@@ -1621,6 +1641,14 @@ describe('NewAgentToolsPage', () => {
       expect(
         within(toolsetCard()).getByText('muster is unreachable'),
       ).toBeInTheDocument();
+      scenario.resolutionFails = undefined;
+      await user.click(
+        screen.getByRole('button', { name: 'Check again', exact: true }),
+      );
+      await waitFor(() =>
+        expect(screen.queryAllByText('muster is unreachable')).toHaveLength(0),
+      );
+      expect(toolsetOutput()).toBe('server:kubernetes');
     });
 
     it("adds a selector by name, a preset too, and surfaces muster's unknown-preset error", async () => {
@@ -2056,9 +2084,10 @@ describe('NewAgentToolsPage', () => {
       });
       await connectorsListed();
 
-      await waitFor(() =>
-        expect(access('kubernetes', 'Read-only')).toBeChecked(),
-      );
+      await waitFor(() => {
+        expect(access('kubernetes', 'Read-only')).toBeChecked();
+        expect(access('kubernetes', 'Read-only')).toBeEnabled();
+      });
       expect(level('Only the tools I choose below')).toBeChecked();
       expect(access('agent-manager', 'All')).toBeChecked();
       expect(toolsetOutput()).toBe('preset:read-only | server:agent-manager');
@@ -2103,9 +2132,10 @@ describe('NewAgentToolsPage', () => {
 
       release();
 
-      await waitFor(() =>
-        expect(access('kubernetes', 'Read-only')).toBeChecked(),
-      );
+      await waitFor(() => {
+        expect(access('kubernetes', 'Read-only')).toBeChecked();
+        expect(access('kubernetes', 'Read-only')).toBeEnabled();
+      });
       expect(access('kubernetes', 'All')).toBeEnabled();
       expect(
         screen.queryByText('Reading what the preset covers…'),

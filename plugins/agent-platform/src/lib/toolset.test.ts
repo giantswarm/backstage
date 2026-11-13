@@ -16,8 +16,6 @@ import {
   isDestructive,
   isReadOnly,
   isUnknownPresetError,
-  MAX_INLINE_SELECTORS,
-  toolsetByteLength,
   normalizeSelection,
   offeredPresets,
   orderPresets,
@@ -75,32 +73,28 @@ describe('selector grammar', () => {
   });
 
   it('caps a toolset at 128 inline selectors and says what to reduce', () => {
-    const fine = Array.from(
-      { length: MAX_INLINE_SELECTORS },
-      (_, i) => `tool:x_srv_t${i}`,
+    const fine = Array.from({ length: 128 }, (_, i) => `tool:x_srv_t${i}`);
+    expect(toolsetProblems(fine, undefined, 128)).toEqual([]);
+    const problems = toolsetProblems(
+      [...fine, 'tool:x_srv_one_more'],
+      undefined,
+      128,
     );
-    expect(toolsetProblems(fine)).toEqual([]);
-    const problems = toolsetProblems([...fine, 'tool:x_srv_one_more']);
     expect(problems).toEqual([
       'This toolset needs 129 selectors but may list at most 128, so choose fewer connectors or tools.',
     ]);
     // Where the catalogue can say more, the caller words it.
     expect(
-      toolsetProblems([...fine, 'tool:x_srv_one_more'], s => `${s.length}!`),
+      toolsetProblems(
+        [...fine, 'tool:x_srv_one_more'],
+        s => `${s.length}!`,
+        128,
+      ),
     ).toEqual(['129!']);
   });
 
-  it('bounds encoded UTF-8 bytes including commas', () => {
-    const atLimit = [`tool:${  'x'.repeat(8187)}`];
-    expect(toolsetProblems(atLimit)).toEqual([]);
-    expect(toolsetProblems([`tool:${  'x'.repeat(8188)}`])).toEqual([
-      'This toolset uses 8193 bytes but may use at most 8192, so remove tools under Selected or use a preset.',
-    ]);
-    expect(toolsetByteLength([`tool:${  'é'.repeat(4093)  }x`])).toBe(8192);
-    expect(toolsetProblems([`tool:${  'é'.repeat(4094)}`])).toHaveLength(1);
-    expect(
-      toolsetProblems([`tool:${  'x'.repeat(8181)}`, 'tool:x']),
-    ).toHaveLength(1);
+  it('leaves the count to the server when no schema cap is available', () => {
+    expect(toolsetProblems(Array(129).fill('tool:x'))).toEqual([]);
   });
 
   it('splits a rendered header back into selectors', () => {

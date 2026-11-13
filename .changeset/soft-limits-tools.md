@@ -1,5 +1,7 @@
 ---
 '@giantswarm/backstage-plugin-agent-platform': patch
+'@giantswarm/backstage-plugin-muster': patch
+'@giantswarm/backstage-plugin-muster-backend': patch
 ---
 
-Allow up to 128 toolset selectors within 8192 UTF-8 bytes. Explain byte-limit failures beside Continue and account for them when selecting read-only tools or adding the sign-in tool.
+Allow larger toolsets using the installed chart's selector cap and Muster's validation. Show server validation failures beside Continue and send selections as JSON so Unicode names fit the transport.

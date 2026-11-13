@@ -4,7 +4,7 @@ import {
   signInToolOf,
   SIGN_IN_TOOL_SELECTOR,
 } from './signInTool';
-import { MAX_INLINE_SELECTORS, type ServerInfo } from './toolset';
+import type { ServerInfo } from './toolset';
 
 const SERVERS: ServerInfo[] = [
   {
@@ -39,13 +39,18 @@ const SERVERS: ServerInfo[] = [
 
 const signIn = (
   selection: string[],
-  options: { declined?: boolean; presetsInclude?: boolean } = {},
+  options: {
+    declined?: boolean;
+    presetsInclude?: boolean;
+    maxSelectors?: number;
+  } = {},
 ) =>
   signInToolOf({
     selection,
     servers: SERVERS,
     declined: options.declined ?? false,
     presetsInclude: options.presetsInclude ?? false,
+    maxSelectors: options.maxSelectors,
   });
 
 describe('connectorsNeedingSignIn', () => {
@@ -124,21 +129,11 @@ describe('signInToolOf', () => {
 
     const full = [
       'server:grafana-cloud',
-      ...Array.from(
-        { length: MAX_INLINE_SELECTORS - 1 },
-        (_, i) => `tool:x_docs_tool_${i}`,
-      ),
+      ...Array.from({ length: 127 }, (_, i) => `tool:x_docs_tool_${i}`),
     ];
-    expect(signIn(full)).toMatchObject({ status: 'no-room', toolset: full });
-
-    const connector = 'server:grafana-cloud';
-    const byteFull = [
-      connector,
-      `tool:${  'x'.repeat(8192 - connector.length - 6)}`,
-    ];
-    expect(signIn(byteFull)).toMatchObject({
+    expect(signIn(full, { maxSelectors: 128 })).toMatchObject({
       status: 'no-room',
-      toolset: byteFull,
+      toolset: full,
     });
   });
 });

@@ -8,7 +8,6 @@ import {
 
 import type { SignInToolState } from '../../../hooks/useSignInTool';
 import { SIGN_IN_TOOL } from '../../../lib/signInTool';
-import { MAX_INLINE_BYTES, MAX_INLINE_SELECTORS } from '../../../lib/toolset';
 
 const useStyles = makeStyles(theme => ({
   row: {
@@ -42,7 +41,6 @@ const useStyles = makeStyles(theme => ({
 }));
 
 export type SignInToolNoteProps = {
-  maxSelectors?: number;
   signIn: SignInToolState;
   /** Takes the added sign-in tool out of the toolset. */
   onRemove: () => void;
@@ -58,7 +56,6 @@ export type SignInToolNoteProps = {
  */
 export function SignInToolNote({
   signIn,
-  maxSelectors = MAX_INLINE_SELECTORS,
   onRemove,
   onAddBack,
 }: SignInToolNoteProps) {
@@ -112,10 +109,8 @@ export function SignInToolNote({
     return (
       <Text variant="body-x-small" color="warning" role="status">
         The toolset has no room left for{' '}
-        <span className={classes.code}>{SIGN_IN_TOOL}</span> (at most{' '}
-        {maxSelectors} selectors and {MAX_INLINE_BYTES} bytes), so the agent
-        won't be able to sign in to {connectors}. Remove a selector to make
-        room.
+        <span className={classes.code}>{SIGN_IN_TOOL}</span>, so the agent won't
+        be able to sign in to {connectors}. Remove a selector to make room.
       </Text>
     );
   }
