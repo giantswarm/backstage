@@ -6,12 +6,14 @@ import {
   Button,
   Cell,
   CellText,
+  Column,
   ColumnConfig,
   Flex,
   Link,
   Table,
   Text,
   useTable,
+  VisuallyHidden,
 } from '@backstage/ui';
 import {
   applyCatalogFilters,
@@ -51,7 +53,6 @@ import {
   deactivatedSignInGate,
   isSsoRefused,
   needsSignIn,
-  ServerSignInStatus,
   SessionGate,
   SignInStatusActions,
   SignInStatusText,
@@ -84,6 +85,12 @@ import {
   CONNECTORS_DEFAULT_SORT,
   sortConnectorRows,
 } from './sortConnectorRows';
+import {
+  type SignInStatusBoard,
+  useBoardSignInStatus,
+  usePublishSignInStatus,
+  useSignInStatusBoard,
+} from './signInStatusBoard';
 
 export type CustomizeConnectorsPanelProps = {
   search: string;
@@ -179,9 +186,11 @@ function ConnectorName({
 function ConnectorStatusCell({
   row,
   installation,
+  board,
 }: {
   row: Row;
   installation: string;
+  board: SignInStatusBoard;
 }) {
   if (!hasSignIn(row)) {
     if (!row.status.label) {
@@ -203,21 +212,74 @@ function ConnectorStatusCell({
     );
   }
   return (
+    <SignInStatusCell row={row} installation={installation} board={board} />
+  );
+}
+
+/**
+ * The state of a row with a sign-in. Holds the row's one sign-in hook, so the
+ * answer to a click on the button in the next column reaches the state.
+ */
+function SignInStatusCell({
+  row,
+  installation,
+  board,
+}: {
+  row: SignInRow;
+  installation: string;
+  board: SignInStatusBoard;
+}) {
+  const signInStatus = useServerSignInStatus({
+    noun: 'connector',
+    serverName: row.signInServer,
+    displayName: row.entry.displayName,
+    installation,
+    status: row.status,
+    signInGate: row.signInGate,
+  });
+  usePublishSignInStatus(board, row.id, signInStatus);
+  return (
     <Cell>
-      {/* The row opens the connector; the sign-in and the hint must not. */}
+      {/* The row opens the connector; the hint must not. */}
       <StopRowPress>
-        <ServerSignInStatus
-          noun="connector"
-          serverName={row.signInServer}
-          displayName={row.entry.displayName}
-          installation={installation}
-          status={row.status}
-          signInGate={row.signInGate}
+        <SignInStatusText
+          serverName={row.entry.displayName}
+          signInStatus={signInStatus}
         />
       </StopRowPress>
     </Cell>
   );
 }
+
+/**
+ * The sign-in's buttons, in a column of their own: they line up across rows,
+ * beside the state rather than under it.
+ */
+function ConnectorSignInCell({
+  row,
+  board,
+}: {
+  row: Row;
+  board: SignInStatusBoard;
+}) {
+  const signInStatus = useBoardSignInStatus(board, row.id);
+  if (!signInStatus || signInStatus.parts.kind !== 'sign-in') {
+    return <Cell />;
+  }
+  return (
+    <Cell>
+      <StopRowPress>
+        <SignInStatusActions signInStatus={signInStatus} />
+      </StopRowPress>
+    </Cell>
+  );
+}
+
+/**
+ * Room for the widest of the sign-in's buttons, "Open sign-in page" with its
+ * new-tab icon, and the cell's padding.
+ */
+const SIGN_IN_COLUMN_WIDTH = 184;
 
 /** Keeps a press inside to itself: the row around it opens the connector. */
 function StopRowPress({ children }: { children: ReactNode }) {
@@ -390,6 +452,7 @@ function ConnectorsTable({
   const hasSession = session.authenticated || !requiresAuth;
   const links = useServerPageLinks();
   const musterApi = useApi(musterApiRef);
+  const signInBoard = useSignInStatusBoard();
 
   const catalogue = useToolCatalogue(installation, hasSession);
   const authStatus = useQuery({
@@ -587,10 +650,27 @@ function ConnectorsTable({
       id: 'status',
       label: 'Status',
       isSortable: true,
-      defaultWidth: '1.6fr',
+      defaultWidth: '1.3fr',
       cell: row => (
-        <ConnectorStatusCell row={row} installation={installation} />
+        <ConnectorStatusCell
+          row={row}
+          installation={installation}
+          board={signInBoard}
+        />
       ),
+    },
+    {
+      id: 'signIn',
+      label: 'Actions',
+      width: SIGN_IN_COLUMN_WIDTH,
+      // No room taken where no connector asks for a sign-in.
+      isHidden: !rows.some(hasSignIn),
+      header: () => (
+        <Column id="signIn" width={SIGN_IN_COLUMN_WIDTH}>
+          <VisuallyHidden>Actions</VisuallyHidden>
+        </Column>
+      ),
+      cell: row => <ConnectorSignInCell row={row} board={signInBoard} />,
     },
   ];
 

@@ -260,6 +260,35 @@ describe('CustomizeConnectorsPanel', () => {
     expect(rowOf('Muster')).toBeInTheDocument();
   });
 
+  it('puts the sign-in in a column of its own, beside the state', async () => {
+    await renderPanel();
+
+    const github = rowOf('github');
+    const state = (await within(github).findByText('Sign in needed')).closest(
+      '[role="gridcell"], [role="cell"], td',
+    );
+    const button = within(github).getByRole('button', { name: 'Sign in' });
+    const buttonCell = button.closest('[role="gridcell"], [role="cell"], td');
+    expect(state).not.toBeNull();
+    expect(buttonCell).not.toBeNull();
+    expect(buttonCell).not.toBe(state);
+    expect(state?.nextElementSibling).toBe(buttonCell);
+    // Its header names it for a screen reader only.
+    expect(
+      screen.getByRole('columnheader', { name: 'Actions' }),
+    ).toBeInTheDocument();
+  });
+
+  it('leaves the sign-in column out where no connector asks for a sign-in', async () => {
+    mockAuthenticated = false;
+    await renderPanel();
+
+    expect(
+      await screen.findByRole('columnheader', { name: /^Status/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
+  });
+
   it('signs in from the row without opening the connector', async () => {
     const user = userEvent.setup();
     await renderPanel();
