@@ -5,12 +5,13 @@ so its pages render made-up data without their backends: for local
 development, design reviews and layout checks. Fixture code never ships in a
 production build.
 
-| Flag                           | Plugin                                                                        | Fixture implementation                                                               |
-| ------------------------------ | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `plans.fixtures: true`         | plans (Hive, the plan list)                                                   | `plugins/plans/src/apis/PlansFixtureApi.ts`, `plugins/plans/src/lib/hiveFixtures.ts` |
-| `roadmap.fixtures: true`       | roadmap (Hive's Roadmap tab)                                                  | `plugins/roadmap/src/apis/RoadmapFixtureApi.ts`                                      |
-| `muster.fixtures: true`        | muster (`MusterApi`), and every tool call through it                          | `plugins/muster/src/apis/fixtures/`, plus the fixture MCP servers of other plugins   |
-| `agentPlatform.fixtures: true` | agent-platform (`KagentApi`, `ModelManagerApi`, `AgentManagerCredentialsApi`) | `plugins/agent-platform/src/apis/fixtures/`                                          |
+| Flag                           | Plugin                                                                                 | Fixture implementation                                                               |
+| ------------------------------ | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `plans.fixtures: true`         | plans (Hive, the plan list)                                                            | `plugins/plans/src/apis/PlansFixtureApi.ts`, `plugins/plans/src/lib/hiveFixtures.ts` |
+| `roadmap.fixtures: true`       | roadmap (Hive's Roadmap tab)                                                           | `plugins/roadmap/src/apis/RoadmapFixtureApi.ts`                                      |
+| `muster.fixtures: true`        | muster (`MusterApi`), and every tool call through it                                   | `plugins/muster/src/apis/fixtures/`, plus the fixture MCP servers of other plugins   |
+| `agentPlatform.fixtures: true` | agent-platform (`KagentApi`, `ModelManagerApi`, `AgentManagerCredentialsApi`)          | `plugins/agent-platform/src/apis/fixtures/`                                          |
+| `gs.fixtures: true`            | the Kubernetes API of the installations (`kubernetesApiRef`), and their cluster access | `packages/app/src/modules/kubernetes/fixtures/KubernetesFixtureApi.ts`               |
 
 Set the flags in `app-config.local.yaml` and run `yarn start`. In a production
 build (`NODE_ENV=production`, what `backstage-cli package build` and the image
@@ -18,8 +19,9 @@ use) the flags have no effect.
 
 ## Fixture mode
 
-`yarn fixtures start` runs the portal with every Agent Platform fixture flag on
-and the guest signed in, without a cluster or a person
+`yarn fixtures start` runs the portal with the Agent Platform's fixture flags
+(`gs`, `muster`, `agentPlatform`) on and the guest signed in, without a cluster
+or a person
 (`app-config.fixtures.yaml` on top of `app-config.yaml`; no `.env` and no
 `app-config.local.yaml`). It is made for agents checking pages, several at a
 time, each in its own checkout:
@@ -43,6 +45,24 @@ yarn fixtures stop
 - `--config <file>` adds a config on top, for example to turn on Hive and its
   fixtures (`app.extensions` must then repeat `app-config.yaml`'s list, which
   Backstage replaces rather than merges).
+
+### The installation
+
+Fixture mode serves one made-up installation, `meadow`, named in
+`gs.installations` of `app-config.fixtures.yaml` and by every fixture API.
+With `gs.fixtures` the fixture Kubernetes API answers for it without a
+cluster: `/apis` lists the API groups of the portal's resource classes
+(kagent's and muster's among them; model hosting's and Cluster API's are left
+out, so those components read as absent in the installation inventory),
+discovery answers the versions the classes support, every list is empty, a
+read of one object is not found, and access reviews are allowed. Its cluster
+access is healthy from the start, and it has no metrics backend
+(`mimirEnabled: false`). Any other request, a write among them, fails with a
+501 and a console error.
+
+If the backend fails with "Invalid app bundle schema", a production build of
+the app in `packages/app/dist` predates a config schema change: delete the
+directory and start again.
 
 ### Tool calls through muster
 

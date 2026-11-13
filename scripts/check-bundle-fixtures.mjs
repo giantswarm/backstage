@@ -57,6 +57,11 @@ const MARKERS = [
       'plugins/agent-platform/src/apis/fixtures/mcpServers/agentManager.ts',
     marker: 'oci://registry.example.com/charts/agent',
   },
+  {
+    source:
+      'packages/app/src/modules/kubernetes/fixtures/KubernetesFixtureApi.ts',
+    marker: 'Fixture mode does not answer the Kubernetes request',
+  },
 ];
 
 const root = path.resolve(import.meta.dirname, '..');

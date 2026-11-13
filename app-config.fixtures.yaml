@@ -20,6 +20,16 @@ auth:
   providers:
     guest: {}
 
+gs:
+  fixtures: true
+  # A made-up installation, served by the fixture Kubernetes API.
+  installations:
+    meadow:
+      pipeline: testing
+      authProvider: serviceAccount
+      # No metrics backend: the usage pages say so instead of failing.
+      mimirEnabled: false
+
 muster:
   fixtures: true
 

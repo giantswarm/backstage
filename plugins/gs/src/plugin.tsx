@@ -59,6 +59,10 @@ import {
 } from './apis/mutedInstallations';
 import { DiscoveryApiClient } from './apis/discovery/DiscoveryApiClient';
 import {
+  getInstallationsConfigSnapshot,
+  subscribeInstallationsConfig,
+} from './apis/installations';
+import {
   ContainerRegistryClient,
   containerRegistryApiRef,
 } from './apis/containerRegistry';
@@ -144,8 +148,25 @@ const clusterAccessStatusApi = ApiBlueprint.make({
   params: defineParams =>
     defineParams({
       api: clusterAccessStatusApiRef,
-      deps: {},
-      factory: () => ClusterAccessStatusStore.create(),
+      deps: { configApi: configApiRef },
+      factory: ({ configApi }) => {
+        const store = ClusterAccessStatusStore.create();
+        // `gs.fixtures: true`: the fixture Kubernetes API answers for every
+        // configured installation, so their access is healthy without a
+        // sign-in. Outside production builds only (docs/fixtures.md).
+        if (
+          process.env.NODE_ENV !== 'production' &&
+          configApi.getOptionalBoolean('gs.fixtures')
+        ) {
+          const recordHealthy = () =>
+            getInstallationsConfigSnapshot()?.forEach(installation =>
+              store.recordHealthy(installation.name),
+            );
+          recordHealthy();
+          subscribeInstallationsConfig(recordHealthy);
+        }
+        return store;
+      },
     }),
 });
 

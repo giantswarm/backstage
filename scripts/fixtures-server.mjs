@@ -142,9 +142,25 @@ function running() {
   return undefined;
 }
 
+/** Whether the dev server's log says its backend gave up starting. */
+function logShowsFailedStart(state) {
+  try {
+    return fs
+      .readFileSync(path.join(root, state.log), 'utf8')
+      .includes('Backend failed to start');
+  } catch {
+    return false;
+  }
+}
+
 async function waitUntilAnswering(state) {
   const deadline = Date.now() + START_TIMEOUT_MS;
   while (Date.now() < deadline) {
+    if (logShowsFailedStart(state)) {
+      throw new Error(
+        `The fixture server's backend failed to start; see ${state.log}. Stop it with \`yarn fixtures stop\`.`,
+      );
+    }
     if (!isAlive(state.pid)) {
       throw new Error(
         `The fixture server exited while starting; see ${state.log}.`,

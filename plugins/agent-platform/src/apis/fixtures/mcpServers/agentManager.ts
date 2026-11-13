@@ -22,11 +22,11 @@ const info: AgentManagerInfo = {
   capabilities: { create: true, validate: true, commit: false, tags: true },
   identity: 'caller',
   apiVersions: {
-    agent: 'kagent.dev/v1alpha2',
-    agentTemplate: 'kagent.dev/v1alpha2',
-    harness: 'kagent.dev/v1alpha2',
-    remoteMcpServer: 'kagent.dev/v1alpha2',
-    modelConfig: 'kagent.dev/v1alpha2',
+    agent: 'api.kagent.dev/v1alpha3',
+    agentTemplate: 'api.kagent.dev/v1alpha3',
+    harness: 'api.kagent.dev/v1alpha3',
+    remoteMcpServer: 'api.kagent.dev/v1alpha3',
+    modelConfig: 'api.kagent.dev/v1alpha3',
     helmRelease: 'helm.toolkit.fluxcd.io/v2',
     ociRepository: 'source.toolkit.fluxcd.io/v1',
   },
@@ -41,5 +41,6 @@ export const agentManager: FixtureMcpServer = {
   server: AGENT_MANAGER_SERVER,
   tools: {
     [AGENT_MANAGER_TOOLS.getInfo]: () => info,
+    [AGENT_MANAGER_TOOLS.listModelConfigs]: () => ({ modelConfigs: [] }),
   },
 };
