@@ -499,7 +499,7 @@ export function TimelineEntry({
     if (runtimeLost) {
       title = 'Could not reach the agent’s runtime';
     } else if (modelUnavailable) {
-      title = 'Could not reach the model';
+      title = 'Could not get an answer from the model';
     } else if (item.state === 'rejected') {
       title = 'This turn was rejected';
     }
@@ -516,9 +516,8 @@ export function TimelineEntry({
         <Flex direction="column" gap="2">
           <span>
             {isCredentialsRefusedText(item.reason)
-              ? 'The model provider refused this agent’s credentials, so the agent could not answer.'
-              : 'The model provider could not answer this agent’s request.'}{' '}
-            Check the agent’s model, or ask your platform team for help.
+              ? 'The agent could not access its model. Ask your platform team to check the model’s credentials and permissions.'
+              : 'Try again, or ask your platform team for help if this continues.'}
           </span>
           <TurnFailureDetails text={item.reason} />
         </Flex>
