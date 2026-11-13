@@ -26,4 +26,4 @@ export {
   type UseInstallationScopeResult,
 } from './useInstallationScope';
 export { useInstallationScopeUrlSync } from './useInstallationScopeUrlSync';
-export { AllInstallationsScope } from './AllInstallationsScope';
+export { SharedInstallationScope } from './SharedInstallationScope';

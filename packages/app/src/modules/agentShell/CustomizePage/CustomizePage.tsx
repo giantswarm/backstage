@@ -11,7 +11,10 @@ import {
   SubRouteRef,
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
-import type { PlatformComponent } from '@giantswarm/backstage-plugin-gs';
+import {
+  SharedInstallationScope,
+  type PlatformComponent,
+} from '@giantswarm/backstage-plugin-gs';
 import { ButtonLink, Flex, SearchField } from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
 import {
@@ -479,43 +482,49 @@ export type CustomizeSubPage = {
  * would otherwise sit above it. Both share one query client, so the list's
  * reads are cache hits on the page. Rendered without the app's page layout,
  * so it mounts the header-actions slot its pages render.
+ *
+ * Every tab and page under it reads the Environment selector's shared scope
+ * (`SharedInstallationScope`); pages outside Customize read every
+ * environment, whatever was chosen here.
  */
 export function CustomizePage({ pages = [] }: { pages?: CustomizeSubPage[] }) {
   return (
-    <PageHeaderActionsProvider>
-      {/* Until a tab's page names itself. */}
-      <ShellDocumentTitle title="Customize" />
-      <Routes>
-        <Route index element={<DefaultTabRedirect />} />
-        {CUSTOMIZE_TABS.map(tab => (
-          <Route
-            key={tab.id}
-            path={tab.id}
-            element={<CustomizeScreen tab={tab} />}
-          />
-        ))}
-        {/* The retired sub-tabs (Infrastructure, Families, Internal) name
-            the tag that replaced each, until the end of 2026. */}
-        {Object.entries(RETIRED_CONNECTOR_GROUP_TAGS).map(([path, tag]) => (
-          <Route
-            key={path}
-            path={`connectors/${path}`}
-            element={<RetiredConnectorGroupRedirect tag={tag} />}
-          />
-        ))}
-        {pages
-          .filter(page =>
-            CUSTOMIZE_TABS.some(candidate => candidate.id === page.path),
-          )
-          .map(page => (
+    <SharedInstallationScope>
+      <PageHeaderActionsProvider>
+        {/* Until a tab's page names itself. */}
+        <ShellDocumentTitle title="Customize" />
+        <Routes>
+          <Route index element={<DefaultTabRedirect />} />
+          {CUSTOMIZE_TABS.map(tab => (
             <Route
-              key={page.path}
-              path={`${page.path}/*`}
-              element={page.element}
+              key={tab.id}
+              path={tab.id}
+              element={<CustomizeScreen tab={tab} />}
             />
           ))}
-        <Route path="*" element={<NearestTabRedirect />} />
-      </Routes>
-    </PageHeaderActionsProvider>
+          {/* The retired sub-tabs (Infrastructure, Families, Internal) name
+            the tag that replaced each, until the end of 2026. */}
+          {Object.entries(RETIRED_CONNECTOR_GROUP_TAGS).map(([path, tag]) => (
+            <Route
+              key={path}
+              path={`connectors/${path}`}
+              element={<RetiredConnectorGroupRedirect tag={tag} />}
+            />
+          ))}
+          {pages
+            .filter(page =>
+              CUSTOMIZE_TABS.some(candidate => candidate.id === page.path),
+            )
+            .map(page => (
+              <Route
+                key={page.path}
+                path={`${page.path}/*`}
+                element={page.element}
+              />
+            ))}
+          <Route path="*" element={<NearestTabRedirect />} />
+        </Routes>
+      </PageHeaderActionsProvider>
+    </SharedInstallationScope>
   );
 }

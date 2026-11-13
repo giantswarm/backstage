@@ -1,5 +1,4 @@
 import { Route, Routes } from 'react-router-dom';
-import { AllInstallationsScope } from '@giantswarm/backstage-plugin-gs';
 
 import { QueryClientProvider } from '../QueryClientProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
@@ -27,41 +26,36 @@ import { OrganizationDirectoryProvider } from '../OrganizationDirectoryProvider'
  * `AgentsDataProvider` requires `ModelConfigsProvider` above it, so the Sessions
  * page pays for a fleet-wide ModelConfig list neither screen uses. It is cached,
  * persisted, and shared with the Agents tab, so in practice it is free.
- *
- * Reads every environment, whatever a Customize page pinned: the list narrows
- * by environment with its own Environment filter instead.
  */
 export const SessionsRouter = () => {
   return (
-    <AllInstallationsScope>
-      <QueryClientProvider>
-        <OrganizationDirectoryProvider>
-          <ModelConfigsProvider>
-            {/* The serving snapshot (shared with the Models and Agents tabs through
+    <QueryClientProvider>
+      <OrganizationDirectoryProvider>
+        <ModelConfigsProvider>
+          {/* The serving snapshot (shared with the Models and Agents tabs through
             the query cache) is what the composer's warning about an agent whose
             model is not serving reads. */}
-            <ServingProvider>
-              <AgentsDataProvider>
-                <Routes>
-                  <Route index element={<SessionsIndexPage />} />
-                  {/* Both parameters are needed to resolve a session: kagent ids
+          <ServingProvider>
+            <AgentsDataProvider>
+              <Routes>
+                <Route index element={<SessionsIndexPage />} />
+                {/* Both parameters are needed to resolve a session: kagent ids
                   are only unique within an installation. One page instance
                   per session, see `SessionDetailRoute`. */}
-                  <Route
-                    path=":installation/:sessionId"
-                    element={<SessionDetailRoute />}
-                  />
-                  {/* An address that names no session: the list. */}
-                  <Route
-                    path="*"
-                    element={<RouteRefRedirect routeRef={sessionsRouteRef} />}
-                  />
-                </Routes>
-              </AgentsDataProvider>
-            </ServingProvider>
-          </ModelConfigsProvider>
-        </OrganizationDirectoryProvider>
-      </QueryClientProvider>
-    </AllInstallationsScope>
+                <Route
+                  path=":installation/:sessionId"
+                  element={<SessionDetailRoute />}
+                />
+                {/* An address that names no session: the list. */}
+                <Route
+                  path="*"
+                  element={<RouteRefRedirect routeRef={sessionsRouteRef} />}
+                />
+              </Routes>
+            </AgentsDataProvider>
+          </ServingProvider>
+        </ModelConfigsProvider>
+      </OrganizationDirectoryProvider>
+    </QueryClientProvider>
   );
 };

@@ -78,6 +78,7 @@ import {
 import {
   filterSessionsBySelection,
   parseSessionsListSearch,
+  SESSION_ENVIRONMENT_FACET,
   sessionFacets,
   sessionSelectionOf,
 } from './filters';
@@ -658,15 +659,20 @@ function ShellFilterBar({
   showEnvironments: boolean;
 }) {
   const { directory } = useOrganizationDirectory();
+  // A standing Environment pick keeps its dropdown, even once the list hides
+  // its Environment column (one environment left answering), so it can be
+  // undone.
+  const offersEnvironments =
+    showEnvironments || (selection[SESSION_ENVIRONMENT_FACET]?.length ?? 0) > 0;
   const facets = useMemo(
     () =>
       sessionFacets(rows, {
         showStates,
         showAgents,
-        showEnvironments,
+        showEnvironments: offersEnvironments,
         directory,
       }),
-    [rows, showStates, showAgents, showEnvironments, directory],
+    [rows, showStates, showAgents, offersEnvironments, directory],
   );
   // Known undercount (platform follow-up, list-scale-inventory #7): the
   // backend evaluates states only for the newest sessions per installation

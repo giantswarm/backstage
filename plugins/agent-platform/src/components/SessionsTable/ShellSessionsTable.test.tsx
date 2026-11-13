@@ -428,6 +428,53 @@ describe('SessionsTable in the shell layout', () => {
     ).toEqual([first, second]);
   });
 
+  it('keeps a standing Environment pick undoable once the Environment column is hidden', async () => {
+    const onWombat = (row: SessionRow): SessionRow => ({
+      ...row,
+      id: `wombat/${row.sessionId}`,
+      installation: 'wombat',
+    });
+    const fleet = [
+      ...filterable.slice(0, 2),
+      ...filterable.slice(2).map(onWombat),
+    ];
+    // The page hides the column when one environment is left answering.
+    function OneLeftAnswering() {
+      const [hidden, setHidden] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setHidden(true)}>
+            Lose wombat
+          </button>
+          <SessionsTable
+            rows={fleet}
+            sessionStates={states}
+            searchDebounceMs={0}
+            hideColumns={hidden ? ['installation'] : undefined}
+          />
+        </>
+      );
+    }
+    await renderInTestApp(<OneLeftAnswering />, {
+      apis: [[storageApiRef, mockApis.storage()]],
+      initialRouteEntries: ['/sessions'],
+      mountedRoutes: { '/sessions': sessionsRouteRef },
+    });
+
+    await pick('environment', 'gazelle 2');
+    await userEvent.click(screen.getByRole('button', { name: 'Lose wombat' }));
+
+    expect(dropdown('environment')).toBeInTheDocument();
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Filters' })).getByRole(
+        'button',
+        { name: 'Clear filters' },
+      ),
+    );
+    expect(queryDropdown('environment')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('rowheader')).toHaveLength(fleet.length);
+  });
+
   it('counts the sessions on each state option, in the shell words', async () => {
     await renderShell(filterable);
 

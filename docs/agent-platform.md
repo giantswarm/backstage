@@ -1295,13 +1295,26 @@ templates; `agent-deployment` no longer exists in
 
 ## The installation scope
 
-The Customize tabs (Agents, Models, Connectors, Workflows and the rest) and
-Usage share **one installation scope**: `'all'` (the default) or one pinned
-installation. It is a
-module store in the `gs` plugin (`useInstallationScope`,
-`plugins/gs/src/apis/installationScope/`) read through `useSyncExternalStore`,
-not a React context, because the muster tabs are a different plugin with their
-own providers.
+The views with an Environment selector (the Customize page and everything
+under it, Models included, and Usage) share **one installation scope**:
+`'all'` (the default) or one pinned installation. It is a module store in the
+`gs` plugin (`useInstallationScope`, `plugins/gs/src/apis/installationScope/`)
+rather than a React context of one plugin, because the muster tabs are a
+different plugin with their own providers.
+
+- **Opt-in.** A view reads the pin only below a `SharedInstallationScope`,
+  which `CustomizePage`, `ModelsRouter`, `UsageRouter` and the legacy-address
+  redirect mount (nested mounts share the outer one). It holds the
+  `?installation=` value, the store snapshot and the URL writer. Everywhere
+  else `useInstallationScope` answers `'all'`, reads neither the URL nor the
+  store (so a pin or a query-string change does not re-render it), and its
+  `setScope` does nothing: the shell rail's recent sessions, the notification
+  inbox and the command palette (`AgentPlatformProviders`), the Sessions page,
+  the start screen and the Bot PRs page read every environment, whatever was
+  chosen on Customize. A new page follows the pin only when it mounts a
+  selector and opts in. The cost: with a pin set, the rail still reads agents,
+  model configs and sessions from every kagent environment, a token per
+  environment, as it does with no pin.
 
 The scope is set by `EnvironmentSelect` (and `UsageScopeBar` on Usage), shown
 only with more than one environment. It offers every
@@ -1310,12 +1323,14 @@ its state; a portal with one installation renders no selector. "Not reachable
 from this portal" comes from the kagent backend's probe on kagent-backed lists
 and from the muster backend's probe on Connectors and Workflows.
 
-- **Sources, in order.** `?installation=` wins while present. Otherwise the
+- **Sources, in order** (below `SharedInstallationScope`). `?installation=` wins while present. Otherwise the
   store, mirrored to localStorage as `muster-installation` (the muster picker's
   old key). A stored value naming the _home_ installation reads as `'all'`,
   because the old picker wrote its default there for everyone.
   `useInstallationScopeUrlSync` reconciles URL and store; `setScope` writes
-  store, localStorage and URL at once.
+  store, localStorage and URL at once. A stale restored pin, and a pin on an
+  environment switched off in Cluster access, are forgotten where the shared
+  scope is read, the first time a view with a selector renders.
 - **Usage reads one installation, never the fleet.** Under `'all'` it reports
   on the home installation and says so; see
   [One installation at a time](#one-installation-at-a-time).
@@ -1333,14 +1348,8 @@ and from the muster backend's probe on Connectors and Workflows.
   scope and writes no default back.
 - **Naming.** Detail pages carry an `InstallationChip`; the new-session picker
   names installations once agents span more than one (`agentOptionLabel`).
-- **Views without a selector read every installation.** The shell rail's
-  recent sessions and the notification inbox (`AgentPlatformProviders`), the
-  Sessions page (`SessionsRouter`) and the start screen (`AgentPlatformHome`)
-  mount `AllInstallationsScope`: under it `useInstallationScope` answers
-  `'all'`, ignores `?installation=` and the stored pin, and `setScope` does
-  nothing. A pin made on a Customize page therefore never narrows them. The
-  Sessions page narrows by environment with its own Environment filter
-  instead (see [The Sessions tab](#the-sessions-tab)).
+- **Sessions narrow on their own.** The Sessions page has its own
+  Environment filter instead (see [The Sessions tab](#the-sessions-tab)).
 
 The tabs share one react-query client, so the inventory is read once per page
 load.
@@ -1355,8 +1364,9 @@ The list reads every environment, whatever a Customize page pinned (see
 [The installation scope](#the-installation-scope)). Its filter bar
 (`sessionFacets`, `SessionsTable/filters.ts`) narrows it by State, Environment,
 Organization, Agent and Pinned; Environment is offered once the sessions come
-from more than one environment. Like the other filters it starts at all and is
-not stored or written to the URL.
+from more than one environment, and stays while it has a pick, so a pick can
+be undone after the list drops its Environment column. Like the other filters
+it starts at all and is not stored or written to the URL.
 
 ### The first-run state
 

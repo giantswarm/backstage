@@ -12,7 +12,6 @@ import {
 } from '@backstage/frontend-plugin-api';
 import { Alert, Box, Container, Flex, Text } from '@backstage/ui';
 import {
-  AllInstallationsScope,
   InventoryFailureGate,
   useInstallationInventory,
 } from '@giantswarm/backstage-plugin-gs';
@@ -39,7 +38,6 @@ import {
   useAgents,
   type AgentRow,
 } from '../AgentsDataProvider';
-import { InstallationScopeNote } from '../InstallationScopeNote';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import {
   isStartableAgent,
@@ -148,7 +146,6 @@ function AgentPlatformHomeContent({
     rows: agents,
     isLoading,
     unreachableInstallations,
-    kagentMissing,
     inventoryFailure,
   } = useAgents();
   const { refresh: refreshInventory } = useInstallationInventory();
@@ -329,13 +326,10 @@ function AgentPlatformHomeContent({
             />
           )}
           {/* The Main artboard's order: composer (recent agents or reach
-              line under it), then the Slack banner. The scope notes and the
-              read warning stand between the two only when they have something
-              to say — they render nothing otherwise — and they belong under
-              the composer, whose empty state points at "the warning below". */}
-          {/* The kagent-missing card in place of the composer names the
-              environment; the scope note would say it twice. */}
-          {!kagentMissing && <InstallationScopeNote component="kagent" />}
+              line under it), then the Slack banner. The read warnings stand
+              between the two only when they have something to say — they
+              render nothing otherwise — and they belong under the composer,
+              whose empty state points at "the warning below". */}
           {/* The failure Customize › Agents explains, from the same value:
               the one the composer's silence leaves to it. */}
           {inventoryFailure && (
@@ -363,8 +357,7 @@ function AgentPlatformHomeContent({
  *
  * Mounts the same providers as the Sessions tab, so the composer's agent
  * picker, avatars and model-serving warning behave as they do there and share
- * its query cache. Like that tab, it reads every environment, whatever a
- * Customize page pinned.
+ * its query cache.
  */
 export function AgentPlatformHome({
   manageAgentsHref,
@@ -386,23 +379,21 @@ export function AgentPlatformHome({
           tabs ("Sessions · Agent Platform"), so arriving here from another
           page never keeps that page's title (live round 2, R5). */}
       <ShellDocumentTitle title="New session" />
-      <AllInstallationsScope>
-        <QueryClientProvider>
-          <OrganizationDirectoryProvider>
-            <ModelConfigsProvider>
-              <ServingProvider>
-                <AgentsDataProvider>
-                  <SessionsDataProvider>
-                    <AgentPlatformHomeContent
-                      manageAgentsHref={manageAgentsHref}
-                    />
-                  </SessionsDataProvider>
-                </AgentsDataProvider>
-              </ServingProvider>
-            </ModelConfigsProvider>
-          </OrganizationDirectoryProvider>
-        </QueryClientProvider>
-      </AllInstallationsScope>
+      <QueryClientProvider>
+        <OrganizationDirectoryProvider>
+          <ModelConfigsProvider>
+            <ServingProvider>
+              <AgentsDataProvider>
+                <SessionsDataProvider>
+                  <AgentPlatformHomeContent
+                    manageAgentsHref={manageAgentsHref}
+                  />
+                </SessionsDataProvider>
+              </AgentsDataProvider>
+            </ServingProvider>
+          </ModelConfigsProvider>
+        </OrganizationDirectoryProvider>
+      </QueryClientProvider>
     </AgentPlatformCookieAuth>
   );
 }
