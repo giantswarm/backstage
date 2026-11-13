@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -84,9 +84,27 @@ export function filterInput(
   };
 }
 
-function toggle(list: string[], value: string, on: boolean): string[] {
-  const without = list.filter(item => item !== value);
-  return on ? [...without, value] : without;
+function withMembership(
+  source: SourceDraft,
+  name: string,
+  on: boolean,
+  byFilter: boolean,
+): SourceDraft {
+  let repositories = withoutName(source.repositories, name);
+  if (on) {
+    repositories =
+      byFilter || includesName(source.repositories, name)
+        ? source.repositories
+        : [...source.repositories, name];
+  }
+  return {
+    ...source,
+    exclude:
+      !on && byFilter
+        ? [...withoutName(source.exclude, name), name]
+        : withoutName(source.exclude, name),
+    repositories,
+  };
 }
 
 /** How a repository is in the workspace, or why not. */
@@ -147,6 +165,7 @@ export function RepositoryPicker({
   providerKind,
   startsOnPicks = false,
 }: RepositoryPickerProps) {
+  const pickerRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState('');
   // The page, back to the first whenever the filters change.
   const filterKey = JSON.stringify(filterInput(source));
@@ -218,26 +237,14 @@ export function RepositoryPicker({
   // a pick drops the pick.
   const onTick = useCallback(
     (repository: ProviderRepository, on: boolean) => {
-      const name = repository.name;
-      const byFilter = matchesFilters(source, repository);
-      if (on) {
-        onChange({
-          ...source,
-          exclude: withoutName(source.exclude, name),
-          repositories:
-            byFilter || includesName(source.repositories, name)
-              ? source.repositories
-              : [...source.repositories, name],
-        });
-      } else {
-        onChange({
-          ...source,
-          exclude: byFilter
-            ? [...withoutName(source.exclude, name), name]
-            : source.exclude,
-          repositories: withoutName(source.repositories, name),
-        });
-      }
+      onChange(
+        withMembership(
+          source,
+          repository.name,
+          on,
+          matchesFilters(source, repository),
+        ),
+      );
     },
     [onChange, source],
   );
@@ -286,7 +293,12 @@ export function RepositoryPicker({
   const listed = keptPicks(source).length + source.exclude.length;
 
   return (
-    <Flex direction="column" gap="2" data-testid="repository-picker">
+    <Flex
+      ref={pickerRef}
+      direction="column"
+      gap="2"
+      data-testid="repository-picker"
+    >
       <Flex
         justify="between"
         align="center"
@@ -328,7 +340,15 @@ export function RepositoryPicker({
       )}
 
       {selectedOnly ? (
-        <SelectedOnly source={source} onChange={onChange} />
+        <SelectedOnly
+          source={source}
+          onChange={onChange}
+          onEmptied={() =>
+            pickerRef.current
+              ?.querySelector<HTMLElement>('[role="switch"]')
+              ?.focus()
+          }
+        />
       ) : (
         <>
           {!owner && (
@@ -521,10 +541,37 @@ function RepositoryRow({
 function SelectedOnly({
   source,
   onChange,
+  onEmptied,
 }: {
   source: SourceDraft;
   onChange: (source: SourceDraft) => void;
+  onEmptied: () => void;
 }) {
+  const tableRef = useRef<HTMLTableElement>(null);
+  const focusAt = useRef<{ name: string; index: number }>();
+  const names = uniqueNames([...keptPicks(source), ...source.exclude]);
+  useEffect(() => {
+    const pending = focusAt.current;
+    if (!pending) {
+      return;
+    }
+    focusAt.current = undefined;
+    const checkboxes = tableRef.current?.querySelectorAll<HTMLInputElement>(
+      'input[type="checkbox"]',
+    );
+    const remaining = names.findIndex(name => sameName(name, pending.name));
+    const target =
+      checkboxes?.[
+        remaining >= 0
+          ? remaining
+          : Math.min(pending.index, checkboxes.length - 1)
+      ];
+    if (target) {
+      target.focus();
+    } else {
+      onEmptied();
+    }
+  }, [names, onEmptied]);
   if (source.repositories.length === 0 && source.exclude.length === 0) {
     return (
       <Text variant="body-small" color="secondary">
@@ -534,55 +581,66 @@ function SelectedOnly({
   }
   return (
     <table
+      ref={tableRef}
       aria-label="Selected repositories"
       style={{ width: '100%', borderCollapse: 'collapse' }}
     >
+      <thead>
+        <tr>
+          {['Repository', 'Selection'].map(column => (
+            <th
+              key={column}
+              scope="col"
+              style={{
+                ...CELL,
+                textAlign: column === 'Selection' ? 'right' : 'left',
+              }}
+            >
+              <Text variant="body-small" color="secondary" weight="bold">
+                {column}
+              </Text>
+            </th>
+          ))}
+        </tr>
+      </thead>
       <tbody>
-        {keptPicks(source).map(name => (
-          <tr key={`pick-${name}`}>
-            <td style={CELL}>
-              <Checkbox
-                isSelected
-                onChange={on =>
-                  onChange({
-                    ...source,
-                    repositories: toggle(source.repositories, name, on),
-                  })
-                }
-              >
-                {name}
-              </Checkbox>
-            </td>
-            <td style={{ ...CELL, textAlign: 'right' }}>
-              <Text variant="body-small" weight="bold">
-                by name
-              </Text>
-            </td>
-          </tr>
-        ))}
-        {source.exclude.map(name => (
-          <tr key={`exclude-${name}`}>
-            <td style={CELL}>
-              <Checkbox
-                isSelected={false}
-                aria-label={`Include ${name}`}
-                onChange={on =>
-                  onChange({
-                    ...source,
-                    exclude: toggle(source.exclude, name, !on),
-                  })
-                }
-              >
-                {name}
-              </Checkbox>
-            </td>
-            <td style={{ ...CELL, textAlign: 'right' }}>
-              <Text variant="body-small" color="secondary">
-                excluded
-              </Text>
-            </td>
-          </tr>
-        ))}
+        {names.map((name, index) => {
+          const excluded = includesName(source.exclude, name);
+          return (
+            <tr key={name.toLowerCase()}>
+              <td style={CELL}>
+                <Checkbox
+                  isSelected={!excluded}
+                  aria-label={excluded ? `Include ${name}` : name}
+                  onChange={on => {
+                    focusAt.current = { name, index };
+                    // Without repository metadata, an exclusion prevents a filter
+                    // from retaining a removed pick; inclusion pins the name.
+                    onChange(
+                      withMembership(
+                        source,
+                        name,
+                        on,
+                        !on && hasFilters(source),
+                      ),
+                    );
+                  }}
+                >
+                  {name}
+                </Checkbox>
+              </td>
+              <td style={{ ...CELL, textAlign: 'right' }}>
+                <Text
+                  variant="body-small"
+                  color={excluded ? 'secondary' : 'primary'}
+                  weight={excluded ? undefined : 'bold'}
+                >
+                  {excluded ? 'excluded' : 'by name'}
+                </Text>
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );

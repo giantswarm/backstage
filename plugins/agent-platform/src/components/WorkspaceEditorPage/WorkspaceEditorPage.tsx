@@ -13,6 +13,7 @@ import {
   useWizardFrameRail,
   WizardFrame,
 } from '@giantswarm/backstage-plugin-ui-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Provider sign-in uses the muster frontend API.
 import { useServerSignIn } from '@giantswarm/backstage-plugin-muster';
 
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
@@ -709,10 +710,14 @@ function EditorBody({
                     : `A source needs a provider, and none is configured on ${installation}. Ask your platform team to add one.`}
                 </Text>
                 {Boolean(providersError) && (
-                  <Text variant="body-small" color="secondary">
-                    Details:{' '}
-                    {classifyWorkspaceManagerError(providersError).message}
-                  </Text>
+                  <SimpleAccordion title="Technical details" headingLevel={2}>
+                    <Text
+                      variant="body-small"
+                      style={{ overflowWrap: 'anywhere' }}
+                    >
+                      {classifyWorkspaceManagerError(providersError).message}
+                    </Text>
+                  </SimpleAccordion>
                 )}
               </Flex>
             }
@@ -723,7 +728,19 @@ function EditorBody({
         <Alert
           status="warning"
           title="Could not read the providers"
-          description={classifyWorkspaceManagerError(providersError).message}
+          description={
+            <Flex direction="column" gap="1">
+              <Text variant="body-medium">
+                The existing sources can still be saved. Try again later to read
+                the available providers, or ask your platform team.
+              </Text>
+              <SimpleAccordion title="Technical details" headingLevel={2}>
+                <Text variant="body-small" style={{ overflowWrap: 'anywhere' }}>
+                  {classifyWorkspaceManagerError(providersError).message}
+                </Text>
+              </SimpleAccordion>
+            </Flex>
+          }
         />
       )}
 

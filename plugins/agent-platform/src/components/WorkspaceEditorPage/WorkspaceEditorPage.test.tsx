@@ -9,6 +9,7 @@ import {
   within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Workspace tools use the muster frontend API.
 import {
   musterApiRef,
   type MusterApi,
@@ -1272,6 +1273,9 @@ describe('WorkspaceEditorPage in the edit flow', () => {
 
     const picker = within(await source(0).findByTestId('repository-picker'));
     expect(
+      picker.getAllByRole('columnheader').map(header => header.textContent),
+    ).toEqual(['Repository', 'Selection']);
+    expect(
       picker.getByRole('switch', { name: 'Show selected only (2)' }),
     ).toBeChecked();
     expect(picker.getByRole('checkbox', { name: 'portal' })).toBeChecked();
@@ -1385,11 +1389,12 @@ describe('WorkspaceEditorPage without providers', () => {
         'A source needs a provider, so the workspace cannot be saved until the providers can be read. Try again later, or ask your platform team.',
       ),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'Details: Tool execution failed: tool not found: x_workspace-manager_list_providers',
-      ),
-    ).toBeInTheDocument();
+    const details = screen.getByText(
+      'Tool execution failed: tool not found: x_workspace-manager_list_providers',
+    );
+    expect(details).not.toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Technical details' }));
+    expect(details).toBeVisible();
 
     fireEvent.change(screen.getByRole('textbox', { name: /^Name/ }), {
       target: { value: 'platform-mcp' },
@@ -1441,6 +1446,12 @@ describe('WorkspaceEditorPage without providers', () => {
     expect(
       screen.queryByText(/the workspace cannot be saved/),
     ).not.toBeInTheDocument();
+    const details = screen.getByText(
+      'Tool execution failed: tool not found: x_workspace-manager_list_providers',
+    );
+    expect(details).not.toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Technical details' }));
+    expect(details).toBeVisible();
 
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() =>
@@ -1492,5 +1503,117 @@ describe('WorkspaceEditorPage without providers', () => {
       ).toHaveAccessibleDescription(expect.stringContaining('Enter a name')),
     );
     expect(screen.queryByText('Choose a provider')).not.toBeInTheDocument();
+  });
+});
+
+describe('WorkspaceEditorPage selected repository membership', () => {
+  it('excludes a removed pick that also matches a filter from the preview and save', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [
+        storedWorkspace({
+          repositories: ['operator'],
+          filters: { languages: ['Go'] },
+        }),
+      ],
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-0');
+    const picker = within(await source(0).findByTestId('repository-picker'));
+    await user.click(picker.getByRole('checkbox', { name: 'operator' }));
+    const excluded = picker.getByRole('checkbox', { name: 'Include operator' });
+    expect(excluded).not.toBeChecked();
+    expect(excluded).toHaveFocus();
+    await settlePreview();
+    const preview = within(screen.getByTestId('workspace-preview'));
+    await waitFor(() =>
+      expect(preview.queryByText('acme/operator')).not.toBeInTheDocument(),
+    );
+    expect(await preview.findByText('acme/mcp-kubernetes')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() =>
+      expect(fake.callsOf('update_workspace')).toHaveLength(1),
+    );
+    expect(fake.callsOf('update_workspace')[0].sources[0]).toMatchObject({
+      filters: { languages: ['Go'] },
+      exclude: ['operator'],
+    });
+  });
+
+  it.each([undefined, { languages: ['Go'] }])(
+    'includes an excluded name even when it matches no filter (%j)',
+    async filters => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const fake = createWorkspaceManagerFake({
+        providers: [GITHUB],
+        repositories: ACME,
+        workspaces: [
+          storedWorkspace({
+            repositories: ['operator'],
+            exclude: ['portal'],
+            filters,
+          }),
+        ],
+      });
+      await render(fake, { name: 'portal' });
+      await screen.findByTestId('workspace-source-0');
+      const picker = within(await source(0).findByTestId('repository-picker'));
+      await user.click(
+        picker.getByRole('checkbox', { name: 'Include portal' }),
+      );
+      const included = picker.getByRole('checkbox', { name: 'portal' });
+      expect(included).toBeChecked();
+      expect(included).toHaveFocus();
+      await settlePreview();
+      expect(
+        await within(screen.getByTestId('workspace-preview')).findByText(
+          'acme/portal',
+        ),
+      ).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Save changes' }));
+      await waitFor(() =>
+        expect(fake.callsOf('update_workspace')).toHaveLength(1),
+      );
+      expect(
+        fake.callsOf('update_workspace')[0].sources[0].repositories,
+      ).toEqual(['operator', 'portal']);
+      expect(
+        fake.callsOf('update_workspace')[0].sources[0].exclude,
+      ).toBeUndefined();
+    },
+  );
+
+  it('moves keyboard focus to the next pick, the previous pick, and the view switch when empty', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [
+        storedWorkspace({
+          repositories: ['portal', 'operator', 'mcp-kubernetes'],
+        }),
+      ],
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-0');
+    const picker = within(await source(0).findByTestId('repository-picker'));
+    act(() => picker.getByRole('checkbox', { name: 'operator' }).focus());
+    await user.keyboard(' ');
+    expect(
+      picker.getByRole('checkbox', { name: 'mcp-kubernetes' }),
+    ).toHaveFocus();
+    await user.keyboard(' ');
+    expect(picker.getByRole('checkbox', { name: 'portal' })).toHaveFocus();
+    await user.keyboard(' ');
+    expect(
+      picker.getByRole('switch', { name: 'Show selected only (0)' }),
+    ).toHaveFocus();
+    expect(
+      picker.getByText('Nothing picked by name or excluded.'),
+    ).toBeInTheDocument();
+    await user.keyboard(' ');
+    expect(await picker.findByRole('searchbox')).toBeInTheDocument();
   });
 });
