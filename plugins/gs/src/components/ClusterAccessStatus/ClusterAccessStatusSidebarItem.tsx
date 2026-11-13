@@ -1,4 +1,4 @@
-import { MouseEvent, useEffect, useMemo, useState } from 'react';
+import { MouseEvent, useMemo, useState } from 'react';
 import { SidebarItem, useSidebarPinState } from '@backstage/core-components';
 import { useApi, errorApiRef } from '@backstage/core-plugin-api';
 import { Switch } from '@backstage/ui';
@@ -15,7 +15,7 @@ import FiberManualRecordIcon from '@material-ui/icons/FiberManualRecord';
 import {
   ClusterAccessState,
   ClusterAccessStatusEntry,
-  clusterAccessStatusApiRef,
+  useClusterAccessStatus,
 } from '../../apis/clusterAccessStatus';
 import {
   mutedInstallationsApiRef,
@@ -165,7 +165,6 @@ function StatusDot({ color }: { color: string }) {
  */
 export function ClusterAccessStatusSidebarItem() {
   const classes = useStyles();
-  const statusApi = useApi(clusterAccessStatusApiRef);
   const mutedApi = useApi(mutedInstallationsApiRef);
   // The main auth API is resolved only for "Sign in again": a portal without a
   // main auth provider (`gs.authProvider` unset) has none, and resolving it
@@ -176,16 +175,9 @@ export function ClusterAccessStatusSidebarItem() {
   // the popover opens above it instead of to its right.
   const { isMobile } = useSidebarPinState();
 
-  const [entries, setEntries] = useState<ClusterAccessStatusEntry[]>(
-    statusApi.getSnapshot(),
-  );
+  const entries = useClusterAccessStatus();
   const muted = useMutedInstallations();
   const [anchorEl, setAnchorEl] = useState<Element | null>(null);
-
-  useEffect(() => {
-    const subscription = statusApi.status$().subscribe(setEntries);
-    return () => subscription.unsubscribe();
-  }, [statusApi]);
 
   const state = useMemo(() => overallState(entries), [entries]);
   // `summarize`/`overallState` only know about *probed* entries. With no live

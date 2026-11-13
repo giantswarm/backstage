@@ -27,6 +27,12 @@ export interface StatusDotProps {
    * cutting it with an ellipsis.
    */
   wrap?: boolean;
+  /**
+   * A ring instead of a filled dot: the tone's colour around the app
+   * background, for a state that needs telling apart from the filled one by
+   * shape as well as colour.
+   */
+  ring?: boolean;
 }
 
 /** The bui foreground colour each tone falls back to. */
@@ -49,10 +55,15 @@ export function StatusDot({
   size = 8,
   colorVar,
   wrap,
+  ring,
 }: StatusDotProps) {
+  const color = colorVar
+    ? `var(${colorVar}, ${TONE_TOKENS[tone]})`
+    : TONE_TOKENS[tone];
   const dot = (
     <span
       data-tone={tone}
+      data-ring={ring || undefined}
       role={label === undefined && ariaLabel ? 'img' : undefined}
       aria-label={label === undefined ? ariaLabel : undefined}
       aria-hidden={label !== undefined || !ariaLabel ? true : undefined}
@@ -63,9 +74,15 @@ export function StatusDot({
         height: size,
         borderRadius: '50%',
         flexShrink: 0,
-        backgroundColor: colorVar
-          ? `var(${colorVar}, ${TONE_TOKENS[tone]})`
-          : TONE_TOKENS[tone],
+        boxSizing: 'border-box',
+        ...(ring
+          ? {
+              backgroundColor: 'var(--bui-bg-app)',
+              borderWidth: Math.max(2, Math.round(size / 4)),
+              borderStyle: 'solid',
+              borderColor: color,
+            }
+          : { backgroundColor: color }),
       }}
     />
   );

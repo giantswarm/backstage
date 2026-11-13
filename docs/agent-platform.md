@@ -546,6 +546,19 @@ only when the records reach back before it.
 `/profile` shows who is signed in and the environments the portal
 talks to. Other settings stay in the classic settings.
 
+Its Environments section lists every configured installation as a toggle chip,
+all at once. A chip that is off switches the environment off app-wide: the
+access probe skips it and no page reads from it. **All on** and **All off** set
+every chip, and the notice after **All off** offers **Undo**. The dot on a chip
+that is on shows the access probe's result: healthy, unreachable (the reason in
+its tooltip), session expired (with **Sign in again**), checking, or not
+checked (an installation without the token broker that the person is not
+signed in to). A chip that is off shows a grey dot, since it is not checked,
+and the summary counts health among the chips that are on. The section shares
+its state with the classic sidebar's Cluster access widget: the switched-off
+set in the browser's `localStorage` (`gs-muted-installations`) and the probe's
+results, so both always agree.
+
 ---
 
 ## Overview of the create flow

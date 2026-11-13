@@ -17,12 +17,8 @@ import {
   LoadingIndicator,
   SectionHeader,
   ShellPage,
-  ShowMore,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { InstallationChip } from '../InstallationChip';
-
-/** How many environment badges show before *Show all N environments*. */
-const INITIAL_BADGES = 20;
+import { EnvironmentToggles } from '../EnvironmentToggles';
 
 const useStyles = makeStyles(theme => ({
   section: {
@@ -127,30 +123,16 @@ export function ProfilePage() {
             <SectionHeader
               variant="title-x-small"
               title="Environments"
-              description="These are the environments this portal talks to."
+              description="The environments this portal talks to. Turn one off and the portal shows nothing from it."
             />
             {installationsLoading ? (
               <LoadingIndicator label="Reading the environments…" />
             ) : (
-              // A fleet of 50 is a wall of badges: the first 20, then one
-              // click for the rest.
-              <ShowMore
-                items={installations}
-                initial={INITIAL_BADGES}
-                noun="environment"
-                revealAll
-              >
-                {visible => (
-                  <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-                    {visible.map(installation => (
-                      <InstallationChip
-                        key={installation.name}
-                        installation={installation.name}
-                      />
-                    ))}
-                  </Flex>
+              <EnvironmentToggles
+                installations={installations.map(
+                  installation => installation.name,
                 )}
-              </ShowMore>
+              />
             )}
           </section>
         )}

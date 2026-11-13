@@ -121,10 +121,12 @@ export {
   type ClusterAccessStatusApi,
   type ClusterAccessStatusEntry,
   type ClusterAccessState,
+  useClusterAccessStatus,
 } from './apis/clusterAccessStatus';
 export {
   mutedInstallationsApiRef,
   type MutedInstallationsApi,
+  useMutedInstallations,
 } from './apis/mutedInstallations';
 export {
   ClusterAccessStatusSidebarItem,

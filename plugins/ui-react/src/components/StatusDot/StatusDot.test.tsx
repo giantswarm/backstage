@@ -45,4 +45,14 @@ describe('StatusDot', () => {
       'var(--agent-platform-state-dot-danger, var(--bui-fg-negative))',
     );
   });
+
+  it('draws a ring in the tone around the app background', () => {
+    const { container } = render(<StatusDot tone="danger" ring size={10} />);
+
+    const dot = container.querySelector<HTMLElement>('[data-tone="danger"]');
+    expect(dot).toHaveAttribute('data-ring', 'true');
+    expect(dot?.style.backgroundColor).toBe('var(--bui-bg-app)');
+    expect(dot?.style.borderColor).toBe('var(--bui-fg-negative)');
+    expect(dot?.style.borderWidth).toBe('3px');
+  });
 });
