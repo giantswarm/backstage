@@ -1,11 +1,12 @@
 import { ReactNode } from 'react';
-import { Alert, Badge } from '@backstage/ui';
+import { Alert, Badge, Flex } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import LoopIcon from '@material-ui/icons/Loop';
 
 import {
   CANCELED_STATE,
-  isRuntimeLostFailureText,
+  classifyFailureText,
+  isCredentialsRefusedText,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { PHONE_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
 import { TimelineItem } from '../../lib/kagentTimeline';
@@ -14,6 +15,7 @@ import { AttachmentEntry } from './AttachmentEntry';
 import { EgressRefusedEntry, EgressSettingsLink } from './EgressRefusedEntry';
 import { MessageMarkdown } from './MessageMarkdown';
 import { PayloadBlock } from './PayloadBlock';
+import { TurnFailureDetails } from './TurnFailureDetails';
 import { UserMessage } from './UserMessage';
 import { WorkspaceNoticeEntry } from './WorkspaceNoticeEntry';
 import {
@@ -490,10 +492,14 @@ export function TimelineEntry({
     // person who read them on gazelle. Said in the portal's words, with the
     // runtime's kept as the evidence; the page's notice below the conversation
     // carries the way out.
-    const runtimeLost = isRuntimeLostFailureText(item.reason);
+    const failure = classifyFailureText(item.reason);
+    const runtimeLost = failure === 'runtime-lost';
+    const modelUnavailable = failure === 'model-unavailable';
     let title = 'This turn failed';
     if (runtimeLost) {
       title = 'Could not reach the agent’s runtime';
+    } else if (modelUnavailable) {
+      title = 'Could not reach the model';
     } else if (item.state === 'rejected') {
       title = 'This turn was rejected';
     }
@@ -505,6 +511,18 @@ export function TimelineEntry({
           message. The runtime said: {item.reason}
         </span>
       );
+    } else if (modelUnavailable && item.reason) {
+      description = (
+        <Flex direction="column" gap="2">
+          <span>
+            {isCredentialsRefusedText(item.reason)
+              ? 'The model provider refused this agent’s credentials, so the agent could not answer.'
+              : 'The model provider could not answer this agent’s request.'}{' '}
+            Check the agent’s model, or ask your platform team for help.
+          </span>
+          <TurnFailureDetails text={item.reason} />
+        </Flex>
+      );
     } else if (item.reason) {
       description = (
         <span className={classes.failureReason}>{item.reason}</span>
@@ -514,6 +532,7 @@ export function TimelineEntry({
       <div
         data-testid="timeline-turn-failed"
         data-runtime-lost={runtimeLost ? 'true' : undefined}
+        data-model-unavailable={modelUnavailable ? 'true' : undefined}
       >
         <Alert status="danger" icon title={title} description={description} />
       </div>
