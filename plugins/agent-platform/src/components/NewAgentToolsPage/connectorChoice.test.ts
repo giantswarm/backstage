@@ -1,3 +1,4 @@
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Connector choices consume Muster's tool catalogue contract.
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 
 import type { CatalogueGroup, ServerBucket } from '../../lib/toolset';
@@ -15,8 +16,10 @@ import {
   readOnlyFits,
   readOnlySelectors,
   materialize,
+  toggleCatalogueSelector,
   unlistedPicks,
   withConnectorChoice,
+  withoutCovered,
 } from './connectorChoice';
 
 const reads = (name: string): ToolSummary => ({
@@ -439,6 +442,115 @@ describe('a compact toolset (B1)', () => {
       ),
     ).toBe(
       'This toolset needs 33 selectors but may list at most 32, so choose fewer connectors or tools.',
+    );
+  });
+});
+
+describe('a whole connector beside its single tools', () => {
+  const groups: CatalogueGroup[] = [
+    {
+      key: 'registered',
+      title: 'Registered connectors',
+      servers: [JIRA],
+      platformAdministration: [],
+      workflows: [],
+    },
+  ];
+
+  it('drops the single tools the whole connector covers', () => {
+    expect(
+      withoutCovered(
+        ['tool:x_jira_search', 'server:jira', 'tool:x_other', 'server:docs'],
+        groups,
+      ),
+    ).toEqual(['server:jira', 'tool:x_other', 'server:docs']);
+  });
+
+  it('replaces the single tools when the whole connector is ticked', () => {
+    expect(
+      toggleCatalogueSelector(
+        ['tool:x_jira_search', 'tool:x_jira_get_issue'],
+        'server:jira',
+        groups,
+      ),
+    ).toEqual(['server:jira']);
+  });
+
+  it('writes the connector out without a covered tool that is unticked', () => {
+    expect(
+      toggleCatalogueSelector(
+        ['workflow:a', 'server:jira'],
+        'tool:x_jira_search',
+        groups,
+      ),
+    ).toEqual([
+      'workflow:a',
+      'tool:x_jira_get_issue',
+      'tool:x_jira_create_issue',
+    ]);
+  });
+
+  it('unticks a covered tool that is also listed on its own', () => {
+    expect(
+      toggleCatalogueSelector(
+        ['server:jira', 'tool:x_jira_search'],
+        'tool:x_jira_search',
+        groups,
+      ),
+    ).toEqual(['tool:x_jira_get_issue', 'tool:x_jira_create_issue']);
+  });
+
+  it('adds and removes a single tool as before when the connector is not whole', () => {
+    expect(
+      toggleCatalogueSelector(['workflow:a'], 'tool:x_jira_search', groups),
+    ).toEqual(['workflow:a', 'tool:x_jira_search']);
+    expect(
+      toggleCatalogueSelector(
+        ['workflow:a', 'tool:x_jira_search'],
+        'tool:x_jira_search',
+        groups,
+      ),
+    ).toEqual(['workflow:a']);
+  });
+
+  it('never suggests All for a connector that already has it', () => {
+    const many = (prefix: string, count: number) =>
+      Array.from({ length: count }, (_, i) => `tool:x_${prefix}_${i}`);
+    const wide: CatalogueGroup[] = [
+      {
+        ...groups[0],
+        servers: [
+          bucket(
+            'kagent',
+            many('kagent', 20).map(selector => reads(selector.slice(5))),
+          ),
+          bucket(
+            'jira',
+            many('jira', 15).map(selector => reads(selector.slice(5))),
+          ),
+        ],
+      },
+    ];
+    expect(
+      inlineCapProblem(
+        ['server:kagent', ...many('kagent', 20), ...many('jira', 15)],
+        wide,
+      ),
+    ).toBe(
+      'This toolset needs 36 selectors but may list at most 32; most come from kagent (21) and jira (15), so choose All or fewer tools there, and remove single tools listed beside All, which covers them.',
+    );
+    expect(
+      inlineCapProblem(
+        [
+          'server:kagent',
+          ...many('kagent', 20),
+          'server:jira',
+          ...many('jira', 15),
+        ],
+        wide,
+      ),
+    ).toBe(
+      'This toolset needs 37 selectors but may list at most 32; most come from kagent (21) and jira (16), where All already covers the single tools listed beside it, so remove those.',
     );
   });
 });
