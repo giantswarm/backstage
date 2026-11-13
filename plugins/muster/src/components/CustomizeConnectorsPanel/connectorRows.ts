@@ -67,6 +67,26 @@ export function toolsLabel(entry: ServerListEntry): string | undefined {
   return countNoun(entry.toolCount, 'tool');
 }
 
+/** What the Tools column shows where there is nothing to count. */
+export const NO_TOOLS_VALUE = '—';
+
+/**
+ * Whether a row's tool count means nothing: the connector is not reached
+ * (not connected, deactivated, awaiting a sign-in) and lists no tools, so
+ * "0 tools" would read as a connector without tools.
+ */
+export function toolsUnavailable(
+  entry: Pick<ServerListEntry, 'toolCount'>,
+  reach: ConnectorReach | undefined,
+): boolean {
+  return (
+    reach !== undefined &&
+    reach !== 'connected' &&
+    reach !== 'portal-only' &&
+    !(entry.toolCount && entry.toolCount > 0)
+  );
+}
+
 /**
  * A row's state: for one server, this person's sign-in when muster reports one
  * that asks something of them or a connect with their portal sign-in still
