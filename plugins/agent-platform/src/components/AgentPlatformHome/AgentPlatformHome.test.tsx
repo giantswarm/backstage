@@ -4,6 +4,7 @@ import { identityApiRef } from '@backstage/frontend-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { Link } from 'react-router-dom';
 
 import {
   applyInstallationScope,
@@ -84,9 +85,15 @@ jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
     isLoading: false,
   }),
 }));
+// Every installation the portal knows, as configured.
+const mockInstallationNames = jest.fn<string[], []>(() => ['gazelle', 'golem']);
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-gs'),
   useInstallationInventory: () => ({ refresh: () => {} }),
+  useInstallations: () => ({
+    installations: mockInstallationNames().map(name => ({ name })),
+    isLoading: false,
+  }),
   // The gate itself, covered by its own tests in gs, renders a marker naming
   // the environment it explains.
   InventoryFailureGate: ({
@@ -283,6 +290,7 @@ function render({
   url,
   rerenderable = false,
   storage = mockApis.storage(),
+  extra,
 }: {
   bound?: boolean;
   displayName?: string;
@@ -293,13 +301,18 @@ function render({
   rerenderable?: boolean;
   /** What the person has stored, e.g. their favorite agents. */
   storage?: StorageApi;
+  /** Rendered beside the home, e.g. a link to follow while it is open. */
+  extra?: ReactNode;
 } = {}) {
   return renderInTestApp(
-    rerenderable ? (
-      <RerenderableHome manageAgentsHref={manageAgentsHref} />
-    ) : (
-      <AgentPlatformHome manageAgentsHref={manageAgentsHref} />
-    ),
+    <>
+      {rerenderable ? (
+        <RerenderableHome manageAgentsHref={manageAgentsHref} />
+      ) : (
+        <AgentPlatformHome manageAgentsHref={manageAgentsHref} />
+      )}
+      {extra}
+    </>,
     {
       ...(url && { initialRouteEntries: [url] }),
       apis: [
@@ -1055,11 +1068,156 @@ describe('AgentPlatformHome', () => {
         expect(
           screen.getByText('The linked agent is not selected'),
         ).toBeInTheDocument();
+        expect(document.body).toHaveTextContent(
+          'No agent gazelle/kagent/missing-agent was found. General Assistant is selected instead.',
+        );
+        expect(screen.getByText('gazelle/kagent/missing-agent').tagName).toBe(
+          'CODE',
+        );
+      });
+
+      it('never repeats a link that does not read as an agent', async () => {
+        await render({
+          url: `/?agent=${encodeURIComponent('Your access expired, visit example.com')}`,
+        });
+
+        expect(document.body).toHaveTextContent(
+          'The agent the link names was not found. General Assistant is selected instead.',
+        );
+        expect(document.body).not.toHaveTextContent('example.com');
+      });
+
+      it('never matches a known installation on another one', async () => {
+        // golem is configured but not read here (pinned scope, no kagent,
+        // or its inventory has not answered).
+        await render({ url: '/?agent=golem%2Fkagent%2Fsre-agent' });
+
+        expect(agentPicker()).toHaveTextContent('General Assistant');
+        expect(document.body).toHaveTextContent(
+          'No agent golem/kagent/sre-agent was found.',
+        );
+      });
+
+      it('says when the linked agent is on an environment that cannot be reached', async () => {
+        mockUseAgents.mockReturnValue({
+          ...loadedAgents,
+          rows: [sre, research, docs, general],
+          unreachableInstallations: ['golem'],
+        });
+        await render({ url: '/?agent=golem%2Fkagent%2Fsre-agent' });
+
+        expect(document.body).toHaveTextContent(
+          'The linked agent is on golem, which cannot be reached right now. General Assistant is selected instead.',
+        );
+      });
+
+      it('says when the linked agent is on an environment switched off in Cluster access', async () => {
+        mockUseAgents.mockReturnValue({
+          ...loadedAgents,
+          rows: [sre, research, docs, general],
+          kagentSwitchedOff: ['golem'],
+        });
+        await render({ url: '/?agent=golem%2Fkagent%2Fsre-agent' });
+
+        expect(document.body).toHaveTextContent(
+          'The linked agent is on golem, which is switched off in Cluster access.',
+        );
+      });
+
+      it('says when the linked agent is outside the environment selected', async () => {
+        mockUseAgents.mockReturnValue({
+          ...loadedAgents,
+          scope: 'gazelle',
+          rows: [sre, research, docs, general],
+        });
+        await render({ url: '/?agent=golem%2Fkagent%2Fsre-agent' });
+
+        expect(document.body).toHaveTextContent(
+          'The linked agent is on golem, outside the environment selected.',
+        );
+      });
+
+      it('picks no environment for a link several environments match', async () => {
+        const golemSre: AgentRow = {
+          ...sre,
+          id: 'golem/kagent/sre-agent',
+          installation: 'golem',
+        };
+        mockUseAgents.mockReturnValue({
+          ...loadedAgents,
+          installations: ['gazelle', 'golem'],
+          rows: [sre, research, docs, general, golemSre],
+        });
+        await render({ url: '/?agent=agent-platform%2Fkagent%2Fsre-agent' });
+
+        expect(agentPicker()).toHaveTextContent('General Assistant');
+        expect(document.body).toHaveTextContent(
+          'More than one environment has the agent agent-platform/kagent/sre-agent; choose one. General Assistant is selected instead.',
+        );
+      });
+
+      it('takes the warning down when the person closes it', async () => {
+        await render({ url: '/?agent=kagent%2Fmissing-agent' });
         expect(
-          screen.getByText(
-            'The link names the agent "gazelle/kagent/missing-agent", which you cannot use here. General Assistant is selected instead.',
-          ),
+          screen.getByText('The linked agent is not selected'),
         ).toBeInTheDocument();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+        expect(
+          screen.queryByText('The linked agent is not selected'),
+        ).not.toBeInTheDocument();
+      });
+
+      it('says so again for a link followed after a pick', async () => {
+        await render({
+          url: '/?agent=kagent%2Fmissing-agent',
+          extra: (
+            <Link to="/?agent=kagent%2Fother-missing#prompt=Again">
+              Another reply's link
+            </Link>
+          ),
+        });
+        await userEvent.click(agentPicker());
+        await userEvent.click(
+          screen.getAllByRole('option', { name: /Docs Agent/ })[0],
+        );
+        expect(
+          screen.queryByText('The linked agent is not selected'),
+        ).not.toBeInTheDocument();
+
+        await userEvent.click(
+          screen.getByRole('link', { name: "Another reply's link" }),
+        );
+
+        expect(document.body).toHaveTextContent(
+          'No agent kagent/other-missing was found.',
+        );
+      });
+
+      it('switches to a linked agent that arrives after the person typed', async () => {
+        mockUseAgents.mockReturnValue({
+          ...loadedAgents,
+          rows: [general],
+          isLoadingMore: true,
+        });
+        await render({
+          url: `/?agent=${encodeURIComponent(research.id)}#prompt=Find%20it`,
+          rerenderable: true,
+        });
+        const prompt = screen.getByRole('textbox', { name: 'Prompt' });
+        // Waiting for the linked agent: the prompt does not take the focus.
+        expect(prompt).not.toHaveFocus();
+        await userEvent.type(prompt, ' now');
+
+        mockUseAgents.mockReturnValue({
+          ...loadedAgents,
+          rows: [sre, research, docs, general],
+        });
+        act(() => rerenderHome());
+
+        expect(agentPicker()).toHaveTextContent('Research Agent');
+        expect(prompt).toHaveValue('Find it now');
       });
 
       it('says so when the linked agent cannot start, until the person picks one', async () => {
@@ -1070,11 +1228,9 @@ describe('AgentPlatformHome', () => {
         await render({ url: `/?agent=${encodeURIComponent(research.id)}` });
 
         expect(agentPicker()).toHaveTextContent('General Assistant');
-        expect(
-          screen.getByText(
-            'Research Agent cannot start sessions right now. General Assistant is selected instead.',
-          ),
-        ).toBeInTheDocument();
+        expect(document.body).toHaveTextContent(
+          'Research Agent cannot start sessions right now. General Assistant is selected instead.',
+        );
 
         await userEvent.click(agentPicker());
         await userEvent.click(
@@ -1205,6 +1361,32 @@ describe('AgentPlatformHome', () => {
         expect(prompt.selectionStart).toBe('Watch the backups'.length);
       });
 
+      it('leaves the focus where the person put it while the agent loads', async () => {
+        mockUseAgents.mockReturnValue({
+          ...loadedAgents,
+          rows: [],
+          isLoading: true,
+        });
+        await render({
+          url: `/?agent=${encodeURIComponent(research.id)}#prompt=Watch%20the%20backups`,
+          rerenderable: true,
+        });
+        await userEvent.click(
+          screen.getByText('Choose an agent, then say what you need.'),
+        );
+
+        mockUseAgents.mockReturnValue({
+          ...loadedAgents,
+          rows: [sre, research, docs],
+        });
+        act(() => rerenderHome());
+
+        expect(agentPicker()).toHaveTextContent('Research Agent');
+        expect(
+          screen.getByRole('textbox', { name: 'Prompt' }),
+        ).not.toHaveFocus();
+      });
+
       it('leaves the focus alone without a prompt from a link', async () => {
         await render({ url: `/?agent=${encodeURIComponent(research.id)}` });
 
@@ -1259,11 +1441,9 @@ describe('AgentPlatformHome', () => {
 
       expect(agentPicker()).toHaveTextContent('Choose an agent');
       expect(screen.getByRole('textbox', { name: 'Prompt' })).toBeDisabled();
-      expect(
-        screen.getByText(
-          'Research Agent cannot start sessions right now. Choose an agent to start.',
-        ),
-      ).toBeInTheDocument();
+      expect(document.body).toHaveTextContent(
+        'Research Agent cannot start sessions right now. Choose an agent to start.',
+      );
     });
 
     it('stops naming the picked agent once its installation cannot start a session', async () => {

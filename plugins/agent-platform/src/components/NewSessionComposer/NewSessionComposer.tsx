@@ -330,11 +330,19 @@ export type NewSessionComposerProps = {
   autoFocus?: boolean;
   /**
    * Focuses the prompt field with the caret after its text, once, as soon as
-   * it takes input (on an agent-first surface: once an agent is selected),
-   * unless the person has used the picker first. For a prompt a link brought,
-   * which the person goes on writing.
+   * it takes input (on an agent-first surface: once an agent is selected).
+   * Not while the focus is on anything else, such as the open picker. For a
+   * prompt a link brought, which the person goes on writing; the caller turns
+   * it off once the person has done anything on the page.
    */
   focusPromptAtEnd?: boolean;
+  /**
+   * The `defaultAgent` is adopted when it arrives even after the person has
+   * typed, until they pick an agent: a link named it, so it is the agent the
+   * person came for, and typing while it loads must not leave another one
+   * selected.
+   */
+  defaultOverridesTyping?: boolean;
   isStarting: boolean;
   /**
    * Why the last start failed. An `AgentManagerNotConnectedError` (sessions
@@ -515,6 +523,7 @@ export function NewSessionComposer({
   collapsible = false,
   autoFocus = false,
   focusPromptAtEnd = false,
+  defaultOverridesTyping = false,
   isStarting,
   error,
   acceptsImages = false,
@@ -596,7 +605,7 @@ export function NewSessionComposer({
   if (
     !touched.current &&
     // Typing keeps the agent shown; an empty picker still takes one.
-    (!typed.current || selectedId === undefined) &&
+    (!typed.current || selectedId === undefined || defaultOverridesTyping) &&
     effectiveDefault &&
     adopted.current !== effectiveDefault.id
   ) {
@@ -861,10 +870,13 @@ export function NewSessionComposer({
       : selectedId;
   }, [options, pickedOptionId, selectedId]);
 
+  // Every pick counts, the agent already selected included, so the caller
+  // hears that the person chose it.
+  const [pickCount, setPickCount] = useState(0);
   // `touched` is set before the pick's state update, so it is current here.
   useEffect(() => {
     onSelectedAgentChange?.(selectedAgent, { byPerson: touched.current });
-  }, [onSelectedAgentChange, selectedAgent]);
+  }, [onSelectedAgentChange, selectedAgent, pickCount]);
 
   const selectAgent = useCallback((agent: AgentRow) => {
     if (!isStartableAgent(agent)) {
@@ -873,27 +885,27 @@ export function NewSessionComposer({
     touched.current = true;
     setSelectedId(agent.id);
     setPickedOptionId(undefined);
+    setPickCount(count => count + 1);
   }, []);
 
   // Agent-first and nothing chosen yet: the prompt field and Start wait,
   // visibly, for the picker.
   const awaitingAgent = agentFirst && !selectedAgent;
 
-  const promptFocused = useRef(false);
+  const promptFocusSettled = useRef(false);
   useEffect(() => {
-    if (
-      !focusPromptAtEnd ||
-      awaitingAgent ||
-      promptFocused.current ||
-      touched.current
-    ) {
+    if (!focusPromptAtEnd || awaitingAgent || promptFocusSettled.current) {
       return;
     }
     const textarea = fieldRef.current?.querySelector('textarea');
     if (!textarea || textarea.disabled) {
       return;
     }
-    promptFocused.current = true;
+    promptFocusSettled.current = true;
+    const active = document.activeElement;
+    if (active && active !== document.body && active !== textarea) {
+      return;
+    }
     textarea.focus();
     const end = textarea.value.length;
     textarea.setSelectionRange(end, end);
@@ -1080,6 +1092,7 @@ export function NewSessionComposer({
             touched.current = true;
             setSelectedId(id && agentIdOfOption(id));
             setPickedOptionId(id);
+            setPickCount(count => count + 1);
           }}
           onOpenChange={isOpen => {
             setOpenedWith(

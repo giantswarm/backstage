@@ -1,5 +1,10 @@
-import type { Page } from '@playwright/test';
-import { expect, open, test } from './fixtures';
+import {
+  expect,
+  newSessionAgentPicker,
+  newSessionPrompt,
+  open,
+  test,
+} from './fixtures';
 
 /**
  * A new-session link, as an agent writes it into a reply: `/?agent=<id>#prompt=`
@@ -11,10 +16,6 @@ import { expect, open, test } from './fixtures';
 
 const PROMPT = 'Help me debug a cluster problem';
 const agentWait = 2 * 60_000;
-
-const prompt = (page: Page) => page.getByRole('textbox', { name: 'Prompt' });
-const agentPicker = (page: Page) =>
-  page.locator('button[aria-haspopup="listbox"]').first();
 
 test('a new-session link selects its agent and puts the caret after its prompt', async ({
   admin,
@@ -32,13 +33,13 @@ test('a new-session link selects its agent and puts the caret after its prompt',
     `/?agent=${encodeURIComponent(ref)}#prompt=${encodeURIComponent(PROMPT)}`,
   );
 
-  await expect(agentPicker(admin)).toContainText(labAgent.name, {
+  await expect(newSessionAgentPicker(admin)).toContainText(labAgent.name, {
     timeout: agentWait,
   });
-  await expect(prompt(admin)).toHaveValue(PROMPT);
-  await expect(prompt(admin)).toBeFocused();
+  await expect(newSessionPrompt(admin)).toHaveValue(PROMPT);
+  await expect(newSessionPrompt(admin)).toBeFocused();
   expect(
-    await prompt(admin).evaluate((field: HTMLTextAreaElement) => [
+    await newSessionPrompt(admin).evaluate((field: HTMLTextAreaElement) => [
       field.selectionStart,
       field.selectionEnd,
     ]),
@@ -56,8 +57,7 @@ test('a new-session link to an unknown agent says so', async ({ admin }) => {
     { timeout: agentWait },
   );
   await expect(
-    admin.getByText(
-      /^The link names the agent "kagent\/no-such-agent", which you cannot use here\./,
-    ),
+    admin.getByText('kagent/no-such-agent', { exact: true }),
   ).toBeVisible();
+  await expect(admin.getByText(/^No agent .* was found\./)).toBeVisible();
 });

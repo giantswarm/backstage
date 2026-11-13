@@ -1,6 +1,8 @@
 import type { AgentRow } from '../components/AgentsDataProvider';
 import {
-  findLinkedAgent,
+  LINKED_AGENT_SHOWN_MAX_LENGTH,
+  resolveLinkedAgent,
+  shownLinkedAgentRef,
   LINKED_PROMPT_MAX_LENGTH,
   isNewSessionLink,
   linkedPromptOf,
@@ -74,50 +76,115 @@ describe('isNewSessionLink', () => {
   });
 });
 
-describe('findLinkedAgent', () => {
+describe('resolveLinkedAgent', () => {
   const home = agent('golem', 'agents', 'helper');
   const other = agent('gazelle', 'agents', 'helper');
+  const solo = agent('gazelle', 'kagent', 'sre-agent');
+  const installations = ['golem', 'gazelle'];
   const offered = () => true;
 
   it('finds the agent by id', () => {
-    expect(findLinkedAgent([home, other], other.id, offered)).toBe(other);
+    expect(
+      resolveLinkedAgent([home, other], other.id, offered, installations),
+    ).toEqual({ status: 'found', agent: other });
   });
 
   it('finds the first agent of that namespace and name', () => {
-    expect(findLinkedAgent([home, other], 'agents/helper', offered)).toBe(home);
-  });
-
-  it('skips agents that are not offered', () => {
     expect(
-      findLinkedAgent([home, other], 'agents/helper', a => a !== home),
-    ).toBe(other);
-    expect(findLinkedAgent([home], home.id, () => false)).toBeUndefined();
-    expect(findLinkedAgent([home], null, offered)).toBeUndefined();
+      resolveLinkedAgent(
+        [home, other],
+        'agents/helper',
+        offered,
+        installations,
+      ),
+    ).toEqual({ status: 'found', agent: home });
   });
 
-  it('finds the agent by namespace and name under an installation the portal does not know', () => {
+  it('prefers an agent that can start, and says when none can', () => {
+    expect(
+      resolveLinkedAgent(
+        [home, other],
+        'agents/helper',
+        a => a !== home,
+        installations,
+      ),
+    ).toEqual({ status: 'found', agent: other });
+    expect(
+      resolveLinkedAgent([home], home.id, () => false, installations),
+    ).toEqual({ status: 'unavailable', agent: home });
+  });
+
+  it('finds the one agent of that namespace and name under an installation the portal does not know', () => {
     // agent-manager may report an installation name the portal does not use.
     expect(
-      findLinkedAgent([home, other], 'agent-platform/agents/helper', offered, [
-        'golem',
-        'gazelle',
-      ]),
-    ).toBe(home);
+      resolveLinkedAgent(
+        [home, solo],
+        'agent-platform/kagent/sre-agent',
+        offered,
+        installations,
+      ),
+    ).toEqual({ status: 'found', agent: solo });
+  });
+
+  it('picks no installation when several have that namespace and name', () => {
+    expect(
+      resolveLinkedAgent(
+        [home, other],
+        'agent-platform/agents/helper',
+        offered,
+        installations,
+      ),
+    ).toEqual({ status: 'ambiguous' });
   });
 
   it('never swaps a known installation for another', () => {
     expect(
-      findLinkedAgent([other], 'golem/agents/helper', offered, [
-        'golem',
-        'gazelle',
-      ]),
-    ).toBeUndefined();
+      resolveLinkedAgent(
+        [other],
+        'golem/agents/helper',
+        offered,
+        installations,
+      ),
+    ).toEqual({ status: 'missing', installation: 'golem' });
   });
 
-  it('finds nothing for a reference of another shape', () => {
-    expect(findLinkedAgent([home], 'helper', offered)).toBeUndefined();
+  it('finds nothing for an unknown agent or a reference of another shape', () => {
     expect(
-      findLinkedAgent([home], 'x/golem/agents/helper', offered),
+      resolveLinkedAgent([home], 'agents/nobody', offered, installations),
+    ).toEqual({ status: 'missing' });
+    expect(
+      resolveLinkedAgent([home], 'helper', offered, installations),
+    ).toEqual({ status: 'missing' });
+    expect(
+      resolveLinkedAgent(
+        [home],
+        'x/golem/agents/helper',
+        offered,
+        installations,
+      ),
+    ).toEqual({ status: 'missing' });
+  });
+});
+
+describe('shownLinkedAgentRef', () => {
+  it('repeats an agent reference', () => {
+    expect(shownLinkedAgentRef('gazelle/kagent/sre-agent')).toBe(
+      'gazelle/kagent/sre-agent',
+    );
+    expect(shownLinkedAgentRef('kagent/sre-agent')).toBe('kagent/sre-agent');
+  });
+
+  it('repeats nothing that does not read as one', () => {
+    expect(
+      shownLinkedAgentRef('Your access expired, visit example.com'),
     ).toBeUndefined();
+    expect(shownLinkedAgentRef('sre-agent')).toBeUndefined();
+    expect(shownLinkedAgentRef('a/b/c/d')).toBeUndefined();
+  });
+
+  it('cuts a long reference', () => {
+    const shown = shownLinkedAgentRef(`kagent/${'a'.repeat(200)}`)!;
+    expect(Array.from(shown)).toHaveLength(LINKED_AGENT_SHOWN_MAX_LENGTH);
+    expect(shown.endsWith('…')).toBe(true);
   });
 });
