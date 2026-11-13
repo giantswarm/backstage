@@ -29,6 +29,12 @@ function fakeClient(
   return {
     callTool: async (tool: string, args: Record<string, unknown>) => {
       if (
+        String(args.query).includes('histogram_quantile(') ||
+        String(args.query).includes('sum by (mcpserver_name, tool, outcome)')
+      ) {
+        throw new Error('optimized query unavailable');
+      }
+      if (
         tool.endsWith('execute_range_query') &&
         Date.parse(String(args.end)) < Date.now()
       ) {
