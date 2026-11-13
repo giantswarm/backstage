@@ -27,6 +27,7 @@ import {
   type ToolsListView,
   useServerPageLinks,
 } from '../../shared';
+import type { NoToolsExplanation } from '../../McpServersPage/serverDetail';
 import { ServerTools } from '../../ServerPage/useServerPageData';
 
 const useStyles = makeStyles({
@@ -129,13 +130,11 @@ export interface ConnectorToolsTabProps {
   server: string;
   installation: string;
   tools: ServerTools;
-  /** Why the connector lists no tools, when it lists none. */
-  emptyExplanation: string;
   /**
-   * The connector failed to connect: the explanation is shown as a warning,
-   * not as plain text.
+   * Why the connector lists no tools, when it lists none: a `warning` is an
+   * alert, otherwise plain text.
    */
-  emptyIsFailure?: boolean;
+  emptyExplanation: NoToolsExplanation;
   /** Shown instead of the list while the muster session is missing. */
   sessionGate?: ReactNode;
   /**
@@ -170,7 +169,6 @@ export function ConnectorToolsTab({
   installation,
   tools,
   emptyExplanation,
-  emptyIsFailure = false,
   sessionGate,
   signInGate,
   searchState,
@@ -267,11 +265,11 @@ export function ConnectorToolsTab({
     if (signInGate) {
       return <>{signInGate}</>;
     }
-    return emptyIsFailure ? (
-      <Alert status="warning" description={emptyExplanation} />
+    return emptyExplanation.tone === 'warning' ? (
+      <Alert status="warning" description={emptyExplanation.text} />
     ) : (
       <Text as="p" variant="body-medium" color="secondary">
-        {emptyExplanation}
+        {emptyExplanation.text}
       </Text>
     );
   }

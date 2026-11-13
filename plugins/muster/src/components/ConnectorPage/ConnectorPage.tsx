@@ -75,7 +75,11 @@ import {
   serverRowKey,
 } from '../../lib/serverGrouping';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
-import { noToolsExplanation } from '../McpServersPage/serverDetail';
+import {
+  noInstanceToolsExplanation,
+  noToolsExplanation,
+  type NoToolsExplanation,
+} from '../McpServersPage/serverDetail';
 import { type ConnectorPageTabPath } from './connectorTabs';
 import { useConnectorWizardLinks } from '../NewMcpServerEditGate';
 import {
@@ -485,11 +489,14 @@ function ConnectorPageContent({
     );
   }
 
-  const emptyExplanation = singular
+  const explained = singular
     ? noToolsExplanation(singular)
-    : 'No instance offers tools right now.';
-  const emptyIsFailure =
-    !!singular && !singular.getSuspended() && singular.getState() === 'Failed';
+    : noInstanceToolsExplanation(members);
+  // One alert per problem: the sign-in error above the tabs already says it.
+  const signInErrorShown = canSignIn && Boolean(signIn.error);
+  const emptyExplanation: NoToolsExplanation = signInErrorShown
+    ? { ...explained, tone: 'neutral' }
+    : explained;
 
   const capabilities = (
     [
@@ -689,7 +696,6 @@ function ConnectorPageContent({
                   installation={installation}
                   tools={tools}
                   emptyExplanation={emptyExplanation}
-                  emptyIsFailure={emptyIsFailure}
                   sessionGate={sessionGate}
                   signInGate={signInGate}
                   searchState={toolSearch}

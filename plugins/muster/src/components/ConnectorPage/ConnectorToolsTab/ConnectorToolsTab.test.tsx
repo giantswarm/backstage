@@ -10,6 +10,7 @@ import {
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import type { ToolSummary } from '../../../apis';
 import { mcpServersRouteRef } from '../../../routes';
+import type { NoToolsExplanation } from '../../McpServersPage/serverDetail';
 import { ConnectorToolsTab } from './ConnectorToolsTab';
 
 /** Every third tool reads; the rest change things. */
@@ -30,12 +31,11 @@ function LocationProbe() {
 function renderTab(
   tools: ToolSummary[],
   path = '/connector',
-  emptyIsFailure = false,
+  tone: NoToolsExplanation['tone'] = 'neutral',
 ) {
   return renderInTestApp(
     <>
       <ConnectorToolsTab
-        emptyIsFailure={emptyIsFailure}
         server="jira"
         installation="gazelle"
         tools={{
@@ -44,7 +44,7 @@ function renderTab(
           isLoading: false,
           shortName: name => name.replace(/^x_jira_/, ''),
         }}
-        emptyExplanation="No tools."
+        emptyExplanation={{ text: 'No tools.', tone }}
       />
       <LocationProbe />
     </>,
@@ -87,7 +87,7 @@ function renderRoundTrip(tools: ToolSummary[]) {
               isLoading: false,
               shortName: name => name.replace(/^x_jira_/, ''),
             }}
-            emptyExplanation="No tools."
+            emptyExplanation={{ text: 'No tools.', tone: 'neutral' }}
           />
         }
       />
@@ -107,7 +107,7 @@ const toolRows = () => screen.getAllByRole('link', { name: /^tool_\d+/ });
 
 describe('ConnectorToolsTab', () => {
   it('shows why a failed connector lists no tools as a warning', async () => {
-    await renderTab([], '/connector', true);
+    await renderTab([], '/connector', 'warning');
 
     expect(
       screen.getByText('No tools.').closest('[data-status]'),
