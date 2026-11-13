@@ -83,6 +83,9 @@ describe('classifyFailureText', () => {
 
   it.each([
     ['Harness runtime execution failed'],
+    [
+      'anthropic API error: POST "https://api.anthropic.com/v1/messages": 400 Bad Request {"message":"Invalid field: authentication_error"}',
+    ],
     ['Claude execution failed'],
     ['Codex execution failed'],
     ['output_validation_failed: root agent produced no result artifact'],
@@ -139,6 +142,8 @@ describe('isCredentialsRefusedText', () => {
     ],
     ['{"type":"error","error":{"type":"permission_error"}}'],
     ['litellm.AuthenticationError: AnthropicException - invalid x-api-key'],
+    ['litellm.PermissionDeniedError: model access denied'],
+    ['anthropic API error: forbidden'],
     ['anthropic API error: 403 Forbidden'],
   ])('reads %s as refused credentials', text => {
     expect(isCredentialsRefusedText(text)).toBe(true);
@@ -146,6 +151,9 @@ describe('isCredentialsRefusedText', () => {
 
   it.each([
     ['llm error response: "anthropic API error: 529 overloaded"'],
+    [
+      'OpenAI chat completion request failed: POST "https://api.openai.com/v1/chat/completions": 429 Too Many Requests {"message":"authentication_error retry limit reached"}',
+    ],
     [
       'OpenAI chat completion request failed: POST "https://api.openai.com/v1/chat/completions": 429 Too Many Requests {"message": "Limit 403, Used 403"}',
     ],
