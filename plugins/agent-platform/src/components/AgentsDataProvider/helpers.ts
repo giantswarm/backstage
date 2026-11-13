@@ -237,6 +237,12 @@ export type AgentRow = {
    * a model row carries. `undefined` when the agent references no model.
    */
   modelConfigId?: string;
+  /**
+   * The same-namespace `AgentTemplate` the agent runs (`spec.templateRef`),
+   * when its template is not inline: its model is named there, so a missing
+   * {@link modelConfigId} does not mean the agent has none.
+   */
+  templateRef?: string;
   /** Readiness derived from the Agent's conditions. */
   readiness: AgentReadiness;
   /**
@@ -468,6 +474,7 @@ export function toAgentRow(
     ...(modelConfigName
       ? { modelConfigId: `${installation}/${namespace}/${modelConfigName}` }
       : {}),
+    ...(agent.getTemplateRef() ? { templateRef: agent.getTemplateRef() } : {}),
     readiness: agent.getReadiness(),
     readinessMessage: agent.getReadinessMessage(),
     tenant: ownerOf(namespace, organizations),

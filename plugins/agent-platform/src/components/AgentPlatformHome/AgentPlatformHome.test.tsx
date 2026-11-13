@@ -17,7 +17,6 @@ import {
   installationsExternalRouteRef,
   sessionsRouteRef,
 } from '../../routes';
-import type { AgentManagerAgent } from '../../lib/agentManager';
 import type { AgentRow, AgentsContextValue } from '../AgentsDataProvider';
 import {
   selectAgentsInventoryFailure,
@@ -25,6 +24,7 @@ import {
   selectUnknownPin,
 } from '../AgentsDataProvider/helpers';
 import type { SessionRow } from '../SessionsDataProvider/helpers';
+import type { AgentManagerAgent } from '../../lib/agentManager';
 import { AgentPlatformHome } from './AgentPlatformHome';
 import {
   mockDesktopLayout,
@@ -130,20 +130,30 @@ jest.mock('../../hooks/useMusterServers', () => ({
 }));
 
 // What agent-manager's `get_info` names as the default agent, as ids.
-const mockDefaultAgentIds = jest.fn<Set<string>, [string[]]>(() => new Set());
+const mockDefaultAgentIds = jest.fn<
+  Set<string>,
+  [string[], { everywhere?: boolean }?]
+>(() => new Set());
 jest.mock('../../hooks/useAgentManager', () => ({
   ...jest.requireActual('../../hooks/useAgentManager'),
-  useDefaultAgentIds: (installations: string[]) =>
-    mockDefaultAgentIds(installations),
+  useDefaultAgentIds: (
+    installations: string[],
+    options?: { everywhere?: boolean },
+  ) => mockDefaultAgentIds(installations, options),
 }));
 
-// What agent-manager's `get_agent` says about the agent asked for.
-const mockManagerAgent = jest.fn<AgentManagerAgent | undefined, []>();
-jest.mock('../../hooks/useAgentManagerAgent', () => ({
-  useAgentManagerAgent: () => ({
-    agent: mockManagerAgent(),
-    isLoading: false,
-  }),
+// What agent-manager's `get_agent` says about each agent asked for.
+const mockManagedAgent = jest.fn<AgentManagerAgent | undefined, [string]>();
+jest.mock('../../hooks/useAgentManagerAgents', () => ({
+  useAgentManagerAgents: (
+    refs: { installation: string; namespace: string; name: string }[],
+  ) =>
+    new Map(
+      refs.map(({ installation, namespace, name }) => {
+        const id = `${installation}/${namespace}/${name}`;
+        return [id, { agent: mockManagedAgent(id), settled: true }];
+      }),
+    ),
 }));
 
 const mockUseCreateSession = jest.fn();
@@ -350,7 +360,7 @@ beforeEach(() => {
   mockSessions.mockReturnValue([]);
   mockDefaultAgentIds.mockReset();
   mockDefaultAgentIds.mockReturnValue(new Set());
-  mockManagerAgent.mockReturnValue(undefined);
+  mockManagedAgent.mockReset();
   mockSlackConfigured = false;
 });
 
@@ -973,7 +983,10 @@ describe('AgentPlatformHome', () => {
       it('asks agent-manager on the installations of startable agents', async () => {
         await render();
 
-        expect(mockDefaultAgentIds).toHaveBeenCalledWith(['gazelle']);
+        expect(mockDefaultAgentIds).toHaveBeenCalledWith(
+          ['gazelle'],
+          undefined,
+        );
       });
 
       it('preselects it', async () => {
@@ -1009,49 +1022,128 @@ describe('AgentPlatformHome', () => {
 
       describe('without a model', () => {
         const noModel = { ...general, readiness: 'failed' as const };
-        const managed: AgentManagerAgent = {
-          name: 'default-agent',
-          namespace: 'kagent',
+        const title = 'General Assistant cannot start sessions';
+        // agent-manager: the platform's default agent, without a model.
+        const awaiting = (agentId: string): AgentManagerAgent => ({
+          name: agentId.split('/')[2],
+          namespace: agentId.split('/')[1],
           exists: true,
           ready: false,
           managed: 'platform',
           default: true,
-        };
-        const noModelLine = 'No model yet. Add one under Models.';
+        });
 
         beforeEach(() => {
           mockUseAgents.mockReturnValue({
             ...loadedAgents,
             rows: [sre, research, docs, noModel],
           });
-          mockManagerAgent.mockReturnValue(managed);
+          mockManagedAgent.mockImplementation(awaiting);
         });
 
-        it('says to add one', async () => {
+        it('says where, and to add one', async () => {
           await render();
 
+          expect(screen.getByText(title)).toBeInTheDocument();
           expect(
-            screen.getByText('General Assistant cannot start sessions'),
-          ).toBeInTheDocument();
-          expect(screen.getByText(noModelLine)).toBeInTheDocument();
+            screen.getByText(/^No model yet on/).closest('p, span, div'),
+          ).toHaveTextContent(
+            'No model yet on gazelle, namespace kagent. Add one under Models.',
+          );
         });
 
-        it('says nothing once it has one', async () => {
-          mockManagerAgent.mockReturnValue({
-            ...managed,
-            modelConfig: 'claude',
+        it('asks every environment with an agent that is not ready for its default agent', async () => {
+          const elsewhere: AgentRow = {
+            ...sre,
+            id: 'golem/kagent/sre-agent',
+            installation: 'golem',
+          };
+          mockUseAgents.mockReturnValue({
+            ...loadedAgents,
+            rows: [sre, research, docs, noModel, elsewhere],
           });
           await render();
 
-          expect(screen.queryByText(noModelLine)).not.toBeInTheDocument();
+          expect(mockDefaultAgentIds).toHaveBeenCalledWith(['gazelle'], {
+            everywhere: true,
+          });
+          expect(mockDefaultAgentIds).not.toHaveBeenCalledWith(
+            expect.arrayContaining(['golem']),
+            { everywhere: true },
+          );
+        });
+
+        it("gives the controller's message where agent-manager does not confirm the platform agent waits for a model", async () => {
+          mockUseAgents.mockReturnValue({
+            ...loadedAgents,
+            rows: [
+              sre,
+              research,
+              docs,
+              { ...noModel, readinessMessage: 'Harness boot failed' },
+            ],
+          });
+          mockManagedAgent.mockImplementation(id => ({
+            ...awaiting(id),
+            managed: 'helmrelease',
+          }));
+          await render();
+
+          expect(
+            screen.getByText(/^Failed on/).closest('p, span, div'),
+          ).toHaveTextContent(
+            'Failed on gazelle, namespace kagent: Harness boot failed.',
+          );
+          expect(screen.queryByText(/No model yet/)).not.toBeInTheDocument();
+        });
+
+        it('says nothing once it has one', async () => {
+          mockUseAgents.mockReturnValue({
+            ...loadedAgents,
+            rows: [
+              sre,
+              research,
+              docs,
+              { ...general, modelConfigId: 'gazelle/kagent/claude' },
+            ],
+          });
+          await render();
+
+          expect(screen.queryByText(title)).not.toBeInTheDocument();
         });
 
         it('says nothing for an agent that is not the default', async () => {
           mockDefaultAgentIds.mockReturnValue(new Set());
-          mockManagerAgent.mockReturnValue({ ...managed, default: false });
+          mockManagedAgent.mockReset();
           await render();
 
-          expect(screen.queryByText(noModelLine)).not.toBeInTheDocument();
+          expect(screen.queryByText(title)).not.toBeInTheDocument();
+        });
+
+        it('counts the default agents of several environments', async () => {
+          const elsewhere: AgentRow = {
+            ...noModel,
+            id: 'golem/org-team/default-agent',
+            installation: 'golem',
+            namespace: 'org-team',
+          };
+          mockUseAgents.mockReturnValue({
+            ...loadedAgents,
+            rows: [sre, research, docs, noModel, elsewhere],
+          });
+          mockDefaultAgentIds.mockReturnValue(
+            new Set([general.id, elsewhere.id]),
+          );
+          await render();
+
+          expect(
+            screen.getByText(
+              '2 General Assistant agents cannot start sessions',
+            ),
+          ).toBeInTheDocument();
+          expect(
+            screen.getByRole('button', { name: 'All 2 agents' }),
+          ).toBeInTheDocument();
         });
       });
 
