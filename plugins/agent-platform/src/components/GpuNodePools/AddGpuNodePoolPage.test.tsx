@@ -4,15 +4,13 @@ import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Cluster-manager calls and sign-in errors use the Muster API.
 import {
   musterApiRef,
   MusterUnauthorizedError,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
-import {
-  getRelativeDate,
-  PageHeaderActionsProvider,
-} from '@giantswarm/backstage-plugin-ui-react';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
 import type {
   CacheSetting,
@@ -586,6 +584,7 @@ async function renderPage(
  */
 beforeEach(() => {
   jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-11-10T12:00:00Z'));
 });
 
 afterEach(() => {
@@ -1446,7 +1445,7 @@ describe('AddGpuNodePoolPage — the model cache’s standing cost (giantswarm/b
       'This cluster keeps a model cache: every pool of the cluster serves from it, so a pool cannot switch it off. To serve without one, remove the cache under Model cache.',
     );
     expect(kept).toHaveTextContent(
-      `The cache: hf-cache — 100 GiB gp3 at 500 MiB/s · $27.37/month · created ${getRelativeDate(KEPT_CLAIM.created, new Date())} · Bound in eu-central-1b.`,
+      'The cache: hf-cache — 100 GiB gp3 at 500 MiB/s · $27.37/month · Bound in eu-central-1b · created about 2 months ago.',
     );
     expect(kept).toHaveTextContent('Bound in eu-central-1b');
     expect(screen.queryByTestId('cache-consequence')).not.toBeInTheDocument();

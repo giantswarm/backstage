@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event';
 import {
   DateTimeZoneProvider,
   formatLocalDateFull,
-  getRelativeDate,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
   mockDesktopLayout,
@@ -48,6 +47,13 @@ const CLUSTER: ManagedCluster = {
 };
 
 const CREATED = '2026-09-18T20:31:04Z';
+
+beforeEach(() => {
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-11-10T12:00:00Z'));
+});
+
+afterEach(() => jest.useRealTimers());
 
 const CLAIM: CacheClaim = {
   namespace: 'model-serving',
@@ -123,9 +129,7 @@ describe('ModelCachePanel', () => {
     ).toBeInTheDocument();
     expect(within(mounted).getByText('$27.37/month')).toBeInTheDocument();
     expect(within(mounted).getByText('eu-central-1b')).toBeInTheDocument();
-    const created = within(mounted).getByText(
-      getRelativeDate(CREATED, new Date()),
-    );
+    const created = within(mounted).getByText('about 2 months ago');
     expect(created).toHaveAttribute('title', formatLocalDateFull(CREATED));
     expect(
       within(mounted).getByText(
@@ -143,7 +147,7 @@ describe('ModelCachePanel', () => {
       ),
     );
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     await user.click(
       screen.getByRole('button', { name: 'Remove cache hf-cache on wc1' }),
     );
@@ -248,7 +252,7 @@ describe('ModelCachePanel at phone width', () => {
   it('lists each claim as a stacked row, Remove cache in its menu, a read-only one saying why', async () => {
     layout = mockPhoneLayout();
     const onRemove = jest.fn();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     await renderInTestApp(
       <DateTimeZoneProvider timeZone="local">
         <ModelCachePanel
@@ -272,9 +276,10 @@ describe('ModelCachePanel at phone width', () => {
     for (const fact of ['wc1', 'eu-central-1b', 'inst-1', '$27.37/month']) {
       expect(within(removable).getByText(fact)).toBeVisible();
     }
-    expect(
-      within(removable).getByText(getRelativeDate(CREATED, new Date())),
-    ).toHaveAttribute('title', formatLocalDateFull(CREATED));
+    expect(within(removable).getByText('about 2 months ago')).toHaveAttribute(
+      'title',
+      formatLocalDateFull(CREATED),
+    );
     expect(
       within(removable).getByText(
         'Mounted by the serving slice — every pool of the cluster serves from it',

@@ -8,7 +8,7 @@ import {
 } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { getRelativeDate } from '@giantswarm/backstage-plugin-ui-react';
+import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   cacheKeptByCluster,
@@ -87,11 +87,8 @@ export const READING_PRICE = "Reading the claim's price from cluster-manager…"
 export const BILLED_STANDING =
   'billed while the claim exists, after this pool is removed too, until the cache is removed under Model cache.';
 
-/** How a claim stands in one line: `100 GiB gp3 at 500 MiB/s · $27.37/month · created 2 months ago · Bound in eu-central-1b`. */
+/** The claim's size, monthly price and binding state in one line. */
 export function describeClaimStanding(claim: CacheClaim): string {
-  const created = claim.created
-    ? `created ${getRelativeDate(claim.created, new Date())}`
-    : undefined;
   let where: string | undefined;
   if (claim.error) {
     where = 'not readable as you';
@@ -103,7 +100,6 @@ export function describeClaimStanding(claim: CacheClaim): string {
   return [
     describeClaimSize(claim),
     describeMonthlyPrice(claim.price) ?? claim.priceNote,
-    created,
     where,
   ]
     .filter(Boolean)
@@ -321,9 +317,18 @@ export function PoolPlacementPicker({
               ) : (
                 ' under Model cache.'
               )}
-              {keptClaim
-                ? ` The cache: ${keptClaim.name} — ${describeClaimStanding(keptClaim)}.`
-                : ''}
+              {keptClaim && (
+                <>
+                  {` The cache: ${keptClaim.name} — ${describeClaimStanding(keptClaim)}`}
+                  {keptClaim.created && (
+                    <>
+                      {' · created '}
+                      <DateComponent value={keptClaim.created} relative />
+                    </>
+                  )}
+                  .
+                </>
+              )}
             </Text>
           )}
           {!kept && cache && (

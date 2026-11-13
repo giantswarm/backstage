@@ -788,8 +788,6 @@ test.describe('models: the model cache is the cluster’s and billed while it st
     await snapshot(page, 'gpu-pool-cache-cost-line');
     await cancelAddPool(page);
 
-    // The kept claim: on Model hosting's Model cache tab, with its size, cost
-    // and when it was created.
     await page.getByRole('tab', { name: 'Model cache' }).click();
     await expect(page).toHaveURL(/\/customize\/models\/hosting\/cache/);
     const card = page.getByTestId('model-cache-panel');
