@@ -2,7 +2,12 @@ import { PropsWithChildren } from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
 import { discoveryApiRef, fetchApiRef } from '@backstage/core-plugin-api';
 import { mockApis, TestApiProvider } from '@backstage/test-utils';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  dehydrate,
+  hydrate,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import { useSkillCatalog } from './useSkillCatalog';
 import { useSkillSource, type SkillSource } from './useSkillSource';
@@ -15,10 +20,12 @@ jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
 const fetchMock = jest.fn();
 const commit = 'b'.repeat(40);
 
-function render(installation?: string) {
-  const queryClient = new QueryClient({
+function render(
+  installation?: string,
+  queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
-  });
+  }),
+) {
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
     <TestApiProvider
       apis={[
@@ -34,7 +41,10 @@ function render(installation?: string) {
 
 function givenConfig(repositories: string[]) {
   jest.mocked(useSignedInConfig).mockReturnValue({
-    config: { getOptionalStringArray: () => repositories },
+    config: {
+      getOptional: () => repositories,
+      getOptionalStringArray: () => repositories,
+    },
     isLoading: false,
   } as never);
 }
@@ -45,6 +55,112 @@ beforeEach(() => {
 });
 
 describe('useSkillCatalog', () => {
+  it.each(['portal', 'skill-manager'] as const)(
+    'restores private repositories after persisting the %s catalog as JSON',
+    async kind => {
+      const repoUrl = 'https://github.com/giantswarm/private-skills';
+      givenConfig([repoUrl]);
+      const skill = {
+        name: 'private-skill',
+        description: '',
+        repoUrl,
+        path: 'private-skill',
+        ref: 'main',
+        commit,
+      };
+      const listSkills = jest.fn().mockResolvedValue({
+        repositories: [
+          { repoUrl, private: true, truncated: false, skills: [skill] },
+        ],
+      });
+      jest.mocked(useSkillSource).mockReturnValue(
+        kind === 'portal'
+          ? { kind }
+          : ({
+              kind,
+              installation: 'graveler',
+              client: { listSkills },
+            } as unknown as SkillSource),
+      );
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({ skills: [skill], private: true }),
+      });
+      // A fresh restored entry must work before any network refresh can repair it.
+      const options = {
+        defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+      };
+      const original = new QueryClient(options);
+      const first = render('graveler', original);
+      await waitFor(() => expect(first.result.current.skills).toHaveLength(1));
+      expect(first.result.current.privateRepositories.has(repoUrl)).toBe(true);
+      const persisted = JSON.stringify(dehydrate(original));
+      first.unmount();
+      original.clear();
+      fetchMock.mockClear();
+      listSkills.mockClear();
+
+      const restored = new QueryClient(options);
+      hydrate(restored, JSON.parse(persisted));
+      const second = render('graveler', restored);
+      expect(second.result.current.skills[0].name).toBe('private-skill');
+      expect(second.result.current.privateRepositories.has(repoUrl)).toBe(true);
+      expect(
+        second.result.current.privateRepositories.has(
+          'https://github.com/giantswarm/public',
+        ),
+      ).toBe(false);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(listSkills).not.toHaveBeenCalled();
+      second.unmount();
+      restored.clear();
+    },
+  );
+
+  it.each(['portal', 'skill-manager'] as const)(
+    'refetches the old %s cache whose Set became an object',
+    async kind => {
+      const repoUrl = 'https://github.com/giantswarm/private-skills';
+      givenConfig([repoUrl]);
+      const listSkills = jest.fn().mockResolvedValue({
+        repositories: [
+          { repoUrl, private: true, truncated: false, skills: [] },
+        ],
+      });
+      jest.mocked(useSkillSource).mockReturnValue(
+        kind === 'portal'
+          ? { kind }
+          : ({
+              kind,
+              installation: 'graveler',
+              client: { listSkills },
+            } as unknown as SkillSource),
+      );
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({ skills: [], private: true }),
+      });
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+      });
+      const key =
+        kind === 'portal'
+          ? ['agent-platform', 'skills', repoUrl]
+          : ['agent-platform', 'skill-manager', 'skills', 'graveler'];
+      // The shape JSON.parse restores from the previous release's Set.
+      client.setQueryData(key, { skills: [], privateRepositories: {} });
+      const { result, unmount } = render('graveler', client);
+      await waitFor(() =>
+        expect(result.current.privateRepositories.has(repoUrl)).toBe(true),
+      );
+      expect(kind === 'portal' ? fetchMock : listSkills).toHaveBeenCalledTimes(
+        1,
+      );
+      unmount();
+      client.clear();
+    },
+  );
+
   it('lists skills and plugins from skill-manager, never the portal', async () => {
     const listSkills = jest.fn().mockResolvedValue({
       repositories: [

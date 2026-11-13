@@ -21,10 +21,19 @@ import {
   sessionExpiredError,
 } from './installationToken';
 import {
+  inputRequiredBodyOf,
+  MUSTER_INPUT_REQUIRED_STATUS,
   MUSTER_TOKEN_EXPIRED_TEXT,
   MUSTER_TOKEN_REASONS,
+  musterServerOfTool,
+  type MusterInputAnswer,
   readJwtClaims,
 } from '@giantswarm/backstage-plugin-gs-common';
+import type { ExternalUrlConsentApi } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  MusterInputRequiredError,
+  UrlElicitationAnswers,
+} from './urlElicitations';
 import {
   MusterUnauthorizedError,
   unauthorizedBodyOf,
@@ -170,6 +179,24 @@ function sameHolder(a: string, b: string): boolean {
   );
 }
 
+/**
+ * How many times a call is sent again with the person's answers to muster's
+ * URL elicitations before the last one is the caller's error: a sign-in the
+ * person accepted but did not finish is asked about again.
+ */
+const MAX_ELICITATION_ROUNDS = 3;
+
+/**
+ * muster's answer to a call whose sign-in the person declined, dismissed or
+ * did not finish: gs-node's `sign_in_declined` tool error.
+ */
+function isSignInDeclined(error: unknown): error is Error {
+  return (
+    error instanceof Error &&
+    (error as { kind?: unknown }).kind === 'sign_in_declined'
+  );
+}
+
 /** A muster-backend answer; a failed one with its body, read once. */
 type Answer = { response: Response; errorData?: unknown };
 
@@ -217,6 +244,7 @@ export class MusterApiClient implements MusterApi {
   private readonly authProvidersApi?: MusterAuthProvidersApi;
   private readonly kubernetesApi?: KubernetesApi;
   private readonly kubernetesAuthProvidersApi?: KubernetesAuthProvidersApi;
+  private readonly consentApi?: ExternalUrlConsentApi;
   /**
    * The backend's `/installations`, read once per client for the token
    * decision on installations the frontend config does not list (derived
@@ -232,6 +260,10 @@ export class MusterApiClient implements MusterApi {
    * token for musters other than the home installation (see
    * {@link isHomeInstallation}); without them every installation is reached
    * with the `authProvidersApi` token, as before.
+   *
+   * `externalUrlConsentApi` puts muster's URL elicitations to the person
+   * (see {@link callTool}); without it a call muster answers with one fails
+   * with {@link MusterInputRequiredError}.
    */
   constructor(options: {
     discoveryApi: DiscoveryApi;
@@ -240,6 +272,7 @@ export class MusterApiClient implements MusterApi {
     authProvidersApi?: MusterAuthProvidersApi;
     kubernetesApi?: KubernetesApi;
     kubernetesAuthProvidersApi?: KubernetesAuthProvidersApi;
+    externalUrlConsentApi?: ExternalUrlConsentApi;
   }) {
     this.discoveryApi = options.discoveryApi;
     this.fetchApi = options.fetchApi;
@@ -247,6 +280,7 @@ export class MusterApiClient implements MusterApi {
     this.authProvidersApi = options.authProvidersApi;
     this.kubernetesApi = options.kubernetesApi;
     this.kubernetesAuthProvidersApi = options.kubernetesAuthProvidersApi;
+    this.consentApi = options.externalUrlConsentApi;
   }
 
   async listInstallations(): Promise<MusterInstallationsResponse> {
@@ -428,12 +462,51 @@ export class MusterApiClient implements MusterApi {
     );
   }
 
+  /**
+   * Calls a tool as the person. By default the call declares no URL
+   * elicitation and is sent once: a sign-in it needs fails it with
+   * muster's 401, which the page answers with its inline sign-in.
+   *
+   * With `urlElicitation: true` -- for a call the person started with a
+   * click, never a read the page makes on its own -- the call declares URL
+   * mode elicitation (MCP 2026-07-28): when muster answers that the person
+   * must open a page first (a sign-in to the tool's server, a server's own
+   * page) the page is put to them in the consent dialog, once per action,
+   * and the call is sent again with their answer. A declined or dismissed
+   * sign-in fails the call like a sign-in it needs. `signal` cancels the
+   * call, the retry muster holds until a sign-in completes included.
+   */
   async callTool(
     name: string,
     args: Record<string, unknown>,
     installation?: string,
+    options?: { signal?: AbortSignal; urlElicitation?: boolean },
   ): Promise<unknown> {
-    return this.post<unknown>('/call', { name, arguments: args }, installation);
+    if (!options?.urlElicitation) {
+      return this.post<unknown>(
+        '/call',
+        { name, arguments: args, urlElicitation: false },
+        installation,
+        options?.signal,
+      );
+    }
+    return this.withElicitations(
+      name,
+      installation,
+      input =>
+        this.post<unknown>(
+          '/call',
+          {
+            name,
+            arguments: args,
+            urlElicitation: true,
+            ...(input ? { input } : {}),
+          },
+          installation,
+          options.signal,
+        ),
+      options.signal,
+    );
   }
 
   async callToolWithProgress(
@@ -443,14 +516,92 @@ export class MusterApiClient implements MusterApi {
       installation?: string;
       onProgress: (progress: MusterToolProgress) => void;
       signal?: AbortSignal;
+      urlElicitation?: boolean;
     },
+  ): Promise<unknown> {
+    if (!options.urlElicitation) {
+      return this.runWithProgress(name, args, options, undefined);
+    }
+    return this.withElicitations(
+      name,
+      options.installation,
+      input => this.runWithProgress(name, args, options, input),
+      options.signal,
+    );
+  }
+
+  /**
+   * Runs `call` for one action of the person, and while muster answers it
+   * with URL elicitations they can be asked about, asks and runs it again
+   * with the answers. A sign-in they declined, dismissed or did not finish
+   * on a connector's tool ends in {@link MusterUnauthorizedError}
+   * `server_sign_in_required` for that connector, the error of a sign-in the
+   * call needs: the page offers its sign-in. On a tool no connector owns (a
+   * workflow, a core tool) it ends in muster's own answer, which names no
+   * server the page could offer.
+   */
+  private async withElicitations<T>(
+    name: string,
+    installation: string | undefined,
+    call: (input: MusterInputAnswer | undefined) => Promise<T>,
+    signal: AbortSignal | undefined,
+  ): Promise<T> {
+    const answers = this.consentApi
+      ? new UrlElicitationAnswers(this.consentApi)
+      : undefined;
+    let input: MusterInputAnswer | undefined;
+    for (let round = 0; ; round++) {
+      try {
+        return await call(input);
+      } catch (error) {
+        const server = musterServerOfTool(name);
+        if (input && server && isSignInDeclined(error)) {
+          throw new MusterUnauthorizedError(
+            error.message,
+            'server_sign_in_required',
+            server,
+            installation,
+          );
+        }
+        if (
+          !(error instanceof MusterInputRequiredError) ||
+          !answers ||
+          round >= MAX_ELICITATION_ROUNDS
+        ) {
+          throw error;
+        }
+        input = await answers.answer(
+          name,
+          error.elicitations,
+          error.requestState,
+        );
+        signal?.throwIfAborted();
+      }
+    }
+  }
+
+  private async runWithProgress(
+    name: string,
+    args: Record<string, unknown>,
+    options: {
+      installation?: string;
+      onProgress: (progress: MusterToolProgress) => void;
+      signal?: AbortSignal;
+      urlElicitation?: boolean;
+    },
+    input: MusterInputAnswer | undefined,
   ): Promise<unknown> {
     const answer = await this.send(
       '/call/progress',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, arguments: args }),
+        body: JSON.stringify({
+          name,
+          arguments: args,
+          urlElicitation: options.urlElicitation === true,
+          ...(input ? { input } : {}),
+        }),
         signal: options.signal,
       },
       options.installation,
@@ -499,6 +650,14 @@ export class MusterApiClient implements MusterApi {
             await reader.cancel();
             if (MUSTER_TOKEN_EXPIRED_TEXT.test(event.error.message)) {
               throw sessionExpiredError(options.installation);
+            }
+            const inputRequired = inputRequiredBodyOf(event);
+            if (inputRequired) {
+              throw new MusterInputRequiredError(
+                event.error.message,
+                inputRequired.elicitations,
+                inputRequired.requestState,
+              );
             }
             const error = new Error(event.error.message);
             error.name = event.error.name;
@@ -877,6 +1036,7 @@ export class MusterApiClient implements MusterApi {
     path: string,
     body: unknown,
     installation?: string,
+    signal?: AbortSignal,
   ): Promise<T> {
     const answer = await this.send(
       path,
@@ -884,6 +1044,7 @@ export class MusterApiClient implements MusterApi {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal,
       },
       installation,
     );
@@ -957,12 +1118,21 @@ export class MusterApiClient implements MusterApi {
     installation: string | undefined,
   ): Promise<T> {
     if (!response.ok) {
-      const { message, details, kind } =
-        (
-          errorData as {
-            error?: { message?: string; details?: unknown; kind?: unknown };
-          }
-        )?.error ?? {};
+      const {
+        message,
+        details,
+        kind,
+        name: errorName,
+      } = (
+        errorData as {
+          error?: {
+            message?: string;
+            details?: unknown;
+            kind?: unknown;
+            name?: unknown;
+          };
+        }
+      )?.error ?? {};
       const { reason, server } = unauthorizedBodyOf(errorData);
       if (
         reason === 'token_expired' ||
@@ -972,9 +1142,26 @@ export class MusterApiClient implements MusterApi {
       }
       const text =
         message ?? `Muster request failed with status ${response.status}`;
+      const inputRequired =
+        response.status === MUSTER_INPUT_REQUIRED_STATUS
+          ? inputRequiredBodyOf(errorData)
+          : undefined;
+      if (inputRequired) {
+        throw new MusterInputRequiredError(
+          text,
+          inputRequired.elicitations,
+          inputRequired.requestState,
+        );
+      }
       const error: Error =
         response.status === 401
-          ? new MusterUnauthorizedError(text, reason, server, installation)
+          ? new MusterUnauthorizedError(
+              text,
+              reason,
+              server,
+              installation,
+              typeof errorName === 'string' ? errorName : undefined,
+            )
           : Object.assign(new Error(text), { status: response.status });
       if (response.status === 403) error.name = 'ForbiddenError';
       if (response.status === 404) error.name = 'NotFoundError';

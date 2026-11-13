@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { musterApiRef } from '../../apis';
@@ -14,6 +14,11 @@ export type ToolRun = {
   run: (args: Record<string, unknown>) => void;
   /** Calls it again with the last run's arguments. */
   rerun: () => void;
+  /**
+   * Stops the pending run, one waiting on the person's sign-in included,
+   * and forgets it: no error is shown, and the last result stays.
+   */
+  cancel: () => void;
   isPending: boolean;
   /** Why the last run failed; null after one that returned. */
   error: Error | null;
@@ -53,6 +58,7 @@ export function useToolRun(
   const musterApi = useApi(musterApiRef);
   const [lastResult, setLastResult] = useState<CallResult | undefined>();
   const [lastArgs, setLastArgs] = useState<Record<string, unknown>>({});
+  const pendingRun = useRef<AbortController | undefined>(undefined);
 
   const mutation = useTrackedMutation({
     // A connector tool reports what it did to the connector, as the
@@ -66,16 +72,29 @@ export function useToolRun(
         ? { name: 'Muster.workflowRan', attributes: {} }
         : { name: 'Muster.toolRan', attributes: {} }),
     mutationFn: async (args: Record<string, unknown>) => {
+      const abort = new AbortController();
+      pendingRun.current = abort;
       const startedAt = performance.now();
-      const result = await musterApi.callTool(name, args, installation);
+      const result = await musterApi.callTool(name, args, installation, {
+        signal: abort.signal,
+        urlElicitation: true,
+      });
       return { result, durationMs: Math.round(performance.now() - startedAt) };
     },
     onSuccess: setLastResult,
-    onError: () => setLastResult(undefined),
+    onError: () => {
+      if (!pendingRun.current?.signal.aborted) {
+        setLastResult(undefined);
+      }
+    },
     onSettled: () => onRan?.(),
   });
 
-  const { mutate } = mutation;
+  const { mutate, reset } = mutation;
+  const cancel = useCallback(() => {
+    pendingRun.current?.abort();
+    reset();
+  }, [reset]);
   const run = useCallback(
     (args: Record<string, unknown>) => {
       setLastArgs(args);
@@ -87,6 +106,7 @@ export function useToolRun(
   return {
     run,
     rerun: () => run(lastArgs),
+    cancel,
     isPending: mutation.isPending,
     error: mutation.error,
     lastResult,

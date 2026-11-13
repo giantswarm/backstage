@@ -4,6 +4,7 @@ import {
   defaultTenant,
   organizationOf,
   namespacesSharingAName,
+  ownerDisplayOf,
   ownerOf,
   tenantGroups,
   tenantInSentence,
@@ -11,7 +12,7 @@ import {
 } from './tenants';
 
 // Which namespace is which organization, as agent-manager's
-// `list_my_organizations` answers it from the namespaces' labels. The
+// `list_organizations` answers it from the namespaces' labels. The
 // namespace's name decides nothing: `org-legacy` is a Giant Swarm
 // Organization's namespace that no answer names, so it is no Agent Platform
 // organization, only named as the Giant Swarm one.
@@ -115,6 +116,31 @@ describe('ownerOf', () => {
     ['agents-none-a1b2c', 'none'],
   ])('names namespace %s as %s', (namespace, owner) => {
     expect(ownerOf(namespace, directory)).toBe(owner);
+  });
+});
+
+describe('ownerDisplayOf', () => {
+  const named = organizationDirectory([
+    {
+      namespace: 'agents-default-x7k2q',
+      organization: 'default',
+      parent: 'org-gs',
+      displayName: 'Lab',
+    },
+    {
+      namespace: 'agents-acme-x7k2q',
+      organization: 'acme',
+      parent: 'org-acme',
+    },
+  ]);
+
+  it.each([
+    ['kagent', 'Platform'],
+    ['agents-default-x7k2q', 'Lab'],
+    ['agents-acme-x7k2q', 'acme'],
+    ['team-a', 'namespace team-a'],
+  ])('names namespace %s as %s', (namespace, owner) => {
+    expect(ownerDisplayOf(namespace, named)).toBe(owner);
   });
 });
 

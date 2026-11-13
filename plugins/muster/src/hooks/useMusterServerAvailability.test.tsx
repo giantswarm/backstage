@@ -2,12 +2,13 @@ import { PropsWithChildren } from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import {
-  musterApiRef,
-  type MusterApi,
-} from '@giantswarm/backstage-plugin-muster';
+import { musterApiRef, type MusterApi } from '../apis';
 
-import { useMusterServerAvailability } from './useMusterServerAvailability';
+import type { Query } from '@tanstack/react-query';
+import {
+  unavailableBackoff,
+  useMusterServerAvailability,
+} from './useMusterServerAvailability';
 
 const listServers = jest.fn();
 const listInstallations = jest.fn();
@@ -169,5 +170,143 @@ describe('useMusterServerAvailability', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.presenceOf('gamma')).toBe('available');
     expect(listInstallations).not.toHaveBeenCalled();
+  });
+});
+
+describe('an installation the portal cannot reach', () => {
+  it('is offered nowhere, and not asked for its list once the installations said so', async () => {
+    listInstallations.mockResolvedValue({
+      installations: [
+        { name: 'alpha', requiresAuth: true, reachable: true },
+        {
+          name: 'garm',
+          requiresAuth: true,
+          reachable: false,
+          reason: 'no answer within 3000 ms',
+        },
+      ],
+    });
+    const { result } = renderHook(
+      () => useMusterServerAvailability('agent-manager', ['alpha', 'garm']),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.available).toEqual(['alpha']);
+    expect(result.current.presenceOf('garm')).toBe('unknown');
+    expect(result.current.unreachable).toEqual(['garm']);
+    expect(result.current.failedOf('garm')).toBe(true);
+    expect(result.current.failedOf('alpha')).toBe(false);
+    // At most the read started beside `/installations`, before it answered.
+    await result.current.recheck();
+    expect(
+      listServers.mock.calls.filter(([name]) => name === 'garm').length,
+    ).toBeLessThanOrEqual(1);
+  });
+
+  it('is not read again by every component that mounts after a 503', async () => {
+    listServers.mockRejectedValue(
+      Object.assign(new Error('garm did not answer'), {
+        name: 'ServiceUnavailableError',
+        status: 503,
+      }),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const shared = ({ children }: PropsWithChildren<{}>) => (
+      <TestApiProvider apis={[[musterApiRef, musterApi]]}>
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      </TestApiProvider>
+    );
+    const first = renderHook(
+      () => useMusterServerAvailability('agent-manager', ['garm']),
+      { wrapper: shared },
+    );
+    await waitFor(() => expect(first.result.current.isLoading).toBe(false));
+
+    const second = renderHook(
+      () => useMusterServerAvailability('agent-manager', ['garm']),
+      { wrapper: shared },
+    );
+    await waitFor(() => expect(second.result.current.isLoading).toBe(false));
+
+    expect(listServers).toHaveBeenCalledTimes(1);
+  });
+});
+
+it('reads a list that failed with something other than a 503 again on the next mount', async () => {
+  listServers.mockRejectedValueOnce(
+    Object.assign(new Error('timeout'), { status: 504 }),
+  );
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const shared = ({ children }: PropsWithChildren<{}>) => (
+    <TestApiProvider apis={[[musterApiRef, musterApi]]}>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    </TestApiProvider>
+  );
+  const first = renderHook(
+    () => useMusterServerAvailability('agent-manager', ['alpha']),
+    { wrapper: shared },
+  );
+  await waitFor(() => expect(first.result.current.isLoading).toBe(false));
+  first.unmount();
+
+  const second = renderHook(
+    () => useMusterServerAvailability('agent-manager', ['alpha']),
+    { wrapper: shared },
+  );
+
+  await waitFor(() =>
+    expect(second.result.current.presenceOf('alpha')).toBe('available'),
+  );
+  expect(listServers).toHaveBeenCalledTimes(2);
+});
+
+describe('unavailableBackoff', () => {
+  const query = (state: Partial<Query<unknown, Error>['state']>) =>
+    ({ state }) as Query<unknown, Error>;
+  const unavailable = Object.assign(new Error('x'), { status: 503 });
+
+  it.each([
+    [1, 60_000],
+    [2, 120_000],
+    [4, 480_000],
+    [5, 600_000],
+    [9, 600_000],
+  ])('reads again after a 503 number %s in %s ms', (count, delay) => {
+    expect(
+      unavailableBackoff(
+        query({ status: 'error', error: unavailable, errorUpdateCount: count }),
+      ),
+    ).toBe(delay);
+  });
+
+  it('starts the doubling over after a successful read', () => {
+    const shared = query({
+      status: 'success',
+      error: null,
+      errorUpdateCount: 3,
+    });
+    expect(unavailableBackoff(shared)).toBe(false);
+    Object.assign(shared.state, {
+      status: 'error',
+      error: unavailable,
+      errorUpdateCount: 4,
+    });
+    expect(unavailableBackoff(shared)).toBe(60_000);
+  });
+
+  it.each([
+    ['another failure', { status: 'error' as const, error: new Error('x') }],
+    ['a list', { status: 'success' as const, error: null }],
+  ])('leaves %s alone', (_label, state) => {
+    expect(unavailableBackoff(query({ ...state, errorUpdateCount: 1 }))).toBe(
+      false,
+    );
   });
 });

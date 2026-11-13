@@ -36,6 +36,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
+  modelConfigEditOwner,
   modelConfigFormValues,
   modelConfigOwner,
 } from '../../lib/modelConfigs';
@@ -48,6 +49,13 @@ import { markedIn, defaultIn, listed } from '../../lib/defaultModel';
 import { tenantInSentence } from '../../lib/tenants';
 import { useSetDefaultModelConfig } from '../../hooks/useSetDefaultModelConfig';
 import { modelProblem } from '../../lib/modelProblem';
+import {
+  AgentManagerError,
+  AgentManagerNotConnectedError,
+} from '../../lib/agentManager';
+import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useDeleteModelConfig } from '../../hooks/useDeleteModelConfig';
 import { clientLookupOf } from '../../lib/serving';
@@ -121,14 +129,23 @@ function ModelFrame({
 /**
  * The tool that owns the model, and what that means here: no Edit, since the
  * tool would revert it. The page's header offers none, and this says why.
+ * An organization's model agent-manager wrote is the exception
+ * (`savesEdits`): Edit saves it through agent-manager.
  */
-function ManagedByValue({ owner }: { owner: string }) {
+function ManagedByValue({
+  owner,
+  savesEdits = false,
+}: {
+  owner: string;
+  savesEdits?: boolean;
+}) {
   return (
     <Flex direction="column" gap="1">
       <Text variant={useFactTextVariant()}>{owner}</Text>
       <Text variant="body-small" color="secondary">
-        {owner} would revert edits made here, so change the model where {owner}{' '}
-        is configured.
+        {savesEdits
+          ? `Edits made here are saved through ${owner}.`
+          : `${owner} would revert edits made here, so change the model where ${owner} is configured.`}
       </Text>
     </Flex>
   );
@@ -178,12 +195,69 @@ function DefaultModelValue({
   );
 }
 
+/**
+ * Why the default did not move. agent-manager's refusal of a person who may
+ * not change an organization's models names who can; any other failure is
+ * said as it came.
+ */
+function SetDefaultError({
+  error,
+  installation,
+  organization,
+  onSignedIn,
+}: {
+  error: Error;
+  installation: string;
+  /** The organization the model is in, when it is one's. */
+  organization?: string;
+  /** Clears the refusal once the person signed in to agent-manager. */
+  onSignedIn: () => void;
+}) {
+  if (error instanceof PortalSessionEndedError) {
+    return <PortalSessionEndedAlert />;
+  }
+  // The call declares no URL elicitation, so a missing sign-in comes back
+  // as this error, with the sign-in offered here.
+  if (error instanceof AgentManagerNotConnectedError) {
+    return (
+      <ConnectAgentManagerAlert
+        installation={installation}
+        message={error.message}
+        action="An organization's default model is set"
+        signInRequired={error.signInRequired}
+        onSignedIn={onSignedIn}
+      />
+    );
+  }
+  if (
+    organization &&
+    error instanceof AgentManagerError &&
+    error.code === 'forbidden'
+  ) {
+    return (
+      <Alert
+        status="danger"
+        title="Not permitted"
+        description={`Only an admin of the organization ${organization} sets its default model. Ask one of its admins to make the change, or to make you an admin. agent-manager answered: ${error.message}`}
+      />
+    );
+  }
+  return (
+    <Alert
+      status="danger"
+      title="Could not make this the default model"
+      description={error.message}
+    />
+  );
+}
+
 /** Overview's plain facts: what it calls, where, who owns it, and since when. */
 export function modelFacts({
   modelConfig,
   installation,
   contextWindow,
   owner,
+  ownerSavesEdits,
   defaultState,
 }: {
   modelConfig: ModelConfig;
@@ -192,6 +266,8 @@ export function modelFacts({
   contextWindow: ContextWindowLookup | undefined;
   /** The tool that asserts the model (`modelConfigOwner`), if any. */
   owner?: string;
+  /** Edits are saved through `owner` (`modelConfigEditOwner`). */
+  ownerSavesEdits?: boolean;
   /** Whether it is the default, once the namespace's models are read. */
   defaultState?: ModelDefaultState;
 }): Fact[] {
@@ -215,13 +291,20 @@ export function modelFacts({
   if (defaultState) {
     facts.push({
       label: 'Default model',
-      value: <DefaultModelValue state={defaultState} owner={owner} />,
+      value: (
+        <DefaultModelValue
+          state={defaultState}
+          // An owner whose edits are saved through it (agent-manager, for an
+          // organization's model) is no reason to move the mark elsewhere.
+          owner={ownerSavesEdits ? undefined : owner}
+        />
+      ),
     });
   }
   if (owner) {
     facts.push({
       label: 'Managed by',
-      value: <ManagedByValue owner={owner} />,
+      value: <ManagedByValue owner={owner} savesEdits={ownerSavesEdits} />,
     });
   }
   if (created) {
@@ -329,6 +412,11 @@ function ModelDetailPageContent() {
     directory,
     name,
   ]);
+  // An organization's model agent-manager wrote is edited, and made the
+  // default, through it: agent-manager is no owner that withholds either.
+  const ownerSavesEdits = Boolean(
+    owner && modelConfig && !modelConfigEditOwner(modelConfig, directory),
+  );
   const settingDefault = useSetDefaultModelConfig();
   const { setDefault, isSetting, reset: resetSetDefault } = settingDefault;
   const canSetDefault =
@@ -341,10 +429,19 @@ function ModelDetailPageContent() {
       return;
     }
     resetSetDefault();
+    let form: string | undefined;
     try {
-      await setDefault({ modelConfig, expected: defaultState.otherMarks });
+      ({ form } = await setDefault({
+        modelConfig,
+        expected: defaultState.otherMarks,
+      }));
     } catch {
       // Left on the page: the error renders in the alert above the tabs.
+      return;
+    }
+    if (form) {
+      // The model has no key yet: the move finishes on the credential form.
+      navigate(form);
       return;
     }
     toastApi.post({
@@ -353,7 +450,14 @@ function ModelDetailPageContent() {
       status: 'success',
       timeout: 6000,
     });
-  }, [modelConfig, defaultState, resetSetDefault, setDefault, toastApi]);
+  }, [
+    modelConfig,
+    defaultState,
+    resetSetDefault,
+    setDefault,
+    toastApi,
+    navigate,
+  ]);
 
   // Read here, above the tabs, so Used by and the Usage tab share one
   // result. Only for a model there is: the not-found and error frames
@@ -382,7 +486,7 @@ function ModelDetailPageContent() {
 
   const isEditable =
     Boolean(modelConfig) &&
-    !owner &&
+    (!owner || ownerSavesEdits) &&
     !isUnsupportedProvider &&
     mayUpdate &&
     !isCheckingPermission;
@@ -404,7 +508,7 @@ function ModelDetailPageContent() {
           <Button
             variant="secondary"
             onPress={onSetDefault}
-            isDisabled={Boolean(owner) || isSetting}
+            isDisabled={(Boolean(owner) && !ownerSavesEdits) || isSetting}
           >
             {isSetting ? 'Setting as default…' : 'Set as default'}
           </Button>
@@ -423,6 +527,7 @@ function ModelDetailPageContent() {
       canSetDefault,
       onSetDefault,
       owner,
+      ownerSavesEdits,
       isSetting,
       isEditable,
       modelEditRoute,
@@ -496,6 +601,7 @@ function ModelDetailPageContent() {
     installation,
     contextWindow,
     owner,
+    ownerSavesEdits,
     defaultState,
   });
 
@@ -516,10 +622,11 @@ function ModelDetailPageContent() {
       })}
     >
       {settingDefault.error && (
-        <Alert
-          status="danger"
-          title="Could not make this the default model"
-          description={settingDefault.error.message}
+        <SetDefaultError
+          error={settingDefault.error}
+          installation={installation}
+          organization={directory.get(namespace)?.organization}
+          onSignedIn={resetSetDefault}
         />
       )}
       <Routes>

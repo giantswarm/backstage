@@ -1,4 +1,4 @@
-import type { Response } from '@playwright/test';
+import type { Locator, Response } from '@playwright/test';
 
 import {
   completeDexLogin,
@@ -43,6 +43,15 @@ const agentName = `E2E Toolchains ${stamp}`;
 const agentSlug = `e2e-toolchains-${stamp}`;
 
 type StartedToolchain = { name: string; version?: string; image: string };
+
+/** Whether any text in the element is cut off, by an ellipsis or a clip. */
+function isCutOff(locator: Locator): Promise<boolean> {
+  return locator.evaluate(element =>
+    [element, ...Array.from(element.querySelectorAll('*'))].some(
+      node => node.scrollWidth > node.clientWidth + 1,
+    ),
+  );
+}
 
 /** `go`'s published versions as the Toolchains tab lists them, or why not. */
 async function goVersions(
@@ -222,8 +231,70 @@ test('a session started from the portal with an older go mounts that version', a
       !offered,
       "agent-manager reports no `toolchains` capability: its toolchains.repository is not set in the lab's values",
     );
-    await toolchains.click();
     const choice = admin.getByRole('dialog', { name: 'Toolchains' });
+    // Escape closes an open version select first, then the popover. One
+    // more than that would close the New session dialog behind it.
+    const closeChoice = async () => {
+      if (await admin.getByRole('listbox').isVisible()) {
+        await admin.keyboard.press('Escape');
+        await expect(admin.getByRole('listbox')).toBeHidden();
+      }
+      await admin.keyboard.press('Escape');
+      await expect(choice).toBeHidden();
+    };
+
+    // Every toolchain picked: the button counts them, and the agent and
+    // workspace beside it stay readable
+    // (giantswarm/giantswarm#39204).
+    await toolchains.click();
+    const boxes = choice.getByRole('checkbox');
+    const offeredCount = await boxes.count();
+    for (let i = 0; i < offeredCount; i++) {
+      const box = boxes.nth(i);
+      if (!(await box.isChecked())) {
+        await box.locator('xpath=ancestor::label').click();
+      }
+    }
+    await closeChoice();
+    await expect(toolchains).toHaveText(String(offeredCount));
+    // The agent's page offers no other agent: it is named, not a picker.
+    const agentLabel = dialog.getByRole('group', { name: 'Agent' });
+    await expect(agentLabel).toContainText(agentName);
+    expect(await isCutOff(agentLabel), 'the agent name is cut off').toBe(false);
+    // react-aria names the select by its value and its label: "<workspace>
+    // Workspace". A long name may end in an ellipsis, but the picker keeps
+    // room for more than its icon. A lab without the workspace-manager has
+    // no workspace picker; the run says so.
+    const workspacePicker = dialog.getByRole('button', {
+      name: /\bWorkspace$/,
+    });
+    if ((await workspacePicker.count()) > 0) {
+      expect((await workspacePicker.boundingBox())?.width).toBeGreaterThan(80);
+    } else {
+      test.info().annotations.push({
+        type: 'skipped check',
+        description:
+          "the workspace picker's width: no workspace-manager in the lab",
+      });
+    }
+    await test
+      .info()
+      .attach(`the New session dialog with all ${offeredCount} toolchains`, {
+        body: await admin.screenshot(),
+        contentType: 'image/png',
+      });
+    // Back to the agent's defaults; there is nothing to reset when every
+    // offered toolchain is one.
+    await toolchains.click();
+    const reset = choice.getByRole('button', {
+      name: /^Use .*defaults$|^Mount no toolchains$/,
+    });
+    if ((await reset.count()) > 0) {
+      await reset.click();
+    }
+    await closeChoice();
+
+    await toolchains.click();
     const goBox = choice.getByRole('checkbox', { name: 'go' });
     if (!(await goBox.isChecked())) {
       // The label around the (visually hidden) input takes the click.
@@ -231,12 +302,12 @@ test('a session started from the portal with an older go mounts that version', a
     }
     await choice.getByRole('button', { name: /go version/ }).click();
     await admin.getByRole('option', { name: older, exact: true }).click();
-    // The first Escape leaves the version select, the next the popover.
-    await expect(async () => {
-      await admin.keyboard.press('Escape');
-      await expect(choice).toBeHidden({ timeout: 1_000 });
-    }).toPass({ timeout: 10_000 });
-    await expect(toolchains).toContainText(`go ${older}`);
+    await closeChoice();
+    // The button shows how many; its tooltip says which.
+    await toolchains.hover();
+    await expect(admin.getByRole('tooltip')).toContainText(
+      new RegExp(`\\bgo ${older.replace(/\./g, '\\.')}\\b`),
+    );
     await test
       .info()
       .attach('the New session dialog with go at its older version', {

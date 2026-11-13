@@ -1,7 +1,10 @@
 import { useEffect } from 'react';
 
 import { useAgentManagerInfo } from '../../../hooks/useAgentManager';
-import { ORGANIZATIONS_CAPABILITY } from '../../../lib/organizations';
+import {
+  mayCreateAgentsIn,
+  ORGANIZATIONS_CAPABILITY,
+} from '../../../lib/organizations';
 import {
   type TenantChoicesUnread,
   useNewAgentForm,
@@ -23,7 +26,7 @@ export type TenantChoicesSync = {
  * one), `setTenantChoicesUnread` says why there is none. Where agent-manager
  * serves the organization tools (`get_info`'s `organizations` capability),
  * the answer is the organizations the person belongs to
- * (`list_my_organizations`, asked with their own token), so no Platform is
+ * (`list_organizations`' members, asked with their own token), so no Platform is
  * offered; elsewhere it is `get_info`'s `namespaces.managed`. The one place
  * that does: every step of the create wizard mounts it (`NewAgentStep`), and
  * the Owner field only reads the form. Inert while editing: an existing agent
@@ -51,20 +54,49 @@ export function useTenantChoicesSync(): TenantChoicesSync {
     byOrganization &&
     Boolean(installation) &&
     Boolean(organizations.failureOf(installation ?? ''));
+  // The organizations the person belongs to: those they may create agents in
+  // are the choices, the others are shown disabled. A `createAgents` that
+  // agent-manager does not send is not known, and keeps the organization a
+  // choice (`mayCreateAgentsIn`).
+  const memberships = mine?.organizations.flatMap(organization =>
+    organization.permissions.member && organization.namespace
+      ? [{ namespace: organization.namespace, organization }]
+      : [],
+  );
   const choices = byOrganization
-    ? mine?.organizations.map(organization => organization.namespace)
+    ? memberships?.flatMap(({ namespace, organization }) =>
+        mayCreateAgentsIn(organization) ? [namespace] : [],
+      )
     : info?.namespaces?.managed;
-  const choicesKey = choices?.join(',');
-  const heldKey = state.tenantChoices?.join(',');
+  const blocked = byOrganization
+    ? memberships?.flatMap(({ namespace, organization }) =>
+        mayCreateAgentsIn(organization) ? [] : [namespace],
+      )
+    : undefined;
+  // Both lists in one key, so a change of either is taken.
+  const choicesKey =
+    choices === undefined
+      ? undefined
+      : `${choices.join(',')}|${(blocked ?? []).join(',')}`;
+  const heldKey =
+    state.tenantChoices === undefined
+      ? undefined
+      : `${state.tenantChoices.join(',')}|${(
+          state.tenantChoicesBlocked ?? []
+        ).join(',')}`;
   const isTaking = choicesKey !== undefined && heldKey !== choicesKey;
 
   useEffect(() => {
     if (choicesKey !== undefined && heldKey !== choicesKey) {
-      setTenantChoices(choicesKey ? choicesKey.split(',') : []);
+      const [taken, notTaken] = choicesKey.split('|');
+      setTenantChoices(
+        taken ? taken.split(',') : [],
+        notTaken ? notTaken.split(',') : [],
+      );
     }
   }, [choicesKey, heldKey, setTenantChoices]);
 
-  // No muster plugin to ask, or `get_info` (or `list_my_organizations`)
+  // No muster plugin to ask, or `get_info` (or `list_organizations`)
   // failed: `failed`. Answered without a list: `unlisted`.
   let unread: TenantChoicesUnread | undefined;
   if (installation && choicesKey === undefined) {

@@ -499,6 +499,7 @@ async function openUsageQueries(
       start: new Date((fromSeconds + stepSeconds) * 1000).toISOString(),
       end: new Date(toSeconds * 1000).toISOString(),
       step,
+      unlimited: 'true',
     }).then(series => withinWindow(series, fromSeconds, toSeconds));
   const rangeQuery = (query: string): Promise<PromSeries[]> =>
     rangeQueryBetween(query, startSeconds, endSeconds);
@@ -643,19 +644,65 @@ export async function getMcpUsage(
   const calls = `${METRIC_CALLS}${selector}`;
   const duration = `${METRIC_DURATION}${selector}`;
 
-  let coverage: PromSeries[];
+  let coverage: PromSeries[] = [];
   let beforeWindow: PromSeries[] | undefined;
-  let byOutcomeOverTime: PromSeries[];
-  let byToolOutcome: PromSeries[];
-  let byServerOutcome: PromSeries[];
+  let byOutcomeOverTime: PromSeries[] = [];
+  let byToolOutcome: PromSeries[] = [];
+  let byServerOutcome: PromSeries[] = [];
   let latencyBuckets: PromSeries[];
   let latencyBucketsByServer: PromSeries[];
-  try {
-    // Every call muster recorded in the window, and apart in the week before
-    // it, which says whether muster recorded anything there (`data_start`)
-    // and is never counted. Never narrowed to `servers`, so a connector's
-    // page says where the installation's records start. Without `servers`
-    // the window's is also the outcome rollup: one query does both.
+  const readCounts = async () => {
+    try {
+      const allCounts = await rangeQueryBetween(
+        `sum by (mcpserver_name, tool, outcome) (increase(${calls}[${step}]))`,
+        filtered ? startSeconds : lookbackStart,
+        endSeconds,
+      );
+      const windowCounts = withinWindow(
+        allCounts,
+        startSeconds,
+        endSeconds,
+      ).filter(series => series.points.length > 0);
+      byOutcomeOverTime = windowCounts;
+      byToolOutcome = toolRollups
+        ? windowCounts.toSorted(
+            (left, right) =>
+              (left.labels.outcome ?? '').localeCompare(
+                right.labels.outcome ?? '',
+              ) ||
+              (left.labels.tool ?? '').localeCompare(right.labels.tool ?? ''),
+          )
+        : [];
+      byServerOutcome = serverOutcomes
+        ? windowCounts.toSorted(
+            (left, right) =>
+              (left.labels.mcpserver_name ?? '').localeCompare(
+                right.labels.mcpserver_name ?? '',
+              ) ||
+              (left.labels.outcome ?? '').localeCompare(
+                right.labels.outcome ?? '',
+              ),
+          )
+        : [];
+      if (filtered) {
+        const expression = `sum by (outcome) (increase(${METRIC_CALLS}[${step}]))`;
+        coverage = await rangeQuery(expression);
+        beforeWindow = await rangeQueryBetween(
+          expression,
+          lookbackStart,
+          startSeconds,
+        ).catch(() => {
+          partial = true;
+          return undefined;
+        });
+      } else {
+        coverage = byOutcomeOverTime;
+        beforeWindow = withinWindow(allCounts, lookbackStart, startSeconds);
+      }
+      return;
+    } catch {
+      // Independent outcome reads can survive a failed high-cardinality rollup.
+    }
     const coverageExpr = `sum by (outcome) (increase(${METRIC_CALLS}[${step}]))`;
     const coverageQuery = rangeQuery(coverageExpr);
     const byOutcomeQuery = filtered
@@ -667,8 +714,6 @@ export async function getMcpUsage(
       byOutcomeOverTime,
       byToolOutcome,
       byServerOutcome,
-      latencyBuckets,
-      latencyBucketsByServer,
     ] = await Promise.all([
       coverageQuery,
       // Unread, it says nothing either way: no `data_start`.
@@ -689,6 +734,11 @@ export async function getMcpUsage(
             ),
           )
         : none,
+    ]);
+  };
+  try {
+    [, latencyBuckets, latencyBucketsByServer] = await Promise.all([
+      readCounts(),
       optional(rangeQuery(`sum by (le) (increase(${duration}[${step}]))`)),
       serverLatency
         ? optional(

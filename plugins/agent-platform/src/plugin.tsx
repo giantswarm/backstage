@@ -26,6 +26,8 @@ import {
   kagentApiRef,
   ModelManagerApiClient,
   modelManagerApiRef,
+  AgentManagerCredentialsClient,
+  agentManagerCredentialsApiRef,
 } from './apis';
 import {
   addGpuNodePoolRouteRef,
@@ -348,6 +350,24 @@ const kagentApi = ApiBlueprint.make({
     }),
 });
 
+// agent-manager's credential operations (the organization credential form):
+// through the portal's backend with the person's installation token, which the
+// kubernetes APIs mint. A credential value never goes through muster.
+const agentManagerCredentialsApi = ApiBlueprint.make({
+  name: 'agent-manager-credentials',
+  params: defineParams =>
+    defineParams({
+      api: agentManagerCredentialsApiRef,
+      deps: {
+        discoveryApi: discoveryApiRef,
+        fetchApi: fetchApiRef,
+        kubernetesApi: kubernetesApiRef,
+        kubernetesAuthProvidersApi: kubernetesAuthProvidersApiRef,
+      },
+      factory: deps => new AgentManagerCredentialsClient(deps),
+    }),
+});
+
 // model-manager (the Models tab's Serving view on installations whose muster
 // lists it): every call is one of its tools through the muster plugin's
 // client, as the signed-in person. The kubernetes APIs mint the installation
@@ -495,6 +515,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     workflowEditAssist,
     kagentApi,
     modelManagerApi,
+    agentManagerCredentialsApi,
   ],
   routes: {
     root: rootRouteRef,

@@ -1,14 +1,15 @@
 import { renderHook } from '@testing-library/react';
 import { useHomeInstallation } from '@giantswarm/backstage-plugin-gs';
 import { useMusterPluginApi } from './useMusterPluginApi';
-import { useMusterServerAvailability } from './useMusterServerAvailability';
+import { useMusterServerAvailability } from '@giantswarm/backstage-plugin-muster';
 import { useSkillSource } from './useSkillSource';
 
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   useHomeInstallation: jest.fn(),
 }));
 jest.mock('./useMusterPluginApi', () => ({ useMusterPluginApi: jest.fn() }));
-jest.mock('./useMusterServerAvailability', () => ({
+jest.mock('@giantswarm/backstage-plugin-muster', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-muster'),
   useMusterServerAvailability: jest.fn(),
 }));
 
