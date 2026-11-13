@@ -49,11 +49,11 @@ const LEAVE_COPY: Record<'tool' | 'workflow', { title: string; body: string }> =
   {
     tool: {
       title: 'Leave while the tool runs?',
-      body: 'muster finishes the call after you leave, but the result it returns shows only here, so leaving loses it.',
+      body: 'Muster finishes the call after you leave, but the result it returns shows only here, so leaving loses it.',
     },
     workflow: {
       title: 'Leave while the workflow runs?',
-      body: 'muster keeps running it after you leave, and the Usage tab shows how it ended. The result it returns shows only here, so leaving loses it.',
+      body: 'Muster keeps running it after you leave, and the Usage tab shows how it ended. The result it returns shows only here, so leaving loses it.',
     },
   };
 

@@ -19,6 +19,10 @@ import {
   RemoveGpuNodePoolDialog,
   servedModelsOnCluster,
 } from './RemoveGpuNodePoolDialog';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 jest.mock('@giantswarm/backstage-plugin-muster', () =>
   jest
@@ -174,7 +178,12 @@ async function renderDialog(answers: Answer[]) {
   const onOpenChange = jest.fn();
   const onRemoved = jest.fn();
   await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, api]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, api],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <Harness onOpenChange={onOpenChange} onRemoved={onRemoved} />
       </QueryClientProvider>

@@ -135,7 +135,7 @@ export function EditAgentPage() {
   const { info, isLoading: isInfoLoading } = useAgentManagerInfo(
     presence === 'available' ? installation : undefined,
   );
-  const catalog = useSkillCatalog();
+  const catalog = useSkillCatalog(installation);
 
   // An agent applied from git is edited through a pull request when
   // agent-manager reports the commit capability, and never offered otherwise —
@@ -146,6 +146,7 @@ export function EditAgentPage() {
     presence,
     isUnavailable: availability.isUnavailable,
     isGitOpsOwned,
+    isPlatformOwned: agent?.managed === 'platform',
     canCommit,
     isVerdictPending: isLoading || (isGitOpsOwned && isInfoLoading),
   };

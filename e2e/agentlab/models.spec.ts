@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Page, Route } from '@playwright/test';
 import {
   createAgentInWizard,
   deleteAgentInPortal,
@@ -8,14 +8,18 @@ import {
   startSessionOnReadyAgent,
   test,
 } from './fixtures';
-import { openDefaultModelWithContextWindows } from './context-windows.fixture';
+import {
+  openDefaultModelWithContextWindows,
+  platformDefaultModelRow,
+} from './context-windows.fixture';
 import { lab } from './lab';
 import { modelManagerUnavailable } from './model-manager.fixture';
 
 /**
  * Models in the agent shell: the installation's `ModelConfig`s read through
  * the Kubernetes proxy with the person's token, as Customize's Models tab
- * (the lab always provisions `default-model-config`, its `aiModel`, so the
+ * (the lab always provisions its default model, `lab.defaultModel` on its
+ * `aiModel`, so the
  * table has a row to show), and Model hosting's tabs under it.
  */
 
@@ -34,7 +38,7 @@ test('Customize · Models lists the lab default ModelConfig and offers Connect a
     admin.getByRole('link', { name: 'Connect a model' }),
   ).toHaveAttribute('href', '/customize/models/new');
   await expect(
-    admin.getByRole('rowheader', { name: /^default-model-config/ }),
+    platformDefaultModelRow(admin),
     'the ModelConfig the lab provisions is listed',
   ).toBeVisible();
   // The way into Model hosting, where the installation has a serving layer:
@@ -50,6 +54,64 @@ test('Customize · Models lists the lab default ModelConfig and offers Connect a
   }
 });
 
+/**
+ * Connect a model holds its button until the owners are known
+ * (giantswarm/giantswarm#39199): the lab's admin administers the lab's
+ * organization, so the Owner field offers it beside Platform, and until the
+ * person's organizations are read a model sent would go to the platform.
+ * `list_organizations` is held back here, so the wait is seen.
+ */
+test('Connect a model waits for the Owner choices, then offers the lab organization', async ({
+  admin,
+}) => {
+  let release: () => void = () => {};
+  const held = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  let asked = false;
+  await admin.route('**/api/muster/call**', async (route: Route) => {
+    const call = route.request().postDataJSON() as { name?: string } | null;
+    if (call?.name === 'x_agent-manager_list_organizations') {
+      asked = true;
+      await held;
+    }
+    await route.fallback();
+  });
+  try {
+    await open(admin, '/customize/models/new');
+    await expect
+      .poll(() => asked, {
+        message:
+          "the page reads the person's organizations (agent-manager's list_organizations)",
+      })
+      .toBe(true);
+    const connect = admin.getByRole('button', { name: 'Connect model' });
+    await expect(connect).toBeDisabled();
+    await expect(connect).toHaveAccessibleDescription(
+      'Checking which Organizations you may add a model for…',
+    );
+
+    release();
+    await expect(connect, 'offered once the owners are known').toBeEnabled();
+    await admin.getByRole('button', { name: /Owner/ }).click();
+    await expect(
+      admin.getByRole('option', { name: 'Platform', exact: true }),
+    ).toBeVisible();
+    await admin
+      .getByRole('option', { name: lab.organization.name, exact: true })
+      .click();
+    // An organization's model: its key goes on the credential form, so the
+    // page asks for none. Not sent: that would create the model.
+    await expect(
+      admin.getByRole('button', { name: 'Continue to the key' }),
+    ).toBeVisible();
+    await expect(admin.getByLabel(/^API key/)).toHaveCount(0);
+  } finally {
+    release();
+    await admin.unroute('**/api/muster/call**');
+  }
+});
+
 test('the old Model configs path still resolves', async ({ admin }) => {
   // The list used to live at `/models/configs`, with the create and detail
   // flows beneath it. Bookmarks and links from an older release carry those
@@ -57,7 +119,7 @@ test('the old Model configs path still resolves', async ({ admin }) => {
   await open(admin, '/agent-platform/models/configs');
   await expect(admin).toHaveURL(/\/customize\/models$/);
   await expect(
-    admin.getByRole('rowheader', { name: /^default-model-config/ }),
+    platformDefaultModelRow(admin),
     'the redirect lands on the list, not an empty page',
   ).toBeVisible();
 });
@@ -66,16 +128,13 @@ test('a model’s page sits under Customize in tabs, says why in Technical detai
   admin,
 }) => {
   await open(admin, '/customize/models');
-  await admin
-    .getByRole('rowheader', { name: /^default-model-config/ })
-    .getByRole('link')
-    .click();
+  await platformDefaultModelRow(admin).getByRole('link').click();
   const detail = new RegExp(
-    `/customize/models/${lab.installation}/([^/]+)/default-model-config$`,
+    `/customize/models/${lab.installation}/([^/]+)/${lab.defaultModel}$`,
   );
   await expect(admin).toHaveURL(detail);
   const namespace = detail.exec(new URL(admin.url()).pathname)?.[1];
-  const modelPath = `/customize/models/${lab.installation}/${namespace}/default-model-config`;
+  const modelPath = `/customize/models/${lab.installation}/${namespace}/${lab.defaultModel}`;
 
   // Overview, the model's own address: its facts in the one column, none
   // beside the content, then Technical details. Used by counts the agents
@@ -142,7 +201,7 @@ test('a model’s page sits under Customize in tabs, says why in Technical detai
   // The address the page used to have still lands on it, on Overview.
   await open(
     admin,
-    `/agent-platform/models/${lab.installation}/${namespace}/default-model-config`,
+    `/agent-platform/models/${lab.installation}/${namespace}/${lab.defaultModel}`,
   );
   await expect(admin).toHaveURL(detail);
   await expect(
@@ -174,7 +233,10 @@ test('a model’s Overview shows its context window, or a note when the table na
     'No context window is configured for this model',
   );
   await expect(
-    note.getByRole('link', { name: 'How to configure it', exact: true }),
+    note.getByRole('link', {
+      name: 'How to configure it (opens in a new tab)',
+      exact: true,
+    }),
   ).toHaveAttribute('href', /agent-platform-configuration\.md#context-windows/);
   await expect(facts.getByText('Context window', { exact: true })).toHaveCount(
     0,

@@ -12,6 +12,7 @@ import {
   ModelConfig,
   RemoteMCPServer,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- GS owns the shared installation inventory.
 import {
   ALL_INSTALLATIONS,
   classifyInventoryFailure,
@@ -24,6 +25,7 @@ import {
   type InventoryFailure,
 } from '@giantswarm/backstage-plugin-gs';
 import { joinNames } from '@giantswarm/backstage-plugin-ui-react';
+import { modelLabel } from '../../lib/modelLabel';
 import {
   summarizeClientServing,
   type ClientServingState,
@@ -369,25 +371,6 @@ export function resolveModelConfig(
 export type ResolveModelServing = (
   modelConfig: ModelConfig,
 ) => ClientServingState | undefined;
-
-/**
- * What a reader calls the model: "ChatGPT (your subscription)" for a person's
- * own ChatGPT login, else the ModelConfig's display name, else the model it
- * configures, else its resource name.
- */
-function modelLabel(modelConfig: ModelConfig | undefined): string | undefined {
-  if (!modelConfig) {
-    return undefined;
-  }
-  if (modelConfig.isPersonalChatGptLogin()) {
-    return modelConfig.getDisplayName();
-  }
-  return (
-    modelConfig.getDisplayNameAnnotation() ??
-    modelConfig.getModel() ??
-    modelConfig.getName()
-  );
-}
 
 /**
  * Flatten an `Agent` into a plain {@link AgentRow}. With a

@@ -24,6 +24,7 @@ import {
   useSidebarPinState,
 } from '@backstage/core-components';
 import {
+  ExternalLink,
   GSMarkdownContent,
   isAwaitingData,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -415,7 +416,7 @@ function DocumentPanel(props: {
         <span className={classes.additions}>+{file.additions}</span>
         <span className={classes.deletions}>−{file.deletions}</span>
         <div className={classes.toolbarSpacer} />
-        <Link to={githubUrl}>View on GitHub</Link>
+        <ExternalLink href={githubUrl}>View on GitHub</ExternalLink>
         <Button
           size="small"
           variant="tertiary"
@@ -620,9 +621,12 @@ export function PullReviewPage() {
         <div className={classes.headerMeta}>
           {pull.draft && <Badge size="small">Draft</Badge>}
           <Text variant="body-small" color="secondary">
-            <Link to={`https://github.com/${repo}/pull/${pull.number}`}>
+            <ExternalLink
+              href={`https://github.com/${repo}/pull/${pull.number}`}
+              display="inline"
+            >
               {repo}#{pull.number}
-            </Link>
+            </ExternalLink>
             {pull.author && ` by ${pull.author}`}
             {updated && ` · updated ${updated}`}
           </Text>

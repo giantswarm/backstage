@@ -86,19 +86,19 @@ export function WorkflowRunTab({
         title={`This portal cannot run workflows${
           installation ? ` on ${installation}` : ''
         }`}
-        description="It talks to this environment's muster without personal credentials, so a run would act as muster's shared identity instead of yours. An administrator has to configure an auth provider for this environment."
+        description="It talks to this environment's Muster without personal credentials, so a run would act as Muster's shared identity instead of yours. An administrator has to configure an auth provider for this environment."
       />
     );
   }
   const { tool, isAwaiting, error } = workflowTool;
   if (!tool && isAwaiting) {
-    return <LoadingIndicator label="Reading the workflow from muster…" />;
+    return <LoadingIndicator label="Reading the workflow from Muster…" />;
   }
   if (!tool && error) {
     return (
       <Alert
         status="danger"
-        title="Could not read the workflow from muster"
+        title="Could not read the workflow from Muster"
         description={error.message}
       />
     );
@@ -125,7 +125,7 @@ export function WorkflowRunTab({
               you{installation ? ` on ${installation}` : ''}
             </>
           }
-          description="muster runs a workflow as this tool and does not list it for you. It may not have loaded the definition yet; Overview shows any validation warning."
+          description="Muster runs a workflow as this tool and does not list it for you. It may not have loaded the definition yet; Overview shows any validation warning."
         />
       </Flex>
     );

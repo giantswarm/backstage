@@ -4,6 +4,7 @@ import { analyticsApiRef, toastApiRef } from '@backstage/frontend-plugin-api';
 import { notificationsApiRef } from '@backstage/plugin-notifications';
 import { signalApiRef } from '@backstage/plugin-signals-react';
 import {
+  externalUrlConsentApiRef,
   ShellDocumentTitle,
   ShellDocumentTitleProvider,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -77,6 +78,7 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
 const close = jest.fn();
 const post = jest.fn(() => ({ close }));
 const analyticsApi = mockApis.analytics.mock();
+const consentOpen = jest.fn();
 
 let upstream = createFakeUpstream();
 
@@ -110,6 +112,7 @@ async function renderShell({
       apis: [
         [toastApiRef, { post }],
         [analyticsApiRef, analyticsApi],
+        [externalUrlConsentApiRef, { open: consentOpen }],
         [signalApiRef, upstream.signalApi],
         ...(withNotificationsApi
           ? [[notificationsApiRef, upstream.notificationsApi] as const]
@@ -176,6 +179,7 @@ beforeEach(() => {
   upstream = createFakeUpstream();
   post.mockClear();
   close.mockClear();
+  consentOpen.mockClear();
   analyticsApi.captureEvent.mockClear();
   window.localStorage.clear();
   window.sessionStorage.clear();
@@ -892,6 +896,53 @@ describe('Notification inbox: rows from the upstream notifications store', () =>
           ]),
         );
       } finally {
+        Object.defineProperty(window, 'Notification', {
+          configurable: true,
+          value: original,
+        });
+      }
+    });
+
+    it('asks before opening a link out of the portal from a desktop notification', async () => {
+      const original = window.Notification;
+      const shown: Array<{ onclick: (() => void) | null }> = [];
+      class FakeNotification {
+        static permission: NotificationPermission = 'granted';
+        static requestPermission = jest.fn();
+        onclick: (() => void) | null = null;
+        constructor() {
+          shown.push(this);
+        }
+        close() {}
+      }
+      Object.defineProperty(window, 'Notification', {
+        configurable: true,
+        value: FakeNotification,
+      });
+      const windowOpen = jest.spyOn(window, 'open').mockReturnValue(null);
+      window.localStorage.setItem(DESKTOP_NOTIFICATIONS_STORAGE_KEY, 'on');
+      focused = false;
+      try {
+        await renderShell();
+        await firstRead();
+        await send({
+          id: 'n1',
+          title: 'CI run failed',
+          link: 'https://ci.example.com/runs/42',
+          created: now(),
+        });
+        await waitFor(() => expect(shown).toHaveLength(1));
+
+        act(() => shown[0].onclick?.());
+
+        expect(consentOpen).toHaveBeenCalledWith({
+          url: 'https://ci.example.com/runs/42',
+          requester: 'Portal notification',
+          message: 'CI run failed',
+        });
+        expect(windowOpen).not.toHaveBeenCalled();
+      } finally {
+        windowOpen.mockRestore();
         Object.defineProperty(window, 'Notification', {
           configurable: true,
           value: original,

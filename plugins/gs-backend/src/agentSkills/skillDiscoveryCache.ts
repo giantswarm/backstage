@@ -183,7 +183,7 @@ export class SkillDiscoveryCache {
    * empty — one entry for both, so the route must hand `load` the same
    * meaning: it normalizes `''` to absent), from memory when fresh, else
    * through `load` — which receives the previous snapshot to reuse what it
-   * can.
+   * can. `scanPath` (the directory scanned) keys its own entry.
    */
   async discover(
     repoUrl: string,
@@ -191,9 +191,10 @@ export class SkillDiscoveryCache {
     load: (
       previous?: SkillDiscoverySnapshot,
     ) => Promise<SkillDiscoverySnapshot>,
+    scanPath = '',
   ): Promise<CachedDiscovery> {
     const repoKey = repositoryKey(repoUrl);
-    const key = `${repoKey}#${ref || ''}`;
+    const key = `${repoKey}#${ref || ''}${scanPath ? `#${scanPath}` : ''}`;
     const entry = this.entries.get(key);
     if (entry && this.now() < entry.freshUntil) {
       if (entry.snapshot) {

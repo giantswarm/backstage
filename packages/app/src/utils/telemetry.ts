@@ -1,4 +1,3 @@
-import sha256 from 'crypto-js/sha256';
 import {
   AGENT_PAGE_TABS,
   MODEL_PAGE_TABS,
@@ -787,6 +786,16 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
       route = '/organizations';
       break;
 
+    // The credential form of one organization's request; the request's id
+    // (agent-manager's operation) stays out of every attribute.
+    case /^\/organizations\/[^/]+\/[^/]+\/[^/]+\/credentials\/[^/]+$/.test(
+      pathname,
+    ):
+      payload = { page: 'Organization credential form' };
+      route =
+        '/organizations/:installation/:parent/:name/credentials/:operation';
+      break;
+
     case /^\/organizations\/[^/]+\/[^/]+\/[^/]+(\/.*)?$/.test(pathname): {
       const tab = segments.slice(4).join('/');
       payload =
@@ -973,15 +982,4 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
     ...payload,
     path: route,
   };
-}
-
-export function getGuestUserEntityRef(profile: {
-  email?: string;
-  displayName?: string;
-}): string {
-  const userHash = sha256(
-    profile.email ?? profile.displayName ?? '',
-  ).toString();
-
-  return `user:default/guest#${userHash}`;
 }

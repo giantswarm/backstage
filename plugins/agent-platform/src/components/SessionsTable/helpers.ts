@@ -2,6 +2,10 @@ import {
   describeSessionState,
   SessionState,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
+  formatLocalDay,
+  formatLocalTime,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { FleetSessionStatesView } from '../../hooks/useFleetSessionStates';
 import {
   byLastActive,
@@ -164,15 +168,7 @@ export function formatSessionTime(
   currentYear: number,
 ): string {
   const date = new Date(at);
-  if (group === 'today' || group === 'yesterday') {
-    return date.toLocaleTimeString(undefined, {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  }
-  return date.toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    ...(date.getFullYear() === currentYear ? {} : { year: 'numeric' }),
-  });
+  return group === 'today' || group === 'yesterday'
+    ? formatLocalTime(date)
+    : formatLocalDay(date, currentYear);
 }

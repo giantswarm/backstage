@@ -11,6 +11,10 @@ import {
   ChatGptConnectDialog,
   ChatGptConnectPrompt,
 } from './ChatGptConnectPrompt';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 // The dialog names servers by their MCPServer; it lists none here.
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
@@ -56,7 +60,12 @@ async function renderDialog() {
     defaultOptions: { queries: { retry: false } },
   });
   await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, makeApi()]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, makeApi()],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <ChatGptConnectDialog
           installation="graveler"

@@ -93,7 +93,7 @@ export function WorkflowStatistics({
         }
       />
       <Text as="p" variant="body-small" color="secondary">
-        Covers muster's run records: about three weeks, at most 10,000 runs.
+        Covers Muster's run records: about three weeks, at most 10,000 runs.
       </Text>
     </Flex>
   );

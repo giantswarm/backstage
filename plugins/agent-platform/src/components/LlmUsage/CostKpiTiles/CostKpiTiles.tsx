@@ -106,7 +106,7 @@ export function CostKpiTiles({
       <Stat
         variant="tile"
         label="Cache read share"
-        hint="Shows cache reads as a share of all input tokens (plain, cache reads and writes). A high share means prompt caching pays off."
+        hint="Shows cache reads as a share of all input tokens, each counted once (fresh input, cache reads and cache writes). A high share means prompt caching pays off."
         value={formatPercent(totals.cacheReadSharePct)}
         sub="of input tokens, read from cache"
       />

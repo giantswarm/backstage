@@ -9,6 +9,7 @@ import {
   within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Workspace tools use the muster frontend API.
 import {
   musterApiRef,
   type MusterApi,
@@ -24,6 +25,10 @@ import {
   type FakeRepository,
   type WorkspaceManagerFake,
 } from './workspaceManagerFake';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
@@ -99,7 +104,12 @@ async function render(
     defaultOptions: { queries: { retry: false } },
   });
   return renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, musterApi]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, musterApi],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <PageHeaderActionsProvider>
           <WorkspaceEditorPage
@@ -171,9 +181,15 @@ describe('WorkspaceEditorPage', () => {
     });
     await render(fake);
 
+    // Any name: the technical name is filled in from it.
     fireEvent.change(await screen.findByRole('textbox', { name: /^Name/ }), {
-      target: { value: 'platform-mcp' },
+      target: { value: 'Platform MCP' },
     });
+    expect(
+      screen.getByRole('textbox', { name: /^Name/ }),
+    ).toHaveAccessibleDescription(
+      'Its technical name is platform-mcp; it cannot be changed once the workspace exists.',
+    );
     fireEvent.change(source(0).getByRole('textbox', { name: /^Owner/ }), {
       target: { value: 'acme' },
     });
@@ -341,6 +357,7 @@ describe('WorkspaceEditorPage', () => {
   });
 
   it("shows a field's problem once the person leaves it, before any save", async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     const fake = createWorkspaceManagerFake({
       providers: [GITHUB],
       repositories: ACME,
@@ -348,16 +365,22 @@ describe('WorkspaceEditorPage', () => {
     await render(fake);
 
     const name = await screen.findByRole('textbox', { name: /^Name/ });
-    fireEvent.change(name, { target: { value: 'Platform MCP' } });
+    await user.click(name);
+    await user.tab();
     expect(
-      screen.queryByText(/Use lowercase letters, digits and dashes only/),
+      screen.queryByText('Enter a name for the workspace.'),
     ).not.toBeInTheDocument();
-    fireEvent.blur(name);
-    expect(
-      await screen.findByText(/Use lowercase letters, digits and dashes only/),
-    ).toBeInTheDocument();
+    await user.click(name);
+    await user.type(name, 'Platform');
+    await user.clear(name);
+    await user.tab();
+    await waitFor(() =>
+      expect(name).toHaveAccessibleDescription(
+        expect.stringContaining('Enter a name for the workspace.'),
+      ),
+    );
     // A field not yet left stays quiet.
-    expect(screen.queryByText('Owner is required')).not.toBeInTheDocument();
+    expect(screen.queryByText('Choose an owner')).not.toBeInTheDocument();
   });
 
   it('names no provider when there is only one to choose', async () => {
@@ -510,7 +533,9 @@ describe('WorkspaceEditorPage', () => {
           gate.getByText(/reads its repositories from gitlab-lab \(GitLab\)/),
         ).toBeInTheDocument();
         expect(
-          gate.getByRole('button', { name: 'Sign in to GitLab ↗' }),
+          gate.getByRole('button', {
+            name: 'Sign in to GitLab (opens in a new tab)',
+          }),
         ).toBeInTheDocument();
         expect(gate.queryByText(/core_auth_login/)).not.toBeInTheDocument();
         expect(
@@ -532,7 +557,9 @@ describe('WorkspaceEditorPage', () => {
         await screen.findByTestId('workspace-editor-gate');
 
         fireEvent.click(
-          screen.getByRole('button', { name: 'Sign in to GitLab ↗' }),
+          screen.getByRole('button', {
+            name: 'Sign in to GitLab (opens in a new tab)',
+          }),
         );
         expect(
           await screen.findByText('Waiting for GitLab…'),
@@ -581,7 +608,9 @@ describe('WorkspaceEditorPage', () => {
         expect(fake.callsOf('list_repositories')).toHaveLength(0);
 
         fireEvent.click(
-          prompt.getByRole('button', { name: 'Sign in to GitLab ↗' }),
+          prompt.getByRole('button', {
+            name: 'Sign in to GitLab (opens in a new tab)',
+          }),
         );
         await waitFor(() =>
           expect(fake.signInServer.mock.calls).toEqual([[target, 'lab']]),
@@ -644,17 +673,101 @@ describe('WorkspaceEditorPage', () => {
         expect.stringContaining('A workspace named taken exists on lab.'),
       ),
     );
+  });
 
-    // An invalid name says so once typing pauses, with one to try.
+  it('takes a technical name of the person’s own, and checks it there', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+    });
+    await render(fake);
+    const name = await screen.findByRole('textbox', { name: /^Name/ });
     fireEvent.change(name, { target: { value: 'Platform MCP' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced options' }));
+    const technical = await screen.findByRole('textbox', {
+      name: /^Technical name/,
+    });
+    expect(technical).toHaveValue('platform-mcp');
+
+    // An invalid technical name says so once typing pauses, with one to try.
+    fireEvent.change(technical, { target: { value: 'Bad_Name' } });
     await act(async () => {
       jest.advanceTimersByTime(600);
     });
     await waitFor(() =>
-      expect(name).toHaveAccessibleDescription(
-        expect.stringContaining('Try “platform-mcp”.'),
+      expect(technical).toHaveAccessibleDescription(
+        expect.stringContaining('Try “bad-name”.'),
       ),
     );
+    expect(name).not.toHaveAccessibleDescription(
+      expect.stringContaining('Try'),
+    );
+
+    // An invalid technical name is not stated as the one it will get.
+    expect(name).toHaveAccessibleDescription(
+      expect.stringContaining('Its technical name is filled in from it'),
+    );
+
+    // From then on the name no longer changes it.
+    fireEvent.change(technical, { target: { value: 'mcp-servers' } });
+    fireEvent.change(name, { target: { value: 'Something else' } });
+    expect(technical).toHaveValue('mcp-servers');
+    expect(name).toHaveAccessibleDescription(
+      expect.stringContaining('Its technical name is mcp-servers'),
+    );
+
+    // Cleared, it is the name's again.
+    fireEvent.change(technical, { target: { value: '' } });
+    fireEvent.change(name, { target: { value: 'Team repos' } });
+    expect(technical).toHaveValue('team-repos');
+  });
+
+  it('opens Advanced options when the technical name blocks the save', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+    });
+    await render(fake);
+    // A name with no Latin letter or digit leaves no technical name.
+    fireEvent.change(await screen.findByRole('textbox', { name: /^Name/ }), {
+      target: { value: '日本チーム' },
+    });
+    const advanced = screen.getByRole('button', { name: 'Advanced options' });
+    expect(advanced).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
+    await waitFor(() =>
+      expect(advanced).toHaveAttribute('aria-expanded', 'true'),
+    );
+    expect(
+      screen.getByRole('textbox', { name: /^Technical name/ }),
+    ).toHaveAccessibleDescription(
+      expect.stringContaining('Enter a technical name.'),
+    );
+    expect(fake.callsOf('create_workspace')).toHaveLength(0);
+  });
+
+  it('asks for a name even with a technical name typed', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+    });
+    await render(fake);
+    const name = await screen.findByRole('textbox', { name: /^Name/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced options' }));
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: /^Technical name/ }),
+      { target: { value: 'mcp-servers' } },
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
+    await waitFor(() =>
+      expect(name).toHaveAccessibleDescription(
+        expect.stringContaining('Enter a name for the workspace.'),
+      ),
+    );
+    expect(fake.callsOf('create_workspace')).toHaveLength(0);
   });
 
   it('opens an existing workspace with its filters and saves the change', async () => {
@@ -828,10 +941,10 @@ describe('WorkspaceEditorPage exclusions', () => {
     expect(exclusions().getByTestId('exclusion-effect')).toHaveTextContent(
       '1 repository left out.',
     );
-    // The picker shows an excluded pick as out.
+    // The picker, open on the picks, shows an excluded pick as out.
     await user.keyboard('{Escape}');
     expect(
-      source(0).getByRole('checkbox', { name: 'app-2' }),
+      source(0).getByRole('checkbox', { name: 'Include app-2' }),
     ).not.toBeChecked();
 
     // Add a name the source does not select: the manager keeps it.
@@ -995,6 +1108,9 @@ describe('WorkspaceEditorPage exclusion counts the form cannot know', () => {
     await render(fake, { name: 'portal' });
     await screen.findByTestId('workspace-source-0');
     fireEvent.click(
+      await source(0).findByRole('switch', { name: /Show selected only/ }),
+    );
+    fireEvent.click(
       await source(0).findByRole('checkbox', { name: 'operator' }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
@@ -1065,5 +1181,553 @@ describe('RepositoryPicker against an owner of 500 repositories', () => {
     const selectAll = listings.filter(call => call.pageSize === 200);
     expect(selectAll).toHaveLength(1);
     expect(selectAll[0]).toMatchObject({ search: 'repo-04' });
+  });
+});
+
+describe('WorkspaceEditorPage blocked save', () => {
+  it('leaves an empty Owner quiet when tabbed through, then names it and focuses it on save', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      owners: { github: ['acme'] },
+    });
+    await render(fake);
+
+    fireEvent.change(await screen.findByRole('textbox', { name: /^Name/ }), {
+      target: { value: 'platform-mcp' },
+    });
+    const owner = await source(0).findByRole('button', { name: /Owner/ });
+    act(() => owner.focus());
+    await user.tab();
+    expect(owner).not.toHaveFocus();
+    expect(owner).toHaveTextContent('Choose an owner');
+    expect(owner).toHaveAccessibleDescription('');
+
+    await user.click(screen.getByRole('button', { name: 'Create workspace' }));
+    await waitFor(() => expect(owner).toHaveFocus());
+    expect(owner).toHaveAccessibleDescription(
+      expect.stringContaining('Choose an owner'),
+    );
+    // Nothing can be picked before the owner is chosen.
+    expect(
+      screen.queryByText(
+        'Pick repositories by name, or filter by language or topic',
+      ),
+    ).not.toBeInTheDocument();
+    expect(fake.callsOf('create_workspace')).toHaveLength(0);
+
+    await user.click(owner);
+    await user.click(await screen.findByRole('option', { name: 'acme' }));
+    expect(owner).toHaveAccessibleDescription('');
+    expect(
+      await source(0).findByText(
+        'Pick repositories by name, or filter by language or topic',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('names an empty Provider when there are several and focuses it', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB, GITLAB],
+      repositories: [...ACME, ...LAB],
+    });
+    await render(fake);
+
+    fireEvent.change(await screen.findByRole('textbox', { name: /^Name/ }), {
+      target: { value: 'mixed' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
+
+    const provider = await source(0).findByRole('button', {
+      name: /Provider/,
+    });
+    expect(provider).toHaveTextContent('Choose a provider');
+    await waitFor(() => expect(provider).toHaveFocus());
+    expect(provider).toHaveAccessibleDescription(
+      expect.stringContaining('Choose a provider'),
+    );
+  });
+
+  it('opens Advanced options and focuses Minimum size when only it holds a problem', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [storedWorkspace({ repositories: ['portal'] })],
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-0');
+
+    const advanced = screen.getByRole('button', { name: 'Advanced options' });
+    fireEvent.click(advanced);
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'Minimum size' }),
+      { target: { value: '2O' } },
+    );
+    fireEvent.click(advanced);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('textbox', { name: 'Minimum size' }),
+      ).not.toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    const minimum = await screen.findByRole('textbox', {
+      name: 'Minimum size',
+    });
+    await waitFor(() => expect(minimum).toHaveFocus());
+    expect(minimum).toHaveAccessibleDescription(
+      expect.stringContaining('Enter a whole number of GiB, such as 20'),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Advanced options' }),
+    ).toHaveAttribute('aria-expanded', 'true');
+    expect(fake.callsOf('update_workspace')).toHaveLength(0);
+  });
+
+  it('opens the source a refusal names when another source is open', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB, GITLAB],
+      repositories: [...ACME, ...LAB],
+      workspaces: [
+        {
+          ...storedWorkspace({ repositories: ['portal'] }),
+          sources: [
+            { provider: 'github', owner: 'acme', repositories: ['portal'] },
+            {
+              provider: 'gitlab-lab',
+              owner: 'platform',
+              repositories: ['charts'],
+            },
+          ],
+        },
+      ],
+    });
+    fake.onWrite('update_workspace', () => {
+      throw new Error(
+        'update_workspace: invalid workspace: Workspace.workspace-manager.giantswarm.io "portal" is invalid: spec.sources[0].owner: Invalid value: "acme": owner must be a provider account name',
+      );
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-1');
+    fireEvent.click(
+      await source(1).findByRole('button', { name: 'Edit source' }),
+    );
+    expect(
+      await source(0).findByRole('button', { name: 'Edit source' }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    const owner = await source(0).findByRole('textbox', { name: /^Owner/ });
+    await waitFor(() =>
+      expect(owner).toHaveAccessibleDescription(
+        expect.stringContaining('owner must be a provider account name'),
+      ),
+    );
+    await waitFor(() => expect(owner).toHaveFocus());
+  });
+
+  it('announces a refusal that names no field', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [storedWorkspace({ repositories: ['portal'] })],
+    });
+    fake.onWrite('update_workspace', () => {
+      throw new Error('update_workspace: the manager is read-only');
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-0');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The workspace was not saved',
+    );
+  });
+
+  it('announces the problem of a field the person leaves', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [storedWorkspace({ repositories: ['portal'] })],
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-0');
+
+    await user.click(screen.getByRole('button', { name: 'Advanced options' }));
+    await user.type(
+      await screen.findByRole('textbox', { name: 'Minimum size' }),
+      '2O',
+    );
+    await user.tab();
+
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-field-validation-announcer]'),
+      ).toHaveTextContent('Enter a whole number of GiB, such as 20'),
+    );
+  });
+});
+
+describe('WorkspaceEditorPage in the edit flow', () => {
+  it('opens the repository table on the picks by name', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [storedWorkspace({ repositories: ['portal', 'operator'] })],
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-0');
+
+    const picker = within(await source(0).findByTestId('repository-picker'));
+    expect(
+      picker.getAllByRole('columnheader').map(header => header.textContent),
+    ).toEqual(['Repository', 'Selection']);
+    expect(
+      picker.getByRole('switch', { name: 'Show selected only (2)' }),
+    ).toBeChecked();
+    expect(picker.getByRole('checkbox', { name: 'portal' })).toBeChecked();
+    expect(picker.getByRole('checkbox', { name: 'operator' })).toBeChecked();
+    expect(picker.queryByRole('searchbox')).not.toBeInTheDocument();
+
+    fireEvent.click(picker.getByRole('switch', { name: /Show selected only/ }));
+    expect(await picker.findByRole('searchbox')).toBeInTheDocument();
+  });
+
+  it('opens a source without picks by name on the owner listing', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [storedWorkspace({ filters: { languages: ['Go'] } })],
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-0');
+
+    const picker = within(await source(0).findByTestId('repository-picker'));
+    expect(
+      picker.getByRole('switch', { name: /Show selected only/ }),
+    ).not.toBeChecked();
+    expect(picker.getByRole('searchbox')).toBeInTheDocument();
+  });
+
+  it('closes and cancels to the workspace page', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [storedWorkspace({ repositories: ['portal'] })],
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-0');
+
+    for (const name of ['Close', 'Cancel']) {
+      expect(screen.getByRole('link', { name })).toHaveAttribute(
+        'href',
+        '/customize/workspaces/lab/acme/portal',
+      );
+    }
+  });
+
+  it('cancels a new workspace to the Workspaces tab', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+    });
+    await render(fake);
+    await screen.findByTestId('workspace-source-0');
+
+    expect(screen.getByRole('link', { name: 'Cancel' })).toHaveAttribute(
+      'href',
+      '/customize/workspaces?organization=acme',
+    );
+  });
+});
+
+describe('WorkspaceEditorPage wording by control', () => {
+  it('asks to enter an owner when the owner is typed, and to enter a name', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+    });
+    await render(fake);
+
+    const name = await screen.findByRole('textbox', { name: /^Name/ });
+    expect(name).toHaveAccessibleDescription(
+      expect.stringContaining(
+        'it cannot be changed once the workspace exists.',
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
+
+    await waitFor(() =>
+      expect(name).toHaveAccessibleDescription(
+        expect.stringContaining('Enter a name'),
+      ),
+    );
+    expect(name).toHaveFocus();
+    const owner = source(0).getByRole('textbox', { name: /^Owner/ });
+    expect(owner).toHaveAccessibleDescription(
+      expect.stringContaining('Enter an owner'),
+    );
+    expect(screen.queryByText('Choose an owner')).not.toBeInTheDocument();
+  });
+});
+
+describe('WorkspaceEditorPage without providers', () => {
+  function withoutListProviders(fake: WorkspaceManagerFake) {
+    const answer = fake.callTool.getMockImplementation()!;
+    fake.callTool.mockImplementation(async (name: string, args) => {
+      if (name.endsWith('list_providers')) {
+        throw new Error(
+          'Tool execution failed: tool not found: x_workspace-manager_list_providers',
+        );
+      }
+      return answer(name, args);
+    });
+  }
+
+  it('says why no source can be saved, names no provider field, and focuses the warning on a blocked save', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+    });
+    withoutListProviders(fake);
+    await render(fake);
+
+    const warning = await screen.findByText('Could not read the providers');
+    expect(
+      screen.getByText(
+        'A source needs a provider, so the workspace cannot be saved until the providers can be read. Try again later, or ask your platform team.',
+      ),
+    ).toBeInTheDocument();
+    const details = screen.getByText(
+      'Tool execution failed: tool not found: x_workspace-manager_list_providers',
+    );
+    expect(details).not.toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Technical details' }));
+    expect(details).toBeVisible();
+
+    fireEvent.change(screen.getByRole('textbox', { name: /^Name/ }), {
+      target: { value: 'platform-mcp' },
+    });
+    fireEvent.change(source(0).getByRole('textbox', { name: /^Owner/ }), {
+      target: { value: 'acme' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
+
+    const holder = warning.closest('[tabindex="-1"]');
+    await waitFor(() => expect(holder).toHaveFocus());
+    expect(screen.queryByText('Choose a provider')).not.toBeInTheDocument();
+    expect(fake.callsOf('create_workspace')).toHaveLength(0);
+  });
+
+  it('focuses a field that can be fixed before the warning', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+    });
+    withoutListProviders(fake);
+    await render(fake);
+    await screen.findByText('Could not read the providers');
+
+    fireEvent.change(screen.getByRole('textbox', { name: /^Name/ }), {
+      target: { value: 'platform-mcp' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
+
+    const owner = source(0).getByRole('textbox', { name: /^Owner/ });
+    await waitFor(() => expect(owner).toHaveFocus());
+    expect(owner).toHaveAccessibleDescription(
+      expect.stringContaining('Enter an owner'),
+    );
+  });
+
+  it('keeps an edit whose sources name their provider savable', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [storedWorkspace({ repositories: ['portal'] })],
+    });
+    withoutListProviders(fake);
+    await render(fake, { name: 'portal' });
+
+    expect(
+      await screen.findByText('Could not read the providers'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/the workspace cannot be saved/),
+    ).not.toBeInTheDocument();
+    const details = screen.getByText(
+      'Tool execution failed: tool not found: x_workspace-manager_list_providers',
+    );
+    expect(details).not.toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Technical details' }));
+    expect(details).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() =>
+      expect(fake.callsOf('update_workspace')).toHaveLength(1),
+    );
+  });
+
+  it('shows the manager refusing the provider a source names', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [storedWorkspace({ repositories: ['portal'] })],
+    });
+    withoutListProviders(fake);
+    fake.onWrite('update_workspace', () => {
+      throw new Error(
+        'update_workspace: invalid workspace: sources[0]: unknown provider instance "github"',
+      );
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByText('Could not read the providers');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(await source(0).findByRole('alert')).toHaveTextContent(
+      /unknown provider instance/,
+    );
+  });
+
+  it('says so when no provider is configured', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [],
+      repositories: ACME,
+    });
+    await render(fake);
+
+    expect(
+      await screen.findByText('No provider to pick from'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'A source needs a provider, and none is configured on lab. Ask your platform team to add one.',
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole('textbox', { name: /^Name/ }),
+      ).toHaveAccessibleDescription(expect.stringContaining('Enter a name')),
+    );
+    expect(screen.queryByText('Choose a provider')).not.toBeInTheDocument();
+  });
+});
+
+describe('WorkspaceEditorPage selected repository membership', () => {
+  it('excludes a removed pick that also matches a filter from the preview and save', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [
+        storedWorkspace({
+          repositories: ['operator'],
+          filters: { languages: ['Go'] },
+        }),
+      ],
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-0');
+    const picker = within(await source(0).findByTestId('repository-picker'));
+    await user.click(picker.getByRole('checkbox', { name: 'operator' }));
+    const excluded = picker.getByRole('checkbox', { name: 'Include operator' });
+    expect(excluded).not.toBeChecked();
+    expect(excluded).toHaveFocus();
+    await settlePreview();
+    const preview = within(screen.getByTestId('workspace-preview'));
+    await waitFor(() =>
+      expect(preview.queryByText('acme/operator')).not.toBeInTheDocument(),
+    );
+    expect(await preview.findByText('acme/mcp-kubernetes')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() =>
+      expect(fake.callsOf('update_workspace')).toHaveLength(1),
+    );
+    expect(fake.callsOf('update_workspace')[0].sources[0]).toMatchObject({
+      filters: { languages: ['Go'] },
+      exclude: ['operator'],
+    });
+  });
+
+  it.each([undefined, { languages: ['Go'] }])(
+    'includes an excluded name even when it matches no filter (%j)',
+    async filters => {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const fake = createWorkspaceManagerFake({
+        providers: [GITHUB],
+        repositories: ACME,
+        workspaces: [
+          storedWorkspace({
+            repositories: ['operator'],
+            exclude: ['portal'],
+            filters,
+          }),
+        ],
+      });
+      await render(fake, { name: 'portal' });
+      await screen.findByTestId('workspace-source-0');
+      const picker = within(await source(0).findByTestId('repository-picker'));
+      await user.click(
+        picker.getByRole('checkbox', { name: 'Include portal' }),
+      );
+      const included = picker.getByRole('checkbox', { name: 'portal' });
+      expect(included).toBeChecked();
+      expect(included).toHaveFocus();
+      await settlePreview();
+      expect(
+        await within(screen.getByTestId('workspace-preview')).findByText(
+          'acme/portal',
+        ),
+      ).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Save changes' }));
+      await waitFor(() =>
+        expect(fake.callsOf('update_workspace')).toHaveLength(1),
+      );
+      expect(
+        fake.callsOf('update_workspace')[0].sources[0].repositories,
+      ).toEqual(['operator', 'portal']);
+      expect(
+        fake.callsOf('update_workspace')[0].sources[0].exclude,
+      ).toBeUndefined();
+    },
+  );
+
+  it('moves keyboard focus to the next pick, the previous pick, and the view switch when empty', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [
+        storedWorkspace({
+          repositories: ['portal', 'operator', 'mcp-kubernetes'],
+        }),
+      ],
+    });
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-0');
+    const picker = within(await source(0).findByTestId('repository-picker'));
+    act(() => picker.getByRole('checkbox', { name: 'operator' }).focus());
+    await user.keyboard(' ');
+    expect(
+      picker.getByRole('checkbox', { name: 'mcp-kubernetes' }),
+    ).toHaveFocus();
+    await user.keyboard(' ');
+    expect(picker.getByRole('checkbox', { name: 'portal' })).toHaveFocus();
+    await user.keyboard(' ');
+    expect(
+      picker.getByRole('switch', { name: 'Show selected only (0)' }),
+    ).toHaveFocus();
+    expect(
+      picker.getByText('Nothing picked by name or excluded.'),
+    ).toBeInTheDocument();
+    await user.keyboard(' ');
+    expect(await picker.findByRole('searchbox')).toBeInTheDocument();
   });
 });

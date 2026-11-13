@@ -44,6 +44,7 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
 
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   ClusterAccessConnector: () => null,
+  useMainSessionEnd: () => undefined,
 }));
 
 jest.mock('../agentShell/CustomizePage', () => ({

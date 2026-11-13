@@ -48,14 +48,17 @@ describe('GSReleaseInfo', () => {
     );
   });
 
-  it('marks both new-tab links with an arrow inside the shell', async () => {
+  it('marks both new-tab links with the launch icon inside the shell', async () => {
     await renderInTestApp(
       <ShellScopeProvider>
         <GSReleaseInfo version="2.81.5" />
       </ShellScopeProvider>,
     );
 
-    for (const name of ['backstage ↗', 'v2.81.5 ↗']) {
+    for (const name of [
+      'backstage (opens in a new tab)',
+      'v2.81.5 (opens in a new tab)',
+    ]) {
       const link = screen.getByRole('link', { name });
       expect(link).toHaveAttribute('target', '_blank');
       expect(link).toHaveAttribute('rel', 'noopener noreferrer');

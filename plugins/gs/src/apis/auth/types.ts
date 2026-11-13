@@ -13,6 +13,7 @@ import {
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
 import { ClusterAccessStatusApi } from '../clusterAccessStatus';
 import { SignInConnectorMemory } from './signInConnectorMemory';
+import type { ExternalUrlConsentApi } from '@giantswarm/backstage-plugin-ui-react';
 
 export const gsAuthApiRef = createApiRef<AuthApi>({
   id: 'plugin.gs.auth',
@@ -112,6 +113,25 @@ export type GSAuthProvidersApi = {
    * probes on startup.
    */
   getBrokerCoveredInstallations: () => string[];
+  /**
+   * Why the main sign-in's session ended while the page was open, until it
+   * is signed in again: `useMainSessionEnd` reads it.
+   */
+  getMainSessionEnd: () => MainSessionEnd;
+};
+
+/**
+ * Why the main sign-in's session ended while the page was open:
+ * `signed-in-elsewhere`, the person signed in with the same Dex client in
+ * another browser, which replaced this browser's refresh token.
+ */
+export type MainSessionEndReason = 'signed-in-elsewhere';
+
+export type MainSessionEnd = {
+  /** The reason, or undefined while the session holds. */
+  reason(): MainSessionEndReason | undefined;
+  /** Calls `listener` on each change of {@link MainSessionEnd.reason}. */
+  subscribe(listener: () => void): () => void;
 };
 
 export type GSAuthProvidersApiCreateOptions = {
@@ -120,6 +140,8 @@ export type GSAuthProvidersApiCreateOptions = {
   provider?: AuthProviderInfo;
   configApi?: ConfigApi;
   oauthRequestApi: OAuthRequestApi;
+  /** Asks the person before a server-provided address is opened. */
+  externalUrlConsentApi: ExternalUrlConsentApi;
   defaultScopes?: string[];
   /**
    * Store that records per-cluster access outcomes (success / degraded /

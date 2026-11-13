@@ -6,7 +6,7 @@ import {
 
 /**
  * The organizations a component test's person belongs to, as agent-manager's
- * `list_my_organizations` names them: each namespace with the organization
+ * `list_organizations` names them: each namespace with the organization
  * its labels say. The namespaces keep the names the tests used before
  * organizations were read from agent-manager; the portal no longer reads
  * anything from those names.
@@ -31,8 +31,11 @@ export const TEST_ORGANIZATION_DIRECTORY: OrganizationDirectoryValue = {
   directory: organizationDirectory(TEST_ORGANIZATIONS),
   installations: [],
   discoveryErrors: [],
+  discoveryFailureOf: () => undefined,
+  signInOf: () => undefined,
   organizationsOf: () => undefined,
   failureOf: () => undefined,
   recheck: async () => {},
+  isLoadingOf: () => false,
   isLoading: false,
 };

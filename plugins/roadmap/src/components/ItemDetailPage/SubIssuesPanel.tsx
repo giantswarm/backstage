@@ -15,10 +15,13 @@ import {
 } from '@material-ui/core';
 import { Alert } from '@material-ui/lab';
 import LinkOffIcon from '@material-ui/icons/LinkOff';
-import { Link, Progress } from '@backstage/core-components';
+import { Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ExternalLink,
+  isAwaitingData,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { roadmapApiRef } from '../../apis';
 import { RoadmapErrorAlert } from '../RoadmapErrorAlert';
@@ -116,9 +119,9 @@ export function SubIssuesPanel(props: {
           color="textSecondary"
         >
           Part of{' '}
-          <Link to={parent.htmlUrl}>
+          <ExternalLink href={parent.htmlUrl} display="inline">
             {parent.repo ?? ''}#{parent.number} {parent.title}
-          </Link>
+          </ExternalLink>
         </Typography>
       )}
       {mutationError ? (
@@ -149,9 +152,9 @@ export function SubIssuesPanel(props: {
                       variant="outlined"
                       label={issue.state}
                     />
-                    <Link to={issue.htmlUrl}>
+                    <ExternalLink href={issue.htmlUrl} display="inline">
                       {issue.repo ?? ''}#{issue.number} {issue.title}
-                    </Link>
+                    </ExternalLink>
                   </>
                 }
                 secondary={

@@ -31,7 +31,10 @@ const json = (body: unknown, status = 200) =>
     headers: { 'Content-Type': 'application/json' },
   });
 
-function setup({ signedIn = true }: { signedIn?: boolean } = {}) {
+function setup({
+  signedIn = true,
+  withSignals = true,
+}: { signedIn?: boolean; withSignals?: boolean } = {}) {
   const signals = fakeSignals();
   const fetch = jest.fn<Promise<Response>, [string, RequestInit?]>();
   const fallback = WebStorage.create({
@@ -42,7 +45,7 @@ function setup({ signedIn = true }: { signedIn?: boolean } = {}) {
     fetchApi: { fetch } as any,
     identityApi: mockApis.identity(signedIn ? { token: 'a-token' } : {}),
     fallback,
-    signalApi: signals.signalApi,
+    signalApi: withSignals ? signals.signalApi : undefined,
   }).forBucket('agent-platform');
   return { storage, fetch, fallback, ...signals };
 }
@@ -105,6 +108,110 @@ describe('RoamingSettingsStorage', () => {
       ]);
     },
   );
+
+  describe('a key the backend does not hold', () => {
+    const notFound = () => Promise.resolve(json({ error: 'not found' }, 404));
+
+    it('reads it again for a subscription that starts after the 404 answered', async () => {
+      // A 404 is not kept: a writer subscribing later starts from what is
+      // stored then, whatever an announcement it may have missed said.
+      const { storage, fetch } = setup();
+      fetch.mockImplementationOnce(notFound);
+
+      watch(storage);
+      await settle();
+      fetch.mockResolvedValueOnce(json({ value: 'Muted' }));
+      const { seen } = watch(storage);
+      await settle();
+
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(seen.at(-1)).toEqual({
+        key: 'someSetting',
+        presence: 'present',
+        value: 'Muted',
+      });
+    });
+
+    it('shares one read between subscriptions that start together', async () => {
+      const { storage, fetch } = setup();
+      fetch.mockImplementation(notFound);
+
+      const first = watch(storage);
+      const second = watch(storage);
+      await settle();
+
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(first.seen).toEqual([{ key: 'someSetting', presence: 'absent' }]);
+      expect(second.seen).toEqual([{ key: 'someSetting', presence: 'absent' }]);
+    });
+
+    it('reads again once a change is announced', async () => {
+      const { storage, fetch, send } = setup();
+      fetch.mockImplementationOnce(notFound);
+      watch(storage);
+      await settle();
+
+      fetch.mockResolvedValueOnce(json({ value: 'Muted' }));
+      send({ type: 'key-changed', key: 'someSetting' });
+      await settle();
+      fetch.mockResolvedValueOnce(json({ value: 'Muted' }));
+      const { seen } = watch(storage);
+      await settle();
+
+      expect(fetch).toHaveBeenCalledTimes(3);
+      expect(seen.at(-1)).toEqual({
+        key: 'someSetting',
+        presence: 'present',
+        value: 'Muted',
+      });
+    });
+
+    it('reads again after a write here', async () => {
+      const { storage, fetch } = setup();
+      fetch.mockImplementationOnce(notFound);
+      watch(storage);
+      await settle();
+
+      fetch.mockResolvedValueOnce(json({ value: 'Muted' }));
+      await storage.set('someSetting', 'Muted');
+      fetch.mockResolvedValueOnce(json({ value: 'Muted' }));
+      watch(storage);
+      await settle();
+
+      expect(fetch).toHaveBeenCalledTimes(3);
+    });
+
+    it('reads again after every subscription closed, when an announcement could have been missed', async () => {
+      const { storage, fetch, count } = setup();
+      fetch.mockImplementationOnce(notFound);
+      const { subscription } = watch(storage);
+      await settle();
+      subscription.unsubscribe();
+      expect(count()).toBe(0);
+
+      fetch.mockResolvedValueOnce(json({ value: 'Muted' }));
+      const { seen } = watch(storage);
+      await settle();
+
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(seen).toEqual([
+        { key: 'someSetting', presence: 'present', value: 'Muted' },
+      ]);
+    });
+
+    it('shares a read in flight without the signals channel too', async () => {
+      const { storage, fetch } = setup({ withSignals: false });
+      fetch.mockImplementation(notFound);
+
+      watch(storage);
+      watch(storage);
+      await settle();
+      watch(storage);
+      await settle();
+
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+  });
 
   it('reads the key afresh when another tab’s change is announced, right after a read', async () => {
     const { storage, fetch, send } = setup();

@@ -323,6 +323,31 @@ as them. To test an unreleased build, put its image into the lab
 with the spec that proves it. Variables, coverage and the lab conditions that
 look like failures are in [`e2e/agentlab/README.md`](../e2e/agentlab/README.md).
 
+## Manual UI test before merge
+
+Automated tests cover the UI poorly, so a pull request that changes much of
+what people see is tested by hand before it merges. Its description has a
+`### UI impact` section, written by its author with the
+[`ui-impact`](../.agents/skills/ui-impact/SKILL.md) skill: a score from how
+many people see the change and how big it is, the pages it touches, and the
+steps to check it. A hidden block at the end of the section carries the same
+assessment for the triage that ranks pull requests, with the commit it was
+made at; a block made at an older commit than the head is stale and gets
+redone.
+
+From score 6 the section starts with "Manual UI test needed before merge.",
+lists a test plan, and the pull request has the `ui-test-needed` label. It
+doesn't merge until someone has run the test plan against a build of the
+branch and replaced `ui-test-needed` with `ui-tested`. When a later push
+changes the UI again, `ui-tested` goes, and `ui-test-needed` comes back if the
+new score is still 6 or more.
+
+This is a convention, not a gate: no check fails while `ui-test-needed` is
+set, and nothing notices a block that is behind the head. That happens
+whenever someone other than the author pushes (a co-author, the "Update
+branch" button, Renovate). Whoever merges checks the label, and that the
+block's commit is the head.
+
 ## Running app locally with HTTPS
 
 To use HTTPS with your local development site and access https://localhost,

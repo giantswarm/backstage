@@ -21,6 +21,7 @@ import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
 import { useFormHarnessRuntime } from '../../hooks/useFormHarnessRuntime';
 import { underlyingModelLine } from '../../hooks/useUnderlyingModel';
+import { modelLabel } from '../../lib/modelLabel';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { CreateAgentAssist } from '../CreateAgentAssist';
 import { AgentAvatarPreview } from '../AgentAvatarPreview';
@@ -69,13 +70,6 @@ function NewAgentPageContent() {
   const classes = useStyles();
   const navigate = useNavigate();
   const links = useAgentWizardLinks();
-  // Called here for two reasons beyond this page's own rendering: it starts the
-  // (backend, git-tree-walking) skill discovery while the user is still filling
-  // in this form, so step 2 usually has its catalogue ready instead of showing
-  // "Discovering skills…"; and `hasRepositories` decides whether step 2 exists
-  // at all. The query key doesn't depend on any form state, so the warm-up is
-  // never wasted, and it doesn't fire when no repositories are configured.
-  const { hasRepositories } = useSkillCatalog();
   const {
     state,
     edit,
@@ -94,6 +88,10 @@ function NewAgentPageContent() {
     tagsOffered,
     storedTags,
   } = useNewAgentForm();
+  // Starts reading the target installation's skill catalog while the form is
+  // filled in, so step 2 has it ready; `hasRepositories` decides whether step 2
+  // exists at all.
+  const { hasRepositories } = useSkillCatalog(state.installation);
   // The platform Harness the runtime field shows, for the summary below.
   const { platformChoice } = useRuntimeChoices();
   // The runtime decides whether extra egress origins are offered at all.
@@ -243,16 +241,8 @@ function NewAgentPageContent() {
       )
     : undefined;
   const modelName =
-    state.modelDisplayName ??
-    listedModel?.getDisplayName() ??
-    state.modelConfigName;
-  // The line keeps the ModelConfig's name -- an admin may abstract the model
-  // on purpose ("The Cheap One") -- and offers the model it runs one hover or
-  // focus away (PO decision L6). Not when the name already is the model.
-  const underlyingModel =
-    listedModel && listedModel.getModel() !== modelName
-      ? underlyingModelLine(listedModel)
-      : undefined;
+    modelLabel(listedModel) ?? state.modelDisplayName ?? state.modelConfigName;
+  const underlyingModel = underlyingModelLine(listedModel, modelName);
   let modelSummary: ReactNode;
   if (modelName) {
     modelSummary = (
@@ -260,11 +250,11 @@ function NewAgentPageContent() {
         Runs on {modelName}
         {underlyingModel && (
           <InfoHint
-            label={`Which model ${modelName} runs`}
+            label={`Model details for ${modelName}`}
             size="medium"
             className={classes.modelHint}
           >
-            {`Underlying model: ${underlyingModel}`}
+            {underlyingModel}
           </InfoHint>
         )}{' '}
         · change under More options

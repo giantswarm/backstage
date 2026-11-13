@@ -17,7 +17,46 @@ const useStyles = makeStyles(theme => ({
 
 type Rendered = { svg: string } | { error: string } | undefined;
 
-async function renderDiagram(id: string, source: string, dark: boolean) {
+/**
+ * CSS that makes the browser fetch: `@import`, and `url(…)` or `image-set(…)`
+ * other than a reference into the SVG itself (`url(#marker)`). A diagram's
+ * source reaches its `<style>` through `classDef`, `style` and an `init`
+ * directive's `themeCSS` (an `@font-face` with a remote `src`, for one).
+ */
+const REMOTE_CSS =
+  /@import[^;]*;?|(?:-webkit-)?image-set\([^)]*\)|url\(\s*(?!['"]?#)[^)]*\)/gi;
+
+/**
+ * Mermaid draws an image node (`A@{ img: … }`) as an element the browser
+ * fetches, and passes the diagram's own CSS through. The markup is parsed
+ * into an inert template, so nothing loads before the elements and remote
+ * CSS references are gone.
+ */
+function withoutRemoteResources(svg: string): string {
+  const template = document.createElement('template');
+  template.innerHTML = svg;
+  const { content } = template;
+  content
+    .querySelectorAll('image, img, feImage')
+    .forEach(element => element.remove());
+  content.querySelectorAll('style').forEach(style => {
+    style.textContent = (style.textContent ?? '').replace(REMOTE_CSS, 'none');
+  });
+  content.querySelectorAll('[style]').forEach(element => {
+    element.setAttribute(
+      'style',
+      (element.getAttribute('style') ?? '').replace(REMOTE_CSS, 'none'),
+    );
+  });
+  return template.innerHTML;
+}
+
+async function renderDiagram(
+  id: string,
+  source: string,
+  dark: boolean,
+  untrusted: boolean,
+) {
   const { default: mermaid } = await import('mermaid');
   mermaid.initialize({
     startOnLoad: false,
@@ -28,7 +67,7 @@ async function renderDiagram(id: string, source: string, dark: boolean) {
     suppressErrorRendering: true,
   });
   const { svg } = await mermaid.render(id, source);
-  return svg;
+  return untrusted ? withoutRemoteResources(svg) : svg;
 }
 
 // Mermaid's parse errors start with "Parse error on line 2:", then quote the
@@ -43,9 +82,17 @@ const summarize = (error: unknown) =>
 /**
  * A Mermaid diagram as SVG, in the theme's light or dark palette. While
  * Mermaid loads, and when the diagram cannot be rendered, its source shows
- * instead; a failed one says why.
+ * instead; a failed one says why. An `untrusted` diagram (one from model or
+ * tool output) loads nothing: its image nodes and remote CSS references are
+ * dropped.
  */
-export const MermaidDiagram = ({ source }: { source: string }) => {
+export const MermaidDiagram = ({
+  source,
+  untrusted = false,
+}: {
+  source: string;
+  untrusted?: boolean;
+}) => {
   const classes = useStyles();
   const dark = useTheme().palette.type === 'dark';
   // Mermaid needs an id usable as a CSS selector; useId returns ":r1:".
@@ -58,14 +105,14 @@ export const MermaidDiagram = ({ source }: { source: string }) => {
   useEffect(() => {
     let cancelled = false;
     renders.current += 1;
-    renderDiagram(`${baseId}-${renders.current}`, source, dark).then(
+    renderDiagram(`${baseId}-${renders.current}`, source, dark, untrusted).then(
       svg => !cancelled && setRendered({ svg }),
       error => !cancelled && setRendered({ error: summarize(error) ?? '' }),
     );
     return () => {
       cancelled = true;
     };
-  }, [baseId, source, dark]);
+  }, [baseId, source, dark, untrusted]);
 
   const code = (
     <pre>

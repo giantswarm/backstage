@@ -44,6 +44,8 @@ type KeyState = {
   started: number;
   /** The number of the newest one whose answer was handed out. */
   delivered: number;
+  /** The turn of a read in flight, which a new subscription joins. */
+  reading?: number;
 };
 
 export type RoamingSettingsStorageOptions = {
@@ -71,10 +73,13 @@ export type RoamingSettingsStorageOptions = {
  *   failed read is handed out as `presence: 'unknown'`, which a reader keeps
  *   its last value for and a writer refuses to write on. It says why
  *   (`Failure`), as a failed write's error does.
- * - **Every read goes to the backend.** No answer is cached: a subscription
- *   and every change announced on the signals channel read the key afresh, so
- *   a writer that reads before it writes starts from what is stored now, and
- *   a change announced right after a read is not answered from that read.
+ * - **Every read of a value goes to the backend.** A subscription and every
+ *   change announced on the signals channel read the key afresh, so a writer
+ *   that reads before it writes starts from what is stored now, and a change
+ *   announced right after a read is not answered from that read. The one
+ *   thing a new subscription shares is a read of the key still in flight,
+ *   when nothing newer has started: the components of a page that subscribe
+ *   together make one request, and no answer outlives its request.
  *
  * Answers are handed to every subscriber of the key, newest first: one that
  * arrives after a newer read or write has been handed out is dropped.
@@ -129,7 +134,7 @@ export class RoamingSettingsStorage implements StorageApi {
           },
         );
       }
-      this.read(key);
+      this.subscribe(key);
       return () => {
         state.subscribers.delete(subscriber);
         if (state.subscribers.size === 0) {
@@ -191,10 +196,27 @@ export class RoamingSettingsStorage implements StorageApi {
     }
   }
 
+  /** Answers a new subscription: from the read in flight, else with a read. */
+  private subscribe(key: string): void {
+    const state = this.stateOf(key);
+    if (state.reading !== undefined && state.reading === state.started) {
+      // The newest turn: its answer, or a later one's, reaches this
+      // subscriber too.
+      return;
+    }
+    this.read(key);
+  }
+
   /** Reads the key from the backend and hands the answer to its subscribers. */
   private async read(key: string): Promise<void> {
+    const state = this.stateOf(key);
     const turn = this.start(key);
-    this.deliver(key, turn, await this.fetchSnapshot(key));
+    state.reading = turn;
+    const snapshot = await this.fetchSnapshot(key);
+    if (state.reading === turn) {
+      state.reading = undefined;
+    }
+    this.deliver(key, turn, snapshot);
   }
 
   private async fetchSnapshot(key: string): Promise<Snapshot> {

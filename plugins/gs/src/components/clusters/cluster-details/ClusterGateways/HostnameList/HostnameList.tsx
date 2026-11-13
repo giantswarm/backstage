@@ -1,4 +1,5 @@
-import { Flex, Link, Text } from '@backstage/ui';
+import { Flex, Text } from '@backstage/ui';
+import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 
 /** A wildcard has no single address to open, so only concrete names link. */
 export const HostnameList = ({
@@ -16,14 +17,13 @@ export const HostnameList = ({
             {hostname}
           </Text>
         ) : (
-          <Link
+          <ExternalLink
             key={hostname}
             href={`https://${hostname}/`}
-            target="_blank"
-            rel="noopener noreferrer"
+            variant="body-medium"
           >
             {hostname}
-          </Link>
+          </ExternalLink>
         ),
       )}
     </Flex>

@@ -574,7 +574,7 @@ describe('shell connector wizard', () => {
 
       await userEvent.click(
         screen.getByText(
-          "Advanced: sign-in settings for apps muster can't look up",
+          "Advanced: sign-in settings for apps Muster can't look up",
         ),
       );
       await userEvent.type(
@@ -687,7 +687,7 @@ describe('shell connector wizard', () => {
         );
         await userEvent.click(
           screen.getByText(
-            "Advanced: sign-in settings for apps muster can't look up",
+            "Advanced: sign-in settings for apps Muster can't look up",
           ),
         );
         await userEvent.type(
@@ -866,7 +866,7 @@ describe('shell connector wizard', () => {
         );
         await userEvent.click(
           screen.getByText(
-            "Advanced: sign-in settings for apps muster can't look up",
+            "Advanced: sign-in settings for apps Muster can't look up",
           ),
         );
         await userEvent.type(
@@ -911,7 +911,7 @@ describe('shell connector wizard', () => {
         // Says where the client goes, in Kubernetes terms.
         expect(
           within(credentials).getByText(
-            'When you enter a client, muster stores it in a new Kubernetes Secret of type Opaque, which belongs to the connector and is deleted with it.',
+            'When you enter a client, Muster stores it in a new Kubernetes Secret of type Opaque, which belongs to the connector and is deleted with it.',
           ),
         ).toBeInTheDocument();
         expect(
@@ -1040,7 +1040,7 @@ describe('shell connector wizard', () => {
         );
         await userEvent.click(
           screen.getByText(
-            "Advanced: sign-in settings for apps muster can't look up",
+            "Advanced: sign-in settings for apps Muster can't look up",
           ),
         );
         const scopes = await screen.findByLabelText(
@@ -1093,7 +1093,7 @@ describe('shell connector wizard', () => {
         );
         await userEvent.click(
           screen.getByText(
-            "Advanced: sign-in settings for apps muster can't look up",
+            "Advanced: sign-in settings for apps Muster can't look up",
           ),
         );
         const credentials = screen.getByRole('group', {
@@ -1177,7 +1177,7 @@ describe('shell connector wizard', () => {
         );
         await userEvent.click(
           screen.getByText(
-            "Advanced: sign-in settings for apps muster can't look up",
+            "Advanced: sign-in settings for apps Muster can't look up",
           ),
         );
         await userEvent.type(
@@ -1275,7 +1275,7 @@ describe('shell connector wizard', () => {
       // An issuer makes one sign-in the default, and the warning goes.
       await userEvent.click(
         screen.getByText(
-          "Advanced: sign-in settings for apps muster can't look up",
+          "Advanced: sign-in settings for apps Muster can't look up",
         ),
       );
       await userEvent.type(
@@ -1327,7 +1327,7 @@ describe('shell connector wizard', () => {
       );
       const advanced = () =>
         screen.getByText(
-          "Advanced: sign-in settings for apps muster can't look up",
+          "Advanced: sign-in settings for apps Muster can't look up",
         );
       await userEvent.click(advanced());
       await userEvent.type(
@@ -1383,7 +1383,7 @@ describe('shell connector wizard', () => {
       );
 
       expect(
-        screen.getByText(/takes effect only after muster restarts/),
+        screen.getByText(/takes effect only after Muster restarts/),
       ).toBeInTheDocument();
 
       await userEvent.type(

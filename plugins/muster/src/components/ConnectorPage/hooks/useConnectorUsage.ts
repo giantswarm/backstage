@@ -4,24 +4,23 @@ import { useQuery } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
 import { McpUsage, musterApiRef } from '../../../apis';
+import {
+  MCP_USAGE_STALE_MS,
+  useToolLatency,
+  withToolLatency,
+} from '../../McpUsage';
 import { ServerPageRow } from '../../../lib/serverGrouping';
 import {
   CONNECTOR_USAGE_DAYS,
   usageServerNames,
 } from '../utils/connectorUsage';
 
-/**
- * How long a connector's usage stays fresh. Its buckets are whole days and
- * the read is several 30-day range queries, so the tab and Details reuse one
- * answer for a few minutes rather than each mount asking again, and a tool's
- * Usage tab its own (the read narrowed to that tool, a cache entry apart).
- */
-const CONNECTOR_USAGE_STALE_MS = 5 * 60_000;
-
 export interface ConnectorUsage {
   /** Undefined until read, and where it could not be. */
   usage?: McpUsage;
   isLoading: boolean;
+  /** Each tool's p95, read apart from the rest, is still on its way. */
+  p95Loading?: boolean;
   error?: Error;
 }
 
@@ -41,9 +40,12 @@ export function useConnectorUsage(
     enabled,
     tool,
     days = CONNECTOR_USAGE_DAYS,
+    withToolLatency: readToolLatency = false,
   }: {
     enabled: boolean;
     tool?: string;
+    /** Also read each tool's p95, for a table that shows it. */
+    withToolLatency?: boolean;
     /** The window, in days: a Usage tab's follows the `?window=` it opened with. */
     days?: number;
   },
@@ -56,11 +58,26 @@ export function useConnectorUsage(
     queryFn: () =>
       musterApi.getMcpUsage({ installation, hours, servers, tool }),
     enabled: enabled && Boolean(installation) && servers.length > 0,
-    staleTime: CONNECTOR_USAGE_STALE_MS,
+    // The tab and Details reuse one answer rather than each mount asking
+    // again, and a tool's Usage tab its own (a cache entry apart).
+    staleTime: MCP_USAGE_STALE_MS,
   });
+  // Narrowed to one tool, `/usage` answers its p95 itself.
+  const toolLatency = useToolLatency({
+    installation,
+    hours,
+    servers,
+    enabled:
+      enabled && readToolLatency && servers.length > 0 && tool === undefined,
+  });
+  const usage = useMemo(
+    () => data && withToolLatency(data, toolLatency.latency),
+    [data, toolLatency.latency],
+  );
   return {
-    usage: data,
+    usage,
     isLoading: isAwaitingData({ isPending, fetchStatus }),
+    p95Loading: toolLatency.isLoading,
     error: (error as Error | null) ?? undefined,
   };
 }

@@ -19,6 +19,10 @@ import {
   ACKNOWLEDGE_LOSS,
   RemoveModelCacheDialog,
 } from './RemoveModelCacheDialog';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 const CLUSTER: ManagedCluster = {
   name: 'wc1',
@@ -154,7 +158,12 @@ async function renderDialog(answers: (Error | 'complete')[]) {
   const onOpenChange = jest.fn();
   const onRemoved = jest.fn();
   await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, api]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, api],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <Harness onOpenChange={onOpenChange} onRemoved={onRemoved} />
       </QueryClientProvider>

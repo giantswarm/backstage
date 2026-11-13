@@ -4,6 +4,7 @@ import { categoricalColors } from '@giantswarm/backstage-plugin-ui-react';
 import {
   MEASURE_KEYS,
   measureSlot,
+  RESERVED_RED_SLOT,
   useMeasureColor,
   type MeasureKey,
 } from './measures';
@@ -53,6 +54,12 @@ describe('measure slots', () => {
 
     for (const measure of MEASURE_KEYS) {
       expect(measureSlot(measure)).toBeLessThan(palette.length);
+    }
+  });
+
+  it('leaves the red slot to errors', () => {
+    for (const measure of MEASURE_KEYS) {
+      expect(measureSlot(measure)).not.toBe(RESERVED_RED_SLOT);
     }
   });
 

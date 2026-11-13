@@ -15,6 +15,7 @@ import {
   TextField,
 } from '@backstage/ui';
 import {
+  ExternalLink,
   type BreadcrumbItem,
   CodeBlock,
   EmptyStateCard,
@@ -154,18 +155,21 @@ function BuildStatus({
         tone={buildTone(build)}
         label={BUILD_STATE_LABEL[build.state]}
       />
-      {(build.jobs ?? []).map(job => (
-        <Text key={job.name} variant="body-small" color="secondary">
-          {safeWebURL(job.url) ? (
-            <Link href={safeWebURL(job.url)} target="_blank" rel="noopener">
-              {job.name}
-            </Link>
-          ) : (
-            job.name
-          )}
-          : {job.state}
-        </Text>
-      ))}
+      {(build.jobs ?? []).map(job => {
+        const jobURL = safeWebURL(job.url);
+        return (
+          <Text key={job.name} variant="body-small" color="secondary">
+            {jobURL ? (
+              <ExternalLink href={jobURL} display="inline">
+                {job.name}
+              </ExternalLink>
+            ) : (
+              job.name
+            )}
+            : {job.state}
+          </Text>
+        );
+      })}
       {build.state === 'published' && (
         <Text variant="body-medium">
           {build.image}.{' '}
@@ -276,6 +280,17 @@ export function NewToolchainPage() {
     >
       <NewToolchainForm key={installation} installation={installation} />
     </ShellPage>
+  );
+}
+
+/** The pull request that adds the toolchain, linked when its URL is safe. */
+function PullLink({ href, text }: { href: string | undefined; text: string }) {
+  return href ? (
+    <ExternalLink href={href} display="inline">
+      {text}
+    </ExternalLink>
+  ) : (
+    <>{text}</>
   );
 }
 
@@ -589,13 +604,10 @@ function NewToolchainForm({ installation }: { installation: string }) {
           {created && (
             <Flex direction="column" gap="3">
               <Text variant="body-medium">
-                <Link
+                <PullLink
                   href={safeWebURL(created.pullURL)}
-                  target="_blank"
-                  rel="noopener"
-                >
-                  {created.repository}#{created.pull}
-                </Link>{' '}
+                  text={`${created.repository}#${created.pull}`}
+                />{' '}
                 adds {created.toolchain} on the branch {created.branch}.
               </Text>
               <BuildStatus

@@ -199,6 +199,13 @@ export function fleetManagementClusters(standard: StandardGroup[]): string[] {
  */
 export const MUSTER_SERVER_KEY = 'muster';
 
+/**
+ * What people call muster's own entry: its row in the Connectors list, its
+ * page's title and breadcrumb. Only the name shown; {@link MUSTER_SERVER_KEY}
+ * stays what its URL, links and muster use.
+ */
+export const MUSTER_DISPLAY_NAME = 'Muster';
+
 /** What a server page shows: a list row, or muster itself. */
 export type ServerPageRow = ServerRow | { kind: 'core' };
 
@@ -324,14 +331,18 @@ export function connectorDisplayNameOn(
 
 /**
  * What a row is called for people, by {@link connectorDisplayNames}: its
- * display name where it has a distinct one, else {@link serverRowKey}.
+ * display name where it has a distinct one, else {@link serverRowKey};
+ * muster's own row is {@link MUSTER_DISPLAY_NAME}.
  */
 export function serverRowDisplayName(
   row: ServerPageRow,
   names: ReadonlyMap<string, string>,
 ): string {
+  if (row.kind === 'core') {
+    return MUSTER_DISPLAY_NAME;
+  }
   const key = serverRowKey(row);
-  return row.kind === 'core' ? key : (names.get(key) ?? key);
+  return names.get(key) ?? key;
 }
 
 /**

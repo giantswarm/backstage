@@ -103,3 +103,59 @@ describe('AgentManagerClient.startSession', () => {
     ).rejects.toThrow(/without a session id/);
   });
 });
+
+describe('AgentManagerClient.getOrganization', () => {
+  it('separates the organization from erases, which agent-manager answers side by side', async () => {
+    const { api, callTool } = makeMusterApi(async () => ({
+      name: 'payments',
+      parent: 'org-acme',
+      harnesses: ['kagent'],
+      workerReplicas: 1,
+      erases: { namespace: 'agents-payments-x7k2q', kept: 'tombstones' },
+    }));
+
+    const details = await new AgentManagerClient(api, 'inst-1').getOrganization(
+      'org-acme',
+      'payments',
+    );
+
+    expect(callTool).toHaveBeenCalledWith(
+      'x_agent-manager_get_organization',
+      { namespace: 'org-acme', name: 'payments' },
+      'inst-1',
+    );
+    expect(details.organization).toEqual({
+      name: 'payments',
+      parent: 'org-acme',
+      harnesses: ['kagent'],
+      workerReplicas: 1,
+    });
+    expect(details.erases).toEqual({
+      namespace: 'agents-payments-x7k2q',
+      kept: 'tombstones',
+    });
+  });
+});
+
+describe('AgentManagerClient.deleteOrganization', () => {
+  it('sends the typed name only when given, and mode commit only when asked', async () => {
+    const { api, callTool } = makeMusterApi(async () => ({ deleted: false }));
+    const client = new AgentManagerClient(api, 'inst-1');
+
+    await client.deleteOrganization({
+      parent: 'org-acme',
+      name: 'payments',
+      mode: 'commit',
+    });
+    await client.deleteOrganization({
+      parent: 'org-acme',
+      name: 'payments',
+      confirm: 'org-acme/payments',
+    });
+
+    expect(callTool.mock.calls.map(([, args]) => args)).toEqual([
+      { namespace: 'org-acme', name: 'payments', mode: 'commit' },
+      { namespace: 'org-acme', name: 'payments', confirm: 'org-acme/payments' },
+    ]);
+  });
+});

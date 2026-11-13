@@ -1,17 +1,31 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Button, Flex, Skeleton, Text, TextField } from '@backstage/ui';
+import {
+  Accordion,
+  AccordionGroup,
+  AccordionPanel,
+  AccordionTrigger,
+  Alert,
+  Button,
+  Flex,
+  Skeleton,
+  Text,
+  TextField,
+} from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
   EmptyStateCard,
   fieldErrorProps,
   SimpleAccordion,
   useFieldValidation,
+  type FieldBlurProps,
   useProvidePageHeaderActions,
+  useSimpleAccordionStyles,
   useWizardFrameRail,
   WizardFrame,
 } from '@giantswarm/backstage-plugin-ui-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Provider sign-in uses the muster frontend API.
 import { useServerSignIn } from '@giantswarm/backstage-plugin-muster';
 
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
@@ -36,6 +50,7 @@ import {
   emptySource,
   fieldOfManagerMessage,
   managerMessageText,
+  WORKSPACE_NAME_MAX,
   type SourceDraft,
   type WorkspaceDraft,
 } from '../../lib/workspaceDraft';
@@ -46,6 +61,7 @@ import {
   type WorkspacePreview,
   type WorkspaceStorage,
 } from '../../lib/workspaceManager';
+import { slugify } from '../../lib/slugify';
 import {
   editorGate,
   WorkspaceEditorGate,
@@ -243,20 +259,67 @@ function WorkspaceEditor({
     [draft, update],
   );
 
+  // Creating: the name as the person types it, which only the form holds.
+  // The technical name is filled in from it until the person types one of
+  // their own, as on agent creation; clearing theirs (or typing the one it
+  // would be) hands it back to the name.
+  const [displayName, setDisplayName] = useState('');
+  const [nameEdited, setNameEdited] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const onNameChange = useCallback(
+    (value: string) => {
+      if (draft) {
+        setDisplayName(value);
+        update({
+          ...draft,
+          name: nameEdited ? draft.name : slugify(value, WORKSPACE_NAME_MAX),
+        });
+      }
+    },
+    [draft, update, nameEdited],
+  );
+  const onTechnicalNameChange = useCallback(
+    (value: string) => {
+      if (draft) {
+        setNameEdited(
+          value.trim() !== '' &&
+            value !== slugify(displayName, WORKSPACE_NAME_MAX),
+        );
+        update({ ...draft, name: value });
+      }
+    },
+    [draft, update, displayName],
+  );
+
   const problems = useMemo(
-    () => (draft ? draftProblems(draft, isEdit) : {}),
-    [draft, isEdit],
+    () =>
+      draft
+        ? draftProblems(draft, isEdit, isEdit ? undefined : displayName)
+        : {},
+    [draft, isEdit, displayName],
   );
+  // A filled-in technical name's problem shows on the name it came from; one
+  // the person typed, or none filled in at all, on the technical name.
+  const technicalOnNameField =
+    !isEdit && !nameEdited && Boolean(draft?.name.trim());
+  const displayNameProblem =
+    problems.displayName ?? (technicalOnNameField ? problems.name : undefined);
   const validation = useFieldValidation();
-  // A field the person left shows its problem at once; the rest on save.
-  const [touched, setTouched] = useState<ReadonlySet<string>>(new Set());
-  const touch = useCallback(
-    (field: string) =>
-      setTouched(previous =>
-        previous.has(field) ? previous : new Set(previous).add(field),
+  const blurProps = useCallback(
+    (field: string, worded?: string) =>
+      validation.blurProps(
+        field,
+        worded ??
+          (field === 'displayName' ? displayNameProblem : problems[field]),
       ),
-    [],
+    [validation, problems, displayNameProblem],
   );
+  // Read, none to pick from, and a source that names none: it cannot be saved.
+  const providersMissing =
+    (Boolean(providersQuery.data) || Boolean(providersQuery.error)) &&
+    providers.length === 0 &&
+    Boolean(draft?.sources.some(source => !source.provider));
+  const providersAlert = useRef<HTMLDivElement>(null);
   // The name is checked once typing pauses too, and whether it is free.
   const typedName = draft?.name.trim() ?? '';
   const pausedName = useDebouncedValue(typedName, NAME_CHECK_DEBOUNCE_MS);
@@ -278,20 +341,52 @@ function WorkspaceEditor({
           return problems.name;
         }
       }
-      return touched.has(field)
-        ? problems[field]
-        : validation.errorFor(field, problems[field]);
+      return validation.errorFor(
+        field,
+        field === 'displayName' ? displayNameProblem : problems[field],
+      );
     },
     [
       problem,
       problems,
       validation,
-      touched,
       nameAvailability.state,
       typedName,
       pausedName,
       installation,
+      displayNameProblem,
     ],
+  );
+
+  // Opens what hides a field with a problem, so its error and the focus can
+  // reach it: Advanced options, and in the edit flow the first source at
+  // fault while the open one has none.
+  const unfold = useCallback(
+    (fields: string[]) => {
+      if (
+        fields.includes('sizing.minimum') ||
+        (!technicalOnNameField && fields.includes('name'))
+      ) {
+        setAdvancedOpen(true);
+      }
+      if (!draft) {
+        return;
+      }
+      const faulty = draft.sources.filter((_, index) =>
+        fields.some(
+          field =>
+            field === `sources.${index}` ||
+            field.startsWith(`sources.${index}.`),
+        ),
+      );
+      if (
+        faulty.length > 0 &&
+        !faulty.some(source => source.key === expandedKey)
+      ) {
+        setExpanded(faulty[0].key);
+      }
+    },
+    [draft, expandedKey, technicalOnNameField],
   );
 
   const save = useSaveWorkspace(client);
@@ -303,6 +398,15 @@ function WorkspaceEditor({
       Object.keys(problems).length > 0 ||
       nameAvailability.state === 'taken'
     ) {
+      unfold([
+        ...Object.keys(problems),
+        ...(nameAvailability.state === 'taken' ? ['name'] : []),
+      ]);
+      // The provider field is not on screen: the warning takes the focus,
+      // and `reveal()` moves it on to the first invalid field, if any.
+      if (providersMissing) {
+        providersAlert.current?.focus();
+      }
       validation.reveal();
       return;
     }
@@ -320,14 +424,23 @@ function WorkspaceEditor({
       });
       navigate(closeHref);
     } catch (cause) {
-      setProblem(
-        saveProblem(classifyWorkspaceManagerError(cause), organization),
+      const refusal = saveProblem(
+        classifyWorkspaceManagerError(cause),
+        organization,
       );
+      setProblem(refusal);
+      if (refusal.field) {
+        // The refused field takes the focus, so its message is read out.
+        unfold([refusal.field]);
+        validation.reveal();
+      }
     }
   }, [
     draft,
     problems,
     nameAvailability.state,
+    unfold,
+    providersMissing,
     validation,
     save,
     organization,
@@ -427,7 +540,16 @@ function WorkspaceEditor({
         draft={draft}
         problem={problem}
         errorFor={errorFor}
-        touch={touch}
+        blurProps={blurProps}
+        displayName={displayName}
+        technicalOnNameField={technicalOnNameField}
+        technicalNameValid={
+          !problems.name && nameAvailability.state !== 'taken'
+        }
+        advancedOpen={advancedOpen}
+        onAdvancedOpenChange={setAdvancedOpen}
+        onNameChange={onNameChange}
+        onTechnicalNameChange={onTechnicalNameChange}
         onNameBlur={nameAvailability.checkNow}
         nameAvailable={nameAvailability.state === 'available'}
         update={update}
@@ -468,7 +590,8 @@ function WorkspaceEditor({
                       : undefined
                   }
                   errorFor={errorFor}
-                  touch={touch}
+                  blurProps={blurProps}
+                  showsPicksFirst={isEdit}
                   onExpand={
                     isEdit && source.key !== expandedKey
                       ? () => setExpanded(source.key)
@@ -480,6 +603,8 @@ function WorkspaceEditor({
             : null
         }
         providersError={providersQuery.error}
+        providersMissing={providersMissing}
+        providersAlert={providersAlert}
         previewPanel={previewPanel}
         diskLine={diskLine({
           isEdit,
@@ -549,8 +674,20 @@ type EditorBodyProps = {
   draft: WorkspaceDraft | undefined;
   problem: SaveProblem | undefined;
   errorFor: (field: string) => string | undefined;
-  /** Marks a field the person left, so its problem shows at once. */
-  touch: (field: string) => void;
+  /**
+   * Spread on a field so leaving it checks it; `problem` replaces the form's
+   * own problem for the field.
+   */
+  blurProps: (field: string, problem?: string) => FieldBlurProps;
+  /** Creating: the name as typed, which the technical name comes from. */
+  displayName: string;
+  /** Whether the technical name's problem shows on the name field. */
+  technicalOnNameField: boolean;
+  technicalNameValid: boolean;
+  advancedOpen: boolean;
+  onAdvancedOpenChange: (open: boolean) => void;
+  onNameChange: (displayName: string) => void;
+  onTechnicalNameChange: (name: string) => void;
   onNameBlur: () => void;
   nameAvailable: boolean;
   update: (draft: WorkspaceDraft) => void;
@@ -559,6 +696,9 @@ type EditorBodyProps = {
   onAddSource: () => void;
   sourceEditors: React.ReactNode;
   providersError: unknown;
+  /** No provider can be picked and a source names none, so it cannot be saved. */
+  providersMissing: boolean;
+  providersAlert: React.RefObject<HTMLDivElement>;
   previewPanel: React.ReactNode;
   diskLine: string;
 };
@@ -574,7 +714,14 @@ function EditorBody({
   draft,
   problem,
   errorFor,
-  touch,
+  blurProps,
+  displayName,
+  technicalOnNameField,
+  technicalNameValid,
+  advancedOpen,
+  onAdvancedOpenChange,
+  onNameChange,
+  onTechnicalNameChange,
   onNameBlur,
   nameAvailable,
   update,
@@ -582,11 +729,14 @@ function EditorBody({
   onAddSource,
   sourceEditors,
   providersError,
+  providersMissing,
+  providersAlert,
   previewPanel,
   diskLine: disk,
 }: EditorBodyProps) {
   const { docked } = useWizardFrameRail();
   const classes = useStyles();
+  const accordionClasses = useSimpleAccordionStyles();
 
   if (!availability.isLoading && !availability.isAvailable) {
     return (
@@ -613,6 +763,9 @@ function EditorBody({
   }
 
   const nameError = errorFor('name');
+  const nameBlur = blurProps('name');
+  const displayNameBlur = blurProps('displayName');
+  const technicalName = draft.name.trim();
   return (
     <Flex direction="column" gap="4">
       {!isEdit && (
@@ -625,16 +778,60 @@ function EditorBody({
 
       {problem && !problem.field && (
         <Alert
+          role="alert"
           status="danger"
           title="The workspace was not saved"
           description={problem.message}
         />
       )}
-      {Boolean(providersError) && (
+      {providersMissing && (
+        <div ref={providersAlert} tabIndex={-1}>
+          <Alert
+            status="warning"
+            title={
+              providersError
+                ? 'Could not read the providers'
+                : 'No provider to pick from'
+            }
+            description={
+              <Flex direction="column" gap="1">
+                <Text variant="body-medium">
+                  {providersError
+                    ? 'A source needs a provider, so the workspace cannot be saved until the providers can be read. Try again later, or ask your platform team.'
+                    : `A source needs a provider, and none is configured on ${installation}. Ask your platform team to add one.`}
+                </Text>
+                {Boolean(providersError) && (
+                  <SimpleAccordion title="Technical details" headingLevel={2}>
+                    <Text
+                      variant="body-small"
+                      style={{ overflowWrap: 'anywhere' }}
+                    >
+                      {classifyWorkspaceManagerError(providersError).message}
+                    </Text>
+                  </SimpleAccordion>
+                )}
+              </Flex>
+            }
+          />
+        </div>
+      )}
+      {Boolean(providersError) && !providersMissing && (
         <Alert
           status="warning"
           title="Could not read the providers"
-          description={classifyWorkspaceManagerError(providersError).message}
+          description={
+            <Flex direction="column" gap="1">
+              <Text variant="body-medium">
+                The existing sources can still be saved. Try again later to read
+                the available providers, or ask your platform team.
+              </Text>
+              <SimpleAccordion title="Technical details" headingLevel={2}>
+                <Text variant="body-small" style={{ overflowWrap: 'anywhere' }}>
+                  {classifyWorkspaceManagerError(providersError).message}
+                </Text>
+              </SimpleAccordion>
+            </Flex>
+          }
         />
       )}
 
@@ -643,18 +840,31 @@ function EditorBody({
           <TextField
             label="Name"
             isRequired
-            description="Lowercase letters, digits and dashes, up to 40 characters. It can’t be changed later."
-            value={draft.name}
-            onChange={value => update({ ...draft, name: value })}
-            onBlur={() => {
-              touch('name');
-              onNameBlur();
+            value={displayName}
+            onChange={onNameChange}
+            onFocus={displayNameBlur.onFocus}
+            onBlur={event => {
+              displayNameBlur.onBlur(event);
+              if (technicalOnNameField) {
+                onNameBlur();
+              }
             }}
-            {...fieldErrorProps(nameError)}
+            placeholder="e.g. Platform repositories"
+            // Always there: react-aria links a description to the field only
+            // when it renders with it.
+            description={
+              technicalName && technicalNameValid
+                ? `Its technical name is ${technicalName}; it cannot be changed once the workspace exists.`
+                : 'Its technical name is filled in from it; it cannot be changed once the workspace exists.'
+            }
+            {...fieldErrorProps(
+              errorFor('displayName') ??
+                (technicalOnNameField ? nameError : undefined),
+            )}
           />
           {nameAvailable && !nameError && (
             <Text variant="body-small" color="success" role="status">
-              {draft.name.trim()} is available
+              {technicalName} is available
             </Text>
           )}
         </Flex>
@@ -679,33 +889,61 @@ function EditorBody({
         </div>
       )}
 
-      <SimpleAccordion title="Advanced options" headingLevel={2}>
-        <Flex direction="column" gap="2">
-          <Text variant="body-small" weight="bold">
-            Disk space
-          </Text>
-          <Text
-            variant="body-small"
-            color="secondary"
-            data-testid="storage-estimate"
-          >
-            {disk}
-          </Text>
-          <div style={{ maxWidth: 240 }} className={classes.unitField}>
-            <TextField
-              label="Minimum size"
-              inputMode="numeric"
-              // The unit drawn after the number is no text a screen reader
-              // reads: the description names it.
-              description="The disk never gets smaller than this many GiB. 0 means automatic sizing only. Raise it if agents need a lot of room, for example for large builds."
-              value={draft.minimumGiB}
-              onChange={value => update({ ...draft, minimumGiB: value })}
-              onBlur={() => touch('sizing.minimum')}
-              {...fieldErrorProps(errorFor('sizing.minimum'))}
-            />
-          </div>
-        </Flex>
-      </SimpleAccordion>
+      <AccordionGroup
+        className={accordionClasses.group}
+        expandedKeys={advancedOpen ? ['advanced'] : []}
+        onExpandedChange={keys => onAdvancedOpenChange(keys.has('advanced'))}
+      >
+        <Accordion id="advanced">
+          <AccordionTrigger level={2}>Advanced options</AccordionTrigger>
+          <AccordionPanel>
+            <Flex direction="column" gap="4">
+              {!isEdit && (
+                <TextField
+                  label="Technical name"
+                  secondaryLabel="filled in from the name"
+                  isRequired
+                  value={draft.name}
+                  onChange={onTechnicalNameChange}
+                  onFocus={nameBlur.onFocus}
+                  onBlur={event => {
+                    nameBlur.onBlur(event);
+                    onNameBlur();
+                  }}
+                  placeholder="platform-repositories"
+                  description="Lowercase letters, digits and dashes, up to 40 characters. Used in links and resource names."
+                  {...fieldErrorProps(nameError)}
+                />
+              )}
+              <Flex direction="column" gap="2">
+                <Text variant="body-small" weight="bold">
+                  Disk space
+                </Text>
+                <Text
+                  variant="body-small"
+                  color="secondary"
+                  data-testid="storage-estimate"
+                >
+                  {disk}
+                </Text>
+                <div style={{ maxWidth: 240 }} className={classes.unitField}>
+                  <TextField
+                    label="Minimum size"
+                    inputMode="numeric"
+                    // The unit drawn after the number is no text a screen reader
+                    // reads: the description names it.
+                    description="The disk never gets smaller than this many GiB. 0 means automatic sizing only. Raise it if agents need a lot of room, for example for large builds."
+                    value={draft.minimumGiB}
+                    onChange={value => update({ ...draft, minimumGiB: value })}
+                    {...blurProps('sizing.minimum')}
+                    {...fieldErrorProps(errorFor('sizing.minimum'))}
+                  />
+                </div>
+              </Flex>
+            </Flex>
+          </AccordionPanel>
+        </Accordion>
+      </AccordionGroup>
 
       {!docked && previewPanel}
     </Flex>

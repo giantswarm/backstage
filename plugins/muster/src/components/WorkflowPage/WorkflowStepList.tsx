@@ -28,7 +28,7 @@ import { WorkflowStepDetails } from './WorkflowStepDetails';
 import { StepFeatureBadges } from './StepFeatureBadges';
 
 /** The cleanup lane's line, the same words the canvas puts on it. */
-const CLEANUP_LABEL = 'Cleanup muster runs when a step fails';
+const CLEANUP_LABEL = 'Cleanup Muster runs when a step fails';
 
 const useStyles = makeStyles({
   list: {

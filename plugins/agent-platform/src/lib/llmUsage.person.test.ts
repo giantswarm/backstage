@@ -1,3 +1,4 @@
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Mimir sample types are owned by the GS plugin.
 import type { MimirMetricSample } from '@giantswarm/backstage-plugin-gs';
 import { buildLlmUsage, reduceByPerson } from './llmUsage';
 
@@ -57,6 +58,36 @@ describe('reduceByPerson', () => {
         costUsd: 2,
         sharePct: 25,
       }),
+    ]);
+  });
+
+  it("counts each person's cached input once", () => {
+    // Since agentgateway v1.5.0 `input` holds the cache reads and writes.
+    const typed = (user: string, values: Record<string, string>) =>
+      Object.entries(values).map(([type, value]) =>
+        sample({ user, gen_ai_token_type: type }, value),
+      );
+    const rows = reduceByPerson({
+      ...options,
+      cost: [],
+      tokens: [
+        ...typed('alice@lab.local', {
+          input: '1000',
+          input_cache_read: '800',
+          input_cache_write: '150',
+          output: '20',
+        }),
+        ...typed('bob@lab.local', {
+          input: '100',
+          input_cache_read: '110',
+          output: '20',
+        }),
+      ],
+    });
+
+    expect(rows.map(row => [row.label, row.tokens])).toEqual([
+      ['alice@lab.local', 1020],
+      ['bob@lab.local', 120],
     ]);
   });
 

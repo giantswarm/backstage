@@ -76,9 +76,11 @@ describe('ConnectorTagSource', () => {
     expect(onTags).not.toHaveBeenCalledWith(
       expect.arrayContaining([expect.arrayContaining(['infrastructure'])]),
     );
+    // A mount on the next page reuses the list for a while.
     expect(mockUseMusterResources).toHaveBeenCalledWith(
       ['gazelle', 'golem'],
       MCPServer,
+      { staleTime: 5 * 60_000 },
     );
   });
 });
@@ -102,5 +104,10 @@ describe('WorkflowTagSource', () => {
     render(<WorkflowTagSource onTags={onTags} />);
 
     await waitFor(() => expect(onTags).toHaveBeenCalledWith([['release']]));
+    expect(mockUseMusterResources).toHaveBeenCalledWith(
+      expect.anything(),
+      MusterWorkflow,
+      { staleTime: 5 * 60_000 },
+    );
   });
 });

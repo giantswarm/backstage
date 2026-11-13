@@ -1,20 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import {
-  Alert,
-  Button,
-  ButtonLink,
-  Flex,
-  Select,
-  Text,
-  TextField,
-} from '@backstage/ui';
+import { Alert, Button, Flex, Select, Text, TextField } from '@backstage/ui';
 import {
   addTags,
   commitTagDraft,
   draftProblem,
   EmptyStateCard,
+  ExternalButtonLink,
+  LoadingIndicator,
   sameTags,
   searchableIf,
   tagCounts,
@@ -27,7 +21,6 @@ import {
   WizardStepHeading,
   CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 
 import {
   SKILL_NAME_RE,
@@ -37,12 +30,8 @@ import {
 import type { SkillContent } from '../../hooks/useSkillContent';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { uniqueSkills } from '../../lib/customize';
-import {
-  canProposeSkillTo,
-  repoSlug,
-  skillTags,
-  type DiscoveredSkill,
-} from '../../lib/skills';
+import { repoSlug, skillTags, type DiscoveredSkill } from '../../lib/skills';
+import { repositoryKey } from '../../lib/skillRepositories';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useCloseHref } from '../../hooks/useCloseHref';
 import { skillsRouteRef } from '../../routes';
@@ -80,15 +69,13 @@ function SkillPullRequestOutcome({
             before {isUpdate ? 'the change' : 'the skill'} reaches the catalog.
           </Text>
           <div>
-            <ButtonLink
+            <ExternalButtonLink
               href={result.pullRequestUrl}
-              target="_blank"
-              rel="noopener noreferrer"
               variant="secondary"
               size="small"
             >
-              Review pull request ↗
-            </ButtonLink>
+              Review pull request
+            </ExternalButtonLink>
           </div>
         </Flex>
       }
@@ -123,23 +110,19 @@ function SkillPullRequestOutcome({
  */
 export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
   const navigate = useNavigate();
-  // The target repositories: the github.com entries of the same
-  // signed-in-config list the catalog is discovered from — the pull-request
-  // endpoint refuses any other repository, so offering one would only end in
-  // an error. An edit targets the skill's own repository.
-  const { config } = useSignedInConfig();
+  // The target repositories: the catalog's own, which the pull-request
+  // endpoint accepts; offering any other would only end in an error. An edit
+  // targets the skill's own repository.
+  const catalog = useSkillCatalog();
   const editRepoUrl = edit?.skill.repoUrl;
-  const configured = useMemo(
-    () =>
-      config?.getOptionalStringArray('agentPlatform.skills.repositories') ?? [],
-    [config],
-  );
   const repositories = useMemo(
-    () => (editRepoUrl ? [editRepoUrl] : configured.filter(canProposeSkillTo)),
-    [configured, editRepoUrl],
+    () => (editRepoUrl ? [editRepoUrl] : catalog.proposalTargets),
+    [catalog.proposalTargets, editRepoUrl],
   );
-  /** Configured repositories left out of the targets for not being on github.com. */
-  const skippedCount = edit ? 0 : configured.length - repositories.length;
+  /** Catalog repositories left out of the targets for not being on github.com. */
+  const skippedCount = edit ? 0 : catalog.unproposableRepositories.length;
+  // The targets are known once the catalog has read the sources.
+  const targetsLoading = !edit && catalog.isLoading;
   const { skills: customizeSkills } = useCustomizePaths();
   const skillsRoute = useRouteRef(skillsRouteRef);
   const closeHref = useCloseHref(
@@ -171,7 +154,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
     [tags, tagDraft, baselineTags],
   );
   // The tags the catalog's skills already use, offered while typing a tag.
-  const { skills: catalogSkills } = useSkillCatalog();
+  const catalogSkills = catalog.skills;
   const knownTags = useMemo(
     () =>
       tagCounts(
@@ -275,6 +258,13 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
 
   // What the skill creator hand-off is about, read when it is pressed: the
   // skill being changed, or the new skill as typed so far.
+  // Where the chosen target scans and the ref it reads, as gs-backend
+  // describes its sources (skill-manager's targets scan the whole repository).
+  const selectedTarget = catalog.sources?.find(
+    target =>
+      repositoryKey(target.url) ===
+      repositoryKey(repoUrl ?? repositories[0] ?? ''),
+  );
   const getCreationTarget = useCallback(
     (): SkillCreationTarget =>
       edit
@@ -297,6 +287,9 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
         : {
             kind: 'create',
             repoUrl: repoUrl ?? repositories[0] ?? '',
+            // Where discovery scans, and the branch it reads.
+            ...(selectedTarget?.path ? { path: selectedTarget.path } : {}),
+            ...(selectedTarget?.ref ? { branch: selectedTarget.ref } : {}),
             name: skillName,
             description,
             instructions,
@@ -306,6 +299,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
       edit,
       repoUrl,
       repositories,
+      selectedTarget,
       skillName,
       description,
       instructions,
@@ -362,18 +356,37 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
         </WizardStepHeading>
       )}
 
-      {repositories.length === 0 && skippedCount === 0 && (
-        <EmptyStateCard
-          title="No skill repositories"
-          description="A platform admin has to configure a skill repository first."
+      {targetsLoading && (
+        <LoadingIndicator label="Reading the skill repositories…" />
+      )}
+      {!targetsLoading &&
+        repositories.length === 0 &&
+        !catalog.hasRepositories && (
+          <EmptyStateCard
+            title="No skill repositories"
+            description="A platform admin has to configure a skill repository first."
+          />
+        )}
+      {!targetsLoading && repositories.length === 0 && catalog.error && (
+        <Alert
+          status="danger"
+          title="Could not read the skill repositories"
+          description={catalog.error.message}
         />
       )}
-      {repositories.length === 0 && skippedCount > 0 && (
-        <EmptyStateCard
-          title="No repository to propose to"
-          description="Skills are proposed as GitHub pull requests, but none of the configured repositories is on github.com. Add the skill in its repository instead."
-        />
-      )}
+      {!targetsLoading &&
+        repositories.length === 0 &&
+        !catalog.error &&
+        catalog.hasRepositories && (
+          <EmptyStateCard
+            title="No repository to propose to"
+            description={
+              skippedCount > 0
+                ? 'Skills are proposed as GitHub pull requests, but none of the configured repositories is on github.com. Add the skill in its repository instead.'
+                : 'None of the skill repositories takes new skills from the portal: they are read-only, scanned below a path, or not readable for you. Add the skill in its repository instead.'
+            }
+          />
+        )}
 
       {repositories.length > 0 && !result && (
         <SkillCreationAssist

@@ -17,6 +17,10 @@ import {
   updateVerdictOf,
   type BehindAgent,
 } from './SkillUpdateAgentsDialog';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 const HEAD = '9f2c1a7e0b4d6c8a2e1f3b5d7c9a1b3d5e7f9a1b';
 const OLD = 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1';
@@ -154,6 +158,7 @@ async function renderDialog(agents: BehindAgent[], scenario: Scenario = {}) {
     <TestApiProvider
       apis={[
         [musterApiRef, api],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
         [analyticsApiRef, analyticsApi],
       ]}
     >
@@ -407,10 +412,9 @@ describe('SkillUpdateAgentsDialog', () => {
     expect(
       await screen.findByText('1 agent updated, 1 pull request opened.'),
     ).toBeInTheDocument();
-    expect(within(gitLine).getByRole('link', { name: PR })).toHaveAttribute(
-      'href',
-      PR,
-    );
+    expect(
+      within(gitLine).getByRole('link', { name: `${PR} (opens in a new tab)` }),
+    ).toHaveAttribute('href', PR);
     expect(writes(callTool)).toEqual(
       expect.arrayContaining([
         { namespace: 'kagent', name: 'live-bot', refreshSkills: true },
@@ -529,6 +533,29 @@ describe('updateVerdictOf', () => {
     ).toEqual({ kind: 'checking' });
     expect(updateVerdictOf({ ...base, isCheckingPermission: true })).toEqual({
       kind: 'checking',
+    });
+  });
+
+  it('blocks the platform’s own agent, even where agent-manager can commit', () => {
+    expect(
+      updateVerdictOf({
+        ...base,
+        canCommit: true,
+        read: {
+          agent: {
+            name: 'default-agent',
+            namespace: 'kagent',
+            exists: true,
+            ready: true,
+            managed: 'platform',
+            default: true,
+          },
+          isLoading: false,
+        },
+      }),
+    ).toEqual({
+      kind: 'blocked',
+      reason: 'It is owned by the platform, so it is read-only.',
     });
   });
 

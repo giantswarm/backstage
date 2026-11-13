@@ -128,6 +128,12 @@ describe('byPersonQueriesFor', () => {
     );
   });
 
+  it('keeps the token type, which counting cached input once needs', () => {
+    expect(byPersonQueriesFor({ days: 30 }).tokens).toMatch(
+      /^sum by \(user, gen_ai_token_type\) /,
+    );
+  });
+
   it('narrows to an organization', () => {
     expect(byPersonQueriesFor({ days: 30, org: 'org-acme' }).cost).toContain(
       '{agent_namespace="org-acme"}[30d]',

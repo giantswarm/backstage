@@ -5,15 +5,28 @@ import {
   experimental_createMCPClient as createMCPClient,
   MCPClient,
 } from '@ai-sdk/mcp';
-import { Client as SdkClient } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import {
+  CLIENT_CAPABILITIES_META_KEY,
+  type CallToolRequest,
+  Client as SdkClient,
+  type InputRequiredResult,
+  isInputRequiredResult,
+  StreamableHTTPClientTransport,
+} from '@modelcontextprotocol/client';
+import {
+  type McpToolFailure,
   type McpToolRefusal,
+  mcpToolFailureOf,
   mcpToolRefusalOf,
-  ORGANIZATION_NAMESPACE_PREFIX,
+  musterServerOfTool,
+  MUSTER_INPUT_REQUIRED_STATUS,
+  type MusterInputAnswer,
+  type MusterUrlElicitation,
   readJwtClaims,
+  serverInfoIconOf,
 } from '@giantswarm/backstage-plugin-gs-common';
 import {
+  type ClosableMcpClient,
   describeMcpFailure,
   isRecoverableSessionError,
   McpClientCache,
@@ -26,6 +39,7 @@ import {
 } from './authLogin';
 import { PendingSignIns } from './pendingSignIns';
 import { MusterUnreachableError } from './musterUnreachable';
+import { createMusterFetch } from './musterFetch';
 import { markReported } from '../errors';
 import {
   FREQUENT_LOST_SESSIONS,
@@ -274,6 +288,40 @@ function innerResultOf(
   return inner !== null && typeof inner === 'object' ? inner : undefined;
 }
 
+/**
+ * The URL elicitations of an `input_required` answer, keyed as muster keyed
+ * them; undefined when it asks for anything else, or for nothing.
+ */
+function urlElicitationsOf(
+  result: InputRequiredResult,
+): MusterUrlElicitation[] | undefined {
+  const requests = Object.entries(result.inputRequests ?? {});
+  const elicitations: MusterUrlElicitation[] = [];
+  for (const [key, request] of requests) {
+    if (request.method !== 'elicitation/create') {
+      return undefined;
+    }
+    const params = request.params as {
+      mode?: unknown;
+      url?: unknown;
+      message?: unknown;
+      elicitationId?: unknown;
+    };
+    if (params.mode !== 'url' || typeof params.url !== 'string') {
+      return undefined;
+    }
+    elicitations.push({
+      key,
+      url: params.url,
+      message: typeof params.message === 'string' ? params.message : '',
+      ...(typeof params.elicitationId === 'string'
+        ? { elicitationId: params.elicitationId }
+        : {}),
+    });
+  }
+  return elicitations.length > 0 ? elicitations : undefined;
+}
+
 /** `<iss> <sub>` of a JWT, read without verifying it; undefined otherwise. */
 function subjectOf(token: string | undefined): string | undefined {
   const { iss, sub } = readJwtClaims(token) ?? {};
@@ -347,15 +395,22 @@ function authRequiredOf(
  *   rollout); the caller may send it again;
  * - `timeout` -- the MCP server gave no answer within muster's timeout for it;
  * - `client_not_connected` -- muster held no connection to the MCP server;
- * - `tool_not_found` -- this muster has no such tool.
+ * - `tool_not_found` -- this muster has no such tool;
+ * - `sign_in_declined` -- the person declined or dismissed the sign-in muster
+ *   asked them for (a URL elicitation), so the tool did not run;
+ * - the failures of the Agent Platform's MCP servers that are a state of the
+ *   whole server (model-manager's `no_backend`), as `mcpToolFailureOf` in
+ *   gs-common names them.
  */
 export type MusterToolErrorKind =
   | McpToolRefusal
+  | McpToolFailure
   | 'connector_refused'
   | 'interrupted'
   | 'timeout'
   | 'client_not_connected'
-  | 'tool_not_found';
+  | 'tool_not_found'
+  | 'sign_in_declined';
 
 /**
  * The status each kind of tool error is answered with; any other tool error
@@ -394,6 +449,8 @@ export const MUSTER_TOOL_ERROR_STATUS: Record<MusterToolErrorKind, number> = {
   timeout: 504,
   client_not_connected: 503,
   tool_not_found: 502,
+  sign_in_declined: 412,
+  no_backend: 503,
 };
 
 /**
@@ -443,13 +500,20 @@ const CONNECTOR_FAILURES = [/Removing the server failed too/];
 
 /**
  * muster's own texts for its failures of a call, as its aggregator words them
- * (wrapped in `Tool execution failed: …`, or on their own).
+ * (wrapped in `Tool execution failed: …`, or on their own). A missing tool in
+ * either case: `tool not found: x` for an aggregated tool, `Tool not found:
+ * x` for a meta-tool's target. The others match muster's case only, so that
+ * an MCP server's own `Interrupted: …` is not read as muster's.
  */
 const MUSTER_FAILURES: Array<[RegExp, MusterToolErrorKind]> = [
   [/^interrupted: /, 'interrupted'],
   [/no answer within the server's timeout/, 'timeout'],
   [/\bclient not connected\b/, 'client_not_connected'],
-  [/\btool not found\b/, 'tool_not_found'],
+  [/\btool not found\b/i, 'tool_not_found'],
+  [
+    /\bthe person answered (decline|cancel) to signing in\b/,
+    'sign_in_declined',
+  ],
 ];
 
 /**
@@ -465,9 +529,14 @@ export function musterToolErrorKindOf(
   if (options.interrupted) {
     return 'interrupted';
   }
-  const serverRefusal = mcpToolRefusalOf(musterServerOfTool(tool), message);
+  const server = musterServerOfTool(tool);
+  const serverRefusal = mcpToolRefusalOf(server, message);
   if (serverRefusal) {
     return serverRefusal;
+  }
+  const serverFailure = mcpToolFailureOf(server, message);
+  if (serverFailure) {
+    return serverFailure;
   }
   if (
     CONNECTOR_WRITE_TOOLS.has(tool) &&
@@ -479,25 +548,7 @@ export function musterToolErrorKindOf(
   return MUSTER_FAILURES.find(([pattern]) => pattern.test(message))?.[1];
 }
 
-/**
- * The MCP server an aggregated tool belongs to: muster names it
- * `x_<server>_<tool>`, so the first `_`-delimited segment after `x_`. A prefix
- * that itself contains `_` reads as its first segment, the server's family.
- * A server in an Organization's namespace prefixes its tools with the
- * namespace first (`x_org-<name>_<server>_<tool>`), which is skipped: the
- * server, not the customer, is what a failure belongs to. Undefined for
- * muster's own tools (`core_*`, `workflow_*`, the meta-tools).
- */
-export function musterServerOfTool(tool: string): string | undefined {
-  if (!tool.startsWith('x_')) {
-    return undefined;
-  }
-  const [first, second] = tool.slice('x_'.length).split('_');
-  const server = first?.startsWith(ORGANIZATION_NAMESPACE_PREFIX)
-    ? second
-    : first;
-  return server || undefined;
-}
+export { musterServerOfTool };
 
 /** The call a tool error belongs to; never its arguments, which may carry secrets. */
 export interface MusterToolCall {
@@ -574,6 +625,49 @@ export class MusterAuthRequiredError extends MusterToolError {
   }
 }
 
+/**
+ * muster's `input_required` answer to a call that declared URL elicitation
+ * ({@link MusterCallOptions.urlElicitation}): the tool has not run. The person
+ * answers each page -- opens it, or declines -- and the call is sent again
+ * with their answers and the `requestState` ({@link MusterInputAnswer}).
+ * `status` is {@link MUSTER_INPUT_REQUIRED_STATUS}, a state for the page to
+ * act on, below the 500 at which the error middleware reports to Sentry;
+ * `elicitations` and `requestState` reach the page in the error body.
+ */
+export class MusterInputRequiredError extends MusterToolError {
+  override readonly name = 'MusterInputRequiredError';
+  override readonly status = MUSTER_INPUT_REQUIRED_STATUS;
+
+  constructor(
+    readonly elicitations: MusterUrlElicitation[],
+    readonly requestState: string | undefined,
+    call: MusterToolCall,
+  ) {
+    super(elicitations.map(elicitation => elicitation.message).join(' '), [], {
+      tool: call.tool,
+      installation: call.installation,
+    });
+  }
+}
+
+/** How a call of an aggregated tool is made. */
+export interface MusterCallOptions {
+  authToken?: string;
+  /**
+   * The caller can ask the person to open a page: the call declares URL mode
+   * elicitation, so muster answers a sign-in the call needs with
+   * {@link MusterInputRequiredError} instead of its auth_required tool error.
+   */
+  urlElicitation?: boolean;
+  /** The person's answer to the call's {@link MusterInputRequiredError}. */
+  input?: MusterInputAnswer;
+  /**
+   * Cancels a call that declares URL elicitation or answers one: muster is
+   * sent `notifications/cancelled` and stops waiting on the sign-in.
+   */
+  signal?: AbortSignal;
+}
+
 /** One `notifications/progress` of a tool call, as muster relayed it. */
 export interface MusterToolProgress {
   /** Higher than the one before it. */
@@ -595,21 +689,47 @@ export const PROGRESS_IDLE_TIMEOUT_MS = 5 * 60_000;
  */
 export const PROGRESS_CALL_MAX_MS = 65 * 60_000;
 
-/** The part of an MCP SDK client a call with progress uses. */
-export interface ProgressCallClient {
+/**
+ * How long a call on the official SDK may wait for its answer. muster bounds
+ * a call itself (each server's timeout, an hour at most); the SDK's default
+ * of a minute would cut a longer tool, and the retry of an accepted sign-in,
+ * which muster holds until the sign-in completes.
+ */
+const TOOL_CALL_TIMEOUT_MS = PROGRESS_CALL_MAX_MS;
+
+/** The capabilities a call that can ask the person to open a page declares. */
+const URL_ELICITATION_CAPABILITIES = { elicitation: { url: {} } };
+
+/** The part of an official MCP SDK client a tool call uses. */
+export interface ToolCallClient extends ClosableMcpClient {
   callTool: SdkClient['callTool'];
-  /** Ends the call's MCP session and closes the connection. */
+  /** Ends the client's MCP session and closes the connection. */
   close(): Promise<void>;
 }
 
-async function connectProgressClient(
+/** One connection pool for every muster, with the connect timeout. */
+const musterFetch = createMusterFetch();
+
+/**
+ * An official MCP SDK client of muster. It speaks protocol 2026-07-28 where
+ * muster does, whose calls carry their own capabilities; an `input_required`
+ * answer comes back to the caller (manual mode) rather than failing the call.
+ */
+async function connectToolCallClient(
   url: string,
   headers: Record<string, string> | undefined,
-): Promise<ProgressCallClient> {
+): Promise<ToolCallClient> {
   const transport = new StreamableHTTPClientTransport(new URL(url), {
     requestInit: { headers },
+    fetch: musterFetch,
   });
-  const client = new SdkClient({ name: 'muster-backend', version: '1.0.0' });
+  const client = new SdkClient(
+    { name: 'muster-backend', version: '1.0.0' },
+    {
+      versionNegotiation: { mode: 'auto' },
+      inputRequired: { autoFulfill: false },
+    },
+  );
   await client.connect(transport);
   return {
     callTool: client.callTool.bind(client),
@@ -617,7 +737,9 @@ async function connectProgressClient(
       await transport.terminateSession().catch(() => undefined);
       await client.close();
     },
-  };
+    // Read by McpClientCache, which chains its close hook onto it.
+    transport,
+  } as ToolCallClient;
 }
 
 /**
@@ -630,6 +752,8 @@ async function connectProgressClient(
  */
 export class MusterMcpClient {
   private readonly cache: McpClientCache;
+  /** The official SDK clients of calls that declare URL elicitation. */
+  private readonly callCache: McpClientCache<ToolCallClient>;
   private readonly signIns: PendingSignIns;
 
   constructor(
@@ -644,16 +768,18 @@ export class MusterMcpClient {
           type: 'http',
           url: installation.url,
           headers,
+          fetch: musterFetch,
         },
       }),
-    private readonly progressClientFactory: (
+    private readonly toolCallClientFactory: (
       headers: Record<string, string> | undefined,
-    ) => Promise<ProgressCallClient> = headers =>
-      connectProgressClient(installation.url, headers),
+    ) => Promise<ToolCallClient> = headers =>
+      connectToolCallClient(installation.url, headers),
     private readonly now: () => number = Date.now,
     private readonly lostSessions: LostSessionTracker = sharedLostSessionTracker,
   ) {
     this.cache = new McpClientCache(logger);
+    this.callCache = new McpClientCache<ToolCallClient>(logger);
     this.signIns = new PendingSignIns(now);
   }
 
@@ -666,9 +792,16 @@ export class MusterMcpClient {
    */
   private async gated<T>(
     toolName: string,
-    options: { authToken?: string } | undefined,
+    options: MusterCallOptions | undefined,
     call: () => Promise<T>,
   ): Promise<T> {
+    if (options?.urlElicitation || options?.input) {
+      // muster reuses a session's pending sign-in itself, and answers it
+      // as an elicitation the caller can put to the person: holding the call
+      // here would answer auth_required, and hold a retry that carries the
+      // person's answer to the elicitation.
+      return call();
+    }
     const caller = this.callerOf(options);
     const token = this.tokenOf(options);
     let pending = this.signIns.pendingFor(caller, toolName);
@@ -792,21 +925,20 @@ export class MusterMcpClient {
    *
    * The call runs on an MCP session of its own, opened with the official
    * MCP SDK: the cached `@ai-sdk/mcp` client sends no progressToken and
-   * drops notifications.
+   * drops notifications. Like {@link callTool}, it may declare URL
+   * elicitation and carry the answer to one.
    */
   async callToolWithProgress(
     toolName: string,
     args: Record<string, unknown>,
-    options: {
-      authToken?: string;
+    options: MusterCallOptions & {
       onProgress: (progress: MusterToolProgress) => void;
-      signal?: AbortSignal;
     },
   ): Promise<unknown> {
     return this.gated(toolName, options, async () => {
-      let client: ProgressCallClient;
+      let client: ToolCallClient;
       try {
-        client = await this.progressClientFactory(
+        client = await this.toolCallClientFactory(
           this.headersFor(options.authToken),
         );
       } catch (error) {
@@ -814,8 +946,7 @@ export class MusterMcpClient {
       }
       try {
         const result = await client.callTool(
-          { name: CALL_TOOL, arguments: { name: toolName, arguments: args } },
-          undefined,
+          this.callToolParams(toolName, args, options),
           {
             onprogress: ({ progress, total, message }) =>
               options.onProgress({ progress, total, message }),
@@ -823,9 +954,13 @@ export class MusterMcpClient {
             timeout: PROGRESS_IDLE_TIMEOUT_MS,
             maxTotalTimeout: PROGRESS_CALL_MAX_MS,
             signal: options.signal,
+            allowInputRequired: true,
           },
         );
-        return this.parseResult(result, toolName);
+        return this.parseResult(
+          this.answeredOrThrow(result, toolName),
+          toolName,
+        );
       } catch (error) {
         if (error instanceof MusterToolError) {
           throw error;
@@ -902,14 +1037,36 @@ export class MusterMcpClient {
     options: { authToken?: string } | undefined,
     op: (client: MCPClient) => Promise<T> | T,
   ): Promise<T> {
-    const first = await this.connectOrExplain(options);
+    return this.recovering(this.cache, this.clientFactory, options, op);
+  }
+
+  /** {@link withSessionRecovery} on the official SDK client of a call. */
+  private async withCallSessionRecovery<T>(
+    options: { authToken?: string } | undefined,
+    op: (client: ToolCallClient) => Promise<T> | T,
+  ): Promise<T> {
+    return this.recovering(
+      this.callCache,
+      this.toolCallClientFactory,
+      options,
+      op,
+    );
+  }
+
+  private async recovering<C extends ClosableMcpClient, T>(
+    cache: McpClientCache<C>,
+    factory: (headers: Record<string, string> | undefined) => Promise<C>,
+    options: { authToken?: string } | undefined,
+    op: (client: C) => Promise<T> | T,
+  ): Promise<T> {
+    const first = await this.connectOrExplain(cache, factory, options);
     try {
       return await op(first.client);
     } catch (error) {
       if (!isRecoverableSessionError(error)) {
         throw this.explain(error);
       }
-      this.cache.markDead(first.cacheKey, first.client);
+      cache.markDead(first.cacheKey, first.client);
       // Expected and usually recovered by the retry below, so not a warning:
       // only a second failure is actionable, and explain() reports that. A
       // loss on most requests is, though; noteLostSession() warns about that.
@@ -920,12 +1077,12 @@ export class MusterMcpClient {
       this.noteLostSession(first.client);
     }
 
-    const second = await this.connectOrExplain(options);
+    const second = await this.connectOrExplain(cache, factory, options);
     try {
       return await op(second.client);
     } catch (error) {
       if (isRecoverableSessionError(error)) {
-        this.cache.markDead(second.cacheKey, second.client);
+        cache.markDead(second.cacheKey, second.client);
       }
       throw this.explain(error);
     }
@@ -940,7 +1097,7 @@ export class MusterMcpClient {
    * slower requests. A loss whose retry fails too is counted as well; that
    * failure is reported on its own by {@link explain}.
    */
-  private noteLostSession(client: MCPClient): void {
+  private noteLostSession(client: object): void {
     if (!this.lostSessions.note(this.installation.name, client, this.now())) {
       return;
     }
@@ -954,9 +1111,13 @@ export class MusterMcpClient {
     );
   }
 
-  private async connectOrExplain(options?: { authToken?: string }) {
+  private async connectOrExplain<C extends ClosableMcpClient>(
+    cache: McpClientCache<C>,
+    factory: (headers: Record<string, string> | undefined) => Promise<C>,
+    options: { authToken?: string } | undefined,
+  ) {
     try {
-      return await this.connect(options);
+      return await this.connectTo(cache, factory, options);
     } catch (error) {
       throw this.explain(error);
     }
@@ -995,10 +1156,18 @@ export class MusterMcpClient {
     client: MCPClient;
     cacheKey: string;
   }> {
+    return this.connectTo(this.cache, this.clientFactory, options);
+  }
+
+  private async connectTo<C extends ClosableMcpClient>(
+    cache: McpClientCache<C>,
+    factory: (headers: Record<string, string> | undefined) => Promise<C>,
+    options: { authToken?: string } | undefined,
+  ): Promise<{ client: C; cacheKey: string }> {
     const authToken = options?.authToken;
     const cacheKey = McpClientCache.buildKey(this.installation.name, authToken);
-    const client = await this.cache.getOrCreate(cacheKey, () =>
-      this.clientFactory(this.headersFor(authToken)),
+    const client = await cache.getOrCreate(cacheKey, () =>
+      factory(this.headersFor(authToken)),
     );
     return { client, cacheKey };
   }
@@ -1020,14 +1189,10 @@ export class MusterMcpClient {
   async callTool(
     toolName: string,
     args: Record<string, unknown>,
-    options?: { authToken?: string },
+    options?: MusterCallOptions,
   ): Promise<unknown> {
     return this.gated(toolName, options, async () => {
-      const result = await this.executeMetaTool(
-        CALL_TOOL,
-        { name: toolName, arguments: args },
-        options,
-      );
+      const result = await this.executeCallTool(toolName, args, options);
       // The tool's own name, not `call_tool`'s: a tool error names it.
       return this.parseResult(result, toolName);
     });
@@ -1043,14 +1208,10 @@ export class MusterMcpClient {
   async callToolWithStructured(
     toolName: string,
     args: Record<string, unknown>,
-    options?: { authToken?: string },
+    options?: MusterCallOptions,
   ): Promise<{ text?: string; structuredContent?: unknown }> {
     const answer = await this.gated(toolName, options, async () => {
-      const result = await this.executeMetaTool(
-        CALL_TOOL,
-        { name: toolName, arguments: args },
-        options,
-      );
+      const result = await this.executeCallTool(toolName, args, options);
       const unwrapped = this.unwrapCallTool(result, toolName);
       switch (unwrapped.kind) {
         case 'empty':
@@ -1078,14 +1239,10 @@ export class MusterMcpClient {
   async callToolContent(
     toolName: string,
     args: Record<string, unknown>,
-    options?: { authToken?: string },
+    options?: MusterCallOptions,
   ): Promise<McpContentItem[]> {
     const content = await this.gated(toolName, options, async () => {
-      const result = await this.executeMetaTool(
-        CALL_TOOL,
-        { name: toolName, arguments: args },
-        options,
-      );
+      const result = await this.executeCallTool(toolName, args, options);
       const unwrapped = this.unwrapCallTool(result, toolName);
       switch (unwrapped.kind) {
         case 'empty':
@@ -1217,8 +1374,111 @@ export class MusterMcpClient {
     return parsed;
   }
 
+  /**
+   * The icon muster announces in its `initialize` result (`serverInfo.icons`,
+   * since muster v5.59.0), when `serverInfoIconOf` accepts one; none from an
+   * older muster. Read off the caller's cached session -- the one their tool
+   * listings use -- so it opens no connection of its own where one is open.
+   *
+   * A failure to connect is thrown as it is, not explained: the icon is a
+   * nicety, and the caller's other reads report an unreachable muster.
+   */
+  async serverIcon(options?: {
+    authToken?: string;
+  }): Promise<string | undefined> {
+    const { client } = await this.connect(options);
+    return serverInfoIconOf(client.serverInfo);
+  }
+
   async dispose(): Promise<void> {
-    await this.cache.dispose();
+    await Promise.all([this.cache.dispose(), this.callCache.dispose()]);
+  }
+
+  /**
+   * Run `call_tool` for an aggregated tool and return its raw MCP result. A
+   * call that declares URL elicitation or answers one runs on the official
+   * SDK's client, the only one of the two that hands muster's
+   * `input_required` back; any other on the cached `@ai-sdk/mcp` client.
+   */
+  private async executeCallTool(
+    toolName: string,
+    args: Record<string, unknown>,
+    options: MusterCallOptions | undefined,
+  ): Promise<unknown> {
+    if (!options?.urlElicitation && !options?.input) {
+      return this.executeMetaTool(
+        CALL_TOOL,
+        { name: toolName, arguments: args },
+        options,
+      );
+    }
+    const result = await this.withCallSessionRecovery(options, client =>
+      client.callTool(this.callToolParams(toolName, args, options), {
+        timeout: TOOL_CALL_TIMEOUT_MS,
+        allowInputRequired: true,
+        signal: options.signal,
+      }),
+    );
+    return this.answeredOrThrow(result, toolName);
+  }
+
+  /**
+   * The `call_tool` request of a call: on protocol 2026-07-28 a request
+   * carries the client's capabilities, so one that can ask the person
+   * declares URL elicitation there and the others do not; a retry carries
+   * the person's answers and muster's `requestState` as it came.
+   */
+  private callToolParams(
+    toolName: string,
+    args: Record<string, unknown>,
+    options: MusterCallOptions,
+  ): CallToolRequest['params'] {
+    const { input } = options;
+    return {
+      name: CALL_TOOL,
+      arguments: { name: toolName, arguments: args },
+      ...(options.urlElicitation || input
+        ? {
+            _meta: {
+              [CLIENT_CAPABILITIES_META_KEY]: URL_ELICITATION_CAPABILITIES,
+            },
+          }
+        : {}),
+      ...(input
+        ? {
+            inputResponses: input.inputResponses,
+            ...(input.requestState !== undefined
+              ? { requestState: input.requestState }
+              : {}),
+          }
+        : {}),
+    };
+  }
+
+  /**
+   * The result of a call, or the {@link MusterInputRequiredError} of muster's
+   * `input_required` answer. An answer asking for anything but URL
+   * elicitations -- a form, sampling, roots, none of which the call declared
+   * -- or for nothing at all is a tool error: the portal has nothing to put to
+   * the person.
+   */
+  private answeredOrThrow(result: unknown, toolName: string): unknown {
+    if (!isInputRequiredResult(result)) {
+      return result;
+    }
+    const elicitations = urlElicitationsOf(result);
+    if (!elicitations) {
+      throw this.toolError(
+        `${toolName} asked for input the portal cannot give.`,
+        [],
+        toolName,
+        false,
+      );
+    }
+    throw new MusterInputRequiredError(elicitations, result.requestState, {
+      tool: toolName,
+      installation: this.installation.name,
+    });
   }
 
   /**

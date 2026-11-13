@@ -177,6 +177,20 @@ export function ownerOf(
 }
 
 /**
+ * {@link ownerOf} with an organization's display name where it has one
+ * ("Lab" for `default`), as a person reads it.
+ */
+export function ownerDisplayOf(
+  namespace: string,
+  directory: OrganizationDirectory,
+): string {
+  return (
+    organizationOf(namespace, directory)?.displayName ||
+    ownerOf(namespace, directory)
+  );
+}
+
+/**
  * The three kinds of place a new agent can be created in: the platform, an
  * organization, or another namespace agent-manager manages that is no
  * organization.

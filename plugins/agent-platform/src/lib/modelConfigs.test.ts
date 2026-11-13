@@ -12,6 +12,7 @@ import {
   isListenerRouted,
   modelConfigFieldErrors,
   modelConfigFormChanged,
+  modelConfigEditOwner,
   modelConfigFormValues,
   modelConfigOwner,
   ModelConfigFormValues,
@@ -550,6 +551,31 @@ describe('keySecretName', () => {
 });
 
 describe("an Organization's model", () => {
+  it('asks for the name itself, with no display name', () => {
+    expect(
+      modelConfigFieldErrors(values({ displayName: '', name: '' }), {
+        isEdit: false,
+        routed: true,
+      }),
+    ).toEqual({ name: 'Enter a name for the model.' });
+  });
+
+  it('is edited through agent-manager when agent-manager wrote it', () => {
+    const written = (namespace: string) =>
+      makeModelConfig({
+        metadata: {
+          namespace,
+          labels: { 'app.kubernetes.io/managed-by': 'agent-manager' },
+        },
+      });
+    expect(modelConfigEditOwner(written('org-acme'), directory)).toBe(
+      undefined,
+    );
+    expect(modelConfigEditOwner(written('kagent'), directory)).toBe(
+      'agent-manager',
+    );
+  });
+
   it('goes through the listener in org-* namespaces only', () => {
     expect(isListenerRouted('org-acme', directory)).toBe(true);
     expect(isListenerRouted('kagent', directory)).toBe(false);

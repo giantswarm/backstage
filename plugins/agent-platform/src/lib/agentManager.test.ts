@@ -2,6 +2,7 @@ import {
   AgentManagerError,
   AgentManagerNotConnectedError,
   agentManagerToolName,
+  awaitsDefaultModel,
   classifyAgentManagerError,
   helmInstallCommand,
   isSettledVerdict,
@@ -249,5 +250,30 @@ describe('supportsTags', () => {
     expect(supportsTags({ capabilities: { tags: true } })).toBe(true);
     expect(supportsTags({ capabilities: {} })).toBe(false);
     expect(supportsTags(undefined)).toBe(false);
+  });
+});
+
+describe('awaitsDefaultModel', () => {
+  const agent = {
+    default: true,
+    managed: 'platform' as const,
+    ready: false,
+  };
+
+  it('holds for the platform default agent without a model, not ready', () => {
+    expect(awaitsDefaultModel(agent)).toBe(true);
+  });
+
+  it.each([
+    ['with a model', { modelConfig: 'claude' }],
+    ['not the default', { default: false }],
+    ['not platform-owned', { managed: 'helmrelease' as const }],
+    ['ready', { ready: true }],
+  ])('does not hold %s', (_, change) => {
+    expect(awaitsDefaultModel({ ...agent, ...change })).toBe(false);
+  });
+
+  it('does not hold before agent-manager has answered', () => {
+    expect(awaitsDefaultModel(undefined)).toBe(false);
   });
 });

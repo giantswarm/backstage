@@ -6,6 +6,7 @@ import {
   connectorReach,
   connectorStatus,
   toolsLabel,
+  toolsUnavailable,
   unsearchedToolsNotes,
 } from './connectorRows';
 
@@ -334,7 +335,7 @@ describe('unsearchedToolsNotes', () => {
       'Only connector names were searched: the tools are still loading.',
     ]);
     expect(unsearchedToolsNotes('unavailable', [], false)).toEqual([
-      'Only connector names were searched: tools need a muster session.',
+      'Only connector names were searched: tools need a Muster session.',
     ]);
   });
 
@@ -374,7 +375,7 @@ describe('unsearchedToolsNotes', () => {
         false,
       ),
     ).toEqual([
-      'The tools of github were not searched: muster listed none of them.',
+      'The tools of github were not searched: Muster listed none of them.',
     ]);
   });
 
@@ -382,7 +383,7 @@ describe('unsearchedToolsNotes', () => {
     expect(
       unsearchedToolsNotes('partial', [row('github', 'sign-in')], true),
     ).toEqual([
-      'Some tools were not searched: muster returned only part of them.',
+      'Some tools were not searched: Muster returned only part of them.',
       'The tools of github were not searched: they need your sign-in.',
     ]);
   });
@@ -411,5 +412,21 @@ describe('unsearchedToolsNotes', () => {
     expect(
       unsearchedToolsNotes('loaded', [row('web-search', 'connected', 3)], true),
     ).toEqual([]);
+  });
+});
+
+describe('toolsUnavailable', () => {
+  it('holds for a connector not reached that lists no tools', () => {
+    for (const reach of ['not-connected', 'deactivated', 'sign-in'] as const) {
+      expect(toolsUnavailable({ toolCount: 0 }, reach)).toBe(true);
+      expect(toolsUnavailable({}, reach)).toBe(true);
+    }
+  });
+
+  it('leaves a count to a connected connector, or one that lists tools', () => {
+    expect(toolsUnavailable({ toolCount: 0 }, 'connected')).toBe(false);
+    expect(toolsUnavailable({ toolCount: 0 }, 'portal-only')).toBe(false);
+    expect(toolsUnavailable({ toolCount: 3 }, 'not-connected')).toBe(false);
+    expect(toolsUnavailable({ toolCount: 0 }, undefined)).toBe(false);
   });
 });

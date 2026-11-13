@@ -292,7 +292,7 @@ describe('ModelDetailPage', () => {
   beforeEach(() => {
     mockListedModels = [];
     mockSetDefault.mockReset();
-    mockSetDefault.mockResolvedValue(undefined);
+    mockSetDefault.mockResolvedValue({});
     mockSetDefaultError = null;
     mockLlmUsageInstallations = [];
     mockMayUpdate = true;
@@ -835,7 +835,9 @@ describe('ModelDetailPage', () => {
       'Ask whoever runs this portal to add a pattern matching claude-sonnet-4-5 to agentPlatform.models.contextWindows.',
     );
     expect(
-      within(note).getByRole('link', { name: 'How to configure it' }),
+      within(note).getByRole('link', {
+        name: 'How to configure it (opens in a new tab)',
+      }),
     ).toHaveAttribute('href', CONTEXT_WINDOWS_DOCS_URL);
   });
 

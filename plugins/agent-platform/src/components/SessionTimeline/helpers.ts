@@ -43,7 +43,13 @@ export function expandablePayloads(
   if (item.kind === 'approval' && item.questions?.length) {
     return undefined;
   }
-  const args = formatPayload(item.args);
+  // A proxied tool proposed with no arguments still folds out, so the exact
+  // name of the tool that would run can be read.
+  const args = formatPayload(
+    item.kind === 'approval' && item.via && item.args === undefined
+      ? {}
+      : item.args,
+  );
   // An approval has no result — it carries the *proposed* call, which never ran as
   // this item.
   const result =

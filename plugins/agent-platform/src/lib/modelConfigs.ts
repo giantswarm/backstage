@@ -374,6 +374,12 @@ export type ModelConfigValidationOptions = {
   isEdit: boolean;
   /** Edit only: the form as the model stood on the cluster. */
   original?: ModelConfigFormValues;
+  /**
+   * An organization's model (`isListenerRouted`): saved through
+   * agent-manager, which keeps no display name, so the form asks for the
+   * model's name itself.
+   */
+  routed?: boolean;
 };
 
 /**
@@ -382,7 +388,8 @@ export type ModelConfigValidationOptions = {
  *
  * The display name is required on create only: the technical name is filled
  * in from it, and it is what people see when they choose a model. An existing
- * model without one (made with kubectl) stays saveable as it is. The API key
+ * model without one (made with kubectl) stays saveable as it is. An
+ * organization's model asks for no display name (`routed`). The API key
  * is not required for the API-key providers, where an empty one means the
  * endpoint needs none. A Vertex AI model needs a service account key on
  * create, and on an edit whose stored key cannot serve it (see
@@ -394,15 +401,16 @@ export function modelConfigFieldErrors(
 ): ModelConfigFieldErrors {
   const errors: ModelConfigFieldErrors = {};
 
-  if (!options.isEdit && !values.displayName.trim()) {
+  if (!options.isEdit && !options.routed && !values.displayName.trim()) {
     errors.displayName = 'Enter a name for the model.';
   }
 
   if (!values.name.trim()) {
-    errors.name = 'Enter a technical name.';
+    errors.name = options.routed
+      ? 'Enter a name for the model.'
+      : 'Enter a technical name.';
   } else if (values.name.length > 63 || !DNS_LABEL_PATTERN.test(values.name)) {
-    errors.name =
-      'Technical name must be lowercase letters, numbers and hyphens (max 63 characters), e.g. qwen3-vllm';
+    errors.name = `${options.routed ? 'The name' : 'Technical name'} must be lowercase letters, numbers and hyphens (max 63 characters), e.g. qwen3-vllm`;
   }
 
   if (!values.model.trim()) {
@@ -830,4 +838,27 @@ export function modelConfigOwner(modelConfig: ModelConfig): string | undefined {
   }
 
   return undefined;
+}
+
+/** The `app.kubernetes.io/managed-by` value of what agent-manager writes. */
+export const AGENT_MANAGER_MANAGED_BY = 'agent-manager';
+
+/**
+ * Who would revert an edit made with the portal's form ({@link
+ * modelConfigOwner}), except that an organization's model agent-manager
+ * wrote is no owner to step back for: the form saves an organization's model
+ * through agent-manager itself.
+ */
+export function modelConfigEditOwner(
+  modelConfig: ModelConfig,
+  directory: OrganizationDirectory,
+): string | undefined {
+  const owner = modelConfigOwner(modelConfig);
+  if (
+    owner === AGENT_MANAGER_MANAGED_BY &&
+    isListenerRouted(modelConfig.getNamespace() ?? '', directory)
+  ) {
+    return undefined;
+  }
+  return owner;
 }

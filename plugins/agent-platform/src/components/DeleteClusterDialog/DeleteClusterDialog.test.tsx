@@ -19,6 +19,10 @@ jest.mock('@giantswarm/backstage-plugin-muster', () =>
 );
 import { DeleteClusterDialog } from './DeleteClusterDialog';
 import { REMOVAL_CHECK_INTERVAL_MS } from './removalPasses';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 const DRY_RUN: ClusterWriteResult = {
   cluster: 'demo1',
@@ -292,6 +296,7 @@ async function renderDialog(
     <TestApiProvider
       apis={[
         [musterApiRef, api],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
         [kubernetesApiRef, kubernetesApi],
       ]}
     >

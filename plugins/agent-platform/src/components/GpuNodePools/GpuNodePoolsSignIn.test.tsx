@@ -10,6 +10,10 @@ import {
 import { useGpuNodePools } from '../../hooks/useClusterManager';
 import { shouldRetryQuery } from '../QueryClientProvider';
 import { GpuNodePoolsPanel } from './GpuNodePoolsPanel';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * The pools card as the GPU capacity view composes it
@@ -91,7 +95,10 @@ describe('GPU node pools without a cluster-manager sign-in', () => {
   async function renderCard() {
     await renderInTestApp(
       <TestApiProvider
-        apis={[[musterApiRef, musterApi as unknown as MusterApi]]}
+        apis={[
+          [musterApiRef, musterApi as unknown as MusterApi],
+          [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+        ]}
       >
         <QueryClientProvider client={queryClient}>
           <PoolsCard />

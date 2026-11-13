@@ -187,7 +187,7 @@ describe('ToolPage', () => {
     expect(
       within(facts).getByRole('link', { name: 'aws-root' }),
     ).toHaveAttribute('href', `${BASE}/gazelle/aws-root`);
-    expect(within(facts).getByText('Exposed by muster as')).toBeInTheDocument();
+    expect(within(facts).getByText('Exposed by Muster as')).toBeInTheDocument();
     expect(within(facts).getByText('Only reads')).toBeInTheDocument();
 
     // Mounted only once opened, as the other pages' Technical details are.
@@ -250,6 +250,7 @@ describe('ToolPage', () => {
       'x_aws-root_list_buckets',
       {},
       'gazelle',
+      { signal: expect.any(AbortSignal), urlElicitation: true },
     );
   });
 
@@ -339,7 +340,7 @@ describe('ToolPage', () => {
       `${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets/run`,
     );
 
-    expect(screen.getByText(/Tools need a muster session/)).toBeInTheDocument();
+    expect(screen.getByText(/Tools need a Muster session/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Run' })).toBeNull();
     expect(api.describeTool).not.toHaveBeenCalled();
   });
@@ -675,7 +676,7 @@ describe('ToolPage at phone width', () => {
     // the page.
     const name = screen.getByText('x_aws-root_list_buckets');
     expect(name.parentElement).toHaveTextContent(
-      'Exposed by muster as: x_aws-root_list_buckets',
+      'Exposed by Muster as: x_aws-root_list_buckets',
     );
     expect(name).toHaveStyle({ fontFamily: 'monospace' });
     expect(name.getAttribute('style')).toContain('overflow-wrap: anywhere');

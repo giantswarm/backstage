@@ -9,6 +9,7 @@ import {
   Harness,
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Connector identity is owned by the Muster plugin.
 import { ConnectorLogo } from '@giantswarm/backstage-plugin-muster';
 import {
   CollapsibleMarkdown,
@@ -27,6 +28,7 @@ import { useAgentToolset } from '../../hooks/useAgentToolset';
 import { useReachCatalogue } from '../../hooks/useReachCatalogue';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { underlyingModelLine } from '../../hooks/useUnderlyingModel';
+import { modelLabel } from '../../lib/modelLabel';
 import {
   harnessChoiceOf,
   PLATFORM_DEFAULT_LABEL,
@@ -152,9 +154,9 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-/** The skill as the catalog discovered it, when the catalog has it. */
-function useCatalogSkills(): Map<string, DiscoveredSkill> {
-  const { skills } = useSkillCatalog();
+/** The skill as the agent's installation's catalog has it, when it does. */
+function useCatalogSkills(installation: string): Map<string, DiscoveredSkill> {
+  const { skills } = useSkillCatalog(installation);
   return useMemo(
     () => new Map(skills.map(skill => [canonicalSkillId(skill), skill])),
     [skills],
@@ -232,18 +234,22 @@ function SkillCard({
 
 function SkillsSection({
   agent,
+  installation,
   onUpdateSkills,
   onAddSkills,
   isGitOpsOwned,
+  isPlatformOwned = false,
 }: {
   agent: Agent;
+  installation: string;
   onUpdateSkills?: () => void;
   onAddSkills?: () => void;
   isGitOpsOwned: boolean;
+  isPlatformOwned?: boolean;
 }) {
   const classes = useStyles();
   const skills = agent.getSkills();
-  const catalog = useCatalogSkills();
+  const catalog = useCatalogSkills(installation);
 
   const action =
     onUpdateSkills && skills.length > 0 ? (
@@ -259,6 +265,11 @@ function SkillsSection({
           <Text variant="body-medium" color="secondary">
             No skills yet. Skills add know-how and procedures.
           </Text>
+          {isPlatformOwned && (
+            <Text variant="body-small" color="secondary">
+              It is owned by the platform, so it is read-only.
+            </Text>
+          )}
           {isGitOpsOwned && (
             <Text variant="body-small" color="secondary">
               {onAddSkills
@@ -490,6 +501,9 @@ export type AgentPlainOverviewProps = {
   /** Opens the edit page, where skills are added. Absent when not editable. */
   onAddSkills?: () => void;
   isGitOpsOwned: boolean;
+  /** The platform's own agent (`managed: 'platform'`): read-only. */
+  isPlatformOwned?: boolean;
+  releaseDetailsUnavailable?: boolean;
 };
 
 /**
@@ -512,6 +526,8 @@ export function AgentPlainOverview({
   onUpdateSkills,
   onAddSkills,
   isGitOpsOwned,
+  isPlatformOwned,
+  releaseDetailsUnavailable,
 }: AgentPlainOverviewProps) {
   const classes = useStyles();
   const failure = agent.getFailure();
@@ -544,9 +560,11 @@ export function AgentPlainOverview({
 
       <SkillsSection
         agent={agent}
+        installation={installation}
         onUpdateSkills={onUpdateSkills}
         onAddSkills={onAddSkills}
         isGitOpsOwned={isGitOpsOwned}
+        isPlatformOwned={isPlatformOwned}
       />
 
       <ConnectorsSection agent={agent} isFailing={failure?.field === 'tools'} />
@@ -561,6 +579,7 @@ export function AgentPlainOverview({
           modelServing={modelServing}
           failure={failure}
           toolsHref={toolsHref}
+          releaseDetailsUnavailable={releaseDetailsUnavailable}
         />
       </TechnicalDetailsFoldOut>
     </div>
@@ -589,16 +608,8 @@ function ModelFact({
   if (!modelConfigName) {
     return isFailing ? <FailureMarker /> : <Text variant="body-small">—</Text>;
   }
-  // The ModelConfig's name — its friendly one where it carries one — as in the
-  // create flow's "Runs on …": an admin may abstract the model on purpose
-  // ("The Cheap One"), so the name stays (PO decision L6). The model it runs
-  // is the secondary line below, unless the name already says it; neither
-  // when the ModelConfig cannot be read, which is normal for a non-admin.
-  const label = modelConfig?.getDisplayName() ?? modelConfigName;
-  const underlyingModel =
-    modelConfig && modelConfig.getModel() !== label
-      ? underlyingModelLine(modelConfig)
-      : undefined;
+  const label = modelLabel(modelConfig) ?? modelConfigName;
+  const underlyingModel = underlyingModelLine(modelConfig, label);
   // The model's page, where the ModelConfig could be read: for a reader who
   // cannot read it (normal for a non-admin), the page could only say so. The
   // ModelConfig sits in the agent's namespace; without one there is no page

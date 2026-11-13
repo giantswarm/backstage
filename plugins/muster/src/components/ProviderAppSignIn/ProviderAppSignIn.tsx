@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Button, Flex, Link, Text } from '@backstage/ui';
+import { Button, Flex, Text } from '@backstage/ui';
 import { useServerSignIn } from '../shared';
+import { NewTabLabel } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * What a provider App is called and what connecting it is for, where its name
@@ -93,12 +94,13 @@ export function ProviderAppSignIn({
   pollIntervalMs,
   canDisconnect = true,
 }: ProviderAppSignInProps) {
+  const label = providerAppLabel(app);
   const signIn = useServerSignIn(app, installation, {
     noun: 'connector',
     app: true,
     pollIntervalMs,
+    displayName: label,
   });
-  const label = providerAppLabel(app);
   const minutesLeft = useMinutesLeft(signIn.deviceCode?.expiresAt);
 
   const lastFailure = signIn.providerApp?.last_failure;
@@ -148,17 +150,18 @@ export function ProviderAppSignIn({
         {code ? (
           <ol style={{ margin: 0, paddingInlineStart: '1.25rem' }}>
             <li>
-              <Text variant="body-small">
-                Open{' '}
-                <Link
-                  href={code.verificationUrl}
-                  target="_blank"
-                  rel="noopener"
+              <Flex gap="2" align="center" style={{ flexWrap: 'wrap' }}>
+                <Text variant="body-small">
+                  Open the sign-in page and sign in.
+                </Text>
+                <Button
+                  variant="secondary"
+                  size="small"
+                  onPress={signIn.openSignInPage}
                 >
-                  {code.verificationUrl}
-                </Link>{' '}
-                and sign in.
-              </Text>
+                  <NewTabLabel>Open sign-in page</NewTabLabel>
+                </Button>
+              </Flex>
             </li>
             <li>
               <Flex gap="2" align="center" style={{ flexWrap: 'wrap' }}>
@@ -209,6 +212,19 @@ export function ProviderAppSignIn({
             {signIn.error}
           </Text>
         )}
+      </Flex>
+    );
+  }
+
+  if (signIn.signInRefusal) {
+    return (
+      <Flex direction="column" gap="1" data-state="refused">
+        <Text variant="body-small" color="secondary">
+          Not connected
+        </Text>
+        <Text variant="body-small" color="danger">
+          {signIn.signInRefusal}
+        </Text>
       </Flex>
     );
   }
