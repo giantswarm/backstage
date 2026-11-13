@@ -4,6 +4,7 @@ import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Organization choices are read through the Muster API.
 import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
 
 import {

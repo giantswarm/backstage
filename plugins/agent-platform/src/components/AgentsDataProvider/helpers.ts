@@ -12,6 +12,7 @@ import {
   ModelConfig,
   RemoteMCPServer,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- GS owns the shared installation inventory.
 import {
   ALL_INSTALLATIONS,
   classifyInventoryFailure,
