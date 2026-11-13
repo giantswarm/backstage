@@ -30,6 +30,30 @@ async function reachTools(page: Page) {
   await expectWizardStep(page, 'Tools');
 }
 
+test('connector cards name their state and All selection at desktop and phone widths', async ({
+  admin,
+}) => {
+  await reachTools(admin);
+  await admin
+    .getByRole('radio', { name: 'Only the tools I choose below', exact: true })
+    .check();
+  const card = admin.getByRole('group', { name: /^Connector / }).first();
+  await expect(card).toBeVisible();
+  await expect(card).toContainText(/Connected|Sign-in needed|Not connected/);
+  await card.getByRole('radio', { name: 'All', exact: true }).check();
+
+  for (const width of [1440, 375]) {
+    await admin.setViewportSize({ width, height: 900 });
+    await expect(
+      card.getByRole('radio', { name: 'All', exact: true }),
+    ).toBeChecked();
+    await expect(card).toContainText(
+      'Selected: all tools, including ones added later.',
+    );
+    await expectNoHorizontalScroll(admin, `Connector choices at ${width}px`);
+  }
+});
+
 test('the Selected rail docks only where the step keeps its column, the bar stands in otherwise', async ({
   admin,
 }) => {
