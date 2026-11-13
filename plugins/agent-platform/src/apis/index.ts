@@ -32,7 +32,6 @@ export {
   SERVED_MODEL_TRY_PATH,
 } from './ModelManagerApiClient';
 export {
-  AGENT_MANAGER_AUTH_HEADER,
   AgentManagerCredentialsClient,
   agentManagerCredentialsApiRef,
   credentialOperationErrorCode,
