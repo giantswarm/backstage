@@ -54,7 +54,7 @@ const TOOL_FAILED_TEXTS: RegExp[] = [
  * Harness passes Claude Code's `API Error: <n>` through, and Gemini answers
  * `Error <n>, Message: …`. They say who answered, not why: the same prefixes
  * carry a prompt that outgrew the context window, so they count only together
- * with the provider's answer for unavailability ({@link hasUnavailableAnswer}).
+ * with the provider's answer for unavailability.
  */
 const MODEL_PROVIDER_TEXTS: RegExp[] = [
   /\bOpenAI (chat completion|responses) request failed\b/i,
@@ -86,15 +86,6 @@ const UNAVAILABLE_SIGNALS: RegExp[] = [
 const SDK_HTTP_STATUS = /": (\d{3}) [A-Z]/;
 
 const UNAVAILABLE_STATUS = /^(401|403|404|408|429|5\d\d)$/;
-
-/** Whether the provider's answer says the model cannot be had. */
-function hasUnavailableAnswer(text: string): boolean {
-  const status = SDK_HTTP_STATUS.exec(text)?.[1];
-  if (status) {
-    return UNAVAILABLE_STATUS.test(status);
-  }
-  return UNAVAILABLE_SIGNALS.some(pattern => pattern.test(text));
-}
 
 /**
  * The model is unavailable whoever says so: a missing provider key or
@@ -141,10 +132,16 @@ export function classifyFailureText(
   if (REQUEST_REJECTED_TEXTS.some(pattern => pattern.test(text))) {
     return 'other';
   }
+  const providerError = MODEL_PROVIDER_TEXTS.some(pattern =>
+    pattern.test(text),
+  );
+  const status = providerError ? SDK_HTTP_STATUS.exec(text)?.[1] : undefined;
+  if (status) {
+    return UNAVAILABLE_STATUS.test(status) ? 'model-unavailable' : 'other';
+  }
   if (
     MODEL_UNAVAILABLE_TEXTS.some(pattern => pattern.test(text)) ||
-    (MODEL_PROVIDER_TEXTS.some(pattern => pattern.test(text)) &&
-      hasUnavailableAnswer(text))
+    (providerError && UNAVAILABLE_SIGNALS.some(pattern => pattern.test(text)))
   ) {
     return 'model-unavailable';
   }
@@ -157,7 +154,7 @@ const CREDENTIALS_REFUSED_TEXTS: RegExp[] = [
   /\blitellm\.(Authentication|PermissionDenied)Error\b/,
 ];
 
-const CREDENTIALS_REFUSED_SIGNALS = /\b(401|403|Unauthorized|Forbidden)\b/;
+const CREDENTIALS_REFUSED_SIGNALS = /\b(401|403|Unauthorized|Forbidden)\b/i;
 
 /**
  * Whether a `model-unavailable` failure is the provider refusing the agent's
@@ -168,14 +165,14 @@ export function isCredentialsRefusedText(text: string | undefined): boolean {
   if (!text || classifyFailureText(text) !== 'model-unavailable') {
     return false;
   }
-  if (CREDENTIALS_REFUSED_TEXTS.some(pattern => pattern.test(text))) {
-    return true;
-  }
   const status = SDK_HTTP_STATUS.exec(text)?.[1];
   if (status) {
     return status === '401' || status === '403';
   }
-  return CREDENTIALS_REFUSED_SIGNALS.test(text);
+  return (
+    CREDENTIALS_REFUSED_TEXTS.some(pattern => pattern.test(text)) ||
+    CREDENTIALS_REFUSED_SIGNALS.test(text)
+  );
 }
 
 /**
