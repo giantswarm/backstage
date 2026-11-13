@@ -2,7 +2,10 @@ import { ApiBlueprint } from '@backstage/frontend-plugin-api';
 import { createExtensionTester } from '@backstage/frontend-test-utils';
 import { mockApis } from '@backstage/test-utils';
 // eslint-disable-next-line @backstage/no-mixed-plugin-imports -- fixture MCP servers are muster's.
-import { fixtureMcpServersDataRef } from '@giantswarm/backstage-plugin-muster';
+import {
+  FIXTURE_MCP_SERVERS_ATTACH_POINT as MUSTER_ATTACH_POINT,
+  fixtureMcpServersDataRef as musterFixtureMcpServersDataRef,
+} from '@giantswarm/backstage-plugin-muster';
 
 import {
   AgentManagerCredentialsClient,
@@ -11,7 +14,11 @@ import {
   type KagentApi,
   type ModelManagerApi,
 } from './apis';
-import { agentPlatformPlugin } from './plugin';
+import {
+  agentPlatformPlugin,
+  FIXTURE_MCP_SERVERS_ATTACH_POINT,
+  fixtureMcpServersDataRef,
+} from './plugin';
 
 type FixtureApiId =
   | 'api:agent-platform/kagent'
@@ -69,10 +76,15 @@ describe('agent-platform fixture mode', () => {
     await expect(models.listBackends('meadow')).resolves.toEqual([]);
   });
 
+  it("defines muster's fixture data ref and attach point by the same ids", () => {
+    expect(fixtureMcpServersDataRef.id).toBe(musterFixtureMcpServersDataRef.id);
+    expect(FIXTURE_MCP_SERVERS_ATTACH_POINT).toEqual(MUSTER_ATTACH_POINT);
+  });
+
   it("contributes the MCP servers its pages call to muster's fixtures", async () => {
     const load = createExtensionTester(
       agentPlatformPlugin.getExtension('muster-fixture-servers:agent-platform'),
-    ).get(fixtureMcpServersDataRef);
+    ).get(musterFixtureMcpServersDataRef);
 
     const servers = await load();
 

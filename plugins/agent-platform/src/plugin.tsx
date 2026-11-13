@@ -3,6 +3,7 @@ import {
   configApiRef,
   coreExtensionData,
   createExtension,
+  createExtensionDataRef,
   createExtensionInput,
   createFrontendPlugin,
   ExtensionBoundary,
@@ -15,12 +16,10 @@ import {
   kubernetesApiRef,
   kubernetesAuthProvidersApiRef,
 } from '@backstage/plugin-kubernetes-react';
-// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Model Manager tools are accessed through the Muster API, and its fixture mode answers them.
-import {
-  FIXTURE_MCP_SERVERS_ATTACH_POINT,
-  fixtureMcpServersDataRef,
-  musterApiRef,
-} from '@giantswarm/backstage-plugin-muster';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Model Manager tools are accessed through the Muster API.
+import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- the fixture MCP servers' type; erased at build time.
+import type { FixtureMcpServersLoader } from '@giantswarm/backstage-plugin-muster';
 import { lazyApi } from '@giantswarm/backstage-plugin-ui-react';
 import {
   AGENT_SHELL_ON,
@@ -432,6 +431,20 @@ const modelManagerApi = ApiBlueprint.make({
       },
     }),
 });
+
+// muster's `fixtureMcpServersDataRef` and the input it reads, defined here by
+// the same id rather than imported: extension data is matched by id, and many
+// tests mock the muster package wholesale, which would leave an imported ref
+// undefined when this module loads. `plugin.fixtures.test.ts` pins both to
+// muster's.
+export const fixtureMcpServersDataRef =
+  createExtensionDataRef<FixtureMcpServersLoader>().with({
+    id: 'muster.fixture-mcp-servers',
+  });
+export const FIXTURE_MCP_SERVERS_ATTACH_POINT = {
+  id: 'api:muster/muster',
+  input: 'fixtureServers',
+} as const;
 
 // The tools of the MCP servers the agent-platform pages call through muster,
 // answered by the fixture `MusterApi` when `muster.fixtures` is on. Outside
