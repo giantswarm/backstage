@@ -227,41 +227,6 @@ function withinWindow(
   }));
 }
 
-function rollupCounts(
-  series: PromSeries[],
-  dimensions: string[],
-): PromSeries[] {
-  const groups = new Map<string, PromSeries>();
-  for (const entry of series) {
-    const labels = Object.fromEntries(
-      dimensions
-        .filter(dimension => entry.labels[dimension] !== undefined)
-        .map(dimension => [dimension, entry.labels[dimension]]),
-    );
-    const key = JSON.stringify(labels);
-    let group = groups.get(key);
-    if (!group) {
-      group = { labels, points: [] };
-      groups.set(key, group);
-    }
-    for (const point of entry.points) {
-      const existing = group.points.find(
-        candidate => candidate.ts === point.ts,
-      );
-      if (existing) existing.value += point.value;
-      else group.points.push({ ...point });
-    }
-  }
-  return [...groups.values()].sort((left, right) => {
-    for (const dimension of dimensions) {
-      const a = left.labels[dimension] ?? '';
-      const b = right.labels[dimension] ?? '';
-      if (a !== b) return a < b ? -1 : 1;
-    }
-    return 0;
-  });
-}
-
 function parseLe(le: string | undefined): number | undefined {
   if (le === undefined) {
     return undefined;
@@ -447,10 +412,6 @@ interface UsageQueries {
   stepHours: number;
   step: string;
   lookbackStart: number;
-  quantiles: (
-    metric: string,
-    groupLabel?: string,
-  ) => Promise<Map<string, number | null>>;
   rangeQuery: (query: string) => Promise<PromSeries[]>;
   rangeQueryBetween: (
     query: string,
@@ -517,7 +478,15 @@ async function openUsageQueries(
     }
   };
 
-  // Samples at the start cover the preceding step and are excluded.
+  // Every aggregate is derived from step-split RANGE queries with a
+  // step-sized lookback, never from instant queries with a range-long
+  // lookback: Mimir's query-frontend splits range queries into short
+  // subqueries, while `increase(x[24h])` at an instant needs one long-range
+  // read from the store-gateway path — which is exactly what degrades when a
+  // store-gateway has a bad day (observed on an internal installation: [1h]
+  // fine, [12h]+ returning 500 while the equivalent range query kept working).
+  // The first evaluation is one step after the window's start: the one at the
+  // start itself covers the step before the window.
   const rangeQueryBetween = (
     query: string,
     fromSeconds: number,
@@ -536,20 +505,6 @@ async function openUsageQueries(
     rangeQueryBetween(query, startSeconds, endSeconds);
   const lookbackStart = startSeconds - DATA_START_LOOKBACK_SECONDS;
 
-  const quantiles = async (
-    metric: string,
-    groupLabel?: string,
-  ): Promise<Map<string, number | null>> => {
-    const grouping = groupLabel ? `${groupLabel}, le` : 'le';
-    const bucketsQuery = `sum by (${grouping}) (increase(${metric}[${step}]))`;
-
-    return new Map(
-      [...bucketTotals(await rangeQuery(bucketsQuery), groupLabel)].map(
-        ([group, buckets]) => [group, quantileFromBuckets(0.95, buckets)],
-      ),
-    );
-  };
-
   return {
     promServer,
     startSeconds,
@@ -559,7 +514,6 @@ async function openUsageQueries(
     stepHours,
     step,
     lookbackStart,
-    quantiles,
     rangeQuery,
     rangeQueryBetween,
   };
@@ -599,9 +553,11 @@ export async function getMcpToolLatency(
     };
   }
   const duration = `${METRIC_DURATION}${usageSelector(servers)}`;
-  let quantiles: Map<string, number | null>;
+  let series: PromSeries[];
   try {
-    quantiles = await queries.quantiles(duration, 'tool');
+    series = await queries.rangeQuery(
+      `sum by (tool, le) (increase(${duration}[${queries.step}]))`,
+    );
   } catch (error) {
     return {
       available: false,
@@ -610,10 +566,12 @@ export async function getMcpToolLatency(
       tools: [],
     };
   }
-  const tools = [...quantiles]
-    .filter(([tool]) => tool !== '')
-    .map(([tool, p95_seconds]) => ({ tool, p95_seconds }));
-
+  const tools: McpToolLatencyResponse['tools'] = [];
+  for (const [tool, buckets] of bucketTotals(series, 'tool')) {
+    if (tool) {
+      tools.push({ tool, p95_seconds: quantileFromBuckets(0.95, buckets) });
+    }
+  }
   return {
     available: true,
     range_hours: queries.rangeHours,
@@ -659,7 +617,6 @@ export async function getMcpUsage(
     stepHours,
     step,
     lookbackStart,
-    quantiles,
     rangeQuery,
     rangeQueryBetween,
   } = queries;
@@ -692,8 +649,8 @@ export async function getMcpUsage(
   let byOutcomeOverTime: PromSeries[] = [];
   let byToolOutcome: PromSeries[] = [];
   let byServerOutcome: PromSeries[] = [];
-  let overallQuantiles: Map<string, number | null>;
-  let serverQuantiles: Map<string, number | null>;
+  let latencyBuckets: PromSeries[];
+  let latencyBucketsByServer: PromSeries[];
   const readCounts = async () => {
     try {
       const allCounts = await rangeQueryBetween(
@@ -706,12 +663,26 @@ export async function getMcpUsage(
         startSeconds,
         endSeconds,
       ).filter(series => series.points.length > 0);
-      byOutcomeOverTime = rollupCounts(windowCounts, ['outcome']);
+      byOutcomeOverTime = windowCounts;
       byToolOutcome = toolRollups
-        ? rollupCounts(windowCounts, ['outcome', 'tool'])
+        ? windowCounts.toSorted(
+            (left, right) =>
+              (left.labels.outcome ?? '').localeCompare(
+                right.labels.outcome ?? '',
+              ) ||
+              (left.labels.tool ?? '').localeCompare(right.labels.tool ?? ''),
+          )
         : [];
       byServerOutcome = serverOutcomes
-        ? rollupCounts(windowCounts, ['mcpserver_name', 'outcome'])
+        ? windowCounts.toSorted(
+            (left, right) =>
+              (left.labels.mcpserver_name ?? '').localeCompare(
+                right.labels.mcpserver_name ?? '',
+              ) ||
+              (left.labels.outcome ?? '').localeCompare(
+                right.labels.outcome ?? '',
+              ),
+          )
         : [];
       if (filtered) {
         const expression = `sum by (outcome) (increase(${METRIC_CALLS}[${step}]))`;
@@ -766,19 +737,16 @@ export async function getMcpUsage(
     ]);
   };
   try {
-    const optionalQuantiles = async (
-      read: Promise<Map<string, number | null>>,
-    ) =>
-      read.catch(() => {
-        partial = true;
-        return new Map<string, number | null>();
-      });
-    [, overallQuantiles, serverQuantiles] = await Promise.all([
+    [, latencyBuckets, latencyBucketsByServer] = await Promise.all([
       readCounts(),
-      optionalQuantiles(quantiles(duration)),
+      optional(rangeQuery(`sum by (le) (increase(${duration}[${step}]))`)),
       serverLatency
-        ? optionalQuantiles(quantiles(duration, 'mcpserver_name'))
-        : Promise.resolve(new Map<string, number | null>()),
+        ? optional(
+            rangeQuery(
+              `sum by (mcpserver_name, le) (increase(${duration}[${step}]))`,
+            ),
+          )
+        : none,
     ]);
   } catch (error) {
     return unavailable(rangeHours, queryFailure(promServer, error));
@@ -878,10 +846,13 @@ export async function getMcpUsage(
     }
     serverRows.set(server, row);
   }
-  for (const [serverName, p95] of serverQuantiles) {
+  for (const [serverName, serverBuckets] of bucketTotals(
+    latencyBucketsByServer,
+    'mcpserver_name',
+  )) {
     const row = serverRows.get(serverName);
     if (row) {
-      row.p95_seconds = p95;
+      row.p95_seconds = quantileFromBuckets(0.95, serverBuckets);
     }
   }
 
@@ -891,7 +862,10 @@ export async function getMcpUsage(
   const totalErrors = sumPoints(
     byOutcomeOverTime.filter(series => series.labels.outcome !== 'ok'),
   );
-  const p95Seconds = overallQuantiles.get('') ?? null;
+  const overallBuckets = bucketTotals(latencyBuckets).get('');
+  const p95Seconds = overallBuckets
+    ? quantileFromBuckets(0.95, overallBuckets)
+    : null;
   // Narrowed to one tool, its row is the totals, once muster counted it.
   if (onlyTool !== undefined && byOutcomeOverTime.length > 0) {
     toolRows.set(onlyTool, {
