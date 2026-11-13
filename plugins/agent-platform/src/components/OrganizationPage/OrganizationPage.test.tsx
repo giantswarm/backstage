@@ -379,6 +379,103 @@ describe('OrganizationPage', () => {
     });
   });
 
+  describe('changes on Pending erase', () => {
+    const WHY = 'Its members, models and credentials can no longer be changed.';
+    const ORGANIZATION = {
+      name: 'payments',
+      parent: 'org-acme',
+      namespace: PAYMENTS.namespace,
+      harnesses: ['kagent'],
+      workerReplicas: 3,
+    };
+    const PENDING_ERASE: OrganizationsScenario = {
+      ...SCENARIO,
+      organization: {
+        ...ORGANIZATION,
+        gitops: 'flux-giantswarm/agent-platform-organizations',
+        orphaned: { status: 'True', reason: 'DeleteMerged' },
+      },
+    };
+    const IN_GIT: OrganizationsScenario = {
+      ...SCENARIO,
+      organization: {
+        ...ORGANIZATION,
+        gitops: 'flux-giantswarm/agent-platform-organizations',
+        orphaned: { status: 'False', reason: 'InInventory' },
+      },
+    };
+
+    /** Every control that changes something on the tab, once it is read. */
+    const writeControls: Record<string, () => Promise<HTMLElement[]>> = {
+      '': async () => [
+        await screen.findByRole('button', { name: /^Remove payments-team/ }),
+        screen.getByRole('button', { name: /^Remove jane@example.com/ }),
+        screen.getByRole('radio', { name: 'A group' }),
+        screen.getByRole('radio', { name: /A person/ }),
+        screen.getByRole('textbox', { name: /Group/ }),
+        screen.getByRole('button', { name: 'Add group' }),
+      ],
+      '/models': async () => [
+        await screen.findByRole('button', { name: 'Add model' }),
+        screen.getByRole('button', {
+          name: 'Replace the key of claude-sonnet',
+        }),
+        screen.getByRole('button', { name: 'Replace the key of gpt' }),
+      ],
+      '/connectors': async () => [
+        await screen.findByRole('button', {
+          name: 'Replace the credential of jira',
+        }),
+      ],
+    };
+
+    it.each([
+      ['Members', ''],
+      ['Models', '/models'],
+      ['Connectors', '/connectors'],
+    ])('turns every change on %s off and says why', async (_tab, path) => {
+      await renderPage(path, PENDING_ERASE);
+
+      expect(await screen.findByText(WHY)).toBeInTheDocument();
+      const controls = await writeControls[path]();
+      for (const control of controls) {
+        expect(control).toBeDisabled();
+      }
+      // A button names the reason; a form field keeps its own help.
+      const buttons = controls.filter(control => control.tagName === 'BUTTON');
+      expect(buttons.length).toBeGreaterThan(0);
+      for (const button of buttons) {
+        expect(button).toHaveAccessibleDescription(WHY);
+      }
+      // Erase now stays.
+      expect(screen.getByRole('button', { name: 'Erase now' })).toBeEnabled();
+    });
+
+    it.each([
+      ['Members', ''],
+      ['Models', '/models'],
+      ['Connectors', '/connectors'],
+    ])('offers every change on %s while it is in git', async (_tab, path) => {
+      await renderPage(path, IN_GIT);
+
+      const controls = await writeControls[path]();
+      for (const control of controls) {
+        expect(control).toBeEnabled();
+      }
+      expect(screen.queryByText(WHY)).not.toBeInTheDocument();
+    });
+
+    it('lists the egress policies on Pending erase, a tab with nothing to change', async () => {
+      await renderPage('/egress', PENDING_ERASE);
+
+      expect(await screen.findByText('payments-api')).toBeInTheDocument();
+      expect(screen.getByText(WHY)).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /^(Add|Remove|Replace|Edit)/ }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it('shows the members agent-manager lists, each with its role, from the organization namespace it names', async () => {
     const { callTool } = await renderPage('', SCENARIO);
 

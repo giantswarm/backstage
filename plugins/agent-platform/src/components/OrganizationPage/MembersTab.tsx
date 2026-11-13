@@ -54,10 +54,13 @@ function memberRequest(
 function AddMember({
   installation,
   namespace,
+  changesDisabledBy,
 }: {
   installation: string;
   namespace: string;
+  changesDisabledBy?: string;
 }) {
+  const off = changesDisabledBy !== undefined;
   const { add } = useOrganizationMemberWrites(installation, namespace);
   const [kind, setKind] = useState<MemberKind>('group');
   const [name, setName] = useState('');
@@ -75,6 +78,8 @@ function AddMember({
       <RadioGroup
         label="Add"
         orientation="horizontal"
+        isDisabled={off}
+        aria-describedby={changesDisabledBy}
         value={kind}
         onChange={value => {
           setKind(value as MemberKind);
@@ -93,12 +98,14 @@ function AddMember({
               : 'Their user name, as the cluster sees it.'
           }
           isRequired
+          isDisabled={off}
           value={name}
           onChange={setName}
           {...validation.textFieldProps('name', nameError)}
         />
         <Select
           label="Role"
+          isDisabled={off}
           selectedKey={role}
           options={MEMBER_ROLES.map(id => ({
             id,
@@ -112,7 +119,8 @@ function AddMember({
         />
         <Button
           variant="primary"
-          isDisabled={add.isPending}
+          isDisabled={off || add.isPending}
+          aria-describedby={changesDisabledBy}
           onPress={() => {
             if (nameError) {
               validation.reveal();
@@ -142,14 +150,18 @@ function AddMember({
  * agent-manager reads its RoleBindings (`list_organization_members`), groups
  * first. Adding offers a group first and a person second; a removal agent-
  * manager refuses, such as the last admin of `organization-admins`, which
- * admission keeps, is shown with its reason.
+ * admission keeps, is shown with its reason. With `changesDisabledBy` (the
+ * id of the line that says why, on Pending erase) the members stay listed and
+ * every change is off.
  */
 export function MembersTab({
   installation,
   namespace,
+  changesDisabledBy,
 }: {
   installation: string;
   namespace: string;
+  changesDisabledBy?: string;
 }) {
   const members = useOrganizationMembers(installation, namespace);
   const { remove } = useOrganizationMemberWrites(installation, namespace);
@@ -204,6 +216,8 @@ export function MembersTab({
               size="small"
               variant="secondary"
               aria-label={`Remove ${row.name} as ${row.role}`}
+              isDisabled={changesDisabledBy !== undefined}
+              aria-describedby={changesDisabledBy}
               onPress={() => {
                 remove.reset();
                 setRemoving(row);
@@ -299,7 +313,11 @@ export function MembersTab({
       </ConfirmDialog>
       {access.members && (
         <PageSection title="Add a member">
-          <AddMember installation={installation} namespace={namespace} />
+          <AddMember
+            installation={installation}
+            namespace={namespace}
+            changesDisabledBy={changesDisabledBy}
+          />
         </PageSection>
       )}
     </Flex>

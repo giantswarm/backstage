@@ -48,6 +48,12 @@ type TabProps = {
   organization: OrganizationNamespace;
 };
 
+/**
+ * A tab that writes: with `changesDisabledBy` (the id of the line that says
+ * why, on Pending erase) its rows stay listed and every change is off.
+ */
+type WritingTabProps = TabProps & { changesDisabledBy?: string };
+
 /** A read's state before its rows: reading, or why it could not be read. */
 function ReadState({
   isLoading,
@@ -223,7 +229,12 @@ function ReplaceCredentialDialog({
  * the model, which prepares a credential request, and the person enters the
  * key on the Dev Portal's credential form, where it is never shown back.
  */
-export function ModelsTab({ installation, organization }: TabProps) {
+export function ModelsTab({
+  installation,
+  organization,
+  changesDisabledBy,
+}: WritingTabProps) {
+  const off = changesDisabledBy !== undefined;
   const models = useAgentManagerModelConfigs(
     installation,
     organization.namespace,
@@ -256,7 +267,12 @@ export function ModelsTab({ installation, organization }: TabProps) {
     </>
   );
   const addModel = access.models ? (
-    <Button variant="secondary" onPress={() => setAdding(true)}>
+    <Button
+      variant="secondary"
+      isDisabled={off}
+      aria-describedby={changesDisabledBy}
+      onPress={() => setAdding(true)}
+    >
       Add model
     </Button>
   ) : undefined;
@@ -345,6 +361,8 @@ export function ModelsTab({ installation, organization }: TabProps) {
               variant="tertiary"
               size="small"
               aria-label={`Replace the key of ${row.name}`}
+              isDisabled={off}
+              aria-describedby={changesDisabledBy}
               onPress={() =>
                 setReplacing({
                   label: row.name,
@@ -416,7 +434,11 @@ function credentialPairsOf(
 }
 
 /** An organization's connectors, its RemoteMCPServers. */
-export function ConnectorsTab({ installation, organization }: TabProps) {
+export function ConnectorsTab({
+  installation,
+  organization,
+  changesDisabledBy,
+}: WritingTabProps) {
   const connectors = useOrganizationConnectors(
     installation,
     organization.namespace,
@@ -499,6 +521,8 @@ export function ConnectorsTab({ installation, organization }: TabProps) {
                     variant="tertiary"
                     size="small"
                     aria-label={`Replace the credential of ${what}`}
+                    isDisabled={changesDisabledBy !== undefined}
+                    aria-describedby={changesDisabledBy}
                     onPress={() =>
                       setReplacing({
                         label: what,
