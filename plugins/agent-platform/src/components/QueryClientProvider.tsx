@@ -1,4 +1,4 @@
-import { ReactNode, useMemo } from 'react';
+import { ReactNode, createContext, useContext, useMemo } from 'react';
 import type { QueryKey } from '@tanstack/react-query';
 import { QueryClient, QueryClientConfig } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
@@ -208,7 +208,22 @@ function onRestored() {
   markRestoredListsStale(queryClient);
 }
 
-export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
+/**
+ * Whether a `QueryClientProvider` of this plugin is already mounted above.
+ * Every mount uses the same client, so a nested one adds nothing but a second
+ * `PersistQueryClientProvider`: one more restore from localStorage and one
+ * more persister subscription on the same cache. A router mounts one for all
+ * its routes, and a page or a view keeps its own so it still works where it
+ * is mounted alone (`CustomizeModelPage` is exported): under a router, that
+ * one passes its children through.
+ */
+const ProviderMounted = createContext(false);
+
+const PersistedQueryClientProvider = ({
+  children,
+}: {
+  children: ReactNode;
+}) => {
   const persister = useMemo(
     () =>
       createPluginQueryPersister({
@@ -238,7 +253,16 @@ export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
         },
       }}
     >
-      {children}
+      <ProviderMounted.Provider value>{children}</ProviderMounted.Provider>
     </PersistQueryClientProvider>
+  );
+};
+
+export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
+  if (useContext(ProviderMounted)) {
+    return <>{children}</>;
+  }
+  return (
+    <PersistedQueryClientProvider>{children}</PersistedQueryClientProvider>
   );
 };
