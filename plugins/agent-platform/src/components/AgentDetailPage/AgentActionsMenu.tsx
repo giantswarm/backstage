@@ -42,6 +42,12 @@ export type AgentManagerGate = {
   presence: AgentManagerPresence;
   isUnavailable: boolean;
   isGitOpsOwned: boolean;
+  /**
+   * agent-manager's `managed: 'platform'`: the platform's own agent, such as
+   * the installation's default one. Read-only: every write is refused, a pull
+   * request too.
+   */
+  isPlatformOwned?: boolean;
   canCommit: boolean;
   isVerdictPending: boolean;
   /**
@@ -69,6 +75,9 @@ export function agentWriteMode(gate: AgentManagerGate): AgentWriteMode {
   ) {
     return undefined;
   }
+  if (gate.isPlatformOwned) {
+    return undefined;
+  }
   if (!gate.isGitOpsOwned) {
     return 'apply';
   }
@@ -91,6 +100,9 @@ export function agentManagerAbsenceReason(
 ): string | undefined {
   if (gate.isVerdictPending) {
     return undefined;
+  }
+  if (gate.isPlatformOwned) {
+    return 'It is owned by the platform, so it is read-only.';
   }
   if (gate.isGitOpsOwned) {
     return 'It is applied from Git, so edit it, update its skills or remove it in the GitOps repository.';

@@ -43,7 +43,6 @@ import {
   ShellPage,
   ShellPageBadgeSkeleton,
   StatusDot,
-  type StatusDotTone,
   TagList,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -98,8 +97,10 @@ import {
   portalOnlyStatus,
   ServerAuthActions,
   serverStateLabel,
+  SEVERITY_DOT_TONE,
   StatusWithHint,
   SessionGate,
+  useConnectorIcon,
   useConnectorListPaths,
   useServerSignIn,
 } from '../shared';
@@ -147,14 +148,6 @@ function MusterEndpoint({ endpoint }: { endpoint: string }) {
     </>
   );
 }
-
-/** The page's dot tones for muster's severities, as the list's dots read. */
-const SEVERITY_DOT_TONE: Record<MCPServerSeverity, StatusDotTone> = {
-  ok: 'success',
-  warning: 'warning',
-  error: 'danger',
-  unknown: 'neutral',
-};
 
 /**
  * The line under the connector's name: its description; for muster, what it
@@ -279,6 +272,7 @@ function ConnectorPageContent({
   const counts = useServerCapabilityCounts(representative, {
     enabled: authenticated,
   });
+  const icon = useConnectorIcon(row, installation, authenticated);
   const fleetClusters = useMemo(
     () => fleetManagementClusters(familyGroups(partitionServers(servers))),
     [servers],
@@ -306,6 +300,7 @@ function ConnectorPageContent({
   const usage = useConnectorUsage(row, installation, {
     enabled: authenticated && (tabPath === 'usage' || tabPath === 'details'),
     days: usageDays,
+    withToolLatency: tabPath === 'usage',
   });
 
   // The person's own sign-in to the connector. Signing in is offered where its
@@ -444,7 +439,7 @@ function ConnectorPageContent({
     <SessionGate
       session={session}
       installation={installation}
-      context="Tools need a muster session."
+      context="Tools need a Muster session."
     />
   );
   // An SSO connector that refused this person's sign-in hides its tools as a
@@ -462,7 +457,9 @@ function ConnectorPageContent({
     signInGate = (
       <Flex direction="column" gap="2" align="start">
         <Text as="p" variant="body-medium">
-          Sign in to this connector to see its tools.
+          {signIn.signInRefusal
+            ? 'You cannot sign in to this connector here, so its tools stay hidden.'
+            : 'Sign in to this connector to see its tools.'}
         </Text>
         <ServerAuthActions
           noun="connector"
@@ -496,13 +493,25 @@ function ConnectorPageContent({
     shown: (count ?? 0) > 0,
   }));
 
+  // A connector muster holds no connection to has nothing to count: "Tools
+  // (0)" would read as a connector without tools.
+  const reached =
+    row.kind === 'core' ||
+    (singular
+      ? !singular.getSuspended() &&
+        mcpServerStateSeverity(singular.getState()) === 'ok'
+      : members.some(
+          server => mcpServerStateSeverity(server.getState()) === 'ok',
+        ));
+  const toolsCount = tools.tools?.length;
+  let toolsTabCount: RouteTabSpec['count'] = toolsCount;
+  if (tools.isLoading) {
+    toolsTabCount = 'loading';
+  } else if (!reached && !toolsCount) {
+    toolsTabCount = undefined;
+  }
   const tabs: RouteTabSpec[] = [
-    {
-      id: 'tools',
-      path: '',
-      title: 'Tools',
-      count: tools.isLoading ? 'loading' : tools.tools?.length,
-    },
+    { id: 'tools', path: '', title: 'Tools', count: toolsTabCount },
   ];
   // Every other tab by its path, one of `CONNECTOR_PAGE_TAB_PATHS`.
   const addTab = (
@@ -637,12 +646,7 @@ function ConnectorPageContent({
         title={displayName}
         breadcrumbs={breadcrumbs}
         leading={
-          <ConnectorLogo
-            name={displayName}
-            icon={representative?.getStatusIcon()}
-            size={56}
-            decorative
-          />
+          <ConnectorLogo name={displayName} icon={icon} size={56} decorative />
         }
         badges={
           <StatusBadge
@@ -716,7 +720,7 @@ function ConnectorPageContent({
                         <SessionGate
                           session={session}
                           installation={installation}
-                          context="Usage figures need a muster session."
+                          context="Usage figures need a Muster session."
                         />
                       )
                     }

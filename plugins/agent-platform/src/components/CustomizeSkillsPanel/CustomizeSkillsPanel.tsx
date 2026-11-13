@@ -10,7 +10,6 @@ import {
   ROW_TAGS_MAX,
   TagList,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 
 import {
   agentsBySkill,
@@ -23,7 +22,6 @@ import {
 import {
   canonicalRepoUrl,
   canonicalSkillId,
-  canProposeSkillTo,
   repoSlug,
   skillTags,
 } from '../../lib/skills';
@@ -208,9 +206,8 @@ function SkillCard({ card }: { card: Row }) {
 }
 
 /**
- * Whether the Skills tab offers Add skill: once the catalog is read, when a
- * github.com repository to propose to is configured and the add page is
- * bound. Add skill = a pull request to a source repository, opened as the
+ * Whether the Skills tab offers Add skill: once the catalog is read, when it
+ * has a repository to propose to and the add page is bound. Add skill = a pull request to a source repository, opened as the
  * person (G16 B). The Customize screen draws it beside the tab's search, where
  * every tab's create action sits. Must be used inside a
  * `CustomizeDataProvider`.
@@ -218,12 +215,9 @@ function SkillCard({ card }: { card: Row }) {
 export function useCanAddSkill(): boolean {
   const { skillCatalog } = useCustomizeData();
   const newSkillRoute = useRouteRef(newSkillRouteRef);
-  const { config } = useSignedInConfig();
-  const repositories =
-    config?.getOptionalStringArray('agentPlatform.skills.repositories') ?? [];
   return (
     !skillCatalog.isLoading &&
-    repositories.some(canProposeSkillTo) &&
+    skillCatalog.proposalTargets.length > 0 &&
     Boolean(newSkillRoute)
   );
 }
@@ -241,14 +235,12 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
   const { skillCatalog } = useCustomizeData();
   const { rows: agents, isLoading: agentsLoading } = useAgents();
   const skillPaths = useSkillPaths();
-  // The add form's target repositories: the github.com entries of the same
-  // signed-in-config list the catalog is discovered from — skills are
-  // proposed as GitHub pull requests, and the endpoint refuses any other
-  // repository (T61).
-  const { config } = useSignedInConfig();
-  const repositories =
-    config?.getOptionalStringArray('agentPlatform.skills.repositories') ?? [];
-  const proposable = repositories.filter(canProposeSkillTo);
+  // The add form's target repositories (the catalog's `proposalTargets`):
+  // skills are proposed as GitHub pull requests, and the endpoint refuses
+  // any other repository (T61), a read-only source and one not read on a
+  // branch. Writable sources left out for not being on github.com.
+  const proposable = skillCatalog.proposalTargets;
+  const offGitHub = skillCatalog.unproposableRepositories;
   const usage = useMemo(() => agentsBySkill(agents), [agents]);
   const unique = useMemo(
     () => uniqueSkills(skillCatalog.skills),
@@ -306,7 +298,7 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
         <Alert
           status="danger"
           title="Could not read the skill repositories"
-          description={skillCatalog.error.message}
+          description="Try again in a moment."
         />
       )}
       {!skillCatalog.error && skillCatalog.failedRepositories.length > 0 && (
@@ -382,11 +374,18 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
     );
   }
 
-  // Repositories configured, none on github.com: nothing to propose a skill
-  // to, and the reason is the configuration, not the person.
+  // Writable repositories configured, none on github.com: nothing to propose
+  // a skill to, and the reason is the configuration, not the person.
   const cannotAddHere =
+    !skillCatalog.isLoading && offGitHub.length > 0 && proposable.length === 0;
+  // Sources configured and read, none taking new skills (read-only, or not
+  // read on a branch): Add skill is hidden, and this says why. A catalog that
+  // could not be read knows no targets, so its error says why instead.
+  const noneTakesSkills =
     !skillCatalog.isLoading &&
-    repositories.length > 0 &&
+    !skillCatalog.error &&
+    skillCatalog.hasRepositories &&
+    offGitHub.length === 0 &&
     proposable.length === 0;
   const hasFilters = filters.dimensions.length > 0;
 
@@ -398,6 +397,11 @@ export function CustomizeSkillsPanel({ search }: CustomizeSkillsPanelProps) {
         <Text as="p" variant="body-small" color="secondary">
           Adding skills here needs a github.com skill repository; add them in
           their own repository instead.
+        </Text>
+      )}
+      {noneTakesSkills && (
+        <Text as="p" variant="body-small" color="secondary">
+          No skill repository takes new skills here.
         </Text>
       )}
       {notes}

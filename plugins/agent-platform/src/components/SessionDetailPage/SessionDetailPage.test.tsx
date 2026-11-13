@@ -52,6 +52,7 @@ import {
   tasksClaudeHarness,
   tasksV099,
 } from '@giantswarm/backstage-plugin-agent-platform-common/testFixtures';
+import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
 
 // The route params the page reads. Driven directly rather than through a router so
 // each state can be rendered in isolation. The navigation is the page's own only
@@ -2405,16 +2406,20 @@ describe('SessionDetailPage', () => {
         },
       });
       const user = userEvent.setup();
-      await render();
+      const open = jest.fn().mockResolvedValue('accept');
+      await render([[externalUrlConsentApiRef, { open }]]);
 
       const card = screen.getByRole('form', {
         name: 'Question from the agent',
       });
-      const signIn = within(card).getByRole('link', {
-        name: 'Sign in to Grafana Cloud ↗',
+      const signIn = within(card).getByRole('button', {
+        name: 'Sign in to Grafana Cloud (opens in a new tab)',
       });
       expect(card).not.toHaveTextContent(LINK);
       await user.click(signIn);
+      expect(open).toHaveBeenCalledWith(
+        expect.objectContaining({ requester: 'Grafana Cloud' }),
+      );
       await user.click(
         within(card).getByRole('button', { name: "I've signed in" }),
       );

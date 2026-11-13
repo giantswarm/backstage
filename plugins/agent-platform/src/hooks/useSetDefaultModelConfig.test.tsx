@@ -19,6 +19,26 @@ jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   fetchResourceList: (...args: unknown[]) => mockFetchResourceList(...args),
 }));
 
+// The platform namespace's path: no organization, so no credential form to
+// link to (the organization path is covered through the Models router).
+jest.mock('@backstage/frontend-plugin-api', () => ({
+  ...jest.requireActual('@backstage/frontend-plugin-api'),
+  useRouteRef: () => undefined,
+}));
+
+// The organization directory: empty, and answered unless a case says it
+// could not reach agent-manager.
+let mockDiscoveryErrors: string[] = [];
+jest.mock('../components/OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../components/OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () => ({
+    ...jest.requireActual('../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+    discoveryErrors: mockDiscoveryErrors,
+    discoveryFailureOf: () => mockDiscoveryErrors[0],
+  }),
+}));
+
 const MARK = 'agent-platform.giantswarm.io/is-default-model-config';
 const analyticsApi = mockApis.analytics.mock();
 
@@ -81,6 +101,7 @@ async function setDefaultError(
 }
 
 beforeEach(() => {
+  mockDiscoveryErrors = [];
   jest.mocked(analyticsApi.captureEvent).mockClear();
   mockPatchResource.mockReset();
   mockPatchResource.mockResolvedValue(undefined);
@@ -121,6 +142,26 @@ describe('useSetDefaultModelConfig', () => {
         attributes: {},
       }),
     );
+  });
+
+  it('refuses a namespace it cannot tell from an organization, writing nothing', async () => {
+    mockDiscoveryErrors = ['Could not reach agent-manager on gazelle.'];
+    const { result } = setup();
+
+    const error = await setDefaultError(result, {
+      modelConfig: new ModelConfig(
+        {
+          ...json('opus'),
+          metadata: { name: 'opus', namespace: 'agents-payments-x7k2q' },
+        },
+        'gazelle',
+      ),
+      expected: [],
+    });
+
+    expect(error.message).toMatch(/Could not tell whether/);
+    expect(mockFetchResourceList).not.toHaveBeenCalled();
+    expect(mockPatchResource).not.toHaveBeenCalled();
   });
 
   it('refuses a second mark that appeared meanwhile, writing nothing', async () => {

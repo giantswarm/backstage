@@ -1,0 +1,41 @@
+# Runs the tests of the agent skills' scripts (.agents/skills/*/*.test.mjs,
+# for ui-impact's scorer and ui-sitemap's layout). They use Node's built-in
+# test runner and no dependencies, so the job needs no install and takes
+# seconds. Neither Jest nor the workspaces pick them up.
+#
+# Hand-authored (not devctl-generated), so it is safe to edit here.
+name: Skill tests
+
+on:
+  pull_request:
+    paths:
+      - '.agents/skills/**'
+      - '.github/workflows/skill-tests.yaml'
+  merge_group:
+  push:
+    branches:
+      - main
+    paths:
+      - '.agents/skills/**'
+      - '.github/workflows/skill-tests.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: skill-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: Run the skill tests
+        run: node --test .agents/skills/*/*.test.mjs

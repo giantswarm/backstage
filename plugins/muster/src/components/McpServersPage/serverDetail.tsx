@@ -27,11 +27,14 @@ import {
   StackedRowList,
   type StackedRowItem,
 } from '@giantswarm/backstage-plugin-ui-react';
+import { musterServerListQueryKey } from '../../hooks/useMusterServerAvailability';
 import { musterApiRef } from '../../apis';
 import {
   DEACTIVATED_LABEL,
   MCPServer,
   type MCPServerAuth,
+  type MCPServerState,
+  mcpServerStateSeverity,
 } from '../../lib/k8s';
 import {
   isGitOpsManaged,
@@ -230,7 +233,7 @@ export function AuthChain({ server }: { server: MCPServer }) {
         value: sigv4.roleArn ? (
           <Mono>{sigv4.roleArn}</Mono>
         ) : (
-          <Note>none — signs as muster's own identity</Note>
+          <Note>none — signs as Muster's own identity</Note>
         ),
       },
     );
@@ -301,8 +304,8 @@ export function AuthChain({ server }: { server: MCPServer }) {
           answer. */}
       {sigv4 && (
         <Note>
-          Requests are signed with muster's own AWS identity: all users share
-          it, CloudTrail attributes their actions to muster, and there is no
+          Requests are signed with Muster's own AWS identity: all users share
+          it, CloudTrail attributes their actions to Muster, and there is no
           user sign-in.
         </Note>
       )}
@@ -441,7 +444,7 @@ export function noToolsExplanation(server: MCPServer): string {
   }
   const state = server.getState();
   if (state === 'Awaiting Session') {
-    return 'No tools exposed yet — this connector connects per session with your identity; its tools appear once muster has connected it for you.';
+    return 'No tools exposed yet — this connector connects per session with your identity; its tools appear once Muster has connected it for you.';
   }
   const authGated =
     state === 'Auth Required' && server.canAuthenticateInteractively();
@@ -452,7 +455,25 @@ export function noToolsExplanation(server: MCPServer): string {
   if (state === 'Failed' && explanation) {
     return `No tools exposed — ${explanation}`;
   }
+  if (mcpServerStateSeverity(state) !== 'ok') {
+    return `${notConnectedSentence(state)}, so its tools cannot be shown.`;
+  }
   return 'No tools exposed (the connector may be down or unreachable).';
+}
+
+/** What muster reports of a connector it holds no connection to. */
+function notConnectedSentence(state: MCPServerState | undefined): string {
+  switch (state) {
+    case 'Failed':
+      return 'This connector failed to connect';
+    case 'Starting':
+    case 'Connecting':
+      return 'This connector is still connecting';
+    case undefined:
+      return 'This connector has not reported a connection yet';
+    default:
+      return `This connector is ${state.toLowerCase()}`;
+  }
 }
 
 /**
@@ -560,7 +581,7 @@ export function useServerCapabilityCounts(
   const name = server?.getName();
 
   const { data, isSuccess } = useQuery({
-    queryKey: ['muster', 'servers', installation],
+    queryKey: musterServerListQueryKey(installation),
     queryFn: () => musterApi.listServers(installation),
     enabled: Boolean(server) && (options.enabled ?? true),
   });

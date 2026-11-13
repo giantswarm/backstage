@@ -38,6 +38,26 @@ export class DexRefusedLogin extends Error {
 }
 
 /**
+ * Clicks `trigger`, a sign-in that opens a page muster issued, and agrees to
+ * open it in the external URL consent dialog; resolves the tab it opens in.
+ * The dialog names the page's address before anything opens.
+ */
+export async function openThroughConsent(
+  page: Page,
+  trigger: Locator,
+): Promise<Page> {
+  await trigger.click();
+  const consent = page.getByRole('dialog', { name: /^Open a page for / });
+  await expect(
+    consent,
+    'the sign-in page waits for the person to agree',
+  ).toBeVisible({ timeout: 60_000 });
+  const popup = page.waitForEvent('popup');
+  await consent.getByRole('button', { name: 'Open page in new tab' }).click();
+  return popup;
+}
+
+/**
  * Submits the lab Dex's login form in the popup the portal opened, with the
  * fixture password unless the test passes another (the wrong-password case),
  * and waits for Dex to send the popup on: the portal's own sign-in closes it
@@ -587,7 +607,18 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       await signIn(page, user);
       return page;
     });
-    await Promise.all(contexts.map(context => context.close()));
+    // A route handler still awaiting `route.fetch` when its context closes
+    // throws into the test that already passed.
+    await Promise.all(
+      contexts.map(async context => {
+        await Promise.all(
+          context
+            .pages()
+            .map(page => page.unrouteAll({ behavior: 'ignoreErrors' })),
+        );
+        await context.close();
+      }),
+    );
   },
 });
 
@@ -786,18 +817,22 @@ async function restoreInboxToasts(page: Page): Promise<void> {
 
 /**
  * Creates an agent in the New agent wizard the way a person does, as the
- * page's user: Details (no skills, no tools, the lab's default ModelConfig
- * unless `model` names another: the model radio's name, which is the
- * model's display name where it has one),
+ * page's user: Details (no skills, no tools, the model the wizard preselects,
+ * the place's default ModelConfig, unless `model` names another: the model
+ * radio's name, which is the model's display name where it has one),
  * agent-manager's dry run on Review, then Create agent. Resolves on the agent's
  * detail page and returns its path; from then on the agent exists and the
  * caller deletes it with {@link deleteAgentInPortal}, whatever happens next.
  *
- * Where the person may create agents in several places (agent-manager's
- * `get_info` `namespaces.managed`), the Owner field preselects Platform (or
- * the first organization where Platform is not offered); the wizard picks
- * `options.organization`, by its name, or else Platform. The only place is
- * picked by the wizard itself.
+ * Where the person may create agents in several places, the wizard picks
+ * `options.organization`, by its name, or else Platform, or, where Platform
+ * is not offered, the lab's organization ({@link lab.organization}). The
+ * places are `get_info`'s `namespaces.managed` (the Owner field: Platform
+ * beside the organizations), or, where agent-manager serves the organization
+ * tools, the organizations the person belongs to (the Organization field: no
+ * Platform). The only place is picked by the wizard itself. A person who
+ * belongs to no organization cannot create, and the wizard says so: that
+ * fails at once.
  *
  * `options.harness` picks that Runtime card under More options instead of the
  * platform Harness; `options.onStep` runs on Details (once the pick is made),
@@ -843,13 +878,11 @@ export async function createAgentInWizard(
   await page
     .getByRole('textbox', { name: 'Instructions' })
     .fill('You are a test agent. Answer with exactly what you are asked for.');
-  const model = page
-    .getByRole('radiogroup', { name: 'Model' })
-    .getByRole('radio', { name: options.model ?? /default-model-config/ });
+  const models = page.getByRole('radiogroup', { name: 'Model' });
   // Platform beside the organizations: the Owner radio group, whose
   // Organization radio brings the organization dropdown. The organizations
-  // alone: that dropdown, as the Owner field. A Select's name is its value
-  // and its label: "acme Organization", "acme Owner".
+  // alone: that dropdown, as the Owner or Organization field. A Select's name
+  // is its value and its label: "acme Organization", "acme Owner".
   const owner = page.getByRole('radiogroup', { name: 'Owner' });
   const organizationPicker = page.getByRole('button', {
     name: /\b(Organization|Owner)$/,
@@ -857,13 +890,22 @@ export async function createAgentInWizard(
   // The only place, stated in a line: under More options (opened above), or
   // under an Environment dropdown in the main form.
   const soleOwner = page.getByText(
-    /^Owner: .+, the only one you may create agents for on .+\.$/,
+    /^(Owner: .+, the only one you may create agents for|Organization: .+, the only organization you belong to) on .+\.$/,
   );
-  // The Owner field shows once agent-manager's get_info answers; the models
-  // may be offered before. Decide on the owner only once it is known.
-  await expect(owner.or(organizationPicker).or(soleOwner).first()).toBeVisible({
-    timeout: 60_000,
-  });
+  const noOrganization = page.getByText(
+    /^You belong to no organization on .+$/,
+  );
+  // The field shows once agent-manager's get_info (and, for organizations,
+  // list_my_organizations) answers; the models may be offered before. Decide
+  // on the owner only once it is known.
+  await expect(
+    owner.or(organizationPicker).or(soleOwner).or(noOrganization).first(),
+  ).toBeVisible({ timeout: 60_000 });
+  if (await noOrganization.isVisible()) {
+    throw new Error(
+      `${await noOrganization.innerText()}: the wizard offers no place to create the agent in: no AgentPlatformOrganization of the lab binds the user (agent-manager's list_my_organizations)`,
+    );
+  }
   if (await owner.isVisible()) {
     await owner
       .getByRole('radio', {
@@ -871,20 +913,26 @@ export async function createAgentInWizard(
       })
       .check();
   }
-  if (options.organization && (await organizationPicker.isVisible())) {
+  // Without Platform on offer, the lab's own organization: other runs on a
+  // shared lab may add organizations the admin belongs to, which sort before
+  // it.
+  const organization =
+    options.organization ??
+    (!(await owner.isVisible()) && (await organizationPicker.isVisible())
+      ? lab.organization.name
+      : undefined);
+  if (organization && (await organizationPicker.isVisible())) {
     await organizationPicker.click();
-    await page
-      .getByRole('option', { name: options.organization, exact: true })
-      .click();
-  } else if (
-    !(await owner.isVisible()) &&
-    (await organizationPicker.isVisible())
-  ) {
-    throw new Error(
-      'the wizard offers organizations only, no Platform: pass options.organization',
-    );
+    await page.getByRole('option', { name: organization, exact: true }).click();
   }
-  await model.check();
+  if (options.model) {
+    await models.getByRole('radio', { name: options.model }).check();
+  } else {
+    await expect(
+      models.getByRole('radio', { checked: true }),
+      'the wizard preselects the default model of the place picked',
+    ).toHaveCount(1, { timeout: 60_000 });
+  }
   if (options.harness) {
     await page
       .getByRole('radiogroup', { name: 'Runtime' })

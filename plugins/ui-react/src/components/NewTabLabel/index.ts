@@ -1,0 +1,1 @@
+export { NewTabLabel } from './NewTabLabel';

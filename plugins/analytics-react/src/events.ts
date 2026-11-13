@@ -189,6 +189,21 @@ export const portalEvents = defineEvents({
       role: ['admin', 'editor', 'user'],
     },
   },
+  'AgentPlatform.organizationCredentialSaved': {
+    description:
+      "A credential (a model key, a connector or an egress credential) was saved on an Agent Platform organization's credential form, as the signed-in person: live, or as a pull request. Never the value.",
+    attributes: { mode: ['apply', 'commit'] },
+  },
+  'AgentPlatform.organizationDeleteRequested': {
+    description:
+      'An Agent Platform organization applied from git was asked to be deleted, on its page, as the signed-in person: agent-manager opened the pull request that removes it from git.',
+    attributes: {},
+  },
+  'AgentPlatform.organizationErased': {
+    description:
+      'An Agent Platform organization was deleted and its erasure started, on its page, as the signed-in person, after they typed its name: live, or once its delete pull request merged.',
+    attributes: {},
+  },
   'AgentPlatform.organizationMemberRemoved': {
     description:
       "A group or a person was removed from an Agent Platform organization's roles, on the organization's page, as the signed-in person.",

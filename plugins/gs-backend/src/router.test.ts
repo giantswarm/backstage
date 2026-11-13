@@ -4,9 +4,15 @@ import { GithubCredentialsProvider } from '@backstage/integration';
 import { JsonObject } from '@backstage/types';
 import express from 'express';
 import request from 'supertest';
+import { MusterServerNotConnectedError } from '@giantswarm/backstage-plugin-gs-node';
 import { createRouter } from './router';
 import { createSkillPullRequest } from './agentSkills/createSkillPullRequest';
 
+const mockReadSkillSources = jest.fn();
+jest.mock('./agentSkills/skillManagerSources', () => ({
+  ...jest.requireActual('./agentSkills/skillManagerSources'),
+  skillSourcesReader: () => mockReadSkillSources,
+}));
 // The route's own validation is under test; the GitHub conversation has its
 // own suite (createSkillPullRequest.test.ts).
 jest.mock('./agentSkills/createSkillPullRequest', () => ({
@@ -491,6 +497,9 @@ describe('GET /agent-skills', () => {
   /** What the route answers: the listing, when it was read, not the files. */
   const answered = {
     ...listing,
+    // github.com takes pull requests, the lab's git server does not.
+    proposable: expect.any(Boolean),
+    path: '',
     readAt: expect.any(String),
     stale: false,
   };
@@ -685,6 +694,8 @@ describe('GET /agent-skills', () => {
       expect(response.status).toBe(200);
       expect(response.body).toEqual({
         ...listing,
+        proposable: true,
+        path: '',
         readAt: new Date(start).toISOString(),
         stale: true,
       });
@@ -1735,7 +1746,7 @@ describe('POST /agent-skills/pull-request', () => {
   };
 
   /** An app with the skill repositories configured and the error handler on. */
-  async function buildSkillsApp() {
+  async function buildSkillsApp({ withLogger = false } = {}) {
     const router = await createRouter({
       config: makeConfig({
         agentPlatform: {
@@ -1749,6 +1760,7 @@ describe('POST /agent-skills/pull-request', () => {
       githubCredentialsProvider,
       httpAuth: mockServices.httpAuth(),
       managementClusterVersions,
+      ...(withLogger ? { logger: mockServices.logger.mock() } : {}),
     });
     const app = express();
     app.use(router);
@@ -1759,7 +1771,12 @@ describe('POST /agent-skills/pull-request', () => {
         res: express.Response,
         _next: express.NextFunction,
       ) => {
-        res.status(err.name === 'InputError' ? 400 : 500).json({
+        const status: Record<string, number> = {
+          AuthenticationError: 401,
+          InputError: 400,
+          NotAllowedError: 403,
+        };
+        res.status(status[err.name] ?? 500).json({
           error: { name: err.name, message: err.message },
         });
       },
@@ -1792,6 +1809,141 @@ describe('POST /agent-skills/pull-request', () => {
     expect(createSkillPullRequest).toHaveBeenCalledWith({
       ...body,
       token: 'gh-token',
+    });
+  });
+
+  describe('with the installation’s skill-manager', () => {
+    const withInstallation = { ...body, installation: 'graveler' };
+
+    beforeEach(() => {
+      mockReadSkillSources.mockReset().mockResolvedValue([
+        { url: 'https://github.com/acme/team-skills' },
+        {
+          url: 'https://github.com/giantswarm/agent-platform',
+          path: 'skills',
+          readOnly: true,
+        },
+      ]);
+    });
+
+    it('opens it in a writable source the person’s skill-manager lists', async () => {
+      const app = await buildSkillsApp({ withLogger: true });
+
+      const response = await request(app)
+        .post('/agent-skills/pull-request')
+        .set('gs-github-token', 'gh-token')
+        .set('backstage-muster-authorization', 'muster-token')
+        .send({
+          ...withInstallation,
+          repoUrl: 'https://github.com/acme/team-skills',
+        });
+
+      expect(response.status).toBe(200);
+      expect(mockReadSkillSources).toHaveBeenCalledWith(
+        'graveler',
+        'muster-token',
+      );
+      expect(createSkillPullRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          repoUrl: 'https://github.com/acme/team-skills',
+        }),
+      );
+      expect(
+        jest.mocked(createSkillPullRequest).mock.calls[0][0],
+      ).not.toHaveProperty('base');
+    });
+
+    it('opens it against the branch the source reads', async () => {
+      mockReadSkillSources.mockResolvedValue([
+        { url: 'https://github.com/acme/team-skills', ref: 'skills' },
+      ]);
+      const app = await buildSkillsApp({ withLogger: true });
+
+      const response = await request(app)
+        .post('/agent-skills/pull-request')
+        .set('gs-github-token', 'gh-token')
+        .set('backstage-muster-authorization', 'muster-token')
+        .send({
+          ...withInstallation,
+          repoUrl: 'https://github.com/acme/team-skills',
+        });
+
+      expect(response.status).toBe(200);
+      expect(createSkillPullRequest).toHaveBeenCalledWith(
+        expect.objectContaining({ base: 'skills' }),
+      );
+    });
+
+    it('ignores the portal’s configured list', async () => {
+      const app = await buildSkillsApp({ withLogger: true });
+
+      const response = await request(app)
+        .post('/agent-skills/pull-request')
+        .set('gs-github-token', 'gh-token')
+        .set('backstage-muster-authorization', 'muster-token')
+        .send(withInstallation);
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.message).toContain(
+        "not one of the installation's skill sources",
+      );
+      expect(createSkillPullRequest).not.toHaveBeenCalled();
+    });
+
+    it('refuses a read-only source', async () => {
+      const app = await buildSkillsApp({ withLogger: true });
+
+      const response = await request(app)
+        .post('/agent-skills/pull-request')
+        .set('gs-github-token', 'gh-token')
+        .set('backstage-muster-authorization', 'muster-token')
+        .send({
+          ...withInstallation,
+          repoUrl: 'https://github.com/giantswarm/agent-platform',
+          kind: 'update',
+          path: 'skills/x',
+          baseCommit: 'a'.repeat(40),
+        });
+
+      expect(response.status).toBe(403);
+      expect(createSkillPullRequest).not.toHaveBeenCalled();
+    });
+
+    it('needs the person’s muster token', async () => {
+      const app = await buildSkillsApp({ withLogger: true });
+
+      const response = await request(app)
+        .post('/agent-skills/pull-request')
+        .set('gs-github-token', 'gh-token')
+        .send(withInstallation);
+
+      expect(response.status).toBe(401);
+      expect(mockReadSkillSources).not.toHaveBeenCalled();
+    });
+
+    it('says how to connect skill-manager when the person is not connected', async () => {
+      mockReadSkillSources.mockRejectedValue(
+        new MusterServerNotConnectedError(
+          "Connect 'skill-manager' in muster to use this page.",
+          'skill-manager',
+          'https://muster.example/auth',
+        ),
+      );
+      const app = await buildSkillsApp({ withLogger: true });
+
+      const response = await request(app)
+        .post('/agent-skills/pull-request')
+        .set('gs-github-token', 'gh-token')
+        .set('backstage-muster-authorization', 'muster-token')
+        .send(withInstallation);
+
+      expect(response.status).toBe(401);
+      expect(response.body.error).toMatchObject({
+        name: 'MusterServerNotConnectedError',
+        server: 'skill-manager',
+        authUrl: 'https://muster.example/auth',
+      });
+      expect(createSkillPullRequest).not.toHaveBeenCalled();
     });
   });
 
@@ -2023,5 +2175,229 @@ describe('POST /agent-skills/pull-request', () => {
     expect(response.body.error.message).toBe(
       'Failed to open the pull request: A skill named notes already exists in giantswarm/skills.',
     );
+  });
+});
+
+describe('skill repositories with ref, path and readOnly', () => {
+  const COMMIT = 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1';
+  const PLATFORM = 'https://github.com/giantswarm/agent-platform';
+  const TEAM = 'https://github.com/giantswarm/team-skills';
+  const PINNED = 'https://github.com/giantswarm/pinned-skills';
+  const skill = {
+    name: 'agent-platform-overview',
+    description: 'The platform.',
+    repoUrl: PLATFORM,
+    path: 'skills/agent-platform-overview',
+    ref: 'v1.2.3',
+    commit: COMMIT,
+    contentReadable: true,
+    tags: [],
+  };
+
+  async function buildSourcesApp() {
+    const router = await createRouter({
+      config: makeConfig({
+        agentPlatform: {
+          skills: {
+            repositories: [
+              { url: PLATFORM, ref: 'v1.2.3', path: 'skills', readOnly: true },
+              { url: TEAM, path: './skills/', ref: 'develop' },
+              // A second entry for a listed URL is left out.
+              { url: `${PLATFORM}.git/` },
+              { url: PINNED, ref: COMMIT },
+            ],
+          },
+        },
+      }),
+      containerRegistry,
+      mimir,
+      githubCredentialsProvider,
+      httpAuth: mockServices.httpAuth(),
+      managementClusterVersions,
+    });
+    const app = express();
+    app.use(router);
+    app.use(
+      (
+        err: Error,
+        _req: express.Request,
+        res: express.Response,
+        _next: express.NextFunction,
+      ) => {
+        res.status(err.name === 'InputError' ? 400 : 500).json({
+          error: { name: err.name, message: err.message },
+        });
+      },
+    );
+    return app;
+  }
+
+  beforeEach(() => {
+    jest
+      .mocked(discoverAgentSkills)
+      .mockReset()
+      .mockResolvedValue({
+        skills: [skill],
+        ref: 'v1.2.3',
+        commit: COMMIT,
+        truncated: false,
+        contents: new Map(),
+      });
+    jest.mocked(readSkillContentFromGitHub).mockReset();
+    jest
+      .mocked(createSkillPullRequest)
+      .mockReset()
+      .mockResolvedValue({
+        pullRequestUrl: `${TEAM}/pull/1`,
+        number: 1,
+        branch: 'add-skill/notes',
+        base: 'main',
+        path: 'skills/notes/SKILL.md',
+      });
+  });
+
+  it('reads the configured ref below the configured path and marks a read-only source', async () => {
+    const response = await request(await buildSourcesApp())
+      .get('/agent-skills')
+      .query({ repoUrl: PLATFORM });
+
+    expect(response.status).toBe(200);
+    expect(discoverAgentSkills).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repoUrl: PLATFORM,
+        ref: 'v1.2.3',
+        scanPath: 'skills',
+      }),
+    );
+    expect(response.body.readOnly).toBe(true);
+    expect(response.body.commit).toBe(COMMIT);
+    expect(response.body.skills).toEqual([{ ...skill, readOnly: true }]);
+  });
+
+  it('says which source takes pull requests, and where it scans', async () => {
+    const app = await buildSourcesApp();
+    const platform = await request(app)
+      .get('/agent-skills')
+      .query({ repoUrl: PLATFORM });
+    const team = await request(app)
+      .get('/agent-skills')
+      .query({ repoUrl: TEAM });
+    jest.mocked(discoverAgentSkills).mockResolvedValueOnce({
+      skills: [],
+      ref: 'v2',
+      refKind: 'tag',
+      commit: COMMIT,
+      truncated: false,
+      contents: new Map(),
+    });
+    const tagged = await request(app)
+      .get('/agent-skills')
+      .query({ repoUrl: TEAM, ref: 'v2' });
+
+    expect([platform.body.proposable, platform.body.path]).toEqual([
+      false,
+      'skills',
+    ]);
+    expect([team.body.proposable, team.body.path]).toEqual([true, 'skills']);
+    expect(tagged.body.proposable).toBe(false);
+  });
+
+  it('refuses a skill outside the configured path', async () => {
+    const response = await request(await buildSourcesApp())
+      .get('/agent-skills/content')
+      .query({ repoUrl: PLATFORM, path: 'internal/demo', commit: COMMIT });
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.message).toContain('is not below skills');
+    expect(readSkillContentFromGitHub).not.toHaveBeenCalled();
+  });
+
+  it('refuses a pull request into a read-only source', async () => {
+    const response = await request(await buildSourcesApp())
+      .post('/agent-skills/pull-request')
+      .set('gs-github-token', 'gh-token')
+      .send({
+        repoUrl: PLATFORM,
+        skillName: 'notes',
+        description: 'How to take notes.',
+        instructions: 'Write things down.',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toBe(
+      `${PLATFORM} is a read-only skill repository`,
+    );
+    expect(createSkillPullRequest).not.toHaveBeenCalled();
+  });
+
+  it('adds a new skill below the configured path', async () => {
+    const response = await request(await buildSourcesApp())
+      .post('/agent-skills/pull-request')
+      .set('gs-github-token', 'gh-token')
+      .send({
+        repoUrl: TEAM,
+        skillName: 'notes',
+        description: 'How to take notes.',
+        instructions: 'Write things down.',
+      });
+
+    expect(response.status).toBe(200);
+    expect(createSkillPullRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repoUrl: TEAM,
+        parentDir: 'skills',
+        base: 'develop',
+      }),
+    );
+  });
+
+  it('refuses a pull request into a source pinned to a commit', async () => {
+    const response = await request(await buildSourcesApp())
+      .post('/agent-skills/pull-request')
+      .set('gs-github-token', 'gh-token')
+      .send({
+        repoUrl: PINNED,
+        skillName: 'notes',
+        description: 'How to take notes.',
+        instructions: 'Write things down.',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toContain('not a branch');
+    expect(createSkillPullRequest).not.toHaveBeenCalled();
+  });
+
+  it('matches the pull-request repository like discovery does', async () => {
+    const response = await request(await buildSourcesApp())
+      .post('/agent-skills/pull-request')
+      .set('gs-github-token', 'gh-token')
+      .send({
+        repoUrl: `${PLATFORM.toUpperCase().replace('HTTPS://GITHUB.COM', 'https://github.com')}.git`,
+        skillName: 'notes',
+        description: 'How to take notes.',
+        instructions: 'Write things down.',
+      });
+
+    // The first entry for the URL wins: read-only.
+    expect(response.status).toBe(400);
+    expect(response.body.error.message).toContain('read-only');
+  });
+
+  it('refuses an update of a skill outside the configured path', async () => {
+    const response = await request(await buildSourcesApp())
+      .post('/agent-skills/pull-request')
+      .set('gs-github-token', 'gh-token')
+      .send({
+        repoUrl: TEAM,
+        skillName: 'notes',
+        description: 'How to take notes.',
+        instructions: 'Write things down.',
+        kind: 'update',
+        path: 'notes',
+        baseCommit: COMMIT,
+      });
+
+    expect(response.status).toBe(400);
+    expect(createSkillPullRequest).not.toHaveBeenCalled();
   });
 });

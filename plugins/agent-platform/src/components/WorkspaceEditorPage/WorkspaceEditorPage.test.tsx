@@ -25,6 +25,10 @@ import {
   type FakeRepository,
   type WorkspaceManagerFake,
 } from './workspaceManagerFake';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
@@ -100,7 +104,12 @@ async function render(
     defaultOptions: { queries: { retry: false } },
   });
   return renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, musterApi]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, musterApi],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <PageHeaderActionsProvider>
           <WorkspaceEditorPage
@@ -172,9 +181,15 @@ describe('WorkspaceEditorPage', () => {
     });
     await render(fake);
 
+    // Any name: the technical name is filled in from it.
     fireEvent.change(await screen.findByRole('textbox', { name: /^Name/ }), {
-      target: { value: 'platform-mcp' },
+      target: { value: 'Platform MCP' },
     });
+    expect(
+      screen.getByRole('textbox', { name: /^Name/ }),
+    ).toHaveAccessibleDescription(
+      'Its technical name is platform-mcp; it cannot be changed once the workspace exists.',
+    );
     fireEvent.change(source(0).getByRole('textbox', { name: /^Owner/ }), {
       target: { value: 'acme' },
     });
@@ -342,6 +357,7 @@ describe('WorkspaceEditorPage', () => {
   });
 
   it("shows a field's problem once the person leaves it, before any save", async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     const fake = createWorkspaceManagerFake({
       providers: [GITHUB],
       repositories: ACME,
@@ -349,14 +365,20 @@ describe('WorkspaceEditorPage', () => {
     await render(fake);
 
     const name = await screen.findByRole('textbox', { name: /^Name/ });
-    fireEvent.change(name, { target: { value: 'Platform MCP' } });
+    await user.click(name);
+    await user.tab();
     expect(
-      screen.queryByText(/Use lowercase letters, digits and dashes only/),
+      screen.queryByText('Enter a name for the workspace.'),
     ).not.toBeInTheDocument();
-    fireEvent.blur(name);
-    expect(
-      await screen.findByText(/Use lowercase letters, digits and dashes only/),
-    ).toBeInTheDocument();
+    await user.click(name);
+    await user.type(name, 'Platform');
+    await user.clear(name);
+    await user.tab();
+    await waitFor(() =>
+      expect(name).toHaveAccessibleDescription(
+        expect.stringContaining('Enter a name for the workspace.'),
+      ),
+    );
     // A field not yet left stays quiet.
     expect(screen.queryByText('Choose an owner')).not.toBeInTheDocument();
   });
@@ -511,7 +533,9 @@ describe('WorkspaceEditorPage', () => {
           gate.getByText(/reads its repositories from gitlab-lab \(GitLab\)/),
         ).toBeInTheDocument();
         expect(
-          gate.getByRole('button', { name: 'Sign in to GitLab ↗' }),
+          gate.getByRole('button', {
+            name: 'Sign in to GitLab (opens in a new tab)',
+          }),
         ).toBeInTheDocument();
         expect(gate.queryByText(/core_auth_login/)).not.toBeInTheDocument();
         expect(
@@ -533,7 +557,9 @@ describe('WorkspaceEditorPage', () => {
         await screen.findByTestId('workspace-editor-gate');
 
         fireEvent.click(
-          screen.getByRole('button', { name: 'Sign in to GitLab ↗' }),
+          screen.getByRole('button', {
+            name: 'Sign in to GitLab (opens in a new tab)',
+          }),
         );
         expect(
           await screen.findByText('Waiting for GitLab…'),
@@ -582,7 +608,9 @@ describe('WorkspaceEditorPage', () => {
         expect(fake.callsOf('list_repositories')).toHaveLength(0);
 
         fireEvent.click(
-          prompt.getByRole('button', { name: 'Sign in to GitLab ↗' }),
+          prompt.getByRole('button', {
+            name: 'Sign in to GitLab (opens in a new tab)',
+          }),
         );
         await waitFor(() =>
           expect(fake.signInServer.mock.calls).toEqual([[target, 'lab']]),
@@ -645,17 +673,101 @@ describe('WorkspaceEditorPage', () => {
         expect.stringContaining('A workspace named taken exists on lab.'),
       ),
     );
+  });
 
-    // An invalid name says so once typing pauses, with one to try.
+  it('takes a technical name of the person’s own, and checks it there', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+    });
+    await render(fake);
+    const name = await screen.findByRole('textbox', { name: /^Name/ });
     fireEvent.change(name, { target: { value: 'Platform MCP' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced options' }));
+    const technical = await screen.findByRole('textbox', {
+      name: /^Technical name/,
+    });
+    expect(technical).toHaveValue('platform-mcp');
+
+    // An invalid technical name says so once typing pauses, with one to try.
+    fireEvent.change(technical, { target: { value: 'Bad_Name' } });
     await act(async () => {
       jest.advanceTimersByTime(600);
     });
     await waitFor(() =>
-      expect(name).toHaveAccessibleDescription(
-        expect.stringContaining('Try “platform-mcp”.'),
+      expect(technical).toHaveAccessibleDescription(
+        expect.stringContaining('Try “bad-name”.'),
       ),
     );
+    expect(name).not.toHaveAccessibleDescription(
+      expect.stringContaining('Try'),
+    );
+
+    // An invalid technical name is not stated as the one it will get.
+    expect(name).toHaveAccessibleDescription(
+      expect.stringContaining('Its technical name is filled in from it'),
+    );
+
+    // From then on the name no longer changes it.
+    fireEvent.change(technical, { target: { value: 'mcp-servers' } });
+    fireEvent.change(name, { target: { value: 'Something else' } });
+    expect(technical).toHaveValue('mcp-servers');
+    expect(name).toHaveAccessibleDescription(
+      expect.stringContaining('Its technical name is mcp-servers'),
+    );
+
+    // Cleared, it is the name's again.
+    fireEvent.change(technical, { target: { value: '' } });
+    fireEvent.change(name, { target: { value: 'Team repos' } });
+    expect(technical).toHaveValue('team-repos');
+  });
+
+  it('opens Advanced options when the technical name blocks the save', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+    });
+    await render(fake);
+    // A name with no Latin letter or digit leaves no technical name.
+    fireEvent.change(await screen.findByRole('textbox', { name: /^Name/ }), {
+      target: { value: '日本チーム' },
+    });
+    const advanced = screen.getByRole('button', { name: 'Advanced options' });
+    expect(advanced).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
+    await waitFor(() =>
+      expect(advanced).toHaveAttribute('aria-expanded', 'true'),
+    );
+    expect(
+      screen.getByRole('textbox', { name: /^Technical name/ }),
+    ).toHaveAccessibleDescription(
+      expect.stringContaining('Enter a technical name.'),
+    );
+    expect(fake.callsOf('create_workspace')).toHaveLength(0);
+  });
+
+  it('asks for a name even with a technical name typed', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+    });
+    await render(fake);
+    const name = await screen.findByRole('textbox', { name: /^Name/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced options' }));
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: /^Technical name/ }),
+      { target: { value: 'mcp-servers' } },
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
+    await waitFor(() =>
+      expect(name).toHaveAccessibleDescription(
+        expect.stringContaining('Enter a name for the workspace.'),
+      ),
+    );
+    expect(fake.callsOf('create_workspace')).toHaveLength(0);
   });
 
   it('opens an existing workspace with its filters and saves the change', async () => {
@@ -1344,7 +1456,9 @@ describe('WorkspaceEditorPage wording by control', () => {
 
     const name = await screen.findByRole('textbox', { name: /^Name/ });
     expect(name).toHaveAccessibleDescription(
-      expect.stringContaining('It cannot be changed later.'),
+      expect.stringContaining(
+        'it cannot be changed once the workspace exists.',
+      ),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
 

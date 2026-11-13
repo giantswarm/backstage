@@ -44,6 +44,7 @@ export function serverInfoOf(server: MCPServer): ServerInfo {
       ? `x_${tenant}_${prefix.slice('x_'.length)}`
       : prefix,
     state: server.getState(),
+    ...(server.getSuspended() ? { suspended: true } : {}),
     oauth: server.getAuth()?.type === 'oauth',
     signInTool:
       server.getAuth()?.type === 'oauth' && !server.isServedPerSession(),

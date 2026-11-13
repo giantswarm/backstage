@@ -4,7 +4,6 @@ import {
   CellText,
   ColumnConfig,
   Flex,
-  Link,
   Select,
   Table,
   Text,
@@ -248,6 +247,7 @@ export function ToolchainDetailPage({
     );
   }
 
+  const releaseURL = safeWebURL(toolchain.releaseURL);
   return (
     <ShellPage
       title={name}
@@ -286,15 +286,11 @@ export function ToolchainDetailPage({
       }
     >
       <Flex direction="column" gap="2">
-        {safeWebURL(toolchain.releaseURL) && (
+        {releaseURL && (
           <Text variant="body-small" color="secondary">
-            <Link
-              href={safeWebURL(toolchain.releaseURL)}
-              target="_blank"
-              rel="noopener"
-            >
+            <ExternalLink href={releaseURL} display="inline">
               Release {toolchain.name}/{toolchain.version}
-            </Link>
+            </ExternalLink>
           </Text>
         )}
         <Described toolchain={toolchain} sourceURL={sourceURL} />

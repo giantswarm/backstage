@@ -408,3 +408,23 @@ test('a refused workspace start names the repositories and says what to do', asy
   expect(checks).toHaveLength(1);
   await expect(admin).not.toHaveURL(/\/sessions\/[^/]+\/[^/]+$/);
 });
+
+test('a workspace takes any name and says the technical name it gets', async ({
+  admin,
+}) => {
+  await stageProvider(admin);
+  await open(admin, '/customize/workspaces');
+  await admin.getByRole('link', { name: 'New workspace' }).first().click();
+
+  await admin.getByRole('textbox', { name: /^Name/ }).fill('My Workspace');
+  await expect(admin.getByText(/Its technical name is/)).toHaveText(
+    'Its technical name is my-workspace; it cannot be changed once the workspace exists.',
+  );
+
+  await admin.getByRole('button', { name: 'Advanced options' }).click();
+  const technical = admin.getByRole('textbox', { name: /^Technical name/ });
+  await expect(technical).toHaveValue('my-workspace');
+  await technical.fill('platform-repos');
+  await admin.getByRole('textbox', { name: /^Name/ }).fill('Something else');
+  await expect(technical).toHaveValue('platform-repos');
+});

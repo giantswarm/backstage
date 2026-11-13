@@ -289,7 +289,7 @@ describe('ConnectorUsageTab', () => {
 
     expect(
       screen.getByText(
-        'Counted where muster dispatches each call, so a call through call_tool counts for the tool it ran.',
+        'Counted where Muster dispatches each call, so a call through call_tool counts for the tool it ran.',
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Open in Usage' })).toHaveAttribute(

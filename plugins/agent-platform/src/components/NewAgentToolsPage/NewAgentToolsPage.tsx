@@ -75,7 +75,10 @@ import {
   materialize,
   needsIndividualTools,
   presetBaseOf,
+  toggleCatalogueSelector,
+  unlistedPicks,
   withConnectorChoice,
+  withoutCovered,
 } from './connectorChoice';
 import { CopyFromAgent } from './CopyFromAgent';
 import { SelectedRail, type SelectedRailProps } from './SelectedRail';
@@ -168,6 +171,25 @@ function connectorsHint({
 }
 
 /**
+ * The line by Continue while the toolset blocks it: what is wrong, in one
+ * sentence, and where it is fixed.
+ */
+function blockedLine(
+  toolset: readonly string[],
+  problems: readonly string[],
+): string {
+  if (toolset.length > MAX_INLINE_SELECTORS) {
+    return `This toolset lists ${toolset.length} selectors but an agent may list at most ${MAX_INLINE_SELECTORS}, so remove ${
+      toolset.length - MAX_INLINE_SELECTORS
+    } or more under Selected, or choose All for a connector instead of single tools.`;
+  }
+  const invalid = Math.max(problems.length, 1);
+  return invalid === 1
+    ? 'One selector in this toolset is not valid, so remove it under Selected.'
+    : `${invalid} selectors in this toolset are not valid, so remove them under Selected.`;
+}
+
+/**
  * The summary bar where the frame has no room for the rail: below the
  * two-column tier, or in a frame too narrow for it beside the step.
  */
@@ -224,7 +246,7 @@ export function NewAgentToolsPage() {
     toolsetProblems,
   } = useNewAgentForm();
   // Cached by now; only decides where "Back" goes and what the step is numbered.
-  const { hasRepositories } = useSkillCatalog();
+  const { hasRepositories } = useSkillCatalog(state.installation);
 
   const installation = state.installation;
   const musterApi = useMusterPluginApi();
@@ -374,7 +396,7 @@ export function NewAgentToolsPage() {
       }
       setToolset(
         compactSelection(
-          next,
+          withoutCovered(next, groups),
           presetResolved && presetBase
             ? { preset: presetBase, resolved: presetResolution.tools }
             : undefined,
@@ -568,8 +590,15 @@ export function NewAgentToolsPage() {
   // choose below.
   const chooseConnector = useCallback(
     (bucket: ServerBucket, choice: Exclude<ConnectorChoice, 'partial'>) =>
-      commit(withConnectorChoice(base, bucket, choice)),
-    [commit, base],
+      commit(
+        withConnectorChoice(
+          base,
+          bucket,
+          choice,
+          unlistedPicks(bucket, base, connectors),
+        ),
+      ),
+    [commit, base, connectors],
   );
   const toggleSelected = useCallback(
     (selector: string) => {
@@ -580,9 +609,16 @@ export function NewAgentToolsPage() {
       if (base.includes(selector)) {
         declineSignInTool([selector]);
       }
-      commit(toggleSelector(base, selector));
+      commit(toggleCatalogueSelector(base, selector, groups));
     },
-    [commit, base, isSignInToolAdded, setSignInToolDeclined, declineSignInTool],
+    [
+      commit,
+      base,
+      groups,
+      isSignInToolAdded,
+      setSignInToolDeclined,
+      declineSignInTool,
+    ],
   );
   // The rail and the bar list the toolset's own selectors (the preset among
   // them) beside the preset's part: removing one of its own takes just that
@@ -614,9 +650,9 @@ export function NewAgentToolsPage() {
   const copyToolset = useCallback(
     (toolset: string[]) => {
       setKeptBase(undefined);
-      setToolset(toolset);
+      setToolset(withoutCovered(toolset, groups));
     },
-    [setToolset, setKeptBase],
+    [setToolset, setKeptBase, groups],
   );
 
   // The rail stays in view; the full resolved list is in the individual tools.
@@ -642,6 +678,19 @@ export function NewAgentToolsPage() {
   // each pick, since a pick is complete when made (the `forms` skill).
   const blockedNote = useRef<HTMLDivElement>(null);
   const problemsAlert = useRef<HTMLDivElement>(null);
+  // The problems alert sits in the individual tools, mounted only once they
+  // are open: the focus moves after the render that opens them.
+  const [problemFocusRequest, setProblemFocusRequest] = useState(0);
+  useEffect(() => {
+    if (problemFocusRequest > 0) {
+      problemsAlert.current?.scrollIntoView?.({ block: 'center' });
+      problemsAlert.current?.focus();
+    }
+  }, [problemFocusRequest]);
+  const showProblems = useCallback(() => {
+    setShowIndividual(true);
+    setProblemFocusRequest(count => count + 1);
+  }, []);
   const onContinue = useCallback(() => {
     if (!isToolsetValid) {
       const target = problemsAlert.current ?? blockedNote.current;
@@ -963,11 +1012,22 @@ export function NewAgentToolsPage() {
 
         {/* The rail says why too; this sits by Continue, where it is blocked. */}
         {!isToolsetValid && (
-          <div ref={blockedNote} tabIndex={-1}>
+          <Flex
+            ref={blockedNote}
+            tabIndex={-1}
+            direction="column"
+            align="start"
+            gap="1"
+          >
             <Text as="p" color="danger">
-              Fix the toolset to continue.
+              {blockedLine(state.toolset, toolsetProblems)}
             </Text>
-          </div>
+            {!selectionOff && (
+              <Button variant="tertiary" size="small" onPress={showProblems}>
+                Show the problem
+              </Button>
+            )}
+          </Flex>
         )}
       </Flex>
     </AgentWizardFrame>

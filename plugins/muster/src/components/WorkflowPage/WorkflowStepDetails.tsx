@@ -149,7 +149,7 @@ function PlainTool({
     case 'core':
       return (
         <>
-          Uses muster's <code className={classes.mono}>{display.tool}</code>.
+          Uses Muster's <code className={classes.mono}>{display.tool}</code>.
         </>
       );
     default:

@@ -81,6 +81,7 @@ type RenderOptions = {
   filesTruncated?: boolean;
   target?: typeof skill;
   at?: string;
+  commit?: string;
 };
 
 function renderFiles({
@@ -88,6 +89,7 @@ function renderFiles({
   filesTruncated,
   target = skill,
   at = PAGE,
+  commit = COMMIT,
 }: RenderOptions = {}) {
   return renderInTestApp(
     <Routes>
@@ -97,7 +99,7 @@ function renderFiles({
           <>
             <SkillFiles
               skill={target}
-              commit={COMMIT}
+              commit={commit}
               instructions={INSTRUCTIONS}
               files={files}
               filesTruncated={filesTruncated}
@@ -323,6 +325,45 @@ describe('SkillFiles', () => {
     expect(
       within(shown).getByText(/images\/flow\.png · 29\.3 KiB — in the skill/),
     ).toBeInTheDocument();
+  });
+
+  it('names no commit, and offers no GitHub link, when the commit is not known', async () => {
+    mockReads['images/flow.png'] = { binary: true, size: 30_000 };
+    await renderFiles({
+      target: { ...skill, commit: '' },
+      commit: '',
+      at: `${PAGE}?file=images/flow.png`,
+    });
+
+    const shown = viewer('images/flow.png');
+    expect(
+      within(shown).queryByRole('link', { name: /GitHub/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(shown).getByText(
+        /^images\/flow\.png · 29\.3 KiB — in the skill’s repository\.$/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(shown).getByText(/^ticket-triage\/images\/flow\.png · 29\.3 KiB$/),
+    ).toBeInTheDocument();
+  });
+
+  it('links a file at the commit it was read at, not the catalog’s head', async () => {
+    mockReads['images/flow.png'] = { binary: true, size: 30_000 };
+    await renderFiles({
+      target: { ...skill, commit: 'f'.repeat(40) },
+      at: `${PAGE}?file=images/flow.png`,
+    });
+
+    expect(
+      within(viewer('images/flow.png')).getByRole('link', {
+        name: /View on GitHub/,
+      }),
+    ).toHaveAttribute(
+      'href',
+      `https://github.com/giantswarm/skills/blob/${COMMIT}/ticket-triage/images/flow.png`,
+    );
   });
 
   it('says so when a file could not be read', async () => {

@@ -108,7 +108,7 @@ describe('useMusterSession', () => {
           new MusterTokenMintError(
             'golem',
             'session-expired',
-            'Your portal session has expired; no token could be minted for muster on golem.',
+            'Your portal session has expired; no token could be minted for Muster on golem.',
           ),
         ),
       signIn: jest.fn(),
@@ -121,7 +121,7 @@ describe('useMusterSession', () => {
     expect(result.current.failure).toEqual({
       kind: 'session-expired',
       message:
-        'Your portal session has expired; no token could be minted for muster on golem.',
+        'Your portal session has expired; no token could be minted for Muster on golem.',
     });
     expect(result.current.authenticated).toBe(false);
     expect(result.current.pending).toBe(false);
@@ -137,7 +137,7 @@ describe('useMusterSession', () => {
           new MusterTokenMintError(
             'golem',
             'mint-failed',
-            'Could not mint a token for muster on golem: Token broker is unreachable',
+            'Could not mint a token for Muster on golem: Token broker is unreachable',
           ),
         ),
       signIn: jest.fn(),
@@ -169,7 +169,7 @@ describe('useMusterSession', () => {
       expect(result.current.failure?.kind).toBe('muster-rejected'),
     );
     expect(result.current.failure?.message).toBe(
-      'muster on golem rejected the token: Token validation failed',
+      'Muster on golem rejected the token: Token validation failed',
     );
   });
 
@@ -190,7 +190,7 @@ describe('useMusterSession', () => {
       expect(result.current.failure?.kind).toBe('muster-rejected'),
     );
     expect(result.current.failure?.message).toBe(
-      'muster on golem answered with an error: muster is unreachable',
+      'Muster on golem answered with an error: muster is unreachable',
     );
   });
 
@@ -242,7 +242,7 @@ describe('useMusterSession', () => {
       expect(result.current.failure).toEqual({
         kind: 'unreachable',
         message:
-          'muster on golem is not reachable from this portal (no answer within 3000 ms).',
+          'Muster on golem is not reachable from this portal (no answer within 3000 ms).',
       });
 
       expect(result.current.toolCount).toBeUndefined();
@@ -290,7 +290,7 @@ describe('useMusterSession', () => {
       expect(result.current.authenticated).toBe(false);
       expect(result.current.failure).toEqual({
         kind: 'unreachable',
-        message: 'muster on golem is not reachable from this portal.',
+        message: 'Muster on golem is not reachable from this portal.',
       });
       await new Promise(resolve => setTimeout(resolve, 20));
       expect(api.filterTools).not.toHaveBeenCalled();
@@ -370,11 +370,11 @@ describe('unreachableFailure', () => {
     ).toEqual({
       kind: 'unreachable',
       message:
-        'muster on golem is not reachable from this portal (DNS lookup failed (ENOTFOUND)).',
+        'Muster on golem is not reachable from this portal (DNS lookup failed (ENOTFOUND)).',
     });
     expect(unreachableFailure(undefined, undefined)).toEqual({
       kind: 'unreachable',
-      message: 'muster is not reachable from this portal.',
+      message: 'Muster is not reachable from this portal.',
     });
   });
 });
@@ -415,14 +415,14 @@ describe('classifySessionFailure', () => {
     ).toEqual({
       kind: 'muster-rejected',
       message:
-        'muster on golem rejected the token: authentication failure: audience',
+        'Muster on golem rejected the token: authentication failure: audience',
     });
   });
 
   it('copes with an error that has no message', () => {
     expect(classifySessionFailure(undefined, undefined)).toEqual({
       kind: 'muster-rejected',
-      message: 'muster answered with an error: no details',
+      message: 'Muster answered with an error: no details',
     });
   });
 });

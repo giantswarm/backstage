@@ -6,13 +6,14 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Checkbox, Flex, Link, Text, VisuallyHidden } from '@backstage/ui';
+import { Checkbox, Flex, Text, VisuallyHidden } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import {
   HelmRelease,
   useSelfSubjectAccessReview,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  ExternalLink,
   ConfirmDialog,
   useFieldValidation,
   useGroupFieldError,
@@ -32,7 +33,7 @@ import {
   useUpdateAgent,
   type UpdateAgentState,
 } from '../../hooks/useUpdateAgent';
-import type { MusterServerPresence } from '../../hooks/useMusterServerAvailability';
+import type { MusterServerPresence } from '@giantswarm/backstage-plugin-muster';
 import { agentManagerBlocker, type AgentUpdate } from '../../lib/agentManager';
 import type { AgentRow } from '../AgentsDataProvider';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
@@ -160,6 +161,12 @@ export function updateVerdictOf({
       signInRequired: read.failure.signInRequired,
     };
   }
+  if (read.agent?.managed === 'platform') {
+    return {
+      kind: 'blocked',
+      reason: 'It is owned by the platform, so it is read-only.',
+    };
+  }
   if (read.agent?.managed === 'gitops') {
     if (isInfoLoading) {
       return { kind: 'checking' };
@@ -218,7 +225,10 @@ function VerdictProbe({
     reachable ? agent.installation : undefined,
   );
   const release = read.agent?.helmRelease;
-  const isGitOps = read.agent?.managed === 'gitops';
+  // Neither is asked: a pull request needs no access, the platform's own
+  // agent is never written.
+  const skipsAccess =
+    read.agent?.managed === 'gitops' || read.agent?.managed === 'platform';
   const { allowed: mayUpdate, isLoading: isCheckingPermission } =
     useSelfSubjectAccessReview(
       agent.installation,
@@ -230,7 +240,7 @@ function VerdictProbe({
         name: release?.name ?? agent.technicalName,
         verb: 'update',
       },
-      { enabled: reachable && !read.isLoading && !isGitOps },
+      { enabled: reachable && !read.isLoading && !skipsAccess },
     );
 
   const verdict = updateVerdictOf({
@@ -340,14 +350,13 @@ function outcomeLine(outcome: UpdateOutcome) {
         {outcome.pullRequest ? (
           <>
             {': '}
-            <Link
+            <ExternalLink
               href={outcome.pullRequest}
-              target="_blank"
-              rel="noopener noreferrer"
               variant="body-small"
+              display="inline"
             >
               {outcome.pullRequest}
-            </Link>
+            </ExternalLink>
           </>
         ) : (
           '.'

@@ -15,7 +15,7 @@ import {
  * session's cost chip lists it as the reported cost.
  *
  * Needs the lab's `claude` Harness (agent-platform's coding agents) and a
- * working Anthropic key behind `default-model-config`; one short turn.
+ * working Anthropic key behind the lab's default model (`lab.defaultModel`); one short turn.
  */
 
 test.describe.configure({ mode: 'serial' });

@@ -1,4 +1,5 @@
 import {
+  HttpAuthService,
   LoggerService,
   RootLifecycleService,
 } from '@backstage/backend-plugin-api';
@@ -15,10 +16,15 @@ import {
   AUTH_LOGOUT_TOOL,
   AUTH_STATUS_RESOURCE,
   isInfrastructureError,
+  isMusterInputAnswer,
   isTokenExpired,
   type ConnectorName,
+  type MusterInputAnswer,
+  MusterInputRequiredError,
+  type MusterUrlElicitation,
   musterTokenExpiredError,
   musterTokenMissingError,
+  MusterUnreachableError,
   toMusterUnauthorizedError,
   parseAuthLoginResult,
   parseAuthLogoutResult,
@@ -28,11 +34,21 @@ import {
   MusterInstallationConfig,
   MusterMcpClient,
   musterInstallationRequiresAuth,
+  MUSTER_CONNECT_TIMEOUT_MS,
+  probeEndpoint,
   ReachabilityCache,
   reachabilityFields,
   resolveMusterInstallations,
 } from '@giantswarm/backstage-plugin-gs-node';
-import { getMcpUsage } from './mcpUsage';
+import {
+  findPrometheusServer,
+  getMcpToolLatency,
+  getMcpUsage,
+  isPartialUsage,
+  type McpToolLatencyResponse,
+  type McpUsageResponse,
+} from './mcpUsage';
+import { UsageCache, usageCacheKey } from './usageCache';
 
 const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
 
@@ -64,8 +80,9 @@ export interface RouterOptions {
   client?: MusterMcpClient;
   /**
    * The cache of unauthenticated reachability probes behind `/installations`.
-   * Overridable for tests; defaults to one that probes for real with a 3 s
-   * budget and a 5 min TTL (30 s for a negative answer).
+   * Overridable for tests; defaults to one that probes for real with the
+   * budget a muster call has to connect (`MUSTER_CONNECT_TIMEOUT_MS`) and a
+   * 5 min TTL (30 s for a negative answer).
    */
   reachability?: ReachabilityCache;
   /**
@@ -76,6 +93,8 @@ export interface RouterOptions {
    * an answer in time. Tests leave it out and get an immediate warm-up.
    */
   lifecycle?: Pick<RootLifecycleService, 'addStartupHook'>;
+  /** Names the Backstage user a usage answer is cached for. */
+  httpAuth: HttpAuthService;
 }
 
 /**
@@ -110,6 +129,8 @@ function serializeStreamError(error: unknown): {
   name: string;
   message: string;
   details?: string[];
+  elicitations?: MusterUrlElicitation[];
+  requestState?: string;
 } {
   if (!(error instanceof Error)) {
     return { name: 'Error', message: String(error) };
@@ -122,7 +143,48 @@ function serializeStreamError(error: unknown): {
     details.every(detail => typeof detail === 'string')
       ? { details }
       : {}),
+    ...(error instanceof MusterInputRequiredError
+      ? {
+          elicitations: error.elicitations,
+          ...(error.requestState !== undefined
+            ? { requestState: error.requestState }
+            : {}),
+        }
+      : {}),
   };
+}
+
+/**
+ * The retry's answer to muster's `input_required` in a `/call` body's
+ * `input`, when it has one.
+ */
+function readInputAnswer(body: unknown): MusterInputAnswer | undefined {
+  const input = (body as { input?: unknown } | undefined)?.input;
+  if (input === undefined) {
+    return undefined;
+  }
+  if (!isMusterInputAnswer(input)) {
+    throw new InputError(
+      'input must hold inputResponses, each with an action of accept, decline or cancel, and an optional requestState string',
+    );
+  }
+  return input;
+}
+
+/**
+ * Whether the page's call declares URL elicitation: yes unless the body says
+ * `urlElicitation: false`.
+ */
+function readUrlElicitation(body: unknown): boolean {
+  const value = (body as { urlElicitation?: unknown } | undefined)
+    ?.urlElicitation;
+  if (value === undefined) {
+    return true;
+  }
+  if (typeof value !== 'boolean') {
+    throw new InputError('urlElicitation must be a boolean when provided');
+  }
+  return value;
 }
 
 function parseOptionalInt(value: unknown, name: string): number | undefined {
@@ -322,7 +384,12 @@ export async function createRouter(
   // until a probe settles. Results are logged at INFO, one line per endpoint
   // per state change.
   const reachability =
-    options.reachability ?? new ReachabilityCache({ logger });
+    options.reachability ??
+    new ReachabilityCache({
+      logger,
+      probe: url =>
+        probeEndpoint(url, { timeoutMs: MUSTER_CONNECT_TIMEOUT_MS }),
+    });
   const warmReachability = () => {
     for (const installation of installations.values()) {
       void reachability.refresh(musterProbeUrl(installation.url));
@@ -366,12 +433,50 @@ export async function createRouter(
   });
 
   /**
+   * Whether calls to the installation are refused without a connection
+   * attempt: the probe reports its muster unreachable from this portal. Not
+   * while the probe has not settled (`'unknown'`).
+   */
+  const isRefused = (installation: MusterInstallationConfig): boolean =>
+    reachability.get(musterProbeUrl(installation.url)).reachable === false;
+  /**
+   * The 503 a refused call fails with: neither logged nor sent to Sentry, as
+   * the probe logs each state change itself.
+   */
+  const refusalOf = (installation: MusterInstallationConfig) =>
+    new MusterUnreachableError(
+      installation.name,
+      `not reachable from this portal (${
+        reachability.get(musterProbeUrl(installation.url)).reason ?? 'no answer'
+      })`,
+    );
+  /**
+   * Probes again at once after a call to the installation could not reach
+   * its muster, unless calls are already refused: a muster that stopped
+   * answering while its probe still says reachable would otherwise cost every
+   * call a connection attempt until the probe's positive answer expires.
+   * Deduplicated by the cache.
+   */
+  const reprobeAfter = (error: unknown) => {
+    if (!(error instanceof MusterUnreachableError)) {
+      return;
+    }
+    const installation = installations.get(error.installation);
+    if (installation && !isRefused(installation)) {
+      void reachability.refresh(musterProbeUrl(installation.url));
+    }
+  };
+
+  /**
    * Resolve the target installation for a request from `?installation=`.
    * Defaults to the only installation when exactly one is configured;
-   * otherwise the parameter is required.
+   * otherwise the parameter is required. Throws {@link refusalOf} for an
+   * installation whose calls are refused ({@link isRefused}), unless
+   * `allowUnreachable` leaves that to the route.
    */
   const resolveInstallation = (
     req: express.Request,
+    { allowUnreachable = false }: { allowUnreachable?: boolean } = {},
   ): { config: MusterInstallationConfig; client: MusterMcpClient } => {
     if (clients.size === 0) {
       throw new ServiceUnavailableError(
@@ -400,6 +505,9 @@ export async function createRouter(
           ...clients.keys(),
         ].join(', ')}`,
       );
+    }
+    if (!allowUnreachable && isRefused(installationConfig)) {
+      throw refusalOf(installationConfig);
     }
     return { config: installationConfig, client };
   };
@@ -446,6 +554,35 @@ export async function createRouter(
       throw musterTokenExpiredError(installation.name);
     }
     return { authToken };
+  };
+
+  /**
+   * The options of a tool call the page made: the page can put a URL
+   * elicitation to the person (MCP 2026-07-28), so the call declares it, and
+   * muster answers a sign-in the call needs, or a server's own page, with
+   * MusterInputRequiredError (428). The page sends the call again with the
+   * person's answer in the body's `input`.
+   */
+  const elicitableCallOptions = (
+    req: express.Request,
+    installation: MusterInstallationConfig,
+  ) => {
+    const input = readInputAnswer(req.body);
+    // A page that opens a tool's page itself (the portal's own credential
+    // form) declares none: the tool answers its result instead.
+    if (!readUrlElicitation(req.body)) {
+      if (input) {
+        throw new InputError(
+          'input answers a URL elicitation, which a call with urlElicitation false does not declare',
+        );
+      }
+      return readCallOptions(req, installation);
+    }
+    return {
+      ...readCallOptions(req, installation),
+      urlElicitation: true,
+      ...(input ? { input } : {}),
+    };
   };
 
   /**
@@ -629,10 +766,17 @@ export async function createRouter(
     // 500 at which the error middleware sends it to Sentry. The error holds
     // muster's message and text blocks only, never the request's arguments
     // (which may carry a client secret).
+    const callOptions = elicitableCallOptions(req, installation);
+    const abort = new AbortController();
+    res.on('close', () => {
+      if (!res.writableFinished) {
+        abort.abort();
+      }
+    });
     const result = await client.callTool(
       name,
       (toolArgs as Record<string, unknown>) ?? {},
-      readCallOptions(req, installation),
+      { ...callOptions, signal: abort.signal },
     );
     res.json(result);
   });
@@ -661,7 +805,7 @@ export async function createRouter(
       throw new InputError('arguments must be a JSON object when provided');
     }
     assertRunsAsPerson(name, installation);
-    const callOptions = readCallOptions(req, installation);
+    const callOptions = elicitableCallOptions(req, installation);
 
     const abort = new AbortController();
     res.on('close', () => {
@@ -726,17 +870,28 @@ export async function createRouter(
    * still be waiting for the user.
    */
   router.get('/auth/status', async (req, res) => {
-    const { config: installation, client } = resolveInstallation(req);
+    const { config: installation, client } = resolveInstallation(req, {
+      allowUnreachable: true,
+    });
     if (!hasPerUserSession(installation)) {
       res.json({ servers: [] });
       return;
     }
 
     const callOptions = readCallOptions(req, installation);
+    if (isRefused(installation)) {
+      res.json({
+        servers: [],
+        unavailable: true,
+        message: refusalOf(installation).message,
+      });
+      return;
+    }
 
     try {
       res.json(await client.getResource(AUTH_STATUS_RESOURCE, callOptions));
     } catch (error) {
+      reprobeAfter(error);
       const message = error instanceof Error ? error.message : String(error);
       logger.info(`Muster ${AUTH_STATUS_RESOURCE} is unavailable`, {
         installation: installation.name,
@@ -872,6 +1027,47 @@ export async function createRouter(
   });
 
   /**
+   * What muster says of itself in its `initialize` result: `icon`, the logo
+   * it announces in `serverInfo.icons` (muster v5.59.0 and later), when
+   * gs-common's `serverInfoIconOf` accepts one. muster is no MCPServer, so it
+   * has no `.status.icon`; this is where its row in the Connectors list and
+   * its page take their logo from.
+   *
+   * Read off the caller's cached MCP session, the one their tool listings
+   * use. A token that is missing, expired or refused by muster is the 401 the
+   * frontend refreshes on. Any other failure answers `{ unavailable: true }`
+   * with HTTP 200, logged at `info` -- the letter tile, and the frontend asks
+   * again on its next read rather than keeping it: the icon is cosmetic, and
+   * the caller's other reads report an unreachable muster.
+   */
+  router.get('/server-info', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    const callOptions = readCallOptions(req, installation);
+    let icon: string | undefined;
+    try {
+      icon = await client.serverIcon(callOptions);
+    } catch (error) {
+      // muster refusing the bearer is the 401 the frontend refreshes the
+      // token on and reads again, as on `/servers/names`.
+      if (
+        toMusterUnauthorizedError(error, {
+          installation: installation.name,
+          authToken: callOptions.authToken,
+        })
+      ) {
+        throw error;
+      }
+      logger.info('Muster could not be asked for its icon', {
+        installation: installation.name,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      res.json({ unavailable: true });
+      return;
+    }
+    res.json(icon ? { icon } : {});
+  });
+
+  /**
    * What people call the installation's connectors: each server's name, its
    * family and its `ui.giantswarm.io/display-name` (`displayName`), from
    * `core_mcpserver_list` as the person. muster lists exactly the servers the
@@ -923,20 +1119,42 @@ export async function createRouter(
 
   // --- MCP usage (derived from muster's own Prometheus metrics) ------------
 
+  const usageCache = new UsageCache<McpUsageResponse>();
+  const toolLatencyCache = new UsageCache<McpToolLatencyResponse>();
+  const prometheusServerCache = new UsageCache<string | undefined>();
+
+  /** The Backstage user a usage answer is cached for. */
+  const usageReader = async (req: express.Request) => {
+    const { principal } = await options.httpAuth.credentials(req, {
+      allow: ['user'],
+    });
+    return principal.userEntityRef;
+  };
+
   /**
-   * Usage statistics for the installation's muster: tool calls per bucket by
-   * outcome, top tools, and per-server rollups. Sourced from muster's
-   * downstream dispatch metrics via the prometheus MCP server federated
-   * behind the same muster (no separate Prometheus access path). Answers
-   * `available: false` with a reason instead of erroring when the
-   * installation has no queryable prometheus server.
-   *
-   * `?server=` (repeatable) narrows it to those connectors' MCPServers, a
-   * family's instances included, and lists every tool they were called with.
-   * `?tool=` (once) narrows it to one tool, by the name muster exposes it as.
+   * The installation with the prometheus server its usage is read through,
+   * found once per person for as long as a usage answer lasts, and shared by
+   * concurrent reads, so a usage read does not first wait on
+   * `core_mcpserver_list`.
    */
-  router.get('/usage', async (req, res) => {
-    const { config: installation, client } = resolveInstallation(req);
+  const withPrometheusServer = async (
+    installation: MusterInstallationConfig,
+    client: MusterMcpClient,
+    callOptions: { authToken?: string },
+    userEntityRef: string,
+  ): Promise<MusterInstallationConfig> => {
+    const prometheusServer = await prometheusServerCache.read(
+      JSON.stringify([installation.name, userEntityRef]),
+      () => findPrometheusServer(client, installation, callOptions),
+      found => found !== undefined,
+    );
+    return prometheusServer
+      ? { ...installation, prometheusServer }
+      : installation;
+  };
+
+  /** The window and the narrowing `/usage` and `/usage/tool-latency` take. */
+  const readUsageParams = (req: express.Request) => {
     // Refused rather than ignored: a frontend loaded before `window=month`
     // went would otherwise read 24 hours as the month.
     if (req.query.window !== undefined) {
@@ -961,14 +1179,100 @@ export async function createRouter(
     if (tool !== undefined && !isToolLabel(tool)) {
       throw new InputError('tool must be a tool name');
     }
+    return { hours: hours ?? 24, servers, tool };
+  };
+
+  /**
+   * Usage statistics for the installation's muster: tool calls per bucket by
+   * outcome, top tools, and per-server rollups. Sourced from muster's
+   * downstream dispatch metrics via the prometheus MCP server federated
+   * behind the same muster (no separate Prometheus access path). Answers
+   * `available: false` with a reason instead of erroring when the
+   * installation has no queryable prometheus server.
+   *
+   * `?server=` (repeatable) narrows it to those connectors' MCPServers, a
+   * family's instances included, and lists every tool they were called with.
+   * `?tool=` (once) narrows it to one tool, by the name muster exposes it as.
+   * Each tool's p95 is `/usage/tool-latency`'s, except that one tool's.
+   *
+   * A complete, available answer is reused for five minutes per
+   * installation, window, narrowing and Backstage user (`usageCacheKey`),
+   * and concurrent identical reads share one: past daily buckets do not
+   * change, and a 30-day read costs Mimir seconds.
+   */
+  router.get('/usage', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    const { hours, servers, tool } = readUsageParams(req);
+    const callOptions = readCallOptions(req, installation);
+    const userEntityRef = await usageReader(req);
     res.json(
-      await getMcpUsage(
-        client,
-        installation,
-        readCallOptions(req, installation),
-        hours ?? 24,
-        servers,
-        tool,
+      await usageCache.read(
+        usageCacheKey({
+          route: 'usage',
+          installation: installation.name,
+          hours,
+          servers,
+          tool,
+          userEntityRef,
+        }),
+        async () =>
+          getMcpUsage(
+            client,
+            await withPrometheusServer(
+              installation,
+              client,
+              callOptions,
+              userEntityRef,
+            ),
+            callOptions,
+            hours,
+            servers,
+            tool,
+          ),
+        answer => answer.available && !isPartialUsage(answer),
+      ),
+    );
+  });
+
+  /**
+   * The p95 latency of every tool called in the window, narrowed by
+   * `?server=` as `/usage` is: the slowest of the usage queries, read apart
+   * so the figures do not wait for it. No `?tool=`: narrowed to one tool,
+   * `/usage` answers its p95 itself. Cached as `/usage` is.
+   */
+  router.get('/usage/tool-latency', async (req, res) => {
+    const { config: installation, client } = resolveInstallation(req);
+    const { hours, servers, tool } = readUsageParams(req);
+    if (tool !== undefined) {
+      throw new InputError(
+        "tool is not supported here; /usage answers one tool's p95",
+      );
+    }
+    const callOptions = readCallOptions(req, installation);
+    const userEntityRef = await usageReader(req);
+    res.json(
+      await toolLatencyCache.read(
+        usageCacheKey({
+          route: 'tool-latency',
+          installation: installation.name,
+          hours,
+          servers,
+          userEntityRef,
+        }),
+        async () =>
+          getMcpToolLatency(
+            client,
+            await withPrometheusServer(
+              installation,
+              client,
+              callOptions,
+              userEntityRef,
+            ),
+            callOptions,
+            hours,
+            servers,
+          ),
+        answer => answer.available,
       ),
     );
   });
@@ -1166,6 +1470,18 @@ export async function createRouter(
         request: { method: req.method, url: req.originalUrl },
         response: { statusCode: 401 },
       });
+    },
+  );
+
+  router.use(
+    (
+      error: unknown,
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) => {
+      reprobeAfter(error);
+      next(error);
     },
   );
 

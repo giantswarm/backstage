@@ -1,4 +1,5 @@
 import { connectToMuster, expect, open, test } from './fixtures';
+import { connectorRow, SHOWN } from './connectors';
 import { lab } from './lab';
 
 /**
@@ -23,7 +24,7 @@ test('a person with only namespaced agent-platform:user grants sees the connecto
   );
   await connectToMuster(dev, dev.getByRole('grid'));
   await expect(
-    dev.getByRole('row', { name: /^muster( |$)/ }),
+    connectorRow(dev, SHOWN.muster),
     'the servers of muster’s namespace are listed',
   ).toBeVisible({ timeout: 60_000 });
   await expect(dev.getByText(fetchError)).toHaveCount(0);

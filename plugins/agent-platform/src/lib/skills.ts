@@ -1,3 +1,6 @@
+/** What a skill source's ref is: only a branch takes pull requests. */
+export type RefKind = 'branch' | 'tag' | 'commit';
+
 // A skill discovered in a configured GitHub repository. Mirrors the backend's
 // DiscoveredSkill (gs-backend `/agent-skills`): each `SKILL.md` is one skill,
 // referenced by its repo URL + subdirectory path, read at one commit.
@@ -15,8 +18,10 @@ export interface DiscoveredSkill {
   repoUrl: string;
   /** Subdirectory within the repo that is the skill root; '' at repo root. */
   path: string;
-  /** Git ref (branch) the skill was discovered on. */
+  /** Git ref (branch, tag or commit) the skill was discovered on. */
   ref: string;
+  /** What `ref` is; absent, read from its shape ({@link refKindOf}). */
+  refKind?: RefKind;
   /**
    * The head commit of `ref` when the skill was read — the immutable reference
    * the agent is pinned to. Resolved at discovery, so the commit the picker
@@ -37,6 +42,12 @@ export interface DiscoveredSkill {
    * content (`GET /agent-skills/content`). Absent from older backends.
    */
   fileCount?: number;
+  /**
+   * From a read-only source (`readOnly` in `agentPlatform.skills.repositories`,
+   * e.g. the platform's own skills): listed and addable to agents, but no
+   * edit pull requests. Absent reads as writable.
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -173,6 +184,57 @@ export function githubRepoParts(
  */
 export function canProposeSkillTo(repoUrl: string): boolean {
   return repoUrl.startsWith('https://github.com/');
+}
+
+/** A full or short commit id. */
+const COMMIT_ID_RE = /^[0-9a-f]{7,40}$|^[0-9a-f]{64}$/i;
+
+/**
+ * What a skill's `ref` is: `refKind` where the source says, else a commit
+ * for a commit id (skill-manager names no kind), else a branch.
+ */
+export function refKindOf(skill: { ref?: string; refKind?: RefKind }): RefKind {
+  if (skill.refKind) {
+    return skill.refKind;
+  }
+  return COMMIT_ID_RE.test((skill.ref ?? '').trim()) ? 'commit' : 'branch';
+}
+
+/** Each kind of ref as a label. */
+export const REF_KIND_LABELS: Record<RefKind, string> = {
+  branch: 'Branch',
+  tag: 'Tag',
+  commit: 'Commit',
+};
+
+/**
+ * Whether the portal can propose a change to this skill: a github.com
+ * repository, not a read-only source, read on a branch (the pull-request
+ * endpoint refuses the rest).
+ */
+export function canProposeSkillChange(
+  skill: Pick<DiscoveredSkill, 'repoUrl' | 'readOnly' | 'refKind'> & {
+    ref?: string;
+  },
+): boolean {
+  return (
+    !skill.readOnly &&
+    refKindOf(skill) === 'branch' &&
+    canProposeSkillTo(skill.repoUrl)
+  );
+}
+
+/** Why the portal proposes no change to a skill `canProposeSkillChange` refuses. */
+export function readOnlyReason(
+  skill: Pick<DiscoveredSkill, 'readOnly' | 'refKind' | 'ref'>,
+): string {
+  if (skill.readOnly) {
+    return 'This skill comes from a read-only source.';
+  }
+  if (refKindOf(skill) !== 'branch') {
+    return `This skill is read at ${skill.ref}, not a branch.`;
+  }
+  return "This skill's repository is not on github.com, and the portal proposes changes as GitHub pull requests. Change the skill in its repository.";
 }
 
 /** A skill's directory with no leading/trailing slashes ('' at repo root). */
@@ -340,15 +402,16 @@ export function skillSourceUrl(
 /**
  * One file of the skill on github.com at the pinned commit (`blob/…`), where
  * the Instructions tab's viewer sends a file it does not show inline (binary,
- * or over the 512 KB cap). `file` is relative to the skill directory.
- * Undefined outside github.com.
+ * or over the 512 KB cap), and the skill page's Path. `file` is relative to
+ * the skill directory. Undefined outside github.com, and without a commit to
+ * read it at.
  */
 export function skillFileUrl(
   skill: Pick<DiscoveredSkill, 'repoUrl' | 'path' | 'commit'>,
   file: string,
 ): string | undefined {
   const parts = githubRepoParts(skill.repoUrl);
-  if (!parts) {
+  if (!parts || !skill.commit) {
     return undefined;
   }
   const segments = [

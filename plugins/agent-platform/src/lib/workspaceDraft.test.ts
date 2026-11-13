@@ -106,6 +106,26 @@ describe('draftProblems', () => {
     });
   });
 
+  it('asks for a name, and checks the technical name once there is one', () => {
+    const draft = {
+      ...emptyDraft('github'),
+      sources: [{ ...emptySource('github'), owner: 'acme', languages: ['Go'] }],
+    };
+    expect(draftProblems(draft, false, ' ')).toEqual({
+      displayName: 'Enter a name for the workspace.',
+    });
+    // A name that leaves no technical name: the technical name says so.
+    expect(draftProblems(draft, false, '日本チーム')).toEqual({
+      name: 'Enter a technical name.',
+    });
+    expect(
+      draftProblems({ ...draft, name: 'Bad_Name' }, false, ''),
+    ).toMatchObject({
+      displayName: 'Enter a name for the workspace.',
+      name: expect.stringContaining('Try “bad-name”.'),
+    });
+  });
+
   it('does not check the name of an edited workspace', () => {
     const draft = {
       ...emptyDraft('github'),
@@ -118,7 +138,7 @@ describe('draftProblems', () => {
 describe('nameProblem', () => {
   it.each([
     ['platform-mcp', undefined],
-    ['', 'Enter a name'],
+    ['', 'Enter a technical name.'],
     [
       'Platform MCP',
       'Use lowercase letters, digits and dashes only. Try “platform-mcp”.',

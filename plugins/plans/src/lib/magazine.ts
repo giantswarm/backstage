@@ -121,6 +121,30 @@ export interface Meta {
   sources: { board: number; team: string };
 }
 
+/** A team with a data set of its own, as `magazine/teams.json` lists it. */
+export interface TeamSet {
+  /** The board's Team option without its emoji: "Honey Badger". */
+  name: string;
+  /** The option itself: "Honey Badger 🦡". */
+  boardTeam: string;
+  slug: string;
+  /** The set's folder on the data ref: "magazine/teams/honeybadger". */
+  path: string;
+  plans?: string;
+}
+
+/** `magazine/teams.json`: the teams with a data set, in board order. */
+export interface TeamSets {
+  version: number;
+  generatedAt: string;
+  /** The team the root `magazine/*.json` files are a copy of. */
+  default: string;
+  teams: TeamSet[];
+}
+
+/** The list of per-team data sets on the data ref. */
+export const MAGAZINE_TEAMS_FILE = 'magazine/teams.json';
+
 export type HistoryWindow = 'days' | 'weeks' | 'months';
 
 export interface History {
@@ -161,11 +185,17 @@ export const HIVE_HISTORY_WINDOW: HistoryWindow = 'weeks';
 /** Cards a lane shows before "show all n". */
 export const LANE_PREVIEW = 4;
 
-/** The data file of a magazine view on the data ref. */
-export function magazineFile(view: 'now' | 'meta' | HistoryWindow): string {
+/**
+ * The data file of a magazine view on the data ref: in the default team's
+ * set under `magazine/`, or in a team's own set's folder (`TeamSet.path`).
+ */
+export function magazineFile(
+  view: 'now' | 'meta' | HistoryWindow,
+  folder = 'magazine',
+): string {
   return view === 'now' || view === 'meta'
-    ? `magazine/${view}.json`
-    : `magazine/history-${view}.json`;
+    ? `${folder}/${view}.json`
+    : `${folder}/history-${view}.json`;
 }
 
 /** Lanes in priority order (customer, top-epic, setup, chore). */

@@ -68,6 +68,9 @@ function createMirror(): HTMLTextAreaElement {
  *
  * Re-measures when the value changes (typing, or a value set from outside) and
  * when the field's width changes, since that rewraps the text.
+ *
+ * Finds the textarea once, at mount: it has to be in the container then and
+ * stay the same element.
  */
 export function useAutosizeTextarea(
   containerRef: RefObject<HTMLElement>,
@@ -137,11 +140,23 @@ export function useAutosizeTextarea(
 
     container.addEventListener('input', resize);
 
+    // Sets the height in the next frame: a height set during the observer's
+    // delivery goes undelivered, and the browser reports a ResizeObserver loop.
+    let frame: number | undefined;
     let observer: ResizeObserver | undefined;
     if (typeof ResizeObserver !== 'undefined') {
       observer = new ResizeObserver(([entry]) => {
-        widthRef.current = entry.contentRect.width;
-        resize();
+        const width = entry.contentRect.width;
+        if (width === widthRef.current) {
+          return;
+        }
+        widthRef.current = width;
+        if (frame === undefined) {
+          frame = requestAnimationFrame(() => {
+            frame = undefined;
+            resize();
+          });
+        }
       });
       observer.observe(textarea);
     }
@@ -149,6 +164,9 @@ export function useAutosizeTextarea(
     return () => {
       container.removeEventListener('input', resize);
       observer?.disconnect();
+      if (frame !== undefined) {
+        cancelAnimationFrame(frame);
+      }
     };
   }, [containerRef, resize]);
 

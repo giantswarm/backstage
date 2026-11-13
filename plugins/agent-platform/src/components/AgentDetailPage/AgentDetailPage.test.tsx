@@ -33,7 +33,7 @@ import type { ServerInfo } from '../../lib/toolset';
 import { AgentDetailPage } from './AgentDetailPage';
 
 // The organizations agent-manager names for the person
-// (`list_my_organizations`).
+// (`list_organizations`).
 jest.mock('../OrganizationDirectoryProvider', () => ({
   ...jest.requireActual('../OrganizationDirectoryProvider'),
   useOrganizationDirectory: () =>
@@ -191,7 +191,7 @@ jest.mock('../../hooks/useAgentManager', () => ({
 // `get_agent`, which the page reads for one thing only: whether agent-manager
 // can write to this agent at all (`managed`). Undefined is the unread case —
 // not connected, refused, still in flight — where the actions stay offered.
-let managerAgent: { managed: string } | undefined;
+let managerAgent: { managed: string; releaseWithheld?: string } | undefined;
 let isReadingManagerAgent = false;
 
 jest.mock('../../hooks/useAgentManagerAgent', () => ({
@@ -1394,6 +1394,21 @@ describe('AgentDetailPage', () => {
       expect(screen.queryByRole('button', { name: 'Edit agent' })).toBeNull();
     });
 
+    it('says a platform admin fixes the platform’s own failed agent, offering no edit', async () => {
+      withAgentManager('platform');
+      canCommit = true;
+      stubResources({ resource: unresolvedModelAgent() });
+
+      await renderPage();
+
+      expect(
+        screen.getByText(
+          /owned by the platform, so a platform admin has to fix it/,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Edit agent' })).toBeNull();
+    });
+
     it('offers Edit agent for a failed agent applied from git when agent-manager can commit', async () => {
       withAgentManager('gitops');
       canCommit = true;
@@ -2356,6 +2371,37 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
   });
 
   describe('the frame', () => {
+    it('omits unavailable deployment details without changing the Agent readiness', async () => {
+      const releaseWithheld =
+        'Reading the release details needs the agent-platform:editor role.';
+      withAgentManager('unknown');
+      managerAgent = { managed: 'unknown', releaseWithheld };
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+      expectHeaderReadiness('Ready');
+      await openTechnicalDetails();
+
+      expect(screen.queryByText(releaseWithheld)).toBeNull();
+      expect(screen.queryByText('Deployed by')).toBeNull();
+      expect(screen.queryByText("Reconciling this agent's chart")).toBeNull();
+      expect(screen.queryByText(/^HelmRelease /)).toBeNull();
+    });
+
+    it('omits deployment details for unknown management without a permission notice', async () => {
+      withAgentManager('unknown');
+      stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
+
+      await renderShell();
+      await openTechnicalDetails();
+
+      expect(screen.queryByText('Deployed by')).toBeNull();
+      expect(
+        screen.queryByText(/Release details are not available/),
+      ).toBeNull();
+      expect(screen.queryByText("Reconciling this agent's chart")).toBeNull();
+    });
+
     it('heads the page with the platform-standard frame, once', async () => {
       stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
 
@@ -2505,6 +2551,27 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expect(
         screen.getByRole('button', { name: 'Agent actions' }),
       ).toBeInTheDocument();
+    });
+
+    it('offers no Edit, Update skills or menu writes for the platform’s own agent', async () => {
+      // agent-manager's `managed: 'platform'` (the default agent): every write
+      // is refused with 409, a pull request too.
+      withAgentManager('platform');
+      canCommit = true;
+      stubResources({ resource: makeAgent() });
+
+      await renderShell();
+
+      expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: 'Update all skills to latest…' }),
+      ).toBeNull();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Agent actions' }),
+      );
+      expect(
+        screen.getAllByRole('menuitem').map(item => item.textContent),
+      ).toEqual(['View manifest']);
     });
 
     it('offers a user of the agent’s namespace no Edit, and says whose editors may change the agent', async () => {
@@ -3214,7 +3281,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expect(within(facts).queryByText('Created by')).not.toBeInTheDocument();
     });
 
-    it('keeps the ModelConfig name without a display name, the model below it', async () => {
+    it('names the model it runs when the ModelConfig has no display name', async () => {
       stubResources(
         { resource: makeAgent() },
         { resource: makeModelConfig({ displayName: null }) },
@@ -3225,14 +3292,11 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       const facts = screen.getByRole('complementary', {
         name: 'About this agent',
       });
-      // An admin may abstract the model behind the name: the name leads, the
-      // model never replaces it.
       expect(
-        within(facts).getByRole('link', { name: 'opus-4-7' }),
+        within(facts).getByRole('link', { name: 'claude-opus-4-7' }),
       ).toBeInTheDocument();
-      expect(
-        within(facts).getByText('claude-opus-4-7 · Anthropic'),
-      ).toBeInTheDocument();
+      expect(within(facts).queryByText('opus-4-7')).not.toBeInTheDocument();
+      expect(within(facts).getByText('Anthropic')).toBeInTheDocument();
     });
 
     it('folds the Kubernetes detail into a "Technical details" fold-out, not a switch', async () => {

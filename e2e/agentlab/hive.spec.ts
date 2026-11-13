@@ -515,6 +515,109 @@ test.describe('Hive', () => {
     await expect(admin.getByText('Digest of the weeks window.')).toBeVisible();
   });
 
+  test("the header team reads the team's own data set; a team without one shows an empty state", async ({
+    admin,
+  }) => {
+    // The magazine writes one data set per team (`magazine/teams.json`).
+    const phoenixMeta = { ...meta, sources: { board: 273, team: 'Phoenix' } };
+    const phoenixNow = {
+      ...now,
+      summary: ['Phoenix ships the cluster upgrade.'],
+      lanes: [
+        {
+          id: 'customer',
+          title: 'Customers',
+          summary: '',
+          total: 1,
+          cards: [
+            card(50, { title: 'Phoenix customer request', team: 'Phoenix' }),
+          ],
+        },
+      ],
+      blocked: [],
+      upcoming: [],
+    };
+    const phoenixHistory = {
+      ...history,
+      summary: ['Phoenix closed the upgrade epic.'],
+      groups: [{ ...history.groups[0], title: 'Phoenix upgrade epic' }],
+    };
+    const sets: Record<string, unknown> = {
+      'magazine/teams.json': {
+        version: 1,
+        generatedAt: NOW,
+        default: 'Bumblebee',
+        teams: [
+          {
+            name: 'Bumblebee',
+            boardTeam: 'Bumblebee🐝',
+            slug: 'bumblebee',
+            path: 'magazine/teams/bumblebee',
+          },
+          {
+            name: 'Phoenix',
+            boardTeam: 'Phoenix 🔥',
+            slug: 'phoenix',
+            path: 'magazine/teams/phoenix',
+          },
+        ],
+      },
+      'magazine/teams/bumblebee/meta.json': meta,
+      'magazine/teams/bumblebee/now.json': now,
+      'magazine/teams/bumblebee/history-weeks.json': history,
+      'magazine/teams/phoenix/meta.json': phoenixMeta,
+      'magazine/teams/phoenix/now.json': phoenixNow,
+      'magazine/teams/phoenix/history-weeks.json': phoenixHistory,
+    };
+    await admin.route('**/api/plans/content?*', async route => {
+      const url = new URL(route.request().url());
+      const file = url.searchParams.get('path') ?? '';
+      if (!(file in sets)) {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        json: { path: file, ref: 'data', content: JSON.stringify(sets[file]) },
+      });
+    });
+    try {
+      const errors = watchPageErrors(admin);
+
+      await open(admin, `/hive/now?team=${encodeURIComponent('Phoenix 🔥')}`);
+      await expect(admin.getByText('Phoenix customer request')).toBeVisible();
+      await expect(
+        admin.getByText('Phoenix ships the cluster upgrade.'),
+      ).toBeVisible();
+      await expect(admin.getByText('Hive follows Team Bumblebee')).toHaveCount(
+        0,
+      );
+      await expect(admin.getByText('Customer request 1')).toHaveCount(0);
+
+      await open(
+        admin,
+        `/hive/history?team=${encodeURIComponent('Phoenix 🔥')}`,
+      );
+      await expect(admin.getByText('Phoenix upgrade epic')).toBeVisible();
+      await expect(
+        admin.getByText('Phoenix closed the upgrade epic.'),
+      ).toBeVisible();
+
+      for (const tab of ['now', 'history']) {
+        await open(admin, `/hive/${tab}?team=${encodeURIComponent('Up 🎈')}`);
+        await expect(
+          admin.getByText('No magazine data for Team Up yet'),
+        ).toBeVisible();
+        await expect(admin.getByText(/Failed to load/)).toHaveCount(0);
+      }
+
+      await open(admin, `/hive/now?team=${encodeURIComponent('Bumblebee🐝')}`);
+      await expect(admin.getByText('Customer request 1')).toBeVisible();
+      expect(errors).toEqual([]);
+    } finally {
+      await admin.unroute('**/api/plans/content?*');
+    }
+  });
+
   test('Plans: the header team picks its plans repository', async ({
     admin,
   }) => {

@@ -5,6 +5,8 @@ import {
 } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import type { DiscoveredSkill, SkillFileListing } from '../lib/skills';
+import { unreachableError } from '../lib/skillManager';
+import { useSkillSource } from './useSkillSource';
 
 /**
  * One skill's SKILL.md at a commit, split the way the add-skill form edits it,
@@ -53,23 +55,34 @@ export async function skillReadError(
 export function useSkillContent(
   skill:
     Pick<DiscoveredSkill, 'repoUrl' | 'path' | 'commit' | 'ref'> | undefined,
+  installation?: string,
 ) {
   const discoveryApi = useApi(discoveryApiRef);
   const fetchApi = useApi(fetchApiRef);
+  const source = useSkillSource(installation);
+  const sourceKey =
+    source.kind === 'skill-manager' ? source.installation : source.kind;
 
   const { data, error, isPending } = useQuery({
     queryKey: [
       'agent-platform',
       'skill-content',
+      sourceKey,
       skill?.repoUrl,
       skill?.path,
       skill?.commit,
     ],
-    enabled: Boolean(skill),
+    enabled:
+      Boolean(skill) &&
+      source.kind !== 'pending' &&
+      source.kind !== 'unreachable',
     staleTime: Infinity,
     retry: false,
     queryFn: async (): Promise<SkillContent> => {
       const { repoUrl, path, commit, ref } = skill!;
+      if (source.kind === 'skill-manager') {
+        return source.client.getSkill({ repoUrl, path, commit });
+      }
       const baseUrl = await discoveryApi.getBaseUrl('gs');
       const params = new URLSearchParams({ repoUrl, path, commit, ref });
       const response = await fetchApi.fetch(
@@ -84,7 +97,10 @@ export function useSkillContent(
 
   return {
     content: data,
-    isLoading: Boolean(skill) && isPending,
-    error: error as Error | null,
+    isLoading: Boolean(skill) && source.kind !== 'unreachable' && isPending,
+    error:
+      source.kind === 'unreachable'
+        ? unreachableError(source.installation)
+        : (error as Error | null),
   };
 }

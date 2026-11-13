@@ -1,3 +1,8 @@
+import type {
+  ExternalUrlConsentAnswer,
+  ExternalUrlConsentApi,
+} from '@giantswarm/backstage-plugin-ui-react';
+
 /**
  * sessionStorage key recording when this tab last bounced through muster's
  * connect from the Repositories page, so a connect that comes back without a
@@ -27,7 +32,7 @@ export function withRedirectBack(authUrl: string, back: string): string {
   return url.toString();
 }
 
-/** Whether an automatic bounce may start now (none recorded recently). */
+/** Whether a bounce may start now (none recorded recently). */
 export function bounceAllowed(now = Date.now()): boolean {
   const raw = storage()?.getItem(CONNECT_BOUNCE_KEY);
   if (!raw) {
@@ -38,15 +43,23 @@ export function bounceAllowed(now = Date.now()): boolean {
 }
 
 /**
- * Sends the browser through muster's connect and back to the current page: a
- * full-page navigation, no popup, no click. Dex redirects straight back for
- * a person who is signed in already.
+ * Asks the person to open muster's connect, which replaces this page and
+ * comes back to `back`, and records the bounce once they agree.
  */
-export function bounceToConnect(
+export async function bounceToConnect(
+  consentApi: Pick<ExternalUrlConsentApi, 'open'>,
   authUrl: string,
-  navigate: (url: string) => void = url => window.location.assign(url),
   back: string = window.location.href,
-): void {
-  storage()?.setItem(CONNECT_BOUNCE_KEY, String(Date.now()));
-  navigate(withRedirectBack(authUrl, back));
+): Promise<ExternalUrlConsentAnswer> {
+  const answer = await consentApi.open({
+    url: withRedirectBack(authUrl, back),
+    requester: 'Repository manager',
+    message:
+      'Sign in to the repository manager through muster. The page comes back here once you are signed in.',
+    target: 'page',
+  });
+  if (answer === 'accept') {
+    storage()?.setItem(CONNECT_BOUNCE_KEY, String(Date.now()));
+  }
+  return answer;
 }

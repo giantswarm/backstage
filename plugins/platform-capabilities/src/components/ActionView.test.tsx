@@ -49,12 +49,15 @@ describe('ActionView', () => {
         .map(d => d.textContent),
     ).toEqual(['3', 'on', 'off']);
     const result = within(record).getByTestId('action-result');
-    expect(within(result).getByRole('link', { name: FILE })).toHaveAttribute(
-      'href',
-      FILE_URL,
-    );
     expect(
-      within(result).getByRole('link', { name: 'example/example-configs' }),
+      within(result).getByRole('link', {
+        name: `${FILE} (opens in a new tab)`,
+      }),
+    ).toHaveAttribute('href', FILE_URL);
+    expect(
+      within(result).getByRole('link', {
+        name: 'example/example-configs (opens in a new tab)',
+      }),
     ).toHaveAttribute('href', 'https://github.com/example/example-configs');
     expect(record).not.toHaveTextContent(/unknown|reconcile/i);
   });
@@ -73,7 +76,9 @@ describe('ActionView', () => {
     );
     expect(
       within(record).getByTestId('action-pull-requests'),
-    ).toHaveTextContent('example/example-configs#9 — closed');
+    ).toHaveTextContent(
+      'example/example-configs#9 (opens in a new tab) — closed',
+    );
     expect(within(record).getByTestId('action-result')).toHaveTextContent(
       'denied by reviewer: not during the freeze',
     );
@@ -90,15 +95,18 @@ describe('ActionView', () => {
     );
     const rollout = within(record).getByTestId('action-rollout');
     expect(rollout).toHaveTextContent(
-      `rowan: removed — ${FILE} is gone from the default branch of example/example-configs again`,
-    );
-    expect(within(rollout).getByRole('link', { name: FILE })).toHaveAttribute(
-      'href',
-      FILE_URL,
+      `rowan: removed — ${FILE} (opens in a new tab) is gone from the default branch of example/example-configs (opens in a new tab) again`,
     );
     expect(
+      within(rollout).getByRole('link', {
+        name: `${FILE} (opens in a new tab)`,
+      }),
+    ).toHaveAttribute('href', FILE_URL);
+    expect(
       within(record).getByTestId('action-pull-requests'),
-    ).toHaveTextContent('example/example-configs#5 — merged');
+    ).toHaveTextContent(
+      'example/example-configs#5 (opens in a new tab) — merged',
+    );
   });
 
   it('a reverted action reads Reverted, not in sync, with the reverting pull request linked', async () => {
@@ -111,9 +119,11 @@ describe('ActionView', () => {
     expect(tag).toHaveAttribute('data-mark', 'not in sync');
     const pulls = within(record).getByTestId('action-pull-requests');
     expect(pulls).toHaveTextContent(
-      'example/example-configs#11 — merged, reverted by #12',
+      'example/example-configs#11 (opens in a new tab) — merged, reverted by #12 (opens in a new tab)',
     );
-    expect(within(pulls).getByRole('link', { name: '#12' })).toHaveAttribute(
+    expect(
+      within(pulls).getByRole('link', { name: '#12 (opens in a new tab)' }),
+    ).toHaveAttribute(
       'href',
       'https://github.com/example/example-configs/pull/12',
     );
@@ -151,7 +161,9 @@ describe('ActionView', () => {
       'Approval: not required',
     );
     expect(
-      within(record).getByRole('link', { name: 'example/example-configs#7' }),
+      within(record).getByRole('link', {
+        name: 'example/example-configs#7 (opens in a new tab)',
+      }),
     ).toHaveAttribute(
       'href',
       'https://github.com/example/example-configs/pull/7',

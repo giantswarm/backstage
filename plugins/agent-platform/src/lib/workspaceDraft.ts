@@ -12,6 +12,7 @@ import type {
   WorkspaceSizing,
   WorkspaceSource,
 } from './workspaceManager';
+import { slugify } from './slugify';
 
 /** One source as the form edits it: every list present, never undefined. */
 export type SourceDraft = {
@@ -74,18 +75,14 @@ export function quantityToGiB(quantity: string | undefined): string {
  * characters a dash, no dash at either end, at most 40 characters.
  */
 export function suggestName(typed: string): string {
-  return typed
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .slice(0, WORKSPACE_NAME_MAX)
-    .replace(/^-+|-+$/g, '');
+  return slugify(typed, WORKSPACE_NAME_MAX);
 }
 
 /** Why a typed name is not one, with a valid one to try; undefined if it is. */
 export function nameProblem(typed: string): string | undefined {
   const name = typed.trim();
   if (!name) {
-    return 'Enter a name';
+    return 'Enter a technical name.';
   }
   if (name.length <= WORKSPACE_NAME_MAX && WORKSPACE_NAME_RE.test(name)) {
     return undefined;
@@ -238,15 +235,28 @@ export function emptyOwnerProblem(control: 'select' | 'text'): string {
   return control === 'select' ? 'Choose an owner' : 'Enter an owner';
 }
 
-/** The form's own checks, by field; the manager has the last word on save. */
+/**
+ * The form's own checks, by field; the manager has the last word on save.
+ * Creating with a free-form name (`displayName`, which only the form holds),
+ * the technical name is checked once that name is there, as it is filled in
+ * from it.
+ */
 export function draftProblems(
   draft: WorkspaceDraft,
   isEdit: boolean,
+  displayName?: string,
 ): Record<DraftField, string> {
   const problems: Record<DraftField, string> = {};
-  const name = isEdit ? undefined : nameProblem(draft.name);
-  if (name) {
-    problems.name = name;
+  if (!isEdit) {
+    const noDisplayName = displayName !== undefined && !displayName.trim();
+    if (noDisplayName) {
+      problems.displayName = 'Enter a name for the workspace.';
+    }
+    const name =
+      noDisplayName && !draft.name.trim() ? undefined : nameProblem(draft.name);
+    if (name) {
+      problems.name = name;
+    }
   }
   draft.sources.forEach((source, index) => {
     if (!source.provider) {

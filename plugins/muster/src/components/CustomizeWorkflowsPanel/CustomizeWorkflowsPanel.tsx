@@ -33,6 +33,9 @@ import { workflowEffect } from '../../lib/workflowDisplay';
 import { workflowRunKeys } from '../../lib/workflowRunKeys';
 import { workflowShapeLabel } from '../../lib/workflowShape';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- The portal session is the gs plugin's main sign-in.
+import { useMainSessionEnd } from '@giantswarm/backstage-plugin-gs';
+import { SESSION_ENDED_DESCRIPTION } from '../../lib/sessionEnded';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { SessionGate, useToolCatalogue, useWorkflowPageLinks } from '../shared';
@@ -377,7 +380,7 @@ function WorkflowsTable({
         <SessionGate
           session={session}
           installation={installation}
-          context="Run counts and the read-only badge need a muster session."
+          context="Run counts and the read-only badge need a Muster session."
         />
       )}
       {assist}
@@ -388,15 +391,23 @@ function WorkflowsTable({
 
 function Panel({ search, createAssist }: CustomizeWorkflowsPanelProps) {
   const { activeInstallation, isLoading } = useMusterInstance();
+  const sessionEnd = useMainSessionEnd();
 
   let body;
-  if (isLoading) {
+  if (sessionEnd && (isLoading || !activeInstallation)) {
+    body = (
+      <EmptyStateCard
+        title="Could not read your workflows"
+        description={SESSION_ENDED_DESCRIPTION}
+      />
+    );
+  } else if (isLoading) {
     body = <LoadingIndicator label="Reading your workflows…" />;
   } else if (!activeInstallation) {
     body = (
       <EmptyStateCard
         title="No workflows here"
-        description="None of your environments runs muster, which runs workflows."
+        description="None of your environments runs Muster, which runs workflows."
       />
     );
   } else {

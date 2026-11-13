@@ -4,6 +4,7 @@ import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent, { UserEvent } from '@testing-library/user-event';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- The wizard reads its connector catalogue through the Muster API.
 import {
   MCPServer,
   musterApiRef,
@@ -32,6 +33,10 @@ import {
   useNewAgentForm,
 } from '../NewAgentFormProvider';
 import { NewAgentToolsPage } from './NewAgentToolsPage';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 // No skill repositories: the Tools step is step 2 of 3 and "Back" is step 1.
 jest.mock('../../hooks/useSkillCatalog', () => ({
@@ -487,7 +492,12 @@ async function renderStep(
   );
   return renderInTestApp(
     options.api ? (
-      <TestApiProvider apis={[[musterApiRef, options.api]]}>
+      <TestApiProvider
+        apis={[
+          [musterApiRef, options.api],
+          [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+        ]}
+      >
         {tree}
       </TestApiProvider>
     ) : (
@@ -508,9 +518,7 @@ async function expectContinueBlocked(user: ReturnType<typeof userEvent.setup>) {
   await user.click(continueButton());
   // The toolset's problem where the Toolset section shows it, else the line
   // by Continue that says the step is blocked.
-  expect(document.activeElement).toHaveTextContent(
-    /selectors|Fix the toolset to continue/,
-  );
+  expect(document.activeElement).toHaveTextContent(/selectors|not valid/);
   // Still on the step.
   expect(
     screen.getByRole('heading', { name: 'What may it do?' }),
@@ -567,16 +575,9 @@ async function connectorsListed() {
 }
 
 describe('NewAgentToolsPage', () => {
-  let windowOpen: jest.SpyInstance;
   beforeEach(() => {
     mockUseResources.mockReset();
     CARRIERS = [];
-    // jsdom has no window.open; null is the popup-blocked answer the sign-in
-    // hook tolerates.
-    windowOpen = jest.spyOn(window, 'open').mockReturnValue(null);
-  });
-  afterEach(() => {
-    windowOpen.mockRestore();
   });
 
   describe('the access level', () => {
@@ -845,13 +846,69 @@ describe('NewAgentToolsPage', () => {
       expect(access('kubernetes', 'All')).toBeChecked();
       expect(access('kubernetes', 'Read-only')).not.toBeChecked();
       expect(connector('kubernetes')).toHaveTextContent(
-        '2 tools, including ones added later',
+        'Selected: all tools, including ones added later.',
       );
 
       // Choosing it again takes it back.
       await user.click(access('kubernetes', 'All'));
       expect(toolsetOutput()).toBe('');
       expect(access('kubernetes', 'All')).not.toBeChecked();
+    });
+
+    it('says in words how each connector stands and why it lists no tools', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+      });
+      await renderStep({
+        api,
+        servers: [
+          ...SERVER_CRS,
+          mcpServer('broken', {}, {}, 'Failed'),
+          mcpServer('quiet', {}, {}, 'Connected'),
+        ],
+      });
+      const user = userEvent.setup();
+      await connectorsListed();
+      await ownPicks(user);
+
+      expect(connector('kubernetes')).toHaveTextContent('Connected');
+      expect(connector('kubernetes')).toHaveTextContent('2 tools, 1 read-only');
+      expect(connector('pro')).toHaveTextContent('Sign-in needed');
+      expect(connector('broken')).toHaveTextContent('Not connected');
+      expect(connector('broken')).toHaveTextContent(
+        'Not connected: no tools listed',
+      );
+      expect(connector('quiet')).toHaveTextContent('Connected');
+      expect(connector('quiet')).toHaveTextContent(
+        'It lists no tools right now.',
+      );
+      expect(connector('agent-manager')).toHaveTextContent(
+        'None of its tools only read, so Read-only cannot be picked.',
+      );
+    });
+
+    it('marks the chosen access with a check and a Selected line', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+      });
+      await renderStep({ api });
+      const user = userEvent.setup();
+      await connectorsListed();
+      await ownPicks(user);
+
+      expect(connector('kubernetes')).not.toHaveTextContent('Selected:');
+      expect(access('kubernetes', 'Read-only').querySelector('svg')).toBeNull();
+
+      await user.click(access('kubernetes', 'Read-only'));
+      expect(connector('kubernetes')).toHaveTextContent(
+        'Selected: 1 read-only tool.',
+      );
+      expect(
+        access('kubernetes', 'Read-only').querySelector('svg'),
+      ).not.toBeNull();
+      expect(access('kubernetes', 'All').querySelector('svg')).toBeNull();
     });
 
     it('offers no read-only choice it cannot enumerate', async () => {
@@ -867,7 +924,9 @@ describe('NewAgentToolsPage', () => {
       // agent-manager's one tool changes things.
       expect(access('agent-manager', 'Read-only')).toBeDisabled();
       // pro's tools are not listed before a sign-in; All still works.
-      expect(connector('pro')).toHaveTextContent('Sign in to list its tools');
+      expect(connector('pro')).toHaveTextContent(
+        'You can choose All now. Its tools show after you sign in.',
+      );
       expect(access('pro', 'Read-only')).toBeDisabled();
       await user.click(access('pro', 'All'));
       expect(toolsetOutput()).toBe('server:pro');
@@ -897,7 +956,7 @@ describe('NewAgentToolsPage', () => {
 
       expect(toolsetOutput()).toBe('tool:x_kubernetes_delete_pod');
       expect(connector('kubernetes')).toHaveTextContent(
-        '1 of 2 tools selected',
+        'Selected: 1 of 2 tools. Tools added later are not included.',
       );
       expect(access('kubernetes', 'Read-only')).not.toBeChecked();
       expect(access('kubernetes', 'All')).not.toBeChecked();
@@ -905,6 +964,35 @@ describe('NewAgentToolsPage', () => {
       // Read-only then means exactly the read-only tools.
       await user.click(access('kubernetes', 'Read-only'));
       expect(toolsetOutput()).toBe('tool:x_kubernetes_get_pods');
+    });
+
+    it('lets the whole connector replace its single tools in the catalogue', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+      });
+      await renderStep({ api });
+      const user = userEvent.setup();
+      await connectorsListed();
+      await ownPicks(user);
+      await openIndividual(user);
+
+      await open(user, /^Infrastructure — /);
+      await open(user, /^kubernetes — 2 tools/);
+      const tool = (name: string) =>
+        screen.getByRole('checkbox', { name: `Tool ${name}` });
+      await user.click(tool('x_kubernetes_delete_pod'));
+      await user.click(
+        screen.getByRole('checkbox', { name: 'Connector kubernetes' }),
+      );
+
+      expect(toolsetOutput()).toBe('server:kubernetes');
+      expect(tool('x_kubernetes_get_pods')).toBeChecked();
+      expect(tool('x_kubernetes_delete_pod')).toBeChecked();
+
+      await user.click(tool('x_kubernetes_get_pods'));
+      expect(toolsetOutput()).toBe('tool:x_kubernetes_delete_pod');
+      expect(tool('x_kubernetes_get_pods')).not.toBeChecked();
     });
 
     it('lists three connectors with a search, without paging (SEARCH_MIN)', async () => {
@@ -991,9 +1079,7 @@ describe('NewAgentToolsPage', () => {
       expect(toolsetOutput()).toBe('preset:read-only | server:agent-manager');
       expect(level('Only the tools I choose below')).toBeChecked();
       expect(continueButton()).toBeEnabled();
-      expect(
-        screen.queryByText('Fix the toolset to continue.'),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/under Selected/)).not.toBeInTheDocument();
       // The grid still shows everything the toolset selects.
       expect(access('agent-manager', 'All')).toBeChecked();
       expect(access('kubernetes', 'Read-only')).toBeChecked();
@@ -1413,7 +1499,11 @@ describe('NewAgentToolsPage', () => {
           'This toolset needs 33 selectors but may list at most 32; most come from other selectors (33), so choose All or fewer tools there.',
         ),
       ).toBeInTheDocument();
-      expect(screen.getByText('Fix the toolset to continue.')).toBeVisible();
+      expect(
+        screen.getByText(
+          'This toolset lists 33 selectors but an agent may list at most 32, so remove 1 or more under Selected, or choose All for a connector instead of single tools.',
+        ),
+      ).toBeVisible();
       await expectContinueBlocked(user);
       // Muster's own refusal, which dumps every selector, is not shown beside it.
       await waitFor(() =>
@@ -1427,6 +1517,44 @@ describe('NewAgentToolsPage', () => {
         screen.queryByText('Could not resolve the toolset'),
       ).not.toBeInTheDocument();
       expect(screen.queryByText(/allowed inline/)).not.toBeInTheDocument();
+    });
+
+    it('points from the line by Continue to the problem', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+      });
+      const tooMany = Array.from(
+        { length: 33 },
+        (_, i) => `tool:x_srv_t${i}`,
+      ).join(',');
+      await renderStep({ api, agents: [agentWithToolset('wide', tooMany)] });
+      const user = userEvent.setup();
+      await connectorsListed();
+      await ownPicks(user);
+      await openIndividual(user);
+      await user.click(screen.getByText("Copy another agent's toolset"));
+      await user.click(
+        await screen.findByRole('radio', {
+          name: 'Copy the toolset of Existing agent',
+        }),
+      );
+      await user.click(
+        screen.getByRole('button', { name: 'Hide individual tools' }),
+      );
+      expect(screen.queryByText('Too many selectors')).not.toBeInTheDocument();
+
+      await user.click(continueButton());
+      expect(document.activeElement).toHaveTextContent(
+        'This toolset lists 33 selectors but an agent may list at most 32',
+      );
+
+      await user.click(
+        screen.getByRole('button', { name: 'Show the problem' }),
+      );
+      await waitFor(() =>
+        expect(document.activeElement).toHaveTextContent('Too many selectors'),
+      );
     });
 
     it('still shows a resolution error that is not the cap', async () => {
@@ -1538,6 +1666,35 @@ describe('NewAgentToolsPage', () => {
       layout = mockDesktopLayout();
     });
     afterEach(() => layout.restore());
+
+    it('states why the toolset is blocked in body text, in the danger tone', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+      });
+      const tooMany = Array.from(
+        { length: 33 },
+        (_, i) => `tool:x_srv_t${i}`,
+      ).join(',');
+      await renderStep({ api, agents: [agentWithToolset('wide', tooMany)] });
+      const user = userEvent.setup();
+      await connectorsListed();
+      await ownPicks(user);
+      await openIndividual(user);
+      await user.click(screen.getByText("Copy another agent's toolset"));
+      await user.click(
+        await screen.findByRole('radio', {
+          name: 'Copy the toolset of Existing agent',
+        }),
+      );
+
+      const rail = screen.getByRole('complementary', { name: 'Selected' });
+      const reason = within(rail).getByText(
+        'This toolset needs 33 selectors but may list at most 32; most come from other selectors (33), so choose All or fewer tools there.',
+      );
+      expect(reason).toHaveAttribute('data-variant', 'body-small');
+      expect(reason).toHaveAttribute('data-color', 'danger');
+    });
 
     it('lists the selection by connector beside the step, with how many tools change things', async () => {
       const { api } = makeMusterApi({

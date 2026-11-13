@@ -1,3 +1,4 @@
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Mimir sample types are owned by the GS plugin.
 import type {
   MimirMatrixSample,
   MimirMetricSample,
@@ -17,6 +18,7 @@ import {
   reduceReliability,
   reduceTokenTypes,
   reduceUnpricedModels,
+  withFreshInput,
 } from './llmUsage';
 
 function agent(overrides: Partial<AgentRow> = {}): AgentRow {
@@ -74,9 +76,9 @@ describe('reduceByAgent', () => {
     ]);
   });
 
-  it('sums the token types a single agent row is split across', () => {
+  it('counts the token types a single agent row is split across once each', () => {
     // The query groups by token type as well as by agent, so one agent arrives
-    // as four series. Failing to sum them would show a quarter of the truth.
+    // as four series. Since agentgateway v1.5.0 `input` holds the cache reads.
     const labels = { agent_namespace: 'kagent', agent: 'sre-agent' };
     const rows = reduceByAgent({
       ...byAgentOptions,
@@ -93,7 +95,24 @@ describe('reduceByAgent', () => {
     });
 
     expect(rows[0].costUsd).toBe(4.5);
-    expect(rows[0].tokens).toBe(1_000_000);
+    expect(rows[0].tokens).toBe(950_000);
+  });
+
+  it('excludes cache types from totals even when they exceed input', () => {
+    const labels = { agent_namespace: 'kagent', agent: 'sre-agent' };
+    const rows = reduceByAgent({
+      ...byAgentOptions,
+      cost: undefined,
+      tokens: [
+        sample({ ...labels, gen_ai_token_type: 'input' }, '1000'),
+        sample({ ...labels, gen_ai_token_type: 'input_cache_read' }, '900'),
+        sample({ ...labels, gen_ai_token_type: 'input_cache_write' }, '200'),
+        sample({ ...labels, gen_ai_token_type: 'output' }, '20'),
+      ],
+      calls: undefined,
+    });
+
+    expect(rows[0].tokens).toBe(1020);
   });
 
   it('renders a pair that matches no agent as a removed agent, unlinked, its spend kept', () => {
@@ -269,18 +288,30 @@ describe('reduceTokenTypes and cacheReadShare', () => {
     });
   });
 
-  it('measures cache reads against cache-eligible input only', () => {
-    // Output must not dilute the share — it is not cache-eligible, so
+  it('measures cache reads against input counted once, which holds the cache types', () => {
+    // Output must not dilute the share: it is not cache-eligible, so
     // including it would make heavy generation look like broken caching.
     const share = cacheReadShare({
-      input: 100,
+      input: 400,
       output: 10_000,
       inputCacheRead: 300,
       inputCacheWrite: 100,
       other: 0,
     });
 
-    expect(share).toBeCloseTo(60);
+    expect(share).toBeCloseTo(75);
+  });
+
+  it('uses input as the denominator even when the cache types exceed it', () => {
+    const share = cacheReadShare({
+      input: 1000,
+      output: 20,
+      inputCacheRead: 900,
+      inputCacheWrite: 200,
+      other: 0,
+    });
+
+    expect(share).toBeCloseTo(90);
   });
 
   it('has no share when there is no input traffic', () => {
@@ -875,6 +906,76 @@ describe('buildLlmUsage', () => {
     expect(usage.totals).toHaveProperty('previousCostUsd', undefined);
   });
 
+  it('counts the gazelle week once, as the session estimate does', () => {
+    // giantswarm/backstage#3346: claude-sonnet-5-5 on gazelle, 7 days to
+    // 2026-11-03. The cache types are 99.998% of `input`.
+    const sonnet = { ...labels, gen_ai_response_model: 'claude-sonnet-5-5' };
+    const usage = buildLlmUsage({
+      ...base,
+      calls: [],
+      cost: [sample(sonnet, '2.73')],
+      tokens: [
+        sample({ ...sonnet, gen_ai_token_type: 'input' }, '4537960'),
+        sample({ ...sonnet, gen_ai_token_type: 'input_cache_read' }, '4145979'),
+        sample({ ...sonnet, gen_ai_token_type: 'input_cache_write' }, '391832'),
+        sample({ ...sonnet, gen_ai_token_type: 'output' }, '92499'),
+      ],
+    });
+
+    expect(usage.totals.tokens).toBe(4_630_459);
+    expect(usage.byModel[0].tokens).toBe(4_630_459);
+    expect(usage.byAgent[0].tokens).toBe(4_630_459);
+    expect(usage.byOrganization[0].tokens).toBe(4_630_459);
+    expect(usage.byAgentModel[0].tokens).toBe(4_630_459);
+    expect(usage.totals.cacheReadSharePct).toBeCloseTo(91.36, 1);
+    expect(usage.totals.usdPerMillion).toBeCloseTo(
+      usage.rates.blended! * 1_000_000,
+    );
+  });
+
+  it('stacks the daily tokens as fresh input, cache reads, cache writes and output', () => {
+    // A point at midnight of 10 Sep totals 9 Sep; today's row is the partial.
+    const at = Date.UTC(2026, 8, 10) / 1000;
+    const day = (type: string, value: string): MimirMatrixSample => ({
+      metric: { gen_ai_token_type: type },
+      values: [[at, value]],
+    });
+    const usage = buildLlmUsage({
+      ...base,
+      cost: [],
+      tokens: [],
+      tokensPerDay: [
+        day('input', '1000'),
+        day('input_cache_read', '800'),
+        day('input_cache_write', '150'),
+        day('output', '20'),
+      ],
+      tokensToday: [
+        sample({ gen_ai_token_type: 'input' }, '500'),
+        sample({ gen_ai_token_type: 'input_cache_read' }, '450'),
+      ],
+    });
+
+    expect(usage.tokensPerDay.series).toContain('fresh_input');
+    expect(usage.tokensPerDay.series).not.toContain('input');
+    expect(usage.tokensPerDay.rows).toEqual([
+      {
+        day: '2026-09-09',
+        fresh_input: 50,
+        input_cache_read: 800,
+        input_cache_write: 150,
+        output: 20,
+      },
+      {
+        day: '2026-09-10',
+        fresh_input: 50,
+        input_cache_read: 450,
+        input_cache_write: 0,
+        output: 0,
+      },
+    ]);
+  });
+
   it('reports only a blended rate when cost carries no token type', () => {
     const usage = buildLlmUsage({
       ...base,
@@ -1038,5 +1139,97 @@ describe('firstSampledDay', () => {
         windowTotals: [[]],
       }),
     ).toBeUndefined();
+  });
+});
+
+describe('withFreshInput', () => {
+  it('replaces input with the input neither read from nor written to cache', () => {
+    const daily = withFreshInput({
+      rows: [
+        {
+          day: '2026-11-02',
+          input: 1000,
+          input_cache_read: 800,
+          input_cache_write: 150,
+          output: 20,
+        },
+      ],
+      series: ['input', 'input_cache_read', 'input_cache_write', 'output'],
+    });
+
+    expect(daily.rows).toEqual([
+      {
+        day: '2026-11-02',
+        fresh_input: 50,
+        input_cache_read: 800,
+        input_cache_write: 150,
+        output: 20,
+      },
+    ]);
+    expect(daily.series).toEqual([
+      'input_cache_read',
+      'input_cache_write',
+      'fresh_input',
+      'output',
+    ]);
+  });
+
+  it('clamps fresh input to zero when cache totals exceed input', () => {
+    const daily = withFreshInput({
+      rows: [
+        {
+          day: '2026-11-02',
+          input: 1000,
+          input_cache_read: 900,
+          input_cache_write: 200,
+          output: 20,
+        },
+      ],
+      series: ['input', 'input_cache_read', 'input_cache_write', 'output'],
+    });
+
+    expect(daily.rows[0]).toEqual({
+      day: '2026-11-02',
+      fresh_input: 0,
+      input_cache_read: 900,
+      input_cache_write: 200,
+      output: 20,
+    });
+  });
+
+  it("treats today's partial row like every other day", () => {
+    const daily = withFreshInput(
+      applyTodayPartial(
+        {
+          rows: [
+            { day: '2026-11-02', input: 0, input_cache_read: 0 },
+            { day: '2026-11-03', input: 0, input_cache_read: 0 },
+          ],
+          series: ['input', 'input_cache_read'],
+        },
+        {
+          day: '2026-11-03',
+          samples: [
+            sample({ gen_ai_token_type: 'input' }, '500'),
+            sample({ gen_ai_token_type: 'input_cache_read' }, '450'),
+          ],
+          label: labels => labels.gen_ai_token_type,
+        },
+      ),
+    );
+
+    expect(daily.rows[1]).toEqual({
+      day: '2026-11-03',
+      fresh_input: 50,
+      input_cache_read: 450,
+    });
+  });
+
+  it('leaves a series without input alone', () => {
+    const daily = {
+      rows: [{ day: '2026-11-02', output: 5 }],
+      series: ['output'],
+    };
+    expect(withFreshInput(daily)).toBe(daily);
   });
 });

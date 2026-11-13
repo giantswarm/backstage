@@ -2,8 +2,9 @@ import type { StatusDotProps } from '@giantswarm/backstage-plugin-ui-react';
 import {
   type AuthActionParts,
   authActionParts,
-  signInWaitText,
+  SIGN_IN_REFUSED_STATUS,
   SSO_REFUSED_STATUS,
+  WAITING_FOR_SIGN_IN,
 } from '../ServerSignIn';
 import {
   type ServerSignInState,
@@ -60,6 +61,8 @@ export interface ServerSignInStatusState {
  *   sign-in itself may well still be going, so it is not called failed.
  * - "Signing in…": a sign-in page is open; in the warning tone when the
  *   authorization server may reject muster as an unregistered client.
+ * - "Cannot sign in" (danger): muster reports that a sign-in cannot pass for
+ *   this session; its reason is the tooltip, and nothing is offered.
  * - "Cannot connect" (danger) for an SSO server that refused the person's
  *   sign-in and is not connected in this session: there is nothing to sign in
  *   to, so "Sign in needed" would send them looking for a button.
@@ -72,6 +75,9 @@ function shownStatus(
 ): StatusText {
   if (parts.kind === 'none') {
     return status;
+  }
+  if (parts.kind === 'refused') {
+    return SIGN_IN_REFUSED_STATUS;
   }
   // `error` carries the unreadable status too, unless a click's answer
   // outranks it.
@@ -104,8 +110,11 @@ function statusDetails(
   if (parts.kind === 'sso') {
     details.push(parts.explanation);
   }
+  if (parts.kind === 'refused') {
+    return [parts.reason];
+  }
   if (parts.kind === 'sign-in' && parts.wait) {
-    details.push(signInWaitText(state));
+    details.push(WAITING_FOR_SIGN_IN);
     if (parts.wait.clientIdNote) {
       details.push(parts.wait.clientIdNote.text);
     }

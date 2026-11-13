@@ -3,11 +3,25 @@ import {
   fetchApiRef,
   useApi,
 } from '@backstage/core-plugin-api';
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
-import { canonicalRepoUrl, DiscoveredSkill } from '../lib/skills';
+import {
+  canonicalRepoUrl,
+  canProposeSkillTo,
+  DiscoveredSkill,
+  type RefKind,
+} from '../lib/skills';
+import {
+  offGitHubSources,
+  proposableSources,
+  skillRepositoryUrls,
+  type SkillSource,
+} from '../lib/skillRepositories';
 import type { DiscoveredPlugin } from '../lib/plugins';
+import { catalogFromSkillManager, unreachableError } from '../lib/skillManager';
+import { useSkillSource } from './useSkillSource';
 
 export type SkillCatalog = {
   skills: DiscoveredSkill[];
@@ -15,7 +29,10 @@ export type SkillCatalog = {
   plugins: DiscoveredPlugin[];
   isLoading: boolean;
   error: Error | null;
-  /** Whether any skill repository is configured at all. */
+  /**
+   * Whether any skill repository is configured at all; true until the
+   * source has answered, since the wizard decides on its skills step by it.
+   */
   hasRepositories: boolean;
   /** Configured repositories whose discovery failed (surfaced as a warning). */
   failedRepositories: string[];
@@ -24,34 +41,112 @@ export type SkillCatalog = {
   /** True when a repo's listing was capped, so some skills may be missing. */
   truncated: boolean;
   /**
+   * Each source gs-backend read, in configuration order, as it describes
+   * it: whether Add skill can target it, and where it scans. Absent where
+   * skill-manager answers.
+   */
+  sources?: SkillSource[];
+  /**
    * The repositories GitHub reports private, by canonical URL
    * (`canonicalRepoUrl`): only their collaborators read them, and an agent
    * fetches their skills only with a credential.
    */
   privateRepositories: ReadonlySet<string>;
+  /**
+   * The repositories a new skill can be proposed to: the pull request route
+   * accepts a new `<name>/SKILL.md` there and the catalog lists it once merged.
+   */
+  proposalTargets: string[];
+  /** Writable repositories of the catalog no pull request can go to (not on github.com). */
+  unproposableRepositories: string[];
 };
 
 const NO_REPOSITORIES: ReadonlySet<string> = new Set();
 
+/** The catalog while its source is unknown or cannot be asked. */
+function emptyCatalog(error: Error | null, isLoading: boolean): SkillCatalog {
+  return {
+    skills: [],
+    plugins: [],
+    isLoading,
+    error,
+    hasRepositories: true,
+    failedRepositories: [],
+    failureMessages: {},
+    truncated: false,
+    privateRepositories: NO_REPOSITORIES,
+    proposalTargets: [],
+    unproposableRepositories: [],
+  };
+}
+
 /**
- * Discovers agent skills across every configured repository
- * (`agentPlatform.skills.repositories`) via the gs-backend `/agent-skills`
- * endpoint, and aggregates them with the plugins found alongside. One repository failing does not fail the
- * whole catalog — the others still load and the failed ones are reported.
+ * The skills and plugins an agent on `installation` (default: the portal's
+ * home installation) can use: the installation's skill-manager `list_skills`,
+ * as the person, so a private repository they cannot read lists no skills
+ * and names why. Where skill-manager is not deployed, gs-backend's
+ * `/agent-skills` discovery of `agentPlatform.skills.repositories` answers
+ * (deprecated). One repository failing does not fail the catalog.
  */
-export function useSkillCatalog(): SkillCatalog {
+export function useSkillCatalog(installation?: string): SkillCatalog {
+  const source = useSkillSource(installation);
+  const skillManager = useQuery({
+    queryKey: [
+      'agent-platform',
+      'skill-manager',
+      'skills',
+      source.kind === 'skill-manager' ? source.installation : '',
+      'json-v1',
+    ],
+    enabled: source.kind === 'skill-manager',
+    queryFn: async () =>
+      source.kind === 'skill-manager'
+        ? await source.client.listSkills()
+        : undefined,
+    // Keep the wire answer in the persisted cache; derive Sets only for readers.
+    select: listing => listing && catalogFromSkillManager(listing),
+    retry: false,
+  });
+  const portal = usePortalSkillCatalog(source.kind === 'portal');
+  if (source.kind === 'pending') {
+    return emptyCatalog(null, true);
+  }
+  if (source.kind === 'portal') {
+    return portal;
+  }
+  if (source.kind === 'unreachable') {
+    return emptyCatalog(unreachableError(source.installation), false);
+  }
+  const data = skillManager.data;
+  return {
+    skills: data?.skills ?? [],
+    plugins: data?.plugins ?? [],
+    isLoading: isAwaitingData(skillManager),
+    error: (skillManager.error as Error) ?? null,
+    hasRepositories: data?.hasRepositories ?? true,
+    failedRepositories: data?.failedRepositories ?? [],
+    failureMessages: data?.failureMessages ?? {},
+    truncated: data?.truncated ?? false,
+    privateRepositories: data?.privateRepositories ?? NO_REPOSITORIES,
+    proposalTargets: data?.proposalTargets ?? [],
+    unproposableRepositories: [],
+  };
+}
+
+/** gs-backend discovery of the configured repositories, when `enabled`. */
+function usePortalSkillCatalog(enabled: boolean): SkillCatalog {
   // The repository list is part of the signed-in config; discovery waits for
   // it rather than starting with an empty list.
   const { config, isLoading: configIsLoading } = useSignedInConfig();
   const discoveryApi = useApi(discoveryApiRef);
   const fetchApi = useApi(fetchApiRef);
 
-  const repositories =
-    config?.getOptionalStringArray('agentPlatform.skills.repositories') ?? [];
+  const repositories = useMemo(() => skillRepositoryUrls(config), [config]);
 
   const { data, error, isPending, fetchStatus } = useQuery({
-    queryKey: ['agent-platform', 'skills', repositories.join(',')],
-    enabled: !configIsLoading && repositories.length > 0,
+    // Older cache entries contain a Set serialized as {} and must be refetched.
+    queryKey: ['agent-platform', 'skills', repositories.join(','), 'json-v1'],
+    enabled: enabled && !configIsLoading && repositories.length > 0,
     queryFn: async () => {
       const baseUrl = await discoveryApi.getBaseUrl('gs');
 
@@ -80,6 +175,13 @@ export function useSkillCatalog(): SkillCatalog {
             /** Absent from older backends. */
             plugins?: DiscoveredPlugin[];
             truncated?: boolean;
+            /** Absent for the default branch and from older backends. */
+            refKind?: RefKind;
+            /** Absent from older backends. */
+            proposable?: boolean;
+            path?: string;
+            readOnly?: boolean;
+            ref?: string;
             /** Absent from older backends and for non-GitHub hosts. */
             private?: boolean;
           };
@@ -91,10 +193,20 @@ export function useSkillCatalog(): SkillCatalog {
       const plugins: DiscoveredPlugin[] = [];
       const failedRepositories: string[] = [];
       const failureMessages: Record<string, string> = {};
+      const sources: SkillSource[] = [];
       const privateRepositories = new Set<string>();
       let truncated = false;
       perRepo.forEach((result, index) => {
         if (result.status === 'fulfilled') {
+          const repoUrl = repositories[index];
+          sources.push({
+            url: repoUrl,
+            // An older backend takes any github.com source.
+            proposable: result.value.proposable ?? canProposeSkillTo(repoUrl),
+            path: result.value.path ?? '',
+            ...(result.value.ref ? { ref: result.value.ref } : {}),
+            readOnly: result.value.readOnly ?? false,
+          });
           skills.push(...result.value.skills);
           plugins.push(...(result.value.plugins ?? []));
           truncated = truncated || Boolean(result.value.truncated);
@@ -116,7 +228,8 @@ export function useSkillCatalog(): SkillCatalog {
         failedRepositories,
         failureMessages,
         truncated,
-        privateRepositories,
+        sources,
+        privateRepositories: [...privateRepositories],
       };
     },
   });
@@ -131,6 +244,15 @@ export function useSkillCatalog(): SkillCatalog {
     failedRepositories: data?.failedRepositories ?? [],
     failureMessages: data?.failureMessages ?? {},
     truncated: data?.truncated ?? false,
-    privateRepositories: data?.privateRepositories ?? NO_REPOSITORIES,
+    sources: data?.sources ?? [],
+    privateRepositories: new Set(data?.privateRepositories ?? []),
+    // The backend's call per source (`proposable`): writable, on github.com
+    // and read on a branch.
+    proposalTargets: proposableSources(data?.sources ?? []).map(
+      source => source.url,
+    ),
+    unproposableRepositories: offGitHubSources(data?.sources ?? []).map(
+      source => source.url,
+    ),
   };
 }

@@ -46,10 +46,10 @@ export function describeActiveInstallation({
   }
   if (scope === ALL_INSTALLATIONS) {
     const home = activeInstallation === homeInstallation ? ' (home)' : '';
-    return `This shows one muster at a time, currently ${activeInstallation}${home}. Pin another environment in the page header.`;
+    return `This shows one Muster at a time, currently ${activeInstallation}${home}. Pin another environment in the page header.`;
   }
   if (scope !== activeInstallation) {
-    return `There is no muster on ${scope}, so this shows ${activeInstallation}.`;
+    return `There is no Muster on ${scope}, so this shows ${activeInstallation}.`;
   }
   return undefined;
 }
