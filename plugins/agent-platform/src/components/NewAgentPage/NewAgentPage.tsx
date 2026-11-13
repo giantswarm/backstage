@@ -241,7 +241,7 @@ function NewAgentPageContent() {
       )
     : undefined;
   const modelName =
-    state.modelDisplayName ?? modelLabel(listedModel) ?? state.modelConfigName;
+    modelLabel(listedModel) ?? state.modelDisplayName ?? state.modelConfigName;
   const underlyingModel = underlyingModelLine(listedModel, modelName);
   let modelSummary: ReactNode;
   if (modelName) {
