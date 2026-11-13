@@ -15,6 +15,7 @@ import {
   buildKeySecretPatch,
   buildModelConfigManifest,
   buildModelConfigPatch,
+  isListenerRouted,
   keySecretName,
   MODEL_CONFIG_NAMESPACE,
   ModelConfigFormValues,
@@ -27,7 +28,10 @@ import {
   readNamespaceModelConfigs,
   unmarkPrevious,
 } from './defaultModelWrites';
-import { useOrganizationDirectory } from '../components/OrganizationDirectoryProvider';
+import {
+  organizationsUndecided,
+  useOrganizationDirectory,
+} from '../components/OrganizationDirectoryProvider';
 
 /**
  * Spelled out rather than `Secret.getGVK()`: the Secret class sets no `group`
@@ -63,7 +67,9 @@ export type SaveModelConfigResult = {
 };
 
 /**
- * Creates or updates a ModelConfig, including its key Secret.
+ * Creates or updates a ModelConfig, including its key Secret, outside an
+ * organization's namespace: there it refuses, since an organization's model
+ * is saved through agent-manager (`useSaveOrganizationModel`).
  *
  * All writes go straight through the Kubernetes proxy with the caller's own
  * OIDC token, so the apiserver's RBAC is the authorization — and the API key
@@ -85,7 +91,8 @@ export type SaveModelConfigResult = {
 export function useSaveModelConfig() {
   const kubernetesApi = useApi(kubernetesApiRef);
   const queryClient = useQueryClient();
-  const { directory } = useOrganizationDirectory();
+  const organizations = useOrganizationDirectory();
+  const { directory } = organizations;
 
   const mutation = useTrackedMutation({
     event: (_data, { original }) => ({
@@ -107,6 +114,24 @@ export function useSaveModelConfig() {
         original?.getNamespace() ??
         requestedNamespace ??
         MODEL_CONFIG_NAMESPACE;
+      if (isListenerRouted(namespace, directory)) {
+        // An organization's model is saved through agent-manager
+        // (`useSaveOrganizationModel`): its admins may not write the key
+        // Secret from here, and its key is entered on the credential form.
+        throw new Error(
+          `${namespace} is an organization's namespace: its models are saved through agent-manager, not written here.`,
+        );
+      }
+      const undecided =
+        namespace === MODEL_CONFIG_NAMESPACE
+          ? undefined
+          : organizationsUndecided(organizations, installation);
+      if (undecided) {
+        // It may be an organization's: its key must not be written here.
+        throw new Error(
+          `Could not tell whether ${namespace} is an organization's namespace, whose models are saved through agent-manager: ${undecided}`,
+        );
+      }
       const plan = planKeySecret(values, {
         isEdit,
         originalProvider: original?.getProvider(),

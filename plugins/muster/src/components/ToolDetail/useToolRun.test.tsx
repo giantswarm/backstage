@@ -44,6 +44,7 @@ describe('useToolRun', () => {
       'workflow_deploy',
       { app: 'shop' },
       'gazelle',
+      { signal: expect.any(AbortSignal), urlElicitation: true },
     );
     expect(result.current.lastResult?.result).toEqual({ deployed: 'shop' });
     expect(onRan).toHaveBeenCalledTimes(1);
@@ -120,5 +121,37 @@ describe('useToolRun', () => {
     expect(result.current.lastResult).toBeUndefined();
     expect(onRan).toHaveBeenCalledTimes(2);
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+
+  it('cancels a pending run: the call is aborted, no error, the last result kept', async () => {
+    let signal: AbortSignal | undefined;
+    const callTool = jest
+      .fn<
+        ReturnType<MusterApi['callTool']>,
+        Parameters<MusterApi['callTool']>
+      >()
+      .mockResolvedValueOnce({ first: true })
+      .mockImplementationOnce(
+        (_name, _args, _installation, options) =>
+          new Promise((_, reject) => {
+            signal = options?.signal;
+            signal?.addEventListener('abort', () =>
+              reject(new DOMException('aborted', 'AbortError')),
+            );
+          }),
+      );
+    const { result } = setup('core_echo', callTool);
+
+    act(() => result.current.run({}));
+    await waitFor(() => expect(result.current.lastResult).toBeDefined());
+    act(() => result.current.run({}));
+    await waitFor(() => expect(result.current.isPending).toBe(true));
+
+    act(() => result.current.cancel());
+
+    await waitFor(() => expect(result.current.isPending).toBe(false));
+    expect(signal?.aborted).toBe(true);
+    expect(result.current.error).toBeNull();
+    expect(result.current.lastResult?.result).toEqual({ first: true });
   });
 });

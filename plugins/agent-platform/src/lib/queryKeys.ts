@@ -80,7 +80,7 @@ export function modelCostQueryKey(installation: string, days: number) {
  * jobs are the same for every user, so they are prefixed `model-manager` (not
  * `kagent`, not `muster`) and `components/QueryClientProvider` persists them.
  * Whether an installation has a model-manager at all is the `muster` question
- * (`musterServersQueryKey` below).
+ * (the muster plugin's `musterServerListQueryKey`).
  */
 export function modelManagerBackendQueryKey(installation: string) {
   return ['agent-platform', 'model-manager', 'backend', installation] as const;
@@ -208,17 +208,13 @@ export function musterToolsetResolutionQueryKey(
 
 /**
  * The agent-manager reads the create flow makes through muster as the
- * signed-in person: whether the installation's muster lists agent-manager at
- * all, what that agent-manager composes (`get_info`), the dry run of the
+ * signed-in person: what the installation's agent-manager composes
+ * (`get_info`), the dry run of the
  * agent under review and the readiness of the one just created. All per
  * person, all under the `muster` prefix for the same two reasons as above:
  * they are never persisted, and the muster plugin's sign-in invalidation
  * re-reads them once the person connects to agent-manager.
  */
-export function musterServersQueryKey(installation: string) {
-  return ['muster', 'agent-platform', 'mcp-servers', installation] as const;
-}
-
 export function musterAgentManagerInfoQueryKey(installation: string) {
   return [
     'muster',
@@ -325,12 +321,12 @@ export function musterAgentManagerEgressPoliciesQueryKey(
   ] as const;
 }
 
-/** `list_my_organizations` on one installation: the person's organizations. */
-export function musterMyOrganizationsQueryKey(installation: string) {
+/** `list_organizations` on one installation: the person's organizations. */
+export function musterOrganizationsQueryKey(installation: string) {
   return [
     'muster',
     'agent-platform',
-    'agent-manager-my-organizations',
+    'agent-manager-organizations',
     installation,
   ] as const;
 }
@@ -345,6 +341,26 @@ export function musterOrganizationQueryKey(
     'muster',
     'agent-platform',
     'agent-manager-organization',
+    installation,
+    parent,
+    name,
+  ] as const;
+}
+
+/**
+ * `get_organization` as the delete dialog reads it, for what a delete erases.
+ * Its own key: the page prefers `musterOrganizationQueryKey`'s organization
+ * over the listing, so a preview kept there would hide a newer listing.
+ */
+export function musterOrganizationErasureQueryKey(
+  installation: string,
+  parent: string,
+  name: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'agent-manager-organization-erasure',
     installation,
     parent,
     name,
@@ -587,5 +603,22 @@ export function kagentAgentNamespacesQueryKey(installation: string) {
     'kagent',
     'agent-namespaces',
     installation,
+  ] as const;
+}
+
+/**
+ * agent-manager's confirmation of one credential operation, read through the
+ * portal's backend. Never persisted (`meta: { persist: false }` on its query).
+ */
+export function agentManagerCredentialOperationQueryKey(
+  installation: string,
+  operation: string,
+) {
+  return [
+    'agent-platform',
+    'agent-manager',
+    'credential-operation',
+    installation,
+    operation,
   ] as const;
 }

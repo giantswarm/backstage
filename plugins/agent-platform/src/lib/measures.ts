@@ -13,13 +13,15 @@ import { categoricalColors } from '@giantswarm/backstage-plugin-ui-react';
  * adding a column means adding a key rather than shifting every existing one.
  *
  * **Measures that mean the same thing share a slot.** The palette is eight
- * validated hues and the four tables between them show eleven columns, so a
- * hue per column is not available — and it would be the wrong goal anyway.
- * `cost` covers the gateway's measured spend *and* a session's estimate;
- * `calls` covers model calls, tool calls and MCP-server calls; `ratio` covers
- * share-of-spend and $/1M, which never appear together. Sharing is safe
- * precisely because the pairs never co-occur in one table — the invariant
- * `measures.test.ts` pins.
+ * validated hues, one of them reserved (red, see `RESERVED_RED_SLOT`), and the
+ * four tables between them show eleven columns, so a hue per column is not
+ * available — and it would be the wrong goal anyway. `cost` covers the
+ * gateway's measured spend *and* a session's estimate; `calls` covers model
+ * calls, tool calls and MCP-server calls; `ratio` covers share-of-spend and
+ * $/1M, which never appear together. `turns` and `avgTokensPerCall` share a
+ * slot only because they never share a table. Sharing is safe precisely
+ * because the pairs never co-occur in one table — the invariant
+ * `measureColors.test.tsx` pins.
  *
  * **On colour-blindness:** the strict adjacent-pair gates the palette is
  * validated against exist for charts, where hue *is* the identity channel.
@@ -41,8 +43,14 @@ const MEASURE_SLOTS = {
   turns: 5,
   /** A derived ratio: share of spend, or $/1M tokens. */
   ratio: 6,
-  avgTokensPerCall: 7,
+  avgTokensPerCall: 5,
 } as const;
+
+/**
+ * The palette's red slot, which no measure takes: red is the status colour for
+ * errors on the same pages, so a red bar reads as failure.
+ */
+export const RESERVED_RED_SLOT = 7;
 
 export type MeasureKey = keyof typeof MEASURE_SLOTS;
 

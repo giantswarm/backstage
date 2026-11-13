@@ -4,6 +4,7 @@ import type {
   AgentPluginEntry,
   AgentSkillEntry,
 } from './agentManager';
+import { listOf } from './listOf';
 import { canonicalRepoUrl, normalizedRepoUrl, repoSlug } from './skills';
 
 /**
@@ -76,13 +77,6 @@ export function skillsCredentialOf(
   }
   const refreshError = info.skillsGitAuthMint?.error || undefined;
   return { kind: 'installation', secretName, refreshError };
-}
-
-/** "a", "a and b", "a, b and c". */
-function listOf(items: string[]): string {
-  return items.length < 2
-    ? items.join('')
-    : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }
 
 /** What the wizard says about the credential for the picked private skills. */

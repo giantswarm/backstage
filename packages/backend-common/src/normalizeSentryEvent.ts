@@ -90,6 +90,7 @@ const SERVER_KINDS = new Set([
   'timeout',
   'client_not_connected',
   'tool_not_found',
+  'no_backend',
 ]);
 
 /**
@@ -163,9 +164,10 @@ function isMusterToolError(event: SentryEvent): boolean {
  * One issue per kind of failure and tool, whatever route the call came
  * through: `['MusterToolError', <kind>, <tool>]`, the tool without its
  * Organization or workflow name ({@link toolGroupOf}). A kind that belongs to
- * a whole server ({@link SERVER_KINDS}) is grouped by the server instead.
- * Without a known `kind`, the message stands in for it, with its quoted
- * values replaced.
+ * a whole server ({@link SERVER_KINDS}) is grouped by the server instead,
+ * or by the message where the tool names no server (a meta-tool's target that
+ * muster does not have). Without a known `kind`, the message stands in for
+ * it, with its quoted values replaced.
  */
 function musterToolErrorFingerprint(
   event: SentryEvent,
@@ -173,7 +175,11 @@ function musterToolErrorFingerprint(
 ): string[] {
   const { kind, tool, server } = event.extra ?? {};
   if (typeof kind === 'string' && SERVER_KINDS.has(kind)) {
-    return [MUSTER_TOOL_ERROR, kind, typeof server === 'string' ? server : ''];
+    return [
+      MUSTER_TOOL_ERROR,
+      kind,
+      typeof server === 'string' && server !== '' ? server : normalizedMessage,
+    ];
   }
   return [
     MUSTER_TOOL_ERROR,

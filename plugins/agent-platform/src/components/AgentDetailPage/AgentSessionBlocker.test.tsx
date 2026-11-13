@@ -5,6 +5,7 @@ import {
   AgentCondition,
   AgentInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { modelsRouteRef } from '../../routes';
 import { AgentSessionBlocker } from './AgentSessionBlocker';
 import type { AgentCreatedHandoff } from '../../hooks/useAgentCreatedHandoff';
 
@@ -126,4 +127,41 @@ describe('AgentSessionBlocker', () => {
       ).toBeInTheDocument();
     },
   );
+
+  describe('for the default agent without a model', () => {
+    const unresolved = agentWith([
+      accepted,
+      condition(
+        'ResolvedRefs',
+        'False',
+        'ReferenceResolutionFailed',
+        'no ModelConfig',
+      ),
+      condition('Ready', 'False', 'Blocked', 'blocked by ResolvedRefs'),
+    ]);
+
+    it('says to add one under Models', async () => {
+      await renderInTestApp(
+        <AgentSessionBlocker agent={unresolved} isPlatformOwned awaitsModel />,
+        { mountedRoutes: { '/customize/models': modelsRouteRef } },
+      );
+
+      expect(screen.getByText('Sessions cannot start')).toBeInTheDocument();
+      expect(
+        screen.getByText(/^No model yet\. Add one under/),
+      ).toHaveTextContent('No model yet. Add one under Models.');
+      expect(screen.getByRole('link', { name: 'Models' })).toHaveAttribute(
+        'href',
+        '/customize/models',
+      );
+    });
+
+    it('says nothing of it otherwise', async () => {
+      await renderInTestApp(
+        <AgentSessionBlocker agent={unresolved} isPlatformOwned />,
+      );
+
+      expect(screen.queryByText(/No model yet/)).not.toBeInTheDocument();
+    });
+  });
 });
