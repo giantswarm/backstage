@@ -588,6 +588,12 @@ describe('OrganizationPage', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(toolCalls(callTool, 'set_organization_model')).toHaveLength(1);
     expect(toolCalls(callTool, 'list_model_configs').length).toBeGreaterThan(1);
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AgentPlatform.modelCreated',
+        attributes: {},
+      }),
+    );
   });
 
   it("asks for the organization's own key when it has no model, on the credential form", async () => {
@@ -628,6 +634,7 @@ describe('OrganizationPage', () => {
     expect(await screen.findByTestId('location')).toHaveTextContent(
       `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
     );
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
   // The portal restarted and lost the keys it signed the session token

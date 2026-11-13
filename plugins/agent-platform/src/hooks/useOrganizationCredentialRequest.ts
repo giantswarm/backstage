@@ -96,9 +96,16 @@ export function useOrganizationCredentialRequest(
     Error,
     CredentialRequest
   >({
-    event: null,
-    untrackedReason:
-      'prepares a credential request; the save on the credential form is the tracked write',
+    event: ({ result, form }, request) =>
+      request.kind === 'model' && !form
+        ? {
+            name:
+              result.created === false
+                ? 'AgentPlatform.modelUpdated'
+                : 'AgentPlatform.modelCreated',
+            attributes: {},
+          }
+        : null,
     mutationFn: async request => {
       const result = await send(request);
       const operation = preparedCredentialOperation(result);

@@ -28,6 +28,7 @@ import type {
 import { organizationsRouteRef } from '../../routes';
 import { CredentialFormPage } from './CredentialFormPage';
 import { PortalSessionEndedError } from '../../lib/portalSession';
+import { agentManagerCredentialOperationQueryKey } from '../../lib/queryKeys';
 
 // Sign in again reloads the page, which jsdom cannot.
 const mockReloadPage = jest.fn();
@@ -165,6 +166,45 @@ async function renderForm(
 
 describe('CredentialFormPage', () => {
   beforeEach(() => analyticsApi.captureEvent.mockClear());
+
+  it.each(['"3"', '"4"'])(
+    'clears input and blocks writes while refreshing the confirmation to %s',
+    async etag => {
+      const user = userEvent.setup();
+      let finishRead!: (result: CredentialOperationRead) => void;
+      const api = fakeCredentialsApi();
+      api.getOperation
+        .mockResolvedValueOnce({ operation: CONFIRMATION, etag: '"3"' })
+        .mockImplementation(
+          () =>
+            new Promise(resolve => {
+              finishRead = resolve;
+            }),
+        );
+      await renderForm(api);
+      await user.type(await screen.findByLabelText(/^Value/), VALUE);
+      await user.click(screen.getByRole('button', { name: 'Check again' }));
+      expect(screen.getByLabelText(/^Value/)).toHaveValue('');
+      expect(screen.getByLabelText(/^Value/)).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+      expect(
+        screen.getByRole('button', { name: 'Cancel request' }),
+      ).toBeDisabled();
+      finishRead({ operation: CONFIRMATION, etag });
+      await waitFor(() =>
+        expect(screen.getByLabelText(/^Value/)).toBeEnabled(),
+      );
+      await user.type(screen.getByLabelText(/^Value/), VALUE);
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+      await screen.findByText('Credential saved');
+      expect(api.saveOperation).toHaveBeenCalledWith(
+        'gazelle',
+        OPERATION,
+        etag,
+        expect.any(Array),
+      );
+    },
+  );
 
   it('opens the request the link names and shows what the value is for before it takes one', async () => {
     let resolve!: (value: CredentialOperationRead) => void;
@@ -751,7 +791,7 @@ describe('CredentialFormPage', () => {
       OPERATION,
       '"4"',
     );
-    await waitFor(() => expect(api.getOperation).toHaveBeenCalledTimes(3));
+    expect(api.getOperation).toHaveBeenCalledTimes(2);
   });
 
   it.each(['save', 'cancel'] as const)(
@@ -762,7 +802,7 @@ describe('CredentialFormPage', () => {
       api.getOperation
         .mockResolvedValueOnce({ operation: CONFIRMATION, etag: '"3"' })
         .mockRejectedValue(new Error('read failed'));
-      await renderForm(api);
+      const queryClient = await renderForm(api);
       await user.type(await screen.findByLabelText(/^Value/), VALUE);
       await user.click(
         screen.getByRole('button', {
@@ -772,6 +812,10 @@ describe('CredentialFormPage', () => {
       await screen.findByText(
         action === 'save' ? 'Credential saved' : 'Request cancelled',
       );
+      expect(api.getOperation).toHaveBeenCalledTimes(1);
+      await queryClient.refetchQueries({
+        queryKey: agentManagerCredentialOperationQueryKey('gazelle', OPERATION),
+      });
       await waitFor(() => expect(api.getOperation).toHaveBeenCalledTimes(2));
       expect(screen.queryByText(/Could not read the request/)).toBeNull();
       expect(screen.queryByLabelText(/^Value/)).toBeNull();
@@ -792,7 +836,7 @@ describe('CredentialFormPage', () => {
           },
           etag: '"4"',
         });
-      await renderForm(api);
+      const queryClient = await renderForm(api);
       await user.type(await screen.findByLabelText(/^Value/), VALUE);
       await user.click(
         screen.getByRole('button', {
@@ -802,6 +846,10 @@ describe('CredentialFormPage', () => {
       await screen.findByText(
         action === 'save' ? 'Credential saved' : 'Request cancelled',
       );
+      expect(api.getOperation).toHaveBeenCalledTimes(1);
+      await queryClient.refetchQueries({
+        queryKey: agentManagerCredentialOperationQueryKey('gazelle', OPERATION),
+      });
       await waitFor(() => expect(api.getOperation).toHaveBeenCalledTimes(2));
       expect(
         screen.queryByText(

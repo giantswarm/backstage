@@ -372,14 +372,16 @@ export function CredentialFormPage({
   const [receipt, setReceipt] = useState<CredentialResourceResult>();
   const [cancelled, setCancelled] = useState(false);
   const [notice, setNotice] = useState<string>();
+  const scope = useRef<HTMLDivElement>(null);
+  const validation = useFieldValidation(scope);
   const reload = async () => {
+    setValues({});
+    validation.reset();
     const result = await query.refetch();
     if (result.isSuccess && result.data) {
       setNotice(undefined);
     }
   };
-  const scope = useRef<HTMLDivElement>(null);
-  const validation = useFieldValidation(scope);
 
   const organizationsLink = useRouteRef(organizationsRouteRef);
   const organizationLink = useRouteRef(organizationDetailRouteRef);
@@ -432,10 +434,6 @@ export function CredentialFormPage({
       setValues({});
       setReceipt(result);
       setNotice(undefined);
-      void reload();
-      // The save wrote the model or connector the request was for: the
-      // lists and pages that show it read it again rather than serve the
-      // cache from before (the QueryClient is persisted).
       const namespace =
         result.namespace ?? loaded?.operation.organization.namespace;
       if (!namespace) {
@@ -490,7 +488,6 @@ export function CredentialFormPage({
       setValues({});
       setCancelled(true);
       setNotice(undefined);
-      void reload();
     },
     onError: error => {
       if (credentialOperationErrorCode(error) === 'precondition_failed') {
@@ -592,7 +589,7 @@ export function CredentialFormPage({
   const finishes = phase === 'finish';
   const complete =
     phase === 'complete' ? (receipt ?? operation.result) : undefined;
-  const busy = save.isPending || cancel.isPending;
+  const busy = save.isPending || cancel.isPending || query.isFetching;
   const errors = Object.fromEntries(
     pairs.map(pair => [
       pairId(pair),

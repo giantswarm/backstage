@@ -151,14 +151,16 @@ describe('createRouter', () => {
   });
 
   it('forwards the maximum escaped credential body through the parent parser', async () => {
-    const values = Array.from({ length: 16 }, () => ({
-      secret: '\u0000'.repeat(253),
-      key: '\u0000'.repeat(253),
+    const values = Array.from({ length: 16 }, (_, index) => ({
+      secret: `tenant-credential-${index}`,
+      key: 'apiKey',
       value: '\u0000'.repeat(16 * 1024),
     }));
     const fetchMock = jest
       .spyOn(global, 'fetch')
-      .mockResolvedValue(new Response('{}'));
+      .mockResolvedValue(
+        new Response(JSON.stringify({ kind: 'connector', name: 'example' })),
+      );
     try {
       const parentApp = await buildApp(twoInstallations);
       const response = await request(parentApp)

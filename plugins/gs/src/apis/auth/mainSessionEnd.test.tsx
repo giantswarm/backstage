@@ -12,7 +12,6 @@ import {
 } from './mainSessionEnd';
 import { gsAuthProvidersApiRef } from './types';
 import { DiscoveryApiClient } from '../discovery/DiscoveryApiClient';
-import { ExternalUrlConsentManager } from '@giantswarm/backstage-plugin-ui-react';
 
 jest.mock('@backstage/core-app-api', () => ({
   ...jest.requireActual('@backstage/core-app-api'),

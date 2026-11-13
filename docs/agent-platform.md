@@ -773,15 +773,19 @@ more, and the person starts the replacement again from the tab. Every request ca
 stale operation.
 
 If the credential already exists, Add model completes the write, closes the
-dialog and refreshes the lists. Managed models do not offer Replace key.
+dialog, refreshes the lists and reports the completed model write. Managed
+models do not offer Replace key.
 Organization model names use the same 63-character validation as the model
 form. A prepared operation needs the bound credential route; a missing route
 shows an error with instructions for the portal administrator.
 
-The credential form offers Check again before entering values. Save and Cancel
+Each credential request has its own form state, including when another request
+opens in the same browser tab. Check again clears entered values and prevents
+saving or cancellation until the confirmation has loaded. Save and Cancel
 reload a changed confirmation and clear entered values; a successful read or
 write clears the recovery notice. A local save receipt or cancellation remains
-visible if the subsequent read fails. Pending and uncertain apply operations
+visible if another read fails; success does not start an extra confirmation
+read. Pending and uncertain apply operations
 take values; saving and uncertain commit operations finish with no values.
 An unreadable POST success or an error without agent-manager's code has code
 `outcome_unknown`. Only the credential route accepts JSON bodies up to 2 MiB,

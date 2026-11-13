@@ -43,7 +43,68 @@ function Replace() {
   );
 }
 
+function AddModel() {
+  const request = useOrganizationCredentialRequest('gazelle', PAYMENTS);
+  return (
+    <>
+      <button
+        onClick={() =>
+          request.mutate({
+            kind: 'model',
+            name: 'claude',
+            provider: 'Anthropic',
+            model: 'claude-sonnet-4-6',
+          })
+        }
+      >
+        Add model
+      </button>
+      {request.isSuccess ? <p>Completed</p> : null}
+    </>
+  );
+}
+
 describe('useOrganizationCredentialRequest', () => {
+  it.each([true, false])(
+    'tracks an immediate model write (created: %s)',
+    async created => {
+      const user = userEvent.setup();
+      const { api, callTool } = fakeOrganizationsMuster({});
+      callTool.mockResolvedValue({ kind: 'model', name: 'claude', created });
+      const analyticsApi = mockApis.analytics.mock();
+      await renderInTestApp(
+        <TestApiProvider
+          apis={[
+            [musterApiRef, api],
+            [kubernetesApiRef, fakeOrganizationAccess()],
+            [analyticsApiRef, analyticsApi],
+          ]}
+        >
+          <QueryClientProvider
+            client={
+              new QueryClient({
+                defaultOptions: { mutations: { retry: false } },
+              })
+            }
+          >
+            <AddModel />
+          </QueryClientProvider>
+        </TestApiProvider>,
+      );
+      await user.click(screen.getByRole('button', { name: 'Add model' }));
+      await screen.findByText('Completed');
+      expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+      expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: created
+            ? 'AgentPlatform.modelCreated'
+            : 'AgentPlatform.modelUpdated',
+          attributes: {},
+        }),
+      );
+    },
+  );
+
   // A replacement agent-manager refused at its save (its consumers changed)
   // is started again from the tab: with the same requestId agent-manager
   // would answer the old, stale operation, so every request has its own.
