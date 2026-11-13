@@ -1,3 +1,4 @@
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Mimir sample types are owned by the GS plugin.
 import type {
   MimirMatrixSample,
   MimirMetricSample,
@@ -95,6 +96,23 @@ describe('reduceByAgent', () => {
 
     expect(rows[0].costUsd).toBe(4.5);
     expect(rows[0].tokens).toBe(950_000);
+  });
+
+  it('excludes cache types from totals even when they exceed input', () => {
+    const labels = { agent_namespace: 'kagent', agent: 'sre-agent' };
+    const rows = reduceByAgent({
+      ...byAgentOptions,
+      cost: undefined,
+      tokens: [
+        sample({ ...labels, gen_ai_token_type: 'input' }, '1000'),
+        sample({ ...labels, gen_ai_token_type: 'input_cache_read' }, '900'),
+        sample({ ...labels, gen_ai_token_type: 'input_cache_write' }, '200'),
+        sample({ ...labels, gen_ai_token_type: 'output' }, '20'),
+      ],
+      calls: undefined,
+    });
+
+    expect(rows[0].tokens).toBe(1020);
   });
 
   it('renders a pair that matches no agent as a removed agent, unlinked, its spend kept', () => {
@@ -282,6 +300,18 @@ describe('reduceTokenTypes and cacheReadShare', () => {
     });
 
     expect(share).toBeCloseTo(75);
+  });
+
+  it('uses input as the denominator even when the cache types exceed it', () => {
+    const share = cacheReadShare({
+      input: 1000,
+      output: 20,
+      inputCacheRead: 900,
+      inputCacheWrite: 200,
+      other: 0,
+    });
+
+    expect(share).toBeCloseTo(90);
   });
 
   it('has no share when there is no input traffic', () => {
@@ -1142,6 +1172,29 @@ describe('withFreshInput', () => {
       'fresh_input',
       'output',
     ]);
+  });
+
+  it('clamps fresh input to zero when cache totals exceed input', () => {
+    const daily = withFreshInput({
+      rows: [
+        {
+          day: '2026-11-02',
+          input: 1000,
+          input_cache_read: 900,
+          input_cache_write: 200,
+          output: 20,
+        },
+      ],
+      series: ['input', 'input_cache_read', 'input_cache_write', 'output'],
+    });
+
+    expect(daily.rows[0]).toEqual({
+      day: '2026-11-02',
+      fresh_input: 0,
+      input_cache_read: 900,
+      input_cache_write: 200,
+      output: 20,
+    });
   });
 
   it("treats today's partial row like every other day", () => {

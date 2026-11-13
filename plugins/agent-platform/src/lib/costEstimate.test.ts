@@ -42,6 +42,21 @@ describe('deriveTokenRates', () => {
     expect(rates.blended).toBeCloseTo(19 / 11_999_000);
   });
 
+  it('keeps cache tokens inside input when their totals exceed it', () => {
+    const rates = deriveTokenRates(
+      { input: 3, input_cache_read: 1, input_cache_write: 2, output: 15 },
+      {
+        input: 1_000_000,
+        input_cache_read: 900_000,
+        input_cache_write: 200_000,
+        output: 100_000,
+      },
+    );
+
+    expect(rates.input).toBeCloseTo(6 / 1_000_000, 12);
+    expect(rates.blended).toBeCloseTo(21 / 1_100_000, 12);
+  });
+
   it('returns no rate at all when nothing was priced', () => {
     // Zero cost is what the gateway records for a model missing from its price
     // catalogue, so this must not become a rate of zero.
