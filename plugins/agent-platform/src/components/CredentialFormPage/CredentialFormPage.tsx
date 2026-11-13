@@ -36,23 +36,51 @@ import { invalidateModelReads } from '../../hooks/defaultModelWrites';
 import {
   organizationDetailRouteRef,
   organizationsRouteRef,
+  modelsRouteRef,
 } from '../../routes';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { PortalSessionEndedError } from '../../lib/portalSession';
+import { ServiceAccountKeyField } from '../ServiceAccountKeyField';
+import { serviceAccountKeyError } from '../../lib/modelConfigs';
 
 export type CredentialFormPageProps = {
   installation: string;
   /** The parent namespace the organization lives in. */
-  parent: string;
+  parent?: string;
   /** The organization's name. */
-  name: string;
+  name?: string;
+  namespace?: string;
   /** agent-manager's operation id, the request the form is for. */
   operation: string;
 };
 
 const pairId = (pair: { secret: string; key: string }) =>
   `${pair.secret}/${pair.key}`;
+
+function credentialProject(
+  operation: CredentialOperation,
+  pair: { secret: string; key: string },
+): string {
+  for (const change of operation.changes ?? []) {
+    const spec = change.object?.spec;
+    if (spec?.apiKeySecret !== pair.secret || spec.apiKeySecretKey !== pair.key)
+      continue;
+    for (const block of ['anthropicVertexAI', 'geminiVertexAI']) {
+      const configuration = spec[block] as Record<string, unknown> | undefined;
+      if (typeof configuration?.projectID === 'string')
+        return configuration.projectID;
+    }
+  }
+  return (
+    operation.references?.find(
+      reference =>
+        reference.kind === 'ModelConfig' &&
+        reference.key === pair.key &&
+        reference.projectID,
+    )?.projectID ?? ''
+  );
+}
 
 /** Kubernetes kinds (references, changes) and agent-manager's result kinds. */
 const KIND_LABELS: Record<string, string> = {
@@ -145,7 +173,13 @@ function Confirmation({
   return (
     <PageSection title="What you are about to save">
       <Flex direction="column" gap="3">
-        <Fact label="Organization">
+        <Fact
+          label={
+            operation.organization.scope === 'platform'
+              ? 'Installation'
+              : 'Organization'
+          }
+        >
           <Text>
             {[organization, parent, namespace, installation]
               .filter(Boolean)
@@ -313,9 +347,16 @@ function SaveError({
  */
 function sameOrganization(
   operation: CredentialOperation,
-  parent: string,
-  name: string,
+  parent: string | undefined,
+  name: string | undefined,
+  namespace: string | undefined,
 ) {
+  if (namespace) {
+    return (
+      operation.organization.scope === 'platform' &&
+      operation.organization.namespace === namespace
+    );
+  }
   return (
     operation.organization.parent === parent &&
     operation.organization.organization === name
@@ -360,6 +401,7 @@ export function CredentialFormPage({
   installation,
   parent,
   name,
+  namespace,
   operation: operationParam,
 }: CredentialFormPageProps) {
   const operationId = CREDENTIAL_OPERATION_PATTERN.test(operationParam)
@@ -385,18 +427,25 @@ export function CredentialFormPage({
 
   const organizationsLink = useRouteRef(organizationsRouteRef);
   const organizationLink = useRouteRef(organizationDetailRouteRef);
-  const organizationHref = organizationLink?.({ installation, parent, name });
+  const modelsLink = useRouteRef(modelsRouteRef);
+  const organizationHref =
+    parent && name
+      ? organizationLink?.({ installation, parent, name })
+      : modelsLink?.();
   const breadcrumbs: BreadcrumbItem[] = [
-    { label: 'Organizations', href: organizationsLink?.() },
-    { label: name, href: organizationHref },
+    {
+      label: namespace ? 'Models' : 'Organizations',
+      href: namespace ? modelsLink?.() : organizationsLink?.(),
+    },
+    { label: name ?? namespace ?? 'Installation', href: organizationHref },
     { label: 'Enter a credential' },
   ];
   const frame = {
     breadcrumbs,
-    documentTitle: ['Enter a credential', name, 'Organizations'],
+    documentTitle: ['Enter a credential', name ?? namespace ?? 'Installation'],
   };
   const backLink = organizationHref ? (
-    <Link href={organizationHref}>Back to {name}</Link>
+    <Link href={organizationHref}>Back to {name ?? 'models'}</Link>
   ) : undefined;
 
   const loaded = query.data;
@@ -434,17 +483,17 @@ export function CredentialFormPage({
       setValues({});
       setReceipt(result);
       setNotice(undefined);
-      const namespace =
+      const savedNamespace =
         result.namespace ?? loaded?.operation.organization.namespace;
-      if (!namespace) {
+      if (!savedNamespace) {
         return undefined;
       }
       return Promise.all([
-        invalidateModelReads(queryClient, installation, namespace),
+        invalidateModelReads(queryClient, installation, savedNamespace),
         queryClient.invalidateQueries({
           queryKey: musterOrganizationConnectorsQueryKey(
             installation,
-            namespace,
+            savedNamespace,
           ),
         }),
       ]);
@@ -573,12 +622,16 @@ export function CredentialFormPage({
     );
   }
   const { operation } = loaded;
-  if (!sameOrganization(operation, parent, name)) {
+  if (!sameOrganization(operation, parent, name, namespace)) {
     return (
       <ShellPage title="Enter a credential" {...frame}>
         <EmptyStateCard
-          title={`This request is not for ${name}`}
-          description={`The link names ${name} in ${parent}, but the request is for ${operation.organization.organization ?? 'another organization'} in ${operation.organization.parent ?? 'another parent'}. Nothing is shown or saved: open the request from that organization's tab, or ask the agent again.`}
+          title={`This request is not for ${namespace ?? name}`}
+          description={
+            namespace
+              ? 'The request targets another namespace. Open it from Models or ask the agent again.'
+              : `The link names ${name} in ${parent}, but the request is for ${operation.organization.organization ?? 'another organization'} in ${operation.organization.parent ?? 'another parent'}. Nothing is shown or saved: open the request from that organization's tab, or ask the agent again.`
+          }
           actions={backLink}
         />
       </ShellPage>
@@ -591,10 +644,22 @@ export function CredentialFormPage({
     phase === 'complete' ? (receipt ?? operation.result) : undefined;
   const busy = save.isPending || cancel.isPending || query.isFetching;
   const errors = Object.fromEntries(
-    pairs.map(pair => [
-      pairId(pair),
-      values[pairId(pair)] ? undefined : 'Enter the value.',
-    ]),
+    pairs.map(pair => {
+      const value = values[pairId(pair)];
+      const google = pair.inputFormat === 'google-service-account-json';
+      let error: string | undefined;
+      if (!value) {
+        error = google
+          ? 'Choose the service account key file.'
+          : 'Enter the value.';
+      } else if (google) {
+        error = serviceAccountKeyError(
+          value,
+          credentialProject(operation, pair),
+        );
+      }
+      return [pairId(pair), error];
+    }),
   );
   const shownSaveError = ['precondition_failed', 'outcome_unknown'].includes(
     credentialOperationErrorCode(save.error) ?? '',
@@ -606,7 +671,7 @@ export function CredentialFormPage({
     <ShellPage
       title="Enter a credential"
       {...frame}
-      meta={`${name} · ${parent} · ${installation}`}
+      meta={[name, parent, namespace, installation].filter(Boolean).join(' · ')}
     >
       <Flex direction="column" gap="5">
         {notice ? (
@@ -664,33 +729,57 @@ export function CredentialFormPage({
               {pairs.length === 0 ? (
                 <Text color="secondary">The request asks for no value.</Text>
               ) : (
-                pairs.map(pair => (
-                  <PasswordField
-                    key={pairId(pair)}
-                    label={
-                      pairs.length === 1 ? 'Value' : `Value of ${pair.key}`
-                    }
-                    description={`Secret ${pair.secret}, key ${pair.key}${
-                      pair.state === 'replace'
-                        ? '. It replaces the current value once saved.'
-                        : ''
-                    }`}
-                    isRequired
-                    autoComplete="new-password"
-                    value={values[pairId(pair)] ?? ''}
-                    onChange={value =>
-                      setValues(current => ({
-                        ...current,
-                        [pairId(pair)]: value,
-                      }))
-                    }
-                    isDisabled={busy}
-                    {...validation.textFieldProps(
-                      pairId(pair),
-                      errors[pairId(pair)],
-                    )}
-                  />
-                ))
+                pairs.map(pair =>
+                  pair.inputFormat === 'google-service-account-json' ? (
+                    <ServiceAccountKeyField
+                      key={pairId(pair)}
+                      isDisabled={busy}
+                      value={values[pairId(pair)] ?? ''}
+                      onChange={value =>
+                        setValues(current => ({
+                          ...current,
+                          [pairId(pair)]: value,
+                        }))
+                      }
+                      isRequired
+                      description="Upload the Google service-account JSON key for this model. It is stored in the confirmed namespace and exchanged for short-lived Google tokens."
+                      error={
+                        values[pairId(pair)]
+                          ? errors[pairId(pair)]
+                          : validation.errorFor(
+                              pairId(pair),
+                              errors[pairId(pair)],
+                            )
+                      }
+                    />
+                  ) : (
+                    <PasswordField
+                      key={pairId(pair)}
+                      label={
+                        pairs.length === 1 ? 'Value' : `Value of ${pair.key}`
+                      }
+                      description={`Secret ${pair.secret}, key ${pair.key}${
+                        pair.state === 'replace'
+                          ? '. It replaces the current value once saved.'
+                          : ''
+                      }`}
+                      isRequired
+                      autoComplete="new-password"
+                      value={values[pairId(pair)] ?? ''}
+                      onChange={value =>
+                        setValues(current => ({
+                          ...current,
+                          [pairId(pair)]: value,
+                        }))
+                      }
+                      isDisabled={busy}
+                      {...validation.textFieldProps(
+                        pairId(pair),
+                        errors[pairId(pair)],
+                      )}
+                    />
+                  ),
+                )
               )}
               <SaveError installation={installation} error={shownSaveError} />
               {cancel.error instanceof PortalSessionEndedError ? (

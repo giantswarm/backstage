@@ -38,6 +38,7 @@ const useStyles = makeStyles({
 });
 
 export type ServiceAccountKeyFieldProps = {
+  isDisabled?: boolean;
   /** The key file's text, or empty for none chosen. */
   value: string;
   onChange: (value: string) => void;
@@ -65,6 +66,7 @@ export function ServiceAccountKeyField({
   description,
   storedKeyProject,
   error,
+  isDisabled = false,
 }: ServiceAccountKeyFieldProps) {
   const classes = useStyles();
   const id = useId();
@@ -80,7 +82,7 @@ export function ServiceAccountKeyField({
   const summary = value ? serviceAccountKeySummary(value) : undefined;
 
   const read = async (file: File | undefined) => {
-    if (!file) {
+    if (!file || isDisabled) {
       return;
     }
     if (file.size > MAX_KEY_FILE_BYTES) {
@@ -196,6 +198,7 @@ export function ServiceAccountKeyField({
         <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
           <Button
             variant="secondary"
+            isDisabled={isDisabled}
             size="small"
             aria-describedby={shownError ? errorId : undefined}
             onPress={() => fileInput.current?.click()}
@@ -203,7 +206,12 @@ export function ServiceAccountKeyField({
             {chooseLabel}
           </Button>
           {value ? (
-            <Button variant="tertiary" size="small" onPress={clear}>
+            <Button
+              variant="tertiary"
+              size="small"
+              onPress={clear}
+              isDisabled={isDisabled}
+            >
               {storedKeyProject ? 'Keep the stored key' : 'Remove file'}
             </Button>
           ) : (
@@ -215,6 +223,7 @@ export function ServiceAccountKeyField({
       </div>
       {shownError && <FieldErrorText id={errorId}>{shownError}</FieldErrorText>}
       <input
+        disabled={isDisabled}
         ref={fileInput}
         type="file"
         accept=".json,application/json"

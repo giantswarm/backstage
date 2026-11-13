@@ -1,3 +1,4 @@
+/* eslint-disable @backstage/no-mixed-plugin-imports -- The Agent Platform composes installation APIs across plugins. */
 import { analyticsApiRef } from '@backstage/frontend-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
@@ -205,6 +206,81 @@ describe('CredentialFormPage', () => {
       );
     },
   );
+  it('uploads Vertex JSON through the credential REST operation without showing its private key', async () => {
+    const confirmation: CredentialOperation = {
+      ...CONFIRMATION,
+      result: {
+        ...CONFIRMATION.result,
+        credentials: [
+          {
+            secret: 'tenant-credential-vertex',
+            key: 'GOOGLE_APPLICATION_CREDENTIALS',
+            state: 'missing',
+            inputFormat: 'google-service-account-json',
+          },
+        ],
+      },
+    };
+    const api = fakeCredentialsApi(read(confirmation));
+    await renderForm(api);
+    const input = await screen.findByLabelText('Service account key file');
+    expect(screen.queryByLabelText(/^Value/)).not.toBeInTheDocument();
+    const raw = JSON.stringify({
+      type: 'service_account',
+      project_id: 'vertex-test',
+      client_email: 'agent@vertex-test.iam.gserviceaccount.com',
+      private_key: 'synthetic-private-key',
+      token_uri: 'https://oauth2.googleapis.com/token',
+    });
+    const file = new File([raw], 'vertex.json', { type: 'application/json' });
+    Object.defineProperty(file, 'text', { value: async () => raw });
+    await userEvent.upload(input, file);
+    await screen.findByText(/agent@vertex-test.iam.gserviceaccount.com/);
+    expect(screen.queryByText(/synthetic-private-key/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(api.saveOperation).toHaveBeenCalledWith(
+        'gazelle',
+        OPERATION,
+        '"3"',
+        [
+          {
+            secret: 'tenant-credential-vertex',
+            key: 'GOOGLE_APPLICATION_CREDENTIALS',
+            value: raw,
+          },
+        ],
+      ),
+    );
+  });
+
+  it('rejects a non-service-account JSON upload before submission', async () => {
+    const confirmation: CredentialOperation = {
+      ...CONFIRMATION,
+      result: {
+        ...CONFIRMATION.result,
+        credentials: [
+          {
+            secret: 'tenant-credential-vertex',
+            key: 'GOOGLE_APPLICATION_CREDENTIALS',
+            state: 'missing',
+            inputFormat: 'google-service-account-json',
+          },
+        ],
+      },
+    };
+    const api = fakeCredentialsApi(read(confirmation));
+    await renderForm(api);
+    const input = await screen.findByLabelText('Service account key file');
+    const file = new File(['{}'], 'wrong.json', { type: 'application/json' });
+    Object.defineProperty(file, 'text', { value: async () => '{}' });
+    await userEvent.upload(input, file);
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(api.saveOperation).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText(/This file is not a service account key/),
+    ).toBeInTheDocument();
+  });
 
   it('opens the request the link names and shows what the value is for before it takes one', async () => {
     let resolve!: (value: CredentialOperationRead) => void;

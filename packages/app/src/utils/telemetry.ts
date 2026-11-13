@@ -544,6 +544,14 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
       break;
     }
 
+    case /^\/customize\/models\/credentials\/[^/]+\/[^/]+\/[^/]+$/.test(
+      pathname,
+    ):
+      payload = { page: 'Models', view: 'credentials' };
+      route =
+        '/customize/models/credentials/:installation/:namespace/:operation';
+      break;
+
     // Editing one model, `…/models/<installation>/<namespace>/<name>/edit`.
     // One page, the model in no attribute. Above the model page, which
     // would read `edit` as an unknown tab.

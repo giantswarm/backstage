@@ -1,3 +1,4 @@
+/* eslint-disable @backstage/no-mixed-plugin-imports -- The Agent Platform composes installation APIs across plugins. */
 import type { ReactNode } from 'react';
 import {
   Navigate,
@@ -23,6 +24,7 @@ import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { ServingProvider, useServing } from '../ServingProvider';
 import { ServedModelRowsProvider } from '../ServedModelRowsProvider';
 import { NewModelPage } from '../NewModelPage';
+import { CredentialFormPage } from '../CredentialFormPage';
 import { EditModelPage } from '../EditModelPage';
 import { ServingPage } from '../ServingPage';
 import { GpuCapacityPage } from '../GpuCapacityPage';
@@ -275,6 +277,9 @@ function ModelRoute({ children }: { children: ReactNode }) {
   if (reserved === 'new') {
     return <RouteRefRedirect routeRef={newModelRouteRef} />;
   }
+  if (reserved === 'credentials') {
+    return <ShellCustomizeRedirect tab="models" />;
+  }
   if (reserved === 'hosting') {
     const view = namespace.toLowerCase();
     return (
@@ -294,10 +299,26 @@ function ModelRoute({ children }: { children: ReactNode }) {
 const EditRedirect = () => <Navigate to="." replace />;
 
 /** The Models tab's routes, inside the router's providers. */
+function InstallationModelCredentials() {
+  const { installation = '', namespace = '', operation = '' } = useParams();
+  return (
+    <CredentialFormPage
+      key={`${installation}/${namespace}/${operation}`}
+      installation={installation}
+      namespace={namespace}
+      operation={operation}
+    />
+  );
+}
+
 const ModelsRoutes = () => {
   return (
     <Routes>
       <Route path="new" element={withProviders(<NewModelPage />)} />
+      <Route
+        path="credentials/:installation/:namespace/:operation"
+        element={withProviders(<InstallationModelCredentials />)}
+      />
       <Route
         path="hosting/serve"
         element={withProviders(<ServeModelRoute />)}
