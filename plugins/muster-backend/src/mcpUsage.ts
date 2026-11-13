@@ -526,7 +526,7 @@ function queryFailure(promServer: string, error: unknown): string {
 
 /**
  * p95 latency per tool over the last `hours` on one installation, narrowed to
- * `servers` as {@link getMcpUsage} is. Read apart from it because
+ * `servers` as {@link readMcpUsage} is. Read apart from it because
  * `sum by (tool, le)` is the largest and slowest of the usage queries, so the
  * figures do not wait for it.
  */
@@ -590,13 +590,6 @@ export async function getMcpToolLatency(
  * either way: it says where muster's records start, and a quiet connector's
  * first call is not that.
  */
-export async function getMcpUsage(
-  ...args: Parameters<typeof readMcpUsage>
-): Promise<McpUsageResponse> {
-  return (await readMcpUsage(...args)).usage;
-}
-
-/** {@link getMcpUsage}, saying whether every rollup was read. */
 export async function readMcpUsage(
   client: MusterMcpClient,
   installation: MusterInstallationConfig,
