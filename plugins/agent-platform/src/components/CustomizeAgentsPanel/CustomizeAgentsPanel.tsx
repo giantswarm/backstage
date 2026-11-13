@@ -107,6 +107,16 @@ const SORT_NAME_STYLE: CSSProperties = {
   fontSize: 'var(--bui-font-size-3)',
 };
 
+/**
+ * The Sort trigger, as wide as its longest value ("Recently added") needs,
+ * whatever is picked: a pick never changes where the filter bar wraps.
+ */
+const SORT_STYLE: CSSProperties = {
+  flex: 'none',
+  width: '11.5rem',
+  marginLeft: 'auto',
+};
+
 /** Two lines, then an ellipsis: what a phone row shows of a long text. */
 const TWO_LINES = {
   display: '-webkit-box',
@@ -1122,7 +1132,8 @@ function AgentsPanelContent({
       {/* Under the page's search, so the bar stays put when a pick hides the
           recent-agent cards. */}
       {!isLoading && (
-        <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
+        // Top-aligned: once the filters wrap, Sort stays on their first row.
+        <Flex align="start" gap="2" style={{ flexWrap: 'wrap' }}>
           <CatalogFilterBar
             dimensions={filters.dimensions}
             onSelect={filters.select}
@@ -1144,7 +1155,7 @@ function AgentsPanelContent({
                   onSort(String(key) as AgentSort);
                 }
               }}
-              style={{ flex: 'none', width: 'auto', marginLeft: 'auto' }}
+              style={SORT_STYLE}
             />
           )}
         </Flex>
