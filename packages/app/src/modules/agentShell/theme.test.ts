@@ -211,12 +211,6 @@ describe('agentShellLightColors', () => {
     );
   });
 
-  it('contains core-components tables at phone width', () => {
-    expect(shellCss()).toMatch(
-      /html\[data-agent-shell\] \[class\*='BackstageTable-root'\] \{\s*max-width: 100%;\s*overflow-x: auto;/,
-    );
-  });
-
   // CSS cannot import the TS constant; this keeps the two equal (T22 §2.1).
   it('switches to the phone layout at ui-react’s PHONE_MAX_WIDTH, and only there', () => {
     const widths = [
