@@ -141,6 +141,11 @@ button in your browser.
 
 To stop the development server, hit `Ctrl + C`.
 
+### Fixture data
+
+Some plugins can serve made-up data instead of calling their backends, set by a
+config flag: see [Fixture modes](fixtures.md).
+
 ## Cluster access locally
 
 Backstage reaches every management cluster through a single main Dex login

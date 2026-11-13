@@ -29,6 +29,8 @@ export { isAwaitingData } from './isAwaitingData';
 export { liveRouterState } from './liveRouterState';
 export { isWebURL, safeWebURL } from './webURL';
 export { isExternalHref } from './isExternalHref';
+export { lazyApi } from './lazyApi';
+export type { AsyncApi } from './lazyApi';
 export {
   PHONE_MAX_WIDTH,
   PHONE_QUERY,

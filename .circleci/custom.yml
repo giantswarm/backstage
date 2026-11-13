@@ -12,6 +12,8 @@
 # bring it back).
 #
 # What this file carries beyond the golden pipeline:
+#   - the node-build job's size, its Postgres service and a last step that
+#     checks the production app bundle for fixture code.
 #   - push-to-control-plane-app-catalog: backstage ships the single `backstage`
 #     chart to TWO catalogs. The generated push-chart-release publishes to the
 #     operations-platform catalog (gen.ci.appCatalog); this carries the second
@@ -89,6 +91,13 @@ jobs:
       BACKSTAGE_CLI_CONCURRENCY: "4"
       JEST_MAX_WORKERS: "6"
       BACKSTAGE_TEST_DATABASE_POSTGRES18_CONNECTION_STRING: postgresql://postgres:postgres@localhost:5432
+    # Appended after the generated steps, so it runs on container 0 only (the
+    # others halt in Verify), after Build has built the app. It fails when
+    # fixture code reached the production bundle (docs/fixtures.md).
+    steps:
+    - run:
+        name: Check the app bundle for fixture code
+        command: yarn run ci:bundle-fixtures
 
 workflows:
   build:
