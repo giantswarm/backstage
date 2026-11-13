@@ -530,6 +530,7 @@ async function openUsageQueries(
       start: new Date((fromSeconds + stepSeconds) * 1000).toISOString(),
       end: new Date(toSeconds * 1000).toISOString(),
       step,
+      unlimited: 'true',
     }).then(series => withinWindow(series, fromSeconds, toSeconds));
   const rangeQuery = (query: string): Promise<PromSeries[]> =>
     rangeQueryBetween(query, startSeconds, endSeconds);

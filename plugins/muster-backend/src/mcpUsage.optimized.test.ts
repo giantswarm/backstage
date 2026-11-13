@@ -145,6 +145,7 @@ describe('optimized usage queries', () => {
     await getMcpUsage(client, installation, { authToken: 'fixture' }, 720);
     const latency = await getMcpToolLatency(client, installation, {}, 720);
     expect(calls).toHaveLength(3);
+    expect(calls.every(call => call.arguments.unlimited === 'true')).toBe(true);
     expect(latency.tools).toEqual([
       { tool: 'read', p95_seconds: 4.6 },
       { tool: 'write', p95_seconds: 4.6 },
