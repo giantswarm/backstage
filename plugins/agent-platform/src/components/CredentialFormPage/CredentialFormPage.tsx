@@ -4,6 +4,7 @@ import { useApi } from '@backstage/core-plugin-api';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, Flex, Link, PasswordField, Text } from '@backstage/ui';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
+import { CREDENTIAL_OPERATION_PATTERN } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   type BreadcrumbItem,
   EmptyStateCard,
@@ -21,7 +22,6 @@ import {
 } from '../../apis';
 import {
   askingObjects,
-  CREDENTIAL_OPERATION_PATTERN,
   type CredentialOperation,
   type CredentialResourceResult,
   destinations,
@@ -322,6 +322,30 @@ function sameOrganization(
   );
 }
 
+function operationPhase(
+  operation: CredentialOperation | undefined,
+  receipt: CredentialResourceResult | undefined,
+  cancelled: boolean,
+  stale: boolean,
+) {
+  if (receipt) return 'complete';
+  if (cancelled) return 'cancelled';
+  if (stale) return 'stale';
+  if (
+    operation?.state === 'pending' ||
+    (operation?.state === 'uncertain' && operation.mode === 'apply')
+  ) {
+    return 'values';
+  }
+  if (
+    operation?.state === 'saving' ||
+    (operation?.state === 'uncertain' && operation.mode === 'commit')
+  ) {
+    return 'finish';
+  }
+  return operation?.state;
+}
+
 /**
  * The Dev Portal's credential form of one organization's request: opened
  * from the Models or Connectors tab, or from the link an agent or a tool
@@ -344,13 +368,16 @@ export function CredentialFormPage({
   const api = useApi(agentManagerCredentialsApiRef);
   const queryClient = useQueryClient();
   const query = useOperation(installation, operationId);
-  const reload = () => {
-    query.refetch();
-  };
   const [values, setValues] = useState<Record<string, string>>({});
   const [receipt, setReceipt] = useState<CredentialResourceResult>();
   const [cancelled, setCancelled] = useState(false);
   const [notice, setNotice] = useState<string>();
+  const reload = async () => {
+    const result = await query.refetch();
+    if (result.isSuccess && result.data) {
+      setNotice(undefined);
+    }
+  };
   const scope = useRef<HTMLDivElement>(null);
   const validation = useFieldValidation(scope);
 
@@ -372,6 +399,8 @@ export function CredentialFormPage({
 
   const loaded = query.data;
   const pairs = loaded ? requestedPairs(loaded.operation) : [];
+  const [stale, setStale] = useState(false);
+  const phase = operationPhase(loaded?.operation, receipt, cancelled, stale);
 
   const save = useTrackedMutation<CredentialResourceResult, Error, void>({
     event: () => ({
@@ -384,22 +413,26 @@ export function CredentialFormPage({
       if (!loaded || !operationId) {
         throw new Error('The confirmation is not loaded.');
       }
-      const recovering =
-        loaded.operation.state === 'saving' ||
-        (loaded.operation.state === 'uncertain' &&
-          loaded.operation.mode === 'commit');
-      const entered = recovering
-        ? []
-        : pairs.map(pair => ({
-            secret: pair.secret,
-            key: pair.key,
-            value: values[pairId(pair)] ?? '',
-          }));
+      if (phase !== 'values' && phase !== 'finish') {
+        throw new Error(
+          'This request cannot be saved. Start again from the organization’s tab.',
+        );
+      }
+      const entered =
+        phase === 'finish'
+          ? []
+          : pairs.map(pair => ({
+              secret: pair.secret,
+              key: pair.key,
+              value: values[pairId(pair)] ?? '',
+            }));
       return api.saveOperation(installation, operationId, loaded.etag, entered);
     },
     onSuccess: result => {
       setValues({});
       setReceipt(result);
+      setNotice(undefined);
+      void reload();
       // The save wrote the model or connector the request was for: the
       // lists and pages that show it read it again rather than serve the
       // cache from before (the QueryClient is persisted).
@@ -432,6 +465,7 @@ export function CredentialFormPage({
         reload();
       } else if (code === CONSUMERS_CHANGED) {
         setValues({});
+        setStale(true);
       } else if (code === 'outcome_unknown') {
         setValues({});
         setNotice(
@@ -455,6 +489,18 @@ export function CredentialFormPage({
     onSuccess: () => {
       setValues({});
       setCancelled(true);
+      setNotice(undefined);
+      void reload();
+    },
+    onError: error => {
+      if (credentialOperationErrorCode(error) === 'precondition_failed') {
+        setValues({});
+        setNotice(
+          'The request changed since you opened it. Check it again, then enter the value again.',
+        );
+        cancel.reset();
+        void reload();
+      }
     },
   });
 
@@ -479,6 +525,8 @@ export function CredentialFormPage({
   }
 
   if (
+    !receipt &&
+    !cancelled &&
     query.isError &&
     !query.isFetching &&
     query.error instanceof PortalSessionEndedError
@@ -490,7 +538,7 @@ export function CredentialFormPage({
     );
   }
 
-  if (query.isError && !query.isFetching) {
+  if (!receipt && !cancelled && query.isError && !query.isFetching) {
     const notFound = credentialOperationErrorStatus(query.error) === 404;
     return (
       <ShellPage title="Enter a credential" {...frame}>
@@ -540,25 +588,10 @@ export function CredentialFormPage({
     );
   }
 
-  // A replacement whose objects changed since it was prepared cannot be
-  // saved any more: the same request would be refused again. The form goes,
-  // and the way back to the organization's tab, where it starts again,
-  // shows.
-  const stale = credentialOperationErrorCode(save.error) === CONSUMERS_CHANGED;
-  const takesValues =
-    !receipt &&
-    !cancelled &&
-    !stale &&
-    (operation.state === 'pending' ||
-      (operation.state === 'uncertain' && operation.mode === 'apply'));
-  const finishes =
-    !receipt &&
-    !cancelled &&
-    !stale &&
-    (operation.state === 'saving' ||
-      (operation.state === 'uncertain' && operation.mode === 'commit'));
+  const takesValues = phase === 'values';
+  const finishes = phase === 'finish';
   const complete =
-    receipt ?? (operation.state === 'complete' ? operation.result : undefined);
+    phase === 'complete' ? (receipt ?? operation.result) : undefined;
   const busy = save.isPending || cancel.isPending;
   const errors = Object.fromEntries(
     pairs.map(pair => [
@@ -588,14 +621,14 @@ export function CredentialFormPage({
         ) : null}
         <Confirmation operation={operation} installation={installation} />
         {complete ? <Receipt result={complete} /> : null}
-        {cancelled || operation.state === 'cancelled' ? (
+        {phase === 'cancelled' ? (
           <Alert
             status="info"
             title="Request cancelled"
             description="Nothing was saved. Start again from the organization’s tab or ask the agent again."
           />
         ) : null}
-        {operation.state === 'uncertain' && operation.mode === 'apply' ? (
+        {takesValues && operation.state === 'uncertain' ? (
           <Alert
             status="warning"
             title="An earlier save of this request did not finish"
@@ -675,6 +708,9 @@ export function CredentialFormPage({
                 />
               ) : null}
               <Flex gap="3" justify="end">
+                <Button variant="secondary" onPress={reload} isDisabled={busy}>
+                  Check again
+                </Button>
                 <Button
                   variant="secondary"
                   onPress={() => cancel.mutate()}

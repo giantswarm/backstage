@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApi } from '@backstage/core-plugin-api';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { toastApiRef, useRouteRef } from '@backstage/frontend-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
@@ -49,6 +49,7 @@ export function useOrganizationCredentialRequest(
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const formLink = useRouteRef(organizationCredentialsRouteRef);
+  const toastApi = useApi(toastApiRef);
 
   const send = async (request: CredentialRequest) => {
     if (!client) {
@@ -110,6 +111,11 @@ export function useOrganizationCredentialRequest(
         name: organization.organization,
         operation,
       });
+      if (!form) {
+        throw new Error(
+          'The credential form is not configured. Ask the portal administrator to enable the organization credential route, then start again.',
+        );
+      }
       return { result, form };
     },
     onSuccess: ({ form }) => {
@@ -117,6 +123,11 @@ export function useOrganizationCredentialRequest(
         navigate(form);
         return undefined;
       }
+      toastApi.post({
+        title: 'Credential request completed',
+        status: 'success',
+        timeout: 5000,
+      });
       return Promise.all([
         queryClient.invalidateQueries({
           queryKey: musterAgentManagerModelConfigsQueryKey(

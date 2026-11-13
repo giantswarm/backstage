@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Organization requests use the Muster API.
 import {
   musterApiRef,
   MusterUnauthorizedError,
@@ -545,6 +546,48 @@ describe('OrganizationPage', () => {
       .getByRole('rowheader', { name: /^gpt/ })
       .closest('[role="row"]') as HTMLElement;
     expect(within(gpt).queryByText('Default')).toBeNull();
+  });
+
+  it('hides key replacement for managed models', async () => {
+    await renderPage('/models', {
+      ...SCENARIO,
+      models: {
+        [PAYMENTS.namespace]: SCENARIO.models![PAYMENTS.namespace].map(
+          model => ({
+            ...model,
+            managedBy: 'platform',
+          }),
+        ),
+      },
+    });
+    await screen.findByRole('rowheader', { name: /claude-sonnet/ });
+    expect(
+      screen.queryByRole('button', { name: /Replace the key/ }),
+    ).toBeNull();
+  });
+
+  it('closes the model dialog and refreshes after an immediate write', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderPage('/models', {
+      ...SCENARIO,
+      modelKeyPresent: true,
+    });
+    await user.click(await screen.findByRole('button', { name: 'Add model' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /Name/ }),
+      'claude',
+    );
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /Model/ }),
+      'claude-sonnet-4-6',
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Continue to the key' }),
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(toolCalls(callTool, 'set_organization_model')).toHaveLength(1);
+    expect(toolCalls(callTool, 'list_model_configs').length).toBeGreaterThan(1);
   });
 
   it("asks for the organization's own key when it has no model, on the credential form", async () => {

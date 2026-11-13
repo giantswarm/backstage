@@ -6,6 +6,8 @@
  * through an MCP call. Shapes as `api/openapi.yaml` of agent-manager.
  */
 
+import { CREDENTIAL_OPERATION_PATTERN } from '@giantswarm/backstage-plugin-agent-platform-common';
+
 export type CredentialReferenceKind =
   'ModelConfig' | 'RemoteMCPServer' | 'EgressPolicy';
 
@@ -25,8 +27,7 @@ export type CredentialReference = {
   fromGit?: boolean;
 };
 
-export type CredentialState =
-  'present' | 'committed' | 'missing' | 'replace' | 'unknown';
+export type CredentialState = 'present' | 'committed' | 'missing' | 'replace';
 
 export type CredentialPair = {
   secret: string;
@@ -101,9 +102,6 @@ export type CredentialOperationRead = {
 
 /** A value the form posts: one requested Secret and key. */
 export type CredentialValue = { secret: string; key: string; value: string };
-
-/** agent-manager's operation ids. */
-export const CREDENTIAL_OPERATION_PATTERN = /^[a-f0-9]{48}$/;
 
 /**
  * The credential operation a write prepared, or `undefined` when the write

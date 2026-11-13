@@ -36,6 +36,7 @@ import type {
 import {
   LISTENER_PROVIDERS,
   MODEL_PROVIDER_OPTIONS,
+  modelNameError,
 } from '../../lib/modelConfigs';
 import {
   type OrganizationConnector,
@@ -74,9 +75,6 @@ function ReadState({
 
 type ModelRow = AgentManagerModelConfig & { id: string };
 
-/** A Kubernetes object name, as a ModelConfig takes it. */
-const NAME_PATTERN = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
-
 /**
  * A new model of the organization: its name, provider and model id. The key
  * is not asked here: agent-manager prepares a credential request for it and
@@ -98,13 +96,7 @@ function AddModelDialog({
   const validation = useFieldValidation(scope, { isOpen });
   const trimmedName = name.trim();
   const trimmedModel = model.trim();
-  let nameError: string | undefined;
-  if (!trimmedName) {
-    nameError = 'Enter a name for the model.';
-  } else if (!NAME_PATTERN.test(trimmedName)) {
-    nameError =
-      'Lower-case letters, digits and dashes, starting and ending with a letter or a digit.';
-  }
+  const nameError = modelNameError(trimmedName, true);
   const modelError = trimmedModel
     ? undefined
     : "Enter the provider's model id.";
@@ -130,12 +122,19 @@ function AddModelDialog({
           validation.reveal();
           return;
         }
-        request.mutate({
-          kind: 'model',
-          name: trimmedName,
-          provider,
-          model: trimmedModel,
-        });
+        request.mutate(
+          {
+            kind: 'model',
+            name: trimmedName,
+            provider,
+            model: trimmedModel,
+          },
+          {
+            onSuccess: ({ form }) => {
+              if (!form) close(false);
+            },
+          },
+        );
       }}
     >
       <Flex direction="column" gap="3" ref={scope}>
@@ -199,7 +198,14 @@ function ReplaceCredentialDialog({
       error={
         request.error ? credentialRequestErrorMessage(request.error) : undefined
       }
-      onConfirm={() => target && request.mutate(target.request)}
+      onConfirm={() =>
+        target &&
+        request.mutate(target.request, {
+          onSuccess: ({ form }) => {
+            if (!form) onClose();
+          },
+        })
+      }
     >
       <Text>
         You enter the new value on the next page, which lists every object that
@@ -334,7 +340,7 @@ export function ModelsTab({ installation, organization }: TabProps) {
       defaultWidth: '1fr',
       cell: row => (
         <Cell>
-          {access.credentials ? (
+          {access.credentials && !row.managedBy ? (
             <Button
               variant="tertiary"
               size="small"

@@ -771,6 +771,23 @@ saved): nothing was written, the form takes no value for that request any
 more, and the person starts the replacement again from the tab. Every request carries a fresh
 `requestId`, since agent-manager answers the same `requestId` with the old,
 stale operation.
+
+If the credential already exists, Add model completes the write, closes the
+dialog and refreshes the lists. Managed models do not offer Replace key.
+Organization model names use the same 63-character validation as the model
+form. A prepared operation needs the bound credential route; a missing route
+shows an error with instructions for the portal administrator.
+
+The credential form offers Check again before entering values. Save and Cancel
+reload a changed confirmation and clear entered values; a successful read or
+write clears the recovery notice. A local save receipt or cancellation remains
+visible if the subsequent read fails. Pending and uncertain apply operations
+take values; saving and uncertain commit operations finish with no values.
+An unreadable POST success or an error without agent-manager's code has code
+`outcome_unknown`. Only the credential route accepts JSON bodies up to 2 MiB,
+covering 16 maximum-length escaped values and names; other routes retain their
+existing limits.
+
 `set_organization_model` changes a model that exists, so a create first reads
 the organization's models (`list_model_configs`) and refuses a name it already
 has. A model agent-manager wrote there stays editable, since the edit goes

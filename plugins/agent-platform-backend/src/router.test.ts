@@ -7,6 +7,7 @@ import {
 } from '@backstage/errors';
 import express from 'express';
 import request from 'supertest';
+import { AGENT_MANAGER_AUTH_HEADER } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   EndpointProbeResult,
   ReachabilityCache,
@@ -147,6 +148,53 @@ describe('createRouter', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ status: 'ok', configured: 2 });
+  });
+
+  it('forwards the maximum escaped credential body through the parent parser', async () => {
+    const values = Array.from({ length: 16 }, () => ({
+      secret: '\u0000'.repeat(253),
+      key: '\u0000'.repeat(253),
+      value: '\u0000'.repeat(16 * 1024),
+    }));
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response('{}'));
+    try {
+      const parentApp = await buildApp(twoInstallations);
+      const response = await request(parentApp)
+        .post(
+          `/organizations/credential-operations/${'a1'.repeat(24)}?installation=gazelle`,
+        )
+        .set(AGENT_MANAGER_AUTH_HEADER, 'id-token')
+        .set('If-Match', '"1"')
+        .send({ values });
+      expect(response.status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ body: JSON.stringify({ values }) }),
+      );
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it.each([
+    [
+      `/organizations/credential-operations/${'a1'.repeat(24)}?installation=gazelle`,
+      2 * 1024 * 1024,
+    ],
+    ['/unrelated', 256 * 1024],
+  ])('rejects a body above the limit on %s', async (path, size) => {
+    const fetchMock = jest.spyOn(global, 'fetch');
+    try {
+      const response = await request(await buildApp(twoInstallations))
+        .post(path)
+        .send({ values: 'x'.repeat(size) });
+      expect(response.status).toBe(413);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      fetchMock.mockRestore();
+    }
   });
 
   it('lists installations by name with their reachability, sorted', async () => {

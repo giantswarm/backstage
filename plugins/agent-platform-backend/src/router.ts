@@ -655,6 +655,10 @@ export async function createRouter(
     '/kagent/sessions/:sessionId/messages',
     express.json({ limit: MESSAGE_BODY_LIMIT }),
   );
+  router.use(
+    '/organizations/credential-operations/:operation',
+    express.json({ limit: '2mb' }),
+  );
   router.use(express.json({ limit: '256kb' }));
 
   router.get('/health', (_, res) => {
