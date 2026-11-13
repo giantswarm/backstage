@@ -211,6 +211,11 @@ describe('agentShellLightColors', () => {
     );
   });
 
+  // Production builds name makeStyles classes jss<n>, so these match only in development.
+  it('targets no makeStyles class name', () => {
+    expect(shellCss()).not.toMatch(/\[class[*^|~$]?=\s*['"]?Backstage/);
+  });
+
   // CSS cannot import the TS constant; this keeps the two equal (T22 §2.1).
   it('switches to the phone layout at ui-react’s PHONE_MAX_WIDTH, and only there', () => {
     const widths = [
