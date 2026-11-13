@@ -5,8 +5,6 @@ import { useInstallations } from '../installations/useInstallations';
 import { useMutedInstallations } from '../mutedInstallations';
 import {
   ALL_INSTALLATIONS,
-  getInstallationScopeSnapshot,
-  setInstallationScope,
   type InstallationScope,
   type InstallationScopeState,
 } from './installationScopeStore';
@@ -74,6 +72,8 @@ export function useInstallationScope(): UseInstallationScopeResult {
   const urlScope = shared?.urlScope ?? null;
   const state = shared?.state ?? UNSHARED_STATE;
   const writeScopeParam = shared?.writeScopeParam;
+  const readState = shared?.readState;
+  const setStored = shared?.setStored;
   const { isLoading } = useInstallations();
   const inventory = useInstallationInventory();
   const { home, entries } = inventory;
@@ -115,19 +115,17 @@ export function useInstallationScope(): UseInstallationScopeResult {
   );
   const restoredStale = pendingRestore && isStaleRestore(state.scope);
   useEffect(() => {
-    if (!pendingRestore) {
+    if (!pendingRestore || !readState || !setStored) {
       return;
     }
     // Re-read: another effect of the same commit (the URL sync adopting a deep
     // link) may already have set the store, and must not be overwritten.
-    const live = getInstallationScopeSnapshot();
+    const live = readState();
     if (!live.restored) {
       return;
     }
-    setInstallationScope(
-      isStaleRestore(live.scope) ? ALL_INSTALLATIONS : live.scope,
-    );
-  }, [pendingRestore, isStaleRestore]);
+    setStored(isStaleRestore(live.scope) ? ALL_INSTALLATIONS : live.scope);
+  }, [pendingRestore, isStaleRestore, readState, setStored]);
   const storedScope = restoredStale ? ALL_INSTALLATIONS : state.scope;
   const pinned = urlScope ?? storedScope;
 
@@ -153,13 +151,13 @@ export function useInstallationScope(): UseInstallationScopeResult {
   // would otherwise read as a deep link and adopt right back.
   const setScope = useCallback(
     (next: InstallationScope) => {
-      if (!writeScopeParam) {
+      if (!writeScopeParam || !setStored) {
         return;
       }
-      setInstallationScope(next);
+      setStored(next);
       writeScopeParam(next);
     },
-    [writeScopeParam],
+    [writeScopeParam, setStored],
   );
 
   // Forget the pin for real -- store, localStorage and the URL alike -- so a

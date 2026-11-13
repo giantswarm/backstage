@@ -102,10 +102,12 @@ export {
   ALL_INSTALLATIONS,
   INSTALLATION_SCOPE_SEARCH_PARAM,
   INSTALLATION_SCOPE_STORAGE_KEY,
+  USAGE_INSTALLATION_SCOPE_STORAGE_KEY,
   PLATFORM_COMPONENT_LABELS,
   PLATFORM_SCOPE_COMPONENTS,
   __resetInstallationScopeForTests,
   type InstallationScope,
+  type InstallationScopeId,
   type InstallationScopeState,
   type UseInstallationScopeResult,
 } from './apis/installationScope';

@@ -162,11 +162,11 @@ const UsageViews = ({ sections }: { sections?: ReactNode[] }) => {
  * tool-call section); it is the Connectors view's content, and that view is
  * offered only when it holds something.
  *
- * Reads the Environment selector's scope shared with the Customize page
- * (`SharedInstallationScope`).
+ * Reads its own Environment choice (`SharedInstallationScope` `usage`),
+ * independent of the Customize page's: the two are siblings.
  */
 export const UsageRouter = ({ sections }: { sections?: ReactNode[] }) => (
-  <SharedInstallationScope>
+  <SharedInstallationScope id="usage">
     <QueryClientProvider>
       <OrganizationDirectoryProvider>
         <ModelConfigsProvider>

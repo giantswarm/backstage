@@ -14,6 +14,7 @@ import {
   ALL_INSTALLATIONS,
   getInstallationScopeSnapshot,
   INSTALLATION_SCOPE_STORAGE_KEY,
+  USAGE_INSTALLATION_SCOPE_STORAGE_KEY,
 } from './installationScopeStore';
 import { useInstallationScope } from './useInstallationScope';
 import { SharedInstallationScope } from './SharedInstallationScope';
@@ -540,5 +541,66 @@ describe('useInstallationScope', () => {
     expect(
       window.localStorage.getItem(INSTALLATION_SCOPE_STORAGE_KEY),
     ).toBeNull();
+  });
+
+  describe("Usage's own scope", () => {
+    function renderUsage(url = '/usage') {
+      return renderHook(
+        () => {
+          const { search } = useLocation();
+          return { scope: useInstallationScope(), search };
+        },
+        {
+          wrapper: ({ children }: { children: ReactNode }) => (
+            <MemoryRouter initialEntries={[url]}>
+              <SharedInstallationScope id="usage">
+                {children}
+              </SharedInstallationScope>
+            </MemoryRouter>
+          ),
+        },
+      );
+    }
+
+    it('does not read a pin made on Customize', () => {
+      configure(['golem', 'wombat', 'snail']);
+      const customize = renderScope('/customize/agents');
+      act(() => customize.result.current.scope.setScope('wombat'));
+
+      const usage = renderUsage();
+
+      expect(usage.result.current.scope.scope).toBe(ALL_INSTALLATIONS);
+    });
+
+    it("pins its own choice, under its own key, without touching Customize's", () => {
+      configure(['golem', 'wombat', 'snail']);
+      window.localStorage.setItem(INSTALLATION_SCOPE_STORAGE_KEY, 'snail');
+      const usage = renderUsage();
+
+      act(() => usage.result.current.scope.setScope('wombat'));
+
+      expect(usage.result.current.scope.scope).toBe('wombat');
+      expect(usage.result.current.search).toBe('?installation=wombat');
+      expect(
+        window.localStorage.getItem(USAGE_INSTALLATION_SCOPE_STORAGE_KEY),
+      ).toBe('wombat');
+      expect(window.localStorage.getItem(INSTALLATION_SCOPE_STORAGE_KEY)).toBe(
+        'snail',
+      );
+      expect(getInstallationScopeSnapshot().scope).toBe('snail');
+    });
+
+    it('restores its own stored choice', () => {
+      window.localStorage.setItem(
+        USAGE_INSTALLATION_SCOPE_STORAGE_KEY,
+        'wombat',
+      );
+      configure(['golem', 'wombat', 'snail']);
+
+      expect(renderUsage().result.current.scope.scope).toBe('wombat');
+      expect(renderScope('/customize/agents').result.current.scope.scope).toBe(
+        ALL_INSTALLATIONS,
+      );
+    });
   });
 });
