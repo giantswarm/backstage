@@ -9,6 +9,7 @@ import {
 } from '@backstage/plugin-kubernetes-react';
 
 import { ResponseError } from '@backstage/errors';
+import { AGENT_MANAGER_AUTH_HEADER } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import { portalSessionError } from '../lib/portalSession';
 
@@ -19,10 +20,6 @@ import type {
   CredentialResourceResult,
   CredentialValue,
 } from '../lib/credentialOperations';
-
-/** Header carrying the person's installation token. Must match AGENT_MANAGER_AUTH_HEADER in plugins/agent-platform-backend. */
-export const AGENT_MANAGER_AUTH_HEADER =
-  'backstage-agent-manager-authorization';
 
 const PATH = '/organizations/credential-operations';
 

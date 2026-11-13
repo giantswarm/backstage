@@ -255,13 +255,14 @@ function sessionOrganizationLabels(
 
 /**
  * The shell list's filters (T92): the shared catalog dropdowns —
- * `CatalogFilterBar`, the idiom every Customize tab uses — over four facets.
- * State, Organization and Agent are multi-selects (picks within one widen,
+ * `CatalogFilterBar`, the idiom every Customize tab uses — over five facets.
+ * State, Environment, Organization and Agent are multi-selects (picks within one widen,
  * facets narrow each other); Pinned is a dropdown of one option, drawn only
  * once something (not everything) is pinned, like the Agents tab's Favorites. Each option
  * counts what picking it would show under the search and the other picks.
  */
 export const SESSION_STATE_FACET = 'state';
+export const SESSION_ENVIRONMENT_FACET = 'environment';
 export const SESSION_ORGANIZATION_FACET = 'tenant';
 export const SESSION_AGENT_FACET = 'agent';
 export const SESSION_PINNED_FACET = 'pinned';
@@ -292,6 +293,11 @@ function sessionFacetSpecs(
       order: SHELL_STATE_OPTIONS.map(({ id }) => id),
     },
     {
+      id: SESSION_ENVIRONMENT_FACET,
+      label: 'Environment',
+      value: row => row.installation || undefined,
+    },
+    {
       id: SESSION_ORGANIZATION_FACET,
       label: 'Organization',
       value: row => sessionOrganization(row),
@@ -314,8 +320,9 @@ function sessionFacetSpecs(
 
 /**
  * The facets to draw: the agent options named as {@link sessionAgentOptions}
- * names them (none on one agent's own sessions), and State only where the
- * list has states at all. The bar leaves out any that cannot narrow the list,
+ * names them (none on one agent's own sessions), Environment only where the
+ * list shows its Environment column, and State only where the list has states
+ * at all. The bar leaves out any that cannot narrow the list,
  * one organization for every session among them (`catalogFilterDimensions`).
  */
 export function sessionFacets(
@@ -323,10 +330,12 @@ export function sessionFacets(
   {
     showStates,
     showAgents = true,
+    showEnvironments = true,
     directory = EMPTY_ORGANIZATION_DIRECTORY,
   }: {
     showStates: boolean;
     showAgents?: boolean;
+    showEnvironments?: boolean;
     /** Which namespace is which organization, as agent-manager answered. */
     directory?: OrganizationDirectory;
   },
@@ -339,7 +348,8 @@ export function sessionFacets(
     .filter(
       facet =>
         (showStates || facet.id !== SESSION_STATE_FACET) &&
-        (showAgents || facet.id !== SESSION_AGENT_FACET),
+        (showAgents || facet.id !== SESSION_AGENT_FACET) &&
+        (showEnvironments || facet.id !== SESSION_ENVIRONMENT_FACET),
     )
     .map(facet => {
       switch (facet.id) {

@@ -78,6 +78,7 @@ import {
 import {
   filterSessionsBySelection,
   parseSessionsListSearch,
+  SESSION_ENVIRONMENT_FACET,
   sessionFacets,
   sessionSelectionOf,
 } from './filters';
@@ -633,7 +634,8 @@ function DayList({
 
 /**
  * The list's search and filters: the standard search field, and under it the
- * shared catalog dropdowns (T92) — State, Organization, Agent and Pinned —
+ * shared catalog dropdowns (T92) — State, Environment, Organization, Agent
+ * and Pinned —
  * exactly as the Customize tabs draw them: each only where picking from it
  * can narrow the list (`catalogFilterDimensions`).
  */
@@ -645,6 +647,7 @@ function ShellFilterBar({
   onChange,
   showStates,
   showAgents,
+  showEnvironments,
 }: {
   searchField: ReactNode;
   rows: SessionTableRow[];
@@ -653,11 +656,23 @@ function ShellFilterBar({
   onChange: (selection: CatalogFilterSelection) => void;
   showStates: boolean;
   showAgents: boolean;
+  showEnvironments: boolean;
 }) {
   const { directory } = useOrganizationDirectory();
+  // A standing Environment pick keeps its dropdown, even once the list hides
+  // its Environment column (one environment left answering), so it can be
+  // undone.
+  const offersEnvironments =
+    showEnvironments || (selection[SESSION_ENVIRONMENT_FACET]?.length ?? 0) > 0;
   const facets = useMemo(
-    () => sessionFacets(rows, { showStates, showAgents, directory }),
-    [rows, showStates, showAgents, directory],
+    () =>
+      sessionFacets(rows, {
+        showStates,
+        showAgents,
+        showEnvironments: offersEnvironments,
+        directory,
+      }),
+    [rows, showStates, showAgents, offersEnvironments, directory],
   );
   // Known undercount (platform follow-up, list-scale-inventory #7): the
   // backend evaluates states only for the newest sessions per installation
@@ -711,7 +726,7 @@ function focusRowOrHeading(container: HTMLElement, rowId: string | undefined) {
 
 /**
  * The agent-platform shell's sessions list: search and the State,
- * Organization, Agent and Pinned dropdowns over one data set, shown as one table per day the sessions
+ * Environment, Organization, Agent and Pinned dropdowns over one data set, shown as one table per day the sessions
  * were last active (Today, Yesterday, Earlier), most recently active first —
  * the rail's order — a page of sessions at a time.
  */
@@ -1030,6 +1045,7 @@ export function ShellSessionsTable({
             onChange={filter.onChange}
             showStates={hasStates}
             showAgents={showAgent}
+            showEnvironments={showInstallation}
           />
         )}
 

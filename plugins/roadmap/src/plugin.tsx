@@ -8,12 +8,9 @@ import {
   SubPageBlueprint,
 } from '@backstage/frontend-plugin-api';
 
-import {
-  roadmapApiRef,
-  RoadmapApiClient,
-  roadmapAuthApiRef,
-  RoadmapFixtureApi,
-} from './apis';
+import { lazyApi } from '@giantswarm/backstage-plugin-ui-react';
+
+import { roadmapApiRef, RoadmapApiClient, roadmapAuthApiRef } from './apis';
 import {
   itemRouteRef,
   legacyRootRouteRef,
@@ -63,7 +60,8 @@ const roadmapPage = PageBlueprint.make({
 });
 
 // `roadmap.fixtures: true` serves an in-memory board instead of the backend,
-// for local development without muster.
+// for local development without muster, outside production builds only
+// (docs/fixtures.md).
 const roadmapApi = ApiBlueprint.make({
   disabled: true,
   params: defineParams =>
@@ -75,10 +73,19 @@ const roadmapApi = ApiBlueprint.make({
         fetchApi: fetchApiRef,
         authApi: roadmapAuthApiRef,
       },
-      factory: ({ configApi, discoveryApi, fetchApi, authApi }) =>
-        configApi.getOptionalBoolean('roadmap.fixtures')
-          ? new RoadmapFixtureApi()
-          : new RoadmapApiClient({ discoveryApi, fetchApi, authApi }),
+      factory: ({ configApi, discoveryApi, fetchApi, authApi }) => {
+        if (
+          process.env.NODE_ENV !== 'production' &&
+          configApi.getOptionalBoolean('roadmap.fixtures')
+        ) {
+          return lazyApi(async () => {
+            const { RoadmapFixtureApi } =
+              await import('./apis/RoadmapFixtureApi');
+            return new RoadmapFixtureApi();
+          });
+        }
+        return new RoadmapApiClient({ discoveryApi, fetchApi, authApi });
+      },
     }),
 });
 

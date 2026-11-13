@@ -9,6 +9,7 @@ import {
 import { Flex } from '@backstage/ui';
 import {
   ALL_INSTALLATIONS,
+  SharedInstallationScope,
   useInstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
 import {
@@ -367,13 +368,18 @@ const ModelsRoutes = () => {
  * an organization's model is saved through agent-manager, and that the model
  * page and Edit model edit a model agent-manager wrote there. Without it, the
  * directory is empty and every organization's model reads as the platform's.
+ *
+ * Reads the Environment selector's shared scope (`SharedInstallationScope`),
+ * as the Customize page around it does.
  */
 export const ModelsRouter = () => {
   return (
-    <QueryClientProvider>
-      <OrganizationDirectoryProvider>
-        <ModelsRoutes />
-      </OrganizationDirectoryProvider>
-    </QueryClientProvider>
+    <SharedInstallationScope>
+      <QueryClientProvider>
+        <OrganizationDirectoryProvider>
+          <ModelsRoutes />
+        </OrganizationDirectoryProvider>
+      </QueryClientProvider>
+    </SharedInstallationScope>
   );
 };

@@ -355,6 +355,43 @@ describe('useServerSignIn', () => {
     expect(result.current.authUrl).toBe(AUTH_URL);
   });
 
+  it("gives every caller for the same server the click's answer", async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    api.signInServer.mockResolvedValue({
+      status: 'error',
+      message: 'Rate limit exceeded. Too many authentication attempts.',
+    });
+    const queryClient = newQueryClient();
+    const options = { wrapper: wrapper(api, queryClient) };
+    // A table's state and its button, each in a cell of its own.
+    const both = renderHook(
+      () => [
+        useServerSignIn('pro', 'gazelle'),
+        useServerSignIn('pro', 'gazelle'),
+      ],
+      options,
+    );
+    const other = renderHook(
+      () => useServerSignIn('other', 'gazelle'),
+      options,
+    );
+
+    await waitFor(() => expect(both.result.current[1].needsLogin).toBe(true));
+    await act(async () => both.result.current[1].signIn());
+
+    await waitFor(() =>
+      expect(both.result.current[0].error).toBe(
+        'Rate limit exceeded. Too many authentication attempts.',
+      ),
+    );
+    expect(both.result.current[1].error).toBe(
+      'Rate limit exceeded. Too many authentication attempts.',
+    );
+    expect(other.result.current.error).toBeUndefined();
+  });
+
   /**
    * A real IdP round-trip can outlive the deadline (Miro's flow walks through
    * an organization picker, a team picker, and a consent page). When the user

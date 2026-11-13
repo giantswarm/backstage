@@ -4,7 +4,8 @@ export interface Config {
     /**
      * Serve the board from the built-in fixture board instead of the
      * roadmap backend: for local development and design reviews without
-     * muster. Never set on a deployed portal.
+     * muster. No effect in a production build, which contains no fixture code
+     * (docs/fixtures.md). Never set on a deployed portal.
      * @visibility frontend
      */
     fixtures?: boolean;

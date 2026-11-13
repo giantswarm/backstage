@@ -3,7 +3,6 @@ export {
   RoadmapApiClient,
   MusterServerNotConnectedError,
 } from './RoadmapApiClient';
-export { RoadmapFixtureApi } from './RoadmapFixtureApi';
 export {
   roadmapAuthApiRef,
   RoadmapMainAuth,

@@ -11,6 +11,7 @@ import {
   keySecretName,
   isListenerRouted,
   modelConfigFieldErrors,
+  modelNameError,
   modelConfigFormChanged,
   modelConfigEditOwner,
   modelConfigFormValues,
@@ -32,6 +33,16 @@ const directory = organizationDirectory([
 ]);
 
 const CLUSTER = 'gazelle';
+
+describe('modelNameError', () => {
+  it.each(['a', 'a'.repeat(63), 'model-1'])('accepts %s', name =>
+    expect(modelNameError(name, true)).toBeUndefined(),
+  );
+  it.each(['', ' ', 'a'.repeat(64), '-model', 'model-', 'Model', 'model.name'])(
+    'rejects %s',
+    name => expect(modelNameError(name, true)).toBeDefined(),
+  );
+});
 
 function makeModelConfig(
   overrides: {

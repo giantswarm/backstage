@@ -14,8 +14,10 @@ import {
   ALL_INSTALLATIONS,
   getInstallationScopeSnapshot,
   INSTALLATION_SCOPE_STORAGE_KEY,
+  USAGE_INSTALLATION_SCOPE_STORAGE_KEY,
 } from './installationScopeStore';
 import { useInstallationScope } from './useInstallationScope';
+import { SharedInstallationScope } from './SharedInstallationScope';
 
 // The inventory needs a react-query client and three Backstage APIs; here it
 // is whatever the test says. `mock`-prefixed, as jest requires in a factory.
@@ -69,11 +71,22 @@ function configure(names: string[]) {
   );
 }
 
+/**
+ * Renders the hook at `url`, below a `SharedInstallationScope` (a view with
+ * an Environment selector) unless `shared` is false.
+ */
 function renderScope(
   url: string | { pathname: string; state: unknown } = '/agent-platform/agents',
+  { shared = true }: { shared?: boolean } = {},
 ) {
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <MemoryRouter initialEntries={[url]}>{children}</MemoryRouter>
+    <MemoryRouter initialEntries={[url]}>
+      {shared ? (
+        <SharedInstallationScope>{children}</SharedInstallationScope>
+      ) : (
+        children
+      )}
+    </MemoryRouter>
   );
   return renderHook(
     () => {
@@ -426,6 +439,168 @@ describe('useInstallationScope', () => {
       expect(
         result.current.scope.installations.map(e => e.installation),
       ).toEqual(['golem']);
+    });
+  });
+
+  describe('outside a SharedInstallationScope', () => {
+    it('reads all installations while a view with a selector has one pinned', () => {
+      configure(['golem', 'wombat', 'snail']);
+      const customize = renderScope('/customize/agents');
+      act(() => customize.result.current.scope.setScope('wombat'));
+
+      const sessions = renderScope('/sessions', { shared: false });
+
+      expect(customize.result.current.scope.scope).toBe('wombat');
+      expect(sessions.result.current.scope.scope).toBe(ALL_INSTALLATIONS);
+    });
+
+    it('reads all installations over a stored pin and leaves it stored', () => {
+      window.localStorage.setItem(INSTALLATION_SCOPE_STORAGE_KEY, 'wombat');
+      configure(['golem', 'wombat', 'snail']);
+
+      const { result } = renderScope('/sessions', { shared: false });
+
+      expect(result.current.scope.scope).toBe(ALL_INSTALLATIONS);
+      expect(window.localStorage.getItem(INSTALLATION_SCOPE_STORAGE_KEY)).toBe(
+        'wombat',
+      );
+    });
+
+    it('ignores ?installation= and leaves it in the URL', () => {
+      configure(['golem', 'wombat', 'snail']);
+
+      const { result } = renderScope('/sessions?installation=wombat', {
+        shared: false,
+      });
+
+      expect(result.current.scope.scope).toBe(ALL_INSTALLATIONS);
+      expect(result.current.search).toBe('?installation=wombat');
+    });
+
+    it('changes nothing through setScope', () => {
+      configure(['golem', 'wombat', 'snail']);
+      const { result } = renderScope('/sessions', { shared: false });
+
+      act(() => result.current.scope.setScope('wombat'));
+
+      expect(result.current.scope.scope).toBe(ALL_INSTALLATIONS);
+      expect(result.current.search).toBe('');
+      expect(getInstallationScopeSnapshot().scope).toBe(ALL_INSTALLATIONS);
+      expect(
+        window.localStorage.getItem(INSTALLATION_SCOPE_STORAGE_KEY),
+      ).toBeNull();
+    });
+
+    it('does not re-render on a pin change or a query-string change', () => {
+      configure(['golem', 'wombat', 'snail']);
+      const customize = renderScope('/customize/agents');
+      let renders = 0;
+      renderHook(
+        () => {
+          renders += 1;
+          return useInstallationScope();
+        },
+        {
+          wrapper: ({ children }: { children: ReactNode }) => (
+            <MemoryRouter>{children}</MemoryRouter>
+          ),
+        },
+      );
+      const before = renders;
+
+      act(() => customize.result.current.scope.setScope('wombat'));
+
+      expect(renders).toBe(before);
+    });
+  });
+
+  it('shares one source between nested SharedInstallationScopes', () => {
+    configure(['golem', 'wombat', 'snail']);
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <MemoryRouter initialEntries={['/customize/models']}>
+        <SharedInstallationScope>
+          <SharedInstallationScope>{children}</SharedInstallationScope>
+        </SharedInstallationScope>
+      </MemoryRouter>
+    );
+    const { result } = renderHook(() => useInstallationScope(), { wrapper });
+
+    act(() => result.current.setScope('wombat'));
+
+    expect(result.current.scope).toBe('wombat');
+  });
+
+  it('forgets a muted pin where the shared scope is read', () => {
+    window.localStorage.setItem(INSTALLATION_SCOPE_STORAGE_KEY, 'wombat');
+    configure(['golem', 'wombat', 'snail']);
+    mockMuted = ['wombat'];
+
+    const { result } = renderScope('/customize/agents');
+
+    expect(result.current.scope.scope).toBe(ALL_INSTALLATIONS);
+    expect(
+      window.localStorage.getItem(INSTALLATION_SCOPE_STORAGE_KEY),
+    ).toBeNull();
+  });
+
+  describe("Usage's own scope", () => {
+    function renderUsage(url = '/usage') {
+      return renderHook(
+        () => {
+          const { search } = useLocation();
+          return { scope: useInstallationScope(), search };
+        },
+        {
+          wrapper: ({ children }: { children: ReactNode }) => (
+            <MemoryRouter initialEntries={[url]}>
+              <SharedInstallationScope id="usage">
+                {children}
+              </SharedInstallationScope>
+            </MemoryRouter>
+          ),
+        },
+      );
+    }
+
+    it('does not read a pin made on Customize', () => {
+      configure(['golem', 'wombat', 'snail']);
+      const customize = renderScope('/customize/agents');
+      act(() => customize.result.current.scope.setScope('wombat'));
+
+      const usage = renderUsage();
+
+      expect(usage.result.current.scope.scope).toBe(ALL_INSTALLATIONS);
+    });
+
+    it("pins its own choice, under its own key, without touching Customize's", () => {
+      configure(['golem', 'wombat', 'snail']);
+      window.localStorage.setItem(INSTALLATION_SCOPE_STORAGE_KEY, 'snail');
+      const usage = renderUsage();
+
+      act(() => usage.result.current.scope.setScope('wombat'));
+
+      expect(usage.result.current.scope.scope).toBe('wombat');
+      expect(usage.result.current.search).toBe('?installation=wombat');
+      expect(
+        window.localStorage.getItem(USAGE_INSTALLATION_SCOPE_STORAGE_KEY),
+      ).toBe('wombat');
+      expect(window.localStorage.getItem(INSTALLATION_SCOPE_STORAGE_KEY)).toBe(
+        'snail',
+      );
+      expect(getInstallationScopeSnapshot().scope).toBe('snail');
+    });
+
+    it('restores its own stored choice', () => {
+      window.localStorage.setItem(
+        USAGE_INSTALLATION_SCOPE_STORAGE_KEY,
+        'wombat',
+      );
+      configure(['golem', 'wombat', 'snail']);
+
+      expect(renderUsage().result.current.scope.scope).toBe('wombat');
+      expect(renderScope('/customize/agents').result.current.scope.scope).toBe(
+        ALL_INSTALLATIONS,
+      );
     });
   });
 });

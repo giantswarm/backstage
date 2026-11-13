@@ -51,6 +51,7 @@ jest.mock('../UsageConversationsPage', () => ({
 const scopeState = { isSingleInstallation: false, isLoading: false };
 
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
+  SharedInstallationScope: ({ children }: { children: ReactNode }) => children,
   useInstallationScope: () => scopeState,
 }));
 

@@ -14,6 +14,7 @@ import {
   getInstallationScopeSnapshot,
   setInstallationScope,
 } from '../../apis/installationScope/installationScopeStore';
+import { SharedInstallationScope } from '../../apis/installationScope';
 import { InstallationScopeSelect } from './InstallationScopeSelect';
 
 let mockInventory: Pick<
@@ -68,7 +69,9 @@ function renderSelect(
 ) {
   return render(
     <MemoryRouter initialEntries={[url]}>
-      <InstallationScopeSelect {...props} />
+      <SharedInstallationScope>
+        <InstallationScopeSelect {...props} />
+      </SharedInstallationScope>
     </MemoryRouter>,
   );
 }
