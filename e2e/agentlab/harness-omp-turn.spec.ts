@@ -38,7 +38,7 @@ const agentName = `E2E Omp Turn ${stamp}`;
 const agentSlug = `e2e-omp-turn-${stamp}`;
 
 /**
- * The wizard's name for the omp model (its display name, else its own), or
+ * The wizard's name for the omp model (its display name, else its model ID), or
  * why the lab cannot run an omp turn.
  */
 async function ompModel(): Promise<{ label: string } | { missing: string }> {
@@ -48,13 +48,16 @@ async function ompModel(): Promise<{ label: string } | { missing: string }> {
     'get',
     'harnesses.api.kagent.dev,modelconfigs.api.kagent.dev',
     '-o',
-    'jsonpath={range .items[*]}{.kind}/{.metadata.name}\t{.metadata.annotations.ui\\.giantswarm\\.io/display-name}{"\\n"}{end}',
+    'jsonpath={range .items[*]}{.kind}/{.metadata.name}\t{.metadata.annotations.ui\\.giantswarm\\.io/display-name}\t{.spec.model}{"\\n"}{end}',
   ]);
   const objects = new Map(
     stdout
       .split('\n')
       .filter(Boolean)
-      .map(line => line.split('\t') as [string, string]),
+      .map(line => {
+        const [name, displayName, model] = line.split('\t');
+        return [name, displayName?.trim() ? displayName : model] as const;
+      }),
   );
   if (!objects.has('Harness/omp')) {
     return { missing: `the lab offers no omp Harness in ${NAMESPACE}` };
