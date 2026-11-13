@@ -27,10 +27,15 @@ function LocationProbe() {
   return <output aria-label="Location">{search}</output>;
 }
 
-function renderTab(tools: ToolSummary[], path = '/connector') {
+function renderTab(
+  tools: ToolSummary[],
+  path = '/connector',
+  emptyIsFailure = false,
+) {
   return renderInTestApp(
     <>
       <ConnectorToolsTab
+        emptyIsFailure={emptyIsFailure}
         server="jira"
         installation="gazelle"
         tools={{
@@ -101,6 +106,20 @@ function renderRoundTrip(tools: ToolSummary[]) {
 const toolRows = () => screen.getAllByRole('link', { name: /^tool_\d+/ });
 
 describe('ConnectorToolsTab', () => {
+  it('shows why a failed connector lists no tools as a warning', async () => {
+    await renderTab([], '/connector', true);
+
+    expect(
+      screen.getByText('No tools.').closest('[data-status]'),
+    ).toHaveAttribute('data-status', 'warning');
+  });
+
+  it('says plainly why a connector that did not fail lists no tools', async () => {
+    await renderTab([]);
+
+    expect(screen.getByText('No tools.').closest('[data-status]')).toBeNull();
+  });
+
   it('links each tool to its page, with its description and what it does', async () => {
     await renderTab(makeTools(3));
 

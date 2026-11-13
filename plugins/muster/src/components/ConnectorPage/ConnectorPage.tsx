@@ -488,6 +488,8 @@ function ConnectorPageContent({
   const emptyExplanation = singular
     ? noToolsExplanation(singular)
     : 'No instance offers tools right now.';
+  const emptyIsFailure =
+    !!singular && !singular.getSuspended() && singular.getState() === 'Failed';
 
   const capabilities = (
     [
@@ -687,6 +689,7 @@ function ConnectorPageContent({
                   installation={installation}
                   tools={tools}
                   emptyExplanation={emptyExplanation}
+                  emptyIsFailure={emptyIsFailure}
                   sessionGate={sessionGate}
                   signInGate={signInGate}
                   searchState={toolSearch}

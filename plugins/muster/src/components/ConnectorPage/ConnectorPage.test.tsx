@@ -1340,6 +1340,22 @@ describe('ConnectorPage Details tab', () => {
     expect(resourceFact('Name')).toHaveTextContent(/^mcp-jira$/);
   });
 
+  it('warns on the Tools tab that a failed connector exposes no tools', async () => {
+    mockServers = [
+      ...makeServers(),
+      makeServer({ name: 'linear', state: 'Failed' }),
+    ];
+    await renderAt(`${BASE}/linear`);
+
+    const explanation = await screen.findByText(
+      'This connector failed to connect, so its tools cannot be shown.',
+    );
+    expect(explanation.closest('[data-status]')).toHaveAttribute(
+      'data-status',
+      'warning',
+    );
+  });
+
   it('opens the fold-out on arrival while Muster reports the connector failed', async () => {
     mockServers = [
       ...makeServers(),

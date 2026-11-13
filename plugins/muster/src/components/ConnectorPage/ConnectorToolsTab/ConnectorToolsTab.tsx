@@ -131,6 +131,11 @@ export interface ConnectorToolsTabProps {
   tools: ServerTools;
   /** Why the connector lists no tools, when it lists none. */
   emptyExplanation: string;
+  /**
+   * The connector failed to connect: the explanation is shown as a warning,
+   * not as plain text.
+   */
+  emptyIsFailure?: boolean;
   /** Shown instead of the list while the muster session is missing. */
   sessionGate?: ReactNode;
   /**
@@ -165,6 +170,7 @@ export function ConnectorToolsTab({
   installation,
   tools,
   emptyExplanation,
+  emptyIsFailure = false,
   sessionGate,
   signInGate,
   searchState,
@@ -258,8 +264,11 @@ export function ConnectorToolsTab({
     );
   }
   if (all.length === 0) {
-    return signInGate ? (
-      <>{signInGate}</>
+    if (signInGate) {
+      return <>{signInGate}</>;
+    }
+    return emptyIsFailure ? (
+      <Alert status="warning" description={emptyExplanation} />
     ) : (
       <Text as="p" variant="body-medium" color="secondary">
         {emptyExplanation}
