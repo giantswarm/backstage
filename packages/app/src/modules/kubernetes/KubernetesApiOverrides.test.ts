@@ -1,7 +1,21 @@
-import type { KubernetesAuthProvidersApi } from '@backstage/plugin-kubernetes-react';
-import type { GSAuthProvidersApi } from '@giantswarm/backstage-plugin-gs';
+import { ApiBlueprint } from '@backstage/frontend-plugin-api';
+import {
+  createExtensionTester,
+  mockApis,
+} from '@backstage/frontend-test-utils';
+import type {
+  KubernetesApi,
+  KubernetesAuthProvidersApi,
+} from '@backstage/plugin-kubernetes-react';
+import {
+  KubernetesClient,
+  type GSAuthProvidersApi,
+} from '@giantswarm/backstage-plugin-gs';
 import { isSessionExpiredError } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { GSKubernetesAuthProviders } from './KubernetesApiOverrides';
+import {
+  GSKubernetesAuthProviders,
+  KubernetesClientOverride,
+} from './KubernetesApiOverrides';
 
 function setup(options: { session: boolean; gesture: boolean }) {
   // The provider's id token: the live session's when there is one; without
@@ -132,5 +146,43 @@ describe('GSKubernetesAuthProviders', () => {
       token: 'base-token',
     });
     expect(base.getCredentials).toHaveBeenCalledWith('google');
+  });
+});
+
+describe('api:kubernetes', () => {
+  const nodeEnv = process.env.NODE_ENV;
+  afterEach(() => {
+    process.env.NODE_ENV = nodeEnv;
+  });
+
+  function createKubernetesApi(fixtures: boolean) {
+    const { factory } = createExtensionTester(KubernetesClientOverride).get(
+      ApiBlueprint.dataRefs.factory,
+    );
+    return factory({
+      configApi: mockApis.config({ data: { gs: { fixtures } } }),
+      discoveryApi: mockApis.discovery(),
+      fetchApi: { fetch: jest.fn() },
+      kubernetesAuthProvidersApi: {},
+    }) as KubernetesApi;
+  }
+
+  it('serves the fixture installation with gs.fixtures outside production', async () => {
+    const api = createKubernetesApi(true);
+
+    expect(api).not.toBeInstanceOf(KubernetesClient);
+    await expect(api.getClusters()).resolves.toEqual([
+      expect.objectContaining({ name: 'meadow' }),
+    ]);
+  });
+
+  it('ignores gs.fixtures in production', () => {
+    process.env.NODE_ENV = 'production';
+
+    expect(createKubernetesApi(true)).toBeInstanceOf(KubernetesClient);
+  });
+
+  it('reads the clusters without gs.fixtures', () => {
+    expect(createKubernetesApi(false)).toBeInstanceOf(KubernetesClient);
   });
 });
