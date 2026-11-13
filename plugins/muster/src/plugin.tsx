@@ -13,9 +13,14 @@ import {
   kubernetesApiRef,
   kubernetesAuthProvidersApiRef,
 } from '@backstage/plugin-kubernetes-react';
-import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  externalUrlConsentApiRef,
+  lazyApi,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
+  fixtureMcpServersDataRef,
+  fixtureMcpServersInput,
   musterApiRef,
   MusterApiClient,
   MusterAuthProviders,
@@ -129,22 +134,47 @@ const workflowsSubPage = SubPageBlueprint.makeWithOverrides({
 // through them (kubernetesApi.getCluster → kubernetesAuthProvidersApi
 // .getCredentials) exactly like the kagent and model-manager clients do. The
 // home installation keeps the `authProvidersApi` (main-login) token.
-const musterApi = ApiBlueprint.make({
+// `muster.fixtures: true` serves one signed-in installation from memory, its
+// tool calls answered by the fixture MCP servers that plugins attach to the
+// `fixtureServers` input, outside production builds only (docs/fixtures.md).
+const musterApi = ApiBlueprint.makeWithOverrides({
   name: 'muster',
-  params: defineParams =>
-    defineParams({
-      api: musterApiRef,
-      deps: {
-        discoveryApi: discoveryApiRef,
-        fetchApi: fetchApiRef,
-        configApi: configApiRef,
-        authProvidersApi: musterAuthProvidersApiRef,
-        kubernetesApi: kubernetesApiRef,
-        kubernetesAuthProvidersApi: kubernetesAuthProvidersApiRef,
-        externalUrlConsentApi: externalUrlConsentApiRef,
-      },
-      factory: deps => new MusterApiClient(deps),
-    }),
+  inputs: {
+    fixtureServers: fixtureMcpServersInput,
+  },
+  factory: (originalFactory, { inputs }) =>
+    originalFactory(defineParams =>
+      defineParams({
+        api: musterApiRef,
+        deps: {
+          discoveryApi: discoveryApiRef,
+          fetchApi: fetchApiRef,
+          configApi: configApiRef,
+          authProvidersApi: musterAuthProvidersApiRef,
+          kubernetesApi: kubernetesApiRef,
+          kubernetesAuthProvidersApi: kubernetesAuthProvidersApiRef,
+          externalUrlConsentApi: externalUrlConsentApiRef,
+        },
+        factory: deps => {
+          if (
+            process.env.NODE_ENV !== 'production' &&
+            deps.configApi.getOptionalBoolean('muster.fixtures')
+          ) {
+            const loaders = inputs.fixtureServers.map(input =>
+              input.get(fixtureMcpServersDataRef),
+            );
+            return lazyApi(async () => {
+              const [{ MusterFixtureApi }, servers] = await Promise.all([
+                import('./apis/fixtures/MusterFixtureApi'),
+                Promise.all(loaders.map(load => load())),
+              ]);
+              return new MusterFixtureApi(servers.flat());
+            });
+          }
+          return new MusterApiClient(deps);
+        },
+      }),
+    ),
 });
 
 // Default knows no providers; the app overrides this with the gs auth

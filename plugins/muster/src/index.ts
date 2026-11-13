@@ -1,6 +1,8 @@
 export { musterPlugin as default } from './plugin';
 export { ConnectorTagSource, WorkflowTagSource } from './components/TagSources';
 export {
+  FIXTURE_MCP_SERVERS_ATTACH_POINT,
+  fixtureMcpServersDataRef,
   isMusterAuthFailure,
   isSessionExpiredError,
   musterApiRef,
@@ -14,6 +16,10 @@ export {
   toolErrorDetails,
 } from './apis';
 export type {
+  FixtureMcpServer,
+  FixtureMcpServersLoader,
+  FixtureToolCallContext,
+  FixtureToolHandler,
   ConnectorName,
   ConnectorNamesResponse,
   MusterApi,
