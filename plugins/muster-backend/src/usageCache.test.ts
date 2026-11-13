@@ -98,4 +98,25 @@ describe('UsageCache', () => {
 
     expect(await cache.read('k', load, () => true)).toBe('answer');
   });
+
+  it('shares nothing without a key', async () => {
+    const cache = new UsageCache<string>();
+    const load = jest.fn(async () => 'answer');
+
+    await cache.read(undefined, load, () => true);
+    await cache.read(undefined, load, () => true);
+
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('loads again after an answer was forgotten', async () => {
+    const cache = new UsageCache<string>();
+    const load = jest.fn(async () => 'answer');
+
+    await cache.read('k', load, () => true);
+    cache.forget('k');
+    await cache.read('k', load, () => true);
+
+    expect(load).toHaveBeenCalledTimes(2);
+  });
 });

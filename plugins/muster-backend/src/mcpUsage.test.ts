@@ -1,7 +1,6 @@
 import {
   getMcpToolLatency,
-  getMcpUsage,
-  isPartialUsage,
+  readMcpUsage,
   usageWindow,
   pickPrometheusServer,
   quantileFromBuckets,
@@ -155,7 +154,7 @@ describe('usageSelector', () => {
   });
 });
 
-describe('getMcpUsage', () => {
+describe('readMcpUsage', () => {
   it('reports unavailable when no prometheus server is registered', async () => {
     const client = fakeClient(tool => {
       if (tool === 'core_mcpserver_list') {
@@ -164,7 +163,7 @@ describe('getMcpUsage', () => {
       throw new Error(`unexpected tool ${tool}`);
     });
 
-    const usage = await getMcpUsage(client, INSTALLATION, {}, 24);
+    const { usage } = await readMcpUsage(client, INSTALLATION, {}, 24);
     expect(usage.available).toBe(false);
     expect(usage.reason).toMatch(/no prometheus mcp server/i);
     expect(usage.totals.calls).toBe(0);
@@ -174,7 +173,7 @@ describe('getMcpUsage', () => {
     const client = fakeClient(tool =>
       tool === 'core_mcpserver_list' ? SERVER_LIST : { data: { result: [] } },
     );
-    const usage = await getMcpUsage(client, INSTALLATION, {}, 24);
+    const { usage } = await readMcpUsage(client, INSTALLATION, {}, 24);
     expect(usage.available).toBe(false);
     expect(usage.reason).toMatch(
       /answered structured data, not the text the usage query parses/,
@@ -253,13 +252,18 @@ describe('getMcpUsage', () => {
       throw new Error(`unexpected query ${query}`);
     });
 
-    const usage = await getMcpUsage(client, INSTALLATION, {}, 24);
+    const { usage, complete } = await readMcpUsage(
+      client,
+      INSTALLATION,
+      {},
+      24,
+    );
 
     // The per-tool latency, the slowest query, is not part of this read.
     expect(
       calls.some(call => String(call.args.query).includes('sum by (tool, le)')),
     ).toBe(false);
-    expect(isPartialUsage(usage)).toBe(false);
+    expect(complete).toBe(true);
 
     // Every prometheus query is routed to the installation's own server via
     // the family routing parameter.
@@ -421,7 +425,7 @@ describe('getMcpUsage', () => {
       jest.useFakeTimers({ now: new Date('2026-10-14T10:30:00Z') });
       const seen: Array<Record<string, unknown>> = [];
 
-      const usage = await getMcpUsage(
+      const { usage } = await readMcpUsage(
         narrowedClient(seen),
         INSTALLATION,
         {},
@@ -465,7 +469,7 @@ describe('getMcpUsage', () => {
     it('narrows every figure to one tool of the connectors, its row the totals', async () => {
       const seen: Array<Record<string, unknown>> = [];
 
-      const usage = await getMcpUsage(
+      const { usage } = await readMcpUsage(
         narrowedClient(seen),
         INSTALLATION,
         {},
@@ -502,7 +506,7 @@ describe('getMcpUsage', () => {
     });
 
     it('lists every tool the connectors were called with, busiest first', async () => {
-      const usage = await getMcpUsage(
+      const { usage } = await readMcpUsage(
         narrowedClient([]),
         INSTALLATION,
         {},
@@ -520,7 +524,7 @@ describe('getMcpUsage', () => {
 
     it('reads one connector without the per-server queries, its row the totals', async () => {
       const seen: Array<Record<string, unknown>> = [];
-      const usage = await getMcpUsage(
+      const { usage } = await readMcpUsage(
         narrowedClient(seen),
         INSTALLATION,
         {},
@@ -543,7 +547,7 @@ describe('getMcpUsage', () => {
 
     it('reads no per-server latency without a filter, which nothing shows', async () => {
       const seen: Array<Record<string, unknown>> = [];
-      const usage = await getMcpUsage(
+      const { usage } = await readMcpUsage(
         narrowedClient(seen),
         INSTALLATION,
         {},
@@ -563,7 +567,7 @@ describe('getMcpUsage', () => {
     });
 
     it('keeps the busiest fifteen tools without a filter', async () => {
-      const usage = await getMcpUsage(
+      const { usage } = await readMcpUsage(
         narrowedClient([]),
         INSTALLATION,
         {},
@@ -575,7 +579,7 @@ describe('getMcpUsage', () => {
     });
 
     it('gives each connector its p95 latency', async () => {
-      const usage = await getMcpUsage(
+      const { usage } = await readMcpUsage(
         narrowedClient([]),
         INSTALLATION,
         {},
@@ -623,7 +627,12 @@ describe('getMcpUsage', () => {
     it('is the first daily bucket with a sample, a zero included', async () => {
       jest.useFakeTimers({ now: new Date('2026-10-14T10:30:00Z') });
 
-      const usage = await getMcpUsage(clientWithDays(3), INSTALLATION, {}, 168);
+      const { usage } = await readMcpUsage(
+        clientWithDays(3),
+        INSTALLATION,
+        {},
+        168,
+      );
 
       expect(usage.buckets).toHaveLength(7);
       expect(usage.data_start).toBe('2026-10-12T00:00:00.000Z');
@@ -654,11 +663,16 @@ describe('getMcpUsage', () => {
         },
       );
 
-      const usage = await getMcpUsage(client, INSTALLATION, {}, 168);
+      const { usage, complete } = await readMcpUsage(
+        client,
+        INSTALLATION,
+        {},
+        168,
+      );
 
       expect(usage.totals.calls).toBe(2);
       expect(usage).not.toHaveProperty('data_start');
-      expect(isPartialUsage(usage)).toBe(false);
+      expect(complete).toBe(true);
     });
 
     it('is absent, and the answer not one to reuse, when the week before the window cannot be read', async () => {
@@ -680,11 +694,16 @@ describe('getMcpUsage', () => {
         },
       );
 
-      const usage = await getMcpUsage(client, INSTALLATION, {}, 168);
+      const { usage, complete } = await readMcpUsage(
+        client,
+        INSTALLATION,
+        {},
+        168,
+      );
 
       expect(usage.totals.calls).toBe(2);
       expect(usage).not.toHaveProperty('data_start');
-      expect(isPartialUsage(usage)).toBe(true);
+      expect(complete).toBe(false);
     });
 
     it('counts only the outcomes the chart draws, as the chart does', async () => {
@@ -703,7 +722,7 @@ describe('getMcpUsage', () => {
         ].join('\n');
       });
 
-      const usage = await getMcpUsage(client, INSTALLATION, {}, 168);
+      const { usage } = await readMcpUsage(client, INSTALLATION, {}, 168);
 
       expect(usage.data_start).toBe('2026-10-14T00:00:00.000Z');
     });
@@ -711,7 +730,12 @@ describe('getMcpUsage', () => {
     it('is absent when no bucket has a sample', async () => {
       jest.useFakeTimers({ now: new Date('2026-10-14T10:30:00Z') });
 
-      const usage = await getMcpUsage(clientWithDays(0), INSTALLATION, {}, 168);
+      const { usage } = await readMcpUsage(
+        clientWithDays(0),
+        INSTALLATION,
+        {},
+        168,
+      );
 
       expect(usage.available).toBe(true);
       expect(usage).not.toHaveProperty('data_start');
@@ -755,7 +779,7 @@ describe('getMcpUsage', () => {
       return 'Result Type: vector\nResult: {} => 0 @[1]';
     });
 
-    const usage = await getMcpUsage(client, INSTALLATION, {}, 24);
+    const { usage } = await readMcpUsage(client, INSTALLATION, {}, 24);
     expect(usage.available).toBe(true);
     expect(usage.totals.calls).toBe(0);
     expect(fallbackCalls.length).toBeGreaterThan(0);
@@ -785,7 +809,12 @@ describe('getMcpUsage', () => {
       throw new Error('server_error: server error: 500');
     });
 
-    const usage = await getMcpUsage(client, INSTALLATION, {}, 24);
+    const { usage, complete } = await readMcpUsage(
+      client,
+      INSTALLATION,
+      {},
+      24,
+    );
     expect(usage.available).toBe(true);
     expect(usage.totals).toEqual({
       calls: 7,
@@ -797,7 +826,7 @@ describe('getMcpUsage', () => {
     expect(usage.top_tools).toEqual([]);
     expect(usage.servers).toEqual([]);
     // A later read may fill them in: not an answer to reuse.
-    expect(isPartialUsage(usage)).toBe(true);
+    expect(complete).toBe(false);
   });
 
   it('reports unavailable with the failure reason when queries error', async () => {
@@ -808,7 +837,7 @@ describe('getMcpUsage', () => {
       throw new Error('upstream exploded');
     });
 
-    const usage = await getMcpUsage(client, INSTALLATION, {}, 24);
+    const { usage } = await readMcpUsage(client, INSTALLATION, {}, 24);
     expect(usage.available).toBe(false);
     expect(usage.reason).toMatch(/upstream exploded/);
   });
@@ -846,7 +875,12 @@ describe('grouped usage counts', () => {
           ].join('\n');
         },
       );
-      const usage = await getMcpUsage(client, INSTALLATION, {}, hours);
+      const { usage, complete } = await readMcpUsage(
+        client,
+        INSTALLATION,
+        {},
+        hours,
+      );
       await getMcpToolLatency(client, INSTALLATION, {}, hours);
       expect(reads).toHaveLength(3);
       expect(reads.every(args => args.unlimited === 'true')).toBe(true);
@@ -870,7 +904,7 @@ describe('grouped usage counts', () => {
         ),
       ).toBe(15);
       expect(usage.data_start).toBeUndefined();
-      expect(isPartialUsage(usage)).toBe(false);
+      expect(complete).toBe(true);
     },
   );
 
@@ -891,14 +925,20 @@ describe('grouped usage counts', () => {
         return 'Result Type: matrix\nResult:';
       },
     );
-    const usage = await getMcpUsage(client, INSTALLATION, {}, 720, ['a']);
+    const { usage, complete } = await readMcpUsage(
+      client,
+      INSTALLATION,
+      {},
+      720,
+      ['a'],
+    );
     expect(queries[0]).toContain('mcpserver_name="a"');
     expect(queries).toContain(
       'sum by (outcome) (increase(muster_downstream_tool_calls_total[24h]))',
     );
     expect(usage.totals.calls).toBe(0);
     expect(usage.data_start).toBeDefined();
-    expect(isPartialUsage(usage)).toBe(false);
+    expect(complete).toBe(true);
   });
 });
 

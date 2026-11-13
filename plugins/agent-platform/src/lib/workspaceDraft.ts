@@ -230,6 +230,11 @@ export function toUpdateInput(
  */
 export type DraftField = string;
 
+/** An empty owner's problem, worded for the control that asks for it. */
+export function emptyOwnerProblem(control: 'select' | 'text'): string {
+  return control === 'select' ? 'Choose an owner' : 'Enter an owner';
+}
+
 /**
  * The form's own checks, by field; the manager has the last word on save.
  * Creating with a free-form name (`displayName`, which only the form holds),
@@ -258,9 +263,8 @@ export function draftProblems(
       problems[`sources.${index}.provider`] = 'Choose a provider';
     }
     if (!source.owner.trim()) {
-      problems[`sources.${index}.owner`] = 'Owner is required';
-    }
-    if (!hasSelector(source)) {
+      problems[`sources.${index}.owner`] = emptyOwnerProblem('select');
+    } else if (!hasSelector(source)) {
       problems[`sources.${index}`] =
         'Pick repositories by name, or filter by language or topic';
     }
