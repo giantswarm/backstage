@@ -967,7 +967,10 @@ describe('AgentPlatformHome', () => {
       it('asks agent-manager on the installations of startable agents', async () => {
         await render();
 
-        expect(mockDefaultAgentIds).toHaveBeenCalledWith(['gazelle'], undefined);
+        expect(mockDefaultAgentIds).toHaveBeenCalledWith(
+          ['gazelle'],
+          undefined,
+        );
       });
 
       it('preselects it', async () => {
