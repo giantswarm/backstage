@@ -323,15 +323,18 @@ describe('ServerTools with no tools to show', () => {
   });
 
   it('names a failed or connecting connector’s state, not a guess', async () => {
-    expect(noToolsExplanation(makeServer(SIGV4_SPEC, 'Failed'))).toBe(
-      'This connector failed to connect, so its tools cannot be shown.',
-    );
-    expect(noToolsExplanation(makeServer(SIGV4_SPEC, 'Connecting'))).toBe(
-      'This connector is still connecting, so its tools cannot be shown.',
-    );
-    expect(noToolsExplanation(makeServer(SIGV4_SPEC, 'Connected'))).toBe(
-      'No tools exposed (the connector may be down or unreachable).',
-    );
+    expect(noToolsExplanation(makeServer(SIGV4_SPEC, 'Failed'))).toEqual({
+      text: 'This connector failed to connect, so its tools cannot be shown.',
+      tone: 'warning',
+    });
+    expect(noToolsExplanation(makeServer(SIGV4_SPEC, 'Connecting'))).toEqual({
+      text: 'This connector is still connecting, so its tools cannot be shown.',
+      tone: 'neutral',
+    });
+    expect(noToolsExplanation(makeServer(SIGV4_SPEC, 'Connected'))).toEqual({
+      text: 'No tools exposed (the connector may be down or unreachable).',
+      tone: 'neutral',
+    });
   });
 
   it('does not send a sigv4 server’s user to a sign-in that cannot exist', async () => {
@@ -391,11 +394,14 @@ describe('ServerTools with no tools to show', () => {
       }),
     );
 
-    expect(
-      await screen.findByText(
-        /No tools exposed — token exchange credentials from Secret agent-platform\/remote-token-exchange-credentials/,
-      ),
-    ).toBeInTheDocument();
+    const explanation = await screen.findByText(
+      /No tools exposed — token exchange credentials from Secret agent-platform\/remote-token-exchange-credentials/,
+    );
+    // A failure reads as a warning, as on the connector's Tools tab.
+    expect(explanation.closest('[data-status]')).toHaveAttribute(
+      'data-status',
+      'warning',
+    );
     expect(screen.queryByText(/down or unreachable/)).not.toBeInTheDocument();
   });
 
@@ -407,11 +413,10 @@ describe('ServerTools with no tools to show', () => {
       makeServer({ ...OAUTH_SPEC, suspended: true }, 'Auth Required'),
     );
 
-    expect(
-      await screen.findByText(
-        'No tools exposed — this connector is deactivated. Use “Turn on” in the connector’s menu.',
-      ),
-    ).toBeInTheDocument();
+    const explanation = await screen.findByText(
+      'No tools exposed — this connector is deactivated. Use “Turn on” in the connector’s menu.',
+    );
+    expect(explanation.closest('[data-status]')).toBeNull();
     expect(screen.queryByText(/down or unreachable/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Use “Sign in”/)).not.toBeInTheDocument();
   });

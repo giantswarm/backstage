@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import {
@@ -24,6 +24,8 @@ type FakeModelConfig = {
   getName: () => string;
   getNamespace: () => string;
   getDisplayName: () => string;
+  getDisplayNameAnnotation: () => string | undefined;
+  isPersonalChatGptLogin: () => boolean;
   getModel: () => string;
   getProvider: () => string;
   getReadiness: () => 'accepted' | 'notAccepted';
@@ -38,14 +40,16 @@ function OwnerFieldHarness() {
 
 function modelConfig(
   name: string,
-  displayName: string,
-  { namespace = 'kagent', rejected = false } = {},
+  displayName?: string,
+  { namespace = 'kagent', rejected = false, model = `${name}-model` } = {},
 ): FakeModelConfig {
   return {
     getName: () => name,
     getNamespace: () => namespace,
-    getDisplayName: () => displayName,
-    getModel: () => `${name}-model`,
+    getDisplayName: () => displayName ?? name,
+    getDisplayNameAnnotation: () => displayName,
+    isPersonalChatGptLogin: () => false,
+    getModel: () => model,
     getProvider: () => 'Anthropic',
     getReadiness: () => (rejected ? 'notAccepted' : 'accepted'),
     getReadinessMessage: () =>
@@ -235,6 +239,83 @@ describe('ModelConfigPicker', () => {
     expect(group.closest('[data-invalid]')).not.toBeNull();
   });
 
+  it('uses the model in its card, preselection and warning without a display name', async () => {
+    mockModelConfigs = [
+      modelConfig('anthropic', undefined, { rejected: true }),
+    ];
+    mockDefaults = { kagent: 'anthropic' };
+    mockUnresolved = ['anthropic'];
+
+    await renderPicker();
+
+    const card = await screen.findByRole('radio', {
+      name: 'Select model anthropic-model, default, not accepted',
+    });
+    expect(card).toHaveAttribute('aria-checked', 'true');
+    expect(within(card).getAllByText('anthropic-model')).toHaveLength(1);
+    expect(within(card).getByText('Anthropic')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Preselected: anthropic-model, the default model for the platform.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('anthropic-model is not ready'),
+    ).toBeInTheDocument();
+  });
+
+  it.each([undefined, 'Shared model'])(
+    'distinguishes configurations with the same label %s',
+    async displayName => {
+      const model = 'claude-sonnet-4-6';
+      const choiceLabel = displayName ?? model;
+      mockModelConfigs = ['anthropic-a', 'anthropic-b'].map(name =>
+        modelConfig(name, displayName, { model }),
+      );
+
+      await renderPicker();
+
+      const first = screen.getByRole('radio', {
+        name: `Select model ${choiceLabel}, anthropic-a`,
+      });
+      const second = screen.getByRole('radio', {
+        name: `Select model ${choiceLabel}, anthropic-b`,
+      });
+      expect(within(first).getByText('anthropic-a')).toBeInTheDocument();
+      expect(within(second).getByText('anthropic-b')).toBeInTheDocument();
+
+      await userEvent.click(second);
+      expect(second).toHaveAttribute('aria-checked', 'true');
+      expect(first).toHaveAttribute('aria-checked', 'false');
+      await userEvent.click(first);
+      expect(first).toHaveAttribute('aria-checked', 'true');
+      expect(second).toHaveAttribute('aria-checked', 'false');
+    },
+  );
+
+  it('distinguishes equal labels even when their providers differ', async () => {
+    mockModelConfigs = [
+      modelConfig('gateway-a', 'Company model'),
+      {
+        ...modelConfig('gateway-b', 'Company model'),
+        getProvider: () => 'OpenAI',
+      },
+    ];
+
+    await renderPicker();
+
+    expect(
+      screen.getByRole('radio', {
+        name: 'Select model Company model, gateway-a',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('radio', {
+        name: 'Select model Company model, gateway-b',
+      }),
+    ).toBeInTheDocument();
+  });
+
   it('makes the person pick without a default, even the only model', async () => {
     mockModelConfigs = [modelConfig('sonnet', 'Claude Sonnet')];
 
@@ -347,6 +428,35 @@ describe('ModelConfigPicker', () => {
       );
 
       expect(screen.getAllByRole('radio')).toHaveLength(24);
+    });
+
+    it('distinguishes a label duplicated beyond the first page', async () => {
+      mockModelConfigs = manyModels(30);
+      mockModelConfigs[0] = modelConfig('anthropic-a', undefined, {
+        model: 'claude-sonnet-4-6',
+      });
+      mockModelConfigs[12] = modelConfig('anthropic-b', undefined, {
+        model: 'claude-sonnet-4-6',
+      });
+
+      await renderPicker();
+
+      expect(
+        screen.getByRole('radio', {
+          name: 'Select model claude-sonnet-4-6, anthropic-a',
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('radio', { name: /anthropic-b/ }),
+      ).not.toBeInTheDocument();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Show 12 more models' }),
+      );
+      expect(
+        screen.getByRole('radio', {
+          name: 'Select model claude-sonnet-4-6, anthropic-b',
+        }),
+      ).toBeInTheDocument();
     });
 
     it('keeps the picked model on screen when it is listed past the first page', async () => {

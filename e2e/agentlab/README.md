@@ -46,6 +46,7 @@ the command that installs it.
 | `AGENTLAB_ORGANIZATION`         | `agentlab-organizations/default`  | `<parent>/<name>` of the lab's organization whose `organization-admins` binds the admin, for `organization-credentials.spec.ts`, and where `labAgent` creates its agent when agent-manager offers organizations only             |
 | `AGENTLAB_ORGANIZATIONS_PARENT` | `agentlab-organizations`          | the parent namespace `organization-delete.spec.ts` creates its own organization in, where the admin is organizations-admin (a cluster-admin)                                                                                     |
 | `AGENTLAB_DEFAULT_MODEL`        | `anthropic`                       | the name of the agents' default ModelConfig the lab provisions (in `kagent` and in every organization namespace), which the model and wizard specs look for                                                                      |
+| `AGENTLAB_DEFAULT_MODEL_LABEL`  | `claude-sonnet-4-6`               | the default ModelConfig's display name, or its model ID when no display name is set, as shown in the wizard                                                                                                                      |
 
 The suite ignores TLS errors from the lab CA, so no `agentlab trust` is needed.
 

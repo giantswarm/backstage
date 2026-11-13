@@ -22,6 +22,11 @@ export interface StatusDotProps {
    * `--agent-platform-state-dot-success` for the session states.
    */
   colorVar?: string;
+  /**
+   * Wrap a label wider than the space it has onto more lines, rather than
+   * cutting it with an ellipsis.
+   */
+  wrap?: boolean;
 }
 
 /** The bui foreground colour each tone falls back to. */
@@ -43,6 +48,7 @@ export function StatusDot({
   'aria-label': ariaLabel,
   size = 8,
   colorVar,
+  wrap,
 }: StatusDotProps) {
   const dot = (
     <span
@@ -77,7 +83,7 @@ export function StatusDot({
       }}
     >
       {dot}
-      <Text variant="body-medium" truncate style={{ minWidth: 0 }}>
+      <Text variant="body-medium" truncate={!wrap} style={{ minWidth: 0 }}>
         {label}
       </Text>
     </span>

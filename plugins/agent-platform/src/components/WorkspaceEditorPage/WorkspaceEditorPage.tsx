@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
@@ -17,12 +17,15 @@ import { makeStyles } from '@material-ui/core';
 import {
   EmptyStateCard,
   fieldErrorProps,
+  SimpleAccordion,
   useFieldValidation,
+  type FieldBlurProps,
   useProvidePageHeaderActions,
   useSimpleAccordionStyles,
   useWizardFrameRail,
   WizardFrame,
 } from '@giantswarm/backstage-plugin-ui-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Provider sign-in uses the muster frontend API.
 import { useServerSignIn } from '@giantswarm/backstage-plugin-muster';
 
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
@@ -299,16 +302,24 @@ function WorkspaceEditor({
   // the person typed, or none filled in at all, on the technical name.
   const technicalOnNameField =
     !isEdit && !nameEdited && Boolean(draft?.name.trim());
+  const displayNameProblem =
+    problems.displayName ?? (technicalOnNameField ? problems.name : undefined);
   const validation = useFieldValidation();
-  // A field the person left shows its problem at once; the rest on save.
-  const [touched, setTouched] = useState<ReadonlySet<string>>(new Set());
-  const touch = useCallback(
-    (field: string) =>
-      setTouched(previous =>
-        previous.has(field) ? previous : new Set(previous).add(field),
+  const blurProps = useCallback(
+    (field: string, worded?: string) =>
+      validation.blurProps(
+        field,
+        worded ??
+          (field === 'displayName' ? displayNameProblem : problems[field]),
       ),
-    [],
+    [validation, problems, displayNameProblem],
   );
+  // Read, none to pick from, and a source that names none: it cannot be saved.
+  const providersMissing =
+    (Boolean(providersQuery.data) || Boolean(providersQuery.error)) &&
+    providers.length === 0 &&
+    Boolean(draft?.sources.some(source => !source.provider));
+  const providersAlert = useRef<HTMLDivElement>(null);
   // The name is checked once typing pauses too, and whether it is free.
   const typedName = draft?.name.trim() ?? '';
   const pausedName = useDebouncedValue(typedName, NAME_CHECK_DEBOUNCE_MS);
@@ -330,20 +341,52 @@ function WorkspaceEditor({
           return problems.name;
         }
       }
-      return touched.has(field)
-        ? problems[field]
-        : validation.errorFor(field, problems[field]);
+      return validation.errorFor(
+        field,
+        field === 'displayName' ? displayNameProblem : problems[field],
+      );
     },
     [
       problem,
       problems,
       validation,
-      touched,
       nameAvailability.state,
       typedName,
       pausedName,
       installation,
+      displayNameProblem,
     ],
+  );
+
+  // Opens what hides a field with a problem, so its error and the focus can
+  // reach it: Advanced options, and in the edit flow the first source at
+  // fault while the open one has none.
+  const unfold = useCallback(
+    (fields: string[]) => {
+      if (
+        fields.includes('sizing.minimum') ||
+        (!technicalOnNameField && fields.includes('name'))
+      ) {
+        setAdvancedOpen(true);
+      }
+      if (!draft) {
+        return;
+      }
+      const faulty = draft.sources.filter((_, index) =>
+        fields.some(
+          field =>
+            field === `sources.${index}` ||
+            field.startsWith(`sources.${index}.`),
+        ),
+      );
+      if (
+        faulty.length > 0 &&
+        !faulty.some(source => source.key === expandedKey)
+      ) {
+        setExpanded(faulty[0].key);
+      }
+    },
+    [draft, expandedKey, technicalOnNameField],
   );
 
   const save = useSaveWorkspace(client);
@@ -355,13 +398,14 @@ function WorkspaceEditor({
       Object.keys(problems).length > 0 ||
       nameAvailability.state === 'taken'
     ) {
-      // The technical name's problem shows inside Advanced options: open it,
-      // so the field saying what is wrong is in sight.
-      if (
-        !technicalOnNameField &&
-        (problems.name || nameAvailability.state === 'taken')
-      ) {
-        setAdvancedOpen(true);
+      unfold([
+        ...Object.keys(problems),
+        ...(nameAvailability.state === 'taken' ? ['name'] : []),
+      ]);
+      // The provider field is not on screen: the warning takes the focus,
+      // and `reveal()` moves it on to the first invalid field, if any.
+      if (providersMissing) {
+        providersAlert.current?.focus();
       }
       validation.reveal();
       return;
@@ -380,20 +424,23 @@ function WorkspaceEditor({
       });
       navigate(closeHref);
     } catch (cause) {
-      const refused = saveProblem(
+      const refusal = saveProblem(
         classifyWorkspaceManagerError(cause),
         organization,
       );
-      if (refused.field === 'name' && !technicalOnNameField) {
-        setAdvancedOpen(true);
+      setProblem(refusal);
+      if (refusal.field) {
+        // The refused field takes the focus, so its message is read out.
+        unfold([refusal.field]);
+        validation.reveal();
       }
-      setProblem(refused);
     }
   }, [
     draft,
-    technicalOnNameField,
     problems,
     nameAvailability.state,
+    unfold,
+    providersMissing,
     validation,
     save,
     organization,
@@ -493,7 +540,7 @@ function WorkspaceEditor({
         draft={draft}
         problem={problem}
         errorFor={errorFor}
-        touch={touch}
+        blurProps={blurProps}
         displayName={displayName}
         technicalOnNameField={technicalOnNameField}
         technicalNameValid={
@@ -543,7 +590,8 @@ function WorkspaceEditor({
                       : undefined
                   }
                   errorFor={errorFor}
-                  touch={touch}
+                  blurProps={blurProps}
+                  showsPicksFirst={isEdit}
                   onExpand={
                     isEdit && source.key !== expandedKey
                       ? () => setExpanded(source.key)
@@ -555,6 +603,8 @@ function WorkspaceEditor({
             : null
         }
         providersError={providersQuery.error}
+        providersMissing={providersMissing}
+        providersAlert={providersAlert}
         previewPanel={previewPanel}
         diskLine={diskLine({
           isEdit,
@@ -624,8 +674,11 @@ type EditorBodyProps = {
   draft: WorkspaceDraft | undefined;
   problem: SaveProblem | undefined;
   errorFor: (field: string) => string | undefined;
-  /** Marks a field the person left, so its problem shows at once. */
-  touch: (field: string) => void;
+  /**
+   * Spread on a field so leaving it checks it; `problem` replaces the form's
+   * own problem for the field.
+   */
+  blurProps: (field: string, problem?: string) => FieldBlurProps;
   /** Creating: the name as typed, which the technical name comes from. */
   displayName: string;
   /** Whether the technical name's problem shows on the name field. */
@@ -643,6 +696,9 @@ type EditorBodyProps = {
   onAddSource: () => void;
   sourceEditors: React.ReactNode;
   providersError: unknown;
+  /** No provider can be picked and a source names none, so it cannot be saved. */
+  providersMissing: boolean;
+  providersAlert: React.RefObject<HTMLDivElement>;
   previewPanel: React.ReactNode;
   diskLine: string;
 };
@@ -658,7 +714,7 @@ function EditorBody({
   draft,
   problem,
   errorFor,
-  touch,
+  blurProps,
   displayName,
   technicalOnNameField,
   technicalNameValid,
@@ -673,6 +729,8 @@ function EditorBody({
   onAddSource,
   sourceEditors,
   providersError,
+  providersMissing,
+  providersAlert,
   previewPanel,
   diskLine: disk,
 }: EditorBodyProps) {
@@ -705,6 +763,8 @@ function EditorBody({
   }
 
   const nameError = errorFor('name');
+  const nameBlur = blurProps('name');
+  const displayNameBlur = blurProps('displayName');
   const technicalName = draft.name.trim();
   return (
     <Flex direction="column" gap="4">
@@ -718,16 +778,60 @@ function EditorBody({
 
       {problem && !problem.field && (
         <Alert
+          role="alert"
           status="danger"
           title="The workspace was not saved"
           description={problem.message}
         />
       )}
-      {Boolean(providersError) && (
+      {providersMissing && (
+        <div ref={providersAlert} tabIndex={-1}>
+          <Alert
+            status="warning"
+            title={
+              providersError
+                ? 'Could not read the providers'
+                : 'No provider to pick from'
+            }
+            description={
+              <Flex direction="column" gap="1">
+                <Text variant="body-medium">
+                  {providersError
+                    ? 'A source needs a provider, so the workspace cannot be saved until the providers can be read. Try again later, or ask your platform team.'
+                    : `A source needs a provider, and none is configured on ${installation}. Ask your platform team to add one.`}
+                </Text>
+                {Boolean(providersError) && (
+                  <SimpleAccordion title="Technical details" headingLevel={2}>
+                    <Text
+                      variant="body-small"
+                      style={{ overflowWrap: 'anywhere' }}
+                    >
+                      {classifyWorkspaceManagerError(providersError).message}
+                    </Text>
+                  </SimpleAccordion>
+                )}
+              </Flex>
+            }
+          />
+        </div>
+      )}
+      {Boolean(providersError) && !providersMissing && (
         <Alert
           status="warning"
           title="Could not read the providers"
-          description={classifyWorkspaceManagerError(providersError).message}
+          description={
+            <Flex direction="column" gap="1">
+              <Text variant="body-medium">
+                The existing sources can still be saved. Try again later to read
+                the available providers, or ask your platform team.
+              </Text>
+              <SimpleAccordion title="Technical details" headingLevel={2}>
+                <Text variant="body-small" style={{ overflowWrap: 'anywhere' }}>
+                  {classifyWorkspaceManagerError(providersError).message}
+                </Text>
+              </SimpleAccordion>
+            </Flex>
+          }
         />
       )}
 
@@ -738,10 +842,10 @@ function EditorBody({
             isRequired
             value={displayName}
             onChange={onNameChange}
-            onBlur={() => {
-              touch('displayName');
+            onFocus={displayNameBlur.onFocus}
+            onBlur={event => {
+              displayNameBlur.onBlur(event);
               if (technicalOnNameField) {
-                touch('name');
                 onNameBlur();
               }
             }}
@@ -801,8 +905,9 @@ function EditorBody({
                   isRequired
                   value={draft.name}
                   onChange={onTechnicalNameChange}
-                  onBlur={() => {
-                    touch('name');
+                  onFocus={nameBlur.onFocus}
+                  onBlur={event => {
+                    nameBlur.onBlur(event);
                     onNameBlur();
                   }}
                   placeholder="platform-repositories"
@@ -830,7 +935,7 @@ function EditorBody({
                     description="The disk never gets smaller than this many GiB. 0 means automatic sizing only. Raise it if agents need a lot of room, for example for large builds."
                     value={draft.minimumGiB}
                     onChange={value => update({ ...draft, minimumGiB: value })}
-                    onBlur={() => touch('sizing.minimum')}
+                    {...blurProps('sizing.minimum')}
                     {...fieldErrorProps(errorFor('sizing.minimum'))}
                   />
                 </div>

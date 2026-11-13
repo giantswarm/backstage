@@ -429,9 +429,13 @@ describe('SessionTimeline', () => {
       // read, this session rendered as two user messages with nothing under them.
       await render(tasksFailed, 'gpt6');
 
-      expect(screen.getAllByText('This turn failed')).toHaveLength(2);
       expect(
-        screen.getAllByText(/does not exist or you do not have access to it/),
+        screen.getAllByText('Could not get an answer from the model'),
+      ).toHaveLength(2);
+      expect(
+        screen.getAllByText(
+          /Try again, or ask your platform team for help if this continues/,
+        ),
       ).toHaveLength(2);
       expect(screen.getAllByText('gpt6').length).toBeGreaterThan(0);
     });
@@ -445,7 +449,9 @@ describe('SessionTimeline', () => {
         screen.queryByTestId('timeline-work-summary'),
       ).not.toBeInTheDocument();
       expect(
-        screen.queryByRole('button', { name: /This turn failed/ }),
+        screen.queryByRole('button', {
+          name: /Could not get an answer from the model/,
+        }),
       ).not.toBeInTheDocument();
     });
   });
@@ -1092,13 +1098,111 @@ describe('SessionTimeline — a turn the runtime failed', () => {
 
   it('leaves the agent’s own failure worded as before', async () => {
     await renderInTestApp(
-      <SessionTimeline timeline={timelineFor(tasksFailed)} agentName="gpt6" />,
+      <TimelineEntry
+        item={{
+          kind: 'turn-failed',
+          id: '0:ended:1',
+          taskIndex: 0,
+          state: 'failed',
+          reason: 'Harness runtime execution failed',
+        }}
+      />,
     );
 
-    expect(screen.getAllByText('This turn failed')).toHaveLength(2);
-    for (const entry of screen.getAllByTestId('timeline-turn-failed')) {
-      expect(entry).not.toHaveAttribute('data-runtime-lost');
-    }
+    expect(screen.getByText('This turn failed')).toBeInTheDocument();
+    expect(
+      screen.getByText('Harness runtime execution failed'),
+    ).toBeInTheDocument();
+    const entry = screen.getByTestId('timeline-turn-failed');
+    expect(entry).not.toHaveAttribute('data-runtime-lost');
+    expect(entry).not.toHaveAttribute('data-model-unavailable');
+  });
+});
+
+describe('SessionTimeline — a turn the model provider failed', () => {
+  const INVALID_KEY =
+    'llm error response (code STREAM_ERROR): "POST \\"http://agentgateway.agent-platform.svc:8081/v1/messages\\": 401 Unauthorized (Request-ID: req_011CgszuDCqiu7fWDhLTw29G) {\\"type\\":\\"error\\",\\"error\\":{\\"type\\":\\"authentication_error\\",\\"message\\":\\"invalid x-api-key\\"},\\"request_id\\":\\"req_011CgszuDCqiu7fWDhLTw29G\\"}"';
+
+  function providerFailedTurn(reason: string): TimelineItem {
+    return {
+      kind: 'turn-failed',
+      id: '0:ended:1',
+      taskIndex: 0,
+      state: 'failed',
+      reason,
+    };
+  }
+
+  it('says the provider refused the credentials, in the portal’s words', async () => {
+    await renderInTestApp(
+      <TimelineEntry item={providerFailedTurn(INVALID_KEY)} />,
+    );
+
+    expect(
+      screen.getByText('Could not get an answer from the model'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The agent could not access its model. Ask your platform team to check the model’s credentials and permissions.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('This turn failed')).not.toBeInTheDocument();
+    expect(screen.getByTestId('timeline-turn-failed')).toHaveAttribute(
+      'data-model-unavailable',
+      'true',
+    );
+  });
+
+  it('keeps kagent’s words folded under Technical details', async () => {
+    await renderInTestApp(
+      <TimelineEntry item={providerFailedTurn(INVALID_KEY)} />,
+    );
+
+    expect(screen.queryByText(/agentgateway\.agent-platform/)).toBeNull();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Technical details' }),
+    );
+
+    expect(screen.getByText(INVALID_KEY)).toBeVisible();
+  });
+
+  it('opens and closes technical details from the keyboard without losing focus', async () => {
+    const user = userEvent.setup();
+    await renderInTestApp(
+      <TimelineEntry item={providerFailedTurn(INVALID_KEY)} />,
+    );
+    const details = screen.getByRole('button', { name: 'Technical details' });
+    await user.tab();
+    expect(details).toHaveFocus();
+    expect(screen.queryByText(INVALID_KEY)).not.toBeInTheDocument();
+    await user.keyboard('{Enter}');
+    expect(details).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText(INVALID_KEY)).toBeVisible();
+    expect(details).toHaveFocus();
+    await user.keyboard(' ');
+    expect(details).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText(INVALID_KEY)).not.toBeInTheDocument();
+    expect(details).toHaveFocus();
+  });
+
+  it('says the provider could not answer when it did not refuse the credentials', async () => {
+    await renderInTestApp(
+      <TimelineEntry
+        item={providerFailedTurn(
+          'llm error response (code STREAM_ERROR): "anthropic API error: 529 overloaded"',
+        )}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        /^Try again, or ask your platform team for help if this continues\./,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/check the model’s credentials and permissions/),
+    ).toBeNull();
   });
 });
 

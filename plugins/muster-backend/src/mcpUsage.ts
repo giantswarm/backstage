@@ -76,15 +76,14 @@ export interface McpUsageResponse {
   servers: McpUsageServerRow[];
 }
 
-/** Usage answers with a secondary rollup left empty because its query failed. */
-const partialAnswers = new WeakSet<McpUsageResponse>();
-
 /**
- * Whether a secondary rollup of `usage` degraded to empty: a later read may
- * fill it, so the answer is not one to reuse.
+ * A usage answer, and whether every rollup in it was read: `complete` is
+ * false when a secondary rollup degraded to empty because its query failed,
+ * which a later read may fill, so the answer is not one to reuse.
  */
-export function isPartialUsage(usage: McpUsageResponse): boolean {
-  return partialAnswers.has(usage);
+export interface McpUsageRead {
+  usage: McpUsageResponse;
+  complete: boolean;
 }
 
 export interface McpToolLatencyResponse {
@@ -527,7 +526,7 @@ function queryFailure(promServer: string, error: unknown): string {
 
 /**
  * p95 latency per tool over the last `hours` on one installation, narrowed to
- * `servers` as {@link getMcpUsage} is. Read apart from it because
+ * `servers` as {@link readMcpUsage} is. Read apart from it because
  * `sum by (tool, le)` is the largest and slowest of the usage queries, so the
  * figures do not wait for it.
  */
@@ -591,14 +590,14 @@ export async function getMcpToolLatency(
  * either way: it says where muster's records start, and a quiet connector's
  * first call is not that.
  */
-export async function getMcpUsage(
+export async function readMcpUsage(
   client: MusterMcpClient,
   installation: MusterInstallationConfig,
   callOptions: { authToken?: string },
   hours: number,
   servers: readonly string[] = [],
   onlyTool?: string,
-): Promise<McpUsageResponse> {
+): Promise<McpUsageRead> {
   const queries = await openUsageQueries(
     client,
     installation,
@@ -606,7 +605,10 @@ export async function getMcpUsage(
     hours,
   );
   if ('reason' in queries) {
-    return unavailable(queries.rangeHours, queries.reason);
+    return {
+      usage: unavailable(queries.rangeHours, queries.reason),
+      complete: true,
+    };
   }
   const {
     promServer,
@@ -749,7 +751,10 @@ export async function getMcpUsage(
         : none,
     ]);
   } catch (error) {
-    return unavailable(rangeHours, queryFailure(promServer, error));
+    return {
+      usage: unavailable(rangeHours, queryFailure(promServer, error)),
+      complete: true,
+    };
   }
 
   const recordedBeforeWindow = beforeWindow?.some(
@@ -906,8 +911,5 @@ export async function getMcpUsage(
     top_tools: filtered ? tools : tools.slice(0, TOP_TOOLS_LIMIT),
     servers: [...serverRows.values()].sort((a, b) => b.calls - a.calls),
   };
-  if (partial) {
-    partialAnswers.add(usage);
-  }
-  return usage;
+  return { usage, complete: !partial };
 }

@@ -7,6 +7,7 @@ import {
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   PageHeaderActionsProvider,
   type TagSourceProps,
@@ -44,9 +45,13 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
 // model markers pick what the real ones would preselect on a portal with one
 // installation whose default model is `mockPreselectedModel`.
 let mockPreselectedModel: string | undefined;
+let mockListedModels: ModelConfig[] = [];
 jest.mock('../ModelConfigsProvider', () => ({
   ModelConfigsProvider: ({ children }: { children: ReactNode }) => children,
-  useModelConfigs: () => ({ isLoading: false, modelConfigsFor: () => [] }),
+  useModelConfigs: () => ({
+    isLoading: false,
+    modelConfigsFor: () => mockListedModels,
+  }),
 }));
 // Where each field's hook says its field goes, and whether the environment
 // one picks an installation (a default, or the sole one).
@@ -225,12 +230,57 @@ beforeEach(() => {
   formTags = [];
   mockNavigate.mockReset();
   mockPreselectedModel = 'Claude Sonnet';
+  mockListedModels = [];
   mockHarnessChoices = [];
   mockPlatformChoice = undefined;
   // A single-installation portal: the sole one picked, the field nowhere.
   mockEnvironment = 'none';
   mockPicksInstallation = true;
   mockOwner = 'choice';
+});
+
+describe('NewAgentPage model label', () => {
+  it.each([
+    { displayName: undefined, expected: 'claude-sonnet-4-6' },
+    { displayName: 'Fast and cheap', expected: 'Fast and cheap' },
+  ])(
+    'uses current model metadata for $expected over a cached label',
+    async ({ displayName, expected }) => {
+      mockPreselectedModel = 'Cached model name';
+      const { rerender } = await renderPageWithRerender();
+      expect(
+        await screen.findByText(
+          'Runs on Cached model name · change under More options',
+        ),
+      ).toBeInTheDocument();
+
+      mockListedModels = [
+        new ModelConfig(
+          {
+            apiVersion: 'api.kagent.dev/v1alpha3',
+            kind: 'ModelConfig',
+            metadata: {
+              name: 'anthropic-main',
+              namespace: 'kagent',
+              annotations: displayName
+                ? { 'ui.giantswarm.io/display-name': displayName }
+                : undefined,
+            },
+            spec: { provider: 'Anthropic', model: 'claude-sonnet-4-6' },
+          },
+          'gazelle',
+        ),
+      ];
+      rerender();
+
+      expect(
+        screen.getByText(`Runs on ${expected} · change under More options`),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: `Model details for ${expected}` }),
+      ).toBeInTheDocument();
+    },
+  );
 });
 
 describe('NewAgentPage tags', () => {
