@@ -1642,9 +1642,7 @@ describe('NewAgentToolsPage', () => {
         within(toolsetCard()).getByText('muster is unreachable'),
       ).toBeInTheDocument();
       scenario.resolutionFails = undefined;
-      await user.click(
-        screen.getByRole('button', { name: /^Check again$/ }),
-      );
+      await user.click(screen.getByRole('button', { name: /^Check again$/ }));
       await waitFor(() =>
         expect(screen.queryAllByText('muster is unreachable')).toHaveLength(0),
       );
