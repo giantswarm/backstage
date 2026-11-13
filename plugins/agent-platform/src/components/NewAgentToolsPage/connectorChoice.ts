@@ -16,6 +16,8 @@ import {
   type CatalogueGroup,
   EXCLUSIVE_PRESETS,
   MAX_INLINE_SELECTORS,
+  MAX_INLINE_BYTES,
+  toolsetByteLength,
   parseSelector,
   presetNameOf,
   PRESET_FULL,
@@ -109,8 +111,15 @@ export function readOnlySelectors(bucket: ServerBucket): string[] {
 }
 
 /** Whether read-only access to a connector fits inline at all. */
-export function readOnlyFits(bucket: ServerBucket): boolean {
-  return readOnlySelectors(bucket).length <= MAX_INLINE_SELECTORS;
+export function readOnlyFits(
+  bucket: ServerBucket,
+  maxSelectors = MAX_INLINE_SELECTORS,
+): boolean {
+  const selectors = readOnlySelectors(bucket);
+  return (
+    selectors.length <= maxSelectors &&
+    toolsetByteLength(selectors) <= MAX_INLINE_BYTES
+  );
 }
 
 export type ConnectorStatus = {
@@ -630,6 +639,7 @@ function contributorName(group: RailGroup): string {
 export function inlineCapProblem(
   toolset: readonly string[],
   groups: readonly CatalogueGroup[],
+  maxSelectors = MAX_INLINE_SELECTORS,
 ): string {
   const contributors = railGroups(toolset, groups)
     .filter(group => group.key !== PRESETS_KEY)
@@ -641,7 +651,7 @@ export function inlineCapProblem(
     .filter(entry => entry.count > 1)
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
     .slice(0, CAP_CONTRIBUTORS);
-  const need = `This toolset needs ${toolset.length} selectors but may list at most ${MAX_INLINE_SELECTORS}`;
+  const need = `This toolset needs ${toolset.length} selectors but may list at most ${maxSelectors}`;
   if (contributors.length === 0) {
     return `${need}, so choose fewer connectors or tools.`;
   }

@@ -79,9 +79,12 @@ describe('a connector’s choice', () => {
     expect(readOnlyFits(JIRA)).toBe(true);
     const huge = bucket(
       'huge',
-      Array.from({ length: 40 }, (_, i) => reads(`x_huge_${i}`)),
+      Array.from({ length: 129 }, (_, i) => reads(`x_huge_${i}`)),
     );
     expect(readOnlyFits(huge)).toBe(false);
+    expect(readOnlyFits(bucket('long', [reads(`x_${'é'.repeat(4094)}`)]))).toBe(
+      false,
+    );
   });
 
   it('reads all, read-only, partial and none honestly', () => {
@@ -415,7 +418,7 @@ describe('a compact toolset (B1)', () => {
         wide,
       ),
     ).toBe(
-      'This toolset needs 36 selectors but may list at most 32; most come from jira (20), github (12) and workflows (2), so choose All or fewer tools there.',
+      'This toolset needs 36 selectors but may list at most 128; most come from jira (20), github (12) and workflows (2), so choose All or fewer tools there.',
     );
     // Selectors naming nothing listed are named as such.
     expect(
@@ -424,7 +427,7 @@ describe('a compact toolset (B1)', () => {
         wide,
       ),
     ).toBe(
-      'This toolset needs 33 selectors but may list at most 32; most come from other selectors (33), so choose All or fewer tools there.',
+      'This toolset needs 33 selectors but may list at most 128; most come from other selectors (33), so choose All or fewer tools there.',
     );
     // One selector per connector: nothing stands out.
     const singles: CatalogueGroup[] = [
@@ -441,7 +444,7 @@ describe('a compact toolset (B1)', () => {
         singles,
       ),
     ).toBe(
-      'This toolset needs 33 selectors but may list at most 32, so choose fewer connectors or tools.',
+      'This toolset needs 33 selectors but may list at most 128, so choose fewer connectors or tools.',
     );
   });
 });
@@ -537,7 +540,7 @@ describe('a whole connector beside its single tools', () => {
         wide,
       ),
     ).toBe(
-      'This toolset needs 36 selectors but may list at most 32; most come from kagent (21) and jira (15), so choose All or fewer tools there, and remove single tools listed beside All, which covers them.',
+      'This toolset needs 36 selectors but may list at most 128; most come from kagent (21) and jira (15), so choose All or fewer tools there, and remove single tools listed beside All, which covers them.',
     );
     expect(
       inlineCapProblem(
@@ -550,7 +553,7 @@ describe('a whole connector beside its single tools', () => {
         wide,
       ),
     ).toBe(
-      'This toolset needs 37 selectors but may list at most 32; most come from kagent (21) and jira (16), where All already covers the single tools listed beside it, so remove those.',
+      'This toolset needs 37 selectors but may list at most 128; most come from kagent (21) and jira (16), where All already covers the single tools listed beside it, so remove those.',
     );
   });
 });

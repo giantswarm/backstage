@@ -89,6 +89,34 @@ describe('ConnectorGrid', () => {
     expect(all.querySelector('svg')).not.toBeNull();
   });
 
+  it('explains the byte limit when a small read-only selection is too large', () => {
+    render(
+      <ConnectorGrid
+        connectors={[
+          {
+            ...bucket('long'),
+            state: 'Connected',
+            tools: [
+              {
+                name: `x_${'é'.repeat(4094)}`,
+                annotations: { readOnlyHint: true },
+              },
+            ],
+          },
+        ]}
+        selected={new Set()}
+        disabled={false}
+        onChoose={jest.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole('group', { name: 'Connector long' }),
+    ).toHaveTextContent(
+      'Its read-only tools exceed the 8192-byte toolset limit. Choose fewer tools or use a preset.',
+    );
+    expect(screen.getByRole('radio', { name: 'Read-only' })).toBeDisabled();
+  });
+
   it('explains that partial selection excludes tools added later', () => {
     const tools: ServerBucket['tools'] = ['read', 'write', 'delete'].map(
       name => ({

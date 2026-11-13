@@ -130,5 +130,15 @@ describe('signInToolOf', () => {
       ),
     ];
     expect(signIn(full)).toMatchObject({ status: 'no-room', toolset: full });
+
+    const connector = 'server:grafana-cloud';
+    const byteFull = [
+      connector,
+      `tool:${  'x'.repeat(8192 - connector.length - 6)}`,
+    ];
+    expect(signIn(byteFull)).toMatchObject({
+      status: 'no-room',
+      toolset: byteFull,
+    });
   });
 });
