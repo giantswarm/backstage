@@ -1906,26 +1906,53 @@ describe('CustomizeAgentsPanel sort', () => {
     expect(names()).toEqual(['Alpha', 'Charlie', 'Bravo']);
   });
 
-  it('shows one progress bar while Last used waits and more environments are read', async () => {
-    storeSort('lastUsed');
-    mockSessionsLoading = 'loading';
-    mockAgents = { ...mockAgents, isLoadingMore: true };
-    await renderRerenderablePanel();
+  it.each([
+    {
+      wait: 'the sessions’ first read',
+      waiting: () => {
+        mockSessionsLoading = 'loading';
+      },
+    },
+    {
+      wait: 'more sessions',
+      waiting: () => {
+        mockSessionsLoading = 'loadingMore';
+      },
+    },
+    {
+      wait: 'the session states',
+      waiting: () => {
+        // Sessions are in: their states are read next.
+        mockSessions = [sessionWith(older, '2026-10-02T10:00:00Z')];
+        mockStatesComplete = false;
+      },
+    },
+  ])(
+    'shows one progress bar while Last used waits for $wait and more environments are read',
+    async ({ waiting }) => {
+      storeSort('lastUsed');
+      waiting();
+      mockAgents = { ...mockAgents, isLoadingMore: true };
+      await renderRerenderablePanel();
 
-    expect(
-      await screen.findByRole('progressbar', { name: 'Reading your agents…' }),
-    ).toBeInTheDocument();
-    expect(screen.getAllByRole('progressbar')).toHaveLength(1);
+      expect(
+        await screen.findByRole('progressbar', {
+          name: 'Reading your agents…',
+        }),
+      ).toBeInTheDocument();
+      expect(screen.getAllByRole('progressbar')).toHaveLength(1);
 
-    // The first read is in: the list, and the thin bar over it.
-    mockSessionsLoading = 'none';
-    act(() => rerenderPanel());
-    expect(names()).toEqual(['Alpha', 'Bravo', 'Charlie']);
-    expect(
-      await screen.findByRole('progressbar', { name: 'Loading more agents' }),
-    ).toBeInTheDocument();
-    expect(screen.getAllByRole('progressbar')).toHaveLength(1);
-  });
+      // The first read is in: the list, and the thin bar over it.
+      mockSessionsLoading = 'none';
+      mockStatesComplete = true;
+      act(() => rerenderPanel());
+      expect(names()).toEqual(['Alpha', 'Bravo', 'Charlie']);
+      expect(
+        await screen.findByRole('progressbar', { name: 'Loading more agents' }),
+      ).toBeInTheDocument();
+      expect(screen.getAllByRole('progressbar')).toHaveLength(1);
+    },
+  );
 
   it('keeps a picked sort while sessions are read', async () => {
     localStorage.setItem(

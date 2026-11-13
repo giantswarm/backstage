@@ -986,6 +986,9 @@ function AgentsPanelContent({
   );
 
   let body;
+  // Whether `body` is the list: only a list gets the "loading more" bar over
+  // it, so no other indicator ever shares the panel with it.
+  let showsList = false;
   if (rows.length === 0 && unknownPin) {
     // A pin the portal does not know (a stale `?installation=` deep link): no
     // inventory to ask, and nothing else on the panel can say why it is empty.
@@ -1081,6 +1084,7 @@ function AgentsPanelContent({
   } else if (favorites.length === 0) {
     // No favorites in view: one list, no headings — the artboard's ungrouped
     // presentation.
+    showsList = true;
     body = (
       <AgentGroup
         key={pageKey}
@@ -1090,6 +1094,7 @@ function AgentsPanelContent({
       />
     );
   } else {
+    showsList = true;
     body = (
       <>
         <AgentGroup
@@ -1161,12 +1166,11 @@ function AgentsPanelContent({
       />
       <AgentsHelperBanner />
       {showCards && <LastUsedAgents states={sessionStates} />}
-      {rows.length > 0 ? (
+      {showsList ? (
         <Flex direction="column" gap="5" className={classes.listFrame}>
           {/* Rows are in, but more environments are still being read: a thin
-              bar rather than a skeleton. Not while Last used waits for its
-              first read, whose indicator stands for the whole panel. */}
-          {isLoadingMore && ordered && (
+              bar rather than a skeleton. */}
+          {isLoadingMore && (
             <div className={classes.loadingMore}>
               <Progress aria-label="Loading more agents" />
             </div>
