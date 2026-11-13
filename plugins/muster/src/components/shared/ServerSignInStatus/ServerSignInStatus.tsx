@@ -10,6 +10,27 @@ const useStyles = makeStyles((theme: Theme) => ({
     gap: theme.spacing(0.5),
     flex: 'none',
   },
+  // A status with room for less than its label: the words wrap, the hint
+  // stays beside them.
+  statusWrapping: {
+    flex: '0 1 auto',
+    minWidth: 0,
+  },
+  // Buttons whose label may wrap: centred in a button that grows to hold
+  // it. bui's content box is `height: 100%`, which an auto height voids.
+  actionsWrapping: {
+    display: 'flex',
+    minWidth: 0,
+    maxWidth: '100%',
+    '& .bui-Button': {
+      flexShrink: 1,
+      minWidth: 0,
+      height: 'auto',
+      minHeight: '2rem',
+      alignItems: 'center',
+      paddingBlock: theme.spacing(0.5),
+    },
+  },
 }));
 
 /**
@@ -23,18 +44,25 @@ export function StatusWithHint({
   subject,
   explanation,
   title,
+  wrap,
 }: StatusText & {
   /** What the hint calls the state's owner: its display name, where it has one. */
   subject: string;
   explanation?: string | readonly string[];
   /** A native tooltip on the dot and its words, apart from the hint's. */
   title?: string;
+  /** Wrap the words where they do not fit, rather than overflow. */
+  wrap?: boolean;
 }) {
   const classes = useStyles();
   return (
-    <span className={classes.status}>
-      <span title={title}>
-        <StatusDot tone={tone} label={label} />
+    <span
+      className={
+        wrap ? `${classes.status} ${classes.statusWrapping}` : classes.status
+      }
+    >
+      <span title={title} style={wrap ? { minWidth: 0 } : undefined}>
+        <StatusDot tone={tone} label={label} wrap={wrap} />
       </span>
       <StatusHint subject={subject} explanation={explanation} />
     </span>
@@ -45,10 +73,13 @@ export function StatusWithHint({
 export function SignInStatusText({
   serverName,
   signInStatus: { shown, details },
+  wrap,
 }: {
   /** What the hint calls the server: its display name, where it has one. */
   serverName: string;
   signInStatus: ServerSignInStatusState;
+  /** Wrap the words where they do not fit, rather than overflow. */
+  wrap?: boolean;
 }) {
   return (
     <StatusWithHint
@@ -56,6 +87,7 @@ export function SignInStatusText({
       label={shown.label}
       subject={serverName}
       explanation={details}
+      wrap={wrap}
     />
   );
 }
@@ -63,15 +95,27 @@ export function SignInStatusText({
 /** The bare sign-in buttons, or nothing where there is no sign-in. */
 export function SignInStatusActions({
   signInStatus: { parts, state },
+  wrap,
 }: {
   signInStatus: ServerSignInStatusState;
+  /**
+   * Let a label wider than the space it has ("Open sign-in page") wrap
+   * inside its button rather than be cut off or push its neighbours aside.
+   */
+  wrap?: boolean;
 }) {
+  const classes = useStyles();
   if (parts.kind !== 'sign-in') {
     return null;
   }
-  return parts.gate ? (
+  const buttons = parts.gate ? (
     <GatedSignIn reason={parts.gate} />
   ) : (
     <SignInFlow state={state} wait={parts.wait} prominent compact />
+  );
+  return wrap ? (
+    <span className={classes.actionsWrapping}>{buttons}</span>
+  ) : (
+    buttons
   );
 }

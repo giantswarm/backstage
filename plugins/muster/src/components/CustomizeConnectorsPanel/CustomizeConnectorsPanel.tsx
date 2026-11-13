@@ -1,5 +1,4 @@
 import { type ReactNode, useCallback, useMemo } from 'react';
-import { makeStyles, Theme } from '@material-ui/core';
 import { useQuery } from '@tanstack/react-query';
 import { useApi } from '@backstage/frontend-plugin-api';
 import {
@@ -208,7 +207,7 @@ function ConnectorStatusCell({
       return <Cell />;
     }
     const status = (
-      <StatusWithHint {...row.status} subject={row.entry.displayName} />
+      <StatusWithHint {...row.status} subject={row.entry.displayName} wrap />
     );
     // Pressing a plain state opens the connector, like the rest of the row;
     // a state with a hint keeps the press, as a sign-in's does.
@@ -243,26 +242,12 @@ function SignInStatusCell({
         <SignInStatusText
           serverName={row.entry.displayName}
           signInStatus={signInStatus}
+          wrap
         />
       </StopRowPress>
     </Cell>
   );
 }
-
-const useSignInCellStyles = makeStyles((theme: Theme) => ({
-  // A label wider than the column (a larger font, "Open sign-in page")
-  // wraps inside the button instead of being cut off.
-  cell: {
-    '& .bui-Button': {
-      flexShrink: 1,
-      minWidth: 0,
-      height: 'auto',
-      minHeight: '2rem',
-      paddingBlock: theme.spacing(0.5),
-      textAlign: 'start',
-    },
-  },
-}));
 
 /**
  * The sign-in's buttons, in a column of their own: they line up across rows,
@@ -289,14 +274,13 @@ function SignInActionsCell({
   row: SignInRow;
   installation: string;
 }) {
-  const classes = useSignInCellStyles();
   const signInStatus = useServerSignInStatus(
     signInStatusOptions(row, installation),
   );
   return (
-    <Cell className={classes.cell}>
+    <Cell>
       <StopRowPress>
-        <SignInStatusActions signInStatus={signInStatus} />
+        <SignInStatusActions signInStatus={signInStatus} wrap />
       </StopRowPress>
     </Cell>
   );
@@ -334,6 +318,14 @@ function StopRowPress({ children }: { children: ReactNode }) {
       onClick={stopRowPress}
       onKeyDown={stopRowPress}
       role="presentation"
+      // Centred in the cell like its text, and free to shrink so a label
+      // wraps inside it rather than past the cell's edge.
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        minWidth: 0,
+        maxWidth: '100%',
+      }}
     >
       {children}
     </span>
@@ -342,13 +334,15 @@ function StopRowPress({ children }: { children: ReactNode }) {
 
 type StackedRowProps = Omit<StackedRowItem, 'id'>;
 
+/** "Sign in" on one line; "Open sign-in page" on two. */
+const STACKED_ACTION_MAX_WIDTH = '7.5rem';
+
 /**
  * A stacked row whose connector muster asks this person to sign in to, from
- * one hook call, so the answer to a click on the button reaches the state:
- * the state and its hint on line 1; the Sign in button in the row's actions;
- * an outstanding sign-in's way back into the page ("Reopen sign-in page",
- * "Open sign-in page", which opens a new tab) on a line of its own under the description, since
- * at the end of line 1 it would squeeze the name to a few characters.
+ * one hook call: the state and its hint on line 1, and the sign-in's button
+ * in the row's actions at its end, in every state of the sign-in. A label
+ * longer than "Sign in" ("Open sign-in page", "Reopen sign-in page") wraps
+ * inside the button, so the name keeps its width and the button its place.
  */
 function SignInStackedRow({
   row,
@@ -361,14 +355,14 @@ function SignInStackedRow({
   const signInStatus = useServerSignInStatus(
     signInStatusOptions(row, installation),
   );
-  const { parts } = signInStatus;
   // Only a sign-in has buttons: an empty actions slot would still take its
   // gap at the end of line 1.
   const actions =
-    parts.kind === 'sign-in' ? (
-      <SignInStatusActions signInStatus={signInStatus} />
+    signInStatus.parts.kind === 'sign-in' ? (
+      <span style={{ display: 'flex', maxWidth: STACKED_ACTION_MAX_WIDTH }}>
+        <SignInStatusActions signInStatus={signInStatus} wrap />
+      </span>
     ) : null;
-  const waiting = parts.kind === 'sign-in' && parts.wait !== undefined;
   return (
     <StackedRow
       {...props}
@@ -378,8 +372,7 @@ function SignInStackedRow({
           signInStatus={signInStatus}
         />
       }
-      {...(actions && !waiting ? { actions } : {})}
-      {...(waiting && actions ? { details: actions } : {})}
+      {...(actions ? { actions } : {})}
     />
   );
 }
@@ -441,10 +434,9 @@ function ConnectorStackedRow({
  * row per connector instead:
  *
  * - line 1: the connector's logo, its name (the row's link), its
- *   state, and Sign in at the end as the row's action;
+ *   state, and the sign-in's button at the end as the row's action;
  * - line 2: its tags · how one signs in · its tools;
- * - under them, the description (two lines), and an outstanding sign-in's
- *   way back into the page.
+ * - under them, the description (two lines).
  *
  * Each row is a component of its own, as `StackedRowList`'s children, so a
  * row with a sign-in reads its state and its buttons from one hook call.
@@ -694,6 +686,9 @@ function ConnectorsTable({
       label: 'Status',
       isSortable: true,
       defaultWidth: '1.3fr',
+      // The longest word of a state ("Connected", "Deactivated") with its
+      // dot and hint; the state wraps between its words below its share.
+      minWidth: 136,
       cell: row => (
         <ConnectorStatusCell row={row} installation={installation} />
       ),
@@ -703,7 +698,7 @@ function ConnectorsTable({
       label: 'Actions',
       defaultWidth: '1.2fr',
       // "Sign in" on one line; a longer label wraps.
-      minWidth: 112,
+      minWidth: 96,
       // No room taken where no connector offers a sign-in.
       isHidden: !rows.some(row => row.signInButton),
       cell: row => (

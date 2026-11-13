@@ -1503,7 +1503,7 @@ describe('CustomizeConnectorsPanel', () => {
       ).toBeInTheDocument();
     });
 
-    it('gives an outstanding sign-in a line of its own, so the name keeps its width', async () => {
+    it("keeps an outstanding sign-in's button in the row's actions, where Sign in was", async () => {
       await renderPanel();
 
       await screen.findByText('Sign in needed');
@@ -1516,11 +1516,11 @@ describe('CustomizeConnectorsPanel', () => {
         name: 'Reopen sign-in page',
       });
       expect(within(github).getByText('Signing in…')).toBeInTheDocument();
-      // Under the description, not in the actions at the end of line 1.
+      // At the end of line 1, not under the description.
       expect(
         within(github).getByText('Repositories and pull requests')
           .parentElement,
-      ).toContainElement(reopen);
+      ).not.toContainElement(reopen);
     });
 
     it('keeps the table on a wide viewport', async () => {
