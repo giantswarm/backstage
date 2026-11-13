@@ -84,6 +84,7 @@ export {
 export {
   useInstallationScope,
   useInstallationScopeUrlSync,
+  AllInstallationsScope,
   applyInstallationScope,
   describeInstallationScopeOption,
   installationsSwitchedOffWithComponent,

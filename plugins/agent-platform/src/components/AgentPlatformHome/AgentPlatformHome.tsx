@@ -12,6 +12,7 @@ import {
 } from '@backstage/frontend-plugin-api';
 import { Alert, Box, Container, Flex, Text } from '@backstage/ui';
 import {
+  AllInstallationsScope,
   InventoryFailureGate,
   useInstallationInventory,
 } from '@giantswarm/backstage-plugin-gs';
@@ -362,7 +363,8 @@ function AgentPlatformHomeContent({
  *
  * Mounts the same providers as the Sessions tab, so the composer's agent
  * picker, avatars and model-serving warning behave as they do there and share
- * its query cache.
+ * its query cache. Like that tab, it reads every environment, whatever a
+ * Customize page pinned.
  */
 export function AgentPlatformHome({
   manageAgentsHref,
@@ -384,21 +386,23 @@ export function AgentPlatformHome({
           tabs ("Sessions · Agent Platform"), so arriving here from another
           page never keeps that page's title (live round 2, R5). */}
       <ShellDocumentTitle title="New session" />
-      <QueryClientProvider>
-        <OrganizationDirectoryProvider>
-          <ModelConfigsProvider>
-            <ServingProvider>
-              <AgentsDataProvider>
-                <SessionsDataProvider>
-                  <AgentPlatformHomeContent
-                    manageAgentsHref={manageAgentsHref}
-                  />
-                </SessionsDataProvider>
-              </AgentsDataProvider>
-            </ServingProvider>
-          </ModelConfigsProvider>
-        </OrganizationDirectoryProvider>
-      </QueryClientProvider>
+      <AllInstallationsScope>
+        <QueryClientProvider>
+          <OrganizationDirectoryProvider>
+            <ModelConfigsProvider>
+              <ServingProvider>
+                <AgentsDataProvider>
+                  <SessionsDataProvider>
+                    <AgentPlatformHomeContent
+                      manageAgentsHref={manageAgentsHref}
+                    />
+                  </SessionsDataProvider>
+                </AgentsDataProvider>
+              </ServingProvider>
+            </ModelConfigsProvider>
+          </OrganizationDirectoryProvider>
+        </QueryClientProvider>
+      </AllInstallationsScope>
     </AgentPlatformCookieAuth>
   );
 }

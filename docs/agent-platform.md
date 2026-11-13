@@ -1295,8 +1295,9 @@ templates; `agent-deployment` no longer exists in
 
 ## The installation scope
 
-Sessions, Agents, Models, Connectors, Workflows and Usage share **one
-installation scope**: `'all'` (the default) or one pinned installation. It is a
+The Customize tabs (Agents, Models, Connectors, Workflows and the rest) and
+Usage share **one installation scope**: `'all'` (the default) or one pinned
+installation. It is a
 module store in the `gs` plugin (`useInstallationScope`,
 `plugins/gs/src/apis/installationScope/`) read through `useSyncExternalStore`,
 not a React context, because the muster tabs are a different plugin with their
@@ -1332,6 +1333,14 @@ and from the muster backend's probe on Connectors and Workflows.
   scope and writes no default back.
 - **Naming.** Detail pages carry an `InstallationChip`; the new-session picker
   names installations once agents span more than one (`agentOptionLabel`).
+- **Views without a selector read every installation.** The shell rail's
+  recent sessions and the notification inbox (`AgentPlatformProviders`), the
+  Sessions page (`SessionsRouter`) and the start screen (`AgentPlatformHome`)
+  mount `AllInstallationsScope`: under it `useInstallationScope` answers
+  `'all'`, ignores `?installation=` and the stored pin, and `setScope` does
+  nothing. A pin made on a Customize page therefore never narrows them. The
+  Sessions page narrows by environment with its own Environment filter
+  instead (see [The Sessions tab](#the-sessions-tab)).
 
 The tabs share one react-query client, so the inventory is read once per page
 load.
@@ -1341,6 +1350,13 @@ load.
 `/sessions` lists the person's kagent sessions across the fleet
 (`SessionsTable`); a session starts on the shell's start screen (see "Starting
 a session"). Renaming and deleting are described below.
+
+The list reads every environment, whatever a Customize page pinned (see
+[The installation scope](#the-installation-scope)). Its filter bar
+(`sessionFacets`, `SessionsTable/filters.ts`) narrows it by State, Environment,
+Organization, Agent and Pinned; Environment is offered once the sessions come
+from more than one environment. Like the other filters it starts at all and is
+not stored or written to the URL.
 
 ### The first-run state
 

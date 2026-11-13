@@ -14,6 +14,7 @@ import {
 } from './installationScopeStore';
 import { selectPlatformInstallations } from './scopeSelection';
 import { useWriteScopeParam } from './useWriteScopeParam';
+import { useIsAllInstallationsScope } from './AllInstallationsScope';
 
 export type UseInstallationScopeResult = {
   /** `'all'`, or the name of the pinned installation. */
@@ -56,12 +57,18 @@ export type UseInstallationScopeResult = {
  * `useInstallationScopeUrlSync`, mounted once by the section's selector, keeps
  * the two sources in step.
  *
+ * Under an `AllInstallationsScope` the answer is always `'all'`: neither the
+ * URL nor the store is read or written there.
+ *
  * Runs under whichever react-query client is in context, for the inventory.
  */
 export function useInstallationScope(): UseInstallationScopeResult {
   const [searchParams] = useSearchParams();
   const writeScopeParam = useWriteScopeParam();
-  const urlScope = searchParams.get(INSTALLATION_SCOPE_SEARCH_PARAM);
+  const isAllScope = useIsAllInstallationsScope();
+  const urlScope = isAllScope
+    ? null
+    : searchParams.get(INSTALLATION_SCOPE_SEARCH_PARAM);
   const state = useSyncExternalStore(
     subscribeInstallationScope,
     getInstallationScopeSnapshot,
@@ -99,7 +106,7 @@ export function useInstallationScope(): UseInstallationScopeResult {
   //   to nothing, so every tab would read "knows no installation named …" and
   //   query nothing -- with no selector to get out on a single-installation
   //   portal. Falling back to "all" there means *the* installation.
-  const pendingRestore = state.restored && !isLoading;
+  const pendingRestore = !isAllScope && state.restored && !isLoading;
   const isStaleRestore = useCallback(
     (restored: InstallationScope) =>
       restored !== ALL_INSTALLATIONS &&
@@ -121,7 +128,8 @@ export function useInstallationScope(): UseInstallationScopeResult {
       isStaleRestore(live.scope) ? ALL_INSTALLATIONS : live.scope,
     );
   }, [pendingRestore, isStaleRestore]);
-  const storedScope = restoredStale ? ALL_INSTALLATIONS : state.scope;
+  const storedScope =
+    isAllScope || restoredStale ? ALL_INSTALLATIONS : state.scope;
   const pinned = urlScope ?? storedScope;
 
   // Masked here rather than left to the effect below, which lands a commit
@@ -146,10 +154,13 @@ export function useInstallationScope(): UseInstallationScopeResult {
   // would otherwise read as a deep link and adopt right back.
   const setScope = useCallback(
     (next: InstallationScope) => {
+      if (isAllScope) {
+        return;
+      }
       setInstallationScope(next);
       writeScopeParam(next);
     },
-    [writeScopeParam],
+    [isAllScope, writeScopeParam],
   );
 
   // Forget the pin for real -- store, localStorage and the URL alike -- so a

@@ -19,28 +19,45 @@ import {
 } from './helpers';
 import type { SessionRow } from '../SessionsDataProvider';
 
-jest.mock('@giantswarm/backstage-plugin-gs', () => ({
-  applyInstallationScope: (installations: string[]) => installations,
-  useInstallations: () => ({
-    installations: [{ name: 'gazelle' }],
-    isLoading: false,
-  }),
-  useInstallationInventory: () => ({
-    entries: [],
-    isLoading: false,
-    isProbing: false,
-    installationsWith: (component: string) =>
-      component === 'kagent' ? ['gazelle'] : [],
-    refresh: () => {},
-  }),
-  useInstallationScope: () => ({
-    scope: 'all',
-    setScope: () => {},
-    installations: [],
-    isSingleInstallation: false,
-    isLoading: false,
-  }),
-}));
+// The installations the portal knows and that run kagent, and the scope an
+// Environment selector elsewhere (a Customize page) has pinned. The scope
+// hook honours `AllInstallationsScope` as the real one does (gs pins that
+// contract), so the rail's providers must mount one to read past the pin.
+let mockInstallations = ['gazelle'];
+let mockPinnedScope = 'all';
+
+jest.mock('@giantswarm/backstage-plugin-gs', () => {
+  const { createContext, createElement, useContext } =
+    jest.requireActual<typeof import('react')>('react');
+  const AllScope = createContext(false);
+  return {
+    AllInstallationsScope: ({ children }: { children: ReactNode }) =>
+      createElement(AllScope.Provider, { value: true }, children),
+    applyInstallationScope: (installations: string[], scope: string) =>
+      scope === 'all'
+        ? installations
+        : installations.filter(installation => installation === scope),
+    useInstallations: () => ({
+      installations: mockInstallations.map(name => ({ name })),
+      isLoading: false,
+    }),
+    useInstallationInventory: () => ({
+      entries: [],
+      isLoading: false,
+      isProbing: false,
+      installationsWith: (component: string) =>
+        component === 'kagent' ? mockInstallations : [],
+      refresh: () => {},
+    }),
+    useInstallationScope: () => ({
+      scope: useContext(AllScope) ? 'all' : mockPinnedScope,
+      setScope: () => {},
+      installations: [],
+      isSingleInstallation: false,
+      isLoading: false,
+    }),
+  };
+});
 
 let mockQueryClient: QueryClient;
 
@@ -141,12 +158,16 @@ async function storageWithPins(sessionIds: string[]) {
 }
 
 beforeEach(() => {
+  mockInstallations = ['gazelle'];
+  mockPinnedScope = 'all';
   mockQueryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   listSessions.mockReset();
   listSessionStates.mockReset();
-  listInstallations.mockClear();
+  listInstallations
+    .mockReset()
+    .mockResolvedValue([{ name: 'gazelle', reachable: true }]);
   listSessions.mockResolvedValue([
     session('old', '2026-07-20T10:00:00Z', 'Oldest'),
     session('new', '2026-07-23T10:00:00Z', 'Newest'),
@@ -164,6 +185,39 @@ beforeEach(() => {
 });
 
 describe('RecentSessions', () => {
+  it('lists the sessions of every environment while a Customize page has one pinned', async () => {
+    mockInstallations = ['gazelle', 'wombat'];
+    mockPinnedScope = 'wombat';
+    listInstallations.mockResolvedValue([
+      { name: 'gazelle', reachable: true },
+      { name: 'wombat', reachable: true },
+    ]);
+    listSessions.mockImplementation(async (installation: string) =>
+      installation === 'gazelle'
+        ? [session('new', '2026-07-23T10:00:00Z', 'Newest')]
+        : [
+            {
+              ...session('mid', '2026-07-22T10:00:00Z', 'Middle'),
+              id: 'wombat/mid',
+              installation: 'wombat',
+            },
+          ],
+    );
+
+    await renderRecent();
+
+    const list = await screen.findByRole('list', { name: 'Recent' });
+    await waitFor(() =>
+      expect(
+        within(list)
+          .getAllByRole('link')
+          .map(link => link.getAttribute('href')),
+      ).toEqual(['/sessions/gazelle/new', '/sessions/wombat/mid']),
+    );
+    expect(listSessions).toHaveBeenCalledWith('gazelle');
+    expect(listSessions).toHaveBeenCalledWith('wombat');
+  });
+
   it('lists the most recently started sessions, newest first, linked to their detail page', async () => {
     await renderRecent();
 

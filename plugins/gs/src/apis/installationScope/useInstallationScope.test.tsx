@@ -16,6 +16,7 @@ import {
   INSTALLATION_SCOPE_STORAGE_KEY,
 } from './installationScopeStore';
 import { useInstallationScope } from './useInstallationScope';
+import { AllInstallationsScope } from './AllInstallationsScope';
 
 // The inventory needs a react-query client and three Backstage APIs; here it
 // is whatever the test says. `mock`-prefixed, as jest requires in a factory.
@@ -71,9 +72,16 @@ function configure(names: string[]) {
 
 function renderScope(
   url: string | { pathname: string; state: unknown } = '/agent-platform/agents',
+  { allInstallations = false }: { allInstallations?: boolean } = {},
 ) {
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <MemoryRouter initialEntries={[url]}>{children}</MemoryRouter>
+    <MemoryRouter initialEntries={[url]}>
+      {allInstallations ? (
+        <AllInstallationsScope>{children}</AllInstallationsScope>
+      ) : (
+        children
+      )}
+    </MemoryRouter>
   );
   return renderHook(
     () => {
@@ -426,6 +434,57 @@ describe('useInstallationScope', () => {
       expect(
         result.current.scope.installations.map(e => e.installation),
       ).toEqual(['golem']);
+    });
+  });
+
+  describe('under AllInstallationsScope', () => {
+    it('reads all installations while another view has one pinned', () => {
+      configure(['golem', 'wombat', 'snail']);
+      const customize = renderScope('/customize/agents');
+      act(() => customize.result.current.scope.setScope('wombat'));
+
+      const sessions = renderScope('/sessions', { allInstallations: true });
+
+      expect(customize.result.current.scope.scope).toBe('wombat');
+      expect(sessions.result.current.scope.scope).toBe(ALL_INSTALLATIONS);
+    });
+
+    it('reads all installations over a stored pin and leaves it stored', () => {
+      window.localStorage.setItem(INSTALLATION_SCOPE_STORAGE_KEY, 'wombat');
+      configure(['golem', 'wombat', 'snail']);
+
+      const { result } = renderScope('/sessions', { allInstallations: true });
+
+      expect(result.current.scope.scope).toBe(ALL_INSTALLATIONS);
+      expect(window.localStorage.getItem(INSTALLATION_SCOPE_STORAGE_KEY)).toBe(
+        'wombat',
+      );
+      expect(getInstallationScopeSnapshot().scope).toBe('wombat');
+    });
+
+    it('ignores ?installation= in the URL and leaves it there', () => {
+      configure(['golem', 'wombat', 'snail']);
+
+      const { result } = renderScope('/customize/agents?installation=wombat', {
+        allInstallations: true,
+      });
+
+      expect(result.current.scope.scope).toBe(ALL_INSTALLATIONS);
+      expect(result.current.search).toBe('?installation=wombat');
+    });
+
+    it('changes nothing through setScope', () => {
+      configure(['golem', 'wombat', 'snail']);
+      const { result } = renderScope('/sessions', { allInstallations: true });
+
+      act(() => result.current.scope.setScope('wombat'));
+
+      expect(result.current.scope.scope).toBe(ALL_INSTALLATIONS);
+      expect(result.current.search).toBe('');
+      expect(getInstallationScopeSnapshot().scope).toBe(ALL_INSTALLATIONS);
+      expect(
+        window.localStorage.getItem(INSTALLATION_SCOPE_STORAGE_KEY),
+      ).toBeNull();
     });
   });
 });
