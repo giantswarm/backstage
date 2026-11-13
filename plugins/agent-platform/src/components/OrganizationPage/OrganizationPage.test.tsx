@@ -379,11 +379,9 @@ describe('OrganizationPage', () => {
     });
   });
 
-  describe('changes on Pending erase and on Erasing', () => {
+  describe('changes on Pending erase', () => {
     const WHY =
       'Its delete is merged, so its members, models and credentials can no longer be changed.';
-    const WHY_ERASING =
-      'It is being erased, so its members, models and credentials can no longer be changed.';
     const ORGANIZATION = {
       name: 'payments',
       parent: 'org-acme',
@@ -472,35 +470,16 @@ describe('OrganizationPage', () => {
     });
 
     it.each([
-      ['Members', ''],
-      ['Models', '/models'],
-      ['Connectors', '/connectors'],
-    ])(
-      'turns every change on %s off while it is being erased',
-      async (_tab, path) => {
-        await renderPage(path, ERASING);
-
-        expect(await screen.findByText(WHY_ERASING)).toBeInTheDocument();
-        const controls = await writeControls[path]();
-        for (const control of controls) {
-          expect(control).toBeDisabled();
-        }
-        const buttons = controls.filter(
-          control => control.tagName === 'BUTTON',
-        );
-        for (const button of buttons) {
-          expect(button).toHaveAccessibleDescription(WHY_ERASING);
-        }
-      },
-    );
-
-    it.each([
       ['Members', '', 'in git', IN_GIT],
       ['Models', '/models', 'in git', IN_GIT],
       ['Connectors', '/connectors', 'in git', IN_GIT],
       ['Members', '', 'Missing from git', MISSING_FROM_GIT],
       ['Models', '/models', 'Missing from git', MISSING_FROM_GIT],
       ['Connectors', '/connectors', 'Missing from git', MISSING_FROM_GIT],
+      // Erasing is not Pending erase: the page offers what it offered before.
+      ['Members', '', 'Erasing', ERASING],
+      ['Models', '/models', 'Erasing', ERASING],
+      ['Connectors', '/connectors', 'Erasing', ERASING],
     ])(
       'offers every change on %s while it is %s',
       async (_tab, path, _state, scenario) => {
