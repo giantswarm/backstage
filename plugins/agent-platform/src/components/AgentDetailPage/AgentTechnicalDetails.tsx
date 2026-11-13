@@ -129,7 +129,7 @@ export function AgentTechnicalDetails({
   modelServing,
   failure,
   toolsHref,
-  releaseWithheld,
+  releaseDetailsUnavailable,
 }: {
   agent: Agent;
   installation: string;
@@ -137,13 +137,13 @@ export function AgentTechnicalDetails({
   modelServing: ClientServingSummary | undefined;
   failure: AgentFailure | undefined;
   toolsHref?: string;
-  releaseWithheld?: string;
+  releaseDetailsUnavailable?: boolean;
 }) {
   return (
     <Flex direction="column" gap="4">
       {/* A cheap pre-check only: whether the agent is *actually* applied from
           Git is the card's own decision — see AgentOverviewTab. */}
-      {!releaseWithheld && isGitOpsManaged(agent) && (
+      {!releaseDetailsUnavailable && isGitOpsManaged(agent) && (
         <GitOpsCard resource={agent} installationName={installation} />
       )}
       <ResourceFacts agent={agent} />
@@ -156,7 +156,7 @@ export function AgentTechnicalDetails({
         modelServing={modelServing}
         failure={failure}
         toolsHref={toolsHref}
-        releaseWithheld={releaseWithheld}
+        releaseDetailsUnavailable={releaseDetailsUnavailable}
       />
       <AgentStatusCard agent={agent} />
     </Flex>

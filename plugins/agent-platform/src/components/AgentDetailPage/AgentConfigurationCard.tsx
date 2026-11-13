@@ -314,7 +314,7 @@ export type AgentConfigurationCardProps = {
   failure?: AgentFailure;
   /** The Tools tab, which resolves the toolset this card summarises. */
   toolsHref?: string;
-  releaseWithheld?: string;
+  releaseDetailsUnavailable?: boolean;
 };
 
 /**
@@ -332,7 +332,7 @@ export function AgentConfigurationCard({
   modelServing,
   failure,
   toolsHref,
-  releaseWithheld,
+  releaseDetailsUnavailable,
 }: AgentConfigurationCardProps) {
   const namespace = agent.getNamespace();
   const egress = agent.getEgress();
@@ -377,11 +377,9 @@ export function AgentConfigurationCard({
         </Flex>
       ),
     }),
-    'Deployed by': releaseWithheld ? (
-      <Text variant="body-medium">{releaseWithheld}</Text>
-    ) : (
-      <DeployedByValue agent={agent} />
-    ),
+    ...(!releaseDetailsUnavailable && {
+      'Deployed by': <DeployedByValue agent={agent} />,
+    }),
   };
 
   return (

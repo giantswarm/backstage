@@ -25,7 +25,7 @@ import { lab } from './lab';
  */
 const rosterWait = 2 * 60_000;
 
-test('an agent explains withheld release details and keeps its readiness at desktop and phone widths', async ({
+test('an agent omits unavailable deployment details and keeps its readiness at desktop and phone widths', async ({
   admin,
 }) => {
   test.setTimeout(rosterWait + 60_000);
@@ -75,8 +75,7 @@ test('an agent explains withheld release details and keeps its readiness at desk
   if ((await details.getAttribute('aria-expanded')) !== 'true') {
     await details.click();
   }
-  await expect(admin.getByText(releaseWithheld, { exact: true })).toBeVisible();
-  expect(answered).toBeGreaterThan(0);
+  await expect.poll(() => answered).toBeGreaterThan(0);
 
   const readiness = admin
     .getByRole('main')
@@ -85,9 +84,12 @@ test('an agent explains withheld release details and keeps its readiness at desk
   for (const width of [1440, 375]) {
     await admin.setViewportSize({ width, height: 900 });
     await expect(readiness).toBeVisible();
-    await expect(
-      admin.getByText(releaseWithheld, { exact: true }),
-    ).toBeVisible();
+    await expect(admin.getByText(releaseWithheld, { exact: true })).toHaveCount(
+      0,
+    );
+    await expect(admin.getByText('Deployed by', { exact: true })).toHaveCount(
+      0,
+    );
     await expect(
       admin.getByText("Reconciling this agent's chart", { exact: true }),
     ).toHaveCount(0);

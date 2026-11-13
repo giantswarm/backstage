@@ -2371,7 +2371,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
   });
 
   describe('the frame', () => {
-    it('explains withheld release details without changing the Agent readiness', async () => {
+    it('omits unavailable deployment details without changing the Agent readiness', async () => {
       const releaseWithheld =
         'Reading the release details needs the agent-platform:editor role.';
       withAgentManager('unknown');
@@ -2382,21 +2382,23 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
       expectHeaderReadiness('Ready');
       await openTechnicalDetails();
 
-      expect(screen.getByText(releaseWithheld)).toBeInTheDocument();
+      expect(screen.queryByText(releaseWithheld)).toBeNull();
+      expect(screen.queryByText('Deployed by')).toBeNull();
       expect(screen.queryByText("Reconciling this agent's chart")).toBeNull();
       expect(screen.queryByText(/^HelmRelease /)).toBeNull();
     });
 
-    it('explains unknown management even when no reason is returned', async () => {
+    it('omits deployment details for unknown management without a permission notice', async () => {
       withAgentManager('unknown');
       stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
 
       await renderShell();
       await openTechnicalDetails();
 
+      expect(screen.queryByText('Deployed by')).toBeNull();
       expect(
-        screen.getByText('Release details are not available to your account.'),
-      ).toBeInTheDocument();
+        screen.queryByText(/Release details are not available/),
+      ).toBeNull();
       expect(screen.queryByText("Reconciling this agent's chart")).toBeNull();
     });
 

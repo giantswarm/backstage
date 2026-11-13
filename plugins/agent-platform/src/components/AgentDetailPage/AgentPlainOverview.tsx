@@ -502,7 +502,7 @@ export type AgentPlainOverviewProps = {
   isGitOpsOwned: boolean;
   /** The platform's own agent (`managed: 'platform'`): read-only. */
   isPlatformOwned?: boolean;
-  releaseWithheld?: string;
+  releaseDetailsUnavailable?: boolean;
 };
 
 /**
@@ -526,7 +526,7 @@ export function AgentPlainOverview({
   onAddSkills,
   isGitOpsOwned,
   isPlatformOwned,
-  releaseWithheld,
+  releaseDetailsUnavailable,
 }: AgentPlainOverviewProps) {
   const classes = useStyles();
   const failure = agent.getFailure();
@@ -578,7 +578,7 @@ export function AgentPlainOverview({
           modelServing={modelServing}
           failure={failure}
           toolsHref={toolsHref}
-          releaseWithheld={releaseWithheld}
+          releaseDetailsUnavailable={releaseDetailsUnavailable}
         />
       </TechnicalDetailsFoldOut>
     </div>
