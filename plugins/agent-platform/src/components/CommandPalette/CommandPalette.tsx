@@ -17,6 +17,7 @@ import { makeStyles } from '@material-ui/core/styles';
 import SearchIcon from '@material-ui/icons/Search';
 import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 import {
+  formatLocalDay,
   PHONE_MEDIA,
   stopRowPress,
   usePhoneLayout,
@@ -237,7 +238,10 @@ export type CommandPaletteProps = {
   renderTrigger: (open: () => void) => ReactNode;
 };
 
-/** A session's palette meta: "Today", or a short date. */
+/**
+ * A session's palette meta, by when it was created: "Today", or its short
+ * local date with the year only when it is not this one.
+ */
 function sessionDate(createdAt: string | undefined): string | undefined {
   if (!createdAt) {
     return undefined;
@@ -248,7 +252,7 @@ function sessionDate(createdAt: string | undefined): string | undefined {
   }
   return date.toDateString() === new Date().toDateString()
     ? 'Today'
-    : date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    : formatLocalDay(date);
 }
 
 /** Whether this runs on a platform whose palette key is ⌘ rather than Ctrl. */
