@@ -69,6 +69,10 @@ jest.mock('../ModelConfigsProvider', () => ({
 // What agent-manager answers: the namespaces the person may create in, and
 // per namespace its models with the one it resolves as the default.
 let mockManaged = ['kagent'];
+jest.mock('../../hooks/useToolsetSelectorLimit', () => ({
+  useToolsetSelectorLimit: () => 128,
+}));
+
 jest.mock('../../hooks/useAgentManager', () => ({
   useAgentManagerInfo: (installation: string | undefined) => ({
     info: installation

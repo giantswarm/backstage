@@ -11,6 +11,10 @@ import {
 } from '../NewAgentFormProvider';
 import { EgressPolicyPicker } from './EgressPolicyPicker';
 
+jest.mock('../../hooks/useToolsetSelectorLimit', () => ({
+  useToolsetSelectorLimit: () => 128,
+}));
+
 // The organizations agent-manager names for the person
 // (`list_organizations`).
 jest.mock('../OrganizationDirectoryProvider', () => ({

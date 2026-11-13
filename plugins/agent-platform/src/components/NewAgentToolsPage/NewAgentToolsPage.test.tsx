@@ -203,6 +203,7 @@ const PRESETS = [
 ];
 
 type Scenario = {
+  selectorLimit?: number;
   /** Whether the caller's session is signed in to `pro`. */
   signedIn: boolean;
   /** Whether this muster evaluates toolsets (echoes `toolset`) at all. */
@@ -222,6 +223,7 @@ type Scenario = {
  * visible only after the sign-in.
  */
 function makeMusterApi(scenario: Scenario) {
+  const maximum = scenario.selectorLimit ?? 128;
   const base = [
     ...(scenario.baseTools ?? TOOLS),
     ...(scenario.extraTools ?? []),
@@ -233,11 +235,11 @@ function makeMusterApi(scenario: Scenario) {
       throw new Error(scenario.resolutionFails);
     }
     // Muster's own inline cap, refused with the whole selector list.
-    if (selectors.length > 32) {
+    if (selectors.length > maximum) {
       throw new Error(
         `toolset [${selectors.join(',')}] has ${
           selectors.length
-        } selectors, more than the 32 allowed inline; define a preset`,
+        } selectors, more than the ${maximum} allowed inline; define a preset`,
       );
     }
     const matched = new Set<ToolSummary>();
@@ -351,6 +353,12 @@ function makeMusterApi(scenario: Scenario) {
 
   return {
     api: {
+      describeTool: jest.fn(async () => ({
+        name: 'x_agent-manager_create_agent',
+        inputSchema: {
+          properties: { toolset: { maxItems: maximum } },
+        },
+      })),
       filterTools,
       listTools,
       getAuthStatus,
@@ -518,7 +526,7 @@ async function expectContinueBlocked(user: ReturnType<typeof userEvent.setup>) {
   await user.click(continueButton());
   // The toolset's problem where the Toolset section shows it, else the line
   // by Continue that says the step is blocked.
-  expect(document.activeElement).toHaveTextContent(/selectors|not valid/);
+  expect(document.activeElement).toHaveTextContent(/selectors|bytes|not valid/);
   // Still on the step.
   expect(
     screen.getByRole('heading', { name: 'What may it do?' }),
@@ -673,9 +681,10 @@ describe('NewAgentToolsPage', () => {
       expect(toolsetOutput()).toBe('preset:read-only');
 
       // Read-only covers kubernetes' one read-only tool: shown as Read-only.
-      await waitFor(() =>
-        expect(access('kubernetes', 'Read-only')).toBeChecked(),
-      );
+      await waitFor(() => {
+        expect(access('kubernetes', 'Read-only')).toBeChecked();
+        expect(access('kubernetes', 'Read-only')).toBeEnabled();
+      });
       expect(access('agent-manager', 'All')).not.toBeChecked();
       expect(
         screen.getByText(
@@ -1065,14 +1074,16 @@ describe('NewAgentToolsPage', () => {
         signedIn: false,
         evaluatesToolsets: true,
         extraTools: MANY_READ_ONLY,
+        selectorLimit: 32,
       });
       await renderStep({ api });
       const user = userEvent.setup();
       await connectorsListed();
       await user.click(level('Read-only tools'));
-      await waitFor(() =>
-        expect(access('kubernetes', 'Read-only')).toBeChecked(),
-      );
+      await waitFor(() => {
+        expect(access('kubernetes', 'Read-only')).toBeChecked();
+        expect(access('kubernetes', 'Read-only')).toBeEnabled();
+      });
 
       // The QA repro: written out, this would be 43 selectors.
       await user.click(access('agent-manager', 'All'));
@@ -1103,14 +1114,16 @@ describe('NewAgentToolsPage', () => {
         signedIn: false,
         evaluatesToolsets: true,
         extraTools: MANY_READ_ONLY,
+        selectorLimit: 32,
       });
       await renderStep({ api });
       const user = userEvent.setup();
       await connectorsListed();
       await user.click(level('Read-only tools'));
-      await waitFor(() =>
-        expect(access('kubernetes', 'Read-only')).toBeChecked(),
-      );
+      await waitFor(() => {
+        expect(access('kubernetes', 'Read-only')).toBeChecked();
+        expect(access('kubernetes', 'Read-only')).toBeEnabled();
+      });
 
       // "Read-only everywhere but kubernetes" has no selector: written out,
       // it is 41 selectors, one per connector plus the workflow.
@@ -1136,14 +1149,16 @@ describe('NewAgentToolsPage', () => {
         signedIn: false,
         evaluatesToolsets: true,
         extraTools: MANY_READ_ONLY,
+        selectorLimit: 32,
       });
       await renderStep({ api, roundTrip: true });
       const user = userEvent.setup();
       await connectorsListed();
       await user.click(level('Read-only tools'));
-      await waitFor(() =>
-        expect(access('kubernetes', 'Read-only')).toBeChecked(),
-      );
+      await waitFor(() => {
+        expect(access('kubernetes', 'Read-only')).toBeChecked();
+        expect(access('kubernetes', 'Read-only')).toBeEnabled();
+      });
       await user.click(access('kubernetes', 'Read-only'));
       expect(toolsetOutput()?.split(' | ')).toHaveLength(41);
 
@@ -1164,14 +1179,16 @@ describe('NewAgentToolsPage', () => {
         signedIn: false,
         evaluatesToolsets: true,
         extraTools: MANY_READ_ONLY,
+        selectorLimit: 32,
       });
       await renderStep({ api });
       const user = userEvent.setup();
       await connectorsListed();
       await user.click(level('Read-only tools'));
-      await waitFor(() =>
-        expect(access('kubernetes', 'Read-only')).toBeChecked(),
-      );
+      await waitFor(() => {
+        expect(access('kubernetes', 'Read-only')).toBeChecked();
+        expect(access('kubernetes', 'Read-only')).toBeEnabled();
+      });
       await user.click(access('agent-manager', 'All'));
       expect(toolsetOutput()).toBe('preset:read-only | server:agent-manager');
 
@@ -1187,7 +1204,7 @@ describe('NewAgentToolsPage', () => {
 
     it('names the connectors that list the most when a selection is over the cap', async () => {
       const wide = (server: string): ToolSummary[] => [
-        ...Array.from({ length: 20 }, (_, i) => ({
+        ...Array.from({ length: 65 }, (_, i) => ({
           name: `x_${server}_get_${String(i).padStart(2, '0')}`,
           summary: `Read ${i}`,
           server,
@@ -1216,7 +1233,7 @@ describe('NewAgentToolsPage', () => {
       await expectContinueBlocked(user);
       expect(
         within(summaryBar()).getByText(
-          'This toolset needs 40 selectors but may list at most 32; most come from alpha (20) and beta (20), so choose All or fewer tools there.',
+          'This toolset needs 130 selectors but may list at most 128; most come from alpha (65) and beta (65), so choose All or fewer tools there.',
         ),
       ).toBeInTheDocument();
 
@@ -1472,13 +1489,59 @@ describe('NewAgentToolsPage', () => {
       ).toBeInTheDocument();
     });
 
-    it('caps inline selectors at 32 and says what to reduce', async () => {
+    it.each([36, 128])(
+      'accepts %i selectors when editing an agent',
+      async count => {
+        const { api } = makeMusterApi({
+          signedIn: false,
+          evaluatesToolsets: true,
+        });
+        const selectors = Array.from(
+          { length: count },
+          (_, index) => `tool:x_example_${index}`,
+        );
+        await renderStep({ api, toolset: selectors });
+        await connectorsListed();
+        expect(toolsetOutput()?.split(' | ')).toHaveLength(count);
+        expect(continueButton()).toBeEnabled();
+        expect(
+          screen.queryByText('Too many selectors'),
+        ).not.toBeInTheDocument();
+      },
+    );
+
+    it('explains the byte limit beside Continue and focuses its problem', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+        resolutionFails:
+          'toolset encodes to 8193 bytes, more than the 8192 allowed inline; define a preset',
+      });
+      await renderStep({ api, toolset: [`tool:${'é'.repeat(4094)}`] });
+      const user = userEvent.setup();
+      await connectorsListed();
+      const reason =
+        'toolset encodes to 8193 bytes, more than the 8192 allowed inline; define a preset';
+      await screen.findAllByText(reason);
+      await expectContinueBlocked(user);
+      expect(document.activeElement).toHaveTextContent(reason);
+      await user.click(
+        screen.getByRole('button', { name: 'Show the problem' }),
+      );
+      await waitFor(() =>
+        expect(document.activeElement).toHaveTextContent(
+          'Could not resolve the toolset',
+        ),
+      );
+    });
+
+    it('caps inline selectors at 128 and says what to reduce', async () => {
       const { api, filterTools } = makeMusterApi({
         signedIn: false,
         evaluatesToolsets: true,
       });
       const tooMany = Array.from(
-        { length: 33 },
+        { length: 129 },
         (_, i) => `tool:x_srv_t${i}`,
       ).join(',');
       await renderStep({ api, agents: [agentWithToolset('wide', tooMany)] });
@@ -1496,12 +1559,12 @@ describe('NewAgentToolsPage', () => {
       expect(screen.getByText('Too many selectors')).toBeInTheDocument();
       expect(
         within(toolsetCard()).getByText(
-          'This toolset needs 33 selectors but may list at most 32; most come from other selectors (33), so choose All or fewer tools there.',
+          'This toolset needs 129 selectors but may list at most 128; most come from other selectors (129), so choose All or fewer tools there.',
         ),
       ).toBeInTheDocument();
       expect(
         screen.getByText(
-          'This toolset lists 33 selectors but an agent may list at most 32, so remove 1 or more under Selected, or choose All for a connector instead of single tools.',
+          'This toolset lists 129 selectors but an agent may list at most 128, so remove 1 or more under Selected, or choose All for a connector instead of single tools.',
         ),
       ).toBeVisible();
       await expectContinueBlocked(user);
@@ -1525,7 +1588,7 @@ describe('NewAgentToolsPage', () => {
         evaluatesToolsets: true,
       });
       const tooMany = Array.from(
-        { length: 33 },
+        { length: 129 },
         (_, i) => `tool:x_srv_t${i}`,
       ).join(',');
       await renderStep({ api, agents: [agentWithToolset('wide', tooMany)] });
@@ -1546,7 +1609,7 @@ describe('NewAgentToolsPage', () => {
 
       await user.click(continueButton());
       expect(document.activeElement).toHaveTextContent(
-        'This toolset lists 33 selectors but an agent may list at most 32',
+        'This toolset lists 129 selectors but an agent may list at most 128',
       );
 
       await user.click(
@@ -1558,11 +1621,12 @@ describe('NewAgentToolsPage', () => {
     });
 
     it('still shows a resolution error that is not the cap', async () => {
-      const { api } = makeMusterApi({
+      const scenario: Scenario = {
         signedIn: false,
         evaluatesToolsets: true,
         resolutionFails: 'muster is unreachable',
-      });
+      };
+      const { api } = makeMusterApi(scenario);
       await renderStep({ api });
       const user = userEvent.setup();
       await connectorsListed();
@@ -1577,6 +1641,12 @@ describe('NewAgentToolsPage', () => {
       expect(
         within(toolsetCard()).getByText('muster is unreachable'),
       ).toBeInTheDocument();
+      scenario.resolutionFails = undefined;
+      await user.click(screen.getByRole('button', { name: /^Check again$/ }));
+      await waitFor(() =>
+        expect(screen.queryAllByText('muster is unreachable')).toHaveLength(0),
+      );
+      expect(toolsetOutput()).toBe('server:kubernetes');
     });
 
     it("adds a selector by name, a preset too, and surfaces muster's unknown-preset error", async () => {
@@ -1673,7 +1743,7 @@ describe('NewAgentToolsPage', () => {
         evaluatesToolsets: true,
       });
       const tooMany = Array.from(
-        { length: 33 },
+        { length: 129 },
         (_, i) => `tool:x_srv_t${i}`,
       ).join(',');
       await renderStep({ api, agents: [agentWithToolset('wide', tooMany)] });
@@ -1690,7 +1760,7 @@ describe('NewAgentToolsPage', () => {
 
       const rail = screen.getByRole('complementary', { name: 'Selected' });
       const reason = within(rail).getByText(
-        'This toolset needs 33 selectors but may list at most 32; most come from other selectors (33), so choose All or fewer tools there.',
+        'This toolset needs 129 selectors but may list at most 128; most come from other selectors (129), so choose All or fewer tools there.',
       );
       expect(reason).toHaveAttribute('data-variant', 'body-small');
       expect(reason).toHaveAttribute('data-color', 'danger');
@@ -2012,9 +2082,10 @@ describe('NewAgentToolsPage', () => {
       });
       await connectorsListed();
 
-      await waitFor(() =>
-        expect(access('kubernetes', 'Read-only')).toBeChecked(),
-      );
+      await waitFor(() => {
+        expect(access('kubernetes', 'Read-only')).toBeChecked();
+        expect(access('kubernetes', 'Read-only')).toBeEnabled();
+      });
       expect(level('Only the tools I choose below')).toBeChecked();
       expect(access('agent-manager', 'All')).toBeChecked();
       expect(toolsetOutput()).toBe('preset:read-only | server:agent-manager');
@@ -2059,9 +2130,10 @@ describe('NewAgentToolsPage', () => {
 
       release();
 
-      await waitFor(() =>
-        expect(access('kubernetes', 'Read-only')).toBeChecked(),
-      );
+      await waitFor(() => {
+        expect(access('kubernetes', 'Read-only')).toBeChecked();
+        expect(access('kubernetes', 'Read-only')).toBeEnabled();
+      });
       expect(access('kubernetes', 'All')).toBeEnabled();
       expect(
         screen.queryByText('Reading what the preset covers…'),

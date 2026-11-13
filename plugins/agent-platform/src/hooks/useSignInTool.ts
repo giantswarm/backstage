@@ -12,6 +12,7 @@ import {
 import { toolsetWasEvaluated } from '../lib/toolset';
 import { useMusterPluginApi } from './useMusterPluginApi';
 import { useMusterServers } from './useMusterServers';
+import { useToolsetSelectorLimit } from './useToolsetSelectorLimit';
 
 export type SignInToolState = SignInTool & {
   /** {@link SignInTool.connectors} as people call them. */
@@ -71,6 +72,7 @@ export function useSignInTool(
   selection: string[],
   declined: boolean,
 ): SignInToolState {
+  const maxSelectors = useToolsetSelectorLimit(installation);
   const { servers, labels, isLoading } = useMusterServers(installation);
   const asked = useMemo(() => presetsToAsk(selection), [selection]);
   const presets = usePresetsInclude(installation, asked);
@@ -83,11 +85,20 @@ export function useSignInTool(
       servers: isReading ? [] : servers,
       declined,
       presetsInclude,
+      maxSelectors,
     });
     return {
       ...result,
       labels: result.connectors.map(name => labels.get(name) ?? name),
       isLoading: isReading,
     };
-  }, [isReading, selection, servers, declined, presetsInclude, labels]);
+  }, [
+    isReading,
+    selection,
+    servers,
+    declined,
+    presetsInclude,
+    labels,
+    maxSelectors,
+  ]);
 }

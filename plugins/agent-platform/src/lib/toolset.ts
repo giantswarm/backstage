@@ -19,6 +19,7 @@ import type {
   AgentMcpBinding,
   RemoteMCPServer,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Muster owns tool catalogue metadata and connector status.
 import {
   CONNECTOR_REACH_LABELS,
   connectorDisplayNames,
@@ -43,12 +44,6 @@ export const TOOLSET_HEADER = 'X-Muster-Toolset';
  * gateway wherever they like.
  */
 export const MUSTER_MCP_SERVER_NAME = 'muster';
-
-/**
- * Inline selectors are capped platform-wide (muster, the agent chart and
- * agent-manager each refuse more); this mirrors that cap, it does not set it.
- */
-export const MAX_INLINE_SELECTORS = 32;
 
 export const SELECTOR_KINDS = ['preset', 'server', 'workflow', 'tool'] as const;
 export type SelectorKind = (typeof SELECTOR_KINDS)[number];
@@ -126,22 +121,23 @@ export function selectorProblem(raw: string): string | undefined {
 }
 
 /**
- * Everything wrong with a whole toolset, for the step to block Continue on.
- * Empty when the toolset is acceptable. An empty list is not reported here:
+ * Selector grammar and advertised count problems for immediate feedback.
+ * An empty list is not reported here:
  * the step reads "nothing chosen yet" as its own state. `describeCap` words
  * the cap problem where the catalogue can say what to reduce.
  */
 export function toolsetProblems(
   selectors: string[],
   describeCap?: (selectors: string[]) => string,
+  maxSelectors?: number,
 ): string[] {
   const problems = selectors
     .map(selectorProblem)
     .filter((problem): problem is string => problem !== undefined);
-  if (selectors.length > MAX_INLINE_SELECTORS) {
+  if (maxSelectors !== undefined && selectors.length > maxSelectors) {
     problems.push(
       describeCap?.(selectors) ??
-        `This toolset needs ${selectors.length} selectors but may list at most ${MAX_INLINE_SELECTORS}, so choose fewer connectors or tools.`,
+        `This toolset needs ${selectors.length} selectors but may list at most ${maxSelectors}, so choose fewer connectors or tools.`,
     );
   }
   return problems;
@@ -656,6 +652,7 @@ export function selectorForTool(
 // Moved to the muster plugin, where ToolTable also needs them: every surface
 // that lists a tool must give the same answer about what it does. Re-exported
 // here so this module stays the one import for the toolset helpers.
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Muster owns tool effect annotations.
 export { isReadOnly, isDestructive } from '@giantswarm/backstage-plugin-muster';
 
 /**

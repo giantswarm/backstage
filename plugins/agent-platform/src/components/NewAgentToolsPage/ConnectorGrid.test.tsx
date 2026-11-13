@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SEARCH_MIN } from '@giantswarm/backstage-plugin-ui-react';
 
-import { MAX_INLINE_SELECTORS, type ServerBucket } from '../../lib/toolset';
+import type { ServerBucket } from '../../lib/toolset';
 import { ConnectorGrid } from './ConnectorGrid';
 
 function bucket(name: string, tags?: string[]): ServerBucket {
@@ -40,7 +40,7 @@ describe('ConnectorGrid', () => {
 
   it('says why Read-only cannot be picked when the read-only tools do not fit', () => {
     const tools: ServerBucket['tools'] = Array.from(
-      { length: MAX_INLINE_SELECTORS + 1 },
+      { length: 129 },
       (_, i) => ({
         name: `x_wide_get_${i}`,
         summary: `Read ${i}`,
@@ -52,6 +52,7 @@ describe('ConnectorGrid', () => {
     render(
       <ConnectorGrid
         connectors={[{ ...bucket('wide'), tools, state: 'Connected' }]}
+        maxSelectors={128}
         selected={new Set()}
         disabled={false}
         onChoose={jest.fn()}
@@ -61,7 +62,7 @@ describe('ConnectorGrid', () => {
     const card = screen.getByRole('group', { name: 'Connector wide' });
     expect(card).toHaveTextContent('Connected');
     expect(card).toHaveTextContent(
-      `Its read-only tools are more than the ${MAX_INLINE_SELECTORS} an agent may list one by one, so choose All.`,
+      'Its read-only tools are more than the 128 an agent may list one by one, so choose All.',
     );
     expect(screen.getByRole('radio', { name: 'Read-only' })).toBeDisabled();
   });
@@ -87,6 +88,29 @@ describe('ConnectorGrid', () => {
     const all = screen.getByRole('radio', { name: 'All' });
     expect(all).toBeChecked();
     expect(all.querySelector('svg')).not.toBeNull();
+  });
+
+  it('leaves byte validation of a read-only selection to the server', () => {
+    render(
+      <ConnectorGrid
+        connectors={[
+          {
+            ...bucket('long'),
+            state: 'Connected',
+            tools: [
+              {
+                name: `x_${'é'.repeat(4094)}`,
+                annotations: { readOnlyHint: true },
+              },
+            ],
+          },
+        ]}
+        selected={new Set()}
+        disabled={false}
+        onChoose={jest.fn()}
+      />,
+    );
+    expect(screen.getByRole('radio', { name: 'Read-only' })).toBeEnabled();
   });
 
   it('explains that partial selection excludes tools added later', () => {

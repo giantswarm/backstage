@@ -54,6 +54,82 @@ test('connector cards name their state and All selection at desktop and phone wi
   }
 });
 
+test('toolsets accept 36 selectors and explain the byte limit beside Continue', async ({
+  admin,
+}) => {
+  test.setTimeout(180_000);
+  await reachTools(admin);
+  await admin
+    .getByRole('radio', { name: 'Nothing outside the chat', exact: true })
+    .check();
+  await admin
+    .getByRole('radio', { name: 'Only the tools I choose below', exact: true })
+    .check();
+  await admin
+    .getByRole('button', {
+      name: 'Choose individual tools instead',
+      exact: true,
+    })
+    .click();
+  await admin.getByText('Add a selector by name', { exact: true }).click();
+  const selector = admin.getByRole('textbox', {
+    name: 'Selector',
+    exact: true,
+  });
+  for (let index = 0; index < 36; index++) {
+    await selector.fill(`tool:x_selector_limit_check_${index}`);
+    await admin
+      .getByRole('button', { name: 'Add selector', exact: true })
+      .click();
+  }
+  await expect(
+    admin.getByText('Too many selectors', { exact: true }),
+  ).toBeHidden();
+  await expect(
+    admin.getByText('Checking the selected tools…', { exact: true }),
+  ).toBeHidden();
+  await admin
+    .getByRole('button', { name: 'Continue', exact: true })
+    .first()
+    .click();
+  await expectWizardStep(admin, 'Review');
+  await admin
+    .getByRole('button', { name: 'Back', exact: true })
+    .first()
+    .click();
+  await expectWizardStep(admin, 'Tools');
+  await admin
+    .getByRole('radio', { name: 'Nothing outside the chat', exact: true })
+    .check();
+  await admin
+    .getByRole('radio', { name: 'Only the tools I choose below', exact: true })
+    .check();
+  const individual = admin.getByRole('button', {
+    name: 'Choose individual tools instead',
+    exact: true,
+  });
+  if (await individual.isVisible()) await individual.click();
+  await admin.getByText('Add a selector by name', { exact: true }).click();
+  await selector.fill(`tool:${'é'.repeat(4094)}`);
+  await admin
+    .getByRole('button', { name: 'Add selector', exact: true })
+    .click();
+  const reason =
+    'toolset encodes to 8193 bytes, more than the 8192 allowed inline; define a preset';
+  for (const width of [1440, 375]) {
+    await admin.setViewportSize({ width, height: 900 });
+    await expect(
+      admin.getByText(reason, { exact: true }).first(),
+    ).toBeVisible();
+    await admin
+      .getByRole('button', { name: 'Continue', exact: true })
+      .first()
+      .click();
+    await expectWizardStep(admin, 'Tools');
+    await expectNoHorizontalScroll(admin, `Toolset byte limit at ${width}px`);
+  }
+});
+
 test('the Selected rail docks only where the step keeps its column, the bar stands in otherwise', async ({
   admin,
 }) => {

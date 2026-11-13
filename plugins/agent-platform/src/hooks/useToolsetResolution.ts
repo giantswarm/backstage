@@ -38,6 +38,7 @@ export type ToolsetResolution = {
     | 'unsupported'
     | 'unavailable';
   error?: string;
+  refetch?: () => Promise<unknown>;
 };
 
 // Shared, so a consumer's memo over `tools` holds while nothing resolves.
@@ -58,7 +59,7 @@ export function useToolsetResolution(
   const enabled =
     Boolean(installation) && Boolean(musterApi) && selectors.length > 0;
 
-  const { data, error, isPending, fetchStatus } = useQuery({
+  const { data, error, isPending, fetchStatus, refetch } = useQuery({
     queryKey: musterToolsetResolutionQueryKey(installation ?? '', selectors),
     enabled,
     queryFn: () =>
@@ -85,6 +86,7 @@ export function useToolsetResolution(
       isLoading: false,
       status: isUnknownPresetError(message) ? 'unknown-preset' : 'error',
       error: message,
+      refetch,
     };
   }
   if (!data) {
