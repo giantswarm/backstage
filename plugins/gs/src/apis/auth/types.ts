@@ -113,6 +113,25 @@ export type GSAuthProvidersApi = {
    * probes on startup.
    */
   getBrokerCoveredInstallations: () => string[];
+  /**
+   * Why the main sign-in's session ended while the page was open, until it
+   * is signed in again: `useMainSessionEnd` reads it.
+   */
+  getMainSessionEnd: () => MainSessionEnd;
+};
+
+/**
+ * Why the main sign-in's session ended while the page was open:
+ * `signed-in-elsewhere`, the person signed in with the same Dex client in
+ * another browser, which replaced this browser's refresh token.
+ */
+export type MainSessionEndReason = 'signed-in-elsewhere';
+
+export type MainSessionEnd = {
+  /** The reason, or undefined while the session holds. */
+  reason(): MainSessionEndReason | undefined;
+  /** Calls `listener` on each change of {@link MainSessionEnd.reason}. */
+  subscribe(listener: () => void): () => void;
 };
 
 export type GSAuthProvidersApiCreateOptions = {

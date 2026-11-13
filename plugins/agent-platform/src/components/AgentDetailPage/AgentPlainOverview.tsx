@@ -9,7 +9,7 @@ import {
   Harness,
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Connector icons use the connector catalog's shared renderer.
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Connector identity is owned by the Muster plugin.
 import { ConnectorLogo } from '@giantswarm/backstage-plugin-muster';
 import {
   CollapsibleMarkdown,
@@ -503,6 +503,7 @@ export type AgentPlainOverviewProps = {
   isGitOpsOwned: boolean;
   /** The platform's own agent (`managed: 'platform'`): read-only. */
   isPlatformOwned?: boolean;
+  releaseDetailsUnavailable?: boolean;
 };
 
 /**
@@ -526,6 +527,7 @@ export function AgentPlainOverview({
   onAddSkills,
   isGitOpsOwned,
   isPlatformOwned,
+  releaseDetailsUnavailable,
 }: AgentPlainOverviewProps) {
   const classes = useStyles();
   const failure = agent.getFailure();
@@ -577,6 +579,7 @@ export function AgentPlainOverview({
           modelServing={modelServing}
           failure={failure}
           toolsHref={toolsHref}
+          releaseDetailsUnavailable={releaseDetailsUnavailable}
         />
       </TechnicalDetailsFoldOut>
     </div>
