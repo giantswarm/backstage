@@ -19,6 +19,7 @@ import type {
   AgentMcpBinding,
   RemoteMCPServer,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Muster owns tool catalogue metadata and connector status.
 import {
   CONNECTOR_REACH_LABELS,
   connectorDisplayNames,
@@ -45,10 +46,23 @@ export const TOOLSET_HEADER = 'X-Muster-Toolset';
 export const MUSTER_MCP_SERVER_NAME = 'muster';
 
 /**
- * Inline selectors are capped platform-wide (muster, the agent chart and
- * agent-manager each refuse more); this mirrors that cap, it does not set it.
+ * Fallback for installations whose create_agent schema does not declare maxItems.
  */
-export const MAX_INLINE_SELECTORS = 32;
+export const MAX_INLINE_SELECTORS = 128;
+export const MAX_INLINE_BYTES = 8192;
+
+export function toolsetByteLength(selectors: readonly string[]): number {
+  return new Blob([selectors.join(',')]).size;
+}
+
+export function toolsetByteProblem(
+  selectors: readonly string[],
+): string | undefined {
+  const bytes = toolsetByteLength(selectors);
+  return bytes > MAX_INLINE_BYTES
+    ? `This toolset uses ${bytes} bytes but may use at most ${MAX_INLINE_BYTES}, so remove tools under Selected or use a preset.`
+    : undefined;
+}
 
 export const SELECTOR_KINDS = ['preset', 'server', 'workflow', 'tool'] as const;
 export type SelectorKind = (typeof SELECTOR_KINDS)[number];
@@ -134,15 +148,20 @@ export function selectorProblem(raw: string): string | undefined {
 export function toolsetProblems(
   selectors: string[],
   describeCap?: (selectors: string[]) => string,
+  maxSelectors = MAX_INLINE_SELECTORS,
 ): string[] {
   const problems = selectors
     .map(selectorProblem)
     .filter((problem): problem is string => problem !== undefined);
-  if (selectors.length > MAX_INLINE_SELECTORS) {
+  if (selectors.length > maxSelectors) {
     problems.push(
       describeCap?.(selectors) ??
-        `This toolset needs ${selectors.length} selectors but may list at most ${MAX_INLINE_SELECTORS}, so choose fewer connectors or tools.`,
+        `This toolset needs ${selectors.length} selectors but may list at most ${maxSelectors}, so choose fewer connectors or tools.`,
     );
+  }
+  const byteProblem = toolsetByteProblem(selectors);
+  if (byteProblem) {
+    problems.push(byteProblem);
   }
   return problems;
 }
@@ -656,6 +675,7 @@ export function selectorForTool(
 // Moved to the muster plugin, where ToolTable also needs them: every surface
 // that lists a tool must give the same answer about what it does. Re-exported
 // here so this module stays the one import for the toolset helpers.
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Muster owns tool effect annotations.
 export { isReadOnly, isDestructive } from '@giantswarm/backstage-plugin-muster';
 
 /**

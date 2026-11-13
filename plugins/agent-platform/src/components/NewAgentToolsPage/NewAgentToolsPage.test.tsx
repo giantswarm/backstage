@@ -233,11 +233,11 @@ function makeMusterApi(scenario: Scenario) {
       throw new Error(scenario.resolutionFails);
     }
     // Muster's own inline cap, refused with the whole selector list.
-    if (selectors.length > 32) {
+    if (selectors.length > 128) {
       throw new Error(
         `toolset [${selectors.join(',')}] has ${
           selectors.length
-        } selectors, more than the 32 allowed inline; define a preset`,
+        } selectors, more than the 128 allowed inline; define a preset`,
       );
     }
     const matched = new Set<ToolSummary>();
@@ -518,7 +518,7 @@ async function expectContinueBlocked(user: ReturnType<typeof userEvent.setup>) {
   await user.click(continueButton());
   // The toolset's problem where the Toolset section shows it, else the line
   // by Continue that says the step is blocked.
-  expect(document.activeElement).toHaveTextContent(/selectors|not valid/);
+  expect(document.activeElement).toHaveTextContent(/selectors|bytes|not valid/);
   // Still on the step.
   expect(
     screen.getByRole('heading', { name: 'What may it do?' }),
@@ -1050,7 +1050,7 @@ describe('NewAgentToolsPage', () => {
     /** 40 read-only connectors, listed after the fixture's three: the read-only
      * preset written out is 42 selectors. */
     const MANY_READ_ONLY: ToolSummary[] = Array.from(
-      { length: 40 },
+      { length: 128 },
       (_, i) => ({
         name: `x_svc${String(i).padStart(2, '0')}_get`,
         summary: `App ${i}`,
@@ -1115,11 +1115,11 @@ describe('NewAgentToolsPage', () => {
       // "Read-only everywhere but kubernetes" has no selector: written out,
       // it is 41 selectors, one per connector plus the workflow.
       await user.click(access('kubernetes', 'Read-only'));
-      expect(toolsetOutput()?.split(' | ')).toHaveLength(41);
+      expect(toolsetOutput()?.split(' | ')).toHaveLength(129);
       await expectContinueBlocked(user);
       expect(
         within(summaryBar()).getByText(
-          'This toolset needs 41 selectors but may list at most 32, so choose fewer connectors or tools.',
+          'This toolset needs 129 selectors but may list at most 128, so choose fewer connectors or tools.',
         ),
       ).toBeInTheDocument();
 
@@ -1145,7 +1145,7 @@ describe('NewAgentToolsPage', () => {
         expect(access('kubernetes', 'Read-only')).toBeChecked(),
       );
       await user.click(access('kubernetes', 'Read-only'));
-      expect(toolsetOutput()?.split(' | ')).toHaveLength(41);
+      expect(toolsetOutput()?.split(' | ')).toHaveLength(129);
 
       // Back to another step and here again: the step mounts afresh.
       await user.click(screen.getByRole('button', { name: 'Leave the step' }));
@@ -1187,7 +1187,7 @@ describe('NewAgentToolsPage', () => {
 
     it('names the connectors that list the most when a selection is over the cap', async () => {
       const wide = (server: string): ToolSummary[] => [
-        ...Array.from({ length: 20 }, (_, i) => ({
+        ...Array.from({ length: 65 }, (_, i) => ({
           name: `x_${server}_get_${String(i).padStart(2, '0')}`,
           summary: `Read ${i}`,
           server,
@@ -1216,7 +1216,7 @@ describe('NewAgentToolsPage', () => {
       await expectContinueBlocked(user);
       expect(
         within(summaryBar()).getByText(
-          'This toolset needs 40 selectors but may list at most 32; most come from alpha (20) and beta (20), so choose All or fewer tools there.',
+          'This toolset needs 130 selectors but may list at most 128; most come from alpha (65) and beta (65), so choose All or fewer tools there.',
         ),
       ).toBeInTheDocument();
 
@@ -1472,13 +1472,57 @@ describe('NewAgentToolsPage', () => {
       ).toBeInTheDocument();
     });
 
-    it('caps inline selectors at 32 and says what to reduce', async () => {
+    it.each([36, 128])(
+      'accepts %i selectors when editing an agent',
+      async count => {
+        const { api } = makeMusterApi({
+          signedIn: false,
+          evaluatesToolsets: true,
+        });
+        const selectors = Array.from(
+          { length: count },
+          (_, index) => `tool:x_example_${index}`,
+        );
+        await renderStep({ api, toolset: selectors });
+        await connectorsListed();
+        expect(toolsetOutput()?.split(' | ')).toHaveLength(count);
+        expect(continueButton()).toBeEnabled();
+        expect(
+          screen.queryByText('Too many selectors'),
+        ).not.toBeInTheDocument();
+      },
+    );
+
+    it('explains the byte limit beside Continue and focuses its problem', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+      });
+      await renderStep({ api, toolset: [`tool:${'é'.repeat(4094)}`] });
+      const user = userEvent.setup();
+      await connectorsListed();
+      const reason =
+        'This toolset uses 8193 bytes but may use at most 8192, so remove tools under Selected or use a preset.';
+      expect(screen.getAllByText(reason).length).toBeGreaterThan(0);
+      await expectContinueBlocked(user);
+      expect(document.activeElement).toHaveTextContent(reason);
+      await user.click(
+        screen.getByRole('button', { name: 'Show the problem' }),
+      );
+      await waitFor(() =>
+        expect(document.activeElement).toHaveTextContent(
+          'Toolset is too large',
+        ),
+      );
+    });
+
+    it('caps inline selectors at 128 and says what to reduce', async () => {
       const { api, filterTools } = makeMusterApi({
         signedIn: false,
         evaluatesToolsets: true,
       });
       const tooMany = Array.from(
-        { length: 33 },
+        { length: 129 },
         (_, i) => `tool:x_srv_t${i}`,
       ).join(',');
       await renderStep({ api, agents: [agentWithToolset('wide', tooMany)] });
@@ -1496,12 +1540,12 @@ describe('NewAgentToolsPage', () => {
       expect(screen.getByText('Too many selectors')).toBeInTheDocument();
       expect(
         within(toolsetCard()).getByText(
-          'This toolset needs 33 selectors but may list at most 32; most come from other selectors (33), so choose All or fewer tools there.',
+          'This toolset needs 129 selectors but may list at most 128; most come from other selectors (129), so choose All or fewer tools there.',
         ),
       ).toBeInTheDocument();
       expect(
         screen.getByText(
-          'This toolset lists 33 selectors but an agent may list at most 32, so remove 1 or more under Selected, or choose All for a connector instead of single tools.',
+          'This toolset lists 129 selectors but an agent may list at most 128, so remove 1 or more under Selected, or choose All for a connector instead of single tools.',
         ),
       ).toBeVisible();
       await expectContinueBlocked(user);
@@ -1525,7 +1569,7 @@ describe('NewAgentToolsPage', () => {
         evaluatesToolsets: true,
       });
       const tooMany = Array.from(
-        { length: 33 },
+        { length: 129 },
         (_, i) => `tool:x_srv_t${i}`,
       ).join(',');
       await renderStep({ api, agents: [agentWithToolset('wide', tooMany)] });
@@ -1546,7 +1590,7 @@ describe('NewAgentToolsPage', () => {
 
       await user.click(continueButton());
       expect(document.activeElement).toHaveTextContent(
-        'This toolset lists 33 selectors but an agent may list at most 32',
+        'This toolset lists 129 selectors but an agent may list at most 128',
       );
 
       await user.click(
@@ -1673,7 +1717,7 @@ describe('NewAgentToolsPage', () => {
         evaluatesToolsets: true,
       });
       const tooMany = Array.from(
-        { length: 33 },
+        { length: 129 },
         (_, i) => `tool:x_srv_t${i}`,
       ).join(',');
       await renderStep({ api, agents: [agentWithToolset('wide', tooMany)] });
@@ -1690,7 +1734,7 @@ describe('NewAgentToolsPage', () => {
 
       const rail = screen.getByRole('complementary', { name: 'Selected' });
       const reason = within(rail).getByText(
-        'This toolset needs 33 selectors but may list at most 32; most come from other selectors (33), so choose All or fewer tools there.',
+        'This toolset needs 129 selectors but may list at most 128; most come from other selectors (129), so choose All or fewer tools there.',
       );
       expect(reason).toHaveAttribute('data-variant', 'body-small');
       expect(reason).toHaveAttribute('data-color', 'danger');

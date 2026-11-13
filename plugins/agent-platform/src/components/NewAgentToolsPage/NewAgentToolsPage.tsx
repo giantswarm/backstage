@@ -38,7 +38,7 @@ import {
   buildCatalogue,
   catalogueInventory,
   countNoun,
-  MAX_INLINE_SELECTORS,
+  toolsetByteProblem,
   presetNameOf,
   presetSelector,
   PRESET_FULL,
@@ -177,11 +177,16 @@ function connectorsHint({
 function blockedLine(
   toolset: readonly string[],
   problems: readonly string[],
+  maxSelectors: number,
 ): string {
-  if (toolset.length > MAX_INLINE_SELECTORS) {
-    return `This toolset lists ${toolset.length} selectors but an agent may list at most ${MAX_INLINE_SELECTORS}, so remove ${
-      toolset.length - MAX_INLINE_SELECTORS
+  if (toolset.length > maxSelectors) {
+    return `This toolset lists ${toolset.length} selectors but an agent may list at most ${maxSelectors}, so remove ${
+      toolset.length - maxSelectors
     } or more under Selected, or choose All for a connector instead of single tools.`;
+  }
+  const byteProblem = toolsetByteProblem(toolset);
+  if (byteProblem) {
+    return byteProblem;
   }
   const invalid = Math.max(problems.length, 1);
   return invalid === 1
@@ -244,6 +249,7 @@ export function NewAgentToolsPage() {
     isComplete,
     isToolsetValid,
     toolsetProblems,
+    maxInlineSelectors,
   } = useNewAgentForm();
   // Cached by now; only decides where "Back" goes and what the step is numbered.
   const { hasRepositories } = useSkillCatalog(state.installation);
@@ -418,16 +424,24 @@ export function NewAgentToolsPage() {
     () =>
       toolsetProblems.length === 0
         ? toolsetProblems
-        : problemsOf(state.toolset, selectors =>
-            inlineCapProblem(selectors, groups),
+        : problemsOf(
+            state.toolset,
+            selectors =>
+              inlineCapProblem(selectors, groups, maxInlineSelectors),
+            maxInlineSelectors,
           ),
-    [toolsetProblems, state.toolset, groups],
+    [toolsetProblems, state.toolset, groups, maxInlineSelectors],
   );
   // Over the cap, muster refuses the toolset with its whole selector list
   // (QA R2-1); the cap problem already says what to reduce, so that refusal is
   // not shown beside it. Any other resolution error still is.
   const overCap =
-    problems.length > 0 && state.toolset.length > MAX_INLINE_SELECTORS;
+    problems.length > 0 &&
+    (state.toolset.length > maxInlineSelectors ||
+      Boolean(toolsetByteProblem(state.toolset)));
+  const limitTitle = toolsetByteProblem(state.toolset)
+    ? 'Toolset is too large'
+    : 'Too many selectors';
   // A preset that cannot be shown per connector cannot be changed from there
   // either: its selection stays off until the author picks Only the tools I
   // choose below.
@@ -735,6 +749,7 @@ export function NewAgentToolsPage() {
     onShowDetails: selectionOff ? undefined : showResolvedList,
     signInNote: (
       <SignInToolNote
+        maxSelectors={maxInlineSelectors}
         signIn={signIn}
         onRemove={() => setSignInToolDeclined(true)}
         onAddBack={() => setSignInToolDeclined(false)}
@@ -838,6 +853,7 @@ export function NewAgentToolsPage() {
             )}
             {connectors.length > 0 && (
               <ConnectorGrid
+                maxSelectors={maxInlineSelectors}
                 connectors={connectors}
                 selected={selected}
                 disabled={gridOff}
@@ -981,7 +997,7 @@ export function NewAgentToolsPage() {
                           status="danger"
                           title={
                             overCap
-                              ? 'Too many selectors'
+                              ? limitTitle
                               : 'The toolset cannot be applied as it is'
                           }
                           description={problems.join(' ')}
@@ -1020,7 +1036,7 @@ export function NewAgentToolsPage() {
             gap="1"
           >
             <Text as="p" color="danger">
-              {blockedLine(state.toolset, toolsetProblems)}
+              {blockedLine(state.toolset, toolsetProblems, maxInlineSelectors)}
             </Text>
             {!selectionOff && (
               <Button variant="tertiary" size="small" onPress={showProblems}>
