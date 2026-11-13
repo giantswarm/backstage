@@ -72,66 +72,10 @@ export function defaultModelIds(
   return ids;
 }
 
-/** The merge patch that adds the marker, or removes it. */
-export function defaultMarkPatch(marked: boolean): Record<string, unknown> {
-  return {
-    metadata: {
-      annotations: { [DEFAULT_MODEL_ANNOTATION]: marked ? 'true' : null },
-    },
-  };
-}
-
 /** A sentence listing names: `a`, `a and b`, `a, b and c`. */
 export function listed(names: readonly string[]): string {
   if (names.length <= 1) {
     return names.join('');
   }
   return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
-}
-
-/**
- * Which marks moving the default to `target` takes off, from a fresh read of
- * the namespace. `expected` is the marks the person saw when they asked: the
- * move takes those off and nothing else. A mark that appeared since (someone
- * else made another model the default) refuses the move instead of leaving two
- * marks, and so does a marked model a tool owns (`ownerOf`), since the tool
- * would put its mark back.
- */
-export function planDefaultMove<T extends MarkableModelConfig>({
-  modelConfigs,
-  target,
-  expected,
-  ownerOf,
-}: {
-  modelConfigs: readonly T[];
-  target: string;
-  expected: readonly string[];
-  ownerOf: (modelConfig: T) => string | undefined;
-}): T[] {
-  const others = modelConfigs.filter(
-    mc => mc.getName() !== target && isMarkedDefault(mc),
-  );
-  const unexpected = others
-    .filter(mc => !expected.includes(mc.getName()))
-    .map(mc => mc.getName());
-  if (unexpected.length > 0) {
-    throw new Error(
-      `${listed(unexpected)} ${
-        unexpected.length === 1
-          ? 'became the default'
-          : 'were marked as the default'
-      } while this page was open, so nothing was changed. Reload the page and try again.`,
-    );
-  }
-  for (const mc of others) {
-    const owner = ownerOf(mc);
-    if (owner) {
-      throw new Error(
-        owner === 'Helm'
-          ? `${mc.getName()} is the default through Helm values, which would mark it again. Move the default in that release's values.`
-          : `${mc.getName()} is the default and ${owner} manages it, which would mark it again. Move the default where ${owner} is configured.`,
-      );
-    }
-  }
-  return others;
 }
