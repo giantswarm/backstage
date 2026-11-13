@@ -7,7 +7,8 @@ import {
   startSessionButton,
   test,
 } from './fixtures';
-import { RUN } from './lab';
+import { lab, RUN } from './lab';
+import type { WorkspaceSource } from '../../plugins/agent-platform/src/lib/workspaceManager';
 
 /**
  * The workspace editor's repository picker and the composer's refusal of a
@@ -141,6 +142,161 @@ async function stageProvider(page: Page): Promise<ToolCall[]> {
   });
   return previews;
 }
+
+async function stageEditor(page: Page, filtered: boolean) {
+  await stageProvider(page);
+  const writes: ToolCall[] = [];
+  const workspace = {
+    name: WORKSPACE,
+    organization: 'lab',
+    sources: [
+      {
+        provider: PROVIDER,
+        owner: OWNER,
+        repositories: ['alpha', 'beta'],
+        ...(filtered ? { filters: { languages: ['Go'] } } : {}),
+      },
+    ],
+    resourceVersion: '1',
+    createdAt: NOW,
+    repositories: 2,
+    sessions: 0,
+  };
+  await page.route('**/api/muster/call**', async route => {
+    const call = route.request().postDataJSON() as ToolCall;
+    if (call.name === `${TOOL}get_workspace`) {
+      await route.fulfill({
+        json: {
+          workspace,
+          mirrors: [],
+          storage: { mirrorsBytes: 0, sessionsBytes: 0 },
+          sessionDirectories: [],
+        },
+      });
+    } else if (call.name === `${TOOL}update_workspace`) {
+      writes.push(call);
+      await route.fulfill({ json: { ...workspace, ...call.arguments } });
+    } else if (call.name === `${TOOL}preview_workspace`) {
+      const sources = (call.arguments?.sources ?? []) as WorkspaceSource[];
+      const selected = REPOSITORIES.filter(repository =>
+        sources.some(
+          source =>
+            !source.exclude?.includes(repository.name) &&
+            (source.repositories?.includes(repository.name) ||
+              source.filters?.languages?.includes(repository.language)),
+        ),
+      );
+      await route.fulfill({
+        json: {
+          total: selected.length,
+          excluded: REPOSITORIES.length - selected.length,
+          skippedArchived: 0,
+          skippedForks: 0,
+          providerSizeKiB: selected.length * 512,
+          estimatedVolumeSize: '1Gi',
+          matching: selected.length,
+          page: 1,
+          pageSize: 25,
+          repositories: selected.map(repository => ({
+            ...repository,
+            provider: PROVIDER,
+            repository: `${OWNER}/${repository.name}`,
+            why: ['name'],
+          })),
+        },
+      });
+    } else {
+      await route.fallback();
+    }
+  });
+  await open(
+    page,
+    `/customize/workspaces/${lab.installation}/lab/${WORKSPACE}/edit`,
+  );
+  return writes;
+}
+
+test('the selected workspace repositories keep filter exclusions, column names and keyboard focus', async ({
+  admin,
+}) => {
+  const writes = await stageEditor(admin, true);
+  const picker = admin.getByTestId('repository-picker');
+  const table = picker.getByRole('table', { name: 'Selected repositories' });
+  await expect(
+    table.getByRole('columnheader').allTextContents(),
+  ).resolves.toEqual(['Repository', 'Selection']);
+  const alpha = table.getByRole('checkbox', { name: 'alpha', exact: true });
+  await alpha.focus();
+  await admin.keyboard.press('Space');
+  const excluded = table.getByRole('checkbox', {
+    name: 'Include alpha',
+    exact: true,
+  });
+  await expect(excluded).not.toBeChecked();
+  await expect(excluded).toBeFocused();
+  await expect(admin.getByTestId('workspace-preview')).toContainText(
+    `${OWNER}/gamma`,
+  );
+  await expect(admin.getByTestId('workspace-preview')).not.toContainText(
+    `${OWNER}/alpha`,
+  );
+  await admin.getByRole('button', { name: 'Save changes' }).click();
+  await expect.poll(() => writes.length).toBe(1);
+  const sources = writes[0].arguments?.sources as WorkspaceSource[];
+  expect(sources[0].exclude).toEqual(['alpha']);
+});
+
+test('the selected workspace repositories move keyboard focus between rows and back to browsing', async ({
+  admin,
+}) => {
+  await stageEditor(admin, false);
+  const picker = admin.getByTestId('repository-picker');
+  const alpha = picker.getByRole('checkbox', { name: 'alpha', exact: true });
+  await alpha.focus();
+  await admin.keyboard.press('Space');
+  await expect(
+    picker.getByRole('checkbox', { name: 'beta', exact: true }),
+  ).toBeFocused();
+  await admin.keyboard.press('Space');
+  await expect(
+    picker.getByRole('switch', { name: 'Show selected only (0)' }),
+  ).toBeFocused();
+  await admin.keyboard.press('Space');
+  await expect(picker.getByRole('searchbox')).toBeVisible();
+});
+
+test('workspace provider failures keep technical messages folded away', async ({
+  admin,
+}) => {
+  await stageEditor(admin, false);
+  await admin.route('**/api/muster/call**', async route => {
+    const call = route.request().postDataJSON() as ToolCall;
+    if (call.name === `${TOOL}list_providers`) {
+      await route.fulfill({
+        status: 500,
+        json: {
+          error: {
+            message:
+              'Tool execution failed: tool not found: x_workspace-manager_list_providers',
+          },
+        },
+      });
+    } else {
+      await route.fallback();
+    }
+  });
+  await admin.reload();
+  await expect(admin.getByText('Could not read the providers')).toBeVisible();
+  const details = admin.getByText(
+    /tool not found: x_workspace-manager_list_providers/,
+  );
+  await expect(details).not.toBeVisible();
+  const trigger = admin.getByRole('button', { name: 'Technical details' });
+  await trigger.focus();
+  await admin.keyboard.press('Enter');
+  await expect(details).toBeVisible();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+});
 
 test('the repository picker names its columns, and a pick by name reaches the preview', async ({
   admin,
