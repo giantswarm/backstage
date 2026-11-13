@@ -497,7 +497,7 @@ test.describe('agents per organization', () => {
       ).toBeVisible({ timeout: 60_000 });
       await expect(
         alice.getByText(
-          `Preselected: ${lab.defaultModel}, the default model for ${inSentence}.`,
+          `Preselected: ${lab.defaultModelLabel}, the default model for ${inSentence}.`,
         ),
         'the organization’s own default model is preselected',
       ).toBeVisible({ timeout: 60_000 });

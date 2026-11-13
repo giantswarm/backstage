@@ -645,6 +645,13 @@ because it signs as muster.
 
 ### Model selection
 
+The wizard and agent overview name a model by its display name when set,
+otherwise by its model ID, falling back to the resource name. A person's own
+ChatGPT login keeps the label "ChatGPT (your subscription)". Provider
+information remains in the model details even when the model ID is already
+the label. Picker choices with duplicate labels also show their
+configuration names.
+
 `ModelConfigPicker` lists the selected installation's kagent `ModelConfig`s.
 The preselection is the only model, else the installation's default, else the
 first. `useEnvironmentField` offers only installations known to have at least

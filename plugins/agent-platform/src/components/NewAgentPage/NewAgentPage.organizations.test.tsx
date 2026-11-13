@@ -4,6 +4,7 @@ import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Organization choices are read through the Muster API.
 import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
 
 import {
@@ -44,6 +45,9 @@ jest.mock('../ModelConfigsProvider', () => ({
         getNamespace: () => mc.namespace,
         getDisplayName: () =>
           mc.namespace === 'kagent' ? 'Platform Sonnet' : mc.name,
+        getDisplayNameAnnotation: () =>
+          mc.namespace === 'kagent' ? 'Platform Sonnet' : undefined,
+        isPersonalChatGptLogin: () => false,
         getModel: () => mc.model,
         getProvider: () => mc.provider,
       })),
@@ -151,7 +155,7 @@ describe('New agent: the organization picker', () => {
     ).toHaveTextContent(/^Organization: payments,/);
     expect(
       await screen.findByRole('radio', {
-        name: 'Select model sonnet, default',
+        name: 'Select model sonnet-model, default',
       }),
     ).toHaveAttribute('aria-checked', 'true');
     // The platform's own default is never offered to an organization's agent.
@@ -171,7 +175,7 @@ describe('New agent: the organization picker', () => {
 
     expect(
       await screen.findByRole('radio', {
-        name: 'Select model sonnet, default',
+        name: 'Select model sonnet-model, default',
       }),
     ).toHaveAttribute('aria-checked', 'true');
     await user.click(screen.getByRole('button', { name: /Organization$/ }));
@@ -182,7 +186,7 @@ describe('New agent: the organization picker', () => {
 
     expect(
       await screen.findByRole('radio', {
-        name: 'Select model opus, default',
+        name: 'Select model opus-model, default',
       }),
     ).toHaveAttribute('aria-checked', 'true');
     expect(screen.queryByText('sonnet')).toBeNull();
