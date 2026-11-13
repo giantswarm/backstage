@@ -1133,17 +1133,16 @@ describe('createRouter', () => {
     expect(response.body.toolset).toEqual(toolset);
   });
 
-  it.each([
-    { toolset: null },
-    { toolset: 'preset:none' },
-    { toolset: [1] },
-  ])('rejects a malformed JSON toolset $toolset', async ({ toolset }) => {
-    const response = await request(app)
-      .post('/tools/filter')
-      .send({ toolset });
-    expect(response.status).toBe(400);
-    expect(filterTools).not.toHaveBeenCalled();
-  });
+  it.each([{ toolset: null }, { toolset: 'preset:none' }, { toolset: [1] }])(
+    'rejects a malformed JSON toolset $toolset',
+    async ({ toolset }) => {
+      const response = await request(app)
+        .post('/tools/filter')
+        .send({ toolset });
+      expect(response.status).toBe(400);
+      expect(filterTools).not.toHaveBeenCalled();
+    },
+  );
 
   it('passes a repeated toolset= parameter through as a selector list, in order', async () => {
     filterTools.mockResolvedValue({
