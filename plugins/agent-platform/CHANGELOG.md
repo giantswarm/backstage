@@ -1,5 +1,328 @@
 # @giantswarm/backstage-plugin-agent-platform
 
+## 1.4.0
+
+### Minor Changes
+
+- 9ebf632: Agents list rows and the agent page's Created by name the creator by the `agent-platform.giantswarm.io/created-by-name` annotation where agent-manager recorded one, falling back to the email; the agent page shows the email as a secondary line, the list row in its tooltip.
+- 9ebf632: Customize → Agents names each agent's creator on its row, "Platform" for an agent outside an organization without the `agent-platform.giantswarm.io/created-by` annotation and none for an organization's (as the agent page's Created by now does too), and sorts by Last used (the person's own sessions; the default from the visit after they first use an agent, and never reordering the rows during a visit), Recently added or Name, remembered per browser.
+- bd5f42a: The agent wizard handles skills from private repositories: the skills step marks a private repository and its skills, and the skills step and the review say which credential the agent fetches them with (the installation's, as agent-manager reports it, or the agent's own) or warn, without blocking, when the installation has none or its token fails to refresh. An agent whose skills credential Secret is missing says so and that it recovers once the Secret exists, apart from an agent that has not booted yet, which points at the boot log.
+- 9ebf632: Customize → Agents shows each agent's connectors on its row as overlapping round logos, at most three with "+N" for the rest, each named on hover or focus; none for full access, as on the agent page. The muster plugin exports `ConnectorLogoStack`, and `ConnectorLogo` takes `round`.
+- b7be9dd: The agent wizard's Skills step lists plugins as Claude Code plugins and Agent Plugins packages in two groups, one row per plugin with its skills folded away and a search over plugins and their skills. An Agent Plugins package's checkbox picks every skill it has at the commit shown; a Claude Code plugin's row shows its skills without checkboxes. An edited agent that loads a package whole at an older pin shows it checked instead of unpicked.
+- b6f1f17: The side rail's recent sessions, the notification inbox, the command palette, the Sessions page and the start screen list every environment again after an environment is chosen on a Customize page. The Sessions page gets its own Environment filter. Usage keeps its own environment choice, separate from Customize's.
+- a0faf4f: The new-session screen preselects the installation's default agent (agent-manager's `get_info` `defaultAgent`) and lists it first in the picker, marked Default; a `?agent=` link or the person's own pick still wins, and a late default does not replace the agent shown once the person has typed. `?agent=` also accepts `<namespace>/<name>`. `/?agent=<id>#prompt=<brief>` prefills the prompt without sending it, marked as coming from a link; the brief stays in the fragment, is removed from the address once read and is filtered from Sentry. A brief that replaces a stored draft offers the draft back. In agent replies, new-session links open in the same tab; other links open in a new tab, `#…` links stay on the page.
+- c0fbc77: A namespace's default model is only the ModelConfig annotated `agent-platform.giantswarm.io/is-default-model-config: "true"`. An unmarked `default-model-config` is no longer the default, so Connect a model makes the new model the default when nothing else is marked, as agent-manager now resolves it. A default that Helm values set points to that release's values instead of the removed `kagent.modelConfigs[].default`.
+- dbd826c: Every link and button that opens a new tab marks it the same way: the launch icon after its text and "(opens in a new tab)" for a screen reader, in place of the "↗" some of them ended in (Review pull request, Edit on GitHub, View on GitHub, the sign-in buttons, All portal settings, the release line, How it works, How alignment works, Workflow runs, the repository phase links). `ui-react`'s `ExternalLink` is now bui's `Link` (always underlined, bui's focus ring) and takes an optional `variant` and `title`; without a `variant` it keeps taking the surrounding font, and off the agent shell it keeps the classic link colour. `ui-react` adds `ExternalButtonLink` (bui's `ButtonLink` with that treatment) and exports `NewTabHint` and `NewTabLabel` (a button label followed by the hint). `ExternalCellText` and `GSReleaseInfo` are built on `ExternalLink`. A skill page's Path links to the SKILL.md on GitHub at the latest commit, and the Instructions file viewer links a file at the commit it was read at, naming no commit when there is none.
+
+  Every text link to outside the portal now opens in a new tab and shows the icon, including the ones that showed nothing before or another external-link icon: docs, GitHub pull requests, commits, releases and issues, Grafana dashboards and endpoints, hostnames, Teleport, PagerDuty, sign-in pages, and the links in rendered markdown (`GSMarkdownContent` renders an `http(s)` link to another origin as an `ExternalLink`). `ui-react` exports `isExternalHref` for telling such a link apart.
+
+- 694e2ae: Fixture mode for the muster and agent-platform plugins, outside production builds only. `muster.fixtures` serves one signed-in installation from memory, its tool calls answered by the fixture MCP servers that plugins attach to `api:muster/muster` (`fixtureMcpServersDataRef`); a tool no fixture handles fails with an error. `agentPlatform.fixtures` serves kagent, model-manager and agent-manager's credential operations from memory. With `gs.fixtures` the app serves a Kubernetes API without a cluster for the installations, and their cluster access reads as healthy; `gs.authProvider` is optional in the config schema, as the code already treated it. `yarn fixtures start` runs the portal in fixture mode on free ports of its own. `gs-common` exports `FIXTURE_INSTALLATION` and `FIXTURE_MCP_SERVERS`, which every fixture reads.
+- 023b36a: In the New agent form, the Organization picker shows an organization where you may use but not create agents as disabled, with the reason: the editor role is necessary. When this is true of all your organizations, the form says so. An agent-manager that does not send `createAgents` keeps every organization selectable.
+- a02eb7e: An Agent Platform organization's credentials are entered on the Dev Portal's credential form, never in a tool call.
+
+  - agent-platform-backend: `GET`, `POST` and `DELETE`
+    `/organizations/credential-operations/:operation?installation=` carry
+    agent-manager's credential operations (giantswarm/agent-manager#312) as the
+    person, with the installation token in `backstage-agent-manager-authorization`,
+    to `https://agentgateway.<baseDomain>/agent-manager` (the agent-platform
+    chart's `agentManager.route`) or
+    `agentPlatform.agentManager.installations.<name>.apiBaseUrl`. The POST body
+    is validated and never logged or echoed; `If-Match` is required on POST and
+    DELETE (428 without it); every answer is `Cache-Control: no-store`; refusals are the
+    backend's error body with agent-manager's `code`. A save that runs past
+    120 s, loses its connection or is refused by a gateway answers code
+    `outcome_unknown`.
+  - agent-platform: `/organizations/<installation>/<parent>/<name>/credentials/<operation>`,
+    the link agent-manager's `credentials.uiURL` names
+    (`…/credentials/{operation}`), shows what the value is for (the
+    organization agent-manager prepared it for, refusing a link that names
+    another, the object that asked, the other objects that read it, where it
+    is sent, and the pull request's repository in commit mode) before it takes
+    a value, saves it once with the confirmation's version, and never shows it
+    back. A changed request is read again; a save interrupted on
+    agent-manager's side is finished from the page; a commit without the
+    GitHub grant offers the connection. The Models tab's Add model and Replace
+    key, and the Connectors tab's Replace credential, ask agent-manager as the
+    person and open the form for the request it prepares (its
+    `credentialOperation`).
+  - analytics-react: `AgentPlatform.organizationCredentialSaved`.
+  - app: the form's page view, without the request's id.
+
+- 99b5956: A person who manages an organization deletes it from its page. The dialog lists what agent-manager says the delete erases, what is kept and the running sessions it stops. It erases only once the person types `<parent>/<name>`. For an organization applied from git, Delete opens the pull request that removes it, and Erase now on Pending erase erases it after that pull request merged. Missing from git offers neither. The organization page also reads `get_organization` in the shape agent-manager answers it, so its status notices show for organizations-admins. New events `AgentPlatform.organizationDeleteRequested` and `AgentPlatform.organizationErased`.
+- 943dab0: The organization page says when an organization is Missing from git, with a link to the last commit that held its file, or Pending erase after its delete pull request merged, and Erasing once it is deleted, whether it was applied from git or not. Once the operator erased it, the page says it is erased.
+- 83eeba9: The organizations come from agent-manager's `list_organizations` (agent-manager 2.24.0 or later), which replaces `list_my_organizations`. The Organizations page also lists the organizations the person manages without belonging to them. A member sees an organization's status without its details. Adding or removing members, adding a model and replacing a key or a credential are offered only to people the cluster allows to make those changes in the organization namespace.
+- 7e12f91: `/profile`'s Environments section lists every environment as a toggle chip with its access health, with All on, All off and Undo, and Sign in again while a session has expired, sharing its state with the classic sidebar's Cluster access widget. gs exports `useClusterAccessStatus`, `useMutedInstallations`, `useSignInAgain` and the shared access state labels and tones (`CLUSTER_ACCESS_STATE_LABELS` and its neighbours), and `MutedInstallationsApi` gains `setMutedMany`; ui-react's `StatusDot` takes `ring`.
+- 986d5ff: The session page no longer scrolls while the agent's reply streams in, so the text being read stays where it is. When new content arrives below the view, a Jump to bottom button appears above the composer. Sending a message puts it at the top of the view, and the reply appears below it.
+- f55e45f: `agentPlatform.skills.repositories` entries accept `{url, ref, path, readOnly}`
+  next to a plain URL:
+
+  - `ref`: branch, tag or commit to read (default branch when unset); picked
+    skills pin to the commit it resolves to.
+  - `path`: scan only below this directory; skill paths stay
+    repository-relative. New skills are proposed below it.
+  - `readOnly`: skills list and can be added to agents, but the portal offers no
+    Add skill or edit pull requests into the source, and the pull-request route
+    refuses them.
+
+  `ref` is a branch or tag name, `refs/heads/<name>`, `refs/tags/<name>` or a
+  full commit id; a name that is both a branch and a tag is refused. A tag or
+  commit `ref` is read but takes no pull requests; a branch `ref` is the
+  pull-request base. A `path` that does not exist fails that source. A URL
+  listed twice is read once, by its first entry, and is read-only when any entry
+  says so. Evaluate works for every skill; one the portal cannot change gets a
+  report-only evaluation.
+
+  A skill page labels its ref Branch, Tag or Commit. Skills of a read-only skill-manager source offer no Edit. The skills list no longer shows the raw error when skill-manager cannot be reached.
+
+- 6db0bbf: Skills and plugins are listed and read through the installation's skill-manager, as the signed-in person.
+
+  - agent-platform: where the installation's muster lists skill-manager, the skills step, the agent pages and the skill pages read `x_skill-manager_list_skills`, `get_skill` and `get_skill_file` instead of gs-backend's `/agent-skills` routes. The wizard and the agent pages read the installation the agent runs on; the other pages read the portal's home installation. A private repository the person's GitHub login cannot read lists no skills or plugins, and the skills step shows skill-manager's reason (for example, to connect GitHub in muster). Before, every signed-in person saw its skills and was refused only when creating the agent. Add skill offers skill-manager's writable sources that scan the whole repository and that the person can read, instead of `agentPlatform.skills.repositories`.
+  - gs-backend: `POST /agent-skills/pull-request` takes `installation`. With it, the target must be a writable source of that installation's skill-manager, read as the person through muster (`backstage-muster-authorization`); a read-only source is refused with 403, and the pull request targets the source's `ref` when it names one. Without it, the configured `agentPlatform.skills.repositories` apply as before.
+  - muster: `MusterApi.authHeaders(installation)` gives the headers that carry the person's muster token, for a backend plugin that calls muster as them.
+  - Where skill-manager is not deployed, gs-backend's discovery of `agentPlatform.skills.repositories` answers as before. That path is deprecated. Where muster's server list cannot be read, the skills step says so instead of answering from that list.
+
+- 9ebf632: The Agents list's connector logos and the agent page's Connectors section show each preset the toolset names first, by its label, with muster's icon for it, or a generic preset icon when muster sends none or an unusable one. `ToolsetPreset` gains the optional `icon`.
+
+### Patch Changes
+
+- d06bfc3: The create-agent wizard, model picker and agent overview use an admin's display name when set, otherwise the model ID. Provider details remain visible, and picker cards with duplicate labels show their configuration names.
+- 5122bc9: A provider's sign-in prompt shows muster's reason, and no sign-in button, when muster reports that the person's sign-in to that provider App cannot pass for this session.
+- 771c3c5: Usage › Connectors draws p95 latency bars in neutral grey, and the Cost tab's per-model table draws average tokens per call in green, rather than red, which the usage pages keep for errors. The sessions side panel sets its heading, links and session subtitles in body-small (12 px) rather than 10 px. Customize › Models adds the namespace to rows whose model configs share a name.
+- 95013a3: The Customize screen's Agents tab shows one progress bar while it reads, not two: the thin "Loading more agents" bar no longer sits over the "Reading your agents…" indicator while the Last used sort waits for its first read.
+
+  The Sort picker keeps one width whatever is picked and lines up with the first row of filters when they wrap.
+
+- a2a8223: Keep private skill repository metadata through a cached catalog reload so the wizard's Skills step continues to render. Refetch older catalog cache entries whose private repository metadata was lost during persistence.
+- 105dc99: A session's approval row names the muster tool behind `call_tool`, with its connector (or "via Muster" when no connector matches), and folds out that tool's own arguments; the runtime's confirmation hint no longer appears in the transcript as a message from the agent.
+- f6b43d6: The new-session composer keeps the agent and workspace readable however many toolchains are picked. The toolchains button shows a toolbox icon and the number picked, and lists them in its tooltip and popover. The workspace picker shows a folder icon instead of a "Workspace" label, and no longer says "Last used with …" or "…'s default" beside it. Where there is no other agent to choose, as on an agent's page, the agent is shown by its avatar and name instead of a picker. The agent and workspace take as much room as their names need, share it equally when it is short, and end in an ellipsis only then.
+- 2f03302: Raw HTML in chat messages is sanitised to GitHub's allow-list before it renders,
+  and images, from Markdown or HTML, render as links to their URL. A message that
+  quotes tool output no longer makes the browser load a URL or run its handlers.
+  `<details>` blocks still render.
+  GFM footnotes link to their note and back.
+
+  `MermaidDiagram` takes `untrusted`, which drops a diagram's image nodes and
+  the remote references in its CSS (`url(…)`, `image-set(…)`, `@import`)
+  instead of loading them; the AI chat renders its diagrams that way.
+
+- 2432cb0: Sign-in prompts say "connector" and name each connector by its display name.
+
+  - muster-backend: `GET /servers/names` answers each connector's name (muster's
+    key, `<namespace>/<name>` for a tenant's server), family and display name
+    from `core_mcpserver_list` (muster v5.53.1 or later for the display name),
+    read as the person, so the names are there for people without Kubernetes
+    access to the `MCPServer` objects. A failed list answers
+    `{ servers: [], unavailable: true }` with HTTP 200; a token muster refuses
+    answers 401, and muster unreachable its 5xx. The shape, `ConnectorName`,
+    is in gs-common.
+  - muster: `MusterApi.listConnectorNames` and the hooks `useConnectorLabels` and
+    `useConnectorLabel`, one shared read per installation, replace the
+    `MCPServer` read behind the sign-in dialog and the notification inbox, which
+    showed technical names to people without cluster access. `ServerSignIn`
+    names the connector by it when the caller passes no `displayName`, and shows
+    the display name with `showName`, with the server's own name beside it where
+    they differ, and takes `onSignedIn`, called once per sign-in that lands
+    (also from another tab, or a click that finds the server connected
+    already), saying whether it was made in this tab (`SignedIn.here`). The
+    names are read once per installation and are not read again on a sign-in.
+    The sign-in dialog says "connector", its rows too.
+  - agent-platform: muster's request for the person's sign-in to agent-manager
+    is a sign-in, not agent-manager's own `auth_required` refusal: starting a
+    session without it offers the sign-in instead of "Session not started" with
+    muster's text. Once that sign-in lands the alert goes; where it was made in
+    the tab the person pressed Start in, the refused start goes again. Before,
+    the alert stayed, and its Sign in then answered "already authenticated".
+    The connect alert names the connector by its display name and, for
+    muster's request for a sign-in (`signInRequired`, read from muster's 401
+    where the error is classified), writes its own sentence instead of
+    muster's; any other not-connected answer stays in sight. Once the sign-in
+    lands, every alert of the kind clears: on the create and edit reviews, the
+    agent's delete, skills and Harness dialogs, the skill's update dialog, the
+    GPU node pool, model cache, model backend and cluster pages and dialogs,
+    a dry run behind it asks again and a refused write is cleared for the
+    person to press again; nothing that deletes or removes goes again by
+    itself. The skills and Harness dialogs now show the alert for a write
+    refused for want of the sign-in, which they used to swallow.
+  - bot-prs: the marge sign-in alert does the same.
+  - app: the inbox's sign-in row says "connector".
+
+- 8a2faea: Usage › Connectors loads faster. The muster backend reuses a complete usage answer for five minutes per installation, window, connectors and signed-in user, across page reloads, shares one read between identical requests, and serves each tool's p95 latency from the new `GET /usage/tool-latency`, so the figures no longer wait for the slowest query. The muster plugin's `MusterApi` gains `getMcpToolLatency`, the tool tables fill in their p95 column when it arrives, and the usage reads and the shell's tag lists are reused for five minutes, and the serving layer's node list for a minute, instead of being read on every mount. The usage read finds the prometheus server once per person, and reads the week before the window apart. The settings storage shares one read between components that subscribe to a key together, and reuses a "not set" answer for a minute while the key's change announcements are being received.
+- e0bdcaf: The credential form names a model's provider as the destination of its key, instead of "the provider's default endpoint".
+- a955988: In the agent wizard's individual tools, ticking a whole connector replaces its single tools, which it covers and which otherwise counted against the 32-selector limit. Its tools show ticked, and unticking one keeps the connector's other tools. A copied toolset drops such single tools too, and the limit message no longer suggests All for a connector that already has it.
+- 898117b: Hide unavailable deployment details on agent pages while preserving the agent's readiness.
+- a0faf4f: The platform's default agent without a model says so: Agent details and the home page show "No model yet. Add one under Models.", linked to Models, until one is marked default.
+- 98b31eb: The start screen's alert about a General Assistant that cannot start sessions names every affected agent: how many, the environments grouped by reason (no model yet, or the failure the controller reports), and behind "All N agents" each agent's environment and namespace, linked to its page. The Models link in that alert, and on an agent's page, is the size of the text around it.
+- a0a239d: Collapse blocked-connection diagnostics by default while keeping each destination and attempt count visible in the session. Expand a destination to inspect its policy details and available remedies.
+- 2f03302: Every address a server provides (a connector sign-in, a device-code page, a
+  GitHub or manager connect, a sign-in an agent asks for) opens only after the
+  person agrees in one dialog that shows the full address with its domain
+  highlighted and warns about a punycode domain, plain http and a user name
+  before the domain.
+
+  - ui-react: `externalUrlConsentApiRef` with `ExternalUrlConsentManager`, and
+    `ExternalUrlConsentDialogHost`.
+  - app: registers the consent API and mounts `ExternalUrlConsentDialogHost` at
+    the app root. A desktop notification whose link leads out of the portal
+    asks before it opens.
+  - muster: `useServerSignIn` no longer opens a tab on the Sign in click; it asks
+    to open the sign-in page once muster answers. `ServerSignInState` gains
+    `openSignInPage` and loses `isPreparing`; the hook's options gain
+    `displayName` and lose `tabWaitMs`. A device code's page is a button, not a
+    link.
+  - gs: the GitHub auth API asks before it navigates to muster's connect; a
+    connect not opened is a `no_grant` error and is not asked again for two
+    minutes. Concurrent token requests share one prompt and its answer.
+  - plans, roadmap, repositories, platform-capabilities: a missing grant offers
+    Connect instead of navigating on first sight.
+  - agent-platform: an agent's sign-in, a provider sign-in, a connector
+    sign-in link in a message and the toolchain-manager's App install page are
+    buttons that ask first.
+
+- c775cfb: Fixture mode's data, outside production builds only. `@giantswarm/backstage-plugin-gs-common/fixtures` builds a seeded data set of installations, organizations, agents, connectors, sessions, workflows and executions, with a count, a least name length and the states for each list; the base data set has every state, and only made-up names. muster and agent-platform map its records onto the types their clients read. Fixture mode serves three made-up installations, `FIXTURE_INSTALLATIONS` in gs-common, instead of one. kubernetes-react exports `AGENT_BLOCKED_REASON`.
+- cefb9d4: Fixture mode serves agent-manager, outside production builds only: every tool of it answers from the base data set, so the agent list, an agent's page, the New agent flow and editing an agent work without a cluster, and so do the organizations with their members, models, connectors and egress policies and the credential form. Writes are kept in memory until the page reloads; an agent created or changed reports its new generation at once and the controller's verdict a few seconds later. `@giantswarm/backstage-plugin-agent-platform/fixtures` exports the Agent, RemoteMCPServer, ModelConfig and Harness objects the fixture Kubernetes API lists. An organization's Models, Connectors and Egress tables and the Cost page's By model table no longer fail on a row named like one of their columns, such as a model named `default`.
+- d97c11d: Fixture mode serves workspace-manager, toolchain-manager and skill-manager, outside production builds only: their tools answer from the base data set, so the Workspaces, Toolchains and Skills tabs, their detail and edit pages, and the New session dialog's workspace and toolchain pickers show data without a cluster. The data set of `@giantswarm/backstage-plugin-gs-common/fixtures` gains builders for provider owners and repositories, workspaces, toolchain sources and toolchains, and skill repositories. Writes are kept in memory until the page reloads; a sync runs for a few seconds, and a new toolchain's pull request moves through its checks.
+- 648228e: A session turn the model could not answer now shows a plain explanation, with the raw error folded under "Technical details". Refused access asks the platform team to check the model's credentials and permissions; other model failures suggest trying again or asking for help. This includes rate limits, missing models and provider outages.
+
+  The failure classifier recognises Go ADK model errors and provider authentication and permission errors. An Anthropic or OpenAI SDK error's HTTP status takes precedence over numbers and error names inside its message. `isCredentialsRefusedText` distinguishes refused model access from other model failures.
+
+- 22f9eaf: When a sign-in elsewhere ends the portal session in this browser (Dex refuses the refresh with "already been claimed by another client"), the Agent Platform shows "You signed in somewhere else" with a "Sign in again" button. Meanwhile the Customize tabs leave their counts out, the Connectors and Workflows tabs say they could not read the list instead of "None of your environments runs muster", and the sessions rail asks for a sign-in instead of "No sessions yet". After a reload, the sign-in page (shell-style and classic) shows the same notice above the sign-in options. The gs plugin adds `useMainSessionEnd` and `GSAuthProvidersApi.getMainSessionEnd`.
+- f1d8771: Model failure notices distinguish refused access from other provider failures and give recovery advice consistent with the provider SDK's HTTP status. Technical details support keyboard expansion and collapse without losing focus.
+- b5164ce: Connect a model waits, saying why, until the Owner choices on its environment are known, so a model meant for an Organization can't be saved to the platform before the Organization is offered. Where you have not signed in to Agent Manager on that environment, it waits for your sign-in and offers it in place; once signed in, the Owner choices appear. When the Organizations can't be read for another reason, the page says the model goes to the platform. An environment whose agent-manager cannot be reached no longer holds up editing a model on another environment, and an environment muster doesn't list still holds edits outside the platform's namespace.
+- 44bae01: Customize → Models names each model's owner ("Owner: Platform", "Owner: <organization display name>") when the list spans more than one, so the platform's default model and an organization's no longer read as two identical rows.
+- 06dfa3d: More muster tool errors get their own status instead of a 500.
+
+  - gs-node: muster's `Tool not found: x`, its answer for a meta-tool's target
+    (`describe_tool`), is `tool_not_found` (502) like `tool not found: x`.
+    model-manager's `forbidden:` is a refusal (403, out of Sentry), and its
+    `no_backend:` the new kind `no_backend` (503). A tool error of no known
+    kind stays 500.
+  - gs-common: `forbidden` is one of model-manager's refusal codes.
+    `MODEL_MANAGER_FAILURE_CODES` and `mcpToolFailureOf` name the failures of a
+    whole server, model-manager's `no_backend` for now, next to the refusals.
+  - agent-platform: model-manager's `forbidden` reads as a `ForbiddenError` and
+    `no_backend` as a `ServiceUnavailableError`, neither retried.
+  - backend-common: `no_backend` events are grouped per server in Sentry. A
+    server-wide kind whose tool names no server (a meta-tool's missing target)
+    is grouped by its message instead of all in one issue.
+
+- 2020566: Replace key and Replace credential on an organization's Models and Connectors tabs, and a new key from Edit model, ask agent-manager's `replace_organization_credential`: the request writes the credential's Secret only, and the credential form lists every model, connector or egress policy that uses it and where each sends the value. A connector with several credential Secrets offers one Replace for each. An organization model's provider can no longer be changed on Edit model. Refusals say what to do, and a save refused because the objects that use the credential changed (agent-manager's `credential_consumers_changed`) says to start again from the organization's tab, which sends a new request, and takes no value for the stale one. Replace needs agent-manager v2.24.0-rc.6 or later; the "start again" alert needs v2.24.0-rc.7 or later, and with rc.6 that refusal shows as Not saved.
+- 54a9736: A person who manages an organization whose namespace the operator has not created yet can delete it from its page: Delete organization (with the typed `<parent>/<name>`, or the pull request for one applied from git) and Pending erase's Erase now are offered there too, and the delete dialog says there is nothing inside a namespace to erase and no session stops. That page also shows the organization's state (Pending erase, Missing from git, Erasing), and says the organization is erased when it is gone right after its delete. A member who does not manage it still gets no Delete.
+- 846cc93: An organization that is being erased can no longer be changed from its page: as in Pending erase, Add a member, Remove, Add model, Replace key and Replace credential are disabled, a dialog that was open for one of them closes, and the Erasing notice says why. In both states the Group or Person field and the Role selector of Add a member now look disabled, and every disabled control of the form names the reason for screen readers.
+- dcab50b: Edit model opens for an organization's model again, and the model page offers Edit for one agent-manager wrote: the Models routes read the organization directory. Add model and Replace key or credential on an organization's tabs open the portal's credential form in the same tab, without the "Open a page for agent-manager?" dialog and without an error left behind after the save.
+- 6b6b73f: Set as default on the page of an organization's model, one agent-manager wrote included, moves the organization's default mark through agent-manager (`set_organization_model` with `default: true`) instead of being withheld, and writes no ModelConfig from the portal. A model without a key goes on to the credential form, and a person who may not change the organization's models sees "Not permitted" with who can.
+- e5a1616: New model and Edit model save an organization's model through agent-manager and write no Secret from the portal, so organization admins can add and change their models again. The key is entered on the credential form: a new model, a replaced key or a new provider continue there. A model agent-manager wrote in an organization is editable, and a person who may not change the organization's models sees "Not permitted" with who can.
+- 23d67d0: An organization in Pending erase can no longer be changed from its page: Add a member, Remove, Add model, Replace key and Replace credential are disabled, a dialog that was open for one of them closes, and the Pending erase notice says why. Its members, models, connectors and egress policies stay listed, and Erase now stays available.
+- d8b2289: Gate the Organizations pages behind the `agent-platform-organizations` feature flag, off by default. `agentPlatform.organizations.enabled` enables or disables the pages for everyone and overrides saved browser flags. Show their navigation entry only when the pages are enabled and an agent-manager reports support for Agent Platform organizations. Direct links to enabled pages show discovery failures as errors instead of reporting the feature unavailable.
+- a955988: The agent wizard's tools step says what blocks Continue: the line by the button names the problem (the selector count against the limit, or the selectors that are not valid), says to fix it under Selected, and its Show the problem button opens the individual tools and moves the focus to the problem. The reason under Selected, in the rail and in the summary bar of narrow frames, is body text in the danger tone. Each connector card states in words whether it is connected, needs a sign-in or is not connected, why it lists no tools, why Read-only cannot be picked, and what is selected; the chosen Read-only or All carries a check. The muster plugin exports `CONNECTOR_REACH_LABELS`, the `ConnectorReach` type and `SEVERITY_DOT_TONE`, the `StatusDot` tone of a connector's state.
+- 172b3de: `ui-react` exports `formatLocalTime` (`14:05`) and `formatLocalDay` (`16 Oct`, with the year when it is not the current one), the compact forms of `formatLocalDate`. The session list's last-active time and the command palette's session date use them, so they read on the same 24-hour clock and in the same words as every other date in the Agent Platform, whatever the browser's locale; the palette now shows the year of a session from another year. A model cache claim's creation shows as a relative date: "2 months ago" in a "Created" column on Model cache, with the local date and time on hover, and "created 2 months ago" in the add-pool cache note.
+- a0faf4f: A platform-owned agent (agent-manager's `managed: platform`, such as the default agent) is read-only: Agent details offers no Edit, Update skills, Change Harness or Delete, the edit page answers a deep link with the reason, the skill page's Update agents lists it as not updatable, and an egress refusal offers no edit.
+- d8681df: When the portal refuses the person's session token (for example after a restart of a portal without a database), the Agent Platform pages say that the portal session ended and to sign in again, with a Sign in again button, instead of "Failed user token verification". The credential form drops the typed value and opens the same request again after the sign-in. muster's `MusterUnauthorizedError` keeps the name the answer gives the error (`errorName`), so a page can tell the portal's own refusal from muster-backend's.
+- 2b48a03: The workspace editor's blocked save names an empty Owner ("Choose an owner", or "Enter an owner" where the owner is typed), Provider ("Choose a provider") and Name ("Enter a name") under the field and moves the focus there, opens Advanced options or the source that holds the problem, and asks for repositories only once the source has an owner. The Owner and Provider selects say "Choose an owner" and "Choose a provider" before a choice, and an empty Including filter reads "Including: none". Leaving a field announces its error. A save the manager refuses moves the focus to the field it names, or announces the refusal when it names none. When the providers cannot be read or none is configured and a source has no provider, a warning says why it cannot be saved and takes the focus on a blocked save, instead of a provider error with no field. Editing a workspace opens each source's repository table on its picks by name.
+
+  Unticking a repository in the selected-only view excludes it from filters too, and re-including an excluded repository explicitly selects it. The table names its columns and keeps keyboard focus on a remaining row or the view switch when empty. Provider errors show their raw messages under Technical details.
+
+- 7b7780d: Preserve task completion and recorded tool-response activity when placing network refusals on session turns.
+- 3b113f7: Show session filesystem links as local paths instead of navigating to nonexistent portal pages. Use Agent Platform wording for request failures and clear an unconfirmed-answer error when a later session read confirms the answer.
+
+  Measure turn progress from recorded messages and tool outputs as well as state updates. Place network refusals on the matching turn and explain that a blocked connection alone does not establish task failure. Keep unconfirmed answers recoverable and avoid inferred causes in runtime notices.
+
+- a136d03: The Notifications submenu of a session's actions menu calls its default level **When action is required** instead of Default: it notifies when the session waits for you or fails.
+- 13b8d60: Set the paragraphs of an agent's reply, and of a skill's instructions, at 14px again, the size of the user's own message, instead of 12px. Quoted text and the agent's reasoning are shown in their quieter colour again, and an expanded section in a reply stays open while the reply streams in.
+- 9893b04: The muster plugin exports `useMusterServerAvailability` and `musterServerListQueryKey`: which installations' muster lists an MCP server, as the person. The Agent Platform and Bot PRs use it instead of their own copies, so Bot PRs also stops asking an installation the portal cannot reach, backs off after a 503, and no longer offers marge where muster has no per-user sign-in.
+- f5615a0: Polling stops from hidden tabs and after a permanent error. `ui-react` adds
+  `pollingQueryOptions`, `isPermanentReadError` and `causeChain`: a query
+  spreads the options and polls only while the tab is visible, reads again as
+  it becomes visible where its data is stale, and stops after a 401, a 403 or a
+  "not connected" answer until a read succeeds again; a stopped query is not
+  read on becoming visible either. `inBackground` keeps a poll going from a
+  hidden tab while the caller has a reason, and `refetchOnVisible: false`
+  leaves the read on becoming visible to the next tick. `muster` adds
+  `musterPollingOptions` and `isPermanentMusterReadError`, which also stop on
+  muster's `server_sign_in_required` and a portal session that is gone. The
+  retry policies of the gs, flux, repositories and muster clients and of the
+  Mimir queries build on the same classifier.
+
+  The model-manager reads of the Serving view (`list_backends`, `list_models`,
+  `list_nodes`), the pull jobs, the GPU node pools, workspaces, toolchain
+  builds, session reads, the Kubernetes and Mimir polls, muster's status and
+  connector reads and the repositories watches follow the rule. The GPU node
+  pools read polls from a hidden tab only while a pool is being deployed, and
+  the inventory only while a served model is on its way in, so a pool's serve
+  intent still loads its model meanwhile. Where muster asks the person to sign
+  in to model-manager, the Serving view offers the sign-in, and polling resumes
+  once it lands.
+
+- 30166ef: A connector muster does not reach no longer reads as one without tools. The agent wizard's Tools step shows its connection in the Customize page's words (Not connected, Partly connected, Deactivated) on its card, its catalogue row and its group's summary, instead of "0 tools", and counts the tools chosen from it that it cannot list now. The Connectors list shows "—" in its Tools column instead of "0 tools", and the connector's page says it is disconnected (or its state) and so shows no tools, with no count on its Tools tab. The muster plugin exports `CONNECTOR_REACH_LABELS`.
+- ae00960: An installation whose muster the portal cannot reach no longer makes people wait. `ReachabilityCache` reports an endpoint unreachable only after two failed probes in a row (`UNREACHABLE_AFTER_FAILED_PROBES`), so muster's and kagent's `/installations` no longer report a distant installation unreachable for one late answer. muster-backend answers a call to an installation the probe reports unreachable at once with a 503, "not reachable from this portal", without a connection attempt or a warning; the probe allows a muster as long to answer as a call has to connect. gs-node exports `MUSTER_CONNECT_TIMEOUT_MS`, and `MusterUnreachableError` names its `installation`. Connections to muster time out after 5 s instead of undici's 10 s, and the Agent Platform stops asking for the server list of such an installation, reading a list that answered 503 again only after a minute, then less and less often.
+- 5bff041: Usage counts cache reads and writes inside input on every installation, as the gateway records them, instead of guessing per series whether input holds them. Token totals, the cache-read share, fresh input and the estimated cost no longer change with how a window's figures happen to compare.
+- 130ba32: Usage: the Organization select keeps one width and cuts a long name short with
+  an ellipsis, so it no longer pushes the header's controls onto a second line;
+  the whole name is in a tooltip on hover and keyboard focus, and in the open
+  list. Every Organization label (the select, the Cost and Overview captions,
+  the By organization rows, the sessions list's Organization filter) names a
+  Giant Swarm organization's `org-<name>` namespace by the organization's name
+  and other namespaces as they are, without a `namespace` prefix; two that read
+  the same show their namespace. Across the Agent Platform, a select's option
+  names wrap instead of being cut short where the screen is too narrow.
+- 19ec951: The Usage pages count cached input tokens once. Since agentgateway v1.5.0 the gateway's `input` count already holds the cache reads and writes, so token totals, $/1M rates and the cache read share were up to 2x off. They now agree with the session estimate, and the tokens per day chart stacks fresh input, cache reads, cache writes and output. Totals from a gateway older than v1.5.0 are read as before.
+- d62e8d3: Complete and track existing-key model writes, recover changed credential requests, and keep successful saves and cancellations visible. Isolate values and results between requests and clear values while refreshing a confirmation. Validate model names consistently and hide key replacement for managed models.
+- 8a80e0d: Creating a workspace takes any name and fills in its technical name from it, shown under the field as on agent creation; a technical name of the person's own goes under Advanced options.
+- Updated dependencies [bd5f42a]
+- Updated dependencies [771c3c5]
+- Updated dependencies [9ebf632]
+- Updated dependencies [105dc99]
+- Updated dependencies [d553603]
+- Updated dependencies [2f03302]
+- Updated dependencies [2432cb0]
+- Updated dependencies [a4721d8]
+- Updated dependencies [9d0f295]
+- Updated dependencies [8a2faea]
+- Updated dependencies [01a63aa]
+- Updated dependencies [41e1c7f]
+- Updated dependencies [b6f1f17]
+- Updated dependencies [a158256]
+- Updated dependencies [dbd826c]
+- Updated dependencies [2f03302]
+- Updated dependencies [c775cfb]
+- Updated dependencies [cefb9d4]
+- Updated dependencies [d97c11d]
+- Updated dependencies [3b65ce4]
+- Updated dependencies [694e2ae]
+- Updated dependencies [e8c5832]
+- Updated dependencies [648228e]
+- Updated dependencies [22f9eaf]
+- Updated dependencies [d62e8d3]
+- Updated dependencies [f1d8771]
+- Updated dependencies [dcab50b]
+- Updated dependencies [a84f5ec]
+- Updated dependencies [b623ab3]
+- Updated dependencies [06dfa3d]
+- Updated dependencies [5122bc9]
+- Updated dependencies [a05070d]
+- Updated dependencies [a02eb7e]
+- Updated dependencies [99b5956]
+- Updated dependencies [d8b2289]
+- Updated dependencies [a955988]
+- Updated dependencies [172b3de]
+- Updated dependencies [d8681df]
+- Updated dependencies [7e12f91]
+- Updated dependencies [7b7780d]
+- Updated dependencies [3b113f7]
+- Updated dependencies [9893b04]
+- Updated dependencies [6db0bbf]
+- Updated dependencies [f5615a0]
+- Updated dependencies [30166ef]
+- Updated dependencies [9ebf632]
+  - @giantswarm/backstage-plugin-kubernetes-react@1.2.0
+  - @giantswarm/backstage-plugin-muster@0.6.0
+  - @giantswarm/backstage-plugin-agent-platform-common@1.4.0
+  - @giantswarm/backstage-plugin-ui-react@0.11.0
+  - @giantswarm/backstage-plugin-gs@0.73.0
+  - @giantswarm/backstage-plugin-gs-common@0.24.0
+  - @giantswarm/backstage-plugin-analytics-react@0.4.0
+  - @giantswarm/backstage-plugin-flux-react@0.15.2
+  - @giantswarm/backstage-plugin-gs-react@0.1.2
+
 ## 1.3.0
 
 ### Minor Changes

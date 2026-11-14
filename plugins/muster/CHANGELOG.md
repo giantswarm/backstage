@@ -1,5 +1,199 @@
 # @giantswarm/backstage-plugin-muster
 
+## 0.6.0
+
+### Minor Changes
+
+- 9ebf632: Customize → Agents shows each agent's connectors on its row as overlapping round logos, at most three with "+N" for the rest, each named on hover or focus; none for full access, as on the agent page. The muster plugin exports `ConnectorLogoStack`, and `ConnectorLogo` takes `round`.
+- 2432cb0: Sign-in prompts say "connector" and name each connector by its display name.
+
+  - muster-backend: `GET /servers/names` answers each connector's name (muster's
+    key, `<namespace>/<name>` for a tenant's server), family and display name
+    from `core_mcpserver_list` (muster v5.53.1 or later for the display name),
+    read as the person, so the names are there for people without Kubernetes
+    access to the `MCPServer` objects. A failed list answers
+    `{ servers: [], unavailable: true }` with HTTP 200; a token muster refuses
+    answers 401, and muster unreachable its 5xx. The shape, `ConnectorName`,
+    is in gs-common.
+  - muster: `MusterApi.listConnectorNames` and the hooks `useConnectorLabels` and
+    `useConnectorLabel`, one shared read per installation, replace the
+    `MCPServer` read behind the sign-in dialog and the notification inbox, which
+    showed technical names to people without cluster access. `ServerSignIn`
+    names the connector by it when the caller passes no `displayName`, and shows
+    the display name with `showName`, with the server's own name beside it where
+    they differ, and takes `onSignedIn`, called once per sign-in that lands
+    (also from another tab, or a click that finds the server connected
+    already), saying whether it was made in this tab (`SignedIn.here`). The
+    names are read once per installation and are not read again on a sign-in.
+    The sign-in dialog says "connector", its rows too.
+  - agent-platform: muster's request for the person's sign-in to agent-manager
+    is a sign-in, not agent-manager's own `auth_required` refusal: starting a
+    session without it offers the sign-in instead of "Session not started" with
+    muster's text. Once that sign-in lands the alert goes; where it was made in
+    the tab the person pressed Start in, the refused start goes again. Before,
+    the alert stayed, and its Sign in then answered "already authenticated".
+    The connect alert names the connector by its display name and, for
+    muster's request for a sign-in (`signInRequired`, read from muster's 401
+    where the error is classified), writes its own sentence instead of
+    muster's; any other not-connected answer stays in sight. Once the sign-in
+    lands, every alert of the kind clears: on the create and edit reviews, the
+    agent's delete, skills and Harness dialogs, the skill's update dialog, the
+    GPU node pool, model cache, model backend and cluster pages and dialogs,
+    a dry run behind it asks again and a refused write is cleared for the
+    person to press again; nothing that deletes or removes goes again by
+    itself. The skills and Harness dialogs now show the alert for a write
+    refused for want of the sign-in, which they used to swallow.
+  - bot-prs: the marge sign-in alert does the same.
+  - app: the inbox's sign-in row says "connector".
+
+- 8a2faea: Usage › Connectors loads faster. The muster backend reuses a complete usage answer for five minutes per installation, window, connectors and signed-in user, across page reloads, shares one read between identical requests, and serves each tool's p95 latency from the new `GET /usage/tool-latency`, so the figures no longer wait for the slowest query. The muster plugin's `MusterApi` gains `getMcpToolLatency`, the tool tables fill in their p95 column when it arrives, and the usage reads and the shell's tag lists are reused for five minutes, and the serving layer's node list for a minute, instead of being read on every mount. The usage read finds the prometheus server once per person, and reads the week before the window apart. The settings storage shares one read between components that subscribe to a key together, and reuses a "not set" answer for a minute while the key's change announcements are being received.
+- 41e1c7f: The Connectors tab of the Customize screen lists every connector at once, by display name (else by name, whatever the case), with muster and the platform's own connectors among the rest. A click on the Connector, Sign-in or Tools header sorts by that column, on the Status header by urgency (Sign in needed first, healthy connectors last); a second click reverses it.
+- 2f03302: Every address a server provides (a connector sign-in, a device-code page, a
+  GitHub or manager connect, a sign-in an agent asks for) opens only after the
+  person agrees in one dialog that shows the full address with its domain
+  highlighted and warns about a punycode domain, plain http and a user name
+  before the domain.
+
+  - ui-react: `externalUrlConsentApiRef` with `ExternalUrlConsentManager`, and
+    `ExternalUrlConsentDialogHost`.
+  - app: registers the consent API and mounts `ExternalUrlConsentDialogHost` at
+    the app root. A desktop notification whose link leads out of the portal
+    asks before it opens.
+  - muster: `useServerSignIn` no longer opens a tab on the Sign in click; it asks
+    to open the sign-in page once muster answers. `ServerSignInState` gains
+    `openSignInPage` and loses `isPreparing`; the hook's options gain
+    `displayName` and lose `tabWaitMs`. A device code's page is a button, not a
+    link.
+  - gs: the GitHub auth API asks before it navigates to muster's connect; a
+    connect not opened is a `no_grant` error and is not asked again for two
+    minutes. Concurrent token requests share one prompt and its answer.
+  - plans, roadmap, repositories, platform-capabilities: a missing grant offers
+    Connect instead of navigating on first sight.
+  - agent-platform: an agent's sign-in, a provider sign-in, a connector
+    sign-in link in a message and the toolchain-manager's App install page are
+    buttons that ask first.
+
+- 694e2ae: Fixture mode for the muster and agent-platform plugins, outside production builds only. `muster.fixtures` serves one signed-in installation from memory, its tool calls answered by the fixture MCP servers that plugins attach to `api:muster/muster` (`fixtureMcpServersDataRef`); a tool no fixture handles fails with an error. `agentPlatform.fixtures` serves kagent, model-manager and agent-manager's credential operations from memory. With `gs.fixtures` the app serves a Kubernetes API without a cluster for the installations, and their cluster access reads as healthy; `gs.authProvider` is optional in the config schema, as the code already treated it. `yarn fixtures start` runs the portal in fixture mode on free ports of its own. `gs-common` exports `FIXTURE_INSTALLATION` and `FIXTURE_MCP_SERVERS`, which every fixture reads.
+- b623ab3: muster's own entry among the connectors shows the logo muster announces, and
+  the portal calls the product "Muster".
+
+  - gs-common: `connectorIconOf`, the check a connector's icon passes before it
+    goes into an `<img src>`, moves here from the muster plugin (which still
+    exports it), and `serverInfoIconOf` picks an icon it accepts from an MCP
+    `initialize` result's `serverInfo.icons`: the first without a `theme`, else
+    the first of all.
+  - gs-node: `MusterMcpClient.serverIcon` reads that icon off the caller's
+    cached muster session; it opens no connection of its own where one is open.
+  - muster-backend: `GET /server-info` answers `{ icon }`, muster's logo from its
+    `initialize` result (muster v5.59.0 or later), as the person. A muster that
+    announces none answers `{}`; one that cannot be asked answers
+    `{ unavailable: true }`, both with HTTP 200. A token that is missing,
+    expired or refused by muster answers 401.
+  - muster: `MusterApi.getServerInfo`, the hook `useMusterIcon`, and
+    `useConnectorIcon`, the one rule for a connector's logo (muster's own, a
+    server's `.status.icon`, a family's representative's). muster's row in the
+    Connectors list and its page's header show the logo as an image, and the
+    letter tile where there is none; an answer muster could not give is asked
+    again within half a minute. The entry's name reads "Muster"
+    (`MUSTER_DISPLAY_NAME`), and the plugin's copy calls the product "Muster";
+    URLs, links, query keys and server names keep `muster`.
+
+- 5122bc9: `MusterApi.callTool` and `callToolWithProgress` declare URL elicitation only with `urlElicitation: true`, for a call the person started with a click; by default a sign-in the call needs fails it with muster's 401 `server_sign_in_required`, which the page answers with its inline sign-in. An elicited call puts each page to the person once per action, with no answer kept between actions, and a declined, dismissed or unfinished sign-in on a connector's tool fails it with the same 401 for that connector. Both calls send `urlElicitation` explicitly. The tool page's Run declares it.
+
+  A grant server or provider App that muster reports waiting for a sign-in with no `auth_tool` and an `error` (a sign-in that cannot pass for this session) shows muster's reason in place of Sign in or Connect: in `ServerSignIn`, `ServerAuthActions`, the connectors list ("Cannot sign in"), `ProviderAppSignIn`, `ConnectorSignInAlert` (titled "Cannot sign in to <connector>") and the connector page's tools gate; `useServerSignIn` reads it as `signInRefusal`.
+
+- a05070d: Tool calls from the portal declare MCP URL mode elicitation (protocol 2026-07-28). When muster answers that the person must open a page first, a sign-in to the tool's server or a server's own page such as a credential form, the portal shows it in the consent dialog and sends the call again with the person's answer (accept, decline or cancel). The same page asked by the same server is not asked about again for two minutes. `MusterMcpClient` calls that pass `urlElicitation` run on `@modelcontextprotocol/client` and throw `MusterInputRequiredError` (428) for muster's `input_required` answer. `gs-common` adds the wire types (`MusterInputAnswer`, `MusterUrlElicitation`, `inputRequiredBodyOf`) and now holds `musterServerOfTool`, which `gs-node` re-exports. `MusterApi.callTool` takes an optional `signal`, which also cancels a retry muster holds until a sign-in completes, and a tool's Run shows Cancel while a run is pending.
+- 9893b04: The muster plugin exports `useMusterServerAvailability` and `musterServerListQueryKey`: which installations' muster lists an MCP server, as the person. The Agent Platform and Bot PRs use it instead of their own copies, so Bot PRs also stops asking an installation the portal cannot reach, backs off after a 503, and no longer offers marge where muster has no per-user sign-in.
+- 6db0bbf: Skills and plugins are listed and read through the installation's skill-manager, as the signed-in person.
+
+  - agent-platform: where the installation's muster lists skill-manager, the skills step, the agent pages and the skill pages read `x_skill-manager_list_skills`, `get_skill` and `get_skill_file` instead of gs-backend's `/agent-skills` routes. The wizard and the agent pages read the installation the agent runs on; the other pages read the portal's home installation. A private repository the person's GitHub login cannot read lists no skills or plugins, and the skills step shows skill-manager's reason (for example, to connect GitHub in muster). Before, every signed-in person saw its skills and was refused only when creating the agent. Add skill offers skill-manager's writable sources that scan the whole repository and that the person can read, instead of `agentPlatform.skills.repositories`.
+  - gs-backend: `POST /agent-skills/pull-request` takes `installation`. With it, the target must be a writable source of that installation's skill-manager, read as the person through muster (`backstage-muster-authorization`); a read-only source is refused with 403, and the pull request targets the source's `ref` when it names one. Without it, the configured `agentPlatform.skills.repositories` apply as before.
+  - muster: `MusterApi.authHeaders(installation)` gives the headers that carry the person's muster token, for a backend plugin that calls muster as them.
+  - Where skill-manager is not deployed, gs-backend's discovery of `agentPlatform.skills.repositories` answers as before. That path is deprecated. Where muster's server list cannot be read, the skills step says so instead of answering from that list.
+
+- f5615a0: Polling stops from hidden tabs and after a permanent error. `ui-react` adds
+  `pollingQueryOptions`, `isPermanentReadError` and `causeChain`: a query
+  spreads the options and polls only while the tab is visible, reads again as
+  it becomes visible where its data is stale, and stops after a 401, a 403 or a
+  "not connected" answer until a read succeeds again; a stopped query is not
+  read on becoming visible either. `inBackground` keeps a poll going from a
+  hidden tab while the caller has a reason, and `refetchOnVisible: false`
+  leaves the read on becoming visible to the next tick. `muster` adds
+  `musterPollingOptions` and `isPermanentMusterReadError`, which also stop on
+  muster's `server_sign_in_required` and a portal session that is gone. The
+  retry policies of the gs, flux, repositories and muster clients and of the
+  Mimir queries build on the same classifier.
+
+  The model-manager reads of the Serving view (`list_backends`, `list_models`,
+  `list_nodes`), the pull jobs, the GPU node pools, workspaces, toolchain
+  builds, session reads, the Kubernetes and Mimir polls, muster's status and
+  connector reads and the repositories watches follow the rule. The GPU node
+  pools read polls from a hidden tab only while a pool is being deployed, and
+  the inventory only while a served model is on its way in, so a pool's serve
+  intent still loads its model meanwhile. Where muster asks the person to sign
+  in to model-manager, the Serving view offers the sign-in, and polling resumes
+  once it lands.
+
+### Patch Changes
+
+- 771c3c5: Usage › Connectors draws p95 latency bars in neutral grey, and the Cost tab's per-model table draws average tokens per call in green, rather than red, which the usage pages keep for errors. The sessions side panel sets its heading, links and session subtitles in body-small (12 px) rather than 10 px. Customize › Models adds the namespace to rows whose model configs share a name.
+- a4721d8: The Tools tab of a connector that failed to connect, or whose instances all failed, shows why it exposes no tools as a warning alert instead of plain text. While the page already shows a sign-in error, the explanation stays plain text.
+- 9d0f295: The usage cache no longer shares answers between people signed in as the guest user, and looks the prometheus server up again after a read through it failed. The settings storage no longer reuses a "not set" answer: subscriptions that start together share one read, and every later subscription reads what is stored now.
+- 01a63aa: The Connectors tab's Sign in button sits in a column of its own beside the state, so it lines up across rows instead of wrapping under the state; a label too wide for the column wraps inside the button, and a state too wide for the Status column wraps instead of being cut off. On a phone, an outstanding sign-in's "Open sign-in page" stays at the end of the row's first line. The answer to a Sign in or Sign out click is shared by every place that shows the same connector, so they no longer disagree. `StatusDot` takes `wrap` to wrap its label instead of truncating it.
+- a158256: The definition editor drops the answer of a Validate that arrives after the text was edited, so "Definition is valid." never sits beside a definition it did not check.
+- dbd826c: Every link and button that opens a new tab marks it the same way: the launch icon after its text and "(opens in a new tab)" for a screen reader, in place of the "↗" some of them ended in (Review pull request, Edit on GitHub, View on GitHub, the sign-in buttons, All portal settings, the release line, How it works, How alignment works, Workflow runs, the repository phase links). `ui-react`'s `ExternalLink` is now bui's `Link` (always underlined, bui's focus ring) and takes an optional `variant` and `title`; without a `variant` it keeps taking the surrounding font, and off the agent shell it keeps the classic link colour. `ui-react` adds `ExternalButtonLink` (bui's `ButtonLink` with that treatment) and exports `NewTabHint` and `NewTabLabel` (a button label followed by the hint). `ExternalCellText` and `GSReleaseInfo` are built on `ExternalLink`. A skill page's Path links to the SKILL.md on GitHub at the latest commit, and the Instructions file viewer links a file at the commit it was read at, naming no commit when there is none.
+
+  Every text link to outside the portal now opens in a new tab and shows the icon, including the ones that showed nothing before or another external-link icon: docs, GitHub pull requests, commits, releases and issues, Grafana dashboards and endpoints, hostnames, Teleport, PagerDuty, sign-in pages, and the links in rendered markdown (`GSMarkdownContent` renders an `http(s)` link to another origin as an `ExternalLink`). `ui-react` exports `isExternalHref` for telling such a link apart.
+
+- c775cfb: Fixture mode's data, outside production builds only. `@giantswarm/backstage-plugin-gs-common/fixtures` builds a seeded data set of installations, organizations, agents, connectors, sessions, workflows and executions, with a count, a least name length and the states for each list; the base data set has every state, and only made-up names. muster and agent-platform map its records onto the types their clients read. Fixture mode serves three made-up installations, `FIXTURE_INSTALLATIONS` in gs-common, instead of one. kubernetes-react exports `AGENT_BLOCKED_REASON`.
+- cefb9d4: Fixture mode serves agent-manager, outside production builds only: every tool of it answers from the base data set, so the agent list, an agent's page, the New agent flow and editing an agent work without a cluster, and so do the organizations with their members, models, connectors and egress policies and the credential form. Writes are kept in memory until the page reloads; an agent created or changed reports its new generation at once and the controller's verdict a few seconds later. `@giantswarm/backstage-plugin-agent-platform/fixtures` exports the Agent, RemoteMCPServer, ModelConfig and Harness objects the fixture Kubernetes API lists. An organization's Models, Connectors and Egress tables and the Cost page's By model table no longer fail on a row named like one of their columns, such as a model named `default`.
+- 3b65ce4: Fixture mode serves muster's data, outside production builds only: the connectors in every state, their tools, resources and prompts, the person's sign-in status, toolsets and presets, the workflows and their runs with steps and statistics, and MCP usage and latency, all from the base data set; the unreachable installation's reads fail as they do for real. `@giantswarm/backstage-plugin-muster/fixtures` exports the `MCPServer` and `Workflow` objects the fixture Kubernetes API lists, and the fixture data set has toolset presets.
+- 22f9eaf: When a sign-in elsewhere ends the portal session in this browser (Dex refuses the refresh with "already been claimed by another client"), the Agent Platform shows "You signed in somewhere else" with a "Sign in again" button. Meanwhile the Customize tabs leave their counts out, the Connectors and Workflows tabs say they could not read the list instead of "None of your environments runs muster", and the sessions rail asks for a sign-in instead of "No sessions yet". After a reload, the sign-in page (shell-style and classic) shows the same notice above the sign-in options. The gs plugin adds `useMainSessionEnd` and `GSAuthProvidersApi.getMainSessionEnd`.
+- dcab50b: `callTool` takes `urlElicitation: false` for a call whose page the caller opens itself: the call declares no URL elicitation to muster, is sent once and puts no page to the person. muster-backend's `/call` and `/call/progress` take the same `urlElicitation: false` in their body and refuse it together with an `input` answer.
+- a84f5ec: Recognise a connector's stored OAuth client by the Secret name muster now
+  generates, `<server>-muster-client-<10 of [a-z0-9]>`.
+- a955988: The agent wizard's tools step says what blocks Continue: the line by the button names the problem (the selector count against the limit, or the selectors that are not valid), says to fix it under Selected, and its Show the problem button opens the individual tools and moves the focus to the problem. The reason under Selected, in the rail and in the summary bar of narrow frames, is body text in the danger tone. Each connector card states in words whether it is connected, needs a sign-in or is not connected, why it lists no tools, why Read-only cannot be picked, and what is selected; the chosen Read-only or All carries a check. The muster plugin exports `CONNECTOR_REACH_LABELS`, the `ConnectorReach` type and `SEVERITY_DOT_TONE`, the `StatusDot` tone of a connector's state.
+- d8681df: When the portal refuses the person's session token (for example after a restart of a portal without a database), the Agent Platform pages say that the portal session ended and to sign in again, with a Sign in again button, instead of "Failed user token verification". The credential form drops the typed value and opens the same request again after the sign-in. muster's `MusterUnauthorizedError` keeps the name the answer gives the error (`errorName`), so a page can tell the portal's own refusal from muster-backend's.
+- 30166ef: A connector muster does not reach no longer reads as one without tools. The agent wizard's Tools step shows its connection in the Customize page's words (Not connected, Partly connected, Deactivated) on its card, its catalogue row and its group's summary, instead of "0 tools", and counts the tools chosen from it that it cannot list now. The Connectors list shows "—" in its Tools column instead of "0 tools", and the connector's page says it is disconnected (or its state) and so shows no tools, with no count on its Tools tab. The muster plugin exports `CONNECTOR_REACH_LABELS`.
+- 9ebf632: The Agents list's connector logos and the agent page's Connectors section show each preset the toolset names first, by its label, with muster's icon for it, or a generic preset icon when muster sends none or an unusable one. `ToolsetPreset` gains the optional `icon`.
+- Updated dependencies [bd5f42a]
+- Updated dependencies [105dc99]
+- Updated dependencies [d553603]
+- Updated dependencies [2f03302]
+- Updated dependencies [01a63aa]
+- Updated dependencies [b6f1f17]
+- Updated dependencies [dbd826c]
+- Updated dependencies [2f03302]
+- Updated dependencies [c775cfb]
+- Updated dependencies [cefb9d4]
+- Updated dependencies [d97c11d]
+- Updated dependencies [3b65ce4]
+- Updated dependencies [694e2ae]
+- Updated dependencies [e8c5832]
+- Updated dependencies [648228e]
+- Updated dependencies [22f9eaf]
+- Updated dependencies [d62e8d3]
+- Updated dependencies [f1d8771]
+- Updated dependencies [b623ab3]
+- Updated dependencies [06dfa3d]
+- Updated dependencies [a05070d]
+- Updated dependencies [a02eb7e]
+- Updated dependencies [99b5956]
+- Updated dependencies [d8b2289]
+- Updated dependencies [172b3de]
+- Updated dependencies [7e12f91]
+- Updated dependencies [7b7780d]
+- Updated dependencies [3b113f7]
+- Updated dependencies [f5615a0]
+  - @giantswarm/backstage-plugin-kubernetes-react@1.2.0
+  - @giantswarm/backstage-plugin-agent-platform-common@1.4.0
+  - @giantswarm/backstage-plugin-ui-react@0.11.0
+  - @giantswarm/backstage-plugin-gs@0.73.0
+  - @giantswarm/backstage-plugin-gs-common@0.24.0
+  - @giantswarm/backstage-plugin-analytics-react@0.4.0
+  - @giantswarm/backstage-plugin-flux-react@0.15.2
+  - @giantswarm/backstage-plugin-gs-react@0.1.2
+
 ## 0.5.0
 
 ### Minor Changes

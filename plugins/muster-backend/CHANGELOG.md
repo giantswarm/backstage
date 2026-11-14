@@ -1,5 +1,89 @@
 # @giantswarm/backstage-plugin-muster-backend
 
+## 0.4.0
+
+### Minor Changes
+
+- 2432cb0: Sign-in prompts say "connector" and name each connector by its display name.
+
+  - muster-backend: `GET /servers/names` answers each connector's name (muster's
+    key, `<namespace>/<name>` for a tenant's server), family and display name
+    from `core_mcpserver_list` (muster v5.53.1 or later for the display name),
+    read as the person, so the names are there for people without Kubernetes
+    access to the `MCPServer` objects. A failed list answers
+    `{ servers: [], unavailable: true }` with HTTP 200; a token muster refuses
+    answers 401, and muster unreachable its 5xx. The shape, `ConnectorName`,
+    is in gs-common.
+  - muster: `MusterApi.listConnectorNames` and the hooks `useConnectorLabels` and
+    `useConnectorLabel`, one shared read per installation, replace the
+    `MCPServer` read behind the sign-in dialog and the notification inbox, which
+    showed technical names to people without cluster access. `ServerSignIn`
+    names the connector by it when the caller passes no `displayName`, and shows
+    the display name with `showName`, with the server's own name beside it where
+    they differ, and takes `onSignedIn`, called once per sign-in that lands
+    (also from another tab, or a click that finds the server connected
+    already), saying whether it was made in this tab (`SignedIn.here`). The
+    names are read once per installation and are not read again on a sign-in.
+    The sign-in dialog says "connector", its rows too.
+  - agent-platform: muster's request for the person's sign-in to agent-manager
+    is a sign-in, not agent-manager's own `auth_required` refusal: starting a
+    session without it offers the sign-in instead of "Session not started" with
+    muster's text. Once that sign-in lands the alert goes; where it was made in
+    the tab the person pressed Start in, the refused start goes again. Before,
+    the alert stayed, and its Sign in then answered "already authenticated".
+    The connect alert names the connector by its display name and, for
+    muster's request for a sign-in (`signInRequired`, read from muster's 401
+    where the error is classified), writes its own sentence instead of
+    muster's; any other not-connected answer stays in sight. Once the sign-in
+    lands, every alert of the kind clears: on the create and edit reviews, the
+    agent's delete, skills and Harness dialogs, the skill's update dialog, the
+    GPU node pool, model cache, model backend and cluster pages and dialogs,
+    a dry run behind it asks again and a refused write is cleared for the
+    person to press again; nothing that deletes or removes goes again by
+    itself. The skills and Harness dialogs now show the alert for a write
+    refused for want of the sign-in, which they used to swallow.
+  - bot-prs: the marge sign-in alert does the same.
+  - app: the inbox's sign-in row says "connector".
+
+- 8a2faea: Usage › Connectors loads faster. The muster backend reuses a complete usage answer for five minutes per installation, window, connectors and signed-in user, across page reloads, shares one read between identical requests, and serves each tool's p95 latency from the new `GET /usage/tool-latency`, so the figures no longer wait for the slowest query. The muster plugin's `MusterApi` gains `getMcpToolLatency`, the tool tables fill in their p95 column when it arrives, and the usage reads and the shell's tag lists are reused for five minutes, and the serving layer's node list for a minute, instead of being read on every mount. The usage read finds the prometheus server once per person, and reads the week before the window apart. The settings storage shares one read between components that subscribe to a key together, and reuses a "not set" answer for a minute while the key's change announcements are being received.
+- b623ab3: muster's own entry among the connectors shows the logo muster announces, and
+  the portal calls the product "Muster".
+
+  - gs-common: `connectorIconOf`, the check a connector's icon passes before it
+    goes into an `<img src>`, moves here from the muster plugin (which still
+    exports it), and `serverInfoIconOf` picks an icon it accepts from an MCP
+    `initialize` result's `serverInfo.icons`: the first without a `theme`, else
+    the first of all.
+  - gs-node: `MusterMcpClient.serverIcon` reads that icon off the caller's
+    cached muster session; it opens no connection of its own where one is open.
+  - muster-backend: `GET /server-info` answers `{ icon }`, muster's logo from its
+    `initialize` result (muster v5.59.0 or later), as the person. A muster that
+    announces none answers `{}`; one that cannot be asked answers
+    `{ unavailable: true }`, both with HTTP 200. A token that is missing,
+    expired or refused by muster answers 401.
+  - muster: `MusterApi.getServerInfo`, the hook `useMusterIcon`, and
+    `useConnectorIcon`, the one rule for a connector's logo (muster's own, a
+    server's `.status.icon`, a family's representative's). muster's row in the
+    Connectors list and its page's header show the logo as an image, and the
+    letter tile where there is none; an answer muster could not give is asked
+    again within half a minute. The entry's name reads "Muster"
+    (`MUSTER_DISPLAY_NAME`), and the plugin's copy calls the product "Muster";
+    URLs, links, query keys and server names keep `muster`.
+
+- a05070d: Tool calls from the portal declare MCP URL mode elicitation (protocol 2026-07-28). When muster answers that the person must open a page first, a sign-in to the tool's server or a server's own page such as a credential form, the portal shows it in the consent dialog and sends the call again with the person's answer (accept, decline or cancel). The same page asked by the same server is not asked about again for two minutes. `MusterMcpClient` calls that pass `urlElicitation` run on `@modelcontextprotocol/client` and throw `MusterInputRequiredError` (428) for muster's `input_required` answer. `gs-common` adds the wire types (`MusterInputAnswer`, `MusterUrlElicitation`, `inputRequiredBodyOf`) and now holds `musterServerOfTool`, which `gs-node` re-exports. `MusterApi.callTool` takes an optional `signal`, which also cancels a retry muster holds until a sign-in completes, and a tool's Run shows Cancel while a run is pending.
+
+### Patch Changes
+
+- 9d0f295: The usage cache no longer shares answers between people signed in as the guest user, and looks the prometheus server up again after a read through it failed. The settings storage no longer reuses a "not set" answer: subscriptions that start together share one read, and every later subscription reads what is stored now.
+- dcab50b: `callTool` takes `urlElicitation: false` for a call whose page the caller opens itself: the call declares no URL elicitation to muster, is sent once and puts no page to the person. muster-backend's `/call` and `/call/progress` take the same `urlElicitation: false` in their body and refuse it together with an `input` answer.
+- 47dfe35: Read connector usage with grouped call counts while preserving daily buckets, cacheable histogram range queries and query failure fallbacks. Read complete MCP query results so larger histogram responses are not truncated.
+- ae00960: An installation whose muster the portal cannot reach no longer makes people wait. `ReachabilityCache` reports an endpoint unreachable only after two failed probes in a row (`UNREACHABLE_AFTER_FAILED_PROBES`), so muster's and kagent's `/installations` no longer report a distant installation unreachable for one late answer. muster-backend answers a call to an installation the probe reports unreachable at once with a 503, "not reachable from this portal", without a connection attempt or a warning; the probe allows a muster as long to answer as a call has to connect. gs-node exports `MUSTER_CONNECT_TIMEOUT_MS`, and `MusterUnreachableError` names its `installation`. Connections to muster time out after 5 s instead of undici's 10 s, and the Agent Platform stops asking for the server list of such an installation, reading a list that answered 503 again only after a minute, then less and less often.
+- Updated dependencies [b623ab3]
+- Updated dependencies [06dfa3d]
+- Updated dependencies [a05070d]
+- Updated dependencies [ae00960]
+  - @giantswarm/backstage-plugin-gs-node@0.6.0
+
 ## 0.3.1
 
 ### Patch Changes

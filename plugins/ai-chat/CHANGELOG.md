@@ -1,5 +1,35 @@
 # @giantswarm/backstage-plugin-ai-chat
 
+## 0.15.2
+
+### Patch Changes
+
+- 2f03302: Raw HTML in chat messages is sanitised to GitHub's allow-list before it renders,
+  and images, from Markdown or HTML, render as links to their URL. A message that
+  quotes tool output no longer makes the browser load a URL or run its handlers.
+  `<details>` blocks still render.
+  GFM footnotes link to their note and back.
+
+  `MermaidDiagram` takes `untrusted`, which drops a diagram's image nodes and
+  the remote references in its CSS (`url(…)`, `image-set(…)`, `@import`)
+  instead of loading them; the AI chat renders its diagrams that way.
+
+- Updated dependencies [d553603]
+- Updated dependencies [2f03302]
+- Updated dependencies [01a63aa]
+- Updated dependencies [dbd826c]
+- Updated dependencies [2f03302]
+- Updated dependencies [cefb9d4]
+- Updated dependencies [e8c5832]
+- Updated dependencies [a02eb7e]
+- Updated dependencies [99b5956]
+- Updated dependencies [172b3de]
+- Updated dependencies [7e12f91]
+- Updated dependencies [f5615a0]
+  - @giantswarm/backstage-plugin-ui-react@0.11.0
+  - @giantswarm/backstage-plugin-analytics-react@0.4.0
+  - @giantswarm/backstage-plugin-gs-react@0.1.2
+
 ## 0.15.1
 
 ### Patch Changes

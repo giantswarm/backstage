@@ -1,5 +1,96 @@
 # @giantswarm/backstage-plugin-bot-prs
 
+## 0.1.2
+
+### Patch Changes
+
+- 2432cb0: Sign-in prompts say "connector" and name each connector by its display name.
+
+  - muster-backend: `GET /servers/names` answers each connector's name (muster's
+    key, `<namespace>/<name>` for a tenant's server), family and display name
+    from `core_mcpserver_list` (muster v5.53.1 or later for the display name),
+    read as the person, so the names are there for people without Kubernetes
+    access to the `MCPServer` objects. A failed list answers
+    `{ servers: [], unavailable: true }` with HTTP 200; a token muster refuses
+    answers 401, and muster unreachable its 5xx. The shape, `ConnectorName`,
+    is in gs-common.
+  - muster: `MusterApi.listConnectorNames` and the hooks `useConnectorLabels` and
+    `useConnectorLabel`, one shared read per installation, replace the
+    `MCPServer` read behind the sign-in dialog and the notification inbox, which
+    showed technical names to people without cluster access. `ServerSignIn`
+    names the connector by it when the caller passes no `displayName`, and shows
+    the display name with `showName`, with the server's own name beside it where
+    they differ, and takes `onSignedIn`, called once per sign-in that lands
+    (also from another tab, or a click that finds the server connected
+    already), saying whether it was made in this tab (`SignedIn.here`). The
+    names are read once per installation and are not read again on a sign-in.
+    The sign-in dialog says "connector", its rows too.
+  - agent-platform: muster's request for the person's sign-in to agent-manager
+    is a sign-in, not agent-manager's own `auth_required` refusal: starting a
+    session without it offers the sign-in instead of "Session not started" with
+    muster's text. Once that sign-in lands the alert goes; where it was made in
+    the tab the person pressed Start in, the refused start goes again. Before,
+    the alert stayed, and its Sign in then answered "already authenticated".
+    The connect alert names the connector by its display name and, for
+    muster's request for a sign-in (`signInRequired`, read from muster's 401
+    where the error is classified), writes its own sentence instead of
+    muster's; any other not-connected answer stays in sight. Once the sign-in
+    lands, every alert of the kind clears: on the create and edit reviews, the
+    agent's delete, skills and Harness dialogs, the skill's update dialog, the
+    GPU node pool, model cache, model backend and cluster pages and dialogs,
+    a dry run behind it asks again and a refused write is cleared for the
+    person to press again; nothing that deletes or removes goes again by
+    itself. The skills and Harness dialogs now show the alert for a write
+    refused for want of the sign-in, which they used to swallow.
+  - bot-prs: the marge sign-in alert does the same.
+  - app: the inbox's sign-in row says "connector".
+
+- dbd826c: Every link and button that opens a new tab marks it the same way: the launch icon after its text and "(opens in a new tab)" for a screen reader, in place of the "↗" some of them ended in (Review pull request, Edit on GitHub, View on GitHub, the sign-in buttons, All portal settings, the release line, How it works, How alignment works, Workflow runs, the repository phase links). `ui-react`'s `ExternalLink` is now bui's `Link` (always underlined, bui's focus ring) and takes an optional `variant` and `title`; without a `variant` it keeps taking the surrounding font, and off the agent shell it keeps the classic link colour. `ui-react` adds `ExternalButtonLink` (bui's `ButtonLink` with that treatment) and exports `NewTabHint` and `NewTabLabel` (a button label followed by the hint). `ExternalCellText` and `GSReleaseInfo` are built on `ExternalLink`. A skill page's Path links to the SKILL.md on GitHub at the latest commit, and the Instructions file viewer links a file at the commit it was read at, naming no commit when there is none.
+
+  Every text link to outside the portal now opens in a new tab and shows the icon, including the ones that showed nothing before or another external-link icon: docs, GitHub pull requests, commits, releases and issues, Grafana dashboards and endpoints, hostnames, Teleport, PagerDuty, sign-in pages, and the links in rendered markdown (`GSMarkdownContent` renders an `http(s)` link to another origin as an `ExternalLink`). `ui-react` exports `isExternalHref` for telling such a link apart.
+
+- 9893b04: The muster plugin exports `useMusterServerAvailability` and `musterServerListQueryKey`: which installations' muster lists an MCP server, as the person. The Agent Platform and Bot PRs use it instead of their own copies, so Bot PRs also stops asking an installation the portal cannot reach, backs off after a 503, and no longer offers marge where muster has no per-user sign-in.
+- Updated dependencies [771c3c5]
+- Updated dependencies [9ebf632]
+- Updated dependencies [d553603]
+- Updated dependencies [2f03302]
+- Updated dependencies [2432cb0]
+- Updated dependencies [a4721d8]
+- Updated dependencies [9d0f295]
+- Updated dependencies [8a2faea]
+- Updated dependencies [01a63aa]
+- Updated dependencies [41e1c7f]
+- Updated dependencies [b6f1f17]
+- Updated dependencies [a158256]
+- Updated dependencies [dbd826c]
+- Updated dependencies [2f03302]
+- Updated dependencies [c775cfb]
+- Updated dependencies [cefb9d4]
+- Updated dependencies [3b65ce4]
+- Updated dependencies [694e2ae]
+- Updated dependencies [e8c5832]
+- Updated dependencies [22f9eaf]
+- Updated dependencies [dcab50b]
+- Updated dependencies [a84f5ec]
+- Updated dependencies [b623ab3]
+- Updated dependencies [5122bc9]
+- Updated dependencies [a05070d]
+- Updated dependencies [a02eb7e]
+- Updated dependencies [99b5956]
+- Updated dependencies [a955988]
+- Updated dependencies [172b3de]
+- Updated dependencies [d8681df]
+- Updated dependencies [7e12f91]
+- Updated dependencies [9893b04]
+- Updated dependencies [6db0bbf]
+- Updated dependencies [f5615a0]
+- Updated dependencies [30166ef]
+- Updated dependencies [9ebf632]
+  - @giantswarm/backstage-plugin-muster@0.6.0
+  - @giantswarm/backstage-plugin-ui-react@0.11.0
+  - @giantswarm/backstage-plugin-gs@0.73.0
+  - @giantswarm/backstage-plugin-analytics-react@0.4.0
+
 ## 0.1.1
 
 ### Patch Changes

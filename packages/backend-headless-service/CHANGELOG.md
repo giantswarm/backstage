@@ -1,5 +1,17 @@
 # backend-headless-service
 
+## 0.7.5
+
+### Patch Changes
+
+- df69454: With `NODE_USE_ENV_PROXY=1`, the backend refuses to start on a Node version that would let native `fetch` bypass the proxy, and the error names the version it needs (24.17 or later; Node 22 and Node 25 do not qualify). On those versions, Node's own proxy support did not stay in charge of `fetch` as the earlier entry said: loading undici 8 replaced Node's proxy dispatcher with a direct one, so catalog URL reads, the scaffolder and most plugins silently went around the proxy. `configureFetchProxy` runs the check through the new `assertEnvProxySupported`.
+- Updated dependencies [df69454]
+- Updated dependencies [06dfa3d]
+- Updated dependencies [65d940b]
+  - @internal/backend-common@0.6.2
+  - @giantswarm/backstage-plugin-auth-backend-module-gs@0.18.0
+  - @giantswarm/backstage-plugin-scaffolder-backend-module-gs@0.13.2
+
 ## 0.7.4
 
 ### Patch Changes

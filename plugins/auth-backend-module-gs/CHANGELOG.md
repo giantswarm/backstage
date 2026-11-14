@@ -1,5 +1,24 @@
 # @giantswarm/backstage-plugin-auth-backend-module-gs
 
+## 0.18.0
+
+### Minor Changes
+
+- 65d940b: A sign-in through a Giant Swarm Dex connector that matches no catalog user, or whose token carries neither a username nor a verified email, is refused instead of signing in as the shared `user:default/guest`. A failed catalog lookup refuses the sign-in too.
+
+### Patch Changes
+
+- Updated dependencies [c775cfb]
+- Updated dependencies [d97c11d]
+- Updated dependencies [3b65ce4]
+- Updated dependencies [694e2ae]
+- Updated dependencies [b623ab3]
+- Updated dependencies [06dfa3d]
+- Updated dependencies [a05070d]
+- Updated dependencies [ae00960]
+  - @giantswarm/backstage-plugin-gs-common@0.24.0
+  - @giantswarm/backstage-plugin-gs-node@0.6.0
+
 ## 0.17.1
 
 ### Patch Changes

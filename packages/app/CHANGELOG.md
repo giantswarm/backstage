@@ -1,5 +1,217 @@
 # app
 
+## 0.43.1
+
+### Patch Changes
+
+- 2432cb0: Sign-in prompts say "connector" and name each connector by its display name.
+
+  - muster-backend: `GET /servers/names` answers each connector's name (muster's
+    key, `<namespace>/<name>` for a tenant's server), family and display name
+    from `core_mcpserver_list` (muster v5.53.1 or later for the display name),
+    read as the person, so the names are there for people without Kubernetes
+    access to the `MCPServer` objects. A failed list answers
+    `{ servers: [], unavailable: true }` with HTTP 200; a token muster refuses
+    answers 401, and muster unreachable its 5xx. The shape, `ConnectorName`,
+    is in gs-common.
+  - muster: `MusterApi.listConnectorNames` and the hooks `useConnectorLabels` and
+    `useConnectorLabel`, one shared read per installation, replace the
+    `MCPServer` read behind the sign-in dialog and the notification inbox, which
+    showed technical names to people without cluster access. `ServerSignIn`
+    names the connector by it when the caller passes no `displayName`, and shows
+    the display name with `showName`, with the server's own name beside it where
+    they differ, and takes `onSignedIn`, called once per sign-in that lands
+    (also from another tab, or a click that finds the server connected
+    already), saying whether it was made in this tab (`SignedIn.here`). The
+    names are read once per installation and are not read again on a sign-in.
+    The sign-in dialog says "connector", its rows too.
+  - agent-platform: muster's request for the person's sign-in to agent-manager
+    is a sign-in, not agent-manager's own `auth_required` refusal: starting a
+    session without it offers the sign-in instead of "Session not started" with
+    muster's text. Once that sign-in lands the alert goes; where it was made in
+    the tab the person pressed Start in, the refused start goes again. Before,
+    the alert stayed, and its Sign in then answered "already authenticated".
+    The connect alert names the connector by its display name and, for
+    muster's request for a sign-in (`signInRequired`, read from muster's 401
+    where the error is classified), writes its own sentence instead of
+    muster's; any other not-connected answer stays in sight. Once the sign-in
+    lands, every alert of the kind clears: on the create and edit reviews, the
+    agent's delete, skills and Harness dialogs, the skill's update dialog, the
+    GPU node pool, model cache, model backend and cluster pages and dialogs,
+    a dry run behind it asks again and a refused write is cleared for the
+    person to press again; nothing that deletes or removes goes again by
+    itself. The skills and Harness dialogs now show the alert for a write
+    refused for want of the sign-in, which they used to swallow.
+  - bot-prs: the marge sign-in alert does the same.
+  - app: the inbox's sign-in row says "connector".
+
+- 9d0f295: The usage cache no longer shares answers between people signed in as the guest user, and looks the prometheus server up again after a read through it failed. The settings storage no longer reuses a "not set" answer: subscriptions that start together share one read, and every later subscription reads what is stored now.
+- 8a2faea: Usage › Connectors loads faster. The muster backend reuses a complete usage answer for five minutes per installation, window, connectors and signed-in user, across page reloads, shares one read between identical requests, and serves each tool's p95 latency from the new `GET /usage/tool-latency`, so the figures no longer wait for the slowest query. The muster plugin's `MusterApi` gains `getMcpToolLatency`, the tool tables fill in their p95 column when it arrives, and the usage reads and the shell's tag lists are reused for five minutes, and the serving layer's node list for a minute, instead of being read on every mount. The usage read finds the prometheus server once per person, and reads the week before the window apart. The settings storage shares one read between components that subscribe to a key together, and reuses a "not set" answer for a minute while the key's change announcements are being received.
+- 2f03302: Every address a server provides (a connector sign-in, a device-code page, a
+  GitHub or manager connect, a sign-in an agent asks for) opens only after the
+  person agrees in one dialog that shows the full address with its domain
+  highlighted and warns about a punycode domain, plain http and a user name
+  before the domain.
+
+  - ui-react: `externalUrlConsentApiRef` with `ExternalUrlConsentManager`, and
+    `ExternalUrlConsentDialogHost`.
+  - app: registers the consent API and mounts `ExternalUrlConsentDialogHost` at
+    the app root. A desktop notification whose link leads out of the portal
+    asks before it opens.
+  - muster: `useServerSignIn` no longer opens a tab on the Sign in click; it asks
+    to open the sign-in page once muster answers. `ServerSignInState` gains
+    `openSignInPage` and loses `isPreparing`; the hook's options gain
+    `displayName` and lose `tabWaitMs`. A device code's page is a button, not a
+    link.
+  - gs: the GitHub auth API asks before it navigates to muster's connect; a
+    connect not opened is a `no_grant` error and is not asked again for two
+    minutes. Concurrent token requests share one prompt and its answer.
+  - plans, roadmap, repositories, platform-capabilities: a missing grant offers
+    Connect instead of navigating on first sight.
+  - agent-platform: an agent's sign-in, a provider sign-in, a connector
+    sign-in link in a message and the toolchain-manager's App install page are
+    buttons that ask first.
+
+- 22f9eaf: When a sign-in elsewhere ends the portal session in this browser (Dex refuses the refresh with "already been claimed by another client"), the Agent Platform shows "You signed in somewhere else" with a "Sign in again" button. Meanwhile the Customize tabs leave their counts out, the Connectors and Workflows tabs say they could not read the list instead of "None of your environments runs muster", and the sessions rail asks for a sign-in instead of "No sessions yet". After a reload, the sign-in page (shell-style and classic) shows the same notice above the sign-in options. The gs plugin adds `useMainSessionEnd` and `GSAuthProvidersApi.getMainSessionEnd`.
+- a02eb7e: An Agent Platform organization's credentials are entered on the Dev Portal's credential form, never in a tool call.
+
+  - agent-platform-backend: `GET`, `POST` and `DELETE`
+    `/organizations/credential-operations/:operation?installation=` carry
+    agent-manager's credential operations (giantswarm/agent-manager#312) as the
+    person, with the installation token in `backstage-agent-manager-authorization`,
+    to `https://agentgateway.<baseDomain>/agent-manager` (the agent-platform
+    chart's `agentManager.route`) or
+    `agentPlatform.agentManager.installations.<name>.apiBaseUrl`. The POST body
+    is validated and never logged or echoed; `If-Match` is required on POST and
+    DELETE (428 without it); every answer is `Cache-Control: no-store`; refusals are the
+    backend's error body with agent-manager's `code`. A save that runs past
+    120 s, loses its connection or is refused by a gateway answers code
+    `outcome_unknown`.
+  - agent-platform: `/organizations/<installation>/<parent>/<name>/credentials/<operation>`,
+    the link agent-manager's `credentials.uiURL` names
+    (`…/credentials/{operation}`), shows what the value is for (the
+    organization agent-manager prepared it for, refusing a link that names
+    another, the object that asked, the other objects that read it, where it
+    is sent, and the pull request's repository in commit mode) before it takes
+    a value, saves it once with the confirmation's version, and never shows it
+    back. A changed request is read again; a save interrupted on
+    agent-manager's side is finished from the page; a commit without the
+    GitHub grant offers the connection. The Models tab's Add model and Replace
+    key, and the Connectors tab's Replace credential, ask agent-manager as the
+    person and open the form for the request it prepares (its
+    `credentialOperation`).
+  - analytics-react: `AgentPlatform.organizationCredentialSaved`.
+  - app: the form's page view, without the request's id.
+
+- d8b2289: Gate the Organizations pages behind the `agent-platform-organizations` feature flag, off by default. `agentPlatform.organizations.enabled` enables or disables the pages for everyone and overrides saved browser flags. Show their navigation entry only when the pages are enabled and an agent-manager reports support for Agent Platform organizations. Direct links to enabled pages show discovery failures as errors instead of reporting the feature unavailable.
+- 2667913: Move Organizations from the main sidebar into the Profile and settings menu on desktop and mobile.
+- 65d940b: TelemetryDeck reports every person by their user entity ref: the per-person split of `user:default/guest` is gone with the guest sign-in.
+- Updated dependencies [9ebf632]
+- Updated dependencies [9ebf632]
+- Updated dependencies [d06bfc3]
+- Updated dependencies [bd5f42a]
+- Updated dependencies [5122bc9]
+- Updated dependencies [771c3c5]
+- Updated dependencies [9ebf632]
+- Updated dependencies [b7be9dd]
+- Updated dependencies [95013a3]
+- Updated dependencies [a2a8223]
+- Updated dependencies [105dc99]
+- Updated dependencies [d553603]
+- Updated dependencies [f6b43d6]
+- Updated dependencies [2f03302]
+- Updated dependencies [2432cb0]
+- Updated dependencies [a4721d8]
+- Updated dependencies [9d0f295]
+- Updated dependencies [8a2faea]
+- Updated dependencies [01a63aa]
+- Updated dependencies [41e1c7f]
+- Updated dependencies [e0bdcaf]
+- Updated dependencies [b6f1f17]
+- Updated dependencies [b6f1f17]
+- Updated dependencies [a955988]
+- Updated dependencies [898117b]
+- Updated dependencies [a0faf4f]
+- Updated dependencies [a0faf4f]
+- Updated dependencies [98b31eb]
+- Updated dependencies [c0fbc77]
+- Updated dependencies [a158256]
+- Updated dependencies [a0a239d]
+- Updated dependencies [dbd826c]
+- Updated dependencies [2f03302]
+- Updated dependencies [c775cfb]
+- Updated dependencies [cefb9d4]
+- Updated dependencies [d97c11d]
+- Updated dependencies [3b65ce4]
+- Updated dependencies [694e2ae]
+- Updated dependencies [e8c5832]
+- Updated dependencies [648228e]
+- Updated dependencies [d109b68]
+- Updated dependencies [5e5f7eb]
+- Updated dependencies [22f9eaf]
+- Updated dependencies [d62e8d3]
+- Updated dependencies [f1d8771]
+- Updated dependencies [b5164ce]
+- Updated dependencies [44bae01]
+- Updated dependencies [dcab50b]
+- Updated dependencies [a84f5ec]
+- Updated dependencies [b623ab3]
+- Updated dependencies [06dfa3d]
+- Updated dependencies [5122bc9]
+- Updated dependencies [a05070d]
+- Updated dependencies [023b36a]
+- Updated dependencies [a02eb7e]
+- Updated dependencies [2020566]
+- Updated dependencies [99b5956]
+- Updated dependencies [54a9736]
+- Updated dependencies [846cc93]
+- Updated dependencies [943dab0]
+- Updated dependencies [dcab50b]
+- Updated dependencies [6b6b73f]
+- Updated dependencies [e5a1616]
+- Updated dependencies [23d67d0]
+- Updated dependencies [d8b2289]
+- Updated dependencies [83eeba9]
+- Updated dependencies [a955988]
+- Updated dependencies [172b3de]
+- Updated dependencies [a0faf4f]
+- Updated dependencies [d8681df]
+- Updated dependencies [7e12f91]
+- Updated dependencies [2b48a03]
+- Updated dependencies [7b7780d]
+- Updated dependencies [3b113f7]
+- Updated dependencies [986d5ff]
+- Updated dependencies [a136d03]
+- Updated dependencies [13b8d60]
+- Updated dependencies [9893b04]
+- Updated dependencies [f55e45f]
+- Updated dependencies [6db0bbf]
+- Updated dependencies [f5615a0]
+- Updated dependencies [30166ef]
+- Updated dependencies [9ebf632]
+- Updated dependencies [ae00960]
+- Updated dependencies [5bff041]
+- Updated dependencies [130ba32]
+- Updated dependencies [19ec951]
+- Updated dependencies [d62e8d3]
+- Updated dependencies [8a80e0d]
+  - @giantswarm/backstage-plugin-agent-platform@1.4.0
+  - @giantswarm/backstage-plugin-kubernetes-react@1.2.0
+  - @giantswarm/backstage-plugin-muster@0.6.0
+  - @giantswarm/backstage-plugin-agent-platform-common@1.4.0
+  - @giantswarm/backstage-plugin-ui-react@0.11.0
+  - @giantswarm/backstage-plugin-ai-chat@0.15.2
+  - @giantswarm/backstage-plugin-bot-prs@0.1.2
+  - @giantswarm/backstage-plugin-gs@0.73.0
+  - @giantswarm/backstage-plugin-repositories@0.1.2
+  - @giantswarm/backstage-plugin-plans@0.2.0
+  - @giantswarm/backstage-plugin-roadmap@0.1.2
+  - @giantswarm/backstage-plugin-platform-capabilities@0.1.2
+  - @giantswarm/backstage-plugin-gs-common@0.24.0
+  - @giantswarm/backstage-plugin-analytics-react@0.4.0
+  - @giantswarm/backstage-plugin-flux@0.10.2
+  - @giantswarm/backstage-plugin-flux-react@0.15.2
+
 ## 0.43.0
 
 ### Minor Changes

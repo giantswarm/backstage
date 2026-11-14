@@ -1,5 +1,26 @@
 # @internal/backend-common
 
+## 0.6.2
+
+### Patch Changes
+
+- df69454: With `NODE_USE_ENV_PROXY=1`, the backend refuses to start on a Node version that would let native `fetch` bypass the proxy, and the error names the version it needs (24.17 or later; Node 22 and Node 25 do not qualify). On those versions, Node's own proxy support did not stay in charge of `fetch` as the earlier entry said: loading undici 8 replaced Node's proxy dispatcher with a direct one, so catalog URL reads, the scaffolder and most plugins silently went around the proxy. `configureFetchProxy` runs the check through the new `assertEnvProxySupported`.
+- 06dfa3d: More muster tool errors get their own status instead of a 500.
+
+  - gs-node: muster's `Tool not found: x`, its answer for a meta-tool's target
+    (`describe_tool`), is `tool_not_found` (502) like `tool not found: x`.
+    model-manager's `forbidden:` is a refusal (403, out of Sentry), and its
+    `no_backend:` the new kind `no_backend` (503). A tool error of no known
+    kind stays 500.
+  - gs-common: `forbidden` is one of model-manager's refusal codes.
+    `MODEL_MANAGER_FAILURE_CODES` and `mcpToolFailureOf` name the failures of a
+    whole server, model-manager's `no_backend` for now, next to the refusals.
+  - agent-platform: model-manager's `forbidden` reads as a `ForbiddenError` and
+    `no_backend` as a `ServiceUnavailableError`, neither retried.
+  - backend-common: `no_backend` events are grouped per server in Sentry. A
+    server-wide kind whose tool names no server (a meta-tool's missing target)
+    is grouped by its message instead of all in one issue.
+
 ## 0.6.1
 
 ### Patch Changes

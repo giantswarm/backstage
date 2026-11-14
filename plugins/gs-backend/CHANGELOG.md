@@ -1,5 +1,51 @@
 # @giantswarm/backstage-plugin-gs-backend
 
+## 0.13.0
+
+### Minor Changes
+
+- bd5f42a: The agent wizard handles skills from private repositories: the skills step marks a private repository and its skills, and the skills step and the review say which credential the agent fetches them with (the installation's, as agent-manager reports it, or the agent's own) or warn, without blocking, when the installation has none or its token fails to refresh. An agent whose skills credential Secret is missing says so and that it recovers once the Secret exists, apart from an agent that has not booted yet, which points at the boot log.
+- f55e45f: `agentPlatform.skills.repositories` entries accept `{url, ref, path, readOnly}`
+  next to a plain URL:
+
+  - `ref`: branch, tag or commit to read (default branch when unset); picked
+    skills pin to the commit it resolves to.
+  - `path`: scan only below this directory; skill paths stay
+    repository-relative. New skills are proposed below it.
+  - `readOnly`: skills list and can be added to agents, but the portal offers no
+    Add skill or edit pull requests into the source, and the pull-request route
+    refuses them.
+
+  `ref` is a branch or tag name, `refs/heads/<name>`, `refs/tags/<name>` or a
+  full commit id; a name that is both a branch and a tag is refused. A tag or
+  commit `ref` is read but takes no pull requests; a branch `ref` is the
+  pull-request base. A `path` that does not exist fails that source. A URL
+  listed twice is read once, by its first entry, and is read-only when any entry
+  says so. Evaluate works for every skill; one the portal cannot change gets a
+  report-only evaluation.
+
+  A skill page labels its ref Branch, Tag or Commit. Skills of a read-only skill-manager source offer no Edit. The skills list no longer shows the raw error when skill-manager cannot be reached.
+
+- 6db0bbf: Skills and plugins are listed and read through the installation's skill-manager, as the signed-in person.
+
+  - agent-platform: where the installation's muster lists skill-manager, the skills step, the agent pages and the skill pages read `x_skill-manager_list_skills`, `get_skill` and `get_skill_file` instead of gs-backend's `/agent-skills` routes. The wizard and the agent pages read the installation the agent runs on; the other pages read the portal's home installation. A private repository the person's GitHub login cannot read lists no skills or plugins, and the skills step shows skill-manager's reason (for example, to connect GitHub in muster). Before, every signed-in person saw its skills and was refused only when creating the agent. Add skill offers skill-manager's writable sources that scan the whole repository and that the person can read, instead of `agentPlatform.skills.repositories`.
+  - gs-backend: `POST /agent-skills/pull-request` takes `installation`. With it, the target must be a writable source of that installation's skill-manager, read as the person through muster (`backstage-muster-authorization`); a read-only source is refused with 403, and the pull request targets the source's `ref` when it names one. Without it, the configured `agentPlatform.skills.repositories` apply as before.
+  - muster: `MusterApi.authHeaders(installation)` gives the headers that carry the person's muster token, for a backend plugin that calls muster as them.
+  - Where skill-manager is not deployed, gs-backend's discovery of `agentPlatform.skills.repositories` answers as before. That path is deprecated. Where muster's server list cannot be read, the skills step says so instead of answering from that list.
+
+### Patch Changes
+
+- Updated dependencies [c775cfb]
+- Updated dependencies [d97c11d]
+- Updated dependencies [3b65ce4]
+- Updated dependencies [694e2ae]
+- Updated dependencies [b623ab3]
+- Updated dependencies [06dfa3d]
+- Updated dependencies [a05070d]
+- Updated dependencies [ae00960]
+  - @giantswarm/backstage-plugin-gs-common@0.24.0
+  - @giantswarm/backstage-plugin-gs-node@0.6.0
+
 ## 0.12.0
 
 ### Minor Changes

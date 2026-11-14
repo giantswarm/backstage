@@ -1,5 +1,88 @@
 # @giantswarm/backstage-plugin-ui-react
 
+## 0.11.0
+
+### Minor Changes
+
+- 2f03302: Raw HTML in chat messages is sanitised to GitHub's allow-list before it renders,
+  and images, from Markdown or HTML, render as links to their URL. A message that
+  quotes tool output no longer makes the browser load a URL or run its handlers.
+  `<details>` blocks still render.
+  GFM footnotes link to their note and back.
+
+  `MermaidDiagram` takes `untrusted`, which drops a diagram's image nodes and
+  the remote references in its CSS (`url(…)`, `image-set(…)`, `@import`)
+  instead of loading them; the AI chat renders its diagrams that way.
+
+- dbd826c: Every link and button that opens a new tab marks it the same way: the launch icon after its text and "(opens in a new tab)" for a screen reader, in place of the "↗" some of them ended in (Review pull request, Edit on GitHub, View on GitHub, the sign-in buttons, All portal settings, the release line, How it works, How alignment works, Workflow runs, the repository phase links). `ui-react`'s `ExternalLink` is now bui's `Link` (always underlined, bui's focus ring) and takes an optional `variant` and `title`; without a `variant` it keeps taking the surrounding font, and off the agent shell it keeps the classic link colour. `ui-react` adds `ExternalButtonLink` (bui's `ButtonLink` with that treatment) and exports `NewTabHint` and `NewTabLabel` (a button label followed by the hint). `ExternalCellText` and `GSReleaseInfo` are built on `ExternalLink`. A skill page's Path links to the SKILL.md on GitHub at the latest commit, and the Instructions file viewer links a file at the commit it was read at, naming no commit when there is none.
+
+  Every text link to outside the portal now opens in a new tab and shows the icon, including the ones that showed nothing before or another external-link icon: docs, GitHub pull requests, commits, releases and issues, Grafana dashboards and endpoints, hostnames, Teleport, PagerDuty, sign-in pages, and the links in rendered markdown (`GSMarkdownContent` renders an `http(s)` link to another origin as an `ExternalLink`). `ui-react` exports `isExternalHref` for telling such a link apart.
+
+- 2f03302: Every address a server provides (a connector sign-in, a device-code page, a
+  GitHub or manager connect, a sign-in an agent asks for) opens only after the
+  person agrees in one dialog that shows the full address with its domain
+  highlighted and warns about a punycode domain, plain http and a user name
+  before the domain.
+
+  - ui-react: `externalUrlConsentApiRef` with `ExternalUrlConsentManager`, and
+    `ExternalUrlConsentDialogHost`.
+  - app: registers the consent API and mounts `ExternalUrlConsentDialogHost` at
+    the app root. A desktop notification whose link leads out of the portal
+    asks before it opens.
+  - muster: `useServerSignIn` no longer opens a tab on the Sign in click; it asks
+    to open the sign-in page once muster answers. `ServerSignInState` gains
+    `openSignInPage` and loses `isPreparing`; the hook's options gain
+    `displayName` and lose `tabWaitMs`. A device code's page is a button, not a
+    link.
+  - gs: the GitHub auth API asks before it navigates to muster's connect; a
+    connect not opened is a `no_grant` error and is not asked again for two
+    minutes. Concurrent token requests share one prompt and its answer.
+  - plans, roadmap, repositories, platform-capabilities: a missing grant offers
+    Connect instead of navigating on first sight.
+  - agent-platform: an agent's sign-in, a provider sign-in, a connector
+    sign-in link in a message and the toolchain-manager's App install page are
+    buttons that ask first.
+
+- e8c5832: `plans.fixtures` and `roadmap.fixtures` take effect outside production builds only: a production build of the app contains no fixture code, and setting the flag on an instance no longer shows made-up data. Outside production the fixture APIs load with a dynamic `import()` on their first call. `ui-react` exports `lazyApi`, which wraps such an API implementation for a synchronous API factory.
+- 172b3de: `ui-react` exports `formatLocalTime` (`14:05`) and `formatLocalDay` (`16 Oct`, with the year when it is not the current one), the compact forms of `formatLocalDate`. The session list's last-active time and the command palette's session date use them, so they read on the same 24-hour clock and in the same words as every other date in the Agent Platform, whatever the browser's locale; the palette now shows the year of a session from another year. A model cache claim's creation shows as a relative date: "2 months ago" in a "Created" column on Model cache, with the local date and time on hover, and "created 2 months ago" in the add-pool cache note.
+- 7e12f91: `/profile`'s Environments section lists every environment as a toggle chip with its access health, with All on, All off and Undo, and Sign in again while a session has expired, sharing its state with the classic sidebar's Cluster access widget. gs exports `useClusterAccessStatus`, `useMutedInstallations`, `useSignInAgain` and the shared access state labels and tones (`CLUSTER_ACCESS_STATE_LABELS` and its neighbours), and `MutedInstallationsApi` gains `setMutedMany`; ui-react's `StatusDot` takes `ring`.
+- f5615a0: Polling stops from hidden tabs and after a permanent error. `ui-react` adds
+  `pollingQueryOptions`, `isPermanentReadError` and `causeChain`: a query
+  spreads the options and polls only while the tab is visible, reads again as
+  it becomes visible where its data is stale, and stops after a 401, a 403 or a
+  "not connected" answer until a read succeeds again; a stopped query is not
+  read on becoming visible either. `inBackground` keeps a poll going from a
+  hidden tab while the caller has a reason, and `refetchOnVisible: false`
+  leaves the read on becoming visible to the next tick. `muster` adds
+  `musterPollingOptions` and `isPermanentMusterReadError`, which also stop on
+  muster's `server_sign_in_required` and a portal session that is gone. The
+  retry policies of the gs, flux, repositories and muster clients and of the
+  Mimir queries build on the same classifier.
+
+  The model-manager reads of the Serving view (`list_backends`, `list_models`,
+  `list_nodes`), the pull jobs, the GPU node pools, workspaces, toolchain
+  builds, session reads, the Kubernetes and Mimir polls, muster's status and
+  connector reads and the repositories watches follow the rule. The GPU node
+  pools read polls from a hidden tab only while a pool is being deployed, and
+  the inventory only while a served model is on its way in, so a pool's serve
+  intent still loads its model meanwhile. Where muster asks the person to sign
+  in to model-manager, the Serving view offers the sign-in, and polling resumes
+  once it lands.
+
+### Patch Changes
+
+- d553603: `useAutosizeTextarea` sets the height for a new width in the next animation frame instead of in its `ResizeObserver` callback, and ignores observations whose width did not change, so resizing a field no longer reports "ResizeObserver loop completed with undelivered notifications".
+- 01a63aa: The Connectors tab's Sign in button sits in a column of its own beside the state, so it lines up across rows instead of wrapping under the state; a label too wide for the column wraps inside the button, and a state too wide for the Status column wraps instead of being cut off. On a phone, an outstanding sign-in's "Open sign-in page" stays at the end of the row's first line. The answer to a Sign in or Sign out click is shared by every place that shows the same connector, so they no longer disagree. `StatusDot` takes `wrap` to wrap its label instead of truncating it.
+- cefb9d4: Fixture mode serves agent-manager, outside production builds only: every tool of it answers from the base data set, so the agent list, an agent's page, the New agent flow and editing an agent work without a cluster, and so do the organizations with their members, models, connectors and egress policies and the credential form. Writes are kept in memory until the page reloads; an agent created or changed reports its new generation at once and the controller's verdict a few seconds later. `@giantswarm/backstage-plugin-agent-platform/fixtures` exports the Agent, RemoteMCPServer, ModelConfig and Harness objects the fixture Kubernetes API lists. An organization's Models, Connectors and Egress tables and the Cost page's By model table no longer fail on a row named like one of their columns, such as a model named `default`.
+- Updated dependencies [c775cfb]
+- Updated dependencies [d97c11d]
+- Updated dependencies [3b65ce4]
+- Updated dependencies [694e2ae]
+- Updated dependencies [b623ab3]
+- Updated dependencies [06dfa3d]
+- Updated dependencies [a05070d]
+  - @giantswarm/backstage-plugin-gs-common@0.24.0
+
 ## 0.10.0
 
 ### Minor Changes

@@ -1,5 +1,20 @@
 # @giantswarm/backstage-plugin-catalog-backend-module-gs
 
+## 0.7.2
+
+### Patch Changes
+
+- Updated dependencies [c775cfb]
+- Updated dependencies [d97c11d]
+- Updated dependencies [3b65ce4]
+- Updated dependencies [694e2ae]
+- Updated dependencies [b623ab3]
+- Updated dependencies [06dfa3d]
+- Updated dependencies [a05070d]
+- Updated dependencies [ae00960]
+  - @giantswarm/backstage-plugin-gs-common@0.24.0
+  - @giantswarm/backstage-plugin-gs-node@0.6.0
+
 ## 0.7.1
 
 ### Patch Changes

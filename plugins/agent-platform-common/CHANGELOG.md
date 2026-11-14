@@ -1,5 +1,25 @@
 # @giantswarm/backstage-plugin-agent-platform-common
 
+## 1.4.0
+
+### Minor Changes
+
+- d62e8d3: Export the agent-manager authorization header and credential operation ID pattern for frontend and backend consumers.
+
+### Patch Changes
+
+- 105dc99: A session's approval row names the muster tool behind `call_tool`, with its connector (or "via Muster" when no connector matches), and folds out that tool's own arguments; the runtime's confirmation hint no longer appears in the transcript as a message from the agent.
+- 648228e: A session turn the model could not answer now shows a plain explanation, with the raw error folded under "Technical details". Refused access asks the platform team to check the model's credentials and permissions; other model failures suggest trying again or asking for help. This includes rate limits, missing models and provider outages.
+
+  The failure classifier recognises Go ADK model errors and provider authentication and permission errors. An Anthropic or OpenAI SDK error's HTTP status takes precedence over numbers and error names inside its message. `isCredentialsRefusedText` distinguishes refused model access from other model failures.
+
+- f1d8771: Model failure notices distinguish refused access from other provider failures and give recovery advice consistent with the provider SDK's HTTP status. Technical details support keyboard expansion and collapse without losing focus.
+- d8b2289: Gate the Organizations pages behind the `agent-platform-organizations` feature flag, off by default. `agentPlatform.organizations.enabled` enables or disables the pages for everyone and overrides saved browser flags. Show their navigation entry only when the pages are enabled and an agent-manager reports support for Agent Platform organizations. Direct links to enabled pages show discovery failures as errors instead of reporting the feature unavailable.
+- 7b7780d: Preserve task completion and recorded tool-response activity when placing network refusals on session turns.
+- 3b113f7: Show session filesystem links as local paths instead of navigating to nonexistent portal pages. Use Agent Platform wording for request failures and clear an unconfirmed-answer error when a later session read confirms the answer.
+
+  Measure turn progress from recorded messages and tool outputs as well as state updates. Place network refusals on the matching turn and explain that a blocked connection alone does not establish task failure. Keep unconfirmed answers recoverable and avoid inferred causes in runtime notices.
+
 ## 1.3.0
 
 ### Minor Changes

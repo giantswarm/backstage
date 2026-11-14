@@ -1,5 +1,41 @@
 # backend
 
+## 0.21.3
+
+### Patch Changes
+
+- df69454: With `NODE_USE_ENV_PROXY=1`, the backend refuses to start on a Node version that would let native `fetch` bypass the proxy, and the error names the version it needs (24.17 or later; Node 22 and Node 25 do not qualify). On those versions, Node's own proxy support did not stay in charge of `fetch` as the earlier entry said: loading undici 8 replaced Node's proxy dispatcher with a direct one, so catalog URL reads, the scaffolder and most plugins silently went around the proxy. `configureFetchProxy` runs the check through the new `assertEnvProxySupported`.
+- Updated dependencies [bd5f42a]
+- Updated dependencies [d62e8d3]
+- Updated dependencies [2432cb0]
+- Updated dependencies [9d0f295]
+- Updated dependencies [8a2faea]
+- Updated dependencies [df69454]
+- Updated dependencies [dcab50b]
+- Updated dependencies [b623ab3]
+- Updated dependencies [06dfa3d]
+- Updated dependencies [a05070d]
+- Updated dependencies [65d940b]
+- Updated dependencies [a02eb7e]
+- Updated dependencies [c9bff16]
+- Updated dependencies [0181591]
+- Updated dependencies [f55e45f]
+- Updated dependencies [6db0bbf]
+- Updated dependencies [47dfe35]
+- Updated dependencies [ae00960]
+  - @giantswarm/backstage-plugin-gs-backend@0.13.0
+  - @giantswarm/backstage-plugin-agent-platform-backend@1.3.0
+  - @giantswarm/backstage-plugin-muster-backend@0.4.0
+  - @internal/backend-common@0.6.2
+  - @giantswarm/backstage-plugin-auth-backend-module-gs@0.18.0
+  - @giantswarm/backstage-plugin-plans-backend@0.2.0
+  - @giantswarm/backstage-plugin-roadmap-backend@0.2.0
+  - @giantswarm/backstage-plugin-catalog-backend-module-gs@0.7.2
+  - @giantswarm/backstage-plugin-ai-chat-backend@0.18.2
+  - @giantswarm/backstage-plugin-platform-capabilities-backend@0.1.2
+  - @giantswarm/backstage-plugin-repositories-backend@0.1.2
+  - @giantswarm/backstage-plugin-scaffolder-backend-module-gs@0.13.2
+
 ## 0.21.2
 
 ### Patch Changes
