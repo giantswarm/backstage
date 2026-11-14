@@ -708,14 +708,14 @@ export class WorkspaceManagerFixtureState {
       return {
         workspace: name,
         outcome: 'refused',
-        reason: `workspace ${name} is being deleted: no new Session starts on it`,
+        reason: `workspace ${name} is being deleted`,
       };
     }
     if (!workspace.lastSync) {
       return {
         workspace: name,
         outcome: 'refused',
-        reason: `workspace ${name} has not synced yet: a Session starts on it after its first sync`,
+        reason: `workspace ${name} has not synced yet: its repositories are not on its volume`,
       };
     }
     const selected = this.selectionOf(workspace.sources).selected.map(
@@ -732,23 +732,28 @@ export class WorkspaceManagerFixtureState {
       return {
         workspace: name,
         outcome: 'connect_required',
-        reason: `Grant ${ungranted
+        reason: `grant ${ungranted
           .map(p => p.name)
           .join(
             ', ',
-          )} in muster before starting a Session on workspace ${name}.`,
+          )} in muster to use workspace ${name}: the Session works as you there`,
         connect: ungranted.map(p => ({
           provider: p.name,
           signIn: signInOf(p),
         })),
       };
     }
-    const unreadable = selected.filter(r => !r.readable).map(fullName);
+    const unreadable = selected
+      .filter(r => !r.readable)
+      .map(fullName)
+      .sort((a, b) => a.localeCompare(b));
     if (unreadable.length > 0) {
       return {
         workspace: name,
         outcome: 'refused',
-        reason: `You cannot read ${unreadable.join(', ')} of workspace ${name}.`,
+        reason: `you cannot read ${unreadable.length} ${
+          unreadable.length === 1 ? 'repository' : 'repositories'
+        } of workspace ${name}: ${unreadable.join(', ')}`,
         unreadable,
       };
     }

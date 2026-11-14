@@ -181,7 +181,11 @@ agent-manager.
   and hidden from the person), with their skills and a plugin, and reads a
   skill and its files. It writes nothing, as skill-manager does not; a new or
   changed skill is a pull request through gs-backend, which fixture mode does
-  not serve (giantswarm/giantswarm#39251, item 9b).
+  not serve (giantswarm/giantswarm#39251, item 9b). The pages of one
+  installation read it: an agent's page and the agent form. Customize ·
+  Skills reads the home installation's skills, and fixture mode has none (it
+  sets no `gs.authProvider`), so that tab still lists what gs-backend
+  discovers on GitHub (item 9b).
 
 ### Objects in the Kubernetes API
 

@@ -33,7 +33,12 @@ export type FixtureProvider = {
  * one they have not, so a workspace on it needs their sign-in first.
  */
 export const FIXTURE_PROVIDERS: readonly FixtureProvider[] = [
-  { name: 'github', kind: 'github', host: 'github.com', connected: true },
+  {
+    name: 'github',
+    kind: 'github',
+    host: 'github.example.com',
+    connected: true,
+  },
   {
     name: 'code-example',
     kind: 'gitlab',
