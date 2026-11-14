@@ -5,6 +5,7 @@ import {
   columnMax,
   DataBar,
   ShowMore,
+  tableRowId,
   usePhoneColumns,
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmModelRow } from '../../../lib/llmUsage';
@@ -202,7 +203,10 @@ export function LlmByModelTable({
         {visible => (
           <Table<LlmModelRow>
             {...tableProps}
-            data={visible}
+            data={visible.map(row => ({
+              ...row,
+              id: tableRowId('model', row.id),
+            }))}
             columnConfig={shownColumns}
             emptyState={
               <Text variant="body-medium" color="secondary">
