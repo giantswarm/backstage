@@ -379,9 +379,11 @@ describe('OrganizationPage', () => {
     });
   });
 
-  describe('changes on Pending erase', () => {
+  describe('changes on Pending erase and while Erasing', () => {
     const WHY =
       'Its delete is merged, so its members, models and credentials can no longer be changed.';
+    const WHY_ERASING =
+      'It is being erased, so its members, models and credentials can no longer be changed.';
     const ORGANIZATION = {
       name: 'payments',
       parent: 'org-acme',
@@ -423,6 +425,23 @@ describe('OrganizationPage', () => {
       },
     };
 
+    /**
+     * Each control names the reason for screen readers: a radio through its
+     * group, a form field next to its own help.
+     */
+    function expectEachNamesWhy(controls: HTMLElement[], why: string) {
+      for (const control of controls) {
+        const described =
+          control.getAttribute('role') === 'radio' ||
+          (control as HTMLInputElement).type === 'radio'
+            ? control.closest('[role="radiogroup"]')!
+            : control;
+        expect(described).toHaveAccessibleDescription(
+          expect.stringContaining(why),
+        );
+      }
+    }
+
     /** Every control that changes something on the tab, once it is read. */
     const writeControls: Record<string, () => Promise<HTMLElement[]>> = {
       '': async () => [
@@ -431,6 +450,7 @@ describe('OrganizationPage', () => {
         screen.getByRole('radio', { name: 'A group' }),
         screen.getByRole('radio', { name: /A person/ }),
         screen.getByRole('textbox', { name: /Group/ }),
+        screen.getByRole('button', { name: /Role$/ }),
         screen.getByRole('button', { name: 'Add group' }),
       ],
       '/models': async () => [
@@ -459,15 +479,30 @@ describe('OrganizationPage', () => {
       for (const control of controls) {
         expect(control).toBeDisabled();
       }
-      // A button names the reason; a form field keeps its own help.
-      const buttons = controls.filter(control => control.tagName === 'BUTTON');
-      expect(buttons.length).toBeGreaterThan(0);
-      for (const button of buttons) {
-        expect(button).toHaveAccessibleDescription(WHY);
-      }
+      expectEachNamesWhy(controls, WHY);
       // Erase now stays.
       expect(screen.getByRole('button', { name: 'Erase now' })).toBeEnabled();
     });
+
+    it.each([
+      ['Members', ''],
+      ['Models', '/models'],
+      ['Connectors', '/connectors'],
+    ])(
+      'turns every change on %s off while it is Erasing and says why',
+      async (_tab, path) => {
+        await renderPage(path, ERASING);
+
+        expect(await screen.findByText('Erasing')).toBeInTheDocument();
+        expect(screen.getByText(WHY_ERASING)).toBeInTheDocument();
+        const controls = await writeControls[path]();
+        for (const control of controls) {
+          expect(control).toBeDisabled();
+        }
+        expectEachNamesWhy(controls, WHY_ERASING);
+        expect(screen.queryByText(WHY)).not.toBeInTheDocument();
+      },
+    );
 
     it.each([
       ['Members', '', 'in git', IN_GIT],
@@ -476,10 +511,6 @@ describe('OrganizationPage', () => {
       ['Members', '', 'Missing from git', MISSING_FROM_GIT],
       ['Models', '/models', 'Missing from git', MISSING_FROM_GIT],
       ['Connectors', '/connectors', 'Missing from git', MISSING_FROM_GIT],
-      // Erasing is not Pending erase: the page offers what it offered before.
-      ['Members', '', 'Erasing', ERASING],
-      ['Models', '/models', 'Erasing', ERASING],
-      ['Connectors', '/connectors', 'Erasing', ERASING],
     ])(
       'offers every change on %s while it is %s',
       async (_tab, path, _state, scenario) => {
@@ -490,17 +521,32 @@ describe('OrganizationPage', () => {
           expect(control).toBeEnabled();
         }
         expect(screen.queryByText(WHY)).not.toBeInTheDocument();
+        expect(screen.queryByText(WHY_ERASING)).not.toBeInTheDocument();
       },
     );
 
     it.each([
-      ['Remove', '', /^Remove payments-team/],
-      ['Add a model', '/models', /^Add model$/],
-      ['Replace key', '/models', /^Replace the key of gpt$/],
-      ['Replace credential', '/connectors', /^Replace the credential of jira$/],
+      ['Remove', '', /^Remove payments-team/, 'Pending erase'],
+      ['Add a model', '/models', /^Add model$/, 'Pending erase'],
+      ['Replace key', '/models', /^Replace the key of gpt$/, 'Pending erase'],
+      [
+        'Replace credential',
+        '/connectors',
+        /^Replace the credential of jira$/,
+        'Pending erase',
+      ],
+      ['Remove', '', /^Remove payments-team/, 'Erasing'],
+      ['Add a model', '/models', /^Add model$/, 'Erasing'],
+      ['Replace key', '/models', /^Replace the key of gpt$/, 'Erasing'],
+      [
+        'Replace credential',
+        '/connectors',
+        /^Replace the credential of jira$/,
+        'Erasing',
+      ],
     ])(
-      'closes an open %s dialog once the organization turns Pending erase',
-      async (_dialog, path, opener) => {
+      'closes an open %s dialog once the organization turns %s',
+      async (_dialog, path, opener, state) => {
         const scenario: OrganizationsScenario = { ...IN_GIT };
         const { queryClient } = await renderPage(path, scenario);
         await userEvent.click(
@@ -508,14 +554,19 @@ describe('OrganizationPage', () => {
         );
         expect(await screen.findByRole('dialog')).toBeInTheDocument();
 
-        scenario.organization = PENDING_ERASE.organization;
+        scenario.organization =
+          state === 'Erasing'
+            ? ERASING.organization
+            : PENDING_ERASE.organization;
         await act(() =>
           queryClient.invalidateQueries({
             queryKey: musterOrganizationsQueryKey('gazelle'),
           }),
         );
 
-        expect(await screen.findByText(WHY)).toBeInTheDocument();
+        expect(
+          await screen.findByText(state === 'Erasing' ? WHY_ERASING : WHY),
+        ).toBeInTheDocument();
         await waitFor(() =>
           expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
         );
