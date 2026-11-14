@@ -24,6 +24,8 @@ const CREATE_NODE_POOL_SCHEMA = {
     name: { type: 'string', pattern: '^[a-z0-9][-a-z0-9]{3,18}[a-z0-9]$' },
     accelerator: {
       type: 'string',
+      description:
+        'Accelerator from the curated list; picks the EC2 instance family',
       enum: [...FIXTURE_POOL_ACCELERATORS],
       default: FIXTURE_POOL_ACCELERATORS[0],
     },
