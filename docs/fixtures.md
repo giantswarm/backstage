@@ -100,6 +100,33 @@ background reads (connector names, server info, sign-in status) answer
 `unavailable`. Its `MCPServer` and `Workflow` objects stay readable: the portal
 reaches its Kubernetes API, not its muster.
 
+### agent-manager
+
+agent-manager's tools answer from the data set
+(`plugins/agent-platform/src/apis/fixtures/agentManagerFixtureState.ts`), and
+so does the fixture `AgentManagerCredentialsApi`: the organizations with the
+person's role in each, their members, models, connectors and egress policies,
+and their agents, read back as `get_agent` reads them and listed as `Agent`
+objects, each with its carrier `RemoteMCPServer` (the toolset), beside each
+organization namespace's models (`ModelConfig`) and platform `Harness`. The
+writes work the way the real ones do, checked as agent-manager checks them (a
+person with the user role may not create agents, a name taken or a model the
+namespace lacks fails the dry run, the last admin of `organization-admins`
+stays), and are kept in memory until the page reloads:
+
+- creating, editing and deleting an agent: an agent created or changed
+  reports its new generation at once and the controller's verdict on it four
+  seconds later (`SETTLE_MS`), so the pages show the progress before the
+  result;
+- adding and removing members, erasing an organization;
+- adding a model or asking for a new key: the tool prepares a credential
+  operation, the credential form reads and saves it, and the save writes the
+  model.
+
+This agent-manager writes live only: it reports no `commit` capability, and a
+write in mode `commit` fails. `start_session` answers a session id kagent's
+fixture does not know yet.
+
 ### Objects in the Kubernetes API
 
 The pages read some objects from the installation's Kubernetes API, not from
@@ -108,8 +135,12 @@ fixture Kubernetes API (`KubernetesFixtureApi`) lists and reads the objects of
 `FIXTURE_OBJECTS`, one function per plugin that returns the objects of an
 installation. A plugin exports its function from a `fixtures` subpath of its
 own, as muster does with `musterKubernetesObjectsOf` in
-`@giantswarm/backstage-plugin-muster/fixtures`, which only fixture modules and
-tests import.
+`@giantswarm/backstage-plugin-muster/fixtures` and agent-platform with
+`agentPlatformKubernetesObjectsOf` in
+`@giantswarm/backstage-plugin-agent-platform/fixtures`, which only fixture
+modules and tests import. A function answers the same array while its objects
+stay the same and a new one after a fixture write changed them: the fixture
+Kubernetes API indexes them again only then.
 
 ### Tool calls through muster
 
@@ -170,7 +201,8 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
   catalogue, executions with their steps, run statistics, usage),
   agent-platform's in
   `plugins/agent-platform/src/apis/fixtures/agentPlatformFixtureData.ts`
-  (Agent objects, agent-manager's agents and organizations, kagent sessions).
+  (Agent objects and their carriers, ModelConfig and Harness objects,
+  agent-manager's agents and organizations, kagent sessions).
 
 A page that reads a new field or shows a new state extends a builder or a
 mapper in the same pull request, and the base data set gets the state.

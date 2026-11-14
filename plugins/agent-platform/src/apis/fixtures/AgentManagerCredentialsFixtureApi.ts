@@ -1,29 +1,91 @@
+import { ResponseError } from '@backstage/errors';
+
 import type {
   CredentialOperationRead,
   CredentialResourceResult,
+  CredentialValue,
 } from '../../lib/credentialOperations';
 import type { AgentManagerCredentialsApi } from '../AgentManagerCredentialsApi';
+import {
+  agentManagerFixtureState,
+  CredentialRefusal,
+  type AgentManagerFixtureState,
+} from './agentManagerFixtureState';
 import { served } from './fixtureIdentity';
-import { notInFixtures } from './notInFixtures';
+
+/**
+ * A refusal as the real client throws it: a `ResponseError` whose body
+ * carries agent-manager's code, as the portal's backend relays it.
+ */
+async function responseErrorOf(refusal: CredentialRefusal): Promise<Error> {
+  const body = JSON.stringify({
+    error: { name: 'Error', message: refusal.message, code: refusal.code },
+    response: { statusCode: refusal.status },
+  });
+  return ResponseError.fromResponse({
+    ok: false,
+    status: refusal.status,
+    statusText: refusal.code,
+    url: 'fixture:credential-operations',
+    redirected: false,
+    type: 'basic',
+    headers: {
+      get: (name: string) =>
+        name.toLowerCase() === 'content-type' ? 'application/json' : null,
+    },
+    text: async () => body,
+  } as Parameters<typeof ResponseError.fromResponse>[0]);
+}
+
+async function answer<T>(call: () => T): Promise<T> {
+  try {
+    return call();
+  } catch (error) {
+    throw error instanceof CredentialRefusal
+      ? await responseErrorOf(error)
+      : error;
+  }
+}
 
 /**
  * agent-manager's credential operations in fixture mode
- * (`agentPlatform.fixtures: true`). No tool prepares an operation yet, so
- * every call fails with {@link notInFixtures}.
+ * (`agentPlatform.fixtures: true`): the operations the fixture agent-manager's
+ * organization tools prepared (`agentManagerFixtureState`). A save writes
+ * what the operation prepared, in memory, until the page reloads.
  */
 export class AgentManagerCredentialsFixtureApi implements AgentManagerCredentialsApi {
-  async getOperation(installation: string): Promise<CredentialOperationRead> {
+  constructor(
+    private readonly state: AgentManagerFixtureState = agentManagerFixtureState(),
+  ) {}
+
+  async getOperation(
+    installation: string,
+    operation: string,
+  ): Promise<CredentialOperationRead> {
     served(installation);
-    throw notInFixtures('agent-manager getOperation');
+    return answer(() => this.state.getOperation(installation, operation));
   }
 
-  async saveOperation(installation: string): Promise<CredentialResourceResult> {
+  async saveOperation(
+    installation: string,
+    operation: string,
+    etag: string,
+    values: CredentialValue[],
+  ): Promise<CredentialResourceResult> {
     served(installation);
-    throw notInFixtures('agent-manager saveOperation');
+    return answer(() =>
+      this.state.saveOperation(installation, operation, etag, values),
+    );
   }
 
-  async cancelOperation(installation: string): Promise<void> {
+  async cancelOperation(
+    installation: string,
+    operation: string,
+    etag: string,
+  ): Promise<void> {
     served(installation);
-    throw notInFixtures('agent-manager cancelOperation');
+    return answer(() =>
+      this.state.cancelOperation(installation, operation, etag),
+    );
   }
 }

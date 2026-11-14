@@ -97,6 +97,47 @@ describe('KubernetesFixtureApi', () => {
     expect((await one.json()).metadata.name).toBe(first.getName());
   });
 
+  it('lists the agents of the installation, each with its carrier', async () => {
+    const data = baseDataSet();
+    const agents = (
+      await (await get('/apis/api.kagent.dev/v1alpha3/agents')).json()
+    ).items.map((item: { metadata: { name: string } }) => item.metadata.name);
+    // An agent whose release failed renders no Agent.
+    expect(agents.sort()).toEqual(
+      inInstallation(data.agents, 'meadow')
+        .filter(agent => agent.release === 'ready')
+        .map(agent => agent.name)
+        .sort(),
+    );
+    const carriers = (
+      await (await get('/apis/api.kagent.dev/v1alpha3/remotemcpservers')).json()
+    ).items.map((item: { metadata: { name: string } }) => item.metadata.name);
+    expect(carriers.sort()).toEqual(agents);
+  });
+
+  it('lists what a source answers once it answers another list', async () => {
+    const agent = (name: string) => ({
+      apiVersion: 'api.kagent.dev/v1alpha3',
+      kind: 'Agent',
+      metadata: { name, namespace: 'agents' },
+    });
+    let objects = [agent('first')];
+    const written = new KubernetesFixtureApi([() => objects]);
+    const names = async () =>
+      (
+        await (
+          await written.proxy({
+            clusterName: 'meadow',
+            path: '/apis/api.kagent.dev/v1alpha3/agents',
+          })
+        ).json()
+      ).items.map((item: { metadata: { name: string } }) => item.metadata.name);
+
+    expect(await names()).toEqual(['first']);
+    objects = [...objects, agent('second')];
+    expect(await names()).toEqual(['first', 'second']);
+  });
+
   it('finds nothing a source does not hold', async () => {
     const empty = new KubernetesFixtureApi([]);
     const list = await empty.proxy({

@@ -50,7 +50,12 @@ const MARKERS = [
   {
     source:
       'plugins/agent-platform/src/apis/fixtures/AgentManagerCredentialsFixtureApi.ts',
-    marker: 'agent-manager getOperation',
+    marker: 'fixture:credential-operations',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/agentManagerFixtureState.ts',
+    marker: 'The credential request does not exist, expired, or is',
   },
   {
     source:
