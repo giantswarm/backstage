@@ -249,8 +249,9 @@ export function buildInstallations(
 }
 
 /**
- * The roles the person has in ready organizations, in turn: one of each in
- * the base data set, so the agent pages show what each role may do.
+ * The roles the person has in the ready organizations of an installation, in
+ * turn: one of each in every installation of the base data set, so the agent
+ * pages show what each role may do.
  */
 const READY_ROLES: readonly OrganizationRole[] = ['admin', 'user', 'editor'];
 
@@ -266,21 +267,25 @@ export function buildOrganizations(
   settings: BuilderSettings<OrganizationState> = {},
 ): FixtureOrganization[] {
   const name = createNamer(context.random);
-  let ready = 0;
-  const roleOf = (state: OrganizationState): OrganizationRole => {
-    if (state === 'pending') {
-      return 'none';
+  const ready = new Map<string, number>();
+  const roleOf = (
+    installation: string,
+    state: OrganizationState,
+  ): OrganizationRole => {
+    if (state !== 'ready') {
+      return state === 'pending' ? 'none' : 'admin';
     }
-    return state === 'ready'
-      ? READY_ROLES[ready++ % READY_ROLES.length]
-      : 'admin';
+    const index = ready.get(installation) ?? 0;
+    ready.set(installation, index + 1);
+    return READY_ROLES[index % READY_ROLES.length];
   };
   return each(
     installations,
     settings,
     {
-      count: 6,
+      count: 7,
       states: [
+        'ready',
         'ready',
         'ready',
         'pending',
@@ -304,7 +309,7 @@ export function buildOrganizations(
           )}-${suffix}`,
         }),
         state,
-        role: roleOf(state),
+        role: roleOf(installation.name, state),
       };
     },
   );

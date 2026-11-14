@@ -63,6 +63,13 @@ describe('createFixtureDataSet', () => {
     expect(statesOf(served(data.organizations))).toEqual(
       new Set(ORGANIZATION_STATES),
     );
+    expect(
+      new Set(
+        served(data.organizations)
+          .filter(o => o.state === 'ready')
+          .map(o => o.role),
+      ),
+    ).toEqual(new Set(['admin', 'editor', 'user']));
     expect(statesOf(served(data.agents))).toEqual(new Set(AGENT_STATES));
     expect(statesOf(served(data.connectors))).toEqual(
       new Set(CONNECTOR_STATES),
