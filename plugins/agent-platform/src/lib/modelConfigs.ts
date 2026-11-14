@@ -5,6 +5,7 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { type OrganizationDirectory } from './organizations';
+import { modelEndpointProblem } from './modelEndpoint';
 
 /**
  * Where portal-created ModelConfigs (and their key Secrets) go: the namespace
@@ -333,13 +334,14 @@ export function modelConfigFieldErrors(
     errors.model = 'Enter the model id.';
   }
 
-  if (values.provider === 'Ollama' && !values.endpoint.trim()) {
-    errors.endpoint = 'Enter the Ollama host, e.g. http://ollama.ollama:11434.';
-  } else if (
-    values.endpoint.trim() &&
-    !/^https?:\/\//.test(values.endpoint.trim())
-  ) {
-    errors.endpoint = 'The endpoint must be an http:// or https:// URL';
+  if (!options.routed && providerHasEndpoint(values.provider)) {
+    if (values.provider === 'Ollama' && !values.endpoint.trim()) {
+      errors.endpoint =
+        'Enter the Ollama host, e.g. http://ollama.ollama:11434.';
+    } else {
+      const endpointProblem = modelEndpointProblem(values.endpoint);
+      if (endpointProblem) errors.endpoint = endpointProblem;
+    }
   }
 
   if (isVertexAIProvider(values.provider)) {

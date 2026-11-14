@@ -73,6 +73,48 @@ function values(
 }
 
 describe('validateModelConfigForm', () => {
+  it('accepts a custom endpoint with ordinary query parameters', () => {
+    expect(
+      modelConfigFieldErrors(
+        values({
+          endpoint: 'https://models.example/v1?api-version=2026-01-01',
+        }),
+      ).endpoint,
+    ).toBeUndefined();
+  });
+
+  it.each([
+    'https://user:synthetic-value@models.example/v1',
+    'https://models.example/v1?api_key=synthetic-value',
+    'https://models.example/v1?%61pi_key=synthetic-value',
+    'https://models.example/v1?api_key_synthetic-value',
+    'https://models.example/v1?safe=value;api_key=synthetic-value',
+    'https://models.example/v1#synthetic-value',
+  ])(
+    'keeps credential-bearing endpoints on the endpoint field: %s',
+    endpoint => {
+      expect(modelConfigFieldErrors(values({ endpoint })).endpoint).toMatch(
+        /credential/i,
+      );
+    },
+  );
+
+  it.each(['Gemini', 'AnthropicVertexAI', 'GeminiVertexAI'] as const)(
+    'does not validate a hidden endpoint for %s',
+    provider => {
+      expect(
+        modelConfigFieldErrors(
+          values({
+            provider,
+            endpoint: 'not a URL',
+            projectID: 'vertex-test',
+            location: 'eu',
+          }),
+        ).endpoint,
+      ).toBeUndefined();
+    },
+  );
+
   it('accepts a complete OpenAI form', () => {
     expect(validateModelConfigForm(values())).toEqual([]);
   });

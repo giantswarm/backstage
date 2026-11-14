@@ -200,6 +200,45 @@ beforeEach(() => {
 });
 
 describe('useSaveOrganizationModel', () => {
+  it('keeps a supported custom endpoint and its noncredential query parameters', async () => {
+    const endpoint = 'https://models.example/v1?api-version=2026-01-01';
+    const callTool = await saveWith(
+      {
+        namespace: 'kagent',
+        values: { ...VALUES, provider: 'OpenAI', endpoint },
+      },
+      present,
+    );
+    await screen.findByTestId('answer');
+    expect(setCalls(callTool)[0]).toEqual(
+      expect.objectContaining({ endpoint }),
+    );
+  });
+
+  it.each(['Gemini', 'AnthropicVertexAI', 'GeminiVertexAI'] as const)(
+    'omits hidden endpoint settings for %s after a provider change',
+    async provider => {
+      const callTool = await saveWith(
+        {
+          namespace: 'kagent',
+          values: {
+            ...VALUES,
+            provider,
+            endpoint: 'https://previous-provider.example/v1',
+            insecureSkipTlsVerify: true,
+            projectID: 'vertex-test',
+            location: 'eu',
+          },
+        },
+        present,
+      );
+      await screen.findByTestId('answer');
+      expect(setCalls(callTool)).toHaveLength(1);
+      expect(setCalls(callTool)[0]).not.toHaveProperty('endpoint');
+      expect(setCalls(callTool)[0]).not.toHaveProperty('insecureSkipTLSVerify');
+    },
+  );
+
   it('prepares installation Vertex metadata through the manager and opens its installation credential page', async () => {
     const callTool = await saveWith(
       {
