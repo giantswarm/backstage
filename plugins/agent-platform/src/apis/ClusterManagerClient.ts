@@ -28,6 +28,12 @@ export type WriteOptions = {
   mode?: WriteMode;
 };
 
+/** `list_clusters`' answer, as the client reads it. */
+export type ListClustersAnswer = {
+  clusters?: ManagedCluster[] | null;
+  clusterApi?: ClusterApiStatus;
+};
+
 /**
  * cluster-manager's tools on one installation, called as the signed-in person.
  *
@@ -80,10 +86,10 @@ export class ClusterManagerClient {
    * the Cluster API is served at all (none listed where it is not).
    */
   async listClusters(): Promise<ManagedClustersResult> {
-    const result = await this.call<{
-      clusters?: ManagedCluster[] | null;
-      clusterApi?: ClusterApiStatus;
-    }>(CLUSTER_MANAGER_TOOLS.listClusters, {});
+    const result = await this.call<ListClustersAnswer>(
+      CLUSTER_MANAGER_TOOLS.listClusters,
+      {},
+    );
     return { clusters: result.clusters ?? [], clusterApi: result.clusterApi };
   }
 

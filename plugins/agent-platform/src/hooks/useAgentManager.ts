@@ -155,10 +155,14 @@ export function useCreatesAgentsNowhere(installations: string[]): {
  * `get_info` (`defaultAgent`): agent-manager decides which agent that is, the
  * portal does not resolve it again. Asked only where muster reaches
  * agent-manager as the person, and of the other installations only when the
- * home one names none. An installation whose answer has none, or that has not
- * answered, contributes nothing.
+ * home one names none — or, with `everywhere`, of every installation, for a
+ * report on all of them rather than one agent to preselect. An installation
+ * whose answer has none, or that has not answered, contributes nothing.
  */
-export function useDefaultAgentIds(installations: string[]): Set<string> {
+export function useDefaultAgentIds(
+  installations: string[],
+  { everywhere = false }: { everywhere?: boolean } = {},
+): Set<string> {
   const musterApi = useMusterPluginApi();
   const availability = useAgentManagerAvailability(installations);
   const reachable = (installation: string) =>
@@ -174,7 +178,7 @@ export function useDefaultAgentIds(installations: string[]): Set<string> {
   const homeSettled = reachable(home)
     ? !isAwaitingData(homeInfo)
     : !availability.isLoading;
-  const askOthers = !homeDefault && homeSettled;
+  const askOthers = everywhere || (!homeDefault && homeSettled);
   const otherDefaults = useQueries({
     queries: others.map(installation => ({
       ...agentManagerInfoQuery(musterApi, installation),

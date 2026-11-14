@@ -49,6 +49,7 @@ export const SHELL_SPECS = [
   'organization-credentials.spec.ts',
   'vertex-credentials.spec.ts',
   'organizations.spec.ts',
+  'profile-environments.spec.ts',
   'provider-connect.spec.ts',
   'muster-namespaced.spec.ts',
   'new-agent-draft.spec.ts',

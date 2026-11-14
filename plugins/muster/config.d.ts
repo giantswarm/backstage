@@ -9,6 +9,16 @@ export interface Config {
     serverName?: string;
 
     /**
+     * Serve one signed-in installation from built-in fixtures instead of the
+     * muster backend, its tool calls answered by the fixture MCP servers the
+     * plugins contribute: for local development and layout checks without a
+     * cluster. No effect in a production build, which contains no fixture
+     * code (docs/fixtures.md). Never set on a deployed portal.
+     * @visibility frontend
+     */
+    fixtures?: boolean;
+
+    /**
      * Overrides of the muster installations the backend derives from
      * `gs.installations` (`https://muster.<baseDomain>/mcp` per entry with a
      * `baseDomain`). The full schema lives in the muster-backend plugin; only

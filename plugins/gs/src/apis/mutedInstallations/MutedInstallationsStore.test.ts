@@ -36,6 +36,34 @@ describe('MutedInstallationsStore', () => {
     expect(store.isMuted('beta')).toBe(true);
   });
 
+  it('turns several installations off and on with one notification each', async () => {
+    const store = MutedInstallationsStore.create();
+    store.setMuted('alpha', true);
+    const { emissions, unsubscribe } = collect(store);
+    await tick();
+
+    store.setMutedMany(['alpha', 'beta', 'gamma'], true);
+    expect(store.getSnapshot()).toEqual(['alpha', 'beta', 'gamma']);
+    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toEqual([
+      'alpha',
+      'beta',
+      'gamma',
+    ]);
+
+    store.setMutedMany(['alpha', 'gamma'], false);
+    expect(store.getSnapshot()).toEqual(['beta']);
+
+    // Nothing changes: no emission.
+    store.setMutedMany(['alpha'], false);
+    await tick();
+    expect(emissions).toEqual([
+      ['alpha'],
+      ['alpha', 'beta', 'gamma'],
+      ['beta'],
+    ]);
+    unsubscribe();
+  });
+
   it('mutes an installation and persists it', () => {
     const store = MutedInstallationsStore.create();
     store.setMuted('alpha', true);

@@ -30,6 +30,56 @@ const MARKERS = [
     source: 'plugins/roadmap/src/apis/RoadmapFixtureApi.ts',
     marker: 'The change is proven in the lab',
   },
+  {
+    source: 'plugins/muster/src/apis/fixtures/MusterFixtureApi.ts',
+    marker: 'Fixture mode has no handler for the tool',
+  },
+  {
+    source: 'plugins/agent-platform/src/apis/fixtures/notInFixtures.ts',
+    marker: 'Fixture mode does not answer',
+  },
+  {
+    source: 'plugins/agent-platform/src/apis/fixtures/KagentFixtureApi.ts',
+    marker: 'kagent streamMessage',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/ModelManagerFixtureApi.ts',
+    marker: 'model-manager pullModel',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/AgentManagerCredentialsFixtureApi.ts',
+    marker: 'fixture:credential-operations',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/agentManagerFixtureState.ts',
+    marker: 'The credential request does not exist, expired, or is',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/mcpServers/agentManager.ts',
+    marker: 'oci://registry.example.com/charts/agent',
+  },
+  {
+    source: 'plugins/gs-common/src/fixtures/builders.ts',
+    marker: 'A builder needs at least one state.',
+  },
+  {
+    source: 'plugins/muster/src/apis/fixtures/musterFixtureData.ts',
+    marker: 'The server did not answer within the timeout.',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/agentPlatformFixtureData.ts',
+    marker: 'The worker running the session stopped answering.',
+  },
+  {
+    source:
+      'packages/app/src/modules/kubernetes/fixtures/KubernetesFixtureApi.ts',
+    marker: 'Fixture mode does not answer the Kubernetes request',
+  },
 ];
 
 const root = path.resolve(import.meta.dirname, '..');

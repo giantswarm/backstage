@@ -79,6 +79,24 @@ export class MutedInstallationsStore implements MutedInstallationsApi {
     this.notify();
   }
 
+  setMutedMany(installations: string[], muted: boolean): void {
+    const changed = installations.filter(
+      installation => muted !== this.muted.has(installation),
+    );
+    if (changed.length === 0) {
+      return;
+    }
+    for (const installation of changed) {
+      if (muted) {
+        this.muted.add(installation);
+      } else {
+        this.muted.delete(installation);
+      }
+    }
+    this.persist();
+    this.notify();
+  }
+
   toggle(installation: string): void {
     this.setMuted(installation, !this.muted.has(installation));
   }

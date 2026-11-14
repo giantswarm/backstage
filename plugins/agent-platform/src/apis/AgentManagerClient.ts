@@ -63,6 +63,11 @@ const CREDENTIAL_REQUEST_TOOLS: ReadonlySet<AgentManagerTool> = new Set([
   AGENT_MANAGER_TOOLS.replaceOrganizationCredential,
 ]);
 
+/** `list_model_configs`' answer, as the client reads it. */
+export type ListModelConfigsAnswer = {
+  modelConfigs?: AgentManagerModelConfig[];
+};
+
 /**
  * agent-manager's tools on one installation, called as the signed-in person.
  *
@@ -161,9 +166,10 @@ export class AgentManagerClient {
   async listModelConfigs(
     namespace: string,
   ): Promise<AgentManagerModelConfig[]> {
-    const result = await this.call<{
-      modelConfigs?: AgentManagerModelConfig[];
-    }>(AGENT_MANAGER_TOOLS.listModelConfigs, { namespace });
+    const result = await this.call<ListModelConfigsAnswer>(
+      AGENT_MANAGER_TOOLS.listModelConfigs,
+      { namespace },
+    );
     return result.modelConfigs ?? [];
   }
 

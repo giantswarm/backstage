@@ -144,7 +144,9 @@ To stop the development server, hit `Ctrl + C`.
 ### Fixture data
 
 Some plugins can serve made-up data instead of calling their backends, set by a
-config flag: see [Fixture modes](fixtures.md).
+config flag: see [Fixture modes](fixtures.md). `yarn fixtures start` runs the
+portal with the Agent Platform's fixtures, signed in as the guest, on ports of
+its own: see [Fixture mode](fixtures.md#fixture-mode).
 
 ## Cluster access locally
 

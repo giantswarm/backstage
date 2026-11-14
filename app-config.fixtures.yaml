@@ -1,0 +1,46 @@
+# Fixture mode: the portal with fixture data instead of its backends, signed in
+# as the guest, without a cluster or a person (docs/fixtures.md). Started on
+# top of app-config.yaml by `yarn fixtures start`, which adds the ports in a
+# generated config of its own. Not for a deployed portal: a production build
+# ignores the fixture flags.
+app:
+  portals:
+    platformPortal: true
+    agentPlatform: true
+  errorReporter: null
+  telemetrydeck: null
+
+backend:
+  errorReporter: null
+
+auth:
+  environment: development
+  # The guest provider, which the backend adds with ENABLE_GUEST_AUTH. With
+  # no `gs.authProvider` the sign-in page signs the guest in on its own.
+  providers:
+    guest: {}
+
+gs:
+  fixtures: true
+  # Made-up installations, served by the fixture Kubernetes API
+  # (FIXTURE_INSTALLATIONS in gs-common). No metrics backend: the usage pages
+  # say so instead of failing.
+  installations:
+    meadow:
+      pipeline: testing
+      authProvider: serviceAccount
+      mimirEnabled: false
+    fennel:
+      pipeline: testing
+      authProvider: serviceAccount
+      mimirEnabled: false
+    tarragon:
+      pipeline: testing
+      authProvider: serviceAccount
+      mimirEnabled: false
+
+muster:
+  fixtures: true
+
+agentPlatform:
+  fixtures: true

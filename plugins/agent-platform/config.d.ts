@@ -8,6 +8,16 @@ export interface Config {
    * agent-manager's to report (`get_info`) and are not configured here.
    */
   agentPlatform?: {
+    /**
+     * Serve kagent, model-manager and agent-manager's credential operations
+     * from built-in fixtures instead of their backends: for local development
+     * and layout checks without a cluster. The tools the pages call through
+     * muster answer from fixtures with `muster.fixtures`. No effect in a
+     * production build, which contains no fixture code (docs/fixtures.md).
+     * Never set on a deployed portal.
+     * @visibility frontend
+     */
+    fixtures?: boolean;
     organizations?: {
       /**
        * Enable Organizations for everyone in this portal. An explicit false

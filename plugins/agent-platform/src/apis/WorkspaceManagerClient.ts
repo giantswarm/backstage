@@ -28,6 +28,12 @@ const WORKSPACE_MANAGER_ERRORS: ManagerErrors = {
   notJSON: message => new WorkspaceManagerError('failed', message),
 };
 
+/** `list_workspaces`' answer, as the client reads it. */
+export type ListWorkspacesAnswer = {
+  workspaces?: Workspace[];
+  organizations?: string[];
+};
+
 /**
  * workspace-manager's tools on one installation, called as the signed-in
  * person.
@@ -64,10 +70,7 @@ export class WorkspaceManagerClient {
    * person's Organizations whatever the filter.
    */
   async listWorkspaces(organization?: string): Promise<WorkspaceList> {
-    const result = await this.call<{
-      workspaces?: Workspace[];
-      organizations?: string[];
-    }>(
+    const result = await this.call<ListWorkspacesAnswer>(
       WORKSPACE_MANAGER_TOOLS.listWorkspaces,
       organization ? { organization } : {},
     );
