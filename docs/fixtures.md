@@ -53,21 +53,22 @@ yarn fixtures stop
   directory you run the command in; from a workspace directory, run
   `yarn run -T fixtures …`.
 
-### The installation
+### The installations
 
-Fixture mode serves one made-up installation, `meadow`
-(`FIXTURE_INSTALLATION` in `@giantswarm/backstage-plugin-gs-common`, which
-every fixture API reads; a test checks that `gs.installations` in
-`app-config.fixtures.yaml` names it and no other). A call for any other
-installation fails with a console error, in every fixture API.
-With `gs.fixtures` the fixture Kubernetes API answers for it without a
+Fixture mode serves three made-up installations, `meadow`, `fennel` and
+`tarragon` (`FIXTURE_INSTALLATIONS` in `@giantswarm/backstage-plugin-gs-common`,
+which every fixture API reads; a test checks that `gs.installations` in
+`app-config.fixtures.yaml` names them and no other). muster and kagent report
+`tarragon` as not reachable from the portal, as the base data set says. A call
+for any other installation fails with a console error, in every fixture API.
+With `gs.fixtures` the fixture Kubernetes API answers for each without a
 cluster: `/version` answers, `/apis` lists the API groups of the portal's resource classes
 (kagent's and muster's among them; model hosting's and Cluster API's are left
 out, so those components read as absent in the installation inventory),
 discovery answers the versions the classes support (the newest preferred),
 every list is empty, a
-read of one object is not found, and access reviews are allowed. Its cluster
-access is healthy from the start, and it has no metrics backend
+read of one object is not found, and access reviews are allowed. Their cluster
+access is healthy from the start, and they have no metrics backend
 (`mimirEnabled: false`). Any other request, a write among them, fails with a
 501 and a console error.
 
@@ -97,6 +98,41 @@ whose `tools` map a tool's own name to its handler. The handlers live with the
 plugin that calls the tools, and each declares the answer type its client
 reads (`ListWorkspacesAnswer`, `ToolchainList`, …), so a change to it breaks
 the fixture's build.
+
+### The data set
+
+Every fixture API and tool handler reads one data set, so the pages tell one
+story: the agents an organization lists are the agents whose sessions kagent
+lists. It is in `@giantswarm/backstage-plugin-gs-common/fixtures`
+(`plugins/gs-common/src/fixtures/`), a subpath of its own that only fixture
+modules and tests import (`giantswarm/no-fixture-imports` fails on any other import):
+
+- `baseDataSet()` is the base data set, built once from a fixed seed: the
+  three served installations (`tarragon` unreachable), and in each
+  organizations, agents, connectors, sessions, workflows and executions in
+  every state their pages know. The person has each role in the ready
+  organizations of each installation (admin, editor, user, so the New agent form's "needs the
+  editor role" shows), manages the orphaned, pending-erase and deleting ones and is no
+  member of the pending one. Only ready agents of ready organizations have
+  sessions, and one pending agent has a failed release. Names are made of
+  plant words, never a real installation, customer or repository.
+- `createFixtureDataSet(settings)` builds another one: per list a `count`
+  (per parent, such as agents per organization), a least `nameLength` (cut at
+  63, a Kubernetes name's limit; display names keep their words whole) and
+  the `states` the items take in turn. The served installations keep their
+  names whatever the length; any beyond them have made-up names and are not
+  served. The same `seed` and `now` build the same data set.
+- The records are plain, not any client's answer. Each plugin maps them onto
+  the types its clients read, next to its fixtures, through the parsers the
+  real answers go through where there are any: muster's in
+  `plugins/muster/src/apis/fixtures/musterFixtureData.ts` (MCP servers as
+  objects and as muster lists them, installations, workflows, executions),
+  agent-platform's in
+  `plugins/agent-platform/src/apis/fixtures/agentPlatformFixtureData.ts`
+  (Agent objects, agent-manager's agents and organizations, kagent sessions).
+
+A page that reads a new field or shows a new state extends a builder or a
+mapper in the same pull request, and the base data set gets the state.
 
 ## Adding a fixture mode
 

@@ -22,12 +22,21 @@ auth:
 
 gs:
   fixtures: true
-  # A made-up installation, served by the fixture Kubernetes API.
+  # Made-up installations, served by the fixture Kubernetes API
+  # (FIXTURE_INSTALLATIONS in gs-common). No metrics backend: the usage pages
+  # say so instead of failing.
   installations:
     meadow:
       pipeline: testing
       authProvider: serviceAccount
-      # No metrics backend: the usage pages say so instead of failing.
+      mimirEnabled: false
+    fennel:
+      pipeline: testing
+      authProvider: serviceAccount
+      mimirEnabled: false
+    tarragon:
+      pipeline: testing
+      authProvider: serviceAccount
       mimirEnabled: false
 
 muster:

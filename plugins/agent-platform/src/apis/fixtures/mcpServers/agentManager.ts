@@ -7,10 +7,9 @@ import {
   type AgentManagerInfo,
 } from '../../../lib/agentManager';
 import type { ListModelConfigsAnswer } from '../../AgentManagerClient';
-import { FIXTURE_INSTALLATION } from '../fixtureIdentity';
 
-/** What the fixture agent-manager composes and can do. */
-const info: AgentManagerInfo = {
+/** What the fixture agent-manager of an installation composes and can do. */
+const infoOf = (installation: string): AgentManagerInfo => ({
   version: '1.0.0-fixture',
   chart: {
     ociUrl: 'oci://registry.example.com/charts/agent',
@@ -33,15 +32,16 @@ const info: AgentManagerInfo = {
   },
   flux: { helmReleaseInterval: '10m', ociRepositoryInterval: '30m' },
   harness: { name: 'kagent' },
-  muster: { url: `https://muster.${FIXTURE_INSTALLATION}.example.com/mcp` },
+  muster: { url: `https://muster.${installation}.example.com/mcp` },
   skillsRepositories: [],
-};
+});
 
 /** agent-manager's tools in fixture mode. */
 export const agentManager: FixtureMcpServer = {
   server: AGENT_MANAGER_SERVER,
   tools: {
-    [AGENT_MANAGER_TOOLS.getInfo]: () => info,
+    [AGENT_MANAGER_TOOLS.getInfo]: (_, { installation }) =>
+      infoOf(installation),
     [AGENT_MANAGER_TOOLS.listModelConfigs]: (): ListModelConfigsAnswer => ({
       modelConfigs: [],
     }),

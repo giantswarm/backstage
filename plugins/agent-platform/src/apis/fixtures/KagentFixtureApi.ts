@@ -6,6 +6,7 @@ import type {
   SessionStatesResponse,
   SessionUsageResponse,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { baseDataSet } from '@giantswarm/backstage-plugin-gs-common/fixtures';
 
 import type {
   KagentApi,
@@ -14,17 +15,27 @@ import type {
   RawSessionBodies,
   StreamEnd,
 } from '../types';
-import { FIXTURE_INSTALLATION, FIXTURE_USER, served } from './fixtureIdentity';
+
+import { FIXTURE_USER, served } from './fixtureIdentity';
 import { notInFixtures } from './notInFixtures';
 
 /**
- * kagent in fixture mode (`agentPlatform.fixtures: true`): one reachable
- * installation, the fixture user signed in, no sessions yet. Writes and
+ * kagent in fixture mode (`agentPlatform.fixtures: true`): the installations
+ * of the base data set, the fixture user signed in, no sessions yet. Writes and
  * streams fail with {@link notInFixtures} until the fixtures answer them.
  */
 export class KagentFixtureApi implements KagentApi {
   async listInstallations(): Promise<KagentInstallation[]> {
-    return [{ name: FIXTURE_INSTALLATION, reachable: true }];
+    const reachable = {
+      reachable: true,
+      unreachable: false,
+      unknown: 'unknown',
+    } as const;
+    return baseDataSet().installations.map(installation => ({
+      name: installation.name,
+      reachable: reachable[installation.state],
+      ...(installation.state === 'unreachable' && { reason: 'timeout' }),
+    }));
   }
 
   async listSessions(installation: string): Promise<KagentSession[]> {

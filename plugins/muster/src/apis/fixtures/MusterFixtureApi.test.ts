@@ -10,15 +10,19 @@ describe('MusterFixtureApi', () => {
     jest.restoreAllMocks();
   });
 
-  it('serves one reachable installation the person is signed in to', async () => {
+  it('serves the installations of the data set, the person signed in', async () => {
     const { installations } = await api.listInstallations();
 
     expect(installations).toEqual([
       expect.objectContaining({ name: 'meadow', reachable: true }),
+      expect.objectContaining({ name: 'fennel', reachable: true }),
+      expect.objectContaining({ name: 'tarragon', reachable: false }),
     ]);
-    await expect(
-      api.filterTools({ installation: 'meadow', limit: 1 }),
-    ).resolves.toEqual(expect.objectContaining({ tools: expect.any(Array) }));
+    for (const { name } of installations) {
+      await expect(
+        api.filterTools({ installation: name, limit: 1 }),
+      ).resolves.toEqual(expect.objectContaining({ tools: expect.any(Array) }));
+    }
     await expect(api.signIn()).resolves.toBe(true);
   });
 
