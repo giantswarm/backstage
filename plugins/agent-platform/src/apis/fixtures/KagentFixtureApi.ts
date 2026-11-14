@@ -6,7 +6,6 @@ import type {
   SessionStatesResponse,
   SessionUsageResponse,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
-import { baseDataSet } from '@giantswarm/backstage-plugin-gs-common/fixtures';
 
 import type {
   ConfirmationAnswerRequest,
@@ -20,12 +19,11 @@ import type {
 
 import { agentManagerFixtureState } from './agentManagerFixtureState';
 import { FIXTURE_USER, served } from './fixtureIdentity';
+import { type Agent } from './kagentConversations';
 import {
   kagentFixtureState,
   type KagentFixtureState,
 } from './kagentFixtureState';
-
-type Agent = { namespace: string; name: string };
 
 /**
  * kagent in fixture mode (`agentPlatform.fixtures: true`): the installations
@@ -40,16 +38,7 @@ export class KagentFixtureApi implements KagentApi {
   ) {}
 
   async listInstallations(): Promise<KagentInstallation[]> {
-    const reachable = {
-      reachable: true,
-      unreachable: false,
-      unknown: 'unknown',
-    } as const;
-    return baseDataSet().installations.map(installation => ({
-      name: installation.name,
-      reachable: reachable[installation.state],
-      ...(installation.state === 'unreachable' && { reason: 'timeout' }),
-    }));
+    return this.state().listInstallations();
   }
 
   async listSessions(installation: string): Promise<KagentSession[]> {
@@ -216,11 +205,13 @@ export class KagentFixtureApi implements KagentApi {
 
   async getIdentity(installation: string): Promise<KagentIdentity> {
     served(installation);
+    this.state().mustReach(installation);
     return { sub: FIXTURE_USER.sub, email: FIXTURE_USER.email };
   }
 
   async listAgentNamespaces(installation: string): Promise<string[]> {
     served(installation);
+    this.state().mustReach(installation);
     return agentManagerFixtureState().agentNamespaces(installation);
   }
 }

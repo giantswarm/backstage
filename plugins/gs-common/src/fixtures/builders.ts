@@ -194,7 +194,8 @@ export type FixtureExecution = {
 export type BuilderContext = { random: FixtureRandom; now: number };
 
 export const MINUTE = 60 * 1000;
-export const DAY = 24 * 60 * MINUTE;
+export const HOUR = 60 * MINUTE;
+export const DAY = 24 * HOUR;
 
 /** The parent namespace organizations live in. */
 export const ORGANIZATION_PARENT = 'agents';
@@ -413,10 +414,25 @@ export function buildConnectors(
 }
 
 /**
- * kagent sessions, `count` with each agent that can run them: a ready agent
- * of a ready organization. An agent that never became ready has none, and an
- * organization that is orphaned or erased has its workers stopped.
+ * The agents that can run sessions: the ready agents of ready organizations.
+ * An agent that never became ready has none, and an organization that is
+ * orphaned or erased has its workers stopped.
  */
+export function runnableAgents(
+  agents: readonly FixtureAgent[],
+  organizations: readonly FixtureOrganization[],
+): FixtureAgent[] {
+  const ready = new Set(
+    organizations
+      .filter(organization => organization.state === 'ready')
+      .map(organization => organization.namespace),
+  );
+  return agents.filter(
+    agent => agent.state === 'ready' && ready.has(agent.namespace),
+  );
+}
+
+/** kagent sessions, `count` with each agent that can run them (`runnableAgents`). */
 export function buildSessions(
   context: BuilderContext,
   agents: readonly FixtureAgent[],
@@ -424,15 +440,8 @@ export function buildSessions(
   settings: BuilderSettings<SessionState> = {},
 ): FixtureSession[] {
   const title = createNamer(context.random);
-  const ready = new Set(
-    organizations
-      .filter(organization => organization.state === 'ready')
-      .map(organization => organization.namespace),
-  );
   return each(
-    agents.filter(
-      agent => agent.state === 'ready' && ready.has(agent.namespace),
-    ),
+    runnableAgents(agents, organizations),
     settings,
     { count: 3, states: SESSION_STATES },
     (agent, state, nameLength) => {
@@ -480,20 +489,11 @@ export function buildTurnSessions(
   settings: BuilderSettings<SessionTurn> = {},
 ): FixtureSession[] {
   const title = createNamer(context.random);
-  const ready = new Set(
-    organizations
-      .filter(organization => organization.state === 'ready')
-      .map(organization => organization.namespace),
-  );
+  const runnable = runnableAgents(agents, organizations);
   const agentsOf = new Map(
     installations.map(installation => [
       installation.name,
-      agents.filter(
-        agent =>
-          agent.installation === installation.name &&
-          agent.state === 'ready' &&
-          ready.has(agent.namespace),
-      ),
+      runnable.filter(agent => agent.installation === installation.name),
     ]),
   );
   const served = new Map<string, number>();
@@ -509,7 +509,8 @@ export function buildTurnSessions(
       served.set(installation.name, position + 1);
       const agent = candidates[position % candidates.length];
       const moved = context.random.int(MINUTE, 2 * DAY);
-      const created = moved + context.random.int(MINUTE, 3 * DAY);
+      // Created before every turn of its conversation, earlier ones included.
+      const created = moved + context.random.int(HOUR, 3 * DAY);
       return {
         installation: installation.name,
         id: uuid(context),

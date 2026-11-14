@@ -61,10 +61,7 @@ import {
   type FixtureModel,
 } from './agentPlatformFixtureData';
 import { FIXTURE_USER } from './fixtureIdentity';
-import {
-  kagentFixtureState,
-  type KagentFixtureState,
-} from './kagentFixtureState';
+import { kagentFixtureState, KagentFixtureState } from './kagentFixtureState';
 
 /**
  * agent-manager's state in fixture mode (docs/fixtures.md): the base data
@@ -319,12 +316,27 @@ export class AgentManagerFixtureState {
   /** When the data set's objects were created. */
   private readonly createdAt: string;
 
+  /** Where a started session is created, for kagent to serve it. */
+  private readonly kagent: () => KagentFixtureState;
+
   constructor(
     private readonly data: FixtureDataSet = baseDataSet(),
     private readonly now: () => number = Date.now,
-    /** Where a started session is created, for kagent to serve it. */
-    private readonly kagent: () => KagentFixtureState = kagentFixtureState,
+    /**
+     * kagent's state, the shared one for the base data set; another data set
+     * gets a state of its own, so its sessions stay out of the shared one.
+     */
+    kagent?: () => KagentFixtureState,
   ) {
+    let own: KagentFixtureState | undefined;
+    this.kagent =
+      kagent ??
+      (data === baseDataSet()
+        ? kagentFixtureState
+        : () => {
+            own ??= new KagentFixtureState(data, now);
+            return own;
+          });
     this.createdAt = new Date(this.now() - 7 * DAY).toISOString();
   }
 

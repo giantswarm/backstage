@@ -21,7 +21,13 @@ import {
   FIXTURE_REPLY,
   FRAME_MS,
 } from './kagentConversations';
-import { KagentFixtureState, STREAM_CUT_MS } from './kagentFixtureState';
+import { KagentFixtureApi } from './KagentFixtureApi';
+import {
+  hitlRequestOf,
+  hitlResponseOf,
+  KagentFixtureState,
+  STREAM_CUT_MS,
+} from './kagentFixtureState';
 
 const NOW = Date.parse('2026-11-14T12:00:00Z');
 const INSTALLATION = 'meadow';
@@ -183,6 +189,19 @@ describe('KagentFixtureState: the seeded sessions', () => {
     );
   });
 
+  it('starts no conversation before its session was created', () => {
+    const { data } = setup();
+    for (const session of data.sessions) {
+      const created = Date.parse(session.createdAt);
+      for (const task of conversationOf(session)) {
+        const at = (task.metadata as Record<string, string>)[
+          'kagent.dev/task-created-at'
+        ];
+        expect(Date.parse(at)).toBeGreaterThanOrEqual(created);
+      }
+    }
+  });
+
   it('answers the raw bodies of a session for its export', () => {
     const { state, sessionWith } = setup();
     const { id } = sessionWith('completed');
@@ -206,6 +225,26 @@ describe('KagentFixtureState: the seeded sessions', () => {
     expect(() => state.listSessions('tarragon')).toThrow(
       expect.objectContaining({ status: 500, reason: 'timeout' }),
     );
+  });
+
+  it('fails every kagent read of the unreachable installation alike', async () => {
+    const { state } = setup();
+    const api = new KagentFixtureApi(() => state);
+    const timeout = expect.objectContaining({ reason: 'timeout' });
+    await expect(api.listSessions('tarragon')).rejects.toEqual(timeout);
+    await expect(api.getIdentity('tarragon')).rejects.toEqual(timeout);
+    await expect(api.listAgentNamespaces('tarragon')).rejects.toEqual(timeout);
+  });
+
+  it("lists the installations of the state's own data set", async () => {
+    const data = createFixtureDataSet({
+      now: NOW,
+      installations: { count: 1, states: ['unreachable'] },
+    });
+    const api = new KagentFixtureApi(() => new KagentFixtureState(data));
+    await expect(api.listInstallations()).resolves.toEqual([
+      { name: 'meadow', reachable: false, reason: 'timeout' },
+    ]);
   });
 });
 
@@ -317,13 +356,30 @@ describe('KagentFixtureState: turns', () => {
     const { id } = sessionWith('working');
     const tasks = state.listSessionTasks(INSTALLATION, id);
     const taskId = tasks[tasks.length - 1].id!;
-    const { frames, onEvent } = collect();
-    const followed = state.subscribeToTask(INSTALLATION, id, taskId, onEvent);
-    expect(frames).toHaveLength(1);
+    const cut = collect();
+    const followed = state.subscribeToTask(
+      INSTALLATION,
+      id,
+      taskId,
+      cut.onEvent,
+    );
+    expect(cut.frames).toHaveLength(1);
     advance(STREAM_CUT_MS);
     await expect(followed).resolves.toEqual({});
 
+    // A subscription sees the cancel at once.
+    const following = collect();
+    const again = state.subscribeToTask(
+      INSTALLATION,
+      id,
+      taskId,
+      following.onEvent,
+    );
     state.cancelTask(INSTALLATION, id, taskId);
+    await expect(again).resolves.toEqual({});
+    expect(following.frames[1]).toMatchObject({
+      statusUpdate: { status: { state: 'TASK_STATE_CANCELED' } },
+    });
     const after = state.listSessionTasks(INSTALLATION, id);
     expect(after[after.length - 1].status?.state).toBe('canceled');
     // Canceling a turn already over is no error, and nothing changes.
@@ -359,6 +415,8 @@ describe('KagentFixtureState: turns', () => {
       expect.objectContaining({ messageId: 'm-answer', role: 'user' }),
     );
     expect(readPendingConfirmation(tasks)).toBeUndefined();
+    // The approved call ran: its recorded result follows the confirmation.
+    expect(JSON.stringify(tasks[0].history)).toContain('total_tools');
 
     expect(() =>
       state.streamAnswer(
@@ -449,6 +507,140 @@ describe('KagentFixtureState: turns', () => {
       message: {
         parts: [{ text: `actor "ai-${id}" request timed out` }],
       },
+    });
+  });
+
+  it('moves the session record with its turns', async () => {
+    const { data, state, sessionWith, advance } = setup();
+    const old = data.sessions.find(
+      session =>
+        session.installation === INSTALLATION &&
+        session.state === 'ready' &&
+        session.turn === 'completed' &&
+        NOW - Date.parse(session.updatedAt) > 7 * 24 * 60 * 60 * 1000,
+    )!;
+    expect(
+      state
+        .listSessionStates(INSTALLATION)
+        .states.some(entry => entry.sessionId === old.id),
+    ).toBe(false);
+    advance(1000);
+    const ended = state.streamMessage(
+      INSTALLATION,
+      old.id,
+      old.agent,
+      message('back again'),
+      () => {},
+    );
+    expect(
+      state
+        .listSessionStates(INSTALLATION)
+        .states.find(entry => entry.sessionId === old.id),
+    ).toMatchObject({ state: 'submitted' });
+    expect(
+      state.getSessionDetail(INSTALLATION, old.id)?.session.updatedAt,
+    ).toBe(new Date(NOW + 1000).toISOString());
+    advance(20 * FRAME_MS);
+    await ended;
+
+    const waiting = sessionWith('approval');
+    const pending = readPendingConfirmation(
+      state.listSessionTasks(INSTALLATION, waiting.id),
+    )!;
+    const answered = state.streamAnswer(
+      INSTALLATION,
+      waiting.id,
+      waiting.agent,
+      { messageId: 'm-answer', taskId: pending.taskId, decision: 'approve' },
+      () => {},
+    );
+    expect(
+      state.getSessionDetail(INSTALLATION, waiting.id)?.session.state,
+    ).toBe('ready');
+    advance(20 * FRAME_MS);
+    await answered;
+  });
+
+  it('refuses a turn on a session whose runtime is not ready', () => {
+    const { data, state } = setup();
+    for (const runtime of ['creating', 'deleting', 'failed'] as const) {
+      const session = data.sessions.find(
+        candidate =>
+          candidate.installation === INSTALLATION &&
+          candidate.state === runtime,
+      )!;
+      expect(() =>
+        state.streamMessage(
+          INSTALLATION,
+          session.id,
+          session.agent,
+          message('hello'),
+          () => {},
+        ),
+      ).toThrow(
+        expect.objectContaining({
+          name: 'ConflictError',
+          message: `The kagent API for installation '${INSTALLATION}' reported a conflict: AgentInstance ${session.id} cannot accept a task in state AGENT_INSTANCE_STATE_${runtime.toUpperCase()} with operation AGENT_INSTANCE_OPERATION_UNSPECIFIED: conflict`,
+        }),
+      );
+    }
+  });
+
+  it('ends the streams of a deleted session at once', async () => {
+    const { state, sessionWith, advance } = setup();
+    const session = sessionWith('completed');
+    const ended = state.streamMessage(
+      INSTALLATION,
+      session.id,
+      session.agent,
+      message('going'),
+      () => {},
+    );
+    advance(FRAME_MS);
+    state.deleteSession(INSTALLATION, session.id);
+    await expect(ended).resolves.toEqual({});
+  });
+
+  it('reads and answers the HITL requests as the backend does', () => {
+    const waitingOn = (payload: Record<string, unknown>) => ({
+      status: {
+        state: 'TASK_STATE_INPUT_REQUIRED',
+        message: {
+          extensions: ['https://kagent.dev/extensions/hitl/v1'],
+          metadata: { 'https://kagent.dev/extensions/hitl/v1': payload },
+        },
+      },
+    });
+    const signIn = hitlRequestOf(
+      waitingOn({ type: 'url_elicitation_request', id: 'sign-in-1' }),
+    )!;
+    expect(
+      hitlResponseOf(signIn, {
+        messageId: 'm',
+        taskId: 't',
+        decision: 'reject',
+      }),
+    ).toEqual({
+      type: 'url_elicitation_response',
+      id: 'sign-in-1',
+      action: 'decline',
+    });
+    const nested = hitlRequestOf(
+      waitingOn({
+        type: 'tool_approval_request',
+        tools: [{ id: 'parent' }],
+        nested: { tools: [{ id: 'child', name: 'filter_tools' }] },
+      }),
+    )!;
+    expect(
+      hitlResponseOf(nested, {
+        messageId: 'm',
+        taskId: 't',
+        decision: 'approve',
+      }),
+    ).toEqual({
+      type: 'tool_approval_response',
+      approvals: [{ id: 'child', approved: true }],
     });
   });
 

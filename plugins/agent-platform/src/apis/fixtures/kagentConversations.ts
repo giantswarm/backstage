@@ -98,7 +98,9 @@ function appNameOf(agent: Agent): string {
 export function recast<T>(recording: T, target: Target): T {
   const shift = target.endsAt - latestTime(recording);
   const prefix = target.taskId.slice(0, 8);
-  return walk(structuredClone(recording), (key, value) => {
+  // `walk` builds every object and array afresh, so the recording stays as
+  // it was.
+  return walk(recording, (key, value) => {
     if (typeof value !== 'string') {
       return value;
     }
@@ -172,12 +174,7 @@ export function seededTaskId(sessionId: string, position: number): string {
       hashOf(`${sessionId}/${position}/${n}`).toString(16).padStart(8, '0'),
     )
     .join('');
-  return [8, 4, 4, 4, 12]
-    .reduce<string[]>((groups, length) => {
-      const start = groups.join('').length;
-      return [...groups, digits.slice(start, start + length)];
-    }, [])
-    .join('-');
+  return `${digits.slice(0, 8)}-${digits.slice(8, 12)}-${digits.slice(12, 16)}-${digits.slice(16, 20)}-${digits.slice(20)}`;
 }
 
 /** A finished turn: tool calls approved by the person, an answer, and the recorded PNG on the prompt. */
@@ -209,6 +206,32 @@ function approvalTask(target: Target): V1Object {
     ...recast(firstTask(tasksHitlApprovalKagent4a91c273), target),
     id: target.taskId,
   };
+}
+
+/**
+ * The recorded result of the tool call an approval lets run, as the artifact
+ * that carries it, recast onto the turn; undefined for a tool the recording
+ * has no result of. kagent keeps the call's earlier "requires confirmation"
+ * response and adds this one.
+ */
+export function approvedToolResult(
+  tools: readonly { name?: string }[],
+  target: Omit<Target, 'endsAt'>,
+): V1Object | undefined {
+  const recorded = firstTask(tasksKagent4a91c273).artifacts as V1Object[];
+  const result = recorded.find(artifact =>
+    ((artifact.parts as V1Object[]) ?? []).some(part => {
+      const data = part.data as
+        { name?: string; response?: V1Object } | undefined;
+      return (
+        data?.response?.output !== undefined &&
+        tools.some(tool => tool.name === data.name)
+      );
+    }),
+  );
+  return result
+    ? recast(result, { ...target, endsAt: latestTime(result) })
+    : undefined;
 }
 
 /** The questions of the ask-user turn: one with choices, one free text. */
@@ -427,11 +450,14 @@ export function streamedTurn(options: {
   startsAt: number;
   reply?: string;
   failure?: string;
+  /** An artifact the turn adds before its reply: the result of a tool call it ran. */
+  toolResult?: V1Object;
 }): V1Object[] {
   const recorded = streamKagent4a91c273 as V1Object[];
   const [snapshot, working, firstPiece, nextPiece, whole, completed] = recorded;
   const pieces = replyChunks(options.reply ?? FIXTURE_REPLY);
-  const count = options.failure ? 3 : pieces.length + 4;
+  const extra = options.toolResult ? 1 : 0;
+  const count = options.failure ? 3 : pieces.length + 4 + extra;
   const target = {
     sessionId: options.sessionId,
     taskId: options.taskId,
@@ -507,14 +533,33 @@ export function streamedTurn(options: {
       },
     };
   };
+  const toolFrames: V1Object[] = options.toolResult
+    ? [
+        {
+          artifactUpdate: {
+            taskId: options.taskId,
+            contextId: options.sessionId,
+            artifact: {
+              ...options.toolResult,
+              metadata: {
+                ...(options.toolResult.metadata as V1Object),
+                'kagent.dev/timeline-position': at(2),
+              },
+            },
+          },
+        },
+      ]
+    : [];
+  const replyAt = 2 + extra;
   return [
     first,
     workingFrame,
+    ...toolFrames,
     ...pieces.map((piece, i) =>
-      artifactFrame(i === 0 ? firstPiece : nextPiece, i + 2, piece),
+      artifactFrame(i === 0 ? firstPiece : nextPiece, i + replyAt, piece),
     ),
-    artifactFrame(whole, pieces.length + 2, pieces.join('')),
-    statusFrame(completed, pieces.length + 3, {
+    artifactFrame(whole, pieces.length + replyAt, pieces.join('')),
+    statusFrame(completed, pieces.length + replyAt + 1, {
       state: 'TASK_STATE_COMPLETED',
     }),
   ];

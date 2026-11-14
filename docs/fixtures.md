@@ -157,27 +157,29 @@ from kagent.
   canceled, and failed because kagent lost the session's runtime (reported on
   the session too). The states no v1 recording has are derived from one, with
   the words of the older recordings of that state.
-- The session states summary (the session lists and the rail) is computed
-  as the backend computes it: the
-  sessions of the last seven days, newest first, at most twenty, each by its
-  runtime's state where that decides and by its newest turn otherwise.
+- The session states summary (the session lists and the rail) and the
+  usage summary (Usage · Your sessions) are computed with the backend's own
+  code, shared through agent-platform-common (`kagentSessionRollups.ts`):
+  the same selection (the sessions of the last seven days, at most twenty;
+  of the last 31 days, at most sixty), the same state of each session and
+  the same rollup of its turns. A session's record moves with its turns: a
+  new turn, an answer or a cancel makes it ready and moves its `updatedAt`.
 - A new turn replays the recorded stream, one frame per 300 ms (`FRAME_MS`),
   with a reply that says it is a replay. The turn runs on a timer, so it goes
   on when its stream is cut, as a real one does, and a subscription follows
   it again. A second message while a turn runs is refused as kagent refuses
-  it. Answering an approval or a question resumes the waiting turn, checked
-  as the backend checks an answer (the request answered already, another
-  request since, a question rejected, an answer missing). The seeded working
+  it, and so is a turn on a session whose runtime is being created, deleted
+  or failed. Answering an approval, a question or a sign-in resumes the
+  waiting turn, checked as the backend checks an answer (the request answered
+  already, another request since, a question rejected, an answer missing);
+  an approved tool call adds its recorded result before the reply. The seeded working
   turn has no end: its stream stays open until it would be cut (55 seconds,
   `STREAM_CUT_MS`), and stopping it cancels it.
 - Renaming, deleting and canceling are kept in memory, refused in the
-  backend's words; a deleted session is gone from every read.
-- kagent on the unreachable installation fails its reads as a timeout.
-- The usage summary (Usage · Your sessions) is totalled from the
-  conversations as the backend totals it: the sessions that moved in the last
-  31 days, at most sixty, their turns of the last 30 days by day, agent, tool
-  and MCP server. The model cost answers no cost yet
-  (giantswarm/giantswarm#39251, item 8).
+  backend's words; a cancel reaches the streams following the turn at once,
+  and a deleted session ends its streams and is gone from every read.
+- kagent on the unreachable installation fails every call as a timeout.
+- The model cost answers no cost yet (giantswarm/giantswarm#39251, item 8).
 
 ### workspace-manager, toolchain-manager and skill-manager
 
