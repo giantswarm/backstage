@@ -8,6 +8,7 @@ import {
 } from '../../../utils/gatewayTopology';
 import { ConditionStatus } from './ConditionStatus';
 import { HostnameList } from './HostnameList';
+import { BackendList } from './BackendList';
 
 export type GatewayRow = Gateway;
 
@@ -96,6 +97,18 @@ export const routeColumns: ColumnConfig<RouteParentRow>[] = [
     cell: row => (
       <Cell>
         <HostnameList hostnames={row.route.hostnames} />
+      </Cell>
+    ),
+  },
+  {
+    id: 'backends',
+    label: 'Backends',
+    cell: row => (
+      <Cell>
+        <BackendList
+          backends={row.route.backends}
+          routeNamespace={row.route.namespace}
+        />
       </Cell>
     ),
   },

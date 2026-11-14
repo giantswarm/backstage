@@ -26,6 +26,7 @@ function inputs(
     routeStatusParentInfo: [],
     routeAccepted: [],
     routeResolvedRefs: [],
+    routeRuleBackendInfo: [],
     ...overrides,
   };
 }
@@ -379,5 +380,345 @@ describe('buildGatewayTopology', () => {
     // The only Accepted series was NaN, so nothing usable was exported, and
     // without a status entry the condition counts as not reported.
     expect(routes[0].parents[0].accepted).toEqual({ status: 'not-reported' });
+  });
+
+  describe('backends', () => {
+    const parentInfo = [sample({ ...route, ...publicParent })];
+
+    // As exported on a test cluster: a 90/10 split, the second backend in
+    // another namespace, and a redirect rule without backends.
+    const splitRule = sample({
+      ...route,
+      match_path_type: 'PathPrefix',
+      match_path: '/',
+      backend0_kind: 'Service',
+      backend0_name: 'app-v1',
+      backend0_port: '80',
+      backend0_weight: '90',
+      backend1_kind: 'Service',
+      backend1_name: 'app-v2',
+      backend1_namespace: 'other',
+      backend1_port: '80',
+      backend1_weight: '10',
+    });
+    const redirectRule = sample({
+      ...route,
+      match_path_type: 'PathPrefix',
+      match_path: '/old',
+    });
+
+    it('lists the backends of all rules with the weights of a split', () => {
+      const { routes } = buildGatewayTopology(
+        inputs({
+          routeParentInfo: parentInfo,
+          routeRuleBackendInfo: [splitRule, redirectRule],
+        }),
+      );
+      expect(routes[0].backends).toEqual({
+        status: 'available',
+        backends: [
+          {
+            kind: 'Service',
+            namespace: 'team-a',
+            name: 'app-v1',
+            port: '80',
+            weight: '90',
+          },
+          {
+            kind: 'Service',
+            namespace: 'other',
+            name: 'app-v2',
+            port: '80',
+            weight: '10',
+          },
+        ],
+        mayHaveMore: false,
+      });
+    });
+
+    it('drops a weight that is ambiguous across rules, in any series order', () => {
+      const split = (path: string, weight: string) =>
+        sample({
+          ...route,
+          match_path: path,
+          backend0_name: 'app',
+          backend0_port: '80',
+          backend0_weight: weight,
+          backend1_name: 'canary',
+          backend1_port: '80',
+          backend1_weight: '10',
+        });
+      const alone = sample({
+        ...route,
+        match_path: '/c',
+        backend0_name: 'app',
+        backend0_port: '80',
+        backend0_weight: '1',
+      });
+      for (const series of [
+        [split('/a', '90'), alone],
+        [alone, split('/a', '90')],
+        [split('/a', '90'), split('/b', '50')],
+      ]) {
+        const { routes } = buildGatewayTopology(
+          inputs({ routeParentInfo: parentInfo, routeRuleBackendInfo: series }),
+        );
+        const backends =
+          routes[0].backends.status === 'available'
+            ? routes[0].backends.backends
+            : [];
+        expect(backends.find(b => b.name === 'app')?.weight).toBeUndefined();
+      }
+    });
+
+    it('drops the weight of a single backend and lists a backend shared by rules once', () => {
+      const single = (path: string) =>
+        sample({
+          ...route,
+          match_path: path,
+          backend0_name: 'app',
+          backend0_port: '8080',
+          backend0_weight: '1',
+        });
+      const { routes } = buildGatewayTopology(
+        inputs({
+          routeParentInfo: parentInfo,
+          routeRuleBackendInfo: [single('/a'), single('/b')],
+        }),
+      );
+      expect(routes[0].backends).toEqual({
+        status: 'available',
+        backends: [
+          {
+            kind: 'Service',
+            namespace: 'team-a',
+            name: 'app',
+            port: '8080',
+            weight: undefined,
+          },
+        ],
+        mayHaveMore: false,
+      });
+    });
+
+    it('counts a rule once when several pods export it', () => {
+      const fromPod = (pod: string) =>
+        sample({
+          ...route,
+          pod,
+          match_path: '/',
+          backend0_name: 'app-v1',
+          backend0_weight: '90',
+          backend1_name: 'app-v2',
+          backend1_weight: '10',
+        });
+      const { routes } = buildGatewayTopology(
+        inputs({
+          routeParentInfo: parentInfo,
+          routeRuleBackendInfo: [fromPod('ksm-a'), fromPod('ksm-b')],
+        }),
+      );
+      const backends =
+        routes[0].backends.status === 'available'
+          ? routes[0].backends.backends
+          : [];
+      expect(backends.map(b => [b.name, b.weight])).toEqual([
+        ['app-v1', '90'],
+        ['app-v2', '10'],
+      ]);
+    });
+
+    it('drops all weights of a rule when one of its backends is in another rule', () => {
+      const { routes } = buildGatewayTopology(
+        inputs({
+          routeParentInfo: parentInfo,
+          routeRuleBackendInfo: [
+            sample({
+              ...route,
+              match_path: '/a',
+              backend0_name: 'x',
+              backend0_weight: '90',
+              backend1_name: 'y',
+              backend1_weight: '10',
+            }),
+            sample({ ...route, match_path: '/b', backend0_name: 'y' }),
+          ],
+        }),
+      );
+      const backends =
+        routes[0].backends.status === 'available'
+          ? routes[0].backends.backends
+          : [];
+      expect(backends.map(b => [b.name, b.weight])).toEqual([
+        ['x', undefined],
+        ['y', undefined],
+      ]);
+    });
+
+    const weightsOf = (series: ReturnType<typeof sample>[]) => {
+      const { routes } = buildGatewayTopology(
+        inputs({ routeParentInfo: parentInfo, routeRuleBackendInfo: series }),
+      );
+      return routes[0].backends.status === 'available'
+        ? routes[0].backends.backends.map(b => [b.name, b.weight])
+        : [];
+    };
+
+    it('treats a missing weight as the default 1', () => {
+      expect(
+        weightsOf([
+          sample({
+            ...route,
+            backend0_name: 'a',
+            backend0_weight: '1',
+            backend1_name: 'b',
+          }),
+        ]),
+      ).toEqual([
+        ['a', undefined],
+        ['b', undefined],
+      ]);
+      expect(
+        weightsOf([
+          sample({
+            ...route,
+            backend0_name: 'a',
+            backend1_name: 'b',
+            backend1_weight: '3',
+          }),
+        ]),
+      ).toEqual([
+        ['a', '1'],
+        ['b', '3'],
+      ]);
+    });
+
+    it('shows no weights for a rule that lists a backend twice or may have more backends', () => {
+      expect(
+        weightsOf([
+          sample({
+            ...route,
+            backend0_name: 'x',
+            backend0_weight: '90',
+            backend1_name: 'x',
+            backend1_weight: '10',
+          }),
+        ]),
+      ).toEqual([['x', undefined]]);
+      expect(
+        weightsOf([
+          sample({
+            ...route,
+            backend0_name: 'b0',
+            backend0_weight: '5',
+            backend1_name: 'b1',
+            backend1_weight: '1',
+            backend2_name: 'b2',
+            backend2_weight: '1',
+          }),
+        ]),
+      ).toEqual([
+        ['b0', undefined],
+        ['b1', undefined],
+        ['b2', undefined],
+      ]);
+    });
+
+    it('drops equal weights, which the API server defaults to 1', () => {
+      const { routes } = buildGatewayTopology(
+        inputs({
+          routeParentInfo: parentInfo,
+          routeRuleBackendInfo: [
+            sample({
+              ...route,
+              backend0_name: 'b0',
+              backend0_weight: '1',
+              backend1_name: 'b1',
+              backend1_weight: '1',
+            }),
+          ],
+        }),
+      );
+      const backends =
+        routes[0].backends.status === 'available'
+          ? routes[0].backends.backends
+          : [];
+      expect(backends.map(b => [b.name, b.weight])).toEqual([
+        ['b0', undefined],
+        ['b1', undefined],
+      ]);
+    });
+
+    it('sorts a name before its longer variants', () => {
+      const { routes } = buildGatewayTopology(
+        inputs({
+          routeParentInfo: parentInfo,
+          routeRuleBackendInfo: [
+            sample({
+              ...route,
+              backend0_name: 'api-canary',
+              backend1_name: 'api',
+            }),
+          ],
+        }),
+      );
+      const backends =
+        routes[0].backends.status === 'available'
+          ? routes[0].backends.backends
+          : [];
+      expect(backends.map(b => b.name)).toEqual(['api', 'api-canary']);
+    });
+
+    it('says a rule with three backends may have more', () => {
+      const { routes } = buildGatewayTopology(
+        inputs({
+          routeParentInfo: parentInfo,
+          routeRuleBackendInfo: [
+            sample({
+              ...route,
+              backend0_name: 'b0',
+              backend1_name: 'b1',
+              backend2_name: 'b2',
+            }),
+          ],
+        }),
+      );
+      expect(routes[0].backends).toMatchObject({
+        status: 'available',
+        mayHaveMore: true,
+      });
+    });
+
+    it('reports a route with only a redirect rule as having no backends', () => {
+      const { routes } = buildGatewayTopology(
+        inputs({
+          routeParentInfo: parentInfo,
+          routeRuleBackendInfo: [redirectRule],
+        }),
+      );
+      expect(routes[0].backends).toEqual({
+        status: 'available',
+        backends: [],
+        mayHaveMore: false,
+      });
+    });
+
+    it('tells a cluster without the metric apart from a failed load and a missing route', () => {
+      const otherRoute = sample({ namespace: 'team-b', name: 'other' });
+      const of = (routeRuleBackendInfo: MimirMetricSample[] | undefined) =>
+        buildGatewayTopology(
+          inputs({ routeParentInfo: parentInfo, routeRuleBackendInfo }),
+        ).routes[0].backends;
+
+      expect(of([])).toEqual({
+        status: 'not-available',
+        cause: 'not-exported',
+      });
+      expect(of(undefined)).toEqual({
+        status: 'not-available',
+        cause: 'load-failed',
+      });
+      expect(of([otherRoute])).toEqual({ status: 'not-reported' });
+    });
   });
 });

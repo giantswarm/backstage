@@ -44,7 +44,17 @@ function toRouteRows(routes: HttpRoute[]): RouteParentRow[] {
   );
 }
 
-/** Matches a route row by route name, namespace, hostname or parent name. */
+/** The backend names of a route, for the search. */
+function backendNames(route: HttpRoute): string[] {
+  return route.backends.status === 'available'
+    ? route.backends.backends.map(backend => backend.name)
+    : [];
+}
+
+/**
+ * Matches a route row by route name, namespace, hostname, backend name or
+ * parent name.
+ */
 export function searchRouteRows(
   rows: RouteParentRow[],
   search: string,
@@ -56,6 +66,7 @@ export function searchRouteRows(
       route.name,
       route.namespace,
       ...(route.hostnames ?? []),
+      ...backendNames(route),
       parent?.name ?? '',
     ].some(value => value.toLowerCase().includes(needle)),
   );
@@ -76,6 +87,25 @@ function unavailableCause(
     ),
   );
 }
+
+/** Why backends can't be shown, if any can't. A failed load wins, as above. */
+function backendsUnavailableCause(
+  routes: HttpRoute[],
+): 'load-failed' | 'not-exported' | undefined {
+  let notExported = false;
+  for (const { backends } of routes) {
+    if (backends.status !== 'not-available') continue;
+    if (backends.cause === 'load-failed') return 'load-failed';
+    notExported = true;
+  }
+  return notExported ? 'not-exported' : undefined;
+}
+
+const backendsUnavailableNotice = {
+  'load-failed':
+    'The backends could not be loaded. They are retried automatically.',
+  'not-exported': 'Backends need a newer Gateway API bundle on this cluster.',
+};
 
 const unavailableNotice = {
   'load-failed':
@@ -109,6 +139,10 @@ export const ClusterGatewaysContent = ({
   const gatewayRows = useMemo(() => toGatewayRows(gateways), [gateways]);
   const routeRows = useMemo(() => toRouteRows(routes), [routes]);
   const unavailable = useMemo(() => unavailableCause(routes), [routes]);
+  const backendsUnavailable = useMemo(
+    () => backendsUnavailableCause(routes),
+    [routes],
+  );
   // No sortFn: the rows keep the problems-first order from toRouteRows.
   const { tableProps: routeTableProps, search } = useTable<RouteParentRow>({
     mode: 'complete',
@@ -154,9 +188,16 @@ export const ClusterGatewaysContent = ({
                 title={unavailableNotice[unavailable]}
               />
             ) : null}
+            {!isLoading && backendsUnavailable ? (
+              <Alert
+                status="info"
+                icon
+                title={backendsUnavailableNotice[backendsUnavailable]}
+              />
+            ) : null}
             <SearchField
               aria-label="Search HTTPRoutes"
-              placeholder="Search by name, namespace, hostname or parent"
+              placeholder="Search by name, namespace, hostname, backend or parent"
               value={search.value}
               onChange={search.onChange}
               style={{ maxWidth: 420 }}

@@ -15,6 +15,7 @@ const healthy: HttpRoute = {
   namespace: 'team-a',
   name: 'healthy',
   hostnames: ['healthy.example.com'],
+  backends: { status: 'not-reported' },
   parents: [
     {
       ...parent,
@@ -29,6 +30,7 @@ const broken: HttpRoute = {
   namespace: 'team-z',
   name: 'broken',
   hostnames: ['broken.example.com'],
+  backends: { status: 'not-reported' },
   parents: [
     {
       ...parent,
@@ -278,5 +280,112 @@ describe('<ClusterGatewaysContent />', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText('HTTPRoutes')).not.toBeInTheDocument();
     expect(screen.getByText('Envoy Gateway policies')).toBeInTheDocument();
+  });
+
+  describe('backends', () => {
+    const withBackends: HttpRoute = {
+      ...healthy,
+      backends: {
+        status: 'available',
+        backends: [
+          {
+            kind: 'Service',
+            namespace: 'other',
+            name: 'app-v2',
+            port: '80',
+            weight: '10',
+          },
+          {
+            kind: 'Service',
+            namespace: 'team-a',
+            name: 'app-v1',
+            port: '80',
+            weight: '90',
+          },
+        ],
+        mayHaveMore: false,
+      },
+    };
+
+    it('shows the backends of a route with namespace and weight', async () => {
+      await render([withBackends]);
+      expect(screen.getByText('app-v1:80 · weight 90')).toBeInTheDocument();
+      expect(
+        screen.getByText('other/app-v2:80 · weight 10'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(/first three backends/),
+      ).not.toBeInTheDocument();
+    });
+
+    it('names a kind that is not a Service and says more may exist', async () => {
+      await render([
+        {
+          ...healthy,
+          backends: {
+            status: 'available',
+            backends: [
+              {
+                kind: 'Backend',
+                namespace: 'team-a',
+                name: 'external',
+              },
+            ],
+            mayHaveMore: true,
+          },
+        },
+      ]);
+      expect(screen.getByText('Backend external')).toBeInTheDocument();
+      expect(
+        screen.getByText('This route may have more backends than shown.'),
+      ).toBeInTheDocument();
+    });
+
+    it('finds a route by backend name', async () => {
+      await render([withBackends, broken]);
+      fireEvent.change(screen.getByLabelText('Search HTTPRoutes'), {
+        target: { value: 'app-v2' },
+      });
+      await waitFor(() =>
+        expect(screen.queryByText('broken')).not.toBeInTheDocument(),
+      );
+      expect(screen.getByText('healthy')).toBeInTheDocument();
+    });
+
+    it('explains when the cluster does not export the backends', async () => {
+      await render([
+        {
+          ...healthy,
+          backends: { status: 'not-available', cause: 'not-exported' },
+        },
+      ]);
+      expect(
+        screen.getByText(
+          'Backends need a newer Gateway API bundle on this cluster.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Not available')).toBeInTheDocument();
+    });
+
+    it('says a failed backends load will be retried', async () => {
+      await render([
+        {
+          ...healthy,
+          backends: { status: 'not-available', cause: 'not-exported' },
+        },
+        {
+          ...broken,
+          backends: { status: 'not-available', cause: 'load-failed' },
+        },
+      ]);
+      expect(
+        screen.getByText(
+          'The backends could not be loaded. They are retried automatically.',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(/newer Gateway API bundle/),
+      ).not.toBeInTheDocument();
+    });
   });
 });
