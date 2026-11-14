@@ -108,24 +108,35 @@ so does the fixture `AgentManagerCredentialsApi`: the organizations with the
 person's role in each, their members, models, connectors and egress policies,
 and their agents, read back as `get_agent` reads them and listed as `Agent`
 objects, each with its carrier `RemoteMCPServer` (the toolset), beside each
-organization namespace's models (`ModelConfig`) and platform `Harness`. The
-writes work the way the real ones do, checked as agent-manager checks them (a
-person with the user role may not create agents, a name taken or a model the
-namespace lacks fails the dry run, the last admin of `organization-admins`
-stays), and are kept in memory until the page reloads:
+organization namespace's models (`ModelConfig`) and platform `Harness`.
+Arguments and answers cross as JSON, as over MCP and HTTP, so no page shares
+the fixture's objects. The writes are checked as agent-manager checks them (a
+person with the user role may not create agents, a name taken is a
+`conflict`, a model the namespace lacks fails the dry run, the last admin of
+`organization-admins` stays, nothing is written in an organization being
+erased) and kept in memory until the page reloads:
 
 - creating, editing and deleting an agent: an agent created or changed
   reports its new generation at once and the controller's verdict on it four
   seconds later (`SETTLE_MS`), so the pages show the progress before the
   result;
-- adding and removing members, erasing an organization;
-- adding a model or asking for a new key: the tool prepares a credential
-  operation, the credential form reads and saves it, and the save writes the
-  model.
+- adding and removing members, and erasing an organization, which goes
+  through one erasure step per four seconds (`ERASURE_STEPS`) and is then
+  gone, with its agents and models;
+- adding a model or asking for a new key of a model or a connector: the tool
+  prepares a credential operation, the credential form reads and saves it,
+  and the save writes the model. An operation expires after 30 minutes
+  (`OPERATION_TTL_MS`).
 
-This agent-manager writes live only: it reports no `commit` capability, and a
-write in mode `commit` fails. `start_session` answers a session id kagent's
-fixture does not know yet.
+`set_organization_model`, `replace_organization_credential` and
+`start_session` honour their idempotency key (`requestId`): a retry answers
+what the first call answered. This agent-manager writes live only: it reports
+no `commit` capability, and a write in mode `commit` is refused as
+`unsupported`.
+
+Known gap: `start_session` answers a new session id that kagent's fixture
+does not list, so the session page it leads to has no session. The kagent
+fixtures (giantswarm/giantswarm#39251, item 7) close it.
 
 ### Objects in the Kubernetes API
 

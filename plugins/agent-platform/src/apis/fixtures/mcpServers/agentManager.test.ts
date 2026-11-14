@@ -18,6 +18,8 @@ import { credentialOperationErrorCode } from '../../AgentManagerCredentialsApi';
 import { AgentManagerCredentialsFixtureApi } from '../AgentManagerCredentialsFixtureApi';
 import {
   AgentManagerFixtureState,
+  ERASURE_STEPS,
+  OPERATION_TTL_MS,
   SETTLE_MS,
 } from '../agentManagerFixtureState';
 import { agentManagerFixtureServer } from './agentManager';
@@ -163,6 +165,12 @@ describe('the fixture agent-manager', () => {
     await expect(
       client.createAgent(specIn(namespace!, { modelConfig: 'missing' })),
     ).rejects.toMatchObject({ code: 'invalid_request' });
+    await expect(
+      client.createAgent(specIn(namespace!, { name: taken.name })),
+    ).rejects.toMatchObject({ code: 'conflict' });
+    await expect(client.commitAgent(specIn(namespace!))).rejects.toMatchObject({
+      code: 'unsupported',
+    });
   });
 
   it('refuses a create where the person only uses agents', async () => {
@@ -260,16 +268,57 @@ describe('the fixture agent-manager', () => {
       expect.objectContaining({ name: 'reviewers' }),
     );
 
-    const admins = members.find(
-      member => member.binding === 'organization-admins',
+    // The person is an admin too: once they leave, the group is the last.
+    await client.removeOrganizationMember({
+      namespace: namespace!,
+      user: 'guest@example.com',
+      role: 'admin',
+    });
+    const group = members.find(
+      member =>
+        member.kind === 'Group' && member.binding === 'organization-admins',
     )!;
     await expect(
       client.removeOrganizationMember({
         namespace: namespace!,
-        group: admins.name,
+        group: group.name,
         role: 'admin',
       }),
-    ).rejects.toMatchObject({ code: 'invalid_request' });
+    ).rejects.toThrow(/would lose its last admin/);
+    await expect(
+      client.removeOrganizationMember({
+        namespace: namespace!,
+        group: group.name,
+        role: 'admin',
+      }),
+    ).rejects.toMatchObject({ code: 'forbidden' });
+  });
+
+  it('adds an admin to the admins binding and lists groups first', async () => {
+    const { client, organizationWith } = setup();
+    const { namespace } = organizationWith('admin');
+
+    await client.addOrganizationMember({
+      namespace: namespace!,
+      group: 'leads',
+      role: 'admin',
+    });
+    const { members } = await client.listOrganizationMembers(namespace!);
+    const kinds = members.map(member => member.kind);
+    expect(kinds.lastIndexOf('Group')).toBeLessThan(kinds.indexOf('User'));
+    expect(members.find(member => member.name === 'leads')?.binding).toBe(
+      'organization-admins',
+    );
+
+    const first = members.find(
+      member =>
+        member.kind === 'Group' && member.binding === 'organization-admins',
+    )!;
+    await client.removeOrganizationMember({
+      namespace: namespace!,
+      group: first.name,
+      role: 'admin',
+    });
   });
 
   it('adds a model once its key is saved on the credential form', async () => {
@@ -355,5 +404,182 @@ describe('the fixture agent-manager', () => {
       deleted: true,
       organization: { deleting: true },
     });
+  });
+
+  it('settles an edit made while the create still settles', async () => {
+    const { client, organizationWith, advance } = setup();
+    const { namespace } = organizationWith('admin');
+    await client.createAgent(specIn(namespace!));
+    advance(SETTLE_MS / 2);
+    await client.updateAgent({
+      namespace: namespace!,
+      name: 'fixture-checker',
+      description: 'Changed early.',
+    });
+    advance(SETTLE_MS);
+    expect(
+      await client.getAgentStatus(namespace!, 'fixture-checker'),
+    ).toMatchObject({ verdict: 'ready' });
+  });
+
+  it('names the model the controller looked at while a model fix settles', async () => {
+    const { client, data, advance } = setup();
+    const failed = data.agents.find(
+      agent =>
+        agent.installation === INSTALLATION &&
+        agent.state === 'failed' &&
+        data.organizations.some(
+          organization =>
+            organization.namespace === agent.namespace &&
+            organization.role === 'admin',
+        ),
+    )!;
+    await client.updateAgent({
+      namespace: failed.namespace,
+      name: failed.name,
+      modelConfig: 'default',
+    });
+
+    const settling = await client.getAgentStatus(failed.namespace, failed.name);
+    expect(settling.verdict).toBe('failed');
+    expect(settling.summary).toContain('"retired"');
+    advance(SETTLE_MS);
+    expect(
+      await client.getAgentStatus(failed.namespace, failed.name),
+    ).toMatchObject({ verdict: 'ready' });
+  });
+
+  it('answers a retried write with the same idempotency key once', async () => {
+    const { client, organizationWith } = setup();
+    const { namespace } = organizationWith('admin');
+    const request = {
+      namespace: namespace!,
+      name: 'claude-sonnet',
+      provider: 'Anthropic',
+      model: 'claude-sonnet-4-6',
+      requestId: 'request-1',
+    };
+    const first = await client.setOrganizationModel(request);
+    expect(await client.setOrganizationModel(request)).toEqual(first);
+    expect(
+      (
+        await client.setOrganizationModel({
+          ...request,
+          requestId: 'request-2',
+        })
+      ).credentialOperation,
+    ).not.toBe(first.credentialOperation);
+  });
+
+  it('starts a session once per idempotency key', async () => {
+    const { client, data } = setup();
+    const agent = data.agents.find(
+      candidate =>
+        candidate.installation === INSTALLATION && candidate.state === 'ready',
+    )!;
+    const request = {
+      namespace: agent.namespace,
+      name: agent.name,
+      requestId: 'request-1',
+    };
+    const first = await client.startSession(request);
+    expect(first.sessionId).toMatch(/^[0-9a-f-]{36}$/);
+    expect((await client.startSession(request)).sessionId).toBe(
+      first.sessionId,
+    );
+  });
+
+  it('asks for a new connector credential', async () => {
+    const { client, credentials, organizationWith } = setup();
+    const { namespace } = organizationWith('admin');
+    const [connector] = (
+      await client.listOrganizationConnectors(namespace!)
+    ).filter(candidate => candidate.credentials.length > 0);
+    const [credential] = connector.credentials;
+
+    const operation = preparedCredentialOperation(
+      await client.replaceOrganizationCredential({
+        namespace: namespace!,
+        secret: credential.secret,
+        key: credential.key,
+        requestId: 'request-1',
+      }),
+    )!;
+    const { operation: read } = await credentials.getOperation(
+      INSTALLATION,
+      operation,
+    );
+    expect(read.references).toEqual([
+      expect.objectContaining({
+        kind: 'RemoteMCPServer',
+        name: connector.name,
+      }),
+    ]);
+  });
+
+  it('refuses a credential request once it expired', async () => {
+    const { client, credentials, organizationWith, advance } = setup();
+    const { namespace } = organizationWith('admin');
+    const operation = preparedCredentialOperation(
+      await client.setOrganizationModel({
+        namespace: namespace!,
+        name: 'claude-sonnet',
+        provider: 'Anthropic',
+        model: 'claude-sonnet-4-6',
+        requestId: 'request-1',
+      }),
+    )!;
+    const { etag } = await credentials.getOperation(INSTALLATION, operation);
+    advance(OPERATION_TTL_MS);
+    const expired = await credentials
+      .saveOperation(INSTALLATION, operation, etag, [])
+      .catch(caught => caught);
+    expect(credentialOperationErrorCode(expired)).toBe('not_found');
+  });
+
+  it('hands out copies: changing an answer changes nothing it holds', async () => {
+    const { client, data } = setup();
+    const agent = data.agents.find(
+      candidate => candidate.installation === INSTALLATION,
+    )!;
+    const answer = await client.getAgent(agent.namespace, agent.name);
+    answer.toolset!.push('preset:full');
+    expect(
+      (await client.getAgent(agent.namespace, agent.name)).toolset,
+    ).toEqual(['preset:read-only']);
+  });
+
+  it('erases an organization step by step, then reads it as gone', async () => {
+    const { client, state, organizationWith, advance } = setup();
+    const organization = organizationWith('admin');
+    await client.deleteOrganization({
+      parent: organization.parent,
+      name: organization.name,
+      confirm: `${organization.parent}/${organization.name}`,
+    });
+    await expect(
+      client.addOrganizationMember({
+        namespace: organization.namespace!,
+        group: 'late',
+      }),
+    ).rejects.toMatchObject({ code: 'conflict' });
+
+    const steps: (string | undefined)[] = [];
+    for (let i = 0; i < ERASURE_STEPS.length; i++) {
+      steps.push(
+        (await client.getOrganization(organization.parent, organization.name))
+          .organization.erasureStep,
+      );
+      advance(SETTLE_MS);
+    }
+    expect(steps).toEqual([...ERASURE_STEPS]);
+    await expect(
+      client.getOrganization(organization.parent, organization.name),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    expect(
+      state
+        .kubernetesObjectsOf(INSTALLATION)
+        .some(object => object.metadata.namespace === organization.namespace),
+    ).toBe(false);
   });
 });

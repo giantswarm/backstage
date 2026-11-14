@@ -61,6 +61,11 @@ const infoOf = (installation: string): AgentManagerInfo => ({
 
 type Args = Record<string, unknown>;
 
+/** A value as JSON carries it: a tool call never shares objects. */
+function copied<T>(value: T): T {
+  return value === undefined ? value : JSON.parse(JSON.stringify(value));
+}
+
 const text = (args: Args, key: string): string => String(args[key] ?? '');
 
 /**
@@ -71,121 +76,118 @@ const text = (args: Args, key: string): string => String(args[key] ?? '');
 export function agentManagerFixtureServer(
   state: () => AgentManagerFixtureState = agentManagerFixtureState,
 ): FixtureMcpServer {
+  const tools: FixtureMcpServer['tools'] = {
+    [AGENT_MANAGER_TOOLS.getInfo]: (_, { installation }) =>
+      infoOf(installation),
+    [AGENT_MANAGER_TOOLS.listOrganizations]: (_, { installation }) =>
+      state().listOrganizations(installation),
+    [AGENT_MANAGER_TOOLS.getOrganization]: (args, { installation }) => {
+      const { organization, erases } = state().getOrganization(
+        installation,
+        text(args, 'namespace'),
+        text(args, 'name'),
+      );
+      return { ...organization, ...(erases && { erases }) };
+    },
+    [AGENT_MANAGER_TOOLS.deleteOrganization]: (args, { installation }) =>
+      state().deleteOrganization(installation, {
+        parent: text(args, 'namespace'),
+        name: text(args, 'name'),
+        ...(typeof args.confirm === 'string' && { confirm: args.confirm }),
+      }),
+    [AGENT_MANAGER_TOOLS.listOrganizationMembers]: (
+      args,
+      { installation },
+    ) => ({
+      members: state().listMembers(installation, text(args, 'namespace')),
+    }),
+    [AGENT_MANAGER_TOOLS.addOrganizationMember]: (args, { installation }) =>
+      state().addMember(installation, args as MemberRequest),
+    [AGENT_MANAGER_TOOLS.removeOrganizationMember]: (args, { installation }) =>
+      state().removeMember(installation, args as MemberRequest),
+    [AGENT_MANAGER_TOOLS.listOrganizationConnectors]: (
+      args,
+      { installation },
+    ) => ({
+      connectors: state().listConnectors(installation, text(args, 'namespace')),
+    }),
+    [AGENT_MANAGER_TOOLS.setOrganizationModel]: (args, { installation }) =>
+      state().setOrganizationModel(
+        installation,
+        args as OrganizationModelRequest,
+      ),
+    [AGENT_MANAGER_TOOLS.replaceOrganizationCredential]: (
+      args,
+      { installation },
+    ) =>
+      state().replaceCredential(
+        installation,
+        args as OrganizationCredentialReplacement,
+      ),
+    [AGENT_MANAGER_TOOLS.listModelConfigs]: (
+      args,
+      { installation },
+    ): ListModelConfigsAnswer => ({
+      modelConfigs: state().listModelConfigs(
+        installation,
+        text(args, 'namespace'),
+      ),
+    }),
+    [AGENT_MANAGER_TOOLS.listEgressPolicies]: (args, { installation }) => ({
+      egressPolicies: state().listEgressPolicies(
+        installation,
+        text(args, 'namespace'),
+      ),
+    }),
+    [AGENT_MANAGER_TOOLS.validateAgent]: (args, { installation }) =>
+      args.update === true
+        ? state().validateUpdate(
+            installation,
+            args as AgentUpdate & { mode?: string },
+          )
+        : state().validateAgent(installation, args as AgentSpec),
+    [AGENT_MANAGER_TOOLS.createAgent]: (args, { installation }) =>
+      state().createAgent(installation, args as AgentSpec & { mode?: string }),
+    [AGENT_MANAGER_TOOLS.getAgent]: (args, { installation }) =>
+      state().getAgent(
+        installation,
+        text(args, 'namespace'),
+        text(args, 'name'),
+      ),
+    [AGENT_MANAGER_TOOLS.getAgentStatus]: (args, { installation }) =>
+      state().getAgentStatus(
+        installation,
+        text(args, 'namespace'),
+        text(args, 'name'),
+      ),
+    [AGENT_MANAGER_TOOLS.updateAgent]: (args, { installation }) =>
+      state().updateAgent(
+        installation,
+        args as AgentUpdate & { mode?: string },
+      ),
+    [AGENT_MANAGER_TOOLS.deleteAgent]: (args, { installation }) =>
+      state().deleteAgent(
+        installation,
+        text(args, 'namespace'),
+        text(args, 'name'),
+        typeof args.mode === 'string' ? args.mode : undefined,
+      ),
+    [AGENT_MANAGER_TOOLS.startSession]: (args, { installation }) =>
+      state().startSession(
+        installation,
+        args as StartSessionRequest & { noWorkspace?: boolean },
+      ),
+  };
   return {
     server: AGENT_MANAGER_SERVER,
-    tools: {
-      [AGENT_MANAGER_TOOLS.getInfo]: (_, { installation }) =>
-        infoOf(installation),
-      [AGENT_MANAGER_TOOLS.listOrganizations]: (_, { installation }) =>
-        state().listOrganizations(installation),
-      [AGENT_MANAGER_TOOLS.getOrganization]: (args, { installation }) => {
-        const { organization, erases } = state().getOrganization(
-          installation,
-          text(args, 'namespace'),
-          text(args, 'name'),
-        );
-        return { ...organization, ...(erases && { erases }) };
-      },
-      [AGENT_MANAGER_TOOLS.deleteOrganization]: (args, { installation }) =>
-        state().deleteOrganization(installation, {
-          parent: text(args, 'namespace'),
-          name: text(args, 'name'),
-          ...(typeof args.confirm === 'string' && { confirm: args.confirm }),
-        }),
-      [AGENT_MANAGER_TOOLS.listOrganizationMembers]: (
-        args,
-        { installation },
-      ) => ({
-        members: state().listMembers(installation, text(args, 'namespace')),
-      }),
-      [AGENT_MANAGER_TOOLS.addOrganizationMember]: (args, { installation }) =>
-        state().addMember(installation, args as MemberRequest),
-      [AGENT_MANAGER_TOOLS.removeOrganizationMember]: (
-        args,
-        { installation },
-      ) => state().removeMember(installation, args as MemberRequest),
-      [AGENT_MANAGER_TOOLS.listOrganizationConnectors]: (
-        args,
-        { installation },
-      ) => ({
-        connectors: state().listConnectors(
-          installation,
-          text(args, 'namespace'),
-        ),
-      }),
-      [AGENT_MANAGER_TOOLS.setOrganizationModel]: (args, { installation }) =>
-        state().setOrganizationModel(
-          installation,
-          args as OrganizationModelRequest,
-        ),
-      [AGENT_MANAGER_TOOLS.replaceOrganizationCredential]: (
-        args,
-        { installation },
-      ) =>
-        state().replaceCredential(
-          installation,
-          args as OrganizationCredentialReplacement,
-        ),
-      [AGENT_MANAGER_TOOLS.listModelConfigs]: (
-        args,
-        { installation },
-      ): ListModelConfigsAnswer => ({
-        modelConfigs: state().listModelConfigs(
-          installation,
-          text(args, 'namespace'),
-        ),
-      }),
-      [AGENT_MANAGER_TOOLS.listEgressPolicies]: (args, { installation }) => ({
-        egressPolicies: state().listEgressPolicies(
-          installation,
-          text(args, 'namespace'),
-        ),
-      }),
-      [AGENT_MANAGER_TOOLS.validateAgent]: (args, { installation }) =>
-        args.update === true
-          ? state().validateUpdate(
-              installation,
-              args as AgentUpdate & { mode?: string },
-            )
-          : state().validateAgent(installation, args as AgentSpec),
-      [AGENT_MANAGER_TOOLS.createAgent]: (args, { installation }) => {
-        if (args.mode === 'commit') {
-          throw new Error(
-            'invalid_request: this agent-manager writes live only: it has no commit capability',
-          );
-        }
-        return state().createAgent(installation, args as AgentSpec);
-      },
-      [AGENT_MANAGER_TOOLS.getAgent]: (args, { installation }) =>
-        state().getAgent(
-          installation,
-          text(args, 'namespace'),
-          text(args, 'name'),
-        ),
-      [AGENT_MANAGER_TOOLS.getAgentStatus]: (args, { installation }) =>
-        state().getAgentStatus(
-          installation,
-          text(args, 'namespace'),
-          text(args, 'name'),
-        ),
-      [AGENT_MANAGER_TOOLS.updateAgent]: (args, { installation }) =>
-        state().updateAgent(
-          installation,
-          args as AgentUpdate & { mode?: string },
-        ),
-      [AGENT_MANAGER_TOOLS.deleteAgent]: (args, { installation }) =>
-        state().deleteAgent(
-          installation,
-          text(args, 'namespace'),
-          text(args, 'name'),
-          typeof args.mode === 'string' ? args.mode : undefined,
-        ),
-      [AGENT_MANAGER_TOOLS.startSession]: (args, { installation }) =>
-        state().startSession(
-          installation,
-          args as StartSessionRequest & { noWorkspace?: boolean },
-        ),
-    },
+    // Arguments and answers cross as JSON, as over MCP: no caller shares
+    // the state's objects.
+    tools: Object.fromEntries(
+      Object.entries(tools).map(([name, handler]) => [
+        name,
+        (args, context) => copied(handler(copied(args), context)),
+      ]),
+    ),
   };
 }
 

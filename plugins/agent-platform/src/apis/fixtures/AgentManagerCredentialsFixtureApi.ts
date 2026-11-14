@@ -39,7 +39,9 @@ async function responseErrorOf(refusal: CredentialRefusal): Promise<Error> {
 
 async function answer<T>(call: () => T): Promise<T> {
   try {
-    return call();
+    // A copy, as an HTTP answer is: no caller shares the state's objects.
+    const value = call();
+    return value === undefined ? value : JSON.parse(JSON.stringify(value));
   } catch (error) {
     throw error instanceof CredentialRefusal
       ? await responseErrorOf(error)
@@ -74,7 +76,12 @@ export class AgentManagerCredentialsFixtureApi implements AgentManagerCredential
   ): Promise<CredentialResourceResult> {
     served(installation);
     return answer(() =>
-      this.state.saveOperation(installation, operation, etag, values),
+      this.state.saveOperation(
+        installation,
+        operation,
+        etag,
+        JSON.parse(JSON.stringify(values)),
+      ),
     );
   }
 

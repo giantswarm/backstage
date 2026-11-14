@@ -78,6 +78,11 @@ export type FixtureAgentDetails = {
   observedGeneration?: number;
   /** When the controller's verdict last changed; its creation by default. */
   changedAt?: string;
+  /**
+   * The model of the generation the verdict is about, while a later write
+   * settles; `modelConfig` by default.
+   */
+  observedModelConfig?: string;
 };
 
 /** An agent of the data set, with what agent-manager wrote of it. */
@@ -138,7 +143,7 @@ function firstFailureOf(
       }
     : {
         reason: 'ModelConfigNotFound',
-        message: `resolve ModelConfig "${agent.modelConfig ?? FIXTURE_MODEL_CONFIG}": not found`,
+        message: `resolve ModelConfig "${agent.observedModelConfig ?? agent.modelConfig ?? FIXTURE_MODEL_CONFIG}": not found`,
       };
 }
 

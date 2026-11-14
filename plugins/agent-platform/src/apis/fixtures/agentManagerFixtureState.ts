@@ -27,21 +27,25 @@ import type {
 import type {
   CredentialOperation,
   CredentialOperationRead,
+  CredentialReference,
   CredentialResourceResult,
   CredentialValue,
 } from '../../lib/credentialOperations';
-import type {
-  MemberRequest,
-  MemberResult,
-  OrganizationAgentSessions,
-  OrganizationConnector,
-  OrganizationDeleteResult,
-  OrganizationDetails,
-  OrganizationErasure,
-  OrganizationListing,
-  OrganizationMember,
-  OrganizationModelRequest,
-  OrganizationCredentialReplacement,
+import {
+  FIRST_ADMINS_BINDING,
+  type MemberRequest,
+  type MemberResult,
+  type MemberRole,
+  type OrganizationAgentSessions,
+  type OrganizationConnector,
+  type OrganizationCredentialReplacement,
+  type OrganizationDeleteResult,
+  type OrganizationDetails,
+  type OrganizationErasure,
+  type OrganizationListing,
+  type OrganizationMember,
+  type OrganizationModelRequest,
+  type ListedOrganization,
 } from '../../lib/organizations';
 import {
   FIXTURE_HARNESS,
@@ -63,15 +67,25 @@ import { FIXTURE_USER } from './fixtureIdentity';
  * set's organizations and agents of each installation, plus each
  * organization's models, members, connectors and egress policies, and the
  * credential operations its writes prepare. Writes change it in memory only,
- * so they last until the page reloads.
+ * so they last until the page reloads. Its methods hand out what they hold;
+ * the fixture server and credentials API copy every answer, as a tool call
+ * parses a fresh one.
  *
  * A write settles the way the controller would: an agent created or changed
  * reports its new generation at once and the controller's verdict on it
  * {@link SETTLE_MS} later, so the pages' progress shows before the result.
+ * An organization being erased takes one such step per stage of the erasure
+ * and is gone after the last.
  */
 
 /** How long the controller takes to reach a verdict on a written agent. */
 export const SETTLE_MS = 4000;
+
+/** The stages of an erase the operator goes through, one per {@link SETTLE_MS}. */
+export const ERASURE_STEPS = ['sessions', 'agents', 'namespace'] as const;
+
+/** How long a credential operation stays open. */
+export const OPERATION_TTL_MS = 30 * 60 * 1000;
 
 /** The model the agents the data set builds as failed read: none has it. */
 export const RETIRED_MODEL_CONFIG = 'retired';
@@ -83,6 +97,22 @@ export function refusal(code: string, message: string): Error {
   return new Error(`${code}: ${message}`);
 }
 
+/**
+ * A refusal of the credential operations' HTTP API: the status and
+ * agent-manager's code, which the fixture `AgentManagerCredentialsApi` turns
+ * into the `ResponseError` the real client throws.
+ */
+export class CredentialRefusal extends Error {
+  readonly name = 'CredentialRefusal';
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 type StoredAgent = FixtureAgentRecord & {
   /** When the agent was created; the data set's creation time if unset. */
   createdAt?: string;
@@ -92,6 +122,8 @@ type StoredAgent = FixtureAgentRecord & {
   settlesAt?: number;
   /** The state the agent settles in. */
   settledState?: AgentState;
+  /** The model of the generation the controller last reported on. */
+  previousModelConfig?: string;
 };
 
 type StoredOperation = {
@@ -106,6 +138,8 @@ type InstallationState = {
   agents: Map<string, StoredAgent>;
   models: Map<string, FixtureModel>;
   members: Map<string, OrganizationMember[]>;
+  /** When the erase of an organization started, by `parent/name`. */
+  erasing: Map<string, number>;
 };
 
 /** `get_agent_status`'s verdict on an agent the release rendered. */
@@ -142,31 +176,32 @@ function hexId(length: number): string {
   return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
+/** The RoleBinding of a role: one per role, holding its subjects. */
+function bindingOf(role: MemberRole): string {
+  return role === 'admin' ? FIRST_ADMINS_BINDING : `organization-${role}s`;
+}
+
+/** Groups first, as `list_organization_members` answers. */
+function groupsFirst(members: OrganizationMember[]): OrganizationMember[] {
+  return [
+    ...members.filter(member => member.kind === 'Group'),
+    ...members.filter(member => member.kind !== 'Group'),
+  ];
+}
+
 /** The members an organization starts with: two groups and the person. */
 function membersOf(organization: FixtureOrganization): OrganizationMember[] {
+  const member = (
+    kind: string,
+    name: string,
+    role: MemberRole,
+  ): OrganizationMember => ({ kind, name, role, binding: bindingOf(role) });
   return [
-    {
-      kind: 'Group',
-      name: `${organization.name}-admins`,
-      role: 'admin',
-      binding: 'organization-admins',
-    },
-    {
-      kind: 'Group',
-      name: `${organization.name}-developers`,
-      role: 'editor',
-      binding: 'organization-editors',
-    },
+    member('Group', `${organization.name}-admins`, 'admin'),
+    member('Group', `${organization.name}-developers`, 'editor'),
     ...(organization.role === 'none'
       ? []
-      : [
-          {
-            kind: 'User',
-            name: FIXTURE_USER.email,
-            role: organization.role,
-            binding: `organization-${organization.role}s-guest`,
-          },
-        ]),
+      : [member('User', FIXTURE_USER.email, organization.role)]),
   ];
 }
 
@@ -184,7 +219,7 @@ function valuesOf(agent: FixtureAgentRecord): Record<string, unknown> {
       ...(agent.iconUrl && { iconUrl: agent.iconUrl }),
       skills: agent.skills ?? [],
       plugins: agent.plugins ?? [],
-      toolset: agent.toolset ?? [],
+      toolset: agent.toolset ?? FIXTURE_TOOLSET,
       egress: agent.egress ?? [],
       egressPolicyRefs: agent.egressPolicyRefs ?? [],
       ...(agent.defaultWorkspace && {
@@ -252,9 +287,26 @@ function updated(
   return next === '' ? undefined : next;
 }
 
+/** A create's refusal of a name the namespace has. */
+function nameTaken(agent: FixtureAgentRecord): string {
+  return `a HelmRelease named ${agent.name} already exists in namespace ${agent.namespace}`;
+}
+
+/** A write in mode `commit`: this agent-manager writes live only. */
+function mustBeLive(mode: unknown): void {
+  if (mode === 'commit') {
+    throw refusal(
+      'unsupported',
+      'this agent-manager writes live only: it has no commit capability',
+    );
+  }
+}
+
 export class AgentManagerFixtureState {
   private readonly installations = new Map<string, InstallationState>();
   private readonly operations = new Map<string, StoredOperation>();
+  /** The answers of the writes that take an idempotency key, by key. */
+  private readonly answered = new Map<string, unknown>();
   private revision = 0;
   private readonly objectsCache = new Map<
     string,
@@ -286,7 +338,7 @@ export class AgentManagerFixtureState {
               agent.state === 'failed'
                 ? RETIRED_MODEL_CONFIG
                 : FIXTURE_MODEL_CONFIG,
-            toolset: FIXTURE_TOOLSET,
+            toolset: [...FIXTURE_TOOLSET],
           },
         ]),
       );
@@ -307,9 +359,10 @@ export class AgentManagerFixtureState {
         });
         members.set(organization.namespace, membersOf(organization));
       }
-      state = { organizations, agents, models, members };
+      state = { organizations, agents, models, members, erasing: new Map() };
       this.installations.set(installation, state);
     }
+    this.finishErasures(state);
     return state;
   }
 
@@ -317,7 +370,80 @@ export class AgentManagerFixtureState {
     this.revision++;
   }
 
+  /**
+   * Answers a write that takes an idempotency key once: a retry with the
+   * same key gets the first answer and writes nothing.
+   */
+  private once<T>(
+    installation: string,
+    tool: string,
+    requestId: unknown,
+    write: () => T,
+  ): T {
+    if (typeof requestId !== 'string' || !requestId) {
+      return write();
+    }
+    const key = `${installation}/${tool}/${requestId}`;
+    if (!this.answered.has(key)) {
+      this.answered.set(key, write());
+    }
+    return this.answered.get(key) as T;
+  }
+
   // Organizations
+
+  private erasureKey(organization: FixtureOrganization): string {
+    return `${organization.parent}/${organization.name}`;
+  }
+
+  /** Drops the organizations whose erase went through its last step. */
+  private finishErasures(state: InstallationState): void {
+    const done = state.organizations.filter(organization => {
+      const since = state.erasing.get(this.erasureKey(organization));
+      return (
+        since !== undefined &&
+        this.now() - since >= ERASURE_STEPS.length * SETTLE_MS
+      );
+    });
+    for (const organization of done) {
+      state.erasing.delete(this.erasureKey(organization));
+      state.organizations = state.organizations.filter(
+        other => other !== organization,
+      );
+      const { namespace } = organization;
+      if (namespace) {
+        for (const [key, agent] of state.agents) {
+          if (agent.namespace === namespace) state.agents.delete(key);
+        }
+        for (const [key, model] of state.models) {
+          if (model.namespace === namespace) state.models.delete(key);
+        }
+        state.members.delete(namespace);
+      }
+    }
+    if (done.length > 0) {
+      this.changed();
+    }
+  }
+
+  /** An organization as agent-manager lists it, on its erase's current step. */
+  private listed(
+    installation: string,
+    organization: FixtureOrganization,
+  ): ListedOrganization {
+    const listed = listedOrganizationOf(organization);
+    const since = this.stateOf(installation).erasing.get(
+      this.erasureKey(organization),
+    );
+    if (since !== undefined && listed.organization) {
+      const step = Math.min(
+        Math.floor((this.now() - since) / SETTLE_MS),
+        ERASURE_STEPS.length - 1,
+      );
+      listed.organization.erasureStep = ERASURE_STEPS[step];
+    }
+    return listed;
+  }
 
   private organizationIn(
     installation: string,
@@ -330,6 +456,21 @@ export class AgentManagerFixtureState {
       throw refusal(
         'not_found',
         `no organization has the namespace ${namespace}`,
+      );
+    }
+    return organization;
+  }
+
+  /** An organization whose namespace may still be written to. */
+  private writableIn(
+    installation: string,
+    namespace: string,
+  ): FixtureOrganization {
+    const organization = this.organizationIn(installation, namespace);
+    if (organization.state === 'deleting') {
+      throw refusal(
+        'conflict',
+        `the organization ${organization.name} is being erased`,
       );
     }
     return organization;
@@ -372,8 +513,9 @@ export class AgentManagerFixtureState {
 
   listOrganizations(installation: string): OrganizationListing {
     return {
-      organizations:
-        this.stateOf(installation).organizations.map(listedOrganizationOf),
+      organizations: this.stateOf(installation).organizations.map(
+        organization => this.listed(installation, organization),
+      ),
     };
   }
 
@@ -443,7 +585,7 @@ export class AgentManagerFixtureState {
   ): OrganizationDetails {
     const organization = this.organizationNamed(installation, parent, name);
     this.mustManage(organization);
-    const { organization: details } = listedOrganizationOf(organization);
+    const { organization: details } = this.listed(installation, organization);
     const erases = this.erasureOf(installation, organization);
     return { organization: details!, ...(erases && { erases }) };
   }
@@ -458,7 +600,7 @@ export class AgentManagerFixtureState {
       request.name,
     );
     this.mustManage(organization);
-    const expected = `${organization.parent}/${organization.name}`;
+    const expected = this.erasureKey(organization);
     if (request.confirm !== expected) {
       throw refusal(
         'invalid_request',
@@ -466,9 +608,13 @@ export class AgentManagerFixtureState {
       );
     }
     const erases = this.erasureOf(installation, organization);
-    organization.state = 'deleting';
-    this.changed();
-    const { organization: details } = listedOrganizationOf(organization);
+    const { erasing } = this.stateOf(installation);
+    if (!erasing.has(expected)) {
+      erasing.set(expected, this.now());
+      organization.state = 'deleting';
+      this.changed();
+    }
+    const { organization: details } = this.listed(installation, organization);
     return {
       organization: details!,
       ...(erases && { erases }),
@@ -479,26 +625,19 @@ export class AgentManagerFixtureState {
 
   listMembers(installation: string, namespace: string): OrganizationMember[] {
     this.organizationIn(installation, namespace);
-    return [...(this.stateOf(installation).members.get(namespace) ?? [])];
+    return this.stateOf(installation).members.get(namespace) ?? [];
   }
 
   addMember(installation: string, request: MemberRequest): MemberResult {
-    const organization = this.organizationIn(installation, request.namespace);
+    const organization = this.writableIn(installation, request.namespace);
     this.mustManage(organization);
     const role = request.role ?? 'user';
-    const member: OrganizationMember = request.group
-      ? {
-          kind: 'Group',
-          name: request.group,
-          role,
-          binding: `organization-${role}s-${request.group}`,
-        }
-      : {
-          kind: 'User',
-          name: request.user!,
-          role,
-          binding: `organization-${role}s-${request.user}`,
-        };
+    const member: OrganizationMember = {
+      kind: request.group ? 'Group' : 'User',
+      name: request.group ?? request.user!,
+      role,
+      binding: bindingOf(role),
+    };
     const members = this.listMembers(installation, request.namespace);
     const exists = members.some(
       candidate =>
@@ -507,10 +646,10 @@ export class AgentManagerFixtureState {
         candidate.role === role,
     );
     if (!exists) {
-      this.stateOf(installation).members.set(request.namespace, [
-        ...members,
-        member,
-      ]);
+      this.stateOf(installation).members.set(
+        request.namespace,
+        groupsFirst([...members, member]),
+      );
       this.changed();
     }
     return {
@@ -522,7 +661,7 @@ export class AgentManagerFixtureState {
   }
 
   removeMember(installation: string, request: MemberRequest): MemberResult {
-    const organization = this.organizationIn(installation, request.namespace);
+    const organization = this.writableIn(installation, request.namespace);
     this.mustManage(organization);
     const kind = request.group ? 'Group' : 'User';
     const name = request.group ?? request.user!;
@@ -539,22 +678,18 @@ export class AgentManagerFixtureState {
         `${name} has no role in the organization ${organization.name}`,
       );
     }
-    const admins = members.filter(
-      member => member.binding === 'organization-admins',
-    );
+    const kept = members.filter(member => !removed.includes(member));
     if (
-      removed.some(member => member.binding === 'organization-admins') &&
-      admins.length <= removed.length
+      removed.some(member => member.binding === FIRST_ADMINS_BINDING) &&
+      !kept.some(member => member.binding === FIRST_ADMINS_BINDING)
     ) {
+      // Admission's refusal, in its words (pinned by OrganizationPage.test).
       throw refusal(
-        'invalid_request',
-        `${name} is the last admin of organization-admins: add another admin first.`,
+        'forbidden',
+        `RoleBinding ${request.namespace}/${FIRST_ADMINS_BINDING}: if ${FIRST_ADMINS_BINDING} would lose its last admin: add another admin first (add_organization_member role admin); a lockout is a cluster-admin's to fix`,
       );
     }
-    this.stateOf(installation).members.set(
-      request.namespace,
-      members.filter(member => !removed.includes(member)),
-    );
+    this.stateOf(installation).members.set(request.namespace, kept);
     this.changed();
     return {
       namespace: request.namespace,
@@ -638,7 +773,7 @@ export class AgentManagerFixtureState {
         ...operation,
         id,
         version: '1',
-        expiresAt: new Date(this.now() + 30 * 60 * 1000).toISOString(),
+        expiresAt: new Date(this.now() + OPERATION_TTL_MS).toISOString(),
         state: 'pending',
         mode: 'apply',
         organization: {
@@ -657,18 +792,39 @@ export class AgentManagerFixtureState {
     installation: string,
     request: OrganizationModelRequest,
   ): CredentialResourceResult {
-    const organization = this.organizationIn(installation, request.namespace);
+    const organization = this.writableIn(installation, request.namespace);
     this.mustManage(organization);
+    return this.once(
+      installation,
+      'set_organization_model',
+      request.requestId,
+      () => this.writeModel(installation, organization, request),
+    );
+  }
+
+  private writeModel(
+    installation: string,
+    organization: FixtureOrganization,
+    request: OrganizationModelRequest,
+  ): CredentialResourceResult {
     const { models } = this.stateOf(installation);
     const existing = models.get(keyOf(request.namespace, request.name));
     if (existing) {
-      if (request.model) {
-        existing.model = request.model;
+      if (request.provider && request.provider !== existing.provider) {
+        throw refusal(
+          'invalid_request',
+          `model ${existing.name} keeps its provider ${existing.provider}: its key is that provider's`,
+        );
       }
-      if (request.default) {
-        this.markDefault(installation, existing);
+      const model = request.model || existing.model;
+      const makeDefault = Boolean(request.default) && !existing.default;
+      if (model !== existing.model || makeDefault) {
+        existing.model = model;
+        if (makeDefault) {
+          this.markDefault(installation, existing);
+        }
+        this.changed();
       }
-      this.changed();
       return {
         namespace: request.namespace,
         kind: 'model',
@@ -732,54 +888,97 @@ export class AgentManagerFixtureState {
     );
   }
 
+  /** The objects of the namespace that read a Secret's key. */
+  private readersOf(
+    installation: string,
+    namespace: string,
+    secret: string,
+    key: string,
+  ): CredentialReference[] {
+    return [
+      ...this.modelsIn(installation, namespace)
+        .filter(model => model.secret === secret && model.key === key)
+        .map((model): CredentialReference => ({
+          kind: 'ModelConfig',
+          name: model.name,
+          key: model.key,
+          provider: model.provider,
+        })),
+      ...connectorsOf()
+        .filter(connector =>
+          connector.credentials.some(
+            credential =>
+              credential.secret === secret && credential.key === key,
+          ),
+        )
+        .map((connector): CredentialReference => ({
+          kind: 'RemoteMCPServer',
+          name: connector.name,
+          key,
+          url: connector.url,
+        })),
+    ];
+  }
+
   replaceCredential(
     installation: string,
     request: OrganizationCredentialReplacement,
   ): CredentialResourceResult {
-    const organization = this.organizationIn(installation, request.namespace);
+    const organization = this.writableIn(installation, request.namespace);
     this.mustManage(organization);
-    const readers = this.modelsIn(installation, request.namespace).filter(
-      model => model.secret === request.secret && model.key === request.key,
+    const references = this.readersOf(
+      installation,
+      request.namespace,
+      request.secret,
+      request.key,
     );
-    if (readers.length === 0) {
+    if (references.length === 0) {
       throw refusal(
         'not_found',
         `no object of the organization reads ${request.secret}/${request.key}`,
       );
     }
     const pair = { secret: request.secret, key: request.key };
-    return this.prepare(
+    return this.once(
       installation,
-      organization,
-      {
-        changes: [],
-        references: readers.map(model => ({
-          kind: 'ModelConfig',
-          name: model.name,
-          key: model.key,
-          provider: model.provider,
-        })),
-        result: {
-          namespace: request.namespace,
-          kind: 'credential',
-          name: request.secret,
-          credentials: [{ ...pair, state: 'replace' }],
-        },
-      },
-      () => ({
-        namespace: request.namespace,
-        kind: 'credential',
-        name: request.secret,
-        created: false,
-        credentials: [{ ...pair, state: 'present' }],
-      }),
+      'replace_organization_credential',
+      request.requestId,
+      () =>
+        this.prepare(
+          installation,
+          organization,
+          {
+            changes: [],
+            references,
+            result: {
+              namespace: request.namespace,
+              kind: 'credential',
+              name: request.secret,
+              credentials: [{ ...pair, state: 'replace' }],
+            },
+          },
+          () => ({
+            namespace: request.namespace,
+            kind: 'credential',
+            name: request.secret,
+            created: false,
+            credentials: [{ ...pair, state: 'present' }],
+          }),
+        ),
     );
   }
 
   private storedOperation(installation: string, id: string): StoredOperation {
     const stored = this.operations.get(id);
-    if (!stored || stored.installation !== installation) {
-      throw credentialRefusal(
+    const expiresAt = stored?.operation.expiresAt;
+    if (
+      !stored ||
+      stored.installation !== installation ||
+      (expiresAt !== undefined &&
+        stored.operation.state === 'pending' &&
+        this.now() >= Date.parse(expiresAt))
+    ) {
+      throw new CredentialRefusal(
         404,
         'not_found',
         'The credential request does not exist, expired, or is someone else’s.',
@@ -795,14 +994,14 @@ export class AgentManagerFixtureState {
 
   private mustMatch(stored: StoredOperation, etag: string): void {
     if (etag !== `"${stored.operation.version}"`) {
-      throw credentialRefusal(
+      throw new CredentialRefusal(
         412,
         'precondition_failed',
         'The credential request changed since you opened it: reload it.',
       );
     }
     if (stored.operation.state !== 'pending') {
-      throw credentialRefusal(
+      throw new CredentialRefusal(
         409,
         'conflict',
         `The credential request is ${stored.operation.state}.`,
@@ -828,7 +1027,7 @@ export class AgentManagerFixtureState {
         ),
     );
     if (missing.length > 0) {
-      throw credentialRefusal(
+      throw new CredentialRefusal(
         400,
         'invalid_request',
         `A value is missing for ${missing
@@ -859,12 +1058,17 @@ export class AgentManagerFixtureState {
 
   // Agents
 
-  /** An agent as it reads now: settled once the controller's time is up. */
+  /**
+   * An agent as it reads now: settled once the controller's time is up.
+   * Until then the controller's verdict is still about the generation
+   * before the write, and names that generation's model.
+   */
   private view(agent: StoredAgent): FixtureAgentRecord {
     const {
       settlesAt,
       settledState,
       writtenAt,
+      previousModelConfig,
       createdAt: _,
       ...record
     } = agent;
@@ -882,6 +1086,9 @@ export class AgentManagerFixtureState {
     return {
       ...record,
       observedGeneration: generation - 1,
+      ...(previousModelConfig !== undefined && {
+        observedModelConfig: previousModelConfig,
+      }),
       ...(writtenAt !== undefined && {
         changedAt: new Date(writtenAt).toISOString(),
       }),
@@ -909,13 +1116,18 @@ export class AgentManagerFixtureState {
     return agent;
   }
 
+  private agentAnswerOf(agent: FixtureAgentRecord): AgentManagerAgent {
+    return { ...agentManagerAgentOf(agent), values: valuesOf(agent) };
+  }
+
   getAgent(
     installation: string,
     namespace: string,
     name: string,
   ): AgentManagerAgent {
-    const agent = this.view(this.stored(installation, namespace, name));
-    return { ...agentManagerAgentOf(agent), values: valuesOf(agent) };
+    return this.agentAnswerOf(
+      this.view(this.stored(installation, namespace, name)),
+    );
   }
 
   getAgentStatus(
@@ -923,8 +1135,8 @@ export class AgentManagerFixtureState {
     namespace: string,
     name: string,
   ): AgentStatus {
-    const answer = this.getAgent(installation, namespace, name);
     const view = this.view(this.stored(installation, namespace, name));
+    const answer = agentManagerAgentOf(view);
     const verdict: AgentStatusVerdict =
       !answer.exists || view.state === 'failed'
         ? 'failed'
@@ -933,7 +1145,7 @@ export class AgentManagerFixtureState {
       ready: `${name} is ready on Harness ${answer.harness}.`,
       progressing: `The Harness is starting ${name}.`,
       failed: answer.exists
-        ? `${name} failed: ModelConfig "${view.modelConfig}" not found.`
+        ? `${name} failed: ModelConfig "${view.observedModelConfig ?? view.modelConfig}" not found.`
         : `The release of ${name} failed: ${answer.helmRelease?.message ?? ''}`,
       unknown: `The state of ${name} is not known.`,
     }[verdict];
@@ -971,14 +1183,12 @@ export class AgentManagerFixtureState {
       mode === 'create' &&
       this.stateOf(installation).agents.has(keyOf(agent.namespace, agent.name))
     ) {
-      errors.push(
-        `name: a HelmRelease named ${agent.name} already exists in namespace ${agent.namespace}`,
-      );
+      errors.push(`name: ${nameTaken(agent)}`);
     }
     if (!agent.displayName?.trim()) {
       errors.push('agent.displayName: is required');
     }
-    const model = agent.modelConfig ?? '';
+    const model = agent.modelConfig ?? FIXTURE_MODEL_CONFIG;
     if (!this.stateOf(installation).models.has(keyOf(agent.namespace, model))) {
       errors.push(
         `modelConfig: ModelConfig "${model}" not found in namespace ${agent.namespace}`,
@@ -1054,9 +1264,18 @@ export class AgentManagerFixtureState {
     );
   }
 
-  createAgent(installation: string, spec: AgentSpec): CreateAgentResult {
-    this.mustCreateAgentsIn(this.organizationIn(installation, spec.namespace));
+  createAgent(
+    installation: string,
+    spec: AgentSpec & { mode?: string },
+  ): CreateAgentResult {
+    mustBeLive(spec.mode);
+    this.mustCreateAgentsIn(this.writableIn(installation, spec.namespace));
     const record = this.recordOf(installation, spec);
+    if (
+      this.stateOf(installation).agents.has(keyOf(spec.namespace, spec.name))
+    ) {
+      throw refusal('conflict', nameTaken(record));
+    }
     const validation = this.validation(installation, record, 'create');
     if (!validation.valid) {
       throw refusal('invalid_request', validation.errors!.join('; '));
@@ -1111,20 +1330,11 @@ export class AgentManagerFixtureState {
     };
   }
 
-  private mustBeLive(update: AgentUpdate & { mode?: string }): void {
-    if (update.mode === 'commit') {
-      throw refusal(
-        'invalid_request',
-        'this agent-manager writes live only: it has no commit capability',
-      );
-    }
-  }
-
   validateUpdate(
     installation: string,
     update: AgentUpdate & { mode?: string },
   ): ValidateAgentResult {
-    this.mustBeLive(update);
+    mustBeLive(update.mode);
     const agent = this.stored(installation, update.namespace, update.name);
     return this.validation(installation, this.merged(agent, update), 'update');
   }
@@ -1133,10 +1343,8 @@ export class AgentManagerFixtureState {
     installation: string,
     update: AgentUpdate & { mode?: string },
   ): UpdateAgentResult {
-    this.mustBeLive(update);
-    this.mustCreateAgentsIn(
-      this.organizationIn(installation, update.namespace),
-    );
+    mustBeLive(update.mode);
+    this.mustCreateAgentsIn(this.writableIn(installation, update.namespace));
     const agent = this.stored(installation, update.namespace, update.name);
     const next = this.merged(agent, update);
     const validation = this.validation(installation, next, 'update');
@@ -1148,6 +1356,9 @@ export class AgentManagerFixtureState {
     const changed = changedPaths(before, after);
     if (changed.length > 0 || update.refreshSkills) {
       const current = this.view(agent);
+      // What the agent settles in after the writes before this one, which
+      // may still be settling.
+      const settling = agent.settledState ?? current.state;
       this.stateOf(installation).agents.set(
         keyOf(agent.namespace, agent.name),
         {
@@ -1156,11 +1367,13 @@ export class AgentManagerFixtureState {
           state: current.state,
           writtenAt: this.now(),
           settlesAt: this.now() + SETTLE_MS,
+          previousModelConfig:
+            current.observedModelConfig ?? current.modelConfig,
           // A model that resolves again makes a failed agent ready.
           settledState:
-            next.modelConfig !== agent.modelConfig && current.state === 'failed'
+            next.modelConfig !== agent.modelConfig && settling === 'failed'
               ? 'ready'
-              : current.state,
+              : settling,
         },
       );
       this.changed();
@@ -1181,8 +1394,8 @@ export class AgentManagerFixtureState {
     name: string,
     mode?: string,
   ): DeleteAgentResult {
-    this.mustBeLive({ namespace, name, mode });
-    this.mustCreateAgentsIn(this.organizationIn(installation, namespace));
+    mustBeLive(mode);
+    this.mustCreateAgentsIn(this.writableIn(installation, namespace));
     const agent = this.stored(installation, namespace, name);
     this.stateOf(installation).agents.delete(keyOf(namespace, name));
     this.changed();
@@ -1201,6 +1414,10 @@ export class AgentManagerFixtureState {
     };
   }
 
+  /**
+   * Starts a session: answers a new session id, which kagent's fixture does
+   * not list yet (docs/fixtures.md).
+   */
   startSession(
     installation: string,
     request: StartSessionRequest & { noWorkspace?: boolean },
@@ -1214,15 +1431,17 @@ export class AgentManagerFixtureState {
         `${request.name} is not ready, so it cannot start sessions`,
       );
     }
-    const id = [8, 4, 4, 4, 12].map(length => hexId(length)).join('-');
-    return {
-      session: {
-        id,
-        contextId: id,
-        ...(request.sessionName && { name: request.sessionName }),
-      },
-      ...(request.workspaceGrant && { workspace: request.workspaceGrant }),
-    };
+    return this.once(installation, 'start_session', request.requestId, () => {
+      const id = globalThis.crypto.randomUUID();
+      return {
+        session: {
+          id,
+          contextId: id,
+          ...(request.sessionName && { name: request.sessionName }),
+        },
+        ...(request.workspaceGrant && { workspace: request.workspaceGrant }),
+      };
+    });
   }
 
   // The Kubernetes API
@@ -1234,6 +1453,7 @@ export class AgentManagerFixtureState {
    * tell by identity.
    */
   kubernetesObjectsOf(installation: string): KubeObjectInterface[] {
+    const state = this.stateOf(installation);
     const now = this.now();
     const cached = this.objectsCache.get(installation);
     if (
@@ -1244,7 +1464,6 @@ export class AgentManagerFixtureState {
       return cached.objects;
     }
     const at = this.createdAt;
-    const state = this.stateOf(installation);
     const objects: KubeObjectInterface[] = [
       ...state.organizations.flatMap(organization =>
         organization.namespace
@@ -1265,12 +1484,15 @@ export class AgentManagerFixtureState {
         );
       }),
     ] as KubeObjectInterface[];
-    const pending = [...state.agents.values()]
-      .map(agent => agent.settlesAt ?? 0)
-      .filter(settlesAt => settlesAt > now);
+    const upcoming = [
+      ...[...state.agents.values()].map(agent => agent.settlesAt ?? 0),
+      ...[...state.erasing.values()].map(
+        since => since + ERASURE_STEPS.length * SETTLE_MS,
+      ),
+    ].filter(time => time > now);
     this.objectsCache.set(installation, {
       revision: this.revision,
-      validUntil: pending.length > 0 ? Math.min(...pending) : Infinity,
+      validUntil: upcoming.length > 0 ? Math.min(...upcoming) : Infinity,
       objects,
     });
     return objects;
@@ -1317,30 +1539,6 @@ function egressPoliciesOf(namespace: string): AgentManagerEgressPolicy[] {
       ],
     },
   ];
-}
-
-/**
- * A refusal of the credential operations' HTTP API: the status and
- * agent-manager's code, which the fixture `AgentManagerCredentialsApi` turns
- * into the `ResponseError` the real client throws.
- */
-export class CredentialRefusal extends Error {
-  readonly name = 'CredentialRefusal';
-  constructor(
-    readonly status: number,
-    readonly code: string,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-function credentialRefusal(
-  status: number,
-  code: string,
-  message: string,
-): Error {
-  return new CredentialRefusal(status, code, message);
 }
 
 let state: AgentManagerFixtureState | undefined;
