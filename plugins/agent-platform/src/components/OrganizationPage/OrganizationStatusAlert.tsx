@@ -29,7 +29,7 @@ const useStyles = makeStyles({
  * git, so nothing on its page is changed any more: the page offers reading and
  * Erase now only.
  */
-export function isPendingErase(
+function isPendingErase(
   organization: Pick<OrganizationStatus, 'deleting' | 'orphaned'>,
 ): boolean {
   return (

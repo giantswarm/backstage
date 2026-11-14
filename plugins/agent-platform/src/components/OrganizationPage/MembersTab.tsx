@@ -66,6 +66,10 @@ const useStyles = makeStyles({
       color: 'var(--bui-fg-disabled)',
       cursor: 'not-allowed',
     },
+    // The selector's value sets its own text colour.
+    '& .bui-SelectTrigger[data-disabled] .bui-SelectValue': {
+      color: 'var(--bui-fg-disabled)',
+    },
   },
 });
 
