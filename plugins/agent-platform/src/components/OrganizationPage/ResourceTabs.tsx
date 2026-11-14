@@ -50,7 +50,8 @@ type TabProps = {
 
 /**
  * A tab that writes: with `changesDisabledBy` (the id of the line that says
- * why, on Pending erase) its rows stay listed and every change is off.
+ * why, on Pending erase and while Erasing) its rows stay listed and every
+ * change is off.
  */
 type WritingTabProps = TabProps & { changesDisabledBy?: string };
 

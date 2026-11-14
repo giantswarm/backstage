@@ -27,7 +27,7 @@ import { ConnectorsTab, EgressTab, ModelsTab } from './ResourceTabs';
 import { ORGANIZATION_PAGE_TABS } from './organizationTabs';
 import { OrganizationDeleteDialog } from './OrganizationDeleteDialog';
 import {
-  isPendingErase,
+  areChangesOff,
   OrganizationStatusAlert,
 } from './OrganizationStatusAlert';
 
@@ -166,10 +166,11 @@ export function OrganizationPage({
         Delete organization
       </Button>
     ) : undefined;
-  // On Pending erase every tab keeps its rows and turns its changes off, each
-  // control described by the status alert's line that says why.
+  // On Pending erase and while Erasing every tab keeps its rows and turns its
+  // changes off, each control described by the status alert's line that says
+  // why.
   const changesDisabledBy =
-    status && isPendingErase(status) ? changesOffId : undefined;
+    status && areChangesOff(status) ? changesOffId : undefined;
   // Its state (Pending erase with Erase now, Missing from git) and the
   // delete dialog, above whichever body the page shows.
   const deletion = (

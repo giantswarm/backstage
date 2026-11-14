@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { makeStyles } from '@material-ui/core';
 import {
   Alert,
   Button,
@@ -50,6 +51,28 @@ function memberRequest(
     : { namespace, user: name, ...(role ? { role } : {}) };
 }
 
+const useStyles = makeStyles({
+  // bui marks a disabled field box with `data-disabled` and only fades it,
+  // and the agent shell paints every field box white with an edge: a
+  // disabled one then looks like an active one next to the greyed radios
+  // and button. It takes the look of a disabled bui secondary button (the
+  // Remove buttons) instead: a raised neutral fill, no edge, the disabled
+  // text colour.
+  form: {
+    '& .bui-Input[data-disabled], & .bui-SelectTrigger[data-disabled]': {
+      opacity: 1,
+      backgroundColor: 'var(--bui-bg-neutral-2)',
+      boxShadow: 'none',
+      color: 'var(--bui-fg-disabled)',
+      cursor: 'not-allowed',
+    },
+    // The selector's value sets its own text colour.
+    '& .bui-SelectTrigger[data-disabled] .bui-SelectValue': {
+      color: 'var(--bui-fg-disabled)',
+    },
+  },
+});
+
 /** The form that binds a group (first) or a person to a role. */
 function AddMember({
   installation,
@@ -60,6 +83,7 @@ function AddMember({
   namespace: string;
   changesDisabledBy?: string;
 }) {
+  const classes = useStyles();
   const off = changesDisabledBy !== undefined;
   const { add } = useOrganizationMemberWrites(installation, namespace);
   const [kind, setKind] = useState<MemberKind>('group');
@@ -74,7 +98,7 @@ function AddMember({
     : `Enter the ${noun === 'group' ? "group's name" : "person's user name"}.`;
 
   return (
-    <Flex direction="column" gap="3" ref={scope}>
+    <Flex direction="column" gap="3" ref={scope} className={classes.form}>
       <RadioGroup
         label="Add"
         orientation="horizontal"
@@ -99,6 +123,7 @@ function AddMember({
           }
           isRequired
           isDisabled={off}
+          aria-describedby={changesDisabledBy}
           value={name}
           onChange={setName}
           {...validation.textFieldProps('name', nameError)}
@@ -106,6 +131,7 @@ function AddMember({
         <Select
           label="Role"
           isDisabled={off}
+          aria-describedby={changesDisabledBy}
           selectedKey={role}
           options={MEMBER_ROLES.map(id => ({
             id,
@@ -151,8 +177,8 @@ function AddMember({
  * first. Adding offers a group first and a person second; a removal agent-
  * manager refuses, such as the last admin of `organization-admins`, which
  * admission keeps, is shown with its reason. With `changesDisabledBy` (the
- * id of the line that says why, on Pending erase) the members stay listed and
- * every change is off.
+ * id of the line that says why, on Pending erase and while Erasing) the
+ * members stay listed and every change is off.
  */
 export function MembersTab({
   installation,
