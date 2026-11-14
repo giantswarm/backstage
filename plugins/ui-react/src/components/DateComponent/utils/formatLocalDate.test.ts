@@ -1,30 +1,48 @@
-import { formatLocalDay, formatLocalTime } from './formatLocalDate';
+import {
+  formatLocalDate,
+  formatLocalDateFull,
+  formatLocalDay,
+  formatLocalTime,
+  formatLocalTimeWithSeconds,
+} from './formatLocalDate';
 
-describe('formatLocalTime', () => {
-  it('shows the local time of day on a 24-hour clock', () => {
-    expect(formatLocalTime(new Date(2026, 9, 2, 9, 5))).toBe('09:05');
-    expect(formatLocalTime(new Date(2026, 9, 2, 14, 5, 59))).toBe('14:05');
+const OriginalDateTimeFormat = Intl.DateTimeFormat;
+const VALUE = '2026-10-25T01:30:12Z';
+
+describe.each([
+  ['en-US', 'America/Los_Angeles', '06:30 PM', '06:30:12 PM', 'Oct 24'],
+  ['en-GB', 'Europe/Paris', '02:30', '02:30:12', '25 Oct'],
+  ['fr-FR', 'Asia/Kolkata', '07:00', '07:00:12', '25 oct.'],
+])('local dates in %s, %s', (locale, timeZone, clock, seconds, day) => {
+  beforeEach(() => {
+    jest.spyOn(Intl, 'DateTimeFormat').mockImplementation(
+      (locales, options) =>
+        new OriginalDateTimeFormat(locales ?? locale, {
+          timeZone,
+          ...options,
+        }),
+    );
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('uses the browser clock and calendar convention', () => {
+    expect(formatLocalTime(VALUE)).toBe(clock);
+    expect(formatLocalTimeWithSeconds(VALUE)).toBe(seconds);
+    expect(formatLocalDay(VALUE, 2026)).toBe(day);
+    expect(formatLocalDay(VALUE, 2027)).toContain('2026');
+    expect(formatLocalDate(VALUE)).toContain('2026');
+    expect(formatLocalDateFull(VALUE)).toContain(seconds);
   });
 
-  it('returns a value that does not parse as given', () => {
-    expect(formatLocalTime('not a date')).toBe('not a date');
-  });
-});
-
-describe('formatLocalDay', () => {
-  const day = new Date(2026, 8, 18, 22, 31);
-
-  it('shows the local day, with the year only when it is another', () => {
-    expect(formatLocalDay(day, 2026)).toBe('18 Sep');
-    expect(formatLocalDay(day, 2027)).toBe('18 Sep 2026');
-  });
-
-  it('compares with the current year by default', () => {
-    const now = new Date();
-    expect(formatLocalDay(now)).not.toContain(String(now.getFullYear()));
-  });
-
-  it('returns a value that does not parse as given', () => {
-    expect(formatLocalDay('not a date', 2026)).toBe('not a date');
+  it('returns invalid inputs without throwing', () => {
+    for (const format of [
+      formatLocalDate,
+      formatLocalDateFull,
+      formatLocalDay,
+      formatLocalTime,
+      formatLocalTimeWithSeconds,
+    ]) {
+      expect(format('not a date')).toBe('not a date');
+    }
   });
 });

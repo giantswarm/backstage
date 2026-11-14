@@ -1,5 +1,10 @@
+import {
+  InfoHint,
+  formatLocalDateFull,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { Flex, Text } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
+// eslint-disable-next-line @typescript-eslint/no-restricted-imports -- BUI has no progress indicator for an active lifecycle step.
 import { CircularProgress } from '@material-ui/core';
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import ErrorIcon from '@material-ui/icons/Error';
@@ -25,14 +30,14 @@ function StateIcon({ state }: { state: LifecycleStepState }) {
     case 'done':
       return (
         <CheckCircleIcon
-          style={{ fontSize: ICON_SIZE, color: 'var(--bui-fg-success)' }}
+          style={{ fontSize: ICON_SIZE, color: 'var(--bui-fg-positive)' }}
           aria-hidden
         />
       );
     case 'failed':
       return (
         <ErrorIcon
-          style={{ fontSize: ICON_SIZE, color: 'var(--bui-fg-danger)' }}
+          style={{ fontSize: ICON_SIZE, color: 'var(--bui-fg-negative)' }}
           aria-hidden
         />
       );
@@ -123,6 +128,16 @@ export function LifecycleSteps({
                 {timing && (
                   <Text as="span" variant="body-small" color="secondary">
                     {timing}
+                    {(step.since || step.finishedAt) && (
+                      <InfoHint label={`Exact times for ${step.title}`}>
+                        {step.since && (
+                          <>Started {formatLocalDateFull(step.since)}. </>
+                        )}
+                        {step.finishedAt && (
+                          <>Finished {formatLocalDateFull(step.finishedAt)}.</>
+                        )}
+                      </InfoHint>
+                    )}
                   </Text>
                 )}
               </Flex>

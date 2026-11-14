@@ -1,3 +1,5 @@
+import { DateTimeZoneProvider } from './DateTimeZone';
+import { ShellScopeProvider } from '../ShellScope';
 import type { Meta, StoryObj } from '@storybook/react';
 import { DateComponent } from './DateComponent';
 import { componentDocs } from '../../storybook/docs';
@@ -20,7 +22,7 @@ const meta = {
             'Formats a date/ISO string consistently across the app. Optionally ' +
             'renders it as a live-updating relative time (“3 minutes ago”) with the ' +
             'absolute date in a tooltip; the relative label refreshes itself once a ' +
-            'minute for recent times.',
+            'minute while mounted.',
           whenToUse:
             'For any timestamp shown to a user (creation times, last-seen, event ' +
             'times) so formatting and relative-time behaviour are uniform. Renders ' +
@@ -69,4 +71,17 @@ export const Empty: Story = {
       },
     },
   },
+};
+
+export const Local: Story = {
+  args: { value: '2026-10-25T01:30:12Z', disclosure: true },
+  decorators: [
+    Story => (
+      <ShellScopeProvider>
+        <DateTimeZoneProvider timeZone="local">
+          <Story />
+        </DateTimeZoneProvider>
+      </ShellScopeProvider>
+    ),
+  ],
 };

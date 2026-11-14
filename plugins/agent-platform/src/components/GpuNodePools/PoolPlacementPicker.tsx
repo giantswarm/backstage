@@ -323,7 +323,11 @@ export function PoolPlacementPicker({
                   {keptClaim.created && (
                     <>
                       {' · created '}
-                      <DateComponent value={keptClaim.created} relative />
+                      <DateComponent
+                        value={keptClaim.created}
+                        relative
+                        disclosure
+                      />
                     </>
                   )}
                   .

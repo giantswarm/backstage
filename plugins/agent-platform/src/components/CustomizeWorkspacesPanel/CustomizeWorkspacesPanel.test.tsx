@@ -148,7 +148,7 @@ describe('CustomizeWorkspacesPanel', () => {
       screen.getByRole('button', { name: 'About the state of infra' }),
     );
     expect(await screen.findByRole('tooltip')).toHaveTextContent(
-      /^Failed .+ ago\.\s*owner not reachable$/,
+      /^Failed .+ ago\..+2026.+owner not reachable$/,
     );
   });
 

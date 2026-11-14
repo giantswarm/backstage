@@ -1,72 +1,57 @@
-import { format } from 'date-fns/fp/format';
 import { parseDate } from './parseDate';
 
-/**
- * The browser's short name for its time zone at `date`, e.g. "CEST" or
- * "GMT+2" (the locale decides which), or `undefined` where the runtime cannot
- * say.
- */
-function localZoneName(date: Date): string | undefined {
-  try {
-    return new Intl.DateTimeFormat(undefined, { timeZoneName: 'short' })
-      .formatToParts(date)
-      .find(part => part.type === 'timeZoneName')?.value;
-  } catch {
-    return undefined;
-  }
+function formatLocal(
+  date: string | Date,
+  options: Intl.DateTimeFormatOptions,
+): string {
+  const parsed = parseDate(date);
+  if (!isFinite(parsed.getTime())) return date.toString();
+  return new Intl.DateTimeFormat(undefined, options).format(parsed);
 }
-
-/**
- * `date` in the browser's time zone, in date-fns `pattern`; a value that does
- * not parse comes back as given.
- */
-function formatLocal(date: string | Date, pattern: string): string {
-  const givenDate = parseDate(date);
-  if (!isFinite(givenDate.getTime())) return date.toString();
-  return format(pattern)(givenDate);
-}
-
-/**
- * A date in the browser's time zone, in {@link formatDate}'s shape without
- * the zone: `11 Oct 2026, 17:50`. For a surface where every time is local, so
- * the zone goes without saying (see `DateTimeZoneProvider`).
- */
+/** A local timestamp in the browser's date order and clock convention. */
 export function formatLocalDate(date: string | Date): string {
-  return formatLocal(date, 'd MMM yyyy, HH:mm');
+  return formatLocal(date, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
-
-/**
- * The full local timestamp, seconds and zone included:
- * `11 Oct 2026, 17:50:12 CEST`. What a hover shows beside
- * {@link formatLocalDate}, so the exact moment and its clock stay one hover
- * away.
- */
+/** An exact local timestamp, including seconds and time zone. */
 export function formatLocalDateFull(date: string | Date): string {
-  const givenDate = parseDate(date);
-  if (!isFinite(givenDate.getTime())) return date.toString();
-  const zone = localZoneName(givenDate);
-  const stamp = format('d MMM yyyy, HH:mm:ss')(givenDate);
-  return zone ? `${stamp} ${zone}` : stamp;
+  return formatLocal(date, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    timeZoneName: 'short',
+  });
 }
-
-/**
- * The local time of day in {@link formatLocalDate}'s clock: `17:50`. For a
- * compact list cell whose date goes without saying.
- */
+/** A local clock time whose date is supplied by its surrounding context. */
 export function formatLocalTime(date: string | Date): string {
-  return formatLocal(date, 'HH:mm');
+  return formatLocal(date, { hour: '2-digit', minute: '2-digit' });
 }
-
-/**
- * The local day in {@link formatLocalDate}'s words: `11 Oct`, with the year
- * (`11 Oct 2025`) only when it is not `currentYear`. For a compact list cell.
- */
+/** A local clock precise enough to distinguish successive removal passes. */
+export function formatLocalTimeWithSeconds(date: string | Date): string {
+  return formatLocal(date, {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+/** A local calendar day, including the year when it differs from currentYear. */
 export function formatLocalDay(
   date: string | Date,
-  currentYear: number = new Date().getFullYear(),
+  currentYear = new Date().getFullYear(),
 ): string {
-  return formatLocal(
-    date,
-    parseDate(date).getFullYear() === currentYear ? 'd MMM' : 'd MMM yyyy',
-  );
+  return formatLocal(date, {
+    day: 'numeric',
+    month: 'short',
+    ...(parseDate(date).getFullYear() === currentYear
+      ? {}
+      : { year: 'numeric' }),
+  });
 }

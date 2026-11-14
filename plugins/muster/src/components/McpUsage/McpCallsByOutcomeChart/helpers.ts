@@ -1,4 +1,8 @@
 import {
+  formatLocalTime,
+  formatLocalDateFull,
+} from '@giantswarm/backstage-plugin-ui-react';
+import {
   formatDayTick,
   formatDayTooltip,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -21,10 +25,7 @@ import { bucketDay } from '../utils/bucketDay';
 /** Axis tick for a bucket start: hour of day for hourly, date for daily. */
 export function formatBucketTick(start: string, stepHours: number): string {
   if (stepHours < 24) {
-    return new Date(start).toLocaleTimeString(undefined, {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return formatLocalTime(start);
   }
   return formatDayTick(bucketDay(start));
 }
@@ -32,12 +33,7 @@ export function formatBucketTick(start: string, stepHours: number): string {
 /** Tooltip heading for a bucket start. */
 export function formatBucketTooltip(start: string, stepHours: number): string {
   if (stepHours < 24) {
-    return new Date(start).toLocaleString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return formatLocalDateFull(start);
   }
   return formatDayTooltip(bucketDay(start));
 }

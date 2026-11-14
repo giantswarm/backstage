@@ -4,6 +4,7 @@ export {
   formatLocalDateFull,
   formatLocalDay,
   formatLocalTime,
+  formatLocalTimeWithSeconds,
 } from './formatLocalDate';
 export { getRelativeDate } from './getRelativeDate';
 export { parseDate } from './parseDate';

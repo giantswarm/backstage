@@ -1,4 +1,8 @@
 import {
+  InfoHint,
+  formatLocalDateFull,
+} from '@giantswarm/backstage-plugin-ui-react';
+import {
   Button,
   ButtonIcon,
   Menu,
@@ -246,6 +250,11 @@ export function NotificationRow({
         >
           {content}
         </AriaLink>
+      )}
+      {row.at !== undefined && (
+        <InfoHint label={`Exact time for ${row.title}`}>
+          {formatLocalDateFull(new Date(row.at))}
+        </InfoHint>
       )}
       {row.actions && row.actions.length > 0 && (
         <span className={classes.menu}>

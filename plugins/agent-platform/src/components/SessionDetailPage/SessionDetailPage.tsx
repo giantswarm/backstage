@@ -1841,7 +1841,8 @@ export function SessionDetailPage() {
      (kagent-dev/kagent#2397). */
   const startedMeta = (
     <Text variant="body-small" color="secondary">
-      Started {row.createdAt ? <DateComponent value={row.createdAt} /> : '—'}
+      Started{' '}
+      {row.createdAt ? <DateComponent value={row.createdAt} disclosure /> : '—'}
     </Text>
   );
 
