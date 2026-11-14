@@ -322,7 +322,32 @@ describe('builder settings', () => {
       sessions: [],
       workflows: [],
       executions: [],
+      toolsetPresets: [],
     });
+  });
+
+  it('gives each installation toolset presets made from its connectors and workflows', () => {
+    const data = createFixtureDataSet({ now });
+    for (const { name } of data.installations) {
+      const presets = data.toolsetPresets.filter(p => p.installation === name);
+      expect(presets.map(p => p.name)).toEqual([
+        'daily-checks',
+        'reviews',
+        'legacy-reports',
+      ]);
+      const connectors = new Set(
+        data.connectors.filter(c => c.installation === name).map(c => c.name),
+      );
+      const workflows = new Set(
+        data.workflows.filter(w => w.installation === name).map(w => w.name),
+      );
+      const [daily] = presets;
+      for (const selector of daily.selectors) {
+        const [kind, target] = selector.split(':');
+        expect(kind === 'server' ? connectors : workflows).toContain(target);
+      }
+      expect(presets[2].selectors).toContain('server:retired-reports');
+    }
   });
 });
 

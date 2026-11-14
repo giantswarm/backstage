@@ -134,25 +134,48 @@ export class KubernetesFixtureApi implements KubernetesApi {
     private readonly sources: readonly FixtureObjectsSource[] = FIXTURE_OBJECTS,
   ) {}
 
+  /**
+   * Each installation's objects by `<group>/<kind>`, gathered from the
+   * sources once: the fixtures are fixed.
+   */
+  private readonly objectsByInstallation = new Map<
+    string,
+    Map<string, KubeObjectInterface[]>
+  >();
+
+  private indexOf(installation: string): Map<string, KubeObjectInterface[]> {
+    let index = this.objectsByInstallation.get(installation);
+    if (!index) {
+      index = new Map();
+      for (const object of this.sources.flatMap(source =>
+        source(installation),
+      )) {
+        const group = object.apiVersion.includes('/')
+          ? object.apiVersion.split('/')[0]
+          : '';
+        const key = `${group}/${object.kind}`;
+        index.set(key, [...(index.get(key) ?? []), object]);
+      }
+      this.objectsByInstallation.set(installation, index);
+    }
+    return index;
+  }
+
   /** The installation's objects of one resource, in one namespace or all. */
   private objects(
     installation: string,
     resource: Resource,
     namespace: string | undefined,
   ): KubeObjectInterface[] {
-    return this.sources
-      .flatMap(source => source(installation))
-      .filter(object => {
-        const [group, version] = object.apiVersion.includes('/')
-          ? object.apiVersion.split('/')
-          : ['', object.apiVersion];
-        return (
-          group === resource.group &&
-          resource.versions.includes(version) &&
-          object.kind === resource.kind &&
-          (namespace === undefined || object.metadata.namespace === namespace)
-        );
-      });
+    return (
+      this.indexOf(installation).get(`${resource.group}/${resource.kind}`) ?? []
+    ).filter(object => {
+      const version = object.apiVersion.split('/').pop() ?? '';
+      return (
+        resource.versions.includes(version) &&
+        (namespace === undefined || object.metadata.namespace === namespace)
+      );
+    });
   }
 
   async getClusters(): Promise<
@@ -322,6 +345,9 @@ export class KubernetesFixtureApi implements KubernetesApi {
     );
     if (!resource) {
       return undefined;
+    }
+    if (!resource.versions.includes(version)) {
+      return statusResponse(404, 'NotFound', `No API ${group}/${version}.`);
     }
     const objects = this.objects(
       installation,

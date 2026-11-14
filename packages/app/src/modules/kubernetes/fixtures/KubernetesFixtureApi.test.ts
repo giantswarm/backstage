@@ -116,6 +116,12 @@ describe('KubernetesFixtureApi', () => {
     expect(one.status).toBe(404);
 
     expect((await (await get('/api/v1/namespaces')).json()).items).toEqual([]);
+
+    const otherVersion = await get(
+      '/apis/muster.giantswarm.io/v9/mcpservers',
+      'fennel',
+    );
+    expect(otherVersion.status).toBe(404);
   });
 
   it('allows what an access review asks about', async () => {

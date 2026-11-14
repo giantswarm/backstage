@@ -24,12 +24,44 @@ describe('MusterFixtureApi', () => {
       expect.objectContaining({ name: 'fennel', reachable: true }),
       expect.objectContaining({ name: 'tarragon', reachable: false }),
     ]);
-    for (const { name } of installations) {
+    for (const name of ['meadow', 'fennel']) {
       await expect(
         api.filterTools({ installation: name, limit: 1 }),
       ).resolves.toEqual(expect.objectContaining({ tools: expect.any(Array) }));
     }
     await expect(api.signIn()).resolves.toBe(true);
+  });
+
+  it('refuses the unreachable installation’s reads, as muster-backend does', async () => {
+    const refusal = expect.objectContaining({
+      name: 'ServiceUnavailableError',
+      status: 503,
+      message:
+        'tarragon did not answer: not reachable from this portal (timeout)',
+    });
+    await expect(api.filterTools({ installation: 'tarragon' })).rejects.toEqual(
+      refusal,
+    );
+    await expect(api.listServers('tarragon')).rejects.toEqual(refusal);
+    await expect(
+      api.listExecutions({ installation: 'tarragon' }),
+    ).rejects.toEqual(refusal);
+    await expect(api.getMcpUsage({ installation: 'tarragon' })).rejects.toEqual(
+      refusal,
+    );
+    await expect(
+      api.callTool('x_agent-manager_get_info', {}, 'tarragon'),
+    ).rejects.toEqual(refusal);
+    await expect(api.getAuthStatus('tarragon')).resolves.toEqual(
+      expect.objectContaining({ servers: [], unavailable: true }),
+    );
+    await expect(api.listConnectorNames('tarragon')).resolves.toEqual({
+      servers: [],
+      unavailable: true,
+    });
+    await expect(api.getServerInfo('tarragon')).resolves.toEqual({
+      unavailable: true,
+    });
   });
 
   it('dispatches a tool call to its server’s handler', async () => {
@@ -138,14 +170,14 @@ describe('MusterFixtureApi', () => {
       expect(tools?.filter(t => t.server === serving[0].name)).toHaveLength(
         serving[0].toolsCount,
       );
-      const workflows = inInstallation(data.workflows, 'fennel');
+      const available = inInstallation(data.workflows, 'fennel').filter(
+        w => w.state === 'available',
+      );
       expect(
         tools
           ?.filter(t => t.kind === 'workflow')
           .map(t => [t.name, t.annotations?.readOnlyHint]),
-      ).toEqual(
-        workflows.map(w => [`workflow_${w.name}`, w.state === 'available']),
-      );
+      ).toEqual(available.map(w => [`workflow_${w.name}`, true]));
       expect(total).toBe(tools?.length);
       expect(tools?.[0].inputSchema).toBeUndefined();
     });
@@ -193,6 +225,7 @@ describe('MusterFixtureApi', () => {
         server: serving[0].name,
       });
       expect(one.resources).toHaveLength(2);
+      expect(one.total).toBe(2);
       const prompts = await api.filterPrompts({
         installation: 'fennel',
         server: serving[0].name,
@@ -232,10 +265,25 @@ describe('MusterFixtureApi', () => {
         e => e.state === 'failed',
       )!;
       const execution = await api.getExecution(failed.id, 'meadow');
-      expect(execution.steps!.length).toBeLessThanOrEqual(failed.stepCount);
-      expect(execution.steps?.at(-1)).toEqual(
-        expect.objectContaining({ status: 'failed', error: failed.error }),
+      const steps = execution.steps!;
+      expect(steps.length).toBeLessThanOrEqual(failed.stepCount);
+      expect(execution.error).toMatch(
+        new RegExp(`^Step ${steps.length} failed: `),
       );
+      expect(steps.at(-1)).toEqual(
+        expect.objectContaining({ status: 'failed', error: execution.error }),
+      );
+      const { executions } = await api.listExecutions({
+        installation: 'meadow',
+        workflowName: failed.workflow,
+        status: 'failed',
+      });
+      expect(executions).toEqual([
+        expect.objectContaining({
+          step_count: steps.length,
+          error: execution.error,
+        }),
+      ]);
       await expect(api.getExecution('missing', 'meadow')).rejects.toThrow(
         'No execution missing',
       );
@@ -255,9 +303,19 @@ describe('MusterFixtureApi', () => {
       expect(usage.buckets).toHaveLength(24);
       expect(usage.totals.calls).toBeGreaterThan(0);
       expect(usage.top_tools.length).toBeLessThanOrEqual(15);
+      const bucketed = (u: typeof usage) =>
+        u.buckets.reduce((sum, b) => sum + b.ok + b.error + b.error_result, 0);
+      expect(bucketed(usage)).toBe(usage.totals.calls);
       expect(
-        usage.buckets.reduce((sum, b) => sum + b.ok + b.error, 0),
-      ).toBeGreaterThan(0);
+        usage.buckets.reduce((sum, b) => sum + b.error + b.error_result, 0),
+      ).toBe(usage.totals.errors);
+
+      const odd = await api.getMcpUsage({ installation: 'fennel', hours: 100 });
+      expect(odd.buckets).toHaveLength(17);
+      expect(Date.parse(odd.buckets[0].start)).toBe(
+        Date.parse(odd.buckets[16].start) - 16 * 6 * 3600 * 1000,
+      );
+      expect(bucketed(odd)).toBe(odd.totals.calls);
 
       const server = connectors[0].name;
       const narrowed = await api.getMcpUsage({
@@ -284,6 +342,65 @@ describe('MusterFixtureApi', () => {
         servers: [server],
       });
       expect(latency.tools).toHaveLength(connectors[0].toolsCount);
+    });
+
+    it('reports the resources and prompts a serving connector offers', async () => {
+      const { mcpServers } = await api.listServers('fennel');
+      const runtime = mcpServers!.find(s => s.name === serving[0].name);
+      expect(runtime).toEqual(
+        expect.objectContaining({ resourcesCount: 2, promptsCount: 1 }),
+      );
+    });
+
+    it('lists the presets, and resolves a toolset within the catalogue', async () => {
+      const presets = (
+        await api.filterTools({
+          installation: 'fennel',
+          includePresets: true,
+          limit: 1,
+        })
+      ).presets!;
+      expect(presets.map(p => p.name)).toEqual([
+        'read-only',
+        'none',
+        'full',
+        'daily-checks',
+        'reviews',
+        'legacy-reports',
+      ]);
+
+      const daily = inInstallation(data.toolsetPresets, 'fennel')[0];
+      const resolved = await api.filterTools({
+        installation: 'fennel',
+        toolset: ['preset:daily-checks', 'server:retired-reports'],
+      });
+      expect(resolved.toolset).toEqual([
+        'preset:daily-checks',
+        'server:retired-reports',
+      ]);
+      expect(resolved.toolset_unmatched).toEqual(['server:retired-reports']);
+      expect(resolved.presets).toHaveLength(6);
+      const [server, workflow] = daily.selectors.map(s => s.split(':')[1]);
+      expect(new Set(resolved.tools!.map(t => t.server ?? t.name))).toEqual(
+        new Set([server, `workflow_${workflow}`]),
+      );
+
+      const readOnly = await api.filterTools({
+        installation: 'fennel',
+        toolset: ['preset:read-only'],
+      });
+      expect(readOnly.tools!.length).toBeGreaterThan(0);
+      expect(
+        readOnly.tools!.every(t => t.annotations?.readOnlyHint === true),
+      ).toBe(true);
+      await expect(
+        api.filterTools({ installation: 'fennel', toolset: ['preset:none'] }),
+      ).resolves.toEqual(
+        expect.objectContaining({ tools: [], toolset_unmatched: [] }),
+      );
+      await expect(
+        api.filterTools({ installation: 'fennel', toolset: ['preset:gone'] }),
+      ).rejects.toThrow('unknown preset "gone"');
     });
   });
 

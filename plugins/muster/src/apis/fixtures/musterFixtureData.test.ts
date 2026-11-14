@@ -12,6 +12,7 @@ import { MusterWorkflow } from '../../lib/k8s/MusterWorkflow';
 import {
   connectorNameOf,
   connectorToolsOf,
+  executionOf,
   executionSummaryOf,
   isServing,
   musterWorkflowObjectOf,
@@ -19,6 +20,7 @@ import {
   mcpServerRuntimeOf,
   musterInstallationOf,
   workflowListItemOf,
+  workflowToolOf,
 } from './musterFixtureData';
 
 const data = createFixtureDataSet({ now: Date.parse('2026-11-14T12:00:00Z') });
@@ -161,6 +163,58 @@ describe('muster fixture data', () => {
       expect(workflow.getReferencedTools()).toEqual(tools);
       expect(tools.filter(tool => !served.has(tool))).toHaveLength(
         record.state === 'available' ? 0 : 1,
+      );
+    }
+  });
+
+  it('offers a workflow’s tool the arguments its Workflow object declares', () => {
+    for (const record of data.workflows) {
+      const object = musterWorkflowObjectOf(record, data.connectors);
+      const schema = workflowToolOf(record, data.connectors).inputSchema!;
+      expect(Object.keys(schema.properties!)).toEqual(
+        Object.keys(object.spec!.args!),
+      );
+      expect(schema.required).toEqual(
+        Object.entries(object.spec!.args!)
+          .filter(([, arg]) => arg.required)
+          .map(([name]) => name),
+      );
+    }
+  });
+
+  it('gives each step exactly the arguments its tool requires', () => {
+    const tools = new Map(
+      data.connectors.flatMap(connectorToolsOf).map(t => [t.name, t]),
+    );
+    for (const record of data.workflows) {
+      for (const step of musterWorkflowObjectOf(record, data.connectors).spec!
+        .steps!) {
+        const schema = tools.get(step.tool!)?.inputSchema;
+        expect(Object.keys(step.args!)).toEqual(schema?.required ?? []);
+        for (const name of Object.keys(step.args!)) {
+          expect(schema!.properties).toHaveProperty(name);
+        }
+      }
+    }
+  });
+
+  it('never runs an unavailable workflow’s missing tool to completion', () => {
+    for (const execution of data.executions) {
+      const workflow = data.workflows.find(
+        w =>
+          w.name === execution.workflow &&
+          w.installation === execution.installation,
+      )!;
+      const run = executionOf(execution, workflow, data.connectors);
+      const missing = run.steps!.filter(step =>
+        step.tool.startsWith('x_retired_'),
+      );
+      expect(missing.every(step => step.status === 'failed')).toBe(true);
+      expect(
+        missing.length === 0 || run.error?.includes('no connector offers'),
+      ).toBe(true);
+      expect(executionSummaryOf(execution, workflow, data.connectors)).toEqual(
+        expect.objectContaining({ step_count: run.steps!.length }),
       );
     }
   });

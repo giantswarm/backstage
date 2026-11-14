@@ -83,13 +83,22 @@ The fixture `MusterApi` serves each installation's muster from the data set:
 its connectors (MCP servers) in every state muster knows, live and in the
 person's sign-in status (`auth://status`); the catalogue, with the tools,
 resources and prompts of the connectors that serve the session (Connected and
-Running), the workflows' `workflow_<name>` tools and muster's own `core_*`
-tools, each described with its input schema; the workflows, their executions
-with their steps and their run statistics; and MCP usage and tool latency over
-any window, narrowed to some connectors or one tool. A connector's tools are
-named after it and derived from it (`connectorToolsOf`), so every read names
-the same ones. The tools of the data set's connectors have no handler: running
-one fails as described below.
+Running), the available workflows' `workflow_<name>` tools (an unavailable
+workflow has none, as muster lists no invalid one) and muster's own `core_*`
+tools, each described with its input schema; toolsets resolved within the
+catalogue (`filter_tools` with `toolset`) and the presets, the built-in ones
+and the installation's own; the workflows, their executions with their steps
+and their run statistics; and MCP usage and tool latency over any window,
+narrowed to some connectors or one tool. A connector's tools are named after
+it and derived from it (`connectorToolsOf`), so every read names the same
+ones. The tools of the data set's connectors have no handler: running one
+fails as described below.
+
+The unreachable installation's reads fail as muster-backend refuses them, with
+a 503 "<installation> did not answer: not reachable from this portal", and its
+background reads (connector names, server info, sign-in status) answer
+`unavailable`. Its `MCPServer` and `Workflow` objects stay readable: the portal
+reaches its Kubernetes API, not its muster.
 
 ### Objects in the Kubernetes API
 
@@ -140,8 +149,12 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
   organizations of each installation (admin, editor, user, so the New agent form's "needs the
   editor role" shows), manages the orphaned, pending-erase and deleting ones and is no
   member of the pending one. Only ready agents of ready organizations have
-  sessions, and one pending agent has a failed release. Names are made of
-  plant words, never a real installation, customer or repository.
+  sessions, and one pending agent has a failed release. Each installation's
+  muster has three toolset presets made from its connectors and workflows
+  (`buildToolsetPresets`, which draws no numbers): one that resolves in full,
+  one that builds on `preset:read-only`, and one whose selectors match nothing
+  for the person. Names are made of plant words, never a real installation,
+  customer or repository.
 - `createFixtureDataSet(settings)` builds another one: per list a `count`
   (per parent, such as agents per organization), a least `nameLength` (cut at
   63, a Kubernetes name's limit; display names keep their words whole) and

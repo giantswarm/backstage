@@ -482,3 +482,70 @@ export function buildExecutions(
     },
   );
 }
+
+/**
+ * A toolset preset an installation's muster is configured with: a named
+ * toolset, a list of selectors (`preset:`, `server:`, `workflow:`, `tool:`).
+ */
+export type FixtureToolsetPreset = {
+  installation: string;
+  name: string;
+  description: string;
+  selectors: string[];
+};
+
+const SERVING_CONNECTOR_STATES: ReadonlySet<ConnectorState> = new Set([
+  'Connected',
+  'Running',
+]);
+
+/**
+ * The toolset presets of each installation's muster, made from its
+ * connectors and workflows without drawing numbers, so the rest of the data
+ * set stays as it is: one that resolves in full, one that builds on a
+ * built-in preset, and one whose selectors match nothing for the person (a
+ * connector waiting for their sign-in, one that is gone).
+ */
+export function buildToolsetPresets(
+  installations: readonly FixtureInstallation[],
+  connectors: readonly FixtureConnector[],
+  workflows: readonly FixtureWorkflow[],
+): FixtureToolsetPreset[] {
+  return installations.flatMap(({ name: installation }) => {
+    const own = connectors.filter(c => c.installation === installation);
+    const serving = own.filter(c => SERVING_CONNECTOR_STATES.has(c.state));
+    const signIn = own.find(c => c.state === 'Auth Required');
+    const workflow = workflows.find(
+      w => w.installation === installation && w.state === 'available',
+    );
+    return [
+      {
+        installation,
+        name: 'daily-checks',
+        description: 'The connector and the workflow the daily checks use.',
+        selectors: [
+          ...serving.slice(0, 1).map(c => `server:${c.name}`),
+          ...(workflow ? [`workflow:${workflow.name}`] : []),
+        ],
+      },
+      {
+        installation,
+        name: 'reviews',
+        description: 'Every read-only tool, and everything of one connector.',
+        selectors: [
+          'preset:read-only',
+          ...serving.slice(1, 2).map(c => `server:${c.name}`),
+        ],
+      },
+      {
+        installation,
+        name: 'legacy-reports',
+        description: 'The reporting connectors of an earlier setup.',
+        selectors: [
+          ...(signIn ? [`server:${signIn.name}`] : []),
+          'server:retired-reports',
+        ],
+      },
+    ];
+  });
+}

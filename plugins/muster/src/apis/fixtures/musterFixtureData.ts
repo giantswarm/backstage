@@ -7,13 +7,16 @@ import type {
   FixtureWorkflow,
 } from '@giantswarm/backstage-plugin-gs-common/fixtures';
 
-import { MUSTER_NAMESPACE } from '../../components/MusterInstanceProvider/useMusterResources';
+import { MUSTER_NAMESPACE } from '../../lib/musterNamespace';
 import type {
   MCPServer,
   MCPServerCondition,
   MCPServerState,
 } from '../../lib/k8s/MCPServer';
-import type { MusterWorkflow } from '../../lib/k8s/MusterWorkflow';
+import type {
+  MusterWorkflow,
+  WorkflowArgDefinition,
+} from '../../lib/k8s/MusterWorkflow';
 import type {
   JsonSchema,
   McpServerRuntime,
@@ -172,6 +175,8 @@ export function mcpServerRuntimeOf(
     ...(CONNECTED.has(connector.state) && {
       sessionStatus: 'connected',
       toolsCount: connector.toolsCount,
+      resourcesCount: connectorResourcesOf(connector).length,
+      promptsCount: connectorPromptsOf(connector).length,
     }),
     ...(FAILING.has(connector.state) && {
       error: READY[connector.state].message,
@@ -193,23 +198,6 @@ export function workflowListItemOf(
     name: workflow.name,
     description: workflow.description,
     available: workflow.state === 'available',
-  };
-}
-
-/** An execution as `/executions` lists it. */
-export function executionSummaryOf(
-  execution: FixtureExecution,
-  stepCount = execution.stepCount,
-): WorkflowExecutionSummary {
-  return {
-    execution_id: execution.id,
-    workflow_name: execution.workflow,
-    status: execution.state,
-    started_at: execution.startedAt,
-    ...(execution.completedAt && { completed_at: execution.completedAt }),
-    duration_ms: execution.durationMs,
-    step_count: stepCount,
-    ...(execution.error && { error: execution.error }),
   };
 }
 
@@ -397,66 +385,110 @@ function coreTool(
   };
 }
 
-const WORKFLOW_TARGET_ARG = {
-  type: 'string',
-  description: 'What the workflow works on.',
+/**
+ * A workflow's arguments: what its Workflow object declares, and what its
+ * `workflow_<name>` tool's input schema offers.
+ */
+const WORKFLOW_ARGS: Record<string, WorkflowArgDefinition> = {
+  target: {
+    type: 'string',
+    required: true,
+    description: 'What the workflow works on.',
+  },
+  dryRun: {
+    type: 'boolean',
+    default: false,
+    description: 'Report what would change without changing it.',
+  },
 };
 
-/**
- * A workflow as muster's catalogue lists it, `workflow_<name>`, read-only
- * where every step's tool is, as muster derives it.
- */
-export function workflowToolOf(
-  workflow: FixtureWorkflow,
-  connectors: readonly FixtureConnector[],
-): ToolSummary {
-  const readOnly = new Set(
-    connectors
-      .filter(isServing)
-      .flatMap(connectorToolsOf)
-      .filter(tool => tool.annotations?.readOnlyHint)
-      .map(tool => tool.name),
-  );
+/** {@link WORKFLOW_ARGS} as the input schema muster derives from them. */
+function workflowInputSchema(): JsonSchema {
   return {
-    name: `workflow_${workflow.name}`,
-    summary: workflow.description,
-    description: workflow.description,
-    kind: 'workflow',
-    annotations: {
-      readOnlyHint: workflowStepToolsOf(workflow, connectors).every(tool =>
-        readOnly.has(tool),
-      ),
-    },
-    inputSchema: {
-      type: 'object',
-      properties: { target: WORKFLOW_TARGET_ARG },
-      required: ['target'],
-    },
+    type: 'object',
+    properties: Object.fromEntries(
+      Object.entries(WORKFLOW_ARGS).map(([name, arg]) => [
+        name,
+        {
+          type: arg.type,
+          description: arg.description,
+          ...(arg.default !== undefined && { default: arg.default }),
+        },
+      ]),
+    ),
+    required: Object.entries(WORKFLOW_ARGS)
+      .filter(([, arg]) => arg.required)
+      .map(([name]) => name),
   };
 }
 
+/** One step of a fixture workflow: the tool it calls, if a connector offers it. */
+type FixtureWorkflowStep = { tool: string; summary?: ToolSummary };
+
 /**
- * The tools a workflow's steps call: the first tools of the installation's
- * serving connectors, so its page links to tools that exist. One that is
- * not available also calls a tool no connector offers, which is why muster
+ * A workflow's steps: the first tools of the installation's serving
+ * connectors, so its page links to tools that exist. One that is not
+ * available also calls a tool no connector offers, last, which is why muster
  * flags it.
  */
-export function workflowStepToolsOf(
+function workflowStepsOf(
   workflow: FixtureWorkflow,
   connectors: readonly FixtureConnector[],
-): string[] {
-  const tools = connectors
+): FixtureWorkflowStep[] {
+  const steps: FixtureWorkflowStep[] = connectors
     .filter(
       connector =>
         connector.installation === workflow.installation &&
         isServing(connector),
     )
     .flatMap(connector => connectorToolsOf(connector).slice(0, 2))
-    .map(tool => tool.name)
-    .slice(0, 3);
+    .slice(0, 3)
+    .map(summary => ({ tool: summary.name, summary }));
   return workflow.state === 'available'
-    ? tools
-    : [...tools, `x_retired_${workflow.name.replace(/-/g, '_')}`];
+    ? steps
+    : [...steps, { tool: `x_retired_${workflow.name.replace(/-/g, '_')}` }];
+}
+
+/** The tools a workflow's steps call, in order. */
+export function workflowStepToolsOf(
+  workflow: FixtureWorkflow,
+  connectors: readonly FixtureConnector[],
+): string[] {
+  return workflowStepsOf(workflow, connectors).map(step => step.tool);
+}
+
+/**
+ * A step's arguments: the workflow's `target` for each argument the tool
+ * requires, so they match the schema of the tool the step calls.
+ */
+function stepArgsOf(step: FixtureWorkflowStep): Record<string, unknown> {
+  const required = step.summary?.inputSchema?.required ?? [];
+  return Object.fromEntries(
+    required.map(name => [name, '{{ .input.target }}']),
+  );
+}
+
+/**
+ * A workflow as muster's catalogue lists it, `workflow_<name>`, with the
+ * input schema of its arguments, read-only where every step's tool is, as
+ * muster derives it. muster lists available workflows only.
+ */
+export function workflowToolOf(
+  workflow: FixtureWorkflow,
+  connectors: readonly FixtureConnector[],
+): ToolSummary {
+  return {
+    name: `workflow_${workflow.name}`,
+    summary: workflow.description,
+    description: workflow.description,
+    kind: 'workflow',
+    annotations: {
+      readOnlyHint: workflowStepsOf(workflow, connectors).every(
+        step => step.summary?.annotations?.readOnlyHint === true,
+      ),
+    },
+    inputSchema: workflowInputSchema(),
+  };
 }
 
 /** A workflow as the `Workflow` object the muster pages list. */
@@ -464,7 +496,8 @@ export function musterWorkflowObjectOf(
   workflow: FixtureWorkflow,
   connectors: readonly FixtureConnector[],
 ): MusterWorkflow['jsonData'] {
-  const tools = workflowStepToolsOf(workflow, connectors);
+  const steps = workflowStepsOf(workflow, connectors);
+  const tools = steps.map(step => step.tool);
   const valid = workflow.state === 'available';
   return {
     apiVersion: 'muster.giantswarm.io/v1alpha1',
@@ -475,18 +508,11 @@ export function musterWorkflowObjectOf(
     },
     spec: {
       description: workflow.description,
-      args: {
-        target: { ...WORKFLOW_TARGET_ARG, required: true },
-        dryRun: {
-          type: 'boolean',
-          default: false,
-          description: 'Report what would change without changing it.',
-        },
-      },
-      steps: tools.map((tool, index) => ({
+      args: WORKFLOW_ARGS,
+      steps: steps.map((step, index) => ({
         id: `step-${index + 1}`,
-        tool,
-        args: { name: '{{ .input.target }}' },
+        tool: step.tool,
+        args: stepArgsOf(step),
         store: true,
       })),
     },
@@ -504,9 +530,11 @@ export function musterWorkflowObjectOf(
 }
 
 /**
- * How many of its workflow's steps a run walked: every one when it
- * completed, else up to the step it failed in or is running, as muster lists
- * only the steps it started.
+ * How many of its workflow's steps a run walked, as muster lists only the
+ * steps it started: every one it could complete when it completed, else up
+ * to the step it failed in or is running. An unavailable workflow's last
+ * step calls a tool no connector offers, so no run completes it: a completed
+ * run stops before it, and a failed one may fail in it.
  */
 export function stepsRunOf(
   execution: FixtureExecution,
@@ -514,27 +542,81 @@ export function stepsRunOf(
   connectors: readonly FixtureConnector[],
 ): number {
   const steps = workflow
-    ? workflowStepToolsOf(workflow, connectors).length
+    ? workflowStepsOf(workflow, connectors).length
     : execution.stepCount;
-  return execution.state === 'completed'
-    ? steps
-    : Math.min(execution.stepCount, steps);
+  const completable = workflow?.state === 'unavailable' ? steps - 1 : steps;
+  const walked = {
+    completed: completable,
+    failed: Math.min(execution.stepCount, steps),
+    inprogress: Math.min(execution.stepCount, completable),
+  }[execution.state];
+  return Math.max(1, walked);
+}
+
+/**
+ * Why a failed run failed, naming the step it failed in: the tool no
+ * connector offers, or the data set's reason.
+ */
+function executionErrorOf(
+  execution: FixtureExecution,
+  step: number,
+  tool: FixtureWorkflowStep | undefined,
+): string | undefined {
+  if (execution.state !== 'failed') {
+    return undefined;
+  }
+  const reason =
+    tool && !tool.summary && tool.tool.startsWith('x_retired_')
+      ? `no connector offers ${tool.tool}.`
+      : (execution.error ?? '').replace(/^Step \d+ failed: /, '');
+  return `Step ${step} failed: ${reason}`;
+}
+
+/**
+ * An execution as `/executions` lists it, with its workflow's steps
+ * ({@link stepsRunOf}) when the workflow is known.
+ */
+export function executionSummaryOf(
+  execution: FixtureExecution,
+  workflow?: FixtureWorkflow,
+  connectors: readonly FixtureConnector[] = [],
+): WorkflowExecutionSummary {
+  const run = workflow
+    ? executionOf(execution, workflow, connectors)
+    : undefined;
+  const error = run ? run.error : execution.error;
+  return {
+    execution_id: execution.id,
+    workflow_name: execution.workflow,
+    status: execution.state,
+    started_at: execution.startedAt,
+    ...(execution.completedAt && { completed_at: execution.completedAt }),
+    duration_ms: execution.durationMs,
+    step_count: run?.steps?.length ?? execution.stepCount,
+    ...(error && { error }),
+  };
 }
 
 /**
  * An execution with its steps, as `/executions/<id>` reports it: the steps
  * its workflow runs, in turn ({@link stepsRunOf}); a failed run's last step
- * failed, a run in progress has its last step running.
+ * failed, and its error names that step; a run in progress has its last step
+ * running.
  */
 export function executionOf(
   execution: FixtureExecution,
   workflow: FixtureWorkflow | undefined,
   connectors: readonly FixtureConnector[],
 ): WorkflowExecution {
-  const tools = workflow
-    ? workflowStepToolsOf(workflow, connectors)
-    : ['core_mcpserver_list'];
+  const tools: FixtureWorkflowStep[] = workflow
+    ? workflowStepsOf(workflow, connectors)
+    : [{ tool: 'core_mcpserver_list' }];
   const stepCount = stepsRunOf(execution, workflow, connectors);
+  const error = executionErrorOf(
+    execution,
+    stepCount,
+    tools[(stepCount - 1) % tools.length],
+  );
   const started = Date.parse(execution.startedAt);
   const stepMs = Math.floor(execution.durationMs / stepCount);
   const steps: WorkflowExecutionStep[] = Array.from(
@@ -542,19 +624,20 @@ export function executionOf(
     (_, index) => {
       const last = index === stepCount - 1;
       const status = last ? execution.state : 'completed';
+      const step = tools[index % tools.length];
       const stepStart = new Date(started + index * stepMs).toISOString();
       return {
         step_id: `step-${index + 1}`,
-        tool: tools[index % tools.length],
+        tool: step.tool,
         status,
         started_at: stepStart,
         ...(status !== 'inprogress' && {
           completed_at: new Date(started + (index + 1) * stepMs).toISOString(),
         }),
         duration_ms: stepMs,
-        input: { name: 'example' },
+        input: stepArgsOf(step),
         ...(status === 'completed' && { result: { items: index + 1 } }),
-        ...(status === 'failed' && { error: execution.error }),
+        ...(status === 'failed' && { error }),
         stored_as: `step-${index + 1}`,
       };
     },
@@ -566,11 +649,11 @@ export function executionOf(
     started_at: execution.startedAt,
     ...(execution.completedAt && { completed_at: execution.completedAt }),
     duration_ms: execution.durationMs,
-    input: { target: 'example' },
+    input: { target: 'example', dryRun: false },
     ...(execution.state === 'completed' && {
       result: { changed: stepCount },
     }),
-    ...(execution.error && { error: execution.error }),
+    ...(error && { error }),
     steps,
   };
 }
@@ -661,19 +744,16 @@ function usedTools(
 
 /**
  * MCP usage over a window, as `/usage` derives it from muster's metrics: each
- * tool called at its own steady rate, a few with errors, busier in some
- * hours than others. Narrowed to some servers, every tool they were called
- * with is listed and the server rows carry their p95; narrowed to one tool,
- * its row carries its p95.
+ * tool called at its own rate, a few with errors, busier in some hours than
+ * others. The buckets cover the window exactly (the last one may be shorter),
+ * and the rows and totals add up the same calls. Narrowed to some servers,
+ * every tool they were called with is listed and the server rows carry their
+ * p95; narrowed to one tool, its row carries its p95.
  */
 export function mcpUsageOf(
   tools: readonly ToolSummary[],
   scope: FixtureUsageScope,
 ): McpUsage {
-  const used = usedTools(tools, scope).map(tool => ({
-    tool,
-    ...toolUsage(tool.name),
-  }));
   let step = 24;
   if (scope.hours <= 24) {
     step = 1;
@@ -681,41 +761,43 @@ export function mcpUsageOf(
     step = 6;
   }
   const end = Math.floor(scope.now / HOUR) * HOUR;
-  const bucketCount = Math.ceil(scope.hours / step);
-  const buckets: McpUsageBucket[] = Array.from(
-    { length: bucketCount },
-    (_, index) => {
-      const load = 0.5 + 0.5 * Math.abs(Math.sin(index / 3));
-      const calls = used.reduce(
-        (sum, { perHour }) => sum + Math.round(perHour * step * load),
-        0,
-      );
-      const errors = used.reduce(
-        (sum, { perHour, errorRatio }) =>
-          sum + Math.round(perHour * step * load * errorRatio),
-        0,
-      );
-      return {
-        start: new Date(
-          end - (bucketCount - index) * step * HOUR,
-        ).toISOString(),
-        ok: calls - errors,
-        error: Math.floor(errors / 2),
-        error_result: errors - Math.floor(errors / 2),
-      };
-    },
+  const start = end - scope.hours * HOUR;
+  const bucketHours = Array.from(
+    { length: Math.ceil(scope.hours / step) },
+    (_, index) => Math.min(step, scope.hours - index * step),
   );
+  const loads = bucketHours.map(
+    (_, index) => 0.5 + 0.5 * Math.abs(Math.sin(index / 3)),
+  );
+  // Each tool's calls and errors in each bucket: what the buckets, the rows
+  // and the totals all add up.
+  const used = usedTools(tools, scope).map(tool => {
+    const usage = toolUsage(tool.name);
+    const calls = bucketHours.map((hours, index) =>
+      Math.round(usage.perHour * hours * loads[index]),
+    );
+    const errors = calls.map(count => Math.round(count * usage.errorRatio));
+    return { tool, p95: usage.p95, calls, errors };
+  });
+  const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
+  const buckets: McpUsageBucket[] = bucketHours.map((_, index) => {
+    const calls = sum(used.map(u => u.calls[index]));
+    const errors = sum(used.map(u => u.errors[index]));
+    return {
+      start: new Date(start + index * step * HOUR).toISOString(),
+      ok: calls - errors,
+      error: Math.floor(errors / 2),
+      error_result: errors - Math.floor(errors / 2),
+    };
+  });
   const rows = used
-    .map(({ tool, perHour, errorRatio, p95 }) => {
-      const calls = perHour * scope.hours;
-      return {
-        tool: tool.name,
-        server: tool.server,
-        calls,
-        errors: Math.round(calls * errorRatio),
-        p95,
-      };
-    })
+    .map(u => ({
+      tool: u.tool.name,
+      server: u.tool.server,
+      calls: sum(u.calls),
+      errors: sum(u.errors),
+      p95: u.p95,
+    }))
     .sort((a, b) => b.calls - a.calls || a.tool.localeCompare(b.tool));
   const servers = new Map<
     string,
@@ -730,8 +812,8 @@ export function mcpUsageOf(
       servers.set(row.server, server);
     }
   }
-  const calls = rows.reduce((sum, row) => sum + row.calls, 0);
-  const errors = rows.reduce((sum, row) => sum + row.errors, 0);
+  const calls = sum(rows.map(row => row.calls));
+  const errors = sum(rows.map(row => row.errors));
   const narrowed = scope.servers !== undefined || scope.tool !== undefined;
   return {
     available: true,
