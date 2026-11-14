@@ -68,7 +68,8 @@ const MARKERS = [
   },
   {
     source: 'plugins/gs-common/src/fixtures/managerBuilders.ts',
-    marker: 'code.example.com',
+    marker:
+      'with your sign-in: it is not installed there, or you have no access',
   },
   {
     source:

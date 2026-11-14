@@ -2,6 +2,7 @@
 import type { FixtureMcpServer } from '@giantswarm/backstage-plugin-muster';
 import {
   baseDataSet,
+  hashOf,
   inInstallation,
   type FixtureDataSet,
   type FixtureSkill,
@@ -82,13 +83,9 @@ function listedOf(repository: FixtureSkillRepository): SkillManagerRepository {
 
 /** A git blob id of the same length, the same for the same text. */
 function blobId(value: string): string {
-  let hash = 0x811c9dc5;
   let id = '';
   for (let round = 0; id.length < 40; round++) {
-    for (const char of `${round}:${value}`) {
-      hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193) >>> 0;
-    }
-    id += hash.toString(16).padStart(8, '0');
+    id += hashOf(`${round}:${value}`).toString(16).padStart(8, '0');
   }
   return id.slice(0, 40);
 }

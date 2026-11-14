@@ -27,3 +27,15 @@ export function createRandom(seed: number): FixtureRandom {
     pick: items => items[Math.floor(next() * items.length)],
   };
 }
+
+/**
+ * A number from a string, the same every time (FNV-1a, 32 bits): for values
+ * a fixture derives from a name, such as a size or an id, that must stay put.
+ */
+export function hashOf(value: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < value.length; i++) {
+    hash = Math.imul(hash ^ value.charCodeAt(i), 0x01000193) >>> 0;
+  }
+  return hash;
+}

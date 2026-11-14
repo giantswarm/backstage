@@ -9,7 +9,7 @@ import {
 import { WorkspaceManagerClient } from '../../WorkspaceManagerClient';
 import { SETTLE_MS } from '../agentManagerFixtureState';
 import { WorkspaceManagerFixtureState } from '../workspaceManagerFixtureState';
-import { musterApiOf } from './musterApiOf';
+import { musterApiOf } from '../../../lib/__testUtils__/musterApiOf';
 import { workspaceManagerFixtureServer } from './workspaceManager';
 
 const NOW = Date.parse('2026-11-14T12:00:00Z');
@@ -366,17 +366,109 @@ describe('the fixture workspace-manager', () => {
     expect(go.repositories.every(r => r.language === 'Go' && !r.archived)).toBe(
       true,
     );
+    // From the manager's own listing: the person's grant does not matter.
+    const ungrantedOwner = data.repositoryOwners.find(
+      o => o.provider === providers[1].name,
+    )!;
     expect(
       (
-        await refusalOf(
-          client.listRepositories({
-            organization: member,
-            provider: providers[1].name,
-            owner: owner.name,
-          }),
+        await client.listRepositories({
+          organization: member,
+          provider: providers[1].name,
+          owner: ungrantedOwner.name,
+        })
+      ).total,
+    ).toBeGreaterThan(0);
+  });
+
+  it('serves an edit made while a sync runs after it, as a change', async () => {
+    const { client, workspaceIn, owner, advance } = setup();
+    const name = workspaceIn('syncing');
+    const sources: WorkspaceSource[] = [
+      { provider: 'github', owner: owner.name, repositories: ['x'] },
+    ];
+    await client.updateWorkspace({ name, sources });
+    advance(SETTLE_MS);
+    expect(
+      (await client.getWorkspace(name)).workspace.activeSync?.trigger,
+    ).toBe('change');
+    advance(SETTLE_MS);
+    const { workspace } = await client.getWorkspace(name);
+    expect(workspace.activeSync).toBeUndefined();
+    expect(workspace.syncRequest).toBeUndefined();
+    expect(workspace.lastSync?.trigger).toBe('change');
+  });
+
+  it('starts no sync on a workspace being deleted', async () => {
+    const { client, workspaceIn, owner, advance } = setup();
+    const name = workspaceIn('deleting');
+    const before = (await client.getWorkspace(name)).workspace.lastSync;
+    const answer = await client.syncWorkspace(name);
+    expect(answer).toMatchObject({ workspace: name, deleting: true });
+    await client.updateWorkspace({
+      name,
+      sources: [{ provider: 'github', owner: owner.name, repositories: ['x'] }],
+    });
+    advance(2 * SETTLE_MS);
+    const { workspace } = await client.getWorkspace(name);
+    expect(workspace.activeSync).toBeUndefined();
+    expect(workspace.lastSync).toEqual(before);
+  });
+
+  it('mirrors what a synced workspace selects, whatever the person may read', async () => {
+    const { client, data } = setup();
+    const { workspaces } = await client.listWorkspaces();
+    const synced = workspaces.filter(w => w.lastSync?.result === 'Succeeded');
+    expect(synced.every(w => w.repositories > 0)).toBe(true);
+    // One workspace of the installation is on the provider the person has
+    // not granted: their sign-in is due when they start a Session on it.
+    const onUngranted = data.workspaces.filter(
+      w =>
+        w.installation === INSTALLATION &&
+        w.sources.some(s => s.provider === 'code-example'),
+    );
+    expect(onUngranted).toHaveLength(1);
+  });
+
+  it('lists only the ready organizations the person is a member of', async () => {
+    const { client, data } = setup();
+    const { organizations } = await client.listWorkspaces();
+    expect(organizations).toEqual(
+      data.organizations
+        .filter(
+          o =>
+            o.installation === INSTALLATION &&
+            o.state === 'ready' &&
+            o.role !== 'none',
         )
-      ).kind,
-    ).toBe('failed');
+        .map(o => o.name)
+        .sort((a, b) => a.localeCompare(b)),
+    );
+  });
+
+  it('says what a failed sync fetched, even where it selects nothing', async () => {
+    const data = createFixtureDataSet({ now: NOW, repositories: { count: 0 } });
+    const state = new WorkspaceManagerFixtureState(data, () => NOW);
+    const failed = data.workspaces.find(
+      w => w.installation === INSTALLATION && w.state === 'failed',
+    )!;
+    expect(
+      state.getWorkspace(INSTALLATION, failed.name).workspace.lastSync?.message,
+    ).toBe(
+      `fetching ${failed.sources[0].owner}: the provider answered 502 Bad Gateway`,
+    );
+  });
+
+  it('names no organization "undefined" when a call leaves it out', async () => {
+    const { client, owner } = setup();
+    const error = await refusalOf(
+      client.listRepositories({
+        provider: 'github',
+        owner: owner.name,
+      } as Parameters<typeof client.listRepositories>[0]),
+    );
+    expect(error.kind).toBe('not_member');
+    expect(error.message).toContain('Organization ""');
   });
 
   it('previews a workspace and a draft', async () => {

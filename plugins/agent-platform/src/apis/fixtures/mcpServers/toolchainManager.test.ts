@@ -8,7 +8,7 @@ import {
 import { ToolchainManagerClient } from '../../ToolchainManagerClient';
 import { SETTLE_MS } from '../agentManagerFixtureState';
 import { ToolchainManagerFixtureState } from '../toolchainManagerFixtureState';
-import { musterApiOf } from './musterApiOf';
+import { musterApiOf } from '../../../lib/__testUtils__/musterApiOf';
 import { toolchainManagerFixtureServer } from './toolchainManager';
 
 const NOW = Date.parse('2026-11-14T12:00:00Z');
@@ -165,10 +165,10 @@ describe('the fixture toolchain-manager', () => {
     expect(created?.pullURL).toBe(
       `https://github.com/${offered.repository}/pull/${created?.pull}`,
     );
-    // A retry answers the same pull request.
-    expect((await client.createToolchain(input)).created).toEqual(created);
-    await failureOf(
-      client.createToolchain({ ...input, dockerfile: 'FROM other' }),
+    // As toolchain-manager does, a toolchain with an open pull request is
+    // refused, and the refusal names it.
+    expect((await failureOf(client.createToolchain(input))).message).toBe(
+      `toolchain cluster-tools has an open pull request, ${created?.pullURL}: toolchain_build_status follows it`,
     );
 
     const states: string[] = [];
@@ -207,9 +207,88 @@ describe('the fixture toolchain-manager', () => {
       client.createToolchain({
         name: 'anything',
         source: pending.name,
-        dockerfile: 'FROM x',
+        dockerfile: 'FROM x\nLABEL io.giantswarm.toolchain.name="anything"',
       }),
     );
-    expect(failure.message).toContain('is not an offered source');
+    expect(failure.message).toContain(`no offered source ${pending.name}`);
+  });
+
+  it('refuses a toolchain for a source its App does not reach, as listing it does', async () => {
+    const { client, data } = setup();
+    const unreachable = data.toolchainSources.find(
+      s => s.installation === INSTALLATION && s.state === 'unreachable',
+    )!;
+    const failure = await failureOf(
+      client.createToolchain({
+        name: 'anything',
+        source: unreachable.name,
+        dockerfile: 'FROM x\nLABEL io.giantswarm.toolchain.name="anything"',
+      }),
+    );
+    expect(failure.message).toBe(unreachable.reason);
+  });
+
+  it('refuses a toolchain whose name or Dockerfile toolchain-manager refuses', async () => {
+    const { client, offered } = setup();
+    const create = (name: string, dockerfile: string) =>
+      failureOf(
+        client.createToolchain({ name, source: offered.name, dockerfile }),
+      );
+    expect((await create('My Tool', 'FROM x')).message).toContain(
+      'toolchain name "My Tool": want [a-z0-9-]',
+    );
+    expect((await create('my-tool', '')).message).toContain(
+      'final stage labels io.giantswarm.toolchain.name ""',
+    );
+    expect(
+      (
+        await create(
+          'my-tool',
+          'FROM x\nLABEL io.giantswarm.toolchain.name="other"',
+        )
+      ).message,
+    ).toContain('want "my-tool"');
+  });
+
+  it('refuses to describe a name two sources publish without its source', async () => {
+    const { client } = setup();
+    const { toolchains } = await client.listToolchains();
+    const [shared] = sharedToolchainNames(toolchains);
+    const sources = toolchains
+      .filter(t => t.name === shared)
+      .map(t => t.source);
+    expect(
+      (await failureOf(client.describeToolchain({ name: shared }))).message,
+    ).toBe(
+      `toolchain ${shared} is published by the sources ${sources.join(' and ')}: name the source`,
+    );
+    // A source by its repository names it too.
+    const { repository } = toolchains.find(t => t.source === sources[1])!;
+    expect(
+      (await client.describeToolchain({ name: shared, source: repository }))
+        .toolchain?.source,
+    ).toBe(sources[1]);
+  });
+
+  it('describes a written toolchain with the packages add_packages takes, and its Dockerfile labelled', async () => {
+    const { client, data } = setup();
+    for (const toolchain of data.toolchains.filter(
+      t => t.written && t.installation === INSTALLATION,
+    )) {
+      const { toolchain: described } = await client.describeToolchain({
+        name: toolchain.name,
+        source: toolchain.source,
+      });
+      const packages = Object.keys(described!.packages ?? {});
+      expect(packages.length).toBeGreaterThan(0);
+      for (const name of packages) {
+        expect(
+          (await client.searchPackages(name)).packages.map(p => p.name),
+        ).toContain(name);
+      }
+      expect(described!.dockerfile).toContain(
+        `LABEL io.giantswarm.toolchain.name="${toolchain.name}"`,
+      );
+    }
   });
 });

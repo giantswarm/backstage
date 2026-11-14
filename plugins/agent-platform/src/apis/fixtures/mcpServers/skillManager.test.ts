@@ -2,7 +2,7 @@ import { createFixtureDataSet } from '@giantswarm/backstage-plugin-gs-common/fix
 
 import { catalogFromSkillManager } from '../../../lib/skillManager';
 import { SkillManagerClient } from '../../SkillManagerClient';
-import { musterApiOf } from './musterApiOf';
+import { musterApiOf } from '../../../lib/__testUtils__/musterApiOf';
 import { skillManagerFixtureServer } from './skillManager';
 
 const NOW = Date.parse('2026-11-14T12:00:00Z');

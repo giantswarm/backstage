@@ -1,7 +1,11 @@
 import {
+  DAY,
   FIXTURE_PROVIDERS,
+  MINUTE,
   baseDataSet,
+  hashOf,
   inInstallation,
+  isWorkspaceOrganization,
   type FixtureDataSet,
   type FixtureProvider,
   type FixtureRepository,
@@ -44,8 +48,6 @@ import { FIXTURE_USER } from './fixtureIdentity';
  * pages show it running before its result.
  */
 
-const MINUTE = 60 * 1000;
-const DAY = 24 * 60 * MINUTE;
 const GI = 1024 ** 3;
 
 /** How long a grant of `authorize_workspace` lasts. */
@@ -102,7 +104,8 @@ type StoredWorkspace = {
   createdAt: string;
   lastSync?: LastSync;
   activeSync?: StoredSync;
-  syncRequest?: SyncRequest;
+  /** A sync requested while one runs, and what started it. */
+  syncRequest?: SyncRequest & { trigger: SyncTrigger };
   /** The repositories the last successful sync mirrored. */
   mirrored: FixtureRepository[];
   /** When the workspace was deleted. */
@@ -120,14 +123,28 @@ type InstallationState = {
 const fullName = (repository: FixtureRepository) =>
   `${repository.owner}/${repository.name}`;
 
-/** A number from a string, the same every time: sizes that stay put. */
-function stableNumber(value: string, modulo: number): number {
-  let hash = 0;
-  for (const char of value) {
-    hash = (Math.imul(hash, 31) + char.charCodeAt(0)) >>> 0;
-  }
-  return hash % modulo;
+/** A number below `modulo` from a string, the same every time. */
+const stableNumber = (value: string, modulo: number) => hashOf(value) % modulo;
+
+/** What a workspace's volume stores: its mirrors and its Session directories. */
+function bytesOf(workspace: StoredWorkspace): {
+  mirrorsBytes: number;
+  sessionsBytes: number;
+} {
+  return {
+    mirrorsBytes: workspace.mirrored.reduce(
+      (sum, r) => sum + r.sizeKiB * 1024,
+      0,
+    ),
+    sessionsBytes: workspace.sessionDirectories.reduce(
+      (sum, d) => sum + d.sizeBytes,
+      0,
+    ),
+  };
 }
+
+/** A tool argument as a string, `''` without one. */
+const textOf = (value: unknown) => String(value ?? '');
 
 /** How the person grants a provider instance's App in muster. */
 function signInOf(provider: FixtureProvider): string {
@@ -197,7 +214,7 @@ export class WorkspaceManagerFixtureState {
       );
       state = {
         organizations: organizations
-          .filter(o => o.namespace && o.role !== 'none')
+          .filter(isWorkspaceOrganization)
           .map(o => o.name)
           .sort((a, b) => a.localeCompare(b)),
         workspaces: new Map(
@@ -237,7 +254,9 @@ export class WorkspaceManagerFixtureState {
                   trigger: 'retry' as const,
                   message: `fetching ${
                     this.selectionOf(workspace.sources).selected[0]?.repository
-                      .name
+                      .name ??
+                    workspace.sources[0]?.owner ??
+                    'the sources'
                   }: the provider answered 502 Bad Gateway`,
                 }
               : { result: 'Succeeded' as const, trigger: 'change' as const }),
@@ -247,7 +266,7 @@ export class WorkspaceManagerFixtureState {
       return {
         name: workspace.name,
         organization: workspace.organization,
-        sources: workspace.sources.map(sourceOf),
+        sources: workspace.sources,
         resourceVersion: 1,
         createdAt: workspace.createdAt,
         ...(lastSync && { lastSync }),
@@ -342,7 +361,10 @@ export class WorkspaceManagerFixtureState {
       workspace.mirrored = this.mirrorable(workspace.sources);
       workspace.activeSync = undefined;
       if (workspace.syncRequest) {
-        workspace.activeSync = this.syncFrom(endsAt, 'request');
+        workspace.activeSync = this.syncFrom(
+          endsAt,
+          workspace.syncRequest.trigger,
+        );
         workspace.syncRequest = undefined;
       }
     }
@@ -392,16 +414,14 @@ export class WorkspaceManagerFixtureState {
   }
 
   /** What the sources select now, and what they leave out. */
-  private selectionOf(
-    sources: readonly (WorkspaceSource | FixtureWorkspace['sources'][number])[],
-  ): Selection {
+  private selectionOf(sources: readonly WorkspaceSource[]): Selection {
     const selection: Selection = {
       selected: [],
       excluded: 0,
       skippedArchived: 0,
       skippedForks: 0,
     };
-    for (const source of sources.map(sourceOf)) {
+    for (const source of sources) {
       const names = new Set(source.repositories ?? []);
       const languages = source.filters?.languages ?? [];
       const topics = source.filters?.topics;
@@ -455,13 +475,15 @@ export class WorkspaceManagerFixtureState {
     return selection;
   }
 
-  /** What a sync mirrors: the selected repositories it can fetch. */
-  private mirrorable(
-    sources: readonly (WorkspaceSource | FixtureWorkspace['sources'][number])[],
-  ): FixtureRepository[] {
-    return this.selectionOf(sources)
-      .selected.map(({ repository }) => repository)
-      .filter(r => r.readable && providerOf(r.provider)?.connected);
+  /**
+   * What a sync mirrors: every selected repository. It fetches with the
+   * workspace's own credentials, whatever the person viewing it may read;
+   * their access counts when they start a Session (`authorize_workspace`).
+   */
+  private mirrorable(sources: readonly WorkspaceSource[]): FixtureRepository[] {
+    return this.selectionOf(sources).selected.map(
+      ({ repository }) => repository,
+    );
   }
 
   private validate(
@@ -497,14 +519,7 @@ export class WorkspaceManagerFixtureState {
   // Views
 
   private view(workspace: StoredWorkspace): Workspace {
-    const mirrorsBytes = workspace.mirrored.reduce(
-      (sum, r) => sum + r.sizeKiB * 1024,
-      0,
-    );
-    const sessionsBytes = workspace.sessionDirectories.reduce(
-      (sum, d) => sum + d.sizeBytes,
-      0,
-    );
+    const { mirrorsBytes, sessionsBytes } = bytesOf(workspace);
     const stored = mirrorsBytes + sessionsBytes;
     const synced = Boolean(workspace.lastSync);
     const handle = `fs-${stableNumber(workspace.name, 0xffffff).toString(16)}`;
@@ -520,7 +535,12 @@ export class WorkspaceManagerFixtureState {
       ...(workspace.activeSync && {
         activeSync: reported(workspace.activeSync),
       }),
-      ...(workspace.syncRequest && { syncRequest: workspace.syncRequest }),
+      ...(workspace.syncRequest && {
+        syncRequest: {
+          requestedAt: workspace.syncRequest.requestedAt,
+          requestedBy: workspace.syncRequest.requestedBy,
+        },
+      }),
       repositories: workspace.mirrored.length,
       volume: synced
         ? {
@@ -582,14 +602,7 @@ export class WorkspaceManagerFixtureState {
         sizeBytes: repository.sizeKiB * 1024,
       })),
       storage: {
-        mirrorsBytes: workspace.mirrored.reduce(
-          (sum, r) => sum + r.sizeKiB * 1024,
-          0,
-        ),
-        sessionsBytes: workspace.sessionDirectories.reduce(
-          (sum, d) => sum + d.sizeBytes,
-          0,
-        ),
+        ...bytesOf(workspace),
         ...(view.neededSize && { neededSize: view.neededSize }),
         ...(view.volumeSize && { volumeSize: view.volumeSize }),
       },
@@ -610,7 +623,7 @@ export class WorkspaceManagerFixtureState {
         'name: lower-case letters, digits and "-", at most 63, starting and ending with a letter or digit',
       );
     }
-    this.mustBeMember(installation, operation, String(input.organization));
+    this.mustBeMember(installation, operation, textOf(input.organization));
     this.validate(operation, name, input.sources);
     const state = this.stateOf(installation);
     if (state.workspaces.has(name)) {
@@ -656,13 +669,9 @@ export class WorkspaceManagerFixtureState {
         Object.keys(input.sizing).length > 0 ? input.sizing : undefined;
     }
     workspace.resourceVersion++;
-    if (workspace.activeSync) {
-      workspace.syncRequest = {
-        requestedAt: new Date(this.now()).toISOString(),
-        requestedBy: FIXTURE_USER.email,
-      };
-    } else {
-      workspace.activeSync = this.syncFrom(this.now(), 'change');
+    // A workspace being deleted syncs no more: the change is written only.
+    if (workspace.deletedAt === undefined) {
+      this.requestSync(workspace, 'change');
     }
     return this.view(workspace);
   }
@@ -678,24 +687,49 @@ export class WorkspaceManagerFixtureState {
     };
   }
 
-  syncWorkspace(installation: string, name: string): SyncWorkspaceResult {
-    const workspace = this.stored(installation, 'sync workspace', name);
+  /**
+   * Starts a sync now, or after the one that runs: a request made while a
+   * sync runs is served after it, and that sync ends then, the data set's
+   * that would otherwise keep running among them.
+   */
+  private requestSync(workspace: StoredWorkspace, trigger: SyncTrigger): void {
     const now = this.now();
-    const request = {
+    if (!workspace.activeSync) {
+      workspace.activeSync = this.syncFrom(now, trigger);
+      return;
+    }
+    workspace.activeSync.endsAt ??= now + SETTLE_MS;
+    workspace.syncRequest = {
       requestedAt: new Date(now).toISOString(),
       requestedBy: FIXTURE_USER.email,
+      // A change outweighs a plain request: the cycle serves both.
+      trigger: workspace.syncRequest?.trigger === 'change' ? 'change' : trigger,
     };
-    if (!workspace.activeSync) {
-      workspace.activeSync = this.syncFrom(now, 'request');
-      return { workspace: name, ...request };
+  }
+
+  /**
+   * Requests a sync. On a workspace being deleted, as workspace-manager
+   * does, it runs the deletion cycle instead, which syncs nothing: the
+   * answer says so and no sync starts.
+   */
+  syncWorkspace(
+    installation: string,
+    name: string,
+  ): SyncWorkspaceResult & { deleting?: boolean } {
+    const workspace = this.stored(installation, 'sync workspace', name);
+    const request = {
+      requestedAt: new Date(this.now()).toISOString(),
+      requestedBy: FIXTURE_USER.email,
+    };
+    if (workspace.deletedAt !== undefined) {
+      return { workspace: name, ...request, deleting: true };
     }
-    // A request made while a sync runs is served after it.
-    workspace.activeSync.endsAt ??= now + SETTLE_MS;
-    workspace.syncRequest = request;
+    const running = workspace.activeSync;
+    this.requestSync(workspace, 'request');
     return {
       workspace: name,
       ...request,
-      activeSync: reported(workspace.activeSync),
+      ...(running && { activeSync: reported(running) }),
     };
   }
 
@@ -782,21 +816,41 @@ export class WorkspaceManagerFixtureState {
     }));
   }
 
+  /**
+   * The owners the person reaches on a provider instance, with their own
+   * sign-in; without their grant of its App, none, and how to grant it.
+   */
   listOwners(
     installation: string,
     input: { organization: string; provider: string },
-  ): ProviderOwner[] {
-    this.mustBeMember(installation, 'list owners', String(input.organization));
+  ): {
+    provider: string;
+    owners: ProviderOwner[];
+    signIn?: string;
+    status?: 'grant_required';
+    apps?: string[];
+  } {
+    this.mustBeMember(installation, 'list owners', textOf(input.organization));
     const provider = providerOf(input.provider);
     if (!provider) {
       throw new Error(`list owners: unknown provider "${input.provider}"`);
     }
     if (!provider.connected) {
-      return [];
+      return {
+        provider: provider.name,
+        owners: [],
+        signIn: signInOf(provider),
+        status: 'grant_required',
+        apps: [provider.name],
+      };
     }
-    return this.data.repositoryOwners
-      .filter(owner => owner.provider === provider.name)
-      .map(({ name, kind }) => ({ name, kind }));
+    return {
+      provider: provider.name,
+      owners: this.data.repositoryOwners
+        .filter(owner => owner.provider === provider.name)
+        .map(({ name, kind }) => ({ name, kind }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    };
   }
 
   listRepositories(
@@ -804,7 +858,7 @@ export class WorkspaceManagerFixtureState {
     input: ListRepositoriesInput,
   ): RepositoriesPage {
     const operation = 'list repositories';
-    this.mustBeMember(installation, operation, String(input.organization));
+    this.mustBeMember(installation, operation, textOf(input.organization));
     if (!input.provider || !input.owner) {
       throw new Error(`${operation}: provider and owner are required`);
     }
@@ -816,9 +870,8 @@ export class WorkspaceManagerFixtureState {
         `unknown provider instance "${input.provider}"`,
       );
     }
-    if (!provider.connected) {
-      throw new Error(`${operation}: ${signInOf(provider)}`);
-    }
+    // From the manager's own listing of the owner: it says nothing about
+    // the person's access, so it needs no grant of theirs.
     const owned = this.repositoriesOf(provider.name, input.owner);
     const search = input.search?.toLowerCase() ?? '';
     const matching = owned.filter(
@@ -871,7 +924,7 @@ export class WorkspaceManagerFixtureState {
       workspace = input.workspace;
       sources = this.stored(installation, operation, workspace).sources;
     } else if ('organization' in input) {
-      this.mustBeMember(installation, operation, String(input.organization));
+      this.mustBeMember(installation, operation, textOf(input.organization));
       this.validate(operation, 'draft', input.sources);
       sources = input.sources;
     } else {
@@ -911,23 +964,6 @@ export class WorkspaceManagerFixtureState {
       })),
     };
   }
-}
-
-/** A data set source as workspace-manager's source: its selectors as filters. */
-function sourceOf(
-  source: WorkspaceSource | FixtureWorkspace['sources'][number],
-): WorkspaceSource {
-  if ('filters' in source || !('languages' in source || 'topics' in source)) {
-    return source as WorkspaceSource;
-  }
-  const { languages, topics, ...rest } = source;
-  return {
-    ...rest,
-    filters: {
-      ...(languages?.length && { languages }),
-      ...(topics?.length && { topics: { names: topics } }),
-    },
-  };
 }
 
 let state: WorkspaceManagerFixtureState | undefined;

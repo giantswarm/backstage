@@ -222,7 +222,7 @@ export function hex(context: BuilderContext, length: number): string {
 }
 
 /** A UUID-shaped id. */
-export function uuid(context: BuilderContext): string {
+function uuid(context: BuilderContext): string {
   return [8, 4, 4, 4, 12].map(length => hex(context, length)).join('-');
 }
 

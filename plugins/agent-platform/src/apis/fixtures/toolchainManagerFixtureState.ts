@@ -57,6 +57,21 @@ const PACKAGES: readonly [string, string, string][] = [
   ['shellcheck', 'A linter for shell scripts', '0.10.0'],
 ];
 
+/** The package of the package source each command of the data set comes from. */
+const PACKAGE_OF_COMMAND: Record<string, string> = {
+  go: 'go',
+  node: 'nodejs',
+  python3: 'python3',
+  kubectl: 'kubectl',
+  helm: 'kubernetes-helm',
+  jq: 'jq',
+  yq: 'yq-go',
+  make: 'gnumake',
+};
+
+/** The label a toolchain's Dockerfile names it with in its final stage. */
+const NAME_LABEL = 'io.giantswarm.toolchain.name';
+
 /** The build states a new toolchain's pull request goes through by itself. */
 const BUILD_STEPS: readonly ToolchainBuildState[] = [
   'queued',
@@ -121,6 +136,34 @@ export class ToolchainManagerFixtureState {
     return this.stateOf(installation).sources.find(s => s.name === name);
   }
 
+  /**
+   * The offered sources, or the one `ref` names by name or repository, as
+   * toolchain-manager resolves a source argument.
+   */
+  private offered(
+    installation: string,
+    ref: string | undefined,
+  ): FixtureToolchainSource[] {
+    const offered = this.stateOf(installation).sources.filter(
+      s => s.state !== 'pending',
+    );
+    const wanted = ref?.trim().toLowerCase();
+    if (!wanted) {
+      return offered;
+    }
+    const source = offered.find(
+      s =>
+        s.name.toLowerCase() === wanted ||
+        s.repository.toLowerCase() === wanted,
+    );
+    if (!source) {
+      throw new Error(
+        `no offered source ${ref}: list_sources shows the sources and whether their toolchains are offered`,
+      );
+    }
+    return [source];
+  }
+
   private toolchainOf(
     toolchain: FixtureToolchain,
     version?: string,
@@ -150,7 +193,7 @@ export class ToolchainManagerFixtureState {
         unreachable: unreachable.map(s => ({
           source: s.name,
           repository: s.repository,
-          reason: `reading ${s.repository} as ${FIXTURE_USER.email}: the toolchain-manager App is not installed on it`,
+          reason: s.reason ?? '',
         })),
       }),
     };
@@ -160,26 +203,44 @@ export class ToolchainManagerFixtureState {
     installation: string,
     input: { name: string; source?: string; version?: string },
   ): ToolchainDescribeResult {
-    const published = this.stateOf(installation).toolchains.filter(
-      t =>
-        t.name === input.name && (!input.source || t.source === input.source),
+    const name = input.name.trim();
+    if (!name) {
+      throw new Error('name the toolchain, as list_toolchains shows it');
+    }
+    const sources = new Set(
+      this.offered(installation, input.source).map(s => s.name),
     );
-    const toolchain = published[0];
-    if (!toolchain) {
+    const published = this.stateOf(installation).toolchains.filter(
+      t => t.name === name && sources.has(t.source),
+    );
+    // As toolchain-manager does: none is an error, and so is a name two
+    // sources publish while the call names neither.
+    if (published.length === 0) {
+      const unreachable = this.stateOf(installation).sources.filter(
+        s => s.state === 'unreachable' && sources.has(s.name),
+      ).length;
       throw new Error(
-        `toolchain ${input.name} is not published by ${
-          input.source ? `the source ${input.source}` : 'any offered source'
+        `no published toolchain ${name}: list_toolchains shows them${
+          unreachable > 0 ? ` (${unreachable} sources unreachable)` : ''
         }`,
       );
     }
+    if (published.length > 1) {
+      throw new Error(
+        `toolchain ${name} is published by the sources ${published
+          .map(t => t.source)
+          .join(' and ')}: name the source`,
+      );
+    }
+    const [toolchain] = published;
     const version = input.version ? tagged(input.version) : undefined;
     if (version && !toolchain.versions.includes(version)) {
       throw new Error(
-        `toolchain ${input.name} has no version ${version}: published are ${toolchain.versions.join(', ')}`,
+        `toolchain ${name} has no published version ${version}; it has ${toolchain.versions.join(', ')}`,
       );
     }
     const packages = toolchain.tools.map(tool => {
-      const known = PACKAGES.find(([name]) => name.startsWith(tool));
+      const known = PACKAGES.find(([n]) => n === PACKAGE_OF_COMMAND[tool]);
       return [known?.[0] ?? tool, known?.[2] ?? '1.0.0'] as const;
     });
     return {
@@ -202,7 +263,7 @@ export class ToolchainManagerFixtureState {
         dockerfile: toolchain.written
           ? dockerfileOf(
               toolchain.name,
-              packages.map(([name]) => name),
+              packages.map(([pkg]) => pkg),
             )
           : [
               'FROM registry.example.com/toolchains/base:1',
@@ -210,6 +271,7 @@ export class ToolchainManagerFixtureState {
                 tool =>
                   `COPY --from=registry.example.com/tools/${tool}:latest /bin/${tool} /usr/local/bin/${tool}`,
               ),
+              `LABEL ${NAME_LABEL}="${toolchain.name}"`,
               '',
             ].join('\n'),
       },
@@ -306,41 +368,54 @@ export class ToolchainManagerFixtureState {
     input: { dockerfile: string; name: string; source: string },
   ): CreateToolchainResult {
     const state = this.stateOf(installation);
-    const source = this.sourceOf(installation, input.source);
-    if (!source || source.state === 'pending') {
+    const name = input.name.trim();
+    // The checks toolchain-manager makes, in its order and words.
+    if (!TOOLCHAIN_NAME.test(name)) {
       throw new Error(
-        `create toolchain: ${input.source} is not an offered source of this installation`,
+        `toolchain name ${JSON.stringify(name)}: want [a-z0-9-], the directory toolchains/<name>`,
       );
     }
+    const declared = labelOf(input.dockerfile);
+    if (declared !== name) {
+      throw new Error(
+        `the Dockerfile's final stage labels ${NAME_LABEL} ${JSON.stringify(declared)}, want ${JSON.stringify(name)}: the contract check holds it to the toolchain's directory`,
+      );
+    }
+    const offered = this.offered(installation, input.source);
+    if (offered.length !== 1) {
+      throw new Error(
+        offered.length === 0
+          ? 'the installation offers no source: add_source adds one'
+          : `name the source, one of ${offered.map(s => s.name).join(', ')}`,
+      );
+    }
+    const [source] = offered;
+    if (source.state === 'unreachable') {
+      throw new Error(source.reason ?? `cannot reach ${source.repository}`);
+    }
     if (
-      state.toolchains.some(
-        t => t.source === source.name && t.name === input.name,
-      )
+      state.toolchains.some(t => t.source === source.name && t.name === name)
     ) {
       throw new Error(
-        `create toolchain: ${source.repository} already publishes ${input.name}`,
+        `${source.repository} already has toolchain ${name} (toolchains/${name}/Dockerfile on main): describe_toolchain shows it`,
       );
     }
     const open = state.pulls.find(
-      p => p.source === source.name && p.toolchain === input.name,
+      p => p.source === source.name && p.toolchain === name,
     );
     if (open) {
-      // A retry of the same toolchain answers its pull request again.
-      if (open.dockerfile === input.dockerfile) {
-        return { created: createdOf(open) };
-      }
       throw new Error(
-        `create toolchain: pull request #${open.pull} already adds ${input.name} to ${source.repository}`,
+        `toolchain ${name} has an open pull request, ${open.pullURL}: toolchain_build_status follows it`,
       );
     }
     const pull = this.nextPull++;
     const stored: StoredPull = {
-      toolchain: input.name,
+      toolchain: name,
       source: source.name,
       repository: source.repository,
       pull,
       pullURL: `${urlOf(source.repository)}/pull/${pull}`,
-      branch: `toolchain/${input.name}`,
+      branch: `toolchain/${name}`,
       dockerfile: input.dockerfile,
       openedAt: this.now(),
     };
@@ -456,8 +531,19 @@ function dockerfileOf(name: string, packages: string[]): string {
     '',
     'FROM scratch',
     'COPY --from=build /toolchain /',
+    `LABEL ${NAME_LABEL}="${name}"`,
     '',
   ].join('\n');
+}
+
+/** The name the Dockerfile's final stage labels, `''` without one. */
+function labelOf(dockerfile: string): string {
+  const stages = dockerfile.split(/^FROM\s/m);
+  const last = stages[stages.length - 1] ?? '';
+  const match = last.match(
+    /^LABEL\s+io\.giantswarm\.toolchain\.name="?([^"\s]*)"?/m,
+  );
+  return match?.[1] ?? '';
 }
 
 /** `1.2.3` → `1.3.0`: the unstable branch is a minor ahead. */

@@ -4,18 +4,18 @@ import {
   CONNECTOR_STATES,
   EXECUTION_STATES,
   INSTALLATION_STATES,
-  MAX_NAME_LENGTH,
-  FIXTURE_PROVIDERS,
   ORGANIZATION_STATES,
   SESSION_STATES,
+  WORKFLOW_STATES,
+} from './builders';
+import { baseDataSet, createFixtureDataSet, inInstallation } from './dataSet';
+import {
+  FIXTURE_PROVIDERS,
   SKILL_REPOSITORY_STATES,
   TOOLCHAIN_SOURCE_STATES,
-  WORKFLOW_STATES,
   WORKSPACE_STATES,
-  baseDataSet,
-  createFixtureDataSet,
-  inInstallation,
-} from '.';
+} from './managerBuilders';
+import { MAX_NAME_LENGTH } from './names';
 
 const now = Date.parse('2026-11-14T12:00:00Z');
 const kubernetesName = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
@@ -313,6 +313,17 @@ describe("the managers' lists", () => {
           toolchain.versions.length,
         );
       }
+    }
+  });
+
+  it("puts each installation's configured toolchain sources first, whatever the count", () => {
+    const three = createFixtureDataSet({ now, toolchainSources: { count: 3 } });
+    for (const installation of FIXTURE_INSTALLATIONS) {
+      expect(
+        inInstallation(three.toolchainSources, installation).map(
+          s => s.addedBy === undefined,
+        ),
+      ).toEqual([true, true, false]);
     }
   });
 

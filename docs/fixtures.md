@@ -152,15 +152,20 @@ agent-manager.
   lists the workspaces of the ready organizations the person is a member of,
   in every state (synced, syncing, failed, pending its first sync, being
   deleted), with their mirrors and the Session directories of the
-  organization's sessions. Its two provider instances are one the person
-  granted and one they have not; the access check before a Session answers
+  organization's sessions. A sync mirrors everything a workspace selects, as
+  the manager fetches with the workspace's own credentials; the person's
+  access counts when they start a Session. Its two provider instances are one
+  the person granted and one they have not, which one workspace of each
+  installation selects from; the access check before a Session answers
   granted, refused (a repository the person cannot read, a workspace not
-  synced yet or being deleted) or connect_required. The repository picker
-  pages, searches and filters the owners' repositories, and the preview
-  resolves a selection as workspace-manager does. Creating, editing,
+  synced yet or being deleted) or connect_required (that workspace). The
+  repository picker pages, searches and filters the owners' repositories
+  from the manager's own listing, whatever the person's grant, and the
+  preview resolves a selection as workspace-manager does. Creating, editing,
   syncing and deleting a workspace are kept in memory: a sync runs for four
-  seconds (`SETTLE_MS`), a sync requested while one runs is served after it,
-  and a deleted workspace goes once no Session directory is left on it.
+  seconds (`SETTLE_MS`), a sync requested or an edit saved while one runs is
+  served after it, a workspace being deleted syncs no more, and a deleted
+  workspace goes once no Session directory is left on it.
   Refusals use workspace-manager's wording (`<operation>: permission denied:
 …`, `not found`, `already exists`, `invalid workspace`, and the stale
   `resourceVersion` of an edit as a conflict), so the client classifies them
@@ -173,8 +178,10 @@ agent-manager.
   and added, approved and pending. Adding a source, searching packages,
   writing a Dockerfile from them and opening its pull request are kept in
   memory: the pull request moves on one build state per four seconds until it
-  waits for a merge, and a retry of the same toolchain answers the same pull
-  request.
+  waits for a merge. Its refusals are toolchain-manager's: a name two sources
+  publish, described without its source; a toolchain name or a Dockerfile
+  label the contract check would refuse; a source its App does not reach;
+  a toolchain the source has, or one with an open pull request.
 - skill-manager (`plugins/agent-platform/src/apis/fixtures/mcpServers/skillManager.ts`)
   lists each installation's skill repositories in every state (readable,
   private, read-only, failed, failed with its last listing kept, and private

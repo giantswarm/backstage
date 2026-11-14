@@ -52,12 +52,11 @@ export function workspaceManagerFixtureServer(
     [WORKSPACE_MANAGER_TOOLS.listProviders]: () => ({
       providers: state().listProviders(),
     }),
-    [WORKSPACE_MANAGER_TOOLS.listOwners]: (args, { installation }) => ({
-      owners: state().listOwners(installation, {
+    [WORKSPACE_MANAGER_TOOLS.listOwners]: (args, { installation }) =>
+      state().listOwners(installation, {
         organization: text(args, 'organization'),
         provider: text(args, 'provider'),
       }),
-    }),
   };
   return { server: WORKSPACE_MANAGER_SERVER, tools: asJson(tools) };
 }

@@ -84,14 +84,32 @@ export const WORKSPACE_STATES = [
 ] as const;
 export type WorkspaceState = (typeof WORKSPACE_STATES)[number];
 
-/** One owner on one provider instance, and how the workspace selects from it. */
+/**
+ * One owner on one provider instance, and how the workspace selects from it:
+ * the shape of workspace-manager's source, so the fixtures serve it as it is.
+ */
 export type FixtureWorkspaceSource = {
   provider: string;
   owner: string;
   repositories?: string[];
-  languages?: string[];
-  topics?: string[];
+  filters?: {
+    languages?: string[];
+    topics?: { match?: 'any' | 'all'; names: string[] };
+  };
+  exclude?: string[];
+  includeArchived?: boolean;
+  includeForks?: boolean;
 };
+
+/**
+ * The organizations the person has workspaces in, and may create one in:
+ * the ready ones they are a member of.
+ */
+export function isWorkspaceOrganization(
+  organization: Pick<FixtureOrganization, 'state' | 'role'>,
+): boolean {
+  return organization.state === 'ready' && organization.role !== 'none';
+}
 
 export type FixtureWorkspace = {
   installation: string;
@@ -129,6 +147,8 @@ export type FixtureToolchainSource = {
   addedBy?: string;
   /** RFC 3339. */
   addedAt: string;
+  /** Why its toolchains cannot be read as the person; `unreachable` only. */
+  reason?: string;
 };
 
 export type FixtureToolchain = {
@@ -272,9 +292,11 @@ export function buildRepositories(
 /**
  * How the workspaces of an installation select their repositories, in turn:
  * by language from the first owner; by name on the provider the person has
- * not granted (their sign-in needed first); by topic from the first owner and
- * one unreadable repository from the second (refused at a Session's start);
- * three repositories by name from the second owner.
+ * not granted, for one workspace only (their sign-in needed before a Session
+ * starts on it); by topic from the first owner and one repository the person
+ * cannot read from the second (refused at a Session's start); three
+ * repositories by name from the second owner. The workspaces after the
+ * fourth take the first and the last way in turn.
  */
 function sourcesOf(
   index: number,
@@ -305,28 +327,34 @@ function sourcesOf(
     selector: Omit<FixtureWorkspaceSource, 'provider' | 'owner'>,
   ): FixtureWorkspaceSource[] =>
     owner ? [{ provider: owner.provider, owner: owner.name, ...selector }] : [];
-  switch (index % 4) {
+  const byLanguage = () =>
+    sourceOf(first, { filters: { languages: [LANGUAGES[0]] } });
+  const byName = () =>
+    sourceOf(second, { repositories: names(second, [0, 1, 2]) });
+  if (index >= 4) {
+    return index % 2 === 0 ? byLanguage() : byName();
+  }
+  switch (index) {
     case 0:
-      return sourceOf(first, { languages: [LANGUAGES[0]] });
+      return byLanguage();
     case 1:
       return ungranted.length > 0
-        ? sourceOf(ungranted[0], {
-            repositories: names(ungranted[0], [0, 1]),
-          })
-        : sourceOf(first, { topics: [TOPICS[0]] });
+        ? sourceOf(ungranted[0], { repositories: names(ungranted[0], [0, 1]) })
+        : byName();
     case 2:
       return [
-        ...sourceOf(first, { topics: [TOPICS[1]] }),
+        ...sourceOf(first, { filters: { topics: { names: [TOPICS[1]] } } }),
         ...sourceOf(second, { repositories: names(second, [3]) }),
       ];
     default:
-      return sourceOf(second, { repositories: names(second, [0, 1, 2]) });
+      return byName();
   }
 }
 
 /**
- * Workspaces, `count` in each ready organization the person is a member of:
- * workspace-manager lists the person's organizations' only.
+ * Workspaces, `count` in each ready organization the person is a member of
+ * ({@link isWorkspaceOrganization}): workspace-manager lists the person's
+ * organizations' only.
  */
 export function buildWorkspaces(
   context: BuilderContext,
@@ -338,10 +366,7 @@ export function buildWorkspaces(
   const name = createNamer(context.random);
   const made = new Map<string, number>();
   return each(
-    organizations.filter(
-      organization =>
-        organization.state === 'ready' && organization.role !== 'none',
-    ),
+    organizations.filter(isWorkspaceOrganization),
     settings,
     { count: 2, states: WORKSPACE_STATES },
     (organization, state, nameLength) => {
@@ -370,20 +395,29 @@ export function buildToolchainSources(
   settings: BuilderSettings<ToolchainSourceState> = {},
 ): FixtureToolchainSource[] {
   const name = createNamer(context.random);
+  const made = new Map<string, number>();
   return each(
     installations,
     settings,
     { count: 4, states: TOOLCHAIN_SOURCE_STATES },
-    (installation, state, nameLength, index) => {
+    (installation, state, nameLength) => {
+      const index = made.get(installation.name) ?? 0;
+      made.set(installation.name, index + 1);
       const source = name(nameLength).name;
+      const repository = `${EXAMPLE_OWNER}/${source}`;
       return {
         installation: installation.name,
         name: source,
-        repository: `${EXAMPLE_OWNER}/${source}`,
+        repository,
         state,
-        // The configured sources come first; a person added the rest.
-        ...(index % 4 >= 2 && { addedBy: 'someone@example.com' }),
+        // The first two of an installation are configured; a person added
+        // the rest.
+        ...(index >= 2 && { addedBy: 'someone@example.com' }),
         addedAt: isoAgo(context, context.random.int(DAY, 120 * DAY)),
+        // toolchain-manager's words for a source its App does not reach.
+        ...(state === 'unreachable' && {
+          reason: `the toolchain-manager's GitHub App does not reach ${repository} with your sign-in: it is not installed there, or you have no access`,
+        }),
       };
     },
   );
