@@ -6,6 +6,8 @@ import {
 import {
   baseDataSet,
   inInstallation,
+  isUnreachableInstallation,
+  unreachableInstallationError,
   type FixtureConnector,
   type FixtureExecution,
   type FixtureToolsetPreset,
@@ -148,24 +150,11 @@ type InstallationData = {
   connectorTools: ToolSummary[];
 };
 
-/**
- * The 503 muster-backend answers for an installation its probe reports
- * unreachable from the portal, as the real client throws it.
- */
-function unreachableError(installation: string): Error {
-  return Object.assign(
-    new Error(
-      `${installation} did not answer: not reachable from this portal (timeout)`,
-    ),
-    { name: 'ServiceUnavailableError', status: 503 },
-  );
-}
+const unreachableError = unreachableInstallationError;
 
 /** Whether the data set says the installation's muster is unreachable. */
 function isUnreachable(installation: string): boolean {
-  return baseDataSet().installations.some(
-    i => i.name === installation && i.state === 'unreachable',
-  );
+  return isUnreachableInstallation(baseDataSet(), installation);
 }
 
 /**

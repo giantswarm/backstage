@@ -216,10 +216,12 @@ and a cluster's first pool registers its KServe backend.
   served model deleted, a backend the chart configures, mode `commit`.
   Refusals keep model-manager's `<code>: <error>` wording, so the client
   names them as it names the real ones.
-- The fixture `ModelManagerApi` is the real client over the fixture
-  model-manager server, not over muster, so its answers go through the same
-  parsers; only `tryModel`, which the portal's backend carries out, is
-  answered by the fixture (401 without a token, the model's answer with one).
+- The fixture `ModelManagerApi` is the real client over the portal's
+  `MusterApi`, so its reads and the serving tools go through the same muster
+  and the same parsers; only `tryModel`, which the portal's backend carries
+  out, is answered by the fixture (401 without a token, the model's answer
+  with one). KServe weights stay only in a cluster's model cache: on a
+  cluster without one, a model is served or not listed.
 - cluster-manager lists the GPU cluster under each KServe backend, with its
   GPU operator and serving slice, its pools in every phase and its model
   cache claims (mounted, kept, pending) with their prices. Adding a pool

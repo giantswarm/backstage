@@ -12,13 +12,6 @@ import {
 } from '../modelHostingFixtureState';
 import { asJson, text } from './jsonTools';
 
-/** A tool that names a cluster: cluster-manager's own words for one it does not handle here. */
-function notOffered(tool: string): never {
-  throw new Error(
-    `Fixture mode does not answer cluster-manager's ${tool}: it serves the GPU pools and the model cache, not the Clusters page (docs/fixtures.md).`,
-  );
-}
-
 /**
  * `create_node_pool`'s schema as cluster-manager declares it, so the Add GPU
  * node pool form offers its accelerators, zones and model cache.
@@ -50,8 +43,9 @@ const CREATE_NODE_POOL_SCHEMA = {
  * cluster-manager's tools in fixture mode, on `state` (the shared one by
  * default): the GPU clusters of the data set with their pools and model
  * cache, and the pools a person adds and removes, kept in memory until the
- * page reloads. Creating and deleting clusters is the Clusters page's, which
- * fixture mode does not serve.
+ * page reloads. The Clusters page's `create_cluster` and `delete_cluster` are
+ * not served, and `get_info` leaves them out too: a call fails as any tool
+ * without a handler does.
  */
 export function clusterManagerFixtureServer(
   state: () => ModelHostingFixtureState = modelHostingFixtureState,
@@ -64,10 +58,6 @@ export function clusterManagerFixtureServer(
       providers: [],
       releases: [],
     }),
-    [CLUSTER_MANAGER_TOOLS.createCluster]: () =>
-      notOffered(CLUSTER_MANAGER_TOOLS.createCluster),
-    [CLUSTER_MANAGER_TOOLS.deleteCluster]: () =>
-      notOffered(CLUSTER_MANAGER_TOOLS.deleteCluster),
     [CLUSTER_MANAGER_TOOLS.listNodePools]: (args, { installation }) =>
       state().listNodePools(installation, {
         cluster: text(args, 'cluster'),

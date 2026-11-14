@@ -9,6 +9,7 @@ import {
 import { musterApiOf } from '../../../lib/__testUtils__/musterApiOf';
 import { ClusterManagerClient } from '../../ClusterManagerClient';
 import { ModelManagerApiClient } from '../../ModelManagerApiClient';
+import { ModelManagerToolsClient } from '../../ModelManagerToolsClient';
 import { SETTLE_MS } from '../agentManagerFixtureState';
 import { ModelHostingFixtureState } from '../modelHostingFixtureState';
 import { clusterManagerFixtureServer } from './clusterManager';
@@ -50,10 +51,17 @@ async function failureOf(call: Promise<unknown>): Promise<ClusterManagerError> {
 }
 
 describe('the fixture cluster-manager', () => {
-  it('has a handler for every tool the client calls', () => {
+  it('has a handler for every tool the pool and cache pages call', () => {
     const { server } = setup();
+    // The Clusters page's writes are not served: left out as get_info leaves them out.
     expect(Object.keys(server.tools).sort()).toEqual(
-      Object.values(CLUSTER_MANAGER_TOOLS).sort(),
+      Object.values(CLUSTER_MANAGER_TOOLS)
+        .filter(
+          tool =>
+            tool !== CLUSTER_MANAGER_TOOLS.createCluster &&
+            tool !== CLUSTER_MANAGER_TOOLS.deleteCluster,
+        )
+        .sort(),
     );
   });
 
@@ -235,5 +243,122 @@ describe('the fixture cluster-manager', () => {
     )!;
     expect(cluster.serving.readiness?.cacheClaims).toEqual([]);
     expect(cluster.serving.readiness?.cache?.enabled).toBe(false);
+  });
+
+  it('seats no model on a pool being removed, and gives a new pool a node once it is up', async () => {
+    const { client, models, advance, data } = setup();
+    const removing = data.gpuPools.filter(p => p.state === 'removing');
+    expect(removing.length).toBeGreaterThan(0);
+    for (const installation of ['meadow', 'fennel']) {
+      const nodes = (
+        await models.listNodes(installation, { backend: 'kserve' })
+      ).map(n => n.name);
+      for (const pool of removing.filter(
+        p => p.installation === installation,
+      )) {
+        for (const node of pool.nodes) {
+          expect(nodes).not.toContain(node);
+        }
+      }
+    }
+    const [cluster] = (await client.listClusters()).clusters;
+    await client.createNodePool({
+      cluster: cluster.name,
+      name: 'gpu-new',
+      accelerator: 'nvidia-l40s',
+    });
+    advance(2 * SETTLE_MS);
+    const pool = (await client.listNodePools(cluster.name)).nodePools.find(
+      p => p.name === `${cluster.name}-gpu-new`,
+    )!;
+    expect(pool).toEqual(
+      expect.objectContaining({ phase: 'ready', readyReplicas: 1 }),
+    );
+    const nodes = await models.listNodes(INSTALLATION, { backend: 'kserve' });
+    expect(nodes.some(n => n.name.startsWith(`${cluster.name}-gpu-new-`))).toBe(
+      true,
+    );
+  });
+
+  it('keeps a pool written again before its removal settled, and counts only pools that stay for lastPool', async () => {
+    const data = createFixtureDataSet({
+      now: NOW,
+      hostedModels: { states: ['downloaded'] },
+    });
+    let now = NOW;
+    const state = new ModelHostingFixtureState(data, () => now);
+    const client = new ClusterManagerClient(
+      musterApiOf(clusterManagerFixtureServer(() => state)),
+      INSTALLATION,
+    );
+    const [cluster] = (await client.listClusters()).clusters;
+    const pools = (await client.listNodePools(cluster.name)).nodePools.filter(
+      p => p.phase !== 'removing',
+    );
+    const names = pools.map(p => p.name.slice(cluster.name.length + 1));
+    const results = [];
+    for (const name of names) {
+      results.push(
+        await client.deleteNodePool(
+          { cluster: cluster.name, name },
+          { force: true },
+        ),
+      );
+    }
+    expect(results.map(r => r.lastPool)).toEqual(
+      names.map((_, i) => i === names.length - 1),
+    );
+    await client.createNodePool({ cluster: cluster.name, name: names[0] });
+    now += 2 * SETTLE_MS;
+    expect(
+      (await client.listNodePools(cluster.name)).nodePools.map(p => p.name),
+    ).toContain(`${cluster.name}-${names[0]}`);
+  });
+
+  it('refuses an accelerator it does not know, prototype names included', async () => {
+    const { client } = setup();
+    const [cluster] = (await client.listClusters()).clusters;
+    const error = await failureOf(
+      client.createNodePool(
+        { cluster: cluster.name, name: 'gpu-odd', accelerator: 'constructor' },
+        { dryRun: true },
+      ),
+    );
+    expect(error.message).toBe(
+      'accelerator "constructor": one of nvidia-l4, nvidia-a10g, nvidia-t4, nvidia-l40s',
+    );
+  });
+
+  it("links a KServe backend added for a GPU cluster, so the cluster's next pool keeps it", async () => {
+    const { data } = setup();
+    const state = new ModelHostingFixtureState(data, () => NOW);
+    const clusters = new ClusterManagerClient(
+      musterApiOf(clusterManagerFixtureServer(() => state)),
+      INSTALLATION,
+    );
+    const tools = new ModelManagerToolsClient(
+      musterApiOf(modelManagerFixtureServer(() => state)),
+      INSTALLATION,
+    );
+    const [cluster] = (await clusters.listClusters()).clusters;
+    await tools.removeBackend('kserve');
+    expect(
+      (await clusters.listClusters()).clusters[0].serving.readiness?.backend
+        .registered,
+    ).toBe(false);
+    await tools.addBackend({
+      kind: 'kserve',
+      cluster: cluster.name,
+      servingNamespace: 'model-serving',
+    });
+    expect(
+      (await clusters.listClusters()).clusters[0].serving.readiness?.backend
+        .registered,
+    ).toBe(true);
+    const pool = await clusters.createNodePool({
+      cluster: cluster.name,
+      name: 'gpu-again',
+    });
+    expect(pool.backend?.name).toBe('model-backend-kserve');
   });
 });

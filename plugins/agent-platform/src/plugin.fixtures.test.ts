@@ -24,7 +24,9 @@ function createApi(id: FixtureApiId, fixtures: boolean): unknown {
   ).get(ApiBlueprint.dataRefs.factory);
   return factory({
     configApi: mockApis.config({ data: { agentPlatform: { fixtures } } }),
-    musterApi: {},
+    // model-manager's fixture calls its tools through muster, as the real
+    // client does: a muster with no backend registered.
+    musterApi: { callTool: async () => ({ backends: [] }) },
     discoveryApi: mockApis.discovery(),
     fetchApi: { fetch: jest.fn() },
     kubernetesApi: {},
@@ -69,9 +71,7 @@ describe('agent-platform fixture mode', () => {
     ]);
     await expect(kagent.listSessions('meadow')).resolves.toEqual([]);
     await expect(kagent.listSessions('tarragon')).resolves.toEqual([]);
-    await expect(
-      models.listBackends('meadow').then(b => b.map(x => x.backend)),
-    ).resolves.toEqual(['kserve', 'ollama']);
+    await expect(models.listBackends('meadow')).resolves.toEqual([]);
   });
 
   it('fails a call for an installation it does not serve, loudly', async () => {

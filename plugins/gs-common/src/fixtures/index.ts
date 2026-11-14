@@ -26,6 +26,8 @@ export {
   baseDataSet,
   createFixtureDataSet,
   inInstallation,
+  isUnreachableInstallation,
+  unreachableInstallationError,
   type FixtureDataSet,
   type FixtureDataSetSettings,
 } from './dataSet';

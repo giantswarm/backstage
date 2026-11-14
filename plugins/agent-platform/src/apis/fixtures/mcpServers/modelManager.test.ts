@@ -14,8 +14,11 @@ import { modelManagerFixtureServer } from './modelManager';
 const NOW = Date.parse('2026-11-14T12:00:00Z');
 const INSTALLATION = 'meadow';
 
-function setup(installation = INSTALLATION) {
-  const data = createFixtureDataSet({ now: NOW });
+function setup(
+  installation = INSTALLATION,
+  settings: Parameters<typeof createFixtureDataSet>[0] = {},
+) {
+  const data = createFixtureDataSet({ now: NOW, ...settings });
   let now = NOW;
   const state = new ModelHostingFixtureState(data, () => now);
   const server = modelManagerFixtureServer(() => state);
@@ -325,5 +328,95 @@ describe('the fixture model-manager', () => {
     expect(
       (await api.listBackends(INSTALLATION)).map(b => b.backend),
     ).not.toContain('lemonade');
+  });
+
+  it('answers not_found for a model gone from its backend, not a TypeError', async () => {
+    const { api } = setup();
+    for (const call of [
+      api.wireModel(INSTALLATION, 'gone', { backend: 'kserve' }),
+      api.unwireModel(INSTALLATION, 'gone', { backend: 'kserve' }),
+    ]) {
+      const error = await failureOf(call);
+      expect(error.name).toBe('NotFoundError');
+      expect(error.message).toBe(
+        'not_found: model not found: gone is not on kserve',
+      );
+    }
+  });
+
+  it('refuses a split over nodes the backend does not have, and a copy on a node short of GPUs', async () => {
+    const { tools, api } = setup();
+    const split = await failureOf(
+      tools.checkFit({
+        model: 'qwen3-4b-instruct',
+        backend: 'kserve',
+        placement: 'split',
+        nodes: ['gone'],
+      }),
+    );
+    expect(split.message).toBe(
+      'invalid_request: invalid request: none of the nodes gone is a node of kserve',
+    );
+    const [node] = (
+      await api.listNodes(INSTALLATION, { backend: 'kserve' })
+    ).filter(n => n.gpuCount === 1);
+    const short = await tools.checkFit({
+      model: 'qwen3-coder-30b-a3b',
+      backend: 'kserve',
+      node: node.name,
+    });
+    expect(short.fits).toBe(false);
+    expect(short.reason).toBe(`${node.name} has 1 GPU(s), the preset needs 2`);
+  });
+
+  it('serves one copy on each node named, holding its memory on each', async () => {
+    const { tools, api } = setup(INSTALLATION, {
+      hostedModels: { states: ['downloaded'] },
+    });
+    const nodes = (
+      await api.listNodes(INSTALLATION, { backend: 'kserve' })
+    ).map(n => n.name);
+    expect(nodes.length).toBeGreaterThan(1);
+    const pair = nodes.slice(0, 2);
+    await tools.loadModel({
+      model: 'qwen3-4b-instruct',
+      backend: 'kserve',
+      placement: 'copies',
+      nodes: pair,
+    });
+    const served = (
+      await api.listLoaded(INSTALLATION, { backend: 'kserve' })
+    ).find(m => m.name === 'qwen3-4b-instruct');
+    expect(served?.nodes).toEqual(pair);
+    const after = await api.listNodes(INSTALLATION, { backend: 'kserve' });
+    for (const name of pair) {
+      expect(after.find(n => n.name === name)?.reservedBytes).toBe(
+        12 * 1024 ** 3,
+      );
+    }
+  });
+
+  it('serves a failed model again rather than answering it as served', async () => {
+    const { tools, api } = setup();
+    const failed = (
+      await api.listLoaded(INSTALLATION, { backend: 'kserve' })
+    ).find(m => m.status === 'NotReady')!;
+    const answer = await tools.loadModel({
+      model: failed.name,
+      backend: 'kserve',
+    });
+    expect(answer.alreadyServing).toBeUndefined();
+    expect(answer.running?.phase).toBe('scheduling');
+  });
+
+  it("drops a removed backend's downloads with it", async () => {
+    const { api, tools } = setup();
+    expect(
+      (await api.listJobs(INSTALLATION)).some(j => j.backend === 'kserve'),
+    ).toBe(true);
+    await tools.removeBackend('kserve');
+    expect(
+      (await api.listJobs(INSTALLATION)).some(j => j.backend === 'kserve'),
+    ).toBe(false);
   });
 });

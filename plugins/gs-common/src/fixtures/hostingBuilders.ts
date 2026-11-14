@@ -7,6 +7,7 @@ import {
   type BuilderContext,
   type BuilderSettings,
   type FixtureInstallation,
+  type FixtureOrganization,
 } from './builders';
 import { createNamer, fitName, MAX_NAME_LENGTH } from './names';
 
@@ -329,6 +330,8 @@ export type FixtureHostingSettings = {
   modelBackends?: BuilderSettings<ModelBackendState>;
   /** Per KServe backend: its cluster's pools. */
   gpuPools?: BuilderSettings<GpuPoolState>;
+  /** The GPU clusters, one per KServe backend: only their names' least length. */
+  gpuClusters?: { nameLength?: number };
   /** Per cluster with a cache. */
   cacheClaims?: BuilderSettings<CacheClaimState>;
   /** Per backend. */
@@ -345,6 +348,7 @@ const ZONES = ['eu-central-1a', 'eu-central-1b', 'eu-central-1c'];
 export function buildHosting(
   context: BuilderContext,
   installations: readonly FixtureInstallation[],
+  organizations: readonly FixtureOrganization[],
   settings: FixtureHostingSettings = {},
 ): FixtureHostingData {
   const name = createNamer(context.random);
@@ -381,12 +385,19 @@ export function buildHosting(
 
   const kserve = modelBackends.filter(b => b.kind === 'kserve');
   const gpuClusters = kserve.map((backend, index): FixtureGpuCluster => {
-    const cluster = name(settings.gpuPools?.nameLength).name;
+    const cluster = name(settings.gpuClusters?.nameLength).name;
+    // The cluster belongs to an organization of its installation, a ready
+    // one where there is one.
+    const ofInstallation = organizations.filter(
+      o => o.installation === backend.installation,
+    );
+    const organization =
+      ofInstallation.find(o => o.state === 'ready') ?? ofInstallation[0];
     backend.cluster = cluster;
     return {
       installation: backend.installation,
       name: cluster,
-      organization: name().name,
+      organization: organization?.name ?? name().name,
       releaseVersion: '31.1.0',
       zones: ZONES,
       // Every second cluster serves without a model cache.

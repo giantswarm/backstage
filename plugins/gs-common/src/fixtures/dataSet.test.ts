@@ -535,6 +535,26 @@ describe('model hosting', () => {
     },
   );
 
+  it('puts each GPU cluster in an organization of its installation', () => {
+    for (const cluster of data.gpuClusters) {
+      expect(
+        data.organizations.find(
+          o =>
+            o.installation === cluster.installation &&
+            o.name === cluster.organization,
+        )?.state,
+      ).toBe('ready');
+    }
+  });
+
+  it('makes long pool names, and long cluster names only when asked', () => {
+    const long = createFixtureDataSet({ now, gpuPools: { nameLength: 40 } });
+    for (const pool of long.gpuPools) {
+      expect(pool.name.length).toBeGreaterThanOrEqual(40);
+      expect(pool.name.length - pool.cluster.length).toBeGreaterThan(20);
+    }
+  });
+
   it('names each backend once per installation, whatever the count', () => {
     const many = createFixtureDataSet({ now, modelBackends: { count: 5 } });
     for (const installation of FIXTURE_INSTALLATIONS) {

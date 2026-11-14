@@ -1,5 +1,8 @@
 import {
   baseDataSet,
+  hashOf,
+  isUnreachableInstallation,
+  unreachableInstallationError,
   FIXTURE_ACCELERATORS,
   FIXTURE_OLLAMA_MODELS,
   FIXTURE_SERVING_PRESETS,
@@ -166,6 +169,35 @@ const CLUSTER_API: ClusterApiStatus = {
   state: 'served',
 };
 
+/** The fixture Hugging Face Hub: the presets' models and a few more. */
+const HUB: readonly {
+  id: string;
+  weightsBytes: number;
+  downloads: number;
+  likes: number;
+  gated: boolean;
+}[] = (() => {
+  const presets = FIXTURE_SERVING_PRESETS.filter(
+    (p, i, all) => all.findIndex(o => o.model === p.model) === i,
+  ).map((p, i) => ({
+    id: p.model,
+    weightsBytes: p.weightsBytes,
+    downloads: 2_400_000 - i * 210_000,
+    likes: 1200 - i * 90,
+    gated: p.gated,
+  }));
+  return [
+    ...presets,
+    ...HUB_MODELS.map(m => ({
+      id: m.id,
+      weightsBytes: m.weightsGiB * GIB,
+      downloads: m.downloads,
+      likes: m.likes,
+      gated: Boolean(m.gated),
+    })),
+  ];
+})();
+
 /** model-manager's refusal, worded as its MCP tools answer it: `<code>: <error>`. */
 function refusal(code: string, message: string): Error {
   return new Error(`${code}: ${message}`);
@@ -294,7 +326,20 @@ export class ModelHostingFixtureState {
         ...c,
         backend: backends.find(b => b.cluster === c.name)?.name,
       }));
-      const hosted = byInstallation(this.data.hostedModels);
+      // KServe weights stay only in a cluster's model cache: without one a
+      // model is served or not there at all.
+      const cacheless = new Set(
+        backends
+          .filter(
+            b =>
+              b.kind === 'kserve' &&
+              !clusters.find(c => c.name === b.cluster)?.cache,
+          )
+          .map(b => b.name),
+      );
+      const hosted = byInstallation(this.data.hostedModels).filter(
+        m => !(cacheless.has(m.backend) && m.state === 'downloaded'),
+      );
       const created = (iso: string) => Date.parse(iso);
       state = {
         backends,
@@ -315,7 +360,7 @@ export class ModelHostingFixtureState {
             node: m.node,
             modifiedAt: m.modifiedAt,
             wired: m.wired,
-            cached: m.state !== 'starting',
+            cached: m.state !== 'starting' && !cacheless.has(m.backend),
           })),
         jobs: hosted
           .filter(m => m.state === 'downloading' || m.state === 'pullFailed')
@@ -382,6 +427,9 @@ export class ModelHostingFixtureState {
       if (node) {
         model.node = node.name;
         model.state = serve.state;
+      } else if (!model.cached) {
+        // Neither served nor in a cache: model-manager would not list it.
+        state.models.splice(state.models.indexOf(model), 1);
       }
     }
   }
@@ -421,6 +469,12 @@ export class ModelHostingFixtureState {
         now - pool.createdAt >= 2 * SETTLE_MS
       ) {
         pool.state = 'ready';
+        // Its first node: the pool comes up with one, so a model can be served on it.
+        pool.replicas = 1;
+        pool.readyReplicas = 1;
+        pool.nodes = [
+          `${pool.name}-${hashOf(pool.name).toString(16).slice(0, 5)}.ec2.internal`,
+        ];
       }
     }
     const gone = state.pools.filter(
@@ -470,6 +524,7 @@ export class ModelHostingFixtureState {
   private dropBackend(state: InstallationState, name: string): void {
     state.backends = state.backends.filter(b => b.name !== name);
     state.models = state.models.filter(m => m.backend !== name);
+    state.jobs = state.jobs.filter(j => j.backend !== name);
   }
 
   // model-manager
@@ -703,8 +758,7 @@ export class ModelHostingFixtureState {
     if (!query) {
       throw invalid('query is required');
     }
-    const results = hubModels()
-      .filter(m => m.id.toLowerCase().includes(query))
+    const results = HUB.filter(m => m.id.toLowerCase().includes(query))
       .sort((a, b) => b.downloads - a.downloads)
       .slice(0, args.limit ?? 20)
       .map(m => ({
@@ -752,7 +806,10 @@ export class ModelHostingFixtureState {
     }
     return state.pools
       .filter(
-        p => p.cluster === backend.cluster && p.removingSince === undefined,
+        p =>
+          p.cluster === backend.cluster &&
+          p.removingSince === undefined &&
+          p.state !== 'removing',
       )
       .flatMap(pool => {
         const accelerator = ACCELERATORS[pool.accelerator];
@@ -789,7 +846,13 @@ export class ModelHostingFixtureState {
         const required = preset
           ? preset.weightsBytes + preset.overheadBytes
           : m.sizeBytes;
-        return sum + (m.nodes ? required / m.nodes.length : required);
+        // A split shares the model across its nodes; copies hold it whole on each.
+        return (
+          sum +
+          (m.placement === 'split' && m.nodes
+            ? required / m.nodes.length
+            : required)
+        );
       }, 0);
   }
 
@@ -1056,9 +1119,7 @@ export class ModelHostingFixtureState {
         p.name === request.model ||
         p.model === request.model,
     );
-    const hub = hubModels().find(
-      m => m.id === (preset?.model ?? request.model),
-    );
+    const hub = HUB.find(m => m.id === (preset?.model ?? request.model));
     if (!preset && !hub) {
       throw notFound(
         `${request.model ?? request.preset} on the Hugging Face Hub`,
@@ -1123,6 +1184,11 @@ export class ModelHostingFixtureState {
       const named = request.nodes?.length
         ? nodes.filter(n => request.nodes!.includes(n.name))
         : nodes;
+      if (named.length === 0) {
+        throw invalid(
+          `none of the nodes ${request.nodes!.join(', ')} is a node of ${backend.name}`,
+        );
+      }
       const tightest = named.reduce((a, b) => (free(a) <= free(b) ? a : b));
       const share = requiredBytes / named.length;
       const fits = named.length > 1 && named.every(n => free(n) >= share);
@@ -1148,27 +1214,48 @@ export class ModelHostingFixtureState {
         recommendedNodes: named.map(n => n.name),
       } as ModelManagerFitResult;
     }
-    const node = request.node
-      ? nodes.find(n => n.name === request.node)
-      : nodes.reduce((a, b) => (free(a) >= free(b) ? a : b));
-    if (!node) {
-      throw invalid(`node ${request.node} is not a node of ${backend.name}`);
+    // Copies: the nodes named (one copy on each), the node named, or the
+    // roomiest; each must have the preset's GPUs and the room for it.
+    const gpus = preset?.gpus ?? 1;
+    let targets: Node[];
+    if (request.nodes?.length) {
+      targets = nodes.filter(n => request.nodes!.includes(n.name));
+    } else if (request.node) {
+      targets = nodes.filter(n => n.name === request.node);
+    } else {
+      targets = [nodes.reduce((a, b) => (free(a) >= free(b) ? a : b))];
     }
-    const fits = requiredBytes <= free(node);
+    if (targets.length === 0) {
+      throw invalid(
+        `node ${request.node ?? request.nodes?.join(', ')} is not a node of ${backend.name}`,
+      );
+    }
+    const short = (node: Node) => {
+      if (node.gpus < gpus) {
+        return `${node.name} has ${node.gpus} GPU(s), the preset needs ${gpus}`;
+      }
+      if (requiredBytes > free(node)) {
+        return `${gib(requiredBytes)} (weights ${gib(weightsBytes)} + overhead ${gib(overheadBytes)}) does not fit ${gib(free(node))} free of ${gib(node.budgetBytes)} on ${node.name}`;
+      }
+      return undefined;
+    };
+    const refused = targets.map(short).find(Boolean);
+    const node = targets[0];
     return {
       ...common,
-      fits,
+      fits: !refused,
       placement: 'copies',
       node: node.name,
+      ...(targets.length > 1 && { nodes: targets.map(n => n.name) }),
       budgetBytes: node.budgetBytes,
       reservedBytes: Math.round(this.reserved(state, node)),
       freeBytes: Math.round(free(node)),
       instanceType: state.pools.find(p => p.name === node.pool)
         ?.instanceTypes[0],
-      reason: fits
-        ? `${gib(requiredBytes)} (weights ${gib(weightsBytes)} + overhead ${gib(overheadBytes)}) fits ${gib(free(node))} free of ${gib(node.budgetBytes)} on ${node.name}`
-        : `${gib(requiredBytes)} (weights ${gib(weightsBytes)} + overhead ${gib(overheadBytes)}) does not fit ${gib(free(node))} free of ${gib(node.budgetBytes)} on ${node.name}`,
-      recommendedNodes: [node.name],
+      reason:
+        refused ??
+        `${gib(requiredBytes)} (weights ${gib(weightsBytes)} + overhead ${gib(overheadBytes)}) fits ${gib(free(node))} free of ${gib(node.budgetBytes)} on ${targets.map(n => n.name).join(', ')}`,
+      recommendedNodes: targets.map(n => n.name),
     } as ModelManagerFitResult;
   }
 
@@ -1357,7 +1444,25 @@ export class ModelHostingFixtureState {
       model.state = 'serving';
       return this.modelOf(state, model);
     }
-    const fit = this.fit(state, backend, request);
+    // A failed serve is replaced: what it holds of its node does not count
+    // against the new one.
+    const failed = state.models.find(
+      m =>
+        m.backend === backend.name &&
+        m.state === 'failed' &&
+        (m.name === request.preset || m.name === request.model),
+    );
+    if (failed) {
+      failed.state = 'downloaded';
+    }
+    let fit: ModelManagerFitResult;
+    try {
+      fit = this.fit(state, backend, request);
+    } finally {
+      if (failed) {
+        failed.state = 'failed';
+      }
+    }
     const preset = presetOf(fit.preset);
     if (!preset) {
       throw invalid(
@@ -1367,7 +1472,11 @@ export class ModelHostingFixtureState {
     const existing = state.models.find(
       m => m.backend === backend.name && m.name === preset.name,
     );
-    if (existing && existing.state !== 'downloaded') {
+    // A failed serve is served again; one up or coming up is answered as it is.
+    if (
+      existing &&
+      (existing.state === 'serving' || existing.state === 'starting')
+    ) {
       return {
         ...this.modelOf(state, existing),
         alreadyServing: true,
@@ -1392,7 +1501,7 @@ export class ModelHostingFixtureState {
     model.wired = true;
     model.node = fit.node;
     model.placement = fit.placement;
-    model.nodes = fit.placement === 'split' ? fit.nodes : undefined;
+    model.nodes = fit.nodes?.length ? fit.nodes : undefined;
     if (!existing) {
       state.models.push(model);
     }
@@ -1413,10 +1522,7 @@ export class ModelHostingFixtureState {
       if (!model || model.state === 'downloaded') {
         throw notFound(`no LLMInferenceService serves ${request.model}`);
       }
-      if (
-        model.cached &&
-        state.claims.some(c => c.cluster === backend.cluster)
-      ) {
+      if (model.cached) {
         model.state = 'downloaded';
         model.servedAt = undefined;
         model.nodes = undefined;
@@ -1457,15 +1563,28 @@ export class ModelHostingFixtureState {
     };
   }
 
+  /** The model a call names on its backend, or model-manager's `not_found`. */
+  private modelOn(
+    state: InstallationState,
+    reference: string,
+    name: string | undefined,
+  ): Model {
+    const backend = this.holder(state, reference, name);
+    const model = state.models.find(
+      m => m.backend === backend.name && m.name === reference,
+    );
+    if (!model) {
+      throw notFound(`${reference} is not on ${backend.name}`);
+    }
+    return model;
+  }
+
   wireModel(
     installation: string,
     request: { model: string; backend?: string },
   ): Record<string, unknown> {
     const state = this.of(installation);
-    const backend = this.holder(state, request.model, request.backend);
-    const model = state.models.find(
-      m => m.backend === backend.name && m.name === request.model,
-    )!;
+    const model = this.modelOn(state, request.model, request.backend);
     model.wired = true;
     return { modelConfig: this.modelConfigOf(state, model) };
   }
@@ -1475,17 +1594,25 @@ export class ModelHostingFixtureState {
     request: { model: string; backend?: string },
   ): Record<string, unknown> {
     const state = this.of(installation);
-    const backend = this.holder(state, request.model, request.backend);
-    const model = state.models.find(
-      m => m.backend === backend.name && m.name === request.model,
-    )!;
+    const model = this.modelOn(state, request.model, request.backend);
     if (!model.wired) {
       throw notFound(
         `no ModelConfig of model-manager's wires ${request.model}`,
       );
     }
     model.wired = false;
-    return { model: request.model, backend: backend.name, unwired: true };
+    return { model: request.model, backend: model.backend, unwired: true };
+  }
+
+  /** Whether `tryModel` reaches a model the installation serves: Ready on KServe, loaded on a host. */
+  tryModel(installation: string, model: string): { ready: boolean } {
+    if (isUnreachableInstallation(this.data, installation)) {
+      throw unreachableInstallationError(installation);
+    }
+    const state = this.of(installation);
+    return {
+      ready: state.models.some(m => m.name === model && m.state === 'serving'),
+    };
   }
 
   /**
@@ -1576,6 +1703,12 @@ export class ModelHostingFixtureState {
       state.backends.splice(state.backends.indexOf(existing), 1, backend);
     } else {
       state.backends.push(backend);
+    }
+    // A KServe backend for one of cluster-manager's GPU clusters serves its
+    // pools: the cluster reports it registered, and its next pool keeps it.
+    const cluster = state.clusters.find(c => c.name === backend.cluster);
+    if (cluster) {
+      cluster.backend = backend.name;
     }
     const descriptor = this.descriptor(state, backend);
     return {
@@ -1927,7 +2060,7 @@ export class ModelHostingFixtureState {
     const accelerator = String(
       args.accelerator ?? FIXTURE_POOL_ACCELERATORS[0],
     );
-    if (!ACCELERATORS[accelerator]) {
+    if (!Object.hasOwn(ACCELERATORS, accelerator)) {
       throw clusterRefusal(
         `accelerator ${JSON.stringify(accelerator)}: one of ${FIXTURE_POOL_ACCELERATORS.join(', ')}`,
       );
@@ -2094,6 +2227,8 @@ export class ModelHostingFixtureState {
       return result;
     }
     if (existing) {
+      // Written again before its removal settled: the pool stays.
+      existing.removingSince = undefined;
       existing.accelerator = accelerator;
       existing.instanceTypes = [
         `${ACCELERATORS[accelerator].family}.${sizes[0]}`,
@@ -2203,7 +2338,9 @@ export class ModelHostingFixtureState {
     }
     const dryRun = args.dryRun === true;
     const lastPool =
-      state.pools.filter(p => p.cluster === cluster.name).length === 1;
+      state.pools.filter(
+        p => p.cluster === cluster.name && p.removingSince === undefined,
+      ).length === 1;
     const verb = dryRun ? 'would-delete' : 'deleted';
     const result: NodePoolWriteResult = {
       cluster: cluster.name,
@@ -2396,44 +2533,11 @@ function endpointOf(model: Model): string {
   return `http://${model.name}.${SERVING_NAMESPACE}.svc.cluster.local/v1`;
 }
 
-/** The fixture Hugging Face Hub: the presets' models and a few more. */
-function hubModels(): {
-  id: string;
-  weightsBytes: number;
-  downloads: number;
-  likes: number;
-  gated: boolean;
-}[] {
-  const presets = FIXTURE_SERVING_PRESETS.filter(
-    (p, i, all) => all.findIndex(o => o.model === p.model) === i,
-  ).map((p, i) => ({
-    id: p.model,
-    weightsBytes: p.weightsBytes,
-    downloads: 2_400_000 - i * 210_000,
-    likes: 1200 - i * 90,
-    gated: p.gated,
-  }));
-  return [
-    ...presets,
-    ...HUB_MODELS.map(m => ({
-      id: m.id,
-      weightsBytes: m.weightsGiB * GIB,
-      downloads: m.downloads,
-      likes: m.likes,
-      gated: Boolean(m.gated),
-    })),
-  ];
-}
-
-/** A stable digest-shaped hex string of a name. */
+/** A stable digest-shaped hex string of a name, from gs-common's hash. */
 function digestOf(name: string): string {
-  let hash = 0x811c9dc5;
   let out = '';
   for (let round = 0; out.length < 64; round++) {
-    for (let i = 0; i < name.length; i++) {
-      hash = Math.imul(hash ^ name.charCodeAt(i) ^ round, 0x01000193) >>> 0;
-    }
-    out += hash.toString(16).padStart(8, '0');
+    out += hashOf(`${round}:${name}`).toString(16).padStart(8, '0');
   }
   return out.slice(0, 64);
 }
