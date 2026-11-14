@@ -3,6 +3,11 @@ import { resolve } from 'path';
 import { ConfigReader } from '@backstage/config';
 import { loadConfig } from '@backstage/config-loader';
 import { FIXTURE_INSTALLATIONS } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  baseDataSet,
+  inInstallation,
+} from '@giantswarm/backstage-plugin-gs-common/fixtures';
+import { MCPServer } from '@giantswarm/backstage-plugin-muster';
 
 import { KubernetesFixtureApi } from './KubernetesFixtureApi';
 
@@ -61,19 +66,62 @@ describe('KubernetesFixtureApi', () => {
     );
   });
 
-  it('lists no objects and finds none', async () => {
+  it('lists muster’s MCP servers and workflows of the installation', async () => {
+    const data = baseDataSet();
     const list = await get(
-      '/apis/muster.giantswarm.io/v1alpha1/namespaces/muster/mcpservers?limit=500',
+      '/apis/muster.giantswarm.io/v1alpha1/mcpservers?limit=500',
+      'fennel',
     );
     expect(list.status).toBe(200);
+    const servers = (await list.json()).items.map(
+      (item: object) => new MCPServer(item as any, 'fennel'),
+    );
+    expect(servers.map((s: MCPServer) => [s.getName(), s.getState()])).toEqual(
+      inInstallation(data.connectors, 'fennel').map(c => [c.name, c.state]),
+    );
+
+    const workflows = await (
+      await get(
+        '/apis/muster.giantswarm.io/v1alpha1/namespaces/agent-platform/workflows',
+      )
+    ).json();
+    expect(workflows.items.map((w: { kind: string }) => w.kind)).toEqual(
+      inInstallation(data.workflows, 'meadow').map(() => 'Workflow'),
+    );
+
+    const [first] = servers;
+    const one = await get(
+      `/apis/muster.giantswarm.io/v1alpha1/namespaces/agent-platform/mcpservers/${first.getName()}`,
+      'fennel',
+    );
+    expect((await one.json()).metadata.name).toBe(first.getName());
+  });
+
+  it('finds nothing a source does not hold', async () => {
+    const empty = new KubernetesFixtureApi([]);
+    const list = await empty.proxy({
+      clusterName: 'meadow',
+      path: '/apis/muster.giantswarm.io/v1alpha1/mcpservers',
+    });
     expect((await list.json()).items).toEqual([]);
 
+    const elsewhere = await get(
+      '/apis/muster.giantswarm.io/v1alpha1/namespaces/muster/mcpservers',
+    );
+    expect((await elsewhere.json()).items).toEqual([]);
+
     const one = await get(
-      '/apis/muster.giantswarm.io/v1alpha1/namespaces/muster/mcpservers/gadgets',
+      '/apis/muster.giantswarm.io/v1alpha1/namespaces/agent-platform/mcpservers/gadgets',
     );
     expect(one.status).toBe(404);
 
     expect((await (await get('/api/v1/namespaces')).json()).items).toEqual([]);
+
+    const otherVersion = await get(
+      '/apis/muster.giantswarm.io/v9/mcpservers',
+      'fennel',
+    );
+    expect(otherVersion.status).toBe(404);
   });
 
   it('allows what an access review asks about', async () => {

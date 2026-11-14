@@ -5,6 +5,7 @@ import {
   buildInstallations,
   buildOrganizations,
   buildSessions,
+  buildToolsetPresets,
   buildWorkflows,
   type AgentBuilderSettings,
   type BuilderSettings,
@@ -16,6 +17,7 @@ import {
   type FixtureInstallation,
   type FixtureOrganization,
   type FixtureSession,
+  type FixtureToolsetPreset,
   type FixtureWorkflow,
   type InstallationState,
   type OrganizationState,
@@ -38,6 +40,8 @@ export type FixtureDataSet = {
   sessions: FixtureSession[];
   workflows: FixtureWorkflow[];
   executions: FixtureExecution[];
+  /** muster's toolset presets, made from the connectors and workflows. */
+  toolsetPresets: FixtureToolsetPreset[];
 };
 
 /** The settings of a data set: the seed, "now", and each builder's. */
@@ -80,14 +84,20 @@ export function createFixtureDataSet(
   );
   const agents = buildAgents(context, organizations, settings.agents);
   const workflows = buildWorkflows(context, installations, settings.workflows);
+  const connectors = buildConnectors(
+    context,
+    installations,
+    settings.connectors,
+  );
   return {
     installations,
     organizations,
     agents,
-    connectors: buildConnectors(context, installations, settings.connectors),
+    connectors,
     sessions: buildSessions(context, agents, organizations, settings.sessions),
     workflows,
     executions: buildExecutions(context, workflows, settings.executions),
+    toolsetPresets: buildToolsetPresets(installations, connectors, workflows),
   };
 }
 
