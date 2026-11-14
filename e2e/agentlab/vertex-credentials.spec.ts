@@ -1,6 +1,6 @@
 import { generateKeyPairSync } from 'node:crypto';
 import type { Request } from '@playwright/test';
-import { expect, open, test } from './fixtures';
+import { expect, open, reloadAccepting, test } from './fixtures';
 import { lab } from './lab';
 import {
   KUBECONFIG,
@@ -9,9 +9,12 @@ import {
   NEEDS_KUBECONFIG,
 } from './kubectl';
 
+test.use({ trace: 'off', video: 'off', screenshot: 'off' });
+
 for (const scope of ['platform', 'organization'] as const) {
   test(`Vertex credentials: ${scope} model uploads JSON only on the credential page`, async ({
     admin,
+    signInAs,
   }) => {
     test.skip(!KUBECONFIG, NEEDS_KUBECONFIG);
     test.setTimeout(6 * 60_000);
@@ -64,7 +67,21 @@ for (const scope of ['platform', 'organization'] as const) {
         })
         .click();
       await admin.getByRole('textbox', { name: /^Name/ }).fill(name);
-      await admin.getByRole('button', { name: /^Provider/ }).click();
+      if (scope === 'platform') {
+        const endpoint = admin.getByRole('textbox', { name: /^Base URL/ });
+        await admin.getByRole('textbox', { name: /^Model/ }).fill('test-model');
+        await endpoint.fill('https://user:synthetic-value@models.example/v1');
+        await admin
+          .getByRole('button', { name: 'Continue to credential' })
+          .click();
+        await expect(endpoint).toHaveAttribute('aria-invalid', 'true');
+        await expect(
+          admin.getByText(/Use an endpoint URL without credentials/),
+        ).toBeVisible();
+        await endpoint.fill('https://previous-provider.example/v1');
+        await expect(endpoint).not.toHaveAttribute('aria-invalid', 'true');
+      }
+      await admin.getByRole('button', { name: /Provider/ }).click();
       await admin.getByRole('option', { name: label, exact: true }).click();
       await expect(
         admin.getByText(
@@ -96,6 +113,17 @@ for (const scope of ['platform', 'organization'] as const) {
       });
       await expect(admin.getByText(/synthetic@vertex-test/)).toBeVisible();
       expect(await admin.content()).not.toContain(privateKey);
+      const credentialPath = new URL(admin.url()).pathname;
+      const otherPerson = await signInAs(lab.users.dev);
+      await open(otherPerson, credentialPath, lab.users.dev);
+      await expect(otherPerson.getByText('This request is gone')).toBeVisible();
+      await reloadAccepting(admin);
+      await expect(admin.getByText(/synthetic@vertex-test/)).toBeHidden();
+      await admin.getByLabel('Service account key file').setInputFiles({
+        name: 'synthetic-service-account.json',
+        mimeType: 'application/json',
+        buffer: Buffer.from(credential),
+      });
       await admin.getByRole('button', { name: 'Save', exact: true }).click();
       await expect(
         admin.getByText('Credential saved', { exact: true }),
