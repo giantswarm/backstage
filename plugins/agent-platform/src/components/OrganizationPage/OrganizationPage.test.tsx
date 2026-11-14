@@ -753,6 +753,25 @@ describe('OrganizationPage', () => {
     expect(within(gpt).queryByText('Default')).toBeNull();
   });
 
+  it('lists a model named like one of its columns', async () => {
+    await renderPage('/models', {
+      ...SCENARIO,
+      models: {
+        [PAYMENTS.namespace]: [
+          { ...SCENARIO.models![PAYMENTS.namespace][0], name: 'default' },
+          { ...SCENARIO.models![PAYMENTS.namespace][1], name: 'model' },
+        ],
+      },
+    });
+
+    expect(
+      await screen.findByRole('rowheader', { name: /^default/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('rowheader', { name: /^model/ }),
+    ).toBeInTheDocument();
+  });
+
   it('hides key replacement for managed models', async () => {
     await renderPage('/models', {
       ...SCENARIO,

@@ -80,6 +80,15 @@ function ReadState({
   return null;
 }
 
+/**
+ * A row's key. The table keys its columns and rows in one collection, so a
+ * row keyed by its name alone breaks on a resource named like a column (a
+ * model named `default`).
+ */
+function rowId(kind: string, name: string): string {
+  return `${kind}:${name}`;
+}
+
 type ModelRow = AgentManagerModelConfig & { id: string };
 
 /**
@@ -403,7 +412,7 @@ export function ModelsTab({
           columnConfig={columns}
           data={models.modelConfigs.map(model => ({
             ...model,
-            id: model.name,
+            id: rowId('model', model.name),
           }))}
           pagination={{ type: 'none' }}
         />
@@ -564,7 +573,10 @@ export function ConnectorsTab({
       ) : (
         <Table<ConnectorRow>
           columnConfig={columns}
-          data={rows.map(row => ({ ...row, id: row.name }))}
+          data={rows.map(row => ({
+            ...row,
+            id: rowId('connector', row.name),
+          }))}
           pagination={{ type: 'none' }}
         />
       )}
@@ -635,7 +647,7 @@ export function EgressTab({ installation, organization }: TabProps) {
           columnConfig={columns}
           data={policies.egressPolicies.map(policy => ({
             ...policy,
-            id: policy.name,
+            id: rowId('egress-policy', policy.name),
           }))}
           pagination={{ type: 'none' }}
         />
