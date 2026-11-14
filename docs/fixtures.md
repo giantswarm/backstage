@@ -157,7 +157,8 @@ from kagent.
   canceled, and failed because kagent lost the session's runtime (reported on
   the session too). The states no v1 recording has are derived from one, with
   the words of the older recordings of that state.
-- The session states summary is computed as the backend computes it: the
+- The session states summary (the session lists and the rail) is computed
+  as the backend computes it: the
   sessions of the last seven days, newest first, at most twenty, each by its
   runtime's state where that decides and by its newest turn otherwise.
 - A new turn replays the recorded stream, one frame per 300 ms (`FRAME_MS`),
@@ -172,7 +173,10 @@ from kagent.
 - Renaming, deleting and canceling are kept in memory, refused in the
   backend's words; a deleted session is gone from every read.
 - kagent on the unreachable installation fails its reads as a timeout.
-- Not served yet: the usage summary and the model cost answer empty
+- The usage summary (Usage · Your sessions) is totalled from the
+  conversations as the backend totals it: the sessions that moved in the last
+  31 days, at most sixty, their turns of the last 30 days by day, agent, tool
+  and MCP server. The model cost answers no cost yet
   (giantswarm/giantswarm#39251, item 8).
 
 ### workspace-manager, toolchain-manager and skill-manager

@@ -169,6 +169,20 @@ describe('KagentFixtureState: the seeded sessions', () => {
     expect(JSON.stringify(detail)).not.toContain('compute.internal');
   });
 
+  it('totals the usage of the conversations as the backend does', () => {
+    const { state } = setup();
+    const usage = state.getSessionUsage(INSTALLATION);
+    expect(usage.windowDays).toBe(30);
+    expect(usage.daily).toHaveLength(31);
+    expect(usage.totals.sessions).toBeGreaterThan(0);
+    expect(usage.totals.turns).toBeGreaterThanOrEqual(usage.totals.sessions);
+    expect(usage.totals.inputTokens).toBeGreaterThan(0);
+    expect(usage.topTools.map(tool => tool.tool)).toContain('filter_tools');
+    expect(usage.byAgent.reduce((sum, agent) => sum + agent.sessions, 0)).toBe(
+      usage.totals.sessions,
+    );
+  });
+
   it('answers the raw bodies of a session for its export', () => {
     const { state, sessionWith } = setup();
     const { id } = sessionWith('completed');

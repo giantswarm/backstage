@@ -97,30 +97,7 @@ export class KagentFixtureApi implements KagentApi {
 
   async getSessionUsage(installation: string): Promise<SessionUsageResponse> {
     served(installation);
-    const now = Date.now();
-    const windowDays = 30;
-    return {
-      evaluatedAt: now,
-      windowStart: now - windowDays * 24 * 60 * 60 * 1000,
-      windowDays,
-      totals: {
-        sessions: 0,
-        turns: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-        totalTokens: 0,
-        toolCalls: 0,
-      },
-      daily: [],
-      byAgent: [],
-      topTools: [],
-      otherTools: { count: 0, calls: 0 },
-      topMcpServers: [],
-      otherMcpServers: { count: 0, calls: 0 },
-      undatedTurns: 0,
-      unreadable: [],
-      skipped: 0,
-    };
+    return this.state().getSessionUsage(installation);
   }
 
   async getModelCost(

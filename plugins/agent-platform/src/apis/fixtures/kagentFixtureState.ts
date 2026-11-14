@@ -1,4 +1,6 @@
 import {
+  addTally,
+  emptyTally,
   HITL_EXTENSION_URI,
   isListableSession,
   isRuntimeLostReason,
@@ -8,12 +10,20 @@ import {
   readInstanceFailureReason,
   readNewestTaskState,
   readTaskFailureReason,
+  reduceSessionUsage,
+  USAGE_TOP_N,
+  utcDayKey,
   type A2aTaskWire,
   type KagentSession,
   type KagentSessionDetail,
   type SessionRecordWire,
   type SessionStateEntry,
   type SessionStatesResponse,
+  type SessionUsageResponse,
+  type UsageAgentEntry,
+  type UsageDayEntry,
+  type UsageRemainder,
+  type UsageTally,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   baseDataSet,
@@ -42,6 +52,31 @@ import {
 /** The window and the cap of the session states summary, as the backend's. */
 const STATES_MAX_AGE_MS = 7 * DAY;
 const STATES_MAX_SESSIONS = 20;
+
+/** The window and the cap of the usage summary, as the backend's. */
+const USAGE_WINDOW_DAYS = 30;
+const USAGE_MAX_SESSIONS = 60;
+
+/**
+ * The top entries by count and what the cap left out, ranked as the backend
+ * ranks them.
+ */
+function topBy<T>(
+  counts: Map<string | null, number>,
+  make: (key: string | null, calls: number) => T,
+): { top: T[]; other: UsageRemainder } {
+  const ranked = [...counts.entries()].sort(
+    (a, b) => b[1] - a[1] || (a[0] ?? '').localeCompare(b[0] ?? ''),
+  );
+  const rest = ranked.slice(USAGE_TOP_N);
+  return {
+    top: ranked.slice(0, USAGE_TOP_N).map(([key, calls]) => make(key, calls)),
+    other: {
+      count: rest.length,
+      calls: rest.reduce((sum, [, calls]) => sum + calls, 0),
+    },
+  };
+}
 
 /**
  * How long a stream of a turn that runs on without an end stays open: the
@@ -406,6 +441,130 @@ export class KagentFixtureState {
       states,
       unreadable: [],
       skipped: Math.max(0, inWindow.length - STATES_MAX_SESSIONS),
+    };
+  }
+
+  /**
+   * The person's usage summary as the backend computes it from the
+   * conversations: the listable sessions that moved in the window (and a day
+   * before it), newest first and at most sixty, their turns in the window
+   * totalled by day, agent, tool and MCP server.
+   */
+  getSessionUsage(installation: string): SessionUsageResponse {
+    const endMs = this.now();
+    const startMs = endMs - USAGE_WINDOW_DAYS * DAY;
+    const sessions = this.sessionsOf(installation);
+    const inWindow = this.listSessions(installation)
+      .filter(isListableSession)
+      .filter(
+        session =>
+          !session.updatedAt ||
+          endMs - Date.parse(session.updatedAt) <=
+            (USAGE_WINDOW_DAYS + 1) * DAY,
+      )
+      .sort(
+        (a, b) =>
+          (b.updatedAt ? Date.parse(b.updatedAt) : -Infinity) -
+          (a.updatedAt ? Date.parse(a.updatedAt) : -Infinity),
+      );
+
+    const totals = emptyTally();
+    let active = 0;
+    let undatedTurns = 0;
+    const days = new Map<string, UsageTally>();
+    const lastActive = new Map<string, number>();
+    const tools = new Map<string | null, number>();
+    const servers = new Map<string | null, number>();
+    const agents = new Map<string | null, UsageTally & { sessions: number }>();
+    for (const session of inWindow.slice(0, USAGE_MAX_SESSIONS)) {
+      const { tasks } = normalizeTaskList(
+        this.tasksBody(sessions.get(session.sessionId)!),
+      );
+      const usage = reduceSessionUsage(tasks, { startMs, endMs });
+      if (usage.tally.turns === 0) {
+        continue;
+      }
+      active += 1;
+      addTally(totals, usage.tally);
+      undatedTurns += usage.undatedTurns;
+      let newestDay: string | undefined;
+      for (const [day, tally] of usage.days) {
+        const existing = days.get(day) ?? emptyTally();
+        addTally(existing, tally);
+        days.set(day, existing);
+        if (tally.turns > 0 && (!newestDay || day > newestDay)) {
+          newestDay = day;
+        }
+      }
+      if (newestDay) {
+        lastActive.set(newestDay, (lastActive.get(newestDay) ?? 0) + 1);
+      }
+      for (const [tool, calls] of usage.tools) {
+        tools.set(tool, (tools.get(tool) ?? 0) + calls);
+      }
+      for (const [server, calls] of usage.servers) {
+        servers.set(server, (servers.get(server) ?? 0) + calls);
+      }
+      const agentId = session.agentId ?? null;
+      const agent =
+        agents.get(agentId) ?? Object.assign(emptyTally(), { sessions: 0 });
+      addTally(agent, usage.tally);
+      agent.sessions += 1;
+      agents.set(agentId, agent);
+    }
+
+    const daily: UsageDayEntry[] = [];
+    for (let at = startMs; at <= endMs; at += DAY) {
+      const day = utcDayKey(at);
+      if (daily.length > 0 && daily[daily.length - 1].day === day) {
+        continue;
+      }
+      const tally = days.get(day);
+      daily.push({
+        day,
+        inputTokens: tally?.inputTokens ?? 0,
+        outputTokens: tally?.outputTokens ?? 0,
+        turns: tally?.turns ?? 0,
+        toolCalls: tally?.toolCalls ?? 0,
+        lastActiveSessions: lastActive.get(day) ?? 0,
+      });
+    }
+    const byAgent: UsageAgentEntry[] = [...agents.entries()]
+      .map(([agentId, tally]) => ({
+        agentId,
+        sessions: tally.sessions,
+        turns: tally.turns,
+        inputTokens: tally.inputTokens,
+        outputTokens: tally.outputTokens,
+        ...(tally.costUsd !== undefined && { costUsd: tally.costUsd }),
+      }))
+      .sort(
+        (a, b) =>
+          b.inputTokens + b.outputTokens - (a.inputTokens + a.outputTokens) ||
+          (a.agentId ?? '').localeCompare(b.agentId ?? ''),
+      );
+    const rankedTools = topBy(tools, (tool, calls) => ({
+      tool: tool ?? 'unknown tool',
+      calls,
+    }));
+    const rankedServers = topBy(servers, (server, calls) => ({
+      server,
+      calls,
+    }));
+    return {
+      evaluatedAt: endMs,
+      windowStart: startMs,
+      windowDays: USAGE_WINDOW_DAYS,
+      totals: { ...totals, sessions: active },
+      daily,
+      byAgent,
+      topTools: rankedTools.top,
+      otherTools: rankedTools.other,
+      topMcpServers: rankedServers.top,
+      otherMcpServers: rankedServers.other,
+      undatedTurns,
+      unreadable: [],
+      skipped: Math.max(0, inWindow.length - USAGE_MAX_SESSIONS),
     };
   }
 
