@@ -45,6 +45,10 @@ site
 *.local.yaml
 *.headless-service.yaml
 
+# Fixture mode's state, generated config and log (scripts/fixtures-server.mjs)
+.fixtures-server.json
+.fixtures-server/
+
 # Sensitive credentials
 *-credentials.yaml
 certificate.yaml

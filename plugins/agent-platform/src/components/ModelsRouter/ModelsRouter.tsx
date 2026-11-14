@@ -9,6 +9,7 @@ import {
 import { Flex } from '@backstage/ui';
 import {
   ALL_INSTALLATIONS,
+  SharedInstallationScope,
   useInstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
 import {
@@ -238,16 +239,15 @@ const ShellModelHosting = () => {
  * element type, which React keeps across a switch): the served-model rows
  * (with the auto-wiring that completes a serve) keep running whichever view
  * is open — a model served from Running models still gets its ModelConfig
- * while the user waits for it on the list.
+ * while the user waits for it on the list. The query client is the router's
+ * (`ModelsRouter`).
  */
 const ModelsProviders = ({ children }: { children: ReactNode }) => (
-  <QueryClientProvider>
-    <ModelConfigsProvider>
-      <ServingProvider>
-        <ServedModelRowsProvider>{children}</ServedModelRowsProvider>
-      </ServingProvider>
-    </ModelConfigsProvider>
-  </QueryClientProvider>
+  <ModelConfigsProvider>
+    <ServingProvider>
+      <ServedModelRowsProvider>{children}</ServedModelRowsProvider>
+    </ServingProvider>
+  </ModelConfigsProvider>
 );
 
 /** A view under the tab's providers. */
@@ -367,13 +367,18 @@ const ModelsRoutes = () => {
  * an organization's model is saved through agent-manager, and that the model
  * page and Edit model edit a model agent-manager wrote there. Without it, the
  * directory is empty and every organization's model reads as the platform's.
+ *
+ * Reads the Environment selector's shared scope (`SharedInstallationScope`),
+ * as the Customize page around it does.
  */
 export const ModelsRouter = () => {
   return (
-    <QueryClientProvider>
-      <OrganizationDirectoryProvider>
-        <ModelsRoutes />
-      </OrganizationDirectoryProvider>
-    </QueryClientProvider>
+    <SharedInstallationScope>
+      <QueryClientProvider>
+        <OrganizationDirectoryProvider>
+          <ModelsRoutes />
+        </OrganizationDirectoryProvider>
+      </QueryClientProvider>
+    </SharedInstallationScope>
   );
 };

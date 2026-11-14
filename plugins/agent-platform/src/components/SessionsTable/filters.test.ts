@@ -271,15 +271,44 @@ describe('the shell list’s dropdown filters (T92)', () => {
     const facets = sessionFacets(rows, { showStates: true });
     expect(facets.map(facet => facet.id)).toEqual([
       'state',
+      'environment',
       'tenant',
       'agent',
       'pinned',
     ]);
     expect(facets[0].optionLabel?.('waiting')).toBe('Waiting for you');
-    expect(facets[2].optionLabel?.(agentKey(rows[0])!)).toBe('Issue tracker');
+    expect(facets[3].optionLabel?.(agentKey(rows[0])!)).toBe('Issue tracker');
     expect(
       sessionFacets(rows, { showStates: false }).map(facet => facet.id),
-    ).toEqual(['tenant', 'agent', 'pinned']);
+    ).toEqual(['environment', 'tenant', 'agent', 'pinned']);
+  });
+
+  it('filters by environment, every environment while none is picked', () => {
+    const fleet = withSessionStates(
+      [
+        row('a', 'SRE Agent', sre),
+        row('b', 'SRE Agent', { ...sre, installation: 'wombat' }),
+        row('c', 'SRE Agent', { ...sre, installation: 'dingo' }),
+      ],
+      undefined,
+    );
+    expect(ids(filterSessionsBySelection(fleet, {}))).toEqual(['a', 'b', 'c']);
+    expect(
+      ids(filterSessionsBySelection(fleet, { environment: ['wombat'] })),
+    ).toEqual(['b']);
+    expect(
+      ids(
+        filterSessionsBySelection(fleet, { environment: ['gazelle', 'dingo'] }),
+      ),
+    ).toEqual(['a', 'c']);
+  });
+
+  it('leaves Environment out where the list hides its Environment column', () => {
+    expect(
+      sessionFacets(rows, { showStates: true, showEnvironments: false }).map(
+        facet => facet.id,
+      ),
+    ).toEqual(['state', 'tenant', 'agent', 'pinned']);
   });
 
   it('filters by the namespace and names it as every Organization label does', () => {

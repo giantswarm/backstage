@@ -87,6 +87,7 @@ export {
 export {
   useInstallationScope,
   useInstallationScopeUrlSync,
+  SharedInstallationScope,
   applyInstallationScope,
   describeInstallationScopeOption,
   installationsSwitchedOffWithComponent,
@@ -101,10 +102,12 @@ export {
   ALL_INSTALLATIONS,
   INSTALLATION_SCOPE_SEARCH_PARAM,
   INSTALLATION_SCOPE_STORAGE_KEY,
+  USAGE_INSTALLATION_SCOPE_STORAGE_KEY,
   PLATFORM_COMPONENT_LABELS,
   PLATFORM_SCOPE_COMPONENTS,
   __resetInstallationScopeForTests,
   type InstallationScope,
+  type InstallationScopeId,
   type InstallationScopeState,
   type UseInstallationScopeResult,
 } from './apis/installationScope';
@@ -118,10 +121,20 @@ export {
   type ClusterAccessStatusApi,
   type ClusterAccessStatusEntry,
   type ClusterAccessState,
+  type ClusterAccessTone,
+  useClusterAccessStatus,
+  useSignInAgain,
+  CLUSTER_ACCESS_OFF_LABEL,
+  CLUSTER_ACCESS_STATE_LABELS,
+  CLUSTER_ACCESS_STATE_ORDER,
+  CLUSTER_ACCESS_STATE_TONES,
+  CLUSTER_ACCESS_SUMMARY_LABELS,
+  showsAccessReason,
 } from './apis/clusterAccessStatus';
 export {
   mutedInstallationsApiRef,
   type MutedInstallationsApi,
+  useMutedInstallations,
 } from './apis/mutedInstallations';
 export {
   ClusterAccessStatusSidebarItem,

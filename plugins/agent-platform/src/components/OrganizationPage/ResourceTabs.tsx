@@ -17,6 +17,7 @@ import {
   ConfirmDialog,
   EmptyStateCard,
   PageSection,
+  tableRowId,
   useFieldValidation,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -36,6 +37,7 @@ import type {
 import {
   LISTENER_PROVIDERS,
   MODEL_PROVIDER_OPTIONS,
+  modelNameError,
 } from '../../lib/modelConfigs';
 import {
   type OrganizationConnector,
@@ -46,6 +48,13 @@ type TabProps = {
   installation: string;
   organization: OrganizationNamespace;
 };
+
+/**
+ * A tab that writes: with `changesDisabledBy` (the id of the line that says
+ * why, on Pending erase and while Erasing) its rows stay listed and every
+ * change is off.
+ */
+type WritingTabProps = TabProps & { changesDisabledBy?: string };
 
 /** A read's state before its rows: reading, or why it could not be read. */
 function ReadState({
@@ -74,9 +83,6 @@ function ReadState({
 
 type ModelRow = AgentManagerModelConfig & { id: string };
 
-/** A Kubernetes object name, as a ModelConfig takes it. */
-const NAME_PATTERN = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
-
 /**
  * A new model of the organization: its name, provider and model id. The key
  * is not asked here: agent-manager prepares a credential request for it and
@@ -98,13 +104,7 @@ function AddModelDialog({
   const validation = useFieldValidation(scope, { isOpen });
   const trimmedName = name.trim();
   const trimmedModel = model.trim();
-  let nameError: string | undefined;
-  if (!trimmedName) {
-    nameError = 'Enter a name for the model.';
-  } else if (!NAME_PATTERN.test(trimmedName)) {
-    nameError =
-      'Lower-case letters, digits and dashes, starting and ending with a letter or a digit.';
-  }
+  const nameError = modelNameError(trimmedName, true);
   const modelError = trimmedModel
     ? undefined
     : "Enter the provider's model id.";
@@ -130,12 +130,19 @@ function AddModelDialog({
           validation.reveal();
           return;
         }
-        request.mutate({
-          kind: 'model',
-          name: trimmedName,
-          provider,
-          model: trimmedModel,
-        });
+        request.mutate(
+          {
+            kind: 'model',
+            name: trimmedName,
+            provider,
+            model: trimmedModel,
+          },
+          {
+            onSuccess: ({ form }) => {
+              if (!form) close(false);
+            },
+          },
+        );
       }}
     >
       <Flex direction="column" gap="3" ref={scope}>
@@ -199,7 +206,14 @@ function ReplaceCredentialDialog({
       error={
         request.error ? credentialRequestErrorMessage(request.error) : undefined
       }
-      onConfirm={() => target && request.mutate(target.request)}
+      onConfirm={() =>
+        target &&
+        request.mutate(target.request, {
+          onSuccess: ({ form }) => {
+            if (!form) onClose();
+          },
+        })
+      }
     >
       <Text>
         You enter the new value on the next page, which lists every object that
@@ -217,7 +231,12 @@ function ReplaceCredentialDialog({
  * the model, which prepares a credential request, and the person enters the
  * key on the Dev Portal's credential form, where it is never shown back.
  */
-export function ModelsTab({ installation, organization }: TabProps) {
+export function ModelsTab({
+  installation,
+  organization,
+  changesDisabledBy,
+}: WritingTabProps) {
+  const off = changesDisabledBy !== undefined;
   const models = useAgentManagerModelConfigs(
     installation,
     organization.namespace,
@@ -229,10 +248,11 @@ export function ModelsTab({ installation, organization }: TabProps) {
     label: string;
     request: CredentialRequest;
   }>();
+  // A dialog open when the changes turn off closes: its confirm would write.
   const dialogs = (
     <>
       <AddModelDialog
-        isOpen={adding}
+        isOpen={adding && !off}
         onOpenChange={open => {
           setAdding(open);
           request.reset();
@@ -240,7 +260,7 @@ export function ModelsTab({ installation, organization }: TabProps) {
         request={request}
       />
       <ReplaceCredentialDialog
-        target={replacing}
+        target={off ? undefined : replacing}
         onClose={() => {
           setReplacing(undefined);
           request.reset();
@@ -250,7 +270,12 @@ export function ModelsTab({ installation, organization }: TabProps) {
     </>
   );
   const addModel = access.models ? (
-    <Button variant="secondary" onPress={() => setAdding(true)}>
+    <Button
+      variant="secondary"
+      isDisabled={off}
+      aria-describedby={changesDisabledBy}
+      onPress={() => setAdding(true)}
+    >
       Add model
     </Button>
   ) : undefined;
@@ -265,15 +290,19 @@ export function ModelsTab({ installation, organization }: TabProps) {
     );
   }
   if (models.modelConfigs.length === 0) {
+    // With the changes off no model is added any more; the status alert
+    // above says why.
+    let emptyDescription: string | undefined;
+    if (!off) {
+      emptyDescription = access.models
+        ? 'Add a model with your own key to run agents. The key is entered once and never shown back.'
+        : 'An admin of the organization adds a model with its own key to run agents.';
+    }
     return (
       <>
         <EmptyStateCard
           title="This organization has no model yet"
-          description={
-            access.models
-              ? 'Add a model with your own key to run agents. The key is entered once and never shown back.'
-              : 'An admin of the organization adds a model with its own key to run agents.'
-          }
+          description={emptyDescription}
           actions={addModel}
         />
         {dialogs}
@@ -334,11 +363,13 @@ export function ModelsTab({ installation, organization }: TabProps) {
       defaultWidth: '1fr',
       cell: row => (
         <Cell>
-          {access.credentials ? (
+          {access.credentials && !row.managedBy ? (
             <Button
               variant="tertiary"
               size="small"
               aria-label={`Replace the key of ${row.name}`}
+              isDisabled={off}
+              aria-describedby={changesDisabledBy}
               onPress={() =>
                 setReplacing({
                   label: row.name,
@@ -373,7 +404,7 @@ export function ModelsTab({ installation, organization }: TabProps) {
           columnConfig={columns}
           data={models.modelConfigs.map(model => ({
             ...model,
-            id: model.name,
+            id: tableRowId('model', model.name),
           }))}
           pagination={{ type: 'none' }}
         />
@@ -410,7 +441,11 @@ function credentialPairsOf(
 }
 
 /** An organization's connectors, its RemoteMCPServers. */
-export function ConnectorsTab({ installation, organization }: TabProps) {
+export function ConnectorsTab({
+  installation,
+  organization,
+  changesDisabledBy,
+}: WritingTabProps) {
   const connectors = useOrganizationConnectors(
     installation,
     organization.namespace,
@@ -493,6 +528,8 @@ export function ConnectorsTab({ installation, organization }: TabProps) {
                     variant="tertiary"
                     size="small"
                     aria-label={`Replace the credential of ${what}`}
+                    isDisabled={changesDisabledBy !== undefined}
+                    aria-describedby={changesDisabledBy}
                     onPress={() =>
                       setReplacing({
                         label: what,
@@ -528,12 +565,16 @@ export function ConnectorsTab({ installation, organization }: TabProps) {
       ) : (
         <Table<ConnectorRow>
           columnConfig={columns}
-          data={rows.map(row => ({ ...row, id: row.name }))}
+          data={rows.map(row => ({
+            ...row,
+            id: tableRowId('connector', row.name),
+          }))}
           pagination={{ type: 'none' }}
         />
       )}
       <ReplaceCredentialDialog
-        target={replacing}
+        // Closed when the changes turn off: its confirm would write.
+        target={changesDisabledBy === undefined ? replacing : undefined}
         onClose={() => {
           setReplacing(undefined);
           request.reset();
@@ -598,7 +639,7 @@ export function EgressTab({ installation, organization }: TabProps) {
           columnConfig={columns}
           data={policies.egressPolicies.map(policy => ({
             ...policy,
-            id: policy.name,
+            id: tableRowId('egress-policy', policy.name),
           }))}
           pagination={{ type: 'none' }}
         />

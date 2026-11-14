@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Button, Flex, Link } from '@backstage/ui';
@@ -26,7 +26,10 @@ import { MembersTab } from './MembersTab';
 import { ConnectorsTab, EgressTab, ModelsTab } from './ResourceTabs';
 import { ORGANIZATION_PAGE_TABS } from './organizationTabs';
 import { OrganizationDeleteDialog } from './OrganizationDeleteDialog';
-import { OrganizationStatusAlert } from './OrganizationStatusAlert';
+import {
+  areChangesOff,
+  OrganizationStatusAlert,
+} from './OrganizationStatusAlert';
 
 export type OrganizationPageProps = {
   installation: string;
@@ -82,6 +85,7 @@ export function OrganizationPage({
   // A delete this page made: an organization without a namespace can be
   // erased before the list is read again, and then is no longer listed.
   const [deletedHere, setDeletedHere] = useState(false);
+  const changesOffId = useId();
 
   const object = details.data?.organization ?? listed?.organization;
   const status = object ?? listed;
@@ -162,6 +166,11 @@ export function OrganizationPage({
         Delete organization
       </Button>
     ) : undefined;
+  // On Pending erase and while Erasing every tab keeps its rows and turns its
+  // changes off, each control described by the status alert's line that says
+  // why.
+  const changesDisabledBy =
+    status && areChangesOff(status) ? changesOffId : undefined;
   // Its state (Pending erase with Erase now, Missing from git) and the
   // delete dialog, above whichever body the page shows.
   const deletion = (
@@ -172,6 +181,7 @@ export function OrganizationPage({
           onEraseNow={
             deleteMode === 'erase' ? () => setConfirmingDelete(true) : undefined
           }
+          changesOffId={changesOffId}
         />
       )}
       {deleteMode && confirmingDelete && (
@@ -264,7 +274,11 @@ export function OrganizationPage({
           <Route
             index
             element={
-              <MembersTab installation={installation} namespace={namespace} />
+              <MembersTab
+                installation={installation}
+                namespace={namespace}
+                changesDisabledBy={changesDisabledBy}
+              />
             }
           />
           <Route
@@ -273,6 +287,7 @@ export function OrganizationPage({
               <ModelsTab
                 installation={installation}
                 organization={organization}
+                changesDisabledBy={changesDisabledBy}
               />
             }
           />
@@ -282,6 +297,7 @@ export function OrganizationPage({
               <ConnectorsTab
                 installation={installation}
                 organization={organization}
+                changesDisabledBy={changesDisabledBy}
               />
             }
           />

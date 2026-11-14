@@ -96,6 +96,11 @@ const shellPathMessage =
 const shellPathPattern =
   '/^\\x2F(agent-platform|customize|sessions|usage|profile)(\\x2F|\\?|#|$)/';
 
+const fixtureImportMessage =
+  'Fixture code stays out of production builds: load it with a dynamic ' +
+  "import() behind process.env.NODE_ENV !== 'production', never with a " +
+  'static import. docs/fixtures.md.';
+
 const tooltipClassNameMessage =
   "bui's Tooltip drops a className: it applies to no element. Style an " +
   'element inside the tooltip, or pass `style`.';
@@ -160,6 +165,42 @@ module.exports = {
           {
             selector: `TemplateLiteral > TemplateElement:first-child[value.raw=${shellPathPattern}]`,
             message: shellPathMessage,
+          },
+        ],
+      },
+    },
+    {
+      // A static import puts a fixture module in the production bundle
+      // (docs/fixtures.md). The core rule checks import and export
+      // declarations only, so the factories' dynamic `import()` passes. Tests,
+      // stories and the fixture modules themselves may import fixtures.
+      files: ['plugins/*/src/**/*.ts?(x)', 'packages/app/src/**/*.ts?(x)'],
+      excludedFiles: [
+        '**/*.test.ts?(x)',
+        '**/*.stories.tsx',
+        '**/setupTests.ts',
+        '**/testUtils/**',
+        '**/__fixtures__/**',
+        '**/fixtures/**',
+        '**/*FixtureApi.ts',
+        '**/*Fixtures.ts',
+      ],
+      rules: {
+        'giantswarm/no-fixture-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: [
+                  '**/*FixtureApi',
+                  '**/*Fixtures',
+                  '**/fixtures',
+                  '**/fixtures/**',
+                  '**/__fixtures__/**',
+                ],
+                message: fixtureImportMessage,
+              },
+            ],
           },
         ],
       },
