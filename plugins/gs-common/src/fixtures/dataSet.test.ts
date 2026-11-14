@@ -5,9 +5,13 @@ import {
   EXECUTION_STATES,
   INSTALLATION_STATES,
   MAX_NAME_LENGTH,
+  FIXTURE_PROVIDERS,
   ORGANIZATION_STATES,
   SESSION_STATES,
+  SKILL_REPOSITORY_STATES,
+  TOOLCHAIN_SOURCE_STATES,
   WORKFLOW_STATES,
+  WORKSPACE_STATES,
   baseDataSet,
   createFixtureDataSet,
   inInstallation,
@@ -54,6 +58,13 @@ describe('createFixtureDataSet', () => {
     expect(statesOf(data.sessions)).toEqual(new Set(SESSION_STATES));
     expect(statesOf(data.workflows)).toEqual(new Set(WORKFLOW_STATES));
     expect(statesOf(data.executions)).toEqual(new Set(EXECUTION_STATES));
+    expect(statesOf(data.workspaces)).toEqual(new Set(WORKSPACE_STATES));
+    expect(statesOf(data.toolchainSources)).toEqual(
+      new Set(TOOLCHAIN_SOURCE_STATES),
+    );
+    expect(statesOf(data.skillRepositories)).toEqual(
+      new Set(SKILL_REPOSITORY_STATES),
+    );
   });
 
   it.each(FIXTURE_INSTALLATIONS)('has every state in %s', installation => {
@@ -216,6 +227,130 @@ describe('createFixtureDataSet', () => {
   });
 });
 
+describe("the managers' lists", () => {
+  const data = createFixtureDataSet({ now });
+
+  it.each(FIXTURE_INSTALLATIONS)(
+    'has workspaces, toolchains and skills in %s',
+    installation => {
+      expect(statesOf(inInstallation(data.workspaces, installation))).toEqual(
+        new Set(WORKSPACE_STATES),
+      );
+      expect(
+        inInstallation(data.toolchains, installation).length,
+      ).toBeGreaterThan(0);
+      expect(
+        statesOf(inInstallation(data.skillRepositories, installation)),
+      ).toEqual(new Set(SKILL_REPOSITORY_STATES));
+    },
+  );
+
+  it('puts workspaces in the ready organizations the person is a member of', () => {
+    const organizations = new Map(
+      data.organizations.map(o => [`${o.installation}/${o.name}`, o] as const),
+    );
+    for (const workspace of data.workspaces) {
+      expect(
+        organizations.get(
+          `${workspace.installation}/${workspace.organization}`,
+        ),
+      ).toMatchObject({
+        state: 'ready',
+        role: expect.not.stringMatching('none'),
+      });
+    }
+  });
+
+  it('selects repositories that exist, on every provider instance', () => {
+    const owners = new Set(
+      data.repositoryOwners.map(o => `${o.provider}/${o.name}`),
+    );
+    const repositories = new Set(
+      data.repositories.map(r => `${r.provider}/${r.owner}/${r.name}`),
+    );
+    const providers = new Set<string>();
+    for (const workspace of data.workspaces) {
+      expect(workspace.sources.length).toBeGreaterThan(0);
+      for (const source of workspace.sources) {
+        providers.add(source.provider);
+        expect(owners).toContain(`${source.provider}/${source.owner}`);
+        for (const name of source.repositories ?? []) {
+          expect(repositories).toContain(
+            `${source.provider}/${source.owner}/${name}`,
+          );
+        }
+      }
+    }
+    expect(providers).toEqual(new Set(FIXTURE_PROVIDERS.map(p => p.name)));
+    expect(data.repositories.some(r => !r.readable)).toBe(true);
+  });
+
+  it("dates a workspace's last sync after its creation, and none before the first", () => {
+    for (const workspace of data.workspaces) {
+      expect(Date.parse(workspace.createdAt)).toBeLessThanOrEqual(now);
+      expect(workspace.lastSyncAt === undefined).toBe(
+        workspace.state === 'pending',
+      );
+    }
+  });
+
+  it('publishes toolchains from the readable offered sources only, one name from two', () => {
+    for (const installation of FIXTURE_INSTALLATIONS) {
+      const sources = inInstallation(data.toolchainSources, installation);
+      const readable = new Set(
+        sources.filter(s => s.state === 'offered').map(s => s.name),
+      );
+      const toolchains = inInstallation(data.toolchains, installation);
+      expect(new Set(toolchains.map(t => t.source))).toEqual(readable);
+      const names = toolchains.map(t => t.name);
+      expect(names.length - new Set(names).size).toBe(1);
+      for (const toolchain of toolchains) {
+        expect(toolchain.versions.length).toBeGreaterThan(0);
+        for (const version of toolchain.versions) {
+          expect(version).toMatch(/^v\d+\.\d+\.\d+$/);
+        }
+        expect(new Set(toolchain.versions).size).toBe(
+          toolchain.versions.length,
+        );
+      }
+    }
+  });
+
+  it('lists no skills of a repository that failed or is hidden', () => {
+    for (const repository of data.skillRepositories) {
+      expect(repository.skills.length === 0).toBe(
+        repository.state === 'failed' || repository.state === 'hidden',
+      );
+      const skills = new Set(repository.skills.map(s => s.name));
+      for (const plugin of repository.plugins) {
+        for (const skill of plugin.skills) {
+          expect(skills).toContain(skill);
+        }
+      }
+    }
+  });
+
+  it('makes count items per parent', () => {
+    const many = createFixtureDataSet({
+      now,
+      repositories: { count: 40 },
+      workspaces: { count: 5 },
+      toolchains: { count: 9 },
+      skills: { count: 20, nameLength: 40 },
+    });
+    expect(many.repositories).toHaveLength(many.repositoryOwners.length * 40);
+    const memberOrganizations = many.organizations.filter(
+      o => o.state === 'ready' && o.role !== 'none',
+    );
+    expect(many.workspaces).toHaveLength(memberOrganizations.length * 5);
+    for (const repository of many.skillRepositories) {
+      for (const skill of repository.skills) {
+        expect(skill.name.length).toBeGreaterThanOrEqual(40);
+      }
+    }
+  });
+});
+
 describe('builder settings', () => {
   it('makes count items per parent', () => {
     const data = createFixtureDataSet({
@@ -323,6 +458,14 @@ describe('builder settings', () => {
       workflows: [],
       executions: [],
       toolsetPresets: [],
+      // The provider instances' owners and repositories are no
+      // installation's.
+      repositoryOwners: expect.any(Array),
+      repositories: expect.any(Array),
+      workspaces: [],
+      toolchainSources: [],
+      toolchains: [],
+      skillRepositories: [],
     });
   });
 

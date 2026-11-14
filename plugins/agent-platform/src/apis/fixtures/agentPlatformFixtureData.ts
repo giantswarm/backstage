@@ -30,6 +30,7 @@ import type {
   AgentPluginEntry,
   AgentSkillEntry,
 } from '../../lib/agentManager';
+import { DEFAULT_WORKSPACE_ANNOTATION } from '../../lib/defaultWorkspace';
 import { MUSTER_MCP_SERVER_NAME, TOOLSET_HEADER } from '../../lib/toolset';
 import {
   ORPHANED_DELETE_MERGED,
@@ -204,6 +205,9 @@ export function agentObjectOf(
         'ui.giantswarm.io/display-name': agent.displayName,
         ...(tags.length > 0 && { [TAGS_ANNOTATION]: tags.join(',') }),
         ...(agent.iconUrl && { 'ui.giantswarm.io/icon-url': agent.iconUrl }),
+        ...(agent.defaultWorkspace && {
+          [DEFAULT_WORKSPACE_ANNOTATION]: agent.defaultWorkspace,
+        }),
       },
     },
     spec: {

@@ -7,6 +7,7 @@
  */
 export * from './builders';
 export * from './dataSet';
+export * from './managerBuilders';
 export {
   createNamer,
   fixtureSentence,

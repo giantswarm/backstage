@@ -24,6 +24,23 @@ import {
   type SessionState,
   type WorkflowState,
 } from './builders';
+import {
+  buildRepositories,
+  buildRepositoryOwners,
+  buildSkillRepositories,
+  buildToolchainSources,
+  buildToolchains,
+  buildWorkspaces,
+  type FixtureRepository,
+  type FixtureRepositoryOwner,
+  type FixtureSkillRepository,
+  type FixtureToolchain,
+  type FixtureToolchainSource,
+  type FixtureWorkspace,
+  type SkillRepositoryState,
+  type ToolchainSourceState,
+  type WorkspaceState,
+} from './managerBuilders';
 import { createRandom } from './random';
 
 /**
@@ -42,6 +59,13 @@ export type FixtureDataSet = {
   executions: FixtureExecution[];
   /** muster's toolset presets, made from the connectors and workflows. */
   toolsetPresets: FixtureToolsetPreset[];
+  /** The owners on the provider instances, the same in every installation. */
+  repositoryOwners: FixtureRepositoryOwner[];
+  repositories: FixtureRepository[];
+  workspaces: FixtureWorkspace[];
+  toolchainSources: FixtureToolchainSource[];
+  toolchains: FixtureToolchain[];
+  skillRepositories: FixtureSkillRepository[];
 };
 
 /** The settings of a data set: the seed, "now", and each builder's. */
@@ -63,6 +87,20 @@ export type FixtureDataSetSettings = {
   workflows?: BuilderSettings<WorkflowState>;
   /** Per workflow. */
   executions?: BuilderSettings<ExecutionState>;
+  /** Per provider instance. */
+  repositoryOwners?: BuilderSettings<FixtureRepositoryOwner['kind']>;
+  /** Per owner. */
+  repositories?: BuilderSettings<'repository'>;
+  /** Per ready organization the person is a member of. */
+  workspaces?: BuilderSettings<WorkspaceState>;
+  /** Per installation. */
+  toolchainSources?: BuilderSettings<ToolchainSourceState>;
+  /** Per offered source whose toolchains can be read. */
+  toolchains?: BuilderSettings<'written' | 'handWritten'>;
+  /** Per installation. */
+  skillRepositories?: BuilderSettings<SkillRepositoryState>;
+  /** Per skill repository that lists its skills. */
+  skills?: { count?: number; nameLength?: number };
 };
 
 /** The seed of the base data set. */
@@ -89,15 +127,55 @@ export function createFixtureDataSet(
     installations,
     settings.connectors,
   );
+  const sessions = buildSessions(
+    context,
+    agents,
+    organizations,
+    settings.sessions,
+  );
+  const executions = buildExecutions(context, workflows, settings.executions);
+  // The managers' lists draw after the rest, so adding them left the
+  // earlier lists as they were.
+  const repositoryOwners = buildRepositoryOwners(
+    context,
+    settings.repositoryOwners,
+  );
+  const repositories = buildRepositories(
+    context,
+    repositoryOwners,
+    settings.repositories,
+  );
+  const toolchainSources = buildToolchainSources(
+    context,
+    installations,
+    settings.toolchainSources,
+  );
   return {
     installations,
     organizations,
     agents,
     connectors,
-    sessions: buildSessions(context, agents, organizations, settings.sessions),
+    sessions,
     workflows,
-    executions: buildExecutions(context, workflows, settings.executions),
+    executions,
     toolsetPresets: buildToolsetPresets(installations, connectors, workflows),
+    repositoryOwners,
+    repositories,
+    workspaces: buildWorkspaces(
+      context,
+      organizations,
+      repositoryOwners,
+      repositories,
+      settings.workspaces,
+    ),
+    toolchainSources,
+    toolchains: buildToolchains(context, toolchainSources, settings.toolchains),
+    skillRepositories: buildSkillRepositories(
+      context,
+      installations,
+      settings.skillRepositories,
+      settings.skills,
+    ),
   };
 }
 
@@ -105,9 +183,9 @@ let base: FixtureDataSet | undefined;
 
 /**
  * The base data set every fixture handler reads: the served installations,
- * each with organizations, agents, connectors, sessions, workflows and
- * executions in every state. Built once, on first read, counting back from
- * that moment.
+ * each with organizations, agents, connectors, sessions, workflows,
+ * executions, workspaces, toolchains and skill repositories in every state.
+ * Built once, on first read, counting back from that moment.
  */
 export function baseDataSet(): FixtureDataSet {
   base ??= createFixtureDataSet();

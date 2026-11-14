@@ -138,6 +138,51 @@ Known gap: `start_session` answers a new session id that kagent's fixture
 does not list, so the session page it leads to has no session. The kagent
 fixtures (giantswarm/giantswarm#39251, item 7) close it.
 
+### workspace-manager, toolchain-manager and skill-manager
+
+The three managers' tools answer from the data set too, so the Workspaces,
+Toolchains and Skills tabs, their detail and edit pages, and the New session
+dialog's workspace and toolchain pickers show data. agent-manager's `get_info`
+reports the `toolchains` and `defaultWorkspace` capabilities, which the
+dialog and the agent form ask for. Arguments and answers cross as JSON, as for
+agent-manager.
+
+- workspace-manager
+  (`plugins/agent-platform/src/apis/fixtures/workspaceManagerFixtureState.ts`)
+  lists the workspaces of the ready organizations the person is a member of,
+  in every state (synced, syncing, failed, pending its first sync, being
+  deleted), with their mirrors and the Session directories of the
+  organization's sessions. Its two provider instances are one the person
+  granted and one they have not; the access check before a Session answers
+  granted, refused (a repository the person cannot read, a workspace not
+  synced yet or being deleted) or connect_required. The repository picker
+  pages, searches and filters the owners' repositories, and the preview
+  resolves a selection as workspace-manager does. Creating, editing,
+  syncing and deleting a workspace are kept in memory: a sync runs for four
+  seconds (`SETTLE_MS`), a sync requested while one runs is served after it,
+  and a deleted workspace goes once no Session directory is left on it.
+  Refusals use workspace-manager's wording (`<operation>: permission denied:
+…`, `not found`, `already exists`, `invalid workspace`, and the stale
+  `resourceVersion` of an edit as a conflict), so the client classifies them
+  as it classifies the real ones.
+- toolchain-manager
+  (`plugins/agent-platform/src/apis/fixtures/toolchainManagerFixtureState.ts`)
+  lists the toolchains of the offered sources at their newest version, one
+  name published by two sources, and an offered source it cannot read as
+  unreachable; describes any published version; lists the sources, configured
+  and added, approved and pending. Adding a source, searching packages,
+  writing a Dockerfile from them and opening its pull request are kept in
+  memory: the pull request moves on one build state per four seconds until it
+  waits for a merge, and a retry of the same toolchain answers the same pull
+  request.
+- skill-manager (`plugins/agent-platform/src/apis/fixtures/mcpServers/skillManager.ts`)
+  lists each installation's skill repositories in every state (readable,
+  private, read-only, failed, failed with its last listing kept, and private
+  and hidden from the person), with their skills and a plugin, and reads a
+  skill and its files. It writes nothing, as skill-manager does not; a new or
+  changed skill is a pull request through gs-backend, which fixture mode does
+  not serve (giantswarm/giantswarm#39251, item 9b).
+
 ### Objects in the Kubernetes API
 
 The pages read some objects from the installation's Kubernetes API, not from
@@ -187,7 +232,10 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
 - `baseDataSet()` is the base data set, built once from a fixed seed: the
   three served installations (`tarragon` unreachable), and in each
   organizations, agents, connectors, sessions, workflows and executions in
-  every state their pages know. The person has each role in the ready
+  every state their pages know, and what the platform managers serve
+  (`managerBuilders.ts`): the provider instances' owners and repositories,
+  workspaces, toolchain sources and toolchains, and skill repositories. The
+  person has each role in the ready
   organizations of each installation (admin, editor, user, so the New agent form's "needs the
   editor role" shows), manages the orphaned, pending-erase and deleting ones and is no
   member of the pending one. Only ready agents of ready organizations have
@@ -213,7 +261,9 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
   agent-platform's in
   `plugins/agent-platform/src/apis/fixtures/agentPlatformFixtureData.ts`
   (Agent objects and their carriers, ModelConfig and Harness objects,
-  agent-manager's agents and organizations, kagent sessions).
+  agent-manager's agents and organizations, kagent sessions), and the
+  managers' states next to them (`workspaceManagerFixtureState.ts`,
+  `toolchainManagerFixtureState.ts`, `mcpServers/skillManager.ts`).
 
 A page that reads a new field or shows a new state extends a builder or a
 mapper in the same pull request, and the base data set gets the state.

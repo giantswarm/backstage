@@ -173,13 +173,17 @@ export type FixtureExecution = {
 /** What every builder draws from: the seeded numbers and the time "now". */
 export type BuilderContext = { random: FixtureRandom; now: number };
 
-const MINUTE = 60 * 1000;
-const DAY = 24 * 60 * MINUTE;
+export const MINUTE = 60 * 1000;
+export const DAY = 24 * 60 * MINUTE;
 
 /** The parent namespace organizations live in. */
 export const ORGANIZATION_PARENT = 'agents';
 
-function each<State extends string, Parent, Item>(
+/**
+ * Makes `count` items per parent, each taking the next of `states` (counted
+ * over the whole list) and the least name length: the frame of every builder.
+ */
+export function each<State extends string, Parent, Item>(
   parents: readonly Parent[],
   settings: BuilderSettings<State>,
   defaults: { count: number; states: readonly State[] },
@@ -208,7 +212,8 @@ function each<State extends string, Parent, Item>(
   return items;
 }
 
-function hex(context: BuilderContext, length: number): string {
+/** `length` hex digits. */
+export function hex(context: BuilderContext, length: number): string {
   let value = '';
   for (let i = 0; i < length; i++) {
     value += context.random.int(0, 15).toString(16);
@@ -216,11 +221,13 @@ function hex(context: BuilderContext, length: number): string {
   return value;
 }
 
-function uuid(context: BuilderContext): string {
+/** A UUID-shaped id. */
+export function uuid(context: BuilderContext): string {
   return [8, 4, 4, 4, 12].map(length => hex(context, length)).join('-');
 }
 
-function isoAgo(context: BuilderContext, ms: number): string {
+/** The time `ms` before now, RFC 3339. */
+export function isoAgo(context: BuilderContext, ms: number): string {
   return new Date(context.now - ms).toISOString();
 }
 
