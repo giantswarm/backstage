@@ -1,12 +1,14 @@
 import { expect, expectNoHorizontalScroll, open, test } from './fixtures';
 import { lab } from './lab';
-import type { Page } from '@playwright/test';
+import type { Page, Request } from '@playwright/test';
 import {
   KUBECONFIG,
   kubectl,
   labOrganizationNamespace,
   NEEDS_KUBECONFIG,
 } from './kubectl';
+
+test.use({ trace: 'off', video: 'off', screenshot: 'off' });
 
 /**
  * An organization's model key, entered on the Dev Portal's credential form
@@ -33,6 +35,7 @@ const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(4, 12);
 const MODEL = `e2e-cred-${stamp}`;
 const SECRET = `tenant-credential-${MODEL}`;
 const KEY = `sk-ant-e2e-${stamp}-never-shown`;
+const LARGE_KEY_PREFIX = `e2e-large-credential-${stamp}-never-shown-`;
 const BASE = `/organizations/${lab.installation}/${PARENT}/${ORGANIZATION}`;
 
 test.afterEach(async () => {
@@ -49,6 +52,7 @@ test.afterEach(async () => {
       'agent-platform',
       `deployment/${service}`,
       '--all-containers=true',
+      '--all-pods=true',
       '--since=15m',
     ]).catch(() => {
       throw new Error(
@@ -58,6 +62,10 @@ test.afterEach(async () => {
     expect(
       stdout.includes(KEY),
       `fixture credential appeared in ${service} logs`,
+    ).toBe(false);
+    expect(
+      stdout.includes(LARGE_KEY_PREFIX),
+      `large fixture credential appeared in ${service} logs`,
     ).toBe(false);
   }
 });
@@ -107,6 +115,263 @@ async function cleanupModel(namespace: string, name: string) {
   ]);
 }
 
+async function prepareModelRequests(page: Page, name: string) {
+  const call = page.waitForRequest(
+    request =>
+      request.method() === 'POST' &&
+      request.url().includes('/api/muster/call') &&
+      request.postDataJSON()?.name === 'x_agent-manager_set_organization_model',
+    { timeout: 60_000 },
+  );
+  const confirmation = page.waitForResponse(
+    response =>
+      response.request().method() === 'GET' &&
+      response.url().includes('/organizations/credential-operations/'),
+    { timeout: 60_000 },
+  );
+  const [modelCall, modelConfirmation] = await Promise.all([
+    call,
+    confirmation,
+    prepareModel(page, name),
+  ]);
+  await expect(page.getByLabel(/^Value/)).toBeVisible();
+  return { call: modelCall, confirmation: modelConfirmation };
+}
+
+async function requestHeaders(request: Request) {
+  return Object.fromEntries(
+    Object.entries(await request.allHeaders()).filter(
+      ([key]) =>
+        !key.startsWith(':') &&
+        !['content-length', 'host', 'connection'].includes(key),
+    ),
+  );
+}
+
+async function prepareOperation(
+  page: Page,
+  request: Request,
+  name: string,
+  parameters: Record<string, unknown>,
+) {
+  const headers = await requestHeaders(request);
+  const response = await page.request.post(request.url(), {
+    headers,
+    data: { name, arguments: parameters, urlElicitation: false },
+  });
+  expect(response.status()).toBe(200);
+  const result = await response.json();
+  expect(result.credentialOperation).toMatch(/^[a-f0-9]{48}$/);
+  return result.credentialOperation as string;
+}
+
+test('organization credentials: refresh and request navigation clear earlier values and results', async ({
+  admin,
+}) => {
+  test.skip(!KUBECONFIG, NEEDS_KUBECONFIG);
+  const namespace = await organizationNamespace();
+  const first = `${MODEL}-first`;
+  const second = `${MODEL}-second`;
+  try {
+    const { call } = await prepareModelRequests(admin, first);
+    const firstPath = new URL(admin.url()).pathname;
+    await admin.getByLabel(/^Value/).fill(KEY);
+    await admin
+      .getByRole('button', { name: 'Check again', exact: true })
+      .click();
+    await expect(admin.getByLabel(/^Value/)).toHaveValue('');
+    await expect(admin.getByLabel(/^Value/)).toBeEnabled();
+    const operation = await prepareOperation(
+      admin,
+      call,
+      'x_agent-manager_set_organization_model',
+      {
+        ...call.postDataJSON().arguments,
+        name: second,
+        credentialSecret: `tenant-credential-${first}`,
+        requestId: crypto.randomUUID(),
+      },
+    );
+    await admin.getByLabel(/^Value/).fill(KEY);
+    const secondPath = `${BASE}/credentials/${operation}`;
+    await admin.evaluate(path => {
+      window.history.pushState(window.history.state, '', path);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }, secondPath);
+    await expect(admin.getByLabel(/^Value/)).toHaveValue('');
+    await admin.getByLabel(/^Value/).fill(KEY);
+    await admin.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(
+      admin.getByText('Credential saved', { exact: true }),
+    ).toBeVisible();
+    await admin.evaluate(path => {
+      window.history.pushState(window.history.state, '', path);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }, firstPath);
+    await expect(admin.getByLabel(/^Value/)).toHaveValue('');
+    await expect(
+      admin.getByText('Credential saved', { exact: true }),
+    ).toHaveCount(0);
+    await admin
+      .getByRole('button', { name: 'Cancel request', exact: true })
+      .click();
+    await expect(
+      admin.getByText('Request cancelled', { exact: true }),
+    ).toBeVisible();
+    await admin.evaluate(path => {
+      window.history.pushState(window.history.state, '', path);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }, secondPath);
+    await expect(
+      admin.getByText('Credential saved', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      admin.getByText('Request cancelled', { exact: true }),
+    ).toHaveCount(0);
+  } finally {
+    await cleanupModel(namespace, second);
+    await cleanupModel(namespace, first);
+  }
+});
+
+test('organization credentials: maximum escaped values reach agent-manager through the portal', async ({
+  admin,
+}) => {
+  test.skip(!KUBECONFIG, NEEDS_KUBECONFIG);
+  test.setTimeout(3 * 60_000);
+  const namespace = await organizationNamespace();
+  const name = `${MODEL}-large`;
+  const model = `${name}-auth`;
+  const secretNames = Array.from(
+    { length: 16 },
+    (_, index) => `tenant-credential-${name}-${index}`,
+  );
+  try {
+    const { call, confirmation } = await prepareModelRequests(admin, model);
+    await kubectl(
+      ['apply', '-f', '-'],
+      JSON.stringify({
+        apiVersion: 'api.kagent.dev/v1alpha3',
+        kind: 'RemoteMCPServer',
+        metadata: { namespace, name },
+        spec: {
+          description: 'Credential body limit fixture',
+          url: 'https://credential-proof.invalid/mcp',
+          headersFrom: secretNames.map((secret, index) => ({
+            name: `X-Credential-${index}`,
+            valueFrom: { type: 'Secret', name: secret, key: 'token' },
+          })),
+        },
+      }),
+    );
+    const operation = await prepareOperation(
+      admin,
+      call,
+      'x_agent-manager_set_organization_connector',
+      { namespace, name, requestId: crypto.randomUUID() },
+    );
+    const headers = await requestHeaders(confirmation.request());
+    const url = new URL(confirmation.url());
+    url.pathname = url.pathname.replace(/[a-f0-9]{48}$/, operation);
+    const current = await admin.request.get(url.toString(), { headers });
+    expect(current.status()).toBe(200);
+    const values = secretNames.map(secret => ({
+      secret,
+      key: 'token',
+      value:
+        LARGE_KEY_PREFIX + '\u0001'.repeat(16 * 1024 - LARGE_KEY_PREFIX.length),
+    }));
+    expect(JSON.stringify({ values }).length).toBeGreaterThan(1024 * 1024);
+    const unconditional = await admin.request.post(url.toString(), {
+      headers,
+      data: { values },
+    });
+    expect(unconditional.status()).toBe(428);
+    const stale = await admin.request.post(url.toString(), {
+      headers: { ...headers, 'if-match': '"stale"' },
+      data: { values },
+    });
+    expect(stale.status()).toBe(412);
+    const saved = await admin.request.post(url.toString(), {
+      headers: { ...headers, 'if-match': current.headers().etag },
+      data: { values },
+      timeout: 60_000,
+    });
+    expect(saved.status()).toBe(200);
+    const replayed = await admin.request.post(url.toString(), {
+      headers: { ...headers, 'if-match': current.headers().etag },
+      data: { values },
+    });
+    expect(replayed.status()).toBe(200);
+    expect(await replayed.json()).toEqual(await saved.json());
+    const oversized = await admin.request.post(url.toString(), {
+      headers: { ...headers, 'if-match': current.headers().etag },
+      data: {
+        values: [
+          {
+            secret: secretNames[0],
+            key: 'token',
+            value: '\u0001'.repeat(400_000),
+          },
+        ],
+      },
+    });
+    expect(oversized.status()).toBe(413);
+    const { stdout } = await kubectl([
+      'get',
+      'secret',
+      '-n',
+      namespace,
+      ...secretNames,
+      '-o',
+      'json',
+    ]);
+    const secrets = JSON.parse(stdout).items;
+    expect(secrets).toHaveLength(16);
+    const encoded = Buffer.from(values[0].value).toString('base64');
+    expect(
+      secrets.every(
+        (secret: { data?: { token?: string } }) =>
+          secret.data?.token === encoded,
+      ),
+      'each Secret holds its fixture value',
+    ).toBe(true);
+    await test.info().attach('credential-protocol-results', {
+      contentType: 'application/json',
+      body: Buffer.from(
+        JSON.stringify({
+          requestBytes: Buffer.byteLength(JSON.stringify({ values })),
+          valueBytes: Buffer.byteLength(values[0].value),
+          persistedSecrets: secrets.length,
+          missingIfMatch: unconditional.status(),
+          staleIfMatch: stale.status(),
+          save: saved.status(),
+          replay: replayed.status(),
+          oversized: oversized.status(),
+        }),
+      ),
+    });
+  } finally {
+    await kubectl([
+      'delete',
+      'remotemcpserver',
+      '-n',
+      namespace,
+      name,
+      '--ignore-not-found',
+    ]);
+    await kubectl([
+      'delete',
+      'secret',
+      '-n',
+      namespace,
+      ...secretNames,
+      '--ignore-not-found',
+    ]);
+    await cleanupModel(namespace, model);
+  }
+});
+
 test('organization credentials: existing key completes and closes the model dialog', async ({
   admin,
 }) => {
@@ -154,7 +419,7 @@ test('organization credentials: stale Cancel recovers an independently completed
     const response = await confirmation;
     await expect(admin.getByLabel(/^Value/)).toBeVisible();
     await expectNoHorizontalScroll(admin, 'credential form');
-    const headers = await response.request().allHeaders();
+    const headers = await requestHeaders(response.request());
     const independentSave = await admin.request.post(response.url(), {
       headers: { ...headers, 'if-match': response.headers().etag },
       data: {
