@@ -24,6 +24,7 @@ import {
   type ValidateAgentResult,
 } from '../lib/agentManager';
 import type { CredentialResourceResult } from '../lib/credentialOperations';
+import { modelEndpointProblem } from '../lib/modelEndpoint';
 import type {
   MemberRequest,
   MemberResult,
@@ -397,6 +398,8 @@ export class AgentManagerClient {
   async setOrganizationModel(
     request: OrganizationModelRequest,
   ): Promise<CredentialResourceResult> {
+    const endpointProblem = modelEndpointProblem(request.endpoint ?? '');
+    if (endpointProblem) throw new Error(endpointProblem);
     const detail = await this.musterApi.describeTool(
       agentManagerToolName(AGENT_MANAGER_TOOLS.setOrganizationModel),
       this.installation,

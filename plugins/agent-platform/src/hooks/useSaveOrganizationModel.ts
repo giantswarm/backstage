@@ -9,6 +9,7 @@ import {
   isVertexAIProvider,
   modelConfigFormChanged,
   modelConfigFormValues,
+  providerHasEndpoint,
   type ModelConfigFormValues,
 } from '../lib/modelConfigs';
 import type { OrganizationNamespace } from '../lib/organizations';
@@ -133,7 +134,7 @@ export function useSaveOrganizationModel(installation: string | undefined) {
               location: values.location.trim(),
             }
           : {}),
-        ...(!organization
+        ...(!organization && providerHasEndpoint(values.provider)
           ? {
               endpoint: values.endpoint.trim(),
               insecureSkipTLSVerify: values.insecureSkipTlsVerify,
