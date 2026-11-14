@@ -53,6 +53,7 @@ describe('AgentManagerClient model endpoints', () => {
         name: 'model',
         provider: 'OpenAI',
         model: 'test-model',
+        requestId: 'model-endpoint-validation',
         endpoint,
       });
       await expect(operation).rejects.toThrow(/credential/i);
