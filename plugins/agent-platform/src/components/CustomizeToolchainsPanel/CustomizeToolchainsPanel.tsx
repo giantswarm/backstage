@@ -1,3 +1,4 @@
+import { useNow, DateComponent } from '@giantswarm/backstage-plugin-ui-react';
 import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
@@ -13,7 +14,6 @@ import {
   CatalogNoMatch,
   EmptyStateCard,
   ExternalCellText,
-  getRelativeDate,
   INITIAL_ROWS,
   LoadingIndicator,
   matchesQuery,
@@ -108,6 +108,7 @@ function ToolchainsTable({
   installation: string;
   toolchains: Toolchain[];
 }) {
+  const now = useNow(60_000);
   const detailRoute = useRouteRef(toolchainDetailRouteRef);
   // A name two offered sources publish opens the page of the row's source.
   const shared = useMemo(() => sharedToolchainNames(toolchains), [toolchains]);
@@ -137,14 +138,17 @@ function ToolchainsTable({
       label: 'Versions',
       defaultWidth: '1fr',
       cell: row => (
-        <CellText
-          title={versionsLabel(row)}
-          description={
-            row.publishedAt
-              ? `Latest ${getRelativeDate(row.publishedAt, new Date())}`
-              : undefined
-          }
-        />
+        <Cell>
+          <Text as="p" variant="body-medium">
+            {versionsLabel(row)}
+          </Text>
+          {row.publishedAt && (
+            <Text as="p" variant="body-small" color="secondary">
+              Latest{' '}
+              <DateComponent value={row.publishedAt} relative now={now} />
+            </Text>
+          )}
+        </Cell>
       ),
     },
     {

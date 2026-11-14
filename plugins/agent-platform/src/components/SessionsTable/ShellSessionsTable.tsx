@@ -1,3 +1,4 @@
+import { InfoHint } from '@giantswarm/backstage-plugin-ui-react';
 import {
   ReactNode,
   useCallback,
@@ -521,9 +522,14 @@ function SessionTime({
 }) {
   const iso = new Date(at).toISOString();
   return (
-    <time dateTime={iso} title={formatLocalDateFull(iso)}>
-      {formatSessionTime(at, group, currentYear)}
-    </time>
+    <>
+      <time dateTime={iso} title={formatLocalDateFull(iso)}>
+        {formatSessionTime(at, group, currentYear)}
+      </time>
+      <InfoHint label="Exact last activity time">
+        {formatLocalDateFull(iso)}
+      </InfoHint>
+    </>
   );
 }
 

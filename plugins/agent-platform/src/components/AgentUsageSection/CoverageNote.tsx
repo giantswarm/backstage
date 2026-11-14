@@ -60,7 +60,11 @@ export function CoverageNote({ usage, isPersonal }: CoverageNoteProps) {
       {evaluatedAt > 0 && (
         <>
           {' Evaluated '}
-          <DateComponent value={new Date(evaluatedAt).toISOString()} />.
+          <DateComponent
+            value={new Date(evaluatedAt).toISOString()}
+            disclosure
+          />
+          .
         </>
       )}
     </Text>

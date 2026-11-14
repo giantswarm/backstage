@@ -1,4 +1,9 @@
 import {
+  useNow,
+  InfoHint,
+  formatLocalDateFull,
+} from '@giantswarm/backstage-plugin-ui-react';
+import {
   ReactNode,
   RefObject,
   useCallback,
@@ -787,6 +792,7 @@ export function WorkflowFlowCanvas({
   installation,
   hasSession,
 }: WorkflowFlowCanvasProps) {
+  const now = useNow(60_000);
   const classes = useStyles();
   const musterApi = useApi(musterApiRef);
   const isPhone = usePhoneLayout();
@@ -956,7 +962,8 @@ export function WorkflowFlowCanvas({
     runCaption = 'No runs recorded yet — the flow shows the definition only.';
   } else if (latest && execution.data) {
     const outcome = executionOutcome(execution.data.status);
-    const when = formatRelativeTime(latest.started_at) ?? latest.started_at;
+    const when =
+      formatRelativeTime(latest.started_at, now) ?? latest.started_at;
     runCaption = hasOverlay
       ? `Last run ${when} · ${outcome.label} — each step shows how it went.`
       : `Last run ${when} · ${outcome.label} — Muster recorded no per-step results for it.`;
@@ -986,6 +993,11 @@ export function WorkflowFlowCanvas({
         <figcaption className={classes.caption}>
           <Text as="span" variant="body-small" color="secondary">
             {runCaption ? `${runCaption} ` : ''}
+            {latest?.started_at && (
+              <InfoHint label="Exact last run time">
+                {formatLocalDateFull(latest.started_at)}
+              </InfoHint>
+            )}
             {isTouch ? 'Tap' : 'Select'} a step to see its details.
           </Text>
           {legend}
@@ -1005,6 +1017,11 @@ export function WorkflowFlowCanvas({
     <figcaption className={classes.caption}>
       <Text as="span" variant="body-small" color="secondary">
         {runCaption ? `${runCaption} ` : ''}
+        {latest?.started_at && (
+          <InfoHint label="Exact last run time">
+            {formatLocalDateFull(latest.started_at)}
+          </InfoHint>
+        )}
         {isTouch ? 'Tap' : 'Select'} a step to see its details.
       </Text>
       <span className={classes.captionEnd}>

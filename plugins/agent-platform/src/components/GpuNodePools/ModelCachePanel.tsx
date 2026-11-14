@@ -25,10 +25,12 @@ import {
   ShowMore,
   StackedRowList,
   usePhoneLayout,
+  useNow,
   useVisibleSort,
   type StackedRowItem,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Connector sign-in uses muster's shared alert.
 import {
   ConnectorSignInAlert,
   type ConnectorSignIn,
@@ -160,10 +162,12 @@ export function modelCacheStackedRow(
     removable,
     onRemove,
     showInstallation,
+    now,
   }: {
     removable: boolean;
     onRemove: (row: ModelCacheRow) => void;
     showInstallation: boolean;
+    now?: number;
   },
 ): StackedRowItem {
   const { claim } = row;
@@ -186,7 +190,8 @@ export function modelCacheStackedRow(
       price ?? 'no price',
       claim.created ? (
         <>
-          created <DateComponent value={claim.created} relative />
+          created{' '}
+          <DateComponent value={claim.created} relative disclosure now={now} />
         </>
       ) : undefined,
     ],
@@ -242,6 +247,7 @@ export function modelCacheStackedRow(
 function getColumnConfig(
   removable: string[],
   onRemove: (row: ModelCacheRow) => void,
+  now: number,
 ): ColumnConfig<ModelCacheRow>[] {
   return [
     {
@@ -324,7 +330,12 @@ function getColumnConfig(
         row.claim.created ? (
           <Cell>
             <Text variant="body-medium">
-              <DateComponent value={row.claim.created} relative />
+              <DateComponent
+                value={row.claim.created}
+                relative
+                disclosure
+                now={now}
+              />
             </Text>
           </Cell>
         ) : (
@@ -388,12 +399,16 @@ export function ModelCachePanel({
   signIns = [],
 }: ModelCachePanelProps) {
   const isPhone = usePhoneLayout();
+  const now = useNow(
+    60_000,
+    rows.some(row => Boolean(row.claim.created)),
+  );
   const columnConfig = useMemo(
     () =>
-      getColumnConfig(removable, onRemove).filter(
+      getColumnConfig(removable, onRemove, now).filter(
         column => !hideColumns?.includes(column.id as 'installation'),
       ),
-    [removable, onRemove, hideColumns],
+    [removable, onRemove, hideColumns, now],
   );
   const { sort, onSortChange } = useVisibleSort(
     BY_INSTALLATION,
@@ -433,6 +448,7 @@ export function ModelCachePanel({
               aria-label="Model cache claims"
               rows={visible.map(row =>
                 modelCacheStackedRow(row, {
+                  now,
                   removable: removable.includes(row.installation),
                   onRemove,
                   showInstallation: !hideColumns?.includes('installation'),

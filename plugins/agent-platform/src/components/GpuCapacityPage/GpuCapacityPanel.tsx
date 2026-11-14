@@ -14,6 +14,7 @@ import {
   countNoun,
   groupNames,
   InfoCard,
+  InfoHint,
   INITIAL_ROWS,
   joinNames,
   LoadingIndicator,
@@ -24,6 +25,7 @@ import {
   getRelativeDate,
   StatusHint,
   usePhoneColumns,
+  useNow,
   usePhoneLayout,
   useVisibleSort,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -436,6 +438,7 @@ function CacheCell({
   node: GpuNode;
   noCacheHint: boolean;
 }) {
+  const now = useNow(60_000, Boolean(node.cache?.scannedAt));
   const cache = node.cache;
   if (!cache) {
     return noCacheHint ? (
@@ -459,7 +462,7 @@ function CacheCell({
   const scannedAt = cache.scannedAt ? new Date(cache.scannedAt) : undefined;
   const scanned =
     scannedAt && !Number.isNaN(scannedAt.getTime())
-      ? `scanned ${getRelativeDate(scannedAt, new Date())} (${formatLocalDateFull(
+      ? `scanned ${getRelativeDate(scannedAt, new Date(now))} (${formatLocalDateFull(
           scannedAt,
         )})`
       : undefined;
@@ -480,6 +483,7 @@ function CacheCell({
           ? ` · ${formatBytes(cache.bytesUsed)}`
           : ''}
       </Text>
+      <InfoHint label="Cache scan details">{detail}</InfoHint>
       {cache.error && (
         <Text
           variant="body-small"

@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
+// eslint-disable-next-line @typescript-eslint/no-restricted-imports -- BUI has no progress indicator for an active turn.
 import { CircularProgress, makeStyles } from '@material-ui/core';
 import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -605,7 +606,7 @@ export function SessionTimeline({
                 {turn.at && (
                   <>
                     {' · '}
-                    <DateComponent value={turn.at} />
+                    <DateComponent value={turn.at} disclosure />
                   </>
                 )}
               </Text>

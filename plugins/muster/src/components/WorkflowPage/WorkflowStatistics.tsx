@@ -2,11 +2,11 @@ import { Flex, Text } from '@backstage/ui';
 import { makeStyles, Theme } from '@material-ui/core';
 import {
   DateComponent,
+  useDateTimeZone,
   StatusDot,
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { WorkflowExecutionSummary } from '../../apis/types';
 import { formatMilliseconds } from '@giantswarm/backstage-plugin-agent-platform-common';
-import { formatRelativeTime } from '../../lib/formatRelativeTime';
 import { executionOutcome } from '../../lib/workflowDisplay';
 import { WorkflowStatsPanel } from '../WorkflowDetailPage/WorkflowStatsPanel';
 import { useLatestRun, useRunCounts } from './useLatestRun';
@@ -37,18 +37,22 @@ const useStyles = makeStyles((theme: Theme) => ({
  * same run colours.
  */
 function LastRun({ run }: { run: WorkflowExecutionSummary }) {
+  const isLocal = useDateTimeZone() === 'local';
   const classes = useStyles();
   const outcome = executionOutcome(run.status);
-  const when = formatRelativeTime(run.started_at);
   return (
     <div className={classes.lastRun} data-testid="workflow-last-run">
       <Text as="span" variant="body-medium" weight="bold">
         Last run
       </Text>
       <StatusDot tone={outcome.tone} label={outcome.label} />
-      {when && <span className={classes.meta}>{when}</span>}
       <span className={classes.meta}>
-        started <DateComponent value={run.started_at} />
+        started{' '}
+        <DateComponent
+          value={run.started_at}
+          relative={isLocal}
+          disclosure={isLocal}
+        />
       </span>
       {run.status !== 'inprogress' && (
         <span className={classes.meta}>

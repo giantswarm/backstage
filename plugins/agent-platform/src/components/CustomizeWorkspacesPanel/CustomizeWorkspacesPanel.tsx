@@ -26,6 +26,8 @@ import {
   CatalogNoMatch,
   EmptyStateCard,
   getRelativeDate,
+  formatLocalDateFull,
+  useNow,
   INITIAL_ROWS,
   LoadingIndicator,
   MENU_WIDTH,
@@ -89,7 +91,7 @@ function StoredCell({ row }: { row: WorkspaceRow }) {
  * and behind the info hint when it happened and the manager's words. The
  * workspace's page and its Synchronize button say the same (`syncState`).
  */
-function LastSyncCell({ row }: { row: WorkspaceRow }) {
+function LastSyncCell({ row, now }: { row: WorkspaceRow; now: number }) {
   const state = syncState(row, row.awaitedSync);
   return (
     <Cell>
@@ -106,7 +108,7 @@ function LastSyncCell({ row }: { row: WorkspaceRow }) {
           explanation={[
             ...(state.when
               ? [
-                  `${state.when.verb} ${getRelativeDate(state.when.at, new Date())}.`,
+                  `${state.when.verb} ${getRelativeDate(state.when.at, new Date(now))}. ${formatLocalDateFull(state.when.at)}`,
                 ]
               : []),
             ...(state.detail ? [state.detail] : []),
@@ -303,6 +305,7 @@ export function CustomizeWorkspacesPanel({
     () => searchWorkspaces(allRows, search),
     [allRows, search],
   );
+  const now = useNow(60_000, allRows.length > 0);
   const showInstallation =
     new Set(allRows.map(row => row.installation)).size > 1;
   const detailRoute = useRouteRef(workspaceDetailRouteRef);
@@ -349,7 +352,7 @@ export function CustomizeWorkspacesPanel({
       label: 'Last synchronization',
       defaultWidth: '2fr',
       minWidth: 152,
-      cell: row => <LastSyncCell row={row} />,
+      cell: row => <LastSyncCell row={row} now={now} />,
     },
     {
       id: 'sessions',

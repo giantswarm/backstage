@@ -7,9 +7,12 @@ import { getRelativeDate } from '@giantswarm/backstage-plugin-ui-react';
  * that need one (a cell title, a sentence). Returns `undefined` for
  * missing/invalid input so callers can omit the line entirely.
  */
-export function formatRelativeTime(iso?: string): string | undefined {
+export function formatRelativeTime(
+  iso?: string,
+  now: number = Date.now(),
+): string | undefined {
   if (!iso || Number.isNaN(new Date(iso).getTime())) {
     return undefined;
   }
-  return getRelativeDate(iso, new Date());
+  return getRelativeDate(iso, new Date(now));
 }
