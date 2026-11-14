@@ -15,6 +15,12 @@ import {
   TOOLCHAIN_SOURCE_STATES,
   WORKSPACE_STATES,
 } from './managerBuilders';
+import {
+  CACHE_CLAIM_STATES,
+  GPU_POOL_STATES,
+  HOSTED_MODEL_STATES,
+  MODEL_BACKEND_STATES,
+} from './hostingBuilders';
 import { MAX_NAME_LENGTH } from './names';
 
 const now = Date.parse('2026-11-14T12:00:00Z');
@@ -65,6 +71,10 @@ describe('createFixtureDataSet', () => {
     expect(statesOf(data.skillRepositories)).toEqual(
       new Set(SKILL_REPOSITORY_STATES),
     );
+    expect(statesOf(data.modelBackends)).toEqual(new Set(MODEL_BACKEND_STATES));
+    expect(statesOf(data.gpuPools)).toEqual(new Set(GPU_POOL_STATES));
+    expect(statesOf(data.cacheClaims)).toEqual(new Set(CACHE_CLAIM_STATES));
+    expect(statesOf(data.hostedModels)).toEqual(new Set(HOSTED_MODEL_STATES));
   });
 
   it.each(FIXTURE_INSTALLATIONS)('has every state in %s', installation => {
@@ -477,6 +487,11 @@ describe('builder settings', () => {
       toolchainSources: [],
       toolchains: [],
       skillRepositories: [],
+      modelBackends: [],
+      gpuClusters: [],
+      gpuPools: [],
+      cacheClaims: [],
+      hostedModels: [],
     });
   });
 
@@ -502,6 +517,93 @@ describe('builder settings', () => {
       }
       expect(presets[2].selectors).toContain('server:retired-reports');
     }
+  });
+});
+
+describe('model hosting', () => {
+  const data = createFixtureDataSet({ now });
+
+  it.each(FIXTURE_INSTALLATIONS)(
+    'gives %s a KServe and an Ollama backend, the KServe one on a GPU cluster',
+    installation => {
+      const backends = inInstallation(data.modelBackends, installation);
+      expect(backends.map(b => b.name)).toEqual(['kserve', 'ollama']);
+      const [kserve] = backends;
+      expect(
+        inInstallation(data.gpuClusters, installation).map(c => c.name),
+      ).toEqual([kserve.cluster]);
+    },
+  );
+
+  it('names each backend once per installation, whatever the count', () => {
+    const many = createFixtureDataSet({ now, modelBackends: { count: 5 } });
+    for (const installation of FIXTURE_INSTALLATIONS) {
+      const names = inInstallation(many.modelBackends, installation).map(
+        b => b.name,
+      );
+      expect(new Set(names).size).toBe(names.length);
+    }
+  });
+
+  it('gives ready nodes only to pools that run them, named as MachinePools', () => {
+    for (const pool of data.gpuPools) {
+      expect(pool.name.startsWith(`${pool.cluster}-`)).toBe(true);
+      expect(pool.name).toMatch(kubernetesName);
+      expect(pool.nodes).toHaveLength(pool.readyReplicas);
+      expect(pool.readyReplicas).toBeLessThanOrEqual(pool.replicas);
+    }
+  });
+
+  it('mounts one cache claim per cluster with a cache, and none without', () => {
+    for (const cluster of data.gpuClusters) {
+      const claims = data.cacheClaims.filter(
+        c =>
+          c.installation === cluster.installation && c.cluster === cluster.name,
+      );
+      expect(claims.filter(c => c.state === 'mounted').length).toBe(
+        cluster.cache ? 1 : 0,
+      );
+      expect(claims.length > 0).toBe(cluster.cache);
+    }
+  });
+
+  it('serves KServe models from their preset, on a node of their cluster', () => {
+    const kserve = data.modelBackends.filter(b => b.kind === 'kserve');
+    const onKServe = data.hostedModels.filter(m =>
+      kserve.some(
+        b => b.installation === m.installation && b.name === m.backend,
+      ),
+    );
+    expect(onKServe.every(m => m.preset !== undefined)).toBe(true);
+    for (const model of onKServe.filter(m => m.node)) {
+      const backend = kserve.find(
+        b => b.installation === model.installation && b.name === model.backend,
+      )!;
+      expect(
+        data.gpuPools
+          .filter(
+            p =>
+              p.installation === model.installation &&
+              p.cluster === backend.cluster,
+          )
+          .flatMap(p => p.nodes),
+      ).toContain(model.node);
+    }
+  });
+
+  it('gives a host backend no serve lifecycle', () => {
+    const onHosts = data.hostedModels.filter(m =>
+      data.modelBackends.some(
+        b =>
+          b.kind === 'ollama' &&
+          b.installation === m.installation &&
+          b.name === m.backend,
+      ),
+    );
+    expect(onHosts.length).toBeGreaterThan(0);
+    expect(onHosts.some(m => ['starting', 'failed'].includes(m.state))).toBe(
+      false,
+    );
   });
 });
 

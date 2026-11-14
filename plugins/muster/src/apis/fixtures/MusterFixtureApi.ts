@@ -24,6 +24,7 @@ import type {
   FilterResourcesResponse,
   FilterToolsOptions,
   FilterToolsResponse,
+  JsonSchema,
   ListExecutionsOptions,
   ListToolsResponse,
   McpServerListResponse,
@@ -110,6 +111,7 @@ type Tool = {
   name: string;
   server: string;
   handler: FixtureToolHandler;
+  inputSchema?: JsonSchema;
 };
 
 /** `*` matches any run of characters, like muster's `filter_tools` pattern. */
@@ -191,10 +193,11 @@ export class MusterFixtureApi implements MusterApi {
   constructor(servers: FixtureMcpServer[]) {
     this.servers = servers.map(server => server.server);
     this.tools = new Map(
-      servers.flatMap(({ server, tools }) =>
+      servers.flatMap(({ server, tools, inputSchemas }) =>
         Object.entries(tools).map(([tool, handler]) => {
           const name = `x_${server}_${tool}`;
-          return [name, { name, server, handler }] as const;
+          const inputSchema = inputSchemas?.[tool];
+          return [name, { name, server, handler, inputSchema }] as const;
         }),
       ),
     );
@@ -246,6 +249,7 @@ export class MusterFixtureApi implements MusterApi {
           name: tool.name,
           server: tool.server,
           kind: 'tool' as const,
+          ...(tool.inputSchema && { inputSchema: tool.inputSchema }),
         })),
         ...workflows
           .filter(workflow => workflow.state === 'available')

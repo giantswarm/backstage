@@ -41,6 +41,11 @@ import {
   type ToolchainSourceState,
   type WorkspaceState,
 } from './managerBuilders';
+import {
+  buildHosting,
+  type FixtureHostingData,
+  type FixtureHostingSettings,
+} from './hostingBuilders';
 import { createRandom } from './random';
 
 /**
@@ -66,7 +71,7 @@ export type FixtureDataSet = {
   toolchainSources: FixtureToolchainSource[];
   toolchains: FixtureToolchain[];
   skillRepositories: FixtureSkillRepository[];
-};
+} & FixtureHostingData;
 
 /** The settings of a data set: the seed, "now", and each builder's. */
 export type FixtureDataSetSettings = {
@@ -101,7 +106,7 @@ export type FixtureDataSetSettings = {
   skillRepositories?: BuilderSettings<SkillRepositoryState>;
   /** Per skill repository that lists its skills. */
   skills?: { count?: number; nameLength?: number };
-};
+} & FixtureHostingSettings;
 
 /** The seed of the base data set. */
 export const BASE_SEED = 20261114;
@@ -150,17 +155,7 @@ export function createFixtureDataSet(
     installations,
     settings.toolchainSources,
   );
-  return {
-    installations,
-    organizations,
-    agents,
-    connectors,
-    sessions,
-    workflows,
-    executions,
-    toolsetPresets: buildToolsetPresets(installations, connectors, workflows),
-    repositoryOwners,
-    repositories,
+  const managers = {
     workspaces: buildWorkspaces(
       context,
       organizations,
@@ -176,6 +171,22 @@ export function createFixtureDataSet(
       settings.skillRepositories,
       settings.skills,
     ),
+  };
+  return {
+    installations,
+    organizations,
+    agents,
+    connectors,
+    sessions,
+    workflows,
+    executions,
+    toolsetPresets: buildToolsetPresets(installations, connectors, workflows),
+    repositoryOwners,
+    repositories,
+    ...managers,
+    // Model hosting draws last, so adding it left the lists above as they
+    // were.
+    ...buildHosting(context, installations, settings),
   };
 }
 

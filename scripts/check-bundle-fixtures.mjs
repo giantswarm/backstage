@@ -45,7 +45,21 @@ const MARKERS = [
   {
     source:
       'plugins/agent-platform/src/apis/fixtures/ModelManagerFixtureApi.ts',
-    marker: 'model-manager pullModel',
+    marker: 'no healthy upstream for',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/modelHostingFixtureState.ts',
+    marker: 'InsufficientInstanceCapacity',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/mcpServers/clusterManager.ts',
+    marker: 'not the Clusters page',
+  },
+  {
+    source: 'plugins/gs-common/src/fixtures/hostingBuilders.ts',
+    marker: 'ollamaUnhealthy',
   },
   {
     source:

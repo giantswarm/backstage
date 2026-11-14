@@ -69,7 +69,9 @@ describe('agent-platform fixture mode', () => {
     ]);
     await expect(kagent.listSessions('meadow')).resolves.toEqual([]);
     await expect(kagent.listSessions('tarragon')).resolves.toEqual([]);
-    await expect(models.listBackends('meadow')).resolves.toEqual([]);
+    await expect(
+      models.listBackends('meadow').then(b => b.map(x => x.backend)),
+    ).resolves.toEqual(['kserve', 'ollama']);
   });
 
   it('fails a call for an installation it does not serve, loudly', async () => {

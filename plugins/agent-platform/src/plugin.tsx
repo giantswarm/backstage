@@ -426,7 +426,7 @@ const modelManagerApi = ApiBlueprint.make({
           return lazyApi(async () => {
             const { ModelManagerFixtureApi } =
               await import('./apis/fixtures/ModelManagerFixtureApi');
-            return new ModelManagerFixtureApi();
+            return new ModelManagerFixtureApi(deps);
           });
         }
         return new ModelManagerApiClient(deps);
