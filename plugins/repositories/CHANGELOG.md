@@ -1,5 +1,76 @@
 # @giantswarm/backstage-plugin-repositories
 
+## 0.1.2
+
+### Patch Changes
+
+- dbd826c: Every link and button that opens a new tab marks it the same way: the launch icon after its text and "(opens in a new tab)" for a screen reader, in place of the "↗" some of them ended in (Review pull request, Edit on GitHub, View on GitHub, the sign-in buttons, All portal settings, the release line, How it works, How alignment works, Workflow runs, the repository phase links). `ui-react`'s `ExternalLink` is now bui's `Link` (always underlined, bui's focus ring) and takes an optional `variant` and `title`; without a `variant` it keeps taking the surrounding font, and off the agent shell it keeps the classic link colour. `ui-react` adds `ExternalButtonLink` (bui's `ButtonLink` with that treatment) and exports `NewTabHint` and `NewTabLabel` (a button label followed by the hint). `ExternalCellText` and `GSReleaseInfo` are built on `ExternalLink`. A skill page's Path links to the SKILL.md on GitHub at the latest commit, and the Instructions file viewer links a file at the commit it was read at, naming no commit when there is none.
+
+  Every text link to outside the portal now opens in a new tab and shows the icon, including the ones that showed nothing before or another external-link icon: docs, GitHub pull requests, commits, releases and issues, Grafana dashboards and endpoints, hostnames, Teleport, PagerDuty, sign-in pages, and the links in rendered markdown (`GSMarkdownContent` renders an `http(s)` link to another origin as an `ExternalLink`). `ui-react` exports `isExternalHref` for telling such a link apart.
+
+- 2f03302: Every address a server provides (a connector sign-in, a device-code page, a
+  GitHub or manager connect, a sign-in an agent asks for) opens only after the
+  person agrees in one dialog that shows the full address with its domain
+  highlighted and warns about a punycode domain, plain http and a user name
+  before the domain.
+
+  - ui-react: `externalUrlConsentApiRef` with `ExternalUrlConsentManager`, and
+    `ExternalUrlConsentDialogHost`.
+  - app: registers the consent API and mounts `ExternalUrlConsentDialogHost` at
+    the app root. A desktop notification whose link leads out of the portal
+    asks before it opens.
+  - muster: `useServerSignIn` no longer opens a tab on the Sign in click; it asks
+    to open the sign-in page once muster answers. `ServerSignInState` gains
+    `openSignInPage` and loses `isPreparing`; the hook's options gain
+    `displayName` and lose `tabWaitMs`. A device code's page is a button, not a
+    link.
+  - gs: the GitHub auth API asks before it navigates to muster's connect; a
+    connect not opened is a `no_grant` error and is not asked again for two
+    minutes. Concurrent token requests share one prompt and its answer.
+  - plans, roadmap, repositories, platform-capabilities: a missing grant offers
+    Connect instead of navigating on first sight.
+  - agent-platform: an agent's sign-in, a provider sign-in, a connector
+    sign-in link in a message and the toolchain-manager's App install page are
+    buttons that ask first.
+
+- f5615a0: Polling stops from hidden tabs and after a permanent error. `ui-react` adds
+  `pollingQueryOptions`, `isPermanentReadError` and `causeChain`: a query
+  spreads the options and polls only while the tab is visible, reads again as
+  it becomes visible where its data is stale, and stops after a 401, a 403 or a
+  "not connected" answer until a read succeeds again; a stopped query is not
+  read on becoming visible either. `inBackground` keeps a poll going from a
+  hidden tab while the caller has a reason, and `refetchOnVisible: false`
+  leaves the read on becoming visible to the next tick. `muster` adds
+  `musterPollingOptions` and `isPermanentMusterReadError`, which also stop on
+  muster's `server_sign_in_required` and a portal session that is gone. The
+  retry policies of the gs, flux, repositories and muster clients and of the
+  Mimir queries build on the same classifier.
+
+  The model-manager reads of the Serving view (`list_backends`, `list_models`,
+  `list_nodes`), the pull jobs, the GPU node pools, workspaces, toolchain
+  builds, session reads, the Kubernetes and Mimir polls, muster's status and
+  connector reads and the repositories watches follow the rule. The GPU node
+  pools read polls from a hidden tab only while a pool is being deployed, and
+  the inventory only while a served model is on its way in, so a pool's serve
+  intent still loads its model meanwhile. Where muster asks the person to sign
+  in to model-manager, the Serving view offers the sign-in, and polling resumes
+  once it lands.
+
+- Updated dependencies [d553603]
+- Updated dependencies [2f03302]
+- Updated dependencies [01a63aa]
+- Updated dependencies [dbd826c]
+- Updated dependencies [2f03302]
+- Updated dependencies [cefb9d4]
+- Updated dependencies [e8c5832]
+- Updated dependencies [a02eb7e]
+- Updated dependencies [99b5956]
+- Updated dependencies [172b3de]
+- Updated dependencies [7e12f91]
+- Updated dependencies [f5615a0]
+  - @giantswarm/backstage-plugin-ui-react@0.11.0
+  - @giantswarm/backstage-plugin-analytics-react@0.4.0
+
 ## 0.1.1
 
 ### Patch Changes

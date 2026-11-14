@@ -1,5 +1,63 @@
 # @giantswarm/backstage-plugin-gs-node
 
+## 0.6.0
+
+### Minor Changes
+
+- b623ab3: muster's own entry among the connectors shows the logo muster announces, and
+  the portal calls the product "Muster".
+
+  - gs-common: `connectorIconOf`, the check a connector's icon passes before it
+    goes into an `<img src>`, moves here from the muster plugin (which still
+    exports it), and `serverInfoIconOf` picks an icon it accepts from an MCP
+    `initialize` result's `serverInfo.icons`: the first without a `theme`, else
+    the first of all.
+  - gs-node: `MusterMcpClient.serverIcon` reads that icon off the caller's
+    cached muster session; it opens no connection of its own where one is open.
+  - muster-backend: `GET /server-info` answers `{ icon }`, muster's logo from its
+    `initialize` result (muster v5.59.0 or later), as the person. A muster that
+    announces none answers `{}`; one that cannot be asked answers
+    `{ unavailable: true }`, both with HTTP 200. A token that is missing,
+    expired or refused by muster answers 401.
+  - muster: `MusterApi.getServerInfo`, the hook `useMusterIcon`, and
+    `useConnectorIcon`, the one rule for a connector's logo (muster's own, a
+    server's `.status.icon`, a family's representative's). muster's row in the
+    Connectors list and its page's header show the logo as an image, and the
+    letter tile where there is none; an answer muster could not give is asked
+    again within half a minute. The entry's name reads "Muster"
+    (`MUSTER_DISPLAY_NAME`), and the plugin's copy calls the product "Muster";
+    URLs, links, query keys and server names keep `muster`.
+
+- a05070d: Tool calls from the portal declare MCP URL mode elicitation (protocol 2026-07-28). When muster answers that the person must open a page first, a sign-in to the tool's server or a server's own page such as a credential form, the portal shows it in the consent dialog and sends the call again with the person's answer (accept, decline or cancel). The same page asked by the same server is not asked about again for two minutes. `MusterMcpClient` calls that pass `urlElicitation` run on `@modelcontextprotocol/client` and throw `MusterInputRequiredError` (428) for muster's `input_required` answer. `gs-common` adds the wire types (`MusterInputAnswer`, `MusterUrlElicitation`, `inputRequiredBodyOf`) and now holds `musterServerOfTool`, which `gs-node` re-exports. `MusterApi.callTool` takes an optional `signal`, which also cancels a retry muster holds until a sign-in completes, and a tool's Run shows Cancel while a run is pending.
+- ae00960: An installation whose muster the portal cannot reach no longer makes people wait. `ReachabilityCache` reports an endpoint unreachable only after two failed probes in a row (`UNREACHABLE_AFTER_FAILED_PROBES`), so muster's and kagent's `/installations` no longer report a distant installation unreachable for one late answer. muster-backend answers a call to an installation the probe reports unreachable at once with a 503, "not reachable from this portal", without a connection attempt or a warning; the probe allows a muster as long to answer as a call has to connect. gs-node exports `MUSTER_CONNECT_TIMEOUT_MS`, and `MusterUnreachableError` names its `installation`. Connections to muster time out after 5 s instead of undici's 10 s, and the Agent Platform stops asking for the server list of such an installation, reading a list that answered 503 again only after a minute, then less and less often.
+
+### Patch Changes
+
+- 06dfa3d: More muster tool errors get their own status instead of a 500.
+
+  - gs-node: muster's `Tool not found: x`, its answer for a meta-tool's target
+    (`describe_tool`), is `tool_not_found` (502) like `tool not found: x`.
+    model-manager's `forbidden:` is a refusal (403, out of Sentry), and its
+    `no_backend:` the new kind `no_backend` (503). A tool error of no known
+    kind stays 500.
+  - gs-common: `forbidden` is one of model-manager's refusal codes.
+    `MODEL_MANAGER_FAILURE_CODES` and `mcpToolFailureOf` name the failures of a
+    whole server, model-manager's `no_backend` for now, next to the refusals.
+  - agent-platform: model-manager's `forbidden` reads as a `ForbiddenError` and
+    `no_backend` as a `ServiceUnavailableError`, neither retried.
+  - backend-common: `no_backend` events are grouped per server in Sentry. A
+    server-wide kind whose tool names no server (a meta-tool's missing target)
+    is grouped by its message instead of all in one issue.
+
+- Updated dependencies [c775cfb]
+- Updated dependencies [d97c11d]
+- Updated dependencies [3b65ce4]
+- Updated dependencies [694e2ae]
+- Updated dependencies [b623ab3]
+- Updated dependencies [06dfa3d]
+- Updated dependencies [a05070d]
+  - @giantswarm/backstage-plugin-gs-common@0.24.0
+
 ## 0.5.0
 
 ### Minor Changes
