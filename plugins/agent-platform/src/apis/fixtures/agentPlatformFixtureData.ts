@@ -3,6 +3,7 @@ import {
   type KagentSession,
   type SessionRecordWire,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { TAGS_ANNOTATION } from '@giantswarm/backstage-plugin-gs-common';
 import {
   inInstallation,
   type AgentState,
@@ -18,12 +19,18 @@ import {
   AgentConditionType,
   type AgentCondition,
   type AgentInterface,
+  type HarnessInterface,
+  type ModelConfigInterface,
+  type RemoteMCPServerInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import type {
   AgentManagerAgent,
   AgentObjectStatus,
+  AgentPluginEntry,
+  AgentSkillEntry,
 } from '../../lib/agentManager';
+import { MUSTER_MCP_SERVER_NAME, TOOLSET_HEADER } from '../../lib/toolset';
 import {
   ORPHANED_DELETE_MERGED,
   type AgentPlatformOrganization,
@@ -43,6 +50,54 @@ export const FIXTURE_HARNESS = 'kagent';
 
 /** The ModelConfig every fixture agent reads. */
 export const FIXTURE_MODEL_CONFIG = 'default';
+
+/** The toolset of the agents the data set builds. */
+export const FIXTURE_TOOLSET = ['preset:read-only'];
+
+/**
+ * What an agent of the data set carries beyond its record once agent-manager
+ * wrote it: the fields of the create and edit forms, and the generations of
+ * its Agent object. Each is optional, with the data set's agents' value as
+ * the default, so a record of the data set maps as it is.
+ */
+export type FixtureAgentDetails = {
+  tags?: string[];
+  systemMessage?: string;
+  modelConfig?: string;
+  harness?: string;
+  iconUrl?: string;
+  skills?: AgentSkillEntry[];
+  plugins?: AgentPluginEntry[];
+  toolset?: string[];
+  egress?: string[];
+  egressPolicyRefs?: string[];
+  defaultWorkspace?: string;
+  /** The Agent object's `metadata.generation`; 1 by default. */
+  generation?: number;
+  /** The generation the controller's verdict is about; `generation` by default. */
+  observedGeneration?: number;
+  /** When the controller's verdict last changed; its creation by default. */
+  changedAt?: string;
+  /**
+   * The model of the generation the verdict is about, while a later write
+   * settles; `modelConfig` by default.
+   */
+  observedModelConfig?: string;
+};
+
+/** An agent of the data set, with what agent-manager wrote of it. */
+export type FixtureAgentRecord = FixtureAgent & FixtureAgentDetails;
+
+function generationsOf(agent: FixtureAgentRecord): {
+  generation: number;
+  observedGeneration: number;
+} {
+  const generation = agent.generation ?? 1;
+  return {
+    generation,
+    observedGeneration: agent.observedGeneration ?? generation,
+  };
+}
 
 type Verdict = 'True' | 'False' | 'Unknown';
 
@@ -77,7 +132,10 @@ const VERDICTS: Record<AgentState, Record<string, Verdict> | undefined> = {
  * revision still booting, or the agent's model not found (the message as
  * kagent's compiler writes it, which the page reads the failing field from).
  */
-function firstFailureOf(type: string): { reason: string; message: string } {
+function firstFailureOf(
+  type: string,
+  agent: FixtureAgentRecord,
+): { reason: string; message: string } {
   return type === AgentConditionType.Ready
     ? {
         reason: AGENT_BOOT_PENDING_REASON,
@@ -85,15 +143,16 @@ function firstFailureOf(type: string): { reason: string; message: string } {
       }
     : {
         reason: 'ModelConfigNotFound',
-        message: `resolve ModelConfig "${FIXTURE_MODEL_CONFIG}": not found`,
+        message: `resolve ModelConfig "${agent.observedModelConfig ?? agent.modelConfig ?? FIXTURE_MODEL_CONFIG}": not found`,
       };
 }
 
-function conditionsOf(agent: FixtureAgent, at: string): AgentCondition[] {
+function conditionsOf(agent: FixtureAgentRecord, at: string): AgentCondition[] {
   const verdicts = VERDICTS[agent.state];
   if (!verdicts) {
     return [];
   }
+  const { observedGeneration } = generationsOf(agent);
   let failedBefore = false;
   return AGENT_CONDITION_STAGE_ORDER.map(type => {
     const status = verdicts[type];
@@ -101,13 +160,15 @@ function conditionsOf(agent: FixtureAgent, at: string): AgentCondition[] {
       type,
       status,
       reason: type,
-      lastTransitionTime: at,
-      observedGeneration: 1,
+      lastTransitionTime: agent.changedAt ?? at,
+      observedGeneration,
     };
     if (status === 'False') {
       Object.assign(
         condition,
-        failedBefore ? { reason: AGENT_BLOCKED_REASON } : firstFailureOf(type),
+        failedBefore
+          ? { reason: AGENT_BLOCKED_REASON }
+          : firstFailureOf(type, agent),
       );
       failedBefore = true;
     }
@@ -121,34 +182,84 @@ function conditionsOf(agent: FixtureAgent, at: string): AgentCondition[] {
  * it rendered no Agent.
  */
 export function agentObjectOf(
-  agent: FixtureAgent,
+  agent: FixtureAgentRecord,
   at: string,
 ): AgentInterface | undefined {
   if (agent.release === 'failed') {
     return undefined;
   }
   const conditions = conditionsOf(agent, at);
+  const { generation, observedGeneration } = generationsOf(agent);
+  const tags = agent.tags ?? [];
+  const egressPolicyRefs = agent.egressPolicyRefs ?? [];
   return {
     apiVersion: 'api.kagent.dev/v1alpha3',
     kind: 'Agent',
     metadata: {
       name: agent.name,
       namespace: agent.namespace,
-      generation: 1,
+      generation,
       creationTimestamp: at,
-      annotations: { 'ui.giantswarm.io/display-name': agent.displayName },
+      annotations: {
+        'ui.giantswarm.io/display-name': agent.displayName,
+        ...(tags.length > 0 && { [TAGS_ANNOTATION]: tags.join(',') }),
+        ...(agent.iconUrl && { 'ui.giantswarm.io/icon-url': agent.iconUrl }),
+      },
     },
     spec: {
       template: {
         description: agent.description,
-        modelConfig: { name: FIXTURE_MODEL_CONFIG },
+        modelConfig: { name: agent.modelConfig ?? FIXTURE_MODEL_CONFIG },
+        ...(agent.systemMessage && { systemPrompt: agent.systemMessage }),
+        tools: [
+          { mcp: { server: { kind: 'RemoteMCPServer', name: agent.name } } },
+        ],
       },
-      harnessRef: { name: FIXTURE_HARNESS },
+      harnessRef: { name: agent.harness ?? FIXTURE_HARNESS },
+      ...((agent.egress ?? []).length > 0 && { egress: agent.egress }),
+      ...(egressPolicyRefs.length > 0 && {
+        egressPolicyRefs: egressPolicyRefs.map(name => ({ name })),
+      }),
     },
     ...(conditions.length > 0 && {
-      status: { observedGeneration: 1, conditions },
+      status: { observedGeneration, conditions },
     }),
-  };
+  } as AgentInterface;
+}
+
+/**
+ * The agent's carrier, the `RemoteMCPServer` named after it that the chart
+ * renders for the gateway: its toolset header is what the pages read the
+ * agent's toolset from.
+ */
+export function carrierObjectOf(
+  agent: FixtureAgentRecord,
+  at: string,
+): RemoteMCPServerInterface | undefined {
+  if (agent.release === 'failed') {
+    return undefined;
+  }
+  return {
+    apiVersion: 'api.kagent.dev/v1alpha3',
+    kind: 'RemoteMCPServer',
+    metadata: {
+      name: agent.name,
+      namespace: agent.namespace,
+      creationTimestamp: at,
+      labels: { 'app.kubernetes.io/instance': agent.name },
+    },
+    spec: {
+      description: `The ${MUSTER_MCP_SERVER_NAME} gateway of ${agent.displayName}.`,
+      url: `http://${MUSTER_MCP_SERVER_NAME}.${MUSTER_MCP_SERVER_NAME}.svc/mcp`,
+      protocol: 'STREAMABLE_HTTP',
+      headersFrom: [
+        {
+          name: TOOLSET_HEADER,
+          value: (agent.toolset ?? FIXTURE_TOOLSET).join(','),
+        },
+      ],
+    },
+  } as RemoteMCPServerInterface;
 }
 
 function verdictOf(verdict: Verdict | undefined): boolean | null {
@@ -162,14 +273,18 @@ function verdictOf(verdict: Verdict | undefined): boolean | null {
  * ready apart from the agent: the release installs a failed agent as well.
  * One whose release failed has no Agent object.
  */
-export function agentManagerAgentOf(agent: FixtureAgent): AgentManagerAgent {
+export function agentManagerAgentOf(
+  agent: FixtureAgentRecord,
+): AgentManagerAgent {
   const exists = agent.release === 'ready';
   const verdicts = exists ? VERDICTS[agent.state] : undefined;
+  const { generation, observedGeneration } = generationsOf(agent);
+  const harness = agent.harness ?? FIXTURE_HARNESS;
   const status: AgentObjectStatus = {
     exists,
-    ...(exists && { generation: 1 }),
-    ...(verdicts && { observedGeneration: 1 }),
-    harness: FIXTURE_HARNESS,
+    ...(exists && { generation }),
+    ...(verdicts && { observedGeneration }),
+    harness,
     ready: verdictOf(verdicts?.[AgentConditionType.Ready]),
     accepted: verdictOf(verdicts?.[AgentConditionType.Accepted]),
     resolvedRefs: verdictOf(verdicts?.[AgentConditionType.ResolvedRefs]),
@@ -181,9 +296,20 @@ export function agentManagerAgentOf(agent: FixtureAgent): AgentManagerAgent {
     exists,
     displayName: agent.displayName,
     description: agent.description,
-    modelConfig: FIXTURE_MODEL_CONFIG,
+    ...(agent.tags?.length && { tags: agent.tags }),
+    modelConfig: agent.modelConfig ?? FIXTURE_MODEL_CONFIG,
+    ...(agent.iconUrl && { iconUrl: agent.iconUrl }),
+    ...(agent.systemMessage && { systemMessage: agent.systemMessage }),
+    skills: agent.skills ?? [],
+    plugins: agent.plugins ?? [],
+    toolset: agent.toolset ?? FIXTURE_TOOLSET,
     ready: status.ready,
-    harness: FIXTURE_HARNESS,
+    harness,
+    egress: agent.egress ?? [],
+    egressPolicyRefs: agent.egressPolicyRefs ?? [],
+    ...(agent.defaultWorkspace && {
+      defaultWorkspace: agent.defaultWorkspace,
+    }),
     status,
     managed: 'helmrelease',
     helmRelease: {
@@ -313,4 +439,77 @@ export function kagentSessionsOf(
     { sessions: inInstallation(sessions, installation).map(sessionRecordOf) },
     installation,
   ).sessions;
+}
+
+/** A model (ModelConfig) of an organization namespace. */
+export type FixtureModel = {
+  namespace: string;
+  name: string;
+  provider: NonNullable<ModelConfigInterface['spec']>['provider'];
+  model: string;
+  /** The namespace's default model. */
+  default: boolean;
+  /** The Secret and key the model reads its key from. */
+  secret: string;
+  key: string;
+};
+
+/** A model as the `ModelConfig` object the pages list, accepted and resolved. */
+export function modelConfigObjectOf(
+  model: FixtureModel,
+  at: string,
+): ModelConfigInterface {
+  return {
+    apiVersion: 'api.kagent.dev/v1alpha3',
+    kind: 'ModelConfig',
+    metadata: {
+      name: model.name,
+      namespace: model.namespace,
+      generation: 1,
+      creationTimestamp: at,
+    },
+    spec: {
+      provider: model.provider,
+      model: model.model,
+      apiKeySecret: model.secret,
+      apiKeySecretKey: model.key,
+    },
+    status: {
+      observedGeneration: 1,
+      conditions: ['Accepted', 'ResolvedRefs'].map(type => ({
+        type,
+        status: 'True',
+        reason: type,
+        message: '',
+        lastTransitionTime: at,
+      })),
+    },
+  } as ModelConfigInterface;
+}
+
+/** The platform Harness of an organization namespace, which runs kagent. */
+export function harnessObjectOf(
+  namespace: string,
+  at: string,
+): HarnessInterface {
+  return {
+    apiVersion: 'api.kagent.dev/v1alpha3',
+    kind: 'Harness',
+    metadata: {
+      name: FIXTURE_HARNESS,
+      namespace,
+      creationTimestamp: at,
+      annotations: { 'ui.giantswarm.io/display-name': 'kagent' },
+    },
+    spec: {
+      kagent: {},
+      workload: {
+        image: `registry.example.com/harnesses/${FIXTURE_HARNESS}@sha256:${'0'.repeat(64)}`,
+      },
+      substrate: {
+        workerPoolRef: { name: 'default' },
+        snapshotPolicy: { location: 's3://snapshots.example.com/harnesses' },
+      },
+    },
+  } as HarnessInterface;
 }
