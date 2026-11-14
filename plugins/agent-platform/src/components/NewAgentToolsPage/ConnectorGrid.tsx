@@ -19,7 +19,6 @@ import {
 import {
   bucketLabel,
   countNoun,
-  MAX_INLINE_SELECTORS,
   connectionLabel,
   shownConnection,
   type ServerBucket,
@@ -102,6 +101,7 @@ function toolsLine(
 function readOnlyUnavailable(
   bucket: ServerBucket,
   readOnlyCount: number,
+  maxSelectors: number | undefined,
 ): string | undefined {
   if (bucket.needsSignIn || bucket.tools.length === 0) {
     return undefined;
@@ -109,8 +109,8 @@ function readOnlyUnavailable(
   if (readOnlyCount === 0) {
     return 'None of its tools only read, so Read-only cannot be picked.';
   }
-  if (!readOnlyFits(bucket)) {
-    return `Its read-only tools are more than the ${MAX_INLINE_SELECTORS} an agent may list one by one, so choose All.`;
+  if (maxSelectors !== undefined && readOnlyCount > maxSelectors) {
+    return `Its read-only tools are more than the ${maxSelectors} an agent may list one by one, so choose All.`;
   }
   return undefined;
 }
@@ -140,12 +140,14 @@ function selectionLine(
 
 function ConnectorCard({
   bucket,
+  maxSelectors,
   connectors,
   selected,
   disabled,
   onChoose,
 }: {
   bucket: ServerBucket;
+  maxSelectors?: number;
   /** Every connector, to tell whose its unlisted picks are. */
   connectors: readonly ServerBucket[];
   selected: ReadonlySet<string>;
@@ -165,7 +167,7 @@ function ConnectorCard({
   const readOnlyCount = readOnlySelectors(bucket).length;
   const name = bucketLabel(bucket);
   const status = connectorStatus(bucket);
-  const unavailable = readOnlyUnavailable(bucket, readOnlyCount);
+  const unavailable = readOnlyUnavailable(bucket, readOnlyCount, maxSelectors);
   const selection = selectionLine(bucket, state);
   const checked = <CheckIcon aria-hidden />;
   return (
@@ -214,7 +216,9 @@ function ConnectorCard({
             // Read-only access is the tools that read today, one by one: none
             // to list before a sign-in, none at all, or more than fit inline.
             isDisabled={
-              bucket.needsSignIn || readOnlyCount === 0 || !readOnlyFits(bucket)
+              bucket.needsSignIn ||
+              readOnlyCount === 0 ||
+              !readOnlyFits(bucket, maxSelectors)
             }
           >
             Read-only
@@ -241,11 +245,13 @@ function ConnectorCard({
  */
 export function ConnectorGrid({
   connectors,
+  maxSelectors,
   selected,
   disabled,
   onChoose,
 }: {
   connectors: ServerBucket[];
+  maxSelectors?: number;
   selected: ReadonlySet<string>;
   disabled: boolean;
   onChoose: (
@@ -296,6 +302,7 @@ export function ConnectorGrid({
                 <ConnectorCard
                   key={bucket.name}
                   bucket={bucket}
+                  maxSelectors={maxSelectors}
                   connectors={connectors}
                   selected={selected}
                   disabled={disabled}

@@ -15,7 +15,6 @@
  */
 
 import {
-  MAX_INLINE_SELECTORS,
   PRESET_FULL,
   PRESET_READ_ONLY,
   parseSelector,
@@ -123,11 +122,13 @@ export function signInToolOf({
   servers,
   declined,
   presetsInclude,
+  maxSelectors,
 }: {
   selection: string[];
   servers: readonly ServerInfo[];
   declined: boolean;
   presetsInclude: boolean;
+  maxSelectors?: number;
 }): SignInTool {
   const connectors = connectorsNeedingSignIn(selection, servers);
   const unchanged = (status: SignInToolStatus): SignInTool => ({
@@ -150,7 +151,7 @@ export function signInToolOf({
   if (declined) {
     return unchanged('removed');
   }
-  if (selection.length >= MAX_INLINE_SELECTORS) {
+  if (maxSelectors !== undefined && selection.length >= maxSelectors) {
     return unchanged('no-room');
   }
   return {

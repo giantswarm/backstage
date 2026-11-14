@@ -146,6 +146,10 @@ jest.mock('../HarnessPicker', () => ({
 }));
 // agent-manager's get_info; it takes tags unless a test says otherwise.
 let mockManagerInfo: { capabilities: Record<string, boolean> } | undefined;
+jest.mock('../../hooks/useToolsetSelectorLimit', () => ({
+  useToolsetSelectorLimit: () => 128,
+}));
+
 jest.mock('../../hooks/useAgentManager', () => ({
   useAgentManagerInfo: () => ({
     info: mockManagerInfo,

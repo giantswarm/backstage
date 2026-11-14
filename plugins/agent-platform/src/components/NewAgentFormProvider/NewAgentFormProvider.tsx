@@ -21,6 +21,7 @@ import {
   type WriteMode,
 } from '../../lib/agentManager';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
+import { useToolsetSelectorLimit } from '../../hooks/useToolsetSelectorLimit';
 import {
   changedFields,
   editStateOf,
@@ -323,13 +324,14 @@ export type NewAgentFormContextValue = TagsFieldUpdaters & {
   /** Sets {@link NewAgentFormState.signInToolDeclined}. */
   setSignInToolDeclined: (declined: boolean) => void;
   /**
-   * True when the toolset can be applied: none of the selectors malformed and
-   * no more than the inline cap. The empty selection is valid — it is no tools.
-   * What the Tools step's Continue and the review page's deploy gate on.
+   * Whether selectors satisfy the grammar and the advertised count. The empty
+   * selection represents no tools. Server validation checks the remaining
+   * constraints.
    */
   isToolsetValid: boolean;
   /** Why the toolset cannot be applied, empty when it can. */
   toolsetProblems: string[];
+  maxInlineSelectors?: number;
   reset: () => void;
   /**
    * The kept draft has been looked for (see `persistDraft`): until then the
@@ -416,8 +418,7 @@ const initialState: NewAgentFormState = {
   modelDisplayName: undefined,
   harness: undefined,
   droppedHarness: undefined,
-  // Empty means "use the chart default": the spec sent to agent-manager omits
-  // it (agentSpecOf), and agent-manager keeps the chart's default prompt.
+  // An empty prompt is omitted from the spec so the chart supplies its default.
   systemMessage: '',
   egressText: '',
   egressPolicyRefs: [],
@@ -626,6 +627,7 @@ export function NewAgentFormProvider({
   const [draftNoticeStep, setDraftNoticeStep] = useState<string>();
 
   const { info: agentManagerInfo } = useAgentManagerInfo(state.installation);
+  const maxInlineSelectors = useToolsetSelectorLimit(state.installation);
   const { directory } = useOrganizationDirectory();
   // Where agent-manager serves the organization tools, the choices are the
   // organizations the person belongs to.
@@ -796,7 +798,11 @@ export function NewAgentFormProvider({
     // steps may render at all (a deep link without them goes back to step 1),
     // while the toolset is step 3's own output and gates only the way forward —
     // and only when it cannot be applied; nothing selected is no tools.
-    const problems = toolsetProblems(state.toolset);
+    const problems = toolsetProblems(
+      state.toolset,
+      undefined,
+      maxInlineSelectors,
+    );
     const isToolsetValid = problems.length === 0;
 
     const isDirty = edit
@@ -989,6 +995,7 @@ export function NewAgentFormProvider({
         ),
       isToolsetValid,
       toolsetProblems: problems,
+      maxInlineSelectors,
       toggleSkill: skill =>
         setState(prev => {
           const id = skillId(skill);
@@ -1104,6 +1111,7 @@ export function NewAgentFormProvider({
     storedTags,
     directory,
     byOrganization,
+    maxInlineSelectors,
   ]);
 
   return (
