@@ -111,8 +111,8 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
   three served installations (`tarragon` unreachable), and in each
   organizations, agents, connectors, sessions, workflows and executions in
   every state their pages know. The person has each role in the ready
-  organizations (admin, editor, user, so the New agent form's "needs the
-  editor role" shows), manages the orphaned and deleting ones and is no
+  organizations of each installation (admin, editor, user, so the New agent form's "needs the
+  editor role" shows), manages the orphaned, pending-erase and deleting ones and is no
   member of the pending one. Only ready agents of ready organizations have
   sessions, and one pending agent has a failed release. Names are made of
   plant words, never a real installation, customer or repository.
