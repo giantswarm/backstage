@@ -1,5 +1,3 @@
-// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- fixture MCP servers are muster's.
-import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 import {
   createFixtureDataSet,
   type FixtureOrganization,
@@ -15,6 +13,7 @@ import {
 import { preparedCredentialOperation } from '../../../lib/credentialOperations';
 import { AgentManagerClient } from '../../AgentManagerClient';
 import { credentialOperationErrorCode } from '../../AgentManagerCredentialsApi';
+import { musterApiOf } from '../../../lib/__testUtils__/musterApiOf';
 import { AgentManagerCredentialsFixtureApi } from '../AgentManagerCredentialsFixtureApi';
 import {
   AgentManagerFixtureState,
@@ -32,20 +31,7 @@ function setup() {
   let now = NOW;
   const state = new AgentManagerFixtureState(data, () => now);
   const server = agentManagerFixtureServer(() => state);
-  // The fixture MusterApi's dispatch, by `x_<server>_<tool>`.
-  const musterApi = {
-    callTool: async (
-      name: string,
-      args: Record<string, unknown>,
-      installation: string,
-    ) => {
-      const tool = name.replace(`x_${server.server}_`, '');
-      return server.tools[tool](args, {
-        installation,
-        signal: new AbortController().signal,
-      });
-    },
-  } as unknown as MusterApi;
+  const musterApi = musterApiOf(server);
   const organizationWith = (role: OrganizationRole): FixtureOrganization =>
     data.organizations.find(
       organization =>

@@ -67,6 +67,26 @@ const MARKERS = [
     marker: 'A builder needs at least one state.',
   },
   {
+    source: 'plugins/gs-common/src/fixtures/managerBuilders.ts',
+    marker:
+      'with your sign-in: it is not installed there, or you have no access',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/workspaceManagerFixtureState.ts',
+    marker: 'the volume is provisioned at the first sync',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/toolchainManagerFixtureState.ts',
+    marker: 'A command line YAML processor',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/mcpServers/skillManager.ts',
+    marker: '1. Read the request and what it refers to.',
+  },
+  {
     source: 'plugins/muster/src/apis/fixtures/musterFixtureData.ts',
     marker: 'The server did not answer within the timeout.',
   },
