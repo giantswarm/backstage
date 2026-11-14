@@ -1,7 +1,6 @@
 import { Route, Routes } from 'react-router-dom';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { screen } from '@testing-library/react';
 import {
   ModelConfig,
   type ModelConfigInterface,
@@ -46,15 +45,6 @@ jest.mock('../../hooks/useModelNamespaces', () => ({
   useModelNamespaces: () => ({ namespaces: ['kagent'], isLoading: false }),
 }));
 
-jest.mock('../../hooks/useSaveModelConfig', () => ({
-  useSaveModelConfig: () => ({
-    save: mockSave,
-    isSaving: false,
-    error: undefined,
-    reset: jest.fn(),
-  }),
-}));
-
 // The organizations agent-manager names for the person: `org-acme` is one.
 // A discovery failure belongs to the installation it names (`inst-1` unless
 // a case says otherwise).
@@ -75,7 +65,7 @@ jest.mock('../OrganizationDirectoryProvider', () => ({
 
 jest.mock('../../hooks/useSaveOrganizationModel', () => ({
   useSaveOrganizationModel: () => ({
-    save: jest.fn(),
+    save: mockSave,
     isSaving: false,
     error: null,
     reset: jest.fn(),
@@ -158,44 +148,6 @@ describe('EditModelPage', () => {
     );
   });
 
-  it('opens the Connect-a-model flow prefilled, its primary Save changes', async () => {
-    await renderPage();
-
-    expect(
-      screen.getByRole('heading', { level: 1, name: 'Edit model' }),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText(/^Name/)).toHaveValue('Sonnet 4.5');
-    // The document title names the model, like the skill edit frames.
-    await waitFor(() =>
-      expect(document.title).toBe('Edit Sonnet 4.5 · Models'),
-    );
-    // The locked technical name is said under the name, once.
-    expect(
-      screen.getByText((_, element) =>
-        Boolean(
-          element?.tagName === 'P' &&
-          element.textContent ===
-            'Its technical name is sonnet; it cannot be changed.',
-        ),
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByLabelText(/^Technical name/)).toBeNull();
-    // The model stays on its environment: nothing to choose.
-    expect(screen.queryByRole('button', { name: /Environment/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Connect model' })).toBeNull();
-
-    await userEvent.type(screen.getByLabelText(/^API key/), 'sk-ant-new');
-    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
-
-    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
-    expect(mockSave.mock.calls[0][0]).toMatchObject({
-      installation: 'inst-1',
-      values: expect.objectContaining({ apiKey: 'sk-ant-new' }),
-      original: expect.any(ModelConfig),
-    });
-    expect(await screen.findByText("The model's page")).toBeInTheDocument();
-  });
-
   it('says so while the model is being read', async () => {
     mockUseResource.mockReturnValue({
       resource: undefined,
@@ -272,50 +224,6 @@ describe('EditModelPage', () => {
     ).toBeNull();
   });
 
-  it("offers no form outside the platform's namespace while it cannot tell an organization's", async () => {
-    mockDirectoryFailure =
-      'Could not reach agent-manager on inst-1. Check your connector sign-in and try again.';
-    mockUseResource.mockReturnValue({
-      resource: sonnet({ namespace: 'agents-payments-x7k2q' }),
-      isLoading: false,
-      errors: [],
-    });
-    await renderPage();
-
-    expect(
-      screen.getByText(
-        /Could not tell whether this model belongs to an organization/,
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByLabelText(/^API key/)).toBeNull();
-  });
-
-  it("opens the form outside the platform's namespace when the failure is another installation's", async () => {
-    mockFailingInstallation = 'inst-2';
-    mockDirectoryFailure =
-      'Could not reach agent-manager on inst-2. Check your connector sign-in and try again.';
-    mockUseResource.mockReturnValue({
-      resource: sonnet({ namespace: 'agents-payments-x7k2q' }),
-      isLoading: false,
-      errors: [],
-    });
-    await renderPage();
-
-    expect(screen.getByLabelText(/^API key/)).toBeInTheDocument();
-    expect(
-      screen.queryByText(
-        /Could not tell whether this model belongs to an organization/,
-      ),
-    ).toBeNull();
-  });
-
-  it('still opens the form for a platform model then', async () => {
-    mockDirectoryFailure = 'Could not reach agent-manager on inst-1.';
-    await renderPage();
-
-    expect(screen.getByLabelText(/^API key/)).toBeInTheDocument();
-  });
-
   it("offers no form for an organization's model on a provider its gateway does not serve", async () => {
     mockUseResource.mockReturnValue({
       resource: sonnet({
@@ -330,7 +238,7 @@ describe('EditModelPage', () => {
     expect(screen.getByText(/this one uses Ollama/)).toBeInTheDocument();
   });
 
-  it('offers no form for a platform model agent-manager wrote', async () => {
+  it('edits a platform model through agent-manager', async () => {
     mockUseResource.mockReturnValue({
       resource: sonnet({
         labels: { 'app.kubernetes.io/managed-by': 'agent-manager' },
@@ -341,7 +249,7 @@ describe('EditModelPage', () => {
     await renderPage();
 
     expect(
-      screen.getByText(/asserted by agent-manager, which would revert/),
+      screen.getByRole('heading', { name: 'Edit model' }),
     ).toBeInTheDocument();
   });
 

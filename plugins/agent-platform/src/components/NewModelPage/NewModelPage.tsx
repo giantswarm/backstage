@@ -1,3 +1,4 @@
+/* eslint-disable @backstage/no-mixed-plugin-imports -- The Agent Platform composes installation APIs across plugins. */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -53,7 +54,6 @@ import { isMarkedDefault, markedIn } from '../../lib/defaultModel';
 import { slugify } from '../../lib/slugify';
 import { OWNER_LABEL, ownerOf, tenantInSentence } from '../../lib/tenants';
 import { useModelNamespaces } from '../../hooks/useModelNamespaces';
-import { useSaveModelConfig } from '../../hooks/useSaveModelConfig';
 import { useSaveOrganizationModel } from '../../hooks/useSaveOrganizationModel';
 import {
   AgentManagerError,
@@ -158,7 +158,6 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   // defaults fit most models.
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
 
-  const platformSave = useSaveModelConfig();
   const organizationSave = useSaveOrganizationModel(installation);
   const organizationDirectory = useOrganizationDirectory();
   const { directory } = organizationDirectory;
@@ -204,8 +203,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   // An organization's model is saved through agent-manager, never with a
   // Secret written from here; the platform's with the person's own writes.
   const organization = directory.get(namespace);
-  const { isSaving, error } = organization ? organizationSave : platformSave;
-  const { save: savePlatform, reset: resetPlatform } = platformSave;
+  const { isSaving, error } = organizationSave;
   const { save: saveOrganization, reset: resetOrganization } = organizationSave;
   const providers = useMemo<readonly ModelProvider[]>(() => {
     const offered = providersFor(namespace, directory);
@@ -226,11 +224,6 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         insecureSkipTlsVerify: false,
       }));
     }
-    // An organization's key is entered on the credential form only: one
-    // typed before the owner changed is not kept.
-    if (routed && values.apiKey) {
-      setValues(prev => ({ ...prev, apiKey: '' }));
-    }
   }, [
     providers,
     values.provider,
@@ -238,7 +231,6 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     routed,
     values.endpoint,
     values.insecureSkipTlsVerify,
-    values.apiKey,
   ]);
 
   // The namespace's default marks as listed, for the default choice. The save
@@ -287,6 +279,9 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
       }
       setValues(prev => {
         const next = { ...prev, ...patch };
+        if (patch.provider !== undefined) {
+          next.noCredential = patch.provider === 'Ollama';
+        }
         if (
           !edit &&
           patch.displayName !== undefined &&
@@ -325,12 +320,13 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   // An edit with nothing changed has nothing to save — not a field's fault,
   // so the button waits instead of pointing at one.
   const isChanged =
-    !edit ||
-    modelConfigFormChanged(values, initialValues) ||
-    (routed && replaceKey);
+    !edit || modelConfigFormChanged(values, initialValues) || replaceKey;
   // An organization's model that goes on to the credential form: a new one,
   // or one whose key is replaced.
-  const continuesToKey = routed && (!edit || replaceKey);
+  const continuesToKey =
+    values.provider !== 'Ollama' &&
+    !values.noCredential &&
+    (!edit || replaceKey);
 
   // Where Close and Cancel leave to: the model itself when editing; else the
   // shell's Customize screen's Models tab, or, where the app binds none, the
@@ -348,24 +344,17 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     if (!isChanged) {
       return;
     }
-    resetPlatform();
     resetOrganization();
     let saved: { isDefault: boolean; form?: string };
     try {
-      saved = organization
-        ? await saveOrganization({
-            organization,
-            values,
-            original: edit?.modelConfig,
-            makeDefault,
-            replaceKey: Boolean(edit) && continuesToKey,
-          })
-        : await savePlatform({
-            installation: installation!,
-            values,
-            original: edit?.modelConfig,
-            ...(edit ? {} : { namespace, makeDefault, expectedMarks: marks }),
-          });
+      saved = await saveOrganization({
+        organization,
+        namespace,
+        values,
+        original: edit?.modelConfig,
+        makeDefault,
+        replaceKey: Boolean(edit) && replaceKey,
+      });
     } catch {
       // Left on the page: the mutation error renders in the alert below.
       return;
@@ -401,15 +390,11 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     }
   }, [
     edit,
-    installation,
     values,
     namespace,
     organization,
-    continuesToKey,
+    replaceKey,
     makeDefault,
-    marks,
-    savePlatform,
-    resetPlatform,
     saveOrganization,
     resetOrganization,
     toastApi,
@@ -435,7 +420,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   const actions = useMemo(() => {
     let label: string;
     if (continuesToKey) {
-      label = isSaving ? 'Preparing…' : 'Continue to the key';
+      label = isSaving ? 'Preparing…' : 'Continue to credential';
     } else if (edit) {
       label = isSaving ? 'Saving…' : 'Save changes';
     } else {
@@ -583,8 +568,6 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         validation={validation}
         moreOptionsOpen={moreOptionsOpen}
         onMoreOptionsOpenChange={setMoreOptionsOpen}
-        originalProvider={edit?.modelConfig.getProvider()}
-        originalProjectID={edit ? initialValues.projectID : undefined}
         replaceKey={replaceKey}
         onReplaceKeyChange={setReplaceKey}
       />

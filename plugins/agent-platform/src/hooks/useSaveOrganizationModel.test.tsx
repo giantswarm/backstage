@@ -1,3 +1,4 @@
+/* eslint-disable @backstage/no-mixed-plugin-imports -- The Agent Platform composes installation APIs across plugins. */
 import { useState } from 'react';
 import { analyticsApiRef } from '@backstage/frontend-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
@@ -17,7 +18,7 @@ import {
 import { CREDENTIAL_OPERATION } from '../lib/__fixtures__/agentManagerOrganizations';
 import { AgentManagerError } from '../lib/agentManager';
 import { INITIAL_MODEL_CONFIG_FORM } from '../lib/modelConfigs';
-import { organizationsRouteRef } from '../routes';
+import { organizationsRouteRef, modelsRouteRef } from '../routes';
 import {
   type SaveOrganizationModelInput,
   useSaveOrganizationModel,
@@ -101,7 +102,25 @@ async function saveWith(
   await renderInTestApp(
     <TestApiProvider
       apis={[
-        [musterApiRef, { callTool } as never],
+        [
+          musterApiRef,
+          {
+            callTool,
+            describeTool: async () => ({
+              inputSchema: {
+                properties: Object.fromEntries(
+                  [
+                    'projectID',
+                    'location',
+                    'endpoint',
+                    'displayName',
+                    'noCredential',
+                  ].map(key => [key, {}]),
+                ),
+              },
+            }),
+          } as never,
+        ],
         [analyticsApiRef, analyticsApi],
       ]}
     >
@@ -113,7 +132,12 @@ async function saveWith(
         <Harness input={input} />
       </QueryClientProvider>
     </TestApiProvider>,
-    { mountedRoutes: { '/organizations': organizationsRouteRef } },
+    {
+      mountedRoutes: {
+        '/organizations': organizationsRouteRef,
+        '/customize/models': modelsRouteRef,
+      },
+    },
   );
   await userEvent.click(screen.getByRole('button', { name: 'Save' }));
   return callTool;
@@ -176,9 +200,76 @@ beforeEach(() => {
 });
 
 describe('useSaveOrganizationModel', () => {
+  it('keeps a supported custom endpoint and its noncredential query parameters', async () => {
+    const endpoint = 'https://models.example/v1?api-version=2026-01-01';
+    const callTool = await saveWith(
+      {
+        namespace: 'kagent',
+        values: { ...VALUES, provider: 'OpenAI', endpoint },
+      },
+      present,
+    );
+    await screen.findByTestId('answer');
+    expect(setCalls(callTool)[0]).toEqual(
+      expect.objectContaining({ endpoint }),
+    );
+  });
+
+  it.each(['Gemini', 'AnthropicVertexAI', 'GeminiVertexAI'] as const)(
+    'omits hidden endpoint settings for %s after a provider change',
+    async provider => {
+      const callTool = await saveWith(
+        {
+          namespace: 'kagent',
+          values: {
+            ...VALUES,
+            provider,
+            endpoint: 'https://previous-provider.example/v1',
+            insecureSkipTlsVerify: true,
+            projectID: 'vertex-test',
+            location: 'eu',
+          },
+        },
+        present,
+      );
+      await screen.findByTestId('answer');
+      expect(setCalls(callTool)).toHaveLength(1);
+      expect(setCalls(callTool)[0]).not.toHaveProperty('endpoint');
+      expect(setCalls(callTool)[0]).not.toHaveProperty('insecureSkipTLSVerify');
+    },
+  );
+
+  it('prepares installation Vertex metadata through the manager and opens its installation credential page', async () => {
+    const callTool = await saveWith(
+      {
+        namespace: 'kagent',
+        values: {
+          ...VALUES,
+          provider: 'GeminiVertexAI',
+          model: 'gemini-2.5-pro',
+          projectID: 'vertex-test',
+          location: 'global',
+        },
+      },
+      pending,
+    );
+    expect(await screen.findByTestId('answer')).toHaveTextContent(
+      `/customize/models/credentials/gazelle/kagent/${CREDENTIAL_OPERATION}`,
+    );
+    expect(setCalls(callTool)).toEqual([
+      expect.objectContaining({
+        namespace: 'kagent',
+        provider: 'GeminiVertexAI',
+        projectID: 'vertex-test',
+        location: 'global',
+        create: true,
+      }),
+    ]);
+    expect(setCalls(callTool)[0]).not.toHaveProperty('apiKey');
+  });
   it('asks agent-manager for a new model, without a key, and answers the credential form', async () => {
     const callTool = await saveWith(
-      { organization: PAYMENTS, values: { ...VALUES, apiKey: 'sk-typed' } },
+      { organization: PAYMENTS, values: VALUES },
       pending,
     );
 
@@ -192,6 +283,9 @@ describe('useSaveOrganizationModel', () => {
         name: 'claude-sonnet',
         provider: 'Anthropic',
         model: 'claude-sonnet-4-6',
+        create: true,
+        displayName: '',
+        noCredential: false,
         requestId: expect.any(String),
       },
       'gazelle',

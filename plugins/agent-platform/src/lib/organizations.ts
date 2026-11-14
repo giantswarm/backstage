@@ -389,6 +389,13 @@ export function memberKindLabel(kind: string): string {
  * a new key for an existing model is `replace_organization_credential`.
  */
 export type OrganizationModelRequest = {
+  projectID?: string;
+  location?: string;
+  endpoint?: string;
+  displayName?: string;
+  insecureSkipTLSVerify?: boolean;
+  noCredential?: boolean;
+  create?: boolean;
   namespace: string;
   name: string;
   provider?: string;

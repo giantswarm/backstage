@@ -3,12 +3,7 @@ import {
   ModelConfigInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
-  buildKeySecretManifest,
-  buildKeySecretPatch,
-  buildModelConfigManifest,
-  buildModelConfigPatch,
   INITIAL_MODEL_CONFIG_FORM,
-  keySecretName,
   isListenerRouted,
   modelConfigFieldErrors,
   modelNameError,
@@ -17,8 +12,6 @@ import {
   modelConfigFormValues,
   modelConfigOwner,
   ModelConfigFormValues,
-  PLACEHOLDER_API_KEY,
-  planKeySecret,
   providersFor,
   serviceAccountKeyError,
   serviceAccountKeySummary,
@@ -75,12 +68,53 @@ function values(
     displayName: 'Qwen 3',
     name: 'qwen3',
     model: 'qwen3-8-27b',
-    apiKey: 'sk-test',
     ...overrides,
   };
 }
 
 describe('validateModelConfigForm', () => {
+  it('accepts a custom endpoint with ordinary query parameters', () => {
+    expect(
+      modelConfigFieldErrors(
+        values({
+          endpoint: 'https://models.example/v1?api-version=2026-01-01',
+        }),
+      ).endpoint,
+    ).toBeUndefined();
+  });
+
+  it.each([
+    'https://user:synthetic-value@models.example/v1',
+    'https://models.example/v1?api_key=synthetic-value',
+    'https://models.example/v1?%61pi_key=synthetic-value',
+    'https://models.example/v1?api_key_synthetic-value',
+    'https://models.example/v1?safe=value;api_key=synthetic-value',
+    'https://models.example/v1#synthetic-value',
+  ])(
+    'keeps credential-bearing endpoints on the endpoint field: %s',
+    endpoint => {
+      expect(modelConfigFieldErrors(values({ endpoint })).endpoint).toMatch(
+        /credential/i,
+      );
+    },
+  );
+
+  it.each(['Gemini', 'AnthropicVertexAI', 'GeminiVertexAI'] as const)(
+    'does not validate a hidden endpoint for %s',
+    provider => {
+      expect(
+        modelConfigFieldErrors(
+          values({
+            provider,
+            endpoint: 'not a URL',
+            projectID: 'vertex-test',
+            location: 'eu',
+          }),
+        ).endpoint,
+      ).toBeUndefined();
+    },
+  );
+
   it('accepts a complete OpenAI form', () => {
     expect(validateModelConfigForm(values())).toEqual([]);
   });
@@ -100,35 +134,10 @@ describe('validateModelConfigForm', () => {
     );
   });
 
-  it('requires a host for Ollama and accepts it keyless without a key', () => {
-    const ollama = values({ provider: 'Ollama', apiKey: '', endpoint: '' });
-    expect(validateModelConfigForm(ollama)).toEqual([
-      'Enter the Ollama host, e.g. http://ollama.ollama:11434.',
-    ]);
-    expect(
-      validateModelConfigForm(
-        values({
-          provider: 'Ollama',
-          apiKey: '',
-          endpoint: 'http://ollama.ollama:11434',
-        }),
-      ),
-    ).toEqual([]);
-  });
-
   it('rejects a non-URL endpoint', () => {
     expect(
       validateModelConfigForm(values({ endpoint: 'vllm.example.test' })),
     ).toContainEqual(expect.stringContaining('http://'));
-  });
-
-  it('never requires the API key: empty means the endpoint needs none', () => {
-    expect(validateModelConfigForm(values({ apiKey: '' }))).toEqual([]);
-    expect(
-      validateModelConfigForm(values({ provider: 'Anthropic', apiKey: '' }), {
-        isEdit: true,
-      }),
-    ).toEqual([]);
   });
 
   it('requires the display name on create only', () => {
@@ -140,304 +149,6 @@ describe('validateModelConfigForm', () => {
     expect(
       modelConfigFieldErrors(values({ displayName: '' }), { isEdit: true }),
     ).toEqual({});
-  });
-});
-
-describe('planKeySecret', () => {
-  const edit = (originalProvider = 'OpenAI') => ({
-    isEdit: true,
-    originalProvider,
-  });
-
-  it('writes the canonical key on create', () => {
-    expect(planKeySecret(values())).toEqual({
-      action: 'write',
-      name: 'kagent-qwen3',
-      key: 'OPENAI_API_KEY',
-      value: 'sk-test',
-    });
-  });
-
-  it('writes a placeholder when no key is entered on create', () => {
-    // An empty key means the endpoint needs none. The Secret must still
-    // exist: the kagent controller injects its key as an env var and the ADK
-    // runtime requires that env var at startup.
-    expect(planKeySecret(values({ apiKey: '' }))).toEqual({
-      action: 'write',
-      name: 'kagent-qwen3',
-      key: 'OPENAI_API_KEY',
-      value: PLACEHOLDER_API_KEY,
-    });
-    // Whitespace is no key either; around a real one it is trimmed.
-    expect(planKeySecret(values({ apiKey: '  \n' }))).toMatchObject({
-      value: PLACEHOLDER_API_KEY,
-    });
-    expect(planKeySecret(values({ apiKey: ' sk-test\n' }))).toMatchObject({
-      value: 'sk-test',
-    });
-  });
-
-  it('involves no secret for Ollama', () => {
-    expect(planKeySecret(values({ provider: 'Ollama', apiKey: '' }))).toEqual({
-      action: 'none',
-    });
-  });
-
-  it('keeps the existing secret on edit when nothing new was entered', () => {
-    expect(planKeySecret(values({ apiKey: '' }), edit())).toEqual({
-      action: 'keep',
-    });
-  });
-
-  it('replaces the secret on edit when a new key was entered', () => {
-    expect(planKeySecret(values({ apiKey: 'sk-new' }), edit())).toEqual({
-      action: 'write',
-      name: 'kagent-qwen3',
-      key: 'OPENAI_API_KEY',
-      value: 'sk-new',
-    });
-  });
-
-  it('writes a placeholder when the provider changes on edit with no key entered', () => {
-    // The stored Secret holds the old provider's canonical key, which the new
-    // provider's runtime does not read and the portal cannot carry over — so
-    // an empty field means the new endpoint needs none.
-    expect(
-      planKeySecret(values({ provider: 'Anthropic', apiKey: '' }), edit()),
-    ).toEqual({
-      action: 'write',
-      name: 'kagent-qwen3',
-      key: 'ANTHROPIC_API_KEY',
-      value: PLACEHOLDER_API_KEY,
-    });
-    expect(
-      planKeySecret(
-        values({ provider: 'Anthropic', apiKey: 'sk-ant' }),
-        edit(),
-      ),
-    ).toMatchObject({ value: 'sk-ant' });
-  });
-
-  it('maps each provider to its canonical env-var key', () => {
-    const keyFor = (provider: ModelConfigFormValues['provider']) => {
-      const plan = planKeySecret(values({ provider }));
-      return plan.action === 'write' ? plan.key : undefined;
-    };
-    expect(keyFor('OpenAI')).toBe('OPENAI_API_KEY');
-    expect(keyFor('Anthropic')).toBe('ANTHROPIC_API_KEY');
-    expect(keyFor('Gemini')).toBe('GOOGLE_API_KEY');
-    expect(keyFor('AnthropicVertexAI')).toBe('GOOGLE_APPLICATION_CREDENTIALS');
-    expect(keyFor('GeminiVertexAI')).toBe('GOOGLE_APPLICATION_CREDENTIALS');
-  });
-});
-
-describe('buildKeySecretManifest', () => {
-  it('creates an Opaque secret with the one canonical key, marked as ours', () => {
-    const plan = planKeySecret(values());
-    expect(plan.action).toBe('write');
-    expect(
-      buildKeySecretManifest(
-        plan as Extract<typeof plan, { action: 'write' }>,
-        'kagent',
-      ),
-    ).toEqual({
-      apiVersion: 'v1',
-      kind: 'Secret',
-      metadata: {
-        name: 'kagent-qwen3',
-        namespace: 'kagent',
-        labels: { 'app.kubernetes.io/managed-by': 'giantswarm-backstage' },
-      },
-      type: 'Opaque',
-      stringData: { OPENAI_API_KEY: 'sk-test' },
-    });
-  });
-});
-
-describe('buildKeySecretPatch', () => {
-  it('clears previous keys before setting the new one', () => {
-    // A provider switch must not leave the old provider's canonical key next
-    // to the new one; `data: null` wipes the slate in one merge patch.
-    const plan = planKeySecret(values({ provider: 'Anthropic' }), {
-      isEdit: true,
-      originalProvider: 'OpenAI',
-    });
-    expect(plan.action).toBe('write');
-    expect(
-      buildKeySecretPatch(plan as Extract<typeof plan, { action: 'write' }>),
-    ).toEqual({
-      data: null,
-      stringData: { ANTHROPIC_API_KEY: 'sk-test' },
-    });
-  });
-});
-
-describe('buildModelConfigManifest', () => {
-  it('composes an OpenAI-compatible config with endpoint, key and TLS skip', () => {
-    const form = values({
-      displayName: 'Qwen 3 (lab vLLM)',
-      endpoint: 'https://vllm.example.test/v1',
-      insecureSkipTlsVerify: true,
-    });
-    const manifest = buildModelConfigManifest(
-      form,
-      planKeySecret(form),
-      'kagent',
-      { directory },
-    );
-
-    expect(manifest).toEqual({
-      apiVersion: 'api.kagent.dev/v1alpha3',
-      kind: 'ModelConfig',
-      metadata: {
-        name: 'qwen3',
-        namespace: 'kagent',
-        labels: { 'app.kubernetes.io/managed-by': 'giantswarm-backstage' },
-        annotations: { 'ui.giantswarm.io/display-name': 'Qwen 3 (lab vLLM)' },
-      },
-      spec: {
-        provider: 'OpenAI',
-        model: 'qwen3-8-27b',
-        apiKeySecret: 'kagent-qwen3',
-        apiKeySecretKey: 'OPENAI_API_KEY',
-        openAI: { baseUrl: 'https://vllm.example.test/v1' },
-        tls: { disableVerify: true },
-      },
-    });
-  });
-
-  it('omits what is not set: no annotation, endpoint block or tls', () => {
-    // No key entered: the spec is the same as with one — it references the
-    // Secret, which holds the placeholder.
-    const form = values({
-      provider: 'Gemini',
-      displayName: '',
-      apiKey: '',
-      endpoint: '',
-    });
-    const manifest = buildModelConfigManifest(
-      form,
-      planKeySecret(form),
-      'kagent',
-      { directory },
-    ) as { metadata: Record<string, unknown>; spec: Record<string, unknown> };
-
-    expect(manifest.metadata.annotations).toBeUndefined();
-    expect(manifest.spec).toEqual({
-      provider: 'Gemini',
-      model: 'qwen3-8-27b',
-      apiKeySecret: 'kagent-qwen3',
-      apiKeySecretKey: 'GOOGLE_API_KEY',
-    });
-  });
-
-  it('puts the endpoint in the provider-specific block', () => {
-    const spec = (form: ModelConfigFormValues) =>
-      (
-        buildModelConfigManifest(form, planKeySecret(form), 'kagent', {
-          directory,
-        }) as {
-          spec: Record<string, unknown>;
-        }
-      ).spec;
-
-    expect(
-      spec(values({ provider: 'Anthropic', endpoint: 'https://a.test' })),
-    ).toMatchObject({ anthropic: { baseUrl: 'https://a.test' } });
-    expect(
-      spec(
-        values({ provider: 'Ollama', apiKey: '', endpoint: 'http://o.test' }),
-      ),
-    ).toMatchObject({ ollama: { host: 'http://o.test' } });
-  });
-});
-
-describe('buildModelConfigPatch', () => {
-  it('nulls the other providers’ blocks but writes only the managed field of the current one', () => {
-    const form = values({
-      displayName: '',
-      endpoint: 'https://new.example.test/v1',
-    });
-    const patch = buildModelConfigPatch(
-      form,
-      planKeySecret(form, { isEdit: true, originalProvider: 'OpenAI' }),
-      makeModelConfig(),
-      directory,
-    );
-
-    expect(patch).toEqual({
-      metadata: {
-        annotations: { 'ui.giantswarm.io/display-name': null },
-      },
-      spec: {
-        provider: 'OpenAI',
-        model: 'qwen3-8-27b',
-        apiKeySecret: 'kagent-qwen3',
-        apiKeySecretKey: 'OPENAI_API_KEY',
-        openAI: { baseUrl: 'https://new.example.test/v1' },
-        anthropic: null,
-        ollama: null,
-        anthropicVertexAI: null,
-        geminiVertexAI: null,
-        tls: { disableVerify: null },
-      },
-    });
-  });
-
-  it('keeps a foreign secret reference when the plan is keep', () => {
-    // The CR may reference a hand-provisioned Secret under any name; leaving
-    // the key field empty must not repoint it to the portal convention.
-    const original = makeModelConfig({
-      spec: {
-        provider: 'OpenAI',
-        model: 'qwen3-8-27b',
-        apiKeySecret: 'my-shared-key',
-        apiKeySecretKey: 'OPENAI_API_KEY',
-      },
-    });
-    const form = values({ apiKey: '' });
-    const patch = buildModelConfigPatch(
-      form,
-      planKeySecret(form, { isEdit: true, originalProvider: 'OpenAI' }),
-      original,
-      directory,
-    ) as { spec: Record<string, unknown> };
-
-    expect(patch.spec.apiKeySecret).toBe('my-shared-key');
-  });
-
-  it('drops the secret reference when switching to Ollama', () => {
-    const form = values({
-      provider: 'Ollama',
-      apiKey: '',
-      endpoint: 'http://ollama.ollama:11434',
-    });
-    const patch = buildModelConfigPatch(
-      form,
-      planKeySecret(form, { isEdit: true, originalProvider: 'OpenAI' }),
-      makeModelConfig(),
-      directory,
-    ) as { spec: Record<string, unknown> };
-
-    expect(patch.spec).toMatchObject({
-      apiKeySecret: null,
-      apiKeySecretKey: null,
-      ollama: { host: 'http://ollama.ollama:11434' },
-      openAI: null,
-    });
-  });
-
-  it('clears only the managed baseUrl when the endpoint is emptied', () => {
-    // A hand-set openAI.maxTokens must survive the portal clearing the URL.
-    const form = values({ endpoint: '' });
-    const patch = buildModelConfigPatch(
-      form,
-      planKeySecret(form, { isEdit: true, originalProvider: 'OpenAI' }),
-      makeModelConfig(),
-      directory,
-    ) as { spec: Record<string, unknown> };
-
-    expect(patch.spec.openAI).toEqual({ baseUrl: null });
   });
 });
 
@@ -461,6 +172,7 @@ describe('modelConfigFormValues', () => {
       ),
     ).toEqual({
       name: 'qwen3',
+      noCredential: true,
       displayName: 'Qwen 3',
       provider: 'OpenAI',
       model: 'qwen3-8-27b',
@@ -468,7 +180,6 @@ describe('modelConfigFormValues', () => {
       projectID: '',
       location: '',
       insecureSkipTlsVerify: true,
-      apiKey: '',
     });
   });
 
@@ -485,7 +196,7 @@ describe('modelConfigFormValues', () => {
 
 describe('modelConfigFormChanged', () => {
   it('sees a changed field or an entered key, nothing else', () => {
-    const initial = values({ apiKey: '' });
+    const initial = values({});
     expect(modelConfigFormChanged({ ...initial }, initial)).toBe(false);
     // Whitespace around a value is not a change.
     expect(
@@ -500,9 +211,6 @@ describe('modelConfigFormChanged', () => {
         initial,
       ),
     ).toBe(true);
-    expect(modelConfigFormChanged({ ...initial, apiKey: 'sk' }, initial)).toBe(
-      true,
-    );
   });
 });
 
@@ -548,19 +256,6 @@ describe('modelConfigOwner', () => {
   });
 });
 
-describe('keySecretName', () => {
-  it('follows the agentlab convention', () => {
-    expect(keySecretName('qwen3', 'kagent', directory)).toBe('kagent-qwen3');
-  });
-
-  it("takes the tenant credential prefix in an Organization's namespace", () => {
-    expect(keySecretName('qwen3', 'org-acme', directory)).toBe(
-      'tenant-credential-qwen3',
-    );
-    expect(keySecretName('qwen3', 'team-a', directory)).toBe('kagent-qwen3');
-  });
-});
-
 describe("an Organization's model", () => {
   it('asks for the name itself, with no display name', () => {
     expect(
@@ -582,9 +277,7 @@ describe("an Organization's model", () => {
     expect(modelConfigEditOwner(written('org-acme'), directory)).toBe(
       undefined,
     );
-    expect(modelConfigEditOwner(written('kagent'), directory)).toBe(
-      'agent-manager',
-    );
+    expect(modelConfigEditOwner(written('kagent'), directory)).toBe(undefined);
   });
 
   it('goes through the listener in org-* namespaces only', () => {
@@ -597,99 +290,14 @@ describe("an Organization's model", () => {
     expect(providersFor('org-acme', directory)).toEqual([
       'Anthropic',
       'OpenAI',
+      'AnthropicVertexAI',
+      'GeminiVertexAI',
     ]);
     expect(providersFor('kagent', directory)).toContain('AnthropicVertexAI');
   });
-
-  it('is created without a base URL or TLS setting, keyed by its tenant credential', () => {
-    const form = values({
-      provider: 'Anthropic',
-      endpoint: 'https://api.example.test',
-      insecureSkipTlsVerify: true,
-    });
-    const plan = planKeySecret(form, {
-      isEdit: false,
-      namespace: 'org-acme',
-      directory,
-    });
-
-    expect(
-      buildModelConfigManifest(form, plan, 'org-acme', { directory }),
-    ).toMatchObject({
-      metadata: { namespace: 'org-acme' },
-      spec: {
-        provider: 'Anthropic',
-        model: 'qwen3-8-27b',
-        apiKeySecret: 'tenant-credential-qwen3',
-        apiKeySecretKey: 'ANTHROPIC_API_KEY',
-      },
-    });
-    expect(
-      (
-        buildModelConfigManifest(form, plan, 'org-acme', { directory }) as {
-          spec: object;
-        }
-      ).spec,
-    ).not.toHaveProperty('anthropic');
-    expect(
-      (
-        buildModelConfigManifest(form, plan, 'org-acme', { directory }) as {
-          spec: object;
-        }
-      ).spec,
-    ).not.toHaveProperty('tls');
-  });
-
-  it('keeps the listener base URL admission set on an edit', () => {
-    const original = makeModelConfig({
-      metadata: { namespace: 'org-acme' },
-      spec: {
-        provider: 'Anthropic',
-        model: 'claude',
-        apiKeySecret: 'tenant-credential-qwen3',
-        apiKeySecretKey: 'ANTHROPIC_API_KEY',
-        anthropic: { baseUrl: 'http://llm-listener/anthropic' },
-      },
-    });
-    const form = values({
-      provider: 'Anthropic',
-      model: 'claude-2',
-      apiKey: '',
-    });
-    const patch = buildModelConfigPatch(
-      form,
-      planKeySecret(form, {
-        isEdit: true,
-        originalProvider: 'Anthropic',
-        namespace: 'org-acme',
-        directory,
-      }),
-      original,
-      directory,
-    ) as { spec: Record<string, unknown> };
-
-    expect(patch.spec).not.toHaveProperty('anthropic');
-    expect(patch.spec.openAI).toBeNull();
-    expect(patch.spec.apiKeySecret).toBe('tenant-credential-qwen3');
-  });
 });
 
-describe('the default mark on create', () => {
-  it('stamps the annotation beside the display name when asked', () => {
-    const form = values({ displayName: 'Qwen' });
-    const manifest = buildModelConfigManifest(
-      form,
-      planKeySecret(form),
-      'kagent',
-      { markDefault: true, directory },
-    ) as { metadata: { annotations: Record<string, string> } };
-
-    expect(manifest.metadata.annotations).toEqual({
-      'ui.giantswarm.io/display-name': 'Qwen',
-      'agent-platform.giantswarm.io/is-default-model-config': 'true',
-    });
-  });
-});
+describe('the default mark on create', () => {});
 
 describe('Vertex AI', () => {
   function serviceAccountKey(overrides: Record<string, unknown> = {}) {
@@ -713,7 +321,6 @@ describe('Vertex AI', () => {
       model: 'claude-sonnet-4-5@20250929',
       projectID: 'my-project-123',
       location: 'europe-west4',
-      apiKey: serviceAccountKey(),
       ...overrides,
     });
   }
@@ -794,17 +401,6 @@ describe('Vertex AI', () => {
       expect(modelConfigFieldErrors(vertex())).toEqual({});
     });
 
-    it('requires the location and the key on create', () => {
-      expect(
-        modelConfigFieldErrors(
-          vertex({ projectID: '', location: '', apiKey: '' }),
-        ),
-      ).toEqual({
-        location: 'Enter the location, e.g. global or europe-west4.',
-        apiKey: 'Choose the service account key file.',
-      });
-    });
-
     it.each(['global', 'us', 'eu', 'europe-west4', 'us-central1'])(
       'accepts the location %s',
       location => {
@@ -823,147 +419,17 @@ describe('Vertex AI', () => {
       },
     );
 
-    it('shows a key problem on the key field', () => {
-      expect(
-        modelConfigFieldErrors(vertex({ projectID: 'other-project' })).apiKey,
-      ).toContain('This key belongs to project my-project-123');
-    });
-
     it('keeps the stored key on an edit of the same project', () => {
-      const original = vertex({ apiKey: '' });
+      const original = vertex({});
       expect(
         modelConfigFieldErrors(
           vertex({
-            apiKey: '',
             location: 'global',
             provider: 'GeminiVertexAI',
           }),
           { isEdit: true, original },
         ),
       ).toEqual({});
-    });
-
-    it('requires a new key when the project changes on edit', () => {
-      const original = vertex({ apiKey: '' });
-      expect(
-        modelConfigFieldErrors(
-          vertex({ apiKey: '', projectID: 'new-project' }),
-          {
-            isEdit: true,
-            original,
-          },
-        ).apiKey,
-      ).toBe('Choose the service account key file.');
-    });
-
-    it('requires a key when an edit switches to Vertex AI', () => {
-      const original = values({ provider: 'Anthropic', apiKey: '' });
-      expect(
-        modelConfigFieldErrors(vertex({ apiKey: '' }), {
-          isEdit: true,
-          original,
-        }).apiKey,
-      ).toBe('Choose the service account key file.');
-    });
-  });
-
-  describe('planKeySecret', () => {
-    it('writes the key as entered, trimmed', () => {
-      const key = serviceAccountKey();
-      expect(planKeySecret(vertex({ apiKey: `${key}\n` }))).toEqual({
-        action: 'write',
-        name: 'kagent-sonnet-vertex',
-        key: 'GOOGLE_APPLICATION_CREDENTIALS',
-        value: key,
-      });
-    });
-
-    it('keeps the stored key across the two Vertex AI providers', () => {
-      expect(
-        planKeySecret(vertex({ provider: 'GeminiVertexAI', apiKey: '' }), {
-          isEdit: true,
-          originalProvider: 'AnthropicVertexAI',
-        }),
-      ).toEqual({ action: 'keep' });
-    });
-  });
-
-  it('composes the provider block with project and location, and no TLS', () => {
-    const plan = planKeySecret(vertex());
-    expect(
-      buildModelConfigManifest(
-        vertex({ insecureSkipTlsVerify: true, endpoint: 'https://ignored' }),
-        plan,
-        'kagent',
-        { directory },
-      ).spec,
-    ).toEqual({
-      provider: 'AnthropicVertexAI',
-      model: 'claude-sonnet-4-5@20250929',
-      apiKeySecret: 'kagent-sonnet-vertex',
-      apiKeySecretKey: 'GOOGLE_APPLICATION_CREDENTIALS',
-      anthropicVertexAI: {
-        projectID: 'my-project-123',
-        location: 'europe-west4',
-      },
-    });
-    expect(
-      buildModelConfigManifest(
-        vertex({ provider: 'GeminiVertexAI', model: 'gemini-2.5-pro' }),
-        plan,
-        'kagent',
-        { directory },
-      ).spec,
-    ).toMatchObject({
-      provider: 'GeminiVertexAI',
-      geminiVertexAI: { projectID: 'my-project-123', location: 'europe-west4' },
-    });
-  });
-
-  it('patches only project and location in its block and drops the others', () => {
-    const original = makeModelConfig({
-      spec: {
-        provider: 'AnthropicVertexAI',
-        model: 'claude-sonnet-4-5@20250929',
-        apiKeySecret: 'kagent-sonnet-vertex',
-        apiKeySecretKey: 'GOOGLE_APPLICATION_CREDENTIALS',
-        anthropicVertexAI: {
-          projectID: 'my-project-123',
-          location: 'europe-west4',
-          maxTokens: 4096,
-        },
-      },
-    });
-    const next = vertex({ provider: 'GeminiVertexAI', apiKey: '' });
-    const plan = planKeySecret(next, {
-      isEdit: true,
-      originalProvider: 'AnthropicVertexAI',
-    });
-    const patch = buildModelConfigPatch(next, plan, original, directory) as {
-      spec: Record<string, unknown>;
-    };
-    expect(patch.spec).toMatchObject({
-      provider: 'GeminiVertexAI',
-      apiKeySecret: 'kagent-sonnet-vertex',
-      apiKeySecretKey: 'GOOGLE_APPLICATION_CREDENTIALS',
-      openAI: null,
-      anthropic: null,
-      ollama: null,
-      anthropicVertexAI: null,
-      geminiVertexAI: { projectID: 'my-project-123', location: 'europe-west4' },
-      tls: { disableVerify: null },
-    });
-
-    const sameProvider = buildModelConfigPatch(
-      vertex({ apiKey: '', location: 'global' }),
-      { action: 'keep' },
-      original,
-      directory,
-    ) as { spec: Record<string, unknown> };
-    // A merge patch: maxTokens, which the form does not manage, survives.
-    expect(sameProvider.spec.anthropicVertexAI).toEqual({
-      projectID: 'my-project-123',
-      location: 'global',
     });
   });
 
@@ -982,12 +448,11 @@ describe('Vertex AI', () => {
       projectID: 'my-project-123',
       location: 'us',
       endpoint: '',
-      apiKey: '',
     });
   });
 
   it('counts a project or location edit as a change', () => {
-    const initial = vertex({ apiKey: '' });
+    const initial = vertex({});
     expect(modelConfigFormChanged(initial, initial)).toBe(false);
     expect(
       modelConfigFormChanged({ ...initial, location: 'global' }, initial),

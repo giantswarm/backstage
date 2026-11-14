@@ -1,24 +1,11 @@
-// Everything pure about managing kagent ModelConfigs: the provider contract
-// (canonical key-secret names), the create/edit form model with its
-// validation, and the manifest/patch composition the save mutation applies.
-//
-// The key-secret conventions deliberately match agentlab's `platform.
-// extraModels` (giantswarm/agentlab#44), so models provisioned by either tool
-// look the same on the cluster: the Secret is named `kagent-<model name>`,
-// lives in the ModelConfig's namespace, and its one key is the provider's
-// canonical env-var name.
-
 import {
   BACKSTAGE_FIELD_MANAGER,
   ModelConfig,
   readProvenance,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
-import { DEFAULT_MODEL_ANNOTATION } from './defaultModel';
-import {
-  EMPTY_ORGANIZATION_DIRECTORY,
-  type OrganizationDirectory,
-} from './organizations';
+import { type OrganizationDirectory } from './organizations';
+import { modelEndpointProblem } from './modelEndpoint';
 
 /**
  * Where portal-created ModelConfigs (and their key Secrets) go: the namespace
@@ -107,6 +94,8 @@ export const MODEL_PROVIDER_OPTIONS: {
 export const LISTENER_PROVIDERS: readonly ModelProvider[] = [
   'Anthropic',
   'OpenAI',
+  'AnthropicVertexAI',
+  'GeminiVertexAI',
 ];
 
 /** The providers the form offers for a model in `namespace`. */
@@ -131,68 +120,12 @@ export function isVertexAIProvider(
   return provider === 'AnthropicVertexAI' || provider === 'GeminiVertexAI';
 }
 
-/** The CRD's provider block a Vertex AI provider's project and location go in. */
-const VERTEX_AI_BLOCK: Record<
-  VertexAIProvider,
-  'anthropicVertexAI' | 'geminiVertexAI'
-> = {
-  AnthropicVertexAI: 'anthropicVertexAI',
-  GeminiVertexAI: 'geminiVertexAI',
-};
-
-/**
- * The one key inside a model's Secret, per provider. Not configurable: the
- * kagent controller injects the Secret's key as an env var of the same name
- * into agent pods, and the ADK runtime looks up exactly these canonical
- * names. Ollama is keyless — no Secret at all. The Vertex AI providers'
- * key is a service account's JSON key, which the agent never sees: Substrate
- * exchanges it for an access token on the agent's behalf, and kagent keys
- * that binding on `GOOGLE_APPLICATION_CREDENTIALS`.
- */
-export const PROVIDER_SECRET_KEYS: Record<ModelProvider, string | undefined> = {
-  OpenAI: 'OPENAI_API_KEY',
-  Anthropic: 'ANTHROPIC_API_KEY',
-  Gemini: 'GOOGLE_API_KEY',
-  AnthropicVertexAI: 'GOOGLE_APPLICATION_CREDENTIALS',
-  GeminiVertexAI: 'GOOGLE_APPLICATION_CREDENTIALS',
-  Ollama: undefined,
-};
-
-/**
- * What the Secret holds when no API key is entered: the endpoint needs none
- * (a local vLLM, say). The Secret still has to exist with the provider's
- * canonical key: the ADK runtime requires the env var at startup, so an agent
- * pod without it crashloops even against an endpoint that never checks the
- * value.
- */
-export const PLACEHOLDER_API_KEY = 'giantswarm-backstage-placeholder';
-
-/**
- * The Secret a portal-created model's key lives in: `kagent-<model>` (the
- * agentlab convention), or in an Organization's namespace
- * `tenant-credential-<model>`, the only Secret name admission lets a person who
- * may not read the namespace's Secrets create there.
- */
-export function keySecretName(
-  modelName: string,
-  namespace: string,
-  directory: OrganizationDirectory,
-): string {
-  return isListenerRouted(namespace, directory)
-    ? `tenant-credential-${modelName}`
-    : `kagent-${modelName}`;
-}
-
 /** The annotation `ModelConfig.getDisplayName()` prefers. */
 const DISPLAY_NAME_ANNOTATION = 'ui.giantswarm.io/display-name';
-const MANAGED_BY_LABEL = 'app.kubernetes.io/managed-by';
 
-/**
- * The create/edit form's model. `apiKey` is write-only and optional: it is
- * never read back from the cluster; empty means "the endpoint needs none" on
- * create and "leave the existing key alone" on edit (see {@link planKeySecret}).
- */
+/** Nonsecret configuration collected before a credential operation. */
 export type ModelConfigFormValues = {
+  noCredential: boolean;
   /** ModelConfig CR name; immutable after creation. */
   name: string;
   /** Optional friendly name (the display-name annotation). */
@@ -215,11 +148,10 @@ export type ModelConfigFormValues = {
   location: string;
   /** `spec.tls.disableVerify`, for self-signed lab endpoints. */
   insecureSkipTlsVerify: boolean;
-  /** Write-only, optional. See {@link planKeySecret} for what empty means. */
-  apiKey: string;
 };
 
 export const INITIAL_MODEL_CONFIG_FORM: ModelConfigFormValues = {
+  noCredential: false,
   name: '',
   displayName: '',
   provider: 'OpenAI',
@@ -228,7 +160,6 @@ export const INITIAL_MODEL_CONFIG_FORM: ModelConfigFormValues = {
   projectID: '',
   location: '',
   insecureSkipTlsVerify: false,
-  apiKey: '',
 };
 
 /** Whether the endpoint field applies to this provider at all. */
@@ -242,7 +173,7 @@ const DNS_LABEL_PATTERN = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
 
 /** The model form's fields a validation problem can belong to. */
 export type ModelConfigField =
-  'displayName' | 'name' | 'model' | 'endpoint' | 'location' | 'apiKey';
+  'displayName' | 'name' | 'model' | 'endpoint' | 'location' | 'projectID';
 
 export type ModelConfigFieldErrors = Partial<Record<ModelConfigField, string>>;
 
@@ -253,7 +184,7 @@ const MODEL_CONFIG_FIELDS: readonly ModelConfigField[] = [
   'model',
   'endpoint',
   'location',
-  'apiKey',
+  'projectID',
 ];
 
 /**
@@ -348,28 +279,6 @@ export function serviceAccountKeySummary(
   };
 }
 
-/**
- * Whether a save must carry a new key: the Secret it would keep holds no
- * usable one. A Vertex AI key also has to belong to the model's project,
- * which the portal cannot check on a stored key it never reads back.
- */
-function keyRequired(
-  values: ModelConfigFormValues,
-  original: ModelConfigFormValues | undefined,
-): boolean {
-  if (!isVertexAIProvider(values.provider)) {
-    return false;
-  }
-  if (!original) {
-    return true;
-  }
-  return (
-    PROVIDER_SECRET_KEYS[original.provider] !==
-      PROVIDER_SECRET_KEYS[values.provider] ||
-    original.projectID.trim() !== values.projectID.trim()
-  );
-}
-
 export type ModelConfigValidationOptions = {
   isEdit: boolean;
   /** Edit only: the form as the model stood on the cluster. */
@@ -425,13 +334,14 @@ export function modelConfigFieldErrors(
     errors.model = 'Enter the model id.';
   }
 
-  if (values.provider === 'Ollama' && !values.endpoint.trim()) {
-    errors.endpoint = 'Enter the Ollama host, e.g. http://ollama.ollama:11434.';
-  } else if (
-    values.endpoint.trim() &&
-    !/^https?:\/\//.test(values.endpoint.trim())
-  ) {
-    errors.endpoint = 'The endpoint must be an http:// or https:// URL';
+  if (!options.routed && providerHasEndpoint(values.provider)) {
+    if (values.provider === 'Ollama' && !values.endpoint.trim()) {
+      errors.endpoint =
+        'Enter the Ollama host, e.g. http://ollama.ollama:11434.';
+    } else {
+      const endpointProblem = modelEndpointProblem(values.endpoint);
+      if (endpointProblem) errors.endpoint = endpointProblem;
+    }
   }
 
   if (isVertexAIProvider(values.provider)) {
@@ -443,14 +353,8 @@ export function modelConfigFieldErrors(
         'Enter global, us, eu or a region such as europe-west4.';
     }
 
-    const apiKey = values.apiKey.trim();
-    if (apiKey) {
-      const keyError = serviceAccountKeyError(apiKey, values.projectID);
-      if (keyError) {
-        errors.apiKey = keyError;
-      }
-    } else if (keyRequired(values, options.original)) {
-      errors.apiKey = 'Choose the service account key file.';
+    if (!values.projectID.trim()) {
+      errors.projectID = 'Enter the Google Cloud project.';
     }
   }
 
@@ -472,79 +376,6 @@ export function validateModelConfigForm(
 }
 
 /**
- * What the save mutation should do about the model's key Secret.
- *
- * - `none` — the provider is keyless (Ollama): no Secret involved.
- * - `keep` — edit with nothing new entered and the provider reading the same
- *   canonical key as before (the provider unchanged, or one Vertex AI provider
- *   for the other): leave the referenced Secret alone.
- * - `write` — create or replace the conventional Secret with this one key.
- *   Always the portal's own `kagent-<name>`, never a foreign Secret the CR
- *   may currently reference — the portal only ever writes Secrets it owns.
- *
- * The key is optional, and an empty one means the endpoint needs none: the
- * Secret gets {@link PLACEHOLDER_API_KEY} (the ModelConfig spec is the same
- * either way — it references the Secret and its canonical key). That is what
- * an empty key does on create, and on an edit that changes the provider: the
- * existing Secret holds the old provider's canonical key, which the new
- * provider's runtime does not read, and the portal never reads a key back to
- * carry it over. A Vertex AI model never gets the placeholder: kagent refuses
- * any value that is not a service account key, so validation requires one
- * wherever this would write.
- */
-export type KeySecretPlan =
-  | { action: 'none' }
-  | { action: 'keep' }
-  | { action: 'write'; name: string; key: string; value: string };
-
-export function planKeySecret(
-  values: ModelConfigFormValues,
-  options: {
-    isEdit: boolean;
-    originalProvider?: string;
-  } & (
-    | { namespace?: undefined; directory?: undefined }
-    | {
-        /** Where the model lives. */
-        namespace: string;
-        /** Which namespace is which organization, as agent-manager answered. */
-        directory: OrganizationDirectory;
-      }
-  ) = { isEdit: false },
-): KeySecretPlan {
-  const canonicalKey = PROVIDER_SECRET_KEYS[values.provider];
-  if (!canonicalKey) {
-    return { action: 'none' };
-  }
-
-  // Surrounding whitespace is never part of a key, and a pasted one often
-  // carries a trailing newline or space.
-  const apiKey = values.apiKey.trim();
-  if (
-    options.isEdit &&
-    !apiKey &&
-    isSupportedProvider(options.originalProvider) &&
-    PROVIDER_SECRET_KEYS[options.originalProvider] === canonicalKey
-  ) {
-    // Nothing new entered, and the stored Secret is still the provider's.
-    return { action: 'keep' };
-  }
-
-  return {
-    action: 'write',
-    name: options.namespace
-      ? keySecretName(values.name, options.namespace, options.directory)
-      : keySecretName(
-          values.name,
-          MODEL_CONFIG_NAMESPACE,
-          EMPTY_ORGANIZATION_DIRECTORY,
-        ),
-    key: canonicalKey,
-    value: apiKey || PLACEHOLDER_API_KEY,
-  };
-}
-
-/**
  * Whether the edit form holds anything to save: a field differs from what it
  * started from, or a key was entered (the key field always starts empty).
  */
@@ -552,9 +383,6 @@ export function modelConfigFormChanged(
   values: ModelConfigFormValues,
   initial: ModelConfigFormValues,
 ): boolean {
-  if (values.apiKey.trim()) {
-    return true;
-  }
   return (
     values.displayName.trim() !== initial.displayName.trim() ||
     values.provider !== initial.provider ||
@@ -562,223 +390,14 @@ export function modelConfigFormChanged(
     values.endpoint.trim() !== initial.endpoint.trim() ||
     values.projectID.trim() !== initial.projectID.trim() ||
     values.location.trim() !== initial.location.trim() ||
+    values.noCredential !== initial.noCredential ||
     values.insecureSkipTlsVerify !== initial.insecureSkipTlsVerify
   );
-}
-
-type ProviderBlockField =
-  'openAI' | 'anthropic' | 'ollama' | 'anthropicVertexAI' | 'geminiVertexAI';
-
-/**
- * The provider-specific block the form manages, or `undefined` when none
- * applies: the endpoint, or a Vertex AI model's project and location.
- */
-function providerBlock(
-  values: ModelConfigFormValues,
-  namespace: string,
-  directory: OrganizationDirectory,
-): { field: ProviderBlockField; block: object } | undefined {
-  if (isVertexAIProvider(values.provider)) {
-    return {
-      field: VERTEX_AI_BLOCK[values.provider],
-      block: {
-        projectID: values.projectID.trim(),
-        location: values.location.trim(),
-      },
-    };
-  }
-  const endpoint = values.endpoint.trim();
-  if (values.provider === 'Ollama') {
-    return { field: 'ollama', block: { host: endpoint } };
-  }
-  if (!endpoint || isListenerRouted(namespace, directory)) {
-    return undefined;
-  }
-  if (values.provider === 'Anthropic') {
-    return { field: 'anthropic', block: { baseUrl: endpoint } };
-  }
-  if (values.provider === 'OpenAI') {
-    return { field: 'openAI', block: { baseUrl: endpoint } };
-  }
-  return undefined;
-}
-
-/** The Secret manifest a `write` plan creates when none exists yet. */
-export function buildKeySecretManifest(
-  plan: Extract<KeySecretPlan, { action: 'write' }>,
-  namespace: string,
-): Record<string, unknown> {
-  return {
-    apiVersion: 'v1',
-    kind: 'Secret',
-    metadata: {
-      name: plan.name,
-      namespace,
-      labels: { [MANAGED_BY_LABEL]: BACKSTAGE_FIELD_MANAGER },
-    },
-    type: 'Opaque',
-    stringData: { [plan.key]: plan.value },
-  };
-}
-
-/**
- * The merge patch a `write` plan applies when the Secret already exists.
- * `data: null` clears every previous key first, so a provider switch does not
- * leave the old provider's canonical key lying around next to the new one.
- */
-export function buildKeySecretPatch(
-  plan: Extract<KeySecretPlan, { action: 'write' }>,
-): Record<string, unknown> {
-  return {
-    data: null,
-    stringData: { [plan.key]: plan.value },
-  };
-}
-
-/** The full ModelConfig manifest for a create. */
-export function buildModelConfigManifest(
-  values: ModelConfigFormValues,
-  plan: KeySecretPlan,
-  namespace: string,
-  options: { markDefault?: boolean; directory: OrganizationDirectory },
-): Record<string, unknown> {
-  const { directory } = options;
-  const spec: Record<string, unknown> = {
-    provider: values.provider,
-    model: values.model.trim(),
-  };
-
-  if (plan.action === 'write') {
-    spec.apiKeySecret = plan.name;
-    spec.apiKeySecretKey = plan.key;
-  }
-
-  const block = providerBlock(values, namespace, directory);
-  if (block) {
-    spec[block.field] = block.block;
-  }
-
-  if (
-    values.insecureSkipTlsVerify &&
-    !isVertexAIProvider(values.provider) &&
-    !isListenerRouted(namespace, directory)
-  ) {
-    spec.tls = { disableVerify: true };
-  }
-
-  const displayName = values.displayName.trim();
-  const annotations: Record<string, string> = {
-    ...(displayName ? { [DISPLAY_NAME_ANNOTATION]: displayName } : {}),
-    ...(options.markDefault ? { [DEFAULT_MODEL_ANNOTATION]: 'true' } : {}),
-  };
-
-  return {
-    apiVersion: `${ModelConfig.group}/${ModelConfig.apiVersion}`,
-    kind: ModelConfig.kind,
-    metadata: {
-      name: values.name.trim(),
-      namespace,
-      // Marks portal-created models as ours, which is what keeps them editable
-      // here — see modelConfigOwner.
-      labels: { [MANAGED_BY_LABEL]: BACKSTAGE_FIELD_MANAGER },
-      ...(Object.keys(annotations).length > 0 ? { annotations } : {}),
-    },
-    spec,
-  };
-}
-
-/**
- * The merge patch an edit applies to an existing ModelConfig.
- *
- * Fields this form does not manage are left to their owners, so the patch is
- * surgical: the provider blocks of the *other* providers are `null`ed (a
- * provider switch must not leave `openAI.baseUrl` behind for a now-Anthropic
- * config), while inside the current provider's block only the managed field
- * is written — a hand-set `openAI.maxTokens` survives an endpoint edit, as
- * does an `anthropicVertexAI.maxTokens` a project or location edit.
- */
-export function buildModelConfigPatch(
-  values: ModelConfigFormValues,
-  plan: KeySecretPlan,
-  original: ModelConfig,
-  directory: OrganizationDirectory,
-): Record<string, unknown> {
-  const namespace = original.getNamespace() ?? MODEL_CONFIG_NAMESPACE;
-  const routed = isListenerRouted(namespace, directory);
-  const block = providerBlock(values, namespace, directory);
-
-  const providerBlocks: Partial<Record<ProviderBlockField, unknown>> = {
-    openAI: null,
-    anthropic: null,
-    ollama: null,
-    anthropicVertexAI: null,
-    geminiVertexAI: null,
-  };
-  if (block) {
-    providerBlocks[block.field] = block.block;
-  } else if (
-    routed &&
-    (values.provider === 'OpenAI' || values.provider === 'Anthropic')
-  ) {
-    // The listener's base URL, which admission put there, stays.
-    delete providerBlocks[
-      values.provider === 'OpenAI' ? 'openAI' : 'anthropic'
-    ];
-  } else if (values.provider === 'OpenAI') {
-    // Provider unchanged but the custom base URL was cleared: drop only the
-    // managed field rather than the whole block.
-    providerBlocks.openAI = { baseUrl: null };
-  } else if (values.provider === 'Anthropic') {
-    providerBlocks.anthropic = { baseUrl: null };
-  }
-
-  let apiKeySecret: string | null;
-  let apiKeySecretKey: string | null;
-  if (plan.action === 'write') {
-    apiKeySecret = plan.name;
-    apiKeySecretKey = plan.key;
-  } else if (plan.action === 'keep') {
-    apiKeySecret = original.getApiKeySecret() ?? null;
-    apiKeySecretKey = original.getApiKeySecretKey() ?? null;
-  } else {
-    apiKeySecret = null;
-    apiKeySecretKey = null;
-  }
-
-  const displayName = values.displayName.trim();
-
-  return {
-    metadata: {
-      annotations: {
-        [DISPLAY_NAME_ANNOTATION]: displayName || null,
-      },
-    },
-    spec: {
-      provider: values.provider,
-      model: values.model.trim(),
-      apiKeySecret,
-      apiKeySecretKey,
-      ...providerBlocks,
-      // Only the managed field: a hand-set custom CA bundle survives.
-      tls: {
-        disableVerify:
-          values.insecureSkipTlsVerify &&
-          !isVertexAIProvider(values.provider) &&
-          !routed
-            ? true
-            : null,
-      },
-    },
-  };
 }
 
 /**
  * Prefill for the edit form. `undefined` when the CR's provider is not one
  * this form speaks — the model then offers no edit.
- *
- * `apiKey` always seeds empty (write-only): whether the referenced Secret
- * holds a real key or the placeholder is not readable from the CR, and does
- * not need to be — leaving the field empty keeps the Secret as it is.
  */
 export function modelConfigFormValues(
   modelConfig: ModelConfig,
@@ -806,6 +425,7 @@ export function modelConfigFormValues(
     modelConfig.getAnnotations()?.[DISPLAY_NAME_ANNOTATION] ?? '';
 
   return {
+    noCredential: !modelConfig.getApiKeySecret(),
     name: modelConfig.getName(),
     displayName,
     provider,
@@ -814,7 +434,6 @@ export function modelConfigFormValues(
     projectID: vertex?.projectID ?? '',
     location: vertex?.location ?? '',
     insecureSkipTlsVerify: modelConfig.getTls()?.disableVerify === true,
-    apiKey: '',
   };
 }
 
@@ -864,7 +483,8 @@ export function modelConfigEditOwner(
   const owner = modelConfigOwner(modelConfig);
   if (
     owner === AGENT_MANAGER_MANAGED_BY &&
-    isListenerRouted(modelConfig.getNamespace() ?? '', directory)
+    (modelConfig.getNamespace() === MODEL_CONFIG_NAMESPACE ||
+      isListenerRouted(modelConfig.getNamespace() ?? '', directory))
   ) {
     return undefined;
   }
