@@ -53,9 +53,13 @@ const TOP = 16;
 
 /** Mon, Wed, Fri — every other row, so the labels never touch. */
 const WEEKDAY_LABELS: [number, string][] = [
-  [0, 'Mon'],
-  [2, 'Wed'],
-  [4, 'Fri'],
+  ...[0, 2, 4].map((day): [number, string] => [
+    day,
+    new Intl.DateTimeFormat(undefined, {
+      weekday: 'short',
+      timeZone: 'UTC',
+    }).format(new Date(Date.UTC(2026, 0, 5 + day))),
+  ]),
 ];
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -270,7 +274,7 @@ export function ActivityHeatmap({
     : `${title}: no ${noun.other} in these ${days.length} days.`;
 
   return (
-    <UsageCard title={title} note={note}>
+    <UsageCard title={`${title} (UTC days)`} note={note}>
       <div className={classes.layout}>
         <figure className={classes.figure}>
           <svg

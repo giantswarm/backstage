@@ -1,11 +1,6 @@
-import {
-  Box,
-  Paper,
-  Typography,
-  makeStyles,
-  useTheme,
-  Theme,
-} from '@material-ui/core';
+import { makeStyles, useTheme, Theme } from '@material-ui/core';
+import { Box, Text } from '@backstage/ui';
+import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import { Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
@@ -174,16 +169,16 @@ export function WorkflowStatsPanel({
   }
   if (error) {
     return (
-      <Typography variant="body2" color="textSecondary">
+      <Text as="p" variant="body-small" color="secondary">
         Statistics unavailable: {(error as Error).message}
-      </Typography>
+      </Text>
     );
   }
   if (!data || data.runs === 0) {
     return (
-      <Typography variant="body2" color="textSecondary">
+      <Text as="p" variant="body-small" color="secondary">
         No runs of this workflow recorded yet.
-      </Typography>
+      </Text>
     );
   }
 
@@ -258,10 +253,10 @@ export function WorkflowStatsPanel({
       </Box>
 
       {perDay.length > 0 && (
-        <Paper variant="outlined" className={classes.chartCard}>
-          <Typography component="div" className={classes.chartTitle}>
-            Runs per day
-          </Typography>
+        <InfoCard className={classes.chartCard}>
+          <Text as="div" className={classes.chartTitle}>
+            Runs per day (UTC)
+          </Text>
           <StackedBarChart
             data={perDay}
             xAxisKey="date"
@@ -277,14 +272,14 @@ export function WorkflowStatsPanel({
             formatXAxisTick={formatDayTick}
             formatTooltipLabel={formatDayTooltip}
           />
-        </Paper>
+        </InfoCard>
       )}
 
       {data.sampled < data.runs && (
-        <Typography variant="caption" className={classes.note}>
+        <Text variant="body-x-small" className={classes.note}>
           Rates and durations computed over the most recent {data.sampled} of{' '}
           {data.runs} runs.
-        </Typography>
+        </Text>
       )}
     </Box>
   );

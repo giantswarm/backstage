@@ -265,8 +265,8 @@ them and never invent a palette.
 - Numbers, durations and bytes: `formatCount`, `formatSeconds` and
   `formatBytes` in `agent-platform-common/src/formatNumbers.ts`. Relative dates:
   `getRelativeDate` (`ui-react`). Absolute local dates, all in `ui-react`:
-  `DateComponent`, `formatLocalDate` and `formatLocalDateFull`; in a compact
-  list cell, `formatLocalTime` (`14:05`) and `formatLocalDay` (`16 Oct`, with
+  `DateComponent`, `formatLocalDate` and `formatLocalDateFull` follow browser locale and local time; in a compact
+  list cell, `formatLocalTime` and `formatLocalDay` (with
   the year when it is not this one). `formatSeconds` is the one duration
   format — "420 ms", "1.2 s", "3 s", "18 s", "2 min 30 s", "1 h 5 min";
   milliseconds go through `formatMilliseconds`. Never print raw milliseconds or floor to

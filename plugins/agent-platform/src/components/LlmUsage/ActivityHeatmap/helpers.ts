@@ -1,3 +1,4 @@
+import { formatDayTooltip } from '@giantswarm/backstage-plugin-agent-platform-common';
 /**
  * The arithmetic behind `ActivityHeatmap`, kept apart from the drawing so the
  * calendar layout and the colour levels are testable without an SVG.
@@ -163,14 +164,5 @@ export function summarizeHeatmap(days: HeatmapDay[]): HeatmapSummary {
 
 /** `2026-10-07` as `Wed, 7 Oct` — a day inside a window needs no year. */
 export function formatHeatmapDay(day: string): string {
-  const date = utcDate(day);
-  if (!date) {
-    return day;
-  }
-  return date.toLocaleDateString(undefined, {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    timeZone: 'UTC',
-  });
+  return formatDayTooltip(day);
 }
