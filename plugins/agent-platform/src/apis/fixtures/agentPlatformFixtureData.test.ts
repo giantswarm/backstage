@@ -13,10 +13,11 @@ import {
   type AgentReadiness,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
-import { isPendingErase } from '../../components/OrganizationPage/OrganizationStatusAlert';
+import { areChangesOff } from '../../components/OrganizationPage/OrganizationStatusAlert';
 import { awaitsDefaultModel } from '../../lib/agentManager';
 import {
   mayCreateAgentsIn,
+  ORPHANED_DELETE_MERGED,
   organizationNamespacesOf,
 } from '../../lib/organizations';
 import {
@@ -114,7 +115,12 @@ describe('agent-platform fixture data', () => {
       expect(listed.orphaned?.status === 'True').toBe(
         state === 'orphaned' || state === 'pendingErase',
       );
-      expect(isPendingErase(listed)).toBe(state === 'pendingErase');
+      expect(listed.orphaned?.reason === ORPHANED_DELETE_MERGED).toBe(
+        state === 'pendingErase',
+      );
+      expect(areChangesOff(listed)).toBe(
+        state === 'pendingErase' || state === 'deleting',
+      );
       expect(listed.namespace === undefined).toBe(state === 'pending');
       expect(mayCreateAgentsIn(listed)).toBe(
         role === 'admin' || role === 'editor',
