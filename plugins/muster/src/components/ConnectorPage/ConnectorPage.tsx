@@ -1,3 +1,10 @@
+import { useConnectorAccess } from '../../hooks/useConnectorAccess';
+import {
+  familyAccess,
+  instanceAccess,
+  connectorAuthName,
+} from '../../lib/connectorAccess';
+import { useServerPageLinks } from '../shared/useServerPageLinks';
 import { ReactElement, ReactNode, useMemo, useState } from 'react';
 import {
   Navigate,
@@ -264,6 +271,14 @@ function ConnectorPageContent({
   const members = useMemo(() => rowServers(row), [row]);
   const representativeInfo = representativeServer(row, installation);
   const representative = representativeInfo?.server;
+  const accessQuery = useConnectorAccess(installation, authenticated);
+  const links = useServerPageLinks();
+  let access;
+  if (row.kind === 'family') {
+    access = familyAccess(row.servers, accessQuery.data);
+  } else if (row.kind === 'server') {
+    access = instanceAccess(row.server, accessQuery.data);
+  }
   const singular = row.kind === 'server' ? row.server : undefined;
 
   // Above the tabs, so a search on Tools survives a visit to another tab:
@@ -315,7 +330,7 @@ function ConnectorPageContent({
     singular && authenticated && singular.canAuthenticateInteractively(),
   );
   const signIn = useServerSignIn(
-    singular?.getName() ?? '',
+    singular ? connectorAuthName(singular) : '',
     canSignIn ? installation : undefined,
     { noun: 'connector' },
   );
@@ -478,6 +493,30 @@ function ConnectorPageContent({
           }
         />
       </Flex>
+    );
+  }
+
+  if (row.kind === 'family' && access?.reach !== 'connected') {
+    signInGate = (
+      <Alert
+        status={
+          noInstanceToolsExplanation(members).tone === 'warning'
+            ? 'warning'
+            : 'info'
+        }
+        title={access?.status.label}
+        description={
+          noInstanceToolsExplanation(members).tone === 'warning'
+            ? noInstanceToolsExplanation(members).text
+            : (access?.status.explanation ??
+              noInstanceToolsExplanation(members).text)
+        }
+        customActions={
+          <Link href={links.server(name, installation, { tab: 'instances' })}>
+            View instances
+          </Link>
+        }
+      />
     );
   }
 
@@ -658,11 +697,15 @@ function ConnectorPageContent({
           <ConnectorLogo name={displayName} icon={icon} size={56} decorative />
         }
         badges={
-          <StatusBadge
-            row={row}
-            displayName={displayName}
-            portalOnly={portalOnly}
-          />
+          access ? (
+            <StatusWithHint {...access.status} subject={displayName} />
+          ) : (
+            <StatusBadge
+              row={row}
+              displayName={displayName}
+              portalOnly={portalOnly}
+            />
+          )
         }
         meta={connectorMeta(row, representative?.getDescription())}
         description={
@@ -749,6 +792,7 @@ function ConnectorPageContent({
                     fleetClusters={fleetClusters}
                     authenticated={authenticated}
                     windowed
+                    accessData={accessQuery.data}
                   />
                 }
               />

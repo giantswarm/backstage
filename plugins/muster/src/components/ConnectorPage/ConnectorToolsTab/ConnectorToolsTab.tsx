@@ -283,6 +283,7 @@ export function ConnectorToolsTab({
 
   return (
     <Flex direction="column" gap="0">
+      {signInGate}
       {searchable && (
         <div className={classes.toolbar}>
           <Box className={classes.search}>

@@ -92,7 +92,7 @@ function makeServer(opts: {
       kind: 'MCPServer',
       metadata: {
         name: opts.name,
-        namespace: 'muster',
+        namespace: 'agent-platform',
         annotations: {
           ...(opts.displayName
             ? { 'ui.giantswarm.io/display-name': opts.displayName }
@@ -181,7 +181,12 @@ function makeApi() {
     listServers: jest.fn(async () => ({
       mcpServers: [{ name: 'jira', resourcesCount: 2 }],
     })),
-    getAuthStatus: jest.fn(async () => ({ servers: [] })),
+    getAuthStatus: jest.fn(async () => ({
+      servers: mockServers.map(server => ({
+        name: server.getName(),
+        status: server.getState() === 'Failed' ? 'failed' : 'connected',
+      })),
+    })),
     getServerInfo: jest.fn(async (): Promise<{ icon?: string }> => ({})),
     describeTool: jest.fn(async (name: string) => ({
       name,
@@ -336,7 +341,7 @@ describe('ConnectorPage', () => {
       'href',
       '/customize/connectors',
     );
-    expect(screen.getByText('Connected')).toBeInTheDocument();
+    expect(await screen.findByText('Connected')).toBeInTheDocument();
     expect(
       screen.getByText('Search, read and update tickets'),
     ).toBeInTheDocument();
@@ -953,12 +958,12 @@ describe('ConnectorPage', () => {
       );
     });
 
-    it('keeps muster’s state until muster reports this session signed in', async () => {
+    it('reports unavailable access when muster does not report the session', async () => {
       const api = makeApi();
       api.getAuthStatus.mockResolvedValue({ servers: [] } as never);
       await renderAt(`${BASE}/grafana-cloud`, { api });
 
-      expect(await screen.findByText('Connected')).toBeInTheDocument();
+      expect(await screen.findByText('Status unavailable')).toBeInTheDocument();
       expect(screen.queryByText('Portal only')).toBeNull();
     });
 
@@ -1157,15 +1162,18 @@ describe('ConnectorPage Tools tab', () => {
     );
   });
 
-  it('says plainly that no instance offers tools while one has not failed', async () => {
+  it('explains partial personal access when the catalogue lists no tools', async () => {
     const api = makeApi();
     api.filterTools.mockResolvedValue(NO_TOOLS);
     await renderAt(`${BASE}/kubernetes`, { api });
 
     const explanation = await screen.findByText(
-      'No instance offers tools right now.',
+      '1 of 2 instances are connected for you. View instances to check the others.',
     );
-    expect(explanation.closest('[data-status]')).toBeNull();
+    expect(explanation.closest('[data-status]')).toHaveAttribute(
+      'data-status',
+      'info',
+    );
   });
 
   it('keeps the failure plain while the sign-in error alert says something is wrong', async () => {
@@ -1407,7 +1415,7 @@ describe('ConnectorPage Details tab', () => {
     expect(screen.queryByRole('heading', { name: 'Resource' })).toBeNull();
 
     await userEvent.click(foldOut());
-    expect(resourceFact('Namespace')).toHaveTextContent(/^muster$/);
+    expect(resourceFact('Namespace')).toHaveTextContent(/^agent-platform$/);
     expect(resourceFact('Name')).toHaveTextContent(/^jira$/);
     expect(
       screen.getByRole('heading', { name: 'Authentication' }),

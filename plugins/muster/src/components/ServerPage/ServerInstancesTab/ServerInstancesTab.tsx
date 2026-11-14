@@ -1,3 +1,8 @@
+import type { AuthStatusResponse } from '../../../apis';
+import {
+  instanceAccess,
+  connectorAuthName,
+} from '../../../lib/connectorAccess';
 import { useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Link } from '@backstage/core-components';
@@ -29,6 +34,8 @@ import {
   ServerAuthActions,
   ServerStateBadge,
   serverStateLabel,
+  StatusWithHint,
+  needsSignIn,
 } from '../../shared';
 
 export const INSTANCE_PANE_ID = 'mcp-server-instance';
@@ -88,6 +95,7 @@ export interface ServerInstancesTabProps {
    * whole.
    */
   windowed?: boolean;
+  accessData?: AuthStatusResponse;
 }
 
 /**
@@ -104,6 +112,7 @@ export function ServerInstancesTab({
   fleetClusters,
   authenticated,
   windowed = false,
+  accessData,
 }: ServerInstancesTabProps) {
   const instanceHref = useInstanceHref();
   const instanceArg = instances[0]?.getInstanceArg();
@@ -158,7 +167,17 @@ export function ServerInstancesTab({
     {
       id: 'status',
       label: 'Status',
-      cell: row => <CellText title={serverStateLabel(row.server)} />,
+      cell: row =>
+        windowed ? (
+          <Cell>
+            <StatusWithHint
+              {...instanceAccess(row.server, accessData).status}
+              subject={row.server.getName()}
+            />
+          </Cell>
+        ) : (
+          <CellText title={serverStateLabel(row.server)} />
+        ),
     },
     {
       id: 'lastConnected',
@@ -196,6 +215,33 @@ export function ServerInstancesTab({
       ),
     },
   );
+
+  if (windowed && authenticated) {
+    columns.push({
+      id: 'actions',
+      label: 'Actions',
+      cell: row => {
+        const access = instanceAccess(row.server, accessData);
+        return (
+          <Cell>
+            {access.auth && needsSignIn(access.auth) && (
+              <ServerAuthActions
+                noun="connector"
+                serverName={access.name}
+                installation={row.server.cluster}
+                oauthConfigured={row.server.getAuth()?.type === 'oauth'}
+                signInGate={
+                  row.server.getSuspended()
+                    ? deactivatedSignInGate('connector')
+                    : undefined
+                }
+              />
+            )}
+          </Cell>
+        );
+      },
+    });
+  }
 
   const { tableProps } = useTable<InstanceRow>({
     mode: 'complete',
@@ -253,7 +299,9 @@ export function ServerInstancesTab({
                 <Flex direction="column" align="start">
                   <ServerAuthActions
                     noun="connector"
-                    serverName={server.getName()}
+                    serverName={
+                      windowed ? connectorAuthName(server) : server.getName()
+                    }
                     installation={server.cluster}
                     oauthConfigured={server.getAuth()?.type === 'oauth'}
                     signInGate={

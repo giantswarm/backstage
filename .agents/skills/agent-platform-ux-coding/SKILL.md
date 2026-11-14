@@ -125,6 +125,14 @@ them and never invent a palette.
 
 ### States
 
+- Connector status describes the person's access, including for families.
+  A family's connected CRs do not prove personal access. Its list row summarizes
+  member access and links to Instances when attention is needed. The Tools tab
+  explains unavailable tools; Instances exposes personal state and recovery
+  actions per member. Offer Sign in only where muster reports an interactive
+  sign-in, regardless of connector type. Authentication-method labels describe
+  configuration separately from access state.
+
 - Empty lists and not-found pages use `EmptyStateCard`; a not-found page adds a
   back link. A failed read of a whole page is a danger `Alert` with a back link.
 - Loading a region uses `LoadingIndicator` with a "Reading …" label. Detail
