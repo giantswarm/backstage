@@ -8,18 +8,25 @@ import {
 import type { KubeObjectInterface } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { MCPServer, MusterWorkflow } from '@giantswarm/backstage-plugin-muster';
 import { musterKubernetesObjectsOf } from '@giantswarm/backstage-plugin-muster/fixtures';
+import { agentPlatformKubernetesObjectsOf } from '@giantswarm/backstage-plugin-agent-platform/fixtures';
 
 /**
  * The objects of an installation one plugin's fixtures hold, as its
- * Kubernetes API would list them.
+ * Kubernetes API would list them. A source answers the same array while its
+ * objects stay the same, and a new one once a fixture write changed them.
  */
 export type FixtureObjectsSource = (
   installation: string,
-) => KubeObjectInterface[];
+) => readonly KubeObjectInterface[];
 
-/** The plugins' objects fixture mode serves: muster's MCP servers and workflows. */
+/**
+ * The plugins' objects fixture mode serves: muster's MCP servers and
+ * workflows, and agent-platform's Agents, their carriers, models and
+ * Harnesses.
+ */
 const FIXTURE_OBJECTS: readonly FixtureObjectsSource[] = [
   musterKubernetesObjectsOf,
+  agentPlatformKubernetesObjectsOf,
 ];
 
 /**
@@ -135,29 +142,32 @@ export class KubernetesFixtureApi implements KubernetesApi {
   ) {}
 
   /**
-   * Each installation's objects by `<group>/<kind>`, gathered from the
-   * sources once: the fixtures are fixed.
+   * Each installation's objects by `<group>/<kind>`, with the arrays the
+   * sources answered: gathered again only when a source answers another one.
    */
   private readonly objectsByInstallation = new Map<
     string,
-    Map<string, KubeObjectInterface[]>
+    {
+      answers: readonly (readonly KubeObjectInterface[])[];
+      index: Map<string, KubeObjectInterface[]>;
+    }
   >();
 
   private indexOf(installation: string): Map<string, KubeObjectInterface[]> {
-    let index = this.objectsByInstallation.get(installation);
-    if (!index) {
-      index = new Map();
-      for (const object of this.sources.flatMap(source =>
-        source(installation),
-      )) {
-        const group = object.apiVersion.includes('/')
-          ? object.apiVersion.split('/')[0]
-          : '';
-        const key = `${group}/${object.kind}`;
-        index.set(key, [...(index.get(key) ?? []), object]);
-      }
-      this.objectsByInstallation.set(installation, index);
+    const answers = this.sources.map(source => source(installation));
+    const cached = this.objectsByInstallation.get(installation);
+    if (cached && answers.every((answer, i) => answer === cached.answers[i])) {
+      return cached.index;
     }
+    const index = new Map<string, KubeObjectInterface[]>();
+    for (const object of answers.flat()) {
+      const group = object.apiVersion.includes('/')
+        ? object.apiVersion.split('/')[0]
+        : '';
+      const key = `${group}/${object.kind}`;
+      index.set(key, [...(index.get(key) ?? []), object]);
+    }
+    this.objectsByInstallation.set(installation, { answers, index });
     return index;
   }
 

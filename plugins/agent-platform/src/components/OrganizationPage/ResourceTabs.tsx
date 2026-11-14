@@ -17,6 +17,7 @@ import {
   ConfirmDialog,
   EmptyStateCard,
   PageSection,
+  tableRowId,
   useFieldValidation,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -403,7 +404,7 @@ export function ModelsTab({
           columnConfig={columns}
           data={models.modelConfigs.map(model => ({
             ...model,
-            id: model.name,
+            id: tableRowId('model', model.name),
           }))}
           pagination={{ type: 'none' }}
         />
@@ -564,7 +565,10 @@ export function ConnectorsTab({
       ) : (
         <Table<ConnectorRow>
           columnConfig={columns}
-          data={rows.map(row => ({ ...row, id: row.name }))}
+          data={rows.map(row => ({
+            ...row,
+            id: tableRowId('connector', row.name),
+          }))}
           pagination={{ type: 'none' }}
         />
       )}
@@ -635,7 +639,7 @@ export function EgressTab({ installation, organization }: TabProps) {
           columnConfig={columns}
           data={policies.egressPolicies.map(policy => ({
             ...policy,
-            id: policy.name,
+            id: tableRowId('egress-policy', policy.name),
           }))}
           pagination={{ type: 'none' }}
         />
