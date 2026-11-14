@@ -6,6 +6,8 @@ import {
   INSTALLATION_STATES,
   ORGANIZATION_STATES,
   SESSION_STATES,
+  SESSION_TURNS,
+  DAY,
   WORKFLOW_STATES,
 } from './builders';
 import { baseDataSet, createFixtureDataSet, inInstallation } from './dataSet';
@@ -58,6 +60,9 @@ describe('createFixtureDataSet', () => {
     expect(statesOf(data.sessions)).toEqual(new Set(SESSION_STATES));
     expect(statesOf(data.workflows)).toEqual(new Set(WORKFLOW_STATES));
     expect(statesOf(data.executions)).toEqual(new Set(EXECUTION_STATES));
+    expect(new Set(data.sessions.map(s => s.turn))).toEqual(
+      new Set([...SESSION_TURNS, 'none']),
+    );
     expect(statesOf(data.workspaces)).toEqual(new Set(WORKSPACE_STATES));
     expect(statesOf(data.toolchainSources)).toEqual(
       new Set(TOOLCHAIN_SOURCE_STATES),
@@ -112,6 +117,31 @@ describe('createFixtureDataSet', () => {
       installation: FIXTURE_INSTALLATION,
       state: 'pending',
     });
+  });
+
+  it('gives every served installation a session whose newest turn is in each state, recently', () => {
+    const data = createFixtureDataSet({ now });
+    for (const installation of FIXTURE_INSTALLATIONS) {
+      const turns = inInstallation(data.sessions, installation).filter(
+        session => session.turn !== 'completed' && session.turn !== 'none',
+      );
+      expect(new Set(turns.map(session => session.turn))).toEqual(
+        new Set(SESSION_TURNS.filter(turn => turn !== 'completed')),
+      );
+      for (const session of turns) {
+        expect(now - Date.parse(session.updatedAt)).toBeLessThanOrEqual(
+          2 * DAY,
+        );
+        expect(session.state).toBe(
+          session.turn === 'approval' || session.turn === 'askUser'
+            ? 'suspended'
+            : 'ready',
+        );
+      }
+      expect(turns.find(session => session.turn === 'working')?.updatedAt).toBe(
+        new Date(now).toISOString(),
+      );
+    }
   });
 
   it('gives sessions only to ready agents of ready organizations', () => {
@@ -371,6 +401,7 @@ describe('builder settings', () => {
       agents: { count: 5, states: ['ready'] },
       connectors: { count: 7 },
       sessions: { count: 4 },
+      turnSessions: { count: 2 },
       workflows: { count: 1 },
       executions: { count: 6 },
     });
@@ -378,7 +409,7 @@ describe('builder settings', () => {
     expect(data.organizations).toHaveLength(2 * 3);
     expect(data.agents).toHaveLength(2 * 3 * 5);
     expect(data.connectors).toHaveLength(2 * 7);
-    expect(data.sessions).toHaveLength(2 * 3 * 5 * 4);
+    expect(data.sessions).toHaveLength(2 * 3 * 5 * 4 + 2 * 2);
     expect(data.workflows).toHaveLength(2);
     expect(data.executions).toHaveLength(2 * 6);
   });
@@ -400,6 +431,7 @@ describe('builder settings', () => {
       agents: { nameLength: 200 },
       connectors: { nameLength: 50 },
       sessions: { nameLength: 80 },
+      turnSessions: { nameLength: 80 },
       workflows: { nameLength: 30 },
     });
     expect(data.installations.slice(0, 3).map(i => i.name)).toEqual([

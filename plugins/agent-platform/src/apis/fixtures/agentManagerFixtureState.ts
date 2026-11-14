@@ -61,6 +61,10 @@ import {
   type FixtureModel,
 } from './agentPlatformFixtureData';
 import { FIXTURE_USER } from './fixtureIdentity';
+import {
+  kagentFixtureState,
+  type KagentFixtureState,
+} from './kagentFixtureState';
 
 /**
  * agent-manager's state in fixture mode (docs/fixtures.md): the base data
@@ -318,6 +322,8 @@ export class AgentManagerFixtureState {
   constructor(
     private readonly data: FixtureDataSet = baseDataSet(),
     private readonly now: () => number = Date.now,
+    /** Where a started session is created, for kagent to serve it. */
+    private readonly kagent: () => KagentFixtureState = kagentFixtureState,
   ) {
     this.createdAt = new Date(this.now() - 7 * DAY).toISOString();
   }
@@ -1415,8 +1421,8 @@ export class AgentManagerFixtureState {
   }
 
   /**
-   * Starts a session: answers a new session id, which kagent's fixture does
-   * not list yet (docs/fixtures.md).
+   * Starts a session: creates it in kagent's fixture, which serves it from
+   * then on, and answers its id.
    */
   startSession(
     installation: string,
@@ -1433,6 +1439,11 @@ export class AgentManagerFixtureState {
     }
     return this.once(installation, 'start_session', request.requestId, () => {
       const id = globalThis.crypto.randomUUID();
+      this.kagent().createSession(installation, {
+        id,
+        agent: { namespace: request.namespace, name: request.name },
+        ...(request.sessionName && { name: request.sessionName }),
+      });
       return {
         session: {
           id,
@@ -1442,6 +1453,26 @@ export class AgentManagerFixtureState {
         ...(request.workspaceGrant && { workspace: request.workspaceGrant }),
       };
     });
+  }
+
+  /**
+   * The namespaces kagent lists Agents in for the person: their
+   * organizations' namespaces that hold an agent.
+   */
+  agentNamespaces(installation: string): string[] {
+    const state = this.stateOf(installation);
+    const member = new Set(
+      state.organizations
+        .filter(organization => organization.role !== 'none')
+        .map(organization => organization.namespace),
+    );
+    return [
+      ...new Set(
+        [...state.agents.values()]
+          .map(agent => agent.namespace)
+          .filter(namespace => member.has(namespace)),
+      ),
+    ].sort();
   }
 
   // The Kubernetes API

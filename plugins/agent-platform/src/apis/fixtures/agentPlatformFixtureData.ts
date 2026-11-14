@@ -39,6 +39,7 @@ import {
   type OrganizationPermissions,
 } from '../../lib/organizations';
 import { FIXTURE_USER } from './fixtureIdentity';
+import { runtimeLostFailure } from './kagentConversations';
 
 /**
  * The fixture data set's records as the agent-platform plugin's clients read
@@ -425,6 +426,9 @@ export function sessionRecordOf(session: FixtureSession): SessionRecordWire {
         reason: 'WorkerLost',
         message: 'The worker running the session stopped answering.',
       },
+    }),
+    ...(session.turn === 'runtimeLost' && {
+      failure: runtimeLostFailure(session.id),
     }),
     changed: [],
   };

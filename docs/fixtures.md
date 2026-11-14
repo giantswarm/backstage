@@ -134,9 +134,46 @@ what the first call answered. This agent-manager writes live only: it reports
 no `commit` capability, and a write in mode `commit` is refused as
 `unsupported`.
 
-Known gap: `start_session` answers a new session id that kagent's fixture
-does not list, so the session page it leads to has no session. The kagent
-fixtures (giantswarm/giantswarm#39251, item 7) close it.
+`start_session` creates the session in kagent's fixture (see "kagent"), so
+the session page it leads to opens it and sends the first prompt.
+
+### kagent
+
+The fixture `KagentApi`
+(`plugins/agent-platform/src/apis/fixtures/kagentFixtureState.ts`) serves
+each installation's sessions from the data set, with their conversations, and
+the sessions agent-manager's `start_session` creates. The answers go through
+the parsers the real client's go through, so the pages read what they read
+from kagent.
+
+- The conversations are the recorded kagent API v2 answers in
+  `@giantswarm/backstage-plugin-agent-platform-common/testFixtures`, recast
+  onto a session (its ids, its agent, its times;
+  `plugins/agent-platform/src/apis/fixtures/kagentConversations.ts`). A
+  session's newest turn is in the state its `turn` says: completed (tool calls
+  the person approved, an answer, and the recorded PNG attached to the
+  prompt), working (a reply being written, kept current), waiting on an
+  approval or on answers to questions, failed (the model provider's refusal),
+  canceled, and failed because kagent lost the session's runtime (reported on
+  the session too). The states no v1 recording has are derived from one, with
+  the words of the older recordings of that state.
+- The session states summary is computed as the backend computes it: the
+  sessions of the last seven days, newest first, at most twenty, each by its
+  runtime's state where that decides and by its newest turn otherwise.
+- A new turn replays the recorded stream, one frame per 300 ms (`FRAME_MS`),
+  with a reply that says it is a replay. The turn runs on a timer, so it goes
+  on when its stream is cut, as a real one does, and a subscription follows
+  it again. A second message while a turn runs is refused as kagent refuses
+  it. Answering an approval or a question resumes the waiting turn, checked
+  as the backend checks an answer (the request answered already, another
+  request since, a question rejected, an answer missing). The seeded working
+  turn has no end: its stream stays open until it would be cut (55 seconds,
+  `STREAM_CUT_MS`), and stopping it cancels it.
+- Renaming, deleting and canceling are kept in memory, refused in the
+  backend's words; a deleted session is gone from every read.
+- kagent on the unreachable installation fails its reads as a timeout.
+- Not served yet: the usage summary and the model cost answer empty
+  (giantswarm/giantswarm#39251, item 8).
 
 ### workspace-manager, toolchain-manager and skill-manager
 
@@ -250,7 +287,11 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
   organizations of each installation (admin, editor, user, so the New agent form's "needs the
   editor role" shows), manages the orphaned, pending-erase and deleting ones and is no
   member of the pending one. Only ready agents of ready organizations have
-  sessions, and one pending agent has a failed release. Each installation's
+  sessions, and one pending agent has a failed release. Each session's `turn`
+  says what its newest turn came to; besides the sessions of each agent, every
+  installation has one session per turn state (`SESSION_TURNS`, the
+  `turnSessions` setting), moved in the last two days, drawn after every other
+  list so adding them changed none. Each installation's
   muster has three toolset presets made from its connectors and workflows
   (`buildToolsetPresets`, which draws no numbers): one that resolves in full,
   one that builds on `preset:read-only`, and one whose selectors match nothing
@@ -272,8 +313,9 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
   agent-platform's in
   `plugins/agent-platform/src/apis/fixtures/agentPlatformFixtureData.ts`
   (Agent objects and their carriers, ModelConfig and Harness objects,
-  agent-manager's agents and organizations, kagent sessions), and the
-  managers' states next to them (`workspaceManagerFixtureState.ts`,
+  agent-manager's agents and organizations, kagent sessions), kagent's
+  conversations in `kagentConversations.ts`, and the managers' states next to
+  them (`workspaceManagerFixtureState.ts`,
   `toolchainManagerFixtureState.ts`, `mcpServers/skillManager.ts`).
 
 A page that reads a new field or shows a new state extends a builder or a

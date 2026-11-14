@@ -12,7 +12,9 @@
  * JSON. That is not cosmetic: the package's type rollup cannot resolve a `.json`
  * module, so a declaration referring to one fails the build.
  *
- * Test-only. Nothing in a shipped code path should import this.
+ * For tests and fixture mode (docs/fixtures.md) only. Nothing in a shipped
+ * code path imports this: the `giantswarm/no-fixture-imports` lint rule
+ * refuses it there.
  */
 
 /**
@@ -75,6 +77,9 @@ import tasksAskUserPendingJson from './kagent/__fixtures__/tasks.ask-user-pendin
 import tasksAskUserJson from './kagent/__fixtures__/tasks.ask-user.json';
 import tasksClaudeHarnessJson from './kagent/__fixtures__/tasks.claude-harness-1.1.json';
 import tasksKagent4a91c273Json from './kagent/__fixtures__/tasks.kagent-4a91c273.json';
+import tasksHitlApprovalKagent4a91c273Json from './kagent/__fixtures__/tasks.hitl-approval.kagent-4a91c273.json';
+import taskCanceledKagent4a91c273Json from './kagent/__fixtures__/task.canceled.kagent-4a91c273.json';
+import streamKagent4a91c273Json from './kagent/__fixtures__/stream.kagent-4a91c273.json';
 import tasksBareArrayJson from './kagent/__fixtures__/tasks.bare-array.json';
 import tasksDataNotArrayJson from './kagent/__fixtures__/tasks.data-not-array.json';
 import tasksEmptyNoDataJson from './kagent/__fixtures__/tasks.empty-no-data.json';
@@ -131,6 +136,18 @@ export const tasksBareArray: unknown = tasksBareArrayJson as unknown;
 export const tasksClaudeHarness: unknown = tasksClaudeHarnessJson as unknown;
 /** A kagent API v2 (ADK runtime) task list, one usage bag per model call. */
 export const tasksKagent4a91c273: unknown = tasksKagent4a91c273Json as unknown;
+/**
+ * The same kagent's `ListTasksResponse` while its turn waits on a tool
+ * approval (`TASK_STATE_INPUT_REQUIRED`, the HITL request on `status.message`).
+ */
+export const tasksHitlApprovalKagent4a91c273: unknown =
+  tasksHitlApprovalKagent4a91c273Json as unknown;
+/** One task of the same kagent, canceled while it wrote its reply. */
+export const taskCanceledKagent4a91c273: unknown =
+  taskCanceledKagent4a91c273Json as unknown;
+/** The `StreamResponse` frames of one turn of the same kagent, in order. */
+export const streamKagent4a91c273: unknown =
+  streamKagent4a91c273Json as unknown;
 /**
  * {@link tasksClaudeHarness} with its turn ended `TASK_STATE_FAILED` instead,
  * keeping the status message and the usage on it. Derived, not recorded: it
