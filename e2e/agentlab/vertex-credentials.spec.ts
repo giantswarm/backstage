@@ -59,14 +59,27 @@ for (const scope of ['platform', 'organization'] as const) {
     admin.on('request', recordKubernetesWrite);
     try {
       await open(admin, '/customize/models/new');
-      await admin.getByRole('button', { name: /Owner/ }).click();
-      await admin
-        .getByRole('option', {
-          name: scope === 'platform' ? 'Platform' : lab.organization.name,
-          exact: true,
-        })
-        .click();
       await admin.getByRole('textbox', { name: /^Name/ }).fill(name);
+      await expect(
+        admin.getByRole('button', { name: 'Continue to credential' }),
+      ).toBeEnabled();
+      const owner = admin.getByRole('button', { name: /Owner/ });
+      if (scope === 'organization' || (await owner.isVisible())) {
+        await owner.click();
+        await admin
+          .getByRole('option', {
+            name: scope === 'platform' ? 'Platform' : lab.organization.name,
+            exact: true,
+          })
+          .click();
+      } else {
+        await expect(
+          admin.getByText(
+            'New agents for the platform start with the default model.',
+            { exact: true },
+          ),
+        ).toBeVisible();
+      }
       if (scope === 'platform') {
         const endpoint = admin.getByRole('textbox', { name: /^Base URL/ });
         await admin.getByRole('textbox', { name: /^Model/ }).fill('test-model');
