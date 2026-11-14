@@ -182,6 +182,26 @@ describe('MusterFixtureApi', () => {
       expect(tools?.[0].inputSchema).toBeUndefined();
     });
 
+    it("describes a contributed server's tool with the schema it declares", async () => {
+      const schema = {
+        type: 'object',
+        properties: { accelerator: { type: 'string', enum: ['nvidia-l4'] } },
+      };
+      const withSchema = new MusterFixtureApi([
+        {
+          server: 'cluster-manager',
+          tools: { create_node_pool: () => ({}), get_info: () => ({}) },
+          inputSchemas: { create_node_pool: schema },
+        },
+      ]);
+      await expect(
+        withSchema.describeTool('x_cluster-manager_create_node_pool', 'meadow'),
+      ).resolves.toEqual(expect.objectContaining({ inputSchema: schema }));
+      await expect(
+        withSchema.describeTool('x_cluster-manager_get_info', 'meadow'),
+      ).resolves.toEqual(expect.objectContaining({ inputSchema: undefined }));
+    });
+
     it('describes a tool with its schema, and pages and searches', async () => {
       const [first] = (await api.filterTools({ installation: 'fennel' }))
         .tools!;

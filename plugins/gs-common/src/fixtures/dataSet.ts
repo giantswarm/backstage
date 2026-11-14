@@ -41,6 +41,11 @@ import {
   type ToolchainSourceState,
   type WorkspaceState,
 } from './managerBuilders';
+import {
+  buildHosting,
+  type FixtureHostingData,
+  type FixtureHostingSettings,
+} from './hostingBuilders';
 import { createRandom } from './random';
 
 /**
@@ -66,7 +71,7 @@ export type FixtureDataSet = {
   toolchainSources: FixtureToolchainSource[];
   toolchains: FixtureToolchain[];
   skillRepositories: FixtureSkillRepository[];
-};
+} & FixtureHostingData;
 
 /** The settings of a data set: the seed, "now", and each builder's. */
 export type FixtureDataSetSettings = {
@@ -101,7 +106,7 @@ export type FixtureDataSetSettings = {
   skillRepositories?: BuilderSettings<SkillRepositoryState>;
   /** Per skill repository that lists its skills. */
   skills?: { count?: number; nameLength?: number };
-};
+} & FixtureHostingSettings;
 
 /** The seed of the base data set. */
 export const BASE_SEED = 20261114;
@@ -150,17 +155,7 @@ export function createFixtureDataSet(
     installations,
     settings.toolchainSources,
   );
-  return {
-    installations,
-    organizations,
-    agents,
-    connectors,
-    sessions,
-    workflows,
-    executions,
-    toolsetPresets: buildToolsetPresets(installations, connectors, workflows),
-    repositoryOwners,
-    repositories,
+  const managers = {
     workspaces: buildWorkspaces(
       context,
       organizations,
@@ -177,6 +172,22 @@ export function createFixtureDataSet(
       settings.skills,
     ),
   };
+  return {
+    installations,
+    organizations,
+    agents,
+    connectors,
+    sessions,
+    workflows,
+    executions,
+    toolsetPresets: buildToolsetPresets(installations, connectors, workflows),
+    repositoryOwners,
+    repositories,
+    ...managers,
+    // Model hosting draws last, so adding it left the lists above as they
+    // were.
+    ...buildHosting(context, installations, organizations, settings),
+  };
 }
 
 let base: FixtureDataSet | undefined;
@@ -190,6 +201,29 @@ let base: FixtureDataSet | undefined;
 export function baseDataSet(): FixtureDataSet {
   base ??= createFixtureDataSet();
   return base;
+}
+
+/** Whether a data set says an installation's muster is not reachable from the portal. */
+export function isUnreachableInstallation(
+  data: FixtureDataSet,
+  installation: string,
+): boolean {
+  return data.installations.some(
+    i => i.name === installation && i.state === 'unreachable',
+  );
+}
+
+/**
+ * The 503 muster-backend answers for an installation its probe reports
+ * unreachable from the portal, as the real client throws it.
+ */
+export function unreachableInstallationError(installation: string): Error {
+  return Object.assign(
+    new Error(
+      `${installation} did not answer: not reachable from this portal (timeout)`,
+    ),
+    { name: 'ServiceUnavailableError', status: 503 },
+  );
 }
 
 /** The items of a data set's list in one installation. */

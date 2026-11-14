@@ -35,7 +35,7 @@ import {
  * word as `ModelManagerToolError` (see `classifyModelManagerToolError`).
  */
 export async function callModelManagerTool<T>(
-  musterApi: MusterApi,
+  musterApi: Pick<MusterApi, 'callTool'>,
   installation: string,
   tool: ModelManagerTool,
   args: Record<string, unknown> = {},

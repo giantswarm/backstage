@@ -6,6 +6,8 @@ import {
 import {
   baseDataSet,
   inInstallation,
+  isUnreachableInstallation,
+  unreachableInstallationError,
   type FixtureConnector,
   type FixtureExecution,
   type FixtureToolsetPreset,
@@ -24,6 +26,7 @@ import type {
   FilterResourcesResponse,
   FilterToolsOptions,
   FilterToolsResponse,
+  JsonSchema,
   ListExecutionsOptions,
   ListToolsResponse,
   McpServerListResponse,
@@ -110,6 +113,7 @@ type Tool = {
   name: string;
   server: string;
   handler: FixtureToolHandler;
+  inputSchema?: JsonSchema;
 };
 
 /** `*` matches any run of characters, like muster's `filter_tools` pattern. */
@@ -146,24 +150,11 @@ type InstallationData = {
   connectorTools: ToolSummary[];
 };
 
-/**
- * The 503 muster-backend answers for an installation its probe reports
- * unreachable from the portal, as the real client throws it.
- */
-function unreachableError(installation: string): Error {
-  return Object.assign(
-    new Error(
-      `${installation} did not answer: not reachable from this portal (timeout)`,
-    ),
-    { name: 'ServiceUnavailableError', status: 503 },
-  );
-}
+const unreachableError = unreachableInstallationError;
 
 /** Whether the data set says the installation's muster is unreachable. */
 function isUnreachable(installation: string): boolean {
-  return baseDataSet().installations.some(
-    i => i.name === installation && i.state === 'unreachable',
-  );
+  return isUnreachableInstallation(baseDataSet(), installation);
 }
 
 /**
@@ -191,10 +182,11 @@ export class MusterFixtureApi implements MusterApi {
   constructor(servers: FixtureMcpServer[]) {
     this.servers = servers.map(server => server.server);
     this.tools = new Map(
-      servers.flatMap(({ server, tools }) =>
+      servers.flatMap(({ server, tools, inputSchemas }) =>
         Object.entries(tools).map(([tool, handler]) => {
           const name = `x_${server}_${tool}`;
-          return [name, { name, server, handler }] as const;
+          const inputSchema = inputSchemas?.[tool];
+          return [name, { name, server, handler, inputSchema }] as const;
         }),
       ),
     );
@@ -246,6 +238,7 @@ export class MusterFixtureApi implements MusterApi {
           name: tool.name,
           server: tool.server,
           kind: 'tool' as const,
+          ...(tool.inputSchema && { inputSchema: tool.inputSchema }),
         })),
         ...workflows
           .filter(workflow => workflow.state === 'available')

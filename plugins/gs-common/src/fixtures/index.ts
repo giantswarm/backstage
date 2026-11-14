@@ -26,6 +26,8 @@ export {
   baseDataSet,
   createFixtureDataSet,
   inInstallation,
+  isUnreachableInstallation,
+  unreachableInstallationError,
   type FixtureDataSet,
   type FixtureDataSetSettings,
 } from './dataSet';
@@ -42,4 +44,19 @@ export {
   type FixtureWorkspace,
   type FixtureWorkspaceSource,
 } from './managerBuilders';
+export {
+  CACHE_CLAIM_STATES,
+  FIXTURE_ACCELERATORS,
+  FIXTURE_OLLAMA_MODELS,
+  FIXTURE_SERVING_PRESETS,
+  GPU_POOL_STATES,
+  HOSTED_MODEL_STATES,
+  MODEL_BACKEND_STATES,
+  type FixtureCacheClaim,
+  type FixtureGpuCluster,
+  type FixtureGpuPool,
+  type FixtureHostedModel,
+  type FixtureModelBackend,
+  type FixtureServingPreset,
+} from './hostingBuilders';
 export { hashOf } from './random';

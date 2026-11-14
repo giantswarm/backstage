@@ -1,112 +1,66 @@
+import type { DiscoveryApi, FetchApi } from '@backstage/core-plugin-api';
 import type {
-  ModelConfigRef,
-  ModelManagerBackend,
-  ModelManagerFitResult,
-  ModelManagerJob,
-  ModelManagerLoadedModel,
-  ModelManagerModel,
-  ModelManagerNode,
-  ModelManagerPreset,
-  ModelManagerSearchResult,
-} from '../../lib/modelManager';
-import type { ModelManagerApi, TryServedModelResult } from '../ModelManagerApi';
+  KubernetesApi,
+  KubernetesAuthProvidersApi,
+} from '@backstage/plugin-kubernetes-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- model-manager's tools are called through muster.
+import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
+
+import type { TryServedModelResult } from '../ModelManagerApi';
+import { ModelManagerApiClient } from '../ModelManagerApiClient';
 import { served } from './fixtureIdentity';
-import { notInFixtures } from './notInFixtures';
+import {
+  modelHostingFixtureState,
+  type ModelHostingFixtureState,
+} from './modelHostingFixtureState';
 
 /**
- * model-manager in fixture mode (`agentPlatform.fixtures: true`): no backend
- * serves models yet, so every list is empty. A read of one item and every
- * write fail with {@link notInFixtures} until the fixtures answer them.
+ * model-manager in fixture mode (`agentPlatform.fixtures: true`): the real
+ * client, whose every method is one model-manager tool call through muster,
+ * so the inventory and the serving tools go through the same muster — the
+ * fixture `MusterApi` with `muster.fixtures`, which answers them from the
+ * state the fixture model-manager server keeps (`modelHostingFixtureState`).
+ * Only `tryModel`, which the portal's backend carries out, is answered here:
+ * 401 without a token, the model's answer with one.
  */
-export class ModelManagerFixtureApi implements ModelManagerApi {
-  async getBackend(installation: string): Promise<ModelManagerBackend> {
-    served(installation);
-    throw notInFixtures('model-manager getBackend');
+export class ModelManagerFixtureApi extends ModelManagerApiClient {
+  private readonly state: () => ModelHostingFixtureState;
+
+  constructor(
+    options: {
+      musterApi: Pick<MusterApi, 'callTool'>;
+      discoveryApi: DiscoveryApi;
+      fetchApi: FetchApi;
+      kubernetesApi: KubernetesApi;
+      kubernetesAuthProvidersApi: KubernetesAuthProvidersApi;
+    },
+    state: () => ModelHostingFixtureState = modelHostingFixtureState,
+  ) {
+    super(options);
+    this.state = state;
   }
 
-  async listBackends(installation: string): Promise<ModelManagerBackend[]> {
-    served(installation);
-    return [];
-  }
-
-  async listModels(installation: string): Promise<ModelManagerModel[]> {
-    served(installation);
-    return [];
-  }
-
-  async listLoaded(installation: string): Promise<ModelManagerLoadedModel[]> {
-    served(installation);
-    return [];
-  }
-
-  async pullModel(): Promise<{ job: ModelManagerJob; created: boolean }> {
-    throw notInFixtures('model-manager pullModel');
-  }
-
-  async loadModel(installation: string): Promise<ModelManagerModel> {
-    served(installation);
-    throw notInFixtures('model-manager loadModel');
-  }
-
-  async fitCheck(installation: string): Promise<ModelManagerFitResult> {
-    served(installation);
-    throw notInFixtures('model-manager fitCheck');
-  }
-
-  async listPresets(installation: string): Promise<ModelManagerPreset[]> {
-    served(installation);
-    return [];
-  }
-
-  async searchModels(
+  async tryModel(
     installation: string,
-  ): Promise<ModelManagerSearchResult[]> {
+    request: { model: string; url: string },
+  ): Promise<TryServedModelResult> {
     served(installation);
-    return [];
-  }
-
-  async listNodes(installation: string): Promise<ModelManagerNode[]> {
-    served(installation);
-    return [];
-  }
-
-  async unloadModel(installation: string): Promise<void> {
-    served(installation);
-    throw notInFixtures('model-manager unloadModel');
-  }
-
-  async tryModel(installation: string): Promise<TryServedModelResult> {
-    served(installation);
-    throw notInFixtures('model-manager tryModel');
-  }
-
-  async deleteModel(installation: string): Promise<void> {
-    served(installation);
-    throw notInFixtures('model-manager deleteModel');
-  }
-
-  async wireModel(installation: string): Promise<ModelConfigRef | undefined> {
-    served(installation);
-    throw notInFixtures('model-manager wireModel');
-  }
-
-  async unwireModel(installation: string): Promise<void> {
-    served(installation);
-    throw notInFixtures('model-manager unwireModel');
-  }
-
-  async listJobs(installation: string): Promise<ModelManagerJob[]> {
-    served(installation);
-    return [];
-  }
-
-  async getJob(installation: string): Promise<ModelManagerJob> {
-    served(installation);
-    throw notInFixtures('model-manager getJob');
-  }
-
-  async cancelJob(installation: string): Promise<ModelManagerJob> {
-    served(installation);
-    throw notInFixtures('model-manager cancelJob');
+    const answer = this.state().tryModel(installation, request.model);
+    return {
+      url: `${request.url.replace(/\/$/, '')}/chat/completions`,
+      model: request.model,
+      without: { status: 401, error: 'missing or invalid bearer token' },
+      with: answer.ready
+        ? {
+            status: 200,
+            content: `Hello! I am ${request.model}, served on ${installation}. How can I help?`,
+            latencyMs: 640,
+          }
+        : {
+            status: 503,
+            error: `no healthy upstream for ${request.model}`,
+            latencyMs: 12,
+          },
+    };
   }
 }

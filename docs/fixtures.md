@@ -194,6 +194,50 @@ agent-manager.
   sets no `gs.authProvider`), so that tab still lists what gs-backend
   discovers on GitHub (item 9b).
 
+### model-manager and cluster-manager
+
+Model hosting (Customize · Models · Model hosting: Running models, GPU pools,
+Model cache, and its Serve, Import, Pull, Add backend and Add GPU node pool
+flows) answers from one state
+(`plugins/agent-platform/src/apis/fixtures/modelHostingFixtureState.ts`),
+which model-manager's tools, cluster-manager's tools and the fixture
+`ModelManagerApi` share, as the two managers share an installation: the nodes
+model-manager places models on are the ready nodes of cluster-manager's pools,
+and a cluster's first pool registers its KServe backend.
+
+- model-manager runs a KServe and an Ollama backend in each installation
+  (`fennel`'s Ollama host unhealthy, so its failure shows beside the other
+  backend's models), with models served, starting, failing and downloaded,
+  pulls running and failed, the presets, the nodes with their budget and
+  cache, and a made-up Hugging Face Hub to search. A serve moves through its
+  phases (`scheduling` to `ready`, two seconds each), a pull finishes after
+  `PULL_MS`, and both are refused where model-manager refuses them: a model
+  that fits no node (`does_not_fit`), a model on none or several backends, a
+  served model deleted, a backend the chart configures, mode `commit`.
+  Refusals keep model-manager's `<code>: <error>` wording, so the client
+  names them as it names the real ones.
+- The fixture `ModelManagerApi` is the real client over the portal's
+  `MusterApi`, so its reads and the serving tools go through the same muster
+  and the same parsers; only `tryModel`, which the portal's backend carries
+  out, is answered by the fixture (401 without a token, the model's answer
+  with one). KServe weights stay only in a cluster's model cache: on a
+  cluster without one, a model is served or not listed.
+- cluster-manager lists the GPU cluster under each KServe backend, with its
+  GPU operator and serving slice, its pools in every phase and its model
+  cache claims (mounted, kept, pending) with their prices. Adding a pool
+  prices its sizes and the presets each hosts in the dry run, and the pool
+  comes up after a while; deleting one is refused while a model is served on
+  its nodes, naming them, unless forced; removing the cache is refused while
+  a served model reads from it. It offers mode `apply` only, and not the
+  Clusters page's `create_cluster` and `delete_cluster`.
+- `create_node_pool` is described with its input schema (the accelerators,
+  zones and cache the Add GPU node pool form offers): a fixture MCP server
+  declares the schemas a page reads in `inputSchemas`.
+
+Cost (Usage · Cost) reads the gateway's metrics from Mimir, not these
+managers, and the fixture installations have no Mimir (`mimirEnabled:
+false`), so it shows its "no observability stack" state.
+
 ### Objects in the Kubernetes API
 
 The pages read some objects from the installation's Kubernetes API, not from
@@ -245,7 +289,9 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
   organizations, agents, connectors, sessions, workflows and executions in
   every state their pages know, and what the platform managers serve
   (`managerBuilders.ts`): the provider instances' owners and repositories,
-  workspaces, toolchain sources and toolchains, and skill repositories. The
+  workspaces, toolchain sources and toolchains, and skill repositories; and
+  model hosting (`hostingBuilders.ts`): model-manager's backends, their GPU
+  clusters with pools and cache claims, and their models. The
   person has each role in the ready
   organizations of each installation (admin, editor, user, so the New agent form's "needs the
   editor role" shows), manages the orphaned, pending-erase and deleting ones and is no

@@ -81,14 +81,14 @@ export const SERVED_MODEL_TRY_PATH = '/served-models/try';
  * cross-origin — with the person's installation token in its own header.
  */
 export class ModelManagerApiClient implements ModelManagerApi {
-  private readonly musterApi: MusterApi;
+  private readonly musterApi: Pick<MusterApi, 'callTool'>;
   private readonly discoveryApi: DiscoveryApi;
   private readonly fetchApi: FetchApi;
   private readonly kubernetesApi: KubernetesApi;
   private readonly kubernetesAuthProvidersApi: KubernetesAuthProvidersApi;
 
   constructor(options: {
-    musterApi: MusterApi;
+    musterApi: Pick<MusterApi, 'callTool'>;
     discoveryApi: DiscoveryApi;
     fetchApi: FetchApi;
     kubernetesApi: KubernetesApi;
