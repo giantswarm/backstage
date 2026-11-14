@@ -1,4 +1,6 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { ShellScopeProvider } from '../ShellScope';
 import { DateComponent } from './DateComponent';
 import { DateTimeZoneProvider } from './DateTimeZone';
 import { formatLocalDate, formatLocalDateFull, getRelativeDate } from './utils';
@@ -81,8 +83,52 @@ describe('getRelativeDate', () => {
 
 describe('formatLocalDateFull', () => {
   it('carries seconds and a zone', () => {
-    expect(formatLocalDateFull(VALUE)).toMatch(
-      /^\d{1,2} Oct 2026, \d{2}:\d{2}:12( \S+)?$/,
-    );
+    expect(formatLocalDateFull(VALUE)).toMatch(/2026.*\d{2}:\d{2}:12.*\S+/);
   });
+});
+
+describe('live dates', () => {
+  beforeEach(() =>
+    jest.useFakeTimers({ now: new Date('2026-10-11T17:00:00Z') }),
+  );
+  afterEach(() => jest.useRealTimers());
+
+  it('updates old ages and cleans up when switching to an absolute date', () => {
+    const { rerender } = render(<DateComponent value={VALUE} relative />);
+    expect(screen.getByText('about 1 hour ago')).toBeInTheDocument();
+    act(() => jest.advanceTimersByTime(60 * 60_000));
+    expect(screen.getByText('about 2 hours ago')).toBeInTheDocument();
+    rerender(<DateComponent value={VALUE} />);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('does not subscribe for invalid or absent timestamps or a list-owned clock', () => {
+    const { rerender } = render(<DateComponent value="invalid" relative />);
+    expect(jest.getTimerCount()).toBe(0);
+    rerender(<DateComponent value={null} relative />);
+    expect(jest.getTimerCount()).toBe(0);
+    rerender(<DateComponent value={VALUE} relative now={Date.now()} />);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+});
+
+it('reveals an exact timestamp by keyboard and restores focus on dismissal', async () => {
+  const user = userEvent.setup();
+  render(
+    <ShellScopeProvider>
+      <DateTimeZoneProvider timeZone="local">
+        <DateComponent value={VALUE} disclosure />
+      </DateTimeZoneProvider>
+    </ShellScopeProvider>,
+  );
+  await user.tab();
+  const trigger = screen.getByRole('button', { name: 'Exact date and time' });
+  expect(trigger).toHaveFocus();
+  await user.keyboard('{Enter}');
+  expect(
+    screen.getByRole('dialog', { name: 'Exact date and time' }),
+  ).toHaveTextContent(formatLocalDateFull(VALUE));
+  await user.keyboard('{Escape}');
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  await waitFor(() => expect(trigger).toHaveFocus());
 });

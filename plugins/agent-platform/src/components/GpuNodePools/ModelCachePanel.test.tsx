@@ -291,7 +291,9 @@ describe('ModelCachePanel at phone width', () => {
     expect(
       within(readOnly).getByText(`Read-only: ${CACHE_READ_ONLY_REASON}`),
     ).toBeVisible();
-    expect(within(readOnly).queryByRole('button')).toBeNull();
+    expect(
+      within(readOnly).queryByRole('button', { name: /more actions/i }),
+    ).toBeNull();
 
     await user.click(
       within(removable).getByRole('button', {

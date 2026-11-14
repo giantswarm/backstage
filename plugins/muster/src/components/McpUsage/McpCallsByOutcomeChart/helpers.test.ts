@@ -19,6 +19,13 @@ const LOCALE_METHODS = [
  * environment.
  */
 function pinBrowser(timeZone: string) {
+  const DateTimeFormat = Intl.DateTimeFormat;
+  jest
+    .spyOn(Intl, 'DateTimeFormat')
+    .mockImplementation(
+      (locale, options) =>
+        new DateTimeFormat(locale ?? 'en-US', { timeZone, ...options }),
+    );
   for (const method of LOCALE_METHODS) {
     const original = Date.prototype[method];
     jest.spyOn(Date.prototype, method).mockImplementation(function format(
@@ -52,6 +59,8 @@ describe('bucket labels west of UTC', () => {
 
   it('labels an hourly bucket with the browser time, as the rest of the page', () => {
     expect(formatBucketTick(HOUR_BUCKET, 1)).toBe('08:00 PM');
-    expect(formatBucketTooltip(HOUR_BUCKET, 1)).toBe('Sep 3, 08:00 PM');
+    expect(formatBucketTooltip(HOUR_BUCKET, 1)).toBe(
+      'Sep 3, 2026, 08:00:00 PM PDT',
+    );
   });
 });
