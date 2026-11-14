@@ -1,4 +1,9 @@
-import { FIXTURE_INSTALLATION } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  FIXTURE_INSTALLATION,
+  FIXTURE_INSTALLATIONS,
+  isFixtureInstallation,
+} from '@giantswarm/backstage-plugin-gs-common';
+import { baseDataSet } from '@giantswarm/backstage-plugin-gs-common/fixtures';
 
 import type {
   FixtureMcpServer,
@@ -31,6 +36,7 @@ import type {
   WorkflowListResponse,
   WorkflowStats,
 } from '../types';
+import { musterInstallationOf } from './musterFixtureData';
 
 /**
  * The error a tool call fails with when no fixture MCP server answers it. A
@@ -54,7 +60,7 @@ export class FixtureToolMissingError extends Error {
 export class FixtureInstallationUnknownError extends Error {
   constructor(installation: string) {
     super(
-      `Fixture mode serves no installation ${installation}, only ${FIXTURE_INSTALLATION}.`,
+      `Fixture mode serves no installation ${installation}, only ${FIXTURE_INSTALLATIONS.join(', ')}.`,
     );
     this.name = 'NotFoundError';
   }
@@ -62,13 +68,16 @@ export class FixtureInstallationUnknownError extends Error {
 
 /** The installation a call targets, failing loudly for one not served. */
 function served(installation: string | undefined): string {
-  if (installation !== undefined && installation !== FIXTURE_INSTALLATION) {
+  if (installation === undefined) {
+    return FIXTURE_INSTALLATION;
+  }
+  if (!isFixtureInstallation(installation)) {
     const error = new FixtureInstallationUnknownError(installation);
     // eslint-disable-next-line no-console
     console.error(error.message);
     throw error;
   }
-  return FIXTURE_INSTALLATION;
+  return installation;
 }
 
 type Tool = {
@@ -102,8 +111,10 @@ function page<T>(items: T[], options: { limit?: number; offset?: number }) {
 }
 
 /**
- * The muster plugin's API in fixture mode (`muster.fixtures: true`): one
- * reachable installation, `meadow`, whose muster has signed the person in, and
+ * The muster plugin's API in fixture mode (`muster.fixtures: true`): the
+ * installations of the base data set (`FIXTURE_INSTALLATIONS`), each with a
+ * muster that has signed the person in, reachable or not as the data set
+ * says, and
  * the MCP servers the plugins contribute (`fixtureMcpServersDataRef`), each
  * connected. `callTool` dispatches by tool name (`x_<server>_<tool>`) to the
  * server's handler; a tool no server handles fails with
@@ -155,14 +166,7 @@ export class MusterFixtureApi implements MusterApi {
 
   async listInstallations(): Promise<MusterInstallationsResponse> {
     return {
-      installations: [
-        {
-          name: FIXTURE_INSTALLATION,
-          endpoint: `https://muster.${FIXTURE_INSTALLATION}.example.com/mcp`,
-          requiresAuth: true,
-          reachable: true,
-        },
-      ],
+      installations: baseDataSet().installations.map(musterInstallationOf),
     };
   }
 

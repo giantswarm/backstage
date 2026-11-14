@@ -74,7 +74,8 @@ export function fitName(name: string, length: number): string {
 /**
  * Makes names unique within one list: two words or more, joined with `-`,
  * until the name is at least `nameLength` characters long (cut at
- * {@link MAX_NAME_LENGTH}). A name already given gets a number appended.
+ * {@link MAX_NAME_LENGTH}). The display name has the same words, whole: it
+ * has no length limit. A name already given gets a number appended, to both.
  */
 export function createNamer(random: FixtureRandom) {
   const given = new Set<string>();
@@ -84,15 +85,15 @@ export function createNamer(random: FixtureRandom) {
       words.push(nextWord(random, words[words.length - 1]));
     }
     const base = fitName(words.join('-'), MAX_NAME_LENGTH);
+    const displayName = words.map(capitalize).join(' ');
     let name = base;
-    for (let n = 2; given.has(name); n++) {
+    let n = 1;
+    while (given.has(name)) {
+      n++;
       name = `${fitName(base, MAX_NAME_LENGTH - `-${n}`.length)}-${n}`;
     }
     given.add(name);
-    return {
-      name,
-      displayName: name.split('-').map(capitalize).join(' '),
-    };
+    return { name, displayName: n > 1 ? `${displayName} ${n}` : displayName };
   };
 }
 

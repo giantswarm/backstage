@@ -13,6 +13,7 @@ import {
   type AgentReadiness,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
+import { isPendingErase } from '../../components/OrganizationPage/OrganizationStatusAlert';
 import { awaitsDefaultModel } from '../../lib/agentManager';
 import {
   mayCreateAgentsIn,
@@ -29,6 +30,7 @@ import {
 const now = Date.parse('2026-11-14T12:00:00Z');
 const at = new Date(now).toISOString();
 const data = createFixtureDataSet({ now });
+const rendered = data.agents.filter(agent => agent.release === 'ready');
 
 /** Every readiness the portal derives; a missing key fails the build. */
 const READINESS: Record<AgentReadiness, true> = {
@@ -44,8 +46,8 @@ describe('agent-platform fixture data', () => {
   });
 
   it('maps agents onto Agent objects whose conditions read as their state', () => {
-    for (const agent of data.agents) {
-      const json = agentObjectOf(agent, at);
+    for (const agent of rendered) {
+      const json = agentObjectOf(agent, at)!;
       expect(deriveAgentReadiness(json)).toBe(agent.state);
       const object = new Agent(json, agent.installation);
       expect(object.getName()).toBe(agent.name);
@@ -54,11 +56,27 @@ describe('agent-platform fixture data', () => {
       expect(object.getDescription()).toBe(agent.description);
       expect(object.getHarnessName()).toBe('kagent');
       expect(object.getReadiness()).toBe(agent.state);
+      expect(object.isBootPending()).toBe(agent.state === 'notReady');
+      expect(object.getFailure()?.field).toBe(
+        agent.state === 'failed' ? 'model' : undefined,
+      );
     }
   });
 
-  it('maps agents onto what get_agent reads back', () => {
-    for (const agent of data.agents) {
+  it('renders no Agent object for the agent whose release failed', () => {
+    const failed = data.agents.filter(agent => agent.release === 'failed');
+    expect(failed).toHaveLength(1);
+    expect(agentObjectOf(failed[0], at)).toBeUndefined();
+    expect(agentManagerAgentOf(failed[0])).toMatchObject({
+      exists: false,
+      ready: null,
+      status: { exists: false },
+      helmRelease: { ready: false, reason: 'InstallFailed' },
+    });
+  });
+
+  it('maps agents onto what get_agent reads back, the release ready apart from the agent', () => {
+    for (const agent of rendered) {
       const answer = agentManagerAgentOf(agent);
       expect(answer).toMatchObject({
         name: agent.name,
@@ -71,6 +89,7 @@ describe('agent-platform fixture data', () => {
           agent.state
         ],
       );
+      expect(answer.helmRelease?.ready).toBe(true);
       expect(awaitsDefaultModel(answer)).toBe(false);
     }
   });
@@ -90,13 +109,44 @@ describe('agent-platform fixture data', () => {
         })),
     );
     for (const [index, listed] of listing.organizations.entries()) {
-      const { state } = data.organizations[index];
-      expect(mayCreateAgentsIn(listed)).toBe(true);
+      const { state, role } = data.organizations[index];
       expect(listed.deleting === true).toBe(state === 'deleting');
-      expect(listed.orphaned?.status === 'True').toBe(state === 'orphaned');
+      expect(listed.orphaned?.status === 'True').toBe(
+        state === 'orphaned' || state === 'pendingErase',
+      );
+      expect(isPendingErase(listed)).toBe(state === 'pendingErase');
       expect(listed.namespace === undefined).toBe(state === 'pending');
-      expect(listed.organization?.ready?.status).toBe(
-        state === 'pending' ? 'False' : 'True',
+      expect(mayCreateAgentsIn(listed)).toBe(
+        role === 'admin' || role === 'editor',
+      );
+      expect(listed.permissions.member).toBe(role !== 'none');
+      expect(listed.organization !== undefined).toBe(role === 'admin');
+    }
+  });
+
+  it('lets the person read but not create agents in some organization', () => {
+    const listed = data.organizations.map(listedOrganizationOf);
+    expect(
+      listed.filter(o => o.permissions.member && !mayCreateAgentsIn(o)),
+    ).not.toEqual([]);
+    expect(
+      listed.filter(o => o.namespace === undefined).map(o => o.permissions),
+    ).toEqual(
+      expect.arrayContaining([
+        { manage: false, member: false, createAgents: false },
+      ]),
+    );
+  });
+
+  it('gives a missing or deleted organization the revision Flux last applied', () => {
+    for (const organization of data.organizations) {
+      const { organization: details } = listedOrganizationOf({
+        ...organization,
+        role: 'admin',
+      });
+      expect(details?.lastAppliedRevision !== undefined).toBe(
+        organization.state === 'orphaned' ||
+          organization.state === 'pendingErase',
       );
     }
   });
@@ -104,12 +154,16 @@ describe('agent-platform fixture data', () => {
   it('maps sessions onto what listSessions returns, through the real parser', () => {
     const installation = 'meadow';
     const sessions = inInstallation(data.sessions, installation);
+    expect(sessions.length).toBeLessThan(data.sessions.length);
     const parsed = normalizeSessionList(
       { sessions: sessions.map(sessionRecordOf) },
       installation,
     );
     expect(parsed.drift).toBeUndefined();
-    expect(kagentSessionsOf(sessions, installation)).toEqual(parsed.sessions);
+    // Given every installation's sessions, it keeps the installation's own.
+    expect(kagentSessionsOf(data.sessions, installation)).toEqual(
+      parsed.sessions,
+    );
     expect(parsed.sessions).toHaveLength(sessions.length);
     for (const [index, session] of parsed.sessions.entries()) {
       const fixture = sessions[index];

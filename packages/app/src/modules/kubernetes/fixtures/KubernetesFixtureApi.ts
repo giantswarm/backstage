@@ -1,7 +1,10 @@
 import type { KubernetesApi } from '@backstage/plugin-kubernetes-react';
 import * as kubernetesReact from '@giantswarm/backstage-plugin-kubernetes-react';
 import { sortVersions } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { FIXTURE_INSTALLATION } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  FIXTURE_INSTALLATIONS,
+  isFixtureInstallation,
+} from '@giantswarm/backstage-plugin-gs-common';
 import { MCPServer, MusterWorkflow } from '@giantswarm/backstage-plugin-muster';
 
 /**
@@ -100,8 +103,8 @@ function unhandled(method: string, path: string): Response {
 }
 
 /**
- * The Kubernetes API in fixture mode (`gs.fixtures: true`): one installation,
- * `meadow`, reachable, that serves the API groups of the portal's resource
+ * The Kubernetes API in fixture mode (`gs.fixtures: true`): the fixture
+ * installations (`FIXTURE_INSTALLATIONS`), each reachable and serving the API groups of the portal's resource
  * classes (kagent's and muster's among them, not kserve's or Cluster API's)
  * and holds no objects yet. Discovery answers what the classes support, every
  * list is empty, a read of one object is not found, and the person may do
@@ -114,14 +117,17 @@ export class KubernetesFixtureApi implements KubernetesApi {
   async getClusters(): Promise<
     Awaited<ReturnType<KubernetesApi['getClusters']>>
   > {
-    return [{ name: FIXTURE_INSTALLATION, authProvider: 'serviceAccount' }];
+    return FIXTURE_INSTALLATIONS.map(name => ({
+      name,
+      authProvider: 'serviceAccount',
+    }));
   }
 
   async getCluster(
     clusterName: string,
   ): Promise<Awaited<ReturnType<KubernetesApi['getCluster']>>> {
-    return clusterName === FIXTURE_INSTALLATION
-      ? { name: FIXTURE_INSTALLATION, authProvider: 'serviceAccount' }
+    return isFixtureInstallation(clusterName)
+      ? { name: clusterName, authProvider: 'serviceAccount' }
       : undefined;
   }
 
@@ -150,7 +156,7 @@ export class KubernetesFixtureApi implements KubernetesApi {
   }): Promise<Response> {
     const method = (options.init?.method ?? 'GET').toUpperCase();
     const path = options.path.split('?')[0].replace(/\/+$/, '');
-    if (options.clusterName !== FIXTURE_INSTALLATION) {
+    if (!isFixtureInstallation(options.clusterName)) {
       return statusResponse(
         404,
         'NotFound',

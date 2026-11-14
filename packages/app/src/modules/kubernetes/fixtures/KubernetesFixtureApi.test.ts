@@ -2,7 +2,7 @@
 import { resolve } from 'path';
 import { ConfigReader } from '@backstage/config';
 import { loadConfig } from '@backstage/config-loader';
-import { FIXTURE_INSTALLATION } from '@giantswarm/backstage-plugin-gs-common';
+import { FIXTURE_INSTALLATIONS } from '@giantswarm/backstage-plugin-gs-common';
 
 import { KubernetesFixtureApi } from './KubernetesFixtureApi';
 
@@ -108,17 +108,24 @@ describe('KubernetesFixtureApi', () => {
     expect(consoleError).toHaveBeenCalledTimes(2);
   });
 
-  it('knows the fixture installation only', async () => {
+  it('knows the fixture installations only', async () => {
     await expect(api.getClusters()).resolves.toEqual([
       { name: 'meadow', authProvider: 'serviceAccount' },
+      { name: 'fennel', authProvider: 'serviceAccount' },
+      { name: 'tarragon', authProvider: 'serviceAccount' },
     ]);
+    await expect(api.getCluster('fennel')).resolves.toEqual({
+      name: 'fennel',
+      authProvider: 'serviceAccount',
+    });
+    expect((await get('/apis', 'tarragon')).status).toBe(200);
     await expect(api.getCluster('elsewhere')).resolves.toBeUndefined();
     expect((await get('/apis', 'elsewhere')).status).toBe(404);
   });
 });
 
 describe('app-config.fixtures.yaml', () => {
-  it('names the installation every fixture API serves, and only that one', async () => {
+  it('names the installations every fixture API serves, and only those', async () => {
     const root = resolve(__dirname, '../../../../../..');
     const { appConfigs } = await loadConfig({
       configRoot: root,
@@ -127,7 +134,7 @@ describe('app-config.fixtures.yaml', () => {
     const config = ConfigReader.fromConfigs(appConfigs);
 
     expect(config.getConfig('gs.installations').keys()).toEqual([
-      FIXTURE_INSTALLATION,
+      ...FIXTURE_INSTALLATIONS,
     ]);
   });
 });

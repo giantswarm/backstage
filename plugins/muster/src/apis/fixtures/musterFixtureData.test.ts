@@ -50,10 +50,18 @@ describe('muster fixture data', () => {
       expect(server.getDescription()).toBe(connector.description);
       expect(server.getUrl()).toBe(connector.url);
       expect(server.getState()).toBe(connector.state);
+      expect(server.getToolPrefix()).toBe(
+        mcpServerRuntimeOf(connector).toolPrefix,
+      );
       expect(server.getStateExplanation()).toEqual(expect.any(String));
       expect(mcpServerStateSeverity(server.getState())).not.toBe('unknown');
       expect(server.isServedPerSession()).toBe(
         connector.state === 'Awaiting Session',
+      );
+      expect(server.getAuth()?.type).toBe(
+        ['Auth Required', 'Awaiting Session'].includes(connector.state)
+          ? 'oauth'
+          : undefined,
       );
     }
   });
@@ -66,7 +74,7 @@ describe('muster fixture data', () => {
         displayName: connector.displayName,
         state: connector.state,
       });
-      const serving = mcpServerStateSeverity(connector.state) === 'ok';
+      const serving = ['Connected', 'Running'].includes(connector.state);
       expect(runtime.toolsCount).toBe(
         serving ? connector.toolsCount : undefined,
       );
@@ -83,8 +91,12 @@ describe('muster fixture data', () => {
   it('maps installations onto what /installations reports', () => {
     expect(data.installations.map(musterInstallationOf)).toEqual([
       expect.objectContaining({ name: 'meadow', reachable: true }),
-      expect.objectContaining({ reachable: false, reason: 'timeout' }),
-      expect.objectContaining({ reachable: 'unknown' }),
+      expect.objectContaining({ name: 'fennel', reachable: true }),
+      expect.objectContaining({
+        name: 'tarragon',
+        reachable: false,
+        reason: 'timeout',
+      }),
     ]);
   });
 

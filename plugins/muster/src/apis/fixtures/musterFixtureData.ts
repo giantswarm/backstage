@@ -83,12 +83,21 @@ const FAILING: ReadonlySet<MCPServerState> = new Set([
   'Failed',
 ]);
 
+/**
+ * The states this session is connected and lists tools in. `Auth Required`
+ * and `Awaiting Session` are healthy but serve this session nothing yet.
+ */
+const CONNECTED: ReadonlySet<MCPServerState> = new Set([
+  'Connected',
+  'Running',
+]);
+
 function authOf(state: ConnectorState) {
   if (state === 'Auth Required') {
     return { type: 'oauth' as const };
   }
   if (state === 'Awaiting Session') {
-    return { forwardToken: true };
+    return { type: 'oauth' as const, forwardToken: true };
   }
   return undefined;
 }
@@ -109,6 +118,7 @@ export function mcpServerObjectOf(
     },
     spec: {
       type: 'streamable-http',
+      toolPrefix: connector.name,
       description: connector.description,
       url: connector.url,
       ...(auth && { auth }),
@@ -141,7 +151,7 @@ export function mcpServerRuntimeOf(
     toolPrefix: connector.name,
     type: 'streamable-http',
     state: connector.state,
-    ...(READY[connector.state].status === 'True' && {
+    ...(CONNECTED.has(connector.state) && {
       sessionStatus: 'connected',
       toolsCount: connector.toolsCount,
     }),

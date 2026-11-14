@@ -1,4 +1,4 @@
-import { FIXTURE_INSTALLATION } from '../fixtureMode';
+import { FIXTURE_INSTALLATION, FIXTURE_INSTALLATIONS } from '../fixtureMode';
 import {
   AGENT_STATES,
   CONNECTOR_STATES,
@@ -34,21 +34,20 @@ describe('createFixtureDataSet', () => {
     );
   });
 
-  it('has several installations, the served one first and reachable', () => {
+  it('has the served installations, two reachable and one not', () => {
     const { installations } = createFixtureDataSet({ now });
-    expect(installations.length).toBeGreaterThan(1);
-    expect(installations[0]).toEqual({
-      name: FIXTURE_INSTALLATION,
-      state: 'reachable',
-    });
-    expect(
-      installations.slice(1).map(installation => installation.name),
-    ).not.toContain(FIXTURE_INSTALLATION);
+    expect(installations).toEqual([
+      { name: FIXTURE_INSTALLATION, state: 'reachable' },
+      { name: FIXTURE_INSTALLATIONS[1], state: 'reachable' },
+      { name: FIXTURE_INSTALLATIONS[2], state: 'unreachable' },
+    ]);
   });
 
   it('has every state of every list in the base data set', () => {
     const data = createFixtureDataSet({ now });
-    expect(statesOf(data.installations)).toEqual(new Set(INSTALLATION_STATES));
+    expect(statesOf(data.installations)).toEqual(
+      new Set(INSTALLATION_STATES.filter(state => state !== 'unknown')),
+    );
     expect(statesOf(data.organizations)).toEqual(new Set(ORGANIZATION_STATES));
     expect(statesOf(data.agents)).toEqual(new Set(AGENT_STATES));
     expect(statesOf(data.connectors)).toEqual(new Set(CONNECTOR_STATES));
@@ -57,13 +56,14 @@ describe('createFixtureDataSet', () => {
     expect(statesOf(data.executions)).toEqual(new Set(EXECUTION_STATES));
   });
 
-  it('has every state in the served installation', () => {
+  it.each(FIXTURE_INSTALLATIONS)('has every state in %s', installation => {
     const data = createFixtureDataSet({ now });
     const served = <T extends { installation: string }>(items: T[]) =>
-      inInstallation(items, FIXTURE_INSTALLATION);
+      inInstallation(items, installation);
     expect(statesOf(served(data.organizations))).toEqual(
       new Set(ORGANIZATION_STATES),
     );
+    expect(statesOf(served(data.agents))).toEqual(new Set(AGENT_STATES));
     expect(statesOf(served(data.connectors))).toEqual(
       new Set(CONNECTOR_STATES),
     );
@@ -71,6 +71,48 @@ describe('createFixtureDataSet', () => {
     expect(statesOf(served(data.executions))).toEqual(
       new Set(EXECUTION_STATES),
     );
+  });
+
+  it('gives the person each role in the ready organizations, and none in a pending one', () => {
+    const data = createFixtureDataSet({ now });
+    const rolesIn = (state: string) =>
+      new Set(
+        data.organizations.filter(o => o.state === state).map(o => o.role),
+      );
+    expect(rolesIn('ready')).toEqual(new Set(['admin', 'editor', 'user']));
+    expect(rolesIn('pending')).toEqual(new Set(['none']));
+    for (const state of ['orphaned', 'pendingErase', 'deleting']) {
+      expect(rolesIn(state)).toEqual(new Set(['admin']));
+    }
+  });
+
+  it('has one agent whose release failed, which is pending', () => {
+    const data = createFixtureDataSet({ now });
+    const failed = data.agents.filter(agent => agent.release === 'failed');
+    expect(failed).toHaveLength(1);
+    expect(failed[0]).toMatchObject({
+      installation: FIXTURE_INSTALLATION,
+      state: 'pending',
+    });
+  });
+
+  it('gives sessions only to ready agents of ready organizations', () => {
+    const data = createFixtureDataSet({ now });
+    const runnable = new Set(
+      data.agents
+        .filter(
+          agent =>
+            agent.state === 'ready' &&
+            data.organizations.some(
+              o => o.namespace === agent.namespace && o.state === 'ready',
+            ),
+        )
+        .map(agent => `${agent.namespace}/${agent.name}`),
+    );
+    expect(runnable.size).toBeGreaterThan(0);
+    expect(
+      new Set(data.sessions.map(s => `${s.agent.namespace}/${s.agent.name}`)),
+    ).toEqual(runnable);
   });
 
   it('relates the lists to each other', () => {
@@ -160,9 +202,8 @@ describe('createFixtureDataSet', () => {
         ? Date.parse(execution.completedAt)
         : undefined;
       expect(completed === undefined).toBe(execution.state === 'inprogress');
-      expect(completed ?? started + execution.durationMs).toBe(
-        started + execution.durationMs,
-      );
+      // A run in progress has run from its start until now.
+      expect(completed ?? now).toBe(started + execution.durationMs);
       expect(execution.error !== undefined).toBe(execution.state === 'failed');
     }
   });
@@ -174,7 +215,7 @@ describe('builder settings', () => {
       now,
       installations: { count: 2 },
       organizations: { count: 3, states: ['ready'] },
-      agents: { count: 5 },
+      agents: { count: 5, states: ['ready'] },
       connectors: { count: 7 },
       sessions: { count: 4 },
       workflows: { count: 1 },
@@ -201,16 +242,17 @@ describe('builder settings', () => {
   it('makes names at least nameLength long, up to the Kubernetes limit', () => {
     const data = createFixtureDataSet({
       now,
-      installations: { nameLength: 40 },
+      installations: { count: 4, nameLength: 40 },
       organizations: { nameLength: 40 },
       agents: { nameLength: 200 },
       connectors: { nameLength: 50 },
       sessions: { nameLength: 80 },
       workflows: { nameLength: 30 },
     });
-    for (const installation of data.installations.slice(1)) {
-      expect(installation.name.length).toBeGreaterThanOrEqual(40);
-    }
+    expect(data.installations.slice(0, 3).map(i => i.name)).toEqual([
+      ...FIXTURE_INSTALLATIONS,
+    ]);
+    expect(data.installations[3].name.length).toBeGreaterThanOrEqual(40);
     for (const organization of data.organizations) {
       expect(organization.name.length).toBeGreaterThanOrEqual(40);
       expect(organization.displayName.length).toBeGreaterThanOrEqual(40);
@@ -225,7 +267,14 @@ describe('builder settings', () => {
       expect(connector.name.length).toBeGreaterThanOrEqual(50);
     }
     for (const session of data.sessions) {
-      expect(session.title.length).toBeGreaterThanOrEqual(MAX_NAME_LENGTH - 1);
+      // Whole words, not cut at the name's limit.
+      expect(session.title.length).toBeGreaterThanOrEqual(MAX_NAME_LENGTH);
+      expect(session.title).toMatch(/^([A-Z][a-z]+)( [A-Z][a-z]+)*$/);
+    }
+    for (const agent of data.agents) {
+      expect(agent.displayName.toLowerCase().replace(/ /g, '-')).toMatch(
+        new RegExp(`^${agent.name}`),
+      );
     }
     for (const workflow of data.workflows) {
       expect(workflow.name.length).toBeGreaterThanOrEqual(30);
@@ -235,18 +284,10 @@ describe('builder settings', () => {
     }
   });
 
-  it('keeps the served installation its name, whatever the name length', () => {
-    const { installations } = createFixtureDataSet({
-      now,
-      installations: { nameLength: 50 },
-    });
-    expect(installations[0].name).toBe(FIXTURE_INSTALLATION);
-  });
-
   it('takes the states given, in turn over the whole list', () => {
     const data = createFixtureDataSet({
       now,
-      sessions: { count: 1, states: ['failed', 'ready'] },
+      sessions: { count: 2, states: ['failed', 'ready'] },
       connectors: { states: ['Failed'] },
     });
     expect(data.sessions.map(s => s.state).slice(0, 4)).toEqual([

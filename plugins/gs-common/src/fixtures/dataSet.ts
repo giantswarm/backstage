@@ -6,7 +6,7 @@ import {
   buildOrganizations,
   buildSessions,
   buildWorkflows,
-  type AgentState,
+  type AgentBuilderSettings,
   type BuilderSettings,
   type ConnectorState,
   type ExecutionState,
@@ -50,10 +50,10 @@ export type FixtureDataSetSettings = {
   /** Per installation. */
   organizations?: BuilderSettings<OrganizationState>;
   /** Per organization with a namespace. */
-  agents?: BuilderSettings<AgentState>;
+  agents?: AgentBuilderSettings;
   /** Per installation. */
   connectors?: BuilderSettings<ConnectorState>;
-  /** Per agent. */
+  /** Per ready agent of a ready organization. */
   sessions?: BuilderSettings<SessionState>;
   /** Per installation. */
   workflows?: BuilderSettings<WorkflowState>;
@@ -85,7 +85,7 @@ export function createFixtureDataSet(
     organizations,
     agents,
     connectors: buildConnectors(context, installations, settings.connectors),
-    sessions: buildSessions(context, agents, settings.sessions),
+    sessions: buildSessions(context, agents, organizations, settings.sessions),
     workflows,
     executions: buildExecutions(context, workflows, settings.executions),
   };
@@ -94,9 +94,10 @@ export function createFixtureDataSet(
 let base: FixtureDataSet | undefined;
 
 /**
- * The base data set every fixture handler reads: several installations, each
- * with organizations, agents, connectors, sessions, workflows and executions
- * in every state. Built once, on first read, counting back from that moment.
+ * The base data set every fixture handler reads: the served installations,
+ * each with organizations, agents, connectors, sessions, workflows and
+ * executions in every state. Built once, on first read, counting back from
+ * that moment.
  */
 export function baseDataSet(): FixtureDataSet {
   base ??= createFixtureDataSet();

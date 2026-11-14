@@ -167,12 +167,14 @@ describe('api:kubernetes', () => {
     }) as KubernetesApi;
   }
 
-  it('serves the fixture installation with gs.fixtures outside production', async () => {
+  it('serves the fixture installations with gs.fixtures outside production', async () => {
     const api = createKubernetesApi(true);
 
     expect(api).not.toBeInstanceOf(KubernetesClient);
     await expect(api.getClusters()).resolves.toEqual([
       expect.objectContaining({ name: 'meadow' }),
+      expect.objectContaining({ name: 'fennel' }),
+      expect.objectContaining({ name: 'tarragon' }),
     ]);
   });
 

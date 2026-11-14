@@ -1,10 +1,19 @@
 /**
- * The installation fixture mode serves (docs/fixtures.md). Every fixture API
- * (gs's Kubernetes API and cluster access, muster, agent-platform) serves this
- * one and fails loudly for any other; `app-config.fixtures.yaml` names it in
- * `gs.installations`, which a test checks.
+ * The made-up installations fixture mode serves (docs/fixtures.md). Every
+ * fixture API (gs's Kubernetes API and cluster access, muster,
+ * agent-platform) serves these and fails loudly for any other;
+ * `app-config.fixtures.yaml` names them in `gs.installations`, which a test
+ * checks.
  */
-export const FIXTURE_INSTALLATION = 'meadow';
+export const FIXTURE_INSTALLATIONS = ['meadow', 'fennel', 'tarragon'] as const;
+
+/** The first of {@link FIXTURE_INSTALLATIONS}, reachable in every data set. */
+export const FIXTURE_INSTALLATION = FIXTURE_INSTALLATIONS[0];
+
+/** Whether fixture mode serves an installation. */
+export function isFixtureInstallation(installation: string): boolean {
+  return (FIXTURE_INSTALLATIONS as readonly string[]).includes(installation);
+}
 
 /**
  * Where a plugin attaches the fixture MCP servers its pages call through

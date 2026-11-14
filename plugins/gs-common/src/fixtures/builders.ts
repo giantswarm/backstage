@@ -1,4 +1,4 @@
-import { FIXTURE_INSTALLATION } from '../fixtureMode';
+import { FIXTURE_INSTALLATIONS } from '../fixtureMode';
 import {
   createNamer,
   fitName,
@@ -34,19 +34,31 @@ export type InstallationState = (typeof INSTALLATION_STATES)[number];
 /**
  * An organization's state, as agent-manager lists it: `pending` before the
  * operator created its namespace, `orphaned` once it is missing from git,
- * `deleting` while it is erased.
+ * `pendingErase` once its delete pull request merged and it waits to be
+ * erased, `deleting` while it is erased.
  */
 export const ORGANIZATION_STATES = [
   'ready',
   'pending',
   'orphaned',
+  'pendingErase',
   'deleting',
 ] as const;
 export type OrganizationState = (typeof ORGANIZATION_STATES)[number];
 
+/**
+ * What the person may do in an organization: `admin` manages it, an `editor`
+ * creates agents, a `user` reads them, `none` is not a member (a pending
+ * organization has no namespace to be a member of).
+ */
+export type OrganizationRole = 'admin' | 'editor' | 'user' | 'none';
+
 /** An Agent's readiness, as the portal derives it from its conditions. */
 export const AGENT_STATES = ['ready', 'notReady', 'failed', 'pending'] as const;
 export type AgentState = (typeof AGENT_STATES)[number];
+
+/** Whether the HelmRelease that renders an agent installed. */
+export type ReleaseState = 'ready' | 'failed';
 
 /** An MCP server's `.status.state`, muster's CRD enum. */
 export const CONNECTOR_STATES = [
@@ -94,6 +106,7 @@ export type FixtureOrganization = {
   /** The organization namespace; absent while `pending`. */
   namespace?: string;
   state: OrganizationState;
+  role: OrganizationRole;
 };
 
 export type FixtureAgent = {
@@ -105,6 +118,12 @@ export type FixtureAgent = {
   displayName: string;
   description: string;
   state: AgentState;
+  /**
+   * The agent's HelmRelease, apart from the agent: a release that installed
+   * can render an agent the controller rejects. A failed release renders
+   * nothing, so its agent is `pending`.
+   */
+  release: ReleaseState;
 };
 
 export type FixtureConnector = {
@@ -206,9 +225,9 @@ function isoAgo(context: BuilderContext, ms: number): string {
 }
 
 /**
- * Installations: the first is the one fixture mode serves,
- * {@link FIXTURE_INSTALLATION}, whatever the name length; the others have
- * made-up names.
+ * Installations: {@link FIXTURE_INSTALLATIONS} first, the ones fixture mode
+ * serves, whatever the name length; any beyond them have made-up names and
+ * are not served. The base data set has two reachable and one unreachable.
  */
 export function buildInstallations(
   context: BuilderContext,
@@ -218,25 +237,58 @@ export function buildInstallations(
   return each(
     [undefined],
     settings,
-    { count: 3, states: INSTALLATION_STATES },
+    {
+      count: FIXTURE_INSTALLATIONS.length,
+      states: ['reachable', 'reachable', 'unreachable'],
+    },
     (_, state, nameLength, index) => ({
-      name: index === 0 ? FIXTURE_INSTALLATION : name(nameLength).name,
+      name: FIXTURE_INSTALLATIONS[index] ?? name(nameLength).name,
       state,
     }),
   );
 }
 
-/** Organizations, `count` in each installation. */
+/**
+ * The roles the person has in ready organizations, in turn: one of each in
+ * the base data set, so the agent pages show what each role may do.
+ */
+const READY_ROLES: readonly OrganizationRole[] = ['admin', 'user', 'editor'];
+
+/**
+ * Organizations, `count` in each installation. The person manages every
+ * organization that is not ready or pending, so its status shows; is no
+ * member of a pending one; and has the {@link READY_ROLES} in turn in the
+ * ready ones.
+ */
 export function buildOrganizations(
   context: BuilderContext,
   installations: readonly FixtureInstallation[],
   settings: BuilderSettings<OrganizationState> = {},
 ): FixtureOrganization[] {
   const name = createNamer(context.random);
+  let ready = 0;
+  const roleOf = (state: OrganizationState): OrganizationRole => {
+    if (state === 'pending') {
+      return 'none';
+    }
+    return state === 'ready'
+      ? READY_ROLES[ready++ % READY_ROLES.length]
+      : 'admin';
+  };
   return each(
     installations,
     settings,
-    { count: 4, states: ORGANIZATION_STATES },
+    {
+      count: 6,
+      states: [
+        'ready',
+        'ready',
+        'pending',
+        'orphaned',
+        'pendingErase',
+        'deleting',
+      ],
+    },
     (installation, state, nameLength) => {
       const organization = name(nameLength);
       const suffix = hex(context, 5);
@@ -252,10 +304,20 @@ export function buildOrganizations(
           )}-${suffix}`,
         }),
         state,
+        role: roleOf(state),
       };
     },
   );
 }
+
+/**
+ * An agent builder's settings: besides the common ones, how many `pending`
+ * agents have a failed release (the first ones in the list; one by
+ * default).
+ */
+export type AgentBuilderSettings = BuilderSettings<AgentState> & {
+  releaseFailures?: number;
+};
 
 /**
  * Agents, `count` in each organization that has a namespace: a pending
@@ -264,15 +326,20 @@ export function buildOrganizations(
 export function buildAgents(
   context: BuilderContext,
   organizations: readonly FixtureOrganization[],
-  settings: BuilderSettings<AgentState> = {},
+  settings: AgentBuilderSettings = {},
 ): FixtureAgent[] {
   const name = createNamer(context.random);
+  let releaseFailures = settings.releaseFailures ?? 1;
   return each(
     organizations.filter(organization => organization.namespace),
     settings,
-    { count: 2, states: AGENT_STATES },
+    { count: AGENT_STATES.length, states: AGENT_STATES },
     (organization, state, nameLength) => {
       const agent = name(nameLength);
+      const releaseFailed = state === 'pending' && releaseFailures > 0;
+      if (releaseFailed) {
+        releaseFailures--;
+      }
       return {
         installation: organization.installation,
         organization: organization.name,
@@ -281,6 +348,7 @@ export function buildAgents(
         displayName: agent.displayName,
         description: fixtureSentence(context.random),
         state,
+        release: releaseFailed ? 'failed' : 'ready',
       };
     },
   );
@@ -312,17 +380,29 @@ export function buildConnectors(
   );
 }
 
-/** kagent sessions, `count` with each agent. */
+/**
+ * kagent sessions, `count` with each agent that can run them: a ready agent
+ * of a ready organization. An agent that never became ready has none, and an
+ * organization that is orphaned or erased has its workers stopped.
+ */
 export function buildSessions(
   context: BuilderContext,
   agents: readonly FixtureAgent[],
+  organizations: readonly FixtureOrganization[],
   settings: BuilderSettings<SessionState> = {},
 ): FixtureSession[] {
   const title = createNamer(context.random);
+  const ready = new Set(
+    organizations
+      .filter(organization => organization.state === 'ready')
+      .map(organization => organization.namespace),
+  );
   return each(
-    agents,
+    agents.filter(
+      agent => agent.state === 'ready' && ready.has(agent.namespace),
+    ),
     settings,
-    { count: 2, states: SESSION_STATES },
+    { count: 3, states: SESSION_STATES },
     (agent, state, nameLength) => {
       const created = context.random.int(1, 30 * DAY);
       return {
@@ -372,11 +452,13 @@ export function buildExecutions(
     settings,
     { count: 3, states: EXECUTION_STATES },
     (workflow, state) => {
-      const started = context.random.int(10 * MINUTE, 14 * DAY);
-      const durationMs =
+      // A run in progress started minutes ago and has run since.
+      const started =
         state === 'inprogress'
-          ? Math.min(started, context.random.int(1000, 5 * MINUTE))
-          : context.random.int(200, 2 * MINUTE);
+          ? context.random.int(10 * 1000, 30 * MINUTE)
+          : context.random.int(10 * MINUTE, 14 * DAY);
+      const durationMs =
+        state === 'inprogress' ? started : context.random.int(200, 2 * MINUTE);
       return {
         installation: workflow.installation,
         id: uuid(context),
