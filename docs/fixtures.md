@@ -66,8 +66,9 @@ cluster: `/version` answers, `/apis` lists the API groups of the portal's resour
 (kagent's and muster's among them; model hosting's and Cluster API's are left
 out, so those components read as absent in the installation inventory),
 discovery answers the versions the classes support (the newest preferred),
-every list is empty, a
-read of one object is not found, and access reviews are allowed. Their cluster
+a list or a read of one object answers the objects the plugins' fixtures hold
+(see "Objects in the Kubernetes API"), every other list is empty and any other
+object not found, and access reviews are allowed. Their cluster
 access is healthy from the start, and they have no metrics backend
 (`mimirEnabled: false`). Any other request, a write among them, fails with a
 501 and a console error.
@@ -75,6 +76,31 @@ access is healthy from the start, and they have no metrics backend
 If the backend fails with "Invalid app bundle schema", a production build of
 the app in `packages/app/dist` predates a config schema change: delete the
 directory and start again.
+
+### muster
+
+The fixture `MusterApi` serves each installation's muster from the data set:
+its connectors (MCP servers) in every state muster knows, live and in the
+person's sign-in status (`auth://status`); the catalogue, with the tools,
+resources and prompts of the connectors that serve the session (Connected and
+Running), the workflows' `workflow_<name>` tools and muster's own `core_*`
+tools, each described with its input schema; the workflows, their executions
+with their steps and their run statistics; and MCP usage and tool latency over
+any window, narrowed to some connectors or one tool. A connector's tools are
+named after it and derived from it (`connectorToolsOf`), so every read names
+the same ones. The tools of the data set's connectors have no handler: running
+one fails as described below.
+
+### Objects in the Kubernetes API
+
+The pages read some objects from the installation's Kubernetes API, not from
+the plugin's API: muster's `MCPServer` and `Workflow` objects, for example. The
+fixture Kubernetes API (`KubernetesFixtureApi`) lists and reads the objects of
+`FIXTURE_OBJECTS`, one function per plugin that returns the objects of an
+installation. A plugin exports its function from a `fixtures` subpath of its
+own, as muster does with `musterKubernetesObjectsOf` in
+`@giantswarm/backstage-plugin-muster/fixtures`, which only fixture modules and
+tests import.
 
 ### Tool calls through muster
 
@@ -126,7 +152,9 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
   the types its clients read, next to its fixtures, through the parsers the
   real answers go through where there are any: muster's in
   `plugins/muster/src/apis/fixtures/musterFixtureData.ts` (MCP servers as
-  objects and as muster lists them, installations, workflows, executions),
+  objects and as muster lists them, their tools, resources, prompts and the
+  person's sign-in status, installations, workflows as objects and in the
+  catalogue, executions with their steps, run statistics, usage),
   agent-platform's in
   `plugins/agent-platform/src/apis/fixtures/agentPlatformFixtureData.ts`
   (Agent objects, agent-manager's agents and organizations, kagent sessions).

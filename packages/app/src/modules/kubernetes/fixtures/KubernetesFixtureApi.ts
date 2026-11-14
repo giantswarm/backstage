@@ -5,7 +5,22 @@ import {
   FIXTURE_INSTALLATIONS,
   isFixtureInstallation,
 } from '@giantswarm/backstage-plugin-gs-common';
+import type { KubeObjectInterface } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { MCPServer, MusterWorkflow } from '@giantswarm/backstage-plugin-muster';
+import { musterKubernetesObjectsOf } from '@giantswarm/backstage-plugin-muster/fixtures';
+
+/**
+ * The objects of an installation one plugin's fixtures hold, as its
+ * Kubernetes API would list them.
+ */
+export type FixtureObjectsSource = (
+  installation: string,
+) => KubeObjectInterface[];
+
+/** The plugins' objects fixture mode serves: muster's MCP servers and workflows. */
+const FIXTURE_OBJECTS: readonly FixtureObjectsSource[] = [
+  musterKubernetesObjectsOf,
+];
 
 /**
  * The API groups the fixture installation serves beyond the ones every
@@ -104,15 +119,41 @@ function unhandled(method: string, path: string): Response {
 
 /**
  * The Kubernetes API in fixture mode (`gs.fixtures: true`): the fixture
- * installations (`FIXTURE_INSTALLATIONS`), each reachable and serving the API groups of the portal's resource
- * classes (kagent's and muster's among them, not kserve's or Cluster API's)
- * and holds no objects yet. Discovery answers what the classes support, every
- * list is empty, a read of one object is not found, and the person may do
- * anything an access review asks about. Any other request fails with a 501
- * and a console error.
+ * installations (`FIXTURE_INSTALLATIONS`), each reachable, serving the API
+ * groups of the portal's resource classes (kagent's and muster's among them,
+ * not kserve's or Cluster API's) and holding the objects of the plugins'
+ * fixtures (`FIXTURE_OBJECTS`). Discovery answers what the classes support, a
+ * list or a read answers those objects, and the person may do anything an
+ * access review asks about. Any other request fails with a 501 and a console
+ * error.
  */
 export class KubernetesFixtureApi implements KubernetesApi {
   private readonly resources = knownResources();
+
+  constructor(
+    private readonly sources: readonly FixtureObjectsSource[] = FIXTURE_OBJECTS,
+  ) {}
+
+  /** The installation's objects of one resource, in one namespace or all. */
+  private objects(
+    installation: string,
+    resource: Resource,
+    namespace: string | undefined,
+  ): KubeObjectInterface[] {
+    return this.sources
+      .flatMap(source => source(installation))
+      .filter(object => {
+        const [group, version] = object.apiVersion.includes('/')
+          ? object.apiVersion.split('/')
+          : ['', object.apiVersion];
+        return (
+          group === resource.group &&
+          resource.versions.includes(version) &&
+          object.kind === resource.kind &&
+          (namespace === undefined || object.metadata.namespace === namespace)
+        );
+      });
+  }
 
   async getClusters(): Promise<
     Awaited<ReturnType<KubernetesApi['getClusters']>>
@@ -169,7 +210,9 @@ export class KubernetesFixtureApi implements KubernetesApi {
     if (method !== 'GET') {
       return unhandled(method, options.path);
     }
-    return this.read(path) ?? unhandled(method, options.path);
+    return (
+      this.read(options.clusterName, path) ?? unhandled(method, options.path)
+    );
   }
 
   private accessReview(body: BodyInit | null | undefined): Response {
@@ -231,7 +274,7 @@ export class KubernetesFixtureApi implements KubernetesApi {
   }
 
   /** A GET the fixtures answer, or undefined. */
-  private read(path: string): Response | undefined {
+  private read(installation: string, path: string): Response | undefined {
     const segments = path.split('/').filter(Boolean);
     if (path === '/version') {
       return json({
@@ -274,17 +317,28 @@ export class KubernetesFixtureApi implements KubernetesApi {
     // namespace `namespaces/<name>` itself.
     const namespaced = rest[0] === 'namespaces' && rest.length >= 3;
     const [plural, name] = namespaced ? rest.slice(2) : rest;
-    if (!this.resources.some(r => r.group === group && r.plural === plural)) {
+    const resource = this.resources.find(
+      r => r.group === group && r.plural === plural,
+    );
+    if (!resource) {
       return undefined;
     }
+    const objects = this.objects(
+      installation,
+      resource,
+      namespaced ? rest[1] : undefined,
+    );
     if (name) {
-      return statusResponse(404, 'NotFound', `${plural} "${name}" not found`);
+      const object = objects.find(o => o.metadata.name === name);
+      return object
+        ? json(object)
+        : statusResponse(404, 'NotFound', `${plural} "${name}" not found`);
     }
     return json({
       apiVersion: group ? `${group}/${version}` : version,
       kind: 'List',
       metadata: { resourceVersion: '1' },
-      items: [],
+      items: objects,
     });
   }
 }

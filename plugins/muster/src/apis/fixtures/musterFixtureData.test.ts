@@ -8,9 +8,13 @@ import {
   mcpServerStateSeverity,
   type MCPServerState,
 } from '../../lib/k8s/MCPServer';
+import { MusterWorkflow } from '../../lib/k8s/MusterWorkflow';
 import {
   connectorNameOf,
+  connectorToolsOf,
   executionSummaryOf,
+  isServing,
+  musterWorkflowObjectOf,
   mcpServerObjectOf,
   mcpServerRuntimeOf,
   musterInstallationOf,
@@ -120,6 +124,44 @@ describe('muster fixture data', () => {
         execution.state === 'inprogress',
       );
       expect(summary.error === undefined).toBe(execution.state !== 'failed');
+    }
+  });
+
+  it('names each connector’s tools apart, under its tool prefix', () => {
+    for (const connector of data.connectors) {
+      const tools = connectorToolsOf(connector);
+      expect(tools).toHaveLength(connector.toolsCount);
+      expect(new Set(tools.map(tool => tool.name)).size).toBe(tools.length);
+      for (const tool of tools) {
+        expect(tool.name.startsWith(`x_${connector.name}_`)).toBe(true);
+        expect(tool.server).toBe(connector.name);
+      }
+    }
+  });
+
+  it('maps workflows onto Workflow objects whose steps call served tools', () => {
+    const served = new Set(
+      data.connectors
+        .filter(isServing)
+        .flatMap(connectorToolsOf)
+        .map(tool => tool.name),
+    );
+    for (const record of data.workflows) {
+      const workflow = new MusterWorkflow(
+        musterWorkflowObjectOf(record, data.connectors),
+        record.installation,
+      );
+      expect(workflow.getName()).toBe(record.name);
+      expect(workflow.getDescription()).toBe(record.description);
+      expect(workflow.isValid()).toBe(record.state === 'available');
+      expect(workflow.getValidationErrors().length > 0).toBe(
+        record.state !== 'available',
+      );
+      const tools = workflow.getSteps().map(step => step.tool!);
+      expect(workflow.getReferencedTools()).toEqual(tools);
+      expect(tools.filter(tool => !served.has(tool))).toHaveLength(
+        record.state === 'available' ? 0 : 1,
+      );
     }
   });
 });
