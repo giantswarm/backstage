@@ -40,3 +40,4 @@ export * from './kagent/kagentTurnStatus';
 export * from './kagent/kagentUsage';
 export * from './kagent/record';
 export * from './sessionNotificationRow';
+export * from './kagent/kagentSessionRollups';

@@ -1,28 +1,18 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
 import {
-  addTally,
-  emptyTally,
   isListableSession,
   KagentSession,
   normalizeSessionList,
   normalizeTaskList,
-  reduceSessionUsage,
+  selectCandidates,
   SessionUsageResponse,
-  UsageAgentEntry,
-  UsageDayEntry,
-  UsageRemainder,
-  UsageServerEntry,
-  UsageTally,
-  UsageToolEntry,
-  USAGE_TOP_N,
-  utcDayKey,
+  SessionUsageRollup,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { KagentClient } from './KagentClient';
 import {
   atLeast,
   MIN_READ_SLICE_MS,
   readTasksInPool,
-  selectCandidates,
   TokenKeyedCache,
 } from './sessionFanOut';
 
@@ -103,31 +93,6 @@ export type SessionUsageOptions = {
   budgetMs?: number;
   cacheTtlMs?: number;
 };
-
-/**
- * The top entries by count, and what the cap left out.
- *
- * Descending by count, then by name, so the answer is not Map order. The
- * remainder travels with the list so the UI can say "and 14 more, 230 calls"
- * rather than dropping the long tail silently.
- */
-function topBy<T>(
-  counts: Map<string | null, number>,
-  make: (key: string | null, calls: number) => T,
-  limit = USAGE_TOP_N,
-): { top: T[]; other: UsageRemainder } {
-  const ranked = [...counts.entries()].sort(
-    (a, b) => b[1] - a[1] || (a[0] ?? '').localeCompare(b[0] ?? ''),
-  );
-  const rest = ranked.slice(limit);
-  return {
-    top: ranked.slice(0, limit).map(([key, calls]) => make(key, calls)),
-    other: {
-      count: rest.length,
-      calls: rest.reduce((sum, [, calls]) => sum + calls, 0),
-    },
-  };
-}
 
 /**
  * The caller's usage on one installation, over a fixed window.
@@ -214,17 +179,7 @@ export class SessionUsageReader {
       maxSessions: this.maxSessions,
     });
 
-    const totals = emptyTally();
-    let sessionsWithActivity = 0;
-    let undatedTurns = 0;
-    let unparseableMessages = 0;
-    const days = new Map<string, UsageTally>();
-    // Sessions by the UTC day of their newest turn in the window: a narrower
-    // window's session count is a trailing sum of these (see UsageDayEntry).
-    const lastActive = new Map<string, number>();
-    const tools = new Map<string | null, number>();
-    const servers = new Map<string | null, number>();
-    const agents = new Map<string | null, UsageTally & { sessions: number }>();
+    const rollup = new SessionUsageRollup({ startMs, endMs });
 
     const { unreadable, skipped, failures } =
       await readTasksInPool<KagentSession>({
@@ -239,54 +194,11 @@ export class SessionUsageReader {
           this.client.listSessionTasks(sessionId, { userToken }, { timeoutMs }),
         onPayload: (session, payload) => {
           const { tasks } = normalizeTaskList(payload);
-          const usage = reduceSessionUsage(tasks, { startMs, endMs });
-
-          // A session only counts toward `sessions` if it had a turn *inside* the
-          // window. Otherwise a 30-day count would include conversations that saw
-          // no activity in those 30 days, and the tile would disagree with the
-          // chart beside it.
-          if (usage.tally.turns === 0) {
-            return;
-          }
-          sessionsWithActivity += 1;
-
-          addTally(totals, usage.tally);
-          undatedTurns += usage.undatedTurns;
-          unparseableMessages += usage.unparseableMessages;
-
-          let newestDay: string | undefined;
-          for (const [day, tally] of usage.days) {
-            const existing = days.get(day) ?? emptyTally();
-            addTally(existing, tally);
-            days.set(day, existing);
-            if (tally.turns > 0 && (!newestDay || day > newestDay)) {
-              newestDay = day;
-            }
-          }
-          if (newestDay) {
-            lastActive.set(newestDay, (lastActive.get(newestDay) ?? 0) + 1);
-          }
-          for (const [tool, calls] of usage.tools) {
-            tools.set(tool, (tools.get(tool) ?? 0) + calls);
-          }
-          for (const [server, calls] of usage.servers) {
-            servers.set(server, (servers.get(server) ?? 0) + calls);
-          }
-
-          // Attributed to the *delegating* agent, deliberately: a child's own
-          // agentId is not knowable from the response, its session is excluded
-          // from the pass, and "this agent's work cost this much" is the reading
-          // that is useful.
-          const agentId = session.agentId ?? null;
-          const agent =
-            agents.get(agentId) ?? Object.assign(emptyTally(), { sessions: 0 });
-          addTally(agent, usage.tally);
-          agent.sessions += 1;
-          agents.set(agentId, agent);
+          rollup.add(session, tasks);
         },
       });
 
-    if (failures > 0 || unparseableMessages > 0) {
+    if (failures > 0 || rollup.unparseableMessages > 0) {
       // `debug`, and counts rather than ids: the root logger forwards warn and
       // error to Sentry, and a partial read is the expected outcome this route
       // is built around. The installation travels as structured metadata so it
@@ -297,92 +209,19 @@ export class SessionUsageReader {
           installation: this.installation,
           failed: failures,
           evaluated: candidates.length,
-          unparseableMessages,
+          unparseableMessages: rollup.unparseableMessages,
         },
       );
     }
 
-    const rankedTools = topBy<UsageToolEntry>(tools, (tool, calls) => ({
-      tool: tool ?? 'unknown tool',
-      calls,
-    }));
-    const rankedServers = topBy<UsageServerEntry>(servers, (server, calls) => ({
-      server,
-      calls,
-    }));
-
-    return {
-      evaluatedAt: endMs,
-      windowStart: startMs,
+    return rollup.result({
       windowDays: this.windowDays,
-      totals: { ...totals, sessions: sessionsWithActivity },
-      daily: this.denseDaily(days, lastActive, startMs, endMs),
-      byAgent: this.rankAgents(agents),
-      topTools: rankedTools.top,
-      otherTools: rankedTools.other,
-      topMcpServers: rankedServers.top,
-      otherMcpServers: rankedServers.other,
-      undatedTurns,
       unreadable,
       // The cap and the budget cutoff. Deliberately not the activity-window
       // exclusion: that is a scope decision, and folding it in would make this
       // permanently non-zero for any account holding an older session, which
       // the UI reads as "we could not tell".
       skipped: pastCap + skipped,
-    };
-  }
-
-  /**
-   * Every UTC day in the window, zero-filled.
-   *
-   * The backend owns this because it owns the window. A sparse series would
-   * leave a bar chart to reconstruct the missing days, and a chart that simply
-   * omits them silently compresses the timeline — 30 bars that do not mean 30
-   * days.
-   */
-  private denseDaily(
-    days: Map<string, UsageTally>,
-    lastActive: Map<string, number>,
-    startMs: number,
-    endMs: number,
-  ): UsageDayEntry[] {
-    const daily: UsageDayEntry[] = [];
-    // Walked from the window's first UTC day to its last, by key rather than by
-    // adding 24 h to a timestamp, so the sequence cannot drift.
-    for (let at = startMs; at <= endMs; at += DAY_MS) {
-      const day = utcDayKey(at);
-      if (daily.length > 0 && daily[daily.length - 1].day === day) {
-        continue;
-      }
-      const tally = days.get(day);
-      daily.push({
-        day,
-        inputTokens: tally?.inputTokens ?? 0,
-        outputTokens: tally?.outputTokens ?? 0,
-        turns: tally?.turns ?? 0,
-        toolCalls: tally?.toolCalls ?? 0,
-        lastActiveSessions: lastActive.get(day) ?? 0,
-      });
-    }
-    return daily;
-  }
-
-  private rankAgents(
-    agents: Map<string | null, UsageTally & { sessions: number }>,
-  ): UsageAgentEntry[] {
-    return [...agents.entries()]
-      .map(([agentId, tally]) => ({
-        agentId,
-        sessions: tally.sessions,
-        turns: tally.turns,
-        inputTokens: tally.inputTokens,
-        outputTokens: tally.outputTokens,
-        ...(tally.costUsd !== undefined && { costUsd: tally.costUsd }),
-      }))
-      .sort(
-        (a, b) =>
-          b.inputTokens + b.outputTokens - (a.inputTokens + a.outputTokens) ||
-          (a.agentId ?? '').localeCompare(b.agentId ?? ''),
-      );
+    });
   }
 }

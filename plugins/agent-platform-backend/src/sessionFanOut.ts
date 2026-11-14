@@ -1,4 +1,8 @@
 import { createHash } from 'crypto';
+import {
+  selectCandidates,
+  type SessionCandidate,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 
 /**
  * Shared machinery for the routes that answer a question about *every* one of a
@@ -56,57 +60,11 @@ export function atLeast(
   return Math.max(floor, configured);
 }
 
-export type Candidate = { sessionId: string; updatedAt?: string };
+/** A session the passes consider: `SessionCandidate` in agent-platform-common. */
+export type Candidate = SessionCandidate;
 
-/**
- * Which sessions are worth a task read, newest activity first.
- *
- * Bounding happens here, before a single byte of conversation is fetched — the
- * cap is the real protection, and the window only trims a long tail that a busy
- * account would have hit the cap on anyway.
- *
- * A session with no usable `updated_at` is **kept**. `normalizeTimestamp` already
- * rejects Go zero time and anything unparseable, so an absent value means "we
- * cannot tell", and dropping those would silently hide a session on the strength
- * of a field kagent need not populate. They sort last, where the cap can still
- * reach them.
- *
- * Generic in the session type so a caller's own fields survive selection: the
- * usage pass needs each candidate's `agentId` after the read, and re-joining it
- * against the list afterwards would be a second chance to get the pairing wrong.
- */
-export function selectCandidates<T extends Candidate>(
-  sessions: readonly T[],
-  opts: { now: number; maxAgeMs: number; maxSessions: number },
-): { candidates: T[]; pastCap: number } {
-  const withTime = sessions.map(session => ({
-    session,
-    at: session.updatedAt ? Date.parse(session.updatedAt) : undefined,
-  }));
-
-  const inWindow = withTime.filter(
-    ({ at }) => at === undefined || opts.now - at <= opts.maxAgeMs,
-  );
-
-  inWindow.sort((a, b) => {
-    if (a.at === undefined && b.at === undefined) return 0;
-    if (a.at === undefined) return 1;
-    if (b.at === undefined) return -1;
-    return b.at - a.at;
-  });
-
-  return {
-    candidates: inWindow
-      .slice(0, opts.maxSessions)
-      .map(({ session }) => session),
-    // Only the cap is a shortfall. Sessions outside the window are out of scope
-    // by policy — the same kind of decision as excluding subagent sessions — and
-    // counting them as "not checked" would be permanent on any account more than
-    // a week old, which makes the UI's "cannot tell" state unreachable-to-escape
-    // rather than informative.
-    pastCap: Math.max(0, inWindow.length - opts.maxSessions),
-  };
-}
+// Shared with the fixture mode, which selects the same sessions.
+export { selectCandidates };
 
 export type FanOutBounds = {
   concurrency: number;

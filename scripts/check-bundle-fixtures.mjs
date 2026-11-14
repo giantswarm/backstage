@@ -39,8 +39,17 @@ const MARKERS = [
     marker: 'Fixture mode does not answer',
   },
   {
-    source: 'plugins/agent-platform/src/apis/fixtures/KagentFixtureApi.ts',
-    marker: 'kagent streamMessage',
+    source: 'plugins/agent-platform/src/apis/fixtures/kagentConversations.ts',
+    marker: 'Fixture mode replays this reply from a recorded kagent stream',
+  },
+  {
+    source: 'plugins/agent-platform/src/apis/fixtures/kagentFixtureState.ts',
+    marker: 'Fixture mode replays the rest of this turn',
+  },
+  {
+    source:
+      'plugins/agent-platform-common/src/kagent/__fixtures__/stream.kagent-4a91c273.json',
+    marker: 'Reply with exactly the word pong.',
   },
   {
     source:

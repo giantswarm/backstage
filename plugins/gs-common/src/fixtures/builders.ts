@@ -84,6 +84,24 @@ export const SESSION_STATES = [
 ] as const;
 export type SessionState = (typeof SESSION_STATES)[number];
 
+/**
+ * What a session's newest turn came to, as its page shows it: finished, still
+ * running, waiting on the person's approval of a tool call or answer to a
+ * question, failed, stopped by the person, or failed because kagent lost the
+ * session's runtime.
+ */
+export const SESSION_TURNS = [
+  'completed',
+  'working',
+  'approval',
+  'askUser',
+  'failed',
+  'canceled',
+  'runtimeLost',
+] as const;
+/** A session's newest turn; `none` for a session that has run none. */
+export type SessionTurn = (typeof SESSION_TURNS)[number] | 'none';
+
 /** Whether muster offers a workflow (`WorkflowListItem.available`). */
 export const WORKFLOW_STATES = ['available', 'unavailable'] as const;
 export type WorkflowState = (typeof WORKFLOW_STATES)[number];
@@ -143,6 +161,8 @@ export type FixtureSession = {
   title: string;
   agent: { namespace: string; name: string };
   state: SessionState;
+  /** What its newest turn came to; its conversation ends with it. */
+  turn: SessionTurn;
   /** RFC 3339. */
   createdAt: string;
   updatedAt: string;
@@ -174,7 +194,8 @@ export type FixtureExecution = {
 export type BuilderContext = { random: FixtureRandom; now: number };
 
 export const MINUTE = 60 * 1000;
-export const DAY = 24 * 60 * MINUTE;
+export const HOUR = 60 * MINUTE;
+export const DAY = 24 * HOUR;
 
 /** The parent namespace organizations live in. */
 export const ORGANIZATION_PARENT = 'agents';
@@ -393,10 +414,25 @@ export function buildConnectors(
 }
 
 /**
- * kagent sessions, `count` with each agent that can run them: a ready agent
- * of a ready organization. An agent that never became ready has none, and an
- * organization that is orphaned or erased has its workers stopped.
+ * The agents that can run sessions: the ready agents of ready organizations.
+ * An agent that never became ready has none, and an organization that is
+ * orphaned or erased has its workers stopped.
  */
+export function runnableAgents(
+  agents: readonly FixtureAgent[],
+  organizations: readonly FixtureOrganization[],
+): FixtureAgent[] {
+  const ready = new Set(
+    organizations
+      .filter(organization => organization.state === 'ready')
+      .map(organization => organization.namespace),
+  );
+  return agents.filter(
+    agent => agent.state === 'ready' && ready.has(agent.namespace),
+  );
+}
+
+/** kagent sessions, `count` with each agent that can run them (`runnableAgents`). */
 export function buildSessions(
   context: BuilderContext,
   agents: readonly FixtureAgent[],
@@ -404,15 +440,8 @@ export function buildSessions(
   settings: BuilderSettings<SessionState> = {},
 ): FixtureSession[] {
   const title = createNamer(context.random);
-  const ready = new Set(
-    organizations
-      .filter(organization => organization.state === 'ready')
-      .map(organization => organization.namespace),
-  );
   return each(
-    agents.filter(
-      agent => agent.state === 'ready' && ready.has(agent.namespace),
-    ),
+    runnableAgents(agents, organizations),
     settings,
     { count: 3, states: SESSION_STATES },
     (agent, state, nameLength) => {
@@ -423,8 +452,74 @@ export function buildSessions(
         title: title(nameLength).displayName,
         agent: { namespace: agent.namespace, name: agent.name },
         state,
+        turn: state === 'creating' ? 'none' : 'completed',
         createdAt: isoAgo(context, created),
         updatedAt: isoAgo(context, context.random.int(0, created)),
+      };
+    },
+  );
+}
+
+/** The runtime state of a session whose newest turn is `turn`. */
+const RUNTIME_OF_TURN: Record<SessionTurn, SessionState> = {
+  none: 'ready',
+  completed: 'ready',
+  working: 'ready',
+  // A runtime waiting on the person is suspended until they answer.
+  approval: 'suspended',
+  askUser: 'suspended',
+  failed: 'ready',
+  canceled: 'ready',
+  // kagent keeps a session whose runtime it lost ready: the session is
+  // intact, only its runtime is gone.
+  runtimeLost: 'ready',
+};
+
+/**
+ * Sessions whose newest turn is in each of `SESSION_TURNS`, `count` per
+ * installation, with its ready agents of ready organizations in turn. They
+ * moved in the last two days, inside the window the session states summary
+ * reads (seven days), and a running turn's session moved just now.
+ */
+export function buildTurnSessions(
+  context: BuilderContext,
+  installations: readonly FixtureInstallation[],
+  agents: readonly FixtureAgent[],
+  organizations: readonly FixtureOrganization[],
+  settings: BuilderSettings<SessionTurn> = {},
+): FixtureSession[] {
+  const title = createNamer(context.random);
+  const runnable = runnableAgents(agents, organizations);
+  const agentsOf = new Map(
+    installations.map(installation => [
+      installation.name,
+      runnable.filter(agent => agent.installation === installation.name),
+    ]),
+  );
+  const served = new Map<string, number>();
+  return each(
+    installations.filter(
+      installation => (agentsOf.get(installation.name) ?? []).length > 0,
+    ),
+    settings,
+    { count: SESSION_TURNS.length, states: SESSION_TURNS },
+    (installation, turn, nameLength) => {
+      const candidates = agentsOf.get(installation.name)!;
+      const position = served.get(installation.name) ?? 0;
+      served.set(installation.name, position + 1);
+      const agent = candidates[position % candidates.length];
+      const moved = context.random.int(MINUTE, 2 * DAY);
+      // Created before every turn of its conversation, earlier ones included.
+      const created = moved + context.random.int(HOUR, 3 * DAY);
+      return {
+        installation: installation.name,
+        id: uuid(context),
+        title: title(nameLength).displayName,
+        agent: { namespace: agent.namespace, name: agent.name },
+        state: RUNTIME_OF_TURN[turn],
+        turn,
+        createdAt: isoAgo(context, created),
+        updatedAt: isoAgo(context, turn === 'working' ? 0 : moved),
       };
     },
   );
