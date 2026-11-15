@@ -25,5 +25,13 @@ export function musterApiOf(server: FixtureMcpServer): MusterApi {
         signal: new AbortController().signal,
       });
     },
+    describeTool: async (name: string) => {
+      const tool = name.replace(`x_${server.server}_`, '');
+      return {
+        name,
+        server: server.server,
+        inputSchema: server.inputSchemas?.[tool],
+      };
+    },
   } as unknown as MusterApi;
 }

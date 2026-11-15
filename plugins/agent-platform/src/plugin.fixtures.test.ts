@@ -24,7 +24,9 @@ function createApi(id: FixtureApiId, fixtures: boolean): unknown {
   ).get(ApiBlueprint.dataRefs.factory);
   return factory({
     configApi: mockApis.config({ data: { agentPlatform: { fixtures } } }),
-    musterApi: {},
+    // model-manager's fixture calls its tools through muster, as the real
+    // client does: a muster with no backend registered.
+    musterApi: { callTool: async () => ({ backends: [] }) },
     discoveryApi: mockApis.discovery(),
     fetchApi: { fetch: jest.fn() },
     kubernetesApi: {},
