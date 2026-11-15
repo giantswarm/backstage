@@ -12,6 +12,7 @@ import {
   type StartSessionRequest,
 } from '../../../lib/agentManager';
 import {
+  MODEL_OPERATION_FIELDS,
   ORGANIZATIONS_CAPABILITY,
   type MemberRequest,
   type OrganizationCredentialReplacement,
@@ -113,6 +114,12 @@ export function agentManagerFixtureServer(
         installation,
         args as OrganizationModelRequest,
       ),
+    [AGENT_MANAGER_TOOLS.deleteOrganizationObject]: (args, { installation }) =>
+      state().deleteOrganizationObject(installation, {
+        namespace: text(args, 'namespace'),
+        name: text(args, 'name'),
+        kind: text(args, 'kind'),
+      }),
     [AGENT_MANAGER_TOOLS.replaceOrganizationCredential]: (
       args,
       { installation },
@@ -178,6 +185,24 @@ export function agentManagerFixtureServer(
   return {
     server: AGENT_MANAGER_SERVER,
     tools: asJson(tools),
+    inputSchemas: {
+      [AGENT_MANAGER_TOOLS.setOrganizationModel]: {
+        type: 'object',
+        properties: Object.fromEntries(
+          [
+            'namespace',
+            'name',
+            'provider',
+            'model',
+            'create',
+            'default',
+            'requestId',
+            'insecureSkipTLSVerify',
+            ...MODEL_OPERATION_FIELDS,
+          ].map(field => [field, {}]),
+        ),
+      },
+    },
   };
 }
 

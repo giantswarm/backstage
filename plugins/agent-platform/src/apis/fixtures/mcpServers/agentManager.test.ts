@@ -10,6 +10,7 @@ import {
   hasReachedWrittenRevision,
   type AgentSpec,
 } from '../../../lib/agentManager';
+import { hasModelOperations } from '../../../lib/organizations';
 import { preparedCredentialOperation } from '../../../lib/credentialOperations';
 import { DEFAULT_MODEL_ANNOTATION } from '../../../lib/defaultModel';
 import { AgentManagerClient } from '../../AgentManagerClient';
@@ -680,4 +681,32 @@ describe('the fixture agent-manager', () => {
         .some(object => object.metadata.namespace === organization.namespace),
     ).toBe(false);
   });
+});
+
+it('declares the set_organization_model fields the model forms send', () => {
+  const { server } = setup();
+  expect(
+    hasModelOperations(
+      server.inputSchemas?.[AGENT_MANAGER_TOOLS.setOrganizationModel] as {
+        properties?: Record<string, unknown>;
+      },
+    ),
+  ).toBe(true);
+});
+
+it('deletes a model through delete_organization_object', async () => {
+  const { client, state, organizationWith } = setup();
+  const { namespace } = organizationWith('admin');
+  const [model] = state.listModelConfigs(INSTALLATION, namespace);
+  await expect(client.deleteModel(namespace, model.name)).resolves.toEqual(
+    expect.objectContaining({ deleted: true, name: model.name }),
+  );
+  expect(
+    state
+      .listModelConfigs(INSTALLATION, namespace)
+      .map(remaining => remaining.name),
+  ).not.toContain(model.name);
+  await expect(client.deleteModel(namespace, model.name)).rejects.toThrow(
+    'not found',
+  );
 });

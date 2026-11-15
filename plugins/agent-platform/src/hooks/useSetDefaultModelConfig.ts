@@ -11,17 +11,18 @@ import {
   modelCredentialsRouteRef,
 } from '../routes';
 import { invalidateModelReads } from './defaultModelWrites';
+import { useEnsureModelOperations } from './useEnsureModelOperations';
 import { useMusterPluginApi } from './useMusterPluginApi';
 
 export type SetDefaultModelConfigResult = { form?: string };
 export type SetDefaultModelConfigInput = {
   modelConfig: ModelConfig;
-  expected: readonly string[];
 };
 
 export function useSetDefaultModelConfig() {
   const queryClient = useQueryClient();
   const musterApi = useMusterPluginApi();
+  const ensureModelOperations = useEnsureModelOperations();
   const organizations = useOrganizationDirectory();
   const organizationForm = useRouteRef(organizationCredentialsRouteRef);
   const platformForm = useRouteRef(modelCredentialsRouteRef);
@@ -39,6 +40,7 @@ export function useSetDefaultModelConfig() {
       const namespace = modelConfig.getNamespace() ?? '';
       const organization = organizations.directory.get(namespace);
       try {
+        await ensureModelOperations(installation);
         const result = await new AgentManagerClient(
           musterApi,
           installation,

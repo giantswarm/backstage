@@ -69,7 +69,7 @@ it('sets the installation default through agent-manager without a credential val
   mockCallTool.mockResolvedValue({ defaultModel: 'sonnet' });
   const { result } = setup();
   await act(async () => {
-    await result.current.setDefault({ modelConfig: model, expected: [] });
+    await result.current.setDefault({ modelConfig: model });
   });
   expect(mockCallTool).toHaveBeenCalledWith(
     'x_agent-manager_set_organization_model',
@@ -101,7 +101,6 @@ it('opens the credential form when the default operation needs a missing credent
   await act(async () => {
     saved = await result.current.setDefault({
       modelConfig: model,
-      expected: [],
     });
   });
   expect(saved).toEqual({ form: '/credential-form' });
@@ -113,7 +112,7 @@ it('refuses a manager without the model credential contract before issuing a wri
   const { result } = setup();
   await act(async () => {
     await expect(
-      result.current.setDefault({ modelConfig: model, expected: [] }),
+      result.current.setDefault({ modelConfig: model }),
     ).rejects.toThrow('model credential operations');
   });
   expect(mockCallTool).not.toHaveBeenCalled();
@@ -125,8 +124,26 @@ it('does not report a default change when the manager refuses it', async () => {
   const { result } = setup();
   await act(async () => {
     await expect(
-      result.current.setDefault({ modelConfig: model, expected: [] }),
+      result.current.setDefault({ modelConfig: model }),
     ).rejects.toThrow();
   });
   expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+});
+
+it('reads the installation tool schema once for consecutive writes', async () => {
+  mockDescribeTool.mockClear();
+  mockCallTool.mockResolvedValue({ defaultModel: 'sonnet' });
+  const { result } = setup();
+  await act(async () => {
+    await result.current.setDefault({ modelConfig: model });
+  });
+  await act(async () => {
+    await result.current.setDefault({ modelConfig: model });
+  });
+  expect(mockCallTool).toHaveBeenCalledTimes(2);
+  expect(mockDescribeTool).toHaveBeenCalledTimes(1);
+  expect(mockDescribeTool).toHaveBeenCalledWith(
+    'x_agent-manager_set_organization_model',
+    'gazelle',
+  );
 });

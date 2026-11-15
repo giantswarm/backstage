@@ -431,10 +431,7 @@ function ModelDetailPageContent() {
     resetSetDefault();
     let form: string | undefined;
     try {
-      ({ form } = await setDefault({
-        modelConfig,
-        expected: defaultState.otherMarks,
-      }));
+      ({ form } = await setDefault({ modelConfig }));
     } catch {
       // Left on the page: the error renders in the alert above the tabs.
       return;

@@ -828,6 +828,37 @@ export class AgentManagerFixtureState {
     );
   }
 
+  /** `delete_organization_object` for a model: the ModelConfig and its key. */
+  deleteOrganizationObject(
+    installation: string,
+    request: { namespace: string; name: string; kind: string },
+  ): CredentialResourceResult {
+    if (request.kind !== 'model') {
+      throw refusal(
+        'invalid_request',
+        `fixture mode deletes models only, not a ${request.kind}`,
+      );
+    }
+    const organization = this.writableIn(installation, request.namespace);
+    this.mustManage(organization);
+    const { models } = this.stateOf(installation);
+    const key = keyOf(request.namespace, request.name);
+    if (!models.delete(key)) {
+      throw refusal(
+        'not_found',
+        `model ${request.name} not found in ${request.namespace}`,
+      );
+    }
+    this.changed();
+    return {
+      namespace: request.namespace,
+      kind: 'model',
+      name: request.name,
+      deleted: true,
+      defaultModel: this.defaultModelIn(installation, request.namespace),
+    };
+  }
+
   private writeModel(
     installation: string,
     organization: FixtureOrganization,

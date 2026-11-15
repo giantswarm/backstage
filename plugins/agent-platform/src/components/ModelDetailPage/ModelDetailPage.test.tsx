@@ -1042,7 +1042,6 @@ describe('ModelDetailPage', () => {
 
       expect(mockSetDefault).toHaveBeenCalledWith({
         modelConfig: expect.objectContaining({ cluster: 'inst-1' }),
-        expected: ['haiku'],
       });
       expect(
         await screen.findByText('Sonnet 4.5 is now the default model'),

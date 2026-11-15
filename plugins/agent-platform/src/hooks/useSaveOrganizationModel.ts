@@ -26,6 +26,7 @@ import { PortalSessionEndedError } from '../lib/portalSession';
 import { invalidateModelReads } from './defaultModelWrites';
 import { modelKeyReference } from './modelKeyReference';
 import { useAgentManagerClient } from './useAgentManager';
+import { useEnsureModelOperations } from './useEnsureModelOperations';
 
 export type SaveOrganizationModelInput = {
   /** The organization namespace the model is in, or goes to. */
@@ -75,6 +76,7 @@ export type SaveOrganizationModelResult = {
  */
 export function useSaveOrganizationModel(installation: string | undefined) {
   const client = useAgentManagerClient(installation);
+  const ensureModelOperations = useEnsureModelOperations();
   const queryClient = useQueryClient();
   const formLink = useRouteRef(organizationCredentialsRouteRef);
   const platformFormLink = useRouteRef(modelCredentialsRouteRef);
@@ -111,6 +113,12 @@ export function useSaveOrganizationModel(installation: string | undefined) {
       }
       const namespace =
         organization?.namespace ?? requestedNamespace ?? MODEL_CONFIG_NAMESPACE;
+      const setModel = async (
+        request: Parameters<typeof client.setOrganizationModel>[0],
+      ) => {
+        await ensureModelOperations(installation);
+        return client.setOrganizationModel(request);
+      };
       const formOf = (operation: string) => {
         const form = organization
           ? formLink?.({
@@ -152,7 +160,7 @@ export function useSaveOrganizationModel(installation: string | undefined) {
             `The namespace ${namespace} already has a model named ${name}. Choose another name, or edit that model.`,
           );
         }
-        const result = await client.setOrganizationModel({
+        const result = await setModel({
           namespace,
           name,
           create: true,
@@ -183,7 +191,7 @@ export function useSaveOrganizationModel(installation: string | undefined) {
       let changed = false;
       let isDefault = false;
       if (modelConfigFormChanged(values, initial)) {
-        const result = await client.setOrganizationModel({
+        const result = await setModel({
           namespace,
           name,
           provider: values.provider,

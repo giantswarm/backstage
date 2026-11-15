@@ -16,6 +16,7 @@ import {
 } from '../lib/queryKeys';
 import { organizationCredentialsRouteRef } from '../routes';
 import { useAgentManagerClient } from './useAgentManager';
+import { useEnsureModelOperations } from './useEnsureModelOperations';
 import { readModelKeyReference } from './modelKeyReference';
 
 /**
@@ -45,6 +46,7 @@ export function useOrganizationCredentialRequest(
   organization: OrganizationNamespace,
 ) {
   const client = useAgentManagerClient(installation);
+  const ensureModelOperations = useEnsureModelOperations();
   const kubernetesApi = useApi(kubernetesApiRef);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -59,6 +61,7 @@ export function useOrganizationCredentialRequest(
     const requestId = crypto.randomUUID();
     switch (request.kind) {
       case 'model':
+        await ensureModelOperations(installation);
         return client.setOrganizationModel({
           namespace,
           name: request.name,

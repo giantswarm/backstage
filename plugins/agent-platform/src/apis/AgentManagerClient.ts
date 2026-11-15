@@ -1,4 +1,4 @@
-/* eslint-disable @backstage/no-mixed-plugin-imports -- The Agent Platform composes installation APIs across plugins. */
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- agent-manager is reached through Muster.
 import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 
 import {
@@ -400,30 +400,13 @@ export class AgentManagerClient {
   /**
    * Creates or changes an organization's model. Never takes a key: a
    * missing one comes back as a credential request (`credentialOperation`).
+   * Callers check the installation's tool first (`useEnsureModelOperations`).
    */
   async setOrganizationModel(
     request: OrganizationModelRequest,
   ): Promise<CredentialResourceResult> {
     const endpointProblem = modelEndpointProblem(request.endpoint ?? '');
     if (endpointProblem) throw new Error(endpointProblem);
-    const detail = await this.musterApi.describeTool(
-      agentManagerToolName(AGENT_MANAGER_TOOLS.setOrganizationModel),
-      this.installation,
-    );
-    const properties = detail.inputSchema?.properties ?? {};
-    if (
-      ![
-        'projectID',
-        'location',
-        'endpoint',
-        'displayName',
-        'noCredential',
-      ].every(field => Object.hasOwn(properties, field))
-    ) {
-      throw new Error(
-        'This installation needs an agent-manager release with model credential operations. No model was written.',
-      );
-    }
     return this.call<CredentialResourceResult>(
       AGENT_MANAGER_TOOLS.setOrganizationModel,
       { ...request },

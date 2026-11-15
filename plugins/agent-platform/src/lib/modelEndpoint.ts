@@ -1,3 +1,9 @@
+/**
+ * Query parameter names that carry a credential: the same pattern as
+ * agent-manager's `credentialQuery` (internal/organizations/resources.go),
+ * which refuses such an endpoint on the server. Checking it here keeps the
+ * credential out of the MCP arguments.
+ */
 const CREDENTIAL_PARAMETER =
   /(key|token|secret|password|passwd|auth|sig|credential)/i;
 const CREDENTIAL_ENDPOINT_ERROR =

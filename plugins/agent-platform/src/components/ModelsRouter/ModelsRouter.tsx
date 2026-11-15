@@ -1,4 +1,3 @@
-/* eslint-disable @backstage/no-mixed-plugin-imports -- The Agent Platform composes installation APIs across plugins. */
 import type { ReactNode } from 'react';
 import {
   Navigate,
@@ -8,6 +7,7 @@ import {
   useParams,
 } from 'react-router-dom';
 import { Flex } from '@backstage/ui';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- The installation scope is shared across Giant Swarm plugins.
 import {
   ALL_INSTALLATIONS,
   SharedInstallationScope,
