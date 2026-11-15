@@ -55,7 +55,7 @@ describe('agent-platform fixture mode', () => {
     },
   );
 
-  it('answers with the fixture installations and an empty list', async () => {
+  it('answers with the fixture installations and their sessions', async () => {
     const kagent = createApi('api:agent-platform/kagent', true) as KagentApi;
     const models = createApi(
       'api:agent-platform/model-manager',
@@ -67,8 +67,15 @@ describe('agent-platform fixture mode', () => {
       { name: 'fennel', reachable: true },
       { name: 'tarragon', reachable: false, reason: 'timeout' },
     ]);
-    await expect(kagent.listSessions('meadow')).resolves.toEqual([]);
-    await expect(kagent.listSessions('tarragon')).resolves.toEqual([]);
+    const sessions = await kagent.listSessions('meadow');
+    expect(sessions.length).toBeGreaterThan(0);
+    expect(sessions.every(session => session.installation === 'meadow')).toBe(
+      true,
+    );
+    // kagent on tarragon is out of the portal's reach.
+    await expect(kagent.listSessions('tarragon')).rejects.toMatchObject({
+      reason: 'timeout',
+    });
     await expect(models.listBackends('meadow')).resolves.toEqual([]);
   });
 
