@@ -3,7 +3,11 @@ import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 
 import { musterToolsetResolutionQueryKey } from '../lib/queryKeys';
-import { isUnknownPresetError, toolsetWasEvaluated } from '../lib/toolset';
+import {
+  isToolsetRefusal,
+  isUnknownPresetError,
+  toolsetWasEvaluated,
+} from '../lib/toolset';
 import { useMusterPluginApi } from './useMusterPluginApi';
 import {
   portalSessionError,
@@ -47,6 +51,11 @@ export type ToolsetResolution = {
    * (`PortalSessionEndedError`): a sign-in to the portal is the way on.
    */
   sessionEnded?: boolean;
+  /**
+   * With `error`: muster refused the toolset itself, so it cannot be saved as
+   * is. Otherwise muster did not answer, and the save checks it again.
+   */
+  refused?: boolean;
   refetch?: () => Promise<unknown>;
 };
 
@@ -102,6 +111,7 @@ export function useToolsetResolution(
       status: isUnknownPresetError(message) ? 'unknown-preset' : 'error',
       error: message,
       sessionEnded: error instanceof PortalSessionEndedError,
+      refused: isToolsetRefusal(error),
       refetch,
     };
   }

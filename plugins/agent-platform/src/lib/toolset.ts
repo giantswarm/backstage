@@ -19,7 +19,6 @@ import type {
   AgentMcpBinding,
   RemoteMCPServer,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Muster owns tool catalogue metadata and connector status.
 import {
   CONNECTOR_REACH_LABELS,
   connectorDisplayNames,
@@ -652,7 +651,6 @@ export function selectorForTool(
 // Moved to the muster plugin, where ToolTable also needs them: every surface
 // that lists a tool must give the same answer about what it does. Re-exported
 // here so this module stays the one import for the toolset helpers.
-// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Muster owns tool effect annotations.
 export { isReadOnly, isDestructive } from '@giantswarm/backstage-plugin-muster';
 
 /**
@@ -999,6 +997,32 @@ export function toolsetWasEvaluated(
 /** Whether muster refused the toolset for naming a preset it does not know (D12). */
 export function isUnknownPresetError(message: string): boolean {
   return /unknown preset/i.test(message);
+}
+
+/**
+ * Statuses that say nothing about the toolset itself: the caller's session,
+ * its permission, or the request's timing.
+ */
+const NOT_A_TOOLSET_REFUSAL = new Set([401, 403, 408, 429]);
+
+/**
+ * Whether muster refused the toolset itself (a selector, the count, the size,
+ * an unknown preset), as opposed to failing to answer. Muster's toolset
+ * refusals start with `toolset [` or `toolset encodes to`; the backend may
+ * answer them without a 4xx status, so the text decides when the status does
+ * not.
+ */
+export function isToolsetRefusal(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (isUnknownPresetError(error.message)) return true;
+  if (/\btoolset (\[|encodes to )/i.test(error.message)) return true;
+  const status = (error as Error & { status?: unknown }).status;
+  return (
+    typeof status === 'number' &&
+    status >= 400 &&
+    status < 500 &&
+    !NOT_A_TOOLSET_REFUSAL.has(status)
+  );
 }
 
 /** The `server:` selectors of a toolset whose server the caller cannot see. */

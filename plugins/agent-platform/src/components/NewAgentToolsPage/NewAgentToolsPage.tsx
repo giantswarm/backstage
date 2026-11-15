@@ -438,7 +438,8 @@ export function NewAgentToolsPage() {
     problems.length > 0 &&
     state.toolset.length > maxInlineSelectors;
   const serverProblem = overCap ? undefined : resolution.error;
-  const canContinue = isToolsetValid && !resolution.isLoading && !serverProblem;
+  const serverRefused = serverProblem !== undefined && resolution.refused;
+  const canContinue = isToolsetValid && !resolution.isLoading && !serverRefused;
   // A preset that cannot be shown per connector cannot be changed from there
   // either: its selection stays off until the author picks Only the tools I
   // choose below.
@@ -1034,6 +1035,27 @@ export function NewAgentToolsPage() {
           </Card>
         )}
 
+        {canContinue && serverProblem && (
+          <Flex direction="column" align="start" gap="1" role="status">
+            <Text as="p" color="warning">
+              The selected tools could not be checked:{' '}
+              {serverProblem.replace(/\.$/, '')}. You can continue; the toolset
+              is checked again when the agent is saved.
+            </Text>
+            {resolution.refetch && (
+              <Button
+                variant="tertiary"
+                size="small"
+                onPress={() => {
+                  void resolution.refetch?.();
+                }}
+              >
+                Check again
+              </Button>
+            )}
+          </Flex>
+        )}
+
         {/* The rail says why too; this sits by Continue, where it is blocked. */}
         {!canContinue && (
           <Flex
@@ -1044,7 +1066,7 @@ export function NewAgentToolsPage() {
             gap="1"
           >
             <Text as="p" color="danger">
-              {serverProblem ??
+              {(serverRefused ? serverProblem : undefined) ??
                 (resolution.isLoading
                   ? 'Checking the selected tools…'
                   : blockedLine(
@@ -1053,7 +1075,7 @@ export function NewAgentToolsPage() {
                       maxInlineSelectors,
                     ))}
             </Text>
-            {serverProblem && resolution.refetch && (
+            {serverRefused && resolution.refetch && (
               <Button
                 variant="tertiary"
                 size="small"

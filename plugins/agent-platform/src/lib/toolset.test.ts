@@ -15,6 +15,7 @@ import {
   groupWorkflows,
   isDestructive,
   isReadOnly,
+  isToolsetRefusal,
   isUnknownPresetError,
   normalizeSelection,
   offeredPresets,
@@ -934,5 +935,43 @@ describe('buildCatalogue connections', () => {
     const byName = new Map(registered.servers.map(b => [b.name, b]));
     expect(byName.get('jira')?.connection).toBe('deactivated');
     expect(byName.get('pro')?.connection).toBeUndefined();
+  });
+});
+
+describe('isToolsetRefusal', () => {
+  it.each([
+    [
+      'unknown preset',
+      new Error('toolset [preset:foo] names unknown preset "foo"'),
+      true,
+    ],
+    [
+      'count',
+      new Error(
+        'toolset [a] has 129 selectors, more than the 128 allowed inline; define a preset',
+      ),
+      true,
+    ],
+    [
+      'bytes',
+      new Error(
+        'toolset encodes to 9000 bytes, more than the 8192 allowed inline; define a preset',
+      ),
+      true,
+    ],
+    ['422', Object.assign(new Error('refused'), { status: 422 }), true],
+    ['400', Object.assign(new Error('refused'), { status: 400 }), true],
+    [
+      '401',
+      Object.assign(new Error('session expired'), { status: 401 }),
+      false,
+    ],
+    ['403', Object.assign(new Error('forbidden'), { status: 403 }), false],
+    ['429', Object.assign(new Error('slow down'), { status: 429 }), false],
+    ['503', Object.assign(new Error('unavailable'), { status: 503 }), false],
+    ['no status', new Error('fetch failed'), false],
+    ['not an error', 'toolset [', false],
+  ])('%s', (_case, error, refused) => {
+    expect(isToolsetRefusal(error)).toBe(refused);
   });
 });

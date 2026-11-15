@@ -214,6 +214,8 @@ type Scenario = {
   baseTools?: ToolSummary[];
   /** A resolution muster refuses for another reason than the cap. */
   resolutionFails?: string;
+  /** The HTTP status the failed resolution carries, when it has one. */
+  resolutionFailsStatus?: number;
 };
 
 /**
@@ -232,7 +234,9 @@ function makeMusterApi(scenario: Scenario) {
 
   const resolve = (selectors: string[]): FilterToolsResponse => {
     if (scenario.resolutionFails) {
-      throw new Error(scenario.resolutionFails);
+      throw Object.assign(new Error(scenario.resolutionFails), {
+        status: scenario.resolutionFailsStatus,
+      });
     }
     // Muster's own inline cap, refused with the whole selector list.
     if (selectors.length > maximum) {
@@ -1641,6 +1645,9 @@ describe('NewAgentToolsPage', () => {
       expect(
         within(toolsetCard()).getByText('muster is unreachable'),
       ).toBeInTheDocument();
+      expect(
+        screen.getByText(/You can continue; the toolset is checked again/),
+      ).toBeInTheDocument();
       scenario.resolutionFails = undefined;
       await user.click(screen.getByRole('button', { name: /^Check again$/ }));
       await waitFor(() =>
@@ -1648,6 +1655,79 @@ describe('NewAgentToolsPage', () => {
       );
       expect(toolsetOutput()).toBe('server:kubernetes');
     });
+
+    it.each([
+      ['no answer', 'muster is unreachable', undefined],
+      ['a server error', 'muster answered 503', 503],
+      ['an expired session', 'the muster session expired', 401],
+    ])(
+      'lets the person continue when muster gives %s',
+      async (_case, message, status) => {
+        const { api } = makeMusterApi({
+          signedIn: false,
+          evaluatesToolsets: true,
+          resolutionFails: message,
+          resolutionFailsStatus: status,
+        });
+        await renderStep({ api });
+        const user = userEvent.setup();
+        await connectorsListed();
+        await ownPicks(user);
+        await openIndividual(user);
+        await user.type(screen.getByLabelText('Selector'), 'server:kubernetes');
+        await user.click(screen.getByRole('button', { name: 'Add selector' }));
+        expect(
+          await screen.findByText(/You can continue; the toolset is checked/),
+        ).toBeInTheDocument();
+
+        await user.click(continueButton());
+        // Leaving the step keeps the focus on Continue; a blocked step moves
+        // it to the line that says why.
+        expect(document.activeElement).toBe(continueButton());
+      },
+    );
+
+    it.each([
+      [
+        'its own text',
+        'toolset [server:kubernetes] selector "server:kubernetes" is reserved for shared toolsets',
+        undefined,
+      ],
+      [
+        'a client-error status',
+        'the selection is reserved for shared toolsets',
+        422,
+      ],
+    ])(
+      'blocks Continue when muster refuses the toolset by %s',
+      async (_case, message, status) => {
+        const { api } = makeMusterApi({
+          signedIn: false,
+          evaluatesToolsets: true,
+          resolutionFails: message,
+          resolutionFailsStatus: status,
+        });
+        await renderStep({ api });
+        const user = userEvent.setup();
+        await connectorsListed();
+        await ownPicks(user);
+        await openIndividual(user);
+        await user.type(screen.getByLabelText('Selector'), 'server:kubernetes');
+        await user.click(screen.getByRole('button', { name: 'Add selector' }));
+        await within(toolsetCard()).findByText('Could not resolve the toolset');
+        expect(
+          screen.queryByText(/You can continue; the toolset is checked/),
+        ).not.toBeInTheDocument();
+
+        await user.click(continueButton());
+        expect(document.activeElement).toHaveTextContent(
+          'reserved for shared toolsets',
+        );
+        expect(
+          screen.getByRole('heading', { name: 'What may it do?' }),
+        ).toBeInTheDocument();
+      },
+    );
 
     it("adds a selector by name, a preset too, and surfaces muster's unknown-preset error", async () => {
       const { api } = makeMusterApi({
