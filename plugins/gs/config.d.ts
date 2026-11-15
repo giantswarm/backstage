@@ -14,6 +14,16 @@
 export interface Config {
   gs?: {
     /**
+     * Serve the Kubernetes API of the installations from built-in fixtures
+     * instead of the clusters: one installation, `meadow` (which
+     * `gs.installations` must name), with the Agent Platform's API groups and
+     * no objects, for local development and layout checks without a cluster.
+     * No effect in a production build, which contains no fixture code
+     * (docs/fixtures.md). Never set on a deployed portal.
+     * @visibility frontend
+     */
+    fixtures?: boolean;
+    /**
      * Groups whose members the portal treats as Giant Swarm staff (the
      * cluster-access and SSH cards), matched against the installation
      * token's `groups`. Signed-in config.
@@ -22,10 +32,11 @@ export interface Config {
 
     /**
      * Name of the main login provider under `auth.providers`; the sign-in
-     * page initiates its flow, so it is public.
+     * page initiates its flow, so it is public. Unset (local development,
+     * fixture mode), the guest signs in.
      * @visibility frontend
      */
-    authProvider: string;
+    authProvider?: string;
 
     /**
      * Settings shared by the Giant Swarm OIDC login providers (the main sign-in

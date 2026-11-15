@@ -74,7 +74,8 @@ export const AGENT_CONDITION_STAGE_ORDER: readonly string[] = [
   AgentConditionType.Ready,
 ];
 
-const BLOCKED_REASON = 'Blocked';
+/** The reason of a condition a stage before it failed. */
+export const AGENT_BLOCKED_REASON = 'Blocked';
 
 /**
  * Which part of the agent a failure is about: the model, the tools (an MCP
@@ -559,7 +560,7 @@ export class Agent extends KubeObject<AgentInterface> {
       this.getCondition(type),
     ).filter(condition => condition?.status === 'False');
     const rootCause =
-      failing.find(condition => condition?.reason !== BLOCKED_REASON) ??
+      failing.find(condition => condition?.reason !== AGENT_BLOCKED_REASON) ??
       failing[0];
     if (!rootCause) {
       return undefined;

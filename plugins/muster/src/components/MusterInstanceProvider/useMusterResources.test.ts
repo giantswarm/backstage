@@ -1,5 +1,6 @@
 import { renderHook } from '@testing-library/react';
-import { MUSTER_NAMESPACE, useMusterResources } from './useMusterResources';
+import { MUSTER_NAMESPACE } from '../../lib/musterNamespace';
+import { useMusterResources } from './useMusterResources';
 
 type Read = {
   resources: unknown[];

@@ -194,6 +194,7 @@ module.exports = {
                 group: [
                   '**/*FixtureApi',
                   '**/*Fixtures',
+                  '**/fixtures',
                   '**/fixtures/**',
                   '**/__fixtures__/**',
                 ],

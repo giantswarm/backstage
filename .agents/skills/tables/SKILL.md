@@ -155,7 +155,8 @@ Invariants:
   cell's description, or the item's own page. Text that lived only in a
   `title=` tooltip goes inline (`StackedRowItem.details`); a phone never shows
   `title=`.
-- core-components tables keep the shell's `overflow-x: auto` and scroll.
+- No shell page renders a core-components table, and the shell has no rule
+  that makes one scroll: one added at phone width widens the page.
 
 Test the phone branch in jsdom with `mockPhoneLayout()` (and
 `mockDesktopLayout()` for the other branch), imported from

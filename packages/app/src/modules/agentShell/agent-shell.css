@@ -392,13 +392,6 @@ html[data-agent-shell] body {
     padding-bottom: env(safe-area-inset-bottom);
   }
 
-  /* core-components tables (Sessions, Agents, Models, usage) scroll inside
-     their own box at phone width instead of widening the page. */
-  html[data-agent-shell] [class*='BackstageTable-root'] {
-    max-width: 100%;
-    overflow-x: auto;
-  }
-
   /* bui tables do not scroll on their own: bui 0.18's Table is
      `table-layout: fixed; width: 100%` with `overflow: hidden` cells, so
      without column widths N columns are crammed into ~310px and their values

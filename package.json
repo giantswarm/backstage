@@ -7,6 +7,7 @@
   },
   "scripts": {
     "start": "yarn env-cmd yarn backstage-cli repo start",
+    "fixtures": "node scripts/fixtures-server.mjs",
     "build:backend": "yarn workspace backend build",
     "build:backend-headless-service": "yarn workspace backend-headless-service build",
     "build:all": "backstage-cli repo build --all",

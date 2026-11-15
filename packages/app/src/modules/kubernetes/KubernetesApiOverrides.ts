@@ -1,6 +1,7 @@
 import { ApiBlueprint } from '@backstage/frontend-plugin-api';
 import {
   AuthRequestOptions,
+  configApiRef,
   discoveryApiRef,
   fetchApiRef,
   microsoftAuthApiRef,
@@ -23,6 +24,7 @@ import {
   GSDiscoveryApiClient,
   KubernetesClient,
 } from '@giantswarm/backstage-plugin-gs';
+import { lazyApi } from '@giantswarm/backstage-plugin-ui-react';
 import {
   hasUserGesture as defaultHasUserGesture,
   PortalSessionExpiredError,
@@ -148,15 +150,34 @@ export const KubernetesClientOverride = ApiBlueprint.make({
     defineParams({
       api: kubernetesApiRef,
       deps: {
+        configApi: configApiRef,
         discoveryApi: discoveryApiRef,
         fetchApi: fetchApiRef,
         kubernetesAuthProvidersApi: kubernetesAuthProvidersApiRef,
       },
-      factory: ({ discoveryApi, fetchApi, kubernetesAuthProvidersApi }) =>
-        new KubernetesClient({
+      factory: ({
+        configApi,
+        discoveryApi,
+        fetchApi,
+        kubernetesAuthProvidersApi,
+      }) => {
+        // `gs.fixtures: true` serves one installation without a cluster,
+        // outside production builds only (docs/fixtures.md).
+        if (
+          process.env.NODE_ENV !== 'production' &&
+          configApi.getOptionalBoolean('gs.fixtures')
+        ) {
+          return lazyApi(async () => {
+            const { KubernetesFixtureApi } =
+              await import('./fixtures/KubernetesFixtureApi');
+            return new KubernetesFixtureApi();
+          });
+        }
+        return new KubernetesClient({
           discoveryApi: discoveryApi as GSDiscoveryApiClient,
           fetchApi,
           kubernetesAuthProvidersApi,
-        }),
+        });
+      },
     }),
 });

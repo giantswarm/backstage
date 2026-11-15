@@ -74,7 +74,10 @@ describe('useCreatesAgentsNowhere', () => {
 
 describe('useDefaultAgentIds', () => {
   /** agent-manager's `defaultAgent` per installation, or not registered. */
-  function renderDefaults(defaults: Record<string, string | 'absent'>) {
+  function renderDefaults(
+    defaults: Record<string, string | 'absent'>,
+    options?: { everywhere?: boolean },
+  ) {
     const asked: string[] = [];
     const api = {
       listInstallations: async () => ({
@@ -104,9 +107,10 @@ describe('useDefaultAgentIds', () => {
         </QueryClientProvider>
       </TestApiProvider>
     );
-    const view = renderHook(() => useDefaultAgentIds(Object.keys(defaults)), {
-      wrapper,
-    });
+    const view = renderHook(
+      () => useDefaultAgentIds(Object.keys(defaults), options),
+      { wrapper },
+    );
     return { ...view, asked };
   }
 
@@ -143,5 +147,19 @@ describe('useDefaultAgentIds', () => {
       expect([...result.current]).toEqual(['lab/kagent/lab-default']),
     );
     expect(asked).toEqual(['lab']);
+  });
+
+  it('asks every installation with `everywhere`', async () => {
+    const { result } = renderDefaults(
+      { golem: 'kagent/default-agent', lab: 'kagent/lab-default' },
+      { everywhere: true },
+    );
+
+    await waitFor(() =>
+      expect([...result.current]).toEqual([
+        'golem/kagent/default-agent',
+        'lab/kagent/lab-default',
+      ]),
+    );
   });
 });

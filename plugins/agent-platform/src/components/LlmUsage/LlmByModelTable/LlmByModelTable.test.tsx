@@ -55,6 +55,20 @@ describe('LlmByModelTable', () => {
     expect(renderedOrder()).toEqual(['claude-haiku-4-5', 'claude-sonnet-5']);
   });
 
+  it('lists a model named like one of its columns', () => {
+    render(
+      <LlmByModelTable
+        rows={[
+          { ...ROWS[0], id: 'tokens', model: 'tokens' },
+          { ...ROWS[1], id: 'model', model: 'model' },
+        ]}
+        emptyMessage="none"
+      />,
+    );
+
+    expect(renderedOrder()).toEqual(['tokens', 'model']);
+  });
+
   it('shows an em dash for a ratio that could not be derived', () => {
     render(
       <LlmByModelTable
