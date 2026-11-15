@@ -188,7 +188,13 @@ describe('agent-platform fixture data', () => {
         updatedAt: fixture.updatedAt,
         contextId: fixture.id,
       });
-      expect(session.failure !== undefined).toBe(fixture.state === 'failed');
+      const reasons: Record<string, string> = {
+        failed: 'WorkerLost',
+        runtimeLost: 'RUNTIME_LOST',
+      };
+      expect(session.failure?.reason).toBe(
+        reasons[fixture.turn === 'runtimeLost' ? fixture.turn : fixture.state],
+      );
     }
   });
 });
