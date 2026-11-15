@@ -6,6 +6,7 @@ import {
   buildOrganizations,
   buildSessions,
   buildToolsetPresets,
+  buildTurnSessions,
   buildWorkflows,
   type AgentBuilderSettings,
   type BuilderSettings,
@@ -22,6 +23,7 @@ import {
   type InstallationState,
   type OrganizationState,
   type SessionState,
+  type SessionTurn,
   type WorkflowState,
 } from './builders';
 import {
@@ -88,6 +90,11 @@ export type FixtureDataSetSettings = {
   connectors?: BuilderSettings<ConnectorState>;
   /** Per ready agent of a ready organization. */
   sessions?: BuilderSettings<SessionState>;
+  /**
+   * Per installation with a ready agent of a ready organization: sessions
+   * whose newest turn takes each state, beside `sessions`.
+   */
+  turnSessions?: BuilderSettings<SessionTurn>;
   /** Per installation. */
   workflows?: BuilderSettings<WorkflowState>;
   /** Per workflow. */
@@ -155,38 +162,51 @@ export function createFixtureDataSet(
     installations,
     settings.toolchainSources,
   );
-  const managers = {
-    workspaces: buildWorkspaces(
-      context,
-      organizations,
-      repositoryOwners,
-      repositories,
-      settings.workspaces,
-    ),
+  const workspaces = buildWorkspaces(
+    context,
+    organizations,
+    repositoryOwners,
+    repositories,
+    settings.workspaces,
+  );
+  const toolchains = buildToolchains(
+    context,
     toolchainSources,
-    toolchains: buildToolchains(context, toolchainSources, settings.toolchains),
-    skillRepositories: buildSkillRepositories(
-      context,
-      installations,
-      settings.skillRepositories,
-      settings.skills,
-    ),
-  };
+    settings.toolchains,
+  );
+  const skillRepositories = buildSkillRepositories(
+    context,
+    installations,
+    settings.skillRepositories,
+    settings.skills,
+  );
+  // Drawn last, so adding them left every other list as it was.
+  const turnSessions = buildTurnSessions(
+    context,
+    installations,
+    agents,
+    organizations,
+    settings.turnSessions,
+  );
+  // Model hosting draws after them, so adding it left the lists above as
+  // they were.
+  const hosting = buildHosting(context, installations, organizations, settings);
   return {
     installations,
     organizations,
     agents,
     connectors,
-    sessions,
+    sessions: [...sessions, ...turnSessions],
     workflows,
     executions,
     toolsetPresets: buildToolsetPresets(installations, connectors, workflows),
     repositoryOwners,
     repositories,
-    ...managers,
-    // Model hosting draws last, so adding it left the lists above as they
-    // were.
-    ...buildHosting(context, installations, organizations, settings),
+    workspaces,
+    toolchainSources,
+    toolchains,
+    skillRepositories,
+    ...hosting,
   };
 }
 
