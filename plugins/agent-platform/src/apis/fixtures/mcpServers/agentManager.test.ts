@@ -696,7 +696,7 @@ it('declares the set_organization_model fields the model forms send', () => {
 
 it('deletes a model through delete_organization_object', async () => {
   const { client, state, organizationWith } = setup();
-  const { namespace } = organizationWith('admin');
+  const namespace = organizationWith('admin').namespace!;
   const [model] = state.listModelConfigs(INSTALLATION, namespace);
   await expect(client.deleteModel(namespace, model.name)).resolves.toEqual(
     expect.objectContaining({ deleted: true, name: model.name }),
