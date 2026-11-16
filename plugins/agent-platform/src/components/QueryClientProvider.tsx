@@ -6,6 +6,7 @@ import {
   QueryClientProvider as TanstackQueryClientProvider,
 } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { fixtureScenarioCacheBuster } from '@giantswarm/backstage-plugin-gs-common';
 import {
   createPluginQueryPersister,
   shouldPersistQuery,
@@ -242,7 +243,8 @@ const RootQueryClientProvider = ({ children }: { children: ReactNode }) => {
       persistOptions={{
         persister,
         maxAge,
-        buster: AGENT_PLATFORM_CACHE_BUSTER,
+        // A cache of another fixture scenario is never restored either.
+        buster: fixtureScenarioCacheBuster(AGENT_PLATFORM_CACHE_BUSTER),
         // Two independent reasons to keep a query out of localStorage, both
         // applied. `shouldPersistQuery` carries the shared rules — the library's
         // "only persist successful queries" default plus the `meta`-based opt-out

@@ -2,7 +2,8 @@ import {
   DAY,
   FIXTURE_PROVIDERS,
   MINUTE,
-  baseDataSet,
+  fixtureDataSet,
+  onFixtureScenarioReset,
   hashOf,
   inInstallation,
   isWorkspaceOrganization,
@@ -201,7 +202,7 @@ export class WorkspaceManagerFixtureState {
   private jobs = 0;
 
   constructor(
-    private readonly data: FixtureDataSet = baseDataSet(),
+    private readonly data: FixtureDataSet = fixtureDataSet(),
     private readonly now: () => number = Date.now,
   ) {}
 
@@ -967,6 +968,9 @@ export class WorkspaceManagerFixtureState {
 }
 
 let state: WorkspaceManagerFixtureState | undefined;
+onFixtureScenarioReset(() => {
+  state = undefined;
+});
 
 /** The state every workspace-manager fixture reads: built on first use. */
 export function workspaceManagerFixtureState(): WorkspaceManagerFixtureState {

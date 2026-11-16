@@ -3,10 +3,14 @@ import type {
   KubernetesApi,
   KubernetesAuthProvidersApi,
 } from '@backstage/plugin-kubernetes-react';
+import {
+  fixtureScenarioError,
+  withFixtureScenario,
+} from '@giantswarm/backstage-plugin-gs-common/fixtures';
 // eslint-disable-next-line @backstage/no-mixed-plugin-imports -- model-manager's tools are called through muster.
 import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 
-import type { TryServedModelResult } from '../ModelManagerApi';
+import type { ModelManagerApi, TryServedModelResult } from '../ModelManagerApi';
 import { ModelManagerApiClient } from '../ModelManagerApiClient';
 import { served } from './fixtureIdentity';
 import {
@@ -63,4 +67,22 @@ export class ModelManagerFixtureApi extends ModelManagerApiClient {
           },
     };
   }
+}
+
+/**
+ * The fixture `ModelManagerApi`, as the page's fixture scenario serves it. In
+ * `error`, the calls through muster fail as muster fails them; `tryModel`,
+ * which the portal's backend carries out, fails on its own.
+ */
+export function modelManagerFixtureApi(
+  deps: ConstructorParameters<typeof ModelManagerFixtureApi>[0],
+): ModelManagerApi {
+  return withFixtureScenario(
+    'ModelManagerApi',
+    new ModelManagerFixtureApi(deps),
+    method =>
+      method === 'tryModel'
+        ? fixtureScenarioError('ModelManagerApi', method)
+        : undefined,
+  );
 }

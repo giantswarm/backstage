@@ -9274,6 +9274,7 @@ __metadata:
     "@backstage/dev-utils": "backstage:^"
     "@backstage/frontend-plugin-api": "backstage:^"
     "@giantswarm/backstage-plugin-flux-react": "workspace:^"
+    "@giantswarm/backstage-plugin-gs-common": "workspace:^"
     "@giantswarm/backstage-plugin-kubernetes-react": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
     "@material-ui/core": "npm:^4.12.4"

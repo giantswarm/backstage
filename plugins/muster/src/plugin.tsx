@@ -164,11 +164,11 @@ const musterApi = ApiBlueprint.makeWithOverrides({
               input.get(fixtureMcpServersDataRef),
             );
             return lazyApi(async () => {
-              const [{ MusterFixtureApi }, servers] = await Promise.all([
+              const [{ musterFixtureApi }, servers] = await Promise.all([
                 import('./apis/fixtures/MusterFixtureApi'),
                 Promise.all(loaders.map(load => load())),
               ]);
-              return new MusterFixtureApi(servers.flat());
+              return musterFixtureApi(servers.flat());
             });
           }
           return new MusterApiClient(deps);
