@@ -85,6 +85,64 @@ The lab users are throwaway fixtures, and signing in as them, in the Dex popup
 too, is part of the verification. Only real people's accounts and real
 installations are off-limits.
 
+### Fixture mode and the layout check
+
+Fixture mode runs the portal on made-up data, signed in as the guest, without
+a cluster, on ports of its own, so every checkout can run one:
+`docs/fixtures.md`.
+
+```bash
+yarn fixtures start    # prints the URL, which is also "url" in .fixtures-server.json
+yarn fixtures status
+yarn fixtures stop     # when you are done: a frontend and a backend per checkout are heavy
+```
+
+`?fixtures=<scenario>` on any page switches the data set, no restart:
+
+- `base` (the default): records in every state the pages know. Start here.
+- `empty`: installations with nothing in them, for empty states.
+- `many`: hundreds of items per list, for long lists, paging and filters.
+- `long-names`: names as long as Kubernetes allows, for wrapping and
+  truncation.
+- `loading`: no call answers, for loading states.
+- `error`: every call fails as the real backends do, for error states.
+
+For a look of your own, run the chrome-devtools MCP only with `--isolated`
+(or `--userDataDir` with a directory of your checkout): its default profile is
+shared, so a second session's Chrome does not start, and two portals on
+`127.0.0.1` overwrite each other's cookies. The layout check needs neither: it
+starts its own headless Chromium.
+
+The fixtures move with the pages. A pull request that reads a new field, adds
+a state or calls a new tool extends the fixtures in the same pull request
+(`docs/fixtures.md`, "The data set" and "Tool calls through muster"). For
+tools, the drift guard (`fixtureToolCoverage.test.ts` in agent-platform and
+muster) fails until the tool has a handler.
+
+The [`layout-check`](.agents/skills/layout-check/SKILL.md) skill is the
+default proof of a UI change, before you ask for review: the pages the
+`ui-impact` skill maps, at the default widths, in `base` and the scenarios the
+change is about.
+
+```bash
+L=.agents/skills/layout-check
+# one --page per mapped page; base plus the scenarios of the change
+node $L/layout-check.mjs --page /customize/agents --scenarios base,long-names
+```
+
+The whole spec in all six scenarios is for an occasional sweep, not for every
+pull request:
+
+```bash
+node $L/layout-check.mjs --spec $L/specs/agent-platform.mjs \
+  --scenarios base,many,long-names,empty,loading,error
+```
+
+The report lists the findings first, then the warnings, which don't fail the
+check and can run into the thousands in a sweep: read the findings and the
+warnings' heading, their count per scenario, not every warning
+(`--json | jq .findings` gives the findings alone).
+
 ### Lint, format, type-check
 
 ```bash
