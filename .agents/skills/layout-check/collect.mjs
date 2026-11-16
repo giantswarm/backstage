@@ -712,7 +712,8 @@ export function collectLayout(options) {
           const w = shown ? Math.max(0, right - left) : 0;
           const h = shown ? shown.h : 0;
           if (w < r.w - 1) cutX = true;
-          else if (h < r.h - 1) cutY = true;
+          // Down: at least half a line hidden, not a descender's pixel or two.
+          else if (h < r.h / 2) cutY = true;
           neededX += r.w;
           shownX += w;
           neededY += r.h;
@@ -751,7 +752,7 @@ export function collectLayout(options) {
       const unit = unitOf(leaf, cell);
       if (unit !== leaf) {
         if (!units.has(unit)) units.set(unit, []);
-        units.get(unit).push({ text, rects: entry.rects, status });
+        units.get(unit).push({ text, rects: entry.rects });
       }
     }
     for (const [unit, parts] of units) {
@@ -761,7 +762,9 @@ export function collectLayout(options) {
         ...common,
         kind: 'unit',
         text: parts.map(p => p.text).join(' ').slice(0, 80),
-        status: parts.every(p => p.status),
+        // Badges side by side are a list, which may wrap: a row of items is
+        // a short value by its text's shape only.
+        status: false,
         lines: linesOf(parts.flatMap(p => p.rects)),
         cut: false,
       });
