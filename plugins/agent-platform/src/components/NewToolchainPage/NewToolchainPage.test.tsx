@@ -12,11 +12,9 @@ const mockClient = {
   addPackages: jest.fn(),
   buildStatus: jest.fn(),
 };
+let mockScope: Record<string, unknown>;
 jest.mock('../../hooks/useToolchainManager', () => ({
-  useScopedToolchainInstallations: () => ({
-    installations: ['gazelle'],
-    hasToolchains: true,
-  }),
+  useScopedToolchainInstallations: () => mockScope,
   useToolchainManagerClient: () => mockClient,
   useToolchainSources: () => ({
     isPending: false,
@@ -72,6 +70,7 @@ function renderPage() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockScope = { installations: ['gazelle'], hasToolchains: true };
   mockCreate.data = undefined;
   mockClient.searchPackages.mockResolvedValue({
     source: 'alpine',
@@ -92,6 +91,30 @@ beforeEach(() => {
 });
 
 describe('NewToolchainPage', () => {
+  it('says why no environment could be checked, and asks again, instead of reading forever', async () => {
+    const recheck = jest.fn(() => Promise.resolve());
+    mockScope = {
+      installations: [],
+      sharedIdentity: [],
+      hasToolchains: 'unchecked',
+      unchecked: [{ installation: 'gazelle', failure: 'notAnswering' }],
+      recheck,
+    };
+    await renderPage();
+
+    expect(
+      screen.getByText('Toolchains could not be checked'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Muster on gazelle did not answer.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Reading the environments…'),
+    ).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(recheck).toHaveBeenCalledTimes(1);
+  });
+
   it('writes the Dockerfile from the picked packages and opens it as a pull request', async () => {
     await renderPage();
 

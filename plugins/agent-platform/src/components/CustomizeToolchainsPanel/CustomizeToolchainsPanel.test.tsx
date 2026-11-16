@@ -1,4 +1,5 @@
 import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 
 import type {
@@ -34,7 +35,9 @@ const SOURCE: ToolchainSource = {
 let mockScope: {
   installations: string[];
   sharedIdentity: string[];
-  hasToolchains?: boolean;
+  hasToolchains?: boolean | 'unchecked';
+  unchecked?: { installation: string; failure: string }[];
+  recheck?: () => Promise<void>;
 };
 let mockList: { isPending: boolean; error: Error | null; data?: ToolchainList };
 const TOOLS: Record<string, string[]> = {
@@ -193,6 +196,37 @@ describe('CustomizeToolchainsPanel', () => {
     expect(
       screen.getByText('Toolchains are not available here'),
     ).toBeInTheDocument();
+  });
+
+  it('says why no installation could say whether it runs the toolchain-manager, and asks again', async () => {
+    const recheck = jest.fn(() => Promise.resolve());
+    mockScope = {
+      installations: [],
+      sharedIdentity: [],
+      hasToolchains: 'unchecked',
+      unchecked: [
+        { installation: 'gazelle', failure: 'tokenRejected' },
+        { installation: 'otter', failure: 'signedOut' },
+        { installation: 'heron', failure: 'notAnswering' },
+        { installation: 'ibis', failure: 'notAnswering' },
+      ],
+      recheck,
+    };
+    await renderPanel();
+
+    expect(
+      screen.getByText('Toolchains could not be checked'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Muster on gazelle refused your sign-in. Your portal session has ended, so Muster on otter could not be asked. Sign in again. Muster on heron and ibis did not answer.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Reading the toolchains…'),
+    ).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(recheck).toHaveBeenCalledTimes(1);
   });
 
   it('says why toolchains are withheld where muster has no per-user sign-in', async () => {

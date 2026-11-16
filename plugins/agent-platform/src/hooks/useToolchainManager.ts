@@ -17,7 +17,11 @@ import {
   type ToolchainList,
 } from '../lib/toolchainManager';
 import { useMusterPluginApi } from './useMusterPluginApi';
-import { useMusterServerAvailability } from '@giantswarm/backstage-plugin-muster';
+import {
+  isSessionExpiredError,
+  musterUnauthorizedInfoOf,
+  useMusterServerAvailability,
+} from '@giantswarm/backstage-plugin-muster';
 
 /**
  * The toolchain-manager's tools on one installation, as the signed-in person —
@@ -86,24 +90,62 @@ export function useToolchainManagerAvailability(
 }
 
 /**
+ * Why an installation's muster could not say whether it runs the
+ * toolchain-manager: it refused the person's token (`tokenRejected`, a 401),
+ * the person's portal session is gone (`signedOut`), or it did not answer
+ * (`notAnswering`: unreachable, failed, or no reason given).
+ */
+export type ToolchainCheckFailure =
+  'tokenRejected' | 'signedOut' | 'notAnswering';
+
+/** An installation in scope whose muster could not say, and why. */
+export type UncheckedToolchainInstallation = {
+  installation: string;
+  failure: ToolchainCheckFailure;
+};
+
+/** What a failed read of an installation's muster server list says. */
+export function toolchainCheckFailureOf(
+  error: Error | undefined,
+): ToolchainCheckFailure {
+  if (!error) {
+    return 'notAnswering';
+  }
+  const { name, reason } = error as { name?: string; reason?: string };
+  if (
+    (name === 'MusterTokenMintError' && reason === 'session-expired') ||
+    isSessionExpiredError(error)
+  ) {
+    return 'signedOut';
+  }
+  return musterUnauthorizedInfoOf(error) ? 'tokenRejected' : 'notAnswering';
+}
+
+/**
  * The installations in the section's scope whose muster lists the
- * toolchain-manager, and whether any does: `undefined` until one does or
- * every one answered without it. `sharedIdentity`: those whose muster has no
- * per-user sign-in in this portal, where its tools are refused rather than
- * run as muster's shared identity, so the pages say why instead of "not
- * available".
+ * toolchain-manager, and whether any does. `hasToolchains` is `true` once one
+ * does, `false` once every one answered without it, `'unchecked'` when none
+ * has it and at least one could not be asked (`unchecked` says which and
+ * why, and `recheck` asks them again), and `undefined` while they are being
+ * read. `sharedIdentity`: those whose muster has no per-user sign-in in this
+ * portal, where its tools are refused rather than run as muster's shared
+ * identity, so the pages say why instead of "not available".
  */
 export function useScopedToolchainInstallations(): {
   installations: string[];
   sharedIdentity: string[];
-  hasToolchains: boolean | undefined;
+  hasToolchains: boolean | 'unchecked' | undefined;
   /**
    * Whether every installation in scope said if it has the toolchain-manager:
    * `'reading'` while one may still answer, `'partly'` when one could not be
-   * asked (its muster did not answer), `'all'` otherwise. Until `'all'`,
-   * `installations` may be missing some that have it.
+   * asked, `'all'` otherwise. Until `'all'`, `installations` may be missing
+   * some that have it.
    */
   answered: 'reading' | 'partly' | 'all';
+  /** The installations in scope whose muster could not say, and why. */
+  unchecked: UncheckedToolchainInstallation[];
+  /** Asks the installations that could not say again. */
+  recheck: () => Promise<void>;
 } {
   const inventory = useInstallationInventory();
   const { scope } = useInstallationScope();
@@ -122,19 +164,49 @@ export function useScopedToolchainInstallations(): {
     () => (sharedKey ? sharedKey.split(',') : []),
     [sharedKey],
   );
+  // Keyed on contents, like the lists above, so the array keeps its identity
+  // while nothing changed.
+  const uncheckedKey = scoped
+    .filter(name => availability.presenceOf(name) === 'unknown')
+    .map(
+      name => `${name}=${toolchainCheckFailureOf(availability.errorOf(name))}`,
+    )
+    .join(',');
+  const unchecked = useMemo(
+    () =>
+      uncheckedKey
+        ? uncheckedKey.split(',').map(entry => {
+            const [installation, failure] = entry.split('=');
+            return {
+              installation,
+              failure: failure as ToolchainCheckFailure,
+            };
+          })
+        : [],
+    [uncheckedKey],
+  );
   let answered: 'reading' | 'partly' | 'all' = 'all';
   if (availability.isLoading || inventory.isLoading || inventory.isProbing) {
     answered = 'reading';
-  } else if (scoped.some(name => availability.presenceOf(name) === 'unknown')) {
+  } else if (unchecked.length > 0) {
     answered = 'partly';
   }
-  let hasToolchains: boolean | undefined;
+  let hasToolchains: boolean | 'unchecked' | undefined;
   if (installations.length > 0) {
     hasToolchains = true;
   } else if (answered === 'all') {
     hasToolchains = false;
+  } else if (answered === 'partly') {
+    hasToolchains = 'unchecked';
   }
-  return { installations, sharedIdentity, hasToolchains, answered };
+  return {
+    installations,
+    sharedIdentity,
+    hasToolchains,
+    answered,
+    unchecked,
+    recheck: availability.recheck,
+  };
 }
 
 /**

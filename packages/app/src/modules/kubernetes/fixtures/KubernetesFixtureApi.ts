@@ -5,10 +5,18 @@ import {
   FIXTURE_INSTALLATIONS,
   isFixtureInstallation,
 } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  fixtureScenario,
+  fixtureScenarioError,
+  withFixtureScenario,
+} from '@giantswarm/backstage-plugin-gs-common/fixtures';
 import type { KubeObjectInterface } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { MCPServer, MusterWorkflow } from '@giantswarm/backstage-plugin-muster';
 import { musterKubernetesObjectsOf } from '@giantswarm/backstage-plugin-muster/fixtures';
-import { agentPlatformKubernetesObjectsOf } from '@giantswarm/backstage-plugin-agent-platform/fixtures';
+import {
+  agentPlatformAccessReviewOf,
+  agentPlatformKubernetesObjectsOf,
+} from '@giantswarm/backstage-plugin-agent-platform/fixtures';
 
 /**
  * The objects of an installation one plugin's fixtures hold, as its
@@ -27,6 +35,28 @@ export type FixtureObjectsSource = (
 const FIXTURE_OBJECTS: readonly FixtureObjectsSource[] = [
   musterKubernetesObjectsOf,
   agentPlatformKubernetesObjectsOf,
+];
+
+/**
+ * A plugin's fixtures' answer to an access review of an installation, from
+ * its `resourceAttributes`: undefined when they don't decide it.
+ */
+export type FixtureAccessReviewSource = (
+  installation: string,
+  attributes: {
+    verb?: string;
+    group?: string;
+    resource?: string;
+    namespace?: string;
+  },
+) => boolean | undefined;
+
+/**
+ * The plugins' answers to access reviews: an organization's models are
+ * created by its admins only. A review no source decides is allowed.
+ */
+const FIXTURE_ACCESS_REVIEWS: readonly FixtureAccessReviewSource[] = [
+  agentPlatformAccessReviewOf,
 ];
 
 /**
@@ -139,6 +169,12 @@ export class KubernetesFixtureApi implements KubernetesApi {
 
   constructor(
     private readonly sources: readonly FixtureObjectsSource[] = FIXTURE_OBJECTS,
+    /**
+     * Whether every read of objects fails, as in the `error` scenario.
+     * Discovery and access reviews still answer, so the pages go on to their
+     * own calls and show how those fail.
+     */
+    private readonly failReads = false,
   ) {}
 
   /**
@@ -238,7 +274,7 @@ export class KubernetesFixtureApi implements KubernetesApi {
       );
     }
     if (method === 'POST' && path.endsWith('/selfsubjectaccessreviews')) {
-      return this.accessReview(options.init?.body);
+      return this.accessReview(options.clusterName, options.init?.body);
     }
     if (method !== 'GET') {
       return unhandled(method, options.path);
@@ -248,14 +284,21 @@ export class KubernetesFixtureApi implements KubernetesApi {
     );
   }
 
-  private accessReview(body: BodyInit | null | undefined): Response {
+  private accessReview(
+    installation: string,
+    body: BodyInit | null | undefined,
+  ): Response {
     const review = typeof body === 'string' ? JSON.parse(body) : {};
+    const attributes = review?.spec?.resourceAttributes ?? {};
+    const decided = FIXTURE_ACCESS_REVIEWS.map(source =>
+      source(installation, attributes),
+    ).find(answer => answer !== undefined);
     return json(
       {
         ...review,
         apiVersion: 'authorization.k8s.io/v1',
         kind: 'SelfSubjectAccessReview',
-        status: { allowed: true },
+        status: { allowed: decided ?? true },
       },
       201,
     );
@@ -359,6 +402,13 @@ export class KubernetesFixtureApi implements KubernetesApi {
     if (!resource.versions.includes(version)) {
       return statusResponse(404, 'NotFound', `No API ${group}/${version}.`);
     }
+    if (this.failReads) {
+      return statusResponse(
+        500,
+        'InternalError',
+        `Reading ${plural} failed: the error fixture scenario fails every read.`,
+      );
+    }
     const objects = this.objects(
       installation,
       resource,
@@ -377,4 +427,22 @@ export class KubernetesFixtureApi implements KubernetesApi {
       items: objects,
     });
   }
+}
+
+/**
+ * The fixture `KubernetesApi`, as the page's fixture scenario serves it. In
+ * `error`, every read of objects fails with a 500 while the installations,
+ * discovery and access reviews answer, so the pages reach their muster and
+ * kagent calls; the reads by entity fail.
+ */
+export function kubernetesFixtureApi(): KubernetesApi {
+  const failReads = fixtureScenario() === 'error';
+  return withFixtureScenario(
+    'KubernetesApi',
+    new KubernetesFixtureApi(FIXTURE_OBJECTS, failReads),
+    method =>
+      ['getClusters', 'getCluster', 'proxy'].includes(method)
+        ? undefined
+        : fixtureScenarioError('KubernetesApi', method),
+  );
 }

@@ -81,6 +81,7 @@ export const SHELL_SPECS = [
   'skills-catalog-skill-manager.spec.ts',
   'telemetry.spec.ts',
   'toolchains.spec.ts',
+  'toolchains-unchecked.spec.ts',
   'url-elicitation.spec.ts',
   'url-elicitation-background.spec.ts',
   'usage-cost.spec.ts',

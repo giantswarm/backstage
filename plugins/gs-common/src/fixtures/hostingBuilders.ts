@@ -453,14 +453,20 @@ export function buildHosting(
     },
   );
 
+  // A claim's name is `hf-cache-<hex>`, or made-up words after `hf-cache-`
+  // once a longer one is asked for (the mounted one stays `hf-cache`).
+  const claimName = (short: string, nameLength: number) =>
+    nameLength > short.length
+      ? fitName(`hf-cache-${name(nameLength - 9).name}`, MAX_NAME_LENGTH)
+      : short;
   const cacheClaims = each(
     gpuClusters.filter(c => c.cache),
     settings.cacheClaims ?? {},
     { count: 3, states: CACHE_CLAIM_STATES },
-    (cluster, state): FixtureCacheClaim => ({
+    (cluster, state, nameLength): FixtureCacheClaim => ({
       installation: cluster.installation,
       cluster: cluster.name,
-      name: `hf-cache-${hex(context, 5)}`,
+      name: claimName(`hf-cache-${hex(context, 5)}`, nameLength),
       state,
       zone: context.random.pick(cluster.zones),
       capacityGiB: context.random.pick([100, 200, 500]),

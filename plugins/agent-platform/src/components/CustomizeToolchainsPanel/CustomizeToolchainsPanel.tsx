@@ -48,6 +48,7 @@ import { AddToolchainSourceButton } from '../AddToolchainSourceDialog';
 import { SharedIdentityNote } from '../SharedIdentityNote';
 import { ToolchainGrantPrompt } from '../ToolchainGrantPrompt';
 import { ToolchainReadFailure } from '../ToolchainReadFailure';
+import { ToolchainsUnchecked } from '../ToolchainsUnchecked';
 
 export type CustomizeToolchainsPanelProps = {
   search: string;
@@ -338,7 +339,7 @@ function InstallationToolchains({
 export function CustomizeToolchainsPanel({
   search,
 }: CustomizeToolchainsPanelProps) {
-  const { installations, sharedIdentity, hasToolchains } =
+  const { installations, sharedIdentity, hasToolchains, unchecked, recheck } =
     useScopedToolchainInstallations();
 
   if (hasToolchains === false) {
@@ -353,6 +354,9 @@ export function CustomizeToolchainsPanel({
         description="No environment in scope runs the toolchain-manager. Pick another environment, or ask your platform team to turn toolchains on."
       />
     );
+  }
+  if (hasToolchains === 'unchecked') {
+    return <ToolchainsUnchecked unchecked={unchecked} onRetry={recheck} />;
   }
   if (hasToolchains === undefined) {
     return <LoadingIndicator label="Reading the toolchains…" />;
