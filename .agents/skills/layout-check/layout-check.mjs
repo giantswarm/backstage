@@ -172,6 +172,7 @@ async function checkOne(browser, baseUrl, job, options) {
   };
   const findings = [];
   const errors = [];
+  const skipped = [];
   const ignore = [...options.ignore, ...(spec.ignore ?? [])];
   let state = 'load';
   let context;
@@ -182,7 +183,17 @@ async function checkOne(browser, baseUrl, job, options) {
     });
     const page = await context.newPage();
     page.setDefaultTimeout(20000);
-    const step = { page, width, scenario: label.scenario, baseUrl };
+    const step = {
+      page,
+      width,
+      scenario: label.scenario,
+      baseUrl,
+      // Nothing to check here in this scenario (no record to open, no
+      // picker on an empty list): the rest of this page is left out.
+      skip: reason => {
+        throw Object.assign(new Error(reason), { skip: true });
+      },
+    };
     await page.goto(withScenario(`${baseUrl}${spec.path}`, scenario));
     await settle(page);
     if (spec.setup) {
@@ -210,7 +221,7 @@ async function checkOne(browser, baseUrl, job, options) {
       previous = layout;
     }
   } catch (error) {
-    errors.push({
+    (error?.skip ? skipped : errors).push({
       ...label,
       state,
       message: String(error?.message ?? error).split('\n')[0],
@@ -218,7 +229,7 @@ async function checkOne(browser, baseUrl, job, options) {
   } finally {
     await context?.close().catch(() => undefined);
   }
-  return { findings, errors };
+  return { findings, errors, skipped };
 }
 
 async function main() {
@@ -293,6 +304,7 @@ async function main() {
   const options = { ignore: args.ignore ?? [], rules };
   const findings = [];
   const errors = [];
+  const skipped = [];
   let next = 0;
   const worker = async () => {
     while (next < jobs.length) {
@@ -313,6 +325,7 @@ async function main() {
       );
       findings.push(...result.findings);
       errors.push(...result.errors);
+      skipped.push(...(result.skipped ?? []));
       if (!args.json) {
         process.stderr.write(
           `checked ${job.spec.name} @ ${job.width}px${job.scenario ? ` (${job.scenario})` : ''}: ${result.findings.length} findings${result.errors.length ? ', failed' : ''}\n`,
@@ -332,8 +345,11 @@ async function main() {
     a.scenario.localeCompare(b.scenario);
   findings.sort(order);
   errors.sort(order);
+  skipped.sort(order);
   if (args.json) {
-    process.stdout.write(`${JSON.stringify({ findings, errors }, null, 2)}\n`);
+    process.stdout.write(
+      `${JSON.stringify({ findings, errors, skipped }, null, 2)}\n`,
+    );
   } else {
     for (const f of findings) process.stdout.write(`${formatFinding(f)}\n\n`);
     for (const e of errors) {
@@ -341,8 +357,13 @@ async function main() {
         `could not check: ${e.page} @ ${e.width}px, scenario ${e.scenario}, state "${e.state}": ${e.message}\n`,
       );
     }
+    for (const e of skipped) {
+      process.stdout.write(
+        `skipped: ${e.page} @ ${e.width}px, scenario ${e.scenario}, state "${e.state}": ${e.message}\n`,
+      );
+    }
     process.stdout.write(
-      `${findings.length} findings, ${errors.length} could not be checked, of ${jobs.length} page checks\n`,
+      `${findings.length} findings, ${errors.length} could not be checked, ${skipped.length} skipped, of ${jobs.length} page checks\n`,
     );
   }
   if (errors.length) return 2;

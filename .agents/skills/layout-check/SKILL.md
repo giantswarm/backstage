@@ -42,8 +42,8 @@ yarn fixtures stop
   (a breakpoint, a dialog's maximum).
 - `--scenarios base,many,long-names,empty,loading,error`: the fixture
   scenarios, each added to the URL as `?fixtures=<name>`. Without it the
-  page loads with no parameter, which is `base`. The scenarios exist once
-  giantswarm/backstage#3547 is in; before, every scenario is `base`.
+  page loads with no parameter, which is `base`. What each scenario serves:
+  `docs/fixtures.md`, "Scenarios".
 - `--rules overlap,shift`: only some rules. `--ignore <css>` leaves a subtree
   out on every page, `--json` prints the findings as JSON, `--url` checks
   another portal (a dev server signed in as the guest), `--concurrency`
@@ -130,7 +130,7 @@ export default [
 ];
 ```
 
-The functions get `{ page, width, scenario, baseUrl }`. The check waits after
+The functions get `{ page, width, scenario, baseUrl, skip }`. `skip(reason)` leaves the rest of the page out when a scenario lacks what the spec steps through (no record to open in `empty`, no picker while `loading`); it's reported as skipped and doesn't change the exit code. The check waits after
 each load, setup and state until the DOM has been quiet for 0.7 seconds
 and finite animations are done, then measures. A page still changing after
 20 seconds is not measured: it is reported as could not check, with the

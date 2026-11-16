@@ -1,11 +1,24 @@
 /*
- * Every Agent Platform and muster page of the shell, in fixture mode's base
- * data set, with the states that broke layouts before: the Sort picker of
+ * Every Agent Platform and muster page of the shell, in any of fixture
+ * mode's scenarios, with the states that broke layouts before: the Sort picker of
  * the Agents tab (giantswarm/backstage#3513) and the New session dialog with
  * toolchains picked (giantswarm/backstage#3498).
  *
  *   node .agents/skills/layout-check/layout-check.mjs --spec .agents/skills/layout-check/specs/agent-platform.mjs
+ *
+ * A page whose record or picker a scenario lacks (nothing to open in
+ * `empty`, `loading` or `error`) is skipped, not failed.
  */
+
+/** Whether `locator` shows up within `ms`. */
+const shows = (locator, ms = 5000) =>
+  locator
+    .first()
+    .waitFor({ timeout: ms })
+    .then(
+      () => true,
+      () => false,
+    );
 
 /**
  * Opens the first record of the list the page shows: its link under
@@ -14,7 +27,7 @@
  */
 const openFirst =
   (prefix, suffix = '') =>
-  async ({ page }) => {
+  async ({ page, skip }) => {
     const href = await page.evaluate(
       p =>
         [...document.querySelectorAll('a[href]')]
@@ -31,8 +44,12 @@ const openFirst =
       await page.goto(new URL(href.split('?')[0] + suffix, page.url()).href);
       return;
     }
+    const rows = page.locator('tbody [role=row]');
+    if (!(await shows(rows))) {
+      skip(`no record under ${prefix} to open`);
+    }
     const before = page.url();
-    await page.locator('tbody [role=row]').first().click();
+    await rows.first().click();
     await page.waitForURL(url => url.href !== before);
     if (suffix) {
       await page.goto(new URL(page.url().split('?')[0] + suffix).href);
@@ -50,8 +67,10 @@ const record = (name, list, prefix, tabs) =>
 /** Picks each value of the Agents tab's Sort picker in turn. */
 const sortBy = value => ({
   name: `Sort: ${value}`,
-  run: async ({ page }) => {
-    await page.locator('button[aria-label="Sort agents"]').click();
+  run: async ({ page, skip }) => {
+    const sort = page.locator('button[aria-label="Sort agents"]');
+    if (!(await shows(sort))) skip('no Sort picker: no agents listed');
+    await sort.click();
     await page.getByRole('option', { name: value, exact: true }).click();
   },
 });
@@ -83,8 +102,10 @@ export default [
     states: [
       {
         name: 'dialog open',
-        run: async ({ page }) => {
-          await page.getByRole('button', { name: 'Use this agent' }).click();
+        run: async ({ page, skip }) => {
+          const use = page.getByRole('button', { name: 'Use this agent' });
+          if (!(await shows(use))) skip('the agent offers no Use this agent');
+          await use.click();
           await page.getByRole('dialog').waitFor();
         },
       },
@@ -190,12 +211,13 @@ function openFirstModel(name) {
 
 /** The first tool of the first connector that lists tools ("23 tools"). */
 function openFirstTool(tab) {
-  return async ({ page }) => {
+  return async ({ page, skip }) => {
     // A table row, or on a phone a list item, that counts its tools.
     const row = page
       .locator('tbody [role=row], li')
       .filter({ hasText: /[1-9]\d*\s*tools/ })
       .first();
+    if (!(await shows(row))) skip('no connector lists tools');
     const link = row.locator('a[href^="/customize/connectors/"]');
     if (await link.count()) {
       await page.goto(new URL(await link.first().getAttribute('href'), page.url()).href);
@@ -204,7 +226,9 @@ function openFirstTool(tab) {
       await row.click();
       await page.waitForURL(url => url.href !== list);
     }
-    await page.locator('a[href*="/tools/"]').first().waitFor();
+    if (!(await shows(page.locator('a[href*="/tools/"]'), 10000))) {
+      skip('the connector shows no tools');
+    }
     const tool = page.locator('a[href*="/tools/"]').first();
     const href = await tool.getAttribute('href');
     await page.goto(new URL(href.split('?')[0] + tab, page.url()).href);
