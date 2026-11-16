@@ -115,4 +115,82 @@ describe('personal connector access', () => {
       }).reach,
     ).toBe('not-connected');
   });
+  it('shows the server state where the server itself is not running', () => {
+    const starting = server('a');
+    starting.jsonData.status!.state = 'Starting';
+    expect(
+      instanceAccess(starting, {
+        servers: [{ name: 'a', status: 'disconnected' }],
+      }).status,
+    ).toMatchObject({ label: 'Starting' });
+
+    const failed = server('a');
+    failed.jsonData.status!.state = 'Failed';
+    expect(
+      instanceAccess(failed, {
+        servers: [{ name: 'a', status: 'failed', error: 'dial tcp: refused' }],
+      }).status,
+    ).toMatchObject({ label: 'Failed', explanation: 'dial tcp: refused' });
+    expect(instanceAccess(failed, { servers: [] }).status.label).toBe('Failed');
+  });
+  it('lists the members waiting for a sign-in the person can start', () => {
+    const data = {
+      servers: [
+        {
+          name: 'a',
+          status: 'auth_required' as const,
+          auth_tool: 'core_auth_login',
+        },
+        {
+          name: 'b',
+          status: 'auth_required' as const,
+          kind: 'grant' as const,
+          error: 'refused',
+        },
+      ],
+    };
+    expect(familyAccess(members, data)).toMatchObject({
+      reach: 'sign-in',
+      waiting: ['a'],
+    });
+  });
+  it('offers the sign-in first and names the members failing otherwise', () => {
+    const family = familyAccess([server('a'), server('b'), server('c')], {
+      servers: [
+        { name: 'a', status: 'auth_required', auth_tool: 'core_auth_login' },
+        { name: 'b', status: 'auth_required', auth_tool: 'core_auth_login' },
+        { name: 'c', status: 'failed' },
+      ],
+    });
+    expect(family).toMatchObject({
+      reach: 'sign-in',
+      status: { label: 'Sign in needed' },
+      waiting: ['a', 'b'],
+    });
+    expect(family.status.explanation).toContain('1 instance cannot connect');
+  });
+  it('reports the worst member state rather than an error for a starting family', () => {
+    const starting = [server('a'), server('b')];
+    starting.forEach(member => {
+      member.jsonData.status!.state = 'Starting';
+    });
+    expect(
+      familyAccess(starting, {
+        servers: [
+          { name: 'a', status: 'disconnected' },
+          { name: 'b', status: 'disconnected' },
+        ],
+      }).status.label,
+    ).toBe('Starting');
+  });
+  it('leaves deactivated members out of the family count', () => {
+    expect(
+      familyAccess([server('a'), server('b', 'agent-platform', true)], {
+        servers: [{ name: 'a', status: 'connected' }],
+      }),
+    ).toMatchObject({ reach: 'connected', waiting: [] });
+    expect(familyAccess([server('a', 'agent-platform', true)]).reach).toBe(
+      'deactivated',
+    );
+  });
 });

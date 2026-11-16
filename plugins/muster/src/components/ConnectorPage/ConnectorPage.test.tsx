@@ -1176,6 +1176,33 @@ describe('ConnectorPage Tools tab', () => {
     );
   });
 
+  it('offers one sign-in for the family when its instances wait for grants', async () => {
+    const api = makeApi();
+    api.getAuthStatus.mockResolvedValue({
+      servers: ['walrus-mcp-kubernetes', 'gazelle-mcp-kubernetes'].map(
+        name => ({
+          name,
+          status: 'auth_required',
+          kind: 'grant',
+          auth_tool: 'core_auth_login',
+        }),
+      ),
+    } as never);
+    api.filterTools.mockResolvedValue(NO_TOOLS);
+    await renderAt(`${BASE}/kubernetes`, { api });
+
+    const alert = (
+      await screen.findByText('Sign in to see its tools.')
+    ).closest('[data-status]') as HTMLElement;
+    expect(alert).toHaveAttribute('data-status', 'warning');
+    expect(
+      within(alert).getByRole('button', { name: 'Sign in' }),
+    ).toBeVisible();
+    expect(
+      within(alert).queryByRole('link', { name: 'View instances' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('keeps the failure plain while the sign-in error alert says something is wrong', async () => {
     mockServers = [
       ...makeServers().filter(server => server.getName() !== 'jira'),

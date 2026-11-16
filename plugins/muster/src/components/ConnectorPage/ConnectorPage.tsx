@@ -5,6 +5,7 @@ import {
   connectorAuthName,
 } from '../../lib/connectorAccess';
 import { useServerPageLinks } from '../shared/useServerPageLinks';
+import { FamilySignIn } from '../FamilySignIn';
 import { ReactElement, ReactNode, useMemo, useState } from 'react';
 import {
   Navigate,
@@ -273,12 +274,15 @@ function ConnectorPageContent({
   const representative = representativeInfo?.server;
   const accessQuery = useConnectorAccess(installation, authenticated);
   const links = useServerPageLinks();
-  let access;
-  if (row.kind === 'family') {
-    access = familyAccess(row.servers, accessQuery.data);
-  } else if (row.kind === 'server') {
-    access = instanceAccess(row.server, accessQuery.data);
-  }
+  const family =
+    row.kind === 'family'
+      ? familyAccess(row.servers, accessQuery.data)
+      : undefined;
+  const access =
+    family ??
+    (row.kind === 'server'
+      ? instanceAccess(row.server, accessQuery.data)
+      : undefined);
   const singular = row.kind === 'server' ? row.server : undefined;
 
   // Above the tabs, so a search on Tools survives a visit to another tab:
@@ -496,25 +500,39 @@ function ConnectorPageContent({
     );
   }
 
-  if (row.kind === 'family' && access?.reach !== 'connected') {
+  if (
+    family &&
+    family.reach !== 'connected' &&
+    family.reach !== 'portal-only' &&
+    family.reach !== 'deactivated'
+  ) {
+    const instancesExplanation = noInstanceToolsExplanation(members);
     signInGate = (
       <Alert
         status={
-          noInstanceToolsExplanation(members).tone === 'warning'
+          family.waiting.length > 0 || instancesExplanation.tone === 'warning'
             ? 'warning'
             : 'info'
         }
-        title={access?.status.label}
+        title={family.status.label}
         description={
-          noInstanceToolsExplanation(members).tone === 'warning'
-            ? noInstanceToolsExplanation(members).text
-            : (access?.status.explanation ??
-              noInstanceToolsExplanation(members).text)
+          family.waiting.length === 0 && instancesExplanation.tone === 'warning'
+            ? instancesExplanation.text
+            : (family.status.explanation ?? instancesExplanation.text)
         }
         customActions={
-          <Link href={links.server(name, installation, { tab: 'instances' })}>
-            View instances
-          </Link>
+          family.waiting.length > 0 ? (
+            <FamilySignIn
+              installation={installation}
+              displayName={displayName}
+              waiting={family.waiting}
+              status={family.status}
+            />
+          ) : (
+            <Link href={links.server(name, installation, { tab: 'instances' })}>
+              View instances
+            </Link>
+          )
         }
       />
     );

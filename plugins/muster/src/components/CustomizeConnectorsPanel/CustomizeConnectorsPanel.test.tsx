@@ -229,7 +229,7 @@ describe('CustomizeConnectorsPanel', () => {
     mockNavigate.mockClear();
   });
 
-  it('offers instance recovery instead of Connected and zero tools for healthy CRs without grants', async () => {
+  it('offers one sign-in for a family whose members wait for grants', async () => {
     mockServers = ['a', 'b'].map(name =>
       makeServer(name, { family: 'kubernetes', auth: { type: 'oauth' } }),
     );
@@ -251,11 +251,39 @@ describe('CustomizeConnectorsPanel', () => {
     expect(within(row).queryByText('Connected')).not.toBeInTheDocument();
     expect(within(row).queryByText('0 tools')).not.toBeInTheDocument();
     expect(
+      within(row).queryByRole('link', { name: 'View instances' }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Sign in' }));
+    const dialog = await screen.findByRole('dialog');
+    const listed = await within(dialog).findByRole('list', {
+      name: 'Connectors',
+    });
+    expect(within(listed).getAllByRole('listitem')).toHaveLength(2);
+  });
+
+  it('sends a family failing for other reasons to its instances', async () => {
+    mockServers = ['a', 'b'].map(name =>
+      makeServer(name, { family: 'kubernetes', auth: { type: 'oauth' } }),
+    );
+    api.getAuthStatus.mockResolvedValue({
+      servers: [
+        { name: 'a', status: 'failed', kind: 'grant' },
+        { name: 'b', status: 'failed', kind: 'grant' },
+      ],
+    });
+    await renderPanel();
+    const row = rowOf('kubernetes');
+    expect(await within(row).findByText('Cannot connect')).toBeVisible();
+    expect(
       within(row).getByRole('link', { name: 'View instances' }),
     ).toHaveAttribute(
       'href',
       '/customize/connectors/gazelle/kubernetes/instances',
     );
+    expect(
+      within(row).queryByRole('button', { name: 'Sign in' }),
+    ).not.toBeInTheDocument();
   });
 
   it('shows a row per connector with its sign-in, tools and state', async () => {
@@ -1456,24 +1484,28 @@ describe('CustomizeConnectorsPanel', () => {
     const itemOf = (name: string) =>
       within(list()).getByRole('link', { name }).closest('li') as HTMLElement;
 
-    it('keeps family recovery on the instance page at phone width', async () => {
+    it('offers the single waiting member sign-in on a family at phone width', async () => {
       mockServers = [
         makeServer('member', { family: 'kubernetes', auth: { type: 'oauth' } }),
       ];
       api.getAuthStatus.mockResolvedValue({
-        servers: [{ name: 'member', status: 'auth_required', kind: 'grant' }],
+        servers: [
+          {
+            name: 'member',
+            status: 'auth_required',
+            kind: 'grant',
+            auth_tool: 'core_auth_login',
+          },
+        ],
       });
       await renderPanel();
       const item = itemOf('kubernetes');
       expect(await within(item).findByText('Sign in needed')).toBeVisible();
       expect(
-        within(item).getByRole('link', { name: 'View instances' }),
-      ).toHaveAttribute(
-        'href',
-        '/customize/connectors/gazelle/kubernetes/instances',
-      );
+        within(item).getByRole('button', { name: 'Sign in' }),
+      ).toBeVisible();
       expect(
-        within(item).queryByRole('button', { name: /^Sign in$/ }),
+        within(item).queryByRole('link', { name: 'View instances' }),
       ).not.toBeInTheDocument();
     });
 

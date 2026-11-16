@@ -35,6 +35,7 @@ import {
 import { useConnectorAccess } from '../../hooks/useConnectorAccess';
 import { familyAccess, instanceAccess } from '../../lib/connectorAccess';
 import { ConnectorLogo } from '../ConnectorLogo';
+import { FamilySignIn } from '../FamilySignIn';
 import { serverListEntries, serverListRows } from '../../lib/serverList';
 import type { ServerListEntry } from '../../lib/serverList';
 import { isRegisteredRow, MUSTER_DESCRIPTION } from '../../lib/connectorTags';
@@ -102,8 +103,61 @@ type Row = {
    */
   signInButton?: boolean;
   reach?: ConnectorReach;
+  /** A family's members waiting for this person's sign-in. */
+  waiting?: string[];
   tags: string[];
 };
+
+/** What a family row offers: its sign-in, or its instances to check. */
+function familyAction(row: Row): 'sign-in' | 'instances' | undefined {
+  if (row.entry.row.kind !== 'family') {
+    return undefined;
+  }
+  if (row.waiting && row.waiting.length > 0) {
+    return 'sign-in';
+  }
+  return row.reach === 'partial' ||
+    row.reach === 'sign-in' ||
+    row.reach === 'not-connected'
+    ? 'instances'
+    : undefined;
+}
+
+function FamilyActionCell({
+  row,
+  installation,
+  wrap,
+}: {
+  row: Row;
+  installation: string;
+  wrap?: boolean;
+}) {
+  const links = useServerPageLinks();
+  const action = familyAction(row);
+  if (action === 'sign-in') {
+    return (
+      <StopRowPress>
+        <FamilySignIn
+          installation={installation}
+          displayName={row.entry.displayName}
+          waiting={row.waiting ?? []}
+          status={row.status}
+          wrap={wrap}
+        />
+      </StopRowPress>
+    );
+  }
+  if (action === 'instances') {
+    return (
+      <Link
+        href={links.server(row.entry.id, installation, { tab: 'instances' })}
+      >
+        View instances
+      </Link>
+    );
+  }
+  return null;
+}
 
 /** A row muster asks this person to sign in to. */
 type SignInRow = Row & { signInServer: string };
@@ -383,10 +437,6 @@ function ConnectorStackedRow({
   href?: string;
   toolsPending: boolean;
 }) {
-  const links = useServerPageLinks();
-  const instancesHref = links.server(row.entry.id, installation, {
-    tab: 'instances',
-  });
   const icon = useConnectorIcon(row.entry.row, installation, hasSession);
   const props: StackedRowProps = {
     title: row.entry.displayName,
@@ -413,9 +463,9 @@ function ConnectorStackedRow({
   return (
     <StackedRow
       {...props}
-      {...(row.entry.row.kind === 'family' && row.reach !== 'connected'
+      {...(familyAction(row)
         ? {
-            actions: <Link href={instancesHref}>View instances</Link>,
+            actions: <FamilyActionCell row={row} installation={installation} />,
           }
         : {})}
       {...(row.status.label
@@ -541,15 +591,16 @@ function ConnectorsTable({
         };
       }
       const server = rowServer(entry, installation);
-      let access;
-      if (entry.row.kind === 'family') {
-        access = familyAccess(entry.row.servers, authStatus.data);
-      } else if (server) {
-        access = instanceAccess(server, authStatus.data);
-      }
-      const status = server
-        ? instanceAccess(server, authStatus.data).auth
-        : undefined;
+      const family =
+        entry.row.kind === 'family'
+          ? familyAccess(entry.row.servers, authStatus.data)
+          : undefined;
+      const instance =
+        entry.row.kind === 'server' && server
+          ? instanceAccess(server, authStatus.data)
+          : undefined;
+      const access = family ?? instance;
+      const status = instance?.auth;
       // An SSO server that refused the sign-in has no button, but its hint
       // says why, so it takes the sign-in row too.
       const asksSignIn = Boolean(
@@ -565,9 +616,10 @@ function ConnectorsTable({
         auth: authLabel(server),
         tools: toolsLabel(entry),
         status: access?.status ?? { label: '', tone: 'neutral' },
+        ...(family ? { waiting: family.waiting } : {}),
         ...(asksSignIn && server?.canAuthenticateInteractively()
           ? {
-              signInServer: instanceAccess(server, authStatus.data).name,
+              signInServer: instance?.name ?? entry.id,
               signInButton: Boolean(
                 status && needsSignIn(status) && !signInRefusalOf(status),
               ),
@@ -682,9 +734,9 @@ function ConnectorsTable({
       label: 'Status',
       isSortable: true,
       defaultWidth: '1.3fr',
-      // The longest word of a state ("Connected", "Deactivated") with its
-      // dot and hint; the state wraps between its words below its share.
-      minWidth: 136,
+      // The longest word of a state ("Disconnected") with its dot and hint;
+      // the state wraps between its words below its share.
+      minWidth: 168,
       cell: row => (
         <ConnectorStatusCell row={row} installation={installation} />
       ),
@@ -696,21 +748,11 @@ function ConnectorsTable({
       // "Sign in" on one line; a longer label wraps.
       minWidth: 96,
       // No room taken where no connector offers a sign-in.
-      isHidden: !rows.some(
-        row =>
-          row.signInButton ||
-          (row.entry.row.kind === 'family' && row.reach !== 'connected'),
-      ),
+      isHidden: !rows.some(row => row.signInButton || familyAction(row)),
       cell: row =>
-        row.entry.row.kind === 'family' && row.reach !== 'connected' ? (
+        familyAction(row) ? (
           <Cell>
-            <Link
-              href={links.server(row.entry.id, installation, {
-                tab: 'instances',
-              })}
-            >
-              View instances
-            </Link>
+            <FamilyActionCell row={row} installation={installation} wrap />
           </Cell>
         ) : (
           <ConnectorSignInCell row={row} installation={installation} />
