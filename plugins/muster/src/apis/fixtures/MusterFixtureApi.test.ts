@@ -4,6 +4,8 @@ import {
   inInstallation,
 } from '@giantswarm/backstage-plugin-gs-common/fixtures';
 
+import { parseTransportDetection } from '../../lib/transportDetection';
+import { fixtureToolNames } from './fixtureToolNames';
 import { FixtureToolMissingError, MusterFixtureApi } from './MusterFixtureApi';
 
 describe('MusterFixtureApi', () => {
@@ -72,6 +74,67 @@ describe('MusterFixtureApi', () => {
       { a: 1 },
       { installation: 'meadow', signal: undefined },
     );
+  });
+
+  it('answers muster’s transport probe and definition check, and no write', async () => {
+    const consoleError = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+
+    expect(
+      parseTransportDetection(
+        await api.callTool(
+          'core_mcpserver_detect',
+          { url: 'https://mcp.example.com/mcp' },
+          'meadow',
+        ),
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        transport: 'streamable-http',
+        reachable: true,
+        requiresAuth: false,
+      }),
+    );
+    await expect(
+      api.callTool('core_mcpserver_validate', { name: 'docs' }, 'meadow'),
+    ).resolves.toBe('Validation successful for mcpserver docs');
+    await expect(
+      api.callTool('core_mcpserver_create', { name: 'docs' }, 'meadow'),
+    ).rejects.toBeInstanceOf(FixtureToolMissingError);
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    consoleError.mockRestore();
+  });
+
+  it('describes the connector tools the New connector flow reads, with the arguments it asks about', async () => {
+    const argumentsOf = async (tool: string) =>
+      Object.keys(
+        (await api.describeTool(tool, 'meadow')).inputSchema?.properties ?? {},
+      );
+    const definition = expect.arrayContaining(['name', 'displayName', 'tags']);
+
+    await expect(argumentsOf('core_mcpserver_detect')).resolves.toEqual([
+      'url',
+    ]);
+    for (const tool of [
+      'core_mcpserver_validate',
+      'core_mcpserver_create',
+      'core_mcpserver_update',
+    ]) {
+      await expect(argumentsOf(tool)).resolves.toEqual(definition);
+    }
+  });
+
+  it('names the tools it answers', () => {
+    expect([
+      ...fixtureToolNames([
+        { server: 'agent-manager', tools: { get_info: getInfo } },
+      ]),
+    ]).toEqual([
+      'x_agent-manager_get_info',
+      'core_mcpserver_detect',
+      'core_mcpserver_validate',
+    ]);
   });
 
   it('fails a tool no server handles, loudly', async () => {

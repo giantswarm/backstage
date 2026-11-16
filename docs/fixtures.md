@@ -5,13 +5,13 @@ so its pages render made-up data without their backends: for local
 development, design reviews and layout checks. Fixture code never ships in a
 production build.
 
-| Flag                           | Plugin                                                                                 | Fixture implementation                                                               |
-| ------------------------------ | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `plans.fixtures: true`         | plans (Hive, the plan list)                                                            | `plugins/plans/src/apis/PlansFixtureApi.ts`, `plugins/plans/src/lib/hiveFixtures.ts` |
-| `roadmap.fixtures: true`       | roadmap (Hive's Roadmap tab)                                                           | `plugins/roadmap/src/apis/RoadmapFixtureApi.ts`                                      |
-| `muster.fixtures: true`        | muster (`MusterApi`), and every tool call through it                                   | `plugins/muster/src/apis/fixtures/`, plus the fixture MCP servers of other plugins   |
-| `agentPlatform.fixtures: true` | agent-platform (`KagentApi`, `ModelManagerApi`, `AgentManagerCredentialsApi`)          | `plugins/agent-platform/src/apis/fixtures/`                                          |
-| `gs.fixtures: true`            | the Kubernetes API of the installations (`kubernetesApiRef`), and their cluster access | `packages/app/src/modules/kubernetes/fixtures/KubernetesFixtureApi.ts`               |
+| Flag                           | Plugin                                                                                                        | Fixture implementation                                                                 |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `plans.fixtures: true`         | plans (Hive, the plan list)                                                                                   | `plugins/plans/src/apis/PlansFixtureApi.ts`, `plugins/plans/src/lib/hiveFixtures.ts`   |
+| `roadmap.fixtures: true`       | roadmap (Hive's Roadmap tab)                                                                                  | `plugins/roadmap/src/apis/RoadmapFixtureApi.ts`                                        |
+| `muster.fixtures: true`        | muster (`MusterApi`), and every tool call through it                                                          | `plugins/muster/src/apis/fixtures/`, plus the fixture MCP servers of other plugins     |
+| `agentPlatform.fixtures: true` | agent-platform (`KagentApi`, `ModelManagerApi`, `AgentManagerCredentialsApi`)                                 | `plugins/agent-platform/src/apis/fixtures/`                                            |
+| `gs.fixtures: true`            | the Kubernetes API of the installations (`kubernetesApiRef`), their cluster access, and Mimir (`mimirApiRef`) | `packages/app/src/modules/kubernetes/fixtures/`, `plugins/gs/src/apis/mimir/fixtures/` |
 
 Set the flags in `app-config.local.yaml` and run `yarn start`. In a production
 build (`NODE_ENV=production`, what `backstage-cli package build` and the image
@@ -58,8 +58,8 @@ yarn fixtures stop
 ### Scenarios
 
 The `fixtures` query parameter switches the data set of the Agent Platform's
-fixture APIs (muster, kagent, agent-manager's credentials, model-manager) and
-of the fixture Kubernetes API without restarting the server: load any page
+fixture APIs (muster, kagent, agent-manager's credentials, model-manager), of
+the fixture Kubernetes API and of the fixture Mimir without restarting the server: load any page
 with `?fixtures=<scenario>`. The Plans and Roadmap fixtures do not take part:
 they serve their own data in every scenario.
 
@@ -100,6 +100,8 @@ In `error`:
 - The Kubernetes API fails every read of objects with a 500, and every read by
   entity; the installations, discovery and access reviews answer, so the pages
   go on to their muster and kagent calls and show how those fail.
+- Mimir fails every query with a 503, as the gs backend answers when Mimir
+  does not, and the person's model cost falls back with kagent.
 - kagent, agent-manager's credential operations and model-manager's
   `tryModel` fail with a 500. model-manager's other calls go through muster
   and fail as muster does.
@@ -131,9 +133,9 @@ one object answers the objects the plugins' fixtures hold (see "Objects in the
 Kubernetes API"), every other list is empty and any other object not found,
 and access reviews are allowed, except that only an organization's admins may
 create its models (`ModelConfig`), so Connect a model offers an organization
-as owner only to them. Their cluster access is healthy from the start, and
-they have no metrics backend (`mimirEnabled: false`). Any other request, a
-write among them, fails with a 501 and a console error.
+as owner only to them. Their cluster access is healthy from the start. Any
+other request, a write among them, fails with a 501 and a console error.
+Their Mimir is the fixture one (`mimirEnabled: true`, see "Mimir").
 
 If the backend fails with "Invalid app bundle schema", a production build of
 the app in `packages/app/dist` predates a config schema change: delete the
@@ -154,7 +156,15 @@ and their run statistics; and MCP usage and tool latency over any window,
 narrowed to some connectors or one tool. A connector's tools are named after
 it and derived from it (`connectorToolsOf`), so every read names the same
 ones. The tools of the data set's connectors have no handler: running one
-fails as described below.
+fails as described below. Of muster's own tools, `callTool` answers the two
+the New connector flow calls before it saves, the transport probe
+(`core_mcpserver_detect`, a reachable streamable-HTTP server without OAuth)
+and the definition check (`core_mcpserver_validate`, which passes). The
+catalogue describes both, and the connector writes `core_mcpserver_create`
+and `core_mcpserver_update`, with the arguments the flow asks about
+(`displayName`, `tags`). The writes to connectors (`core_mcpserver_create`,
+`_update`, `_delete`, `core_service_start`, `_stop`, `_restart`) are not
+served: saving a connector or acting on one fails loudly.
 
 The unreachable installation's reads fail as muster-backend refuses them, with
 a 503 "<installation> did not answer: not reachable from this portal", and its
@@ -249,7 +259,11 @@ from kagent.
   backend's words; a cancel reaches the streams following the turn at once,
   and a deleted session ends its streams and is gone from every read.
 - kagent on the unreachable installation fails every call as a timeout.
-- The model cost answers no cost yet (giantswarm/giantswarm#39251, item 8).
+- The person's model cost (Usage · Your sessions) runs agent-platform-backend's
+  queries through the fixture Mimir (`fixtureModelCost.ts`), and the backend's
+  own decision (`modelCostOf` in agent-platform-common) reads their answers:
+  partial on `meadow`, where some calls name no one, and
+  `identity-unreadable` on the unreachable installation.
 
 ### workspace-manager, toolchain-manager and skill-manager
 
@@ -299,13 +313,44 @@ agent-manager.
   lists each installation's skill repositories in every state (readable,
   private, read-only, failed, failed with its last listing kept, and private
   and hidden from the person), with their skills and a plugin, and reads a
-  skill and its files. It writes nothing, as skill-manager does not; a new or
-  changed skill is a pull request through gs-backend, which fixture mode does
-  not serve (giantswarm/giantswarm#39251, item 9b). The pages of one
-  installation read it: an agent's page and the agent form. Customize ·
-  Skills reads the home installation's skills, and fixture mode has none (it
-  sets no `gs.authProvider`), so that tab still lists what gs-backend
-  discovers on GitHub (item 9b).
+  skill and its files. It writes nothing, as skill-manager does not. The
+  pages of one installation read it: an agent's page and the agent form. A
+  new or changed skill is a pull request, which fixture mode opens in memory
+  (see below).
+
+### gs-backend's skill routes
+
+The pages reach gs-backend's skill routes through the `SkillDiscoveryApi`
+(`plugins/agent-platform/src/apis/SkillDiscoveryApi.ts`): the reads of the
+portal's own skill source, `agentPlatform.skills.repositories`, and the pull
+request that proposes a skill to any source. In fixture mode
+`SkillDiscoveryFixtureApi` answers them from the data set, so nothing reads
+from or writes to GitHub, and no GitHub token is asked for.
+
+- The reads. Customize · Skills reads the home installation's skills, and
+  fixture mode has no home installation (it sets no `gs.authProvider`), so
+  the tab, a skill's page and Add skill read the portal's own source.
+  `app-config.fixtures.yaml` configures the skill repositories of `meadow`,
+  one in each state (`portalSkillRepositories` and `portalSkillSourceOf`; a
+  test checks the URL, `path` and `readOnly` of each entry). The portal reads
+  with its own credentials, as gs-backend does, so both private repositories
+  are listed and marked private, whoever asks (the one skill-manager hides
+  from the person has no skills in the data set). The read-only repository is
+  off GitHub and scans `skills/`. A failed repository fails as the route
+  forwards GitHub's 503 (`Failed to discover skills: …`), and a stale one
+  answers its last listing with `stale: true` and the time it was read. A
+  skill and its files are read at the commit asked for, as skill-manager's
+  fixture reads them: a GitHub repository at another commit answers 404 (the
+  data set holds only the current one), a git repository whose branch moved on
+  409, and an unknown branch 404, in the route's words. A repository the data
+  set lacks fails with a console error.
+- The pull request. Proposing a new or changed skill, to the portal's source
+  or through an installation's skill-manager, is checked as the route checks
+  it (a skill name that is no slug, a repository off GitHub, read-only or not
+  among the sources, a name taken, an edit started from an older commit, a
+  pull request already open from the branch) and answers a made-up pull
+  request on the repository, numbered from 101, kept in memory until the page
+  reloads.
 
 ### model-manager and cluster-manager
 
@@ -348,8 +393,54 @@ and a cluster's first pool registers its KServe backend.
   declares the schemas a page reads in `inputSchemas`.
 
 Cost (Usage · Cost) reads the gateway's metrics from Mimir, not these
-managers, and the fixture installations have no Mimir (`mimirEnabled:
-false`), so it shows its "no observability stack" state.
+managers (see "Mimir").
+
+### Mimir
+
+The fixture `MimirApi` (`plugins/gs/src/apis/mimir/fixtures/`) answers each
+fixture installation's agent gateway metrics, which Usage (Overview, Cost and
+the rates of Your sessions) reads. The series are derived from the data set
+(`gatewayUsage.ts` in gs-common): the ready agents of ready organizations,
+the ones with sessions, call the organization's default model
+(`FIXTURE_AGENT_MODEL`, the default ModelConfig's model) at its list price;
+the person (`FIXTURE_PERSON_EMAIL`) through their sessions on the days each
+ran, and two teammates on most working days of the 100 days before, busier
+in some weeks than others; on `meadow` a share of one agent's calls names no one. Cost, tokens
+by type, calls, durations, output speed, the inference listener's statuses
+and price lookups all count the same calls. Each series starts on the day of
+its first call, as the gateway creates it.
+
+The figures are fixed for a seed and a time: the series count back from the
+data set's time (`now`), and the fixture Mimir evaluates instant queries at
+it, so a page shows the same figures however long it stays open. A load of
+the page builds the base data set at that moment, though, so figures over a
+window that ends now ("the last 30 days", "this month") move with the clock:
+
+- within a day, by a few percent from midnight to midnight: the window takes in
+  more of today's calls and less of its first day's;
+- from day to day, by a few percent more: the window slides by a day, and the
+  person's sessions, dated back from the data set's time, move with it.
+
+A day in the past keeps its calls whichever day the data set is built on
+(the teammates' calls depend on the calendar day, not on the window), and
+nothing depends on the browser's time zone: days are UTC days. A figure to
+check is therefore one with data, not a fixed amount; a test pins the amount
+for a fixed time (`MimirFixtureApi.test.ts`). A page restored from the query
+cache shows the previous load's figures until its queries answer again.
+
+The fixture Mimir needs no token: the Mimir hooks pass the person's token
+for the installation as they find it, and the real `MimirClient` refuses to
+ask without one.
+
+The queries are evaluated, not matched (`promql.ts`): selectors with
+`offset` and `@ <time>`; `increase`, `rate`, `min_over_time`,
+`max_over_time`, `avg_over_time`, `last_over_time`, `label_replace` and
+`histogram_quantile`; the aggregations with `by` or `without`; `or`, `and`,
+`unless`, arithmetic and comparisons, with `on` or `ignoring` and
+`group_left` or `group_right`. That covers the gs pages' Mimir widgets too.
+A metric without fixture series answers no series, as Mimir does; so does a
+query the evaluator cannot read, with a console warning that names what it
+could not read: extend the evaluator, or the series a new page reads.
 
 ### Objects in the Kubernetes API
 
@@ -388,6 +479,35 @@ whose `tools` map a tool's own name to its handler. The handlers live with the
 plugin that calls the tools, and each declares the answer type its client
 reads (`ListWorkspacesAnswer`, `ToolchainList`, …), so a change to it breaks
 the fixture's build.
+
+A unit test in agent-platform and in muster keeps the handlers in step with
+the calls (`fixtureToolCoverage.test.ts` under each plugin's
+`src/apis/fixtures/`). Both use `fixtureToolCoverage` from
+`@giantswarm/backstage-plugin-muster/testUtils`, a subpath only tests import,
+which reads the plugin's source with the TypeScript compiler: it finds every
+call to `MusterApi.callTool` and `callToolWithProgress`, in any form (a type
+argument, a destructured or bracket access), and works out the tool names it
+can call. A name resolves when it is a string literal, a constant or a
+property of one, a template literal or concatenation of such parts, either
+branch of a conditional, or what a function returns; a parameter resolves
+through every call of its function in the plugin, so wrappers such as
+`callManagerTool` and the clients' `call` methods resolve to what their
+callers pass, and a component's prop to what its JSX elements pass. Anything
+else resolves through its type when that is a string literal or a union of
+them. A test fails:
+
+- when fixture mode has no handler for a tool a page calls, unless the test
+  lists it as not served, with a comment saying why;
+- when a call's tool name cannot be worked out, unless the test lists the call
+  (`<file>: <expression>`), with a comment;
+- when a listed tool is answered or no longer called, or a listed call now
+  resolves.
+
+A pull request that calls a new tool adds its handler, or lists it. The guard
+covers the Agent Platform and muster pages only. bot-prs also calls tools
+through muster (`MargeClient`), but it has no fixture mode and is outside the
+first scope of fixture mode (giantswarm/giantswarm#39251), so nothing checks
+its calls.
 
 ### The data set
 
