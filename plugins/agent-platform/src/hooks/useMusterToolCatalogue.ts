@@ -4,6 +4,10 @@ import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 
 import { musterToolCatalogueQueryKey } from '../lib/queryKeys';
+import {
+  portalSessionError,
+  PortalSessionEndedError,
+} from '../lib/portalSession';
 import { useMusterPluginApi } from './useMusterPluginApi';
 
 export type MusterToolCatalogue = {
@@ -15,6 +19,11 @@ export type MusterToolCatalogue = {
   /** The muster plugin is not installed; there is no catalogue to browse. */
   isUnavailable: boolean;
   error?: string;
+  /**
+   * The `error` is the portal refusing the person's session token
+   * (`PortalSessionEndedError`): a sign-in to the portal is the way on.
+   */
+  sessionEnded?: boolean;
 };
 
 const NO_TOOLS: ToolSummary[] = [];
@@ -34,7 +43,12 @@ export function useMusterToolCatalogue(
   const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: musterToolCatalogueQueryKey(installation ?? ''),
     enabled,
-    queryFn: () => musterApi!.listTools(installation),
+    // The portal refusing the session token is said as that, never in its
+    // words (`lib/portalSession.ts`).
+    queryFn: () =>
+      musterApi!.listTools(installation).catch(failure => {
+        throw portalSessionError(failure);
+      }),
   });
   const isLoading = isAwaitingData({ isPending, fetchStatus });
 
@@ -50,5 +64,6 @@ export function useMusterToolCatalogue(
     isLoading: enabled && isLoading,
     isUnavailable: !musterApi,
     error: error ? (error as Error).message : undefined,
+    sessionEnded: error instanceof PortalSessionEndedError,
   };
 }

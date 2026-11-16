@@ -81,6 +81,7 @@ import {
   withoutCovered,
 } from './connectorChoice';
 import { CopyFromAgent } from './CopyFromAgent';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { SelectedRail, type SelectedRailProps } from './SelectedRail';
 import { SignInToolNote } from './SignInToolNote';
 import { ToolCatalogue } from './ToolCatalogue';
@@ -787,7 +788,9 @@ export function NewAgentToolsPage() {
           ) : (
             presets.source === 'built-in' &&
             musterApi &&
-            installation && (
+            installation &&
+            // The connectors below say the portal session ended, once.
+            !catalogue.sessionEnded && (
               <Alert
                 status="info"
                 title="Only the built-in presets are known"
@@ -826,7 +829,8 @@ export function NewAgentToolsPage() {
                 Connectors cannot be listed in this portal.
               </Text>
             )}
-            {musterApi && catalogue.error && (
+            {musterApi && catalogue.sessionEnded && <PortalSessionEndedAlert />}
+            {musterApi && catalogue.error && !catalogue.sessionEnded && (
               <Alert
                 status="warning"
                 title="Could not read the gateway's catalogue"

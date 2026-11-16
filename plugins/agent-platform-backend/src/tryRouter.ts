@@ -1,7 +1,8 @@
 import { Config } from '@backstage/config';
-import { AuthenticationError, InputError } from '@backstage/errors';
+import { InputError } from '@backstage/errors';
 import express from 'express';
 import Router from 'express-promise-router';
+import { InstallationAuthenticationError } from './installationAuthenticationError';
 import { readInstallationBaseDomain } from './installationDomain';
 import {
   completionsUrl,
@@ -72,7 +73,9 @@ export function createTryRouter(options: TryRouterOptions): express.Router {
     const headerValue = req.headers[SERVED_MODEL_AUTH_HEADER];
     const userToken = Array.isArray(headerValue) ? headerValue[0] : headerValue;
     if (!userToken) {
-      throw new AuthenticationError(
+      // Not Backstage's AuthenticationError, which the page reads as the
+      // portal refusing the session token.
+      throw new InstallationAuthenticationError(
         'The request did not include a user token for the target installation.',
       );
     }

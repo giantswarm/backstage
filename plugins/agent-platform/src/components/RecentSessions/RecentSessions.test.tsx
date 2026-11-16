@@ -10,6 +10,7 @@ import { declaredStyle } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { kagentApiRef } from '../../apis';
 import { KagentApi } from '../../apis/types';
 import { sessionsRouteRef } from '../../routes';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 import { RecentSessions } from './RecentSessions';
 import {
   lastActiveAt,
@@ -676,6 +677,29 @@ describe('RecentSessions', () => {
 
     expect(await screen.findByText('No sessions yet')).toBeInTheDocument();
   });
+
+  it.each([
+    ['the home list', false],
+    ['the shell rail', true],
+  ])(
+    'says the portal session ended in %s when the portal refuses the session token, not "No sessions yet"',
+    async (_where, shellRail) => {
+      listSessions.mockRejectedValue(new PortalSessionEndedError());
+
+      await renderRecent({ shellRail });
+
+      expect(
+        await screen.findByText('Your portal session ended'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Sign in again' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('No sessions yet')).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Try again' }),
+      ).not.toBeInTheDocument();
+    },
+  );
 
   it.each([
     ['the home list', false],

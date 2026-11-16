@@ -16,6 +16,10 @@ import {
   TURN_TOKEN_MIN_LIFETIME_LEFT,
 } from './KagentApiClient';
 import { KAGENT_AUTH_HEADER } from './types';
+import {
+  PORTAL_SESSION_ENDED_MESSAGE,
+  PortalSessionEndedError,
+} from '../lib/portalSession';
 
 describe('KagentApiClient', () => {
   const fetchMock = jest.fn();
@@ -261,6 +265,77 @@ describe('KagentApiClient', () => {
       await expect(buildClient().listSessions('gazelle')).rejects.toMatchObject(
         { name: expectedName },
       );
+    });
+
+    describe('a refused portal session', () => {
+      // What Backstage's backend answers for a session token it cannot
+      // verify, before any route of the plugin runs (a restart of a portal
+      // without a database lost its signing keys).
+      const portalRefusal = () =>
+        jsonResponse(
+          {
+            error: {
+              name: 'AuthenticationError',
+              message: 'Failed user token verification',
+            },
+          },
+          401,
+        );
+
+      it('says the session ended on a read, in plain words', async () => {
+        fetchMock.mockResolvedValue(portalRefusal());
+
+        const error = await buildClient()
+          .listSessions('gazelle')
+          .catch(e => e);
+
+        expect(error).toBeInstanceOf(PortalSessionEndedError);
+        expect(error.message).toBe(PORTAL_SESSION_ENDED_MESSAGE);
+        expect(error.cause).toMatchObject({
+          status: 401,
+          message: 'Failed user token verification',
+        });
+      });
+
+      it('says the session ended on a send', async () => {
+        fetchMock.mockResolvedValue(portalRefusal());
+
+        await expect(
+          buildClient().streamMessage(
+            'gazelle',
+            'abc123',
+            { namespace: 'kagent', name: 'sre-agent' },
+            { messageId: 'msg-1', text: 'hi' },
+            () => {},
+          ),
+        ).rejects.toBeInstanceOf(PortalSessionEndedError);
+      });
+
+      it("keeps kagent's refusal of the installation token as it came", async () => {
+        fetchMock.mockResolvedValue(
+          jsonResponse(
+            {
+              error: {
+                name: 'InstallationAuthenticationError',
+                message:
+                  "Not authenticated against the kagent API for installation 'gazelle': token expired",
+              },
+            },
+            401,
+          ),
+        );
+
+        const error = await buildClient()
+          .listSessions('gazelle')
+          .catch(e => e);
+
+        expect(error).not.toBeInstanceOf(PortalSessionEndedError);
+        expect(error).toMatchObject({
+          name: 'UnauthorizedError',
+          message:
+            "Not authenticated against the kagent API for installation 'gazelle': token expired",
+        });
+      });
     });
 
     it('surfaces the backend’s error message', async () => {

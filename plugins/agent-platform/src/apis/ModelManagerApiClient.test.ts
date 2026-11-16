@@ -3,11 +3,15 @@ import {
   KubernetesApi,
   KubernetesAuthProvidersApi,
 } from '@backstage/plugin-kubernetes-react';
-import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
+import {
+  MusterUnauthorizedError,
+  type MusterApi,
+} from '@giantswarm/backstage-plugin-muster';
 import backendOllama from '../lib/__fixtures__/model-manager.backend.ollama.json';
 import modelsOllama from '../lib/__fixtures__/model-manager.models.ollama.json';
 import jobs from '../lib/__fixtures__/model-manager.jobs.json';
 import { ModelManagerNotConnectedError } from '../lib/modelManagerBackends';
+import { PortalSessionEndedError } from '../lib/portalSession';
 import { SERVED_MODEL_AUTH_HEADER } from './ModelManagerApi';
 import {
   ModelManagerApiClient,
@@ -352,6 +356,69 @@ describe('ModelManagerApiClient', () => {
       await expect(buildClient().listModels('lab')).rejects.toMatchObject({
         message: 'muster: token rejected',
       });
+    });
+  });
+
+  describe('when the portal refuses the session token', () => {
+    // Backstage's AuthenticationError, before muster-backend or the try
+    // route runs: the restart of a portal without a database lost its keys.
+    it('says the session ended on a read through muster', async () => {
+      callTool.mockRejectedValue(
+        new MusterUnauthorizedError(
+          'Failed user token verification',
+          undefined,
+          undefined,
+          'lab',
+          'AuthenticationError',
+        ),
+      );
+
+      const error = await buildClient()
+        .listModels('lab')
+        .catch(e => e);
+
+      expect(error).toBeInstanceOf(PortalSessionEndedError);
+      expect(error.message).not.toMatch(/token verification/);
+    });
+
+    it('says the session ended on a try', async () => {
+      fetchMock.mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: async () => ({
+          error: {
+            name: 'AuthenticationError',
+            message: 'Failed user token verification',
+          },
+        }),
+      } as Response);
+
+      await expect(
+        buildClient().tryModel('lab', { model: 'qwen', url: 'https://x' }),
+      ).rejects.toBeInstanceOf(PortalSessionEndedError);
+    });
+
+    it("keeps the try route's refusal of the installation token as it came", async () => {
+      fetchMock.mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: async () => ({
+          error: {
+            name: 'InstallationAuthenticationError',
+            message:
+              'The request did not include a user token for the target installation.',
+          },
+        }),
+      } as Response);
+
+      const error = await buildClient()
+        .tryModel('lab', { model: 'qwen', url: 'https://x' })
+        .catch(e => e);
+
+      expect(error).not.toBeInstanceOf(PortalSessionEndedError);
+      expect(error.message).toBe(
+        'The request did not include a user token for the target installation.',
+      );
     });
   });
 
