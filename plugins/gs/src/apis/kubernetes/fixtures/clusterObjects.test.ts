@@ -75,6 +75,24 @@ describe('gsKubernetesObjectsOf', () => {
     expect(objectsOfKind('AWSMachinePool')).toHaveLength(pools.length);
   });
 
+  it('gives every object its own uid', () => {
+    const uids = gsKubernetesObjectsOf('meadow').map(o => o.metadata.uid);
+    expect(new Set(uids).size).toBe(uids.length);
+  });
+
+  it('puts an organization’s clusters in its namespace, `org-<organization>`', () => {
+    const fixtures = inInstallation(fixtureDataSet().clusters, 'meadow');
+    for (const cluster of objectsOfKind('Cluster')) {
+      const fixture = fixtures.find(f => f.name === cluster.metadata.name)!;
+      expect(cluster.metadata.namespace).toBe(
+        fixture.kind === 'management'
+          ? 'org-giantswarm'
+          : `org-${fixture.organization}`,
+      );
+      expect(cluster.metadata.namespace).not.toMatch(/^org-org-/);
+    }
+  });
+
   it('serves no cluster in the empty scenario', () => {
     setFixtureScenarioForTests('empty');
     expect(gsKubernetesObjectsOf('meadow')).toEqual([]);

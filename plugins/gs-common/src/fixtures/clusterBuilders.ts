@@ -68,6 +68,24 @@ const RELEASES = [
   { release: '32.0.0', kubernetes: '1.32.3', app: '3.5.0' },
 ];
 
+/**
+ * A release's Kubernetes and app versions: the release it names, else the
+ * newest one of its major version or below, so a GPU cluster's versions agree
+ * with its release.
+ */
+function releaseOf(version: string): (typeof RELEASES)[number] {
+  const exact = RELEASES.find(r => r.release === version);
+  if (exact) {
+    return exact;
+  }
+  const major = Number(version.split('.')[0]);
+  return (
+    [...RELEASES]
+      .reverse()
+      .find(r => Number(r.release.split('.')[0]) <= major) ?? RELEASES[0]
+  );
+}
+
 const REGIONS = ['eu-central-1', 'eu-west-1', 'us-east-1'];
 
 const INSTANCE_TYPES = ['m6i.xlarge', 'm6i.2xlarge', 'r6i.2xlarge'];
@@ -153,9 +171,7 @@ export function buildClusters(
     );
     const turn = turns.get(installation) ?? 0;
     turns.set(installation, turn + 1);
-    return ready.length > 0
-      ? ready[turn % ready.length].name
-      : `org-${name().name}`;
+    return ready.length > 0 ? ready[turn % ready.length].name : name().name;
   };
 
   const workload = each(
@@ -200,8 +216,8 @@ export function buildClusters(
     state: 'ready',
     description: 'GPU nodes for model hosting',
     releaseVersion: cluster.releaseVersion,
-    kubernetesVersion: RELEASES[1].kubernetes,
-    appVersion: RELEASES[1].app,
+    kubernetesVersion: releaseOf(cluster.releaseVersion).kubernetes,
+    appVersion: releaseOf(cluster.releaseVersion).app,
     region: regionOf.get(cluster.installation) ?? REGIONS[0],
     awsAccountId: accountId(context),
     servicePriority: 'medium',

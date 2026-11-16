@@ -560,6 +560,31 @@ describe('builder settings', () => {
     }
   });
 
+  it('gives a GPU cluster the Kubernetes version of its release', () => {
+    const data = createFixtureDataSet({ now });
+    const isGpu = (c: { description?: string }) =>
+      c.description?.startsWith('GPU') ?? false;
+    const byRelease = new Map(
+      data.clusters
+        .filter(c => !isGpu(c))
+        .map(c => [c.releaseVersion, c.kubernetesVersion]),
+    );
+    const gpu = data.clusters.filter(
+      c => isGpu(c) && byRelease.has(c.releaseVersion),
+    );
+    expect(gpu.length).toBeGreaterThan(0);
+    expect(gpu.map(c => c.kubernetesVersion)).toEqual(
+      gpu.map(c => byRelease.get(c.releaseVersion)),
+    );
+  });
+
+  it('names a made-up organization as an organization, without the namespace prefix', () => {
+    const data = createFixtureDataSet({ now, organizations: { count: 0 } });
+    const workload = data.clusters.filter(c => c.kind === 'workload');
+    expect(workload.length).toBeGreaterThan(0);
+    expect(workload.every(c => !c.organization.startsWith('org-'))).toBe(true);
+  });
+
   it('gives a cluster being created no node pools yet', () => {
     const data = createFixtureDataSet({ now });
     const creating = data.clusters.filter(c => c.state === 'creating');

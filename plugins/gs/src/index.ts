@@ -156,7 +156,7 @@ export {
   PlatformClustersPanel,
   PlatformClustersProvider,
   usePlatformClustersCount,
-} from './components/platform/PlatformClusters';
+} from './components/platform';
 // Helm chart OCI resolution (tags + default values from the values-schema
 // annotation), reused by the agent-platform create flow.
 export { useHelmChartTags } from './components/hooks/useHelmChartTags';

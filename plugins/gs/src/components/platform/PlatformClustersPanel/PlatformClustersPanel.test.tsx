@@ -8,8 +8,10 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type {
   ClusterData,
+  RelatedReadFailures,
   UnlistedInstallation,
 } from '../../clusters/ClustersDataProvider';
+import type { PlatformClustersStatus } from '../PlatformClustersProvider';
 import { PlatformClustersPanel } from './PlatformClustersPanel';
 import {
   DEFAULT_PLATFORM_CLUSTER_COLUMNS,
@@ -26,6 +28,7 @@ function cluster(name: string, data: Partial<ClusterData> = {}): ClusterData {
     status: 'ready',
     apiVersion: 'cluster.x-k8s.io/v1beta2',
     releaseVersion: '31.1.0',
+    // As a KubeadmControlPlane reports it, with the `v`.
     kubernetesVersion: 'v1.31.7',
     created: '2026-01-02T00:00:00Z',
     ...data,
@@ -34,9 +37,13 @@ function cluster(name: string, data: Partial<ClusterData> = {}): ClusterData {
 
 let mockData: ClusterData[];
 let mockUnlisted: UnlistedInstallation[];
-let mockLoading: boolean;
+let mockReading: boolean;
+let mockRelated: Record<string, RelatedReadFailures>;
+const mockRetry = jest.fn();
+let mockStatus: PlatformClustersStatus;
 let mockVisible: PlatformClusterColumn[];
 const mockSetVisible = jest.fn();
+const mockRetryInstallations = jest.fn();
 const mockSignInAgain = jest.fn();
 let mockAccess: { installation: string; state: string }[];
 
@@ -44,11 +51,16 @@ jest.mock('../../clusters/ClustersDataProvider', () => ({
   useClustersData: () => ({
     data: mockData,
     unlistedInstallations: mockUnlisted,
+    isReadingClusters: mockReading,
+    relatedReadFailures: mockRelated,
+    retry: mockRetry,
   }),
 }));
-jest.mock('./PlatformClustersProvider', () => ({
-  usePlatformClustersLoading: () => mockLoading,
+jest.mock('../PlatformClustersProvider', () => ({
   usePlatformClustersState: () => ({
+    status: mockStatus,
+    installationsError: new Error('the backend answered 500'),
+    retryInstallations: mockRetryInstallations,
     visibleColumns: mockVisible,
     setVisibleColumns: mockSetVisible,
   }),
@@ -57,9 +69,10 @@ jest.mock('../../../apis/clusterAccessStatus', () => ({
   useClusterAccessStatus: () => mockAccess,
   useSignInAgain: () => mockSignInAgain,
 }));
+// Keyed as `gs.kubernetesVersions` is: by the minor version, without a `v`.
 jest.mock('../../hooks/useK8sVersionEOLDate', () => ({
   useK8sVersionEOLDate: (version?: string) =>
-    version?.startsWith('v1.30') ? '2025-06-28' : null,
+    version?.startsWith('1.30') ? '2025-06-28' : null,
 }));
 
 const clusters = [
@@ -94,10 +107,12 @@ describe('PlatformClustersPanel', () => {
     layout = mockDesktopLayout();
     mockData = clusters;
     mockUnlisted = [];
-    mockLoading = false;
+    mockReading = false;
+    mockRelated = {};
+    mockStatus = 'ready';
     mockVisible = [...DEFAULT_PLATFORM_CLUSTER_COLUMNS];
     mockAccess = [];
-    mockSetVisible.mockReset();
+    jest.clearAllMocks();
   });
 
   afterEach(() => layout.restore());
@@ -130,11 +145,12 @@ describe('PlatformClustersPanel', () => {
     expect(within(table).queryAllByRole('link')).toHaveLength(0);
   });
 
-  it('shows each state with its label and marks a Kubernetes version past its end of life', async () => {
+  it('marks a Kubernetes version past its end of life from the version a control plane reports', async () => {
     await renderInTestApp(<PlatformClustersPanel />);
     const row = screen.getByRole('row', { name: /cedar-elm/ });
     expect(within(row).getByText('Creating')).toBeInTheDocument();
     expect(within(row).getByText('30.1.2')).toBeInTheDocument();
+    expect(within(row).getByText('1.30')).toBeInTheDocument();
     expect(within(row).getByText('EOL')).toBeInTheDocument();
     const other = screen.getByRole('row', { name: /alder-birch/ });
     expect(within(other).queryByText('EOL')).not.toBeInTheDocument();
@@ -164,13 +180,14 @@ describe('PlatformClustersPanel', () => {
     }
   });
 
-  it('says when a search matches nothing', async () => {
+  it('searches by the start of words, as the shell’s other lists do', async () => {
     await renderInTestApp(<PlatformClustersPanel />);
-    await userEvent.type(
-      screen.getByRole('searchbox', { name: 'Search clusters' }),
-      'zzz',
-    );
-    expect(screen.getByText('No clusters match “zzz”.')).toBeInTheDocument();
+    const search = screen.getByRole('searchbox', { name: 'Search clusters' });
+    await userEvent.type(search, 'bir');
+    expect(names()).toEqual([expect.stringContaining('alder-birch')]);
+    await userEvent.clear(search);
+    await userEvent.type(search, 'irch');
+    expect(screen.getByText('No clusters match “irch”.')).toBeInTheDocument();
   });
 
   it('shows the columns a person chose and saves a change from the picker', async () => {
@@ -192,9 +209,40 @@ describe('PlatformClustersPanel', () => {
     expect(mockSetVisible.mock.calls[0][0]).not.toContain('name');
   });
 
-  it('reads while nothing has arrived', async () => {
+  it('says why a value is missing where its read failed on the environment', async () => {
+    mockVisible = ['release', 'region'];
+    mockData = [
+      cluster('alder-birch', { kubernetesVersion: undefined }),
+      cluster('cedar-elm', {
+        installationName: 'fennel',
+        location: 'eu-west-1',
+      }),
+    ];
+    mockRelated = {
+      meadow: {
+        controlPlanes: 'Access forbidden',
+        providerClusters: 'API unreachable (timeout)',
+      },
+    };
+    await renderInTestApp(<PlatformClustersPanel />);
+    const row = screen.getByRole('row', { name: /alder-birch/ });
+    expect(
+      within(row).getByLabelText(
+        'Could not read the Kubernetes version: Access forbidden.',
+      ),
+    ).toHaveTextContent('—');
+    expect(
+      within(row).getByLabelText(
+        'Could not read the region: API unreachable (timeout).',
+      ),
+    ).toHaveTextContent('—');
+    const other = screen.getByRole('row', { name: /cedar-elm/ });
+    expect(within(other).getByText('eu-west-1')).toBeInTheDocument();
+  });
+
+  it('reads while the list has no answer', async () => {
     mockData = [];
-    mockLoading = true;
+    mockStatus = 'loading';
     await renderInTestApp(<PlatformClustersPanel />);
     expect(screen.queryByRole('grid')).not.toBeInTheDocument();
     expect(screen.queryByText('No clusters yet')).not.toBeInTheDocument();
@@ -202,6 +250,7 @@ describe('PlatformClustersPanel', () => {
 
   it('says when there are no clusters', async () => {
     mockData = [];
+    mockStatus = 'empty';
     await renderInTestApp(<PlatformClustersPanel />);
     expect(screen.getByText('No clusters yet')).toBeInTheDocument();
     expect(
@@ -209,7 +258,51 @@ describe('PlatformClustersPanel', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('names the environments whose clusters could not be read, with a sign-in where it expired', async () => {
+  it('shows an error with Try again, not an empty list, when no environment could be read', async () => {
+    mockData = [];
+    mockStatus = 'failed';
+    mockUnlisted = [
+      { installation: 'meadow', reason: 'the sign-in was declined' },
+    ];
+    await renderInTestApp(<PlatformClustersPanel />);
+    expect(screen.queryByText('No clusters yet')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Could not read your clusters'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The clusters could not be read on meadow (the sign-in was declined).',
+      ),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(mockRetry).toHaveBeenCalled();
+  });
+
+  it('shows an error with Try again when the environments could not be listed', async () => {
+    mockData = [];
+    mockStatus = 'installations-failed';
+    await renderInTestApp(<PlatformClustersPanel />);
+    expect(screen.queryByText('No clusters yet')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Could not read your environments'),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(mockRetryInstallations).toHaveBeenCalled();
+  });
+
+  it('says the session ended instead of claiming there are no clusters', async () => {
+    mockData = [];
+    mockStatus = 'session-ended';
+    await renderInTestApp(<PlatformClustersPanel />);
+    expect(screen.queryByText('No clusters yet')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Your session in this browser ended. Sign in again to see them.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('names the environments that could not be read once every one answered, with Try again and a sign-in where it expired', async () => {
     mockUnlisted = [
       { installation: 'fennel', reason: 'API unreachable (timeout)' },
       { installation: 'tarragon', reason: 'Access forbidden' },
@@ -217,32 +310,23 @@ describe('PlatformClustersPanel', () => {
     mockAccess = [{ installation: 'tarragon', state: 'session-expired' }];
     await renderInTestApp(<PlatformClustersPanel />);
     expect(
-      screen.getByText('Clusters in fennel are not listed.'),
+      screen.getByText('Could not read 2 environments'),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText('Reading them failed: API unreachable (timeout).'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('Your sign-in to tarragon has expired.'),
-    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(mockRetry).toHaveBeenCalled();
     await userEvent.click(
       screen.getByRole('button', { name: 'Sign in again' }),
     );
     expect(mockSignInAgain).toHaveBeenCalled();
   });
 
-  it('counts the environments beyond the third that could not be read', async () => {
-    mockUnlisted = ['a', 'b', 'c', 'd', 'e'].map(installation => ({
-      installation,
-      reason: 'Access forbidden',
-    }));
+  it('waits for the other environments before warning about one', async () => {
+    mockUnlisted = [
+      { installation: 'fennel', reason: 'API unreachable (timeout)' },
+    ];
+    mockReading = true;
     await renderInTestApp(<PlatformClustersPanel />);
-    expect(screen.getAllByText(/are not listed\.$/)).toHaveLength(3);
-    expect(
-      screen.getByText(
-        'Clusters in 2 more environments are not listed either.',
-      ),
-    ).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('stacks the clusters at phone width, without the column picker', async () => {

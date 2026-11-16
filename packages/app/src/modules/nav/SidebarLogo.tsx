@@ -7,6 +7,7 @@ import { configApiRef, useApi } from '@backstage/core-plugin-api';
 import { makeStyles } from '@material-ui/core';
 import type { Portals } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { isAgentArea } from '../agentShell/agentArea';
+import { usePlatformSectionConfigured } from '../agentShell/platformSection';
 import { LogoFull } from './LogoFull';
 import { LogoIcon } from './LogoIcon';
 
@@ -36,6 +37,7 @@ const useSidebarLogoStyles = makeStyles({
 export function classicLogoTarget(
   portals: Portals,
   rootRedirect: string | undefined,
+  { platformSection = false }: { platformSection?: boolean } = {},
 ): { to: string; newTab: boolean } {
   if (!portals.agentPlatform || !portals.platformPortal) {
     return { to: '/', newTab: false };
@@ -45,7 +47,7 @@ export function classicLogoTarget(
     rootRedirect &&
     redirectPath?.startsWith('/') &&
     redirectPath !== '/' &&
-    !isAgentArea(redirectPath)
+    !isAgentArea(redirectPath, { platformSection })
   ) {
     return { to: rootRedirect, newTab: false };
   }
@@ -57,7 +59,10 @@ export const SidebarLogo = ({ portals }: { portals: Portals }) => {
   const { isOpen } = useSidebarOpenState();
   const rootRedirect =
     useApi(configApiRef).getOptionalString('app.rootRedirect');
-  const { to, newTab } = classicLogoTarget(portals, rootRedirect);
+  const platformSection = usePlatformSectionConfigured();
+  const { to, newTab } = classicLogoTarget(portals, rootRedirect, {
+    platformSection,
+  });
 
   return (
     <div className={classes.root}>

@@ -32,6 +32,7 @@ import {
   ClusterData,
   collectClusterAccessUpdates,
   collectClusterData,
+  relatedReadFailuresOf,
   unlistedInstallationsOf,
 } from './utils';
 import { ClusterColumns } from '../ClustersTable/columns';
@@ -71,7 +72,22 @@ export type ClustersData = FiltersData<DefaultClusterFilters> & {
    * `ErrorsProvider`; the shell's list names them in an alert.
    */
   unlistedInstallations: UnlistedInstallation[];
+  /** Whether any installation's cluster list is still being read. */
+  isReadingClusters: boolean;
+  /** The installations whose cluster list was read. */
+  answeredInstallations: string[];
+  /**
+   * Per installation, the related reads that failed there and why: the
+   * control planes (Kubernetes version), the provider clusters (region, app
+   * version) and their identities (account). Their columns stay empty there.
+   */
+  relatedReadFailures: Record<string, RelatedReadFailures>;
 };
+
+/** Which related reads failed on one installation, each with its reason. */
+export type RelatedReadFailures = Partial<
+  Record<'controlPlanes' | 'providerClusters' | 'identities', string>
+>;
 
 /** An installation whose clusters are not in the list, and why. */
 export type UnlistedInstallation = {
@@ -93,16 +109,30 @@ export function useClustersData(): ClustersData {
 
 type ClustersDataProviderProps = {
   children: ReactNode;
+  /**
+   * The installations to read. Given, it replaces the installation picker's
+   * `setActiveInstallations`, so the list reads them from its first render.
+   */
+  installations?: string[];
+  /**
+   * The columns shown, by `ClusterColumns` id. Given, it replaces
+   * `setVisibleColumns`, so the related reads start with the first render.
+   */
+  columns?: string[];
 };
 
 export const ClustersDataProvider = ({
   children,
+  installations,
+  columns,
 }: ClustersDataProviderProps) => {
-  const [activeInstallations, setActiveInstallations] = useState<string[]>([]);
+  const [pickedInstallations, setActiveInstallations] = useState<string[]>([]);
+  const activeInstallations = installations ?? pickedInstallations;
   const { filters, queryParameters, updateFilters } =
     useFilters<DefaultClusterFilters>();
 
-  const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
+  const [pickedColumns, setVisibleColumns] = useState<string[]>([]);
+  const visibleColumns = columns ?? pickedColumns;
 
   const clusterAccessStatusApi = useApi(clusterAccessStatusApiRef);
   const muted = useMutedInstallations();
@@ -215,6 +245,21 @@ export const ClustersDataProvider = ({
     [clusterErrors],
   );
 
+  const answeredInstallations = useMemo(
+    () => [...new Set(clusterListResults.map(result => result.cluster))],
+    [clusterListResults],
+  );
+
+  const relatedReadFailures = useMemo(
+    () =>
+      relatedReadFailuresOf({
+        controlPlanes: controlPlaneErrors,
+        providerClusters: providerClusterErrors,
+        identities: providerClusterIdentityErrors,
+      }),
+    [controlPlaneErrors, providerClusterErrors, providerClusterIdentityErrors],
+  );
+
   // Feed the sidebar cluster-access status: a cluster whose list resolved is
   // healthy; one whose request errored (e.g. timed out / unreachable) is
   // degraded with a reason. This surfaces "MC X isn't working" for non-auth
@@ -318,6 +363,9 @@ export const ClustersDataProvider = ({
       setVisibleColumns,
       setActiveInstallations,
       unlistedInstallations,
+      isReadingClusters: isLoadingClusters,
+      answeredInstallations,
+      relatedReadFailures,
 
       filters,
       queryParameters,
@@ -330,6 +378,9 @@ export const ClustersDataProvider = ({
     queryParameters,
     retry,
     unlistedInstallations,
+    isLoadingClusters,
+    answeredInstallations,
+    relatedReadFailures,
     updateFilters,
     visibleColumns,
   ]);

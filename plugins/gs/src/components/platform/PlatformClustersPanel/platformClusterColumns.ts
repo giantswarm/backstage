@@ -1,7 +1,8 @@
 import type { SortDescriptor } from '@backstage/ui';
+import { semverCompareSort } from '@giantswarm/backstage-plugin-ui-react';
 import { ClusterColumns } from '../../clusters/ClustersTable/columns';
 import type { ClusterData } from '../../clusters/ClustersDataProvider';
-import { hasUnknownResources } from '../../clusters/nodePools';
+import { ClusterStatuses } from '../../clusters/ClusterStatus';
 import { formatClusterProvider, ClusterTypes } from '../../clusters/utils';
 import { toSentenceCase } from '../../utils/helpers';
 
@@ -69,19 +70,25 @@ export function dataColumnsOf(visible: readonly string[]): string[] {
 }
 
 /**
- * The columns shown from what a person saved: the default until they chose,
- * and only ids this list knows, so a renamed column falls away.
+ * The columns shown from what a person saved, always in the list's own
+ * order (the store sorts what it saves): the default until they chose, and
+ * only ids this list knows, so a renamed column falls away.
  */
 export function visibleColumnsOf(
   saved: readonly string[],
 ): PlatformClusterColumn[] {
-  const known = saved.filter((id): id is PlatformClusterColumn =>
-    (PLATFORM_CLUSTER_COLUMNS as readonly string[]).includes(id),
+  const shown = PLATFORM_CLUSTER_COLUMNS.filter(
+    id => id !== 'name' && saved.includes(id),
   );
-  return known.length > 0
-    ? known.filter(id => id !== 'name')
-    : [...DEFAULT_PLATFORM_CLUSTER_COLUMNS];
+  return shown.length > 0 ? shown : [...DEFAULT_PLATFORM_CLUSTER_COLUMNS];
 }
+
+/** The clusters' states in their lifecycle order, as the Status filter lists them. */
+export const CLUSTER_STATUS_ORDER: readonly string[] = [
+  ClusterStatuses.Ready,
+  ClusterStatuses.Creating,
+  ClusterStatuses.Deleting,
+];
 
 /** How a cluster's status reads: "Ready", "Creating", "Deleting". */
 export function statusLabel(status: string): string {
@@ -99,11 +106,6 @@ export function priorityLabel(row: ClusterData): string | undefined {
 /** The service priorities, most urgent first, as they sort. */
 const PRIORITY_ORDER = ['highest', 'high', 'medium', 'low', 'lowest'];
 
-function knownCapacity(row: ClusterData) {
-  const capacity = row.workerCapacity?.capacity;
-  return capacity && !hasUnknownResources(capacity) ? capacity : undefined;
-}
-
 type SortKey = (row: PlatformClusterRow) => string | number | undefined;
 
 /** Case-insensitive, digits by value: "31.10.0" after "31.9.2". */
@@ -111,14 +113,24 @@ function compareText(a: string, b: string): number {
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 }
 
+/** Columns whose values are versions, compared as semver. */
+const VERSION_KEYS: Partial<
+  Record<PlatformClusterColumn, (row: PlatformClusterRow) => string | undefined>
+> = {
+  release: row => row.releaseVersion,
+  clusterApp: row => row.appVersion,
+};
+
 const SORT_KEYS: Record<PlatformClusterColumn, SortKey> = {
   name: row => row.name,
-  status: row => row.status,
+  status: row => {
+    const index = CLUSTER_STATUS_ORDER.indexOf(row.status);
+    return index === -1 ? undefined : index;
+  },
   environment: row => row.installationName,
   organization: row => row.organization,
   release: row => row.releaseVersion,
-  workers: row =>
-    row.workerCapacity?.capacity?.nodes ?? knownCapacity(row)?.vcpus,
+  workers: row => row.workerCapacity?.capacity?.nodes,
   provider: row => providerLabel(row),
   region: row => row.location,
   account: row => row.awsAccountId,
@@ -142,12 +154,21 @@ export function sortPlatformClusterRows(
   const column = String(sort.column) as PlatformClusterColumn;
   const keyOf = SORT_KEYS[column] ?? SORT_KEYS.name;
   const direction = sort.direction === 'descending' ? -1 : 1;
+  const versionOf = VERSION_KEYS[column];
+  // Pre-releases before their release, as the classic table sorts them;
+  // rows without a version last either way.
+  const compareVersions = versionOf
+    ? semverCompareSort(versionOf, { descending: direction < 0 })
+    : undefined;
   const byName = (a: PlatformClusterRow, b: PlatformClusterRow) =>
     Number(b.type === ClusterTypes.Management) -
       Number(a.type === ClusterTypes.Management) ||
     compareText(a.name, b.name) ||
     compareText(a.installationName, b.installationName);
   return [...rows].sort((a, b) => {
+    if (compareVersions) {
+      return compareVersions(a, b) || byName(a, b);
+    }
     const x = keyOf(a);
     const y = keyOf(b);
     if (x === undefined || y === undefined) {

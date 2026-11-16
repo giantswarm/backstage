@@ -88,4 +88,5 @@ export * from './TextAreaField';
 export * from './WizardFrame';
 export * from './YamlEditor';
 export * from './YamlEditorFormField';
+export * from './UnreachableInstallationsAlert';
 export * from './UserEntityLink';

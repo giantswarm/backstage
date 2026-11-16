@@ -141,7 +141,10 @@ them and never invent a palette.
   labels describe configuration separately from access state.
 
 - Empty lists and not-found pages use `EmptyStateCard`; a not-found page adds a
-  back link. A failed read of a whole page is a danger `Alert` with a back link.
+  back link. A list read across environments names the ones that failed in
+  `UnreachableInstallationsAlert` (`ui-react`), with Try again, once every
+  environment answered; with nothing to show the failure is the list's answer
+  (`everything`), never an empty state. A failed read of a whole page is a danger `Alert` with a back link.
 - Loading a region uses `LoadingIndicator` with a "Reading …" label. Detail
   pages render their loading frame in the final geometry with
   `ShellPageTitleSkeleton`, `ShellPageBadgeSkeleton` and

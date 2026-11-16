@@ -32,6 +32,7 @@ import {
   usePhoneLayout,
   ROW_TAGS_MAX,
   TagList,
+  UnreachableInstallationsAlert,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { ConnectorLogoStack } from '@giantswarm/backstage-plugin-muster';
@@ -76,7 +77,6 @@ import { KagentMissingCard } from '../KagentMissingCard';
 import { LastUsedAgents } from '../LastUsedAgents';
 import { SessionsDataProvider, useSessions } from '../SessionsDataProvider';
 import { ShowMore } from '../ShowMore';
-import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 /** At least twice the rendered 40px (bui's large avatar), for 2x displays. */

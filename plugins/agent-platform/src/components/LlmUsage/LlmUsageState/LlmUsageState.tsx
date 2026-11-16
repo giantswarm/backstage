@@ -1,12 +1,14 @@
 import { Progress } from '@backstage/core-components';
 import { Text } from '@backstage/ui';
-import { MetricsUnavailableAlert } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  MetricsUnavailableAlert,
+  UnreachableInstallationsAlert,
+} from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmUsageViewModel } from '../../../hooks/useLlmUsageView';
 import { WINDOW_DAYS } from '../../../lib/llmUsageQueries';
 import { lastDaysNoun, usageWindowPhrase } from '../../../lib/usageWindow';
 import { InstallationScopeNote } from '../../InstallationScopeNote';
 import { NotReachableInstallationsNote } from '../../NotReachableInstallationsNote';
-import { UnreachableInstallationsAlert } from '../../UnreachableInstallationsAlert';
 
 /**
  * Every state a Mimir usage view can be in except `ready`, rendered once for

@@ -8,6 +8,7 @@ import {
   EmptyStateCard,
   LoadingIndicator,
   ShellPage,
+  UnreachableInstallationsAlert,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
@@ -19,7 +20,6 @@ import {
 import { NotReachableInstallationsNote } from '../NotReachableInstallationsNote';
 import { SessionsDataProvider, useSessions } from '../SessionsDataProvider';
 import { SessionsTable } from '../SessionsTable';
-import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
 /**
  * The page frame: the page titles itself and offers "New session", which goes

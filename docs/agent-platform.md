@@ -557,8 +557,15 @@ always; Status, Environment, Organization, Release, Workers and Created by
 default; Provider, Region, Account, Service priority and Cluster app on
 request, kept per browser), and headers that sort. Release carries the
 Kubernetes minor version, marked EOL past its end of life
-(`gs.kubernetesVersions`). An environment whose clusters could not be read is
-named above the list, with Sign in again where its sign-in expired. Rows do not
+(`gs.kubernetesVersions`). Environments whose clusters could not be read are named in the
+shared `UnreachableInstallationsAlert` once every environment has answered,
+with Try again, and Sign in again where a sign-in expired. With no cluster to
+show, a failure is the list's answer (a danger card with Try again), as are a
+failed read of the environments themselves and an ended session: the page
+says "No clusters yet" only once every environment answered without a
+failure. A column whose related read failed on an environment (control
+planes, provider clusters, identities) shows a dash that names the failure on
+hover and focus. Rows do not
 open a cluster yet. At phone width the list stacks: name and state, then
 environment, organization and release. The classic `/clusters` and
 `/installations` pages are unchanged.
@@ -1560,7 +1567,7 @@ Failures are classified as **absent** or **unwell**:
 - **Silent** — `404`, which the backend returns for every "no kagent here":
   kagent's own 404, an unknown-installation `400`, and connection failures (DNS,
   TLS, refused).
-- **Reported** in `UnreachableInstallationsAlert` — everything else: kagent
+- **Reported** in `UnreachableInstallationsAlert` (`ui-react`) — everything else: kagent
   `5xx` or `429`, timeouts, unreadable bodies. Otherwise a degraded
   installation's sessions would vanish silently.
 

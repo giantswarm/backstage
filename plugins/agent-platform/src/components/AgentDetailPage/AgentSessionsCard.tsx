@@ -1,10 +1,10 @@
+import { UnreachableInstallationsAlert } from '@giantswarm/backstage-plugin-ui-react';
 import { useMemo } from 'react';
 import { Button, Flex, Text } from '@backstage/ui';
 
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import { SessionsTable } from '../SessionsTable';
-import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 import { markEarlierRevisions } from '../SessionsDataProvider/helpers';
 
 /**

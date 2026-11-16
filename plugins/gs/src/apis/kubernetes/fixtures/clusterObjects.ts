@@ -27,10 +27,12 @@ function objectsOf(cluster: FixtureCluster): KubeObjectInterface[] {
   const namespace = namespaceOf(cluster);
   const clusterLabels = { [Labels.labelClusterName]: cluster.name };
   const creating = cluster.state === 'creating';
-  const metadata = (name: string, extra: object = {}) => ({
+  // The kind in the uid: a cluster's objects share its name, and a pool's
+  // MachinePool and AWSMachinePool theirs.
+  const metadata = (kind: string, name: string, extra: object = {}) => ({
     name,
     namespace,
-    uid: `${cluster.installation}-${namespace}-${name}`,
+    uid: `${cluster.installation}-${kind}-${namespace}-${name}`,
     creationTimestamp: cluster.createdAt,
     ...extra,
   });
@@ -39,7 +41,7 @@ function objectsOf(cluster: FixtureCluster): KubeObjectInterface[] {
     {
       apiVersion: `${CAPI}/v1beta2`,
       kind: 'Cluster',
-      metadata: metadata(cluster.name, {
+      metadata: metadata('Cluster', cluster.name, {
         ...(cluster.state === 'deleting' && {
           deletionTimestamp: cluster.createdAt,
         }),
@@ -87,7 +89,7 @@ function objectsOf(cluster: FixtureCluster): KubeObjectInterface[] {
     {
       apiVersion: `${INFRASTRUCTURE}/v1beta2`,
       kind: 'AWSCluster',
-      metadata: metadata(cluster.name, {
+      metadata: metadata('AWSCluster', cluster.name, {
         labels: {
           ...clusterLabels,
           [Labels.labelAppVersion]: cluster.appVersion,
@@ -103,7 +105,7 @@ function objectsOf(cluster: FixtureCluster): KubeObjectInterface[] {
       kind: 'AWSClusterRoleIdentity',
       metadata: {
         name: cluster.name,
-        uid: `${cluster.installation}-identity-${cluster.name}`,
+        uid: `${cluster.installation}-AWSClusterRoleIdentity-${cluster.name}`,
         creationTimestamp: cluster.createdAt,
       },
       spec: {
@@ -113,7 +115,9 @@ function objectsOf(cluster: FixtureCluster): KubeObjectInterface[] {
     {
       apiVersion: `${CONTROL_PLANE}/v1beta2`,
       kind: 'KubeadmControlPlane',
-      metadata: metadata(cluster.name, { labels: clusterLabels }),
+      metadata: metadata('KubeadmControlPlane', cluster.name, {
+        labels: clusterLabels,
+      }),
       spec: { version: `v${cluster.kubernetesVersion}` },
     },
   ];
@@ -123,7 +127,7 @@ function objectsOf(cluster: FixtureCluster): KubeObjectInterface[] {
       {
         apiVersion: `${CAPI}/v1beta2`,
         kind: 'MachinePool',
-        metadata: metadata(pool.name, { labels: clusterLabels }),
+        metadata: metadata('MachinePool', pool.name, { labels: clusterLabels }),
         spec: {
           clusterName: cluster.name,
           replicas: pool.replicas,
@@ -143,7 +147,9 @@ function objectsOf(cluster: FixtureCluster): KubeObjectInterface[] {
       {
         apiVersion: `${INFRASTRUCTURE}/v1beta2`,
         kind: 'AWSMachinePool',
-        metadata: metadata(pool.name, { labels: clusterLabels }),
+        metadata: metadata('AWSMachinePool', pool.name, {
+          labels: clusterLabels,
+        }),
         spec: {
           minSize: 1,
           maxSize: Math.max(pool.replicas, 10),
