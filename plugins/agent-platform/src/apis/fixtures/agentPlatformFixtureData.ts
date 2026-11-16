@@ -30,6 +30,7 @@ import type {
   AgentPluginEntry,
   AgentSkillEntry,
 } from '../../lib/agentManager';
+import { DEFAULT_MODEL_ANNOTATION } from '../../lib/defaultModel';
 import { DEFAULT_WORKSPACE_ANNOTATION } from '../../lib/defaultWorkspace';
 import { MUSTER_MCP_SERVER_NAME, TOOLSET_HEADER } from '../../lib/toolset';
 import {
@@ -457,12 +458,18 @@ export type FixtureModel = {
   model: string;
   /** The namespace's default model. */
   default: boolean;
-  /** The Secret and key the model reads its key from. */
-  secret: string;
-  key: string;
+  /**
+   * The Secret and key the model reads its key from; absent for a model
+   * without a credential (`noCredential`).
+   */
+  secret?: string;
+  key?: string;
 };
 
-/** A model as the `ModelConfig` object the pages list, accepted and resolved. */
+/**
+ * A model as the `ModelConfig` object the pages list, accepted and resolved,
+ * the namespace's default annotated as agent-manager marks it.
+ */
 export function modelConfigObjectOf(
   model: FixtureModel,
   at: string,
@@ -475,12 +482,17 @@ export function modelConfigObjectOf(
       namespace: model.namespace,
       generation: 1,
       creationTimestamp: at,
+      ...(model.default && {
+        annotations: { [DEFAULT_MODEL_ANNOTATION]: 'true' },
+      }),
     },
     spec: {
       provider: model.provider,
       model: model.model,
-      apiKeySecret: model.secret,
-      apiKeySecretKey: model.key,
+      ...(model.secret && {
+        apiKeySecret: model.secret,
+        apiKeySecretKey: model.key,
+      }),
     },
     status: {
       observedGeneration: 1,

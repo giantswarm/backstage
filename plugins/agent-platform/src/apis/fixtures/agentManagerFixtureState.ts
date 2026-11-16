@@ -60,6 +60,7 @@ import {
   type FixtureAgentRecord,
   type FixtureModel,
 } from './agentPlatformFixtureData';
+import { MODEL_CONFIG_NAMESPACE } from '../../lib/modelConfigs';
 import { FIXTURE_USER } from './fixtureIdentity';
 import { kagentFixtureState, KagentFixtureState } from './kagentFixtureState';
 
@@ -78,6 +79,14 @@ import { kagentFixtureState, KagentFixtureState } from './kagentFixtureState';
  * An organization being erased takes one such step per stage of the erasure
  * and is gone after the last.
  */
+
+/**
+ * `set_organization_model`'s arguments as the fixture reads them: the
+ * request, and whether the model goes without a credential.
+ */
+type FixtureModelRequest = OrganizationModelRequest & {
+  noCredential?: boolean;
+};
 
 /** How long the controller takes to reach a verdict on a written agent. */
 export const SETTLE_MS = 4000;
@@ -557,7 +566,7 @@ export class AgentManagerFixtureState {
       connectors: connectorsOf().map(connector => connector.name),
       egressPolicies: egressPoliciesOf(namespace).map(policy => policy.name),
       credentials: [
-        ...models.map(model => model.secret),
+        ...models.flatMap(model => (model.secret ? [model.secret] : [])),
         ...connectorsOf().flatMap(connector =>
           connector.credentials.map(credential => credential.secret),
         ),
@@ -808,7 +817,7 @@ export class AgentManagerFixtureState {
 
   setOrganizationModel(
     installation: string,
-    request: OrganizationModelRequest,
+    request: FixtureModelRequest,
   ): CredentialResourceResult {
     const organization = this.writableIn(installation, request.namespace);
     this.mustManage(organization);
@@ -823,7 +832,7 @@ export class AgentManagerFixtureState {
   private writeModel(
     installation: string,
     organization: FixtureOrganization,
-    request: OrganizationModelRequest,
+    request: FixtureModelRequest,
   ): CredentialResourceResult {
     const { models } = this.stateOf(installation);
     const existing = models.get(keyOf(request.namespace, request.name));
@@ -836,8 +845,13 @@ export class AgentManagerFixtureState {
       }
       const model = request.model || existing.model;
       const makeDefault = Boolean(request.default) && !existing.default;
-      if (model !== existing.model || makeDefault) {
+      const dropCredential = Boolean(request.noCredential) && !!existing.secret;
+      if (model !== existing.model || makeDefault || dropCredential) {
         existing.model = model;
+        if (dropCredential) {
+          delete existing.secret;
+          delete existing.key;
+        }
         if (makeDefault) {
           this.markDefault(installation, existing);
         }
@@ -858,9 +872,38 @@ export class AgentManagerFixtureState {
       provider,
       model: request.model ?? '',
       default: false,
-      secret: `${request.name}-model-key`,
-      key: keyNameOf(provider),
+      ...(!request.noCredential && {
+        secret: `${request.name}-model-key`,
+        key: keyNameOf(provider),
+      }),
     };
+    const create = (): CredentialResourceResult => {
+      models.set(keyOf(model.namespace, model.name), model);
+      const isFirst = this.modelsIn(installation, model.namespace).length === 1;
+      if (request.default || isFirst) {
+        this.markDefault(installation, model);
+      }
+      return {
+        namespace: model.namespace,
+        kind: 'model',
+        name: model.name,
+        created: true,
+        defaultModel: this.defaultModelIn(installation, model.namespace),
+        ...(model.secret &&
+          model.key && {
+            credentials: [
+              { secret: model.secret, key: model.key, state: 'present' },
+            ],
+          }),
+      };
+    };
+    // A model without a credential has no key to ask for: agent-manager
+    // writes it at once, with no credential operation.
+    if (!model.secret || !model.key) {
+      const result = create();
+      this.changed();
+      return result;
+    }
     return this.prepare(
       installation,
       organization,
@@ -885,24 +928,7 @@ export class AgentManagerFixtureState {
           ],
         },
       },
-      () => {
-        models.set(keyOf(model.namespace, model.name), model);
-        const isFirst =
-          this.modelsIn(installation, model.namespace).length === 1;
-        if (request.default || isFirst) {
-          this.markDefault(installation, model);
-        }
-        return {
-          namespace: model.namespace,
-          kind: 'model',
-          name: model.name,
-          created: true,
-          defaultModel: this.defaultModelIn(installation, model.namespace),
-          credentials: [
-            { secret: model.secret, key: model.key, state: 'present' },
-          ],
-        };
-      },
+      create,
     );
   }
 
@@ -919,7 +945,7 @@ export class AgentManagerFixtureState {
         .map((model): CredentialReference => ({
           kind: 'ModelConfig',
           name: model.name,
-          key: model.key,
+          key,
           provider: model.provider,
         })),
       ...connectorsOf()
@@ -1465,6 +1491,27 @@ export class AgentManagerFixtureState {
         ...(request.workspaceGrant && { workspace: request.workspaceGrant }),
       };
     });
+  }
+
+  /**
+   * The namespaces `get_info` reports as `managed`, where the person may
+   * create agents: the platform's, and their organizations' namespaces where
+   * they are an admin or an editor, except one being erased.
+   */
+  managedNamespaces(installation: string): string[] {
+    return [
+      MODEL_CONFIG_NAMESPACE,
+      ...this.stateOf(installation)
+        .organizations.filter(
+          organization =>
+            (organization.role === 'admin' || organization.role === 'editor') &&
+            organization.state !== 'deleting',
+        )
+        .flatMap(organization =>
+          organization.namespace ? [organization.namespace] : [],
+        )
+        .sort(),
+    ];
   }
 
   /**

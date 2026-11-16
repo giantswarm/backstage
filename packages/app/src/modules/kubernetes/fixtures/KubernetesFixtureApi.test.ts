@@ -226,4 +226,17 @@ describe('app-config.fixtures.yaml', () => {
       ...FIXTURE_INSTALLATIONS,
     ]);
   });
+
+  it('enables the Organizations pages, which the fixture agent-manager serves', async () => {
+    const root = resolve(__dirname, '../../../../../..');
+    const { appConfigs } = await loadConfig({
+      configRoot: root,
+      configTargets: [{ path: resolve(root, 'app-config.fixtures.yaml') }],
+    });
+    const config = ConfigReader.fromConfigs(appConfigs);
+
+    expect(
+      config.getOptionalBoolean('agentPlatform.organizations.enabled'),
+    ).toBe(true);
+  });
 });

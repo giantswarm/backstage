@@ -20,7 +20,8 @@ use) the flags have no effect.
 ## Fixture mode
 
 `yarn fixtures start` runs the portal with the Agent Platform's fixture flags
-(`gs`, `muster`, `agentPlatform`) on and the guest signed in, without a cluster
+(`gs`, `muster`, `agentPlatform`) on, the Organizations pages enabled
+(`agentPlatform.organizations.enabled`) and the guest signed in, without a cluster
 or a person
 (`app-config.fixtures.yaml` on top of `app-config.yaml`; no `.env` and no
 `app-config.local.yaml`). It is made for agents checking pages, several at a
@@ -109,7 +110,13 @@ person's role in each, their members, models, connectors and egress policies,
 and their agents, read back as `get_agent` reads them and listed as `Agent`
 objects, each with its carrier `RemoteMCPServer` (the toolset), beside each
 organization namespace's models (`ModelConfig`) and platform `Harness`.
-Arguments and answers cross as JSON, as over MCP and HTTP, so no page shares
+`get_info` reports as `managed` the platform's namespace (`kagent`) and the
+namespaces of the organizations where the person is an admin or an editor,
+except one being erased, so the New agent and Connect a model forms offer them
+as owners. Each namespace's default model carries the
+`agent-platform.giantswarm.io/is-default-model-config` annotation, as
+`list_model_configs` reports it (`default`), and the mark moves with
+`set_organization_model`'s `default`. Arguments and answers cross as JSON, as over MCP and HTTP, so no page shares
 the fixture's objects. The writes are checked as agent-manager checks them (a
 person with the user role may not create agents, a name taken is a
 `conflict`, a model the namespace lacks fails the dry run, the last admin of
@@ -126,7 +133,9 @@ erased) and kept in memory until the page reloads:
 - adding a model or asking for a new key of a model or a connector: the tool
   prepares a credential operation, the credential form reads and saves it,
   and the save writes the model. An operation expires after 30 minutes
-  (`OPERATION_TTL_MS`).
+  (`OPERATION_TTL_MS`). A model without a credential (`noCredential`,
+  an Ollama model for one) has no key to ask for: the tool writes it at once,
+  without a credential operation and with no key Secret on its `ModelConfig`.
 
 `set_organization_model`, `replace_organization_credential` and
 `start_session` honour their idempotency key (`requestId`): a retry answers

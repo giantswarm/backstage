@@ -18,6 +18,7 @@ import {
   type OrganizationModelRequest,
 } from '../../../lib/organizations';
 import { DEFAULT_WORKSPACE_CAPABILITY } from '../../../lib/defaultWorkspace';
+import { MODEL_CONFIG_NAMESPACE } from '../../../lib/modelConfigs';
 import { TOOLCHAINS_CAPABILITY } from '../../../lib/toolchainManager';
 import type { ListModelConfigsAnswer } from '../../AgentManagerClient';
 import {
@@ -28,7 +29,7 @@ import { FIXTURE_HARNESS } from '../agentPlatformFixtureData';
 import { asJson, text } from './jsonTools';
 
 /** What the fixture agent-manager of an installation composes and can do. */
-const infoOf = (installation: string): AgentManagerInfo => ({
+const infoOf = (installation: string, managed: string[]): AgentManagerInfo => ({
   version: '1.0.0-fixture',
   chart: {
     ociUrl: 'oci://registry.example.com/charts/agent',
@@ -37,7 +38,7 @@ const infoOf = (installation: string): AgentManagerInfo => ({
     schemaVersion: '1.0.0',
     schemaSource: 'registry',
   },
-  namespaces: { default: 'kagent', managed: ['kagent'] },
+  namespaces: { default: MODEL_CONFIG_NAMESPACE, managed },
   capabilities: {
     create: true,
     validate: true,
@@ -74,7 +75,7 @@ export function agentManagerFixtureServer(
 ): FixtureMcpServer {
   const tools: FixtureMcpServer['tools'] = {
     [AGENT_MANAGER_TOOLS.getInfo]: (_, { installation }) =>
-      infoOf(installation),
+      infoOf(installation, state().managedNamespaces(installation)),
     [AGENT_MANAGER_TOOLS.listOrganizations]: (_, { installation }) =>
       state().listOrganizations(installation),
     [AGENT_MANAGER_TOOLS.getOrganization]: (args, { installation }) => {

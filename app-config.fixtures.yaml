@@ -44,3 +44,6 @@ muster:
 
 agentPlatform:
   fixtures: true
+  # The organizations pages, which the fixture agent-manager serves.
+  organizations:
+    enabled: true
