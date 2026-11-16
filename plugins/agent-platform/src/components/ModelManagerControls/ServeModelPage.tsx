@@ -43,6 +43,7 @@ import {
   type ServeSeed,
 } from '../../lib/modelManagerServe';
 import { formatBytes } from '../../lib/formatNumbers';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 import {
   modelManagerFitQueryKey,
   modelManagerNodesQueryKey,
@@ -54,6 +55,7 @@ import type {
   ServingCapabilities,
 } from '../../lib/serving';
 import { HOSTING_FLOW_CONTEXT } from '../ModelHostingActions';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { BACKEND_LABEL } from '../ServingPage/ServedModelsGroupHeader';
 
 /** Where a model can be served: an installation's backend that can `load`. */
@@ -548,6 +550,12 @@ export function ServeModelPage({
     onServed?.(target, answer);
   };
 
+  // The portal refused the session token on a read: said once, with the
+  // sign-in, where the presets' or else the fit's failure shows. A refused
+  // load keeps its words (`load.error`).
+  const presetsRefused = presets.error instanceof PortalSessionEndedError;
+  const fitRefused = activeFit.error instanceof PortalSessionEndedError;
+
   const isBusy = load.isPending;
   const fitBlocks =
     needsFit &&
@@ -661,7 +669,8 @@ export function ServeModelPage({
           />
         )}
 
-        {target && usesPresets && presets.isError && (
+        {target && usesPresets && presetsRefused && <PortalSessionEndedAlert />}
+        {target && usesPresets && presets.isError && !presetsRefused && (
           <Alert
             status="danger"
             description={`The presets of ${describeLoadTarget(target)} could not be read: ${presets.error.message}`}
@@ -794,7 +803,8 @@ export function ServeModelPage({
                 Checking whether {choice.label} fits the pool…
               </Text>
             )}
-            {activeFit.isError && (
+            {fitRefused && !presetsRefused && <PortalSessionEndedAlert />}
+            {activeFit.isError && !fitRefused && (
               <Alert
                 status="danger"
                 title="Could not check the fit"

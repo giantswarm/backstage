@@ -860,10 +860,12 @@ cluster-manager, toolchain-manager and workspace-manager clients, the served
 model try and the tool catalogue reads through muster do the same
 (giantswarm/backstage#3506). The Sessions page and rail, the session chat (a
 read, a send, an answer, a Stop), the agent's sessions, toolchains, workspaces,
-served models, GPU node pools and the Tools step show `PortalSessionEndedAlert`;
-a page that gathers reads of many sources asks the query cache whether one of
-them was refused that way (`usePortalSessionEnded`). Such a read is not
-retried. The agent-platform backend never answers Backstage's
+served models, GPU node pools, the Tools step, Serve model and Pull model, the
+workspace editor and the Toolchains tab show `PortalSessionEndedAlert`; a page
+that gathers reads of many sources asks the query cache whether one of them was
+refused that way (`usePortalSessionEnded`) and shows the alert one time (the
+workspace editor above its form, which it keeps). A refused load or pull says
+it in words only (giantswarm/backstage#3565). Such a read is not retried. The agent-platform backend never answers Backstage's
 `AuthenticationError` itself: an installation's refusal of the person's token
 (kagent, its gateway, Mimir) and a missing installation token, on the kagent,
 try and credential routes, are `InstallationAuthenticationError`, a 401 that

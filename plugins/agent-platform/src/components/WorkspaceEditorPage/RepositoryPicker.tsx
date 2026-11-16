@@ -15,6 +15,7 @@ import {
   EDITOR_PAGE_SIZE,
   useRepositoriesPage,
 } from '../../hooks/useWorkspaceEditor';
+import { isPortalSessionRefusal } from '../../lib/portalSession';
 import type { SourceDraft } from '../../lib/workspaceDraft';
 import { shortAge } from '../../lib/shortAge';
 import {
@@ -29,6 +30,7 @@ import {
   sameName,
   uniqueNames,
 } from '../../lib/workspaceSelection';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { repositoryNoun } from './repositoryNoun';
 import {
   countSummary,
@@ -144,6 +146,11 @@ export type RepositoryPickerProps = {
   providerKind: string | undefined;
   /** Opens on "selected only", the picks and exclusions, instead of the listing. */
   startsOnPicks?: boolean;
+  /**
+   * The page says the portal session ended already: a listing the portal
+   * refused says nothing more here.
+   */
+  sessionEndedShown?: boolean;
 };
 
 /**
@@ -164,6 +171,7 @@ export function RepositoryPicker({
   count,
   providerKind,
   startsOnPicks = false,
+  sessionEndedShown = false,
 }: RepositoryPickerProps) {
   const pickerRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState('');
@@ -357,7 +365,10 @@ export function RepositoryPicker({
             </Text>
           )}
           {listing.isLoading && <Skeleton width="100%" height={120} />}
-          {listing.error && (
+          {isPortalSessionRefusal(listing.error) && !sessionEndedShown && (
+            <PortalSessionEndedAlert />
+          )}
+          {listing.error && !isPortalSessionRefusal(listing.error) && (
             <Alert
               status="warning"
               title={`Could not list the ${repositoryNoun(providerKind, 2)}`}
