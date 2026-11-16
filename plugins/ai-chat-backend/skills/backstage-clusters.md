@@ -30,7 +30,6 @@
     - All labels and annotations of the cluster resource
     - Links to dashboards in Grafana
     - Links to Alert management in Grafana
-    - Link to the legacy web UI (Happa)
   - In case of a management cluster, this page also provides:
     - Flux overview
       - Version of Flux CD deployed
