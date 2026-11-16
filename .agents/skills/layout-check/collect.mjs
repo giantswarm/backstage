@@ -86,6 +86,24 @@ export function collectLayout(options) {
       ignore.some(sel => el.closest(sel)),
   );
 
+  /**
+   * Whether `e` holds the full value of `text` for hover or focus: a
+   * `title`, `data-full-text`, or an `aria-describedby` naming a tooltip or
+   * a description that contains the text. Not any description: react-aria
+   * describes every sortable column header by its sort hint.
+   */
+  const holdsFullText = (e, text) => {
+    if (e.title || e.getAttribute('data-full-text')) return true;
+    const by = e.getAttribute('aria-describedby');
+    if (!by) return false;
+    const norm = v => (v || '').replace(/\s+/g, ' ').trim();
+    return by.split(/\s+/).some(id => {
+      const d = document.getElementById(id);
+      if (!d) return false;
+      return d.getAttribute('role') === 'tooltip' || (text && norm(d.textContent).includes(norm(text)));
+    });
+  };
+
   /** Visible as a person sees it: rendered, not transparent, more than a hairline. */
   const visible = memo(el => {
     if (
@@ -648,9 +666,7 @@ export function collectLayout(options) {
           const s = style(e);
           if (s.textOverflow === 'ellipsis' && hides(s.overflowX)) ellipsis = true;
           if (s.webkitLineClamp && s.webkitLineClamp !== 'none') ellipsis = true;
-          if (e.title || e.getAttribute('aria-describedby') || e.getAttribute('data-full-text')) {
-            fullText = true;
-          }
+          if (holdsFullText(e, node.nodeValue)) fullText = true;
         }
       }
       if (raw.length === 0) continue;
@@ -703,9 +719,7 @@ export function collectLayout(options) {
     const axis = cutX ? 'x' : 'y';
     let fullText = false;
     for (let e = el, depth = 0; e && e !== doc && depth < 4; e = e.parentElement, depth++) {
-      if (e.title || e.getAttribute('aria-describedby') || e.getAttribute('data-full-text')) {
-        fullText = true;
-      }
+      if (holdsFullText(e, el.textContent)) fullText = true;
     }
     const cell = el.closest(CELL);
     truncated.push({

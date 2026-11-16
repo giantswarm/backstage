@@ -106,7 +106,8 @@ finding is right as it is.
   squeezed to less than two em (a letter or two), with a tooltip or not; a
   control cut off by an ancestor that hides its overflow. Text that ends in
   an ellipsis (or a line clamp) is fine when its full value is there on
-  hover (a `title`, a tooltip by `aria-describedby`, or `data-full-text`, on
+  hover (a `title`, `data-full-text`, or an `aria-describedby` naming a
+  tooltip or a description holding the text, on
   it or up to three ancestors), and a **warning** when it isn't. A scroll
   container cuts nothing: a person scrolls to the rest.
   In a table, headers and short values are `table-fit`'s instead.
