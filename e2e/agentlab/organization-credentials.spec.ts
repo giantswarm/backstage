@@ -23,7 +23,8 @@ test.use({ trace: 'off', video: 'off', screenshot: 'off' });
  * theirs: agent-manager binds the request to who prepared it.
  *
  * Needs the lab's agent-manager 2.22 with `credentials.uiURL` set to this
- * portal's `/organizations/<installation>/{parent}/{organization}/credentials/{operation}`,
+ * portal's `/customize/models/credentials/<installation>/{namespace}/{operation}`
+ * or `/organizations/<installation>/{parent}/{organization}/credentials/{operation}`,
  * `agentManager.route` on (the portal's backend reaches agent-manager there),
  * and the lab's first organization, `AGENTLAB_ORGANIZATION` as
  * `<parent>/<name>` (default `agentlab-organizations/default`), whose

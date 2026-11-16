@@ -6,10 +6,7 @@ import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react
 import { AgentManagerClient } from '../apis/AgentManagerClient';
 import { useOrganizationDirectory } from '../components/OrganizationDirectoryProvider';
 import { preparedCredentialOperation } from '../lib/credentialOperations';
-import {
-  organizationCredentialsRouteRef,
-  modelCredentialsRouteRef,
-} from '../routes';
+import { modelCredentialsRouteRef } from '../routes';
 import { invalidateModelReads } from './defaultModelWrites';
 import { modelScopeRefusal } from './modelScope';
 import { useEnsureModelOperations } from './useEnsureModelOperations';
@@ -25,8 +22,7 @@ export function useSetDefaultModelConfig() {
   const musterApi = useMusterPluginApi();
   const ensureModelOperations = useEnsureModelOperations();
   const organizations = useOrganizationDirectory();
-  const organizationForm = useRouteRef(organizationCredentialsRouteRef);
-  const platformForm = useRouteRef(modelCredentialsRouteRef);
+  const credentialForm = useRouteRef(modelCredentialsRouteRef);
   const mutation = useTrackedMutation<
     SetDefaultModelConfigResult,
     Error,
@@ -39,7 +35,6 @@ export function useSetDefaultModelConfig() {
         throw new Error('agent-manager is not reachable on this installation.');
       const installation = modelConfig.cluster;
       const namespace = modelConfig.getNamespace() ?? '';
-      const organization = organizations.directory.get(namespace);
       const scopeRefusal = modelScopeRefusal(
         organizations,
         installation,
@@ -59,14 +54,7 @@ export function useSetDefaultModelConfig() {
         });
         const operation = preparedCredentialOperation(result);
         if (!operation) return {};
-        const form = organization
-          ? organizationForm?.({
-              installation,
-              parent: organization.parent,
-              name: organization.organization,
-              operation,
-            })
-          : platformForm?.({ installation, namespace, operation });
+        const form = credentialForm?.({ installation, namespace, operation });
         if (!form)
           throw new Error(
             'This model needs a credential, but the credential form is unavailable.',

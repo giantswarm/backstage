@@ -119,6 +119,10 @@ async function renderNewModel(scenario: OrganizationsScenario) {
       <PageHeaderActionsProvider>
         <Routes>
           <Route path="/customize/models/*" element={<ModelsRouter />} />
+          <Route
+            path="/customize/models/credentials/*"
+            element={<CurrentPath />}
+          />
           <Route path="*" element={<CurrentPath />} />
         </Routes>
       </PageHeaderActionsProvider>
@@ -170,7 +174,7 @@ describe('Connect a model, under the Models tab: the owner', () => {
 
     await waitFor(() =>
       expect(screen.getByTestId('path')).toHaveTextContent(
-        `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
+        `/customize/models/credentials/gazelle/agents-payments-x7k2q/${CREDENTIAL_OPERATION}`,
       ),
     );
     expect(toolCalls(callTool, 'set_organization_model')).toEqual([

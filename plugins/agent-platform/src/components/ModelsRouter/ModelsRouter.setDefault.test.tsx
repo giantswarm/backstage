@@ -176,6 +176,10 @@ async function renderModelPage(
         <PageHeaderActionsProvider>
           <Routes>
             <Route path="/customize/models/*" element={<ModelsRouter />} />
+            <Route
+              path="/customize/models/credentials/*"
+              element={<Location />}
+            />
             <Route path="/organizations/*" element={<Location />} />
           </Routes>
         </PageHeaderActionsProvider>
@@ -240,7 +244,7 @@ describe('ModelsRouter · Set as default on an organization model', () => {
     await user.click(await setAsDefault());
 
     expect(await screen.findByTestId('location')).toHaveTextContent(
-      `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
+      `/customize/models/credentials/gazelle/agents-payments-x7k2q/${CREDENTIAL_OPERATION}`,
     );
   });
 

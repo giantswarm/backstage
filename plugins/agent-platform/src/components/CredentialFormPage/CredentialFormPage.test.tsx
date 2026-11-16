@@ -389,6 +389,52 @@ describe('CredentialFormPage', () => {
     expect(api.saveOperation).not.toHaveBeenCalled();
   });
 
+  describe('a link that names the namespace', () => {
+    it("opens an organization's request and names the organization from it", async () => {
+      const api = fakeCredentialsApi();
+      await renderForm(api, { namespace: 'agents-payments-x7k2q' });
+
+      expect(
+        await screen.findByText(/Model claude-sonnet \(new\)/),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Organization')).toBeInTheDocument();
+      expect(
+        screen.getAllByText(
+          'payments · org-acme · agents-payments-x7k2q · gazelle',
+        ).length,
+      ).toBeGreaterThan(0);
+      expect(screen.getByLabelText(/^Value/)).toBeEnabled();
+    });
+
+    it("opens the installation's request as the installation", async () => {
+      const api = fakeCredentialsApi(
+        read({
+          ...CONFIRMATION,
+          organization: { scope: 'platform', namespace: 'kagent' },
+        }),
+      );
+      await renderForm(api, { namespace: 'kagent' });
+
+      expect(
+        await screen.findByText(/Model claude-sonnet \(new\)/),
+      ).toBeInTheDocument();
+      expect(screen.getAllByText('Installation').length).toBeGreaterThan(0);
+      expect(screen.queryByText('Organization')).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/^Value/)).toBeEnabled();
+    });
+
+    it('refuses a request that writes in another namespace', async () => {
+      const api = fakeCredentialsApi();
+      await renderForm(api, { namespace: 'kagent' });
+
+      expect(
+        await screen.findByText('This request is not for kagent'),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText(/^Value/)).not.toBeInTheDocument();
+      expect(api.saveOperation).not.toHaveBeenCalled();
+    });
+  });
+
   it('posts the value once with the confirmation’s version and never shows it back', async () => {
     const user = userEvent.setup();
     const api = fakeCredentialsApi();

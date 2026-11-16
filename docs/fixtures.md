@@ -253,7 +253,11 @@ in an organization being erased) and kept in memory until the page reloads:
   gone, with its agents and models;
 - adding a model or asking for a new key of a model or a connector: the tool
   prepares a credential operation, the credential form reads and saves it,
-  and the save writes the model. An operation expires after 30 minutes
+  and the save writes the model. The Models page opens the form at
+  `/customize/models/credentials/<installation>/<namespace>/<operation>` for
+  both scopes, as agent-manager's `credentials.uiURL` names it; the form reads
+  the organization or the installation from the operation. An operation
+  expires after 30 minutes
   (`OPERATION_TTL_MS`). A Vertex AI model's key is a service-account JSON of
   its project (`inputFormat: google-service-account-json`), checked on save;
   a write with `create` of a model that exists is `already_exists`;

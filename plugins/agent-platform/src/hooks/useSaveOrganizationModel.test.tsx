@@ -314,7 +314,7 @@ describe('useSaveOrganizationModel', () => {
     );
 
     expect(await screen.findByTestId('answer')).toHaveTextContent(
-      `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
+      `/customize/models/credentials/gazelle/agents-payments-x7k2q/${CREDENTIAL_OPERATION}`,
     );
     expect(callTool).toHaveBeenCalledWith(
       'x_agent-manager_set_organization_model',
@@ -399,7 +399,7 @@ describe('useSaveOrganizationModel', () => {
     );
 
     expect(await screen.findByTestId('answer')).toHaveTextContent(
-      `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
+      `/customize/models/credentials/gazelle/agents-payments-x7k2q/${CREDENTIAL_OPERATION}`,
     );
     expect(callTool.mock.calls).toEqual([
       [
@@ -454,7 +454,7 @@ describe('useSaveOrganizationModel', () => {
     );
 
     expect(await screen.findByTestId('answer')).toHaveTextContent(
-      `/credentials/${CREDENTIAL_OPERATION}`,
+      `/credentials/gazelle/${PAYMENTS.namespace}/${CREDENTIAL_OPERATION}`,
     );
     expect(callTool.mock.calls.map(([tool]) => tool)).toEqual([
       'x_agent-manager_set_organization_model',

@@ -50,6 +50,10 @@ export type CredentialFormPageProps = {
   parent?: string;
   /** The organization's name. */
   name?: string;
+  /**
+   * The namespace the request writes in, for a link of either scope: the
+   * organization or the installation is then read from the request.
+   */
   namespace?: string;
   /** agent-manager's operation id, the request the form is for. */
   operation: string;
@@ -344,10 +348,9 @@ function SaveError({
 }
 
 /**
- * Whether the operation was prepared for the organization the link names.
- * The link is not trusted for it: a link to one organization with another's
- * request would have the person enter a key for an organization they do not
- * see.
+ * Whether the operation was prepared for the target the link names. The link
+ * is not trusted for it: a link to one organization with another's request
+ * would have the person enter a key for an organization they do not see.
  */
 function sameOrganization(
   operation: CredentialOperation,
@@ -356,10 +359,7 @@ function sameOrganization(
   namespace: string | undefined,
 ) {
   if (namespace) {
-    return (
-      operation.organization.scope === 'platform' &&
-      operation.organization.namespace === namespace
-    );
+    return operation.organization.namespace === namespace;
   }
   return (
     operation.organization.parent === parent &&
@@ -435,31 +435,53 @@ export function CredentialFormPage({
     }
   };
 
+  const loaded = query.data;
+  // A namespace link names no organization: the request it opens does, once
+  // read and found to write in that namespace.
+  const target =
+    namespace && loaded?.operation.organization.namespace === namespace
+      ? loaded.operation.organization
+      : undefined;
+  const organizationTarget =
+    target &&
+    target.scope !== 'platform' &&
+    target.parent &&
+    target.organization
+      ? { parent: target.parent, name: target.organization }
+      : undefined;
+  const linkParent = parent ?? organizationTarget?.parent;
+  const linkName = name ?? organizationTarget?.name;
+  const installationTarget = target?.scope === 'platform';
+
   const organizationsLink = useRouteRef(organizationsRouteRef);
   const organizationLink = useRouteRef(organizationDetailRouteRef);
   const modelsLink = useRouteRef(modelsRouteRef);
   const organizationHref =
-    parent && name
-      ? organizationLink?.({ installation, parent, name })
+    linkParent && linkName
+      ? organizationLink?.({ installation, parent: linkParent, name: linkName })
       : modelsLink?.();
+  const targetLabel =
+    linkName ??
+    (installationTarget ? 'Installation' : namespace) ??
+    'Installation';
+  const underOrganizations = Boolean(linkParent && linkName);
   const breadcrumbs: BreadcrumbItem[] = [
     {
-      label: namespace ? 'Models' : 'Organizations',
-      href: namespace ? modelsLink?.() : organizationsLink?.(),
+      label: underOrganizations ? 'Organizations' : 'Models',
+      href: underOrganizations ? organizationsLink?.() : modelsLink?.(),
     },
-    { label: name ?? namespace ?? 'Installation', href: organizationHref },
+    { label: targetLabel, href: organizationHref },
     { label: 'Enter a credential' },
   ];
   const frame = {
     breadcrumbs,
-    documentTitle: ['Enter a credential', name ?? namespace ?? 'Installation'],
+    documentTitle: ['Enter a credential', targetLabel],
   };
   const startAgainFrom = namespace ? 'Models' : 'the organization’s tab';
   const backLink = organizationHref ? (
-    <Link href={organizationHref}>Back to {name ?? 'models'}</Link>
+    <Link href={organizationHref}>Back to {linkName ?? 'models'}</Link>
   ) : undefined;
 
-  const loaded = query.data;
   const pairs = loaded ? requestedPairs(loaded.operation) : [];
   const [stale, setStale] = useState(false);
   const phase = operationPhase(loaded?.operation, receipt, cancelled, stale);
@@ -713,7 +735,9 @@ export function CredentialFormPage({
     <ShellPage
       title="Enter a credential"
       {...frame}
-      meta={[name, parent, namespace, installation].filter(Boolean).join(' · ')}
+      meta={[linkName, linkParent, namespace, installation]
+        .filter(Boolean)
+        .join(' · ')}
     >
       <Flex direction="column" gap="5">
         {notice ? (

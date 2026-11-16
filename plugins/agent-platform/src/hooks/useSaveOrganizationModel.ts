@@ -13,10 +13,7 @@ import {
   type ModelConfigFormValues,
 } from '../lib/modelConfigs';
 import type { OrganizationNamespace } from '../lib/organizations';
-import {
-  organizationCredentialsRouteRef,
-  modelCredentialsRouteRef,
-} from '../routes';
+import { modelCredentialsRouteRef } from '../routes';
 import {
   AgentManagerError,
   AgentManagerNotConnectedError,
@@ -81,8 +78,7 @@ export function useSaveOrganizationModel(installation: string | undefined) {
   const ensureModelOperations = useEnsureModelOperations();
   const organizations = useOrganizationDirectory();
   const queryClient = useQueryClient();
-  const formLink = useRouteRef(organizationCredentialsRouteRef);
-  const platformFormLink = useRouteRef(modelCredentialsRouteRef);
+  const formLink = useRouteRef(modelCredentialsRouteRef);
 
   const mutation = useTrackedMutation<
     SaveOrganizationModelResult,
@@ -127,14 +123,7 @@ export function useSaveOrganizationModel(installation: string | undefined) {
         return client.setOrganizationModel(request);
       };
       const formOf = (operation: string) => {
-        const form = organization
-          ? formLink?.({
-              installation,
-              parent: organization.parent,
-              name: organization.organization,
-              operation,
-            })
-          : platformFormLink?.({ installation, namespace, operation });
+        const form = formLink?.({ installation, namespace, operation });
         if (!form) {
           throw new Error(
             'The key is entered on the credential form, and this portal has none.',
