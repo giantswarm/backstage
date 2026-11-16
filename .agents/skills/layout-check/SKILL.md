@@ -8,10 +8,14 @@ description: Measure portal pages for layout bugs in a headless browser of your 
 Unit tests don't see layout, and layout bugs only show on the rendered page:
 a button running over its neighbour at 375px, a picker sitting between two
 rows of filters after a longer value made them wrap. This check finds such
-bugs by measuring the page: it opens each page in a headless Chromium of its
-own (Playwright's, the one the e2e suite uses), so runs in different
-checkouts never share a browser, and reads every control's, icon's and line
-of text's box from the DOM. No screenshots.
+bugs by measuring the page: it opens each page in a browser of its own, so
+runs in different checkouts never share one, and reads every control's,
+icon's and line of text's box from the DOM. No screenshots.
+
+The browser is Playwright's Chromium headless shell, what `chromium.launch()`
+starts, as in the e2e suites (the agentlab suite on Linux with `unshare` and
+`pasta` runs the full Chromium instead). The headless shell is on purpose:
+the full Chromium renders on the GPU but was measured no faster (#3563).
 
 | File | What it is |
 |---|---|
@@ -65,21 +69,6 @@ alignment: Agents (/customize/agents) @ 768px, scenario base, state "Sort: Last 
     button "Sort agents" (div.bui-Flex > div.bui-Select > button.bui-SelectTrigger) at x=378 y=-44 147×32
     group "Filters" (div.bui-Flex > div.bui-Flex > div.bui-Flex) at x=77 y=-64 293×72
 ```
-
-The browser is Playwright's headless shell, which renders in software
-(SwiftShader). Playwright's full Chromium (`channel: 'chromium'`) renders on
-the GPU, but doesn't make the check faster: the time goes to loading pages
-and waiting for them to settle, not to painting. Measured on an Apple M5
-Pro, 10 spec pages × 3 widths × `base,many`, concurrency 3, three runs each
-(two with GPU rasterization forced):
-
-| Browser | Wall time | CPU time (process tree) | Peak memory (process tree) |
-|---|---|---|---|
-| Headless shell | 121–124 s | 355–359 s | 8.8–10.4 GB |
-| Full Chromium (ANGLE Metal) | 124–128 s | 386–394 s | 9.2–11.2 GB |
-| Full Chromium, GPU rasterization forced | 122–124 s | 385–393 s | 11.2–11.3 GB |
-
-Both gave the same findings and warnings.
 
 ## When
 
