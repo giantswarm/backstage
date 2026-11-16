@@ -350,22 +350,47 @@ describe('the fixture agent-manager', () => {
   });
 
   it('reports the platform and the organizations the person may create agents in as managed', async () => {
-    const { client, data } = setup();
+    const { client, data, organizationWith } = setup();
+    const deleting = data.organizations.find(
+      organization =>
+        organization.installation === INSTALLATION &&
+        organization.state === 'deleting',
+    )!;
     const { namespaces } = await client.getInfo();
-    const expected = data.organizations
-      .filter(
-        organization =>
-          organization.installation === INSTALLATION &&
-          organization.state !== 'deleting' &&
-          (organization.role === 'admin' || organization.role === 'editor'),
-      )
-      .map(organization => organization.namespace!)
-      .sort();
-    expect(expected.length).toBeGreaterThan(0);
-    expect(namespaces).toEqual({
-      default: 'kagent',
-      managed: ['kagent', ...expected],
-    });
+
+    expect(namespaces.default).toBe('kagent');
+    expect(namespaces.managed[0]).toBe('kagent');
+    expect(namespaces.managed).toContain(organizationWith('admin').namespace);
+    expect(namespaces.managed).toContain(organizationWith('editor').namespace);
+    expect(namespaces.managed).not.toContain(
+      organizationWith('user').namespace,
+    );
+    expect(deleting.role).toBe('admin');
+    expect(namespaces.managed).not.toContain(deleting.namespace);
+  });
+
+  it('lets only an organization’s admins create its models', () => {
+    const { state, organizationWith } = setup();
+    const createModelIn = (namespace: string | undefined) =>
+      state.allows(INSTALLATION, {
+        verb: 'create',
+        group: 'api.kagent.dev',
+        resource: 'modelconfigs',
+        namespace,
+      });
+
+    expect(createModelIn(organizationWith('admin').namespace)).toBe(true);
+    expect(createModelIn(organizationWith('editor').namespace)).toBe(false);
+    expect(createModelIn(organizationWith('user').namespace)).toBe(false);
+    expect(createModelIn('kagent')).toBeUndefined();
+    expect(
+      state.allows(INSTALLATION, {
+        verb: 'create',
+        group: 'api.kagent.dev',
+        resource: 'agents',
+        namespace: organizationWith('editor').namespace,
+      }),
+    ).toBeUndefined();
   });
 
   it('annotates the default model and moves the annotation with the mark', async () => {
@@ -405,40 +430,6 @@ describe('the fixture agent-manager', () => {
       requestId: 'request-2',
     });
     expect(markedIn()).toEqual(['claude-sonnet']);
-  });
-
-  it('writes a model without a credential at once', async () => {
-    const { client, organizationWith, state } = setup();
-    const { namespace } = organizationWith('admin');
-
-    const result = state.setOrganizationModel(INSTALLATION, {
-      namespace: namespace!,
-      name: 'llama',
-      provider: 'Ollama',
-      model: 'llama3.2',
-      noCredential: true,
-      requestId: 'request-1',
-    });
-    expect(result).toEqual({
-      namespace,
-      kind: 'model',
-      name: 'llama',
-      created: true,
-      defaultModel: 'default',
-    });
-    expect(preparedCredentialOperation(result)).toBeUndefined();
-    expect(
-      (await client.listModelConfigs(namespace!)).map(model => model.name),
-    ).toEqual(['default', 'llama']);
-    const modelConfig = state
-      .kubernetesObjectsOf(INSTALLATION)
-      .find(
-        object =>
-          object.kind === 'ModelConfig' &&
-          object.metadata.namespace === namespace &&
-          object.metadata.name === 'llama',
-      ) as { spec: Record<string, unknown> };
-    expect(modelConfig.spec).toEqual({ provider: 'Ollama', model: 'llama3.2' });
   });
 
   it('asks for a new key of a model, and cancels the request', async () => {

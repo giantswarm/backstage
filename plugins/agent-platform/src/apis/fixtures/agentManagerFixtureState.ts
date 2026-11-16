@@ -6,7 +6,10 @@ import {
   type FixtureDataSet,
   type FixtureOrganization,
 } from '@giantswarm/backstage-plugin-gs-common/fixtures';
-import type { KubeObjectInterface } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  ModelConfig,
+  type KubeObjectInterface,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import type {
   AgentManagerAgent,
@@ -57,10 +60,11 @@ import {
   harnessObjectOf,
   listedOrganizationOf,
   modelConfigObjectOf,
+  permissionsOf,
   type FixtureAgentRecord,
   type FixtureModel,
 } from './agentPlatformFixtureData';
-import { MODEL_CONFIG_NAMESPACE } from '../../lib/modelConfigs';
+import { PLATFORM_TENANT_NAMESPACE } from '../../lib/tenants';
 import { FIXTURE_USER } from './fixtureIdentity';
 import { kagentFixtureState, KagentFixtureState } from './kagentFixtureState';
 
@@ -79,14 +83,6 @@ import { kagentFixtureState, KagentFixtureState } from './kagentFixtureState';
  * An organization being erased takes one such step per stage of the erasure
  * and is gone after the last.
  */
-
-/**
- * `set_organization_model`'s arguments as the fixture reads them: the
- * request, and whether the model goes without a credential.
- */
-type FixtureModelRequest = OrganizationModelRequest & {
-  noCredential?: boolean;
-};
 
 /** How long the controller takes to reach a verdict on a written agent. */
 export const SETTLE_MS = 4000;
@@ -521,7 +517,7 @@ export class AgentManagerFixtureState {
   }
 
   private mustManage(organization: FixtureOrganization): void {
-    if (organization.role !== 'admin') {
+    if (!permissionsOf(organization.role).manage) {
       throw refusal(
         'forbidden',
         `${FIXTURE_USER.email} may not manage the organization ${organization.name}: that needs the admin role there.`,
@@ -530,7 +526,7 @@ export class AgentManagerFixtureState {
   }
 
   private mustCreateAgentsIn(organization: FixtureOrganization): void {
-    if (organization.role !== 'admin' && organization.role !== 'editor') {
+    if (!permissionsOf(organization.role).createAgents) {
       throw refusal(
         'forbidden',
         `${FIXTURE_USER.email} may not create agents in the organization ${organization.name}: that needs the editor role there.`,
@@ -566,7 +562,7 @@ export class AgentManagerFixtureState {
       connectors: connectorsOf().map(connector => connector.name),
       egressPolicies: egressPoliciesOf(namespace).map(policy => policy.name),
       credentials: [
-        ...models.flatMap(model => (model.secret ? [model.secret] : [])),
+        ...models.map(model => model.secret),
         ...connectorsOf().flatMap(connector =>
           connector.credentials.map(credential => credential.secret),
         ),
@@ -817,7 +813,7 @@ export class AgentManagerFixtureState {
 
   setOrganizationModel(
     installation: string,
-    request: FixtureModelRequest,
+    request: OrganizationModelRequest,
   ): CredentialResourceResult {
     const organization = this.writableIn(installation, request.namespace);
     this.mustManage(organization);
@@ -832,7 +828,7 @@ export class AgentManagerFixtureState {
   private writeModel(
     installation: string,
     organization: FixtureOrganization,
-    request: FixtureModelRequest,
+    request: OrganizationModelRequest,
   ): CredentialResourceResult {
     const { models } = this.stateOf(installation);
     const existing = models.get(keyOf(request.namespace, request.name));
@@ -845,13 +841,8 @@ export class AgentManagerFixtureState {
       }
       const model = request.model || existing.model;
       const makeDefault = Boolean(request.default) && !existing.default;
-      const dropCredential = Boolean(request.noCredential) && !!existing.secret;
-      if (model !== existing.model || makeDefault || dropCredential) {
+      if (model !== existing.model || makeDefault) {
         existing.model = model;
-        if (dropCredential) {
-          delete existing.secret;
-          delete existing.key;
-        }
         if (makeDefault) {
           this.markDefault(installation, existing);
         }
@@ -872,38 +863,9 @@ export class AgentManagerFixtureState {
       provider,
       model: request.model ?? '',
       default: false,
-      ...(!request.noCredential && {
-        secret: `${request.name}-model-key`,
-        key: keyNameOf(provider),
-      }),
+      secret: `${request.name}-model-key`,
+      key: keyNameOf(provider),
     };
-    const create = (): CredentialResourceResult => {
-      models.set(keyOf(model.namespace, model.name), model);
-      const isFirst = this.modelsIn(installation, model.namespace).length === 1;
-      if (request.default || isFirst) {
-        this.markDefault(installation, model);
-      }
-      return {
-        namespace: model.namespace,
-        kind: 'model',
-        name: model.name,
-        created: true,
-        defaultModel: this.defaultModelIn(installation, model.namespace),
-        ...(model.secret &&
-          model.key && {
-            credentials: [
-              { secret: model.secret, key: model.key, state: 'present' },
-            ],
-          }),
-      };
-    };
-    // A model without a credential has no key to ask for: agent-manager
-    // writes it at once, with no credential operation.
-    if (!model.secret || !model.key) {
-      const result = create();
-      this.changed();
-      return result;
-    }
     return this.prepare(
       installation,
       organization,
@@ -928,7 +890,24 @@ export class AgentManagerFixtureState {
           ],
         },
       },
-      create,
+      () => {
+        models.set(keyOf(model.namespace, model.name), model);
+        const isFirst =
+          this.modelsIn(installation, model.namespace).length === 1;
+        if (request.default || isFirst) {
+          this.markDefault(installation, model);
+        }
+        return {
+          namespace: model.namespace,
+          kind: 'model',
+          name: model.name,
+          created: true,
+          defaultModel: this.defaultModelIn(installation, model.namespace),
+          credentials: [
+            { secret: model.secret, key: model.key, state: 'present' },
+          ],
+        };
+      },
     );
   }
 
@@ -945,7 +924,7 @@ export class AgentManagerFixtureState {
         .map((model): CredentialReference => ({
           kind: 'ModelConfig',
           name: model.name,
-          key,
+          key: model.key,
           provider: model.provider,
         })),
       ...connectorsOf()
@@ -1495,23 +1474,52 @@ export class AgentManagerFixtureState {
 
   /**
    * The namespaces `get_info` reports as `managed`, where the person may
-   * create agents: the platform's, and their organizations' namespaces where
-   * they are an admin or an editor, except one being erased.
+   * create agents: the platform's, and the namespaces of their organizations
+   * whose role allows it, except one being erased.
    */
   managedNamespaces(installation: string): string[] {
-    return [
-      MODEL_CONFIG_NAMESPACE,
-      ...this.stateOf(installation)
-        .organizations.filter(
-          organization =>
-            (organization.role === 'admin' || organization.role === 'editor') &&
-            organization.state !== 'deleting',
-        )
-        .flatMap(organization =>
-          organization.namespace ? [organization.namespace] : [],
-        )
-        .sort(),
-    ];
+    const organizations = this.stateOf(installation)
+      .organizations.filter(
+        organization =>
+          permissionsOf(organization.role).createAgents &&
+          organization.state !== 'deleting',
+      )
+      .flatMap(organization =>
+        organization.namespace ? [organization.namespace] : [],
+      );
+    return [PLATFORM_TENANT_NAMESPACE, ...organizations.sort()];
+  }
+
+  /**
+   * Whether the person may do `verb` on `resource` of `group` in `namespace`,
+   * for an access review the fixture Kubernetes API answers: a model
+   * (`ModelConfig`) of an organization is written by its admins only, as
+   * `set_organization_model` requires; undefined for anything else.
+   */
+  allows(
+    installation: string,
+    {
+      verb,
+      group,
+      resource,
+      namespace,
+    }: { verb?: string; group?: string; resource?: string; namespace?: string },
+  ): boolean | undefined {
+    const organization = this.stateOf(installation).organizations.find(
+      candidate => candidate.namespace && candidate.namespace === namespace,
+    );
+    if (
+      !organization ||
+      group !== ModelConfig.group ||
+      resource !== ModelConfig.plural ||
+      verb !== 'create'
+    ) {
+      return undefined;
+    }
+    return (
+      permissionsOf(organization.role).manage &&
+      organization.state !== 'deleting'
+    );
   }
 
   /**

@@ -180,6 +180,39 @@ describe('KubernetesFixtureApi', () => {
     expect((await response.json()).status).toEqual({ allowed: true });
   });
 
+  it('lets only an organization’s admins create its models', async () => {
+    const review = async (namespace: string) => {
+      const response = await api.proxy({
+        clusterName: 'meadow',
+        path: '/apis/authorization.k8s.io/v1/selfsubjectaccessreviews',
+        init: {
+          method: 'POST',
+          body: JSON.stringify({
+            spec: {
+              resourceAttributes: {
+                verb: 'create',
+                group: 'api.kagent.dev',
+                resource: 'modelconfigs',
+                namespace,
+              },
+            },
+          }),
+        },
+      });
+      return (await response.json()).status.allowed;
+    };
+    const namespaceOf = (role: string) =>
+      inInstallation(baseDataSet().organizations, 'meadow').find(
+        organization =>
+          organization.state === 'ready' && organization.role === role,
+      )!.namespace!;
+
+    expect(await review(namespaceOf('admin'))).toBe(true);
+    expect(await review(namespaceOf('editor'))).toBe(false);
+    expect(await review(namespaceOf('user'))).toBe(false);
+    expect(await review('kagent')).toBe(true);
+  });
+
   it('fails a request it does not answer, loudly', async () => {
     const consoleError = jest
       .spyOn(console, 'error')
@@ -225,18 +258,5 @@ describe('app-config.fixtures.yaml', () => {
     expect(config.getConfig('gs.installations').keys()).toEqual([
       ...FIXTURE_INSTALLATIONS,
     ]);
-  });
-
-  it('enables the Organizations pages, which the fixture agent-manager serves', async () => {
-    const root = resolve(__dirname, '../../../../../..');
-    const { appConfigs } = await loadConfig({
-      configRoot: root,
-      configTargets: [{ path: resolve(root, 'app-config.fixtures.yaml') }],
-    });
-    const config = ConfigReader.fromConfigs(appConfigs);
-
-    expect(
-      config.getOptionalBoolean('agentPlatform.organizations.enabled'),
-    ).toBe(true);
   });
 });

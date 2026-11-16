@@ -389,6 +389,11 @@ const PERMISSIONS: Record<OrganizationRole, OrganizationPermissions> = {
   none: { manage: false, member: false, createAgents: false },
 };
 
+/** What a role in an organization lets the person do there. */
+export function permissionsOf(role: OrganizationRole): OrganizationPermissions {
+  return PERMISSIONS[role];
+}
+
 /**
  * An organization as `list_organizations` lists it: with the object
  * `get_organization` answers when the person manages it, its status only
@@ -398,7 +403,7 @@ export function listedOrganizationOf(
   organization: FixtureOrganization,
 ): ListedOrganization {
   const details = platformOrganizationOf(organization);
-  const permissions = PERMISSIONS[organization.role];
+  const permissions = permissionsOf(organization.role);
   return {
     name: organization.name,
     parent: organization.parent,
@@ -458,12 +463,9 @@ export type FixtureModel = {
   model: string;
   /** The namespace's default model. */
   default: boolean;
-  /**
-   * The Secret and key the model reads its key from; absent for a model
-   * without a credential (`noCredential`).
-   */
-  secret?: string;
-  key?: string;
+  /** The Secret and key the model reads its key from. */
+  secret: string;
+  key: string;
 };
 
 /**
@@ -489,10 +491,8 @@ export function modelConfigObjectOf(
     spec: {
       provider: model.provider,
       model: model.model,
-      ...(model.secret && {
-        apiKeySecret: model.secret,
-        apiKeySecretKey: model.key,
-      }),
+      apiKeySecret: model.secret,
+      apiKeySecretKey: model.key,
     },
     status: {
       observedGeneration: 1,

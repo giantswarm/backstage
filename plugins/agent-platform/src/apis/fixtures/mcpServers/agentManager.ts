@@ -18,7 +18,7 @@ import {
   type OrganizationModelRequest,
 } from '../../../lib/organizations';
 import { DEFAULT_WORKSPACE_CAPABILITY } from '../../../lib/defaultWorkspace';
-import { MODEL_CONFIG_NAMESPACE } from '../../../lib/modelConfigs';
+import { PLATFORM_TENANT_NAMESPACE } from '../../../lib/tenants';
 import { TOOLCHAINS_CAPABILITY } from '../../../lib/toolchainManager';
 import type { ListModelConfigsAnswer } from '../../AgentManagerClient';
 import {
@@ -38,7 +38,7 @@ const infoOf = (installation: string, managed: string[]): AgentManagerInfo => ({
     schemaVersion: '1.0.0',
     schemaSource: 'registry',
   },
-  namespaces: { default: MODEL_CONFIG_NAMESPACE, managed },
+  namespaces: { default: PLATFORM_TENANT_NAMESPACE, managed },
   capabilities: {
     create: true,
     validate: true,
