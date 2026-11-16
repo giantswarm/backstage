@@ -13,6 +13,8 @@ import type { KubeObjectInterface } from '@giantswarm/backstage-plugin-kubernete
 
 import { mcpServerObjectOf, musterWorkflowObjectOf } from './musterFixtureData';
 
+export { fixtureToolNames } from './MusterFixtureApi';
+
 const objectsByInstallation = new Map<string, KubeObjectInterface[]>();
 
 /**

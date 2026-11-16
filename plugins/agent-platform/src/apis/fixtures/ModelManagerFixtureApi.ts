@@ -6,7 +6,7 @@ import type {
 // eslint-disable-next-line @backstage/no-mixed-plugin-imports -- model-manager's tools are called through muster.
 import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 
-import type { TryServedModelResult } from '../ModelManagerApi';
+import type { ModelManagerApi, TryServedModelResult } from '../ModelManagerApi';
 import { ModelManagerApiClient } from '../ModelManagerApiClient';
 import { served } from './fixtureIdentity';
 import {
@@ -23,7 +23,10 @@ import {
  * Only `tryModel`, which the portal's backend carries out, is answered here:
  * 401 without a token, the model's answer with one.
  */
-export class ModelManagerFixtureApi extends ModelManagerApiClient {
+export class ModelManagerFixtureApi
+  extends ModelManagerApiClient
+  implements ModelManagerApi
+{
   private readonly state: () => ModelHostingFixtureState;
 
   constructor(

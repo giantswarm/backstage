@@ -4,7 +4,12 @@ import {
   inInstallation,
 } from '@giantswarm/backstage-plugin-gs-common/fixtures';
 
-import { FixtureToolMissingError, MusterFixtureApi } from './MusterFixtureApi';
+import { parseTransportDetection } from '../../lib/transportDetection';
+import {
+  FixtureToolMissingError,
+  fixtureToolNames,
+  MusterFixtureApi,
+} from './MusterFixtureApi';
 
 describe('MusterFixtureApi', () => {
   const getInfo = jest.fn(() => ({ version: '1' }));
@@ -72,6 +77,44 @@ describe('MusterFixtureApi', () => {
       { a: 1 },
       { installation: 'meadow', signal: undefined },
     );
+  });
+
+  it('answers muster’s transport probe and definition check, and no write', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(
+      parseTransportDetection(
+        await api.callTool(
+          'core_mcpserver_detect',
+          { url: 'https://mcp.example.com/mcp' },
+          'meadow',
+        ),
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        transport: 'streamable-http',
+        reachable: true,
+        requiresAuth: false,
+      }),
+    );
+    await expect(
+      api.callTool('core_mcpserver_validate', { name: 'docs' }, 'meadow'),
+    ).resolves.toBe('Validation successful for mcpserver docs');
+    await expect(
+      api.callTool('core_mcpserver_create', { name: 'docs' }, 'meadow'),
+    ).rejects.toBeInstanceOf(FixtureToolMissingError);
+  });
+
+  it('names the tools it answers', () => {
+    expect([
+      ...fixtureToolNames([
+        { server: 'agent-manager', tools: { get_info: getInfo } },
+      ]),
+    ]).toEqual([
+      'x_agent-manager_get_info',
+      'core_mcpserver_detect',
+      'core_mcpserver_validate',
+    ]);
   });
 
   it('fails a tool no server handles, loudly', async () => {

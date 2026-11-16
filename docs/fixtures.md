@@ -92,7 +92,12 @@ and their run statistics; and MCP usage and tool latency over any window,
 narrowed to some connectors or one tool. A connector's tools are named after
 it and derived from it (`connectorToolsOf`), so every read names the same
 ones. The tools of the data set's connectors have no handler: running one
-fails as described below.
+fails as described below. Of muster's own tools, `callTool` answers the two
+the New connector flow calls before it saves, the transport probe
+(`core_mcpserver_detect`, a reachable streamable-HTTP server without OAuth)
+and the definition check (`core_mcpserver_validate`, which passes); the writes
+to connectors (`core_mcpserver_create`, `_update`, `_delete`,
+`core_service_start`, `_stop`, `_restart`) are not served.
 
 The unreachable installation's reads fail as muster-backend refuses them, with
 a 503 "<installation> did not answer: not reachable from this portal", and its
@@ -318,6 +323,16 @@ whose `tools` map a tool's own name to its handler. The handlers live with the
 plugin that calls the tools, and each declares the answer type its client
 reads (`ListWorkspacesAnswer`, `ToolchainList`, …), so a change to it breaks
 the fixture's build.
+
+A unit test in each plugin keeps the handlers in step with the calls
+(`fixtureToolCoverage.test.ts` under `plugins/agent-platform/src/apis/fixtures/`
+and `plugins/muster/src/apis/fixtures/`). agent-platform's takes every tool its
+clients call from their `*_TOOLS` constants, which their tool types require;
+muster's collects the `core_*` names in the plugin's source. Each fails when
+fixture mode has no handler for a called tool and the test does not list it
+as not served, with a comment saying why; when a listed tool is answered or no
+longer called; and when a file starts calling `callTool` that the test does
+not know. A pull request that calls a new tool adds its handler, or lists it.
 
 ### The data set
 

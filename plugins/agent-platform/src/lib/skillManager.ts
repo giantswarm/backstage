@@ -14,8 +14,16 @@ import type { DiscoveredPlugin, PluginFormat } from './plugins';
  */
 export const SKILL_MANAGER_SERVER = 'skill-manager';
 
+export const SKILL_MANAGER_TOOLS = {
+  listSkills: 'list_skills',
+  getSkill: 'get_skill',
+  getSkillFile: 'get_skill_file',
+} as const;
+
 export type SkillManagerTool =
-  'list_skills' | 'list_skill_sources' | 'get_skill' | 'get_skill_file';
+  (typeof SKILL_MANAGER_TOOLS)[keyof typeof SKILL_MANAGER_TOOLS];
+
+/** `x_<server>_<tool>`: how muster exposes an aggregated server's tool. */
 
 export function skillManagerToolName(tool: SkillManagerTool): string {
   return `x_${SKILL_MANAGER_SERVER}_${tool}`;
