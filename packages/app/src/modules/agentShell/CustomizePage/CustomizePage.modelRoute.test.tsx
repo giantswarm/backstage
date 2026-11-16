@@ -201,6 +201,10 @@ const modelManagerApiRef = createApiRef<object>({
 const kagentApiRef = createApiRef<object>({
   id: 'plugin.agent-platform.kagent',
 });
+// No skill repository is configured here, so nothing calls it either.
+const skillDiscoveryApiRef = createApiRef<object>({
+  id: 'plugin.agent-platform.skill-discovery',
+});
 // gs's Mimir client, private the same way.
 const mimirApiRef = createApiRef<object>({ id: 'plugin.gs.mimir' });
 
@@ -235,6 +239,7 @@ function renderAt(path: string) {
         [modelManagerApiRef, {}],
         [musterApiRef, {}],
         [kagentApiRef, {}],
+        [skillDiscoveryApiRef, {}],
         // The gateway's figures: a query that cannot run reads as unavailable.
         [mimirApiRef, mimirApi],
         [kubernetesAuthProvidersApiRef, kubernetesAuthProvidersApi as never],

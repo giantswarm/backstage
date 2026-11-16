@@ -2,23 +2,22 @@
 import type { FixtureMcpServer } from '@giantswarm/backstage-plugin-muster';
 import {
   baseDataSet,
-  hashOf,
   inInstallation,
   type FixtureDataSet,
-  type FixtureSkill,
   type FixtureSkillRepository,
 } from '@giantswarm/backstage-plugin-gs-common/fixtures';
 
 import {
   SKILL_MANAGER_SERVER,
+  SKILL_MANAGER_TOOLS,
   type SkillManagerFile,
   type SkillManagerListing,
   type SkillManagerRepository,
   type SkillManagerSkill,
-  type SkillManagerTool,
 } from '../../../lib/skillManager';
-import { canonicalRepoUrl, type SkillFile } from '../../../lib/skills';
+import { canonicalRepoUrl } from '../../../lib/skills';
 import { FIXTURE_USER } from '../fixtureIdentity';
+import { fileOf, filesOf, instructionsOf } from '../skillFixtureFiles';
 import { asJson, text } from './jsonTools';
 
 /**
@@ -26,12 +25,6 @@ import { asJson, text } from './jsonTools';
  * set, read-only as skill-manager is (a new or changed skill is a pull
  * request, which the portal opens through gs-backend).
  */
-
-const TOOLS = {
-  listSkills: 'list_skills',
-  getSkill: 'get_skill',
-  getSkillFile: 'get_skill_file',
-} as const satisfies Record<string, SkillManagerTool>;
 
 /** Why a repository the person may not read lists nothing. */
 const HIDDEN = `private repository: ${FIXTURE_USER.email} cannot read it`;
@@ -81,57 +74,6 @@ function listedOf(repository: FixtureSkillRepository): SkillManagerRepository {
   };
 }
 
-/** A git blob id of the same length, the same for the same text. */
-function blobId(value: string): string {
-  let id = '';
-  for (let round = 0; id.length < 40; round++) {
-    id += hashOf(`${round}:${value}`).toString(16).padStart(8, '0');
-  }
-  return id.slice(0, 40);
-}
-
-/** A skill's files, by path: its SKILL.md and what it refers to. */
-function filesOf(skill: FixtureSkill): Map<string, string> {
-  const instructions = instructionsOf(skill);
-  return new Map([
-    [
-      'SKILL.md',
-      `---\nname: ${skill.name}\ndescription: ${skill.description}\n---\n\n${instructions}`,
-    ],
-    [
-      'references/checklist.md',
-      `# Checklist\n\n- Read the change.\n- Run the checks of ${skill.name}.\n- Write down what you found.\n`,
-    ],
-    [
-      'scripts/check.sh',
-      `#!/bin/sh\n# The checks ${skill.name} runs.\nset -eu\necho "checking"\n`,
-    ],
-  ]);
-}
-
-function instructionsOf(skill: FixtureSkill): string {
-  return [
-    `# ${skill.name}`,
-    '',
-    skill.description,
-    '',
-    '## Steps',
-    '',
-    '1. Read the request and what it refers to.',
-    '2. Follow `references/checklist.md`.',
-    '3. Run `scripts/check.sh` and report what it found.',
-    '',
-  ].join('\n');
-}
-
-function fileOf(path: string, content: string): SkillFile {
-  return {
-    path,
-    size: new TextEncoder().encode(content).length,
-    sha: blobId(content),
-  };
-}
-
 /** skill-manager's tools in fixture mode, on the data set given. */
 export function skillManagerFixtureServer(
   data: () => FixtureDataSet = baseDataSet,
@@ -157,12 +99,18 @@ export function skillManagerFixtureServer(
     return { repository, skill };
   };
   const tools: FixtureMcpServer['tools'] = {
-    [TOOLS.listSkills]: (_, { installation }): SkillManagerListing => ({
+    [SKILL_MANAGER_TOOLS.listSkills]: (
+      _,
+      { installation },
+    ): SkillManagerListing => ({
       repositories: inInstallation(data().skillRepositories, installation).map(
         listedOf,
       ),
     }),
-    [TOOLS.getSkill]: (args, { installation }): SkillManagerSkill => {
+    [SKILL_MANAGER_TOOLS.getSkill]: (
+      args,
+      { installation },
+    ): SkillManagerSkill => {
       const { repository, skill } = skillOf(installation, args);
       return {
         repoUrl: repository.url,
@@ -177,7 +125,10 @@ export function skillManagerFixtureServer(
         ),
       };
     },
-    [TOOLS.getSkillFile]: (args, { installation }): SkillManagerFile => {
+    [SKILL_MANAGER_TOOLS.getSkillFile]: (
+      args,
+      { installation },
+    ): SkillManagerFile => {
       const { repository, skill } = skillOf(installation, args);
       const path = text(args, 'file');
       const content = filesOf(skill).get(path);

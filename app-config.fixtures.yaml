@@ -44,3 +44,16 @@ muster:
 
 agentPlatform:
   fixtures: true
+  # The skill repositories of the data set, served by the fixture
+  # SkillDiscoveryApi rather than read from GitHub (`portalSkillRepositories`
+  # in the agent-platform plugin's fixtures; a test checks the list).
+  skills:
+    repositories:
+      - https://github.com/example/hazel-bramble
+      - https://github.com/example/hazel-fern
+      - url: https://git.example.com/example/sedge-aster
+        path: skills
+        readOnly: true
+      - https://github.com/example/ivy-sedge
+      - https://github.com/example/vetch-sage
+      - https://github.com/example/nettle-heather

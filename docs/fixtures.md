@@ -156,7 +156,15 @@ and their run statistics; and MCP usage and tool latency over any window,
 narrowed to some connectors or one tool. A connector's tools are named after
 it and derived from it (`connectorToolsOf`), so every read names the same
 ones. The tools of the data set's connectors have no handler: running one
-fails as described below.
+fails as described below. Of muster's own tools, `callTool` answers the two
+the New connector flow calls before it saves, the transport probe
+(`core_mcpserver_detect`, a reachable streamable-HTTP server without OAuth)
+and the definition check (`core_mcpserver_validate`, which passes). The
+catalogue describes both, and the connector writes `core_mcpserver_create`
+and `core_mcpserver_update`, with the arguments the flow asks about
+(`displayName`, `tags`). The writes to connectors (`core_mcpserver_create`,
+`_update`, `_delete`, `core_service_start`, `_stop`, `_restart`) are not
+served: saving a connector or acting on one fails loudly.
 
 The unreachable installation's reads fail as muster-backend refuses them, with
 a 503 "<installation> did not answer: not reachable from this portal", and its
@@ -305,13 +313,44 @@ agent-manager.
   lists each installation's skill repositories in every state (readable,
   private, read-only, failed, failed with its last listing kept, and private
   and hidden from the person), with their skills and a plugin, and reads a
-  skill and its files. It writes nothing, as skill-manager does not; a new or
-  changed skill is a pull request through gs-backend, which fixture mode does
-  not serve (giantswarm/giantswarm#39251, item 9b). The pages of one
-  installation read it: an agent's page and the agent form. Customize ·
-  Skills reads the home installation's skills, and fixture mode has none (it
-  sets no `gs.authProvider`), so that tab still lists what gs-backend
-  discovers on GitHub (item 9b).
+  skill and its files. It writes nothing, as skill-manager does not. The
+  pages of one installation read it: an agent's page and the agent form. A
+  new or changed skill is a pull request, which fixture mode opens in memory
+  (see below).
+
+### gs-backend's skill routes
+
+The pages reach gs-backend's skill routes through the `SkillDiscoveryApi`
+(`plugins/agent-platform/src/apis/SkillDiscoveryApi.ts`): the reads of the
+portal's own skill source, `agentPlatform.skills.repositories`, and the pull
+request that proposes a skill to any source. In fixture mode
+`SkillDiscoveryFixtureApi` answers them from the data set, so nothing reads
+from or writes to GitHub, and no GitHub token is asked for.
+
+- The reads. Customize · Skills reads the home installation's skills, and
+  fixture mode has no home installation (it sets no `gs.authProvider`), so
+  the tab, a skill's page and Add skill read the portal's own source.
+  `app-config.fixtures.yaml` configures the skill repositories of `meadow`,
+  one in each state (`portalSkillRepositories` and `portalSkillSourceOf`; a
+  test checks the URL, `path` and `readOnly` of each entry). The portal reads
+  with its own credentials, as gs-backend does, so both private repositories
+  are listed and marked private, whoever asks (the one skill-manager hides
+  from the person has no skills in the data set). The read-only repository is
+  off GitHub and scans `skills/`. A failed repository fails as the route
+  forwards GitHub's 503 (`Failed to discover skills: …`), and a stale one
+  answers its last listing with `stale: true` and the time it was read. A
+  skill and its files are read at the commit asked for, as skill-manager's
+  fixture reads them: a GitHub repository at another commit answers 404 (the
+  data set holds only the current one), a git repository whose branch moved on
+  409, and an unknown branch 404, in the route's words. A repository the data
+  set lacks fails with a console error.
+- The pull request. Proposing a new or changed skill, to the portal's source
+  or through an installation's skill-manager, is checked as the route checks
+  it (a skill name that is no slug, a repository off GitHub, read-only or not
+  among the sources, a name taken, an edit started from an older commit, a
+  pull request already open from the branch) and answers a made-up pull
+  request on the repository, numbered from 101, kept in memory until the page
+  reloads.
 
 ### model-manager and cluster-manager
 
@@ -440,6 +479,35 @@ whose `tools` map a tool's own name to its handler. The handlers live with the
 plugin that calls the tools, and each declares the answer type its client
 reads (`ListWorkspacesAnswer`, `ToolchainList`, …), so a change to it breaks
 the fixture's build.
+
+A unit test in agent-platform and in muster keeps the handlers in step with
+the calls (`fixtureToolCoverage.test.ts` under each plugin's
+`src/apis/fixtures/`). Both use `fixtureToolCoverage` from
+`@giantswarm/backstage-plugin-muster/testUtils`, a subpath only tests import,
+which reads the plugin's source with the TypeScript compiler: it finds every
+call to `MusterApi.callTool` and `callToolWithProgress`, in any form (a type
+argument, a destructured or bracket access), and works out the tool names it
+can call. A name resolves when it is a string literal, a constant or a
+property of one, a template literal or concatenation of such parts, either
+branch of a conditional, or what a function returns; a parameter resolves
+through every call of its function in the plugin, so wrappers such as
+`callManagerTool` and the clients' `call` methods resolve to what their
+callers pass, and a component's prop to what its JSX elements pass. Anything
+else resolves through its type when that is a string literal or a union of
+them. A test fails:
+
+- when fixture mode has no handler for a tool a page calls, unless the test
+  lists it as not served, with a comment saying why;
+- when a call's tool name cannot be worked out, unless the test lists the call
+  (`<file>: <expression>`), with a comment;
+- when a listed tool is answered or no longer called, or a listed call now
+  resolves.
+
+A pull request that calls a new tool adds its handler, or lists it. The guard
+covers the Agent Platform and muster pages only. bot-prs also calls tools
+through muster (`MargeClient`), but it has no fixture mode and is outside the
+first scope of fixture mode (giantswarm/giantswarm#39251), so nothing checks
+its calls.
 
 ### The data set
 
