@@ -26,12 +26,19 @@ import { usePhoneLayout } from '../../utils/breakpoints';
  * const columns = usePhoneColumns(columnConfig, ['agent', 'cost']);
  * <Table columnConfig={columns} ... />
  * ```
+ *
+ * A table in a slot narrower than the viewport (beside a side rail, in a
+ * card) can be too narrow for its columns above phone width too: pass
+ * `compact`, from a measure of its container, to decide in place of the
+ * phone layout (`useCompactLayout` gives both).
  */
 export function usePhoneColumns<T extends TableItem>(
   columns: readonly ColumnConfig<T>[],
   keepIds: readonly string[],
+  { compact }: { compact?: boolean } = {},
 ): ColumnConfig<T>[] {
-  const isPhone = usePhoneLayout();
+  const isPhoneLayout = usePhoneLayout();
+  const isPhone = compact ?? isPhoneLayout;
   // A literal array is a new one every render; its contents are the key.
   const keepKey = keepIds.join('\u0000');
 

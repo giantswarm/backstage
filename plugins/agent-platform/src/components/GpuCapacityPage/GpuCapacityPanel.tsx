@@ -23,8 +23,8 @@ import {
   formatLocalDateFull,
   getRelativeDate,
   StatusHint,
+  useCompactLayout,
   usePhoneColumns,
-  usePhoneLayout,
   useVisibleSort,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { formatBytes } from '../../lib/formatNumbers';
@@ -733,6 +733,9 @@ export function phoneCapacityColumns(columns: GpuCapacityColumns): string[] {
   return columns.budget ? ['name', 'budget'] : ['name'];
 }
 
+/** The narrowest the panel shows the full table at; narrower, the phone layout. */
+const CAPACITY_TABLE_MIN_WIDTH = 800;
+
 export function GpuCapacityPanel({
   nodes,
   installations,
@@ -740,7 +743,9 @@ export function GpuCapacityPanel({
   isLoading,
   hideColumns,
 }: GpuCapacityPanelProps) {
-  const isPhone = usePhoneLayout();
+  // The phone layout wherever up to ten columns would get under ~80px each:
+  // beside the side rail too, not only at phone width.
+  const [containerRef, isPhone] = useCompactLayout(CAPACITY_TABLE_MIN_WIDTH);
   const columns = useMemo(() => columnsForNodes(nodes), [nodes]);
   const noCacheHints = useMemo(
     () =>
@@ -762,6 +767,7 @@ export function GpuCapacityPanel({
   const shownColumns = usePhoneColumns(
     columnConfig,
     phoneCapacityColumns(columns),
+    { compact: isPhone },
   );
   const hasHost = useMemo(() => nodes.some(isHostMemoryNode), [nodes]);
   const hasIneligible = useMemo(
@@ -828,7 +834,7 @@ export function GpuCapacityPanel({
 
   return (
     <InfoCard title="GPU capacity">
-      <Flex direction="column" gap="3">
+      <Flex ref={containerRef} direction="column" gap="3">
         <Text as="p" variant="body-small" color="secondary">
           {columns.gpu &&
             'Product and memory come from gpu-feature-discovery labels, allocatable from the device plugin, and free is allocatable minus the GPUs that pods request.'}

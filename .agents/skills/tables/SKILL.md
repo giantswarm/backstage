@@ -146,6 +146,14 @@ isPhone ? (
 );
 ```
 
+A table of many columns gets as squeezed above phone width: beside the side
+rail at 768px a card is about 424px wide. There, measure the container instead
+of the viewport: `const [ref, isCompact] = useCompactLayout(800)` is true at
+phone width and while the element `ref` is on is narrower than 800px; branch
+on it instead of `usePhoneLayout()` and pass it to
+`usePhoneColumns(columnConfig, keep, { compact: isCompact })`. The Hosting ·
+Capacity and Model hosting tables do this.
+
 Invariants:
 
 - An **actions column never disappears** at phone width: it becomes the row's

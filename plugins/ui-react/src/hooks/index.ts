@@ -1,5 +1,6 @@
 export * from './useAutosizeTextarea';
 export * from './useCollapsible';
+export * from './useCompactLayout';
 export * from './useContainerDimensions';
 export * from './useCopyWithFeedback';
 export * from './useDetailsPane';

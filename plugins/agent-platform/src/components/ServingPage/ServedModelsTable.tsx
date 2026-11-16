@@ -28,7 +28,7 @@ import {
   StackedRowList,
   StatusHint,
   stopRowPress,
-  usePhoneLayout,
+  useCompactLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
   describeServedModel,
@@ -1184,6 +1184,8 @@ function PhoneCapabilities({ row }: { row: ServedModelRow }) {
   );
 }
 
+const WRAP = { overflowWrap: 'anywhere' } as const;
+
 /** A phone row's "Used by": the ModelConfigs as links, each with what its tooltip said. */
 function PhoneUsedBy({
   row,
@@ -1206,18 +1208,23 @@ function PhoneUsedBy({
         const href = hrefFor(consumer);
         const key = `${consumer.namespace}/${consumer.name}`;
         return (
-          <Text key={key} as="p" variant="body-small" color="secondary">
-            Model config{' '}
-            {href ? (
-              <Link to={href}>{consumer.displayName}</Link>
-            ) : (
-              consumer.displayName
-            )}
-            <span style={{ overflowWrap: 'anywhere' }}>
-              {' '}
-              — {describeUsedBy(consumer)}
-            </span>
-          </Text>
+          <div key={key}>
+            <Text as="p" variant="body-small" color="secondary" style={WRAP}>
+              Model config{' '}
+              {href ? (
+                // A box of its own: a long name wraps inside it, rather than
+                // as an inline run whose lines the text beside it shares.
+                <Link to={href} style={{ display: 'inline-block', ...WRAP }}>
+                  {consumer.displayName}
+                </Link>
+              ) : (
+                consumer.displayName
+              )}
+            </Text>
+            <Text as="p" variant="body-small" color="secondary" style={WRAP}>
+              {describeUsedBy(consumer)}
+            </Text>
+          </div>
         );
       })}
     </Flex>
@@ -1305,6 +1312,7 @@ export function servedModelStackedRow(
               variant="body-small"
               color="secondary"
               truncate
+              title={ownEndpoint}
               style={{ minWidth: 0 }}
             >
               {ownEndpoint}
@@ -1326,6 +1334,9 @@ export function servedModelStackedRow(
  * and offers the rest: the table sorts, then `ShowMore` slices the sorted
  * rows, so the first page is the running models whatever column is sorted.
  */
+/** The narrowest a group shows its table at; narrower, stacked rows. */
+const SERVED_MODELS_TABLE_MIN_WIDTH = 800;
+
 function ServedModelsGroupTable({
   group,
   hrefFor,
@@ -1338,7 +1349,11 @@ function ServedModelsGroupTable({
   /** The search in force; a new one starts the group over at its first page. */
   query: string;
 }) {
-  const isPhone = usePhoneLayout();
+  // Stacked rows wherever up to ten columns would get under ~80px each:
+  // beside the side rail too, not only at phone width.
+  const [containerRef, isPhone] = useCompactLayout(
+    SERVED_MODELS_TABLE_MIN_WIDTH,
+  );
   const columns = useMemo(() => columnsForRows(group.rows), [group.rows]);
   const columnConfig = useMemo(
     () => getColumnConfig(hrefFor, columns, group.endpoint, renderActions),
@@ -1354,36 +1369,38 @@ function ServedModelsGroupTable({
   });
 
   return (
-    <ShowMore
-      key={query}
-      items={tableProps.data ?? []}
-      initial={INITIAL_ROWS}
-      noun="model"
-    >
-      {visible =>
-        isPhone ? (
-          // At phone width each model is a stacked row (T22 B13), in the
-          // table's order — the running ones first.
-          <StackedRowList
-            aria-label={`Models on ${group.installation}, ${describeGroup(group)}`}
-            rows={visible.map(row =>
-              servedModelStackedRow(row, {
-                columns,
-                sharedEndpoint: group.endpoint,
-                hrefFor,
-                renderActions,
-              }),
-            )}
-          />
-        ) : (
-          <Table<ServedModelRow>
-            {...tableProps}
-            data={visible}
-            columnConfig={columnConfig}
-          />
-        )
-      }
-    </ShowMore>
+    <div ref={containerRef}>
+      <ShowMore
+        key={query}
+        items={tableProps.data ?? []}
+        initial={INITIAL_ROWS}
+        noun="model"
+      >
+        {visible =>
+          isPhone ? (
+            // At phone width each model is a stacked row (T22 B13), in the
+            // table's order — the running ones first.
+            <StackedRowList
+              aria-label={`Models on ${group.installation}, ${describeGroup(group)}`}
+              rows={visible.map(row =>
+                servedModelStackedRow(row, {
+                  columns,
+                  sharedEndpoint: group.endpoint,
+                  hrefFor,
+                  renderActions,
+                }),
+              )}
+            />
+          ) : (
+            <Table<ServedModelRow>
+              {...tableProps}
+              data={visible}
+              columnConfig={columnConfig}
+            />
+          )
+        }
+      </ShowMore>
+    </div>
   );
 }
 
