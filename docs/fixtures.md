@@ -178,9 +178,10 @@ only after a write there.
   set's serving connectors; it is available while a serving connector offers
   each of them. Deleting, turning off or failing a connector makes the
   workflows that call its tools invalid (`Step <n> calls <tool>, which no
-connector offers.`), takes their `workflow_<name>` tools out of the
-  catalogue, and names the missing tool in their failed runs. Usage counts
-  the tools of the connectors there now.
+connector offers.`) and takes their `workflow_<name>` tools out of the
+  catalogue. Past executions are records: they read as they ran, whatever
+  the connectors do since. Usage counts the tools of the connectors there
+  now.
 
 - A connector a write starts (registered with `autoStart`, edited while
   active, turned on, reconnected, or signed in to) is `Connecting` for two

@@ -107,6 +107,11 @@ export type MusterFixtureSnapshot = {
   connectorTools: ToolSummary[];
   workflows: MusterFixtureWorkflow[];
   executions: FixtureExecution[];
+  /**
+   * The tools served when the executions ran: the data set's. A past run is
+   * a record, so it reads the same whatever the connectors do since.
+   */
+  recorded: ServedTools;
   presets: FixtureToolsetPreset[];
   /** muster's objects as the Kubernetes API lists them. */
   objects: KubeObjectInterface[];
@@ -116,6 +121,7 @@ type InstallationStore = {
   connectors: Map<string, StoredConnector>;
   workflows: MusterFixtureWorkflow[];
   executions: FixtureExecution[];
+  recorded: ServedTools;
   presets: FixtureToolsetPreset[];
   revision: number;
   snapshot?: {
@@ -171,8 +177,8 @@ function authOf(spec: Record<string, unknown>) {
  * Each installation's muster in the page's data set, as the writes of the
  * muster pages leave it (docs/fixtures.md, "muster"): its connectors,
  * created, edited, deleted, turned off and on and reconnected, kept in memory
- * until the page reloads, and its workflows, their executions and its toolset
- * presets, read against those connectors.
+ * until the page reloads, and its workflows and toolset presets, read
+ * against those connectors, and the executions, kept as they ran.
  *
  * A connector a write starts connects for {@link CONNECT_MS}, then settles
  * where its definition leads: failed at a host no muster reaches, waiting for
@@ -216,6 +222,7 @@ export class MusterFixtureState {
           workflow => musterWorkflowOf(workflow, connectors),
         ),
         executions: inInstallation(this.data.executions, installation),
+        recorded: servedToolsOf(connectors),
         presets: inInstallation(this.data.toolsetPresets, installation),
         revision: 0,
       };
@@ -348,6 +355,7 @@ export class MusterFixtureState {
       connectorTools: connectors.flatMap(connectorToolsOf),
       workflows: store.workflows,
       executions: store.executions,
+      recorded: store.recorded,
       presets: store.presets,
       objects: [
         ...stored.map((entry, index) => this.objectOf(entry, states[index])),

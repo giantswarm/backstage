@@ -207,8 +207,8 @@ function isUnreachable(installation: string): boolean {
  * muster that has signed the person in. Each reachable installation's muster
  * serves what `musterFixtureState` holds for it: the data set's connectors
  * there, in their states and as the connector writes leave them, its
- * workflows (available while every tool their steps call is served) and
- * their executions, and its toolset presets; the
+ * workflows (available while every tool their steps call is served), their
+ * executions as they ran, and its toolset presets; the
  * catalogue lists the tools, resources and prompts of the connectors that
  * serve this session, muster's own tools and the available workflows, and
  * resolves toolsets within it. Beside them, the MCP servers the plugins
@@ -339,11 +339,9 @@ export class MusterFixtureApi implements MusterApi {
   async listExecutions(
     options: ListExecutionsOptions = {},
   ): Promise<WorkflowExecutionListResponse> {
-    const {
-      executions,
-      workflows,
-      served: servedTools,
-    } = this.snapshot(this.reachable(options.installation));
+    const { executions, workflows, recorded } = this.snapshot(
+      this.reachable(options.installation),
+    );
     const matching = executions
       .filter(
         execution =>
@@ -359,7 +357,7 @@ export class MusterFixtureApi implements MusterApi {
         executionSummaryOf(
           execution,
           workflows.find(w => w.name === execution.workflow),
-          servedTools,
+          recorded,
         ),
       ),
       total: matching.length,
@@ -373,11 +371,9 @@ export class MusterFixtureApi implements MusterApi {
     executionId: string,
     installation?: string,
   ): Promise<WorkflowExecution> {
-    const {
-      executions,
-      workflows,
-      served: servedTools,
-    } = this.snapshot(this.reachable(installation));
+    const { executions, workflows, recorded } = this.snapshot(
+      this.reachable(installation),
+    );
     const execution = executions.find(e => e.id === executionId);
     if (!execution) {
       const error = new Error(`No execution ${executionId} in fixture mode.`);
@@ -387,7 +383,7 @@ export class MusterFixtureApi implements MusterApi {
     return executionOf(
       execution,
       workflows.find(workflow => workflow.name === execution.workflow),
-      servedTools,
+      recorded,
     );
   }
 

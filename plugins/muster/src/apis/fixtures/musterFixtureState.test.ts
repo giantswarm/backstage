@@ -332,6 +332,36 @@ describe('the connector writes in fixture mode', () => {
     expect(objectOf(name)?.getDescription()).toBe('Only this.');
   });
 
+  it('keeps a past run as it ran after its connector is removed', async () => {
+    const { workflows } = await api.listWorkflows();
+    const [name] = (workflows ?? [])
+      .filter(workflow => workflow.available)
+      .map(workflow => workflow.name);
+    const [firstStep] = workflowObjectOf(name).getReferencedTools();
+    const connector = connectors.find(c =>
+      firstStep.startsWith(`x_${c.name}_`),
+    )!;
+    const list = () =>
+      api.listExecutions({ installation: INSTALLATION, workflowName: name });
+    const runs = async () =>
+      Promise.all(
+        ((await list()).executions ?? []).map(summary =>
+          api.getExecution(summary.execution_id, INSTALLATION),
+        ),
+      );
+    const listed = await list();
+    const before = await runs();
+    expect(
+      before.some(run => run.steps?.some(step => step.tool === firstStep)),
+    ).toBe(true);
+
+    await call('core_mcpserver_delete', { name: connector.name });
+
+    expect(workflowObjectOf(name).isValid()).toBe(false);
+    await expect(list()).resolves.toEqual(listed);
+    await expect(runs()).resolves.toEqual(before);
+  });
+
   it('marks the workflows that call a deleted connector’s tools unavailable', async () => {
     const before = await api.filterTools({
       installation: INSTALLATION,
@@ -356,22 +386,6 @@ describe('the connector writes in fixture mode', () => {
       pattern: 'workflow_*',
     });
     expect(after.tools?.map(tool => tool.name)).not.toContain(listed.name);
-    const { executions } = await api.listExecutions({
-      installation: INSTALLATION,
-      workflowName: name,
-      status: 'failed',
-    });
-    const runs = await Promise.all(
-      (executions ?? []).map(summary =>
-        api.getExecution(summary.execution_id, INSTALLATION),
-      ),
-    );
-    const failedInIt = runs.filter(
-      run => run.steps?.[run.steps.length - 1]?.tool === firstStep,
-    );
-    expect(failedInIt.map(run => run.error)).toEqual(
-      failedInIt.map(() => `Step 1 failed: no connector offers ${firstStep}.`),
-    );
     const usage = await api.getMcpUsage({
       installation: INSTALLATION,
       servers: [connector.name],
