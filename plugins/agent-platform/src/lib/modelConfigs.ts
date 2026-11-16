@@ -194,6 +194,9 @@ const MODEL_CONFIG_FIELDS: readonly ModelConfigField[] = [
  */
 const VERTEX_AI_LOCATION_PATTERN = /^(global|us|eu|[a-z]+-[a-z]+[0-9]+)$/;
 
+/** Google's project ID format, as agent-manager and the chart's admission hold it. */
+const GOOGLE_PROJECT_ID_PATTERN = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
+
 /**
  * Why kagent would refuse this service account key, or `undefined` when it
  * would accept it: the checks of kagent's `ValidateGoogleServiceAccountKey`,
@@ -284,22 +287,18 @@ export type ModelConfigValidationOptions = {
   /** Edit only: the form as the model stood on the cluster. */
   original?: ModelConfigFormValues;
   /**
-   * An organization's model (`isListenerRouted`): saved through
-   * agent-manager, which keeps no display name, so the form asks for the
-   * model's name itself.
+   * An organization's model (`isListenerRouted`): its calls go through the
+   * LLM gateway, so it takes no endpoint.
    */
   routed?: boolean;
 };
 
-export function modelNameError(
-  name: string,
-  routed = false,
-): string | undefined {
+export function modelNameError(name: string): string | undefined {
   if (!name.trim()) {
-    return routed ? 'Enter a name for the model.' : 'Enter a technical name.';
+    return 'Enter a technical name.';
   }
   if (name.length > 63 || !DNS_LABEL_PATTERN.test(name)) {
-    return `${routed ? 'The name' : 'Technical name'} must be lowercase letters, numbers and hyphens (max 63 characters), e.g. qwen3-vllm`;
+    return 'Technical name must be lowercase letters, numbers and hyphens (max 63 characters), e.g. qwen3-vllm';
   }
   return undefined;
 }
@@ -310,8 +309,7 @@ export function modelNameError(
  *
  * The display name is required on create only: the technical name is filled
  * in from it, and it is what people see when they choose a model. An existing
- * model without one (made with kubectl) stays saveable as it is. An
- * organization's model asks for no display name (`routed`). The API key
+ * model without one (made with kubectl) stays saveable as it is. The API key
  * is not required for the API-key providers, where an empty one means the
  * endpoint needs none. A Vertex AI model needs a service account key on
  * create, and on an edit whose stored key cannot serve it (see
@@ -323,11 +321,11 @@ export function modelConfigFieldErrors(
 ): ModelConfigFieldErrors {
   const errors: ModelConfigFieldErrors = {};
 
-  if (!options.isEdit && !options.routed && !values.displayName.trim()) {
+  if (!options.isEdit && !values.displayName.trim()) {
     errors.displayName = 'Enter a name for the model.';
   }
 
-  const nameError = modelNameError(values.name, options.routed);
+  const nameError = modelNameError(values.name);
   if (nameError) errors.name = nameError;
 
   if (!values.model.trim()) {
@@ -353,8 +351,12 @@ export function modelConfigFieldErrors(
         'Enter global, us, eu or a region such as europe-west4.';
     }
 
-    if (!values.projectID.trim()) {
+    const projectID = values.projectID.trim();
+    if (!projectID) {
       errors.projectID = 'Enter the Google Cloud project.';
+    } else if (!GOOGLE_PROJECT_ID_PATTERN.test(projectID)) {
+      errors.projectID =
+        'Enter the project ID, not its name: 6 to 30 lowercase letters, digits or hyphens, starting with a letter, e.g. my-project-123456.';
     }
   }
 

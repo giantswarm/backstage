@@ -8,6 +8,7 @@ import {
   ModelConfig,
   ModelConfigInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { AgentManagerError } from '../lib/agentManager';
 import { useDeleteModelConfig } from './useDeleteModelConfig';
 
 // The reads and writes are mocked; the provenance/ownership helpers and the
@@ -69,11 +70,14 @@ function makeAgentJson(modelConfig: string) {
 function setup({
   modelConfig = makeModelConfig(),
   allowed = true,
+  checkFailure,
   agents = [] as ReturnType<typeof makeAgentJson>[],
   didReadAgents = true,
 }: {
   modelConfig?: ModelConfig | undefined;
   allowed?: boolean;
+  /** The dry run fails with this, which is no refusal. */
+  checkFailure?: Error;
   agents?: ReturnType<typeof makeAgentJson>[];
   didReadAgents?: boolean;
 } = {}) {
@@ -95,12 +99,13 @@ function setup({
       _name: string,
       options?: { dryRun?: boolean },
     ) => {
+      if (options?.dryRun && checkFailure) {
+        throw checkFailure;
+      }
       if (options?.dryRun && !allowed) {
-        throw Object.assign(
-          new Error('forbidden: needs agent-platform:admin'),
-          {
-            code: 'forbidden',
-          },
+        throw new AgentManagerError(
+          'forbidden',
+          'forbidden: needs agent-platform:admin',
         );
       }
       return { deleted: !options?.dryRun };
@@ -160,9 +165,24 @@ describe('useDeleteModelConfig', () => {
 
     await waitFor(() => expect(result.current.isCheckingDeletable).toBe(false));
     expect(result.current.isDeletable).toBe(false);
+    expect(result.current.checkError).toBeNull();
     expect(mockDeleteModel).toHaveBeenCalledWith(NAMESPACE, 'qwen3', {
       dryRun: true,
     });
+  });
+
+  it('says why when the dry run fails without a refusal, and checks again', async () => {
+    const failure = new Error('muster: request timed out');
+    const { result } = setup({ checkFailure: failure });
+
+    await waitFor(() => expect(result.current.checkError).toBe(failure));
+    expect(result.current.isDeletable).toBe(false);
+
+    mockDeleteModel.mockResolvedValue({ deleted: false });
+    act(() => result.current.recheckDeletable());
+
+    await waitFor(() => expect(result.current.isDeletable).toBe(true));
+    expect(result.current.checkError).toBeNull();
   });
 
   it.each([

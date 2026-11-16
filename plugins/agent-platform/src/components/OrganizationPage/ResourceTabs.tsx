@@ -39,6 +39,7 @@ import {
   MODEL_PROVIDER_OPTIONS,
   modelNameError,
 } from '../../lib/modelConfigs';
+import { slugify } from '../../lib/slugify';
 import {
   type OrganizationConnector,
   type OrganizationNamespace,
@@ -84,7 +85,8 @@ function ReadState({
 type ModelRow = AgentManagerModelConfig & { id: string };
 
 /**
- * A new model of the organization: its name, provider and model id. The key
+ * A new model of the organization: its name, provider and model id. The
+ * technical name is filled in from the name. The key
  * is not asked here: agent-manager prepares a credential request for it and
  * the next page, the credential form, takes it.
  */
@@ -102,9 +104,12 @@ function AddModelDialog({
   const [model, setModel] = useState('');
   const scope = useRef<HTMLDivElement>(null);
   const validation = useFieldValidation(scope, { isOpen });
-  const trimmedName = name.trim();
+  const displayName = name.trim();
+  const technicalName = slugify(displayName);
   const trimmedModel = model.trim();
-  const nameError = modelNameError(trimmedName, true);
+  const nameError = displayName
+    ? modelNameError(technicalName)
+    : 'Enter a name for the model.';
   const modelError = trimmedModel
     ? undefined
     : "Enter the provider's model id.";
@@ -133,7 +138,8 @@ function AddModelDialog({
         request.mutate(
           {
             kind: 'model',
-            name: trimmedName,
+            name: technicalName,
+            displayName,
             provider,
             model: trimmedModel,
           },
@@ -148,7 +154,11 @@ function AddModelDialog({
       <Flex direction="column" gap="3" ref={scope}>
         <TextField
           label="Name"
-          description="The model's name in the organization, e.g. claude-sonnet."
+          description={
+            technicalName
+              ? `People creating agents see the model under this name. Its technical name is ${technicalName}; it cannot be changed once the model exists.`
+              : 'People creating agents see the model under this name, e.g. Claude Sonnet.'
+          }
           isRequired
           value={name}
           onChange={setName}

@@ -251,6 +251,49 @@ function SetDefaultError({
   );
 }
 
+/**
+ * Why Delete is not offered when agent-manager's dry run could not answer:
+ * a missing sign-in offers it, an ended portal session says so, and any
+ * other failure is said as it came with a way to ask again.
+ */
+function DeleteCheckError({
+  error,
+  installation,
+  onRetry,
+}: {
+  error: Error;
+  installation: string;
+  onRetry: () => void;
+}) {
+  if (error instanceof PortalSessionEndedError) {
+    return <PortalSessionEndedAlert />;
+  }
+  if (error instanceof AgentManagerNotConnectedError) {
+    return (
+      <ConnectAgentManagerAlert
+        installation={installation}
+        message={error.message}
+        action="Models are deleted"
+        signInRequired={error.signInRequired}
+        onSignedIn={onRetry}
+      />
+    );
+  }
+  return (
+    <Alert
+      status="warning"
+      icon
+      title="Could not check whether you can delete this model"
+      description={`Delete is hidden until agent-manager answers. agent-manager answered: ${error.message}`}
+      customActions={
+        <Button size="small" variant="secondary" onPress={onRetry}>
+          Check again
+        </Button>
+      }
+    />
+  );
+}
+
 /** Overview's plain facts: what it calls, where, who owns it, and since when. */
 export function modelFacts({
   modelConfig,
@@ -624,6 +667,13 @@ function ModelDetailPageContent() {
           installation={installation}
           organization={directory.get(namespace)?.organization}
           onSignedIn={resetSetDefault}
+        />
+      )}
+      {deletion.checkError && (
+        <DeleteCheckError
+          error={deletion.checkError}
+          installation={installation}
+          onRetry={deletion.recheckDeletable}
         />
       )}
       <Routes>

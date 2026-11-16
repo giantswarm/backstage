@@ -126,66 +126,39 @@ export function ModelConfigFormFields({
 
   return (
     <>
-      {routed ? (
-        <Card>
-          <CardBody>
-            <SectionHeader
-              variant="title-x-small"
-              title="Name"
-              description="People creating agents in the organization see the model under this name."
-            />
-            {mode === 'create' ? (
-              <TextField
-                label="Name"
-                isRequired
-                value={values.name}
-                onChange={name => onChange({ name })}
-                placeholder="e.g. claude-sonnet"
-                description="Lowercase letters, numbers and hyphens. It cannot be changed once the model exists."
-                {...textFieldProps('name', errors.name)}
-              />
-            ) : (
-              <Text as="p" style={{ overflowWrap: 'anywhere' }}>
-                <code>{values.name}</code>. It cannot be changed.
-              </Text>
-            )}
-          </CardBody>
-        </Card>
-      ) : (
-        <Card>
-          <CardBody>
-            <SectionHeader
-              variant="title-x-small"
-              title="Name"
-              description="People creating agents see the model under this name."
-            />
-            <TextField
-              label="Name"
-              isRequired={mode === 'create'}
-              value={values.displayName}
-              onChange={displayName => onChange({ displayName })}
-              placeholder="e.g. Sonnet 4.5"
-              {...textFieldProps('displayName', errors.displayName)}
-            />
-            {values.name && (
-              <Text
-                as="p"
-                variant="body-small"
-                color="secondary"
-                style={{
-                  marginTop: 'var(--bui-space-1)',
-                  overflowWrap: 'anywhere',
-                }}
-              >
-                Its technical name is <code>{values.name}</code>;{' '}
-                {mode === 'edit'
-                  ? 'it cannot be changed.'
-                  : 'it cannot be changed once the model exists.'}
-              </Text>
-            )}
-          </CardBody>
-        </Card>
-      )}
+      <Card>
+        <CardBody>
+          <SectionHeader
+            variant="title-x-small"
+            title="Name"
+            description="People creating agents see the model under this name."
+          />
+          <TextField
+            label="Name"
+            isRequired={mode === 'create'}
+            value={values.displayName}
+            onChange={displayName => onChange({ displayName })}
+            placeholder="e.g. Sonnet 4.5"
+            {...textFieldProps('displayName', errors.displayName)}
+          />
+          {values.name && (
+            <Text
+              as="p"
+              variant="body-small"
+              color="secondary"
+              style={{
+                marginTop: 'var(--bui-space-1)',
+                overflowWrap: 'anywhere',
+              }}
+            >
+              Its technical name is <code>{values.name}</code>;{' '}
+              {mode === 'edit'
+                ? 'it cannot be changed.'
+                : 'it cannot be changed once the model exists.'}
+            </Text>
+          )}
+        </CardBody>
+      </Card>
 
       <Card>
         <CardBody>
@@ -328,7 +301,7 @@ export function ModelConfigFormFields({
 
       {/* Edit keeps nothing here without an endpoint: the technical name is
           locked and said under the name. */}
-      {((mode === 'create' && !routed) || hasEndpoint) && (
+      {(mode === 'create' || hasEndpoint) && (
         <MoreOptions
           open={moreOptionsOpen}
           onOpenChange={onMoreOptionsOpenChange}

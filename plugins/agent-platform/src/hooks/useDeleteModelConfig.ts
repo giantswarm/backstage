@@ -10,6 +10,7 @@ import {
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
+import { AgentManagerError } from '../lib/agentManager';
 import { modelConfigEditOwner } from '../lib/modelConfigs';
 import { musterModelDeleteCheckQueryKey } from '../lib/queryKeys';
 import { useOrganizationDirectory } from '../components/OrganizationDirectoryProvider';
@@ -23,8 +24,9 @@ import { useAgentManagerClient } from './useAgentManager';
  * which would fight the deletion or quietly re-create the model), and
  * agent-manager, which deletes it, must accept the deletion as this person: a
  * dry run of `delete_organization_object` (organization admin in an
- * organization, cluster-admin for the installation's models). A dry run that
- * fails for any reason withholds the affordance.
+ * organization, cluster-admin for the installation's models). A `forbidden`
+ * answer withholds the affordance; any other failure leaves the question open
+ * (`checkError`), for the page to say why and to check again.
  *
  * The mutation refuses to delete a model an `Agent` still references. That
  * check reads a **fresh** list at mutation time, not the query cache — a
@@ -60,7 +62,14 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
     ),
     enabled: Boolean(client && modelConfig && namespace && name && !owner),
     queryFn: async () => {
-      await client!.deleteModel(namespace!, name!, { dryRun: true });
+      try {
+        await client!.deleteModel(namespace!, name!, { dryRun: true });
+      } catch (error) {
+        if (error instanceof AgentManagerError && error.code === 'forbidden') {
+          return false;
+        }
+        throw error;
+      }
       return true;
     },
     staleTime: 60_000,
@@ -68,6 +77,11 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
   });
   const isAllowed = deleteCheck.data === true;
   const isCheckingPermission = deleteCheck.isLoading;
+  const checkError = deleteCheck.error as Error | null;
+  const { refetch } = deleteCheck;
+  const recheckDeletable = useCallback(() => {
+    refetch();
+  }, [refetch]);
 
   const invalidateReads = async (gvks: CustomResourceMatcher[]) => {
     await Promise.all(
@@ -161,6 +175,12 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
       /** Still establishing the above. Withhold the affordance rather than guess. */
       isCheckingDeletable: Boolean(modelConfig) && isCheckingPermission,
       /**
+       * Why agent-manager's dry run could not say whether this person may
+       * delete the model (not a refusal: that withholds the affordance).
+       */
+      checkError: modelConfig && !owner ? checkError : null,
+      recheckDeletable,
+      /**
        * The tool that owns the CR (`'Helm'`, `'Flux'`, `'agentlab'`, …), when
        * that is what withholds the affordance — for the page to explain.
        */
@@ -175,6 +195,8 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
       owner,
       isAllowed,
       isCheckingPermission,
+      checkError,
+      recheckDeletable,
       deleteModelConfig,
       mutation.isPending,
       mutation.error,

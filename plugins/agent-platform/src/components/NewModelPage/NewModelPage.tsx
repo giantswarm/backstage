@@ -316,7 +316,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   );
   // A problem with a field behind More options opens it, so the field that
   // says what is wrong is never out of sight (nor out of the focus's reach).
-  const hasHiddenProblem = !routed && Boolean(fieldErrors.name);
+  const hasHiddenProblem = Boolean(fieldErrors.name);
   // An edit with nothing changed has nothing to save — not a field's fault,
   // so the button waits instead of pointing at one.
   const isChanged =

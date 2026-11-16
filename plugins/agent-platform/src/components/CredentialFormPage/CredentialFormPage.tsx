@@ -794,7 +794,16 @@ export function CredentialFormPage({
           </PageSection>
         ) : null}
         {takesValues ? (
-          <PageSection title="Enter the value">
+          <PageSection
+            title={
+              pairs.length > 0 &&
+              pairs.every(
+                pair => pair.inputFormat === 'google-service-account-json',
+              )
+                ? 'Upload service account credentials'
+                : 'Enter the value'
+            }
+          >
             <Flex direction="column" gap="3" ref={scope}>
               {pairs.length === 0 ? (
                 <Text color="secondary">The request asks for no value.</Text>

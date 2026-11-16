@@ -286,6 +286,10 @@ describe('CredentialFormPage', () => {
     await renderForm(api);
     const input = await screen.findByLabelText('Service account key file');
     expect(screen.queryByLabelText(/^Value/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Upload service account credentials'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Enter the value')).not.toBeInTheDocument();
     const raw = JSON.stringify({
       type: 'service_account',
       project_id: 'vertex-test',

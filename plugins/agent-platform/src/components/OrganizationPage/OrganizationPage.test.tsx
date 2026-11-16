@@ -847,7 +847,7 @@ describe('OrganizationPage', () => {
     const dialog = await screen.findByRole('dialog');
     await user.type(
       within(dialog).getByRole('textbox', { name: /Name/ }),
-      'claude',
+      'Claude Sonnet',
     );
     await user.type(
       within(dialog).getByRole('textbox', { name: /Model/ }),
@@ -861,7 +861,8 @@ describe('OrganizationPage', () => {
       expect(toolCalls(callTool, 'set_organization_model')).toEqual([
         expect.objectContaining({
           namespace: PAYMENTS.namespace,
-          name: 'claude',
+          name: 'claude-sonnet',
+          displayName: 'Claude Sonnet',
           provider: 'Anthropic',
           model: 'claude-sonnet-4-6',
           requestId: expect.any(String),

@@ -65,10 +65,14 @@ jest.mock('../InstallationChip', () => ({
   InstallationChip: () => null,
 }));
 
+let mockDeleteCheckError: Error | null = null;
+const mockRecheckDeletable = jest.fn();
 jest.mock('../../hooks/useDeleteModelConfig', () => ({
   useDeleteModelConfig: () => ({
     isDeletable: false,
     isCheckingDeletable: false,
+    checkError: mockDeleteCheckError,
+    recheckDeletable: mockRecheckDeletable,
     deleteModelConfig: jest.fn(),
     isDeleting: false,
     error: null,
@@ -497,6 +501,26 @@ describe('ModelDetailPage', () => {
     ).toHaveAttribute('role', 'note');
     // The form speaks Vertex AI: no "not editable here".
     expect(screen.queryByText(/is not editable here/)).toBeNull();
+  });
+
+  it('says why Delete is not offered when its check failed, and checks again', async () => {
+    mockDeleteCheckError = new Error('muster: request timed out');
+    try {
+      await renderPage();
+
+      expect(
+        await screen.findByText(
+          'Could not check whether you can delete this model',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/request timed out/)).toBeInTheDocument();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Check again' }),
+      );
+      expect(mockRecheckDeletable).toHaveBeenCalled();
+    } finally {
+      mockDeleteCheckError = null;
+    }
   });
 
   it('says nothing about metering for a model the gateway meters', async () => {

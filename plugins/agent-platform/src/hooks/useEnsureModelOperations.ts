@@ -13,8 +13,9 @@ const SCHEMA_STALE_MS = 5 * 60_000;
 
 /**
  * Refuses a model write on an installation whose agent-manager lacks the model
- * fields the forms send, before anything is written. The tool's schema is read
- * once per installation and kept for a few minutes.
+ * fields the forms send, before anything is written. A schema with the fields
+ * is kept for a few minutes per installation; one without them is read again
+ * on the next write, so an upgraded agent-manager is seen at once.
  */
 export function useEnsureModelOperations(): (
   installation: string,
@@ -32,7 +33,10 @@ export function useEnsureModelOperations(): (
       const detail = await queryClient.fetchQuery({
         queryKey: musterToolSchemaQueryKey(installation, tool),
         queryFn: () => musterApi.describeTool(tool, installation),
-        staleTime: SCHEMA_STALE_MS,
+        staleTime: query =>
+          hasModelOperations(query.state.data?.inputSchema)
+            ? SCHEMA_STALE_MS
+            : 0,
       });
       if (!hasModelOperations(detail.inputSchema)) {
         throw new Error(MODEL_OPERATIONS_MISSING);

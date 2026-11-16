@@ -402,6 +402,28 @@ describe('NewModelPage', () => {
     });
   });
 
+  it("fills an organization model's technical name in from its name", async () => {
+    mockNamespaces = ['kagent', 'org-acme'];
+    await renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: /Owner/ }));
+    await userEvent.click(await screen.findByRole('option', { name: 'acme' }));
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Claude Opus');
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /^Model/ }),
+      'claude-opus',
+    );
+    expect(screen.getByLabelText(/^Technical name/)).toHaveValue('claude-opus');
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Continue to credential' }),
+    );
+
+    await waitFor(() => expect(mockOrganizationSave).toHaveBeenCalledTimes(1));
+    expect(mockOrganizationSave.mock.calls[0][0]).toMatchObject({
+      values: { name: 'claude-opus', displayName: 'Claude Opus' },
+    });
+  });
+
   it("says plainly when the person may not change an organization's models", async () => {
     mockNamespaces = ['kagent', 'org-acme'];
     mockOrganizationError = new AgentManagerError(

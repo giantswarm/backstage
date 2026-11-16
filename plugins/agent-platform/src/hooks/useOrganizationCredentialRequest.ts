@@ -26,7 +26,13 @@ import { readModelKeyReference } from './modelKeyReference';
  * it).
  */
 export type CredentialRequest =
-  | { kind: 'model'; name: string; provider: string; model: string }
+  | {
+      kind: 'model';
+      name: string;
+      displayName: string;
+      provider: string;
+      model: string;
+    }
   | { kind: 'model-key'; name: string }
   | { kind: 'credential'; secret: string; key: string };
 
@@ -65,6 +71,7 @@ export function useOrganizationCredentialRequest(
         return client.setOrganizationModel({
           namespace,
           name: request.name,
+          displayName: request.displayName,
           provider: request.provider,
           model: request.model,
           requestId,

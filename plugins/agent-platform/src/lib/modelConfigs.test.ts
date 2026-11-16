@@ -29,11 +29,11 @@ const CLUSTER = 'gazelle';
 
 describe('modelNameError', () => {
   it.each(['a', 'a'.repeat(63), 'model-1'])('accepts %s', name =>
-    expect(modelNameError(name, true)).toBeUndefined(),
+    expect(modelNameError(name)).toBeUndefined(),
   );
   it.each(['', ' ', 'a'.repeat(64), '-model', 'model-', 'Model', 'model.name'])(
     'rejects %s',
-    name => expect(modelNameError(name, true)).toBeDefined(),
+    name => expect(modelNameError(name)).toBeDefined(),
   );
 });
 
@@ -257,13 +257,33 @@ describe('modelConfigOwner', () => {
 });
 
 describe("an Organization's model", () => {
-  it('asks for the name itself, with no display name', () => {
+  it('asks for a display name, as every new model does', () => {
     expect(
       modelConfigFieldErrors(values({ displayName: '', name: '' }), {
         isEdit: false,
         routed: true,
       }),
-    ).toEqual({ name: 'Enter a name for the model.' });
+    ).toEqual({
+      displayName: 'Enter a name for the model.',
+      name: 'Enter a technical name.',
+    });
+  });
+
+  it('refuses a Google Cloud project name in place of its ID', () => {
+    const vertex = (projectID: string) =>
+      modelConfigFieldErrors(
+        values({
+          provider: 'GeminiVertexAI',
+          model: 'gemini-2.5-pro',
+          location: 'europe-west4',
+          projectID,
+        }),
+        { isEdit: false, routed: true },
+      ).projectID;
+    expect(vertex('my-project-123456')).toBeUndefined();
+    expect(vertex('foo. br')).toMatch(/project ID/);
+    expect(vertex('Foo-Bar-1')).toMatch(/project ID/);
+    expect(vertex('short')).toMatch(/project ID/);
   });
 
   it('is edited through agent-manager when agent-manager wrote it', () => {
