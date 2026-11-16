@@ -8,10 +8,10 @@ import { KUBECONFIG, kubectl, NEEDS_KUBECONFIG } from './kubectl';
  * delete erases and keeps, refuses to erase until the person types
  * `<parent>/<name>`, and then deletes it as the person through
  * `delete_organization`. agent-platform-operator erases it: the organization
- * namespace, and with it its `organization-*` RoleBindings, are gone. It
- * deletes the namespace only after its erase delay (`--snapshot-erase-delay`,
- * 5 minutes by default), which the spec reads from the operator's Deployment
- * and waits past.
+ * namespace, and with it its `organization-*` RoleBindings, are gone. With a
+ * snapshot bucket, it deletes the namespace only after its erase delay
+ * (`--snapshot-erase-delay`, 5 minutes by default), which the spec reads from
+ * the operator's Deployment and waits past.
  *
  * Needs the lab's organizations (agent-platform-operator, agent-manager
  * 2.24 or later for `list_organizations`), the admin as a cluster-admin, which
@@ -54,9 +54,10 @@ async function organizationNamespace(): Promise<string> {
 }
 
 /**
- * What the spec waits past the operator's erase delay for the erasure to end:
- * the operator deletes the namespace once the delay has passed, at its next
- * poll, and the namespace's own deletion takes seconds more.
+ * What the spec waits past the operator's erase delay for the erasure to end.
+ * The delay starts when the operator first empties the organization's snapshot
+ * prefix, after its Workloads and Sessions steps; the margin holds those steps
+ * and the namespace's own termination after the delay.
  */
 const ERASE_MARGIN = 3 * 60_000;
 
@@ -89,8 +90,9 @@ function goDuration(value: string): number | undefined {
 
 /**
  * agent-platform-operator's `--snapshot-erase-delay` from its Deployment's
- * args, in milliseconds: how long after an organization is deleted the
- * operator deletes its namespace. Undefined when the spec cannot read it.
+ * args, in milliseconds: how long after it first empties a deleted
+ * organization's snapshot prefix the operator empties it again, and only then
+ * deletes the namespace. Undefined when the spec cannot read it.
  */
 async function eraseDelay(): Promise<number | undefined> {
   const { stdout } = await kubectl([
@@ -166,8 +168,8 @@ test('organization delete: the dialog lists the erasure, refuses a wrong name an
   const eraseWait =
     delay === undefined ? ERASE_WAIT_UNKNOWN : delay + ERASE_MARGIN;
   // The organization's creation (3 minutes at most) and the dialog (about 3
-  // more), then the erasure.
-  test.setTimeout(6 * 60_000 + eraseWait);
+  // more), then the erasure and the finalizer's removal (1 minute at most).
+  test.setTimeout(7 * 60_000 + eraseWait);
 
   try {
     await kubectl(['apply', '-f', '-'], MANIFEST);
@@ -207,9 +209,12 @@ test('organization delete: the dialog lists the erasure, refuses a wrong name an
     await expect
       .poll(() => exists(['namespace', namespace]), { timeout: eraseWait })
       .toBe(false);
-    expect(
-      await exists(['agentplatformorganization', '-n', PARENT, NAME]),
-    ).toBe(false);
+    // The operator removes its finalizer after the namespace is gone.
+    await expect
+      .poll(() => exists(['agentplatformorganization', '-n', PARENT, NAME]), {
+        timeout: 60_000,
+      })
+      .toBe(false);
     expect(
       await exists(['rolebindings', '-n', namespace, 'organization-admins']),
     ).toBe(false);
