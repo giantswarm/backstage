@@ -46,7 +46,9 @@ export function overflowRule(layout) {
   if (layout.scrollWidth > layout.viewport.w + TOLERANCE) {
     findings.push({
       rule: 'overflow',
-      message: `the page is ${layout.scrollWidth}px wide in a ${layout.viewport.w}px viewport and scrolls sideways`,
+      message: layout.clipsX
+        ? `the page's content is ${layout.scrollWidth}px wide in a ${layout.viewport.w}px viewport: the ${layout.scrollWidth - layout.viewport.w}px on the right are cut off`
+        : `the page is ${layout.scrollWidth}px wide in a ${layout.viewport.w}px viewport and scrolls sideways`,
       elements: [],
     });
   }

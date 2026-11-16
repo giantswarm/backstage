@@ -460,6 +460,8 @@ export function collectLayout(options) {
   return {
     viewport,
     scrollWidth: Math.max(doc.scrollWidth, document.body.scrollWidth),
+    // The page cuts off what is wider instead of scrolling to it.
+    clipsX: [doc, document.body].some(e => ['hidden', 'clip'].includes(style(e).overflowX)),
     items,
     centering,
     flexRows,

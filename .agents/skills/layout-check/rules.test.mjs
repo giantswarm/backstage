@@ -54,6 +54,11 @@ test('overflow: a page wider than its viewport', () => {
   assert.match(findings[0].message, /420px wide in a 375px viewport/);
 });
 
+test('overflow: content cut off where the page does not scroll sideways', () => {
+  const findings = overflowRule(layout({ scrollWidth: 963, viewport: { w: 768, h: 900 }, clipsX: true }));
+  assert.match(findings[0].message, /the 195px on the right are cut off/);
+});
+
 test('overflow: a control sticking out where nothing scrolls', () => {
   const findings = overflowRule(
     layout({ sticking: [{ role: 'tab', name: 'Toolchains', path: 'a', box: box(360, 0, 80, 36) }] }),
