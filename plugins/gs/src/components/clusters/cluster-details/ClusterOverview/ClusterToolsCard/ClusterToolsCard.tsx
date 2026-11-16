@@ -6,23 +6,16 @@ import { formatTemplateString } from '../../../../utils/formatTemplateString';
 import { useClusterDetailsTemplateData } from '../../../../hooks';
 import { isManagementCluster } from '../../../utils';
 
-const defaultLinks = [
+const defaultLinks: {
+  label: string;
+  icon: string;
+  url: string;
+  clusterType?: string;
+}[] = [
   {
     label: 'Cluster overview \n dashboard',
     icon: 'GrafanaIcon',
     url: 'https://grafana.${{BASE_DOMAIN}}/d/gs_cluster-overview/cluster-overview?orgId=1&from=now-6h&to=now&timezone=browser&var-datasource=default&var-cluster=${{CLUSTER_NAME}}',
-  },
-  {
-    label: 'Web UI',
-    icon: 'Public',
-    url: 'https://happa.${{BASE_DOMAIN}}/organizations/${{ORG_NAME}}/clusters/${{CLUSTER_NAME}}',
-    clusterType: 'workload',
-  },
-  {
-    label: 'Web UI',
-    icon: 'Public',
-    url: 'https://happa.${{BASE_DOMAIN}}',
-    clusterType: 'management',
   },
 ];
 

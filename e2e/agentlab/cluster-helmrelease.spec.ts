@@ -217,6 +217,20 @@ test.describe('clusters: a cluster a HelmRelease installs', () => {
     expect(errors).toEqual([]);
   });
 
+  test('offers no link to the old web UI', async ({ page }) => {
+    const name = 'wc-flux-links';
+    await stage(page, [CLUSTER_API], {
+      [clusterPath(name)]: cluster(name),
+      [helmReleasePath(name)]: helmRelease(name, true),
+    });
+
+    await open(page, clusterPage(name));
+
+    await expect(page.getByText('Installed by', { exact: true })).toBeVisible();
+    await expect(page.getByText('Web UI', { exact: true })).toHaveCount(0);
+    await expect(page.locator('a[href*="//happa."]')).toHaveCount(0);
+  });
+
   test("shows a release's Ready message while it is not ready", async ({
     page,
   }) => {

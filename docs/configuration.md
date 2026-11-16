@@ -289,7 +289,7 @@ login fails with `invalid_scope` on the base set as well.
 
 The cluster details page allows you to configure resource links that will be displayed in place of the default links.
 
-The default links are the Grafana cluster overview dashboard and the Web UI. There is no default Alerts link: Grafana's alerting page is only enabled in the Giant Swarm organization (`orgId=2`), which customers can't access, so only a Giant Swarm staff instance configures one.
+The default link is the Grafana cluster overview dashboard. There is no default Alerts link: Grafana's alerting page is only enabled in the Giant Swarm organization (`orgId=2`), which customers can't access, so only a Giant Swarm staff instance configures one.
 
 ### Configuration example
 
@@ -302,14 +302,9 @@ gs:
       - label: 'Alerts'
         icon: 'NotificationsNone'
         url: 'https://grafana.${{BASE_DOMAIN}}/alerting?orgId=2'
-      - label: 'Web UI'
-        icon: 'Public'
-        url: 'https://happa.${{BASE_DOMAIN}}/organizations/${{ORG_NAME}}/clusters/${{CLUSTER_NAME}}'
-        clusterType: 'workload'
-      - label: 'Web UI'
-        icon: 'Public'
-        url: 'https://happa.${{BASE_DOMAIN}}'
-        clusterType: 'management'
+      - label: 'Cluster overview dashboard'
+        icon: 'GrafanaIcon'
+        url: 'https://grafana.${{BASE_DOMAIN}}/d/gs_cluster-overview/cluster-overview?orgId=1&var-cluster=${{CLUSTER_NAME}}'
 ```
 
 ### Cluster type specific links
@@ -328,7 +323,7 @@ The `url` parameter supports templating with the following placeholders:
 - `ORG_NAME` - name of the organization.
 - `BASE_DOMAIN` - base domain of the management cluster.
 
-For example, the URL `https://happa.${{BASE_DOMAIN}}/organizations/${{ORG_NAME}}/clusters/${{CLUSTER_NAME}}` will be dynamically populated with the appropriate values.
+For example, the URL `https://grafana.${{BASE_DOMAIN}}/d/gs_cluster-overview/cluster-overview?var-cluster=${{CLUSTER_NAME}}` will be dynamically populated with the appropriate values.
 
 ### Icon Configuration
 

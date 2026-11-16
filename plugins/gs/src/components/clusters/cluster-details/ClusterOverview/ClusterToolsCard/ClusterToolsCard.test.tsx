@@ -45,16 +45,16 @@ describe('ClusterToolsCard', () => {
     expect(screen.queryAllByRole('link')).toEqual([]);
   });
 
-  it('offers no Alerts link by default', async () => {
+  it('offers only the Grafana cluster overview dashboard by default', async () => {
     setSignedInConfig(new ConfigReader({}));
 
     await renderInTestApp(<ClusterToolsCard />);
 
     expect(linkTargets()).toEqual([
       'https://grafana.example.com/d/gs_cluster-overview/cluster-overview?orgId=1&from=now-6h&to=now&timezone=browser&var-datasource=default&var-cluster=my-cluster',
-      'https://happa.example.com/organizations/test/clusters/my-cluster',
     ]);
     expect(screen.queryByText('Alerts')).not.toBeInTheDocument();
+    expect(screen.queryByText('Web UI')).not.toBeInTheDocument();
   });
 
   it('shows the configured links in place of the defaults', async () => {
@@ -69,9 +69,9 @@ describe('ClusterToolsCard', () => {
                 url: 'https://grafana.${{BASE_DOMAIN}}/alerting?orgId=2',
               },
               {
-                label: 'Web UI',
+                label: 'Teleport',
                 icon: 'Public',
-                url: 'https://happa.${{BASE_DOMAIN}}',
+                url: 'https://teleport.${{BASE_DOMAIN}}',
                 clusterType: 'management',
               },
             ],
