@@ -104,6 +104,19 @@ describe('ShellPage', () => {
     ]);
   });
 
+  // A select holding a long value truncates it inside the header, rather
+  // than widen the page past a phone's screen.
+  it('keeps its actions within the header’s width', () => {
+    renderAt(
+      '/connectors/jira',
+      <ShellPage title="Jira" actions={<button>Edit</button>} />,
+    );
+
+    const actions = screen.getByRole('button', { name: 'Edit' })
+      .parentElement as HTMLElement;
+    expect(actions).toHaveStyle({ maxWidth: '100%', minWidth: '0' });
+  });
+
   it('draws routed tabs below the page, keeping the query string', () => {
     renderAt(
       '/connectors/jira/settings',
