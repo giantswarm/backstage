@@ -1,8 +1,12 @@
 import { PropsWithChildren } from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
-import { discoveryApiRef, fetchApiRef } from '@backstage/core-plugin-api';
+import { fetchApiRef } from '@backstage/core-plugin-api';
 import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  SkillDiscoveryClient,
+  skillDiscoveryApiRef,
+} from '../apis/SkillDiscoveryApi';
 import { useSkillContent } from './useSkillContent';
 import { useSkillSource, type SkillSource } from './useSkillSource';
 
@@ -25,8 +29,13 @@ function renderUseSkillContent(target: typeof skill | undefined) {
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
     <TestApiProvider
       apis={[
-        [discoveryApiRef, mockApis.discovery()],
-        [fetchApiRef, fetchApi],
+        [
+          skillDiscoveryApiRef,
+          new SkillDiscoveryClient({
+            discoveryApi: mockApis.discovery(),
+            fetchApi: fetchApi,
+          }),
+        ],
       ]}
     >
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

@@ -35,6 +35,8 @@ import {
   modelManagerApiRef,
   AgentManagerCredentialsClient,
   agentManagerCredentialsApiRef,
+  SkillDiscoveryClient,
+  skillDiscoveryApiRef,
 } from './apis';
 import {
   addGpuNodePoolRouteRef,
@@ -434,6 +436,31 @@ const modelManagerApi = ApiBlueprint.make({
     }),
 });
 
+// gs-backend's reads of `agentPlatform.skills.repositories` (the portal's own
+// skill source, where an installation has no skill-manager).
+const skillDiscoveryApi = ApiBlueprint.make({
+  name: 'skill-discovery',
+  params: defineParams =>
+    defineParams({
+      api: skillDiscoveryApiRef,
+      deps: {
+        configApi: configApiRef,
+        discoveryApi: discoveryApiRef,
+        fetchApi: fetchApiRef,
+      },
+      factory: ({ configApi, ...deps }) => {
+        if (process.env.NODE_ENV !== 'production' && fixturesOn(configApi)) {
+          return lazyApi(async () => {
+            const { SkillDiscoveryFixtureApi } =
+              await import('./apis/fixtures/SkillDiscoveryFixtureApi');
+            return new SkillDiscoveryFixtureApi();
+          });
+        }
+        return new SkillDiscoveryClient(deps);
+      },
+    }),
+});
+
 // muster's `fixtureMcpServersDataRef`, made from the id both plugins read in
 // gs-common rather than imported from muster: extension data is matched by
 // id, and many tests mock the muster package wholesale, which would leave an
@@ -591,6 +618,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     kagentApi,
     modelManagerApi,
     agentManagerCredentialsApi,
+    skillDiscoveryApi,
     fixtureMcpServers,
   ],
   routes: {

@@ -2,6 +2,7 @@
 import { resolve } from 'path';
 import { ConfigReader } from '@backstage/config';
 import { loadConfig } from '@backstage/config-loader';
+import { portalSkillRepositories } from '@giantswarm/backstage-plugin-agent-platform/fixtures';
 import { FIXTURE_INSTALLATIONS } from '@giantswarm/backstage-plugin-gs-common';
 import {
   baseDataSet,
@@ -214,16 +215,31 @@ describe('KubernetesFixtureApi', () => {
 });
 
 describe('app-config.fixtures.yaml', () => {
-  it('names the installations every fixture API serves, and only those', async () => {
+  async function fixturesConfig() {
     const root = resolve(__dirname, '../../../../../..');
     const { appConfigs } = await loadConfig({
       configRoot: root,
       configTargets: [{ path: resolve(root, 'app-config.fixtures.yaml') }],
     });
-    const config = ConfigReader.fromConfigs(appConfigs);
+    return ConfigReader.fromConfigs(appConfigs);
+  }
+
+  it('names the installations every fixture API serves, and only those', async () => {
+    const config = await fixturesConfig();
 
     expect(config.getConfig('gs.installations').keys()).toEqual([
       ...FIXTURE_INSTALLATIONS,
     ]);
+  });
+
+  it('names the skill repositories the fixture SkillDiscoveryApi serves, and only those', async () => {
+    const config = await fixturesConfig();
+    const entries = config.get<Array<string | { url: string }>>(
+      'agentPlatform.skills.repositories',
+    );
+
+    expect(
+      entries.map(entry => (typeof entry === 'string' ? entry : entry.url)),
+    ).toEqual(portalSkillRepositories().map(repository => repository.url));
   });
 });

@@ -229,13 +229,25 @@ agent-manager.
   lists each installation's skill repositories in every state (readable,
   private, read-only, failed, failed with its last listing kept, and private
   and hidden from the person), with their skills and a plugin, and reads a
-  skill and its files. It writes nothing, as skill-manager does not; a new or
-  changed skill is a pull request through gs-backend, which fixture mode does
-  not serve (giantswarm/giantswarm#39251, item 9b). The pages of one
-  installation read it: an agent's page and the agent form. Customize ·
-  Skills reads the home installation's skills, and fixture mode has none (it
-  sets no `gs.authProvider`), so that tab still lists what gs-backend
-  discovers on GitHub (item 9b).
+  skill and its files. It writes nothing, as skill-manager does not. The
+  pages of one installation read it: an agent's page and the agent form.
+
+### Skills without skill-manager
+
+Customize · Skills reads the home installation's skills, and fixture mode has
+no home installation (it sets no `gs.authProvider`), so the tab reads the
+portal's own skill source: gs-backend's discovery of
+`agentPlatform.skills.repositories`. The pages reach it through the
+`SkillDiscoveryApi` (`plugins/agent-platform/src/apis/SkillDiscoveryApi.ts`),
+and in fixture mode `SkillDiscoveryFixtureApi` answers from the data set, so
+nothing is read from GitHub: `app-config.fixtures.yaml` names the skill
+repositories of `meadow` (`portalSkillRepositories`, which a test checks),
+one in each state. A failed repository fails as GitHub's API refuses it (503,
+and 404 for a private one the person cannot read), a stale one answers its
+last listing, and a skill reads with its files as skill-manager's fixture
+reads it. A repository the data set lacks fails with a console error. A new or
+changed skill is a pull request through gs-backend, which fixture mode does
+not serve.
 
 ### model-manager and cluster-manager
 

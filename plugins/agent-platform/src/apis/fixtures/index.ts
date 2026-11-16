@@ -20,3 +20,5 @@ export function agentPlatformKubernetesObjectsOf(
 ): KubeObjectInterface[] {
   return agentManagerFixtureState().kubernetesObjectsOf(installation);
 }
+
+export { portalSkillRepositories } from './SkillDiscoveryFixtureApi';
