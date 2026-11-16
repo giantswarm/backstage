@@ -14,7 +14,7 @@ export class MimirClient implements MimirApi {
   async query(params: {
     installationName: string;
     query: string;
-    oidcToken: string;
+    oidcToken: string | undefined;
   }): Promise<MimirQueryResponse> {
     const { installationName, query, oidcToken } = params;
 
@@ -31,7 +31,7 @@ export class MimirClient implements MimirApi {
     start: string;
     end: string;
     step: string;
-    oidcToken: string;
+    oidcToken: string | undefined;
   }): Promise<MimirRangeQueryResponse> {
     const { installationName, query, start, end, step, oidcToken } = params;
 
@@ -50,8 +50,13 @@ export class MimirClient implements MimirApi {
   private async get<T>(
     path: 'query' | 'query_range',
     params: Record<string, string>,
-    oidcToken: string,
+    oidcToken: string | undefined,
   ): Promise<T> {
+    if (!oidcToken) {
+      throw new Error(
+        `No OIDC token available for installation "${params.installationName}"`,
+      );
+    }
     const baseUrl = await this.discoveryApi.getBaseUrl('gs');
     const searchParams = new URLSearchParams(params);
 

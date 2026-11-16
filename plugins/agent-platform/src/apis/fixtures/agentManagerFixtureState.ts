@@ -1,5 +1,6 @@
 import { dump } from 'js-yaml';
 import {
+  FIXTURE_AGENT_MODEL,
   fixtureDataSet,
   onFixtureScenarioReset,
   inInstallation,
@@ -377,7 +378,7 @@ export class AgentManagerFixtureState {
           namespace: organization.namespace,
           name: FIXTURE_MODEL_CONFIG,
           provider: 'OpenAI',
-          model: 'gpt-4.1-mini',
+          model: FIXTURE_AGENT_MODEL,
           default: true,
           secret: `${FIXTURE_MODEL_CONFIG}-model-key`,
           key: keyNameOf('OpenAI'),

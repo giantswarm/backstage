@@ -5,13 +5,13 @@ so its pages render made-up data without their backends: for local
 development, design reviews and layout checks. Fixture code never ships in a
 production build.
 
-| Flag                           | Plugin                                                                                 | Fixture implementation                                                               |
-| ------------------------------ | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `plans.fixtures: true`         | plans (Hive, the plan list)                                                            | `plugins/plans/src/apis/PlansFixtureApi.ts`, `plugins/plans/src/lib/hiveFixtures.ts` |
-| `roadmap.fixtures: true`       | roadmap (Hive's Roadmap tab)                                                           | `plugins/roadmap/src/apis/RoadmapFixtureApi.ts`                                      |
-| `muster.fixtures: true`        | muster (`MusterApi`), and every tool call through it                                   | `plugins/muster/src/apis/fixtures/`, plus the fixture MCP servers of other plugins   |
-| `agentPlatform.fixtures: true` | agent-platform (`KagentApi`, `ModelManagerApi`, `AgentManagerCredentialsApi`)          | `plugins/agent-platform/src/apis/fixtures/`                                          |
-| `gs.fixtures: true`            | the Kubernetes API of the installations (`kubernetesApiRef`), and their cluster access | `packages/app/src/modules/kubernetes/fixtures/KubernetesFixtureApi.ts`               |
+| Flag                           | Plugin                                                                                                        | Fixture implementation                                                                 |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `plans.fixtures: true`         | plans (Hive, the plan list)                                                                                   | `plugins/plans/src/apis/PlansFixtureApi.ts`, `plugins/plans/src/lib/hiveFixtures.ts`   |
+| `roadmap.fixtures: true`       | roadmap (Hive's Roadmap tab)                                                                                  | `plugins/roadmap/src/apis/RoadmapFixtureApi.ts`                                        |
+| `muster.fixtures: true`        | muster (`MusterApi`), and every tool call through it                                                          | `plugins/muster/src/apis/fixtures/`, plus the fixture MCP servers of other plugins     |
+| `agentPlatform.fixtures: true` | agent-platform (`KagentApi`, `ModelManagerApi`, `AgentManagerCredentialsApi`)                                 | `plugins/agent-platform/src/apis/fixtures/`                                            |
+| `gs.fixtures: true`            | the Kubernetes API of the installations (`kubernetesApiRef`), their cluster access, and Mimir (`mimirApiRef`) | `packages/app/src/modules/kubernetes/fixtures/`, `plugins/gs/src/apis/mimir/fixtures/` |
 
 Set the flags in `app-config.local.yaml` and run `yarn start`. In a production
 build (`NODE_ENV=production`, what `backstage-cli package build` and the image
@@ -58,8 +58,8 @@ yarn fixtures stop
 ### Scenarios
 
 The `fixtures` query parameter switches the data set of the Agent Platform's
-fixture APIs (muster, kagent, agent-manager's credentials, model-manager) and
-of the fixture Kubernetes API without restarting the server: load any page
+fixture APIs (muster, kagent, agent-manager's credentials, model-manager), of
+the fixture Kubernetes API and of the fixture Mimir without restarting the server: load any page
 with `?fixtures=<scenario>`. The Plans and Roadmap fixtures do not take part:
 they serve their own data in every scenario.
 
@@ -100,6 +100,8 @@ In `error`:
 - The Kubernetes API fails every read of objects with a 500, and every read by
   entity; the installations, discovery and access reviews answer, so the pages
   go on to their muster and kagent calls and show how those fail.
+- Mimir fails every query with a 503, as the gs backend answers when Mimir
+  does not, and the person's model cost falls back with kagent.
 - kagent, agent-manager's credential operations and model-manager's
   `tryModel` fail with a 500. model-manager's other calls go through muster
   and fail as muster does.
@@ -110,8 +112,9 @@ scenario to its cache's `buster` (`fixtureScenarioCacheBuster`, outside
 production builds and for every scenario but `base`), so a cache written under
 another scenario, by this tab or another one, is never restored.
 
-Customize · Skills lists what gs-backend reads from GitHub in every scenario
-(item 9b of giantswarm/giantswarm#39251).
+Customize · Skills reads the portal's own skill source through
+`SkillDiscoveryFixtureApi`, which serves the base data set in every scenario
+(see "gs-backend's skill routes").
 
 ### The installations
 
@@ -131,9 +134,9 @@ one object answers the objects the plugins' fixtures hold (see "Objects in the
 Kubernetes API"), every other list is empty and any other object not found,
 and access reviews are allowed, except that only an organization's admins may
 create its models (`ModelConfig`), so Connect a model offers an organization
-as owner only to them. Their cluster access is healthy from the start, and
-they have no metrics backend (`mimirEnabled: false`). Any other request, a
-write among them, fails with a 501 and a console error.
+as owner only to them. Their cluster access is healthy from the start. Any
+other request, a write among them, fails with a 501 and a console error.
+Their Mimir is the fixture one (`mimirEnabled: true`, see "Mimir").
 
 If the backend fails with "Invalid app bundle schema", a production build of
 the app in `packages/app/dist` predates a config schema change: delete the
@@ -257,7 +260,11 @@ from kagent.
   backend's words; a cancel reaches the streams following the turn at once,
   and a deleted session ends its streams and is gone from every read.
 - kagent on the unreachable installation fails every call as a timeout.
-- The model cost answers no cost yet (giantswarm/giantswarm#39251, item 8).
+- The person's model cost (Usage · Your sessions) runs agent-platform-backend's
+  queries through the fixture Mimir (`fixtureModelCost.ts`), and the backend's
+  own decision (`modelCostOf` in agent-platform-common) reads their answers:
+  partial on `meadow`, where some calls name no one, and
+  `identity-unreadable` on the unreachable installation.
 
 ### workspace-manager, toolchain-manager and skill-manager
 
@@ -387,8 +394,54 @@ and a cluster's first pool registers its KServe backend.
   declares the schemas a page reads in `inputSchemas`.
 
 Cost (Usage · Cost) reads the gateway's metrics from Mimir, not these
-managers, and the fixture installations have no Mimir (`mimirEnabled:
-false`), so it shows its "no observability stack" state.
+managers (see "Mimir").
+
+### Mimir
+
+The fixture `MimirApi` (`plugins/gs/src/apis/mimir/fixtures/`) answers each
+fixture installation's agent gateway metrics, which Usage (Overview, Cost and
+the rates of Your sessions) reads. The series are derived from the data set
+(`gatewayUsage.ts` in gs-common): the ready agents of ready organizations,
+the ones with sessions, call the organization's default model
+(`FIXTURE_AGENT_MODEL`, the default ModelConfig's model) at its list price;
+the person (`FIXTURE_PERSON_EMAIL`) through their sessions on the days each
+ran, and two teammates on most working days of the 100 days before, busier
+in some weeks than others; on `meadow` a share of one agent's calls names no one. Cost, tokens
+by type, calls, durations, output speed, the inference listener's statuses
+and price lookups all count the same calls. Each series starts on the day of
+its first call, as the gateway creates it.
+
+The figures are fixed for a seed and a time: the series count back from the
+data set's time (`now`), and the fixture Mimir evaluates instant queries at
+it, so a page shows the same figures however long it stays open. A load of
+the page builds the base data set at that moment, though, so figures over a
+window that ends now ("the last 30 days", "this month") move with the clock:
+
+- within a day, by a few percent from midnight to midnight: the window takes in
+  more of today's calls and less of its first day's;
+- from day to day, by a few percent more: the window slides by a day, and the
+  person's sessions, dated back from the data set's time, move with it.
+
+A day in the past keeps its calls whichever day the data set is built on
+(the teammates' calls depend on the calendar day, not on the window), and
+nothing depends on the browser's time zone: days are UTC days. A figure to
+check is therefore one with data, not a fixed amount; a test pins the amount
+for a fixed time (`MimirFixtureApi.test.ts`). A page restored from the query
+cache shows the previous load's figures until its queries answer again.
+
+The fixture Mimir needs no token: the Mimir hooks pass the person's token
+for the installation as they find it, and the real `MimirClient` refuses to
+ask without one.
+
+The queries are evaluated, not matched (`promql.ts`): selectors with
+`offset` and `@ <time>`; `increase`, `rate`, `min_over_time`,
+`max_over_time`, `avg_over_time`, `last_over_time`, `label_replace` and
+`histogram_quantile`; the aggregations with `by` or `without`; `or`, `and`,
+`unless`, arithmetic and comparisons, with `on` or `ignoring` and
+`group_left` or `group_right`. That covers the gs pages' Mimir widgets too.
+A metric without fixture series answers no series, as Mimir does; so does a
+query the evaluator cannot read, with a console warning that names what it
+could not read: extend the evaluator, or the series a new page reads.
 
 ### Objects in the Kubernetes API
 
@@ -510,6 +563,19 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
 
 A page that reads a new field or shows a new state extends a builder or a
 mapper in the same pull request, and the base data set gets the state.
+
+### The layout check
+
+The [`layout-check`](../.agents/skills/layout-check/SKILL.md) skill measures
+pages of the running fixture mode in a headless Chromium of its own, at
+several widths and in the states a spec steps through, and reports overflow,
+overlapping elements, misaligned rows, squeezed or cut-off text, controls that
+move or resize between states and content off its control's centre. It reads
+the portal's URL from `.fixtures-server.json`:
+
+```bash
+node .agents/skills/layout-check/layout-check.mjs --page /customize/agents
+```
 
 ## Adding a fixture mode
 

@@ -58,8 +58,12 @@ describe('fixture scenarios', () => {
   });
 
   it('has nothing in the installations of empty', () => {
-    const { installations, toolsetPresets, ...lists } =
-      scenarioDataSet('empty');
+    const {
+      now: _now,
+      installations,
+      toolsetPresets,
+      ...lists
+    } = scenarioDataSet('empty');
     expect(installations).toHaveLength(FIXTURE_INSTALLATIONS.length);
     for (const [list, items] of Object.entries(lists)) {
       expect([list, items]).toEqual([list, []]);

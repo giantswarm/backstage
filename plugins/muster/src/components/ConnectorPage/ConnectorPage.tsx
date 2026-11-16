@@ -1,3 +1,11 @@
+import { useConnectorAccess } from '../../hooks/useConnectorAccess';
+import {
+  familyAccess,
+  instanceAccess,
+  connectorAuthName,
+} from '../../lib/connectorAccess';
+import { useServerPageLinks } from '../shared/useServerPageLinks';
+import { FamilySignIn } from '../FamilySignIn';
 import { ReactElement, ReactNode, useMemo, useState } from 'react';
 import {
   Navigate,
@@ -264,6 +272,17 @@ function ConnectorPageContent({
   const members = useMemo(() => rowServers(row), [row]);
   const representativeInfo = representativeServer(row, installation);
   const representative = representativeInfo?.server;
+  const accessQuery = useConnectorAccess(installation, authenticated);
+  const links = useServerPageLinks();
+  const family =
+    row.kind === 'family'
+      ? familyAccess(row.servers, accessQuery.data)
+      : undefined;
+  const access =
+    family ??
+    (row.kind === 'server'
+      ? instanceAccess(row.server, accessQuery.data)
+      : undefined);
   const singular = row.kind === 'server' ? row.server : undefined;
 
   // Above the tabs, so a search on Tools survives a visit to another tab:
@@ -315,7 +334,7 @@ function ConnectorPageContent({
     singular && authenticated && singular.canAuthenticateInteractively(),
   );
   const signIn = useServerSignIn(
-    singular?.getName() ?? '',
+    singular ? connectorAuthName(singular) : '',
     canSignIn ? installation : undefined,
     { noun: 'connector' },
   );
@@ -478,6 +497,44 @@ function ConnectorPageContent({
           }
         />
       </Flex>
+    );
+  }
+
+  if (
+    family &&
+    family.reach !== 'connected' &&
+    family.reach !== 'portal-only' &&
+    family.reach !== 'deactivated'
+  ) {
+    const instancesExplanation = noInstanceToolsExplanation(members);
+    signInGate = (
+      <Alert
+        status={
+          family.waiting.length > 0 || instancesExplanation.tone === 'warning'
+            ? 'warning'
+            : 'info'
+        }
+        title={family.status.label}
+        description={
+          family.waiting.length === 0 && instancesExplanation.tone === 'warning'
+            ? instancesExplanation.text
+            : (family.status.explanation ?? instancesExplanation.text)
+        }
+        customActions={
+          family.waiting.length > 0 ? (
+            <FamilySignIn
+              installation={installation}
+              displayName={displayName}
+              waiting={family.waiting}
+              status={family.status}
+            />
+          ) : (
+            <Link href={links.server(name, installation, { tab: 'instances' })}>
+              View instances
+            </Link>
+          )
+        }
+      />
     );
   }
 
@@ -658,11 +715,15 @@ function ConnectorPageContent({
           <ConnectorLogo name={displayName} icon={icon} size={56} decorative />
         }
         badges={
-          <StatusBadge
-            row={row}
-            displayName={displayName}
-            portalOnly={portalOnly}
-          />
+          access ? (
+            <StatusWithHint {...access.status} subject={displayName} />
+          ) : (
+            <StatusBadge
+              row={row}
+              displayName={displayName}
+              portalOnly={portalOnly}
+            />
+          )
         }
         meta={connectorMeta(row, representative?.getDescription())}
         description={
@@ -749,6 +810,7 @@ function ConnectorPageContent({
                     fleetClusters={fleetClusters}
                     authenticated={authenticated}
                     windowed
+                    accessData={accessQuery.data}
                   />
                 }
               />

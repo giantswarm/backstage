@@ -31,6 +31,9 @@ Commands run from the repo root; `S=.claude/skills/ui-impact`.
 - **Again after every push.** The block names the commit it was made at
   (`sha`); see "Keeping it current".
 
+The pages you map here are the pages to measure with the
+[`layout-check`](../layout-check/SKILL.md) skill before you ask for review.
+
 ## 1. Read your own diff
 
 ```bash

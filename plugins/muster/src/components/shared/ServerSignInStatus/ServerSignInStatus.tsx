@@ -61,7 +61,9 @@ export function StatusWithHint({
         wrap ? `${classes.status} ${classes.statusWrapping}` : classes.status
       }
     >
-      <span title={title} style={wrap ? { minWidth: 0 } : undefined}>
+      {/* Never narrower than the label's longest word, so a hint beside a
+          label that has no room is clipped by its cell, not drawn over it. */}
+      <span title={title}>
         <StatusDot tone={tone} label={label} wrap={wrap} />
       </span>
       <StatusHint subject={subject} explanation={explanation} />
