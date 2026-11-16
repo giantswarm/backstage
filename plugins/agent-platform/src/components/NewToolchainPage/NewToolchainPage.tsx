@@ -37,6 +37,7 @@ import {
   useToolchainManagerClient,
   useToolchainSources,
 } from '../../hooks/useToolchainManager';
+import { ToolchainsUnchecked } from '../ToolchainsUnchecked';
 import { useCreateToolchain } from '../../hooks/useToolchainWrites';
 import {
   musterToolchainBuildQueryKey,
@@ -205,7 +206,7 @@ function BuildStatus({
  */
 export function NewToolchainPage() {
   const frame = useFrame();
-  const { installations, sharedIdentity, hasToolchains } =
+  const { installations, sharedIdentity, hasToolchains, unchecked, recheck } =
     useScopedToolchainInstallations();
   const [searchParams, setSearchParams] = useSearchParams();
   const requested = searchParams.get(INSTALLATION_SEARCH_PARAM);
@@ -242,6 +243,13 @@ export function NewToolchainPage() {
             description="No environment in scope runs the toolchain-manager. Ask your platform team to turn toolchains on."
           />
         )}
+      </ShellPage>
+    );
+  }
+  if (hasToolchains === 'unchecked') {
+    return (
+      <ShellPage title="New toolchain" {...frame}>
+        <ToolchainsUnchecked unchecked={unchecked} onRetry={recheck} />
       </ShellPage>
     );
   }

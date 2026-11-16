@@ -7,6 +7,8 @@ import type {
   SessionUsageResponse,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 
+import { withFixtureScenario } from '@giantswarm/backstage-plugin-gs-common/fixtures';
+
 import type {
   ConfirmationAnswerRequest,
   KagentApi,
@@ -27,7 +29,7 @@ import {
 
 /**
  * kagent in fixture mode (`agentPlatform.fixtures: true`): the installations
- * of the base data set, the fixture user signed in, and each installation's
+ * of the page's data set (`fixtureDataSet()`), the fixture user signed in, and each installation's
  * sessions with their conversations from `KagentFixtureState` (shared with
  * agent-manager's `start_session`, which creates sessions in it). Answers
  * cross as JSON, as over HTTP, so no page shares the fixture's objects.
@@ -214,4 +216,9 @@ export class KagentFixtureApi implements KagentApi {
     this.state().mustReach(installation);
     return agentManagerFixtureState().agentNamespaces(installation);
   }
+}
+
+/** The fixture `KagentApi`, as the page's fixture scenario serves it. */
+export function kagentFixtureApi(): KagentApi {
+  return withFixtureScenario('KagentApi', new KagentFixtureApi());
 }

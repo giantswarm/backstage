@@ -21,6 +21,23 @@ export function agentPlatformKubernetesObjectsOf(
   return agentManagerFixtureState().kubernetesObjectsOf(installation);
 }
 
+/**
+ * The agent-platform fixtures' answer to an access review of an
+ * installation: whether the person may create an organization's models, from
+ * their role there. Undefined for a review they don't decide.
+ */
+export function agentPlatformAccessReviewOf(
+  installation: string,
+  attributes: {
+    verb?: string;
+    group?: string;
+    resource?: string;
+    namespace?: string;
+  },
+): boolean | undefined {
+  return agentManagerFixtureState().allows(installation, attributes);
+}
+
 export {
   portalSkillRepositories,
   portalSkillSourceOf,
