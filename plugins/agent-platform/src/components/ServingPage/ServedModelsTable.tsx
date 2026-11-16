@@ -5,6 +5,7 @@ import {
   CellText,
   ColumnConfig,
   Flex,
+  Link as BuiLink,
   SearchField,
   Table,
   Text,
@@ -28,6 +29,7 @@ import {
   StackedRowList,
   StatusHint,
   stopRowPress,
+  tableMinWidth,
   useCompactLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
@@ -1214,9 +1216,13 @@ function PhoneUsedBy({
               {href ? (
                 // A box of its own: a long name wraps inside it, rather than
                 // as an inline run whose lines the text beside it shares.
-                <Link to={href} style={{ display: 'inline-block', ...WRAP }}>
+                <BuiLink
+                  href={href}
+                  variant="body-small"
+                  style={{ display: 'inline-block', ...WRAP }}
+                >
                   {consumer.displayName}
-                </Link>
+                </BuiLink>
               ) : (
                 consumer.displayName
               )}
@@ -1334,9 +1340,6 @@ export function servedModelStackedRow(
  * and offers the rest: the table sorts, then `ShowMore` slices the sorted
  * rows, so the first page is the running models whatever column is sorted.
  */
-/** The narrowest a group shows its table at; narrower, stacked rows. */
-const SERVED_MODELS_TABLE_MIN_WIDTH = 800;
-
 function ServedModelsGroupTable({
   group,
   hrefFor,
@@ -1349,15 +1352,15 @@ function ServedModelsGroupTable({
   /** The search in force; a new one starts the group over at its first page. */
   query: string;
 }) {
-  // Stacked rows wherever up to ten columns would get under ~80px each:
-  // beside the side rail too, not only at phone width.
-  const [containerRef, isPhone] = useCompactLayout(
-    SERVED_MODELS_TABLE_MIN_WIDTH,
-  );
   const columns = useMemo(() => columnsForRows(group.rows), [group.rows]);
   const columnConfig = useMemo(
     () => getColumnConfig(hrefFor, columns, group.endpoint, renderActions),
     [hrefFor, columns, group.endpoint, renderActions],
+  );
+  // Stacked rows wherever the table's columns would squeeze: beside the
+  // side rail too, not only at phone width.
+  const [containerRef, isCompact] = useCompactLayout(
+    tableMinWidth(columnConfig),
   );
 
   const { tableProps } = useTable<ServedModelRow>({
@@ -1377,8 +1380,9 @@ function ServedModelsGroupTable({
         noun="model"
       >
         {visible =>
-          isPhone ? (
-            // At phone width each model is a stacked row (T22 B13), in the
+          isCompact ? (
+            // In the compact layout (a phone, or a card too narrow for the
+            // columns) each model is a stacked row (T22 B13), in the
             // table's order — the running ones first.
             <StackedRowList
               aria-label={`Models on ${group.installation}, ${describeGroup(group)}`}

@@ -23,6 +23,7 @@ import {
   formatLocalDateFull,
   getRelativeDate,
   StatusHint,
+  tableMinWidth,
   useCompactLayout,
   usePhoneColumns,
   useVisibleSort,
@@ -305,21 +306,22 @@ export function phoneNodeFacts(
  * serving target is dimmed (not one model-image presets still serve on), its
  * few words keep to the cell, and the serving layer's reason is the
  * {@link StatusHint} beside them: a tooltip on hover, a popover on a press,
- * which is how a phone or a touch screen reads it (T22 B15). At phone width
- * the name wraps rather than truncates, and `phoneFacts` follow it.
+ * which is how a phone or a touch screen reads it (T22 B15). In the compact
+ * layout (a phone, or a card too narrow for every column) the name wraps
+ * rather than truncates, and `phoneFacts` follow it.
  */
 function NodeCell({
   node,
-  isPhone,
+  isCompact,
   phoneFacts,
 }: {
   node: GpuNode;
-  isPhone: boolean;
+  isCompact: boolean;
   phoneFacts: string[];
 }) {
   const description = describeNode(node);
   const ineligible = node.eligible === false;
-  const wrap = isPhone ? { overflowWrap: 'anywhere' as const } : undefined;
+  const wrap = isCompact ? { overflowWrap: 'anywhere' as const } : undefined;
   return (
     <Cell>
       <Text
@@ -328,7 +330,7 @@ function NodeCell({
         color={
           ineligible && !servesModelImagesOnly(node) ? 'secondary' : undefined
         }
-        truncate={isPhone ? undefined : true}
+        truncate={isCompact ? undefined : true}
         title={node.name}
         style={wrap}
       >
@@ -346,7 +348,7 @@ function NodeCell({
           <Text
             variant="body-medium"
             color="secondary"
-            truncate={isPhone ? undefined : true}
+            truncate={isCompact ? undefined : true}
             title={description}
             style={{ ...wrap, minWidth: 0 }}
           >
@@ -358,7 +360,7 @@ function NodeCell({
           />
         </span>
       )}
-      {isPhone &&
+      {isCompact &&
         phoneFacts.map(fact => (
           <Text
             key={fact}
@@ -508,15 +510,15 @@ function gpuFigure(
     );
 }
 
-/** How the panel is being read: at phone width, and whether anything hovers. */
+/** How the panel is being read: compact (a phone, or a narrow card), and whether it names the environment. */
 type CapacityLayout = {
-  isPhone: boolean;
+  isCompact: boolean;
   /** The page drops the Environment column; a phone row names it otherwise. */
   showInstallation: boolean;
 };
 
 const DESKTOP_LAYOUT: CapacityLayout = {
-  isPhone: false,
+  isCompact: false,
   showInstallation: true,
 };
 
@@ -535,9 +537,9 @@ function getColumnConfig(
       cell: node => (
         <NodeCell
           node={node}
-          isPhone={layout.isPhone}
+          isCompact={layout.isCompact}
           phoneFacts={
-            layout.isPhone
+            layout.isCompact
               ? phoneNodeFacts(node, {
                   columns,
                   noCacheHint: noCacheHints.has(node.id),
@@ -617,14 +619,14 @@ function getColumnConfig(
         cell: gpuFigure(node => {
           const free = gpuFree(node);
           if (free !== undefined) {
-            // At phone width the GPUs column is hidden; the total rides
+            // In the compact layout the GPUs column is hidden; the total rides
             // under the free count.
             const total = gpuTotal(node);
             return (
               <CellText
                 title={String(free)}
                 description={
-                  layout.isPhone && total !== undefined
+                  layout.isCompact && total !== undefined
                     ? `of ${total}`
                     : undefined
                 }
@@ -733,9 +735,6 @@ export function phoneCapacityColumns(columns: GpuCapacityColumns): string[] {
   return columns.budget ? ['name', 'budget'] : ['name'];
 }
 
-/** The narrowest the panel shows the full table at; narrower, the phone layout. */
-const CAPACITY_TABLE_MIN_WIDTH = 800;
-
 export function GpuCapacityPanel({
   nodes,
   installations,
@@ -743,10 +742,19 @@ export function GpuCapacityPanel({
   isLoading,
   hideColumns,
 }: GpuCapacityPanelProps) {
-  // The phone layout wherever up to ten columns would get under ~80px each:
-  // beside the side rail too, not only at phone width.
-  const [containerRef, isPhone] = useCompactLayout(CAPACITY_TABLE_MIN_WIDTH);
   const columns = useMemo(() => columnsForNodes(nodes), [nodes]);
+  // The compact layout wherever the full table's columns would squeeze:
+  // beside the side rail too, not only at phone width.
+  const minWidth = useMemo(
+    () =>
+      tableMinWidth(
+        getColumnConfig(columns).filter(
+          column => !hideColumns?.includes(column.id as 'installation'),
+        ),
+      ),
+    [columns, hideColumns],
+  );
+  const [containerRef, isCompact] = useCompactLayout(minWidth);
   const noCacheHints = useMemo(
     () =>
       new Set(
@@ -759,15 +767,15 @@ export function GpuCapacityPanel({
   const columnConfig = useMemo(
     () =>
       getColumnConfig(columns, noCacheHints, {
-        isPhone,
+        isCompact,
         showInstallation: !hideColumns?.includes('installation'),
       }).filter(column => !hideColumns?.includes(column.id as 'installation')),
-    [columns, noCacheHints, hideColumns, isPhone],
+    [columns, noCacheHints, hideColumns, isCompact],
   );
   const shownColumns = usePhoneColumns(
     columnConfig,
     phoneCapacityColumns(columns),
-    { compact: isPhone },
+    { compact: isCompact },
   );
   const hasHost = useMemo(() => nodes.some(isHostMemoryNode), [nodes]);
   const hasIneligible = useMemo(

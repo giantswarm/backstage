@@ -1,81 +1,125 @@
+import { useLayoutEffect } from 'react';
 import { act, render, screen } from '@testing-library/react';
+import type { ColumnConfig } from '@backstage/ui';
 import {
   mockDesktopLayout,
   MockedLayout,
   mockPhoneLayout,
 } from '../../testUtils/mockPhoneLayout';
-import { useCompactLayout } from './useCompactLayout';
+import {
+  MockedContainerWidth,
+  mockContainerWidth,
+} from '../../testUtils/mockContainerWidth';
+import {
+  TABLE_COLUMN_MIN_WIDTH,
+  TABLE_NAME_COLUMN_MIN_WIDTH,
+  tableMinWidth,
+  useCompactLayout,
+} from './useCompactLayout';
 
-type Observed = { callback: ResizeObserverCallback; node?: Element };
+/** Every layout the probe committed, in order: what each paint showed. */
+let committed: string[] = [];
 
-let observers: Observed[] = [];
-const OriginalResizeObserver = globalThis.ResizeObserver;
-
-/** Tell every observer that its element is now `width` px wide. */
-function resizeTo(width: number) {
-  act(() => {
-    for (const { callback, node } of observers) {
-      callback(
-        [
-          {
-            target: node,
-            contentRect: { width, height: 100 },
-          } as unknown as ResizeObserverEntry,
-        ],
-        {} as ResizeObserver,
-      );
-    }
+function Probe({ minWidth = 800 }: { minWidth?: number }) {
+  const [ref, isCompact] = useCompactLayout(minWidth);
+  const label = isCompact ? 'compact' : 'full';
+  useLayoutEffect(() => {
+    committed.push(label);
   });
-}
-
-function Probe() {
-  const [ref, isCompact] = useCompactLayout(800);
-  return <div ref={ref}>{isCompact ? 'compact' : 'full'}</div>;
+  return <div ref={ref}>{label}</div>;
 }
 
 describe('useCompactLayout', () => {
   let layout: MockedLayout;
+  let container: MockedContainerWidth | undefined;
 
   beforeEach(() => {
-    observers = [];
-    globalThis.ResizeObserver = class {
-      private observed: Observed;
-      constructor(callback: ResizeObserverCallback) {
-        this.observed = { callback };
-        observers.push(this.observed);
-      }
-      observe(node: Element) {
-        this.observed.node = node;
-      }
-      unobserve() {}
-      disconnect() {}
-    } as unknown as typeof ResizeObserver;
+    committed = [];
   });
 
   afterEach(() => {
     layout.restore();
-    globalThis.ResizeObserver = OriginalResizeObserver;
+    container?.restore();
+    container = undefined;
   });
 
-  it('is full on a desktop until the container is measured', () => {
+  it('is full on a desktop while nothing is laid out', () => {
     layout = mockDesktopLayout();
     render(<Probe />);
     expect(screen.getByText('full')).toBeInTheDocument();
   });
 
-  it('is compact in a container narrower than the minimum, beside a side rail', () => {
+  it('measures before the first paint, so a narrow container never paints the full layout', () => {
     layout = mockDesktopLayout();
+    container = mockContainerWidth(424);
     render(<Probe />);
-    resizeTo(424);
     expect(screen.getByText('compact')).toBeInTheDocument();
-    resizeTo(936);
+    // The ref's commit and the measurement run before the browser paints;
+    // the full layout committed in between is never on screen.
+    expect(committed[committed.length - 1]).toBe('compact');
+  });
+
+  it('follows the container across the minimum, re-rendering only when the answer flips', () => {
+    layout = mockDesktopLayout();
+    container = mockContainerWidth(936);
+    render(<Probe />);
+    expect(screen.getByText('full')).toBeInTheDocument();
+
+    act(() => container!.setWidth(424));
+    expect(screen.getByText('compact')).toBeInTheDocument();
+
+    const renders = committed.length;
+    act(() => container!.setWidth(500));
+    act(() => container!.setWidth(600));
+    expect(committed.length).toBe(renders);
+
+    act(() => container!.setWidth(800));
     expect(screen.getByText('full')).toBeInTheDocument();
   });
 
   it('is compact at phone width whatever the container measures', () => {
     layout = mockPhoneLayout();
+    container = mockContainerWidth(936);
     render(<Probe />);
-    resizeTo(936);
     expect(screen.getByText('compact')).toBeInTheDocument();
+  });
+
+  it('answers again when the minimum changes', () => {
+    layout = mockDesktopLayout();
+    container = mockContainerWidth(600);
+    const { rerender } = render(<Probe minWidth={400} />);
+    expect(screen.getByText('full')).toBeInTheDocument();
+    rerender(<Probe minWidth={720} />);
+    expect(screen.getByText('compact')).toBeInTheDocument();
+  });
+});
+
+describe('tableMinWidth', () => {
+  type Row = { id: string };
+  const column = (
+    id: string,
+    extra: Partial<ColumnConfig<Row>> = {},
+  ): ColumnConfig<Row> => ({ id, label: id, cell: () => <span />, ...extra });
+
+  it('sums the shown columns, the name column wider', () => {
+    expect(
+      tableMinWidth([
+        column('name', { isRowHeader: true }),
+        column('status'),
+        column('gpus'),
+        column('hidden', { isHidden: true }),
+      ]),
+    ).toBe(TABLE_NAME_COLUMN_MIN_WIDTH + 2 * TABLE_COLUMN_MIN_WIDTH);
+  });
+
+  it('takes a column’s own minimum', () => {
+    expect(
+      tableMinWidth(
+        [column('name', { isRowHeader: true }), column('actions')],
+        {
+          actions: 120,
+        },
+      ),
+    ).toBe(TABLE_NAME_COLUMN_MIN_WIDTH + 120);
   });
 });
