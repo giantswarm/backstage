@@ -66,6 +66,21 @@ alignment: Agents (/customize/agents) @ 768px, scenario base, state "Sort: Last 
     group "Filters" (div.bui-Flex > div.bui-Flex > div.bui-Flex) at x=77 y=-64 293×72
 ```
 
+The browser is Playwright's headless shell, which renders in software
+(SwiftShader). Playwright's full Chromium (`channel: 'chromium'`) renders on
+the GPU, but doesn't make the check faster: the time goes to loading pages
+and waiting for them to settle, not to painting. Measured on an Apple M5
+Pro, 10 spec pages × 3 widths × `base,many`, concurrency 3, three runs each
+(two with GPU rasterization forced):
+
+| Browser | Wall time | CPU time (process tree) | Peak memory (process tree) |
+|---|---|---|---|
+| Headless shell | 121–124 s | 355–359 s | 8.8–10.4 GB |
+| Full Chromium (ANGLE Metal) | 124–128 s | 386–394 s | 9.2–11.2 GB |
+| Full Chromium, GPU rasterization forced | 122–124 s | 385–393 s | 11.2–11.3 GB |
+
+Both gave the same findings and warnings.
+
 ## When
 
 On every page your pull request changes, before you ask for review: the
