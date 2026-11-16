@@ -55,6 +55,10 @@ describe('visibleColumnsOf', () => {
     ]);
   });
 
+  it('shows the name alone when a person unchecked every other column', () => {
+    expect(visibleColumnsOf(['name'])).toEqual([]);
+  });
+
   it('falls back to the default when nothing saved is known any more', () => {
     expect(visibleColumnsOf(['gone'])).toEqual(
       DEFAULT_PLATFORM_CLUSTER_COLUMNS,

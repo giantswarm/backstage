@@ -1,12 +1,11 @@
 import {
   ButtonIcon,
-  MenuListBox,
-  MenuListBoxItem,
-  MenuTrigger,
-  type Selection,
+  Checkbox,
+  CheckboxGroup,
+  DialogTrigger,
+  Popover,
 } from '@backstage/ui';
 import ViewColumnIcon from '@material-ui/icons/ViewColumn';
-import { MENU_WIDTH } from '../../utils/menuWidth';
 
 /** One column a list can show or hide. */
 export type ColumnPickerOption = {
@@ -25,9 +24,13 @@ export type ColumnPickerProps = {
 
 /**
  * The column picker at the end of a list's filter bar: an icon button that
- * opens the list's columns, each checked while it shows. A fixed column (the
- * name) is listed checked and cannot be hidden. What is picked is the list's
- * to keep, usually per person in the browser (`useTableColumns`).
+ * opens the list's columns as checkboxes, each checked while it shows. A
+ * fixed column (the name) is listed checked and cannot be hidden. Escape
+ * closes it and keeps the choice. What is picked is the list's to keep,
+ * usually per person in the browser (`useTableColumns`).
+ *
+ * A checkbox group in a popover, not a selectable menu list: react-aria's
+ * list box clears its selection on Escape, which hid every chosen column.
  */
 export function ColumnPicker({
   options,
@@ -35,35 +38,38 @@ export function ColumnPicker({
   onChange,
 }: ColumnPickerProps) {
   const fixed = options.filter(option => option.isFixed).map(o => o.id);
-  const selected = new Set([...fixed, ...visible]);
+  const checked = options
+    .map(option => option.id)
+    .filter(id => fixed.includes(id) || visible.includes(id));
   return (
-    <MenuTrigger>
+    <DialogTrigger>
       <ButtonIcon
         icon={<ViewColumnIcon />}
         aria-label="Columns"
         variant="secondary"
         size="small"
       />
-      <MenuListBox
-        aria-label="Columns"
-        selectionMode="multiple"
-        selectedKeys={selected}
-        disabledKeys={fixed}
-        maxWidth={MENU_WIDTH}
-        onSelectionChange={(keys: Selection) => {
-          const picked =
-            keys === 'all'
-              ? options.map(option => option.id)
-              : [...keys].map(String);
-          onChange(picked.filter(id => !fixed.includes(id)));
-        }}
-      >
-        {options.map(option => (
-          <MenuListBoxItem key={option.id} id={option.id}>
-            {option.label}
-          </MenuListBoxItem>
-        ))}
-      </MenuListBox>
-    </MenuTrigger>
+      <Popover placement="bottom end">
+        <div style={{ minWidth: 200, maxHeight: 420, overflowY: 'auto' }}>
+          <CheckboxGroup
+            label="Columns"
+            value={checked}
+            onChange={values =>
+              onChange(values.filter(id => !fixed.includes(id)))
+            }
+          >
+            {options.map(option => (
+              <Checkbox
+                key={option.id}
+                value={option.id}
+                isDisabled={option.isFixed}
+              >
+                {option.label}
+              </Checkbox>
+            ))}
+          </CheckboxGroup>
+        </div>
+      </Popover>
+    </DialogTrigger>
   );
 }

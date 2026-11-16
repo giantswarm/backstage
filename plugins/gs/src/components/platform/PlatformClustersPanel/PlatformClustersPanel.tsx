@@ -252,6 +252,33 @@ function managementMark(row: PlatformClusterRow) {
   ) : undefined;
 }
 
+/**
+ * Each column's least width, in px, measured in fixture mode: the larger of
+ * its header (the label plus 44px of sort arrow and padding) and its usual
+ * content on one line — a status, a release with its Kubernetes version and
+ * EOL mark, the workers' "144 vCPUs · 1152 GiB", "almost 2 years ago". The
+ * default columns add up to 960px, a 1280px window's content width beside
+ * the rail; past that the table scrolls sideways. Free text (the name, the
+ * organization) gets less and ends in an ellipsis, the whole value on hover.
+ */
+const MIN_WIDTHS: Record<PlatformClusterColumn, number> = {
+  name: 140,
+  status: 100,
+  environment: 128,
+  organization: 128,
+  release: 150,
+  workers: 162,
+  provider: 102,
+  region: 100,
+  account: 122,
+  priority: 144,
+  clusterApp: 120,
+  created: 152,
+};
+
+/** One short unit on one line: a date, a count. */
+const NO_WRAP = { whiteSpace: 'nowrap' } as const;
+
 type ColumnSpec = Omit<ColumnConfig<PlatformClusterRow>, 'id' | 'label'>;
 
 /**
@@ -268,7 +295,7 @@ function buildColumnSpecs(
     name: {
       isRowHeader: true,
       defaultWidth: '2fr',
-      minWidth: 180,
+      minWidth: MIN_WIDTHS.name,
       cell: row => (
         <CellText
           title={row.name}
@@ -279,7 +306,7 @@ function buildColumnSpecs(
     },
     status: {
       defaultWidth: '1fr',
-      minWidth: 120,
+      minWidth: MIN_WIDTHS.status,
       cell: row => (
         <Cell>
           <ClusterStatusDot status={row.status} />
@@ -288,17 +315,17 @@ function buildColumnSpecs(
     },
     environment: {
       defaultWidth: '1fr',
-      minWidth: 120,
+      minWidth: MIN_WIDTHS.environment,
       cell: row => <CellText title={row.installationName} />,
     },
     organization: {
       defaultWidth: '1fr',
-      minWidth: 120,
+      minWidth: MIN_WIDTHS.organization,
       cell: row => valueCell(row.organization),
     },
     release: {
       defaultWidth: '1.4fr',
-      minWidth: 170,
+      minWidth: MIN_WIDTHS.release,
       cell: row => (
         <Cell>
           <ReleaseFacts
@@ -310,7 +337,7 @@ function buildColumnSpecs(
     },
     workers: {
       defaultWidth: '1.2fr',
-      minWidth: 150,
+      minWidth: MIN_WIDTHS.workers,
       cell: row => {
         const workers = workersOf(row);
         return (
@@ -320,12 +347,12 @@ function buildColumnSpecs(
     },
     provider: {
       defaultWidth: '1fr',
-      minWidth: 90,
+      minWidth: MIN_WIDTHS.provider,
       cell: row => valueCell(providerLabel(row)),
     },
     region: {
       defaultWidth: '1fr',
-      minWidth: 120,
+      minWidth: MIN_WIDTHS.region,
       cell: row =>
         valueCell(
           row.location,
@@ -334,7 +361,7 @@ function buildColumnSpecs(
     },
     account: {
       defaultWidth: '1.2fr',
-      minWidth: 140,
+      minWidth: MIN_WIDTHS.account,
       cell: row =>
         valueCell(
           row.awsAccountId,
@@ -346,12 +373,12 @@ function buildColumnSpecs(
     },
     priority: {
       defaultWidth: '1fr',
-      minWidth: 130,
+      minWidth: MIN_WIDTHS.priority,
       cell: row => valueCell(priorityLabel(row)),
     },
     clusterApp: {
       defaultWidth: '1fr',
-      minWidth: 120,
+      minWidth: MIN_WIDTHS.clusterApp,
       cell: row =>
         valueCell(
           row.appVersion,
@@ -360,7 +387,7 @@ function buildColumnSpecs(
     },
     created: {
       defaultWidth: '1fr',
-      minWidth: 110,
+      minWidth: MIN_WIDTHS.created,
       cell: row =>
         row.created ? (
           <Cell>
@@ -368,6 +395,7 @@ function buildColumnSpecs(
               variant="body-medium"
               color="secondary"
               title={formatLocalDateFull(row.created)}
+              style={NO_WRAP}
             >
               {getRelativeDate(row.created, now)}
             </Text>

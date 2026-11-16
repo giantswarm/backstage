@@ -71,16 +71,18 @@ export function dataColumnsOf(visible: readonly string[]): string[] {
 
 /**
  * The columns shown from what a person saved, always in the list's own
- * order (the store sorts what it saves): the default until they chose, and
- * only ids this list knows, so a renamed column falls away.
+ * order (the store sorts what it saves): the default until they chose, the
+ * name alone when they unchecked every other column, and only ids this list
+ * knows, so a renamed column falls away.
  */
 export function visibleColumnsOf(
   saved: readonly string[],
 ): PlatformClusterColumn[] {
-  const shown = PLATFORM_CLUSTER_COLUMNS.filter(
-    id => id !== 'name' && saved.includes(id),
-  );
-  return shown.length > 0 ? shown : [...DEFAULT_PLATFORM_CLUSTER_COLUMNS];
+  const known = PLATFORM_CLUSTER_COLUMNS.filter(id => saved.includes(id));
+  if (known.length === 0) {
+    return [...DEFAULT_PLATFORM_CLUSTER_COLUMNS];
+  }
+  return known.filter(id => id !== 'name');
 }
 
 /** The clusters' states in their lifecycle order, as the Status filter lists them. */

@@ -196,17 +196,32 @@ describe('PlatformClustersPanel', () => {
     expect(headers()).toEqual(['Name', 'Status', 'Region']);
 
     await userEvent.click(screen.getByRole('button', { name: 'Columns' }));
-    const picker = await screen.findByRole('listbox', { name: 'Columns' });
+    const picker = await screen.findByRole('group', { name: 'Columns' });
     expect(
-      within(picker).getByRole('option', { name: 'Name' }),
-    ).toHaveAttribute('aria-disabled', 'true');
+      within(picker).getByRole('checkbox', { name: 'Name' }),
+    ).toBeDisabled();
+    expect(
+      within(picker).getByRole('checkbox', { name: 'Name' }),
+    ).toBeChecked();
     await userEvent.click(
-      within(picker).getByRole('option', { name: 'Provider' }),
+      within(picker).getByRole('checkbox', { name: 'Provider' }),
     );
-    expect(mockSetVisible).toHaveBeenCalledWith(
+    expect(mockSetVisible).toHaveBeenLastCalledWith(
       expect.arrayContaining(['status', 'region', 'provider']),
     );
     expect(mockSetVisible.mock.calls[0][0]).not.toContain('name');
+  });
+
+  it('closes the picker on Escape and keeps the columns chosen', async () => {
+    mockVisible = ['status', 'region'];
+    await renderInTestApp(<PlatformClustersPanel />);
+    await userEvent.click(screen.getByRole('button', { name: 'Columns' }));
+    await screen.findByRole('group', { name: 'Columns' });
+    await userEvent.keyboard('{Escape}');
+    expect(
+      screen.queryByRole('group', { name: 'Columns' }),
+    ).not.toBeInTheDocument();
+    expect(mockSetVisible).not.toHaveBeenCalled();
   });
 
   it('says why a value is missing where its read failed on the environment', async () => {

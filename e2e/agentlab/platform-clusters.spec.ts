@@ -72,20 +72,25 @@ test('the Platform item opens the clusters list', async ({ admin }) => {
   // Rows open nothing yet.
   await expect(table.getByRole('link')).toHaveCount(0);
 
-  // The column picker adds a column and takes it away again.
-  await admin.getByRole('button', { name: 'Columns', exact: true }).click();
-  const picker = admin.getByRole('listbox', { name: 'Columns' });
-  await picker.getByRole('option', { name: 'Region', exact: true }).click();
+  // The column picker adds a column, keeps it on Escape, and takes it away
+  // again.
+  const columns = admin.getByRole('button', { name: 'Columns', exact: true });
+  const picker = admin.getByRole('group', { name: 'Columns' });
+  const region = table.getByRole('columnheader', {
+    name: 'Region',
+    exact: true,
+  });
+  await columns.click();
+  await picker.getByRole('checkbox', { name: 'Region' }).check({ force: true });
   await admin.keyboard.press('Escape');
-  await expect(
-    table.getByRole('columnheader', { name: 'Region', exact: true }),
-  ).toBeVisible();
-  await admin.getByRole('button', { name: 'Columns', exact: true }).click();
-  await picker.getByRole('option', { name: 'Region', exact: true }).click();
+  await expect(picker).toBeHidden();
+  await expect(region).toBeVisible();
+  await columns.click();
+  await picker
+    .getByRole('checkbox', { name: 'Region' })
+    .uncheck({ force: true });
   await admin.keyboard.press('Escape');
-  await expect(
-    table.getByRole('columnheader', { name: 'Region', exact: true }),
-  ).toHaveCount(0);
+  await expect(region).toHaveCount(0);
 
   // A header sorts the list.
   const status = table.getByRole('columnheader', {

@@ -82,13 +82,19 @@ const everyClusterColumn = {
     const button = page.locator('button[aria-label="Columns"]');
     if (!(await shows(button))) skip('no column picker: no clusters listed, or phone width');
     await button.click();
-    const options = page.getByRole('listbox', { name: 'Columns' }).getByRole('option');
-    for (const option of await options.all()) {
-      if ((await option.getAttribute('aria-selected')) !== 'true') {
-        await option.click();
+    const group = page.getByRole('group', { name: 'Columns' });
+    await group.waitFor();
+    // The inputs sit under bui's drawn box: check them, not click them.
+    for (const box of await group.getByRole('checkbox').all()) {
+      if (!(await box.isChecked()) && !(await box.isDisabled())) {
+        await box.check({ force: true });
       }
     }
     await page.keyboard.press('Escape');
+    const headers = page.getByRole('columnheader');
+    if ((await headers.count()) !== (await group.getByRole('checkbox').count())) {
+      throw new Error('the column picker did not show every column');
+    }
   },
 };
 
