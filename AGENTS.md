@@ -272,6 +272,11 @@ until `ui-tested` has replaced it. This is a convention; no check enforces it.
 Details: the `ui-impact` skill and `docs/development.md`, "Manual UI test
 before merge".
 
+Before asking for review of a pull request that changes a page, run the
+`layout-check` skill on every page it changes, against fixture mode
+(`yarn fixtures start`, `docs/fixtures.md`), and fix what it finds or say in
+the description why a finding is right as it is.
+
 ## Configuration and secrets
 
 `app-config.yaml` (base), `app-config.production.yaml` (settings come from the

@@ -1,7 +1,7 @@
 # Runs the tests of the agent skills' scripts (.agents/skills/*/*.test.mjs,
-# for ui-impact's scorer and ui-sitemap's layout). They use Node's built-in
-# test runner and no dependencies, so the job needs no install and takes
-# seconds. Neither Jest nor the workspaces pick them up.
+# for ui-impact's scorer, ui-sitemap's layout and layout-check's rules). They
+# use Node's built-in test runner and no dependencies, so the job needs no
+# install and takes seconds. Neither Jest nor the workspaces pick them up.
 #
 # Hand-authored (not devctl-generated), so it is safe to edit here.
 name: Skill tests
