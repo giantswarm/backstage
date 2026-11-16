@@ -236,7 +236,13 @@ function PlaceholderRows({ rows }: { rows: number }) {
   return (
     <Flex direction="column" gap="2" aria-hidden="true">
       {Array.from({ length: rows }, (_, index) => (
-        <Skeleton key={index} width={420} height={20} rounded />
+        <Skeleton
+          key={index}
+          width={420}
+          height={20}
+          rounded
+          style={{ maxWidth: '100%' }}
+        />
       ))}
     </Flex>
   );

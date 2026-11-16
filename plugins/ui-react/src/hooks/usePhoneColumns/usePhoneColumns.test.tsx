@@ -78,8 +78,10 @@ const manyRows: CostRow[] = Array.from({ length: 40 }, (_, index) => ({
   cost: `$${(100 - index * 1.5).toFixed(2)}`,
 }));
 
-function CostTable({ rows }: { rows: CostRow[] }) {
-  const columnConfig = usePhoneColumns(columns, ['tokens', 'cost']);
+function CostTable({ rows, compact }: { rows: CostRow[]; compact?: boolean }) {
+  const columnConfig = usePhoneColumns(columns, ['tokens', 'cost'], {
+    compact,
+  });
   return (
     <Table
       columnConfig={columnConfig}
@@ -129,6 +131,18 @@ describe('usePhoneColumns', () => {
       'Avg tokens/call',
       'Cost',
     ]);
+  });
+
+  it('keeps only the named columns on a desktop when compact', () => {
+    layout = mockDesktopLayout();
+    render(<CostTable rows={threeRows} compact />);
+    expect(headers()).toEqual(['Model', 'Avg tokens/call', 'Cost']);
+  });
+
+  it('keeps the phone columns at phone width even when not compact', () => {
+    layout = mockPhoneLayout();
+    render(<CostTable rows={threeRows} compact={false} />);
+    expect(headers()).toEqual(['Model', 'Avg tokens/call', 'Cost']);
   });
 
   it('brings the columns back when the viewport widens', () => {

@@ -76,11 +76,7 @@ describe('MusterFixtureApi', () => {
     );
   });
 
-  it('answers muster’s transport probe and definition check, and no write', async () => {
-    const consoleError = jest
-      .spyOn(console, 'error')
-      .mockImplementation(() => {});
-
+  it('answers muster’s transport probe and definition check', async () => {
     expect(
       parseTransportDetection(
         await api.callTool(
@@ -99,11 +95,6 @@ describe('MusterFixtureApi', () => {
     await expect(
       api.callTool('core_mcpserver_validate', { name: 'docs' }, 'meadow'),
     ).resolves.toBe('Validation successful for mcpserver docs');
-    await expect(
-      api.callTool('core_mcpserver_create', { name: 'docs' }, 'meadow'),
-    ).rejects.toBeInstanceOf(FixtureToolMissingError);
-    expect(consoleError).toHaveBeenCalledTimes(1);
-    consoleError.mockRestore();
   });
 
   it('describes the connector tools the New connector flow reads, with the arguments it asks about', async () => {
@@ -134,6 +125,12 @@ describe('MusterFixtureApi', () => {
       'x_agent-manager_get_info',
       'core_mcpserver_detect',
       'core_mcpserver_validate',
+      'core_mcpserver_create',
+      'core_mcpserver_update',
+      'core_mcpserver_delete',
+      'core_service_start',
+      'core_service_stop',
+      'core_service_restart',
     ]);
   });
 

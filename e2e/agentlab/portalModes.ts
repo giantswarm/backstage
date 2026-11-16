@@ -33,6 +33,7 @@ export const SHELL_SPECS = [
   'first-agent.spec.ts',
   'form-validation.spec.ts',
   'gpu-node-pool.spec.ts',
+  'hosting-narrow-window.spec.ts',
   'harness-codex-card.spec.ts',
   'harness-codex-turn.spec.ts',
   'harness-omp-turn.spec.ts',

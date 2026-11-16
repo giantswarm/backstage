@@ -8,10 +8,14 @@ description: Measure portal pages for layout bugs in a headless browser of your 
 Unit tests don't see layout, and layout bugs only show on the rendered page:
 a button running over its neighbour at 375px, a picker sitting between two
 rows of filters after a longer value made them wrap. This check finds such
-bugs by measuring the page: it opens each page in a headless Chromium of its
-own (Playwright's, the one the e2e suite uses), so runs in different
-checkouts never share a browser, and reads every control's, icon's and line
-of text's box from the DOM. No screenshots.
+bugs by measuring the page: it opens each page in a browser of its own, so
+runs in different checkouts never share one, and reads every control's,
+icon's and line of text's box from the DOM. No screenshots.
+
+The browser is Playwright's Chromium headless shell, what `chromium.launch()`
+starts, as in the e2e suites (the agentlab suite on Linux with `unshare` and
+`pasta` runs the full Chromium instead). The headless shell is on purpose:
+the full Chromium renders on the GPU but was measured no faster (#3563).
 
 | File | What it is |
 |---|---|
