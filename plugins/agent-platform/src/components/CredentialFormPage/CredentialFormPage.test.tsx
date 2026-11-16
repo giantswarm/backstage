@@ -132,7 +132,11 @@ const analyticsApi = mockApis.analytics.mock();
 
 async function renderForm(
   credentialsApi: AgentManagerCredentialsApi,
-  { operation = OPERATION, name = 'payments' } = {},
+  {
+    operation = OPERATION,
+    name = 'payments',
+    namespace,
+  }: { operation?: string; name?: string; namespace?: string } = {},
 ) {
   const { api: musterApi } = fakeOrganizationsMuster({});
   const queryClient = new QueryClient({
@@ -151,12 +155,20 @@ async function renderForm(
     >
       <QueryClientProvider client={queryClient}>
         <PageHeaderActionsProvider>
-          <CredentialFormPage
-            installation="gazelle"
-            parent="org-acme"
-            name={name}
-            operation={operation}
-          />
+          {namespace ? (
+            <CredentialFormPage
+              installation="gazelle"
+              namespace={namespace}
+              operation={operation}
+            />
+          ) : (
+            <CredentialFormPage
+              installation="gazelle"
+              parent="org-acme"
+              name={name}
+              operation={operation}
+            />
+          )}
         </PageHeaderActionsProvider>
       </QueryClientProvider>
     </TestApiProvider>,
@@ -639,7 +651,7 @@ describe('CredentialFormPage', () => {
       ).toBeInTheDocument();
       expect(
         screen.getByText(
-          /Start the replacement again from the organization's tab/,
+          /Start the replacement again from the organization’s tab/,
         ),
       ).toBeInTheDocument();
       // The same request would be refused again: no value, no Save, and the
@@ -1120,6 +1132,34 @@ describe('CredentialFormPage', () => {
     });
     await renderForm(api);
     expect(await screen.findByText('This request is gone')).toBeInTheDocument();
+  });
+
+  it('names the installation, not an organization, for a platform request', async () => {
+    const api = fakeCredentialsApi(
+      read({
+        ...CONFIRMATION,
+        organization: { scope: 'platform', namespace: 'kagent' },
+        references: [],
+      }),
+    );
+    await renderForm(api, { namespace: 'kagent' });
+
+    expect(
+      await screen.findByText('No other object of the installation reads it.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Live, in the installation’s namespace.'),
+    ).toBeInTheDocument();
+  });
+
+  it('says to start a platform request again from Models once it is gone', async () => {
+    const api = fakeCredentialsApi(async () => {
+      throw await refusal(404, 'not_found', 'not found');
+    });
+    await renderForm(api, { namespace: 'kagent' });
+    expect(
+      await screen.findByText(/Start again from Models or ask the agent again/),
+    ).toBeInTheDocument();
   });
 
   it('reads nothing for a link that names no request', async () => {

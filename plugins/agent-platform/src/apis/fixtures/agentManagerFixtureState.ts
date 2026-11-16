@@ -941,6 +941,7 @@ export class AgentManagerFixtureState {
       name: request.name,
       deleted: !request.dryRun,
       defaultModel: this.defaultModelIn(installation, request.namespace),
+      note: 'its credential Secret, if any, stays: another object may name it',
     };
   }
 

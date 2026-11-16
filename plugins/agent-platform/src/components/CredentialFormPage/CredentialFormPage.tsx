@@ -169,6 +169,10 @@ function Confirmation({
   const others = otherReferences(operation);
   const sentTo = destinations(operation);
   const { organization, parent, namespace } = operation.organization;
+  const owner =
+    operation.organization.scope === 'platform'
+      ? 'the installation'
+      : 'the organization';
   const replacement = isReplacement(operation);
   return (
     <PageSection title="What you are about to save">
@@ -217,7 +221,7 @@ function Confirmation({
         )}
         <Fact label={replacement ? 'Used by' : 'Also used by'}>
           {others.length === 0 ? (
-            <Text>No other object of the organization reads it.</Text>
+            <Text>No other object of {owner} reads it.</Text>
           ) : (
             others.map(ref => (
               <Text key={`${ref.kind}/${ref.name}`} as="p">
@@ -230,8 +234,7 @@ function Confirmation({
         <Fact label="Sent to">
           {sentTo.length === 0 ? (
             <Text>
-              No endpoint, egress policy or connector of the organization names
-              it.
+              No endpoint, egress policy or connector of {owner} names it.
             </Text>
           ) : (
             sentTo.map(destination => (
@@ -245,8 +248,7 @@ function Confirmation({
           {operation.mode === 'commit' ? (
             <Text>
               A pull request to{' '}
-              {operation.gitTarget?.repository ??
-                'the organization’s repository'}
+              {operation.gitTarget?.repository ?? `${owner}’s repository`}
               {operation.gitTarget?.base
                 ? ` on ${operation.gitTarget.base}`
                 : ''}
@@ -256,7 +258,7 @@ function Confirmation({
               , with the value encrypted.
             </Text>
           ) : (
-            <Text>Live, in the organization’s namespace.</Text>
+            <Text>Live, in {owner}’s namespace.</Text>
           )}
         </Fact>
       </Flex>
@@ -301,9 +303,11 @@ function Receipt({ result }: { result: CredentialResourceResult }) {
 function SaveError({
   installation,
   error,
+  startAgainFrom,
 }: {
   installation: string;
   error: Error | null;
+  startAgainFrom: string;
 }) {
   if (!error) {
     return null;
@@ -316,7 +320,7 @@ function SaveError({
       <Alert
         status="danger"
         title="The objects that use this credential changed"
-        description="Since this replacement was prepared, an object that uses the credential, or where it sends the value, changed, so nothing was saved. Start the replacement again from the organization's tab: the new request lists where the value goes now."
+        description={`Since this replacement was prepared, an object that uses the credential, or where it sends the value, changed, so nothing was saved. Start the replacement again from ${startAgainFrom}: the new request lists where the value goes now.`}
       />
     );
   }
@@ -745,7 +749,11 @@ export function CredentialFormPage({
                 Finishing it needs no value: agent-manager completes what it
                 started.
               </Text>
-              <SaveError installation={installation} error={shownSaveError} />
+              <SaveError
+                installation={installation}
+                error={shownSaveError}
+                startAgainFrom={startAgainFrom}
+              />
               <Flex gap="3">
                 <Button variant="secondary" onPress={reload} isDisabled={busy}>
                   Check again
@@ -820,7 +828,11 @@ export function CredentialFormPage({
                   ),
                 )
               )}
-              <SaveError installation={installation} error={shownSaveError} />
+              <SaveError
+                installation={installation}
+                error={shownSaveError}
+                startAgainFrom={startAgainFrom}
+              />
               {cancel.error instanceof PortalSessionEndedError ? (
                 <PortalSessionEndedAlert afterSignIn={AFTER_SIGN_IN} />
               ) : null}
@@ -861,7 +873,11 @@ export function CredentialFormPage({
           </PageSection>
         ) : null}
         {stale ? (
-          <SaveError installation={installation} error={save.error} />
+          <SaveError
+            installation={installation}
+            error={save.error}
+            startAgainFrom={startAgainFrom}
+          />
         ) : null}
         {stale && cancelOffered ? (
           <Flex direction="column" gap="3" align="start">
