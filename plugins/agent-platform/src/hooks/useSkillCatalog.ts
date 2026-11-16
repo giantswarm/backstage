@@ -1,17 +1,13 @@
-import {
-  discoveryApiRef,
-  fetchApiRef,
-  useApi,
-} from '@backstage/core-plugin-api';
+import { useApi } from '@backstage/core-plugin-api';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
+import { skillDiscoveryApiRef } from '../apis/SkillDiscoveryApi';
 import {
   canonicalRepoUrl,
   canProposeSkillTo,
   DiscoveredSkill,
-  type RefKind,
 } from '../lib/skills';
 import {
   offGitHubSources,
@@ -138,8 +134,7 @@ function usePortalSkillCatalog(enabled: boolean): SkillCatalog {
   // The repository list is part of the signed-in config; discovery waits for
   // it rather than starting with an empty list.
   const { config, isLoading: configIsLoading } = useSignedInConfig();
-  const discoveryApi = useApi(discoveryApiRef);
-  const fetchApi = useApi(fetchApiRef);
+  const skillDiscoveryApi = useApi(skillDiscoveryApiRef);
 
   const repositories = useMemo(() => skillRepositoryUrls(config), [config]);
 
@@ -148,45 +143,8 @@ function usePortalSkillCatalog(enabled: boolean): SkillCatalog {
     queryKey: ['agent-platform', 'skills', repositories.join(','), 'json-v1'],
     enabled: enabled && !configIsLoading && repositories.length > 0,
     queryFn: async () => {
-      const baseUrl = await discoveryApi.getBaseUrl('gs');
-
       const perRepo = await Promise.allSettled(
-        repositories.map(async repoUrl => {
-          const params = new URLSearchParams({ repoUrl });
-          const response = await fetchApi.fetch(
-            `${baseUrl}/agent-skills?${params.toString()}`,
-          );
-          if (!response.ok) {
-            const reason = await response
-              .json()
-              .then(
-                (body: { error?: { message?: unknown } }) =>
-                  body?.error?.message,
-              )
-              .catch(() => undefined);
-            throw new Error(
-              typeof reason === 'string' && reason
-                ? reason
-                : `Failed to discover skills in ${repoUrl}: HTTP ${response.status}`,
-            );
-          }
-          const body = (await response.json()) as {
-            skills: DiscoveredSkill[];
-            /** Absent from older backends. */
-            plugins?: DiscoveredPlugin[];
-            truncated?: boolean;
-            /** Absent for the default branch and from older backends. */
-            refKind?: RefKind;
-            /** Absent from older backends. */
-            proposable?: boolean;
-            path?: string;
-            readOnly?: boolean;
-            ref?: string;
-            /** Absent from older backends and for non-GitHub hosts. */
-            private?: boolean;
-          };
-          return body;
-        }),
+        repositories.map(repoUrl => skillDiscoveryApi.discover(repoUrl)),
       );
 
       const skills: DiscoveredSkill[] = [];

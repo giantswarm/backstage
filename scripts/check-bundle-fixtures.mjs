@@ -105,9 +105,13 @@ const MARKERS = [
     marker: 'A command line YAML processor',
   },
   {
-    source:
-      'plugins/agent-platform/src/apis/fixtures/mcpServers/skillManager.ts',
+    source: 'plugins/agent-platform/src/apis/fixtures/skillFixtureFiles.ts',
     marker: '1. Read the request and what it refers to.',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/SkillDiscoveryFixtureApi.ts',
+    marker: 'returned 503: Service Unavailable',
   },
   {
     source: 'plugins/muster/src/apis/fixtures/musterFixtureData.ts',
@@ -122,6 +126,14 @@ const MARKERS = [
     source:
       'packages/app/src/modules/kubernetes/fixtures/KubernetesFixtureApi.ts',
     marker: 'Fixture mode does not answer the Kubernetes request',
+  },
+  {
+    source: 'plugins/gs/src/apis/mimir/fixtures/MimirFixtureApi.ts',
+    marker: 'Fixture Mimir answers no series',
+  },
+  {
+    source: 'plugins/gs-common/src/fixtures/gatewayUsage.ts',
+    marker: 'sorrel@example.com',
   },
   {
     source: 'plugins/gs-common/src/fixtures/scenarios.ts',

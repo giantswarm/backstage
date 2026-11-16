@@ -19,6 +19,15 @@ function clientAnswering(status: number, body: unknown) {
 const query = { installationName: 'alba', query: 'up', oidcToken: 'tok' };
 
 describe('MimirClient', () => {
+  it('refuses to ask without a token for the installation', async () => {
+    const { client, fetch } = clientAnswering(200, {});
+
+    await expect(
+      client.query({ ...query, oidcToken: undefined }),
+    ).rejects.toThrow('No OIDC token available for installation "alba"');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("carries the backend's reason on the error", async () => {
     const { client } = clientAnswering(503, {
       error: {
