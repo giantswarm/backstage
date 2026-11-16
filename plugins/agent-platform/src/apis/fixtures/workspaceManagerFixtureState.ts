@@ -2,7 +2,7 @@ import {
   DAY,
   FIXTURE_PROVIDERS,
   MINUTE,
-  baseDataSet,
+  fixtureDataSet,
   hashOf,
   inInstallation,
   isWorkspaceOrganization,
@@ -201,7 +201,7 @@ export class WorkspaceManagerFixtureState {
   private jobs = 0;
 
   constructor(
-    private readonly data: FixtureDataSet = baseDataSet(),
+    private readonly data: FixtureDataSet = fixtureDataSet(),
     private readonly now: () => number = Date.now,
   ) {}
 

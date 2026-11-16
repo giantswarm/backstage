@@ -7,6 +7,8 @@ import type {
   SessionUsageResponse,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 
+import { withFixtureScenario } from '@giantswarm/backstage-plugin-gs-common/fixtures';
+
 import type {
   ConfirmationAnswerRequest,
   KagentApi,
@@ -214,4 +216,9 @@ export class KagentFixtureApi implements KagentApi {
     this.state().mustReach(installation);
     return agentManagerFixtureState().agentNamespaces(installation);
   }
+}
+
+/** The fixture `KagentApi`, as the page's fixture scenario serves it. */
+export function kagentFixtureApi(): KagentApi {
+  return withFixtureScenario('KagentApi', new KagentFixtureApi());
 }

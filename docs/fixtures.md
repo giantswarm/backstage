@@ -53,6 +53,56 @@ yarn fixtures stop
   directory you run the command in; from a workspace directory, run
   `yarn run -T fixtures …`.
 
+### Scenarios
+
+The `fixtures` query parameter switches the data set without restarting the
+server: load any page with `?fixtures=<scenario>`.
+
+| Scenario     | What every fixture API serves                                                                                                                                                                                        |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `base`       | The base data set (see "The data set"). The default.                                                                                                                                                                 |
+| `empty`      | The three installations, with nothing in them: no organizations, agents, sessions, connectors, workflows, workspaces, toolchains, skill repositories or model backends.                                              |
+| `many`       | Hundreds of items in each list a page shows: per installation about 250 agents, 200 connectors, 120 workflows and their executions, 300 sessions, 100 hosted models, and dozens of pools, workspaces and toolchains. |
+| `long-names` | Every name as long as a Kubernetes name may be (63 characters), display names as long in whole words; GPU clusters 40, so their pools' names, which start with them, stay apart.                                     |
+| `loading`    | No call ever answers.                                                                                                                                                                                                |
+| `error`      | Every call fails (below).                                                                                                                                                                                            |
+
+The page reads the scenario once, as it loads, and the tab keeps it
+(sessionStorage), so the app's own navigation, which drops the parameter, and
+a reload keep it; `?fixtures=base` goes back. A name fixture mode does not know
+serves `base`, with a console error. The data sets are
+`fixtureDataSet()` in `@giantswarm/backstage-plugin-gs-common/fixtures`
+(`plugins/gs-common/src/fixtures/scenarios.ts`), which every fixture API and
+tool handler reads instead of `baseDataSet()`; each fixture API's factory
+wraps it with `withFixtureScenario` for `loading` and `error`.
+
+In `error`:
+
+- muster fails in its own words, by installation: on `meadow` with
+  muster-backend's 401 (a tool call asks for the sign-in to the tool's server,
+  `server_sign_in_required`; any other call has its token refused,
+  `token_rejected`); on `fennel` the person is signed out (the session-expired
+  `MusterTokenMintError`); `tarragon` is not reachable (503), its background
+  reads included. Only muster-backend's list of installations answers: it is
+  configuration, not a call to a muster.
+- The Kubernetes API fails every read of objects with a 500, and every read by
+  entity; the installations, discovery and access reviews answer, so the pages
+  go on to their muster and kagent calls and show how those fail.
+- kagent, agent-manager's credential operations and model-manager's
+  `tryModel` fail with a 500. model-manager's other calls go through muster
+  and fail as muster does.
+
+The plugins persist their query caches to localStorage and restore them as a
+page loads, before any fixture API answers, so a page switched to `error`
+would show the rows of the scenario before. The app drops those caches
+(`*-react-query-cache`) when the page's scenario is not the one they were
+written under (`dropQueryCachesOfOtherFixtureScenario`, in
+`packages/app/src/index.tsx`, outside production builds). Two tabs on
+different scenarios share them, and drop each other's on reload.
+
+Customize · Skills lists what gs-backend reads from GitHub in every scenario
+(item 9b of giantswarm/giantswarm#39251).
+
 ### The installations
 
 Fixture mode serves three made-up installations, `meadow`, `fennel` and
@@ -321,8 +371,8 @@ the fixture's build.
 
 ### The data set
 
-Every fixture API and tool handler reads one data set, so the pages tell one
-story: the agents an organization lists are the agents whose sessions kagent
+Every fixture API and tool handler reads one data set (the scenario's, see
+"Scenarios"), so the pages tell one story: the agents an organization lists are the agents whose sessions kagent
 lists. It is in `@giantswarm/backstage-plugin-gs-common/fixtures`
 (`plugins/gs-common/src/fixtures/`), a subpath of its own that only fixture
 modules and tests import (`giantswarm/no-fixture-imports` fails on any other import):

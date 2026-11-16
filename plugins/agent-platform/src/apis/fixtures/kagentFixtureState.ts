@@ -17,7 +17,7 @@ import {
   type SessionUsageResponse,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
-  baseDataSet,
+  fixtureDataSet,
   DAY,
   inInstallation,
   type FixtureDataSet,
@@ -339,7 +339,7 @@ export class KagentFixtureState {
   >();
 
   constructor(
-    private readonly data: FixtureDataSet = baseDataSet(),
+    private readonly data: FixtureDataSet = fixtureDataSet(),
     private readonly now: () => number = Date.now,
   ) {}
 

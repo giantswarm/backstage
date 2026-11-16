@@ -62,3 +62,11 @@ export {
   type FixtureServingPreset,
 } from './hostingBuilders';
 export { hashOf } from './random';
+export {
+  fixtureDataSet,
+  fixtureScenario,
+  fixtureScenarioError,
+  scenarioDataSet,
+  setFixtureScenarioForTests,
+  withFixtureScenario,
+} from './scenarios';

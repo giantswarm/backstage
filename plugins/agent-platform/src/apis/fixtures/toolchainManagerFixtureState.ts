@@ -1,5 +1,5 @@
 import {
-  baseDataSet,
+  fixtureDataSet,
   inInstallation,
   type FixtureDataSet,
   type FixtureToolchain,
@@ -111,7 +111,7 @@ export class ToolchainManagerFixtureState {
   private nextPull = 101;
 
   constructor(
-    private readonly data: FixtureDataSet = baseDataSet(),
+    private readonly data: FixtureDataSet = fixtureDataSet(),
     private readonly now: () => number = Date.now,
   ) {}
 

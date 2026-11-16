@@ -1,6 +1,6 @@
 import { dump } from 'js-yaml';
 import {
-  baseDataSet,
+  fixtureDataSet,
   inInstallation,
   type AgentState,
   type FixtureDataSet,
@@ -320,7 +320,7 @@ export class AgentManagerFixtureState {
   private readonly kagent: () => KagentFixtureState;
 
   constructor(
-    private readonly data: FixtureDataSet = baseDataSet(),
+    private readonly data: FixtureDataSet = fixtureDataSet(),
     private readonly now: () => number = Date.now,
     /**
      * kagent's state, the shared one for the base data set; another data set
@@ -331,7 +331,7 @@ export class AgentManagerFixtureState {
     let own: KagentFixtureState | undefined;
     this.kagent =
       kagent ??
-      (data === baseDataSet()
+      (data === fixtureDataSet()
         ? kagentFixtureState
         : () => {
             own ??= new KagentFixtureState(data, now);

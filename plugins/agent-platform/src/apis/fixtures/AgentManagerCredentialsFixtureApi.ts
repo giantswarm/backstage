@@ -1,4 +1,5 @@
 import { ResponseError } from '@backstage/errors';
+import { withFixtureScenario } from '@giantswarm/backstage-plugin-gs-common/fixtures';
 
 import type {
   CredentialOperationRead,
@@ -95,4 +96,15 @@ export class AgentManagerCredentialsFixtureApi implements AgentManagerCredential
       this.state.cancelOperation(installation, operation, etag),
     );
   }
+}
+
+/**
+ * The fixture `AgentManagerCredentialsApi`, as the page's fixture scenario
+ * serves it.
+ */
+export function agentManagerCredentialsFixtureApi(): AgentManagerCredentialsApi {
+  return withFixtureScenario(
+    'AgentManagerCredentialsApi',
+    new AgentManagerCredentialsFixtureApi(),
+  );
 }

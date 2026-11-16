@@ -6,7 +6,7 @@
  * and tests import it.
  */
 import {
-  baseDataSet,
+  fixtureDataSet,
   inInstallation,
 } from '@giantswarm/backstage-plugin-gs-common/fixtures';
 import type { KubeObjectInterface } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -25,7 +25,7 @@ export function musterKubernetesObjectsOf(
 ): KubeObjectInterface[] {
   let objects = objectsByInstallation.get(installation);
   if (!objects) {
-    const data = baseDataSet();
+    const data = fixtureDataSet();
     objects = [
       ...inInstallation(data.connectors, installation).map(mcpServerObjectOf),
       ...inInstallation(data.workflows, installation).map(workflow =>
