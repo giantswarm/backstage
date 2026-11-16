@@ -11,21 +11,10 @@ import { fixtureToolNames } from './fixtureToolNames';
  */
 
 /**
- * muster's own tools the pages call that fixture mode does not answer: the
- * writes to an installation's connectors. Fixture mode keeps no connector
- * state that a write could change, so these fail with
- * `FixtureToolMissingError` and the page shows the error.
+ * muster's own tools the pages call that fixture mode does not answer, each
+ * with the reason. None today: list one here rather than leave it unchecked.
  */
-const NOT_SERVED = new Set([
-  // Saving the New connector flow or the definition editor.
-  'core_mcpserver_create',
-  'core_mcpserver_update',
-  // A connector's actions menu: delete, activate, deactivate, reconnect.
-  'core_mcpserver_delete',
-  'core_service_start',
-  'core_service_stop',
-  'core_service_restart',
-]);
+const NOT_SERVED = new Set<string>();
 
 /**
  * The calls whose tool name is only known at runtime. Fixture mode lists the

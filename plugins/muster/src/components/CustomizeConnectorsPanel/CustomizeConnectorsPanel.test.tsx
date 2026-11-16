@@ -229,6 +229,63 @@ describe('CustomizeConnectorsPanel', () => {
     mockNavigate.mockClear();
   });
 
+  it('offers one sign-in for a family whose members wait for grants', async () => {
+    mockServers = ['a', 'b'].map(name =>
+      makeServer(name, { family: 'kubernetes', auth: { type: 'oauth' } }),
+    );
+    api.getAuthStatus.mockResolvedValue({
+      servers: [
+        { name: 'a', status: 'auth_required', kind: 'grant' },
+        { name: 'b', status: 'reauth_required', kind: 'grant' },
+      ],
+    });
+    api.filterTools.mockResolvedValueOnce({
+      total: 0,
+      filtered_count: 0,
+      truncated: false,
+      tools: [],
+    });
+    await renderPanel();
+    const row = rowOf('kubernetes');
+    expect(await within(row).findByText('Sign in needed')).toBeVisible();
+    expect(within(row).queryByText('Connected')).not.toBeInTheDocument();
+    expect(within(row).queryByText('0 tools')).not.toBeInTheDocument();
+    expect(
+      within(row).queryByRole('link', { name: 'View instances' }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Sign in' }));
+    const dialog = await screen.findByRole('dialog');
+    const listed = await within(dialog).findByRole('list', {
+      name: 'Connectors',
+    });
+    expect(within(listed).getAllByRole('listitem')).toHaveLength(2);
+  });
+
+  it('sends a family failing for other reasons to its instances', async () => {
+    mockServers = ['a', 'b'].map(name =>
+      makeServer(name, { family: 'kubernetes', auth: { type: 'oauth' } }),
+    );
+    api.getAuthStatus.mockResolvedValue({
+      servers: [
+        { name: 'a', status: 'failed', kind: 'grant' },
+        { name: 'b', status: 'failed', kind: 'grant' },
+      ],
+    });
+    await renderPanel();
+    const row = rowOf('kubernetes');
+    expect(await within(row).findByText('Cannot connect')).toBeVisible();
+    expect(
+      within(row).getByRole('link', { name: 'View instances' }),
+    ).toHaveAttribute(
+      'href',
+      '/customize/connectors/gazelle/kubernetes/instances',
+    );
+    expect(
+      within(row).queryByRole('button', { name: 'Sign in' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('shows a row per connector with its sign-in, tools and state', async () => {
     await renderPanel();
 
@@ -329,12 +386,10 @@ describe('CustomizeConnectorsPanel', () => {
     await renderPanel();
 
     const kubernetes = rowOf('kubernetes');
-    // Its own state: nothing waits on this person.
     expect(
-      await within(kubernetes).findByText('Connected'),
+      await within(kubernetes).findByText('Cannot connect'),
     ).toBeInTheDocument();
     expect(within(kubernetes).queryByText('Sign in needed')).toBeNull();
-    expect(within(kubernetes).queryByText('Cannot connect')).toBeNull();
     expect(
       within(kubernetes).queryByRole('button', { name: 'Sign in' }),
     ).not.toBeInTheDocument();
@@ -861,6 +916,11 @@ describe('CustomizeConnectorsPanel', () => {
   });
 
   it('names the connectors whose tools a search that found nothing could not see', async () => {
+    api.getAuthStatus.mockResolvedValue({
+      servers: defaultAuthStatus().servers.map(status =>
+        status.name === 'web-search' ? { ...status, status: 'failed' } : status,
+      ),
+    });
     mockServers = [
       ...servers().filter(server => server.getName() !== 'web-search'),
       makeServer('web-search', { state: 'Failed' }),
@@ -940,7 +1000,7 @@ describe('CustomizeConnectorsPanel', () => {
 
     expect(
       await screen.findByText(
-        'The tools of 2 connectors (github, web-search) were not searched: Muster listed none of them.',
+        'The tools of 2 connectors (github, web-search) were not searched: they could not be read.',
       ),
     ).toBeInTheDocument();
   });
@@ -1231,6 +1291,12 @@ describe('CustomizeConnectorsPanel', () => {
 
     it('offers no connection filter over connectors that all answer', async () => {
       mockServers = ['a', 'b', 'c'].map(name => makeServer(name));
+      api.getAuthStatus.mockResolvedValue({
+        servers: mockServers.map(server => ({
+          name: server.getName(),
+          status: 'connected',
+        })),
+      });
       await renderPanel();
 
       await waitFor(() => expect(api.getAuthStatus).toHaveBeenCalled());
@@ -1356,6 +1422,13 @@ describe('CustomizeConnectorsPanel', () => {
           ...(i % 5 === 0 ? { state: 'Failed' as MCPServerState } : {}),
         }),
       );
+      api.getAuthStatus.mockResolvedValue({
+        servers: mockServers.map(server => ({
+          name: server.getName(),
+          status: server.getState() === 'Failed' ? 'failed' : 'connected',
+          kind: 'none',
+        })),
+      });
       await renderPanel();
 
       await screen.findByRole('button', { name: /Filter by connection/ });
@@ -1410,6 +1483,31 @@ describe('CustomizeConnectorsPanel', () => {
         .filter(item => item.parentElement === list());
     const itemOf = (name: string) =>
       within(list()).getByRole('link', { name }).closest('li') as HTMLElement;
+
+    it('offers the single waiting member sign-in on a family at phone width', async () => {
+      mockServers = [
+        makeServer('member', { family: 'kubernetes', auth: { type: 'oauth' } }),
+      ];
+      api.getAuthStatus.mockResolvedValue({
+        servers: [
+          {
+            name: 'member',
+            status: 'auth_required',
+            kind: 'grant',
+            auth_tool: 'core_auth_login',
+          },
+        ],
+      });
+      await renderPanel();
+      const item = itemOf('kubernetes');
+      expect(await within(item).findByText('Sign in needed')).toBeVisible();
+      expect(
+        within(item).getByRole('button', { name: 'Sign in' }),
+      ).toBeVisible();
+      expect(
+        within(item).queryByRole('link', { name: 'View instances' }),
+      ).not.toBeInTheDocument();
+    });
 
     it('stacks a row per connector: name and state, then sign-in and tools', async () => {
       await renderPanel();

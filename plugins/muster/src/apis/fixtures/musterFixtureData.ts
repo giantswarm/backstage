@@ -108,6 +108,21 @@ const CONNECTED: ReadonlySet<MCPServerState> = new Set([
   'Running',
 ]);
 
+/**
+ * A connector as muster serves it live: the data set's record, with the tool
+ * prefix its definition sets, if any (`spec.toolPrefix`).
+ */
+export type MusterFixtureConnector = FixtureConnector & { toolPrefix?: string };
+
+/**
+ * The segment muster names a connector's tools and prompts with,
+ * `x_<segment>_<tool>`: its tool prefix, else its name (as
+ * `MCPServer.getToolNamePrefix` reads it).
+ */
+function toolSegmentOf(connector: MusterFixtureConnector): string {
+  return connector.toolPrefix || connector.name;
+}
+
 /** Whether a connector serves this session tools, resources and prompts. */
 export function isServing(connector: FixtureConnector): boolean {
   return CONNECTED.has(connector.state);
@@ -190,17 +205,6 @@ export function connectorNameOf(connector: FixtureConnector): ConnectorName {
   return { name: connector.name, displayName: connector.displayName };
 }
 
-/** A workflow as `/workflows` lists it. */
-export function workflowListItemOf(
-  workflow: FixtureWorkflow,
-): WorkflowListItem {
-  return {
-    name: workflow.name,
-    description: workflow.description,
-    available: workflow.state === 'available',
-  };
-}
-
 /** What a connector's tools do, in turn; the first ones only read. */
 const TOOL_VERBS = [
   'list',
@@ -230,10 +234,12 @@ const TOOL_NOUNS = [
 /**
  * A connector's tools, `toolsCount` of them, as `filter_tools` lists them
  * with their schema. Named `x_<tool prefix>_<verb>_<noun>`, the prefix being
- * the connector's name (`mcpServerObjectOf`). Derived from the connector
- * alone, so every read names the same tools.
+ * the connector's tool prefix or name ({@link toolSegmentOf}). Derived from
+ * the connector alone, so every read names the same tools.
  */
-export function connectorToolsOf(connector: FixtureConnector): ToolSummary[] {
+export function connectorToolsOf(
+  connector: MusterFixtureConnector,
+): ToolSummary[] {
   return Array.from({ length: connector.toolsCount }, (_, index) => {
     const verb = TOOL_VERBS[index % TOOL_VERBS.length];
     const noun =
@@ -243,7 +249,7 @@ export function connectorToolsOf(connector: FixtureConnector): ToolSummary[] {
     const description = `${verb[0].toUpperCase()}${verb.slice(1)} the ${noun} of ${connector.displayName}.`;
     const byName = verb !== 'list' && verb !== 'search' && verb !== 'create';
     return {
-      name: `x_${connector.name}_${tool}`,
+      name: `x_${toolSegmentOf(connector)}_${tool}`,
       summary: description,
       description,
       server: connector.name,
@@ -302,14 +308,14 @@ export function connectorResourcesOf(
 
 /** A serving connector's prompts, as `filter_prompts` lists them. */
 export function connectorPromptsOf(
-  connector: FixtureConnector,
+  connector: MusterFixtureConnector,
 ): PromptSummary[] {
   if (!isServing(connector)) {
     return [];
   }
   return [
     {
-      name: `x_${connector.name}_summarize`,
+      name: `x_${toolSegmentOf(connector)}_summarize`,
       description: `Summarize what changed in ${connector.displayName} today.`,
       server: connector.name,
     },
@@ -405,12 +411,21 @@ export const FIXTURE_CORE_TOOLS: readonly ToolSummary[] = [
     ['name'],
     false,
   ),
+  coreTool('core_mcpserver_delete', 'Delete an MCP server.', 'name', false),
+  coreTool('core_service_start', 'Start or activate a service.', 'name', false),
+  coreTool(
+    'core_service_stop',
+    'Stop and deactivate a service.',
+    'name',
+    false,
+  ),
+  coreTool('core_service_restart', 'Restart a service.', 'name', false),
 ];
 
 /**
- * One of muster's tools for connector definitions. Fixture mode answers
- * `core_mcpserver_detect` and `core_mcpserver_validate` (`musterCoreTools.ts`);
- * the writes are listed so their schemas can be read, and fail when called.
+ * One of muster's tools for connector definitions, described with the
+ * arguments the New connector flow reads from its schema. Fixture mode
+ * answers each (`musterCoreTools.ts`).
  */
 function connectorTool(
   name: string,
@@ -485,20 +500,42 @@ function workflowInputSchema(): JsonSchema {
   };
 }
 
-/** One step of a fixture workflow: the tool it calls, if a connector offers it. */
-type FixtureWorkflowStep = { tool: string; summary?: ToolSummary };
+/**
+ * A workflow as muster holds it: the data set's record, with the tools its
+ * steps call, fixed when it was written ({@link musterWorkflowOf}). Whether
+ * it is available follows from what the connectors serve now
+ * ({@link isWorkflowAvailable}), not from the record's `state`.
+ */
+export type MusterFixtureWorkflow = FixtureWorkflow & {
+  stepTools: readonly string[];
+};
+
+/** The tools the serving connectors offer now, by name. */
+export type ServedTools = ReadonlyMap<string, ToolSummary>;
+
+/** {@link ServedTools} of an installation's connectors. */
+export function servedToolsOf(
+  connectors: readonly MusterFixtureConnector[],
+): ServedTools {
+  return new Map(
+    connectors
+      .filter(isServing)
+      .flatMap(connectorToolsOf)
+      .map(tool => [tool.name, tool]),
+  );
+}
 
 /**
- * A workflow's steps: the first tools of the installation's serving
- * connectors, so its page links to tools that exist. One that is not
- * available also calls a tool no connector offers, last, which is why muster
- * flags it.
+ * A workflow with its steps, written against the data set's connectors: the
+ * first tools of the installation's serving connectors, so its page links to
+ * tools that exist. One the data set makes unavailable also calls a tool no
+ * connector offers, last, which is why muster flags it.
  */
-function workflowStepsOf(
+export function musterWorkflowOf(
   workflow: FixtureWorkflow,
   connectors: readonly FixtureConnector[],
-): FixtureWorkflowStep[] {
-  const steps: FixtureWorkflowStep[] = connectors
+): MusterFixtureWorkflow {
+  const stepTools = connectors
     .filter(
       connector =>
         connector.installation === workflow.installation &&
@@ -506,18 +543,49 @@ function workflowStepsOf(
     )
     .flatMap(connector => connectorToolsOf(connector).slice(0, 2))
     .slice(0, 3)
-    .map(summary => ({ tool: summary.name, summary }));
-  return workflow.state === 'available'
-    ? steps
-    : [...steps, { tool: `x_retired_${workflow.name.replace(/-/g, '_')}` }];
+    .map(tool => tool.name);
+  return {
+    ...workflow,
+    stepTools:
+      workflow.state === 'available'
+        ? stepTools
+        : [...stepTools, `x_retired_${workflow.name.replace(/-/g, '_')}`],
+  };
 }
 
-/** The tools a workflow's steps call, in order. */
-export function workflowStepToolsOf(
-  workflow: FixtureWorkflow,
-  connectors: readonly FixtureConnector[],
-): string[] {
-  return workflowStepsOf(workflow, connectors).map(step => step.tool);
+/** One step of a fixture workflow: the tool it calls, if a connector offers it. */
+type FixtureWorkflowStep = { tool: string; summary?: ToolSummary };
+
+/** A workflow's steps, each with its tool if a serving connector offers it. */
+function workflowStepsOf(
+  workflow: MusterFixtureWorkflow,
+  served: ServedTools,
+): FixtureWorkflowStep[] {
+  return workflow.stepTools.map(tool => ({ tool, summary: served.get(tool) }));
+}
+
+/**
+ * Whether a workflow is available: every tool its steps call is served, as
+ * muster validates it. A deleted, deactivated or failing connector makes the
+ * workflows that call its tools unavailable.
+ */
+export function isWorkflowAvailable(
+  workflow: MusterFixtureWorkflow,
+  served: ServedTools,
+): boolean {
+  return workflow.stepTools.every(tool => served.has(tool));
+}
+
+/** A workflow as `/workflows` lists it. */
+export function workflowListItemOf(
+  workflow: MusterFixtureWorkflow,
+  served: ServedTools,
+): WorkflowListItem {
+  return {
+    name: workflow.name,
+    description: workflow.description,
+    available: isWorkflowAvailable(workflow, served),
+  };
 }
 
 /**
@@ -537,8 +605,8 @@ function stepArgsOf(step: FixtureWorkflowStep): Record<string, unknown> {
  * muster derives it. muster lists available workflows only.
  */
 export function workflowToolOf(
-  workflow: FixtureWorkflow,
-  connectors: readonly FixtureConnector[],
+  workflow: MusterFixtureWorkflow,
+  served: ServedTools,
 ): ToolSummary {
   return {
     name: `workflow_${workflow.name}`,
@@ -546,7 +614,7 @@ export function workflowToolOf(
     description: workflow.description,
     kind: 'workflow',
     annotations: {
-      readOnlyHint: workflowStepsOf(workflow, connectors).every(
+      readOnlyHint: workflowStepsOf(workflow, served).every(
         step => step.summary?.annotations?.readOnlyHint === true,
       ),
     },
@@ -556,12 +624,15 @@ export function workflowToolOf(
 
 /** A workflow as the `Workflow` object the muster pages list. */
 export function musterWorkflowObjectOf(
-  workflow: FixtureWorkflow,
-  connectors: readonly FixtureConnector[],
+  workflow: MusterFixtureWorkflow,
+  served: ServedTools,
 ): MusterWorkflow['jsonData'] {
-  const steps = workflowStepsOf(workflow, connectors);
+  const steps = workflowStepsOf(workflow, served);
   const tools = steps.map(step => step.tool);
-  const valid = workflow.state === 'available';
+  const missing = steps.flatMap((step, index) =>
+    step.summary ? [] : [{ index, tool: step.tool }],
+  );
+  const valid = missing.length === 0;
   return {
     apiVersion: 'muster.giantswarm.io/v1alpha1',
     kind: 'Workflow',
@@ -582,9 +653,10 @@ export function musterWorkflowObjectOf(
     status: {
       valid,
       ...(!valid && {
-        validationErrors: [
-          `Step ${tools.length} calls ${tools[tools.length - 1]}, which no connector offers.`,
-        ],
+        validationErrors: missing.map(
+          ({ index, tool }) =>
+            `Step ${index + 1} calls ${tool}, which no connector offers.`,
+        ),
       }),
       referencedTools: tools,
       stepCount: tools.length,
@@ -595,19 +667,20 @@ export function musterWorkflowObjectOf(
 /**
  * How many of its workflow's steps a run walked, as muster lists only the
  * steps it started: every one it could complete when it completed, else up
- * to the step it failed in or is running. An unavailable workflow's last
- * step calls a tool no connector offers, so no run completes it: a completed
- * run stops before it, and a failed one may fail in it.
+ * to the step it failed in or is running. No run completes a step whose tool
+ * no connector serves: a completed run stops before the first such step, and
+ * a failed one may fail in it.
  */
 export function stepsRunOf(
   execution: FixtureExecution,
-  workflow: FixtureWorkflow | undefined,
-  connectors: readonly FixtureConnector[],
+  workflow: MusterFixtureWorkflow | undefined,
+  served: ServedTools,
 ): number {
-  const steps = workflow
-    ? workflowStepsOf(workflow, connectors).length
-    : execution.stepCount;
-  const completable = workflow?.state === 'unavailable' ? steps - 1 : steps;
+  const steps = workflow ? workflow.stepTools.length : execution.stepCount;
+  const firstMissing = workflow
+    ? workflow.stepTools.findIndex(tool => !served.has(tool))
+    : -1;
+  const completable = firstMissing === -1 ? steps : firstMissing;
   const walked = {
     completed: completable,
     failed: Math.min(execution.stepCount, steps),
@@ -629,7 +702,7 @@ function executionErrorOf(
     return undefined;
   }
   const reason =
-    tool && !tool.summary && tool.tool.startsWith('x_retired_')
+    tool && !tool.summary
       ? `no connector offers ${tool.tool}.`
       : (execution.error ?? '').replace(/^Step \d+ failed: /, '');
   return `Step ${step} failed: ${reason}`;
@@ -641,12 +714,10 @@ function executionErrorOf(
  */
 export function executionSummaryOf(
   execution: FixtureExecution,
-  workflow?: FixtureWorkflow,
-  connectors: readonly FixtureConnector[] = [],
+  workflow?: MusterFixtureWorkflow,
+  served: ServedTools = new Map(),
 ): WorkflowExecutionSummary {
-  const run = workflow
-    ? executionOf(execution, workflow, connectors)
-    : undefined;
+  const run = workflow ? executionOf(execution, workflow, served) : undefined;
   const error = run ? run.error : execution.error;
   return {
     execution_id: execution.id,
@@ -668,13 +739,20 @@ export function executionSummaryOf(
  */
 export function executionOf(
   execution: FixtureExecution,
-  workflow: FixtureWorkflow | undefined,
-  connectors: readonly FixtureConnector[],
+  workflow: MusterFixtureWorkflow | undefined,
+  served: ServedTools,
 ): WorkflowExecution {
   const tools: FixtureWorkflowStep[] = workflow
-    ? workflowStepsOf(workflow, connectors)
-    : [{ tool: 'core_mcpserver_list' }];
-  const stepCount = stepsRunOf(execution, workflow, connectors);
+    ? workflowStepsOf(workflow, served)
+    : [
+        {
+          tool: 'core_mcpserver_list',
+          summary: FIXTURE_CORE_TOOLS.find(
+            t => t.name === 'core_mcpserver_list',
+          ),
+        },
+      ];
+  const stepCount = stepsRunOf(execution, workflow, served);
   const error = executionErrorOf(
     execution,
     stepCount,

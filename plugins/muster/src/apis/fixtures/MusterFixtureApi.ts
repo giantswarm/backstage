@@ -6,14 +6,9 @@ import {
 import {
   fixtureDataSet,
   fixtureScenario,
-  inInstallation,
   isUnreachableInstallation,
   unreachableInstallationError,
   withFixtureScenario,
-  type FixtureConnector,
-  type FixtureExecution,
-  type FixtureToolsetPreset,
-  type FixtureWorkflow,
 } from '@giantswarm/backstage-plugin-gs-common/fixtures';
 
 import type {
@@ -55,12 +50,11 @@ import {
   connectorNameOf,
   connectorPromptsOf,
   connectorResourcesOf,
-  connectorToolsOf,
   executionOf,
   executionSummaryOf,
   FIXTURE_CORE_TOOLS,
   FIXTURE_MUSTER_NAMESPACE,
-  isServing,
+  isWorkflowAvailable,
   mcpServerRuntimeOf,
   mcpToolLatencyOf,
   mcpUsageOf,
@@ -68,8 +62,13 @@ import {
   workflowListItemOf,
   workflowStatsOf,
   workflowToolOf,
+  type MusterFixtureConnector,
 } from './musterFixtureData';
 import { fixtureToolName } from './fixtureToolNames';
+import {
+  musterFixtureState,
+  type MusterFixtureSnapshot,
+} from './musterFixtureState';
 import { musterCoreToolHandlers } from './musterCoreTools';
 import { presetsOf, resolveToolset } from './toolsetFixtures';
 
@@ -195,16 +194,6 @@ function page<T>(items: T[], options: { limit?: number; offset?: number }) {
   return { items: limited, truncated: offset + limited.length < items.length };
 }
 
-/** The data set's records of one installation that muster's reads serve. */
-type InstallationData = {
-  connectors: FixtureConnector[];
-  workflows: FixtureWorkflow[];
-  executions: FixtureExecution[];
-  presets: FixtureToolsetPreset[];
-  /** Every tool its connectors offer, serving or not: what usage counts. */
-  connectorTools: ToolSummary[];
-};
-
 const unreachableError = unreachableInstallationError;
 
 /** Whether the data set says the installation's muster is unreachable. */
@@ -216,8 +205,10 @@ function isUnreachable(installation: string): boolean {
  * The muster plugin's API in fixture mode (`muster.fixtures: true`): the
  * installations of the page's data set (`FIXTURE_INSTALLATIONS`), each with a
  * muster that has signed the person in. Each reachable installation's muster
- * aggregates the data set's connectors there, in their states, offers its
- * workflows and their executions, and knows its toolset presets; the
+ * serves what `musterFixtureState` holds for it: the data set's connectors
+ * there, in their states and as the connector writes leave them, its
+ * workflows (available while every tool their steps call is served), their
+ * executions as they ran, and its toolset presets; the
  * catalogue lists the tools, resources and prompts of the connectors that
  * serve this session, muster's own tools and the available workflows, and
  * resolves toolsets within it. Beside them, the MCP servers the plugins
@@ -231,8 +222,10 @@ function isUnreachable(installation: string): boolean {
 export class MusterFixtureApi implements MusterApi {
   private readonly tools: Map<string, Tool>;
   private readonly servers: string[];
-  private readonly data = new Map<string, InstallationData>();
-  private readonly catalogues = new Map<string, ToolSummary[]>();
+  private readonly catalogues = new WeakMap<
+    MusterFixtureSnapshot,
+    ToolSummary[]
+  >();
 
   constructor(servers: FixtureMcpServer[]) {
     this.servers = servers.map(server => server.server);
@@ -245,24 +238,6 @@ export class MusterFixtureApi implements MusterApi {
         }),
       ),
     );
-  }
-
-  /** An installation's records, worked out once: the data set is fixed. */
-  private installationData(installation: string): InstallationData {
-    let data = this.data.get(installation);
-    if (!data) {
-      const set = fixtureDataSet();
-      const connectors = inInstallation(set.connectors, installation);
-      data = {
-        connectors,
-        workflows: inInstallation(set.workflows, installation),
-        executions: inInstallation(set.executions, installation),
-        presets: inInstallation(set.toolsetPresets, installation),
-        connectorTools: connectors.flatMap(connectorToolsOf),
-      };
-      this.data.set(installation, data);
-    }
-    return data;
   }
 
   /**
@@ -279,16 +254,26 @@ export class MusterFixtureApi implements MusterApi {
   }
 
   /**
-   * The catalogue of an installation's muster, worked out once: what its
-   * serving connectors and the contributed servers offer, then the available
-   * workflows (muster lists no invalid one) and muster's own tools.
+   * What the installation's muster serves now, as the writes leave it, from
+   * the page's scenario's data set.
+   */
+  private snapshot(installation: string): MusterFixtureSnapshot {
+    return musterFixtureState().snapshotOf(installation);
+  }
+
+  /**
+   * The catalogue of an installation's muster, worked out again only when
+   * what it serves changed: what its serving connectors and the contributed
+   * servers offer, then the available workflows (muster lists no invalid one)
+   * and muster's own tools.
    */
   private catalogue(installation: string): ToolSummary[] {
-    let catalogue = this.catalogues.get(installation);
+    const snapshot = this.snapshot(installation);
+    let catalogue = this.catalogues.get(snapshot);
     if (!catalogue) {
-      const { connectors, workflows } = this.installationData(installation);
+      const { served: servedTools, workflows } = snapshot;
       catalogue = [
-        ...connectors.filter(isServing).flatMap(connectorToolsOf),
+        ...servedTools.values(),
         ...[...this.tools.values()].map(tool => ({
           name: tool.name,
           server: tool.server,
@@ -296,13 +281,18 @@ export class MusterFixtureApi implements MusterApi {
           ...(tool.inputSchema && { inputSchema: tool.inputSchema }),
         })),
         ...workflows
-          .filter(workflow => workflow.state === 'available')
-          .map(workflow => workflowToolOf(workflow, connectors)),
+          .filter(workflow => isWorkflowAvailable(workflow, servedTools))
+          .map(workflow => workflowToolOf(workflow, servedTools)),
         ...FIXTURE_CORE_TOOLS,
       ];
-      this.catalogues.set(installation, catalogue);
+      this.catalogues.set(snapshot, catalogue);
     }
     return catalogue;
+  }
+
+  /** The installation's connectors now, as the connector writes leave them. */
+  private liveConnectors(installation: string): MusterFixtureConnector[] {
+    return this.snapshot(installation).connectors;
   }
 
   private async dispatch(
@@ -336,17 +326,20 @@ export class MusterFixtureApi implements MusterApi {
 
   /** muster-backend's `/workflows` reads the default installation's. */
   async listWorkflows(): Promise<WorkflowListResponse> {
+    const { workflows, served: servedTools } = this.snapshot(
+      this.reachable(FIXTURE_INSTALLATION),
+    );
     return {
-      workflows: this.installationData(
-        this.reachable(FIXTURE_INSTALLATION),
-      ).workflows.map(workflowListItemOf),
+      workflows: workflows.map(workflow =>
+        workflowListItemOf(workflow, servedTools),
+      ),
     };
   }
 
   async listExecutions(
     options: ListExecutionsOptions = {},
   ): Promise<WorkflowExecutionListResponse> {
-    const { executions, workflows, connectors } = this.installationData(
+    const { executions, workflows, recorded } = this.snapshot(
       this.reachable(options.installation),
     );
     const matching = executions
@@ -364,7 +357,7 @@ export class MusterFixtureApi implements MusterApi {
         executionSummaryOf(
           execution,
           workflows.find(w => w.name === execution.workflow),
-          connectors,
+          recorded,
         ),
       ),
       total: matching.length,
@@ -378,7 +371,7 @@ export class MusterFixtureApi implements MusterApi {
     executionId: string,
     installation?: string,
   ): Promise<WorkflowExecution> {
-    const { executions, workflows, connectors } = this.installationData(
+    const { executions, workflows, recorded } = this.snapshot(
       this.reachable(installation),
     );
     const execution = executions.find(e => e.id === executionId);
@@ -390,7 +383,7 @@ export class MusterFixtureApi implements MusterApi {
     return executionOf(
       execution,
       workflows.find(workflow => workflow.name === execution.workflow),
-      connectors,
+      recorded,
     );
   }
 
@@ -400,7 +393,7 @@ export class MusterFixtureApi implements MusterApi {
   ): Promise<WorkflowStats> {
     return workflowStatsOf(
       name,
-      this.installationData(this.reachable(installation)).executions,
+      this.snapshot(this.reachable(installation)).executions,
     );
   }
 
@@ -413,7 +406,7 @@ export class MusterFixtureApi implements MusterApi {
     } = {},
   ): Promise<McpUsage> {
     const installation = this.reachable(options.installation);
-    return mcpUsageOf(this.installationData(installation).connectorTools, {
+    return mcpUsageOf(this.snapshot(installation).connectorTools, {
       hours: options.hours ?? 24,
       servers: options.servers,
       tool: options.tool,
@@ -429,18 +422,15 @@ export class MusterFixtureApi implements MusterApi {
     } = {},
   ): Promise<McpToolLatency> {
     const installation = this.reachable(options.installation);
-    return mcpToolLatencyOf(
-      this.installationData(installation).connectorTools,
-      {
-        hours: options.hours ?? 24,
-        servers: options.servers,
-        now: Date.now(),
-      },
-    );
+    return mcpToolLatencyOf(this.snapshot(installation).connectorTools, {
+      hours: options.hours ?? 24,
+      servers: options.servers,
+      now: Date.now(),
+    });
   }
 
   async listServers(installation?: string): Promise<McpServerListResponse> {
-    const { connectors } = this.installationData(this.reachable(installation));
+    const connectors = this.liveConnectors(this.reachable(installation));
     return {
       mcpServers: [
         ...connectors.map(mcpServerRuntimeOf),
@@ -465,7 +455,7 @@ export class MusterFixtureApi implements MusterApi {
       return { servers: [], unavailable: true };
     }
     return {
-      servers: this.installationData(target).connectors.map(connectorNameOf),
+      servers: this.liveConnectors(target).map(connectorNameOf),
     };
   }
 
@@ -480,7 +470,7 @@ export class MusterFixtureApi implements MusterApi {
     options: FilterToolsOptions = {},
   ): Promise<FilterToolsResponse> {
     const installation = this.reachable(options.installation);
-    const { presets } = this.installationData(installation);
+    const { presets } = this.snapshot(installation);
     const catalogue = this.catalogue(installation);
     const resolution = options.toolset
       ? resolveToolset(options.toolset, catalogue, presets)
@@ -501,8 +491,10 @@ export class MusterFixtureApi implements MusterApi {
           : { ...tool, description: undefined, inputSchema: undefined },
       );
     const { items, truncated } = page(all, options);
+    // muster's `total` counts the matches, like `filtered_count`; the whole
+    // catalogue is its `total_tools`, which the portal does not read.
     return {
-      total: scope.length,
+      total: all.length,
       filtered_count: all.length,
       truncated,
       tools: items,
@@ -519,7 +511,7 @@ export class MusterFixtureApi implements MusterApi {
   async filterResources(
     options: FilterCapabilitiesOptions = {},
   ): Promise<FilterResourcesResponse> {
-    const { connectors } = this.installationData(
+    const connectors = this.liveConnectors(
       this.reachable(options.installation),
     );
     // `server` scopes the list, `total` included; `pattern` filters it.
@@ -543,7 +535,7 @@ export class MusterFixtureApi implements MusterApi {
   async filterPrompts(
     options: FilterCapabilitiesOptions = {},
   ): Promise<FilterPromptsResponse> {
-    const { connectors } = this.installationData(
+    const connectors = this.liveConnectors(
       this.reachable(options.installation),
     );
     const prompts = connectors
@@ -569,8 +561,8 @@ export class MusterFixtureApi implements MusterApi {
         server,
         kind,
       })),
-      servers_requiring_auth: this.installationData(target)
-        .connectors.map(authStatusOf)
+      servers_requiring_auth: this.liveConnectors(target)
+        .map(authStatusOf)
         .filter(status => status.status === 'auth_required')
         .map(status => ({
           name: status.name,
@@ -664,7 +656,7 @@ export class MusterFixtureApi implements MusterApi {
         message: unreachableError(target).message,
       };
     }
-    const { connectors } = this.installationData(target);
+    const connectors = this.liveConnectors(target);
     return {
       servers: [
         ...connectors.map(authStatusOf),
@@ -676,12 +668,17 @@ export class MusterFixtureApi implements MusterApi {
     };
   }
 
+  /**
+   * Signs the person in to a connector: one waiting on their sign-in
+   * connects (`musterFixtureState`).
+   */
   async signInServer(
     server: SignInTarget,
     installation?: string,
   ): Promise<ServerSignInResult> {
-    this.reachable(installation);
+    const target = this.reachable(installation);
     const name = typeof server === 'string' ? server : server.app;
+    musterFixtureState().signIn(target, name);
     return { status: 'connected', message: `${name} is connected.` };
   }
 
@@ -689,8 +686,9 @@ export class MusterFixtureApi implements MusterApi {
     server: SignInTarget,
     installation?: string,
   ): Promise<ServerSignOutResult> {
-    this.reachable(installation);
+    const target = this.reachable(installation);
     const name = typeof server === 'string' ? server : server.app;
+    musterFixtureState().signOut(target, name);
     return { status: 'signed_out', message: `Signed out of ${name}.` };
   }
 }
