@@ -297,9 +297,9 @@ const mimirApi = ApiBlueprint.make({
           configApi.getOptionalBoolean('gs.fixtures')
         ) {
           return lazyApi(async () => {
-            const { MimirFixtureApi } =
+            const { mimirFixtureApi } =
               await import('./apis/mimir/fixtures/MimirFixtureApi');
-            return new MimirFixtureApi();
+            return mimirFixtureApi();
           });
         }
         return new MimirClient({ discoveryApi, fetchApi });

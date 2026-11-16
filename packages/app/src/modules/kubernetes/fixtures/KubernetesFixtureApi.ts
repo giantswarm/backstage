@@ -5,6 +5,11 @@ import {
   FIXTURE_INSTALLATIONS,
   isFixtureInstallation,
 } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  fixtureScenario,
+  fixtureScenarioError,
+  withFixtureScenario,
+} from '@giantswarm/backstage-plugin-gs-common/fixtures';
 import type { KubeObjectInterface } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { MCPServer, MusterWorkflow } from '@giantswarm/backstage-plugin-muster';
 import { musterKubernetesObjectsOf } from '@giantswarm/backstage-plugin-muster/fixtures';
@@ -164,6 +169,12 @@ export class KubernetesFixtureApi implements KubernetesApi {
 
   constructor(
     private readonly sources: readonly FixtureObjectsSource[] = FIXTURE_OBJECTS,
+    /**
+     * Whether every read of objects fails, as in the `error` scenario.
+     * Discovery and access reviews still answer, so the pages go on to their
+     * own calls and show how those fail.
+     */
+    private readonly failReads = false,
   ) {}
 
   /**
@@ -391,6 +402,13 @@ export class KubernetesFixtureApi implements KubernetesApi {
     if (!resource.versions.includes(version)) {
       return statusResponse(404, 'NotFound', `No API ${group}/${version}.`);
     }
+    if (this.failReads) {
+      return statusResponse(
+        500,
+        'InternalError',
+        `Reading ${plural} failed: the error fixture scenario fails every read.`,
+      );
+    }
     const objects = this.objects(
       installation,
       resource,
@@ -409,4 +427,22 @@ export class KubernetesFixtureApi implements KubernetesApi {
       items: objects,
     });
   }
+}
+
+/**
+ * The fixture `KubernetesApi`, as the page's fixture scenario serves it. In
+ * `error`, every read of objects fails with a 500 while the installations,
+ * discovery and access reviews answer, so the pages reach their muster and
+ * kagent calls; the reads by entity fail.
+ */
+export function kubernetesFixtureApi(): KubernetesApi {
+  const failReads = fixtureScenario() === 'error';
+  return withFixtureScenario(
+    'KubernetesApi',
+    new KubernetesFixtureApi(FIXTURE_OBJECTS, failReads),
+    method =>
+      ['getClusters', 'getCluster', 'proxy'].includes(method)
+        ? undefined
+        : fixtureScenarioError('KubernetesApi', method),
+  );
 }

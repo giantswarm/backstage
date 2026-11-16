@@ -112,7 +112,11 @@ function CustomizeDataContextProvider({ children }: { children: ReactNode }) {
     totalCount: workspaceTotal,
     failures: workspaceFailures,
   } = useWorkspacesData();
-  const { hasToolchains } = useScopedToolchainInstallations();
+  const { hasToolchains: toolchainsState } = useScopedToolchainInstallations();
+  // The tab shows once an installation is known to have toolchains; one that
+  // could not be checked is not known to.
+  const hasToolchains =
+    toolchainsState === 'unchecked' ? undefined : toolchainsState;
   // Nothing read, a sign-in or a refusal in the way: no count, not "0".
   const workspacesUnread =
     workspaceCount === 0 && Object.keys(workspaceFailures).length > 0;

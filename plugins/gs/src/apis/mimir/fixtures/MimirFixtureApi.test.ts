@@ -1,5 +1,8 @@
-import { createFixtureDataSet } from '@giantswarm/backstage-plugin-gs-common/fixtures';
-import { MimirFixtureApi } from './MimirFixtureApi';
+import {
+  createFixtureDataSet,
+  setFixtureScenarioForTests,
+} from '@giantswarm/backstage-plugin-gs-common/fixtures';
+import { MimirFixtureApi, mimirFixtureApi } from './MimirFixtureApi';
 
 const NOW = Date.UTC(2026, 10, 16, 12);
 const data = createFixtureDataSet({ now: NOW });
@@ -65,5 +68,38 @@ describe('MimirFixtureApi', () => {
       name: 'NotFoundError',
     });
     error.mockRestore();
+  });
+});
+
+describe('the fixture Mimir in each scenario', () => {
+  afterEach(() => setFixtureScenarioForTests(undefined));
+  const spend = async () =>
+    (
+      await mimirFixtureApi().query({
+        installationName: 'fennel',
+        query: `sum(increase(${COST}[30d]))`,
+        oidcToken: undefined,
+      })
+    ).data.result;
+
+  it('answers the spend of the scenario’s data set', async () => {
+    setFixtureScenarioForTests('empty');
+    expect(await spend()).toEqual([]);
+    setFixtureScenarioForTests('many');
+    const started = Date.now();
+    const [many] = await spend();
+    expect(Number(many.value[1])).toBeGreaterThan(0);
+    expect(Date.now() - started).toBeLessThan(10_000);
+  });
+
+  it('never answers in loading, and fails as the backend does in error', async () => {
+    setFixtureScenarioForTests('loading');
+    const settled = jest.fn();
+    spend().then(settled, settled);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(settled).not.toHaveBeenCalled();
+
+    setFixtureScenarioForTests('error');
+    await expect(spend()).rejects.toMatchObject({ status: 503 });
   });
 });

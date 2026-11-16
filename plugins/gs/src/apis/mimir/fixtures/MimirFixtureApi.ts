@@ -3,9 +3,10 @@ import {
   isFixtureInstallation,
 } from '@giantswarm/backstage-plugin-gs-common';
 import {
-  baseDataSet,
+  fixtureDataSet,
   gatewaySeries,
   labelKey,
+  withFixtureScenario,
   type FixtureCounterSeries,
   type FixtureDataSet,
 } from '@giantswarm/backstage-plugin-gs-common/fixtures';
@@ -34,7 +35,7 @@ const PARSED_LIMIT = 500;
 /**
  * Mimir in fixture mode (`gs.fixtures: true`): each fixture installation's
  * agent gateway series (`gatewaySeries` in gs-common), built from the data
- * set the other fixture APIs read, so the usage pages count the agents,
+ * set of the page's scenario, which the other fixture APIs read, so the usage pages count the agents,
  * people and model the rest of the portal shows. The queries are evaluated
  * (`promql.ts`), and need no token. A metric the data set has no series of
  * answers no series, as Mimir does; so does a query the evaluator does not
@@ -44,7 +45,7 @@ export class MimirFixtureApi implements MimirApi {
   private readonly parsed = new Map<string, PromqlNode>();
 
   constructor(
-    private readonly data: () => FixtureDataSet = baseDataSet,
+    private readonly data: () => FixtureDataSet = fixtureDataSet,
     private readonly now: () => number = Date.now,
   ) {}
 
@@ -148,4 +149,21 @@ export class MimirFixtureApi implements MimirApi {
     }
     return gatewaySeries(this.data(), installation);
   }
+}
+
+/**
+ * The fixture `MimirApi`, as the page's fixture scenario serves it: in
+ * `error` each query fails as the gs backend answers when Mimir does not
+ * (a 503).
+ */
+export function mimirFixtureApi(): MimirApi {
+  return withFixtureScenario(
+    'MimirApi',
+    new MimirFixtureApi(),
+    () =>
+      new MimirQueryError(
+        'Mimir could not answer the query: the error fixture scenario fails every call.',
+        { status: 503 },
+      ),
+  );
 }

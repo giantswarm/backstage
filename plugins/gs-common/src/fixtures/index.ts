@@ -75,3 +75,12 @@ export {
   type FixtureGatewayDay,
 } from './gatewayUsage';
 export { hashOf } from './random';
+export {
+  fixtureDataSet,
+  fixtureScenario,
+  fixtureScenarioError,
+  onFixtureScenarioReset,
+  scenarioDataSet,
+  setFixtureScenarioForTests,
+  withFixtureScenario,
+} from './scenarios';

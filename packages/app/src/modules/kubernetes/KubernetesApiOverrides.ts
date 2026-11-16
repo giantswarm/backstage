@@ -168,9 +168,9 @@ export const KubernetesClientOverride = ApiBlueprint.make({
           configApi.getOptionalBoolean('gs.fixtures')
         ) {
           return lazyApi(async () => {
-            const { KubernetesFixtureApi } =
+            const { kubernetesFixtureApi } =
               await import('./fixtures/KubernetesFixtureApi');
-            return new KubernetesFixtureApi();
+            return kubernetesFixtureApi();
           });
         }
         return new KubernetesClient({

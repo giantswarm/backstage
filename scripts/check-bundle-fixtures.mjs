@@ -131,6 +131,10 @@ const MARKERS = [
     source: 'plugins/gs-common/src/fixtures/gatewayUsage.ts',
     marker: 'sorrel@example.com',
   },
+  {
+    source: 'plugins/gs-common/src/fixtures/scenarios.ts',
+    marker: 'the error fixture scenario fails every call',
+  },
 ];
 
 const root = path.resolve(import.meta.dirname, '..');

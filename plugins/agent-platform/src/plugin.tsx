@@ -366,9 +366,9 @@ const kagentApi = ApiBlueprint.make({
       factory: ({ configApi, ...deps }) => {
         if (process.env.NODE_ENV !== 'production' && fixturesOn(configApi)) {
           return lazyApi(async () => {
-            const { KagentFixtureApi } =
+            const { kagentFixtureApi } =
               await import('./apis/fixtures/KagentFixtureApi');
-            return new KagentFixtureApi();
+            return kagentFixtureApi();
           });
         }
         return new KagentApiClient(deps);
@@ -394,9 +394,9 @@ const agentManagerCredentialsApi = ApiBlueprint.make({
       factory: ({ configApi, ...deps }) => {
         if (process.env.NODE_ENV !== 'production' && fixturesOn(configApi)) {
           return lazyApi(async () => {
-            const { AgentManagerCredentialsFixtureApi } =
+            const { agentManagerCredentialsFixtureApi } =
               await import('./apis/fixtures/AgentManagerCredentialsFixtureApi');
-            return new AgentManagerCredentialsFixtureApi();
+            return agentManagerCredentialsFixtureApi();
           });
         }
         return new AgentManagerCredentialsClient(deps);
@@ -424,9 +424,9 @@ const modelManagerApi = ApiBlueprint.make({
       factory: ({ configApi, ...deps }) => {
         if (process.env.NODE_ENV !== 'production' && fixturesOn(configApi)) {
           return lazyApi(async () => {
-            const { ModelManagerFixtureApi } =
+            const { modelManagerFixtureApi } =
               await import('./apis/fixtures/ModelManagerFixtureApi');
-            return new ModelManagerFixtureApi(deps);
+            return modelManagerFixtureApi(deps);
           });
         }
         return new ModelManagerApiClient(deps);

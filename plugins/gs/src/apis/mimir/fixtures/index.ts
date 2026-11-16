@@ -3,4 +3,4 @@
  * (`@giantswarm/backstage-plugin-gs/fixtures`) that only fixture modules and
  * tests import.
  */
-export { MimirFixtureApi } from './MimirFixtureApi';
+export { MimirFixtureApi, mimirFixtureApi } from './MimirFixtureApi';
