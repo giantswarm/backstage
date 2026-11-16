@@ -49,6 +49,12 @@ export const WIZARD_RAIL_WIDTH = 300;
 /** The gap between the step's column and its rail. */
 const RAIL_GAP = 24;
 
+/**
+ * The room the header's close button, title and context line keep beside the
+ * steps: a short title ("Add connector") and its context line on one row.
+ */
+const HEADING_MIN_WIDTH = 320;
+
 /** The column's horizontal padding at the two-column tier, both sides. */
 const COLUMN_PADDING_X = 64;
 
@@ -123,12 +129,15 @@ const useStyles = makeStyles({
       padding: '8px 24px',
     },
   },
+  // Shares the row with the steps and the spacer, which centres them. Below
+  // `HEADING_MIN_WIDTH` the steps wrap to a row of their own rather than
+  // squeeze the title to a few letters.
   heading: {
     flex: '1 1 0',
     display: 'flex',
     alignItems: 'center',
     gap: 12,
-    minWidth: 0,
+    minWidth: `min(100%, ${HEADING_MIN_WIDTH}px)`,
   },
   close: {
     width: 34,

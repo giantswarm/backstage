@@ -279,9 +279,10 @@ const useStyles = makeStyles({
     marginTop: 24,
     borderBottom: '1px solid var(--bui-border-1)',
   },
-  // At phone width the strip scrolls (see `RouteTabs`): it reaches through
-  // the gutter to the screen's edges, so tabs scroll out of sight there rather
-  // than at the content's edge, and rests aligned with the content.
+  // The strip scrolls where its tabs don't fit (see `RouteTabs`). At phone
+  // width it reaches through the gutter to the screen's edges, so tabs scroll
+  // out of sight there rather than at the content's edge, and rests aligned
+  // with the content.
   tabStrip: {
     [PHONE_MEDIA]: {
       marginInline: -PHONE_GUTTER,
@@ -352,8 +353,9 @@ export interface ShellPageProps {
   /** The overflow menu, last in the header, e.g. a "More actions" button. */
   menu?: ReactNode;
   /**
-   * Routed tabs under the header, drawn as an underlined strip; at phone
-   * width one row that scrolls sideways, edge to edge (see `RouteTabs`).
+   * Routed tabs under the header, drawn as an underlined strip: one row that
+   * scrolls sideways where the tabs don't fit, edge to edge at phone width
+   * (see `RouteTabs`).
    */
   tabs?: RouteTabSpec[];
   /** The query string every tab link keeps, e.g. `?installation=gazelle`. */

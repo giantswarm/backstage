@@ -346,6 +346,16 @@ describe('WizardFrame', () => {
     expect(styles).not.toMatch(/max-width: 720px/);
   });
 
+  // A narrow window beside the shell's rail: the steps wrap under the title
+  // rather than squeeze it to a few letters.
+  it('keeps the title its room beside the steps', () => {
+    renderFrame();
+
+    const heading = screen.getByRole('heading', { level: 1 }).parentElement
+      ?.parentElement as HTMLElement;
+    expect(getComputedStyle(heading).minWidth).toBe('min(100%, 320px)');
+  });
+
   describe('at phone width', () => {
     let layout: MockedLayout;
     beforeEach(() => {

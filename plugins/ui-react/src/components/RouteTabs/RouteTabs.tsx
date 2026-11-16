@@ -4,11 +4,7 @@ import { Tab, TabList, Tabs } from '@backstage/ui';
 import { RouterProvider } from 'react-aria-components';
 import { makeStyles } from '@material-ui/core';
 import { useSplatBasePath } from '../../hooks/useSplatBasePath';
-import {
-  PHONE_MEDIA,
-  useMediaQueryMatch,
-  usePhoneLayout,
-} from '../../utils/breakpoints';
+import { PHONE_MEDIA, useMediaQueryMatch } from '../../utils/breakpoints';
 
 /** A tab's count, or `'loading'` while the page is still reading it. */
 export type RouteTabCount = number | 'loading';
@@ -39,7 +35,7 @@ export interface RouteTabsProps {
    */
   basePath?: string;
   /**
-   * On the strip, the tabs' scroll container at phone width — e.g. to bleed it
+   * On the strip, the tabs' scroll container — e.g. to bleed it at phone width
    * into the page gutter, so the tabs scroll to the screen's edge.
    */
   className?: string;
@@ -76,39 +72,43 @@ const RESERVED_DIGITS = 2;
 const RESERVED_COUNT = `(${'0'.repeat(RESERVED_DIGITS)})`;
 
 const useStyles = makeStyles({
-  // Desktop: no rules at all, the strip is bui's.
+  // The strip scrolls sideways at every width where its tabs don't fit — a
+  // phone, and a narrow window beside the shell's rail — and lays out as
+  // bui's strip where they do.
   strip: {
+    overflowX: 'auto',
+    overflowY: 'hidden',
+    overscrollBehaviorX: 'contain',
+    // The edge fades say there is more; a scrollbar under a tab row is noise.
+    scrollbarWidth: 'none',
+    '&::-webkit-scrollbar': { display: 'none' },
+    // bui hangs the active underline 1px below the tabs, onto the rule under
+    // the strip. A scroll container clips it, so the strip keeps a 1px row
+    // for it and pulls that row back over the rule.
+    paddingBottom: 1,
+    marginBottom: -1,
+    '&[data-overflow-start]': edgeMask(true, false),
+    '&[data-overflow-end]': edgeMask(false, true),
+    '&[data-overflow-start][data-overflow-end]': edgeMask(true, true),
+    // bui's root, the box it measures the underline against: as wide as its
+    // tabs, so it scrolls with them (see `RouteTabs`).
+    '& > .bui-Tabs': {
+      width: 'max-content',
+      minWidth: '100%',
+    },
+    '& .bui-TabList': {
+      flexWrap: 'nowrap',
+    },
+    '& .bui-Tab': {
+      flexShrink: 0,
+      whiteSpace: 'nowrap',
+      // The strip clips overflow on both axes: draw the focus ring inside.
+      '&:focus-visible': { outlineOffset: -2 },
+    },
     [PHONE_MEDIA]: {
-      overflowX: 'auto',
-      overflowY: 'hidden',
-      overscrollBehaviorX: 'contain',
-      // The edge fades say there is more; a scrollbar under a tab row is noise.
-      scrollbarWidth: 'none',
-      '&::-webkit-scrollbar': { display: 'none' },
-      // bui hangs the active underline 1px below the tabs, onto the rule under
-      // the strip. A scroll container clips it, so the strip keeps a 1px row
-      // for it and pulls that row back over the rule.
-      paddingBottom: 1,
-      marginBottom: -1,
-      '&[data-overflow-start]': edgeMask(true, false),
-      '&[data-overflow-end]': edgeMask(false, true),
-      '&[data-overflow-start][data-overflow-end]': edgeMask(true, true),
-      // bui's root, the box it measures the underline against: as wide as its
-      // tabs, so it scrolls with them (see `RouteTabs`).
-      '& > .bui-Tabs': {
-        width: 'max-content',
-        minWidth: '100%',
-      },
-      '& .bui-TabList': {
-        flexWrap: 'nowrap',
-      },
       '& .bui-Tab': {
-        flexShrink: 0,
-        whiteSpace: 'nowrap',
         height: TOUCH_TARGET,
         minWidth: TOUCH_TARGET,
-        // The strip clips overflow on both axes: draw the focus ring inside.
-        '&:focus-visible': { outlineOffset: -2 },
       },
     },
   },
@@ -178,12 +178,12 @@ const NO_OVERFLOW: Overflow = { start: false, end: false };
  * live: on scroll, and when the strip or its tabs change size (a rotation, a
  * tab appearing, a count past 99).
  */
-function useOverflow(ref: RefObject<HTMLElement>, enabled: boolean): Overflow {
+function useOverflow(ref: RefObject<HTMLElement>): Overflow {
   const [overflow, setOverflow] = useState(NO_OVERFLOW);
 
   useEffect(() => {
     const strip = ref.current;
-    if (!enabled || !strip) {
+    if (!strip) {
       setOverflow(NO_OVERFLOW);
       return undefined;
     }
@@ -226,7 +226,7 @@ function useOverflow(ref: RefObject<HTMLElement>, enabled: boolean): Overflow {
       resizeObserver?.disconnect();
       mutationObserver.disconnect();
     };
-  }, [ref, enabled]);
+  }, [ref]);
 
   return overflow;
 }
@@ -234,21 +234,21 @@ function useOverflow(ref: RefObject<HTMLElement>, enabled: boolean): Overflow {
 /**
  * Scrolls the selected tab to the middle of the strip (clamped at its ends),
  * so both neighbours show: when the strip mounts — at once — and when the
- * selection changes or the tabs' widths do (`tabWidthKey`) — smoothly, unless
+ * selection changes or the tabs' widths do (`tabWidthKey`, and the tab list's
+ * measured width) — smoothly, unless
  * the user asked for reduced motion. Only the strip scrolls, never the page.
  */
 function useSelectedTabInView(
   ref: RefObject<HTMLElement>,
   selected: number,
   widths: string,
-  enabled: boolean,
 ) {
   const reduceMotion = useMediaQueryMatch('(prefers-reduced-motion: reduce)');
   const hasScrolled = useRef(false);
 
   useEffect(() => {
     const strip = ref.current;
-    if (!enabled || !strip) {
+    if (!strip) {
       hasScrolled.current = false;
       return undefined;
     }
@@ -275,21 +275,50 @@ function useSelectedTabInView(
       }
       return true;
     };
-    if (scrollToTab() || selected < 0) {
-      return undefined;
+    // A tab's label can change width a commit after its spec does (react-aria
+    // draws the collection late, a web font arrives): scroll again when the
+    // tab list's width changes, from the width it had at the last scroll.
+    let tabList: HTMLElement | null = null;
+    let tabListWidth = 0;
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined'
+        ? undefined
+        : new ResizeObserver(() => {
+            const width = tabList?.getBoundingClientRect().width ?? 0;
+            if (width !== tabListWidth) {
+              tabListWidth = width;
+              scrollToTab();
+            }
+          });
+    const scrollAndObserve = (): boolean => {
+      if (!scrollToTab()) {
+        return false;
+      }
+      tabList = strip.querySelector<HTMLElement>('.bui-TabList');
+      if (tabList) {
+        tabListWidth = tabList.getBoundingClientRect().width;
+        resizeObserver?.observe(tabList);
+      }
+      return true;
+    };
+    if (scrollAndObserve() || selected < 0) {
+      return () => resizeObserver?.disconnect();
     }
     // react-aria draws the tabs a commit after the strip mounts, once it has
     // built their collection: scroll when they arrive.
     const observer = new MutationObserver(() => {
-      if (scrollToTab()) {
+      if (scrollAndObserve()) {
         observer.disconnect();
       }
     });
     observer.observe(strip, { childList: true, subtree: true });
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      resizeObserver?.disconnect();
+    };
     // `reduceMotion` only picks the next scroll's behavior.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ref, selected, widths, enabled]);
+  }, [ref, selected, widths]);
 }
 
 /**
@@ -349,15 +378,15 @@ function renderTabLabel(
  * two-digit count's place while it loads (`count: 'loading'`), and a count up
  * to 99 fits that place, so the tabs right of it never move under a pointer.
  *
- * At phone width the strip scrolls sideways instead of wrapping or squeezing
- * (Customize has six tabs with counts): one row of 44px-tall tabs, the selected
- * one scrolled into view, and a fade at each edge that has more tabs beyond
- * it. The underline stays right under scroll without re-measuring: bui places
+ * Where its tabs don't fit, the strip scrolls sideways instead of wrapping or
+ * squeezing (Customize has six tabs with counts): one row of tabs (44px tall at
+ * phone width), the selected one scrolled into view, and a fade at each edge
+ * that has more tabs beyond it. The underline stays right under scroll without re-measuring: bui places
  * it at the selected tab's offset from its `Tabs` root, both read from screen
  * coordinates, and the scroll container here sits *outside* that root, which
  * is as wide as its tabs — tab and root move together, so the offset holds.
  * (Scrolling bui's own `TabList` instead would leave the underline behind at
- * the offset measured before the scroll.) Desktop is bui's strip unchanged.
+ * the offset measured before the scroll.)
  */
 export function RouteTabs({
   tabs,
@@ -370,7 +399,6 @@ export function RouteTabs({
   const splatBasePath = useSplatBasePath();
   const basePath = explicitBasePath ?? splatBasePath;
   const { pathname } = useLocation();
-  const isPhone = usePhoneLayout();
   const stripRef = useRef<HTMLDivElement>(null);
 
   const links = tabs.map(tab => ({
@@ -378,7 +406,7 @@ export function RouteTabs({
     href: `${tab.path ? `${basePath}/${tab.path}` : basePath}${search}`,
   }));
   const selected = selectedRouteTab(links, pathname);
-  const overflow = useOverflow(stripRef, isPhone);
+  const overflow = useOverflow(stripRef);
   const routerNavigate = useNavigate();
   // A tab carries no router options, so this is bui's own navigation for it.
   const guardedNavigate = useCallback(
@@ -391,12 +419,7 @@ export function RouteTabs({
     },
     [onNavigate, routerNavigate],
   );
-  useSelectedTabInView(
-    stripRef,
-    selected,
-    tabs.map(tabWidthKey).join('\n'),
-    isPhone,
-  );
+  useSelectedTabInView(stripRef, selected, tabs.map(tabWidthKey).join('\n'));
 
   const strip = (
     <Tabs>
