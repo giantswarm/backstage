@@ -1,5 +1,6 @@
 import {
-  baseDataSet,
+  fixtureDataSet,
+  onFixtureScenarioReset,
   hashOf,
   isUnreachableInstallation,
   unreachableInstallationError,
@@ -294,7 +295,7 @@ type Node = {
 
 /**
  * model-manager's and cluster-manager's state in fixture mode, from the data
- * set (`baseDataSet().modelBackends`, `gpuClusters`, `gpuPools`,
+ * set (`fixtureDataSet().modelBackends`, `gpuClusters`, `gpuPools`,
  * `cacheClaims`, `hostedModels`): the backends with their models, nodes,
  * presets and pulls, and the GPU clusters with their pools and model cache.
  * The two managers share it, as on an installation: the nodes model-manager
@@ -2543,9 +2544,12 @@ function digestOf(name: string): string {
 }
 
 let shared: ModelHostingFixtureState | undefined;
+onFixtureScenarioReset(() => {
+  shared = undefined;
+});
 
-/** The state every fixture handler of model hosting shares, from the base data set. */
+/** The state every fixture handler of model hosting shares, from the page's data set (`fixtureDataSet()`). */
 export function modelHostingFixtureState(): ModelHostingFixtureState {
-  shared ??= new ModelHostingFixtureState(baseDataSet());
+  shared ??= new ModelHostingFixtureState(fixtureDataSet());
   return shared;
 }

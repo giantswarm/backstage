@@ -69,7 +69,10 @@ import {
 } from './apis/containerRegistry';
 import { GitHubClient, gitHubApiRef } from './apis/github';
 import { MimirClient, mimirApiRef } from './apis/mimir';
-import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  externalUrlConsentApiRef,
+  lazyApi,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 // Pages
 // The Clusters pages take actions other plugins contribute, by node id
@@ -281,11 +284,26 @@ const mimirApi = ApiBlueprint.make({
     defineParams({
       api: mimirApiRef,
       deps: {
+        configApi: configApiRef,
         discoveryApi: discoveryApiRef,
         fetchApi: fetchApiRef,
       },
-      factory: ({ discoveryApi, fetchApi }) =>
-        new MimirClient({ discoveryApi, fetchApi }),
+      factory: ({ configApi, discoveryApi, fetchApi }) => {
+        // `gs.fixtures: true`: the fixture installations' gateway metrics
+        // from the fixture data set. Outside production builds only
+        // (docs/fixtures.md).
+        if (
+          process.env.NODE_ENV !== 'production' &&
+          configApi.getOptionalBoolean('gs.fixtures')
+        ) {
+          return lazyApi(async () => {
+            const { mimirFixtureApi } =
+              await import('./apis/mimir/fixtures/MimirFixtureApi');
+            return mimirFixtureApi();
+          });
+        }
+        return new MimirClient({ discoveryApi, fetchApi });
+      },
     }),
 });
 

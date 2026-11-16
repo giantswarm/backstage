@@ -17,7 +17,8 @@ import {
   type SessionUsageResponse,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
-  baseDataSet,
+  fixtureDataSet,
+  onFixtureScenarioReset,
   DAY,
   inInstallation,
   type FixtureDataSet,
@@ -339,7 +340,8 @@ export class KagentFixtureState {
   >();
 
   constructor(
-    private readonly data: FixtureDataSet = baseDataSet(),
+    /** The data set the sessions come from; the gateway's figures too. */
+    readonly data: FixtureDataSet = fixtureDataSet(),
     private readonly now: () => number = Date.now,
   ) {}
 
@@ -969,6 +971,9 @@ export class KagentFixtureState {
 }
 
 let state: KagentFixtureState | undefined;
+onFixtureScenarioReset(() => {
+  state = undefined;
+});
 
 /** The state every kagent fixture reads: built on first use. */
 export function kagentFixtureState(): KagentFixtureState {

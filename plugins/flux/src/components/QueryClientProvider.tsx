@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { QueryClient, QueryClientConfig } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { fixtureScenarioCacheBuster } from '@giantswarm/backstage-plugin-gs-common';
 import {
   createPluginQueryPersister,
   shouldPersistQuery,
@@ -65,6 +66,8 @@ export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
       persistOptions={{
         persister,
         maxAge,
+        // A cache of another fixture scenario is never restored.
+        buster: fixtureScenarioCacheBuster(),
         // Keeps the library default (successful queries only) and additionally
         // drops anything tagged NON_PERSISTED_QUERY_META, e.g. permission probes
         // whose answer is tied to the signed-in identity.

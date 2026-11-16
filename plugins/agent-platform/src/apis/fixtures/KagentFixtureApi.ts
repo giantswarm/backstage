@@ -7,6 +7,8 @@ import type {
   SessionUsageResponse,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 
+import { withFixtureScenario } from '@giantswarm/backstage-plugin-gs-common/fixtures';
+
 import type {
   ConfirmationAnswerRequest,
   KagentApi,
@@ -17,7 +19,11 @@ import type {
   StreamEnd,
 } from '../types';
 
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- the fixture Mimir is the gs plugin's.
+import { MimirFixtureApi } from '@giantswarm/backstage-plugin-gs/fixtures';
+
 import { agentManagerFixtureState } from './agentManagerFixtureState';
+import { fixtureModelCost } from './fixtureModelCost';
 import { FIXTURE_USER, served } from './fixtureIdentity';
 import { type Agent } from './kagentConversations';
 import {
@@ -27,7 +33,7 @@ import {
 
 /**
  * kagent in fixture mode (`agentPlatform.fixtures: true`): the installations
- * of the base data set, the fixture user signed in, and each installation's
+ * of the page's data set (`fixtureDataSet()`), the fixture user signed in, and each installation's
  * sessions with their conversations from `KagentFixtureState` (shared with
  * agent-manager's `start_session`, which creates sessions in it). Answers
  * cross as JSON, as over HTTP, so no page shares the fixture's objects.
@@ -36,6 +42,9 @@ export class KagentFixtureApi implements KagentApi {
   constructor(
     private readonly state: () => KagentFixtureState = kagentFixtureState,
   ) {}
+
+  /** Mimir over the gateway series of the sessions' data set. */
+  private readonly mimir = new MimirFixtureApi(() => this.state().data);
 
   async listInstallations(): Promise<KagentInstallation[]> {
     return this.state().listInstallations();
@@ -94,14 +103,13 @@ export class KagentFixtureApi implements KagentApi {
     days: number,
   ): Promise<ModelCostResponse> {
     served(installation);
-    return {
-      status: 'actual',
-      windowDays: days,
-      totalUsd: 0,
-      byAgent: [],
-      partial: false,
-      evaluatedAt: Date.now(),
-    };
+    return fixtureModelCost({
+      data: this.state().data,
+      mimir: this.mimir,
+      installation,
+      days,
+      now: Date.now(),
+    });
   }
 
   async cancelTask(
@@ -214,4 +222,9 @@ export class KagentFixtureApi implements KagentApi {
     this.state().mustReach(installation);
     return agentManagerFixtureState().agentNamespaces(installation);
   }
+}
+
+/** The fixture `KagentApi`, as the page's fixture scenario serves it. */
+export function kagentFixtureApi(): KagentApi {
+  return withFixtureScenario('KagentApi', new KagentFixtureApi());
 }

@@ -61,4 +61,26 @@ export {
   type FixtureModelBackend,
   type FixtureServingPreset,
 } from './hostingBuilders';
+export {
+  counterIncreaseOf,
+  counterValueAt,
+  FIXTURE_AGENT_MODEL,
+  FIXTURE_PERSON_EMAIL,
+  GATEWAY_HISTORY_DAYS,
+  gatewayDaysOf,
+  gatewaySeries,
+  gatewaySeriesOf,
+  labelKey,
+  type FixtureCounterSeries,
+  type FixtureGatewayDay,
+} from './gatewayUsage';
 export { hashOf } from './random';
+export {
+  fixtureDataSet,
+  fixtureScenario,
+  fixtureScenarioError,
+  onFixtureScenarioReset,
+  scenarioDataSet,
+  setFixtureScenarioForTests,
+  withFixtureScenario,
+} from './scenarios';

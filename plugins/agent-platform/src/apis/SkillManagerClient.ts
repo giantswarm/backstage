@@ -2,6 +2,7 @@ import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 
 import { callManagerTool, type ManagerErrors } from '../lib/managerToolCall';
 import {
+  SKILL_MANAGER_TOOLS,
   skillManagerToolName,
   type SkillManagerFile,
   type SkillManagerListing,
@@ -49,7 +50,7 @@ export class SkillManagerClient {
   }
 
   listSkills(): Promise<SkillManagerListing> {
-    return this.call<SkillManagerListing>('list_skills', {});
+    return this.call<SkillManagerListing>(SKILL_MANAGER_TOOLS.listSkills, {});
   }
 
   getSkill(skill: {
@@ -57,7 +58,7 @@ export class SkillManagerClient {
     commit: string;
     path: string;
   }): Promise<SkillManagerSkill> {
-    return this.call<SkillManagerSkill>('get_skill', {
+    return this.call<SkillManagerSkill>(SKILL_MANAGER_TOOLS.getSkill, {
       url: skill.repoUrl,
       commit: skill.commit,
       path: skill.path,
@@ -68,7 +69,7 @@ export class SkillManagerClient {
     skill: { repoUrl: string; commit: string; path: string },
     file: string,
   ): Promise<SkillManagerFile> {
-    return this.call<SkillManagerFile>('get_skill_file', {
+    return this.call<SkillManagerFile>(SKILL_MANAGER_TOOLS.getSkillFile, {
       url: skill.repoUrl,
       commit: skill.commit,
       path: skill.path,

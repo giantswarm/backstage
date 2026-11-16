@@ -1,11 +1,7 @@
-import {
-  discoveryApiRef,
-  fetchApiRef,
-  useApi,
-} from '@backstage/core-plugin-api';
+import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { skillDiscoveryApiRef } from '../apis/SkillDiscoveryApi';
 import type { DiscoveredSkill, SkillFileContent } from '../lib/skills';
-import { skillReadError } from './useSkillContent';
 import { unreachableError } from '../lib/skillManager';
 import { useSkillSource } from './useSkillSource';
 
@@ -25,8 +21,7 @@ export function useSkillFile(
   file: string | undefined,
   installation?: string,
 ) {
-  const discoveryApi = useApi(discoveryApiRef);
-  const fetchApi = useApi(fetchApiRef);
+  const skillDiscoveryApi = useApi(skillDiscoveryApiRef);
   const source = useSkillSource(installation);
   const sourceKey =
     source.kind === 'skill-manager' ? source.installation : source.kind;
@@ -53,19 +48,10 @@ export function useSkillFile(
       if (source.kind === 'skill-manager') {
         return source.client.getSkillFile({ repoUrl, path, commit }, file!);
       }
-      const baseUrl = await discoveryApi.getBaseUrl('gs');
-      const params = new URLSearchParams({ repoUrl, path, commit });
-      if (ref) {
-        params.set('ref', ref);
-      }
-      params.set('file', file!);
-      const response = await fetchApi.fetch(
-        `${baseUrl}/agent-skills/content/file?${params.toString()}`,
+      return skillDiscoveryApi.readSkillFile(
+        { repoUrl, path, commit, ref },
+        file!,
       );
-      if (!response.ok) {
-        throw await skillReadError(response, 'Could not read the file');
-      }
-      return (await response.json()) as SkillFileContent;
     },
   });
 

@@ -4,10 +4,12 @@ import {
   isFixtureInstallation,
 } from '@giantswarm/backstage-plugin-gs-common';
 import {
-  baseDataSet,
+  fixtureDataSet,
+  fixtureScenario,
   inInstallation,
   isUnreachableInstallation,
   unreachableInstallationError,
+  withFixtureScenario,
   type FixtureConnector,
   type FixtureExecution,
   type FixtureToolsetPreset,
@@ -18,6 +20,8 @@ import type {
   FixtureMcpServer,
   FixtureToolHandler,
 } from '../fixtureToolHandlers';
+import { sessionExpiredError } from '../installationToken';
+import { MusterUnauthorizedError } from '../musterUnauthorized';
 import type {
   AuthStatusResponse,
   ConnectorNamesResponse,
@@ -65,7 +69,11 @@ import {
   workflowStatsOf,
   workflowToolOf,
 } from './musterFixtureData';
+import { fixtureToolName } from './fixtureToolNames';
+import { musterCoreToolHandlers } from './musterCoreTools';
 import { presetsOf, resolveToolset } from './toolsetFixtures';
+
+const coreToolHandlers = new Map(Object.entries(musterCoreToolHandlers));
 
 /**
  * The error a tool call fails with when no fixture MCP server answers it. A
@@ -95,18 +103,65 @@ export class FixtureInstallationUnknownError extends Error {
   }
 }
 
-/** The installation a call targets, failing loudly for one not served. */
-function served(installation: string | undefined): string {
-  if (installation === undefined) {
-    return FIXTURE_INSTALLATION;
+/**
+ * The installation whose person is signed out in the `error` scenario; the
+ * other reachable ones answer muster-backend's 401.
+ */
+const SIGNED_OUT_INSTALLATION = FIXTURE_INSTALLATIONS[1];
+
+/**
+ * How muster fails a call to a reachable installation in the `error`
+ * scenario: one has the person signed out (their portal session is gone),
+ * the others answer muster-backend's 401 (the sign-in to the tool's server
+ * for a tool call, a refused token for anything else). An unreachable one
+ * fails as it always does.
+ */
+function scenarioError(installation: string, server?: string): Error {
+  if (installation === SIGNED_OUT_INSTALLATION) {
+    return sessionExpiredError(installation);
   }
-  if (!isFixtureInstallation(installation)) {
-    const error = new FixtureInstallationUnknownError(installation);
+  return server
+    ? new MusterUnauthorizedError(
+        `Sign in to ${server} to use its tools.`,
+        'server_sign_in_required',
+        server,
+        installation,
+      )
+    : new MusterUnauthorizedError(
+        `muster on ${installation} refused the token.`,
+        'token_rejected',
+        undefined,
+        installation,
+      );
+}
+
+/** Whether calls to a reachable installation fail, as in `error`. */
+function failsInScenario(installation: string): boolean {
+  return fixtureScenario() === 'error' && !isUnreachable(installation);
+}
+
+/** The installation a call targets, failing loudly for one not served. */
+function known(installation: string | undefined): string {
+  const target = installation ?? FIXTURE_INSTALLATION;
+  if (!isFixtureInstallation(target)) {
+    const error = new FixtureInstallationUnknownError(target);
     // eslint-disable-next-line no-console
     console.error(error.message);
     throw error;
   }
-  return installation;
+  return target;
+}
+
+/**
+ * The installation a call to its muster targets ({@link known}), failing as
+ * {@link scenarioError} says in the `error` scenario.
+ */
+function served(installation: string | undefined, server?: string): string {
+  const target = known(installation);
+  if (failsInScenario(target)) {
+    throw scenarioError(target, server);
+  }
+  return target;
 }
 
 type Tool = {
@@ -154,12 +209,12 @@ const unreachableError = unreachableInstallationError;
 
 /** Whether the data set says the installation's muster is unreachable. */
 function isUnreachable(installation: string): boolean {
-  return isUnreachableInstallation(baseDataSet(), installation);
+  return isUnreachableInstallation(fixtureDataSet(), installation);
 }
 
 /**
  * The muster plugin's API in fixture mode (`muster.fixtures: true`): the
- * installations of the base data set (`FIXTURE_INSTALLATIONS`), each with a
+ * installations of the page's data set (`FIXTURE_INSTALLATIONS`), each with a
  * muster that has signed the person in. Each reachable installation's muster
  * aggregates the data set's connectors there, in their states, offers its
  * workflows and their executions, and knows its toolset presets; the
@@ -169,9 +224,9 @@ function isUnreachable(installation: string): boolean {
  * contribute (`fixtureMcpServersDataRef`), each connected. An unreachable
  * installation's reads fail as muster-backend refuses them, with a 503, and
  * its background reads answer `unavailable`. `callTool` dispatches by tool
- * name (`x_<server>_<tool>`) to a contributed server's handler; a tool no
- * such server handles fails with {@link FixtureToolMissingError} and a
- * console error.
+ * name (`x_<server>_<tool>`) to a contributed server's handler, or to one of
+ * muster's own tools it serves (`musterCoreToolHandlers`); any other tool
+ * fails with {@link FixtureToolMissingError} and a console error.
  */
 export class MusterFixtureApi implements MusterApi {
   private readonly tools: Map<string, Tool>;
@@ -184,7 +239,7 @@ export class MusterFixtureApi implements MusterApi {
     this.tools = new Map(
       servers.flatMap(({ server, tools, inputSchemas }) =>
         Object.entries(tools).map(([tool, handler]) => {
-          const name = `x_${server}_${tool}`;
+          const name = fixtureToolName(server, tool);
           const inputSchema = inputSchemas?.[tool];
           return [name, { name, server, handler, inputSchema }] as const;
         }),
@@ -196,7 +251,7 @@ export class MusterFixtureApi implements MusterApi {
   private installationData(installation: string): InstallationData {
     let data = this.data.get(installation);
     if (!data) {
-      const set = baseDataSet();
+      const set = fixtureDataSet();
       const connectors = inInstallation(set.connectors, installation);
       data = {
         connectors,
@@ -215,8 +270,8 @@ export class MusterFixtureApi implements MusterApi {
    * ({@link served}) and whose muster the portal reaches, else the 503
    * muster-backend refuses the read with.
    */
-  private reachable(installation: string | undefined): string {
-    const target = served(installation);
+  private reachable(installation: string | undefined, server?: string): string {
+    const target = served(installation, server);
     if (isUnreachable(target)) {
       throw unreachableError(target);
     }
@@ -256,20 +311,26 @@ export class MusterFixtureApi implements MusterApi {
     installation: string | undefined,
     signal: AbortSignal | undefined,
   ): Promise<unknown> {
-    const target = this.reachable(installation);
     const tool = this.tools.get(name);
-    if (!tool) {
+    const target = this.reachable(installation, tool?.server ?? 'muster');
+    const handler = tool?.handler ?? coreToolHandlers.get(name);
+    if (!handler) {
       const error = new FixtureToolMissingError(name);
       // eslint-disable-next-line no-console
       console.error(error.message, { args, installation });
       throw error;
     }
-    return tool.handler(args, { installation: target, signal });
+    return handler(args, { installation: target, signal });
   }
 
+  /**
+   * muster-backend's list of the installations it is configured for, not a
+   * call to any muster: it answers in the `error` scenario too, so the pages
+   * go on to the musters and show how those fail.
+   */
   async listInstallations(): Promise<MusterInstallationsResponse> {
     return {
-      installations: baseDataSet().installations.map(musterInstallationOf),
+      installations: fixtureDataSet().installations.map(musterInstallationOf),
     };
   }
 
@@ -570,13 +631,23 @@ export class MusterFixtureApi implements MusterApi {
     return this.dispatch(name, args, options.installation, options.signal);
   }
 
+  /**
+   * Reports, never throws, as the real client does: no sign-in succeeds in
+   * the `error` scenario.
+   */
   async signIn(installation?: string): Promise<boolean> {
-    served(installation);
-    return true;
+    return !failsInScenario(known(installation));
   }
 
+  /**
+   * Only resolves the person's token, never calls muster: in the `error`
+   * scenario it fails only where the person is signed out.
+   */
   async authHeaders(installation?: string): Promise<Record<string, string>> {
-    served(installation);
+    const target = known(installation);
+    if (failsInScenario(target) && target === SIGNED_OUT_INSTALLATION) {
+      throw sessionExpiredError(target);
+    }
     return {};
   }
 
@@ -622,4 +693,16 @@ export class MusterFixtureApi implements MusterApi {
     const name = typeof server === 'string' ? server : server.app;
     return { status: 'signed_out', message: `Signed out of ${name}.` };
   }
+}
+
+/**
+ * The fixture `MusterApi`, as the page's fixture scenario serves it. In
+ * `error` it fails in muster's own words ({@link scenarioError}).
+ */
+export function musterFixtureApi(servers: FixtureMcpServer[]): MusterApi {
+  return withFixtureScenario(
+    'MusterApi',
+    new MusterFixtureApi(servers),
+    () => undefined,
+  );
 }

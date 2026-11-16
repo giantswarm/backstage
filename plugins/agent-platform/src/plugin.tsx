@@ -9,6 +9,7 @@ import {
   createFrontendPlugin,
   ExtensionBoundary,
   discoveryApiRef,
+  githubAuthApiRef,
   fetchApiRef,
   PageBlueprint,
   SubPageBlueprint,
@@ -35,6 +36,8 @@ import {
   modelManagerApiRef,
   AgentManagerCredentialsClient,
   agentManagerCredentialsApiRef,
+  SkillDiscoveryClient,
+  skillDiscoveryApiRef,
 } from './apis';
 import {
   addGpuNodePoolRouteRef,
@@ -366,9 +369,9 @@ const kagentApi = ApiBlueprint.make({
       factory: ({ configApi, ...deps }) => {
         if (process.env.NODE_ENV !== 'production' && fixturesOn(configApi)) {
           return lazyApi(async () => {
-            const { KagentFixtureApi } =
+            const { kagentFixtureApi } =
               await import('./apis/fixtures/KagentFixtureApi');
-            return new KagentFixtureApi();
+            return kagentFixtureApi();
           });
         }
         return new KagentApiClient(deps);
@@ -394,9 +397,9 @@ const agentManagerCredentialsApi = ApiBlueprint.make({
       factory: ({ configApi, ...deps }) => {
         if (process.env.NODE_ENV !== 'production' && fixturesOn(configApi)) {
           return lazyApi(async () => {
-            const { AgentManagerCredentialsFixtureApi } =
+            const { agentManagerCredentialsFixtureApi } =
               await import('./apis/fixtures/AgentManagerCredentialsFixtureApi');
-            return new AgentManagerCredentialsFixtureApi();
+            return agentManagerCredentialsFixtureApi();
           });
         }
         return new AgentManagerCredentialsClient(deps);
@@ -424,12 +427,39 @@ const modelManagerApi = ApiBlueprint.make({
       factory: ({ configApi, ...deps }) => {
         if (process.env.NODE_ENV !== 'production' && fixturesOn(configApi)) {
           return lazyApi(async () => {
-            const { ModelManagerFixtureApi } =
+            const { modelManagerFixtureApi } =
               await import('./apis/fixtures/ModelManagerFixtureApi');
-            return new ModelManagerFixtureApi(deps);
+            return modelManagerFixtureApi(deps);
           });
         }
         return new ModelManagerApiClient(deps);
+      },
+    }),
+});
+
+// gs-backend's skill routes: the reads of `agentPlatform.skills.repositories`
+// (the portal's own skill source, where an installation has no skill-manager)
+// and the pull request that proposes a skill, as the person.
+const skillDiscoveryApi = ApiBlueprint.make({
+  name: 'skill-discovery',
+  params: defineParams =>
+    defineParams({
+      api: skillDiscoveryApiRef,
+      deps: {
+        configApi: configApiRef,
+        discoveryApi: discoveryApiRef,
+        fetchApi: fetchApiRef,
+        githubAuthApi: githubAuthApiRef,
+      },
+      factory: ({ configApi, ...deps }) => {
+        if (process.env.NODE_ENV !== 'production' && fixturesOn(configApi)) {
+          return lazyApi(async () => {
+            const { SkillDiscoveryFixtureApi } =
+              await import('./apis/fixtures/SkillDiscoveryFixtureApi');
+            return new SkillDiscoveryFixtureApi();
+          });
+        }
+        return new SkillDiscoveryClient(deps);
       },
     }),
 });
@@ -591,6 +621,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     kagentApi,
     modelManagerApi,
     agentManagerCredentialsApi,
+    skillDiscoveryApi,
     fixtureMcpServers,
   ],
   routes: {
