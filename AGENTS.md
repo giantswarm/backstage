@@ -97,51 +97,58 @@ yarn fixtures status
 yarn fixtures stop     # when you are done: a frontend and a backend per checkout are heavy
 ```
 
-`?fixtures=<scenario>` on any page switches the data set, no restart:
+`?fixtures=<scenario>` switches the data set without a restart: `base` (the
+default), `empty`, `many`, `long-names`, `loading` and `error`. What each
+serves, and the pages that keep the base data in every scenario (Plans,
+Roadmap, Customize · Skills): `docs/fixtures.md`, "Scenarios". The tab keeps
+the scenario until `?fixtures=base`.
 
-- `base` (the default): records in every state the pages know. Start here.
-- `empty`: installations with nothing in them, for empty states.
-- `many`: hundreds of items per list, for long lists, paging and filters.
-- `long-names`: names as long as Kubernetes allows, for wrapping and
-  truncation.
-- `loading`: no call answers, for loading states.
-- `error`: every call fails as the real backends do, for error states.
-
-For a look of your own, run the chrome-devtools MCP only with `--isolated`
-(or `--userDataDir` with a directory of your checkout): its default profile is
-shared, so a second session's Chrome does not start, and two portals on
-`127.0.0.1` overwrite each other's cookies. The layout check needs neither: it
-starts its own headless Chromium.
+Open the portal in the chrome-devtools MCP only when it runs with `--isolated`
+or a `--userDataDir` of your checkout (`claude mcp get chrome-devtools` shows
+its arguments): its default profile is shared, so a second session's Chrome
+does not start, and two portals on `127.0.0.1` overwrite each other's cookies.
+When it runs without either, don't use it for checks: use the layout check or
+the repo's Playwright, and tell the person once. Don't change the MCP's
+config.
 
 The fixtures move with the pages. A pull request that reads a new field, adds
 a state or calls a new tool extends the fixtures in the same pull request
-(`docs/fixtures.md`, "The data set" and "Tool calls through muster"). For
-tools, the drift guard (`fixtureToolCoverage.test.ts` in agent-platform and
-muster) fails until the tool has a handler.
+(`docs/fixtures.md`, "The data set" and "Tool calls through muster"). For a
+tool the agent-platform or muster pages call, the drift guard
+(`fixtureToolCoverage.test.ts` in each) fails until the tool has a handler or
+the test lists it as not served, with a comment saying why. Nothing checks
+bot-prs's calls through muster.
 
 The [`layout-check`](.agents/skills/layout-check/SKILL.md) skill is the
 default proof of a UI change, before you ask for review: the pages the
 `ui-impact` skill maps, at the default widths, in `base` and the scenarios the
-change is about.
+change is about. Pass concrete paths, never a route template. For a page with
+parameters, run the spec's entry for it (`--only <page name>`), which opens
+the first record in each scenario: a record's path copied from fixture mode
+exists only in the scenario it came from. A shell-wide change (`/*`) means a
+few real pages. The check refuses a template and a page that shows "not
+found".
 
 ```bash
-L=.agents/skills/layout-check
-# one --page per mapped page; base plus the scenarios of the change
-node $L/layout-check.mjs --page /customize/agents --scenarios base,long-names
+node .agents/skills/layout-check/layout-check.mjs --scenarios base,long-names \
+  --page /customize/agents --page /sessions
+node .agents/skills/layout-check/layout-check.mjs --scenarios base,long-names \
+  --spec .agents/skills/layout-check/specs/agent-platform.mjs --only Workspace
 ```
+
+Read its exit code and its plain output: 0 is clean, 1 lists findings, 2 means
+pages could not be checked (each named with the reason), which is no pass. The
+warnings come after the findings, don't change the exit code and can run into
+the thousands: read their heading, the count per scenario, not every warning.
 
 The whole spec in all six scenarios is for an occasional sweep, not for every
 pull request:
 
 ```bash
-node $L/layout-check.mjs --spec $L/specs/agent-platform.mjs \
+node .agents/skills/layout-check/layout-check.mjs \
+  --spec .agents/skills/layout-check/specs/agent-platform.mjs \
   --scenarios base,many,long-names,empty,loading,error
 ```
-
-The report lists the findings first, then the warnings, which don't fail the
-check and can run into the thousands in a sweep: read the findings and the
-warnings' heading, their count per scenario, not every warning
-(`--json | jq .findings` gives the findings alone).
 
 ### Lint, format, type-check
 

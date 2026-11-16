@@ -24,8 +24,11 @@ import { collectLayout } from './collect.mjs';
 import {
   RULES,
   checkLayout,
+  collectPageKind,
   formatFinding,
   isWarning,
+  notFoundOf,
+  routeTemplateOf,
   shiftRule,
   warningCounts,
 } from './rules.mjs';
@@ -202,12 +205,20 @@ async function checkOne(browser, baseUrl, job, options) {
         throw Object.assign(new Error(reason), { skip: true });
       },
     };
+    // A path that names no page or record loads a not-found page, which
+    // has nothing to find: it could not be checked, never a pass.
+    const refuseNotFound = async () => {
+      const notFound = notFoundOf(await page.evaluate(collectPageKind));
+      if (notFound) throw new Error(`not found: ${spec.path} shows ${notFound}`);
+    };
     await page.goto(withScenario(`${baseUrl}${spec.path}`, scenario));
     await settle(page);
+    await refuseNotFound();
     if (spec.setup) {
       state = 'setup';
       await spec.setup(step);
       await settle(page);
+      await refuseNotFound();
     }
     const states = [{ name: 'initial' }, ...(spec.states ?? [])];
     let previous;
@@ -275,6 +286,8 @@ async function main() {
       s.path.includes(args.only),
   );
   if (specs.length === 0) fail(`Nothing to check.\n\n${USAGE}`);
+  const templates = specs.map(s => routeTemplateOf(s.path)).filter(Boolean);
+  if (templates.length) fail(templates.join('\n'));
 
   const widths = (list(args.widths) ?? ['375', '768', '1280']).map(Number);
   if (widths.some(w => !Number.isInteger(w) || w < 200)) {

@@ -15,10 +15,11 @@ of text's box from the DOM. No screenshots.
 
 | File | What it is |
 |---|---|
-| `layout-check.mjs` | The command. Exits 0 without findings, 1 with findings, 2 when it could not check (the portal does not answer, a step failed, a page kept changing). Warnings never change the exit code. |
+| `layout-check.mjs` | The command. Exits 0 without findings, 1 with findings, 2 when it could not check (the portal does not answer, a step failed, a page kept changing, a path is a route template or shows a not-found page). Warnings never change the exit code. |
 | `collect.mjs` | The measurement, run inside the page. |
 | `rules.mjs` | The rules, pure functions over the measurement. |
 | `rules.test.mjs` | Their tests: `node --test .agents/skills/layout-check/rules.test.mjs`. CI runs them (`.github/workflows/skill-tests.yaml`). |
+| `layout-check.test.mjs` | Tests of the command that need no browser, run the same way. |
 | `specs/agent-platform.mjs` | Every Agent Platform and muster page of the shell, with the states that broke before. |
 
 Commands run from the repo root; `L=.agents/skills/layout-check`.
@@ -30,6 +31,7 @@ from `.fixtures-server.json` and stops with one message when the portal
 does not answer. Stop the server when you are done.
 
 ```bash
+L=.agents/skills/layout-check
 yarn fixtures start
 node $L/layout-check.mjs --page /customize/agents --page /usage/cost
 node $L/layout-check.mjs --spec $L/specs/agent-platform.mjs --only Workspace
@@ -37,6 +39,12 @@ node $L/layout-check.mjs --spec $L/specs/agent-platform.mjs     # every page, ab
 yarn fixtures stop
 ```
 
+- `--page` takes a concrete path, never a route template
+  (`/sessions/:installation/:sessionId`, `/*`): the check refuses one, and
+  any page that shows the portal's 404 page or a "… not found" heading,
+  as could not check. For a page of one record, run the spec's entry for
+  it (`--only`), which opens the first record in each scenario: a record's
+  path exists only in the scenario it was copied from.
 - `--widths 375,768,1280` (the default): a phone, a tablet or narrow window
   with the side rail, a laptop. Add the width where your layout changes
   (a breakpoint, a dialog's maximum).
