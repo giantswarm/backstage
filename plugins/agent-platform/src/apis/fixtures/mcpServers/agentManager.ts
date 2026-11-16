@@ -17,12 +17,15 @@ import {
   type OrganizationCredentialReplacement,
   type OrganizationModelRequest,
 } from '../../../lib/organizations';
+import { DEFAULT_WORKSPACE_CAPABILITY } from '../../../lib/defaultWorkspace';
+import { TOOLCHAINS_CAPABILITY } from '../../../lib/toolchainManager';
 import type { ListModelConfigsAnswer } from '../../AgentManagerClient';
 import {
   agentManagerFixtureState,
   type AgentManagerFixtureState,
 } from '../agentManagerFixtureState';
 import { FIXTURE_HARNESS } from '../agentPlatformFixtureData';
+import { asJson, text } from './jsonTools';
 
 /** What the fixture agent-manager of an installation composes and can do. */
 const infoOf = (installation: string): AgentManagerInfo => ({
@@ -42,6 +45,8 @@ const infoOf = (installation: string): AgentManagerInfo => ({
     [TAGS_CAPABILITY]: true,
     [EGRESS_POLICIES_CAPABILITY]: true,
     [ORGANIZATIONS_CAPABILITY]: true,
+    [TOOLCHAINS_CAPABILITY]: true,
+    [DEFAULT_WORKSPACE_CAPABILITY]: true,
   },
   identity: 'caller',
   apiVersions: {
@@ -58,15 +63,6 @@ const infoOf = (installation: string): AgentManagerInfo => ({
   muster: { url: `https://muster.${installation}.example.com/mcp` },
   skillsRepositories: [],
 });
-
-type Args = Record<string, unknown>;
-
-/** A value as JSON carries it: a tool call never shares objects. */
-function copied<T>(value: T): T {
-  return value === undefined ? value : JSON.parse(JSON.stringify(value));
-}
-
-const text = (args: Args, key: string): string => String(args[key] ?? '');
 
 /**
  * agent-manager's tools in fixture mode, on `state` (the shared one by
@@ -180,14 +176,7 @@ export function agentManagerFixtureServer(
   };
   return {
     server: AGENT_MANAGER_SERVER,
-    // Arguments and answers cross as JSON, as over MCP: no caller shares
-    // the state's objects.
-    tools: Object.fromEntries(
-      Object.entries(tools).map(([name, handler]) => [
-        name,
-        (args, context) => copied(handler(copied(args), context)),
-      ]),
-    ),
+    tools: asJson(tools),
   };
 }
 

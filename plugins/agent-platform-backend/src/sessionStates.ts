@@ -1,22 +1,20 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
 import {
+  instanceDecidedState,
   isListableSession,
-  isRuntimeLostReason,
   KagentSession,
   normalizeSessionList,
   normalizeTaskList,
-  readInstanceFailureReason,
-  readNewestTaskState,
-  readTaskFailureReason,
+  selectCandidates,
   SessionStateEntry,
   SessionStatesResponse,
+  taskDecidedState,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { KagentClient } from './KagentClient';
 import {
   atLeast,
   MIN_READ_SLICE_MS,
   readTasksInPool,
-  selectCandidates,
   TokenKeyedCache,
 } from './sessionFanOut';
 
@@ -199,22 +197,7 @@ export class SessionStateReader {
         ),
       onPayload: (session, payload) => {
         const { tasks } = normalizeTaskList(payload);
-        const newest = readNewestTaskState(tasks);
-        // Reduced here to a class: the failure text is the provider's raw
-        // error and never leaves the backend. A runtime kagent marked lost
-        // wins over whatever the newest turn says: kagent keeps such a
-        // session READY, often on a question that can now never be answered.
-        const failureReason = isRuntimeLostReason(session.failure?.reason)
-          ? 'runtime-lost'
-          : newest && readTaskFailureReason(tasks[newest.index]);
-        states.push({
-          sessionId: session.sessionId,
-          state: newest?.state.raw ?? null,
-          ...(newest?.changedAt === undefined
-            ? {}
-            : { changedAt: newest.changedAt }),
-          ...(failureReason === undefined ? {} : { failureReason }),
-        });
+        states.push(taskDecidedState(session, tasks));
       },
     });
 
@@ -254,35 +237,4 @@ export class SessionStateReader {
       skipped: pastCap + skipped,
     };
   }
-}
-
-/**
- * The instance states that *are* the session's state, with no turn to consult.
- * A ready or suspended instance says nothing about its newest turn (a suspended
- * actor may be waiting on a human or simply idle after a finished turn), so
- * those still read their tasks.
- */
-const INSTANCE_DECIDED_STATES = new Set(['failed', 'creating', 'deleting']);
-
-/**
- * The state entry an instance's own lifecycle state decides, or undefined when
- * its tasks have to be read. The instance's `updatedAt` is the age basis, as it
- * moves with every lifecycle change. A failed instance carries its failure's
- * class, never its message.
- */
-function instanceDecidedState(
-  session: KagentSession,
-): SessionStateEntry | undefined {
-  if (!session.state || !INSTANCE_DECIDED_STATES.has(session.state)) {
-    return undefined;
-  }
-  const changedAt = session.updatedAt ? Date.parse(session.updatedAt) : NaN;
-  return {
-    sessionId: session.sessionId,
-    state: session.state,
-    ...(Number.isNaN(changedAt) ? {} : { changedAt }),
-    ...(session.state === 'failed'
-      ? { failureReason: readInstanceFailureReason(session.failure) }
-      : {}),
-  };
 }

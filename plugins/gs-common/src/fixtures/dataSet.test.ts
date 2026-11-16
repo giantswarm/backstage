@@ -4,14 +4,26 @@ import {
   CONNECTOR_STATES,
   EXECUTION_STATES,
   INSTALLATION_STATES,
-  MAX_NAME_LENGTH,
   ORGANIZATION_STATES,
   SESSION_STATES,
+  SESSION_TURNS,
+  DAY,
   WORKFLOW_STATES,
-  baseDataSet,
-  createFixtureDataSet,
-  inInstallation,
-} from '.';
+} from './builders';
+import { baseDataSet, createFixtureDataSet, inInstallation } from './dataSet';
+import {
+  FIXTURE_PROVIDERS,
+  SKILL_REPOSITORY_STATES,
+  TOOLCHAIN_SOURCE_STATES,
+  WORKSPACE_STATES,
+} from './managerBuilders';
+import {
+  CACHE_CLAIM_STATES,
+  GPU_POOL_STATES,
+  HOSTED_MODEL_STATES,
+  MODEL_BACKEND_STATES,
+} from './hostingBuilders';
+import { MAX_NAME_LENGTH } from './names';
 
 const now = Date.parse('2026-11-14T12:00:00Z');
 const kubernetesName = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
@@ -54,6 +66,20 @@ describe('createFixtureDataSet', () => {
     expect(statesOf(data.sessions)).toEqual(new Set(SESSION_STATES));
     expect(statesOf(data.workflows)).toEqual(new Set(WORKFLOW_STATES));
     expect(statesOf(data.executions)).toEqual(new Set(EXECUTION_STATES));
+    expect(new Set(data.sessions.map(s => s.turn))).toEqual(
+      new Set([...SESSION_TURNS, 'none']),
+    );
+    expect(statesOf(data.workspaces)).toEqual(new Set(WORKSPACE_STATES));
+    expect(statesOf(data.toolchainSources)).toEqual(
+      new Set(TOOLCHAIN_SOURCE_STATES),
+    );
+    expect(statesOf(data.skillRepositories)).toEqual(
+      new Set(SKILL_REPOSITORY_STATES),
+    );
+    expect(statesOf(data.modelBackends)).toEqual(new Set(MODEL_BACKEND_STATES));
+    expect(statesOf(data.gpuPools)).toEqual(new Set(GPU_POOL_STATES));
+    expect(statesOf(data.cacheClaims)).toEqual(new Set(CACHE_CLAIM_STATES));
+    expect(statesOf(data.hostedModels)).toEqual(new Set(HOSTED_MODEL_STATES));
   });
 
   it.each(FIXTURE_INSTALLATIONS)('has every state in %s', installation => {
@@ -101,6 +127,31 @@ describe('createFixtureDataSet', () => {
       installation: FIXTURE_INSTALLATION,
       state: 'pending',
     });
+  });
+
+  it('gives every served installation a session whose newest turn is in each state, recently', () => {
+    const data = createFixtureDataSet({ now });
+    for (const installation of FIXTURE_INSTALLATIONS) {
+      const turns = inInstallation(data.sessions, installation).filter(
+        session => session.turn !== 'completed' && session.turn !== 'none',
+      );
+      expect(new Set(turns.map(session => session.turn))).toEqual(
+        new Set(SESSION_TURNS.filter(turn => turn !== 'completed')),
+      );
+      for (const session of turns) {
+        expect(now - Date.parse(session.updatedAt)).toBeLessThanOrEqual(
+          2 * DAY,
+        );
+        expect(session.state).toBe(
+          session.turn === 'approval' || session.turn === 'askUser'
+            ? 'suspended'
+            : 'ready',
+        );
+      }
+      expect(turns.find(session => session.turn === 'working')?.updatedAt).toBe(
+        new Date(now).toISOString(),
+      );
+    }
   });
 
   it('gives sessions only to ready agents of ready organizations', () => {
@@ -216,6 +267,141 @@ describe('createFixtureDataSet', () => {
   });
 });
 
+describe("the managers' lists", () => {
+  const data = createFixtureDataSet({ now });
+
+  it.each(FIXTURE_INSTALLATIONS)(
+    'has workspaces, toolchains and skills in %s',
+    installation => {
+      expect(statesOf(inInstallation(data.workspaces, installation))).toEqual(
+        new Set(WORKSPACE_STATES),
+      );
+      expect(
+        inInstallation(data.toolchains, installation).length,
+      ).toBeGreaterThan(0);
+      expect(
+        statesOf(inInstallation(data.skillRepositories, installation)),
+      ).toEqual(new Set(SKILL_REPOSITORY_STATES));
+    },
+  );
+
+  it('puts workspaces in the ready organizations the person is a member of', () => {
+    const organizations = new Map(
+      data.organizations.map(o => [`${o.installation}/${o.name}`, o] as const),
+    );
+    for (const workspace of data.workspaces) {
+      expect(
+        organizations.get(
+          `${workspace.installation}/${workspace.organization}`,
+        ),
+      ).toMatchObject({
+        state: 'ready',
+        role: expect.not.stringMatching('none'),
+      });
+    }
+  });
+
+  it('selects repositories that exist, on every provider instance', () => {
+    const owners = new Set(
+      data.repositoryOwners.map(o => `${o.provider}/${o.name}`),
+    );
+    const repositories = new Set(
+      data.repositories.map(r => `${r.provider}/${r.owner}/${r.name}`),
+    );
+    const providers = new Set<string>();
+    for (const workspace of data.workspaces) {
+      expect(workspace.sources.length).toBeGreaterThan(0);
+      for (const source of workspace.sources) {
+        providers.add(source.provider);
+        expect(owners).toContain(`${source.provider}/${source.owner}`);
+        for (const name of source.repositories ?? []) {
+          expect(repositories).toContain(
+            `${source.provider}/${source.owner}/${name}`,
+          );
+        }
+      }
+    }
+    expect(providers).toEqual(new Set(FIXTURE_PROVIDERS.map(p => p.name)));
+    expect(data.repositories.some(r => !r.readable)).toBe(true);
+  });
+
+  it("dates a workspace's last sync after its creation, and none before the first", () => {
+    for (const workspace of data.workspaces) {
+      expect(Date.parse(workspace.createdAt)).toBeLessThanOrEqual(now);
+      expect(workspace.lastSyncAt === undefined).toBe(
+        workspace.state === 'pending',
+      );
+    }
+  });
+
+  it('publishes toolchains from the readable offered sources only, one name from two', () => {
+    for (const installation of FIXTURE_INSTALLATIONS) {
+      const sources = inInstallation(data.toolchainSources, installation);
+      const readable = new Set(
+        sources.filter(s => s.state === 'offered').map(s => s.name),
+      );
+      const toolchains = inInstallation(data.toolchains, installation);
+      expect(new Set(toolchains.map(t => t.source))).toEqual(readable);
+      const names = toolchains.map(t => t.name);
+      expect(names.length - new Set(names).size).toBe(1);
+      for (const toolchain of toolchains) {
+        expect(toolchain.versions.length).toBeGreaterThan(0);
+        for (const version of toolchain.versions) {
+          expect(version).toMatch(/^v\d+\.\d+\.\d+$/);
+        }
+        expect(new Set(toolchain.versions).size).toBe(
+          toolchain.versions.length,
+        );
+      }
+    }
+  });
+
+  it("puts each installation's configured toolchain sources first, whatever the count", () => {
+    const three = createFixtureDataSet({ now, toolchainSources: { count: 3 } });
+    for (const installation of FIXTURE_INSTALLATIONS) {
+      expect(
+        inInstallation(three.toolchainSources, installation).map(
+          s => s.addedBy === undefined,
+        ),
+      ).toEqual([true, true, false]);
+    }
+  });
+
+  it('lists no skills of a repository that failed or is hidden', () => {
+    for (const repository of data.skillRepositories) {
+      expect(repository.skills.length === 0).toBe(
+        repository.state === 'failed' || repository.state === 'hidden',
+      );
+      const skills = new Set(repository.skills.map(s => s.name));
+      for (const plugin of repository.plugins) {
+        for (const skill of plugin.skills) {
+          expect(skills).toContain(skill);
+        }
+      }
+    }
+  });
+
+  it('makes count items per parent', () => {
+    const many = createFixtureDataSet({
+      now,
+      repositories: { count: 40 },
+      workspaces: { count: 5 },
+      toolchains: { count: 9 },
+      skills: { count: 20, nameLength: 40 },
+    });
+    expect(many.repositories).toHaveLength(many.repositoryOwners.length * 40);
+    const memberOrganizations = many.organizations.filter(
+      o => o.state === 'ready' && o.role !== 'none',
+    );
+    expect(many.workspaces).toHaveLength(memberOrganizations.length * 5);
+    for (const repository of many.skillRepositories) {
+      for (const skill of repository.skills) {
+        expect(skill.name.length).toBeGreaterThanOrEqual(40);
+      }
+    }
+  });
+});
+
 describe('builder settings', () => {
   it('makes count items per parent', () => {
     const data = createFixtureDataSet({
@@ -225,6 +411,7 @@ describe('builder settings', () => {
       agents: { count: 5, states: ['ready'] },
       connectors: { count: 7 },
       sessions: { count: 4 },
+      turnSessions: { count: 2 },
       workflows: { count: 1 },
       executions: { count: 6 },
     });
@@ -232,7 +419,7 @@ describe('builder settings', () => {
     expect(data.organizations).toHaveLength(2 * 3);
     expect(data.agents).toHaveLength(2 * 3 * 5);
     expect(data.connectors).toHaveLength(2 * 7);
-    expect(data.sessions).toHaveLength(2 * 3 * 5 * 4);
+    expect(data.sessions).toHaveLength(2 * 3 * 5 * 4 + 2 * 2);
     expect(data.workflows).toHaveLength(2);
     expect(data.executions).toHaveLength(2 * 6);
   });
@@ -254,6 +441,7 @@ describe('builder settings', () => {
       agents: { nameLength: 200 },
       connectors: { nameLength: 50 },
       sessions: { nameLength: 80 },
+      turnSessions: { nameLength: 80 },
       workflows: { nameLength: 30 },
     });
     expect(data.installations.slice(0, 3).map(i => i.name)).toEqual([
@@ -323,6 +511,19 @@ describe('builder settings', () => {
       workflows: [],
       executions: [],
       toolsetPresets: [],
+      // The provider instances' owners and repositories are no
+      // installation's.
+      repositoryOwners: expect.any(Array),
+      repositories: expect.any(Array),
+      workspaces: [],
+      toolchainSources: [],
+      toolchains: [],
+      skillRepositories: [],
+      modelBackends: [],
+      gpuClusters: [],
+      gpuPools: [],
+      cacheClaims: [],
+      hostedModels: [],
     });
   });
 
@@ -348,6 +549,113 @@ describe('builder settings', () => {
       }
       expect(presets[2].selectors).toContain('server:retired-reports');
     }
+  });
+});
+
+describe('model hosting', () => {
+  const data = createFixtureDataSet({ now });
+
+  it.each(FIXTURE_INSTALLATIONS)(
+    'gives %s a KServe and an Ollama backend, the KServe one on a GPU cluster',
+    installation => {
+      const backends = inInstallation(data.modelBackends, installation);
+      expect(backends.map(b => b.name)).toEqual(['kserve', 'ollama']);
+      const [kserve] = backends;
+      expect(
+        inInstallation(data.gpuClusters, installation).map(c => c.name),
+      ).toEqual([kserve.cluster]);
+    },
+  );
+
+  it('puts each GPU cluster in an organization of its installation', () => {
+    for (const cluster of data.gpuClusters) {
+      expect(
+        data.organizations.find(
+          o =>
+            o.installation === cluster.installation &&
+            o.name === cluster.organization,
+        )?.state,
+      ).toBe('ready');
+    }
+  });
+
+  it('makes long pool names, and long cluster names only when asked', () => {
+    const long = createFixtureDataSet({ now, gpuPools: { nameLength: 40 } });
+    for (const pool of long.gpuPools) {
+      expect(pool.name.length).toBeGreaterThanOrEqual(40);
+      expect(pool.name.length - pool.cluster.length).toBeGreaterThan(20);
+    }
+  });
+
+  it('names each backend once per installation, whatever the count', () => {
+    const many = createFixtureDataSet({ now, modelBackends: { count: 5 } });
+    for (const installation of FIXTURE_INSTALLATIONS) {
+      const names = inInstallation(many.modelBackends, installation).map(
+        b => b.name,
+      );
+      expect(new Set(names).size).toBe(names.length);
+    }
+  });
+
+  it('gives ready nodes only to pools that run them, named as MachinePools', () => {
+    for (const pool of data.gpuPools) {
+      expect(pool.name.startsWith(`${pool.cluster}-`)).toBe(true);
+      expect(pool.name).toMatch(kubernetesName);
+      expect(pool.nodes).toHaveLength(pool.readyReplicas);
+      expect(pool.readyReplicas).toBeLessThanOrEqual(pool.replicas);
+    }
+  });
+
+  it('mounts one cache claim per cluster with a cache, and none without', () => {
+    for (const cluster of data.gpuClusters) {
+      const claims = data.cacheClaims.filter(
+        c =>
+          c.installation === cluster.installation && c.cluster === cluster.name,
+      );
+      expect(claims.filter(c => c.state === 'mounted').length).toBe(
+        cluster.cache ? 1 : 0,
+      );
+      expect(claims.length > 0).toBe(cluster.cache);
+    }
+  });
+
+  it('serves KServe models from their preset, on a node of their cluster', () => {
+    const kserve = data.modelBackends.filter(b => b.kind === 'kserve');
+    const onKServe = data.hostedModels.filter(m =>
+      kserve.some(
+        b => b.installation === m.installation && b.name === m.backend,
+      ),
+    );
+    expect(onKServe.every(m => m.preset !== undefined)).toBe(true);
+    for (const model of onKServe.filter(m => m.node)) {
+      const backend = kserve.find(
+        b => b.installation === model.installation && b.name === model.backend,
+      )!;
+      expect(
+        data.gpuPools
+          .filter(
+            p =>
+              p.installation === model.installation &&
+              p.cluster === backend.cluster,
+          )
+          .flatMap(p => p.nodes),
+      ).toContain(model.node);
+    }
+  });
+
+  it('gives a host backend no serve lifecycle', () => {
+    const onHosts = data.hostedModels.filter(m =>
+      data.modelBackends.some(
+        b =>
+          b.kind === 'ollama' &&
+          b.installation === m.installation &&
+          b.name === m.backend,
+      ),
+    );
+    expect(onHosts.length).toBeGreaterThan(0);
+    expect(onHosts.some(m => ['starting', 'failed'].includes(m.state))).toBe(
+      false,
+    );
   });
 });
 
