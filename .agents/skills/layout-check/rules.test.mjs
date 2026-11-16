@@ -178,6 +178,51 @@ test('alignment: a control aligned with none of its neighbour', () => {
   assert.match(findings[0].message, /off the row beside it/);
 });
 
+test('alignment: reported whatever the order of the two groups', () => {
+  // One group's two like-sized buttons form one row (0..38); the other's
+  // button lines up with that row's top, but the second button does not
+  // line up with it.
+  const a = {
+    role: 'div',
+    name: 'a',
+    path: 'div',
+    box: box(0, 0, 210, 38),
+    controls: [control('a', box(0, 0, 100, 32)), control('b', box(110, 6, 100, 32))],
+  };
+  const b = { role: 'div', name: 'b', path: 'div', box: box(220, 0, 100, 32), controls: [control('c', box(220, 0, 100, 32))] };
+  const forward = alignmentRule(layout({ flexRows: [{ children: [a, b] }] }));
+  const backward = alignmentRule(layout({ flexRows: [{ children: [b, a] }] }));
+  assert.equal(forward.length, backward.length);
+  assert.ok(forward.length >= 1);
+});
+
+test('alignment: two single controls off each other are reported once', () => {
+  const a = { role: 'div', name: 'a', path: 'div', box: box(0, 0, 100, 32), controls: [control('A', box(0, 0, 100, 32))] };
+  const b = { role: 'div', name: 'b', path: 'div', box: box(110, 5, 100, 36), controls: [control('B', box(110, 5, 100, 36))] };
+  assert.equal(alignmentRule(layout({ flexRows: [{ children: [a, b] }] })).length, 1);
+});
+
+test('alignment: a group spans down to the lowest bottom of its rows', () => {
+  // Rows of 12..60 and 59..59.5 (they overlap by less than the tolerance,
+  // so they are two): by the last row's bottom the group spans 0..59.5, by
+  // the lowest bottom 0..60. A 72px group is a row of controls (60 + 12).
+  const filters = {
+    role: 'group',
+    name: 'Filters',
+    path: 'div',
+    box: box(0, 0, 300, 72),
+    controls: [
+      control('Top', box(0, 0, 140, 10)),
+      control('Tall', box(0, 12, 140, 48)),
+      control('Thin', box(150, 59, 20, 0.5)),
+    ],
+  };
+  const sort = { role: 'div', name: 'Sort', path: 'div', box: box(320, 17, 100, 48), controls: [control('Sort', box(320, 17, 100, 48))] };
+  const findings = alignmentRule(layout({ flexRows: [{ children: [filters, sort] }] }));
+  assert.equal(findings.length, 1);
+  assert.match(findings[0].message, /5px off the row beside it/);
+});
+
 test('alignment: centred, top- or bottom-aligned controls of different heights are fine', () => {
   const a = { role: 'div', name: 'a', path: 'div', box: box(0, 0, 100, 32), controls: [control('A', box(0, 0, 100, 32))] };
   for (const y of [4, 0, 8]) {
@@ -231,9 +276,52 @@ test('truncation: text squeezed to a letter or two', () => {
   assert.match(findings[0].message, /squeezed to 16 of the 84px/);
 });
 
-test('truncation: a long text ending in an ellipsis is a design', () => {
+test('truncation: a text ending in an ellipsis, its full value on hover, is a design', () => {
   assert.deepEqual(
-    truncationRule(layout({ truncated: [truncated('OpenAI · gpt-4.1-mini · a long description', 167, 676)] })),
+    truncationRule(
+      layout({
+        truncated: [
+          truncated('OpenAI · gpt-4.1-mini · a long description', 167, 676, { fullText: true }),
+        ],
+      }),
+    ),
+    [],
+  );
+});
+
+test('truncation: a text ending in an ellipsis with no title or tooltip', () => {
+  const findings = truncationRule(
+    layout({ truncated: [truncated('OpenAI · gpt-4.1-mini · a long description', 167, 676)] }),
+  );
+  assert.equal(findings.length, 1);
+  assert.match(findings[0].message, /no title or tooltip/);
+});
+
+test('truncation: squeezed to a letter or two, even with a tooltip', () => {
+  const findings = truncationRule(
+    layout({ truncated: [truncated('Review Agent', 16, 84, { fullText: true })] }),
+  );
+  assert.equal(findings.length, 1);
+  assert.match(findings[0].message, /squeezed/);
+});
+
+test('truncation: a second line cut off by a box of fixed height', () => {
+  const findings = truncationRule(
+    layout({
+      truncated: [truncated('Two lines of text', 20, 40, { axis: 'y', ellipsis: false })],
+    }),
+  );
+  assert.equal(findings.length, 1);
+  assert.match(findings[0].message, /without an ellipsis \(20 of 40px high shown\)/);
+});
+
+test('truncation: lines clamped with an ellipsis and a title', () => {
+  assert.deepEqual(
+    truncationRule(
+      layout({
+        truncated: [truncated('Three lines', 40, 60, { axis: 'y', ellipsis: true, fullText: true })],
+      }),
+    ),
     [],
   );
 });

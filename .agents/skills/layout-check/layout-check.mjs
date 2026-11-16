@@ -53,6 +53,8 @@ const list = value =>
         .map(s => s.trim())
         .filter(Boolean);
 
+const SETTLE_TIMEOUT_MS = 20000;
+
 function portalUrl(explicit) {
   if (explicit) return explicit.replace(/\/$/, '');
   const stateFile = path.join(root, '.fixtures-server.json');
@@ -68,12 +70,33 @@ function portalUrl(explicit) {
   return state.url.replace(/\/$/, '');
 }
 
-/** Waits until the page stops changing: no DOM mutation for `quietMs`, finite animations done. */
-async function settle(page, { quietMs = 700, timeoutMs = 20000 } = {}) {
+/** Fails with one clear message when the portal does not answer. */
+async function probe(baseUrl, explicit) {
+  try {
+    const response = await fetch(baseUrl, { signal: AbortSignal.timeout(10000) });
+    if (response.ok) return;
+    throw new Error(`HTTP ${response.status}`);
+  } catch (error) {
+    fail(
+      `The portal at ${baseUrl} does not answer (${error.cause?.code ?? error.message}). ${
+        explicit
+          ? 'Check --url.'
+          : 'Start fixture mode with `yarn fixtures start`; `yarn fixtures status` says whether it runs.'
+      }`,
+    );
+  }
+}
+
+/**
+ * Waits until the page stops changing: no DOM mutation for `quietMs`, finite
+ * animations done. Throws when it is still changing after `timeoutMs`: a
+ * measurement taken mid-change would report what is only in passing.
+ */
+async function settle(page, { quietMs = 700, timeoutMs = SETTLE_TIMEOUT_MS } = {}) {
   await page
     .waitForLoadState('networkidle', { timeout: 5000 })
     .catch(() => undefined);
-  await page.evaluate(
+  const settled = await page.evaluate(
     ({ quietMs: quiet, timeoutMs: timeout }) =>
       new Promise(resolve => {
         const start = performance.now();
@@ -96,9 +119,12 @@ async function settle(page, { quietMs = 700, timeoutMs = 20000 } = {}) {
                 a.playState === 'running' &&
                 Number.isFinite(a.effect?.getComputedTiming().endTime),
             );
-          if ((now - last >= quiet && !running) || now - start > timeout) {
+          if (now - last >= quiet && !running) {
             observer.disconnect();
-            document.fonts.ready.then(() => resolve());
+            document.fonts.ready.then(() => resolve(true));
+          } else if (now - start > timeout) {
+            observer.disconnect();
+            resolve(false);
           } else {
             setTimeout(tick, 100);
           }
@@ -107,6 +133,11 @@ async function settle(page, { quietMs = 700, timeoutMs = 20000 } = {}) {
       }),
     { quietMs, timeoutMs },
   );
+  if (!settled) {
+    throw new Error(
+      `the page kept changing for ${timeoutMs / 1000}s (DOM mutations or animations), so it was not measured`,
+    );
+  }
 }
 
 function withScenario(url, scenario) {
@@ -139,21 +170,23 @@ async function checkOne(browser, baseUrl, job, options) {
     width,
     scenario: scenario ?? 'base',
   };
-  const context = await browser.newContext({
-    viewport: { width, height: width < 600 ? 812 : 900 },
-    reducedMotion: 'reduce',
-  });
-  const page = await context.newPage();
-  page.setDefaultTimeout(20000);
   const findings = [];
   const errors = [];
   const ignore = [...options.ignore, ...(spec.ignore ?? [])];
-  const step = { page, width, scenario: label.scenario, baseUrl };
-  let state = 'initial';
+  let state = 'load';
+  let context;
   try {
+    context = await browser.newContext({
+      viewport: { width, height: width < 600 ? 812 : 900 },
+      reducedMotion: 'reduce',
+    });
+    const page = await context.newPage();
+    page.setDefaultTimeout(20000);
+    const step = { page, width, scenario: label.scenario, baseUrl };
     await page.goto(withScenario(`${baseUrl}${spec.path}`, scenario));
     await settle(page);
     if (spec.setup) {
+      state = 'setup';
       await spec.setup(step);
       await settle(page);
     }
@@ -183,7 +216,7 @@ async function checkOne(browser, baseUrl, job, options) {
       message: String(error?.message ?? error).split('\n')[0],
     });
   } finally {
-    await context.close();
+    await context?.close().catch(() => undefined);
   }
   return { findings, errors };
 }
@@ -233,7 +266,11 @@ async function main() {
   const unknown = rules.filter(r => !(r in RULES) && r !== 'shift');
   if (unknown.length) fail(`Unknown rules: ${unknown.join(', ')}`);
   const concurrency = Number(args.concurrency ?? 3);
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    fail(`--concurrency takes a whole number, 1 or more: ${args.concurrency}`);
+  }
   const baseUrl = portalUrl(args.url);
+  await probe(baseUrl, Boolean(args.url));
 
   // Playwright from the repository's own dependencies; its Chromium is
   // installed by `yarn playwright install chromium`.
@@ -260,7 +297,20 @@ async function main() {
   const worker = async () => {
     while (next < jobs.length) {
       const job = jobs[next++];
-      const result = await checkOne(browser, baseUrl, job, options);
+      const result = await checkOne(browser, baseUrl, job, options).catch(
+        error => ({
+          findings: [],
+          errors: [
+            {
+              page: job.spec.name,
+              width: job.width,
+              scenario: job.scenario ?? 'base',
+              state: 'load',
+              message: String(error?.message ?? error).split('\n')[0],
+            },
+          ],
+        }),
+      );
       findings.push(...result.findings);
       errors.push(...result.errors);
       if (!args.json) {
@@ -270,8 +320,11 @@ async function main() {
       }
     }
   };
-  await Promise.all(Array.from({ length: Math.max(1, concurrency) }, worker));
-  await browser.close();
+  try {
+    await Promise.all(Array.from({ length: concurrency }, worker));
+  } finally {
+    await browser.close().catch(() => undefined);
+  }
 
   const order = (a, b) =>
     a.page.localeCompare(b.page) ||
@@ -285,15 +338,19 @@ async function main() {
     for (const f of findings) process.stdout.write(`${formatFinding(f)}\n\n`);
     for (const e of errors) {
       process.stdout.write(
-        `error: ${e.page} @ ${e.width}px, scenario ${e.scenario}, state "${e.state}": ${e.message}\n`,
+        `could not check: ${e.page} @ ${e.width}px, scenario ${e.scenario}, state "${e.state}": ${e.message}\n`,
       );
     }
     process.stdout.write(
-      `${findings.length} findings, ${errors.length} errors on ${jobs.length} page checks\n`,
+      `${findings.length} findings, ${errors.length} could not be checked, of ${jobs.length} page checks\n`,
     );
   }
   if (errors.length) return 2;
   return findings.length ? 1 : 0;
 }
 
-process.exitCode = await main();
+// Anything unexpected is "could not check", never a finding.
+process.exitCode = await main().catch(error => {
+  process.stderr.write(`${error?.stack ?? error}\n`);
+  return 2;
+});

@@ -16,10 +16,14 @@
 export function collectLayout(options) {
   const ignore = (options && options.ignore) || [];
   const doc = document.documentElement;
+  const body = document.body;
   const viewport = { w: doc.clientWidth, h: window.innerHeight };
 
   const CONTROL =
     'button, a[href], input:not([type=hidden]), select, textarea, [role=button], [role=link], [role=combobox], [role=tab], [role=checkbox], [role=radio], [role=switch], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=option], [role=slider], [role=spinbutton], [role=searchbox], [role=textbox]';
+  // Classes of the design systems' buttons: a link styled as one is checked
+  // for centring like a button.
+  const BUTTON_CLASS = /^(bui-Button|bui-ButtonIcon|MuiButton-root|MuiIconButton-root)$/;
   // Roles whose element starts a layer of its own: an overlay over the page.
   const LAYER_ROLES = new Set([
     'dialog',
@@ -44,19 +48,28 @@ export function collectLayout(options) {
     'listbox',
   ]);
   const LIST_TAGS = new Set(['UL', 'OL', 'TABLE', 'TBODY', 'TR', 'LI']);
+  const SKIP_TEXT = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA', 'OPTION']);
 
-  const styles = new Map();
-  const style = el => {
-    let s = styles.get(el);
-    if (!s) {
-      s = getComputedStyle(el);
-      styles.set(el, s);
-    }
-    return s;
+  const memo = fn => {
+    const cache = new Map();
+    return el => {
+      if (cache.has(el)) return cache.get(el);
+      const value = fn(el);
+      cache.set(el, value);
+      return value;
+    };
   };
 
+  const style = memo(el => getComputedStyle(el));
+  const rectOf = memo(el => el.getBoundingClientRect());
+
   const round = n => Math.round(n * 10) / 10;
-  const box = r => ({ x: round(r.left), y: round(r.top), w: round(r.width), h: round(r.height) });
+  const box = r => ({
+    x: round(r.left ?? r.x),
+    y: round(r.top ?? r.y),
+    w: round(r.width ?? r.w),
+    h: round(r.height ?? r.h),
+  });
   const intersect = (a, b) => {
     const x = Math.max(a.x, b.x);
     const y = Math.max(a.y, b.y);
@@ -64,20 +77,26 @@ export function collectLayout(options) {
     const btm = Math.min(a.y + a.h, b.y + b.h);
     return r > x && btm > y ? { x, y, w: r - x, h: btm - y } : undefined;
   };
+  const hides = v => v === 'hidden' || v === 'clip';
+  const scrolls = v => v === 'auto' || v === 'scroll';
 
-  const ignored = el => ignore.some(sel => el.closest(sel)) || el.closest('[data-layout-check="ignore"]');
+  const ignored = memo(
+    el =>
+      Boolean(el.closest('[data-layout-check="ignore"]')) ||
+      ignore.some(sel => el.closest(sel)),
+  );
 
   /** Visible as a person sees it: rendered, not transparent, more than a hairline. */
-  const visible = el => {
+  const visible = memo(el => {
     if (
       typeof el.checkVisibility === 'function' &&
       !el.checkVisibility({ opacityProperty: true, visibilityProperty: true })
     ) {
       return false;
     }
-    const r = el.getBoundingClientRect();
+    const r = rectOf(el);
     return r.width > 1 && r.height > 1;
-  };
+  });
 
   const ids = new Map();
   const idOf = el => {
@@ -90,7 +109,7 @@ export function collectLayout(options) {
   };
 
   /** The element that starts `el`'s layer, or undefined for the page itself. */
-  const layerOf = el => {
+  const layerOf = memo(el => {
     for (let e = el; e && e !== doc; e = e.parentElement) {
       const s = style(e);
       if (s.position === 'fixed' || s.position === 'sticky') return e;
@@ -100,62 +119,121 @@ export function collectLayout(options) {
       if (e.hasAttribute('popover') || e.tagName === 'DIALOG') return e;
     }
     return undefined;
+  });
+  const layerIdOf = el => {
+    const layer = layerOf(el);
+    return layer ? idOf(layer) : 0;
+  };
+
+  /** Whether `e` is the containing block of an absolutely positioned descendant. */
+  const containsAbsolute = e => {
+    const s = style(e);
+    return (
+      s.position !== 'static' ||
+      s.transform !== 'none' ||
+      s.filter !== 'none' ||
+      s.perspective !== 'none' ||
+      /paint|layout|strict|content/.test(s.contain)
+    );
   };
 
   /**
-   * What of `el` is not cut off by an ancestor's overflow, and the nearest
-   * ancestor that cuts it without letting a person scroll to the rest.
+   * The ancestors at or above `from` that may cut off what `from` holds:
+   * each one's inner box and how it treats overflow on each axis. Only the
+   * containing-block chain counts: an absolutely positioned element escapes
+   * an overflow: hidden ancestor that is not its containing block, and a
+   * fixed one escapes them all.
    */
-  const clipOf = el => {
-    let rect = box(el.getBoundingClientRect());
-    let clipper;
-    for (let e = el.parentElement; e && e !== doc && e !== document.body; e = e.parentElement) {
+  const clipChain = memo(from => {
+    const chain = [];
+    let needsContainer = false;
+    for (let e = from; e && e !== doc && e !== body; e = e.parentElement) {
       const s = style(e);
-      const cutsX = s.overflowX !== 'visible';
-      const cutsY = s.overflowY !== 'visible';
-      if (!cutsX && !cutsY) {
-        if (s.position === 'fixed') break;
-        continue;
+      if (!needsContainer || containsAbsolute(e)) {
+        if (s.overflowX !== 'visible' || s.overflowY !== 'visible') {
+          const r = rectOf(e);
+          chain.push({
+            el: e,
+            x: r.left + e.clientLeft,
+            y: r.top + e.clientTop,
+            w: e.clientWidth,
+            h: e.clientHeight,
+            overflowX: s.overflowX,
+            overflowY: s.overflowY,
+          });
+        }
+        needsContainer = s.position === 'absolute';
       }
-      const r = e.getBoundingClientRect();
+      if (s.position === 'fixed') break;
+    }
+    return chain;
+  });
+
+  /**
+   * What of `rect` is not cut off by `chain`, and the nearest ancestor that
+   * cuts it without letting a person scroll to the rest (null when a scroll
+   * container cut it first).
+   */
+  const applyClip = (rect, chain) => {
+    let clipper;
+    for (const c of chain) {
       const inner = {
-        x: r.left + e.clientLeft,
-        y: r.top + e.clientTop,
-        w: cutsX ? e.clientWidth : Number.MAX_SAFE_INTEGER / 4,
-        h: cutsY ? e.clientHeight : Number.MAX_SAFE_INTEGER / 4,
+        x: c.overflowX === 'visible' ? -1e7 : c.x,
+        w: c.overflowX === 'visible' ? 2e7 : c.w,
+        y: c.overflowY === 'visible' ? -1e7 : c.y,
+        h: c.overflowY === 'visible' ? 2e7 : c.h,
       };
-      if (!cutsX) inner.x = -Number.MAX_SAFE_INTEGER / 8;
-      if (!cutsY) inner.y = -Number.MAX_SAFE_INTEGER / 8;
       const next = intersect(rect, inner);
-      const cutX = cutsX && (!next || next.w < rect.w - 1);
-      const cutY = cutsY && (!next || next.h < rect.h - 1);
-      const hides = v => v === 'hidden' || v === 'clip';
+      const cutX = c.overflowX !== 'visible' && (!next || next.w < rect.w - 1);
+      const cutY = c.overflowY !== 'visible' && (!next || next.h < rect.h - 1);
       if ((cutX || cutY) && clipper === undefined) {
-        // Cut by a scroll container: a person scrolls to the rest, unless
-        // it hides that axis.
-        clipper = (cutX && hides(s.overflowX)) || (cutY && hides(s.overflowY)) ? e : null;
+        clipper =
+          (cutX && hides(c.overflowX)) || (cutY && hides(c.overflowY)) ? c.el : null;
       }
       if (!next) return { rect: undefined, clipper };
       rect = next;
-      if (s.position === 'fixed') break;
     }
     return { rect, clipper };
   };
 
-  const scrollerOf = el => {
-    for (let e = el.parentElement; e && e !== doc && e !== document.body; e = e.parentElement) {
+  /** An element's own box, clipped by its ancestors. */
+  const clipOf = memo(el =>
+    el.parentElement && el.parentElement !== body
+      ? applyClip(box(rectOf(el)), position(el) === 'fixed' ? [] : chainAbove(el))
+      : { rect: box(rectOf(el)), clipper: undefined },
+  );
+  const position = el => style(el).position;
+  /** The clip chain of what is above `el`, for `el`'s own box. */
+  const chainAbove = el => {
+    if (position(el) !== 'absolute') return clipChain(el.parentElement);
+    // Absolute: start at its containing block.
+    for (let e = el.parentElement; e && e !== doc && e !== body; e = e.parentElement) {
+      if (containsAbsolute(e)) return clipChain(e);
+    }
+    return [];
+  };
+
+  const scrollerOf = memo(el => {
+    for (let e = el.parentElement; e && e !== doc && e !== body; e = e.parentElement) {
       const s = style(e);
-      if (['auto', 'scroll'].includes(s.overflowY) || ['auto', 'scroll'].includes(s.overflowX)) return e;
+      if (scrolls(s.overflowY) || scrolls(s.overflowX)) return e;
     }
     return undefined;
-  };
+  });
 
   /** Position in the content of the nearest scroll container. */
   const contentPos = el => {
-    const r = el.getBoundingClientRect();
+    const r = rectOf(el);
     const sc = scrollerOf(el);
-    if (!sc) return { x: round(r.left + window.scrollX), y: round(r.top + window.scrollY), w: round(r.width), h: round(r.height) };
-    const sr = sc.getBoundingClientRect();
+    if (!sc) {
+      return {
+        x: round(r.left + window.scrollX),
+        y: round(r.top + window.scrollY),
+        w: round(r.width),
+        h: round(r.height),
+      };
+    }
+    const sr = rectOf(sc);
     return {
       x: round(r.left - sr.left + sc.scrollLeft),
       y: round(r.top - sr.top + sc.scrollTop),
@@ -185,7 +263,9 @@ export function collectLayout(options) {
       case 'TEXTAREA':
         return 'textbox';
       case 'INPUT':
-        return ['button', 'submit', 'reset'].includes(el.type) ? 'button' : el.type === 'checkbox' ? 'checkbox' : el.type === 'radio' ? 'radio' : 'textbox';
+        if (['button', 'submit', 'reset'].includes(el.type)) return 'button';
+        if (el.type === 'checkbox' || el.type === 'radio') return el.type;
+        return 'textbox';
       default:
         return el.tagName.toLowerCase();
     }
@@ -206,7 +286,10 @@ export function collectLayout(options) {
     if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
       return (el.getAttribute('placeholder') || el.name || '').slice(0, 60);
     }
-    return (el.textContent || el.getAttribute('title') || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+    return (el.textContent || el.getAttribute('title') || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 60);
   };
 
   /** A short CSS-like path: the last few ancestors, with an id or a class. */
@@ -214,25 +297,19 @@ export function collectLayout(options) {
     const parts = [];
     for (let e = el; e && e !== doc && parts.length < 4; e = e.parentElement) {
       let part = e.tagName.toLowerCase();
-      if (e.id && !/^[:r]|react-aria/.test(e.id)) part += `#${e.id}`;
+      // React's generated ids (`:r1:`, `«r1»`) and react-aria's say nothing.
+      if (e.id && !/^[:«]r|react-aria/.test(e.id)) part += `#${e.id}`;
       else {
-        const cls = [...e.classList].find(c => /^(bui-|Mui[A-Z])/.test(c)) || [...e.classList].find(c => !/^(jss|makeStyles-|css-)\d*/.test(c) && !/-\d+$/.test(c));
+        const cls =
+          [...e.classList].find(c => /^(bui-|Mui[A-Z])/.test(c)) ||
+          [...e.classList].find(
+            c => !/^(jss|makeStyles-|css-)\d*/.test(c) && !/-\d+$/.test(c),
+          );
         if (cls) part += `.${cls}`;
       }
       parts.unshift(part);
     }
     return parts.join(' > ');
-  };
-
-  /** A key that stays the same for the same element across states: its place in the tree. */
-  const keyOf = el => {
-    const parts = [];
-    for (let e = el; e && e !== doc; e = e.parentElement) {
-      const parent = e.parentElement;
-      const index = parent ? [...parent.children].filter(c => c.tagName === e.tagName).indexOf(e) : 0;
-      parts.unshift(`${e.tagName.toLowerCase()}${index > 0 ? `[${index}]` : ''}`);
-    }
-    return parts.join('/');
   };
 
   const describe = el => ({ role: roleOf(el), name: nameOf(el), path: pathOf(el) });
@@ -247,7 +324,7 @@ export function collectLayout(options) {
    */
   const placedOf = (el, layer) => {
     for (let e = el; e && e !== doc && e !== layer; e = e.parentElement) {
-      if (style(e).position === 'absolute') return e;
+      if (position(e) === 'absolute') return e;
     }
     return undefined;
   };
@@ -268,52 +345,86 @@ export function collectLayout(options) {
     });
   };
 
-  // Controls.
-  const controls = [...document.querySelectorAll(CONTROL)].filter(el => visible(el) && !ignored(el));
-  for (const el of controls) {
+  // One pass over the page: the controls, the icons, the flex rows and the
+  // elements holding text.
+  const controls = [];
+  const icons = [];
+  const flexContainers = new Set();
+  const textHolders = [];
+  for (const el of body.querySelectorAll('*')) {
+    if (ignored(el)) continue;
+    if (el.matches(CONTROL)) controls.push(el);
+    else if (
+      (el.matches('svg, img, [role=img]') && !el.parentElement?.closest('svg'))
+    ) {
+      icons.push(el);
+    }
+    const s = style(el);
+    if (
+      (s.display === 'flex' || s.display === 'inline-flex') &&
+      s.flexDirection.startsWith('row')
+    ) {
+      flexContainers.add(el);
+    }
+    if (
+      !SKIP_TEXT.has(el.tagName) &&
+      [...el.childNodes].some(n => n.nodeType === Node.TEXT_NODE && n.nodeValue.trim())
+    ) {
+      textHolders.push(el);
+    }
+  }
+  const visibleControls = controls.filter(visible);
+
+  // Controls, keyed for the shift rule by role, name and their place among
+  // the controls of that role and name (a banner shown above them does not
+  // re-key them).
+  const seenKeys = new Map();
+  for (const el of visibleControls) {
     const { rect, clipper } = clipOf(el);
     // Visually hidden (a native select behind a custom one): cut to a pixel.
     if (!rect || rect.w <= 1 || rect.h <= 1) continue;
-    const full = box(el.getBoundingClientRect());
+    const full = box(rectOf(el));
+    const { role, name } = describe(el);
+    const base = `${role}|${name}`;
+    const n = seenKeys.get(base) ?? 0;
+    seenKeys.set(base, n + 1);
     add(el, 'control', [rect], {
       box: full,
       pos: contentPos(el),
-      key: keyOf(el),
+      key: `${base}|${n}`,
       inList: inList(el),
-      clippedBy: clipper && (rect.w < full.w - 1 || rect.h < full.h - 1) ? describe(clipper) : undefined,
+      clippedBy:
+        clipper && (rect.w < full.w - 1 || rect.h < full.h - 1)
+          ? describe(clipper)
+          : undefined,
     });
   }
 
   // Icons: the outermost svg, images.
-  const icons = [...document.querySelectorAll('svg, img, [role=img]')].filter(
-    el => !el.parentElement?.closest('svg') && visible(el) && !ignored(el),
-  );
-  for (const el of icons) {
+  const visibleIcons = icons.filter(visible);
+  for (const el of visibleIcons) {
     const { rect } = clipOf(el);
     if (!rect || rect.w <= 1 || rect.h <= 1) continue;
     add(el, 'icon', [rect]);
   }
 
-  // Text: each text node's line boxes.
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
-    acceptNode: node =>
-      node.nodeValue.trim() && node.parentElement && !['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA', 'OPTION'].includes(node.parentElement.tagName)
-        ? NodeFilter.FILTER_ACCEPT
-        : NodeFilter.FILTER_REJECT,
-  });
+  // Text: each text node's line boxes, cut only where an element hides its
+  // overflow (its own, when it does, and its ancestors'): text that spills
+  // out of a box that lets it paints over what is beside it.
   const range = document.createRange();
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    const el = node.parentElement;
-    if (!visible(el) || ignored(el)) continue;
-    const { rect: clip } = clipOf(el);
-    if (!clip) continue;
-    range.selectNodeContents(node);
-    const rects = [...range.getClientRects()]
-      .map(box)
-      .map(r => intersect(r, clip))
-      .filter(r => r && r.w > 1 && r.h > 1);
-    if (rects.length === 0) continue;
-    add(el, 'text', rects, { text: node.nodeValue.trim().slice(0, 60) });
+  for (const el of textHolders) {
+    if (!visible(el)) continue;
+    const chain = clipChain(el);
+    for (const node of el.childNodes) {
+      if (node.nodeType !== Node.TEXT_NODE || !node.nodeValue.trim()) continue;
+      range.selectNodeContents(node);
+      const rects = [...range.getClientRects()]
+        .map(box)
+        .map(r => applyClip(r, chain).rect)
+        .filter(r => r && r.w > 1 && r.h > 1);
+      if (rects.length === 0) continue;
+      add(el, 'text', rects, { text: node.nodeValue.trim().slice(0, 60) });
+    }
   }
 
   // Ancestry between items, for the overlap rule: an item never overlaps
@@ -327,30 +438,46 @@ export function collectLayout(options) {
     item.ancestors = ancestors;
   }
 
-  // Content of button-like controls, for the centering rule.
+  /** Whether something between `el` and `top` is taken out of the flow. */
+  const placedBelow = (el, top) => {
+    for (let e = el; e && e !== top; e = e.parentElement) {
+      if (['absolute', 'fixed'].includes(position(e))) return true;
+    }
+    return false;
+  };
+
+  // Content of button-like controls, for the centering rule: buttons, tabs,
+  // select triggers, menu items, switches, and links styled as buttons.
   const centering = [];
-  for (const el of controls) {
+  for (const el of visibleControls) {
     const role = roleOf(el);
-    if (!['button', 'tab', 'combobox', 'link', 'menuitem', 'switch'].includes(role)) continue;
-    if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') continue;
+    const buttonLike =
+      ['button', 'tab', 'combobox', 'menuitem', 'switch'].includes(role) ||
+      (role === 'link' && [...el.classList].some(c => BUTTON_CLASS.test(c)));
+    if (!buttonLike) continue;
+    if (['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName)) continue;
     const s = style(el);
-    if (s.display.startsWith('inline') && !s.display.includes('flex') && !s.display.includes('grid') && !s.display.includes('block')) continue;
-    const r = el.getBoundingClientRect();
+    if (
+      s.display.startsWith('inline') &&
+      !s.display.includes('flex') &&
+      !s.display.includes('grid') &&
+      !s.display.includes('block')
+    ) {
+      continue;
+    }
     const contentBoxes = [];
     const tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
     for (let node = tw.nextNode(); node; node = tw.nextNode()) {
       if (!node.nodeValue.trim() || !visible(node.parentElement)) continue;
-      if (style(node.parentElement).position === 'absolute') continue;
+      if (placedBelow(node.parentElement, el)) continue;
       range.selectNodeContents(node);
-      for (const cr of range.getClientRects()) if (cr.width > 1 && cr.height > 1) contentBoxes.push(box(cr));
+      for (const cr of range.getClientRects()) {
+        if (cr.width > 1 && cr.height > 1) contentBoxes.push(box(cr));
+      }
     }
     for (const icon of el.querySelectorAll('svg, img')) {
       if (icon.parentElement?.closest('svg') || !visible(icon)) continue;
-      let positioned = false;
-      for (let e = icon; e && e !== el; e = e.parentElement) {
-        if (style(e).position === 'absolute') positioned = true;
-      }
-      if (!positioned) contentBoxes.push(box(icon.getBoundingClientRect()));
+      if (!placedBelow(icon, el)) contentBoxes.push(box(rectOf(icon)));
     }
     if (contentBoxes.length === 0) continue;
     const x = Math.min(...contentBoxes.map(b => b.x));
@@ -368,8 +495,12 @@ export function collectLayout(options) {
       if (n.nodeType === Node.TEXT_NODE && n.nodeValue.trim()) {
         range.selectNodeContents(n);
         for (const cr of range.getClientRects()) if (cr.width > 1) flowBoxes.push(box(cr));
-      } else if (n.nodeType === Node.ELEMENT_NODE && visible(n) && !['absolute', 'fixed'].includes(style(n).position)) {
-        flowBoxes.push(box(n.getBoundingClientRect()));
+      } else if (
+        n.nodeType === Node.ELEMENT_NODE &&
+        visible(n) &&
+        !['absolute', 'fixed'].includes(position(n))
+      ) {
+        flowBoxes.push(box(rectOf(n)));
       }
     }
     const fx = flowBoxes.length ? Math.min(...flowBoxes.map(b => b.x)) : content.x;
@@ -378,11 +509,11 @@ export function collectLayout(options) {
       : { x: content.x, w: content.w };
     const px = v => parseFloat(v) || 0;
     centering.push({
-      flow,
       ...describe(el),
-      layer: layerOf(el) ? idOf(layerOf(el)) : 0,
-      box: box(r),
+      layer: layerIdOf(el),
+      box: box(rectOf(el)),
       content,
+      flow,
       padding: {
         top: px(s.paddingTop) + px(s.borderTopWidth),
         right: px(s.paddingRight) + px(s.borderRightWidth),
@@ -390,55 +521,80 @@ export function collectLayout(options) {
         left: px(s.paddingLeft) + px(s.borderLeftWidth),
       },
       centeredX:
-        (s.display.includes('flex') && s.flexDirection.startsWith('row') && s.justifyContent === 'center') ||
-        (!s.display.includes('flex') && !s.display.includes('grid') && s.textAlign === 'center'),
+        (s.display.includes('flex') &&
+          s.flexDirection.startsWith('row') &&
+          s.justifyContent === 'center') ||
+        (!s.display.includes('flex') &&
+          !s.display.includes('grid') &&
+          s.textAlign === 'center'),
     });
   }
 
   // Rows of a flex container, for the alignment rule: each in-flow child's
-  // box and the boxes of the controls inside it.
+  // box and the boxes of the controls inside it, of the container's layer.
+  // Each control is filed under every flex row it sits in, by walking up
+  // from it once.
+  const inFlex = new Map(); // container -> Map(child -> controls)
+  for (const x of visibleControls) {
+    for (let a = x; a && a !== body; a = a.parentElement) {
+      const parent = a.parentElement;
+      if (!parent || !flexContainers.has(parent)) continue;
+      if (layerOf(x) !== layerOf(parent)) continue;
+      let byChild = inFlex.get(parent);
+      if (!byChild) inFlex.set(parent, (byChild = new Map()));
+      if (!byChild.has(a)) byChild.set(a, []);
+      byChild.get(a).push(x);
+    }
+  }
   const flexRows = [];
-  const flexContainers = [...document.querySelectorAll('body *')].filter(el => {
-    const s = style(el);
-    return (s.display === 'flex' || s.display === 'inline-flex') && s.flexDirection.startsWith('row') && !ignored(el);
-  });
-  for (const el of flexContainers) {
-    const children = [...el.children].filter(c => visible(c) && !['absolute', 'fixed'].includes(style(c).position));
+  for (const [el, byChild] of inFlex) {
+    if (byChild.size < 2) continue;
+    const children = [...el.children].filter(
+      c => !ignored(c) && visible(c) && !['absolute', 'fixed'].includes(position(c)),
+    );
     if (children.length < 2) continue;
     const rows = children.map(c => ({
       ...describe(c),
-      box: box(c.getBoundingClientRect()),
-      controls: (c.matches(CONTROL) ? [c] : [...c.querySelectorAll(CONTROL)])
-        .filter(x => visible(x) && layerOf(x) === layerOf(el))
-        .map(x => ({ ...describe(x), box: box(x.getBoundingClientRect()) })),
+      box: box(rectOf(c)),
+      controls: (byChild.get(c) ?? []).map(x => ({ ...describe(x), box: box(rectOf(x)) })),
     }));
     if (rows.filter(r => r.controls.length > 0).length < 2) continue;
-    flexRows.push({ ...describe(el), layer: layerOf(el) ? idOf(layerOf(el)) : 0, children: rows });
+    flexRows.push({ ...describe(el), layer: layerIdOf(el), children: rows });
   }
 
-  // Text cut off by its own box.
+  // Text cut off by its own box, where it hides its overflow (a scroll
+  // container lets a person scroll to the rest).
   const truncated = [];
-  for (const el of document.querySelectorAll('body *')) {
-    if (![...el.childNodes].some(n => n.nodeType === Node.TEXT_NODE && n.nodeValue.trim())) continue;
-    if (!visible(el) || ignored(el)) continue;
+  for (const el of textHolders) {
+    if (!visible(el)) continue;
     const s = style(el);
-    const cutX = s.overflowX !== 'visible' && el.scrollWidth > el.clientWidth + 1;
-    const cutY = s.overflowY !== 'visible' && el.scrollHeight > el.clientHeight + 1 && s.webkitLineClamp !== 'none' && s.webkitLineClamp !== '';
+    const cutX = hides(s.overflowX) && el.scrollWidth > el.clientWidth + 1;
+    const fontSize = parseFloat(s.fontSize) || 14;
+    const lineHeight = parseFloat(s.lineHeight) || fontSize * 1.2;
+    // Down: at least half a line hidden, not a descender's pixel or two.
+    const cutY =
+      hides(s.overflowY) && el.scrollHeight - el.clientHeight >= lineHeight / 2;
     if (!cutX && !cutY) continue;
+    const axis = cutX ? 'x' : 'y';
     let fullText = false;
     for (let e = el, depth = 0; e && e !== doc && depth < 4; e = e.parentElement, depth++) {
-      if (e.title || e.getAttribute('aria-describedby') || e.getAttribute('data-full-text')) fullText = true;
+      if (e.title || e.getAttribute('aria-describedby') || e.getAttribute('data-full-text')) {
+        fullText = true;
+      }
     }
     truncated.push({
       ...describe(el),
-      layer: layerOf(el) ? idOf(layerOf(el)) : 0,
-      box: box(el.getBoundingClientRect()),
+      layer: layerIdOf(el),
+      box: box(rectOf(el)),
       text: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80),
-      needed: cutY && !cutX ? el.scrollHeight : el.scrollWidth,
-      shown: cutY && !cutX ? el.clientHeight : el.clientWidth,
-      axis: cutY && !cutX ? 'y' : 'x',
-      fontSize: parseFloat(s.fontSize) || 14,
-      ellipsis: s.textOverflow === 'ellipsis' || (cutY && !cutX),
+      needed: axis === 'x' ? el.scrollWidth : el.scrollHeight,
+      shown: axis === 'x' ? el.clientWidth : el.clientHeight,
+      axis,
+      fontSize,
+      ellipsis:
+        axis === 'x'
+          ? s.textOverflow === 'ellipsis'
+          : s.webkitLineClamp !== 'none' && s.webkitLineClamp !== '',
       fullText,
     });
   }
@@ -446,22 +602,21 @@ export function collectLayout(options) {
   // Wider than the viewport: the page scrolls sideways, or an element sticks
   // out where nothing scrolls.
   const sticking = [];
-  for (const el of controls.concat(icons)) {
-    const r = el.getBoundingClientRect();
+  for (const el of visibleControls.concat(visibleIcons)) {
+    const r = rectOf(el);
     if (r.right <= viewport.w + 1 && r.left >= -1) continue;
-    let scrolls = false;
-    for (let e = el.parentElement; e && e !== doc && e !== document.body; e = e.parentElement) {
-      const sx = style(e).overflowX;
-      if (sx === 'auto' || sx === 'scroll' || sx === 'hidden' || sx === 'clip') scrolls = true;
+    let contained = false;
+    for (let e = el.parentElement; e && e !== doc && e !== body; e = e.parentElement) {
+      if (style(e).overflowX !== 'visible') contained = true;
     }
-    if (!scrolls) sticking.push({ ...describe(el), box: box(r) });
+    if (!contained) sticking.push({ ...describe(el), box: box(r) });
   }
 
   return {
     viewport,
-    scrollWidth: Math.max(doc.scrollWidth, document.body.scrollWidth),
+    scrollWidth: Math.max(doc.scrollWidth, body.scrollWidth),
     // The page cuts off what is wider instead of scrolling to it.
-    clipsX: [doc, document.body].some(e => ['hidden', 'clip'].includes(style(e).overflowX)),
+    clipsX: [doc, body].some(e => hides(style(e).overflowX)),
     items,
     centering,
     flexRows,

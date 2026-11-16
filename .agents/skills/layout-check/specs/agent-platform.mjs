@@ -178,7 +178,7 @@ function openFirstModel(name) {
     const href = await page.evaluate(() =>
       [...document.querySelectorAll('a[href^="/customize/models/"]')]
         .map(a => a.getAttribute('href'))
-        .find(h => !/^\/customize\/models\/(new|hosting)/.test(h)),
+        .find(h => !/^\/customize\/models\/(new|hosting)(\/|$)/.test(h)),
     );
     if (href) {
       await page.goto(new URL(href.split('?')[0] + tab, page.url()).href);

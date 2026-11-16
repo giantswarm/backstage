@@ -75,13 +75,11 @@ export function overlapRule(layout) {
     const a = items[i];
     for (let j = i + 1; j < items.length; j++) {
       const b = items[j];
+      // One element's own lines of text are laid out by the browser.
       if (a.layer !== b.layer || a.id === b.id) continue;
       if (a.ancestors.includes(b.id) || b.ancestors.includes(a.id)) continue;
       // Placed over its neighbours on purpose: a badge, an icon in a field.
       if (a.placed !== b.placed) continue;
-      // Two lines of the same element's text, or text beside text in one
-      // element: the browser lays them out, they do not collide.
-      if (a.kind === 'text' && b.kind === 'text' && a.id === b.id) continue;
       for (const ra of a.rects) {
         let hit;
         for (const rb of b.rects) {
@@ -146,12 +144,13 @@ export function rowsOf(boxes) {
  */
 export function alignmentRule(layout) {
   const findings = [];
+  const pairs = new Set();
   for (const flex of layout.flexRows) {
     const groups = flex.children
       .filter(c => c.controls.length > 0)
       .map(c => ({ child: c, rows: rowsOf(c.controls.map(x => x.box)) }))
       .filter(({ child, rows }) => {
-        const span = bottom(rows[rows.length - 1]) - rows[0].y;
+        const span = Math.max(...rows.map(bottom)) - rows[0].y;
         return child.box.h <= span + 12;
       });
     for (let i = 0; i < groups.length; i++) {
@@ -186,8 +185,12 @@ export function alignmentRule(layout) {
           }
           if (touched.length !== 1 || y.rows.length !== 1) continue;
           const row = touched[0];
-          // Each pair is seen from both sides: report it once.
-          if (i > j && x.rows.length === 1) continue;
+          // Two single controls are seen from both sides: report them once.
+          const pair = [JSON.stringify(b), JSON.stringify({ x: row.x, y: row.y, w: row.w, h: row.h })]
+            .sort()
+            .join('|');
+          if (pairs.has(pair)) continue;
+          pairs.add(pair);
           const off = Math.min(
             Math.abs(row.y - b.y),
             Math.abs(centerY(row) - centerY(b)),
@@ -208,27 +211,29 @@ export function alignmentRule(layout) {
 }
 
 /**
- * Text cut off where a person cannot read the rest: clipped without an
- * ellipsis, or squeezed to a few letters.
+ * Text cut off where a person cannot read the rest: cut off without an
+ * ellipsis, cut off with one but with no title or tooltip holding the full
+ * text, or squeezed to a letter or two (with a tooltip or not: a person
+ * cannot tell what it is without pointing at it).
  */
 export function truncationRule(layout) {
   const findings = [];
   for (const t of layout.truncated) {
+    const across = t.axis === 'x';
+    const unit = across ? 'px wide' : 'px high';
     // Two letters or less: narrower than two em.
     const squeezed =
-      t.axis === 'x' && t.shown < 2 * (t.fontSize ?? 14) && t.shown < 0.5 * t.needed;
-    if (!t.ellipsis) {
-      findings.push({
-        rule: 'truncation',
-        message: `"${t.text}" is cut off without an ellipsis (${t.shown} of ${t.needed}px)`,
-        elements: [element(t, t.box)],
-      });
-    } else if (squeezed) {
-      findings.push({
-        rule: 'truncation',
-        message: `"${t.text}" is squeezed to ${t.shown} of the ${t.needed}px it needs`,
-        elements: [element(t, t.box)],
-      });
+      across && t.shown < 2 * (t.fontSize ?? 14) && t.shown < 0.5 * t.needed;
+    let message;
+    if (squeezed) {
+      message = `"${t.text}" is squeezed to ${t.shown} of the ${t.needed}px it needs`;
+    } else if (!t.ellipsis) {
+      message = `"${t.text}" is cut off without an ellipsis (${t.shown} of ${t.needed}${unit} shown)`;
+    } else if (!t.fullText) {
+      message = `"${t.text}" ends in an ellipsis with no title or tooltip holding the rest (${t.shown} of ${t.needed}${unit} shown)`;
+    }
+    if (message) {
+      findings.push({ rule: 'truncation', message, elements: [element(t, t.box)] });
     }
   }
   return findings;
