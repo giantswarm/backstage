@@ -105,7 +105,7 @@ function useInstallationScope(): Scope {
   };
 }
 
-function PlatformClustersState({
+function PlatformClustersStatusProvider({
   scope,
   visibleColumns,
   setVisibleColumns,
@@ -187,13 +187,13 @@ function PlatformClustersScope({ children }: { children: ReactNode }) {
       installations={scope.isResolving ? [] : scope.installations}
       columns={dataColumns}
     >
-      <PlatformClustersState
+      <PlatformClustersStatusProvider
         scope={scope}
         visibleColumns={visibleColumns}
         setVisibleColumns={setVisibleColumns}
       >
         {children}
-      </PlatformClustersState>
+      </PlatformClustersStatusProvider>
     </ClustersDataProvider>
   );
 }
