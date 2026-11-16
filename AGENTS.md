@@ -274,8 +274,8 @@ before merge".
 
 Before asking for review of a pull request that changes a page, run the
 `layout-check` skill on every page it changes, as "Fixture mode and the layout
-check" above says, and fix what it finds or say in
-the description why a finding is right as it is.
+check" above says, and fix what it finds or say in the description why a
+finding is right as it is.
 
 ## Configuration and secrets
 
