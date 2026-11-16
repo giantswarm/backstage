@@ -6,8 +6,9 @@ import {
   columnMax,
   DataBar,
   ShowMore,
+  useContainerDimensions,
   usePhoneColumns,
-  usePhoneLayout,
+  usePhoneTable,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { estimateCost, type TokenRates } from '../../lib/costEstimate';
 import { AVERAGE_RATE_CAVEAT } from '../../lib/costBasis';
@@ -125,7 +126,7 @@ export function ByAgentTable({
 }: ByAgentTableProps) {
   const classes = useStyles();
   const colorFor = useMeasureColor();
-  const isPhone = usePhoneLayout();
+  const [tableRef, { width: tableWidth }] = useContainerDimensions();
 
   // The figure a cost cell shows: the gateway's for the row when it was read
   // (no entry means none of the person's calls through it was priced, which
@@ -158,6 +159,8 @@ export function ByAgentTable({
     [rows, costOf],
   );
   const anyReported = rows.some(row => row.costUsd !== undefined);
+  // Six columns, seven with the Reported cost.
+  const isCompact = usePhoneTable(anyReported ? 7 : 6, tableWidth);
 
   const columnConfig: ColumnConfig<ByAgentRow>[] = [
     {
@@ -165,14 +168,14 @@ export function ByAgentTable({
       label: 'Agent',
       isRowHeader: true,
       isSortable: true,
-      // At phone width the Reported cost column is hidden; a runtime's own
-      // figure is named under the agent instead, so it stays on the row.
+      // With the phone columns the Reported cost column is hidden; a runtime's
+      // own figure is named under the agent instead, so it stays on the row.
       cell: row => (
         <NameCell
           title={row.agentName}
           href={row.href}
           description={
-            isPhone && row.costUsd !== undefined
+            isCompact && row.costUsd !== undefined
               ? `${formatUsd(row.costUsd)} reported by its runtime`
               : undefined
           }
@@ -310,14 +313,15 @@ export function ByAgentTable({
       : []),
   ];
 
-  // At phone width the agent, its sessions and the estimate (T22 B11): six or
-  // seven columns in 343px clipped every figure. Turns and tokens are in the
-  // totals above and on the agent's own Usage tab, a link away.
-  const shownColumns = usePhoneColumns(columnConfig, [
-    'agentName',
-    'sessions',
-    'estCostUsd',
-  ]);
+  // At phone width, and beside the side rail at tablet width, the agent, its
+  // sessions and the estimate (T22 B11): six or seven columns in 343px
+  // clipped every figure. Turns and tokens are in the totals above and on the
+  // agent's own Usage tab, a link away.
+  const shownColumns = usePhoneColumns(
+    columnConfig,
+    ['agentName', 'sessions', 'estCostUsd'],
+    { width: tableWidth },
+  );
 
   const { tableProps } = useTable<ByAgentRow>({
     mode: 'complete',
@@ -341,25 +345,27 @@ export function ByAgentTable({
           `rows` instead would silently undo every column sort while the
           header's indicator still moved. The section above renders a spinner
           while loading, so this table only ever mounts with data. */}
-      <ShowMore
-        items={tableProps.data ?? []}
-        initial={BY_AGENT_ROWS}
-        noun="agent"
-        revealAll
-      >
-        {visible => (
-          <Table<ByAgentRow>
-            {...tableProps}
-            data={visible}
-            columnConfig={shownColumns}
-            emptyState={
-              <Text variant="body-medium" color="secondary">
-                {emptyMessage}
-              </Text>
-            }
-          />
-        )}
-      </ShowMore>
+      <div ref={tableRef}>
+        <ShowMore
+          items={tableProps.data ?? []}
+          initial={BY_AGENT_ROWS}
+          noun="agent"
+          revealAll
+        >
+          {visible => (
+            <Table<ByAgentRow>
+              {...tableProps}
+              data={visible}
+              columnConfig={shownColumns}
+              emptyState={
+                <Text variant="body-medium" color="secondary">
+                  {emptyMessage}
+                </Text>
+              }
+            />
+          )}
+        </ShowMore>
+      </div>
       {/* The note has to match what the column actually shows. It described a
           rate as applied even when every cell was an em dash — on an
           installation with no Mimir, or after a failed query, that is a claim

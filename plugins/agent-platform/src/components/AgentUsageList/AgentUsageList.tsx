@@ -13,6 +13,13 @@ import { ShowMore, USED_BY_ROWS } from '../ShowMore';
 
 const AVATAR_SIZE = 96;
 
+const NAME_LINK = {
+  display: 'block',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+} as const;
+
 /** One agent that uses the thing the page is about, and how. */
 export type AgentUsage = {
   row: AgentRow;
@@ -112,7 +119,15 @@ export function AgentUsageList({
                     {/* A real link on the name, as the shell's rows have: the
                       row's own href navigates on a press but is no anchor to
                       open in a new tab or read on hover. */}
-                    {href ? <Link href={href}>{row.name}</Link> : row.name}
+                    {href ? (
+                      // Truncating itself: bui's Link is an inline block,
+                      // which the label's ellipsis does not reach.
+                      <Link href={href} title={row.name} style={NAME_LINK}>
+                        {row.name}
+                      </Link>
+                    ) : (
+                      row.name
+                    )}
                   </ListRow>
                 );
               })}

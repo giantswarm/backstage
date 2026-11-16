@@ -1,5 +1,6 @@
 import { useId } from 'react';
 import { Button, Flex, Text } from '@backstage/ui';
+import { makeStyles } from '@material-ui/core';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import type { AgentRow } from '../AgentsDataProvider';
 import { AgentAvatar } from '../AgentAvatar';
@@ -10,8 +11,28 @@ export type RecentAgentChipsProps = {
   onPick: (agent: AgentRow) => void;
 };
 
+const useStyles = makeStyles({
+  // A long name ends in an ellipsis inside the column, its full text on
+  // hover: centred, the label and the row would otherwise size to the
+  // longest name.
+  fit: {
+    maxWidth: '100%',
+  },
+  chip: {
+    minWidth: 0,
+    maxWidth: '100%',
+  },
+  name: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+});
+
 /** The agents of the person's latest sessions, one press from being chosen. */
 export function RecentAgentChips({ agents, onPick }: RecentAgentChipsProps) {
+  const classes = useStyles();
   const labelId = useId();
   const buildAvatarUrl = useAgentAvatarUrl();
 
@@ -20,7 +41,7 @@ export function RecentAgentChips({ agents, onPick }: RecentAgentChipsProps) {
   }
 
   return (
-    <Flex direction="column" align="center" gap="2">
+    <Flex direction="column" align="center" gap="2" className={classes.fit}>
       <Text id={labelId} variant="body-small" color="secondary">
         Or pick one of your recent agents
       </Text>
@@ -29,6 +50,7 @@ export function RecentAgentChips({ agents, onPick }: RecentAgentChipsProps) {
         aria-labelledby={labelId}
         justify="center"
         gap="2"
+        className={classes.fit}
         style={{ flexWrap: 'wrap' }}
       >
         {agents.map(agent => (
@@ -48,9 +70,12 @@ export function RecentAgentChips({ agents, onPick }: RecentAgentChipsProps) {
                 }
               />
             }
+            className={classes.chip}
             onPress={() => onPick(agent)}
           >
-            {agent.name}
+            <span className={classes.name} title={agent.name}>
+              {agent.name}
+            </span>
           </Button>
         ))}
       </Flex>

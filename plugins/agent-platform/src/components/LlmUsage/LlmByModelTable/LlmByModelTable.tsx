@@ -6,6 +6,7 @@ import {
   DataBar,
   ShowMore,
   tableRowId,
+  useContainerDimensions,
   usePhoneColumns,
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmModelRow } from '../../../lib/llmUsage';
@@ -67,6 +68,7 @@ export function LlmByModelTable({
   currency = USD,
 }: LlmByModelTableProps) {
   const colorFor = useMeasureColor();
+  const [tableRef, { width: tableWidth }] = useContainerDimensions();
 
   // One maximum per column, so a bar is read against the column it sits in.
   const max = useMemo(
@@ -169,14 +171,15 @@ export function LlmByModelTable({
       ),
     },
   ];
-  // At phone width the model, what it cost and its context creep (T22 B10):
-  // six columns in 343px clipped every figure. The volume is in the tab's
-  // KPI tiles and the cost-per-day chart; the blended rate is cost ÷ tokens.
-  const shownColumns = usePhoneColumns(columnConfig, [
-    'model',
-    'costUsd',
-    'avgTokensPerCall',
-  ]);
+  // At phone width, and beside the side rail at tablet width, the model, what
+  // it cost and its context creep (T22 B10): six columns in 343px clipped
+  // every figure. The volume is in the tab's KPI tiles and the cost-per-day
+  // chart; the blended rate is cost ÷ tokens.
+  const shownColumns = usePhoneColumns(
+    columnConfig,
+    ['model', 'costUsd', 'avgTokensPerCall'],
+    { width: tableWidth },
+  );
 
   const { tableProps } = useTable<LlmModelRow>({
     mode: 'complete',
@@ -194,28 +197,30 @@ export function LlmByModelTable({
           `ShowMore` hands the table its first page of them. Passing the raw
           `rows` instead would silently undo every column sort while the
           header's indicator still moved. */}
-      <ShowMore
-        items={tableProps.data ?? []}
-        initial={BY_MODEL_ROWS}
-        noun="model"
-        revealAll
-      >
-        {visible => (
-          <Table<LlmModelRow>
-            {...tableProps}
-            data={visible.map(row => ({
-              ...row,
-              id: tableRowId('model', row.id),
-            }))}
-            columnConfig={shownColumns}
-            emptyState={
-              <Text variant="body-medium" color="secondary">
-                {emptyMessage}
-              </Text>
-            }
-          />
-        )}
-      </ShowMore>
+      <div ref={tableRef}>
+        <ShowMore
+          items={tableProps.data ?? []}
+          initial={BY_MODEL_ROWS}
+          noun="model"
+          revealAll
+        >
+          {visible => (
+            <Table<LlmModelRow>
+              {...tableProps}
+              data={visible.map(row => ({
+                ...row,
+                id: tableRowId('model', row.id),
+              }))}
+              columnConfig={shownColumns}
+              emptyState={
+                <Text variant="body-medium" color="secondary">
+                  {emptyMessage}
+                </Text>
+              }
+            />
+          )}
+        </ShowMore>
+      </div>
     </UsageCard>
   );
 }
