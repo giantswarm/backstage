@@ -65,6 +65,7 @@ import {
   workflowStatsOf,
   workflowToolOf,
 } from './musterFixtureData';
+import { fixtureToolName } from './fixtureToolNames';
 import { musterCoreToolHandlers } from './musterCoreTools';
 import { presetsOf, resolveToolset } from './toolsetFixtures';
 
@@ -110,24 +111,6 @@ function served(installation: string | undefined): string {
     throw error;
   }
   return installation;
-}
-
-/** `x_<server>_<tool>`: how muster exposes an aggregated server's tool. */
-function fixtureToolName(server: string, tool: string): string {
-  return `x_${server}_${tool}`;
-}
-
-/**
- * Every tool name the fixture `MusterApi` built with `servers` answers in
- * `callTool`: the servers' tools and muster's own it serves.
- */
-export function fixtureToolNames(servers: FixtureMcpServer[]): Set<string> {
-  return new Set([
-    ...servers.flatMap(({ server, tools }) =>
-      Object.keys(tools).map(tool => fixtureToolName(server, tool)),
-    ),
-    ...coreToolHandlers.keys(),
-  ]);
 }
 
 type Tool = {

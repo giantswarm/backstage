@@ -24,7 +24,6 @@ export type SkillManagerTool =
   (typeof SKILL_MANAGER_TOOLS)[keyof typeof SKILL_MANAGER_TOOLS];
 
 /** `x_<server>_<tool>`: how muster exposes an aggregated server's tool. */
-
 export function skillManagerToolName(tool: SkillManagerTool): string {
   return `x_${SKILL_MANAGER_SERVER}_${tool}`;
 }
