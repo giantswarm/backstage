@@ -6,7 +6,10 @@ import {
   type FixtureDataSet,
   type FixtureOrganization,
 } from '@giantswarm/backstage-plugin-gs-common/fixtures';
-import type { KubeObjectInterface } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  ModelConfig,
+  type KubeObjectInterface,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import type {
   AgentManagerAgent,
@@ -57,9 +60,11 @@ import {
   harnessObjectOf,
   listedOrganizationOf,
   modelConfigObjectOf,
+  permissionsOf,
   type FixtureAgentRecord,
   type FixtureModel,
 } from './agentPlatformFixtureData';
+import { PLATFORM_TENANT_NAMESPACE } from '../../lib/tenants';
 import { FIXTURE_USER } from './fixtureIdentity';
 import { kagentFixtureState, KagentFixtureState } from './kagentFixtureState';
 
@@ -512,7 +517,7 @@ export class AgentManagerFixtureState {
   }
 
   private mustManage(organization: FixtureOrganization): void {
-    if (organization.role !== 'admin') {
+    if (!permissionsOf(organization.role).manage) {
       throw refusal(
         'forbidden',
         `${FIXTURE_USER.email} may not manage the organization ${organization.name}: that needs the admin role there.`,
@@ -521,7 +526,7 @@ export class AgentManagerFixtureState {
   }
 
   private mustCreateAgentsIn(organization: FixtureOrganization): void {
-    if (organization.role !== 'admin' && organization.role !== 'editor') {
+    if (!permissionsOf(organization.role).createAgents) {
       throw refusal(
         'forbidden',
         `${FIXTURE_USER.email} may not create agents in the organization ${organization.name}: that needs the editor role there.`,
@@ -1465,6 +1470,56 @@ export class AgentManagerFixtureState {
         ...(request.workspaceGrant && { workspace: request.workspaceGrant }),
       };
     });
+  }
+
+  /**
+   * The namespaces `get_info` reports as `managed`, where the person may
+   * create agents: the platform's, and the namespaces of their organizations
+   * whose role allows it, except one being erased.
+   */
+  managedNamespaces(installation: string): string[] {
+    const organizations = this.stateOf(installation)
+      .organizations.filter(
+        organization =>
+          permissionsOf(organization.role).createAgents &&
+          organization.state !== 'deleting',
+      )
+      .flatMap(organization =>
+        organization.namespace ? [organization.namespace] : [],
+      );
+    return [PLATFORM_TENANT_NAMESPACE, ...organizations.sort()];
+  }
+
+  /**
+   * Whether the person may do `verb` on `resource` of `group` in `namespace`,
+   * for an access review the fixture Kubernetes API answers: a model
+   * (`ModelConfig`) of an organization is written by its admins only, as
+   * `set_organization_model` requires; undefined for anything else.
+   */
+  allows(
+    installation: string,
+    {
+      verb,
+      group,
+      resource,
+      namespace,
+    }: { verb?: string; group?: string; resource?: string; namespace?: string },
+  ): boolean | undefined {
+    const organization = this.stateOf(installation).organizations.find(
+      candidate => candidate.namespace && candidate.namespace === namespace,
+    );
+    if (
+      !organization ||
+      group !== ModelConfig.group ||
+      resource !== ModelConfig.plural ||
+      verb !== 'create'
+    ) {
+      return undefined;
+    }
+    return (
+      permissionsOf(organization.role).manage &&
+      organization.state !== 'deleting'
+    );
   }
 
   /**
