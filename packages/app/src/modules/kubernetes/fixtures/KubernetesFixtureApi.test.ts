@@ -2,7 +2,10 @@
 import { resolve } from 'path';
 import { ConfigReader } from '@backstage/config';
 import { loadConfig } from '@backstage/config-loader';
-import { portalSkillRepositories } from '@giantswarm/backstage-plugin-agent-platform/fixtures';
+import {
+  portalSkillRepositories,
+  portalSkillSourceOf,
+} from '@giantswarm/backstage-plugin-agent-platform/fixtures';
 import { FIXTURE_INSTALLATIONS } from '@giantswarm/backstage-plugin-gs-common';
 import {
   baseDataSet,
@@ -232,14 +235,22 @@ describe('app-config.fixtures.yaml', () => {
     ]);
   });
 
-  it('names the skill repositories the fixture SkillDiscoveryApi serves, and only those', async () => {
+  it('configures the skill repositories the fixture SkillDiscoveryApi serves, as it serves them', async () => {
     const config = await fixturesConfig();
-    const entries = config.get<Array<string | { url: string }>>(
-      'agentPlatform.skills.repositories',
-    );
+    const entries = config.get<
+      Array<string | { url: string; path?: string; readOnly?: boolean }>
+    >('agentPlatform.skills.repositories');
 
     expect(
-      entries.map(entry => (typeof entry === 'string' ? entry : entry.url)),
-    ).toEqual(portalSkillRepositories().map(repository => repository.url));
+      entries.map(entry =>
+        typeof entry === 'string'
+          ? { url: entry, path: '', readOnly: false }
+          : {
+              url: entry.url,
+              path: entry.path ?? '',
+              readOnly: entry.readOnly ?? false,
+            },
+      ),
+    ).toEqual(portalSkillRepositories().map(portalSkillSourceOf));
   });
 });

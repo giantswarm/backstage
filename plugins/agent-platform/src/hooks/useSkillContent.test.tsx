@@ -34,6 +34,8 @@ function renderUseSkillContent(target: typeof skill | undefined) {
           new SkillDiscoveryClient({
             discoveryApi: mockApis.discovery(),
             fetchApi: fetchApi,
+            // Only a proposal asks for a GitHub token.
+            githubAuthApi: {} as never,
           }),
         ],
       ]}

@@ -9,6 +9,7 @@ import {
   createFrontendPlugin,
   ExtensionBoundary,
   discoveryApiRef,
+  githubAuthApiRef,
   fetchApiRef,
   PageBlueprint,
   SubPageBlueprint,
@@ -436,8 +437,9 @@ const modelManagerApi = ApiBlueprint.make({
     }),
 });
 
-// gs-backend's reads of `agentPlatform.skills.repositories` (the portal's own
-// skill source, where an installation has no skill-manager).
+// gs-backend's skill routes: the reads of `agentPlatform.skills.repositories`
+// (the portal's own skill source, where an installation has no skill-manager)
+// and the pull request that proposes a skill, as the person.
 const skillDiscoveryApi = ApiBlueprint.make({
   name: 'skill-discovery',
   params: defineParams =>
@@ -447,6 +449,7 @@ const skillDiscoveryApi = ApiBlueprint.make({
         configApi: configApiRef,
         discoveryApi: discoveryApiRef,
         fetchApi: fetchApiRef,
+        githubAuthApi: githubAuthApiRef,
       },
       factory: ({ configApi, ...deps }) => {
         if (process.env.NODE_ENV !== 'production' && fixturesOn(configApi)) {

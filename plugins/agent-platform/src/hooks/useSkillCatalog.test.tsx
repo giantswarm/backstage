@@ -37,6 +37,8 @@ function render(
           new SkillDiscoveryClient({
             discoveryApi: mockApis.discovery(),
             fetchApi: { fetch: fetchMock } as never,
+            // Only a proposal asks for a GitHub token.
+            githubAuthApi: {} as never,
           }),
         ],
       ]}

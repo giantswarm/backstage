@@ -230,24 +230,43 @@ agent-manager.
   private, read-only, failed, failed with its last listing kept, and private
   and hidden from the person), with their skills and a plugin, and reads a
   skill and its files. It writes nothing, as skill-manager does not. The
-  pages of one installation read it: an agent's page and the agent form.
+  pages of one installation read it: an agent's page and the agent form. A
+  new or changed skill is a pull request, which fixture mode opens in memory
+  (see below).
 
-### Skills without skill-manager
+### gs-backend's skill routes
 
-Customize · Skills reads the home installation's skills, and fixture mode has
-no home installation (it sets no `gs.authProvider`), so the tab reads the
-portal's own skill source: gs-backend's discovery of
-`agentPlatform.skills.repositories`. The pages reach it through the
-`SkillDiscoveryApi` (`plugins/agent-platform/src/apis/SkillDiscoveryApi.ts`),
-and in fixture mode `SkillDiscoveryFixtureApi` answers from the data set, so
-nothing is read from GitHub: `app-config.fixtures.yaml` names the skill
-repositories of `meadow` (`portalSkillRepositories`, which a test checks),
-one in each state. A failed repository fails as GitHub's API refuses it (503,
-and 404 for a private one the person cannot read), a stale one answers its
-last listing, and a skill reads with its files as skill-manager's fixture
-reads it. A repository the data set lacks fails with a console error. A new or
-changed skill is a pull request through gs-backend, which fixture mode does
-not serve.
+The pages reach gs-backend's skill routes through the `SkillDiscoveryApi`
+(`plugins/agent-platform/src/apis/SkillDiscoveryApi.ts`): the reads of the
+portal's own skill source, `agentPlatform.skills.repositories`, and the pull
+request that proposes a skill to any source. In fixture mode
+`SkillDiscoveryFixtureApi` answers them from the data set, so nothing reads
+from or writes to GitHub, and no GitHub token is asked for.
+
+- The reads. Customize · Skills reads the home installation's skills, and
+  fixture mode has no home installation (it sets no `gs.authProvider`), so
+  the tab, a skill's page and Add skill read the portal's own source.
+  `app-config.fixtures.yaml` configures the skill repositories of `meadow`,
+  one in each state (`portalSkillRepositories` and `portalSkillSourceOf`; a
+  test checks the URL, `path` and `readOnly` of each entry). The portal reads
+  with its own credentials, as gs-backend does, so both private repositories
+  are listed and marked private, whoever asks (the one skill-manager hides
+  from the person has no skills in the data set). The read-only repository is
+  off GitHub and scans `skills/`. A failed repository fails as the route
+  forwards GitHub's 503 (`Failed to discover skills: …`), and a stale one
+  answers its last listing with `stale: true` and the time it was read. A
+  skill and its files are read at the commit asked for, as skill-manager's
+  fixture reads them: a GitHub repository at another commit answers 404 (the
+  data set holds only the current one), a git repository whose branch moved on
+  409, and an unknown branch 404, in the route's words. A repository the data
+  set lacks fails with a console error.
+- The pull request. Proposing a new or changed skill, to the portal's source
+  or through an installation's skill-manager, is checked as the route checks
+  it (a skill name that is no slug, a repository off GitHub, read-only or not
+  among the sources, a name taken, an edit started from an older commit, a
+  pull request already open from the branch) and answers a made-up pull
+  request on the repository, numbered from 101, kept in memory until the page
+  reloads.
 
 ### model-manager and cluster-manager
 

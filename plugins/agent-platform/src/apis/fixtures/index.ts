@@ -21,4 +21,7 @@ export function agentPlatformKubernetesObjectsOf(
   return agentManagerFixtureState().kubernetesObjectsOf(installation);
 }
 
-export { portalSkillRepositories } from './SkillDiscoveryFixtureApi';
+export {
+  portalSkillRepositories,
+  portalSkillSourceOf,
+} from './SkillDiscoveryFixtureApi';

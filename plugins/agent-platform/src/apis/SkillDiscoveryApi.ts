@@ -2,6 +2,7 @@ import {
   createApiRef,
   DiscoveryApi,
   FetchApi,
+  OAuthApi,
 } from '@backstage/core-plugin-api';
 
 import type { DiscoveredPlugin } from '../lib/plugins';
@@ -30,6 +31,10 @@ export type SkillRepositoryDiscovery = {
   ref?: string;
   /** Absent from older backends and for non-GitHub hosts. */
   private?: boolean;
+  /** When the listing was read upstream (ISO time); absent from older backends. */
+  readAt?: string;
+  /** True when an older listing is served because the upstream read failed. */
+  stale?: boolean;
 };
 
 /**
@@ -57,10 +62,67 @@ export type SkillAt = Pick<
 >;
 
 /**
- * gs-backend's reads of the skill repositories in
+ * The header the person's GitHub access token travels in to the gs-backend
+ * route. Mirrors `GITHUB_TOKEN_HEADER` in
+ * plugins/gs-backend/src/agentSkills/createSkillPullRequest.ts — a backend
+ * constant cannot be imported here.
+ */
+const GITHUB_TOKEN_HEADER = 'gs-github-token';
+
+/** What the Add-skill (or Edit-skill) form submits. */
+export type ProposedSkill = {
+  /** One of the configured skill repositories. */
+  repoUrl: string;
+  /** The skill's frontmatter name (lowercase slug); a new skill's directory. */
+  skillName: string;
+  /** Frontmatter `description`. */
+  description: string;
+  /** The SKILL.md body under the frontmatter. */
+  instructions: string;
+  /**
+   * Frontmatter `metadata.tags`: replaces the skill's tags (`[]` removes
+   * them). Absent keeps an edited skill's tags as they are.
+   */
+  tags?: string[];
+  /**
+   * `update` rewrites an existing skill's SKILL.md (on
+   * `update-skill/<directory as a slug>`; the repo name for a root skill)
+   * instead of adding `<name>/SKILL.md`; absent means a new skill.
+   */
+  kind?: 'update';
+  /** For an update: the skill's directory ('' at the repository root). */
+  path?: string;
+  /** For an update: the commit the edit started from. */
+  baseCommit?: string;
+};
+
+/** The pull request the backend opened, as the route answers it. */
+export type SkillPullRequest = {
+  pullRequestUrl: string;
+  number: number;
+  branch: string;
+  base: string;
+  path: string;
+};
+
+/** The slugs the backend accepts as a skill name; mirrored for the form. */
+export const SKILL_NAME_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+/**
+ * Where a proposal's target is checked: an installation's skill-manager
+ * sources, as the person (their muster headers, asked for only when the
+ * proposal is sent). Absent, the portal's configured repositories.
+ */
+export type SkillProposalVia = {
+  installation: string;
+  authHeaders: () => Promise<Record<string, string>>;
+};
+
+/**
+ * gs-backend's skill routes: the reads of the skill repositories in
  * `agentPlatform.skills.repositories` (the portal's own skill source, where an
- * installation has no skill-manager). Each failure is an `Error` in the
- * backend's words.
+ * installation has no skill-manager), and the pull request that proposes a
+ * skill to any source. Each failure is an `Error` in the backend's words.
  */
 export interface SkillDiscoveryApi {
   /** `GET /agent-skills`: one configured repository's skills and plugins. */
@@ -69,6 +131,14 @@ export interface SkillDiscoveryApi {
   readSkill(skill: SkillAt): Promise<SkillContent>;
   /** `GET /agent-skills/content/file`: one file of a skill. */
   readSkillFile(skill: SkillAt, file: string): Promise<SkillFileContent>;
+  /**
+   * `POST /agent-skills/pull-request`: proposes a new or changed skill as a
+   * pull request opened as the signed-in person, with their own GitHub token.
+   */
+  proposeSkill(
+    skill: ProposedSkill,
+    via?: SkillProposalVia,
+  ): Promise<SkillPullRequest>;
 }
 
 export const skillDiscoveryApiRef = createApiRef<SkillDiscoveryApi>({
@@ -94,14 +164,29 @@ export async function skillReadError(
   );
 }
 
+/** A skill's query parameters; `ref` only when it names one. */
+function skillParams({ repoUrl, path, commit, ref }: SkillAt): URLSearchParams {
+  const params = new URLSearchParams({ repoUrl, path, commit });
+  if (ref) {
+    params.set('ref', ref);
+  }
+  return params;
+}
+
 /** {@link SkillDiscoveryApi} over gs-backend, as the signed-in person. */
 export class SkillDiscoveryClient implements SkillDiscoveryApi {
   private readonly discoveryApi: DiscoveryApi;
   private readonly fetchApi: FetchApi;
+  private readonly githubAuthApi: OAuthApi;
 
-  constructor(deps: { discoveryApi: DiscoveryApi; fetchApi: FetchApi }) {
+  constructor(deps: {
+    discoveryApi: DiscoveryApi;
+    fetchApi: FetchApi;
+    githubAuthApi: OAuthApi;
+  }) {
     this.discoveryApi = deps.discoveryApi;
     this.fetchApi = deps.fetchApi;
+    this.githubAuthApi = deps.githubAuthApi;
   }
 
   private async get(path: string, params: URLSearchParams, fallback: string) {
@@ -123,24 +208,51 @@ export class SkillDiscoveryClient implements SkillDiscoveryApi {
     );
   }
 
-  async readSkill({ repoUrl, path, commit, ref }: SkillAt) {
+  async readSkill(skill: SkillAt): Promise<SkillContent> {
     return this.get(
       '/agent-skills/content',
-      new URLSearchParams({ repoUrl, path, commit, ref }),
+      skillParams(skill),
       'Could not read the skill',
     );
   }
 
-  async readSkillFile({ repoUrl, path, commit, ref }: SkillAt, file: string) {
-    const params = new URLSearchParams({ repoUrl, path, commit });
-    if (ref) {
-      params.set('ref', ref);
-    }
+  async readSkillFile(skill: SkillAt, file: string): Promise<SkillFileContent> {
+    const params = skillParams(skill);
     params.set('file', file);
     return this.get(
       '/agent-skills/content/file',
       params,
       'Could not read the file',
     );
+  }
+
+  async proposeSkill(
+    skill: ProposedSkill,
+    via?: SkillProposalVia,
+  ): Promise<SkillPullRequest> {
+    // The person's own token: the branch and the pull request name them,
+    // not a bot. Scope `repo` is what the portal's GitHub grant asks for.
+    const token = await this.githubAuthApi.getAccessToken('repo');
+    const baseUrl = await this.discoveryApi.getBaseUrl('gs');
+    // From skill-manager, gs-backend checks the target against the
+    // installation's sources as the person, through their muster token.
+    const response = await this.fetchApi.fetch(
+      `${baseUrl}/agent-skills/pull-request`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          [GITHUB_TOKEN_HEADER]: token,
+          ...(via ? await via.authHeaders() : {}),
+        },
+        body: JSON.stringify(
+          via ? { ...skill, installation: via.installation } : skill,
+        ),
+      },
+    );
+    if (!response.ok) {
+      throw await skillReadError(response, 'Could not open the pull request');
+    }
+    return (await response.json()) as SkillPullRequest;
   }
 }
