@@ -11,7 +11,10 @@ import { toMcpServerDefinition } from '../../lib/gitops';
 import { parseJsonDefinition } from '../../lib/definitionParsers';
 import { mutationErrorMessage } from '../../lib/authError';
 import { DefinitionEditorDialog } from '../shared';
-import { useConnectorToolCall } from './useConnectorToolCall';
+import {
+  type ConnectorActionTool,
+  useConnectorToolCall,
+} from './useConnectorToolCall';
 
 const useStyles = makeStyles({
   editField: {
@@ -28,7 +31,7 @@ const useStyles = makeStyles({
 
 export type LiveAction = {
   label: string;
-  tool: string;
+  tool: ConnectorActionTool;
   args: Record<string, unknown>;
   /** One sentence saying what muster will actually do (shown in the confirm dialog). */
   description?: string;

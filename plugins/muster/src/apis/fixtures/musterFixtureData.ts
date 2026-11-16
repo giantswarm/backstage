@@ -354,6 +354,21 @@ export function authStatusOf(connector: FixtureConnector): ServerAuthStatus {
 }
 
 /**
+ * The arguments of an MCP server definition, as muster's connector tools
+ * declare them: the New connector flow sends `displayName` and `tags` only to
+ * a tool whose schema lists them.
+ */
+const MCPSERVER_DEFINITION: Record<string, JsonSchema> = {
+  name: { type: 'string', description: 'The MCP server’s name.' },
+  displayName: { type: 'string' },
+  description: { type: 'string' },
+  tags: { type: 'array', items: { type: 'string' } },
+  type: { type: 'string', enum: ['streamable-http', 'sse'] },
+  url: { type: 'string' },
+  auth: { type: 'object' },
+};
+
+/**
  * muster's own `core_*` tools, as `filter_tools` lists them for the muster
  * row of the servers list.
  */
@@ -364,7 +379,55 @@ export const FIXTURE_CORE_TOOLS: readonly ToolSummary[] = [
   coreTool('core_workflow_get', 'Get one workflow by its name.', 'name'),
   coreTool('core_auth_login', 'Sign in to an MCP server.', 'server', false),
   coreTool('core_auth_logout', 'Sign out of an MCP server.', 'server', false),
+  connectorTool(
+    'core_mcpserver_detect',
+    'Detect the transport of an MCP server at a URL.',
+    { url: { type: 'string', description: 'The server address.' } },
+    ['url'],
+  ),
+  connectorTool(
+    'core_mcpserver_validate',
+    'Check an MCP server definition without saving it.',
+    MCPSERVER_DEFINITION,
+    ['name'],
+  ),
+  connectorTool(
+    'core_mcpserver_create',
+    'Register an MCP server.',
+    { ...MCPSERVER_DEFINITION, clientCredentials: { type: 'object' } },
+    ['name'],
+    false,
+  ),
+  connectorTool(
+    'core_mcpserver_update',
+    'Change an MCP server definition.',
+    { ...MCPSERVER_DEFINITION, clientCredentials: { type: 'object' } },
+    ['name'],
+    false,
+  ),
 ];
+
+/**
+ * One of muster's tools for connector definitions. Fixture mode answers
+ * `core_mcpserver_detect` and `core_mcpserver_validate` (`musterCoreTools.ts`);
+ * the writes are listed so their schemas can be read, and fail when called.
+ */
+function connectorTool(
+  name: string,
+  description: string,
+  properties: Record<string, JsonSchema>,
+  required: string[],
+  readOnly = true,
+): ToolSummary {
+  return {
+    name,
+    summary: description,
+    description,
+    kind: 'core',
+    annotations: { readOnlyHint: readOnly },
+    inputSchema: { type: 'object', properties, required },
+  };
+}
 
 function coreTool(
   name: string,
