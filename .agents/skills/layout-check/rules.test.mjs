@@ -6,6 +6,8 @@ import { test } from 'node:test';
 
 import {
   alignmentRule,
+  isWarning,
+  warningCounts,
   centeringRule,
   checkLayout,
   clippedRule,
@@ -289,12 +291,13 @@ test('truncation: a text ending in an ellipsis, its full value on hover, is a de
   );
 });
 
-test('truncation: a text ending in an ellipsis with no title or tooltip', () => {
+test('truncation: a text ending in an ellipsis with no title or tooltip is a warning', () => {
   const findings = truncationRule(
     layout({ truncated: [truncated('OpenAI · gpt-4.1-mini · a long description', 167, 676)] }),
   );
   assert.equal(findings.length, 1);
   assert.match(findings[0].message, /no title or tooltip/);
+  assert.equal(findings[0].severity, 'warning');
 });
 
 test('truncation: squeezed to a letter or two, even with a tooltip', () => {
@@ -303,6 +306,7 @@ test('truncation: squeezed to a letter or two, even with a tooltip', () => {
   );
   assert.equal(findings.length, 1);
   assert.match(findings[0].message, /squeezed/);
+  assert.equal(findings[0].severity, undefined);
 });
 
 test('truncation: a second line cut off by a box of fixed height', () => {
@@ -440,4 +444,32 @@ test('formatFinding names the page, width, scenario, state, elements and boxes',
   assert.match(text, /button "Sort agents" sits between two rows/);
   assert.match(text, /x=378 y=20 147×32/);
   assert.match(text, /group "Filters" \(div\) at x=77 y=0 293×72/);
+});
+
+test('warnings are told apart and counted by scenario', () => {
+  const warning = { rule: 'truncation', severity: 'warning', scenario: 'many' };
+  const finding = { rule: 'overlap', scenario: 'base' };
+  assert.equal(isWarning(warning), true);
+  assert.equal(isWarning(finding), false);
+  assert.deepEqual(
+    warningCounts([warning, { ...warning, scenario: 'base' }, warning]),
+    [
+      ['many', 2],
+      ['base', 1],
+    ],
+  );
+});
+
+test('formatFinding marks a warning', () => {
+  const text = formatFinding({
+    page: '/customize/connectors',
+    width: 1280,
+    scenario: 'base',
+    state: 'initial',
+    rule: 'truncation',
+    severity: 'warning',
+    message: 'ends in an ellipsis with no title or tooltip holding the rest',
+    elements: [{ role: 'span', name: 'Keeps the rowan catalogue', path: 'td > span', box: { x: 332, y: 388, w: 228, h: 17 } }],
+  });
+  assert.match(text, /^truncation \(warning\): \/customize\/connectors @ 1280px/);
 });

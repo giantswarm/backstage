@@ -9,8 +9,9 @@
  *   node .agents/skills/layout-check/layout-check.mjs --page /customize/agents
  *   node .agents/skills/layout-check/layout-check.mjs --spec .agents/skills/layout-check/specs/agent-platform.mjs
  *
- * Exits 0 without findings, 1 with findings, 2 when it could not check (no
- * portal, a spec's step failed).
+ * Exits 0 without findings, 1 with findings, 2 when it could not check (the
+ * portal does not answer, a step failed, a page kept changing). Warnings are
+ * reported in a section of their own and never change the exit code.
  */
 
 import fs from 'node:fs';
@@ -20,7 +21,14 @@ import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
 import { collectLayout } from './collect.mjs';
-import { RULES, checkLayout, formatFinding, shiftRule } from './rules.mjs';
+import {
+  RULES,
+  checkLayout,
+  formatFinding,
+  isWarning,
+  shiftRule,
+  warningCounts,
+} from './rules.mjs';
 
 const root = path.resolve(import.meta.dirname, '../../..');
 
@@ -328,7 +336,7 @@ async function main() {
       skipped.push(...(result.skipped ?? []));
       if (!args.json) {
         process.stderr.write(
-          `checked ${job.spec.name} @ ${job.width}px${job.scenario ? ` (${job.scenario})` : ''}: ${result.findings.length} findings${result.errors.length ? ', failed' : ''}\n`,
+          `checked ${job.spec.name} @ ${job.width}px${job.scenario ? ` (${job.scenario})` : ''}: ${result.findings.filter(f => !isWarning(f)).length} findings, ${result.findings.filter(isWarning).length} warnings${result.errors.length ? ', failed' : ''}\n`,
         );
       }
     }
@@ -346,12 +354,24 @@ async function main() {
   findings.sort(order);
   errors.sort(order);
   skipped.sort(order);
+  // Warnings are reported apart and never fail the check.
+  const warnings = findings.filter(isWarning);
+  const failing = findings.filter(f => !isWarning(f));
   if (args.json) {
     process.stdout.write(
-      `${JSON.stringify({ findings, errors, skipped }, null, 2)}\n`,
+      `${JSON.stringify({ findings: failing, warnings, errors, skipped }, null, 2)}\n`,
     );
   } else {
-    for (const f of findings) process.stdout.write(`${formatFinding(f)}\n\n`);
+    for (const f of failing) process.stdout.write(`${formatFinding(f)}\n\n`);
+    if (warnings.length) {
+      const counts = warningCounts(warnings)
+        .map(([scenario, n]) => `${scenario} ${n}`)
+        .join(', ');
+      process.stdout.write(
+        `Warnings (${warnings.length}: ${counts}), which do not fail the check:\n\n`,
+      );
+      for (const w of warnings) process.stdout.write(`${formatFinding(w)}\n\n`);
+    }
     for (const e of errors) {
       process.stdout.write(
         `could not check: ${e.page} @ ${e.width}px, scenario ${e.scenario}, state "${e.state}": ${e.message}\n`,
@@ -363,11 +383,11 @@ async function main() {
       );
     }
     process.stdout.write(
-      `${findings.length} findings, ${errors.length} could not be checked, ${skipped.length} skipped, of ${jobs.length} page checks\n`,
+      `${failing.length} findings, ${warnings.length} warnings, ${errors.length} could not be checked, ${skipped.length} skipped, of ${jobs.length} page checks\n`,
     );
   }
   if (errors.length) return 2;
-  return findings.length ? 1 : 0;
+  return failing.length ? 1 : 0;
 }
 
 // Anything unexpected is "could not check", never a finding.

@@ -212,9 +212,10 @@ export function alignmentRule(layout) {
 
 /**
  * Text cut off where a person cannot read the rest: cut off without an
- * ellipsis, cut off with one but with no title or tooltip holding the full
- * text, or squeezed to a letter or two (with a tooltip or not: a person
- * cannot tell what it is without pointing at it).
+ * ellipsis, or squeezed to a letter or two (with a tooltip or not: a person
+ * cannot tell what it is without pointing at it). Cut off with an ellipsis
+ * but with no title or tooltip holding the full text is a warning
+ * (`severity: 'warning'`), which does not fail the check.
  */
 export function truncationRule(layout) {
   const findings = [];
@@ -225,15 +226,22 @@ export function truncationRule(layout) {
     const squeezed =
       across && t.shown < 2 * (t.fontSize ?? 14) && t.shown < 0.5 * t.needed;
     let message;
+    let severity;
     if (squeezed) {
       message = `"${t.text}" is squeezed to ${t.shown} of the ${t.needed}px it needs`;
     } else if (!t.ellipsis) {
       message = `"${t.text}" is cut off without an ellipsis (${t.shown} of ${t.needed}${unit} shown)`;
     } else if (!t.fullText) {
       message = `"${t.text}" ends in an ellipsis with no title or tooltip holding the rest (${t.shown} of ${t.needed}${unit} shown)`;
+      severity = 'warning';
     }
     if (message) {
-      findings.push({ rule: 'truncation', message, elements: [element(t, t.box)] });
+      findings.push({
+        rule: 'truncation',
+        message,
+        elements: [element(t, t.box)],
+        ...(severity && { severity }),
+      });
     }
   }
   return findings;
@@ -349,12 +357,24 @@ export function checkLayout(layout, rules = Object.keys(RULES)) {
 }
 
 /** One finding as a line or two of the report. */
+export const isWarning = f => f.severity === 'warning';
+
+/**
+ * Warnings counted by scenario, in the order the scenarios first appear:
+ * `[[scenario, count], …]`.
+ */
+export function warningCounts(warnings) {
+  const counts = new Map();
+  for (const w of warnings) counts.set(w.scenario, (counts.get(w.scenario) ?? 0) + 1);
+  return [...counts];
+}
+
 export function formatFinding(f) {
   const where = `${f.page} @ ${f.width}px, scenario ${f.scenario}, state "${f.state}"`;
   const els = f.elements
     .map(e => `    ${e.role} "${e.name}" (${e.path})${e.box ? ` at ${fmtBox(e.box)}` : ''}`)
     .join('\n');
-  return `${f.rule}: ${where}\n  ${f.elements[0] ? `${f.elements[0].role} "${f.elements[0].name}" ` : ''}${f.message}${els ? `\n${els}` : ''}`;
+  return `${f.rule}${isWarning(f) ? ' (warning)' : ''}: ${where}\n  ${f.elements[0] ? `${f.elements[0].role} "${f.elements[0].name}" ` : ''}${f.message}${els ? `\n${els}` : ''}`;
 }
 
 export const fmtBox = b =>

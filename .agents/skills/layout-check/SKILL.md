@@ -15,7 +15,7 @@ of text's box from the DOM. No screenshots.
 
 | File | What it is |
 |---|---|
-| `layout-check.mjs` | The command. Exits 0 without findings, 1 with findings, 2 when it could not check (the portal does not answer, a step failed, a page kept changing). |
+| `layout-check.mjs` | The command. Exits 0 without findings, 1 with findings, 2 when it could not check (the portal does not answer, a step failed, a page kept changing). Warnings never change the exit code. |
 | `collect.mjs` | The measurement, run inside the page. |
 | `rules.mjs` | The rules, pure functions over the measurement. |
 | `rules.test.mjs` | Their tests: `node --test .agents/skills/layout-check/rules.test.mjs`. CI runs them (`.github/workflows/skill-tests.yaml`). |
@@ -48,6 +48,12 @@ yarn fixtures stop
   out on every page, `--json` prints the findings as JSON, `--url` checks
   another portal (a dev server signed in as the guest), `--concurrency`
   sets how many pages load at once (3).
+
+Warnings come after the findings, in a section of their own headed by
+their count per scenario, and don't fail the check: a long name ending in
+an ellipsis with no way to read the rest is worth a look, not a blocker.
+Today the only warning is that one. `--json` gives `findings` and
+`warnings` apart.
 
 Every finding names the rule, the page, the width, the scenario and the
 state, then the one or two elements with their role, name, a short path and
@@ -84,13 +90,13 @@ finding is right as it is.
   similar controls beside it, or lines up with none of its row's top,
   centre and bottom.
 - **truncation**: text cut off by an element that hides its overflow
-  (across, or a line or more down), unless it ends in an ellipsis (or is
-  line-clamped) and its full value is there on hover: a `title`, a tooltip
-  (`aria-describedby`) or `data-full-text` on it or up to three ancestors.
-  Text squeezed to less than two em (a letter or two) is a finding with a
-  tooltip too. A control cut off by an ancestor that hides its overflow is
-  one as well. A scroll container cuts nothing: a person scrolls to the
-  rest.
+  (across, or a line or more down) without an ellipsis or line clamp; text
+  squeezed to less than two em (a letter or two), with a tooltip or not; a
+  control cut off by an ancestor that hides its overflow. Text that ends in
+  an ellipsis (or a line clamp) is fine when its full value is there on
+  hover (a `title`, a tooltip by `aria-describedby`, or `data-full-text`, on
+  it or up to three ancestors), and a **warning** when it isn't. A scroll
+  container cuts nothing: a person scrolls to the rest.
 - **centering**: in a button, tab, select trigger, menu item, switch or link
   styled as a button (`role=button`, or bui's or MUI's button classes), the
   text and icons sit more than 2px off the centre of the
