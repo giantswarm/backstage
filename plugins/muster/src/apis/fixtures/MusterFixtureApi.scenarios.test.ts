@@ -71,10 +71,12 @@ describe('musterFixtureApi in the fixture scenarios', () => {
     setFixtureScenarioForTests('empty');
     const empty = await musterFixtureApi(servers).listServers('meadow');
     // Only the contributed servers: the data set has no connectors.
-    expect(empty.mcpServers.map(s => s.name)).toEqual(['agent-manager']);
+    expect((empty.mcpServers ?? []).map(s => s.name)).toEqual([
+      'agent-manager',
+    ]);
 
     setFixtureScenarioForTests('many');
     const many = await musterFixtureApi(servers).listServers('meadow');
-    expect(many.mcpServers.length).toBeGreaterThan(100);
+    expect(many.mcpServers?.length).toBeGreaterThan(100);
   });
 });
