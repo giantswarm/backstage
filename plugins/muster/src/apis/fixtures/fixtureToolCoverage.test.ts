@@ -6,26 +6,9 @@ import { fixtureToolNames } from './fixtureToolNames';
 
 /**
  * The drift guard of fixture mode (docs/fixtures.md): every tool the muster
- * pages call through `callTool` has a fixture handler, or is listed below
- * with the reason, so a new tool shows in the pull request that calls it.
+ * pages call through `callTool` has a fixture handler, so a new tool shows in
+ * the pull request that calls it.
  */
-
-/**
- * muster's own tools the pages call that fixture mode does not answer: the
- * writes to an installation's connectors. Fixture mode keeps no connector
- * state that a write could change, so these fail with
- * `FixtureToolMissingError` and the page shows the error.
- */
-const NOT_SERVED = new Set([
-  // Saving the New connector flow or the definition editor.
-  'core_mcpserver_create',
-  'core_mcpserver_update',
-  // A connector's actions menu: delete, activate, deactivate, reconnect.
-  'core_mcpserver_delete',
-  'core_service_start',
-  'core_service_stop',
-  'core_service_restart',
-]);
 
 /**
  * The calls whose tool name is only known at runtime. Fixture mode lists the
@@ -43,16 +26,12 @@ describe('fixture mode’s tool handlers', () => {
   const report = fixtureToolCoverage({
     srcDir: path.resolve(__dirname, '../..'),
     handled: fixtureToolNames([]),
-    notServed: NOT_SERVED,
+    notServed: new Set(),
     unresolved: UNRESOLVED,
   });
 
-  it('answer every tool the pages call, or list it as not served', () => {
+  it('answer every tool the pages call', () => {
     expect(report.missing).toEqual([]);
-  });
-
-  it('list nothing as not served that is answered or no longer called', () => {
-    expect(report.staleNotServed).toEqual([]);
   });
 
   it('know every tool name the pages call, or list the call', () => {

@@ -5,36 +5,18 @@
  * production build through the package's main entry; only fixture modules
  * and tests import it.
  */
-import {
-  fixtureDataSet,
-  inInstallation,
-  onFixtureScenarioReset,
-} from '@giantswarm/backstage-plugin-gs-common/fixtures';
 import type { KubeObjectInterface } from '@giantswarm/backstage-plugin-kubernetes-react';
 
-import { mcpServerObjectOf, musterWorkflowObjectOf } from './musterFixtureData';
-
-const objectsByInstallation = new Map<string, KubeObjectInterface[]>();
-onFixtureScenarioReset(() => objectsByInstallation.clear());
+import { musterConnectorFixtureState } from './musterConnectorFixtureState';
 
 /**
  * muster's objects in an installation of the page's data set, as its
- * Kubernetes API lists them: an `MCPServer` per connector and a `Workflow`
- * per workflow. Worked out once per installation: they never change.
+ * Kubernetes API lists them: an `MCPServer` per connector, as the connector
+ * writes leave them, and a `Workflow` per workflow. The same array while
+ * nothing changed, a new one after a write.
  */
 export function musterKubernetesObjectsOf(
   installation: string,
 ): KubeObjectInterface[] {
-  let objects = objectsByInstallation.get(installation);
-  if (!objects) {
-    const data = fixtureDataSet();
-    objects = [
-      ...inInstallation(data.connectors, installation).map(mcpServerObjectOf),
-      ...inInstallation(data.workflows, installation).map(workflow =>
-        musterWorkflowObjectOf(workflow, data.connectors),
-      ),
-    ];
-    objectsByInstallation.set(installation, objects);
-  }
-  return objects;
+  return musterConnectorFixtureState().kubernetesObjectsOf(installation);
 }

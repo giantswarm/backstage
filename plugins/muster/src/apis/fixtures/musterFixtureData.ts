@@ -405,12 +405,21 @@ export const FIXTURE_CORE_TOOLS: readonly ToolSummary[] = [
     ['name'],
     false,
   ),
+  coreTool('core_mcpserver_delete', 'Delete an MCP server.', 'name', false),
+  coreTool('core_service_start', 'Start or activate a service.', 'name', false),
+  coreTool(
+    'core_service_stop',
+    'Stop and deactivate a service.',
+    'name',
+    false,
+  ),
+  coreTool('core_service_restart', 'Restart a service.', 'name', false),
 ];
 
 /**
- * One of muster's tools for connector definitions. Fixture mode answers
- * `core_mcpserver_detect` and `core_mcpserver_validate` (`musterCoreTools.ts`);
- * the writes are listed so their schemas can be read, and fail when called.
+ * One of muster's tools for connector definitions, described with the
+ * arguments the New connector flow reads from its schema. Fixture mode
+ * answers each (`musterCoreTools.ts`).
  */
 function connectorTool(
   name: string,

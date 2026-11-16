@@ -159,12 +159,41 @@ ones. The tools of the data set's connectors have no handler: running one
 fails as described below. Of muster's own tools, `callTool` answers the two
 the New connector flow calls before it saves, the transport probe
 (`core_mcpserver_detect`, a reachable streamable-HTTP server without OAuth)
-and the definition check (`core_mcpserver_validate`, which passes). The
-catalogue describes both, and the connector writes `core_mcpserver_create`
-and `core_mcpserver_update`, with the arguments the flow asks about
-(`displayName`, `tags`). The writes to connectors (`core_mcpserver_create`,
-`_update`, `_delete`, `core_service_start`, `_stop`, `_restart`) are not
-served: saving a connector or acting on one fails loudly.
+and the definition check (`core_mcpserver_validate`, which passes), and the
+writes to connectors. The catalogue describes them all, the definition tools
+with the arguments the flow asks about (`displayName`, `tags`).
+
+The connector writes (`core_mcpserver_create`, `_update`, `_delete`,
+`core_service_start`, `_stop`, `_restart`) are kept in memory until the page
+reloads (`plugins/muster/src/apis/fixtures/musterConnectorFixtureState.ts`),
+and every live read follows them: the `MCPServer` objects, the servers list,
+the connector names, the person's sign-in status and the catalogue. The
+workflows, their executions and the usage keep the data set's connectors.
+
+- A connector a write starts (registered with `autoStart`, edited while
+  active, turned on, reconnected, or signed in to) is `Connecting` for two
+  seconds (`CONNECT_MS`, shorter than the pages' follow-up read after a
+  write), then settles where its definition leads: `Failed` at a host under
+  `.invalid` (RFC 2606), `Auth Required` with OAuth until the person signs
+  in (`signInServer`; signing out asks again), `Awaiting Session` with OAuth
+  that forwards the person's token, `Connected` otherwise, with six tools. A
+  data set connector that is failed, disconnected or running keeps that
+  state when it connects again, until an edit changes its URL; the starting
+  and connecting ones stay as they are until a write starts them.
+- Turning a connector off sets `spec.suspended`, as muster does, and the data
+  set's stopped connector is off from the start. An edit bumps
+  `metadata.generation`, and the `Ready` condition's `observedGeneration`
+  catches up once the connector has settled, so the Test step shows the edit
+  being applied.
+- The writes are checked and answered in muster's words: a name taken
+  (`MCP server '<name>' already exists`, a 422 like muster-backend's
+  `connector_refused`), a connector not found, a reconnect of one turned off
+  (`use core_service_start to resume it`) or waiting for the person's
+  sign-in, which only `core_auth_login` connects, and a start or stop of one
+  already in that state.
+
+In `error` the writes fail as every call does, and in `loading` they never
+answer. A scenario's writes start from its own data set.
 
 The unreachable installation's reads fail as muster-backend refuses them, with
 a 503 "<installation> did not answer: not reachable from this portal", and its
