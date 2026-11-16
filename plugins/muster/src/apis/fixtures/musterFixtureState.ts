@@ -6,11 +6,23 @@ import {
   type ConnectorState,
   type FixtureConnector,
   type FixtureDataSet,
+  type FixtureExecution,
+  type FixtureToolsetPreset,
 } from '@giantswarm/backstage-plugin-gs-common/fixtures';
 import type { KubeObjectInterface } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { DISPLAY_NAME_ANNOTATION } from '../../lib/k8s/MCPServer';
-import { mcpServerObjectOf, musterWorkflowObjectOf } from './musterFixtureData';
+import type { ToolSummary } from '../types';
+import {
+  connectorToolsOf,
+  mcpServerObjectOf,
+  musterWorkflowObjectOf,
+  musterWorkflowOf,
+  servedToolsOf,
+  type MusterFixtureConnector,
+  type MusterFixtureWorkflow,
+  type ServedTools,
+} from './musterFixtureData';
 
 /**
  * How long a connector connects after a write starts it (create, an edit,
@@ -23,11 +35,17 @@ export const CONNECT_MS = 2000;
 /** The tools a connector registered in fixture mode offers once it serves. */
 export const NEW_CONNECTOR_TOOLS = 6;
 
-/**
- * Hosts no muster reaches (RFC 2606's `.invalid`): a connector at one fails
- * once it has tried to connect.
- */
+/** Hosts no muster reaches: RFC 2606's `.invalid`. */
 const UNREACHABLE_HOST = /\.invalid$/i;
+
+/** Whether muster cannot reach a URL: it is no URL, or its host is `.invalid`. */
+export function isUnreachableUrl(url: string): boolean {
+  try {
+    return UNREACHABLE_HOST.test(new URL(url).hostname);
+  } catch {
+    return true;
+  }
+}
 
 /** The seeded states a connector keeps when it connects again. */
 const KEPT_STATES: ReadonlySet<ConnectorState> = new Set([
@@ -60,7 +78,7 @@ const NOT_SPEC = new Set([
 type StoredConnector = {
   /** The record the reads map; `state` is the settled or seeded one. */
   connector: FixtureConnector;
-  /** The `MCPServer` spec, as created and changed by updates. */
+  /** The `MCPServer` spec, as created and changed by writes. */
   spec: Record<string, unknown>;
   tags: string[];
   suspended: boolean;
@@ -68,14 +86,43 @@ type StoredConnector = {
   signedIn: boolean;
   /** The seeded state it keeps when it connects again ({@link KEPT_STATES}). */
   kept?: ConnectorState;
+  /** `metadata.generation`: bumped by every write to the spec. */
   generation: number;
   /**
-   * The generation muster's status describes: an edit's trails until the
-   * connector settled with it.
+   * The generation muster's status describes: it trails a write that
+   * started the connector until the connector settled.
    */
   observedGeneration: number;
   /** Until when it connects, after a write started it. */
   connectingUntil?: number;
+};
+
+/** What muster serves in one installation now, worked out once per change. */
+export type MusterFixtureSnapshot = {
+  /** The connectors in their states now. */
+  connectors: MusterFixtureConnector[];
+  /** The tools the serving connectors offer. */
+  served: ServedTools;
+  /** Every tool the connectors offer, serving or not: what usage counts. */
+  connectorTools: ToolSummary[];
+  workflows: MusterFixtureWorkflow[];
+  executions: FixtureExecution[];
+  presets: FixtureToolsetPreset[];
+  /** muster's objects as the Kubernetes API lists them. */
+  objects: KubeObjectInterface[];
+};
+
+type InstallationStore = {
+  connectors: Map<string, StoredConnector>;
+  workflows: MusterFixtureWorkflow[];
+  executions: FixtureExecution[];
+  presets: FixtureToolsetPreset[];
+  revision: number;
+  snapshot?: {
+    revision: number;
+    validUntil: number;
+    value: MusterFixtureSnapshot;
+  };
 };
 
 /**
@@ -121,48 +168,39 @@ function authOf(spec: Record<string, unknown>) {
 }
 
 /**
- * The connectors of each installation's muster, as the writes of the muster
- * pages leave them (docs/fixtures.md, "muster"): created, edited, deleted,
- * deactivated, activated and reconnected, kept in memory until the page
- * reloads. A connector a write starts connects for {@link CONNECT_MS}, then
- * settles where its definition leads: failed at a host no muster reaches,
- * waiting for the person's sign-in when it uses OAuth (until they sign in),
- * waiting for a session when it forwards the person's token, connected
- * otherwise. A seeded connector that is failed, disconnected or running keeps
- * that state when it connects again, until an edit changes its URL.
+ * Each installation's muster in the page's data set, as the writes of the
+ * muster pages leave it (docs/fixtures.md, "muster"): its connectors,
+ * created, edited, deleted, turned off and on and reconnected, kept in memory
+ * until the page reloads, and its workflows, their executions and its toolset
+ * presets, read against those connectors.
+ *
+ * A connector a write starts connects for {@link CONNECT_MS}, then settles
+ * where its definition leads: failed at a host no muster reaches, waiting for
+ * the person's sign-in when it uses OAuth (until they sign in), waiting for a
+ * session when it forwards the person's token, connected otherwise. A seeded
+ * connector that is failed, disconnected or running keeps that state when it
+ * connects again, until an edit changes its URL or its sign-in. A workflow
+ * whose steps call a tool no serving connector offers is unavailable.
  */
-export class MusterConnectorFixtureState {
-  private readonly installations = new Map<
-    string,
-    Map<string, StoredConnector>
-  >();
-  private revision = 0;
-  private readonly cache = new Map<
-    string,
-    {
-      revision: number;
-      validUntil: number;
-      connectors: FixtureConnector[];
-      objects: KubeObjectInterface[];
-    }
-  >();
+export class MusterFixtureState {
+  private readonly installations = new Map<string, InstallationStore>();
 
   constructor(
     private readonly data: FixtureDataSet = fixtureDataSet(),
     private readonly now: () => number = Date.now,
   ) {}
 
-  private storeOf(installation: string): Map<string, StoredConnector> {
+  private storeOf(installation: string): InstallationStore {
     let store = this.installations.get(installation);
     if (!store) {
-      store = new Map(
-        inInstallation(this.data.connectors, installation).map(connector => {
-          const object = mcpServerObjectOf(connector);
-          return [
+      const connectors = inInstallation(this.data.connectors, installation);
+      store = {
+        connectors: new Map(
+          connectors.map(connector => [
             connector.name,
             {
               connector,
-              spec: { ...object.spec },
+              spec: { ...mcpServerObjectOf(connector).spec },
               tags: [],
               suspended: connector.state === 'Stopped',
               signedIn: false,
@@ -172,28 +210,23 @@ export class MusterConnectorFixtureState {
               generation: 1,
               observedGeneration: 1,
             },
-          ];
-        }),
-      );
+          ]),
+        ),
+        workflows: inInstallation(this.data.workflows, installation).map(
+          workflow => musterWorkflowOf(workflow, connectors),
+        ),
+        executions: inInstallation(this.data.executions, installation),
+        presets: inInstallation(this.data.toolsetPresets, installation),
+        revision: 0,
+      };
       this.installations.set(installation, store);
     }
     return store;
   }
 
-  private changed() {
-    this.revision++;
-  }
-
   /** Where a connector settles once it has connected. */
   private settledStateOf(stored: StoredConnector): ConnectorState {
-    const url = stringOf(stored.spec.url) ?? '';
-    let host = '';
-    try {
-      host = new URL(url).hostname;
-    } catch {
-      host = '';
-    }
-    if (UNREACHABLE_HOST.test(host)) {
+    if (isUnreachableUrl(stringOf(stored.spec.url) ?? '')) {
       return 'Failed';
     }
     if (stored.kept) {
@@ -228,8 +261,31 @@ export class MusterConnectorFixtureState {
     return stored.connector.state;
   }
 
+  /** The connector connects; its status catches up once it has settled. */
   private connect(stored: StoredConnector) {
     stored.connectingUntil = this.now() + CONNECT_MS;
+  }
+
+  /** A write to the connector's spec, as the API server counts it. */
+  private written(stored: StoredConnector) {
+    stored.generation++;
+  }
+
+  /** A write is done: the installation's reads are worked out again. */
+  private changed(installation: string) {
+    this.storeOf(installation).revision++;
+  }
+
+  private viewOf(
+    stored: StoredConnector,
+    state: ConnectorState,
+  ): MusterFixtureConnector {
+    const toolPrefix = stringOf(stored.spec.toolPrefix);
+    return {
+      ...stored.connector,
+      state,
+      ...(toolPrefix && toolPrefix !== stored.connector.name && { toolPrefix }),
+    };
   }
 
   private objectOf(
@@ -265,56 +321,59 @@ export class MusterConnectorFixtureState {
     } as KubeObjectInterface;
   }
 
-  private snapshot(installation: string) {
+  /**
+   * What the installation's muster serves now. The same object while nothing
+   * changed there, so a reader can tell by identity.
+   */
+  snapshotOf(installation: string): MusterFixtureSnapshot {
+    const store = this.storeOf(installation);
     const now = this.now();
-    const cached = this.cache.get(installation);
+    const cached = store.snapshot;
     if (
       cached &&
-      cached.revision === this.revision &&
+      cached.revision === store.revision &&
       now < cached.validUntil
     ) {
-      return cached;
+      return cached.value;
     }
-    const stored = [...this.storeOf(installation).values()];
+    const stored = [...store.connectors.values()];
     const states = stored.map(entry => this.stateOf(entry, now));
-    const connectors = stored.map((entry, index) => ({
-      ...entry.connector,
-      state: states[index],
-    }));
-    const objects = [
-      ...stored.map((entry, index) => this.objectOf(entry, states[index])),
-      ...inInstallation(this.data.workflows, installation).map(workflow =>
-        musterWorkflowObjectOf(workflow, this.data.connectors),
-      ),
-    ] as KubeObjectInterface[];
+    const connectors = stored.map((entry, index) =>
+      this.viewOf(entry, states[index]),
+    );
+    const served = servedToolsOf(connectors);
+    const value: MusterFixtureSnapshot = {
+      connectors,
+      served,
+      connectorTools: connectors.flatMap(connectorToolsOf),
+      workflows: store.workflows,
+      executions: store.executions,
+      presets: store.presets,
+      objects: [
+        ...stored.map((entry, index) => this.objectOf(entry, states[index])),
+        ...store.workflows.map(workflow =>
+          musterWorkflowObjectOf(workflow, served),
+        ),
+      ] as KubeObjectInterface[],
+    };
     const upcoming = stored
       .map(entry => entry.connectingUntil ?? 0)
       .filter(time => time > now);
-    const snapshot = {
-      revision: this.revision,
+    store.snapshot = {
+      revision: store.revision,
       validUntil: upcoming.length > 0 ? Math.min(...upcoming) : Infinity,
-      connectors,
-      objects,
+      value,
     };
-    this.cache.set(installation, snapshot);
-    return snapshot;
-  }
-
-  /**
-   * The installation's connectors in their states now. The same array while
-   * nothing changed, so a reader can tell by identity.
-   */
-  connectorsOf(installation: string): FixtureConnector[] {
-    return this.snapshot(installation).connectors;
+    return value;
   }
 
   /**
    * muster's objects in the installation, as its Kubernetes API lists them:
    * an `MCPServer` per connector and a `Workflow` per workflow. The same
-   * array while nothing changed.
+   * array while nothing changed there.
    */
   kubernetesObjectsOf(installation: string): KubeObjectInterface[] {
-    return this.snapshot(installation).objects;
+    return this.snapshotOf(installation).objects;
   }
 
   private find(
@@ -325,7 +384,7 @@ export class MusterConnectorFixtureState {
     if (typeof name !== 'string' || !name) {
       throw connectorToolError('name argument is required');
     }
-    const stored = this.storeOf(installation).get(name);
+    const stored = this.storeOf(installation).connectors.get(name);
     if (!stored) {
       throw connectorToolError(`${prefix}: MCP server '${name}' not found`);
     }
@@ -348,7 +407,7 @@ export class MusterConnectorFixtureState {
       );
     }
     const store = this.storeOf(installation);
-    if (store.has(name)) {
+    if (store.connectors.has(name)) {
       throw connectorToolError(`MCP server '${name}' already exists`, 422);
     }
     const spec = Object.fromEntries(
@@ -377,8 +436,8 @@ export class MusterConnectorFixtureState {
     if (args.autoStart === true) {
       this.connect(stored);
     }
-    store.set(name, stored);
-    this.changed();
+    store.connectors.set(name, stored);
+    this.changed(installation);
     return `MCP server '${name}' created successfully`;
   }
 
@@ -387,7 +446,8 @@ export class MusterConnectorFixtureState {
    * rules (`mergeOntoExisting` in `lib/mcpServerDefinition.ts`): an omitted
    * field keeps its value, `autoStart` is overwritten, an empty description
    * keeps the stored one, an empty display name removes it, and `suspended`
-   * changes only when given. A running connector connects again.
+   * changes only when given. A connector that was started connects again;
+   * one never started stays stopped.
    */
   update(installation: string, args: Record<string, unknown>): string {
     const stored = this.find(
@@ -395,13 +455,8 @@ export class MusterConnectorFixtureState {
       args.name,
       'Failed to update MCP server',
     );
-    if (!stringOf(args.type)) {
-      throw connectorToolError(
-        'Invalid MCP server definition: type is required',
-        422,
-      );
-    }
-    const previousUrl = stringOf(stored.spec.url);
+    const wasStarted = this.stateOf(stored, this.now()) !== 'Stopped';
+    const previous = JSON.stringify([stored.spec.url, authOf(stored.spec)]);
     const spec = { ...stored.spec };
     for (const [key, value] of Object.entries(args)) {
       if (NOT_SPEC.has(key) || value === undefined) {
@@ -435,16 +490,19 @@ export class MusterConnectorFixtureState {
     if (typeof args.suspended === 'boolean') {
       stored.suspended = args.suspended;
     }
-    if (stringOf(spec.url) !== previousUrl) {
+    // A new address or sign-in is a new attempt: a seeded failure or
+    // connection no longer holds.
+    if (JSON.stringify([spec.url, authOf(spec)]) !== previous) {
       stored.kept = undefined;
     }
-    stored.generation++;
-    if (stored.suspended) {
-      stored.observedGeneration = stored.generation;
-    } else {
+    this.written(stored);
+    if (!stored.suspended && wasStarted) {
       this.connect(stored);
+    } else {
+      stored.connectingUntil = undefined;
+      stored.observedGeneration = stored.generation;
     }
-    this.changed();
+    this.changed(installation);
     return `MCP server '${stored.connector.name}' updated successfully`;
   }
 
@@ -455,14 +513,15 @@ export class MusterConnectorFixtureState {
       args.name,
       'Failed to delete MCP server',
     );
-    this.storeOf(installation).delete(stored.connector.name);
-    this.changed();
+    this.storeOf(installation).connectors.delete(stored.connector.name);
+    this.changed(installation);
     return `MCP server '${stored.connector.name}' deleted successfully`;
   }
 
   /**
-   * `core_service_start`: activates a deactivated connector and starts one
-   * that is down; one up or on its way up is left as it is, as muster does.
+   * `core_service_start`: turns on a connector turned off and starts one
+   * that is down (`spec.restartRequestedAt`); one up or on its way up is left
+   * as it is, as muster does.
    */
   start(installation: string, args: Record<string, unknown>): string {
     const stored = this.find(
@@ -472,7 +531,8 @@ export class MusterConnectorFixtureState {
     );
     const name = stored.connector.name;
     const state = this.stateOf(stored, this.now());
-    if (!stored.suspended && !DOWN_STATES.has(state)) {
+    const down = DOWN_STATES.has(state);
+    if (!stored.suspended && !down) {
       if (state === 'Auth Required') {
         throw connectorToolError(oauthLoginGuidance(name));
       }
@@ -485,12 +545,19 @@ export class MusterConnectorFixtureState {
       return `Service '${name}' is in state "${state}"; no start request was written — check core_service_status and retry if it does not come up`;
     }
     stored.suspended = false;
+    if (down) {
+      stored.spec = {
+        ...stored.spec,
+        restartRequestedAt: new Date(this.now()).toISOString(),
+      };
+    }
+    this.written(stored);
     this.connect(stored);
-    this.changed();
-    return this.requested(stored, `Start of service '${name}' requested`);
+    this.changed(installation);
+    return this.requested(stored, 'start');
   }
 
-  /** `core_service_stop`: deactivates the connector. */
+  /** `core_service_stop`: turns the connector off (`spec.suspended`). */
   stop(installation: string, args: Record<string, unknown>): string {
     const stored = this.find(
       installation,
@@ -502,15 +569,19 @@ export class MusterConnectorFixtureState {
       return `Service '${name}' is already suspended`;
     }
     stored.suspended = true;
+    this.written(stored);
+    // Stopping ends a pending connect: the status describes the stop.
     stored.connectingUntil = undefined;
+    stored.observedGeneration = stored.generation;
     stored.connector = { ...stored.connector, state: 'Stopped' };
-    this.changed();
+    this.changed(installation);
     return `Stop of service '${name}' requested (spec.suspended=true); the reconciler will stop it and keep it stopped`;
   }
 
   /**
-   * `core_service_restart`: connects the connector again. Refused for a
-   * deactivated one and for one waiting on the person's OAuth sign-in.
+   * `core_service_restart`: connects the connector again
+   * (`spec.restartRequestedAt`). Refused for one turned off and for one
+   * waiting on the person's OAuth sign-in.
    */
   restart(installation: string, args: Record<string, unknown>): string {
     const stored = this.find(
@@ -527,14 +598,20 @@ export class MusterConnectorFixtureState {
     if (this.stateOf(stored, this.now()) === 'Auth Required') {
       throw connectorToolError(oauthLoginGuidance(name));
     }
+    stored.spec = {
+      ...stored.spec,
+      restartRequestedAt: new Date(this.now()).toISOString(),
+    };
+    this.written(stored);
     this.connect(stored);
-    this.changed();
-    return this.requested(stored, `Restart of service '${name}' requested`);
+    this.changed(installation);
+    return this.requested(stored, 'restart');
   }
 
-  private requested(stored: StoredConnector, base: string): string {
-    const verb = base.startsWith('Start') ? 'start' : 'restart';
-    const message = `${base}; the reconciler will ${verb} it`;
+  /** muster's answer to an accepted start or restart request. */
+  private requested(stored: StoredConnector, verb: 'start' | 'restart') {
+    const action = verb === 'start' ? 'Start' : 'Restart';
+    const message = `${action} of service '${stored.connector.name}' requested; the reconciler will ${verb} it`;
     return authOf(stored.spec)?.type === 'oauth'
       ? `${message}. This server uses OAuth: if it comes up auth-required, authenticate with core_auth_login`
       : message;
@@ -542,29 +619,29 @@ export class MusterConnectorFixtureState {
 
   /**
    * The person signed in to a connector (`core_auth_login`): one waiting on
-   * their sign-in connects. Undefined for a name that is no connector.
+   * their sign-in connects. False for a name that is no connector.
    */
-  signIn(installation: string, name: string): boolean | undefined {
-    const stored = this.storeOf(installation).get(name);
+  signIn(installation: string, name: string): boolean {
+    const stored = this.storeOf(installation).connectors.get(name);
     if (!stored) {
-      return undefined;
+      return false;
     }
     stored.signedIn = true;
     if (this.stateOf(stored, this.now()) === 'Auth Required') {
       this.connect(stored);
     }
-    this.changed();
+    this.changed(installation);
     return true;
   }
 
   /**
    * The person signed out of a connector: one that serves them through their
-   * OAuth sign-in asks for it again.
+   * OAuth sign-in asks for it again. False for a name that is no connector.
    */
-  signOut(installation: string, name: string): boolean | undefined {
-    const stored = this.storeOf(installation).get(name);
+  signOut(installation: string, name: string): boolean {
+    const stored = this.storeOf(installation).connectors.get(name);
     if (!stored) {
-      return undefined;
+      return false;
     }
     stored.signedIn = false;
     const state = this.stateOf(stored, this.now());
@@ -574,18 +651,21 @@ export class MusterConnectorFixtureState {
         state: this.settledStateOf(stored),
       };
     }
-    this.changed();
+    this.changed(installation);
     return true;
   }
 }
 
-let state: MusterConnectorFixtureState | undefined;
+let state: MusterFixtureState | undefined;
 onFixtureScenarioReset(() => {
   state = undefined;
 });
 
-/** The state every muster fixture reads: built on first use. */
-export function musterConnectorFixtureState(): MusterConnectorFixtureState {
-  state ??= new MusterConnectorFixtureState();
+/**
+ * The state every muster fixture reads, built on first use from the page's
+ * data set, and again after the scenario changed.
+ */
+export function musterFixtureState(): MusterFixtureState {
+  state ??= new MusterFixtureState();
   return state;
 }

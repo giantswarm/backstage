@@ -154,21 +154,33 @@ catalogue (`filter_tools` with `toolset`) and the presets, the built-in ones
 and the installation's own; the workflows, their executions with their steps
 and their run statistics; and MCP usage and tool latency over any window,
 narrowed to some connectors or one tool. A connector's tools are named after
-it and derived from it (`connectorToolsOf`), so every read names the same
-ones. The tools of the data set's connectors have no handler: running one
-fails as described below. Of muster's own tools, `callTool` answers the two
-the New connector flow calls before it saves, the transport probe
-(`core_mcpserver_detect`, a reachable streamable-HTTP server without OAuth)
-and the definition check (`core_mcpserver_validate`, which passes), and the
-writes to connectors. The catalogue describes them all, the definition tools
+its tool prefix, or its name without one, and derived from it
+(`connectorToolsOf`), so every read names the same ones. The tools of the
+data set's connectors have no handler: running one fails as described
+below. Of muster's own tools, `callTool` answers the two the New connector
+flow calls before it saves, the transport probe (`core_mcpserver_detect`: a
+reachable streamable-HTTP server without OAuth, except at a host under
+`.invalid`, which no probe reaches, in muster's words) and the definition
+check (`core_mcpserver_validate`, which passes), and the writes to
+connectors. The catalogue describes them all, the definition tools
 with the arguments the flow asks about (`displayName`, `tags`).
 
 The connector writes (`core_mcpserver_create`, `_update`, `_delete`,
 `core_service_start`, `_stop`, `_restart`) are kept in memory until the page
-reloads (`plugins/muster/src/apis/fixtures/musterConnectorFixtureState.ts`),
-and every live read follows them: the `MCPServer` objects, the servers list,
-the connector names, the person's sign-in status and the catalogue. The
-workflows, their executions and the usage keep the data set's connectors.
+reloads, in one state per scenario that every muster read takes its data
+from (`plugins/muster/src/apis/fixtures/musterFixtureState.ts`): the
+`MCPServer` and `Workflow` objects, the servers list, the connector names,
+the person's sign-in status, the catalogue with its workflows and presets,
+the executions and the usage. An installation's reads are worked out again
+only after a write there.
+
+- A workflow's steps call the tools they were written against, from the data
+  set's serving connectors; it is available while a serving connector offers
+  each of them. Deleting, turning off or failing a connector makes the
+  workflows that call its tools invalid (`Step <n> calls <tool>, which no
+connector offers.`), takes their `workflow_<name>` tools out of the
+  catalogue, and names the missing tool in their failed runs. Usage counts
+  the tools of the connectors there now.
 
 - A connector a write starts (registered with `autoStart`, edited while
   active, turned on, reconnected, or signed in to) is `Connecting` for two
@@ -178,13 +190,18 @@ workflows, their executions and the usage keep the data set's connectors.
   in (`signInServer`; signing out asks again), `Awaiting Session` with OAuth
   that forwards the person's token, `Connected` otherwise, with six tools. A
   data set connector that is failed, disconnected or running keeps that
-  state when it connects again, until an edit changes its URL; the starting
-  and connecting ones stay as they are until a write starts them.
+  state when it connects again, until an edit changes its URL or its
+  sign-in; the starting and connecting ones stay as they are until a write
+  starts them. An edit of a connector never started (registered without
+  `autoStart`) leaves it stopped.
 - Turning a connector off sets `spec.suspended`, as muster does, and the data
-  set's stopped connector is off from the start. An edit bumps
-  `metadata.generation`, and the `Ready` condition's `observedGeneration`
-  catches up once the connector has settled, so the Test step shows the edit
-  being applied.
+  set's stopped connector is off from the start; turning it on and
+  reconnecting set `spec.restartRequestedAt`. Every write to the spec bumps
+  `metadata.generation`, as the API server does, and the `Ready`
+  condition's `observedGeneration` catches up once the connector has settled
+  (at once when it is turned off), so the Test step shows an edit being
+  applied. An edit merges onto the stored definition: a field left out, the
+  type included, keeps its value.
 - The writes are checked and answered in muster's words: a name taken
   (`MCP server '<name>' already exists`, a 422 like muster-backend's
   `connector_refused`), a connector not found, a reconnect of one turned off

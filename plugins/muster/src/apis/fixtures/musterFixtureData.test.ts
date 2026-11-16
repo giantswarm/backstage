@@ -14,16 +14,23 @@ import {
   connectorToolsOf,
   executionOf,
   executionSummaryOf,
-  isServing,
   musterWorkflowObjectOf,
   mcpServerObjectOf,
   mcpServerRuntimeOf,
   musterInstallationOf,
+  musterWorkflowOf,
+  servedToolsOf,
   workflowListItemOf,
   workflowToolOf,
 } from './musterFixtureData';
 
 const data = createFixtureDataSet({ now: Date.parse('2026-11-14T12:00:00Z') });
+/** The data set's workflows, their steps written against its connectors. */
+const workflows = data.workflows.map(workflow =>
+  musterWorkflowOf(workflow, data.connectors),
+);
+/** What the data set's serving connectors offer. */
+const served = servedToolsOf(data.connectors);
 
 /** Every state muster's CRD has; a missing key fails the build. */
 const MUSTER_STATES: Record<MCPServerState, true> = {
@@ -107,8 +114,8 @@ describe('muster fixture data', () => {
   });
 
   it('maps workflows and their executions', () => {
-    for (const workflow of data.workflows) {
-      expect(workflowListItemOf(workflow)).toEqual({
+    for (const workflow of workflows) {
+      expect(workflowListItemOf(workflow, served)).toEqual({
         name: workflow.name,
         description: workflow.description,
         available: workflow.state === 'available',
@@ -141,16 +148,36 @@ describe('muster fixture data', () => {
     }
   });
 
-  it('maps workflows onto Workflow objects whose steps call served tools', () => {
-    const served = new Set(
-      data.connectors
-        .filter(isServing)
-        .flatMap(connectorToolsOf)
-        .map(tool => tool.name),
+  it('names a connector’s tools and prompts after its tool prefix when it has one', () => {
+    const connector = { ...data.connectors[0], toolPrefix: 'orch' };
+    for (const tool of connectorToolsOf(connector)) {
+      expect(tool.name.startsWith('x_orch_')).toBe(true);
+      expect(tool.server).toBe(connector.name);
+    }
+  });
+
+  it('flags a workflow whose steps call a tool no connector serves any more', () => {
+    const record = workflows.find(
+      w => w.state === 'available' && w.stepTools.length > 0,
+    )!;
+    const [first] = record.stepTools;
+    const gone = new Map([...served].filter(([name]) => name !== first));
+
+    expect(workflowListItemOf(record, gone).available).toBe(false);
+    const workflow = new MusterWorkflow(
+      musterWorkflowObjectOf(record, gone),
+      record.installation,
     );
-    for (const record of data.workflows) {
+    expect(workflow.isValid()).toBe(false);
+    expect(workflow.getValidationErrors()).toEqual([
+      `Step 1 calls ${first}, which no connector offers.`,
+    ]);
+  });
+
+  it('maps workflows onto Workflow objects whose steps call served tools', () => {
+    for (const record of workflows) {
       const workflow = new MusterWorkflow(
-        musterWorkflowObjectOf(record, data.connectors),
+        musterWorkflowObjectOf(record, served),
         record.installation,
       );
       expect(workflow.getName()).toBe(record.name);
@@ -168,9 +195,9 @@ describe('muster fixture data', () => {
   });
 
   it('offers a workflow’s tool the arguments its Workflow object declares', () => {
-    for (const record of data.workflows) {
-      const object = musterWorkflowObjectOf(record, data.connectors);
-      const schema = workflowToolOf(record, data.connectors).inputSchema!;
+    for (const record of workflows) {
+      const object = musterWorkflowObjectOf(record, served);
+      const schema = workflowToolOf(record, served).inputSchema!;
       expect(Object.keys(schema.properties!)).toEqual(
         Object.keys(object.spec!.args!),
       );
@@ -186,9 +213,8 @@ describe('muster fixture data', () => {
     const tools = new Map(
       data.connectors.flatMap(connectorToolsOf).map(t => [t.name, t]),
     );
-    for (const record of data.workflows) {
-      for (const step of musterWorkflowObjectOf(record, data.connectors).spec!
-        .steps!) {
+    for (const record of workflows) {
+      for (const step of musterWorkflowObjectOf(record, served).spec!.steps!) {
         const schema = tools.get(step.tool!)?.inputSchema;
         expect(Object.keys(step.args!)).toEqual(schema?.required ?? []);
         for (const name of Object.keys(step.args!)) {
@@ -200,12 +226,12 @@ describe('muster fixture data', () => {
 
   it('never runs an unavailable workflow’s missing tool to completion', () => {
     for (const execution of data.executions) {
-      const workflow = data.workflows.find(
+      const workflow = workflows.find(
         w =>
           w.name === execution.workflow &&
           w.installation === execution.installation,
       )!;
-      const run = executionOf(execution, workflow, data.connectors);
+      const run = executionOf(execution, workflow, served);
       const missing = run.steps!.filter(step =>
         step.tool.startsWith('x_retired_'),
       );
@@ -213,7 +239,7 @@ describe('muster fixture data', () => {
       expect(
         missing.length === 0 || run.error?.includes('no connector offers'),
       ).toBe(true);
-      expect(executionSummaryOf(execution, workflow, data.connectors)).toEqual(
+      expect(executionSummaryOf(execution, workflow, served)).toEqual(
         expect.objectContaining({ step_count: run.steps!.length }),
       );
     }

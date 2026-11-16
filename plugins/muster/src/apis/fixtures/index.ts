@@ -7,7 +7,7 @@
  */
 import type { KubeObjectInterface } from '@giantswarm/backstage-plugin-kubernetes-react';
 
-import { musterConnectorFixtureState } from './musterConnectorFixtureState';
+import { musterFixtureState } from './musterFixtureState';
 
 /**
  * muster's objects in an installation of the page's data set, as its
@@ -18,5 +18,5 @@ import { musterConnectorFixtureState } from './musterConnectorFixtureState';
 export function musterKubernetesObjectsOf(
   installation: string,
 ): KubeObjectInterface[] {
-  return musterConnectorFixtureState().kubernetesObjectsOf(installation);
+  return musterFixtureState().kubernetesObjectsOf(installation);
 }
