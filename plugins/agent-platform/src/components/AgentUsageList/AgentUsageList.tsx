@@ -14,6 +14,12 @@ import { ShowMore, USED_BY_ROWS } from '../ShowMore';
 const AVATAR_SIZE = 96;
 
 /**
+ * On a desktop, bui's `truncate`, held to the label's width: the Link is an
+ * inline block, which otherwise grows past it with a long name.
+ */
+const NAME_ONE_LINE = { maxWidth: '100%' } as const;
+
+/**
  * At phone width the name wraps to two lines, then an ellipsis: a phone has
  * no hover to read the rest. NameCell's clamp.
  */
@@ -128,13 +134,13 @@ export function AgentUsageList({
                       row's own href navigates on a press but is no anchor to
                       open in a new tab or read on hover. */}
                     {href ? (
-                      // The link truncates itself: bui's Link is an inline
-                      // block, which the label's ellipsis does not reach.
+                      // The link truncates itself: the label's ellipsis does
+                      // not reach into bui's inline-block Link.
                       <Link
                         href={href}
                         truncate={isPhone ? undefined : true}
                         title={isPhone ? undefined : row.name}
-                        style={isPhone ? NAME_TWO_LINES : undefined}
+                        style={isPhone ? NAME_TWO_LINES : NAME_ONE_LINE}
                       >
                         {row.name}
                       </Link>
