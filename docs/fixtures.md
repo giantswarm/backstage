@@ -20,11 +20,13 @@ use) the flags have no effect.
 ## Fixture mode
 
 `yarn fixtures start` runs the portal with the Agent Platform's fixture flags
-(`gs`, `muster`, `agentPlatform`) on and the guest signed in, without a cluster
-or a person
-(`app-config.fixtures.yaml` on top of `app-config.yaml`; no `.env` and no
-`app-config.local.yaml`). It is made for agents checking pages, several at a
-time, each in its own checkout:
+(`gs`, `muster`, `agentPlatform`) on and the guest signed in, without a
+cluster or a person (`app-config.fixtures.yaml` on top of `app-config.yaml`;
+no `.env` and no `app-config.local.yaml`). The Organizations pages' browser
+flag (`agent-platform-organizations`) starts on in a browser that never had
+fixture mode set it, and stays where the person's toggle puts it after that.
+It is made for agents checking pages, several at a time, each in its own
+checkout:
 
 ```bash
 yarn fixtures start     # prints the portal's URL once it answers
@@ -56,22 +58,24 @@ yarn fixtures stop
 ### The installations
 
 Fixture mode serves three made-up installations, `meadow`, `fennel` and
-`tarragon` (`FIXTURE_INSTALLATIONS` in `@giantswarm/backstage-plugin-gs-common`,
-which every fixture API reads; a test checks that `gs.installations` in
-`app-config.fixtures.yaml` names them and no other). muster and kagent report
-`tarragon` as not reachable from the portal, as the base data set says. A call
-for any other installation fails with a console error, in every fixture API.
-With `gs.fixtures` the fixture Kubernetes API answers for each without a
-cluster: `/version` answers, `/apis` lists the API groups of the portal's resource classes
-(kagent's and muster's among them; model hosting's and Cluster API's are left
-out, so those components read as absent in the installation inventory),
-discovery answers the versions the classes support (the newest preferred),
-a list or a read of one object answers the objects the plugins' fixtures hold
-(see "Objects in the Kubernetes API"), every other list is empty and any other
-object not found, and access reviews are allowed. Their cluster
-access is healthy from the start, and they have no metrics backend
-(`mimirEnabled: false`). Any other request, a write among them, fails with a
-501 and a console error.
+`tarragon` (`FIXTURE_INSTALLATIONS` in
+`@giantswarm/backstage-plugin-gs-common`, which every fixture API reads; a
+test checks that `gs.installations` in `app-config.fixtures.yaml` names them
+and no other). muster and kagent report `tarragon` as not reachable from the
+portal, as the base data set says. A call for any other installation fails
+with a console error, in every fixture API. With `gs.fixtures` the fixture
+Kubernetes API answers for each without a cluster: `/version` answers, `/apis`
+lists the API groups of the portal's resource classes (kagent's and muster's
+among them; model hosting's and Cluster API's are left out, so those
+components read as absent in the installation inventory), discovery answers
+the versions the classes support (the newest preferred), a list or a read of
+one object answers the objects the plugins' fixtures hold (see "Objects in the
+Kubernetes API"), every other list is empty and any other object not found,
+and access reviews are allowed, except that only an organization's admins may
+create its models (`ModelConfig`), so Connect a model offers an organization
+as owner only to them. Their cluster access is healthy from the start, and
+they have no metrics backend (`mimirEnabled: false`). Any other request, a
+write among them, fails with a 501 and a console error.
 
 If the backend fails with "Invalid app bundle schema", a production build of
 the app in `packages/app/dist` predates a config schema change: delete the
@@ -109,12 +113,20 @@ person's role in each, their members, models, connectors and egress policies,
 and their agents, read back as `get_agent` reads them and listed as `Agent`
 objects, each with its carrier `RemoteMCPServer` (the toolset), beside each
 organization namespace's models (`ModelConfig`) and platform `Harness`.
-Arguments and answers cross as JSON, as over MCP and HTTP, so no page shares
-the fixture's objects. The writes are checked as agent-manager checks them (a
-person with the user role may not create agents, a name taken is a
-`conflict`, a model the namespace lacks fails the dry run, the last admin of
-`organization-admins` stays, nothing is written in an organization being
-erased) and kept in memory until the page reloads:
+`get_info` reports as `managed` the platform's namespace (`kagent`) and the
+namespaces of the organizations whose role lets the person create agents
+there, except one being erased: Connect a model reads its owners from them
+(narrowed by the access reviews above), and the agent lists read agents from
+them. The New agent form takes its owners from `list_organizations` instead.
+Each namespace's default model carries the
+`agent-platform.giantswarm.io/is-default-model-config` annotation, as
+`list_model_configs` reports it (`default`), and the mark moves with
+`set_organization_model`'s `default`. Arguments and answers cross as JSON, as
+over MCP and HTTP, so no page shares the fixture's objects. The writes are
+checked as agent-manager checks them (a person with the user role may not
+create agents, a name taken is a `conflict`, a model the namespace lacks fails
+the dry run, the last admin of `organization-admins` stays, nothing is written
+in an organization being erased) and kept in memory until the page reloads:
 
 - creating, editing and deleting an agent: an agent created or changed
   reports its new generation at once and the controller's verdict on it four
@@ -134,9 +146,152 @@ what the first call answered. This agent-manager writes live only: it reports
 no `commit` capability, and a write in mode `commit` is refused as
 `unsupported`.
 
-Known gap: `start_session` answers a new session id that kagent's fixture
-does not list, so the session page it leads to has no session. The kagent
-fixtures (giantswarm/giantswarm#39251, item 7) close it.
+`start_session` creates the session in kagent's fixture (see "kagent"), so
+the session page it leads to opens it and sends the first prompt.
+
+### kagent
+
+The fixture `KagentApi`
+(`plugins/agent-platform/src/apis/fixtures/kagentFixtureState.ts`) serves
+each installation's sessions from the data set, with their conversations, and
+the sessions agent-manager's `start_session` creates. The answers go through
+the parsers the real client's go through, so the pages read what they read
+from kagent.
+
+- The conversations are the recorded kagent API v2 answers in
+  `@giantswarm/backstage-plugin-agent-platform-common/testFixtures`, recast
+  onto a session (its ids, its agent, its times;
+  `plugins/agent-platform/src/apis/fixtures/kagentConversations.ts`). A
+  session's newest turn is in the state its `turn` says: completed (tool calls
+  the person approved, an answer, and the recorded PNG attached to the
+  prompt), working (a reply being written, kept current), waiting on an
+  approval or on answers to questions, failed (the model provider's refusal),
+  canceled, and failed because kagent lost the session's runtime (reported on
+  the session too). The states no v1 recording has are derived from one, with
+  the words of the older recordings of that state.
+- The session states summary (the session lists and the rail) and the
+  usage summary (Usage · Your sessions) are computed with the backend's own
+  code, shared through agent-platform-common (`kagentSessionRollups.ts`):
+  the same selection (the sessions of the last seven days, at most twenty;
+  of the last 31 days, at most sixty), the same state of each session and
+  the same rollup of its turns. A session's record moves with its turns: a
+  new turn, an answer or a cancel makes it ready and moves its `updatedAt`.
+- A new turn replays the recorded stream, one frame per 300 ms (`FRAME_MS`),
+  with a reply that says it is a replay. The turn runs on a timer, so it goes
+  on when its stream is cut, as a real one does, and a subscription follows
+  it again. A second message while a turn runs is refused as kagent refuses
+  it, and so is a turn on a session whose runtime is being created, deleted
+  or failed. Answering an approval, a question or a sign-in resumes the
+  waiting turn, checked as the backend checks an answer (the request answered
+  already, another request since, a question rejected, an answer missing);
+  an approved tool call adds its recorded result before the reply. The seeded working
+  turn has no end: its stream stays open until it would be cut (55 seconds,
+  `STREAM_CUT_MS`), and stopping it cancels it.
+- Renaming, deleting and canceling are kept in memory, refused in the
+  backend's words; a cancel reaches the streams following the turn at once,
+  and a deleted session ends its streams and is gone from every read.
+- kagent on the unreachable installation fails every call as a timeout.
+- The model cost answers no cost yet (giantswarm/giantswarm#39251, item 8).
+
+### workspace-manager, toolchain-manager and skill-manager
+
+The three managers' tools answer from the data set too, so the Workspaces,
+Toolchains and Skills tabs, their detail and edit pages, and the New session
+dialog's workspace and toolchain pickers show data. agent-manager's `get_info`
+reports the `toolchains` and `defaultWorkspace` capabilities, which the
+dialog and the agent form ask for. Arguments and answers cross as JSON, as for
+agent-manager.
+
+- workspace-manager
+  (`plugins/agent-platform/src/apis/fixtures/workspaceManagerFixtureState.ts`)
+  lists the workspaces of the ready organizations the person is a member of,
+  in every state (synced, syncing, failed, pending its first sync, being
+  deleted), with their mirrors and the Session directories of the
+  organization's sessions. A sync mirrors everything a workspace selects, as
+  the manager fetches with the workspace's own credentials; the person's
+  access counts when they start a Session. Its two provider instances are one
+  the person granted and one they have not, which one workspace of each
+  installation selects from; the access check before a Session answers
+  granted, refused (a repository the person cannot read, a workspace not
+  synced yet or being deleted) or connect_required (that workspace). The
+  repository picker pages, searches and filters the owners' repositories
+  from the manager's own listing, whatever the person's grant, and the
+  preview resolves a selection as workspace-manager does. Creating, editing,
+  syncing and deleting a workspace are kept in memory: a sync runs for four
+  seconds (`SETTLE_MS`), a sync requested or an edit saved while one runs is
+  served after it, a workspace being deleted syncs no more, and a deleted
+  workspace goes once no Session directory is left on it.
+  Refusals use workspace-manager's wording (`<operation>: permission denied:
+…`, `not found`, `already exists`, `invalid workspace`, and the stale
+  `resourceVersion` of an edit as a conflict), so the client classifies them
+  as it classifies the real ones.
+- toolchain-manager
+  (`plugins/agent-platform/src/apis/fixtures/toolchainManagerFixtureState.ts`)
+  lists the toolchains of the offered sources at their newest version, one
+  name published by two sources, and an offered source it cannot read as
+  unreachable; describes any published version; lists the sources, configured
+  and added, approved and pending. Adding a source, searching packages,
+  writing a Dockerfile from them and opening its pull request are kept in
+  memory: the pull request moves on one build state per four seconds until it
+  waits for a merge. Its refusals are toolchain-manager's: a name two sources
+  publish, described without its source; a toolchain name or a Dockerfile
+  label the contract check would refuse; a source its App does not reach;
+  a toolchain the source has, or one with an open pull request.
+- skill-manager (`plugins/agent-platform/src/apis/fixtures/mcpServers/skillManager.ts`)
+  lists each installation's skill repositories in every state (readable,
+  private, read-only, failed, failed with its last listing kept, and private
+  and hidden from the person), with their skills and a plugin, and reads a
+  skill and its files. It writes nothing, as skill-manager does not; a new or
+  changed skill is a pull request through gs-backend, which fixture mode does
+  not serve (giantswarm/giantswarm#39251, item 9b). The pages of one
+  installation read it: an agent's page and the agent form. Customize ·
+  Skills reads the home installation's skills, and fixture mode has none (it
+  sets no `gs.authProvider`), so that tab still lists what gs-backend
+  discovers on GitHub (item 9b).
+
+### model-manager and cluster-manager
+
+Model hosting (Customize · Models · Model hosting: Running models, GPU pools,
+Model cache, and its Serve, Import, Pull, Add backend and Add GPU node pool
+flows) answers from one state
+(`plugins/agent-platform/src/apis/fixtures/modelHostingFixtureState.ts`),
+which model-manager's tools, cluster-manager's tools and the fixture
+`ModelManagerApi` share, as the two managers share an installation: the nodes
+model-manager places models on are the ready nodes of cluster-manager's pools,
+and a cluster's first pool registers its KServe backend.
+
+- model-manager runs a KServe and an Ollama backend in each installation
+  (`fennel`'s Ollama host unhealthy, so its failure shows beside the other
+  backend's models), with models served, starting, failing and downloaded,
+  pulls running and failed, the presets, the nodes with their budget and
+  cache, and a made-up Hugging Face Hub to search. A serve moves through its
+  phases (`scheduling` to `ready`, two seconds each), a pull finishes after
+  `PULL_MS`, and both are refused where model-manager refuses them: a model
+  that fits no node (`does_not_fit`), a model on none or several backends, a
+  served model deleted, a backend the chart configures, mode `commit`.
+  Refusals keep model-manager's `<code>: <error>` wording, so the client
+  names them as it names the real ones.
+- The fixture `ModelManagerApi` is the real client over the portal's
+  `MusterApi`, so its reads and the serving tools go through the same muster
+  and the same parsers; only `tryModel`, which the portal's backend carries
+  out, is answered by the fixture (401 without a token, the model's answer
+  with one). KServe weights stay only in a cluster's model cache: on a
+  cluster without one, a model is served or not listed.
+- cluster-manager lists the GPU cluster under each KServe backend, with its
+  GPU operator and serving slice, its pools in every phase and its model
+  cache claims (mounted, kept, pending) with their prices. Adding a pool
+  prices its sizes and the presets each hosts in the dry run, and the pool
+  comes up after a while; deleting one is refused while a model is served on
+  its nodes, naming them, unless forced; removing the cache is refused while
+  a served model reads from it. It offers mode `apply` only, and not the
+  Clusters page's `create_cluster` and `delete_cluster`.
+- `create_node_pool` is described with its input schema (the accelerators,
+  zones and cache the Add GPU node pool form offers): a fixture MCP server
+  declares the schemas a page reads in `inputSchemas`.
+
+Cost (Usage · Cost) reads the gateway's metrics from Mimir, not these
+managers, and the fixture installations have no Mimir (`mimirEnabled:
+false`), so it shows its "no observability stack" state.
 
 ### Objects in the Kubernetes API
 
@@ -187,11 +342,20 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
 - `baseDataSet()` is the base data set, built once from a fixed seed: the
   three served installations (`tarragon` unreachable), and in each
   organizations, agents, connectors, sessions, workflows and executions in
-  every state their pages know. The person has each role in the ready
+  every state their pages know, and what the platform managers serve
+  (`managerBuilders.ts`): the provider instances' owners and repositories,
+  workspaces, toolchain sources and toolchains, and skill repositories; and
+  model hosting (`hostingBuilders.ts`): model-manager's backends, their GPU
+  clusters with pools and cache claims, and their models. The
+  person has each role in the ready
   organizations of each installation (admin, editor, user, so the New agent form's "needs the
   editor role" shows), manages the orphaned, pending-erase and deleting ones and is no
   member of the pending one. Only ready agents of ready organizations have
-  sessions, and one pending agent has a failed release. Each installation's
+  sessions, and one pending agent has a failed release. Each session's `turn`
+  says what its newest turn came to; besides the sessions of each agent, every
+  installation has one session per turn state (`SESSION_TURNS`, the
+  `turnSessions` setting), moved in the last two days, drawn after every other
+  list so adding them changed none. Each installation's
   muster has three toolset presets made from its connectors and workflows
   (`buildToolsetPresets`, which draws no numbers): one that resolves in full,
   one that builds on `preset:read-only`, and one whose selectors match nothing
@@ -213,7 +377,10 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
   agent-platform's in
   `plugins/agent-platform/src/apis/fixtures/agentPlatformFixtureData.ts`
   (Agent objects and their carriers, ModelConfig and Harness objects,
-  agent-manager's agents and organizations, kagent sessions).
+  agent-manager's agents and organizations, kagent sessions), kagent's
+  conversations in `kagentConversations.ts`, and the managers' states next to
+  them (`workspaceManagerFixtureState.ts`,
+  `toolchainManagerFixtureState.ts`, `mcpServers/skillManager.ts`).
 
 A page that reads a new field or shows a new state extends a builder or a
 mapper in the same pull request, and the base data set gets the state.

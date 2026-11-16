@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Alert, Button, ButtonIcon, Flex, Link, Text } from '@backstage/ui';
@@ -68,6 +68,7 @@ export type StartNewSessionComposerProps = Pick<
   // A caller's own preselection (the home screen's `?agent=` link) wins over
   // the remembered last-used agent.
   | 'defaultAgent'
+  | 'defaultOverridesTyping'
 >;
 
 export type StartNewSessionProps = {
@@ -90,9 +91,17 @@ export type StartNewSessionProps = {
    * A prompt a link brought (`#prompt=`): the field starts with it, marked as
    * coming from a link, and it wins over a stored draft, prompt and agent
    * alike — the link is the newer intent; a note offers the draft back.
-   * Without it the draft's precedence above holds.
+   * The field takes the focus, the caret after the prompt, once
+   * `linkedAgentPending` is over, unless the person has pressed a key or a
+   * pointer on the page by then. Without it the draft's precedence above
+   * holds.
    */
   linkedPrompt?: string;
+  /**
+   * The agent a link names may still arrive (more installations are being
+   * read): the linked prompt waits for it before it takes the focus.
+   */
+  linkedAgentPending?: boolean;
   /**
    * Preselected when neither `composerProps.defaultAgent` nor a restored
    * draft names an agent: the installation's default agent. Wins over the
@@ -137,10 +146,27 @@ export function StartNewSession({
   titleMaxLength,
   draftName,
   linkedPrompt,
+  linkedAgentPending = false,
   suggestedAgent,
 }: StartNewSessionProps) {
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
+  // Whether the person pressed a key or a pointer on the page since it
+  // opened: a linked prompt that has to wait for its agent then leaves the
+  // focus to them.
+  const [interacted, setInteracted] = useState(false);
+  useEffect(() => {
+    if (linkedPrompt === undefined || interacted) {
+      return undefined;
+    }
+    const onInput = () => setInteracted(true);
+    document.addEventListener('pointerdown', onInput, true);
+    document.addEventListener('keydown', onInput, true);
+    return () => {
+      document.removeEventListener('pointerdown', onInput, true);
+      document.removeEventListener('keydown', onInput, true);
+    };
+  }, [linkedPrompt, interacted]);
   const agentsRoute = useRouteRef(agentsRouteRef);
   const {
     rows: agents,
@@ -440,6 +466,10 @@ export function StartNewSession({
       prompt={draftPrompt}
       onPromptChange={onPromptChange}
       onSelectedAgentChange={onSelectedAgentChange}
+      // The person goes on writing a prompt a link brought.
+      focusPromptAtEnd={
+        linkedPrompt !== undefined && !linkedAgentPending && !interacted
+      }
       agents={agents}
       isLoadingAgents={isLoadingMoreAgents}
       // The caller's agent (a `?agent=` link, the person's latest explicit

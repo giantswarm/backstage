@@ -39,13 +39,36 @@ const MARKERS = [
     marker: 'Fixture mode does not answer',
   },
   {
-    source: 'plugins/agent-platform/src/apis/fixtures/KagentFixtureApi.ts',
-    marker: 'kagent streamMessage',
+    source: 'plugins/agent-platform/src/apis/fixtures/kagentConversations.ts',
+    marker: 'Fixture mode replays this reply from a recorded kagent stream',
+  },
+  {
+    source: 'plugins/agent-platform/src/apis/fixtures/kagentFixtureState.ts',
+    marker: 'Fixture mode replays the rest of this turn',
+  },
+  {
+    source:
+      'plugins/agent-platform-common/src/kagent/__fixtures__/stream.kagent-4a91c273.json',
+    marker: 'Reply with exactly the word pong.',
   },
   {
     source:
       'plugins/agent-platform/src/apis/fixtures/ModelManagerFixtureApi.ts',
-    marker: 'model-manager pullModel',
+    marker: 'no healthy upstream for',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/modelHostingFixtureState.ts',
+    marker: 'InsufficientInstanceCapacity',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/mcpServers/clusterManager.ts',
+    marker: 'picks the EC2 instance family',
+  },
+  {
+    source: 'plugins/gs-common/src/fixtures/hostingBuilders.ts',
+    marker: 'ollamaUnhealthy',
   },
   {
     source:
@@ -65,6 +88,26 @@ const MARKERS = [
   {
     source: 'plugins/gs-common/src/fixtures/builders.ts',
     marker: 'A builder needs at least one state.',
+  },
+  {
+    source: 'plugins/gs-common/src/fixtures/managerBuilders.ts',
+    marker:
+      'with your sign-in: it is not installed there, or you have no access',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/workspaceManagerFixtureState.ts',
+    marker: 'the volume is provisioned at the first sync',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/toolchainManagerFixtureState.ts',
+    marker: 'A command line YAML processor',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/mcpServers/skillManager.ts',
+    marker: '1. Read the request and what it refers to.',
   },
   {
     source: 'plugins/muster/src/apis/fixtures/musterFixtureData.ts',

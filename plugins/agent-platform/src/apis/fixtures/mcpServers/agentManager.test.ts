@@ -1,5 +1,3 @@
-// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- fixture MCP servers are muster's.
-import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 import {
   createFixtureDataSet,
   type FixtureOrganization,
@@ -13,8 +11,10 @@ import {
   type AgentSpec,
 } from '../../../lib/agentManager';
 import { preparedCredentialOperation } from '../../../lib/credentialOperations';
+import { DEFAULT_MODEL_ANNOTATION } from '../../../lib/defaultModel';
 import { AgentManagerClient } from '../../AgentManagerClient';
 import { credentialOperationErrorCode } from '../../AgentManagerCredentialsApi';
+import { musterApiOf } from '../../../lib/__testUtils__/musterApiOf';
 import { AgentManagerCredentialsFixtureApi } from '../AgentManagerCredentialsFixtureApi';
 import {
   AgentManagerFixtureState,
@@ -32,20 +32,7 @@ function setup() {
   let now = NOW;
   const state = new AgentManagerFixtureState(data, () => now);
   const server = agentManagerFixtureServer(() => state);
-  // The fixture MusterApi's dispatch, by `x_<server>_<tool>`.
-  const musterApi = {
-    callTool: async (
-      name: string,
-      args: Record<string, unknown>,
-      installation: string,
-    ) => {
-      const tool = name.replace(`x_${server.server}_`, '');
-      return server.tools[tool](args, {
-        installation,
-        signal: new AbortController().signal,
-      });
-    },
-  } as unknown as MusterApi;
+  const musterApi = musterApiOf(server);
   const organizationWith = (role: OrganizationRole): FixtureOrganization =>
     data.organizations.find(
       organization =>
@@ -360,6 +347,89 @@ describe('the fixture agent-manager', () => {
     expect(
       (await credentials.getOperation(INSTALLATION, operation)).operation.state,
     ).toBe('complete');
+  });
+
+  it('reports the platform and the organizations the person may create agents in as managed', async () => {
+    const { client, data, organizationWith } = setup();
+    const deleting = data.organizations.find(
+      organization =>
+        organization.installation === INSTALLATION &&
+        organization.state === 'deleting',
+    )!;
+    const { namespaces } = await client.getInfo();
+
+    expect(namespaces.default).toBe('kagent');
+    expect(namespaces.managed[0]).toBe('kagent');
+    expect(namespaces.managed).toContain(organizationWith('admin').namespace);
+    expect(namespaces.managed).toContain(organizationWith('editor').namespace);
+    expect(namespaces.managed).not.toContain(
+      organizationWith('user').namespace,
+    );
+    expect(deleting.role).toBe('admin');
+    expect(namespaces.managed).not.toContain(deleting.namespace);
+  });
+
+  it('lets only an organization’s admins create its models', () => {
+    const { state, organizationWith } = setup();
+    const createModelIn = (namespace: string | undefined) =>
+      state.allows(INSTALLATION, {
+        verb: 'create',
+        group: 'api.kagent.dev',
+        resource: 'modelconfigs',
+        namespace,
+      });
+
+    expect(createModelIn(organizationWith('admin').namespace)).toBe(true);
+    expect(createModelIn(organizationWith('editor').namespace)).toBe(false);
+    expect(createModelIn(organizationWith('user').namespace)).toBe(false);
+    expect(createModelIn('kagent')).toBeUndefined();
+    expect(
+      state.allows(INSTALLATION, {
+        verb: 'create',
+        group: 'api.kagent.dev',
+        resource: 'agents',
+        namespace: organizationWith('editor').namespace,
+      }),
+    ).toBeUndefined();
+  });
+
+  it('annotates the default model and moves the annotation with the mark', async () => {
+    const { client, credentials, organizationWith, state } = setup();
+    const { namespace } = organizationWith('admin');
+    const markedIn = () =>
+      state
+        .kubernetesObjectsOf(INSTALLATION)
+        .filter(
+          object =>
+            object.kind === 'ModelConfig' &&
+            object.metadata.namespace === namespace &&
+            object.metadata.annotations?.[DEFAULT_MODEL_ANNOTATION] === 'true',
+        )
+        .map(object => object.metadata.name);
+    expect(markedIn()).toEqual(['default']);
+
+    const prepared = await client.setOrganizationModel({
+      namespace: namespace!,
+      name: 'claude-sonnet',
+      provider: 'Anthropic',
+      model: 'claude-sonnet-4-6',
+      requestId: 'request-1',
+    });
+    const operation = preparedCredentialOperation(prepared)!;
+    const read = await credentials.getOperation(INSTALLATION, operation);
+    const [pair] = read.operation.result!.credentials!;
+    await credentials.saveOperation(INSTALLATION, operation, read.etag, [
+      { secret: pair.secret, key: pair.key, value: 'a value' },
+    ]);
+    expect(markedIn()).toEqual(['default']);
+
+    await client.setOrganizationModel({
+      namespace: namespace!,
+      name: 'claude-sonnet',
+      default: true,
+      requestId: 'request-2',
+    });
+    expect(markedIn()).toEqual(['claude-sonnet']);
   });
 
   it('asks for a new key of a model, and cancels the request', async () => {

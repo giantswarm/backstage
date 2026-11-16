@@ -4,6 +4,8 @@ import {
 } from '@backstage/frontend-plugin-api';
 import { FIXTURE_MCP_SERVERS } from '@giantswarm/backstage-plugin-gs-common';
 
+import type { JsonSchema } from './types';
+
 /**
  * What a fixture tool handler is called with besides the tool's arguments:
  * the installation the call targets and the caller's abort signal.
@@ -31,6 +33,12 @@ export type FixtureToolHandler = (
 export type FixtureMcpServer = {
   server: string;
   tools: Record<string, FixtureToolHandler>;
+  /**
+   * The input schemas of the tools whose schema a page reads (through
+   * `describeTool`), by the tool's own name; the others are described
+   * without one.
+   */
+  inputSchemas?: Record<string, JsonSchema>;
 };
 
 /**

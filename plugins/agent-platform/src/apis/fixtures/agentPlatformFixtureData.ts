@@ -30,6 +30,8 @@ import type {
   AgentPluginEntry,
   AgentSkillEntry,
 } from '../../lib/agentManager';
+import { DEFAULT_MODEL_ANNOTATION } from '../../lib/defaultModel';
+import { DEFAULT_WORKSPACE_ANNOTATION } from '../../lib/defaultWorkspace';
 import { MUSTER_MCP_SERVER_NAME, TOOLSET_HEADER } from '../../lib/toolset';
 import {
   ORPHANED_DELETE_MERGED,
@@ -38,6 +40,7 @@ import {
   type OrganizationPermissions,
 } from '../../lib/organizations';
 import { FIXTURE_USER } from './fixtureIdentity';
+import { runtimeLostFailure } from './kagentConversations';
 
 /**
  * The fixture data set's records as the agent-platform plugin's clients read
@@ -204,6 +207,9 @@ export function agentObjectOf(
         'ui.giantswarm.io/display-name': agent.displayName,
         ...(tags.length > 0 && { [TAGS_ANNOTATION]: tags.join(',') }),
         ...(agent.iconUrl && { 'ui.giantswarm.io/icon-url': agent.iconUrl }),
+        ...(agent.defaultWorkspace && {
+          [DEFAULT_WORKSPACE_ANNOTATION]: agent.defaultWorkspace,
+        }),
       },
     },
     spec: {
@@ -383,6 +389,11 @@ const PERMISSIONS: Record<OrganizationRole, OrganizationPermissions> = {
   none: { manage: false, member: false, createAgents: false },
 };
 
+/** What a role in an organization lets the person do there. */
+export function permissionsOf(role: OrganizationRole): OrganizationPermissions {
+  return PERMISSIONS[role];
+}
+
 /**
  * An organization as `list_organizations` lists it: with the object
  * `get_organization` answers when the person manages it, its status only
@@ -392,7 +403,7 @@ export function listedOrganizationOf(
   organization: FixtureOrganization,
 ): ListedOrganization {
   const details = platformOrganizationOf(organization);
-  const permissions = PERMISSIONS[organization.role];
+  const permissions = permissionsOf(organization.role);
   return {
     name: organization.name,
     parent: organization.parent,
@@ -421,6 +432,9 @@ export function sessionRecordOf(session: FixtureSession): SessionRecordWire {
         reason: 'WorkerLost',
         message: 'The worker running the session stopped answering.',
       },
+    }),
+    ...(session.turn === 'runtimeLost' && {
+      failure: runtimeLostFailure(session.id),
     }),
     changed: [],
   };
@@ -454,7 +468,10 @@ export type FixtureModel = {
   key: string;
 };
 
-/** A model as the `ModelConfig` object the pages list, accepted and resolved. */
+/**
+ * A model as the `ModelConfig` object the pages list, accepted and resolved,
+ * the namespace's default annotated as agent-manager marks it.
+ */
 export function modelConfigObjectOf(
   model: FixtureModel,
   at: string,
@@ -467,6 +484,9 @@ export function modelConfigObjectOf(
       namespace: model.namespace,
       generation: 1,
       creationTimestamp: at,
+      ...(model.default && {
+        annotations: { [DEFAULT_MODEL_ANNOTATION]: 'true' },
+      }),
     },
     spec: {
       provider: model.provider,
