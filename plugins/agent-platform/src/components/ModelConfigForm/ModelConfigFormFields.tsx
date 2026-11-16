@@ -237,6 +237,7 @@ export function ModelConfigFormFields({
             {isVertexAI && (
               <TextField
                 label="Google Cloud project"
+                isRequired
                 value={values.projectID}
                 onChange={projectID => onChange({ projectID })}
                 description={

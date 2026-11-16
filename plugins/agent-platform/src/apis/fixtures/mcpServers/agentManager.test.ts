@@ -20,10 +20,16 @@ import { AgentManagerCredentialsFixtureApi } from '../AgentManagerCredentialsFix
 import {
   AgentManagerFixtureState,
   ERASURE_STEPS,
+  HELM_PLATFORM_MODEL,
   OPERATION_TTL_MS,
   SETTLE_MS,
+  UNUSED_VERTEX_MODEL,
 } from '../agentManagerFixtureState';
-import { agentManagerFixtureServer } from './agentManager';
+import { MODEL_CONFIG_NAMESPACE } from '../../../lib/modelConfigs';
+import {
+  agentManagerFixtureServer,
+  WITHOUT_MODEL_OPERATIONS,
+} from './agentManager';
 
 const NOW = Date.parse('2026-11-14T12:00:00Z');
 const INSTALLATION = 'meadow';
@@ -324,7 +330,7 @@ describe('the fixture agent-manager', () => {
     expect(operation).toMatch(/^[a-f0-9]{48}$/);
     expect(
       (await client.listModelConfigs(namespace!)).map(model => model.name),
-    ).toEqual(['default']);
+    ).toEqual(['default', UNUSED_VERTEX_MODEL]);
 
     const read = await credentials.getOperation(INSTALLATION, operation);
     expect(read.operation).toMatchObject({ state: 'pending', mode: 'apply' });
@@ -344,7 +350,7 @@ describe('the fixture agent-manager', () => {
     expect(saved).toMatchObject({ kind: 'model', created: true });
     expect(
       (await client.listModelConfigs(namespace!)).map(model => model.name),
-    ).toEqual(['default', 'claude-sonnet']);
+    ).toEqual(['default', UNUSED_VERTEX_MODEL, 'claude-sonnet']);
     expect(
       (await credentials.getOperation(INSTALLATION, operation)).operation.state,
     ).toBe('complete');
@@ -465,7 +471,7 @@ describe('the fixture agent-manager', () => {
       organization.parent,
       organization.name,
     );
-    expect(erases?.models).toEqual(['default']);
+    expect(erases?.models).toEqual(['default', UNUSED_VERTEX_MODEL]);
     const result = await client.deleteOrganization({
       parent: organization.parent,
       name: organization.name,
@@ -683,15 +689,240 @@ describe('the fixture agent-manager', () => {
   });
 });
 
-it('declares the set_organization_model fields the model forms send', () => {
+it('declares the set_organization_model fields the model forms send, except on the installation that predates them', () => {
   const { server } = setup();
+  const schema =
+    server.inputSchemas?.[AGENT_MANAGER_TOOLS.setOrganizationModel];
+  const schemaOf = (installation: string) =>
+    (typeof schema === 'function' ? schema(installation) : schema) as {
+      properties?: Record<string, unknown>;
+    };
+  expect(hasModelOperations(schemaOf(INSTALLATION))).toBe(true);
+  expect(hasModelOperations(schemaOf(WITHOUT_MODEL_OPERATIONS))).toBe(false);
+});
+
+it('adds a Vertex AI model whose key is a service-account JSON of its project', async () => {
+  const { client, credentials, organizationWith, state } = setup();
+  const namespace = organizationWith('admin').namespace!;
+  const result = await client.setOrganizationModel({
+    namespace,
+    name: 'claude-vertex',
+    displayName: 'Claude on Vertex AI',
+    provider: 'AnthropicVertexAI',
+    model: 'claude-sonnet-4-6',
+    projectID: 'fixture-models',
+    location: 'europe-west1',
+    create: true,
+    requestId: 'request-1',
+  });
+  const operation = preparedCredentialOperation(result)!;
+  const read = await credentials.getOperation(INSTALLATION, operation);
+  const [pair] = read.operation.result!.credentials!;
+  expect(pair).toMatchObject({
+    key: 'GOOGLE_APPLICATION_CREDENTIALS',
+    inputFormat: 'google-service-account-json',
+  });
+  expect(read.operation.changes?.[0].object?.spec).toMatchObject({
+    apiKeySecret: pair.secret,
+    apiKeySecretKey: pair.key,
+    anthropicVertexAI: {
+      projectID: 'fixture-models',
+      location: 'europe-west1',
+    },
+  });
+
+  const keyOf = (project: string) =>
+    JSON.stringify({
+      type: 'service_account',
+      project_id: project,
+      client_email: `portal@${project}.iam.gserviceaccount.com`,
+    });
+  const wrongProject = await credentials
+    .saveOperation(INSTALLATION, operation, read.etag, [
+      { secret: pair.secret, key: pair.key, value: keyOf('other-project') },
+    ])
+    .catch(caught => caught);
+  expect(credentialOperationErrorCode(wrongProject)).toBe('invalid_request');
+
+  await credentials.saveOperation(INSTALLATION, operation, read.etag, [
+    { secret: pair.secret, key: pair.key, value: keyOf('fixture-models') },
+  ]);
+  const model = state
+    .kubernetesObjectsOf(INSTALLATION)
+    .find(
+      object =>
+        object.kind === 'ModelConfig' &&
+        object.metadata.namespace === namespace &&
+        object.metadata.name === 'claude-vertex',
+    ) as { metadata: { annotations?: Record<string, string> }; spec?: unknown };
+  expect(model.metadata.annotations?.['ui.giantswarm.io/display-name']).toBe(
+    'Claude on Vertex AI',
+  );
+  expect(model.spec).toMatchObject({
+    anthropicVertexAI: {
+      projectID: 'fixture-models',
+      location: 'europe-west1',
+    },
+  });
+});
+
+it('refuses a Vertex AI model without a valid location', async () => {
+  const { client, organizationWith } = setup();
+  await expect(
+    client.setOrganizationModel({
+      namespace: organizationWith('admin').namespace!,
+      name: 'gemini',
+      provider: 'GeminiVertexAI',
+      model: 'gemini-2.5-flash',
+      projectID: 'fixture-models',
+      requestId: 'request-1',
+    }),
+  ).rejects.toMatchObject({ code: 'invalid_request' });
+});
+
+it("asks for a Vertex AI model's new key as a service-account JSON", async () => {
+  const { client, credentials, organizationWith } = setup();
+  const result = await client.replaceOrganizationCredential({
+    namespace: organizationWith('admin').namespace!,
+    secret: `${UNUSED_VERTEX_MODEL}-model-key`,
+    key: 'GOOGLE_APPLICATION_CREDENTIALS',
+    requestId: 'request-1',
+  });
+  const read = await credentials.getOperation(
+    INSTALLATION,
+    preparedCredentialOperation(result)!,
+  );
+  expect(read.operation.result?.credentials).toEqual([
+    expect.objectContaining({
+      state: 'replace',
+      inputFormat: 'google-service-account-json',
+    }),
+  ]);
+  expect(read.operation.references).toEqual([
+    expect.objectContaining({
+      name: UNUSED_VERTEX_MODEL,
+      projectID: 'fixture-models',
+      location: 'europe-west1',
+    }),
+  ]);
+});
+
+it("writes the installation's models in platform scope", async () => {
+  const { client, credentials, state } = setup();
+  const result = await client.setOrganizationModel({
+    namespace: MODEL_CONFIG_NAMESPACE,
+    name: 'claude',
+    provider: 'Anthropic',
+    model: 'claude-sonnet-4-6',
+    endpoint: 'https://llm.example.com',
+    create: true,
+    requestId: 'request-1',
+  });
+  const operation = preparedCredentialOperation(result)!;
+  const read = await credentials.getOperation(INSTALLATION, operation);
+  expect(read.operation.organization).toEqual({
+    scope: 'platform',
+    namespace: MODEL_CONFIG_NAMESPACE,
+  });
+  const [pair] = read.operation.result!.credentials!;
+  expect(pair.secret).toBe('tenant-credential-claude');
+  await credentials.saveOperation(INSTALLATION, operation, read.etag, [
+    { secret: pair.secret, key: pair.key, value: 'a value' },
+  ]);
   expect(
-    hasModelOperations(
-      server.inputSchemas?.[AGENT_MANAGER_TOOLS.setOrganizationModel] as {
-        properties?: Record<string, unknown>;
-      },
-    ),
-  ).toBe(true);
+    state
+      .listModelConfigs(INSTALLATION, MODEL_CONFIG_NAMESPACE)
+      .map(model => model.name),
+  ).toEqual([HELM_PLATFORM_MODEL, 'claude']);
+
+  await expect(
+    client.setOrganizationModel({
+      namespace: MODEL_CONFIG_NAMESPACE,
+      name: 'local',
+      provider: 'Ollama',
+      model: 'llama3',
+      noCredential: true,
+      create: true,
+      requestId: 'request-2',
+    }),
+  ).resolves.toMatchObject({ created: true });
+  await expect(
+    client.deleteModel(MODEL_CONFIG_NAMESPACE, 'claude'),
+  ).resolves.toMatchObject({ deleted: true });
+});
+
+it('keeps endpoint and noCredential to installation models', async () => {
+  const { client, organizationWith } = setup();
+  await expect(
+    client.setOrganizationModel({
+      namespace: organizationWith('admin').namespace!,
+      name: 'gpt',
+      provider: 'OpenAI',
+      model: 'gpt-4.1',
+      endpoint: 'https://llm.example.com',
+      requestId: 'request-1',
+    }),
+  ).rejects.toMatchObject({ code: 'invalid_request' });
+});
+
+it("refuses to move the default off, edit, delete or replace the key of the installation's Helm-managed model", async () => {
+  const { client, state } = setup();
+  await client.setOrganizationModel({
+    namespace: MODEL_CONFIG_NAMESPACE,
+    name: 'local',
+    provider: 'Ollama',
+    model: 'llama3',
+    noCredential: true,
+    requestId: 'request-1',
+  });
+  for (const write of [
+    () =>
+      client.setOrganizationModel({
+        namespace: MODEL_CONFIG_NAMESPACE,
+        name: 'local',
+        default: true,
+        requestId: 'request-2',
+      }),
+    () =>
+      client.setOrganizationModel({
+        namespace: MODEL_CONFIG_NAMESPACE,
+        name: HELM_PLATFORM_MODEL,
+        model: 'gpt-4.1-mini',
+        requestId: 'request-3',
+      }),
+    () => client.deleteModel(MODEL_CONFIG_NAMESPACE, HELM_PLATFORM_MODEL),
+  ]) {
+    await expect(write()).rejects.toMatchObject({ code: 'gitops_owned' });
+  }
+  await expect(
+    client.replaceOrganizationCredential({
+      namespace: MODEL_CONFIG_NAMESPACE,
+      secret: 'kagent-openai',
+      key: 'OPENAI_API_KEY',
+      requestId: 'request-4',
+    }),
+  ).rejects.toMatchObject({ code: 'invalid_request' });
+  const helm = state
+    .kubernetesObjectsOf(INSTALLATION)
+    .find(object => object.metadata.name === HELM_PLATFORM_MODEL)!;
+  expect(helm.metadata.annotations).toMatchObject({
+    'meta.helm.sh/release-name': 'kagent',
+    'agent-platform.giantswarm.io/is-default-model-config': 'true',
+  });
+});
+
+it('refuses a create of a model that exists by then', async () => {
+  const { client, organizationWith } = setup();
+  await expect(
+    client.setOrganizationModel({
+      namespace: organizationWith('admin').namespace!,
+      name: UNUSED_VERTEX_MODEL,
+      provider: 'GeminiVertexAI',
+      model: 'gemini-2.5-pro',
+      create: true,
+      requestId: 'request-1',
+    }),
+  ).rejects.toMatchObject({ code: 'already_exists' });
 });
 
 it('deletes a model through delete_organization_object', async () => {

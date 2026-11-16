@@ -463,10 +463,50 @@ export type FixtureModel = {
   model: string;
   /** The namespace's default model. */
   default: boolean;
-  /** The Secret and key the model reads its key from. */
+  /** The Secret and key the model reads its key from; no Secret reads none. */
   secret: string;
   key: string;
+  displayName?: string;
+  /** Vertex AI: the Google Cloud project and location the model runs in. */
+  projectID?: string;
+  location?: string;
+  /** OpenAI, Anthropic: the base URL; Ollama: the host. */
+  endpoint?: string;
+  /** The Helm release that renders the model, which a portal write must not fight. */
+  helmRelease?: string;
 };
+
+/** The block of a ModelConfig's spec that holds a provider's settings. */
+const PROVIDER_BLOCKS: Partial<Record<string, string>> = {
+  OpenAI: 'openAI',
+  Anthropic: 'anthropic',
+  Ollama: 'ollama',
+  AnthropicVertexAI: 'anthropicVertexAI',
+  GeminiVertexAI: 'geminiVertexAI',
+};
+
+/** Whether a provider runs on Vertex AI, which reads a service-account key. */
+export function isVertexProvider(provider: string | undefined): boolean {
+  return provider === 'AnthropicVertexAI' || provider === 'GeminiVertexAI';
+}
+
+/** The provider block of a model's spec, as agent-manager writes it. */
+export function providerBlockOf(
+  model: FixtureModel,
+): Record<string, Record<string, string>> {
+  const block = PROVIDER_BLOCKS[model.provider ?? ''];
+  if (!block) {
+    return {};
+  }
+  const settings: Record<string, string> = {};
+  if (isVertexProvider(model.provider)) {
+    if (model.projectID) settings.projectID = model.projectID;
+    if (model.location) settings.location = model.location;
+  } else if (model.endpoint) {
+    settings[model.provider === 'Ollama' ? 'host' : 'baseUrl'] = model.endpoint;
+  }
+  return Object.keys(settings).length > 0 ? { [block]: settings } : {};
+}
 
 /**
  * A model as the `ModelConfig` object the pages list, accepted and resolved,
@@ -484,15 +524,28 @@ export function modelConfigObjectOf(
       namespace: model.namespace,
       generation: 1,
       creationTimestamp: at,
-      ...(model.default && {
-        annotations: { [DEFAULT_MODEL_ANNOTATION]: 'true' },
+      annotations: {
+        ...(model.default && { [DEFAULT_MODEL_ANNOTATION]: 'true' }),
+        ...(model.displayName && {
+          'ui.giantswarm.io/display-name': model.displayName,
+        }),
+        ...(model.helmRelease && {
+          'meta.helm.sh/release-name': model.helmRelease,
+          'meta.helm.sh/release-namespace': model.namespace,
+        }),
+      },
+      ...(model.helmRelease && {
+        labels: { 'app.kubernetes.io/managed-by': 'Helm' },
       }),
     },
     spec: {
       provider: model.provider,
       model: model.model,
-      apiKeySecret: model.secret,
-      apiKeySecretKey: model.key,
+      ...(model.secret && {
+        apiKeySecret: model.secret,
+        apiKeySecretKey: model.key,
+      }),
+      ...providerBlockOf(model),
     },
     status: {
       observedGeneration: 1,

@@ -450,6 +450,7 @@ export function CredentialFormPage({
     breadcrumbs,
     documentTitle: ['Enter a credential', name ?? namespace ?? 'Installation'],
   };
+  const startAgainFrom = namespace ? 'Models' : 'the organization’s tab';
   const backLink = organizationHref ? (
     <Link href={organizationHref}>Back to {name ?? 'models'}</Link>
   ) : undefined;
@@ -498,7 +499,7 @@ export function CredentialFormPage({
       }
       if (phase !== 'values' && phase !== 'finish') {
         throw new Error(
-          'This request cannot be saved. Start again from the organization’s tab.',
+          `This request cannot be saved. Start again from ${startAgainFrom}.`,
         );
       }
       const entered =
@@ -588,7 +589,11 @@ export function CredentialFormPage({
       <ShellPage title="Enter a credential" {...frame}>
         <EmptyStateCard
           title="This link names no request"
-          description={`A credential is entered for one request: from the Models or Connectors tab of ${name}, or from the link an agent sends you.`}
+          description={
+            namespace
+              ? 'A credential is entered for one request: from Models, or from the link an agent sends you.'
+              : `A credential is entered for one request: from the Models or Connectors tab of ${name}, or from the link an agent sends you.`
+          }
           actions={backLink}
         />
       </ShellPage>
@@ -629,7 +634,7 @@ export function CredentialFormPage({
           }
           description={
             notFound
-              ? 'It expired, was cancelled, or was started by someone else. Start again from the organization’s tab or ask the agent again.'
+              ? `It expired, was cancelled, or was started by someone else. Start again from ${startAgainFrom} or ask the agent again.`
               : credentialOperationErrorMessage(query.error)
           }
           actions={
@@ -720,7 +725,7 @@ export function CredentialFormPage({
           <Alert
             status="info"
             title="Request cancelled"
-            description="Nothing was saved. Start again from the organization’s tab or ask the agent again."
+            description={`Nothing was saved. Start again from ${startAgainFrom} or ask the agent again.`}
           />
         ) : null}
         {takesValues && operation.state === 'uncertain' ? (

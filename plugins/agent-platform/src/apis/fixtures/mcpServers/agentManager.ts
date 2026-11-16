@@ -29,6 +29,13 @@ import {
 import { FIXTURE_HARNESS } from '../agentPlatformFixtureData';
 import { asJson, text } from './jsonTools';
 
+/**
+ * The installation whose agent-manager predates model credential operations:
+ * its `set_organization_model` takes none of {@link MODEL_OPERATION_FIELDS},
+ * so the portal refuses every model write there.
+ */
+export const WITHOUT_MODEL_OPERATIONS = 'fennel';
+
 /** What the fixture agent-manager of an installation composes and can do. */
 const infoOf = (installation: string, managed: string[]): AgentManagerInfo => ({
   version: '1.0.0-fixture',
@@ -187,7 +194,7 @@ export function agentManagerFixtureServer(
     server: AGENT_MANAGER_SERVER,
     tools: asJson(tools),
     inputSchemas: {
-      [AGENT_MANAGER_TOOLS.setOrganizationModel]: {
+      [AGENT_MANAGER_TOOLS.setOrganizationModel]: installation => ({
         type: 'object',
         properties: Object.fromEntries(
           [
@@ -199,10 +206,12 @@ export function agentManagerFixtureServer(
             'default',
             'requestId',
             'insecureSkipTLSVerify',
-            ...MODEL_OPERATION_FIELDS,
+            ...(installation === WITHOUT_MODEL_OPERATIONS
+              ? []
+              : MODEL_OPERATION_FIELDS),
           ].map(field => [field, {}]),
         ),
-      },
+      }),
     },
   };
 }
