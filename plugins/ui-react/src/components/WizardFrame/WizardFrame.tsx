@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type MouseEvent,
+  type RefObject,
   type ReactNode,
 } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -54,6 +55,12 @@ const RAIL_GAP = 24;
  * steps: a short title ("Add connector") and its context line on one row.
  */
 const HEADING_MIN_WIDTH = 320;
+
+/** The header's gap between the heading, the steps and the spacer. */
+const HEADER_COLUMN_GAP = 16;
+
+/** The gap between the close button, the title and its context line. */
+const HEADING_GAP = 12;
 
 /** The column's horizontal padding at the two-column tier, both sides. */
 const COLUMN_PADDING_X = 64;
@@ -122,22 +129,21 @@ const useStyles = makeStyles({
     display: 'flex',
     alignItems: 'center',
     flexWrap: 'wrap',
-    gap: '8px 16px',
+    gap: `8px ${HEADER_COLUMN_GAP}px`,
     padding: '8px 16px',
     borderBottom: '1px solid var(--bui-border-1)',
     [TWO_COLUMN_MEDIA]: {
       padding: '8px 24px',
     },
   },
-  // Shares the row with the steps and the spacer, which centres them. Below
-  // `HEADING_MIN_WIDTH` the steps wrap to a row of their own rather than
-  // squeeze the title to a few letters.
+  // Shares the row with the steps and the spacer, which centres them, while
+  // both keep the heading's floor (`useHeaderLayout`); narrower, the steps
+  // take a row of their own rather than squeeze the title to a few letters.
   heading: {
     flex: '1 1 0',
     display: 'flex',
     alignItems: 'center',
-    gap: 12,
-    minWidth: `min(100%, ${HEADING_MIN_WIDTH}px)`,
+    gap: HEADING_GAP,
   },
   close: {
     width: 34,
@@ -169,7 +175,7 @@ const useStyles = makeStyles({
     minWidth: 0,
     display: 'flex',
     alignItems: 'center',
-    gap: 12,
+    gap: HEADING_GAP,
     [PHONE_MEDIA]: {
       flexDirection: 'column',
       alignItems: 'flex-start',
@@ -203,6 +209,10 @@ const useStyles = makeStyles({
     gap: 8,
     listStyle: 'none',
     margin: 0,
+    '&$stepsOnOwnRow': {
+      flexBasis: '100%',
+      justifyContent: 'center',
+    },
     padding: 0,
   },
   step: {
@@ -274,6 +284,8 @@ const useStyles = makeStyles({
     borderRadius: 999,
     background: 'var(--bui-fg-primary)',
   },
+  // The steps on a row of their own, centred under the title.
+  stepsOnOwnRow: {},
   spacer: {
     flex: '1 1 0',
     display: 'none',
@@ -445,6 +457,96 @@ export function useWizardFrameRail(): { docked: boolean } {
  * Measures the frame (for a docked side panel) and its footer (for the scroll
  * clearance), publishing the footer's height as a CSS variable on the frame.
  */
+/** The width text takes laid out on one line: its lines' widths, summed. */
+function textWidth(element: Element | null | undefined): number {
+  if (!element) {
+    return 0;
+  }
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  if (typeof range.getClientRects !== 'function') {
+    return 0;
+  }
+  return Array.from(range.getClientRects()).reduce(
+    (sum, rect) => sum + rect.width,
+    0,
+  );
+}
+
+/**
+ * The header's layout at the two-column tier, measured: the heading's
+ * floor — what its close button, title and context line take on one row,
+ * at most `HEADING_MIN_WIDTH` (a longer title ends in an ellipsis) — and
+ * whether the steps go on a row of their own, centred under the title:
+ * when the heading and the spacer on either side of them can't both keep
+ * that floor, which keeps the steps centred on one row. The steps' width is
+ * their items' extent, which doesn't depend on the row they're on.
+ * Unmeasured (no layout yet), the steps share the row and the floor is
+ * `HEADING_MIN_WIDTH`.
+ */
+function useHeaderLayout(
+  headerRef: RefObject<HTMLElement>,
+  headingRef: RefObject<HTMLElement>,
+  stepsRef: RefObject<HTMLElement>,
+  layoutKey: string,
+): { stepsOnOwnRow: boolean; headingMinWidth: number } {
+  const [layout, setLayout] = useState({
+    stepsOnOwnRow: false,
+    headingMinWidth: HEADING_MIN_WIDTH,
+  });
+
+  useEffect(() => {
+    const header = headerRef.current;
+    const heading = headingRef.current;
+    if (!header || !heading) {
+      return undefined;
+    }
+    const measure = () => {
+      const style = getComputedStyle(header);
+      const room =
+        header.clientWidth -
+        parseFloat(style.paddingLeft || '0') -
+        parseFloat(style.paddingRight || '0');
+      if (room <= 0) {
+        return;
+      }
+      const close = heading.firstElementChild;
+      const title = heading.querySelector('h1');
+      const context = title?.nextElementSibling;
+      const needed =
+        (close?.getBoundingClientRect().width ?? 0) +
+        HEADING_GAP +
+        (title?.scrollWidth ?? 0) +
+        (context ? HEADING_GAP + textWidth(context) : 0);
+      const headingMinWidth = Math.min(HEADING_MIN_WIDTH, Math.ceil(needed));
+      const items = stepsRef.current?.children;
+      const stepsWidth =
+        items && items.length > 0
+          ? items[items.length - 1].getBoundingClientRect().right -
+            items[0].getBoundingClientRect().left
+          : 0;
+      const stepsOnOwnRow =
+        stepsWidth > 0 &&
+        room < 2 * headingMinWidth + stepsWidth + 2 * HEADER_COLUMN_GAP;
+      setLayout(previous =>
+        previous.stepsOnOwnRow === stepsOnOwnRow &&
+        previous.headingMinWidth === headingMinWidth
+          ? previous
+          : { stepsOnOwnRow, headingMinWidth },
+      );
+    };
+    measure();
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? undefined
+        : new ResizeObserver(measure);
+    observer?.observe(header);
+    return () => observer?.disconnect();
+  }, [headerRef, headingRef, stepsRef, layoutKey]);
+
+  return layout;
+}
+
 function useFrameMeasurements() {
   const rootRef = useRef<HTMLDivElement>(null);
   const footerRef = useRef<HTMLElement>(null);
@@ -645,8 +747,29 @@ export function WizardFrame({
         WIZARD_ASIDE_MIN_COLUMN);
   const currentIndex = steps?.findIndex(step => step.id === currentStep) ?? -1;
 
+  const headerRef = useRef<HTMLElement>(null);
+  const stepsRef = useRef<HTMLOListElement>(null);
+  const headingRef = useRef<HTMLDivElement>(null);
+  const headerLayout = useHeaderLayout(
+    headerRef,
+    headingRef,
+    stepsRef,
+    // What changes the widths it measures: the steps' labels and the current
+    // one's weight, the title and its context line.
+    [...(steps ?? []).map(step => step.label), currentIndex, title, isPhone]
+      .map(String)
+      .join('\n'),
+  );
+  // A phone has its own step strip, on a row of its own anyway.
+  const stepsOnOwnRow = headerLayout.stepsOnOwnRow && !isPhone;
   const stepList = steps && steps.length > 0 && (
-    <ol aria-label="Steps" className={classes.steps}>
+    <ol
+      ref={stepsRef}
+      aria-label="Steps"
+      className={`${classes.steps} ${
+        stepsOnOwnRow ? classes.stepsOnOwnRow : ''
+      }`}
+    >
       {steps.map((step, index) => {
         const done = currentIndex >= 0 && index < currentIndex;
         const current = index === currentIndex;
@@ -726,8 +849,14 @@ export function WizardFrame({
         data-field-validation-scope=""
         style={asideWidth > 0 ? { paddingRight: asideWidth } : undefined}
       >
-        <header className={classes.header}>
-          <div className={classes.heading}>
+        <header ref={headerRef} className={classes.header}>
+          <div
+            ref={headingRef}
+            className={classes.heading}
+            style={{
+              minWidth: `min(100%, ${headerLayout.headingMinWidth}px)`,
+            }}
+          >
             <Link
               standalone
               href={closeHref}
@@ -760,7 +889,7 @@ export function WizardFrame({
               {meta}
             </Text>
           ) : (
-            <div className={classes.spacer} />
+            !stepsOnOwnRow && <div className={classes.spacer} />
           )}
         </header>
         <WizardRailContext.Provider value={railDocked}>

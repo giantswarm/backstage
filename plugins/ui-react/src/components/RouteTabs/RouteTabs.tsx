@@ -4,7 +4,13 @@ import { Tab, TabList, Tabs } from '@backstage/ui';
 import { RouterProvider } from 'react-aria-components';
 import { makeStyles } from '@material-ui/core';
 import { useSplatBasePath } from '../../hooks/useSplatBasePath';
-import { PHONE_MEDIA, useMediaQueryMatch } from '../../utils/breakpoints';
+import ChevronLeftIcon from '@material-ui/icons/ChevronLeft';
+import ChevronRightIcon from '@material-ui/icons/ChevronRight';
+import {
+  FINE_POINTER_QUERY,
+  PHONE_MEDIA,
+  useMediaQueryMatch,
+} from '../../utils/breakpoints';
 
 /** A tab's count, or `'loading'` while the page is still reading it. */
 export type RouteTabCount = number | 'loading';
@@ -62,16 +68,43 @@ function edgeMask(start: boolean, end: boolean) {
 /** Phone's shortest touch target, in px (WCAG 2.5.5, Apple's HIG). */
 const TOUCH_TARGET = 44;
 
-/**
- * How many digits a count's slot holds before its tab grows: the slot's
- * width (`classes.count`) and the strip's re-centring (`tabWidthKey`) both
- * read it.
- */
+/** How many digits a count's slot holds before its tab grows. */
 const RESERVED_DIGITS = 2;
 /** The widest count the slot holds, as drawn: `(00)`. */
 const RESERVED_COUNT = `(${'0'.repeat(RESERVED_DIGITS)})`;
 
 const useStyles = makeStyles({
+  // Holds the strip and, with a mouse, the scroll buttons over its edges.
+  frame: {
+    position: 'relative',
+  },
+  // A mouse's way to the cut-off tabs (a vertical wheel doesn't scroll a row
+  // sideways): a round button over the edge that has more tabs beyond it,
+  // on the page's background so the faded tab under it doesn't show through.
+  scrollButton: {
+    position: 'absolute',
+    top: '50%',
+    transform: 'translateY(-50%)',
+    zIndex: 1,
+    width: 28,
+    height: 28,
+    padding: 0,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: '1px solid var(--bui-border-1)',
+    borderRadius: '50%',
+    background: 'var(--bui-bg-app, var(--bui-bg-neutral-1))',
+    color: 'var(--bui-fg-secondary)',
+    cursor: 'pointer',
+    '&:hover': {
+      background: 'var(--bui-bg-neutral-2)',
+      color: 'var(--bui-fg-primary)',
+    },
+    '& svg': { width: 18, height: 18 },
+  },
+  scrollButtonStart: { left: 0 },
+  scrollButtonEnd: { right: 0 },
   // The strip scrolls sideways at every width where its tabs don't fit — a
   // phone, and a narrow window beside the shell's rail — and lays out as
   // bui's strip where they do.
@@ -173,13 +206,39 @@ function selectedRouteTab(
 type Overflow = { start: boolean; end: boolean };
 const NO_OVERFLOW: Overflow = { start: false, end: false };
 
+/** A pixel of slack: zoom and subpixel layout leave fractions. */
+const SLACK = 1;
+
 /**
- * Whether the strip has tabs scrolled off before and after its visible part,
- * live: on scroll, and when the strip or its tabs change size (a rotation, a
- * tab appearing, a count past 99).
+ * The strip's scrolling, in one place: whether it has tabs scrolled off
+ * before and after its visible part (live, on scroll and on any resize), and
+ * the selected tab scrolled to the middle of the strip (clamped at its ends),
+ * so both neighbours show. Only the strip scrolls, never the page.
+ *
+ * The selected tab is scrolled into view when the tabs first arrive (at
+ * once), and then, smoothly unless the user asked for reduced motion:
+ *
+ * - when the selection changes;
+ * - when the strip goes from fitting its tabs to overflowing (a window
+ *   narrowed, a tab appearing);
+ * - when the tabs' own width changes while the strip overflows (a count
+ *   arriving, a label drawn a commit late, a web font), unless the person
+ *   has scrolled the strip by hand since: their scroll is kept.
+ *
+ * A resize of the strip alone (a window dragged, the rail folding) re-centres
+ * nothing.
  */
-function useOverflow(ref: RefObject<HTMLElement>): Overflow {
+function useStripScroll(ref: RefObject<HTMLElement>, selected: number) {
   const [overflow, setOverflow] = useState(NO_OVERFLOW);
+  const reduceMotion = useMediaQueryMatch('(prefers-reduced-motion: reduce)');
+  const reduceMotionRef = useRef(reduceMotion);
+  reduceMotionRef.current = reduceMotion;
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  /** Re-centres the selected tab; set while the strip is mounted. */
+  const centreRef = useRef<() => void>(() => {});
+  /** Set by a scroll the person made: wheel, touch, a press, a key. */
+  const scrolledByHand = useRef(false);
 
   useEffect(() => {
     const strip = ref.current;
@@ -187,151 +246,157 @@ function useOverflow(ref: RefObject<HTMLElement>): Overflow {
       setOverflow(NO_OVERFLOW);
       return undefined;
     }
-    const update = () => {
+    let hasCentred = false;
+    let wasOverflowing = false;
+    let lastTabsWidth = 0;
+
+    const tabsOf = () =>
+      Array.from(strip.querySelectorAll<HTMLElement>('[role="tab"]'));
+    const centre = () => {
+      const tab = tabsOf()[selectedRef.current];
+      if (!tab) {
+        return;
+      }
+      const stripRect = strip.getBoundingClientRect();
+      const tabRect = tab.getBoundingClientRect();
+      // Clamped to the strip's scroll range: where the tabs fit, 0.
+      const max = Math.max(0, strip.scrollWidth - strip.clientWidth);
+      const left = Math.min(
+        max,
+        Math.max(
+          0,
+          strip.scrollLeft +
+            (tabRect.left - stripRect.left) -
+            (strip.clientWidth - tabRect.width) / 2,
+        ),
+      );
+      const behavior: ScrollBehavior =
+        hasCentred && !reduceMotionRef.current ? 'smooth' : 'auto';
+      hasCentred = true;
+      if (typeof strip.scrollTo === 'function') {
+        strip.scrollTo({ left, behavior });
+      } else {
+        strip.scrollLeft = left;
+      }
+    };
+    centreRef.current = centre;
+
+    const updateEdges = () => {
       const max = strip.scrollWidth - strip.clientWidth;
-      // A pixel of slack: zoom and subpixel layout leave fractions.
-      const start = strip.scrollLeft > 1;
-      const end = strip.scrollLeft < max - 1;
+      const start = strip.scrollLeft > SLACK;
+      const end = strip.scrollLeft < max - SLACK;
       setOverflow(previous =>
         previous.start === start && previous.end === end
           ? previous
           : { start, end },
       );
     };
-    strip.addEventListener('scroll', update, { passive: true });
+    const measure = () => {
+      const tabs = tabsOf();
+      if (tabs.length === 0) {
+        updateEdges();
+        return;
+      }
+      const overflowing = strip.scrollWidth - strip.clientWidth > SLACK;
+      // The tabs' own width, from the first tab's left edge to the last one's
+      // right: unlike the tab list's box, which is at least as wide as the
+      // strip, it doesn't follow the strip's width.
+      const tabsWidth =
+        tabs[tabs.length - 1].getBoundingClientRect().right -
+        tabs[0].getBoundingClientRect().left;
+      if (
+        !hasCentred ||
+        (overflowing && !wasOverflowing) ||
+        (overflowing &&
+          Math.abs(tabsWidth - lastTabsWidth) > SLACK &&
+          !scrolledByHand.current)
+      ) {
+        centre();
+      }
+      wasOverflowing = overflowing;
+      lastTabsWidth = tabsWidth;
+      updateEdges();
+    };
+
+    const markScrolledByHand = () => {
+      scrolledByHand.current = true;
+    };
+    const handEvents = ['wheel', 'touchstart', 'pointerdown', 'keydown'];
+    for (const type of handEvents) {
+      strip.addEventListener(type, markScrolledByHand, { passive: true });
+    }
+    strip.addEventListener('scroll', updateEdges, { passive: true });
+
     const resizeObserver =
       typeof ResizeObserver === 'undefined'
         ? undefined
-        : new ResizeObserver(update);
+        : new ResizeObserver(measure);
     resizeObserver?.observe(strip);
-    // The tab list grows with its tabs (one appearing, a count past 99), but
-    // react-aria draws it a commit after the strip mounts: watch for it.
+    // The tab list is as wide as its tabs once they overflow. react-aria
+    // draws it a commit after the strip mounts, and may replace it: observe
+    // whichever one is there.
     let observedTabList: Element | null = null;
     const observeTabList = () => {
       const tabList = strip.querySelector('.bui-TabList');
-      if (tabList && tabList !== observedTabList) {
+      if (tabList !== observedTabList) {
         if (observedTabList) {
           resizeObserver?.unobserve(observedTabList);
         }
-        resizeObserver?.observe(tabList);
+        if (tabList) {
+          resizeObserver?.observe(tabList);
+        }
         observedTabList = tabList;
       }
-      update();
+      measure();
     };
     const mutationObserver = new MutationObserver(observeTabList);
     mutationObserver.observe(strip, { childList: true, subtree: true });
     observeTabList();
+
     return () => {
-      strip.removeEventListener('scroll', update);
+      centreRef.current = () => {};
+      for (const type of handEvents) {
+        strip.removeEventListener(type, markScrolledByHand);
+      }
+      strip.removeEventListener('scroll', updateEdges);
       resizeObserver?.disconnect();
       mutationObserver.disconnect();
     };
   }, [ref]);
 
-  return overflow;
-}
-
-/**
- * Scrolls the selected tab to the middle of the strip (clamped at its ends),
- * so both neighbours show: when the strip mounts — at once — and when the
- * selection changes or the tabs' widths do (`tabWidthKey`, and the tab list's
- * measured width) — smoothly, unless
- * the user asked for reduced motion. Only the strip scrolls, never the page.
- */
-function useSelectedTabInView(
-  ref: RefObject<HTMLElement>,
-  selected: number,
-  widths: string,
-) {
-  const reduceMotion = useMediaQueryMatch('(prefers-reduced-motion: reduce)');
-  const hasScrolled = useRef(false);
-
+  // A new selection: scroll to it, and forget the hand scroll before it.
+  const previousSelected = useRef(selected);
   useEffect(() => {
-    const strip = ref.current;
-    if (!strip) {
-      hasScrolled.current = false;
-      return undefined;
+    if (previousSelected.current === selected) {
+      return;
     }
-    const scrollToTab = (): boolean => {
-      const tab = strip.querySelectorAll<HTMLElement>('[role="tab"]')[selected];
-      if (!tab) {
-        return false;
-      }
-      const stripRect = strip.getBoundingClientRect();
-      const tabRect = tab.getBoundingClientRect();
-      const left = Math.max(
-        0,
-        strip.scrollLeft +
-          (tabRect.left - stripRect.left) -
-          (strip.clientWidth - tabRect.width) / 2,
-      );
-      const behavior: ScrollBehavior =
-        hasScrolled.current && !reduceMotion ? 'smooth' : 'auto';
-      hasScrolled.current = true;
-      if (typeof strip.scrollTo === 'function') {
-        strip.scrollTo({ left, behavior });
-      } else {
-        strip.scrollLeft = left;
-      }
-      return true;
-    };
-    // A tab's label can change width a commit after its spec does (react-aria
-    // draws the collection late, a web font arrives): scroll again when the
-    // tab list's width changes, from the width it had at the last scroll.
-    let tabList: HTMLElement | null = null;
-    let tabListWidth = 0;
-    const resizeObserver =
-      typeof ResizeObserver === 'undefined'
-        ? undefined
-        : new ResizeObserver(() => {
-            const width = tabList?.getBoundingClientRect().width ?? 0;
-            if (width !== tabListWidth) {
-              tabListWidth = width;
-              scrollToTab();
-            }
-          });
-    const scrollAndObserve = (): boolean => {
-      if (!scrollToTab()) {
-        return false;
-      }
-      tabList = strip.querySelector<HTMLElement>('.bui-TabList');
-      if (tabList) {
-        tabListWidth = tabList.getBoundingClientRect().width;
-        resizeObserver?.observe(tabList);
-      }
-      return true;
-    };
-    if (scrollAndObserve() || selected < 0) {
-      return () => resizeObserver?.disconnect();
-    }
-    // react-aria draws the tabs a commit after the strip mounts, once it has
-    // built their collection: scroll when they arrive.
-    const observer = new MutationObserver(() => {
-      if (scrollAndObserve()) {
-        observer.disconnect();
-      }
-    });
-    observer.observe(strip, { childList: true, subtree: true });
-    return () => {
-      observer.disconnect();
-      resizeObserver?.disconnect();
-    };
-    // `reduceMotion` only picks the next scroll's behavior.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ref, selected, widths]);
-}
+    previousSelected.current = selected;
+    scrolledByHand.current = false;
+    centreRef.current();
+  }, [selected]);
 
-/**
- * What of a tab decides its width: its title, and whether it has a count and
- * how many digits past the `RESERVED_DIGITS` its slot always holds. A count
- * up to 99 arriving changes nothing here.
- */
-function tabWidthKey(tab: RouteTabSpec) {
-  if (tab.count === undefined) {
-    return tab.title;
-  }
-  const digits = tab.count === 'loading' ? 0 : String(tab.count).length;
-  return `${tab.title} (${'0'.repeat(Math.max(RESERVED_DIGITS, digits))})`;
+  /** Scrolls the strip by most of its width, for the scroll buttons. */
+  const scrollByPage = useCallback(
+    (direction: -1 | 1) => {
+      const strip = ref.current;
+      if (!strip) {
+        return;
+      }
+      scrolledByHand.current = true;
+      const left = direction * strip.clientWidth * 0.75;
+      const behavior: ScrollBehavior = reduceMotionRef.current
+        ? 'auto'
+        : 'smooth';
+      if (typeof strip.scrollBy === 'function') {
+        strip.scrollBy({ left, behavior });
+      } else {
+        strip.scrollLeft += left;
+      }
+    },
+    [ref],
+  );
+
+  return { overflow, scrollByPage };
 }
 
 function renderTabLabel(
@@ -379,9 +444,11 @@ function renderTabLabel(
  * to 99 fits that place, so the tabs right of it never move under a pointer.
  *
  * Where its tabs don't fit, the strip scrolls sideways instead of wrapping or
- * squeezing (Customize has six tabs with counts): one row of tabs (44px tall at
- * phone width), the selected one scrolled into view, and a fade at each edge
- * that has more tabs beyond it. The underline stays right under scroll without re-measuring: bui places
+ * squeezing (Customize has seven tabs with counts): one row of tabs (44px tall
+ * at phone width), the selected one scrolled into view (`useStripScroll`), a
+ * fade at each edge that has more tabs beyond it and, with a mouse, a button
+ * over that edge that scrolls the strip. The underline stays right under
+ * scroll without re-measuring: bui places
  * it at the selected tab's offset from its `Tabs` root, both read from screen
  * coordinates, and the scroll container here sits *outside* that root, which
  * is as wide as its tabs — tab and root move together, so the offset holds.
@@ -406,7 +473,8 @@ export function RouteTabs({
     href: `${tab.path ? `${basePath}/${tab.path}` : basePath}${search}`,
   }));
   const selected = selectedRouteTab(links, pathname);
-  const overflow = useOverflow(stripRef);
+  const { overflow, scrollByPage } = useStripScroll(stripRef, selected);
+  const finePointer = useMediaQueryMatch(FINE_POINTER_QUERY);
   const routerNavigate = useNavigate();
   // A tab carries no router options, so this is bui's own navigation for it.
   const guardedNavigate = useCallback(
@@ -419,7 +487,6 @@ export function RouteTabs({
     },
     [onNavigate, routerNavigate],
   );
-  useSelectedTabInView(stripRef, selected, tabs.map(tabWidthKey).join('\n'));
 
   const strip = (
     <Tabs>
@@ -438,22 +505,44 @@ export function RouteTabs({
     </Tabs>
   );
 
-  return (
-    <div
-      ref={stripRef}
-      className={[classes.strip, className].filter(Boolean).join(' ')}
-      data-overflow-start={overflow.start || undefined}
-      data-overflow-end={overflow.end || undefined}
+  // For a mouse only, and out of the tab order and the accessibility tree:
+  // a keyboard moves along the tabs with the arrow keys, which scrolls them
+  // into view, and a touch screen swipes.
+  const scrollButton = (direction: -1 | 1) => (
+    <button
+      type="button"
+      tabIndex={-1}
+      aria-hidden="true"
+      className={`${classes.scrollButton} ${
+        direction < 0 ? classes.scrollButtonStart : classes.scrollButtonEnd
+      }`}
+      data-scroll-tabs={direction < 0 ? 'start' : 'end'}
+      onClick={() => scrollByPage(direction)}
     >
-      {onNavigate ? (
-        // The closest router provider wins: this strip's presses go through
-        // the page's guard, the rest of the app keeps bui's.
-        <RouterProvider navigate={guardedNavigate} useHref={useHref}>
-          {strip}
-        </RouterProvider>
-      ) : (
-        strip
-      )}
+      {direction < 0 ? <ChevronLeftIcon /> : <ChevronRightIcon />}
+    </button>
+  );
+
+  return (
+    <div className={classes.frame}>
+      <div
+        ref={stripRef}
+        className={[classes.strip, className].filter(Boolean).join(' ')}
+        data-overflow-start={overflow.start || undefined}
+        data-overflow-end={overflow.end || undefined}
+      >
+        {onNavigate ? (
+          // The closest router provider wins: this strip's presses go through
+          // the page's guard, the rest of the app keeps bui's.
+          <RouterProvider navigate={guardedNavigate} useHref={useHref}>
+            {strip}
+          </RouterProvider>
+        ) : (
+          strip
+        )}
+      </div>
+      {finePointer && overflow.start && scrollButton(-1)}
+      {finePointer && overflow.end && scrollButton(1)}
     </div>
   );
 }
