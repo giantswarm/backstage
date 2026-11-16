@@ -14,7 +14,8 @@ export function WorkspaceOrganizationSelect() {
     return null;
   }
   return (
-    <div style={{ minWidth: 200 }}>
+    // The full name on hover, where a narrow header truncates it.
+    <div style={{ minWidth: 200 }} title={organization}>
       <Select
         label="Organization"
         options={organizations.map(name => ({ id: name, label: name }))}
