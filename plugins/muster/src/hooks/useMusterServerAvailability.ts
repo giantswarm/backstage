@@ -150,6 +150,13 @@ export type MusterServerAvailability = {
    */
   failedOf: (installation: string) => boolean;
   /**
+   * Why the installation's presence could not be read, when a read failed:
+   * its server list's error, else that of `/installations`. What a page shows
+   * for a {@link failedOf} installation, and how it tells a sign-in from an
+   * outage.
+   */
+  errorOf: (installation: string) => Error | undefined;
+  /**
    * The name this installation's muster registers the server under, for the
    * calls that name a server rather than a tool. `undefined` until that
    * muster has listed it.
@@ -308,6 +315,12 @@ export function useMusterServerAvailability(
       installationsError,
       presenceOf: of,
       failedOf: (installation: string) => failed.has(installation),
+      errorOf: (installation: string) =>
+        (failed.has(installation) &&
+          ((queryClient.getQueryState(musterServerListQueryKey(installation))
+            ?.error ?? undefined) as Error | undefined)) ||
+        installationsError ||
+        undefined,
       registeredNameOf: (installation: string) => registered.get(installation),
       isLoading: Boolean(musterApi) && isLoading,
       isUnavailable: !musterApi,

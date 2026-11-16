@@ -34,6 +34,8 @@ jest.mock('@giantswarm/backstage-plugin-muster', () => ({
       }
       return mockAvailable.includes(installation) ? 'available' : 'missing';
     },
+    errorOf: () => undefined,
+    recheck: () => Promise.resolve(),
   }),
 }));
 jest.mock('./useMusterPluginApi', () => ({

@@ -1,5 +1,6 @@
 import {
-  baseDataSet,
+  fixtureDataSet,
+  onFixtureScenarioReset,
   inInstallation,
   type FixtureDataSet,
   type FixtureToolchain,
@@ -111,7 +112,7 @@ export class ToolchainManagerFixtureState {
   private nextPull = 101;
 
   constructor(
-    private readonly data: FixtureDataSet = baseDataSet(),
+    private readonly data: FixtureDataSet = fixtureDataSet(),
     private readonly now: () => number = Date.now,
   ) {}
 
@@ -553,6 +554,9 @@ function nextMinor(version: string): string {
 }
 
 let state: ToolchainManagerFixtureState | undefined;
+onFixtureScenarioReset(() => {
+  state = undefined;
+});
 
 /** The state every toolchain-manager fixture reads: built on first use. */
 export function toolchainManagerFixtureState(): ToolchainManagerFixtureState {

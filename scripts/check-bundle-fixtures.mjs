@@ -123,6 +123,10 @@ const MARKERS = [
       'packages/app/src/modules/kubernetes/fixtures/KubernetesFixtureApi.ts',
     marker: 'Fixture mode does not answer the Kubernetes request',
   },
+  {
+    source: 'plugins/gs-common/src/fixtures/scenarios.ts',
+    marker: 'the error fixture scenario fails every call',
+  },
 ];
 
 const root = path.resolve(import.meta.dirname, '..');
