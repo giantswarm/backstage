@@ -7,6 +7,7 @@ export * from './CatalogFilters';
 export * from './CellSkeleton';
 export * from './Autocomplete';
 export * from './CodeBlock';
+export * from './ColumnPicker';
 export * from './CommitSha';
 export * from './Collapsible';
 export * from './CollapsibleMarkdown';

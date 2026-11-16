@@ -75,6 +75,23 @@ const sortBy = value => ({
   },
 });
 
+/** Turns on every column of the Platform section's clusters list. */
+const everyClusterColumn = {
+  name: 'every column',
+  run: async ({ page, skip }) => {
+    const button = page.locator('button[aria-label="Columns"]');
+    if (!(await shows(button))) skip('no column picker: no clusters listed, or phone width');
+    await button.click();
+    const options = page.getByRole('listbox', { name: 'Columns' }).getByRole('option');
+    for (const option of await options.all()) {
+      if ((await option.getAttribute('aria-selected')) !== 'true') {
+        await option.click();
+      }
+    }
+    await page.keyboard.press('Escape');
+  },
+};
+
 export default [
   { name: 'Home', path: '/' },
   { name: 'Sessions', path: '/sessions' },
@@ -189,6 +206,11 @@ export default [
   { name: 'Usage · Your sessions', path: '/usage/your-sessions' },
   { name: 'Usage · Connectors', path: '/usage/connectors' },
   { name: 'Profile', path: '/profile' },
+  {
+    name: 'Platform · Clusters',
+    path: '/platform/clusters',
+    states: [everyClusterColumn],
+  },
 ];
 
 /** A model's page: models are listed by installation, namespace and name, not under /hosting. */

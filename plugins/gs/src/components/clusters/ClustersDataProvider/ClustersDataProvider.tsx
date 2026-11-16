@@ -32,6 +32,7 @@ import {
   ClusterData,
   collectClusterAccessUpdates,
   collectClusterData,
+  unlistedInstallationsOf,
 } from './utils';
 import { ClusterColumns } from '../ClustersTable/columns';
 import {
@@ -63,6 +64,19 @@ export type ClustersData = FiltersData<DefaultClusterFilters> & {
   visibleColumns: string[];
   setVisibleColumns: (columns: string[]) => void;
   setActiveInstallations: (installations: string[]) => void;
+  /**
+   * The installations whose cluster list could not be read, with why: an
+   * error the page shows (not a rejection, not a 404 of an installation
+   * without Cluster API). The classic page shows them through
+   * `ErrorsProvider`; the shell's list names them in an alert.
+   */
+  unlistedInstallations: UnlistedInstallation[];
+};
+
+/** An installation whose clusters are not in the list, and why. */
+export type UnlistedInstallation = {
+  installation: string;
+  reason: string;
 };
 
 const ClustersDataContext = createContext<ClustersData | undefined>(undefined);
@@ -196,6 +210,11 @@ export const ClustersDataProvider = ({
 
   useShowErrors(displayErrors);
 
+  const unlistedInstallations = useMemo(
+    () => unlistedInstallationsOf(clusterErrors),
+    [clusterErrors],
+  );
+
   // Feed the sidebar cluster-access status: a cluster whose list resolved is
   // healthy; one whose request errored (e.g. timed out / unreachable) is
   // degraded with a reason. This surfaces "MC X isn't working" for non-auth
@@ -298,6 +317,7 @@ export const ClustersDataProvider = ({
       visibleColumns,
       setVisibleColumns,
       setActiveInstallations,
+      unlistedInstallations,
 
       filters,
       queryParameters,
@@ -309,6 +329,7 @@ export const ClustersDataProvider = ({
     isInitialClustersLoading,
     queryParameters,
     retry,
+    unlistedInstallations,
     updateFilters,
     visibleColumns,
   ]);

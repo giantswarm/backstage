@@ -6,8 +6,9 @@ import ChatBubbleOutlineIcon from '@material-ui/icons/ChatBubbleOutline';
 import GroupIcon from '@material-ui/icons/Group';
 import LaunchIcon from '@material-ui/icons/Launch';
 import SettingsIcon from '@material-ui/icons/Settings';
+import StorageIcon from '@material-ui/icons/Storage';
 import TuneIcon from '@material-ui/icons/Tune';
-import { customizeRouteRef, homeRouteRef } from './routes';
+import { customizeRouteRef, homeRouteRef, platformRouteRef } from './routes';
 
 type AgentShellNavItemBase = {
   id: string;
@@ -74,6 +75,19 @@ export const agentShellNavItems: AgentShellNavItem[] = [
     routeRef: agentPlatformPlugin.routes.usage,
     position: 'top',
     // The least-used destination on a phone (T22 D1).
+    phone: 'profileMenu',
+  },
+  {
+    // The clusters and environments the portal reads. Its route exists
+    // only where the deployment turned the section on
+    // (`gs.features.platformSection.enabled`); elsewhere the item is left
+    // out, as every item whose route is not bound.
+    id: 'platform',
+    title: 'Platform',
+    icon: StorageIcon,
+    routeRef: platformRouteRef,
+    position: 'top',
+    // The phone's bar holds five items (T22 D1).
     phone: 'profileMenu',
   },
   {

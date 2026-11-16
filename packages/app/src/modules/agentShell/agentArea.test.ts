@@ -44,8 +44,21 @@ describe('isAgentArea', () => {
     '/sessionsx',
     '/usages',
     '/profiles',
+    '/platform',
+    '/platform/clusters',
   ])('keeps %s classic', pathname => {
     expect(isAgentArea(pathname)).toBe(false);
+  });
+
+  it.each(['/platform', '/platform/clusters'])(
+    'counts %s as the agent area where the Platform section is on',
+    pathname => {
+      expect(isAgentArea(pathname, { platformSection: true })).toBe(true);
+    },
+  );
+
+  it('keeps an address that only starts like the Platform section classic', () => {
+    expect(isAgentArea('/platforms', { platformSection: true })).toBe(false);
   });
 });
 

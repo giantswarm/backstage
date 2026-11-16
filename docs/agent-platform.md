@@ -1,7 +1,8 @@
 # Agent Platform
 
 The **Agent Platform shell** is the portal's UI for working with agents. It
-serves `/`, `/sessions`, `/usage`, `/profile` and `/customize/**` and is built
+serves `/`, `/sessions`, `/usage`, `/profile` and `/customize/**`, and
+`/platform/**` where the deployment turns the Platform section on, and is built
 from the
 `agent-platform` plugin (`@giantswarm/backstage-plugin-agent-platform`), the
 `muster` plugin and the app's `agentShell` module
@@ -540,6 +541,27 @@ reaches back further than the records, Overview, Cost and Connectors say since
 when calls were recorded and how many of the range's days that covers;
 otherwise they say nothing. Cost shows the change against the previous range
 only when the records reach back before it.
+
+## Platform
+
+`/platform` (`PlatformPage` in the app's `agentShell` module) lists what the
+portal reads of the platform, behind `gs.features.platformSection.enabled`
+(off by default; see [Agent Platform configuration](agent-platform-configuration.md#the-platform-section-gsfeaturesplatformsection)).
+Without it there is no route and no rail item. Its one tab so far, Clusters
+(`/platform/clusters`, the bare path redirects there), is
+`PlatformClustersPanel` from the gs plugin: every Cluster API cluster of every
+environment the person can read and has not switched off, read by the classic
+list's `ClustersDataProvider`. Search, then Environment, Organization, Status
+and Release dropdowns, a column picker at the end of the filter bar (Name
+always; Status, Environment, Organization, Release, Workers and Created by
+default; Provider, Region, Account, Service priority and Cluster app on
+request, kept per browser), and headers that sort. Release carries the
+Kubernetes minor version, marked EOL past its end of life
+(`gs.kubernetesVersions`). An environment whose clusters could not be read is
+named above the list, with Sign in again where its sign-in expired. Rows do not
+open a cluster yet. At phone width the list stacks: name and state, then
+environment, organization and release. The classic `/clusters` and
+`/installations` pages are unchanged.
 
 ## Profile and settings
 

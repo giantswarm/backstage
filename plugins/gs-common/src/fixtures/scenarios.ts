@@ -54,6 +54,8 @@ const EMPTY: FixtureDataSetSettings = {
   toolchainSources: { count: 0 },
   skillRepositories: { count: 0 },
   modelBackends: { count: 0 },
+  clusters: { count: 0 },
+  managementClusters: false,
 };
 
 /** Hundreds of items in each list, per installation. */
@@ -72,6 +74,7 @@ const MANY: FixtureDataSetSettings = {
   gpuPools: { count: 30 },
   cacheClaims: { count: 30 },
   hostedModels: { count: 100 },
+  clusters: { count: 100 },
 };
 
 /** Every name as long as a Kubernetes name may be. */
@@ -96,6 +99,7 @@ const LONG_NAMES: FixtureDataSetSettings = {
   gpuPools: { nameLength: LONG },
   cacheClaims: { nameLength: LONG },
   hostedModels: { nameLength: LONG },
+  clusters: { nameLength: LONG },
 };
 
 const SETTINGS: Partial<Record<FixtureScenario, FixtureDataSetSettings>> = {

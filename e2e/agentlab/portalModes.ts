@@ -49,6 +49,7 @@ export const SHELL_SPECS = [
   'notification-inbox.spec.ts',
   'organization-credentials.spec.ts',
   'organizations.spec.ts',
+  'platform-clusters.spec.ts',
   'profile-environments.spec.ts',
   'provider-connect.spec.ts',
   'muster-namespaced.spec.ts',

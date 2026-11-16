@@ -74,6 +74,13 @@ export {
   type FixtureCounterSeries,
   type FixtureGatewayDay,
 } from './gatewayUsage';
+export {
+  CLUSTER_STATES,
+  MANAGEMENT_ORGANIZATION,
+  type ClusterState,
+  type FixtureCluster,
+  type FixtureClusterPool,
+} from './clusterBuilders';
 export { hashOf } from './random';
 export {
   fixtureDataSet,

@@ -5,13 +5,13 @@
   "types": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./fixtures": "./src/apis/mimir/fixtures/index.ts",
+    "./fixtures": "./src/fixtures/index.ts",
     "./package.json": "./package.json"
   },
   "typesVersions": {
     "*": {
       "fixtures": [
-        "src/apis/mimir/fixtures/index.ts"
+        "src/fixtures/index.ts"
       ],
       "package.json": [
         "package.json"

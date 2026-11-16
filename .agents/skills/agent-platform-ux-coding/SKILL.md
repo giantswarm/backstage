@@ -6,9 +6,10 @@ description: Rules for building UI in the agent-platform shell — patterns to r
 # Agent Platform UI: UX and coding rules
 
 Load this skill before you touch anything that renders in the agent-platform
-shell: `/`, `/sessions/**`, `/usage/**`, `/profile` and `/customize/**`, built
-from `plugins/agent-platform`, `plugins/muster`, the shell components in
-`plugins/ui-react` and `packages/app/src/modules/agentShell`. The old
+shell: `/`, `/sessions/**`, `/usage/**`, `/profile`, `/customize/**` and,
+where configured, `/platform/**`, built from `plugins/agent-platform`,
+`plugins/muster`, the shell components in `plugins/ui-react`,
+`plugins/gs/src/components/platform` and `packages/app/src/modules/agentShell`. The old
 `/agent-platform/**` addresses only redirect. Where a page lives, how it is
 addressed and linked, and what adding or moving one takes are the
 [`urls`](../urls/SKILL.md) skill's rules.
@@ -100,6 +101,10 @@ them and never invent a palette.
   a search or filter is in force so it can be cleared. Selects use
   `searchableIf(options)` for type-ahead.
 - A list that matches nothing shows `CatalogNoMatch` with "Clear filters".
+- A list whose columns a person chooses puts `ColumnPicker` (`ui-react`) at
+  the end of its filter bar, keeps the choice with `useTableColumns`, and
+  leaves it out at phone width, where the list stacks. The Platform section's
+  clusters list is the precedent.
 - Card and row grids follow the existing presentation: avatar or tile plus
   bold name where the resource has an identity mark, stock `CellText`
   otherwise.

@@ -24,7 +24,7 @@ describe('KubernetesFixtureApi', () => {
     jest.restoreAllMocks();
   });
 
-  it('serves the Agent Platform API groups, not model hosting or Cluster API', async () => {
+  it('serves the Agent Platform and Cluster API groups, not model hosting', async () => {
     const response = await get('/apis');
     const names = (await response.json()).groups.map(
       (group: { name: string }) => group.name,
@@ -33,8 +33,20 @@ describe('KubernetesFixtureApi', () => {
     expect(names).toEqual(
       expect.arrayContaining(['api.kagent.dev', 'muster.giantswarm.io']),
     );
+    expect(names).toContain('cluster.x-k8s.io');
     expect(names).not.toContain('serving.kserve.io');
-    expect(names).not.toContain('cluster.x-k8s.io');
+  });
+
+  it("lists each installation's clusters from the data set", async () => {
+    const response = await get('/apis/cluster.x-k8s.io/v1beta2/clusters');
+    const names = (await response.json()).items.map(
+      (item: { metadata: { name: string } }) => item.metadata.name,
+    );
+    expect(names.sort()).toEqual(
+      inInstallation(baseDataSet().clusters, 'meadow')
+        .map(cluster => cluster.name)
+        .sort(),
+    );
   });
 
   it('discovers the versions and resources the resource classes read', async () => {

@@ -188,3 +188,38 @@ export function collectClusterAccessUpdates(
 
   return updates;
 }
+
+/**
+ * The installations a cluster list failed on, once each, with a short
+ * reason: neither a rejection (the person declined a sign-in) nor a 404 (no
+ * Cluster API there, an empty list rather than a failure). An
+ * incompatibility names the API versions that do not match.
+ */
+export function unlistedInstallationsOf(
+  errors: ErrorInfoUnion[],
+): { installation: string; reason: string }[] {
+  const byInstallation = new Map<string, string>();
+  for (const errorInfo of errors) {
+    if (byInstallation.has(errorInfo.cluster)) {
+      continue;
+    }
+    if (errorInfo.type === 'incompatibility') {
+      byInstallation.set(errorInfo.cluster, 'API version not supported');
+      continue;
+    }
+    if (
+      errorInfo.error.name === 'RejectedError' ||
+      isNotFoundError(errorInfo)
+    ) {
+      continue;
+    }
+    byInstallation.set(
+      errorInfo.cluster,
+      describeClusterError(errorInfo.error),
+    );
+  }
+  return [...byInstallation].map(([installation, reason]) => ({
+    installation,
+    reason,
+  }));
+}
