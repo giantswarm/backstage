@@ -125,6 +125,16 @@ them and never invent a palette.
 
 ### States
 
+- Connector status describes the person's access, including for families.
+  A family's connected CRs do not prove personal access; a server that is not
+  running shows its own state, since no sign-in changes it. A family with
+  members waiting for a sign-in offers one Sign in (`FamilySignIn`: the
+  member's own sign-in, or `McpAuthDialog` with the waiting members) on its
+  row and its Tools tab; Instances is for diagnosis, linked only when members
+  fail for other reasons. Offer Sign in only where muster reports an
+  interactive sign-in, regardless of connector type. Authentication-method
+  labels describe configuration separately from access state.
+
 - Empty lists and not-found pages use `EmptyStateCard`; a not-found page adds a
   back link. A failed read of a whole page is a danger `Alert` with a back link.
 - Loading a region uses `LoadingIndicator` with a "Reading …" label. Detail

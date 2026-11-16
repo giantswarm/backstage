@@ -112,8 +112,9 @@ scenario to its cache's `buster` (`fixtureScenarioCacheBuster`, outside
 production builds and for every scenario but `base`), so a cache written under
 another scenario, by this tab or another one, is never restored.
 
-Customize · Skills lists what gs-backend reads from GitHub in every scenario
-(item 9b of giantswarm/giantswarm#39251).
+Customize · Skills reads the portal's own skill source through
+`SkillDiscoveryFixtureApi`, which serves the base data set in every scenario
+(see "gs-backend's skill routes").
 
 ### The installations
 

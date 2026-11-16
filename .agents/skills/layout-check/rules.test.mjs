@@ -7,6 +7,8 @@ import { test } from 'node:test';
 import {
   alignmentRule,
   isWarning,
+  notFoundOf,
+  routeTemplateOf,
   warningCounts,
   centeringRule,
   checkLayout,
@@ -472,4 +474,40 @@ test('formatFinding marks a warning', () => {
     elements: [{ role: 'span', name: 'Keeps the rowan catalogue', path: 'td > span', box: { x: 332, y: 388, w: 228, h: 17 } }],
   });
   assert.match(text, /^truncation \(warning\): \/customize\/connectors @ 1280px/);
+});
+
+test('routeTemplateOf refuses route templates and passes concrete paths', () => {
+  assert.match(
+    routeTemplateOf('/sessions/:installation/:sessionId'),
+    /route template \(:installation\)/,
+  );
+  assert.match(routeTemplateOf('/*'), /route template \(\*\)/);
+  assert.equal(routeTemplateOf('/customize/agents'), null);
+  assert.equal(routeTemplateOf('/sessions/meadow/abc-123?tab=files'), null);
+});
+
+test('notFoundOf names the portal 404 page and a page\'s own not-found heading', () => {
+  assert.equal(
+    notFoundOf({
+      errorPage: 'ERROR 404: PAGE NOT FOUND Looks like someone dropped the mic!',
+      headings: ['Looks like someone dropped the mic!'],
+    }),
+    'the portal\'s "page not found" page',
+  );
+  assert.equal(
+    notFoundOf({ errorPage: null, headings: ['Session', 'Session not found'] }),
+    'the heading "Session not found"',
+  );
+  assert.equal(
+    notFoundOf({ errorPage: null, headings: ['Customize', 'Last used by you'] }),
+    null,
+  );
+  // Text about something else that was not found is no not-found page.
+  assert.equal(
+    notFoundOf({
+      errorPage: null,
+      headings: ['Why the connector you searched for was not found in this list'],
+    }),
+    null,
+  );
 });
