@@ -20,11 +20,13 @@ use) the flags have no effect.
 ## Fixture mode
 
 `yarn fixtures start` runs the portal with the Agent Platform's fixture flags
-(`gs`, `muster`, `agentPlatform`) on and the guest signed in, without a cluster
-or a person
-(`app-config.fixtures.yaml` on top of `app-config.yaml`; no `.env` and no
-`app-config.local.yaml`). It is made for agents checking pages, several at a
-time, each in its own checkout:
+(`gs`, `muster`, `agentPlatform`) on and the guest signed in, without a
+cluster or a person (`app-config.fixtures.yaml` on top of `app-config.yaml`;
+no `.env` and no `app-config.local.yaml`). The Organizations pages' browser
+flag (`agent-platform-organizations`) starts on in a browser that never had
+fixture mode set it, and stays where the person's toggle puts it after that.
+It is made for agents checking pages, several at a time, each in its own
+checkout:
 
 ```bash
 yarn fixtures start     # prints the portal's URL once it answers
@@ -56,22 +58,24 @@ yarn fixtures stop
 ### The installations
 
 Fixture mode serves three made-up installations, `meadow`, `fennel` and
-`tarragon` (`FIXTURE_INSTALLATIONS` in `@giantswarm/backstage-plugin-gs-common`,
-which every fixture API reads; a test checks that `gs.installations` in
-`app-config.fixtures.yaml` names them and no other). muster and kagent report
-`tarragon` as not reachable from the portal, as the base data set says. A call
-for any other installation fails with a console error, in every fixture API.
-With `gs.fixtures` the fixture Kubernetes API answers for each without a
-cluster: `/version` answers, `/apis` lists the API groups of the portal's resource classes
-(kagent's and muster's among them; model hosting's and Cluster API's are left
-out, so those components read as absent in the installation inventory),
-discovery answers the versions the classes support (the newest preferred),
-a list or a read of one object answers the objects the plugins' fixtures hold
-(see "Objects in the Kubernetes API"), every other list is empty and any other
-object not found, and access reviews are allowed. Their cluster
-access is healthy from the start, and they have no metrics backend
-(`mimirEnabled: false`). Any other request, a write among them, fails with a
-501 and a console error.
+`tarragon` (`FIXTURE_INSTALLATIONS` in
+`@giantswarm/backstage-plugin-gs-common`, which every fixture API reads; a
+test checks that `gs.installations` in `app-config.fixtures.yaml` names them
+and no other). muster and kagent report `tarragon` as not reachable from the
+portal, as the base data set says. A call for any other installation fails
+with a console error, in every fixture API. With `gs.fixtures` the fixture
+Kubernetes API answers for each without a cluster: `/version` answers, `/apis`
+lists the API groups of the portal's resource classes (kagent's and muster's
+among them; model hosting's and Cluster API's are left out, so those
+components read as absent in the installation inventory), discovery answers
+the versions the classes support (the newest preferred), a list or a read of
+one object answers the objects the plugins' fixtures hold (see "Objects in the
+Kubernetes API"), every other list is empty and any other object not found,
+and access reviews are allowed, except that only an organization's admins may
+create its models (`ModelConfig`), so Connect a model offers an organization
+as owner only to them. Their cluster access is healthy from the start, and
+they have no metrics backend (`mimirEnabled: false`). Any other request, a
+write among them, fails with a 501 and a console error.
 
 If the backend fails with "Invalid app bundle schema", a production build of
 the app in `packages/app/dist` predates a config schema change: delete the
@@ -109,12 +113,20 @@ person's role in each, their members, models, connectors and egress policies,
 and their agents, read back as `get_agent` reads them and listed as `Agent`
 objects, each with its carrier `RemoteMCPServer` (the toolset), beside each
 organization namespace's models (`ModelConfig`) and platform `Harness`.
-Arguments and answers cross as JSON, as over MCP and HTTP, so no page shares
-the fixture's objects. The writes are checked as agent-manager checks them (a
-person with the user role may not create agents, a name taken is a
-`conflict`, a model the namespace lacks fails the dry run, the last admin of
-`organization-admins` stays, nothing is written in an organization being
-erased) and kept in memory until the page reloads:
+`get_info` reports as `managed` the platform's namespace (`kagent`) and the
+namespaces of the organizations whose role lets the person create agents
+there, except one being erased: Connect a model reads its owners from them
+(narrowed by the access reviews above), and the agent lists read agents from
+them. The New agent form takes its owners from `list_organizations` instead.
+Each namespace's default model carries the
+`agent-platform.giantswarm.io/is-default-model-config` annotation, as
+`list_model_configs` reports it (`default`), and the mark moves with
+`set_organization_model`'s `default`. Arguments and answers cross as JSON, as
+over MCP and HTTP, so no page shares the fixture's objects. The writes are
+checked as agent-manager checks them (a person with the user role may not
+create agents, a name taken is a `conflict`, a model the namespace lacks fails
+the dry run, the last admin of `organization-admins` stays, nothing is written
+in an organization being erased) and kept in memory until the page reloads:
 
 - creating, editing and deleting an agent: an agent created or changed
   reports its new generation at once and the controller's verdict on it four
