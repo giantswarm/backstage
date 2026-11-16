@@ -6,7 +6,7 @@ import {
   DataBar,
   ShowMore,
   tableRowId,
-  useContainerDimensions,
+  useCompactLayout,
   usePhoneColumns,
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmModelRow } from '../../../lib/llmUsage';
@@ -68,7 +68,9 @@ export function LlmByModelTable({
   currency = USD,
 }: LlmByModelTableProps) {
   const colorFor = useMeasureColor();
-  const [tableRef, { width: tableWidth }] = useContainerDimensions();
+  // Six columns, each needing about 80px for its header's label beside the
+  // sort indicator.
+  const [tableRef, isCompact] = useCompactLayout(480);
 
   // One maximum per column, so a bar is read against the column it sits in.
   const max = useMemo(
@@ -178,7 +180,7 @@ export function LlmByModelTable({
   const shownColumns = usePhoneColumns(
     columnConfig,
     ['model', 'costUsd', 'avgTokensPerCall'],
-    { width: tableWidth },
+    { compact: isCompact },
   );
 
   const { tableProps } = useTable<LlmModelRow>({

@@ -6,9 +6,8 @@ import {
   columnMax,
   DataBar,
   ShowMore,
-  useContainerDimensions,
+  useCompactLayout,
   usePhoneColumns,
-  usePhoneTable,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { estimateCost, type TokenRates } from '../../lib/costEstimate';
 import { AVERAGE_RATE_CAVEAT } from '../../lib/costBasis';
@@ -126,7 +125,6 @@ export function ByAgentTable({
 }: ByAgentTableProps) {
   const classes = useStyles();
   const colorFor = useMeasureColor();
-  const [tableRef, { width: tableWidth }] = useContainerDimensions();
 
   // The figure a cost cell shows: the gateway's for the row when it was read
   // (no entry means none of the person's calls through it was priced, which
@@ -159,8 +157,9 @@ export function ByAgentTable({
     [rows, costOf],
   );
   const anyReported = rows.some(row => row.costUsd !== undefined);
-  // Six columns, seven with the Reported cost.
-  const isCompact = usePhoneTable(anyReported ? 7 : 6, tableWidth);
+  // Six columns, seven with the Reported cost, each needing about 80px for
+  // its header's label beside the sort indicator.
+  const [tableRef, isCompact] = useCompactLayout(anyReported ? 560 : 480);
 
   const columnConfig: ColumnConfig<ByAgentRow>[] = [
     {
@@ -320,7 +319,7 @@ export function ByAgentTable({
   const shownColumns = usePhoneColumns(
     columnConfig,
     ['agentName', 'sessions', 'estCostUsd'],
-    { width: tableWidth },
+    { compact: isCompact },
   );
 
   const { tableProps } = useTable<ByAgentRow>({

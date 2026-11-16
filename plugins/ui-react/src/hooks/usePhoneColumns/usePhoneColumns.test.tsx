@@ -5,7 +5,7 @@ import {
   MockedLayout,
   mockPhoneLayout,
 } from '../../testUtils/mockPhoneLayout';
-import { usePhoneColumns, usePhoneTable } from './usePhoneColumns';
+import { usePhoneColumns } from './usePhoneColumns';
 
 type CostRow = {
   id: string;
@@ -163,27 +163,6 @@ describe('usePhoneColumns', () => {
     rerender();
     expect(result.current).toBe(first);
   });
-
-  it.each([
-    ['too narrow for its columns', 360, ['model', 'calls']],
-    ['wide enough', 500, ['model', 'provider', 'calls', 'tokens', 'cost']],
-    ['not measured yet', 0, ['model', 'provider', 'calls', 'tokens', 'cost']],
-  ])(
-    'on a desktop, keeps the phone columns in a slot %s',
-    (_, width, shown) => {
-      layout = mockDesktopLayout();
-      const { result } = renderHook(() =>
-        usePhoneColumns(columns, ['calls'], { width }),
-      );
-
-      expect(
-        result.current.filter(column => !column.isHidden).map(c => c.id),
-      ).toEqual(shown);
-      expect(renderHook(() => usePhoneTable(5, width)).result.current).toBe(
-        shown.length < 5,
-      );
-    },
-  );
 
   it('warns about a kept id that names no column', () => {
     layout = mockPhoneLayout();

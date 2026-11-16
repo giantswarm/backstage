@@ -1,0 +1,1 @@
+export { useCompactLayout } from './useCompactLayout';
