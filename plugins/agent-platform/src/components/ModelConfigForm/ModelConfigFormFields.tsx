@@ -216,7 +216,7 @@ export function ModelConfigFormFields({
                 description={
                   mode === 'edit'
                     ? 'The project belongs to the existing credential. Add another model to use a different project.'
-                    : 'The project that owns the service-account key you will upload.'
+                    : 'The project Vertex AI runs the model in. The service account of the key you upload needs Vertex AI access there.'
                 }
                 isDisabled={mode === 'edit'}
                 {...textFieldProps('projectID', errors.projectID)}

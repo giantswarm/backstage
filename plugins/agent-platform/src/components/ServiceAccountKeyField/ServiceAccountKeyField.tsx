@@ -50,6 +50,11 @@ export type ServiceAccountKeyFieldProps = {
    * file is chosen.
    */
   storedKeyProject?: string;
+  /**
+   * The project the model calls Vertex AI in. A key of another project is
+   * accepted, and the field says what that key then needs.
+   */
+  modelProject?: string;
   /** The problem the field shows now, if any. */
   error?: string;
 };
@@ -66,6 +71,7 @@ export function ServiceAccountKeyField({
   isRequired,
   description,
   storedKeyProject,
+  modelProject,
   error,
   isDisabled = false,
 }: ServiceAccountKeyFieldProps) {
@@ -196,6 +202,15 @@ export function ServiceAccountKeyField({
                   Project {summary.projectID}
                 </Text>
               )}
+              {summary.projectID &&
+                modelProject &&
+                summary.projectID !== modelProject && (
+                  <Text variant="body-small" className={classes.fact}>
+                    This key is from project {summary.projectID}, and the model
+                    runs in {modelProject}. Save it only if its service account
+                    has Vertex AI access in {modelProject}.
+                  </Text>
+                )}
             </Flex>
           )}
           {!value && storedKeyProject && (

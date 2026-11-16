@@ -1328,20 +1328,27 @@ export class AgentManagerFixtureState {
           .join(', ')}.`,
       );
     }
+    const notes: string[] = [];
     for (const value of values) {
       const project = stored.projects?.[`${value.secret}/${value.key}`];
-      if (
-        project !== undefined &&
-        !isServiceAccountKeyOf(value.value, project)
-      ) {
+      if (project === undefined) continue;
+      const keyProject = serviceAccountKeyProject(value.value);
+      if (keyProject === undefined) {
         throw new CredentialRefusal(
           400,
           'invalid_request',
-          "upload a Google service-account JSON key for the model's project",
+          'upload a Google service-account JSON key',
+        );
+      }
+      if (keyProject !== project) {
+        notes.push(
+          `the key's service account belongs to project ${keyProject} and the model calls Vertex AI in project ${project}: it needs Vertex AI access in ${project}`,
         );
       }
     }
-    const result = stored.apply();
+    const applied = stored.apply();
+    const note = [applied.note, ...notes].filter(Boolean).join('; ');
+    const result = note ? { ...applied, note } : applied;
     stored.operation = {
       ...stored.operation,
       version: String(Number(stored.operation.version) + 1),
@@ -1881,22 +1888,27 @@ export class AgentManagerFixtureState {
 }
 
 /**
- * agent-manager's check of a Vertex AI key's JSON: a service account of the
- * model's project. It also parses the private key, which no fixture page
- * needs.
+ * agent-manager's check of a Vertex AI key's JSON: the project of a service
+ * account key, or `undefined` for anything else. A key of another project
+ * than the model's is accepted with a note. agent-manager also parses the
+ * private key, which no fixture page needs.
  */
-function isServiceAccountKeyOf(raw: string, project: string): boolean {
+function serviceAccountKeyProject(raw: string): string | undefined {
   try {
     const key = JSON.parse(raw) as Record<string, unknown>;
-    return (
+    if (
       raw.length <= 64 * 1024 &&
       key.type === 'service_account' &&
-      key.project_id === project &&
+      typeof key.project_id === 'string' &&
+      key.project_id !== '' &&
       typeof key.client_email === 'string' &&
       key.client_email !== ''
-    );
+    ) {
+      return key.project_id;
+    }
+    return undefined;
   } catch {
-    return false;
+    return undefined;
   }
 }
 

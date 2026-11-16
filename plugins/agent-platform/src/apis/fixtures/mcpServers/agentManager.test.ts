@@ -737,16 +737,22 @@ it('adds a Vertex AI model whose key is a service-account JSON of its project', 
       project_id: project,
       client_email: `portal@${project}.iam.gserviceaccount.com`,
     });
-  const wrongProject = await credentials
+  const notAKey = await credentials
     .saveOperation(INSTALLATION, operation, read.etag, [
-      { secret: pair.secret, key: pair.key, value: keyOf('other-project') },
+      { secret: pair.secret, key: pair.key, value: '{"type":"user"}' },
     ])
     .catch(caught => caught);
-  expect(credentialOperationErrorCode(wrongProject)).toBe('invalid_request');
+  expect(credentialOperationErrorCode(notAKey)).toBe('invalid_request');
 
-  await credentials.saveOperation(INSTALLATION, operation, read.etag, [
-    { secret: pair.secret, key: pair.key, value: keyOf('fixture-models') },
-  ]);
+  const saved = await credentials.saveOperation(
+    INSTALLATION,
+    operation,
+    read.etag,
+    [{ secret: pair.secret, key: pair.key, value: keyOf('central-sa') }],
+  );
+  expect(saved.note).toBe(
+    "the key's service account belongs to project central-sa and the model calls Vertex AI in project fixture-models: it needs Vertex AI access in fixture-models",
+  );
   const model = state
     .kubernetesObjectsOf(INSTALLATION)
     .find(

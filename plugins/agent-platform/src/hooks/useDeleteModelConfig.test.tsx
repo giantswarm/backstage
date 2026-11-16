@@ -9,15 +9,20 @@ import {
   ModelConfigInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { AgentManagerError } from '../lib/agentManager';
-import { useDeleteModelConfig } from './useDeleteModelConfig';
+import {
+  AgentManagerUnavailableError,
+  useDeleteModelConfig,
+} from './useDeleteModelConfig';
 
 // The reads and writes are mocked; the provenance/ownership helpers and the
 // resource classes are the real ones, so the label reading and GVK resolution
 // under test are the real thing.
 const mockDeleteResource = jest.fn();
 const mockDeleteModel = jest.fn();
+let mockWithoutClient = false;
 jest.mock('./useAgentManager', () => ({
-  useAgentManagerClient: () => ({ deleteModel: mockDeleteModel }),
+  useAgentManagerClient: () =>
+    mockWithoutClient ? undefined : { deleteModel: mockDeleteModel },
 }));
 const mockFetchResourceList = jest.fn();
 
@@ -138,6 +143,7 @@ beforeEach(() => {
   mockDeleteModel.mockReset();
   mockDeleteResource.mockResolvedValue(undefined);
   mockFetchResourceList.mockReset();
+  mockWithoutClient = false;
 });
 
 describe('useDeleteModelConfig', () => {
@@ -183,6 +189,20 @@ describe('useDeleteModelConfig', () => {
 
     await waitFor(() => expect(result.current.isDeletable).toBe(true));
     expect(result.current.checkError).toBeNull();
+  });
+
+  it('says why Delete is not offered when the portal has no agent-manager client', () => {
+    mockWithoutClient = true;
+    const { result } = setup();
+
+    expect(result.current.isDeletable).toBe(false);
+    expect(result.current.checkError).toBeInstanceOf(
+      AgentManagerUnavailableError,
+    );
+    expect(result.current.checkError?.message).toBe(
+      'The portal cannot reach agent-manager on gazelle, which deletes models, so Delete is not offered.',
+    );
+    expect(mockDeleteModel).not.toHaveBeenCalled();
   });
 
   it.each([

@@ -68,6 +68,9 @@ jest.mock('../InstallationChip', () => ({
 let mockDeleteCheckError: Error | null = null;
 const mockRecheckDeletable = jest.fn();
 jest.mock('../../hooks/useDeleteModelConfig', () => ({
+  AgentManagerUnavailableError: jest.requireActual(
+    '../../hooks/useDeleteModelConfig',
+  ).AgentManagerUnavailableError,
   useDeleteModelConfig: () => ({
     isDeletable: false,
     isCheckingDeletable: false,
@@ -518,6 +521,28 @@ describe('ModelDetailPage', () => {
         screen.getByRole('button', { name: 'Check again' }),
       );
       expect(mockRecheckDeletable).toHaveBeenCalled();
+    } finally {
+      mockDeleteCheckError = null;
+    }
+  });
+
+  it('says why Delete is not offered when the portal cannot reach agent-manager', async () => {
+    const { AgentManagerUnavailableError } = jest.requireActual(
+      '../../hooks/useDeleteModelConfig',
+    );
+    mockDeleteCheckError = new AgentManagerUnavailableError('gazelle');
+    try {
+      await renderPage();
+
+      expect(
+        await screen.findByText('Delete is not offered here'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'The portal cannot reach agent-manager on gazelle, which deletes models, so Delete is not offered.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
     } finally {
       mockDeleteCheckError = null;
     }

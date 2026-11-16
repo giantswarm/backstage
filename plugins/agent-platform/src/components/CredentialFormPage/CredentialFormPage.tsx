@@ -270,6 +270,13 @@ function Confirmation({
   );
 }
 
+/** agent-manager's notes are clauses; the page shows them as sentences. */
+function sentence(note: string): string {
+  const text = note.trim();
+  const capitalized = text.charAt(0).toUpperCase() + text.slice(1);
+  return /[.!?]$/.test(capitalized) ? capitalized : `${capitalized}.`;
+}
+
 function Receipt({ result }: { result: CredentialResourceResult }) {
   const pr = result.commit?.pullRequest;
   let saved: string;
@@ -296,7 +303,9 @@ function Receipt({ result }: { result: CredentialResourceResult }) {
         <Flex direction="column" gap="1">
           <Text>{saved}</Text>
           {pr ? <Link href={pr}>{pr}</Link> : null}
-          {result.note ? <Text color="secondary">{result.note}</Text> : null}
+          {result.note ? (
+            <Text color="secondary">{sentence(result.note)}</Text>
+          ) : null}
         </Flex>
       }
     />
@@ -365,6 +374,34 @@ function sameOrganization(
     operation.organization.parent === parent &&
     operation.organization.organization === name
   );
+}
+
+/**
+ * Where a person starts a request again. An organization link names its
+ * organization; a namespace link names only a namespace, so the place comes
+ * from the request once read: Models for an installation's model, the
+ * organization's page for anything of an organization.
+ */
+function startAgainPlace(
+  operation: CredentialOperation | undefined,
+  namespaceLink: boolean,
+): string {
+  if (!namespaceLink) {
+    return 'the organization’s tab';
+  }
+  const target = operation?.organization;
+  if (!target) {
+    return 'Models or the organization’s page';
+  }
+  if (target.scope === 'platform') {
+    const kind = operation?.result?.kind;
+    return kind === 'connector' || kind === 'egressPolicy'
+      ? 'where you started it'
+      : 'Models';
+  }
+  return target.organization
+    ? `the ${target.organization} organization’s page`
+    : 'the organization’s page';
 }
 
 function operationPhase(
@@ -460,24 +497,27 @@ export function CredentialFormPage({
     linkParent && linkName
       ? organizationLink?.({ installation, parent: linkParent, name: linkName })
       : modelsLink?.();
+  // A namespace link shows no target until the request it opens is read and
+  // found to write in that namespace: the namespace itself means nothing to
+  // a person.
   const targetLabel =
-    linkName ??
-    (installationTarget ? 'Installation' : namespace) ??
-    'Installation';
+    linkName ?? (installationTarget || !namespace ? 'Installation' : undefined);
   const underOrganizations = Boolean(linkParent && linkName);
   const breadcrumbs: BreadcrumbItem[] = [
     {
       label: underOrganizations ? 'Organizations' : 'Models',
       href: underOrganizations ? organizationsLink?.() : modelsLink?.(),
     },
-    { label: targetLabel, href: organizationHref },
+    ...(targetLabel ? [{ label: targetLabel, href: organizationHref }] : []),
     { label: 'Enter a credential' },
   ];
   const frame = {
     breadcrumbs,
-    documentTitle: ['Enter a credential', targetLabel],
+    documentTitle: targetLabel
+      ? ['Enter a credential', targetLabel]
+      : ['Enter a credential'],
   };
-  const startAgainFrom = namespace ? 'Models' : 'the organization’s tab';
+  const startAgainFrom = startAgainPlace(loaded?.operation, Boolean(namespace));
   const backLink = organizationHref ? (
     <Link href={organizationHref}>Back to {linkName ?? 'models'}</Link>
   ) : undefined;
@@ -617,7 +657,7 @@ export function CredentialFormPage({
           title="This link names no request"
           description={
             namespace
-              ? 'A credential is entered for one request: from Models, or from the link an agent sends you.'
+              ? 'A credential is entered for one request: from Models, from an organization’s page, or from the link an agent sends you.'
               : `A credential is entered for one request: from the Models or Connectors tab of ${name}, or from the link an agent sends you.`
           }
           actions={backLink}
@@ -660,7 +700,7 @@ export function CredentialFormPage({
           }
           description={
             notFound
-              ? `It expired, was cancelled, or was started by someone else. Start again from ${startAgainFrom} or ask the agent again.`
+              ? `It expired, was cancelled, or was started by someone else. Start again from ${startAgainFrom}, or ask the agent again.`
               : credentialOperationErrorMessage(query.error)
           }
           actions={
@@ -693,7 +733,7 @@ export function CredentialFormPage({
           title={`This request is not for ${namespace ?? name}`}
           description={
             namespace
-              ? 'The request targets another namespace. Open it from Models or ask the agent again.'
+              ? `The request writes in another namespace. Open it from ${startAgainPlace(operation, true)} or ask the agent again.`
               : `The link names ${name} in ${parent}, but the request is for ${operation.organization.organization ?? 'another organization'} in ${operation.organization.parent ?? 'another parent'}. Nothing is shown or saved: open the request from that organization's tab, or ask the agent again.`
           }
           actions={backLink}
@@ -717,10 +757,7 @@ export function CredentialFormPage({
           ? 'Choose the service account key file.'
           : 'Enter the value.';
       } else if (google) {
-        error = serviceAccountKeyError(
-          value,
-          credentialProject(operation, pair),
-        );
+        error = serviceAccountKeyError(value);
       }
       return [pairId(pair), error];
     }),
@@ -753,7 +790,7 @@ export function CredentialFormPage({
           <Alert
             status="info"
             title="Request cancelled"
-            description={`Nothing was saved. Start again from ${startAgainFrom} or ask the agent again.`}
+            description={`Nothing was saved. Start again from ${startAgainFrom}, or ask the agent again.`}
           />
         ) : null}
         {takesValues && operation.state === 'uncertain' ? (
@@ -822,6 +859,9 @@ export function CredentialFormPage({
                         }));
                       }}
                       isRequired
+                      modelProject={
+                        credentialProject(operation, pair) || undefined
+                      }
                       description="Upload the Google service-account JSON key for this model. It is stored in the confirmed namespace and exchanged for short-lived Google tokens."
                       error={
                         values[pairId(pair)]

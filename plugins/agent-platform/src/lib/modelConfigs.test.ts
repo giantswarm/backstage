@@ -346,18 +346,19 @@ describe('Vertex AI', () => {
   }
 
   describe('serviceAccountKeyError', () => {
-    it('accepts a service account key of the project', () => {
+    it('accepts a service account key', () => {
+      expect(serviceAccountKeyError(serviceAccountKey())).toBeUndefined();
+    });
+
+    it('leaves a key of another project to agent-manager, which accepts it with a note', () => {
       expect(
-        serviceAccountKeyError(serviceAccountKey(), 'my-project-123'),
+        serviceAccountKeyError(serviceAccountKey({ project_id: 'central-sa' })),
       ).toBeUndefined();
     });
 
     it('accepts a key without token_uri, as kagent does', () => {
       expect(
-        serviceAccountKeyError(
-          serviceAccountKey({ token_uri: undefined }),
-          'my-project-123',
-        ),
+        serviceAccountKeyError(serviceAccountKey({ token_uri: undefined })),
       ).toBeUndefined();
     });
 
@@ -368,11 +369,6 @@ describe('Vertex AI', () => {
         'another kind of credential',
         serviceAccountKey({ type: 'authorized_user' }),
         'This file is not a service account key',
-      ],
-      [
-        'a key of another project',
-        serviceAccountKey({ project_id: 'other-project' }),
-        'This key belongs to project other-project, not my-project-123',
       ],
       [
         'a key naming no project',
@@ -390,16 +386,7 @@ describe('Vertex AI', () => {
         'https://oauth2.googleapis.com',
       ],
     ])('rejects %s', (_, raw, message) => {
-      expect(serviceAccountKeyError(raw, 'my-project-123')).toContain(message);
-    });
-
-    it('skips the project check while the project is unknown', () => {
-      expect(
-        serviceAccountKeyError(
-          serviceAccountKey({ project_id: 'other-project' }),
-          '',
-        ),
-      ).toBeUndefined();
+      expect(serviceAccountKeyError(raw)).toContain(message);
     });
   });
 

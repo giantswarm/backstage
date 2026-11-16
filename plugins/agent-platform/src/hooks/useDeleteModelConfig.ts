@@ -17,6 +17,19 @@ import { useOrganizationDirectory } from '../components/OrganizationDirectoryPro
 import { useAgentManagerClient } from './useAgentManager';
 
 /**
+ * The portal has no agent-manager client for the installation (no Muster API
+ * in this app), so it cannot ask whether the person may delete the model.
+ */
+export class AgentManagerUnavailableError extends Error {
+  constructor(installation: string) {
+    super(
+      `The portal cannot reach agent-manager on ${installation}, which deletes models, so Delete is not offered.`,
+    );
+    this.name = 'AgentManagerUnavailableError';
+  }
+}
+
+/**
  * Deleting one ModelConfig, and the checks that decide whether to offer it.
  *
  * Two gates decide the affordance: the CR must not be tool-owned (rendered by
@@ -77,7 +90,14 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
   });
   const isAllowed = deleteCheck.data === true;
   const isCheckingPermission = deleteCheck.isLoading;
-  const checkError = deleteCheck.error as Error | null;
+  const unavailable = useMemo(
+    () =>
+      modelConfig && !client
+        ? new AgentManagerUnavailableError(cluster)
+        : undefined,
+    [modelConfig, client, cluster],
+  );
+  const checkError = unavailable ?? (deleteCheck.error as Error | null);
   const { refetch } = deleteCheck;
   const recheckDeletable = useCallback(() => {
     refetch();

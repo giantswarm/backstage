@@ -21,7 +21,7 @@ import {
   type OrganizationsScenario,
 } from '../../lib/__fixtures__/agentManagerOrganizations';
 import { musterOrganizationsQueryKey } from '../../lib/queryKeys';
-import { organizationsRouteRef } from '../../routes';
+import { modelsRouteRef, organizationsRouteRef } from '../../routes';
 import { OrganizationPage } from './OrganizationPage';
 
 const PAYMENTS = {
@@ -136,6 +136,10 @@ async function renderPage(tab: string, scenario: OrganizationsScenario) {
               element={<LocationProbe />}
             />
             <Route
+              path="/customize/models/credentials/:installation/:namespace/:operation"
+              element={<LocationProbe />}
+            />
+            <Route
               path="/organizations/:installation/:parent/:name/*"
               element={
                 <OrganizationPage
@@ -151,7 +155,10 @@ async function renderPage(tab: string, scenario: OrganizationsScenario) {
     </TestApiProvider>,
     {
       initialRouteEntries: [`/organizations/gazelle/org-acme/payments${tab}`],
-      mountedRoutes: { '/organizations': organizationsRouteRef },
+      mountedRoutes: {
+        '/organizations': organizationsRouteRef,
+        '/customize/models': modelsRouteRef,
+      },
     },
   );
   return { callTool, queryClient };
@@ -870,7 +877,7 @@ describe('OrganizationPage', () => {
       ]),
     );
     expect(await screen.findByTestId('location')).toHaveTextContent(
-      `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
+      `/customize/models/credentials/gazelle/${PAYMENTS.namespace}/${CREDENTIAL_OPERATION}`,
     );
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
@@ -942,6 +949,33 @@ describe('OrganizationPage', () => {
     expect(toolCalls(callTool, 'set_organization_model')).toEqual([]);
   });
 
+  it('asks for a name the technical name can be made from', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderPage('/models', {
+      ...SCENARIO,
+      models: {},
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Add model' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText(/^Name/), '日本語');
+    await user.type(
+      within(dialog).getByLabelText(/^Model/),
+      'claude-sonnet-4-6',
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Continue to the key' }),
+    );
+
+    expect(
+      await within(dialog).findByText(
+        'Use at least one letter a–z or digit in the name: the model’s technical name is made from them.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText('Enter a technical name.')).toBeNull();
+    expect(toolCalls(callTool, 'set_organization_model')).toEqual([]);
+  });
+
   it('says so when agent-manager answers a credential request without its id', async () => {
     const user = userEvent.setup();
     await renderPage('/models', { ...SCENARIO, withoutOperation: true });
@@ -986,7 +1020,7 @@ describe('OrganizationPage', () => {
     );
     expect(toolCalls(callTool, 'set_organization_model')).toEqual([]);
     expect(await screen.findByTestId('location')).toHaveTextContent(
-      `/credentials/${CREDENTIAL_OPERATION}`,
+      `/customize/models/credentials/gazelle/${PAYMENTS.namespace}/${CREDENTIAL_OPERATION}`,
     );
   });
 
@@ -1040,7 +1074,7 @@ describe('OrganizationPage', () => {
       ]),
     );
     expect(await screen.findByTestId('location')).toHaveTextContent(
-      `/credentials/${CREDENTIAL_OPERATION}`,
+      `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
     );
   });
 

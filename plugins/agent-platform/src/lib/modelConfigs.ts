@@ -202,10 +202,7 @@ const GOOGLE_PROJECT_ID_PATTERN = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
  * would accept it: the checks of kagent's `ValidateGoogleServiceAccountKey`,
  * run here so the problem shows on the field instead of on the agent later.
  */
-export function serviceAccountKeyError(
-  raw: string,
-  projectID: string,
-): string | undefined {
+export function serviceAccountKeyError(raw: string): string | undefined {
   let key: unknown;
   try {
     key = JSON.parse(raw);
@@ -225,10 +222,6 @@ export function serviceAccountKeyError(
   }
   if (typeof keyProject !== 'string' || !keyProject) {
     return 'This key names no project. Create a new JSON key in Google Cloud, then choose that file.';
-  }
-  const project = projectID.trim();
-  if (project && keyProject !== project) {
-    return `This key belongs to project ${keyProject}, not ${project}. Choose a key of ${project}.`;
   }
   if (tokenURI !== undefined && tokenURI !== '') {
     let host: string | undefined;

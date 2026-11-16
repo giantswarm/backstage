@@ -319,6 +319,72 @@ describe('CredentialFormPage', () => {
     );
   });
 
+  it('accepts a key of another project, says what it needs, and shows agent-manager’s note', async () => {
+    const confirmation: CredentialOperation = {
+      ...CONFIRMATION,
+      changes: [
+        {
+          action: 'create',
+          object: {
+            kind: 'ModelConfig',
+            metadata: { name: 'claude-vertex' },
+            spec: {
+              provider: 'AnthropicVertexAI',
+              apiKeySecret: 'tenant-credential-vertex',
+              apiKeySecretKey: 'GOOGLE_APPLICATION_CREDENTIALS',
+              anthropicVertexAI: {
+                projectID: 'vertex-test',
+                location: 'europe-west1',
+              },
+            },
+          },
+        },
+      ],
+      result: {
+        ...CONFIRMATION.result,
+        credentials: [
+          {
+            secret: 'tenant-credential-vertex',
+            key: 'GOOGLE_APPLICATION_CREDENTIALS',
+            state: 'missing',
+            inputFormat: 'google-service-account-json',
+          },
+        ],
+      },
+    };
+    const api = fakeCredentialsApi(read(confirmation));
+    api.saveOperation.mockResolvedValueOnce({
+      kind: 'model',
+      name: 'claude-vertex',
+      note: "the key's service account belongs to project central-sa and the model calls Vertex AI in project vertex-test: it needs Vertex AI access in vertex-test",
+    });
+    await renderForm(api);
+    const input = await screen.findByLabelText('Service account key file');
+    const raw = JSON.stringify({
+      type: 'service_account',
+      project_id: 'central-sa',
+      client_email: 'agent@central-sa.iam.gserviceaccount.com',
+      private_key: 'synthetic-private-key',
+    });
+    const file = new File([raw], 'central.json', { type: 'application/json' });
+    Object.defineProperty(file, 'text', { value: async () => raw });
+    await userEvent.upload(input, file);
+
+    expect(
+      await screen.findByText(
+        'This key is from project central-sa, and the model runs in vertex-test. Save it only if its service account has Vertex AI access in vertex-test.',
+      ),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Credential saved')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The key's service account belongs to project central-sa and the model calls Vertex AI in project vertex-test: it needs Vertex AI access in vertex-test.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('rejects a non-service-account JSON upload before submission', async () => {
     const confirmation: CredentialOperation = {
       ...CONFIRMATION,
@@ -394,6 +460,55 @@ describe('CredentialFormPage', () => {
   });
 
   describe('a link that names the namespace', () => {
+    // A connector's key, as replace_organization_credential prepares it:
+    // agent-manager links every credential operation through the one form
+    // URL, models or not.
+    const CONNECTOR_KEY: CredentialOperation = {
+      ...CONFIRMATION,
+      changes: [],
+      references: [
+        {
+          kind: 'RemoteMCPServer',
+          name: 'jira',
+          key: 'token',
+          url: 'https://jira.example.com/mcp',
+        },
+      ],
+      result: {
+        kind: 'credential',
+        name: 'tenant-credential-jira',
+        pending: true,
+        credentials: [
+          { secret: 'tenant-credential-jira', key: 'token', state: 'replace' },
+        ],
+      },
+    };
+
+    it('shows no namespace as the target before the request is read', async () => {
+      const api = fakeCredentialsApi(() => new Promise(() => {}));
+      await renderForm(api, { namespace: 'agents-payments-x7k2q' });
+
+      expect(await screen.findAllByText('Enter a credential')).not.toHaveLength(
+        0,
+      );
+      expect(screen.queryByText('agents-payments-x7k2q')).toBeNull();
+    });
+
+    it("sends a connector's request back to its organization, not to Models", async () => {
+      const api = fakeCredentialsApi(
+        read({ ...CONNECTOR_KEY, state: 'cancelled' }),
+      );
+      await renderForm(api, { namespace: 'agents-payments-x7k2q' });
+
+      expect(
+        await screen.findByText(
+          'Nothing was saved. Start again from the payments organization’s page, or ask the agent again.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/from Models/)).toBeNull();
+      expect(screen.getAllByText('payments').length).toBeGreaterThan(0);
+    });
+
     it("opens an organization's request and names the organization from it", async () => {
       const api = fakeCredentialsApi();
       await renderForm(api, { namespace: 'agents-payments-x7k2q' });
@@ -433,6 +548,11 @@ describe('CredentialFormPage', () => {
 
       expect(
         await screen.findByText('This request is not for kagent'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'The request writes in another namespace. Open it from the payments organization’s page or ask the agent again.',
+        ),
       ).toBeInTheDocument();
       expect(screen.queryByLabelText(/^Value/)).not.toBeInTheDocument();
       expect(api.saveOperation).not.toHaveBeenCalled();
@@ -1202,13 +1322,31 @@ describe('CredentialFormPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('says to start a platform request again from Models once it is gone', async () => {
+  it('names both places to start again from when a namespace link’s request is gone', async () => {
     const api = fakeCredentialsApi(async () => {
       throw await refusal(404, 'not_found', 'not found');
     });
     await renderForm(api, { namespace: 'kagent' });
     expect(
-      await screen.findByText(/Start again from Models or ask the agent again/),
+      await screen.findByText(
+        /Start again from Models or the organization’s page, or ask the agent again/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says to start a cancelled installation model request again from Models', async () => {
+    const api = fakeCredentialsApi(
+      read({
+        ...CONFIRMATION,
+        state: 'cancelled',
+        organization: { scope: 'platform', namespace: 'kagent' },
+      }),
+    );
+    await renderForm(api, { namespace: 'kagent' });
+    expect(
+      await screen.findByText(
+        'Nothing was saved. Start again from Models, or ask the agent again.',
+      ),
     ).toBeInTheDocument();
   });
 

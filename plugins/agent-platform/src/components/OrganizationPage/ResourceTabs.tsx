@@ -107,9 +107,17 @@ function AddModelDialog({
   const displayName = name.trim();
   const technicalName = slugify(displayName);
   const trimmedModel = model.trim();
-  const nameError = displayName
-    ? modelNameError(technicalName)
-    : 'Enter a name for the model.';
+  // The dialog has no technical name field: a name it cannot be made from is
+  // refused in terms of the name.
+  let nameError: string | undefined;
+  if (!displayName) {
+    nameError = 'Enter a name for the model.';
+  } else if (!technicalName) {
+    nameError =
+      'Use at least one letter a–z or digit in the name: the model’s technical name is made from them.';
+  } else {
+    nameError = modelNameError(technicalName);
+  }
   const modelError = trimmedModel
     ? undefined
     : "Enter the provider's model id.";

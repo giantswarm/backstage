@@ -57,7 +57,10 @@ import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { PortalSessionEndedError } from '../../lib/portalSession';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
-import { useDeleteModelConfig } from '../../hooks/useDeleteModelConfig';
+import {
+  AgentManagerUnavailableError,
+  useDeleteModelConfig,
+} from '../../hooks/useDeleteModelConfig';
 import { clientLookupOf } from '../../lib/serving';
 import { modelEditRouteRef } from '../../routes';
 import { useAgents } from '../AgentsDataProvider';
@@ -267,6 +270,16 @@ function DeleteCheckError({
 }) {
   if (error instanceof PortalSessionEndedError) {
     return <PortalSessionEndedAlert />;
+  }
+  if (error instanceof AgentManagerUnavailableError) {
+    return (
+      <Alert
+        status="info"
+        icon
+        title="Delete is not offered here"
+        description={error.message}
+      />
+    );
   }
   if (error instanceof AgentManagerNotConnectedError) {
     return (

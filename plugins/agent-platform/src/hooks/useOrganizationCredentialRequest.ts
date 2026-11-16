@@ -14,7 +14,10 @@ import {
   musterAgentManagerModelConfigsQueryKey,
   musterOrganizationConnectorsQueryKey,
 } from '../lib/queryKeys';
-import { organizationCredentialsRouteRef } from '../routes';
+import {
+  modelCredentialsRouteRef,
+  organizationCredentialsRouteRef,
+} from '../routes';
 import { useAgentManagerClient } from './useAgentManager';
 import { useEnsureModelOperations } from './useEnsureModelOperations';
 import { readModelKeyReference } from './modelKeyReference';
@@ -57,6 +60,7 @@ export function useOrganizationCredentialRequest(
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const formLink = useRouteRef(organizationCredentialsRouteRef);
+  const modelFormLink = useRouteRef(modelCredentialsRouteRef);
   const toastApi = useApi(toastApiRef);
 
   const send = async (request: CredentialRequest) => {
@@ -122,12 +126,21 @@ export function useOrganizationCredentialRequest(
       if (!operation) {
         return { result };
       }
-      const form = formLink?.({
-        installation,
-        parent: organization.parent,
-        name: organization.organization,
-        operation,
-      });
+      // A model's request opens where every model's does, wherever it was
+      // started; a connector's stays under its organization.
+      const form =
+        request.kind === 'credential'
+          ? formLink?.({
+              installation,
+              parent: organization.parent,
+              name: organization.organization,
+              operation,
+            })
+          : modelFormLink?.({
+              installation,
+              namespace: organization.namespace,
+              operation,
+            });
       if (!form) {
         throw new Error(
           'The credential form is not configured. Ask the portal administrator to enable the organization credential route, then start again.',
