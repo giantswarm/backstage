@@ -11,6 +11,7 @@ import { kagentApiRef } from '../../apis';
 import { KagentApi, KagentInstallation } from '../../apis/types';
 import { KagentSession } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { SessionsDataProvider, useSessions } from './SessionsDataProvider';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 
 // Mock the fleet plumbing so the test drives the fan-out, classification and
 // loading logic directly. `mock`-prefixed names are the only out-of-scope
@@ -457,6 +458,19 @@ describe('SessionsDataProvider', () => {
       await waitFor(() => expect(result.current.rows).toHaveLength(1));
       expect(result.current.isLoading).toBe(false);
     });
+  });
+
+  it('says the portal session ended when the portal refused the session token', async () => {
+    listSessions.mockImplementation((installation: string) =>
+      installation === 'gazelle'
+        ? Promise.reject(new PortalSessionEndedError())
+        : Promise.reject(namedError('NotFoundError')),
+    );
+
+    const { result } = renderProvider();
+
+    await waitFor(() => expect(result.current.sessionEnded).toBe(true));
+    expect(result.current.unreachableInstallations).toEqual(['gazelle']);
   });
 
   describe('a failed read the person can retry', () => {

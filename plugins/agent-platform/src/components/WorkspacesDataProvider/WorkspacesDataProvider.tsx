@@ -41,6 +41,7 @@ import {
   WORKSPACE_MANAGER_SERVER,
   type WorkspaceList,
 } from '../../lib/workspaceManager';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 
 /** The address's Organization scope: `?organization=<name>`. */
 export const ORGANIZATION_SEARCH_PARAM = 'organization';
@@ -90,6 +91,12 @@ export type WorkspacesData = {
    * 401's reason, never from its wording.
    */
   signIns: string[];
+  /**
+   * The portal refused the person's session token on a read
+   * (`PortalSessionEndedError`): a sign-in to the portal is the way on, not
+   * a retry.
+   */
+  sessionEnded: boolean;
   /** Reads every installation's workspaces again. */
   retry: () => void;
 };
@@ -166,6 +173,9 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
       // is that one's.
       signIns: installations.filter((_, index) =>
         Boolean(musterSignInRequiredOf(results[index]?.error)),
+      ),
+      sessionEnded: results.some(
+        result => result?.error instanceof PortalSessionEndedError,
       ),
       isAwaiting: results.some(result => isAwaitingData(result)),
     }),
@@ -311,9 +321,11 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
       totalCount,
       failures,
       signIns,
+      sessionEnded: lists.sessionEnded,
       retry,
     }),
     [
+      lists.sessionEnded,
       allRows,
       awaited,
       failures,

@@ -1,6 +1,5 @@
 import { LoggerService } from '@backstage/backend-plugin-api';
 import {
-  AuthenticationError,
   ConflictError,
   InputError,
   NotAllowedError,
@@ -9,6 +8,10 @@ import {
 import type { DescMethod } from '@bufbuild/protobuf';
 import { Code, ConnectError } from '@connectrpc/connect';
 import { errorCode } from '@giantswarm/backstage-plugin-gs-node';
+import {
+  INSTALLATION_AUTHENTICATION_ERROR_NAME,
+  InstallationAuthenticationError,
+} from '../installationAuthenticationError';
 
 /**
  * kagent answered (or was reachable) and then failed: an `Internal`, an
@@ -77,6 +80,7 @@ export function httpStatusOf(error: Error): number {
     case 'InputError':
       return 400;
     case 'AuthenticationError':
+    case INSTALLATION_AUTHENTICATION_ERROR_NAME:
       return 401;
     case 'NotAllowedError':
       return 403;
@@ -263,7 +267,9 @@ export interface ErrorContext {
  * Map a Connect failure onto the error the caller should see.
  *
  * - `Unauthenticated` / `PermissionDenied` are kagent's (or the gateway's)
- *   decisions about the forwarded identity: 401 / 403.
+ *   decisions about the forwarded identity: 401 / 403. The 401 is an
+ *   {@link InstallationAuthenticationError}, never Backstage's
+ *   `AuthenticationError`, which means the portal refused the session token.
  * - `NotFound` is kagent saying the resource is gone (or somebody else's): 404
  *   with the endpoint's own wording. `Unimplemented` is a controller that
  *   predates the RPC — unless the message names an A2A unsupported operation,
@@ -329,7 +335,7 @@ export function mapConnectError(
   switch (connectError.code) {
     case Code.Unauthenticated:
       logDenial(logger, installationName, connectError);
-      return new AuthenticationError(
+      return new InstallationAuthenticationError(
         `Not authenticated against the kagent API for installation '${installationName}'${denialReason(connectError.rawMessage)}`,
       );
     case Code.PermissionDenied:

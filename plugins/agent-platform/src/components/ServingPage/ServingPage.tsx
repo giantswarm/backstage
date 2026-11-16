@@ -28,6 +28,7 @@ import {
 import { installationErrorLine } from '@giantswarm/backstage-plugin-muster';
 
 import { useDownloadRows, withDownloadRows } from '../../hooks/useDownloadRows';
+import { usePortalSessionEnded } from '../../hooks/usePortalSessionEnded';
 import {
   useHostingFlowOutcome,
   useOpenHostingFlow,
@@ -63,6 +64,7 @@ import {
 import { useServedModelRows } from '../ServedModelRowsProvider';
 import { useServing } from '../ServingProvider';
 import { ModelManagerSignInAlerts } from '../ModelManagerSignInAlerts';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 import {
   hasServedModelTimeline,
@@ -145,6 +147,9 @@ const TOAST_TIMEOUT_MS = 6000;
  */
 export function ServingPage() {
   const serving = useServing();
+  // The portal refused the session token: the reads of every source fail
+  // the same way until a sign-in, which is the one thing to say.
+  const sessionEnded = usePortalSessionEnded();
   const sharedIdentity = useModelHostingSharedIdentity();
   const { servedModels, installations } = serving;
   const { rows: servedRows } = useServedModelRows();
@@ -602,6 +607,10 @@ export function ServingPage() {
         replace
       />
     );
+  }
+
+  if (sessionEnded) {
+    return <PortalSessionEndedAlert />;
   }
 
   return (

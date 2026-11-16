@@ -19,6 +19,7 @@ import {
 import { NotReachableInstallationsNote } from '../NotReachableInstallationsNote';
 import { SessionsDataProvider, useSessions } from '../SessionsDataProvider';
 import { SessionsTable } from '../SessionsTable';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
 /**
@@ -94,6 +95,7 @@ function SessionsIndexPageContent() {
     unreachableInstallations,
     readFailures,
     nothingRead,
+    sessionEnded,
     retry,
     isRetrying,
     notUserScopedInstallations,
@@ -210,21 +212,29 @@ function SessionsIndexPageContent() {
             is still being read, or once rows are on screen. A failed query
             is not one awaiting data, so a fleet whose every read failed still
             ends `isLoading`; one paused offline does not. */}
-        <UnreachableInstallationsAlert
-          installations={unreachableInstallations}
-          resourceName="sessions"
-          failures={readFailures}
-          isLoading={isLoading}
-          // When no installation answered, the failure is the page's answer:
-          // an error the person cannot close, never the empty state. With one
-          // that answered, even empty, it is the closable warning. kagent down
-          // for a moment is the usual cause, so either card offers a retry.
-          everything={
-            nothingRead ? { title: 'Could not read your sessions' } : undefined
-          }
-          onRetry={retry}
-          isRetrying={isRetrying}
-        />
+        {/* The portal refused the session token: every read fails the
+            same way until a sign-in, which is the one thing to say. */}
+        {sessionEnded ? (
+          <PortalSessionEndedAlert />
+        ) : (
+          <UnreachableInstallationsAlert
+            installations={unreachableInstallations}
+            resourceName="sessions"
+            failures={readFailures}
+            isLoading={isLoading}
+            // When no installation answered, the failure is the page's answer:
+            // an error the person cannot close, never the empty state. With one
+            // that answered, even empty, it is the closable warning. kagent down
+            // for a moment is the usual cause, so either card offers a retry.
+            everything={
+              nothingRead
+                ? { title: 'Could not read your sessions' }
+                : undefined
+            }
+            onRetry={retry}
+            isRetrying={isRetrying}
+          />
+        )}
 
         {/* Installations that run kagent but whose endpoint the portal cannot
             reach (the backend's unauthenticated probe says so). Never queried,

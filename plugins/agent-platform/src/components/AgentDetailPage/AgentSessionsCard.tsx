@@ -4,6 +4,7 @@ import { Button, Flex, Text } from '@backstage/ui';
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import { SessionsTable } from '../SessionsTable';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 import { markEarlierRevisions } from '../SessionsDataProvider/helpers';
 
@@ -50,6 +51,7 @@ export function AgentSessionsCard({
     isNotUserScoped,
     isUnavailable,
     failure,
+    sessionEnded,
     retry,
     isRetrying,
   } = sessions;
@@ -62,6 +64,10 @@ export function AgentSessionsCard({
     () => markEarlierRevisions(rows, currentRevision),
     [rows, currentRevision],
   );
+
+  if (sessionEnded) {
+    return <PortalSessionEndedAlert />;
+  }
 
   if (isUnavailable && failure) {
     // kagent answered and failed: the tab's whole answer is an error with why

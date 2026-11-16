@@ -5,6 +5,7 @@ import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 import { musterToolCatalogueQueryKey } from '../lib/queryKeys';
 import { buildCatalogue, type CatalogueGroup } from '../lib/toolset';
 import { useMusterPluginApi } from './useMusterPluginApi';
+import { portalSessionError } from '../lib/portalSession';
 import {
   type MusterServers,
   useMusterServers,
@@ -68,7 +69,11 @@ export function useReachCataloguesByInstallation(
     queries: installations.map(installation => ({
       queryKey: musterToolCatalogueQueryKey(installation),
       enabled: Boolean(musterApi),
-      queryFn: () => musterApi!.listTools(installation),
+      // The same read as `useMusterToolCatalogue`, under the same key.
+      queryFn: () =>
+        musterApi!.listTools(installation).catch(failure => {
+          throw portalSessionError(failure);
+        }),
     })),
     combine: catalogueResults,
   });

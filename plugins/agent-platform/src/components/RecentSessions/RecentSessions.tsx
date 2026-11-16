@@ -32,6 +32,7 @@ import { workspaceNameLabel } from '../../lib/sessionWorkspace';
 import { ACTIVE_REFETCH_INTERVAL_MS } from '../../lib/kagentSessionPolling';
 import { sessionDetailRouteRef, sessionsRouteRef } from '../../routes';
 import { AgentPlatformProviders } from '../AgentPlatformProviders';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { useSessions } from '../SessionsDataProvider';
 import type { SessionRow } from '../SessionsDataProvider';
 import { sessionsListSearch } from '../SessionsTable/filters';
@@ -308,7 +309,8 @@ function RecentSessionsList({
   const allSessionsHref = shellRail ? sessionsRoute?.() : undefined;
   const baseId = useId();
   const { pathname } = useLocation();
-  const { rows, isLoading, nothingRead, retry, isRetrying } = useSessions();
+  const { rows, isLoading, nothingRead, sessionEnded, retry, isRetrying } =
+    useSessions();
   // No installation answered: not "No sessions yet". With one that answered
   // empty, the empty line stands and the Sessions page names the rest.
   const readFailed = nothingRead;
@@ -323,6 +325,14 @@ function RecentSessionsList({
         <Text variant="body-small" color="secondary">
           Sign in again to see your sessions.
         </Text>
+      </Box>
+    );
+  } else if (sessionEnded && rows.length === 0) {
+    // The portal refused the session token: no retry reads the list, a
+    // sign-in to the portal does.
+    emptyLine = (
+      <Box px="2">
+        <PortalSessionEndedAlert />
       </Box>
     );
   } else if (readFailed) {

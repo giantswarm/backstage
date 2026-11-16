@@ -51,6 +51,7 @@ import {
   type WorkspaceRow,
 } from '../../lib/workspaceList';
 import { CreateWorkspaceButton } from '../CreateWorkspaceButton';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { SharedIdentityNote } from '../SharedIdentityNote';
 import { WorkspaceDeleteDialog } from '../WorkspaceDeleteDialog';
 import { WorkspaceManagerSignIn } from '../WorkspaceManagerSignIn';
@@ -297,6 +298,7 @@ export function CustomizeWorkspacesPanel({
     isLoading,
     failures,
     signIns,
+    sessionEnded,
     retry,
   } = useWorkspacesData();
   const rows = useMemo(
@@ -449,11 +451,17 @@ export function CustomizeWorkspacesPanel({
           onSignedIn={retry}
         />
       ))}
-      <ReadFailures
-        failures={otherFailures}
-        isEverything={isEverythingFailed && signIns.length === 0}
-        onRetry={retry}
-      />
+      {/* The portal refused the session token: every read fails the same
+          way until a sign-in, which is the one thing to say. */}
+      {sessionEnded ? (
+        <PortalSessionEndedAlert />
+      ) : (
+        <ReadFailures
+          failures={otherFailures}
+          isEverything={isEverythingFailed && signIns.length === 0}
+          onRetry={retry}
+        />
+      )}
       {isAvailable && (
         <SharedIdentityNote
           installations={sharedIdentity}

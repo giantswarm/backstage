@@ -855,9 +855,18 @@ credential form, New and Edit model and the model page show it with a Sign in
 again button (`PortalSessionEndedAlert`); the organization page's dialogs say
 it in words only (giantswarm/backstage#3492). The credential form drops a typed
 value, and its request stays open: a reload of the same address opens it
-again. Agent Platform reads that go neither through `AgentManagerClient` nor
-the credential form's client (the kagent routes, muster's own reads) still
-show the backend's text (giantswarm/backstage#3506).
+again. The kagent routes (`KagentApiClient`), the model-manager,
+cluster-manager, toolchain-manager and workspace-manager clients, the served
+model try and the tool catalogue reads through muster do the same
+(giantswarm/backstage#3506). The Sessions page and rail, the session chat (a
+read, a send, an answer, a Stop), the agent's sessions, toolchains, workspaces,
+served models, GPU node pools and the Tools step show `PortalSessionEndedAlert`;
+a page that gathers reads of many sources asks the query cache whether one of
+them was refused that way (`usePortalSessionEnded`). Such a read is not
+retried. The agent-platform backend never answers Backstage's
+`AuthenticationError` itself on these routes: an installation's refusal of the
+person's token (kagent, its gateway, Mimir) and a missing installation token are
+`InstallationAuthenticationError`, a 401 that keeps its own message.
 The status and the error's name decide, never the text; the credential route's
 own `AuthenticationError` (no installation token) is cured by the same sign-in.
 

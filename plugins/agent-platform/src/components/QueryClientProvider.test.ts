@@ -19,6 +19,7 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 import { classifyClusterManagerError } from '../lib/clusterManager';
 import { classifyModelManagerToolError } from '../lib/modelManagerBackends';
+import { PortalSessionEndedError } from '../lib/portalSession';
 
 describe('AGENT_PLATFORM_PERSISTER_KEY', () => {
   it("is this plugin's own localStorage key, not the shared library default", () => {
@@ -346,6 +347,10 @@ describe('shouldRetryQuery', () => {
     ],
   ])('never retries a muster auth failure %s', (_label, error) => {
     expect(shouldRetryQuery(0, error)).toBe(false);
+  });
+
+  it('never retries a read the portal refused the session token for', () => {
+    expect(shouldRetryQuery(0, new PortalSessionEndedError())).toBe(false);
   });
 
   it.each(['forbidden: configmaps', 'no_backend: 0 backends'])(

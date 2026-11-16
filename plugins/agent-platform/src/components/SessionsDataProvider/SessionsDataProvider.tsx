@@ -30,6 +30,7 @@ import {
   type ReadFailure,
 } from '../../lib/readFailure';
 import { readSessionsOnce } from '../../lib/readSessionsOnce';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 import { SessionRow, sortSessionRows, toSessionRow } from './helpers';
 
 export type SessionsContextValue = {
@@ -75,6 +76,12 @@ export type SessionsContextValue = {
    * where with an installation that answered empty it is a partial one.
    */
   nothingRead: boolean;
+  /**
+   * The portal refused the person's session token on a read
+   * (`PortalSessionEndedError`): no installation can be read until a sign-in,
+   * so the page says that instead of naming each installation's failure.
+   */
+  sessionEnded: boolean;
   /**
    * Read the sessions of `unreachableInstallations` again, once each: the
    * page's "Try again" after a failed read, as when kagent was down for a
@@ -301,6 +308,7 @@ export function SessionsDataProvider({
     let isRetrying = false;
     const unreachable: string[] = [];
     const readFailures: Record<string, ReadFailure> = {};
+    let sessionEnded = false;
 
     targets.forEach((installation, index) => {
       const query = sessionQueries[index];
@@ -338,6 +346,7 @@ export function SessionsDataProvider({
       // Anything else — including UpstreamError for a 5xx, a timeout or an
       // unreadable body — means kagent answered and failed, which is worth saying.
       if (isFailedRead(query)) {
+        sessionEnded ||= query.error instanceof PortalSessionEndedError;
         unreachable.push(installation);
         readFailures[installation] = describeReadFailure(query.error);
         // A failed query read again keeps its error until it answers.
@@ -392,6 +401,7 @@ export function SessionsDataProvider({
       nothingRead:
         unreachable.length > 0 &&
         !sessionQueries.some(query => query?.data !== undefined),
+      sessionEnded,
       retry,
       isRetrying,
       notUserScopedInstallations,

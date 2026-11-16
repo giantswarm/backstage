@@ -12,6 +12,7 @@ import {
   idTokenLifetimeLeft,
 } from '@giantswarm/backstage-plugin-gs-react';
 import { getInstallationOidcToken } from '../lib/installationOidcToken';
+import { portalSessionError } from '../lib/portalSession';
 import {
   isKagentUnavailable,
   KAGENT_UNAVAILABLE_MESSAGE,
@@ -130,15 +131,21 @@ export function isUpstreamError(error: unknown): boolean {
  * the fields `describeReadFailure` turns into the page's words — the status,
  * the backend's failure reason and the request id it sent toward kagent.
  */
-async function readRequestError(
-  response: Response,
-): Promise<{ message?: string; fields: KagentRequestErrorFields }> {
+async function readRequestError(response: Response): Promise<{
+  message?: string;
+  name?: string;
+  fields: KagentRequestErrorFields;
+}> {
   const errorData = await response.json().catch(() => ({}));
-  const { message, reason } =
-    (errorData as { error?: { message?: string; reason?: string } })?.error ??
-    {};
+  const { message, reason, name } =
+    (
+      errorData as {
+        error?: { message?: string; reason?: string; name?: unknown };
+      }
+    )?.error ?? {};
   return {
     message,
+    name: typeof name === 'string' ? name : undefined,
     fields: {
       status: response.status,
       reason,
@@ -250,10 +257,11 @@ export function isConflictError(error: unknown): boolean {
 }
 
 /**
- * A request the backend refused because the tab's Backstage token no longer
- * verifies: its 401, as {@link KagentApiClient.throwIfNotOk} names it. Seen
- * when the Backstage pod rolled while the page stayed open; a reload signs the
- * tab back in.
+ * A request refused for the person's installation token: the backend's 401,
+ * as {@link KagentApiClient.throwIfNotOk} names it, when kagent (or its
+ * gateway) refused the token or the request carried none. The portal's own
+ * refusal of the session token is a `PortalSessionEndedError` instead
+ * (`lib/portalSession.ts`).
  */
 export const UNAUTHORIZED_ERROR_NAME = 'UnauthorizedError';
 
@@ -1021,7 +1029,11 @@ export class KagentApiClient implements KagentApi {
   ): Promise<void> {
     const { badRequestIsMissing = true } = options;
     if (!response.ok) {
-      const { message: bodyMessage, fields } = await readRequestError(response);
+      const {
+        message: bodyMessage,
+        name,
+        fields,
+      } = await readRequestError(response);
       // kagent down for a moment reads as that, not as the backend's message,
       // which quotes the gateway ("upstream call failed: Connect: Connection
       // refused"). The status, reason and request id still travel on the error.
@@ -1070,7 +1082,12 @@ export class KagentApiClient implements KagentApi {
       if (response.status === 503) {
         error.name = 'ServiceUnavailableError';
       }
-      throw error;
+      // The portal's backend refusing the person's session token (a 401
+      // named `AuthenticationError`, before any route runs) is said as that,
+      // never in its words: a sign-in to the portal is the way on. kagent's
+      // refusal of the installation token has a name of its own
+      // (`InstallationAuthenticationError`) and keeps its message.
+      throw portalSessionError(Object.assign(error, { errorName: name }));
     }
   }
 }

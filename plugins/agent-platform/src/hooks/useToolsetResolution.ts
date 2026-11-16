@@ -5,6 +5,10 @@ import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 import { musterToolsetResolutionQueryKey } from '../lib/queryKeys';
 import { isUnknownPresetError, toolsetWasEvaluated } from '../lib/toolset';
 import { useMusterPluginApi } from './useMusterPluginApi';
+import {
+  portalSessionError,
+  PortalSessionEndedError,
+} from '../lib/portalSession';
 
 /**
  * Large enough to hold any real resolution in one page: the biggest gateway
@@ -38,6 +42,11 @@ export type ToolsetResolution = {
     | 'unsupported'
     | 'unavailable';
   error?: string;
+  /**
+   * The `error` is the portal refusing the person's session token
+   * (`PortalSessionEndedError`): a sign-in to the portal is the way on.
+   */
+  sessionEnded?: boolean;
 };
 
 // Shared, so a consumer's memo over `tools` holds while nothing resolves.
@@ -62,11 +71,17 @@ export function useToolsetResolution(
     queryKey: musterToolsetResolutionQueryKey(installation ?? '', selectors),
     enabled,
     queryFn: () =>
-      musterApi!.filterTools({
-        installation,
-        toolset: selectors,
-        limit: RESOLUTION_PAGE_SIZE,
-      }),
+      musterApi!
+        .filterTools({
+          installation,
+          toolset: selectors,
+          limit: RESOLUTION_PAGE_SIZE,
+        })
+        // The portal refusing the session token is said as that, never in
+        // its words (`lib/portalSession.ts`).
+        .catch(failure => {
+          throw portalSessionError(failure);
+        }),
     // A refused toolset stays refused; retrying only delays the message.
     retry: false,
   });
@@ -85,6 +100,7 @@ export function useToolsetResolution(
       isLoading: false,
       status: isUnknownPresetError(message) ? 'unknown-preset' : 'error',
       error: message,
+      sessionEnded: error instanceof PortalSessionEndedError,
     };
   }
   if (!data) {

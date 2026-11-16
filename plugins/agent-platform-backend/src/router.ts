@@ -4,12 +4,9 @@ import {
 } from '@backstage/backend-plugin-api';
 import type { MetricsService } from '@backstage/backend-plugin-api/alpha';
 import { Config } from '@backstage/config';
-import {
-  AuthenticationError,
-  InputError,
-  ServiceUnavailableError,
-} from '@backstage/errors';
+import { InputError, ServiceUnavailableError } from '@backstage/errors';
 import { randomUUID } from 'crypto';
+import { InstallationAuthenticationError } from './installationAuthenticationError';
 import express from 'express';
 import Router from 'express-promise-router';
 import {
@@ -750,7 +747,9 @@ export async function createRouter(
     const headerValue = req.headers[KAGENT_AUTH_HEADER];
     const token = Array.isArray(headerValue) ? headerValue[0] : headerValue;
     if (!token && opts.required) {
-      throw new AuthenticationError(
+      // Not Backstage's AuthenticationError: the page reads that name as the
+      // portal refusing the session token.
+      throw new InstallationAuthenticationError(
         'The request did not include a user token for the target kagent installation.',
       );
     }

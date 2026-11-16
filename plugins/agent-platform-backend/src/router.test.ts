@@ -595,6 +595,9 @@ describe('createRouter', () => {
         .query({ installation: 'gazelle' });
 
       expect(response.status).toBe(401);
+      // Not Backstage's AuthenticationError, which the page reads as the
+      // portal refusing the session token.
+      expect(response.body.error.name).toBe('InstallationAuthenticationError');
       expect(listSessions).not.toHaveBeenCalled();
     });
 
