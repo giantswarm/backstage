@@ -15,7 +15,7 @@ of text's box from the DOM. No screenshots.
 
 | File | What it is |
 |---|---|
-| `layout-check.mjs` | The command. Exits 0 without findings, 1 with findings, 2 when it could not check (no portal, a step failed). |
+| `layout-check.mjs` | The command. Exits 0 without findings, 1 with findings, 2 when it could not check (the portal does not answer, a step failed, a page kept changing). |
 | `collect.mjs` | The measurement, run inside the page. |
 | `rules.mjs` | The rules, pure functions over the measurement. |
 | `rules.test.mjs` | Their tests: `node --test .agents/skills/layout-check/rules.test.mjs`. CI runs them (`.github/workflows/skill-tests.yaml`). |
@@ -26,7 +26,8 @@ Commands run from the repo root; `L=.agents/skills/layout-check`.
 ## Run it
 
 Start fixture mode (`docs/fixtures.md`); the check reads the portal's URL
-from `.fixtures-server.json`. Stop the server when you are done.
+from `.fixtures-server.json` and stops with one message when the portal
+does not answer. Stop the server when you are done.
 
 ```bash
 yarn fixtures start
@@ -82,16 +83,23 @@ finding is right as it is.
   controls, not cards with text), a control sits between two rows of
   similar controls beside it, or lines up with none of its row's top,
   centre and bottom.
-- **truncation**: text cut off without an ellipsis, text squeezed to less
-  than two em (a letter or two and the ellipsis), and a control cut off by
-  an ancestor that hides its overflow. A long text ending in an ellipsis
-  is a design, not a finding.
-- **centering**: in a button, tab, select trigger or link styled as a
-  button, the text and icons sit more than 2px off the centre of the
+- **truncation**: text cut off by an element that hides its overflow
+  (across, or a line or more down), unless it ends in an ellipsis (or is
+  line-clamped) and its full value is there on hover: a `title`, a tooltip
+  (`aria-describedby`) or `data-full-text` on it or up to three ancestors.
+  Text squeezed to less than two em (a letter or two) is a finding with a
+  tooltip too. A control cut off by an ancestor that hides its overflow is
+  one as well. A scroll container cuts nothing: a person scrolls to the
+  rest.
+- **centering**: in a button, tab, select trigger, menu item, switch or link
+  styled as a button (`role=button`, or bui's or MUI's button classes), the
+  text and icons sit more than 2px off the centre of the
   content box, vertically always, horizontally where the control centres
-  its content. The text's own box is compared, not its wrapper's.
+  its content. The text's own box is compared, not its wrapper's;
+  something absolutely positioned inside (a badge) is left out.
 - **shift**: from one state to the next, a control outside lists, tables
-  and overlays changes size, or moves sideways. Moving down or up is not a
+  and overlays changes size, or moves sideways. Controls are matched by
+  role, name and their place among the controls of that role and name. Moving down or up is not a
   finding: content above that loads or re-sorts moves what is below.
 
 ## Specs
@@ -123,7 +131,10 @@ export default [
 ```
 
 The functions get `{ page, width, scenario, baseUrl }`. The check waits after
-each load, setup and state until the DOM is quiet, then measures. Find
+each load, setup and state until the DOM has been quiet for 0.7 seconds
+and finite animations are done, then measures. A page still changing after
+20 seconds is not measured: it is reported as could not check, with the
+state it was in (`load`, `setup` or the state's name), and the run exits 2. Find
 records through the page (its first link or row), not by fixed ids, so a
 spec runs in every scenario. `data-layout-check="ignore"` on an element
 leaves its subtree out too, for a widget whose layout is not the portal's.
