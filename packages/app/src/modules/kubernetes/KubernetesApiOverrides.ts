@@ -131,16 +131,38 @@ export const KubernetesAuthProvidersOverride = ApiBlueprint.make({
     defineParams({
       api: kubernetesAuthProvidersApiRef,
       deps: {
+        configApi: configApiRef,
         microsoftAuthApi: microsoftAuthApiRef,
         googleAuthApi: googleAuthApiRef,
         gsAuthProvidersApi: gsAuthProvidersApiRef,
       },
-      factory: ({ microsoftAuthApi, googleAuthApi, gsAuthProvidersApi }) => {
+      factory: ({
+        configApi,
+        microsoftAuthApi,
+        googleAuthApi,
+        gsAuthProvidersApi,
+      }) => {
         const base = new KubernetesAuthProviders({
           microsoftAuthApi,
           googleAuthApi,
         });
-        return new GSKubernetesAuthProviders(base, gsAuthProvidersApi);
+        const providers = new GSKubernetesAuthProviders(
+          base,
+          gsAuthProvidersApi,
+        );
+        // `gs.fixtures: true`: a token for the fixture installations'
+        // service account, outside production builds only (docs/fixtures.md).
+        if (
+          process.env.NODE_ENV !== 'production' &&
+          configApi.getOptionalBoolean('gs.fixtures')
+        ) {
+          return lazyApi(async () => {
+            const { KubernetesAuthProvidersFixtureApi } =
+              await import('./fixtures/KubernetesAuthProvidersFixtureApi');
+            return new KubernetesAuthProvidersFixtureApi(providers);
+          });
+        }
+        return providers;
       },
     }),
 });

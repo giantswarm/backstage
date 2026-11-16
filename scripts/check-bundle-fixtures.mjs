@@ -123,6 +123,19 @@ const MARKERS = [
       'packages/app/src/modules/kubernetes/fixtures/KubernetesFixtureApi.ts',
     marker: 'Fixture mode does not answer the Kubernetes request',
   },
+  {
+    source:
+      'packages/app/src/modules/kubernetes/fixtures/KubernetesAuthProvidersFixtureApi.ts',
+    marker: 'fixture-installation-token',
+  },
+  {
+    source: 'plugins/gs/src/apis/mimir/fixtures/MimirFixtureApi.ts',
+    marker: 'Fixture Mimir cannot evaluate the query',
+  },
+  {
+    source: 'plugins/gs-common/src/fixtures/gatewayUsage.ts',
+    marker: 'sorrel@example.com',
+  },
 ];
 
 const root = path.resolve(import.meta.dirname, '..');

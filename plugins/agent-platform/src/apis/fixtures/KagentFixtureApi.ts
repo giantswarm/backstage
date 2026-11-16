@@ -17,7 +17,13 @@ import type {
   StreamEnd,
 } from '../types';
 
+import {
+  baseDataSet,
+  type FixtureDataSet,
+} from '@giantswarm/backstage-plugin-gs-common/fixtures';
+
 import { agentManagerFixtureState } from './agentManagerFixtureState';
+import { fixtureModelCost } from './fixtureModelCost';
 import { FIXTURE_USER, served } from './fixtureIdentity';
 import { type Agent } from './kagentConversations';
 import {
@@ -35,6 +41,7 @@ import {
 export class KagentFixtureApi implements KagentApi {
   constructor(
     private readonly state: () => KagentFixtureState = kagentFixtureState,
+    private readonly data: () => FixtureDataSet = baseDataSet,
   ) {}
 
   async listInstallations(): Promise<KagentInstallation[]> {
@@ -94,14 +101,7 @@ export class KagentFixtureApi implements KagentApi {
     days: number,
   ): Promise<ModelCostResponse> {
     served(installation);
-    return {
-      status: 'actual',
-      windowDays: days,
-      totalUsd: 0,
-      byAgent: [],
-      partial: false,
-      evaluatedAt: Date.now(),
-    };
+    return fixtureModelCost(this.data(), installation, days, Date.now());
   }
 
   async cancelTask(

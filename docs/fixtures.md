@@ -5,13 +5,13 @@ so its pages render made-up data without their backends: for local
 development, design reviews and layout checks. Fixture code never ships in a
 production build.
 
-| Flag                           | Plugin                                                                                 | Fixture implementation                                                               |
-| ------------------------------ | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `plans.fixtures: true`         | plans (Hive, the plan list)                                                            | `plugins/plans/src/apis/PlansFixtureApi.ts`, `plugins/plans/src/lib/hiveFixtures.ts` |
-| `roadmap.fixtures: true`       | roadmap (Hive's Roadmap tab)                                                           | `plugins/roadmap/src/apis/RoadmapFixtureApi.ts`                                      |
-| `muster.fixtures: true`        | muster (`MusterApi`), and every tool call through it                                   | `plugins/muster/src/apis/fixtures/`, plus the fixture MCP servers of other plugins   |
-| `agentPlatform.fixtures: true` | agent-platform (`KagentApi`, `ModelManagerApi`, `AgentManagerCredentialsApi`)          | `plugins/agent-platform/src/apis/fixtures/`                                          |
-| `gs.fixtures: true`            | the Kubernetes API of the installations (`kubernetesApiRef`), and their cluster access | `packages/app/src/modules/kubernetes/fixtures/KubernetesFixtureApi.ts`               |
+| Flag                           | Plugin                                                                                                        | Fixture implementation                                                                 |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `plans.fixtures: true`         | plans (Hive, the plan list)                                                                                   | `plugins/plans/src/apis/PlansFixtureApi.ts`, `plugins/plans/src/lib/hiveFixtures.ts`   |
+| `roadmap.fixtures: true`       | roadmap (Hive's Roadmap tab)                                                                                  | `plugins/roadmap/src/apis/RoadmapFixtureApi.ts`                                        |
+| `muster.fixtures: true`        | muster (`MusterApi`), and every tool call through it                                                          | `plugins/muster/src/apis/fixtures/`, plus the fixture MCP servers of other plugins     |
+| `agentPlatform.fixtures: true` | agent-platform (`KagentApi`, `ModelManagerApi`, `AgentManagerCredentialsApi`)                                 | `plugins/agent-platform/src/apis/fixtures/`                                            |
+| `gs.fixtures: true`            | the Kubernetes API of the installations (`kubernetesApiRef`), their cluster access, and Mimir (`mimirApiRef`) | `packages/app/src/modules/kubernetes/fixtures/`, `plugins/gs/src/apis/mimir/fixtures/` |
 
 Set the flags in `app-config.local.yaml` and run `yarn start`. In a production
 build (`NODE_ENV=production`, what `backstage-cli package build` and the image
@@ -69,9 +69,10 @@ discovery answers the versions the classes support (the newest preferred),
 a list or a read of one object answers the objects the plugins' fixtures hold
 (see "Objects in the Kubernetes API"), every other list is empty and any other
 object not found, and access reviews are allowed. Their cluster
-access is healthy from the start, and they have no metrics backend
-(`mimirEnabled: false`). Any other request, a write among them, fails with a
-501 and a console error.
+access is healthy from the start, and their service account answers a
+made-up token, which the Mimir queries need to be sent. Any other request, a
+write among them, fails with a 501 and a console error. Their Mimir is the
+fixture one (`mimirEnabled: true`, see "Mimir").
 
 If the backend fails with "Invalid app bundle schema", a production build of
 the app in `packages/app/dist` predates a config schema change: delete the
@@ -179,7 +180,11 @@ from kagent.
   backend's words; a cancel reaches the streams following the turn at once,
   and a deleted session ends its streams and is gone from every read.
 - kagent on the unreachable installation fails every call as a timeout.
-- The model cost answers no cost yet (giantswarm/giantswarm#39251, item 8).
+- The person's model cost (Usage · Your sessions) is read from the gateway
+  series the fixture Mimir answers from, as agent-platform-backend reads it
+  from Mimir (`fixtureModelCost.ts`): the growth of the person's cost series
+  by agent, partial on `meadow`, where some calls name no one, and
+  `identity-unreadable` on the unreachable installation.
 
 ### workspace-manager, toolchain-manager and skill-manager
 
@@ -278,8 +283,30 @@ and a cluster's first pool registers its KServe backend.
   declares the schemas a page reads in `inputSchemas`.
 
 Cost (Usage · Cost) reads the gateway's metrics from Mimir, not these
-managers, and the fixture installations have no Mimir (`mimirEnabled:
-false`), so it shows its "no observability stack" state.
+managers (see "Mimir").
+
+### Mimir
+
+The fixture `MimirApi` (`plugins/gs/src/apis/mimir/fixtures/`) answers each
+fixture installation's agent gateway metrics, which Usage (Overview, Cost and
+the rates of Your sessions) reads. The series are derived from the data set
+(`gatewayUsage.ts` in gs-common): the ready agents of ready organizations,
+the ones with sessions, call the organization's default model
+(`FIXTURE_AGENT_MODEL`, the default ModelConfig's model) at its list price;
+the person (`FIXTURE_PERSON_EMAIL`) through their sessions on the days each
+ran, and two teammates on most working days of the 100 days before, more
+lately; on `meadow` a share of one agent's calls names no one. Cost, tokens
+by type, calls, durations, output speed, the inference listener's statuses
+and price lookups all count the same calls. The series are built once, on
+first read, up to that moment.
+
+The queries are evaluated, not matched (`promql.ts`): selectors with
+`offset` and `@`, `increase`, `min_over_time`, `last_over_time`,
+`label_replace`, `histogram_quantile`, the aggregations with `by`, `or`,
+`and`, `unless`, and arithmetic and comparisons. A metric without fixture
+series answers an empty vector, as Mimir does; a query the evaluator cannot
+read fails as Mimir fails a bad query (`InputError`), with a console error:
+extend the evaluator, or the series a new page reads.
 
 ### Objects in the Kubernetes API
 

@@ -3,13 +3,14 @@ import {
   FIXTURE_INSTALLATIONS,
   isFixtureInstallation,
 } from '@giantswarm/backstage-plugin-gs-common';
+import { FIXTURE_PERSON_EMAIL } from '@giantswarm/backstage-plugin-gs-common/fixtures';
 
 export { FIXTURE_INSTALLATION };
 
 /** The person fixture mode signs in: the guest of the dev server. */
 export const FIXTURE_USER = {
   sub: 'user:development/guest',
-  email: 'guest@example.com',
+  email: FIXTURE_PERSON_EMAIL,
 } as const;
 
 /**
