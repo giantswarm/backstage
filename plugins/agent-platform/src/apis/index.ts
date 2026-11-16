@@ -39,3 +39,10 @@ export {
   credentialOperationErrorStatus,
   type AgentManagerCredentialsApi,
 } from './AgentManagerCredentialsApi';
+export {
+  SkillDiscoveryClient,
+  skillDiscoveryApiRef,
+  type SkillContent,
+  type SkillDiscoveryApi,
+  type SkillRepositoryDiscovery,
+} from './SkillDiscoveryApi';

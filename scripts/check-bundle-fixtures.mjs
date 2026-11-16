@@ -105,9 +105,13 @@ const MARKERS = [
     marker: 'A command line YAML processor',
   },
   {
-    source:
-      'plugins/agent-platform/src/apis/fixtures/mcpServers/skillManager.ts',
+    source: 'plugins/agent-platform/src/apis/fixtures/skillFixtureFiles.ts',
     marker: '1. Read the request and what it refers to.',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/SkillDiscoveryFixtureApi.ts',
+    marker: 'returned 503: Service Unavailable',
   },
   {
     source: 'plugins/muster/src/apis/fixtures/musterFixtureData.ts',

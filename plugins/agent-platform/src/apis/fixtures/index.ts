@@ -37,3 +37,8 @@ export function agentPlatformAccessReviewOf(
 ): boolean | undefined {
   return agentManagerFixtureState().allows(installation, attributes);
 }
+
+export {
+  portalSkillRepositories,
+  portalSkillSourceOf,
+} from './SkillDiscoveryFixtureApi';
