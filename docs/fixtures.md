@@ -365,12 +365,29 @@ the rates of Your sessions) reads. The series are derived from the data set
 the ones with sessions, call the organization's default model
 (`FIXTURE_AGENT_MODEL`, the default ModelConfig's model) at its list price;
 the person (`FIXTURE_PERSON_EMAIL`) through their sessions on the days each
-ran, and two teammates on most working days of the 100 days before, more
-lately; on `meadow` a share of one agent's calls names no one. Cost, tokens
+ran, and two teammates on most working days of the 100 days before, busier
+in some weeks than others; on `meadow` a share of one agent's calls names no one. Cost, tokens
 by type, calls, durations, output speed, the inference listener's statuses
 and price lookups all count the same calls. Each series starts on the day of
-its first call, as the gateway creates it. The series count back from the
-data set's time (`now`), so the same seed and time give the same figures.
+its first call, as the gateway creates it.
+
+The figures are fixed for a seed and a time: the series count back from the
+data set's time (`now`), and the fixture Mimir evaluates instant queries at
+it, so a page shows the same figures however long it stays open. A load of
+the page builds the base data set at that moment, though, so figures over a
+window that ends now ("the last 30 days", "this month") move with the clock:
+
+- within a day, by a few percent from midnight to midnight: the window takes in
+  more of today's calls and less of its first day's;
+- from day to day, by a few percent more: the window slides by a day, and the
+  person's sessions, dated back from the data set's time, move with it.
+
+A day in the past keeps its calls whichever day the data set is built on
+(the teammates' calls depend on the calendar day, not on the window), and
+nothing depends on the browser's time zone: days are UTC days. A figure to
+check is therefore one with data, not a fixed amount; a test pins the amount
+for a fixed time (`MimirFixtureApi.test.ts`). A page restored from the query
+cache shows the previous load's figures until its queries answer again.
 
 The fixture Mimir needs no token: the Mimir hooks pass the person's token
 for the installation as they find it, and the real `MimirClient` refuses to

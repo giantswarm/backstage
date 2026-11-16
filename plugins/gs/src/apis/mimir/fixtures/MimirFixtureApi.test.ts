@@ -11,6 +11,7 @@ const mimir = new MimirFixtureApi(
   () => NOW,
 );
 const COST = 'agentgateway_gen_ai_client_cost_usd_total';
+const SPEND_30D = 2.28683445;
 
 function query(promql: string, installationName = 'fennel') {
   return mimir.query({ installationName, query: promql });
@@ -25,8 +26,24 @@ describe('MimirFixtureApi', () => {
 
   it('answers the gateway series of a data set built at a fixed time', async () => {
     const answer = await query(`sum(increase(${COST}[30d]))`);
-    expect(Number(answer.data.result[0].value[1])).toBeGreaterThan(0);
+    // The same seed and time give the same figure: fennel's spend over the
+    // 30 days before 2026-11-16 12:00 UTC.
+    expect(Number(answer.data.result[0].value[1])).toBeCloseTo(SPEND_30D, 6);
     expect(answer.data.result[0].value[0]).toBe(NOW / 1000);
+  });
+
+  it('evaluates at the data set’s time, so the figures hold while a page stays open', async () => {
+    jest.useFakeTimers({ now: NOW + 3 * 60 * 60 * 1000 });
+    try {
+      const open = new MimirFixtureApi(() => data);
+      const answer = await open.query({
+        installationName: 'fennel',
+        query: `sum(increase(${COST}[30d]))`,
+      });
+      expect(Number(answer.data.result[0].value[1])).toBeCloseTo(SPEND_30D, 6);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('answers no series, without a warning, for a metric it has none of', async () => {

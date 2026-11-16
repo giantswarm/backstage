@@ -57,3 +57,17 @@ describe('the gateway series', () => {
     expect(new Set(histories).size).toBe(histories.length);
   });
 });
+
+describe('a past day of the gateway', () => {
+  it('has the same calls whichever day the data set is built on', () => {
+    const day = Date.UTC(2024, 11, 20);
+    const callsOf = (built: number) =>
+      gatewayDaysOf(createFixtureDataSet({ now: built }), 'fennel', built)
+        .filter(d => d.day === day && d.user !== FIXTURE_PERSON_EMAIL)
+        .map(d => `${d.namespace}/${d.agent}/${d.user}:${d.input}`)
+        .sort();
+    const calls = callsOf(NOW);
+    expect(calls.length).toBeGreaterThan(0);
+    expect(callsOf(NOW + 5 * DAY)).toEqual(calls);
+  });
+});

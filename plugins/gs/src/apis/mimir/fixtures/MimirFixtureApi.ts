@@ -46,7 +46,12 @@ export class MimirFixtureApi implements MimirApi {
 
   constructor(
     private readonly data: () => FixtureDataSet = fixtureDataSet,
-    private readonly now: () => number = Date.now,
+    /**
+     * When an instant query is evaluated: the data set's time by default,
+     * which its series end at, so a page reads the same figures however long
+     * it stays open; a reload builds the data set, and the figures, anew.
+     */
+    private readonly now: () => number = () => data().now,
   ) {}
 
   async query(params: {

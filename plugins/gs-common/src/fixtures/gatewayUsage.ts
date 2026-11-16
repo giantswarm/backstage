@@ -23,7 +23,8 @@ import { hashOf } from './random';
  *   `agent_namespace` and `agent`);
  * - the person ({@link FIXTURE_PERSON_EMAIL}) calls the models through their
  *   sessions, on the days each session ran, and two teammates call them every
- *   working day of the {@link GATEWAY_HISTORY_DAYS} before, more lately;
+ *   working day of the {@link GATEWAY_HISTORY_DAYS} before, busier in some
+ *   weeks than others ({@link trendOf}, by calendar day);
  *   on the first installation a share of one agent's calls names no one
  *   (`unknown`);
  * - every agent runs on its organization's default model
@@ -199,6 +200,18 @@ function activeAgents(data: FixtureDataSet, installation: string) {
   );
 }
 
+/** How long the teammates' use takes to rise and fall again, in days. */
+const TREND_DAYS = 91;
+
+/**
+ * How busy the teammates are on a day, between 0.3 and 1: a slow wave over
+ * the calendar, so a period can grow or shrink against the one before, and a
+ * day's calls stay the same whenever the data set is built.
+ */
+function trendOf(day: number): number {
+  return 0.65 + 0.35 * Math.sin((2 * Math.PI * (day / DAY)) / TREND_DAYS);
+}
+
 /** Tokens and calls for an amount of input, the same for the same key. */
 function callsOf(
   key: string,
@@ -249,7 +262,8 @@ export function gatewayDaysOf(
     });
   };
 
-  // The teammates: most working days, a few weekends, more lately.
+  // The teammates: most working days, a few weekends, each calendar day's
+  // calls the same whenever the data set is built.
   for (const agent of agents) {
     for (const user of TEAMMATES) {
       const id = [installation, agent.namespace, agent.name, user];
@@ -261,7 +275,7 @@ export function gatewayDaysOf(
         if (chance > (weekend ? 0.15 : 0.7)) {
           continue;
         }
-        const trend = 0.35 + (0.65 * (day - firstDay)) / (today - firstDay);
+        const trend = trendOf(day);
         const share = day === today ? todayShare : 1;
         record(
           agent,
