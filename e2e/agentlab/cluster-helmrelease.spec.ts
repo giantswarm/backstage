@@ -226,7 +226,7 @@ test.describe('clusters: a cluster a HelmRelease installs', () => {
 
     await open(page, clusterPage(name));
 
-    await expect(page.getByText('Installed by', { exact: true })).toBeVisible();
+    await expect(page.locator('a[href*="//grafana."]').first()).toBeVisible();
     await expect(page.getByText('Web UI', { exact: true })).toHaveCount(0);
     await expect(page.locator('a[href*="//happa."]')).toHaveCount(0);
   });

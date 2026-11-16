@@ -302,9 +302,9 @@ gs:
       - label: 'Alerts'
         icon: 'NotificationsNone'
         url: 'https://grafana.${{BASE_DOMAIN}}/alerting?orgId=2'
-      - label: 'Cluster overview dashboard'
+      - label: "Cluster overview \n dashboard"
         icon: 'GrafanaIcon'
-        url: 'https://grafana.${{BASE_DOMAIN}}/d/gs_cluster-overview/cluster-overview?orgId=1&var-cluster=${{CLUSTER_NAME}}'
+        url: 'https://grafana.${{BASE_DOMAIN}}/d/gs_cluster-overview/cluster-overview?orgId=1&from=now-6h&to=now&timezone=browser&var-datasource=default&var-cluster=${{CLUSTER_NAME}}'
 ```
 
 ### Cluster type specific links
@@ -312,6 +312,18 @@ gs:
 If the `clusterType` configuration option is not set, the link will be displayed for both management and workload clusters.
 If the `clusterType` is set to `management`, the link will be displayed only for management clusters.
 If the `clusterType` is set to `workload`, the link will be displayed only for workload clusters.
+
+For example, a link shown on management clusters only:
+
+```yaml
+gs:
+  clusterDetails:
+    resources:
+      - label: 'Teleport'
+        icon: 'Public'
+        url: 'https://teleport.${{BASE_DOMAIN}}'
+        clusterType: 'management'
+```
 
 ### URL Templating
 
@@ -323,7 +335,7 @@ The `url` parameter supports templating with the following placeholders:
 - `ORG_NAME` - name of the organization.
 - `BASE_DOMAIN` - base domain of the management cluster.
 
-For example, the URL `https://grafana.${{BASE_DOMAIN}}/d/gs_cluster-overview/cluster-overview?var-cluster=${{CLUSTER_NAME}}` will be dynamically populated with the appropriate values.
+For example, the URL `https://grafana.${{BASE_DOMAIN}}/d/gs_cluster-overview/cluster-overview?orgId=1&var-cluster=${{CLUSTER_NAME}}` will be dynamically populated with the appropriate values.
 
 ### Icon Configuration
 

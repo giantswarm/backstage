@@ -6,12 +6,7 @@ import { formatTemplateString } from '../../../../utils/formatTemplateString';
 import { useClusterDetailsTemplateData } from '../../../../hooks';
 import { isManagementCluster } from '../../../utils';
 
-const defaultLinks: {
-  label: string;
-  icon: string;
-  url: string;
-  clusterType?: string;
-}[] = [
+const defaultLinks = [
   {
     label: 'Cluster overview \n dashboard',
     icon: 'GrafanaIcon',
@@ -37,23 +32,23 @@ export function ClusterToolsCard() {
     'gs.clusterDetails.resources',
   );
 
+  const clusterType = isManagementCluster(cluster) ? 'management' : 'workload';
   const links = linksConfig
-    ? linksConfig.map(link => ({
-        url: link.getString('url'),
-        label: link.getString('label'),
-        icon: link.getString('icon'),
-        clusterType: link.getOptionalString('clusterType'),
-      }))
+    ? linksConfig
+        .map(link => ({
+          url: link.getString('url'),
+          label: link.getString('label'),
+          icon: link.getString('icon'),
+          clusterType: link.getOptionalString('clusterType'),
+        }))
+        .filter(
+          link =>
+            typeof link.clusterType === 'undefined' ||
+            link.clusterType === clusterType,
+        )
     : defaultLinks;
 
-  const clusterType = isManagementCluster(cluster) ? 'management' : 'workload';
-  const filteredLinks = links.filter(
-    link =>
-      typeof link.clusterType === 'undefined' ||
-      link.clusterType === clusterType,
-  );
-
-  const tools = filteredLinks.map(link => ({
+  const tools = links.map(link => ({
     url: formatTemplateString(link.url, {
       data: clusterDetailsTemplateData,
     }),
