@@ -327,14 +327,10 @@ function RecentSessionsList({
         </Text>
       </Box>
     );
-  } else if (sessionEnded && rows.length === 0) {
-    // The portal refused the session token: no retry reads the list, a
-    // sign-in to the portal does.
-    emptyLine = (
-      <Box px="2">
-        <PortalSessionEndedAlert />
-      </Box>
-    );
+  } else if (sessionEnded) {
+    // The alert above the list says why there is nothing: not "No sessions
+    // yet", and not a retry.
+    emptyLine = null;
   } else if (readFailed) {
     emptyLine = (
       <RecentSessionsReadError onRetry={retry} isRetrying={isRetrying} />
@@ -461,10 +457,20 @@ function RecentSessionsList({
     );
   }
 
+  // The portal refused the session token: no retry reads the list, a
+  // sign-in to the portal does. Said above the rows read before, which stop
+  // keeping up.
+  const sessionEndedAlert = sessionEnded && !sessionEnd && (
+    <Box px="2">
+      <PortalSessionEndedAlert />
+    </Box>
+  );
+
   if (shellRail) {
     const hasTimeGroups = grouped.groups.length > 0;
     return (
       <Flex direction="column" gap="1">
+        {sessionEndedAlert}
         {grouped.pinned.length > 0 && (
           <>
             <GroupHeader id={`${baseId}-pinned`} label="Pinned" />
@@ -538,6 +544,7 @@ function RecentSessionsList({
   return (
     <Flex direction="column" gap="1">
       <GroupHeader id={`${baseId}-recent`} label="Recent" />
+      {sessionEndedAlert}
       {body}
     </Flex>
   );

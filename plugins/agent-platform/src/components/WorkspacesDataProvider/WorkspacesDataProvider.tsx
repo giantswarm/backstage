@@ -41,7 +41,10 @@ import {
   WORKSPACE_MANAGER_SERVER,
   type WorkspaceList,
 } from '../../lib/workspaceManager';
-import { PortalSessionEndedError } from '../../lib/portalSession';
+import {
+  isPortalSessionRefusal,
+  PortalSessionEndedError,
+} from '../../lib/portalSession';
 
 /** The address's Organization scope: `?organization=<name>`. */
 export const ORGANIZATION_SEARCH_PARAM = 'organization';
@@ -92,9 +95,10 @@ export type WorkspacesData = {
    */
   signIns: string[];
   /**
-   * The portal refused the person's session token on a read
-   * (`PortalSessionEndedError`): a sign-in to the portal is the way on, not
-   * a retry.
+   * The portal refused the person's session token on a read: a list
+   * (`PortalSessionEndedError`) or the server list that says where
+   * workspace-manager runs. A sign-in to the portal is the way on, not a
+   * retry.
    */
   sessionEnded: boolean;
   /** Reads every installation's workspaces again. */
@@ -280,6 +284,13 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
     [lists.errors, unreachableKey],
   );
 
+  // Also the reads that say which installation runs workspace-manager (its
+  // server list, `/installations`): refused, no list is ever asked for.
+  const sessionEnded =
+    lists.sessionEnded ||
+    isPortalSessionRefusal(availability.error) ||
+    isPortalSessionRefusal(availability.installationsError);
+
   let isAvailable: boolean | undefined;
   if (installations.length > 0) {
     isAvailable = true;
@@ -321,11 +332,11 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
       totalCount,
       failures,
       signIns,
-      sessionEnded: lists.sessionEnded,
+      sessionEnded,
       retry,
     }),
     [
-      lists.sessionEnded,
+      sessionEnded,
       allRows,
       awaited,
       failures,

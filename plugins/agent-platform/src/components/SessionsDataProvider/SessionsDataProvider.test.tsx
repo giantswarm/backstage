@@ -473,6 +473,28 @@ describe('SessionsDataProvider', () => {
     expect(result.current.unreachableInstallations).toEqual(['gazelle']);
   });
 
+  it('says the portal session ended on a refetch refused over rows read before', async () => {
+    listSessions.mockImplementation((installation: string) =>
+      installation === 'gazelle'
+        ? Promise.resolve([session()])
+        : Promise.reject(namedError('NotFoundError')),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { result } = renderProvider(queryClient);
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+
+    listSessions.mockImplementation(() =>
+      Promise.reject(new PortalSessionEndedError()),
+    );
+    await act(() => queryClient.refetchQueries());
+
+    await waitFor(() => expect(result.current.sessionEnded).toBe(true));
+    // The rows read before stay on screen, under the alert.
+    expect(result.current.rows).toHaveLength(1);
+  });
+
   describe('a failed read the person can retry', () => {
     const unavailable = () =>
       Object.assign(namedError('Error'), {

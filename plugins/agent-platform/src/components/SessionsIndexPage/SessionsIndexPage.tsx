@@ -163,6 +163,11 @@ function SessionsIndexPageContent() {
             not be asked whether it runs kagent. Renders nothing otherwise. */}
         <InstallationInventoryGate context="Which environments run kagent is read through their Kubernetes API." />
 
+        {/* The portal refused the session token: every read fails the same
+            way until a sign-in, which is the one thing to say. Above the
+            rows read before, which stop keeping up. */}
+        {sessionEnded && <PortalSessionEndedAlert />}
+
         {/* No rows yet — show activity instead of an empty table skeleton. */}
         {isLoading && <LoadingIndicator label="Reading your sessions…" />}
 
@@ -212,11 +217,7 @@ function SessionsIndexPageContent() {
             is still being read, or once rows are on screen. A failed query
             is not one awaiting data, so a fleet whose every read failed still
             ends `isLoading`; one paused offline does not. */}
-        {/* The portal refused the session token: every read fails the
-            same way until a sign-in, which is the one thing to say. */}
-        {sessionEnded ? (
-          <PortalSessionEndedAlert />
-        ) : (
+        {!sessionEnded && (
           <UnreachableInstallationsAlert
             installations={unreachableInstallations}
             resourceName="sessions"

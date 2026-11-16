@@ -78,8 +78,9 @@ export type SessionsContextValue = {
   nothingRead: boolean;
   /**
    * The portal refused the person's session token on a read
-   * (`PortalSessionEndedError`): no installation can be read until a sign-in,
-   * so the page says that instead of naming each installation's failure.
+   * (`PortalSessionEndedError`), also a refetch over rows read before: no
+   * installation can be read until a sign-in, so the page says that instead
+   * of naming each installation's failure, above the rows it keeps.
    */
   sessionEnded: boolean;
   /**
@@ -316,6 +317,10 @@ export function SessionsDataProvider({
         return;
       }
 
+      // Also over rows read before: a refetch the portal refused keeps the
+      // last `data`, and no read gets further until a sign-in.
+      sessionEnded ||= query.error instanceof PortalSessionEndedError;
+
       if (query.data) {
         rows.push(
           ...query.data
@@ -346,7 +351,6 @@ export function SessionsDataProvider({
       // Anything else — including UpstreamError for a 5xx, a timeout or an
       // unreadable body — means kagent answered and failed, which is worth saying.
       if (isFailedRead(query)) {
-        sessionEnded ||= query.error instanceof PortalSessionEndedError;
         unreachable.push(installation);
         readFailures[installation] = describeReadFailure(query.error);
         // A failed query read again keeps its error until it answers.

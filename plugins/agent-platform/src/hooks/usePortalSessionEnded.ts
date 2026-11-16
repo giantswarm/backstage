@@ -1,7 +1,7 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 
-import { PortalSessionEndedError } from '../lib/portalSession';
+import { isPortalSessionRefusal } from '../lib/portalSession';
 
 function anyReadRefused(queryClient: QueryClient): boolean {
   return queryClient
@@ -10,13 +10,16 @@ function anyReadRefused(queryClient: QueryClient): boolean {
     .some(
       query =>
         query.state.status === 'error' &&
-        query.state.error instanceof PortalSessionEndedError,
+        isPortalSessionRefusal(query.state.error),
     );
 }
 
 /**
  * Whether a read of this plugin's cache failed because the portal refused
- * the person's session token (`PortalSessionEndedError`). The refusal is the
+ * the person's session token: a `PortalSessionEndedError` of this plugin's
+ * clients, or the refusal as muster's own reads under the same client keep
+ * it (the server lists and `/installations` that say which installation runs
+ * which manager, `isPortalSessionRefusal`). The refusal is the
  * portal's, not an environment's: every read fails the same way until a
  * sign-in, so a page that gathers many reads (served models from several
  * sources, say) can say it once with `PortalSessionEndedAlert` instead of

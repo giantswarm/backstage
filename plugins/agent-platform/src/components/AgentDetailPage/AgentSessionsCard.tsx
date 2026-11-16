@@ -65,7 +65,7 @@ export function AgentSessionsCard({
     [rows, currentRevision],
   );
 
-  if (sessionEnded) {
+  if (sessionEnded && rows.length === 0) {
     return <PortalSessionEndedAlert />;
   }
 
@@ -127,6 +127,9 @@ export function AgentSessionsCard({
 
   return (
     <Flex direction="column" gap="3">
+      {/* A refetch the portal refused: the rows read before stay, and stop
+          keeping up until a sign-in. */}
+      {sessionEnded && <PortalSessionEndedAlert />}
       <Text variant="body-small" color="secondary">
         {caption}
       </Text>

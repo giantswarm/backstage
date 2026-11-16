@@ -17,6 +17,7 @@ import {
   type ToolchainList,
 } from '../lib/toolchainManager';
 import { useMusterPluginApi } from './useMusterPluginApi';
+import { isPortalSessionRefusal } from '../lib/portalSession';
 import {
   isSessionExpiredError,
   musterUnauthorizedInfoOf,
@@ -114,7 +115,9 @@ export function toolchainCheckFailureOf(
   const { name, reason } = error as { name?: string; reason?: string };
   if (
     (name === 'MusterTokenMintError' && reason === 'session-expired') ||
-    isSessionExpiredError(error)
+    isSessionExpiredError(error) ||
+    // The portal refused the session token before muster-backend ran.
+    isPortalSessionRefusal(error)
   ) {
     return 'signedOut';
   }

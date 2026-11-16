@@ -187,6 +187,19 @@ describe('AgentSessionsCard', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('keeps the rows read before under the alert when the portal refuses a refetch', async () => {
+    await renderInTestApp(
+      <AgentSessionsCard
+        agentName="Swarmgeist"
+        sessions={{ ...sessions, sessionEnded: true }}
+      />,
+      { mountedRoutes: { '/sessions': sessionsRouteRef } },
+    );
+
+    expect(screen.getByText('Your portal session ended')).toBeInTheDocument();
+    expect(screen.getByText('Check the clusters')).toBeInTheDocument();
+  });
+
   it('keeps a quiet line, without a retry, when kagent is not deployed there', async () => {
     await renderInTestApp(
       <AgentSessionsCard

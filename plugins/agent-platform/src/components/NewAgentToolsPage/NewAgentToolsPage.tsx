@@ -788,7 +788,9 @@ export function NewAgentToolsPage() {
           ) : (
             presets.source === 'built-in' &&
             musterApi &&
-            installation && (
+            installation &&
+            // The connectors below say the portal session ended, once.
+            !catalogue.sessionEnded && (
               <Alert
                 status="info"
                 title="Only the built-in presets are known"
