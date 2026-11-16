@@ -9,11 +9,11 @@ import {
 
 import {
   SKILL_MANAGER_SERVER,
+  SKILL_MANAGER_TOOLS,
   type SkillManagerFile,
   type SkillManagerListing,
   type SkillManagerRepository,
   type SkillManagerSkill,
-  type SkillManagerTool,
 } from '../../../lib/skillManager';
 import { canonicalRepoUrl } from '../../../lib/skills';
 import { FIXTURE_USER } from '../fixtureIdentity';
@@ -25,12 +25,6 @@ import { asJson, text } from './jsonTools';
  * set, read-only as skill-manager is (a new or changed skill is a pull
  * request, which the portal opens through gs-backend).
  */
-
-const TOOLS = {
-  listSkills: 'list_skills',
-  getSkill: 'get_skill',
-  getSkillFile: 'get_skill_file',
-} as const satisfies Record<string, SkillManagerTool>;
 
 /** Why a repository the person may not read lists nothing. */
 const HIDDEN = `private repository: ${FIXTURE_USER.email} cannot read it`;
@@ -105,12 +99,18 @@ export function skillManagerFixtureServer(
     return { repository, skill };
   };
   const tools: FixtureMcpServer['tools'] = {
-    [TOOLS.listSkills]: (_, { installation }): SkillManagerListing => ({
+    [SKILL_MANAGER_TOOLS.listSkills]: (
+      _,
+      { installation },
+    ): SkillManagerListing => ({
       repositories: inInstallation(data().skillRepositories, installation).map(
         listedOf,
       ),
     }),
-    [TOOLS.getSkill]: (args, { installation }): SkillManagerSkill => {
+    [SKILL_MANAGER_TOOLS.getSkill]: (
+      args,
+      { installation },
+    ): SkillManagerSkill => {
       const { repository, skill } = skillOf(installation, args);
       return {
         repoUrl: repository.url,
@@ -125,7 +125,10 @@ export function skillManagerFixtureServer(
         ),
       };
     },
-    [TOOLS.getSkillFile]: (args, { installation }): SkillManagerFile => {
+    [SKILL_MANAGER_TOOLS.getSkillFile]: (
+      args,
+      { installation },
+    ): SkillManagerFile => {
       const { repository, skill } = skillOf(installation, args);
       const path = text(args, 'file');
       const content = filesOf(skill).get(path);

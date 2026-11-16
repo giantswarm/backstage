@@ -154,7 +154,15 @@ and their run statistics; and MCP usage and tool latency over any window,
 narrowed to some connectors or one tool. A connector's tools are named after
 it and derived from it (`connectorToolsOf`), so every read names the same
 ones. The tools of the data set's connectors have no handler: running one
-fails as described below.
+fails as described below. Of muster's own tools, `callTool` answers the two
+the New connector flow calls before it saves, the transport probe
+(`core_mcpserver_detect`, a reachable streamable-HTTP server without OAuth)
+and the definition check (`core_mcpserver_validate`, which passes). The
+catalogue describes both, and the connector writes `core_mcpserver_create`
+and `core_mcpserver_update`, with the arguments the flow asks about
+(`displayName`, `tags`). The writes to connectors (`core_mcpserver_create`,
+`_update`, `_delete`, `core_service_start`, `_stop`, `_restart`) are not
+served: saving a connector or acting on one fails loudly.
 
 The unreachable installation's reads fail as muster-backend refuses them, with
 a 503 "<installation> did not answer: not reachable from this portal", and its
@@ -419,6 +427,35 @@ whose `tools` map a tool's own name to its handler. The handlers live with the
 plugin that calls the tools, and each declares the answer type its client
 reads (`ListWorkspacesAnswer`, `ToolchainList`, …), so a change to it breaks
 the fixture's build.
+
+A unit test in agent-platform and in muster keeps the handlers in step with
+the calls (`fixtureToolCoverage.test.ts` under each plugin's
+`src/apis/fixtures/`). Both use `fixtureToolCoverage` from
+`@giantswarm/backstage-plugin-muster/testUtils`, a subpath only tests import,
+which reads the plugin's source with the TypeScript compiler: it finds every
+call to `MusterApi.callTool` and `callToolWithProgress`, in any form (a type
+argument, a destructured or bracket access), and works out the tool names it
+can call. A name resolves when it is a string literal, a constant or a
+property of one, a template literal or concatenation of such parts, either
+branch of a conditional, or what a function returns; a parameter resolves
+through every call of its function in the plugin, so wrappers such as
+`callManagerTool` and the clients' `call` methods resolve to what their
+callers pass, and a component's prop to what its JSX elements pass. Anything
+else resolves through its type when that is a string literal or a union of
+them. A test fails:
+
+- when fixture mode has no handler for a tool a page calls, unless the test
+  lists it as not served, with a comment saying why;
+- when a call's tool name cannot be worked out, unless the test lists the call
+  (`<file>: <expression>`), with a comment;
+- when a listed tool is answered or no longer called, or a listed call now
+  resolves.
+
+A pull request that calls a new tool adds its handler, or lists it. The guard
+covers the Agent Platform and muster pages only. bot-prs also calls tools
+through muster (`MargeClient`), but it has no fixture mode and is outside the
+first scope of fixture mode (giantswarm/giantswarm#39251), so nothing checks
+its calls.
 
 ### The data set
 

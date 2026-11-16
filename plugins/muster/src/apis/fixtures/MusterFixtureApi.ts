@@ -69,7 +69,11 @@ import {
   workflowStatsOf,
   workflowToolOf,
 } from './musterFixtureData';
+import { fixtureToolName } from './fixtureToolNames';
+import { musterCoreToolHandlers } from './musterCoreTools';
 import { presetsOf, resolveToolset } from './toolsetFixtures';
+
+const coreToolHandlers = new Map(Object.entries(musterCoreToolHandlers));
 
 /**
  * The error a tool call fails with when no fixture MCP server answers it. A
@@ -220,9 +224,9 @@ function isUnreachable(installation: string): boolean {
  * contribute (`fixtureMcpServersDataRef`), each connected. An unreachable
  * installation's reads fail as muster-backend refuses them, with a 503, and
  * its background reads answer `unavailable`. `callTool` dispatches by tool
- * name (`x_<server>_<tool>`) to a contributed server's handler; a tool no
- * such server handles fails with {@link FixtureToolMissingError} and a
- * console error.
+ * name (`x_<server>_<tool>`) to a contributed server's handler, or to one of
+ * muster's own tools it serves (`musterCoreToolHandlers`); any other tool
+ * fails with {@link FixtureToolMissingError} and a console error.
  */
 export class MusterFixtureApi implements MusterApi {
   private readonly tools: Map<string, Tool>;
@@ -235,7 +239,7 @@ export class MusterFixtureApi implements MusterApi {
     this.tools = new Map(
       servers.flatMap(({ server, tools, inputSchemas }) =>
         Object.entries(tools).map(([tool, handler]) => {
-          const name = `x_${server}_${tool}`;
+          const name = fixtureToolName(server, tool);
           const inputSchema = inputSchemas?.[tool];
           return [name, { name, server, handler, inputSchema }] as const;
         }),
@@ -309,13 +313,14 @@ export class MusterFixtureApi implements MusterApi {
   ): Promise<unknown> {
     const tool = this.tools.get(name);
     const target = this.reachable(installation, tool?.server ?? 'muster');
-    if (!tool) {
+    const handler = tool?.handler ?? coreToolHandlers.get(name);
+    if (!handler) {
       const error = new FixtureToolMissingError(name);
       // eslint-disable-next-line no-console
       console.error(error.message, { args, installation });
       throw error;
     }
-    return tool.handler(args, { installation: target, signal });
+    return handler(args, { installation: target, signal });
   }
 
   /**
