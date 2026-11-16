@@ -220,8 +220,6 @@ export function alignmentRule(layout) {
 export function truncationRule(layout) {
   const findings = [];
   for (const t of layout.truncated) {
-    // In a table, a header and a short value are the `table-fit` rule's.
-    if (t.inTable === 'header' || (t.inTable === 'cell' && isShortValue(t.text))) continue;
     const across = t.axis === 'x';
     const unit = across ? 'px wide' : 'px high';
     // Two letters or less: narrower than two em.
@@ -249,82 +247,110 @@ export function truncationRule(layout) {
   return findings;
 }
 
-const CALENDAR =
-  /^(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|june?|july?|aug(ust)?|sept?(ember)?|oct(ober)?|nov(ember)?|dec(ember)?|mon(day)?|tue(s|sday)?|wed(nesday)?|thu(rs|rsday)?|fri(day)?|sat(urday)?|sun(day)?)\.?$/i;
-const VERSION = /^v?\d+(\.\d+)+([-+][\w.-]+)?$/i;
-/** A name or a path in one token: letters joined by - _ . / : (`gpu-pool-a`, `api.example.io`). */
-const IDENTIFIER = /^(?=.*[a-z])[\w]+([-_./:@][\w]+)+$/i;
+// The patterns of a short value, each matching one part of it.
+const MONTH =
+  '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\\.?';
+const WEEKDAY =
+  '(?:mon(?:day)?|tue(?:s(?:day)?)?|wed(?:nesday)?|thu(?:rs?(?:day)?)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)\\.?';
+const TIME = '\\d{1,2}:\\d{2}(?::\\d{2})?(?:\\s?[ap]\\.?m\\.?)?(?:\\s(?:utc|gmt))?';
+const DAY = '\\d{1,2}(?:st|nd|rd|th)?';
+const DATE = [
+  '\\d{4}-\\d{2}-\\d{2}(?:[t ]\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d+)?)?(?:z|[+-]\\d{2}:?\\d{2})?)?',
+  '\\d{1,2}[./]\\d{1,2}[./]\\d{2,4}',
+  `(?:${WEEKDAY}\\s)?(?:${MONTH}\\s${DAY}|${DAY}\\s${MONTH})(?:\\s\\d{4})?`,
+  'today|yesterday|tomorrow|just now|now|never',
+  WEEKDAY,
+].join('|');
+const DATETIME = `(?:(?:${DATE})(?:\\s(?:at\\s)?${TIME})?|${TIME})`;
+const VERSION = 'v?\\d+(?:\\.\\d+)+(?:[-+][0-9a-z.-]+)?';
+// A number with up to two words of unit after it: `144 vCPUs`, `$0.98/h now`,
+// `3 hours ago`, `42 %`, `1h 23m` (two of them).
+const NUMBER = "[~≈<>≤≥±+\\-−]?[$€£]?\\d+(?:[.,'\\u00a0\\u202f]\\d+)*";
+const UNIT = '(?:%|‰|°[cf]?|/\\p{L}{1,8}|[\\p{L}µ]{1,12}(?:/\\p{L}{1,8})?)';
+const QUANTITY = `${NUMBER}(?:\\s?${UNIT})?(?:\\s${UNIT})?`;
+const QUALIFIER = '(?:(?:about|almost|over|under|nearly|less than|more than|up to|in|~)\\s)?';
+const SHORT_PART = new RegExp(
+  `^${QUALIFIER}(?:${DATETIME}|${VERSION}|${QUANTITY}(?:\\s${QUANTITY})*)$`,
+  'iu',
+);
+/** What joins the parts of a combined value: `·`, `|`, a dash, `, `, ` / `. */
+const PART_SEPARATOR = /\s*(?:·|•|\||–|—)\s*|,\s+|\s+\/\s+/;
 
 /**
- * Whether a table cell's text is a short value, which must fit its column
- * without wrapping or an ellipsis: a date, a duration, a count, a size, a
- * version, a status label. A short value has a digit and no more than three
- * words besides its numbers (`144 vCPUs · 1152 GiB`, `Nov 12, 2026, 14:03`,
- * `3 hours ago`), or is up to three words in 24 characters (`Running`,
- * `Not ready`). A name in one token (`gpu-pool-a`) and longer text are free
- * text, which may end in an ellipsis.
+ * Whether a table cell's text is a short value by its shape, which must fit
+ * its column without wrapping or an ellipsis: a date or a time, a duration
+ * or an age, a number with or without a unit, a version, or a combination of
+ * those joined by `·`, `,` or `/` (`144 vCPUs · 1152 GiB`, `Nov 12, 2026,
+ * 14:03`, `about 2 months ago`, `0.4.1, 0.3.0`). Everything else is free
+ * text (names, descriptions, IDs, URLs, paths), which may end in an
+ * ellipsis. A status label is short whatever its text, by where it sits: the
+ * collector marks it `status`.
  */
 export function isShortValue(text) {
   const t = (text ?? '').trim();
   if (!t || t.length > 40) return false;
-  const tokens = t
-    .split(/\s+/)
-    .map(w => w.replace(/^[(["']+|[)\]"',;:]+$/g, ''))
-    .filter(w => /[\p{L}\p{N}]/u.test(w));
-  if (tokens.some(w => IDENTIFIER.test(w) && !VERSION.test(w) && !/^\d/.test(w))) {
-    return false;
-  }
-  // A list of versions is a list, not a value.
-  const items = t.split(/\s*,\s*/);
-  if (items.length > 1 && items.every(i => VERSION.test(i))) return false;
-  const words = tokens.filter(w => !/\d/.test(w));
-  // Two or more capitalised words are a name ("Bramble Clover", "Sage Basil
-  // 2"); labels are in sentence case ("Not ready"). Units (GiB, GPU, PM)
-  // and the names of months and days don't count.
-  const capitalised = words.filter(w => /^\p{Lu}\p{Ll}{2,}$/u.test(w) && !CALENDAR.test(w));
-  if (capitalised.length >= 2 && words.every(w => /^\p{Lu}/u.test(w))) return false;
-  if (/\d/.test(t)) return words.length <= 3;
-  return tokens.length <= 3 && t.length <= 24;
+  const parts = t.split(PART_SEPARATOR).filter(Boolean);
+  return parts.length > 0 && parts.every(p => SHORT_PART.test(p));
 }
 
 /**
- * In a table, typical content fits its column: a column header cut off (with
- * an ellipsis or not, with a tooltip or not), and a short value (see
- * `isShortValue`) cut off or wrapped onto a second line. Long free text
- * ending in an ellipsis is left to `truncationRule`. One finding per column
- * and kind, with the number of rows it holds for.
+ * In a table, typical content fits its column, and the rule owns all text in
+ * tables (the `truncation` rule leaves it out). Failing: a column header cut
+ * off (with an ellipsis or not, with a tooltip or not) or wrapped onto a
+ * second line; a short value (a status label, or `isShortValue`) cut off or
+ * wrapped. Free text is held to what `truncation` holds text to: cut off
+ * without an ellipsis or squeezed to a letter or two fails; an ellipsis with
+ * no title or tooltip holding the rest is a warning. One finding per table,
+ * column and kind, with the number of other rows it holds for.
  */
 export function tableFitRule(layout) {
   const groups = new Map();
   for (const c of layout.cells ?? []) {
+    const short = c.header || c.status || isShortValue(c.text);
     let kind;
-    if (c.header) {
-      if (!c.cut) continue;
-      kind = 'header';
-    } else if (c.recordName || !isShortValue(c.text)) {
-      continue;
+    if (c.kind === 'unit') {
+      if (short && c.lines > 1) kind = c.header ? 'header-wrap' : 'wrap';
+    } else if (c.header) {
+      if (c.cut) kind = 'header-cut';
+      else if (c.lines > 1) kind = 'header-wrap';
+    } else if (short) {
+      if (c.cut) kind = 'cut';
+      else if (c.lines > 1) kind = 'wrap';
     } else if (c.cut) {
-      kind = 'cut';
-    } else if (c.lines > 1) {
-      kind = 'wrap';
-    } else {
-      continue;
+      const squeezed =
+        c.axis === 'x' && c.shown < 2 * (c.fontSize ?? 14) && c.shown < 0.5 * c.needed;
+      if (squeezed) kind = 'squeezed';
+      else if (!c.ellipsis) kind = 'clipped';
+      else if (!c.fullText) kind = 'no-hover';
     }
+    if (!kind) continue;
     const key = `${c.table}|${c.col}|${kind}`;
     const group = groups.get(key);
-    if (group) group.count++;
-    else groups.set(key, { kind, cell: c, count: 1 });
+    if (group) group.rows.add(c.row);
+    else groups.set(key, { kind, cell: c, rows: new Set([c.row]) });
   }
-  return [...groups.values()].map(({ kind, cell: c, count }) => {
+  return [...groups.values()].map(({ kind, cell: c, rows }) => {
     const column = c.column ? ` in column "${c.column}"` : '';
-    const shown = `${Math.round(c.shown)} of ${Math.round(c.needed)}px shown`;
-    const more = count > 1 ? `, and in ${count - 1} more row${count > 2 ? 's' : ''}` : '';
+    const unit = c.axis === 'y' ? 'px high' : 'px';
+    const shown = `${Math.round(c.shown)} of ${Math.round(c.needed)}${unit} shown`;
+    const others = rows.size - 1;
+    const more = others > 0 ? `, and in ${others} more row${others > 1 ? 's' : ''}` : '';
+    const ellipsis = c.ellipsis ? ' with an ellipsis' : '';
     const message = {
-      header: `column header "${c.text}" is cut off${c.ellipsis ? ' with an ellipsis' : ''} (${shown}): a header always fits its column`,
-      cut: `short value "${c.text}"${column} is cut off${c.ellipsis ? ' with an ellipsis' : ''} (${shown})${more}: a short value fits its column`,
+      'header-cut': `column header "${c.text}" is cut off${ellipsis} (${shown}): a header always fits its column`,
+      'header-wrap': `column header "${c.text}" wraps onto ${c.lines} lines: a header fits its column on one line`,
+      cut: `short value "${c.text}"${column} is cut off${ellipsis} (${shown})${more}: a short value fits its column`,
       wrap: `short value "${c.text}"${column} wraps onto ${c.lines} lines${more}: a short value fits its column on one line`,
+      squeezed: `"${c.text}"${column} is squeezed to ${shown}${more}`,
+      clipped: `"${c.text}"${column} is cut off without an ellipsis (${shown})${more}`,
+      'no-hover': `"${c.text}"${column} ends in an ellipsis with no title or tooltip holding the rest (${shown})${more}`,
     }[kind];
-    return { rule: 'table-fit', message, elements: [element(c, c.box)] };
+    return {
+      rule: 'table-fit',
+      message,
+      elements: [element(c, c.box)],
+      ...(kind === 'no-hover' && { severity: 'warning' }),
+    };
   });
 }
 

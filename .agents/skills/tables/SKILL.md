@@ -40,15 +40,18 @@ values; "144 vCPUs · 11…" or a date broken over two lines can't be compared,
 and a header cut to "Provi…" leaves the column unnamed. A tooltip doesn't
 help: nobody hovers every row to read a number.
 
-- **Headers are never cut off.** A column is at least as wide as its header.
-  Shorten the header ("Priority", not "Service priority") before you widen
-  the column.
-- **Short values don't wrap or truncate**: dates, durations, counts, sizes,
-  versions, status labels, anything of a few words. Render them `nowrap`
-  without an ellipsis, and make the column at least as wide as its usual
-  value. bui's `CellText` truncates, so the width is what keeps it whole.
-- **Only long free text may end in an ellipsis**: names, titles,
-  descriptions. Then its full value is there on hover or focus (`CellText`
+- **Headers are never cut off and stay on one line.** A column is at least
+  as wide as its header. Shorten the header ("Priority", not "Service
+  priority") before you widen the column.
+- **Short values don't wrap or truncate**: dates and times, durations and
+  ages, numbers with or without a unit (counts, sizes, percentages, costs),
+  versions, combinations of them ("144 vCPUs · 1152 GiB"), and status
+  labels. Render them `nowrap` without an ellipsis, and make the column at
+  least as wide as its usual value. bui's `CellText` truncates, so the width
+  is what keeps it whole. Show a status as a badge or a `StatusDot` with its
+  label: that is how the layout check tells a label from a name.
+- **Only free text may end in an ellipsis**: names, titles, descriptions,
+  IDs, URLs. Then its full value is there on hover or focus (`CellText`
   sets `title`; a custom cell sets it, or a tooltip), and one column (the
   name) takes the width left over.
 - **Too many columns for the width**: pick a layout, don't squeeze.

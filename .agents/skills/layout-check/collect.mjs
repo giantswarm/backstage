@@ -86,21 +86,23 @@ export function collectLayout(options) {
       ignore.some(sel => el.closest(sel)),
   );
 
+  /** Text with its whitespace collapsed, as a person reads it. */
+  const norm = v => (v || '').replace(/\s+/g, ' ').trim();
+
   /**
    * Whether `e` holds the full value of `text` for hover or focus: a
-   * `title`, `data-full-text`, or an `aria-describedby` naming a tooltip or
-   * a description that contains the text. Not any description: react-aria
-   * describes every sortable column header by its sort hint.
+   * `title`, `data-full-text`, or an `aria-describedby` naming a description
+   * that holds all of the text. Not any description: react-aria describes
+   * every sortable column header by its sort hint.
    */
   const holdsFullText = (e, text) => {
     if (e.title || e.getAttribute('data-full-text')) return true;
     const by = e.getAttribute('aria-describedby');
-    if (!by) return false;
-    const norm = v => (v || '').replace(/\s+/g, ' ').trim();
+    const full = norm(text);
+    if (!by || !full) return false;
     return by.split(/\s+/).some(id => {
-      const d = document.getElementById(id);
-      if (!d) return false;
-      return d.getAttribute('role') === 'tooltip' || (text && norm(d.textContent).includes(norm(text)));
+      const d = norm(document.getElementById(id)?.textContent);
+      return d.length >= full.length && d.includes(full);
     });
   };
 
@@ -299,15 +301,12 @@ export function collectLayout(options) {
         .map(id => document.getElementById(id)?.textContent ?? '')
         .join(' ')
         .trim();
-      if (text) return text.replace(/\s+/g, ' ').slice(0, 60);
+      if (text) return norm(text).slice(0, 60);
     }
     if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
       return (el.getAttribute('placeholder') || el.name || '').slice(0, 60);
     }
-    return (el.textContent || el.getAttribute('title') || '')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 60);
+    return norm(el.textContent || el.getAttribute('title')).slice(0, 60);
   };
 
   /** A short CSS-like path: the last few ancestors, with an id or a class. */
@@ -580,125 +579,191 @@ export function collectLayout(options) {
     flexRows.push({ ...describe(el), layer: layerIdOf(el), children: rows });
   }
 
-  // Tables: each cell's and column header's text, by block (a cell's title
-  // and its description are two), with how many lines it takes and whether
-  // the cell, or something in it, cuts it off. Only what is inside the cell
-  // counts as cutting: a table scrolled sideways cuts nothing.
+  // Tables: the text of each cell and column header, with how many lines it
+  // takes and whether it is cut off, by the cell or something in it, or
+  // spills out of the cell. A table scrolled sideways cuts nothing. Only
+  // tables with column headers count: a tag group or a list is a grid too.
   const CELL =
     '[role=cell], [role=gridcell], [role=rowheader], [role=columnheader], td, th';
   const TABLE = '[role=table], [role=grid], [role=treegrid], table';
-  const tableOf = memo(cell => {
-    const t = cell.closest(TABLE);
-    return t && !ignored(t) ? t : undefined;
-  });
   const isHeader = cell =>
     cell.getAttribute('role') === 'columnheader' ||
     (!cell.getAttribute('role') && cell.tagName === 'TH' && Boolean(cell.closest('thead')));
+  const tableOf = memo(cell => {
+    const t = cell.closest(TABLE);
+    if (!t || ignored(t)) return undefined;
+    const hasHeaders = [...t.querySelectorAll('[role=columnheader], thead th')].some(
+      h => h.closest(TABLE) === t,
+    );
+    return hasHeaders ? t : undefined;
+  });
+  /** The cell of a real table that `el` is in, or undefined. */
+  const tableCellOf = el => {
+    const cell = el.closest(CELL);
+    return cell && tableOf(cell) ? cell : undefined;
+  };
   const columnOf = cell => [...cell.parentElement.children].indexOf(cell);
   const headersOf = memo(table => {
     const labels = new Map();
     for (const h of table.querySelectorAll(CELL)) {
-      if (isHeader(h) && tableOf(h) === table) {
-        labels.set(columnOf(h), (h.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40));
-      }
+      if (isHeader(h) && tableOf(h) === table) labels.set(columnOf(h), norm(h.textContent).slice(0, 40));
     }
     return labels;
   });
+  const BADGE_CLASS = /Badge|Chip|Pill|StatusLabel|(^|-)Tag(-|$)/;
   /**
-   * Whether text in a cell is a record's name, free text that may end in an
-   * ellipsis: a link's text, or the row header's text other than a badge.
+   * Whether text sits in a status badge or label: a badge's or chip's class,
+   * `role=status`, or a status dot (`data-tone`) beside it.
    */
-  const isName = (el, cell) => {
-    if (el.closest('a[href], [role=link]') && cell.contains(el.closest('a[href], [role=link]'))) {
-      return true;
-    }
-    if (cell.getAttribute('role') !== 'rowheader' && !(cell.tagName === 'TH' && !isHeader(cell))) {
-      return false;
-    }
+  const isStatus = (el, cell) => {
     for (let e = el; e && e !== cell; e = e.parentElement) {
-      if ([...e.classList].some(c => /Badge|Chip|Tag|Status/.test(c))) return false;
+      if (e.getAttribute('role') === 'status') return true;
+      if ([...e.classList].some(c => BADGE_CLASS.test(c))) return true;
+      if ([...e.children].some(c => c.hasAttribute('data-tone'))) return true;
     }
-    return true;
+    return false;
   };
-  /** The nearest box at or above a text's parent, up to its cell: a block of the cell. */
-  const blockOf = (el, cell) => {
+  /** The nearest box at or above `el`, up to its cell: what lays out a piece of text. */
+  const leafOf = (el, cell) => {
     for (let e = el; e && e !== cell; e = e.parentElement) {
       const d = style(e).display;
       if (d !== 'inline' && d !== 'contents') return e;
     }
     return cell;
   };
+  const isFlexRow = e => {
+    const s = style(e);
+    return (s.display === 'flex' || s.display === 'inline-flex') && s.flexDirection.startsWith('row');
+  };
+  /**
+   * What reads as one value: the leaf, or the row of flex items it is part
+   * of ("144 vCPUs", "·", "1152 GiB" as three spans), whose wrapping
+   * shows only across its items.
+   */
+  const unitOf = (leaf, cell) => {
+    let u = leaf;
+    while (u !== cell && u.parentElement && cell.contains(u.parentElement) && isFlexRow(u.parentElement)) {
+      u = u.parentElement;
+    }
+    return u;
+  };
+  /** Lines: boxes that start below the middle of the line before. */
+  const linesOf = rects => {
+    let lines = 0;
+    let lineBottom = -Infinity;
+    for (const r of [...rects].sort((a, b) => a.y - b.y)) {
+      if (r.y >= lineBottom - r.h / 2) lines++;
+      lineBottom = Math.max(lineBottom, r.y + r.h);
+    }
+    return lines;
+  };
+  const px = v => parseFloat(v) || 0;
   const cells = [];
   for (const cell of body.querySelectorAll(CELL)) {
     if (ignored(cell) || !visible(cell)) continue;
     const table = tableOf(cell);
     if (!table) continue;
     const header = isHeader(cell);
-    const blocks = new Map();
+    const cs = style(cell);
+    const cr = rectOf(cell);
+    // The cell's content box: text past it spills over the next column.
+    const innerLeft = cr.left + cell.clientLeft + px(cs.paddingLeft);
+    const innerRight = cr.left + cell.clientLeft + cell.clientWidth - px(cs.paddingRight);
+    const leaves = new Map();
     const tw = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
     for (let node = tw.nextNode(); node; node = tw.nextNode()) {
       const parent = node.parentElement;
       if (!node.nodeValue.trim() || !parent || SKIP_TEXT.has(parent.tagName)) continue;
       // A cell nested in this one is measured on its own.
       if (parent.closest(CELL) !== cell || !visible(parent)) continue;
-      const block = blockOf(parent, cell);
-      if (!blocks.has(block)) blocks.set(block, []);
-      blocks.get(block).push(node);
+      const leaf = leafOf(parent, cell);
+      if (!leaves.has(leaf)) leaves.set(leaf, { nodes: [], rects: [] });
+      leaves.get(leaf).nodes.push(node);
     }
-    for (const [block, nodes] of blocks) {
-      const raw = [];
-      let shown = 0;
-      let cut = false;
-      let ellipsis = false;
-      let fullText = false;
-      for (const node of nodes) {
+    const col = columnOf(cell);
+    const common = {
+      role: roleOf(cell),
+      box: box(cr),
+      table: idOf(table),
+      row: idOf(cell.parentElement),
+      col,
+      column: header ? undefined : headersOf(table).get(col),
+      header,
+    };
+    const units = new Map();
+    for (const [leaf, entry] of leaves) {
+      let neededX = 0;
+      let shownX = 0;
+      let neededY = 0;
+      let shownY = 0;
+      let cutX = false;
+      let cutY = false;
+      for (const node of entry.nodes) {
         const chain = clipChain(node.parentElement).filter(c => cell.contains(c.el));
         range.selectNodeContents(node);
-        for (const cr of range.getClientRects()) {
-          const r = box(cr);
+        for (const r of [...range.getClientRects()].map(box)) {
           if (r.w <= 1 || r.h <= 1) continue;
-          raw.push(r);
+          entry.rects.push(r);
           const { rect, clipper } = applyClip(r, chain);
-          if (clipper) cut = true;
-          shown += rect ? rect.w : 0;
+          const shown = clipper ? rect : r;
+          // Spilling out of the cell paints over the next column.
+          const left = Math.max(shown ? shown.x : r.x, innerLeft);
+          const right = Math.min(shown ? shown.x + shown.w : r.x, innerRight);
+          const w = shown ? Math.max(0, right - left) : 0;
+          const h = shown ? shown.h : 0;
+          if (w < r.w - 1) cutX = true;
+          else if (h < r.h - 1) cutY = true;
+          neededX += r.w;
+          shownX += w;
+          neededY += r.h;
+          shownY += h;
         }
-        for (let e = node.parentElement; e && e !== cell.parentElement; e = e.parentElement) {
+      }
+      if (entry.rects.length === 0) continue;
+      const text = norm(entry.nodes.map(n => n.nodeValue).join(''));
+      const cut = cutX || cutY;
+      let ellipsis = false;
+      let fullText = false;
+      if (cut) {
+        for (let e = entry.nodes[0].parentElement; e && e !== cell.parentElement; e = e.parentElement) {
           const s = style(e);
           if (s.textOverflow === 'ellipsis' && hides(s.overflowX)) ellipsis = true;
           if (s.webkitLineClamp && s.webkitLineClamp !== 'none') ellipsis = true;
-          if (holdsFullText(e, node.nodeValue)) fullText = true;
+          if (holdsFullText(e, text)) fullText = true;
         }
       }
-      if (raw.length === 0) continue;
-      // Lines: boxes that start below the middle of the line before.
-      let lines = 0;
-      let lineBottom = -Infinity;
-      for (const r of [...raw].sort((a, b) => a.y - b.y)) {
-        if (r.y >= lineBottom - r.h / 2) lines++;
-        lineBottom = Math.max(lineBottom, r.y + r.h);
-      }
-      const col = columnOf(cell);
+      const status = isStatus(entry.nodes[0].parentElement, cell);
       cells.push({
-        ...describe(block),
-        role: roleOf(cell),
-        box: box(rectOf(cell)),
-        table: idOf(table),
-        col,
-        column: header ? undefined : headersOf(table).get(col),
-        header,
-        recordName: !header && isName(nodes[0].parentElement, cell),
-        text: nodes
-          .map(n => n.nodeValue)
-          .join('')
-          .replace(/\s+/g, ' ')
-          .trim()
-          .slice(0, 80),
-        lines,
+        ...describe(leaf),
+        ...common,
+        kind: 'leaf',
+        text: text.slice(0, 80),
+        status,
+        lines: linesOf(entry.rects),
         cut,
-        needed: round(raw.reduce((sum, r) => sum + r.w, 0)),
-        shown: round(shown),
+        axis: cutX || !cut ? 'x' : 'y',
+        needed: round(cutX || !cut ? neededX : neededY),
+        shown: round(cutX || !cut ? shownX : shownY),
+        fontSize: px(style(leaf).fontSize) || 14,
         ellipsis,
         fullText,
+      });
+      const unit = unitOf(leaf, cell);
+      if (unit !== leaf) {
+        if (!units.has(unit)) units.set(unit, []);
+        units.get(unit).push({ text, rects: entry.rects, status });
+      }
+    }
+    for (const [unit, parts] of units) {
+      if (parts.length < 2) continue;
+      cells.push({
+        ...describe(unit),
+        ...common,
+        kind: 'unit',
+        text: parts.map(p => p.text).join(' ').slice(0, 80),
+        status: parts.every(p => p.status),
+        lines: linesOf(parts.flatMap(p => p.rects)),
+        cut: false,
       });
     }
   }
@@ -716,26 +781,18 @@ export function collectLayout(options) {
     const cutY =
       hides(s.overflowY) && el.scrollHeight - el.clientHeight >= lineHeight / 2;
     if (!cutX && !cutY) continue;
+    // Text in a table is the `table-fit` rule's.
+    if (tableCellOf(el)) continue;
     const axis = cutX ? 'x' : 'y';
     let fullText = false;
     for (let e = el, depth = 0; e && e !== doc && depth < 4; e = e.parentElement, depth++) {
       if (holdsFullText(e, el.textContent)) fullText = true;
     }
-    const cell = el.closest(CELL);
     truncated.push({
-      // In a table the `table-fit` rule reads it: a header, or a cell's value.
-      inTable:
-        cell && tableOf(cell)
-          ? isHeader(cell)
-            ? 'header'
-            : isName(el, cell)
-              ? 'name'
-              : 'cell'
-          : undefined,
       ...describe(el),
       layer: layerIdOf(el),
       box: box(rectOf(el)),
-      text: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80),
+      text: norm(el.textContent).slice(0, 80),
       needed: axis === 'x' ? el.scrollWidth : el.scrollHeight,
       shown: axis === 'x' ? el.clientWidth : el.clientHeight,
       axis,
