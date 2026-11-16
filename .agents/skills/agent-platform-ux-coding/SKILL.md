@@ -125,6 +125,16 @@ them and never invent a palette.
 
 ### States
 
+- Connector status describes the person's access, including for families.
+  A family's connected CRs do not prove personal access; a server that is not
+  running shows its own state, since no sign-in changes it. A family with
+  members waiting for a sign-in offers one Sign in (`FamilySignIn`: the
+  member's own sign-in, or `McpAuthDialog` with the waiting members) on its
+  row and its Tools tab; Instances is for diagnosis, linked only when members
+  fail for other reasons. Offer Sign in only where muster reports an
+  interactive sign-in, regardless of connector type. Authentication-method
+  labels describe configuration separately from access state.
+
 - Empty lists and not-found pages use `EmptyStateCard`; a not-found page adds a
   back link. A failed read of a whole page is a danger `Alert` with a back link.
 - Loading a region uses `LoadingIndicator` with a "Reading …" label. Detail
@@ -422,7 +432,9 @@ them and never invent a palette.
   `agent-shell.css` fallback scrolls tables with four or more columns at 7rem
   each; it is a safety net, not a design.
 - The tab underline is measured in screen coordinates. Never scroll bui's
-  `TabList` yourself; `RouteTabs` owns the phone tab strip.
+  `TabList` yourself; `RouteTabs` owns the tab strip's scrolling at every
+  width where its tabs don't fit (phone and narrow windows), with scroll
+  buttons for a mouse.
 - react-aria draws tab strips one commit late, which matters for tests and
   observers.
 - Form controls are 16px at phone width, set in `agent-shell.css`, to stop

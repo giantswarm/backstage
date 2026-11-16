@@ -379,3 +379,42 @@ export function formatFinding(f) {
 
 export const fmtBox = b =>
   `x=${Math.round(b.x)} y=${Math.round(b.y)} ${Math.round(b.w)}×${Math.round(b.h)}`;
+
+/**
+ * Why a path is a route template rather than a page (`/sessions/:installation/:id`,
+ * `/*`), or null. A template loads the portal's not-found page.
+ */
+export function routeTemplateOf(pagePath) {
+  const segment = pagePath
+    .split(/[?#]/)[0]
+    .split('/')
+    .find(s => s.startsWith(':') || s.includes('*'));
+  return segment
+    ? `${pagePath} is a route template (${segment}), not a page: pass a path to a real record, or a spec that opens one`
+    : null;
+}
+
+/**
+ * Why the loaded page is a not-found page instead of the page asked for, or
+ * null: the portal's 404 page, or a page's own "… not found" heading (a
+ * record the path names does not exist). `page` is `{ errorPage, headings }`
+ * as `collectPageKind` reads it.
+ */
+export function notFoundOf({ errorPage, headings }) {
+  if (errorPage && /\b404\b|not found/i.test(errorPage)) {
+    return 'the portal\'s "page not found" page';
+  }
+  const heading = headings.find(h => h.length <= 80 && /\bnot found\.?$/i.test(h));
+  return heading ? `the heading "${heading}"` : null;
+}
+
+/** Runs in the page: what `notFoundOf` reads. */
+export function collectPageKind() {
+  const error = document.querySelector('[data-testid="error"]');
+  return {
+    errorPage: error ? error.textContent.trim().slice(0, 200) : null,
+    headings: [...document.querySelectorAll('h1, h2, [role="heading"][aria-level="1"], [role="heading"][aria-level="2"]')]
+      .map(h => h.textContent.trim())
+      .filter(Boolean),
+  };
+}
