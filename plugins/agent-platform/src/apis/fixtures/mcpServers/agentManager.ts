@@ -119,6 +119,7 @@ export function agentManagerFixtureServer(
         namespace: text(args, 'namespace'),
         name: text(args, 'name'),
         kind: text(args, 'kind'),
+        dryRun: args.dryRun === true,
       }),
     [AGENT_MANAGER_TOOLS.replaceOrganizationCredential]: (
       args,

@@ -11,6 +11,7 @@ import {
   modelCredentialsRouteRef,
 } from '../routes';
 import { invalidateModelReads } from './defaultModelWrites';
+import { modelScopeRefusal } from './modelScope';
 import { useEnsureModelOperations } from './useEnsureModelOperations';
 import { useMusterPluginApi } from './useMusterPluginApi';
 
@@ -39,6 +40,12 @@ export function useSetDefaultModelConfig() {
       const installation = modelConfig.cluster;
       const namespace = modelConfig.getNamespace() ?? '';
       const organization = organizations.directory.get(namespace);
+      const scopeRefusal = modelScopeRefusal(
+        organizations,
+        installation,
+        namespace,
+      );
+      if (scopeRefusal) throw new Error(scopeRefusal);
       try {
         await ensureModelOperations(installation);
         const result = await new AgentManagerClient(

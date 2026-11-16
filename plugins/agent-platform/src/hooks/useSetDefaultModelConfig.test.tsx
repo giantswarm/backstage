@@ -27,8 +27,16 @@ jest.mock('./useMusterPluginApi', () => ({
     describeTool: mockDescribeTool,
   }),
 }));
+let mockDirectoryFailure: string | undefined;
 jest.mock('../components/OrganizationDirectoryProvider', () => ({
-  useOrganizationDirectory: () => ({ directory: new Map() }),
+  ...jest.requireActual('../components/OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () => ({
+    directory: new Map(),
+    installations: ['gazelle'],
+    isLoadingOf: () => false,
+    failureOf: () => mockDirectoryFailure,
+    discoveryFailureOf: () => undefined,
+  }),
 }));
 jest.mock('@backstage/frontend-plugin-api', () => ({
   ...jest.requireActual('@backstage/frontend-plugin-api'),
@@ -61,6 +69,7 @@ const model = new ModelConfig(
 );
 
 beforeEach(() => {
+  mockDirectoryFailure = undefined;
   mockCallTool.mockReset();
   analyticsApi.captureEvent.mockClear();
 });
@@ -146,4 +155,26 @@ it('reads the installation tool schema once for consecutive writes', async () =>
     'x_agent-manager_set_organization_model',
     'gazelle',
   );
+});
+
+it('refuses a namespace it cannot tell from an organization, writing nothing', async () => {
+  mockDirectoryFailure = 'Could not reach agent-manager on gazelle.';
+  const { result } = setup();
+  const elsewhere = new ModelConfig(
+    {
+      apiVersion: 'api.kagent.dev/v1alpha3',
+      kind: 'ModelConfig',
+      metadata: { name: 'sonnet', namespace: 'agents-payments-x7k2q' },
+      spec: { provider: 'Anthropic', model: 'claude-sonnet' },
+    } as ModelConfigInterface,
+    'gazelle',
+  );
+  await act(async () => {
+    await expect(
+      result.current.setDefault({ modelConfig: elsewhere }),
+    ).rejects.toThrow(
+      "Could not tell whether agents-payments-x7k2q is an organization's namespace or the installation's",
+    );
+  });
+  expect(mockCallTool).not.toHaveBeenCalled();
 });

@@ -710,3 +710,23 @@ it('deletes a model through delete_organization_object', async () => {
     'not found',
   );
 });
+
+it("answers a delete dry run with the person's permission, deleting nothing", async () => {
+  const { client, state, organizationWith } = setup();
+  const namespace = organizationWith('admin').namespace!;
+  const [model] = state.listModelConfigs(INSTALLATION, namespace);
+  await expect(
+    client.deleteModel(namespace, model.name, { dryRun: true }),
+  ).resolves.toEqual(expect.objectContaining({ deleted: false }));
+  expect(
+    state
+      .listModelConfigs(INSTALLATION, namespace)
+      .map(remaining => remaining.name),
+  ).toContain(model.name);
+
+  const userNamespace = organizationWith('user').namespace!;
+  const [theirs] = state.listModelConfigs(INSTALLATION, userNamespace);
+  await expect(
+    client.deleteModel(userNamespace, theirs.name, { dryRun: true }),
+  ).rejects.toThrow();
+});

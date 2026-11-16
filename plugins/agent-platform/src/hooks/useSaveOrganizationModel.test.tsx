@@ -54,6 +54,23 @@ const SONNET = new ModelConfig(
 
 const analyticsApi = mockApis.analytics.mock();
 
+/** Why the organization directory cannot answer for gazelle, when it cannot. */
+let mockDirectoryFailure: string | undefined;
+jest.mock('../components/OrganizationDirectoryProvider', () => {
+  const actual = jest.requireActual(
+    '../components/OrganizationDirectoryProvider',
+  );
+  return {
+    ...actual,
+    useOrganizationDirectory: () => {
+      const value = actual.useOrganizationDirectory();
+      return mockDirectoryFailure
+        ? { ...value, failureOf: () => mockDirectoryFailure }
+        : value;
+    },
+  };
+});
+
 /** Saves `input` on a click, and shows what the save answered. */
 function Harness({ input }: { input: SaveOrganizationModelInput }) {
   const { save, error } = useSaveOrganizationModel('gazelle');
@@ -197,6 +214,7 @@ const pending = async () => ({
 
 beforeEach(() => {
   analyticsApi.captureEvent.mockClear();
+  mockDirectoryFailure = undefined;
 });
 
 describe('useSaveOrganizationModel', () => {
@@ -267,6 +285,28 @@ describe('useSaveOrganizationModel', () => {
     ]);
     expect(setCalls(callTool)[0]).not.toHaveProperty('apiKey');
   });
+  it('refuses a namespace it cannot tell from an organization, writing nothing', async () => {
+    mockDirectoryFailure = 'Could not reach agent-manager on gazelle.';
+    const callTool = await saveWith(
+      { namespace: 'agents-payments-x7k2q', values: VALUES },
+      pending,
+    );
+    expect(await screen.findByTestId('error')).toHaveTextContent(
+      "Could not tell whether agents-payments-x7k2q is an organization's namespace or the installation's",
+    );
+    expect(setCalls(callTool)).toEqual([]);
+  });
+
+  it("still saves in the installation's namespace while the organizations cannot be read", async () => {
+    mockDirectoryFailure = 'Could not reach agent-manager on gazelle.';
+    const callTool = await saveWith(
+      { namespace: 'kagent', values: VALUES },
+      pending,
+    );
+    expect(await screen.findByTestId('answer')).toBeInTheDocument();
+    expect(setCalls(callTool)).toHaveLength(1);
+  });
+
   it('asks agent-manager for a new model, without a key, and answers the credential form', async () => {
     const callTool = await saveWith(
       { organization: PAYMENTS, values: VALUES },

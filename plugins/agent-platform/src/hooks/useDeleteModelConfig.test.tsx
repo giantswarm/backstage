@@ -1,5 +1,5 @@
 import { PropsWithChildren } from 'react';
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { analyticsApiRef } from '@backstage/core-plugin-api';
 import { mockApis, TestApiProvider } from '@backstage/test-utils';
@@ -13,7 +13,6 @@ import { useDeleteModelConfig } from './useDeleteModelConfig';
 // The reads and writes are mocked; the provenance/ownership helpers and the
 // resource classes are the real ones, so the label reading and GVK resolution
 // under test are the real thing.
-const mockUseSelfSubjectAccessReview = jest.fn();
 const mockDeleteResource = jest.fn();
 const mockDeleteModel = jest.fn();
 jest.mock('./useAgentManager', () => ({
@@ -23,8 +22,6 @@ const mockFetchResourceList = jest.fn();
 
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
-  useSelfSubjectAccessReview: (...args: unknown[]) =>
-    mockUseSelfSubjectAccessReview(...args),
   deleteResource: (...args: unknown[]) => mockDeleteResource(...args),
   fetchResourceList: (...args: unknown[]) => mockFetchResourceList(...args),
 }));
@@ -91,10 +88,24 @@ function setup({
     return agents;
   });
 
-  mockUseSelfSubjectAccessReview.mockReturnValue({
-    allowed,
-    isLoading: false,
-  });
+  // agent-manager's dry run answers whether this person may delete it.
+  mockDeleteModel.mockImplementation(
+    async (
+      _namespace: string,
+      _name: string,
+      options?: { dryRun?: boolean },
+    ) => {
+      if (options?.dryRun && !allowed) {
+        throw Object.assign(
+          new Error('forbidden: needs agent-platform:admin'),
+          {
+            code: 'forbidden',
+          },
+        );
+      }
+      return { deleted: !options?.dryRun };
+    },
+  );
 
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
     <TestApiProvider
@@ -118,42 +129,40 @@ function setup({
 
 beforeEach(() => {
   jest.mocked(analyticsApi.captureEvent).mockClear();
-  mockUseSelfSubjectAccessReview.mockReset();
   mockDeleteResource.mockReset();
   mockDeleteModel.mockReset();
-  mockDeleteModel.mockResolvedValue({ deleted: true });
   mockDeleteResource.mockResolvedValue(undefined);
   mockFetchResourceList.mockReset();
 });
 
 describe('useDeleteModelConfig', () => {
-  it('offers the deletion for an unowned model we may delete', () => {
+  it('offers the deletion when agent-manager accepts it for this person', async () => {
     const { result } = setup();
 
-    expect(result.current.isDeletable).toBe(true);
+    expect(result.current.isCheckingDeletable).toBe(true);
+    expect(result.current.isDeletable).toBe(false);
+    await waitFor(() => expect(result.current.isDeletable).toBe(true));
     expect(result.current.isCheckingDeletable).toBe(false);
   });
 
-  it('checks the permission against the named ModelConfig', () => {
-    setup();
+  it("asks agent-manager's dry run for the named model, not the cluster", async () => {
+    const { result } = setup();
 
-    expect(mockUseSelfSubjectAccessReview).toHaveBeenCalledWith(
-      CLUSTER,
-      {
-        group: 'api.kagent.dev',
-        resource: 'modelconfigs',
-        namespace: NAMESPACE,
-        name: 'qwen3',
-        verb: 'delete',
-      },
-      { enabled: true },
-    );
+    await waitFor(() => expect(result.current.isDeletable).toBe(true));
+    expect(mockDeleteModel).toHaveBeenCalledWith(NAMESPACE, 'qwen3', {
+      dryRun: true,
+    });
+    expect(mockDeleteModel).toHaveBeenCalledTimes(1);
   });
 
-  it('refuses when the access review says no', () => {
+  it('withholds the deletion when agent-manager refuses this person', async () => {
     const { result } = setup({ allowed: false });
 
+    await waitFor(() => expect(result.current.isCheckingDeletable).toBe(false));
     expect(result.current.isDeletable).toBe(false);
+    expect(mockDeleteModel).toHaveBeenCalledWith(NAMESPACE, 'qwen3', {
+      dryRun: true,
+    });
   });
 
   it.each([
@@ -173,6 +182,7 @@ describe('useDeleteModelConfig', () => {
 
     expect(result.current.isDeletable).toBe(false);
     expect(result.current.owner).toBe(owner);
+    expect(mockDeleteModel).not.toHaveBeenCalled();
   });
 
   it('refuses while an agent still references the model', async () => {
@@ -232,8 +242,8 @@ it('deletes through agent-manager without a model or Secret write from the porta
 });
 
 it('does not report a deletion when the manager refuses it', async () => {
-  mockDeleteModel.mockRejectedValue(new Error('forbidden'));
   const { result } = setup();
+  mockDeleteModel.mockRejectedValue(new Error('forbidden'));
   await act(async () => {
     await expect(result.current.deleteModelConfig()).rejects.toThrow(
       'forbidden',

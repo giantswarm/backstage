@@ -413,13 +413,24 @@ export class AgentManagerClient {
     );
   }
 
+  /**
+   * Deletes a model as the caller. With `dryRun`, agent-manager checks the
+   * deletion as the caller and writes nothing: its answer is whether the
+   * caller may delete the model.
+   */
   deleteModel(
     namespace: string,
     name: string,
+    options: { dryRun?: boolean } = {},
   ): Promise<CredentialResourceResult> {
     return this.call<CredentialResourceResult>(
       AGENT_MANAGER_TOOLS.deleteOrganizationObject,
-      { namespace, name, kind: 'model' },
+      {
+        namespace,
+        name,
+        kind: 'model',
+        ...(options.dryRun ? { dryRun: true } : {}),
+      },
     );
   }
 

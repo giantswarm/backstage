@@ -1,17 +1,17 @@
 import { useCallback, useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   Agent,
   CustomResourceMatcher,
   fetchResourceList,
   ModelConfig,
-  useSelfSubjectAccessReview,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { modelConfigEditOwner } from '../lib/modelConfigs';
+import { musterModelDeleteCheckQueryKey } from '../lib/queryKeys';
 import { useOrganizationDirectory } from '../components/OrganizationDirectoryProvider';
 import { useAgentManagerClient } from './useAgentManager';
 
@@ -20,10 +20,11 @@ import { useAgentManagerClient } from './useAgentManager';
  *
  * Two gates decide the affordance: the CR must not be tool-owned (rendered by
  * Helm, applied by a Flux Kustomization, or asserted by agentlab — all of
- * which would fight the deletion or quietly re-create the model), and the
- * cluster must say this user may delete it (`SelfSubjectAccessReview`, which
- * decides what is *shown* — authorization stays the apiserver's, since the
- * proxy forwards the user's own OIDC token).
+ * which would fight the deletion or quietly re-create the model), and
+ * agent-manager, which deletes it, must accept the deletion as this person: a
+ * dry run of `delete_organization_object` (organization admin in an
+ * organization, cluster-admin for the installation's models). A dry run that
+ * fails for any reason withholds the affordance.
  *
  * The mutation refuses to delete a model an `Agent` still references. That
  * check reads a **fresh** list at mutation time, not the query cache — a
@@ -51,19 +52,22 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
     ? modelConfigEditOwner(modelConfig, directory)
     : undefined;
 
-  const { allowed: isAllowed, isLoading: isCheckingPermission } =
-    useSelfSubjectAccessReview(
+  const deleteCheck = useQuery({
+    queryKey: musterModelDeleteCheckQueryKey(
       cluster,
-      {
-        group: ModelConfig.group,
-        resource: ModelConfig.plural,
-        namespace,
-        // Named, so a grant restricted via `resourceNames` answers accurately.
-        name,
-        verb: 'delete',
-      },
-      { enabled: Boolean(modelConfig) },
-    );
+      namespace ?? '',
+      name ?? '',
+    ),
+    enabled: Boolean(client && modelConfig && namespace && name && !owner),
+    queryFn: async () => {
+      await client!.deleteModel(namespace!, name!, { dryRun: true });
+      return true;
+    },
+    staleTime: 60_000,
+    retry: false,
+  });
+  const isAllowed = deleteCheck.data === true;
+  const isCheckingPermission = deleteCheck.isLoading;
 
   const invalidateReads = async (gvks: CustomResourceMatcher[]) => {
     await Promise.all(

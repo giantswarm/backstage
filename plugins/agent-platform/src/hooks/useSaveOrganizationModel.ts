@@ -23,7 +23,9 @@ import {
 } from '../lib/agentManager';
 import { credentialRequestErrorMessage } from '../lib/credentialRequestErrors';
 import { PortalSessionEndedError } from '../lib/portalSession';
+import { useOrganizationDirectory } from '../components/OrganizationDirectoryProvider';
 import { invalidateModelReads } from './defaultModelWrites';
+import { modelScopeRefusal } from './modelScope';
 import { modelKeyReference } from './modelKeyReference';
 import { useAgentManagerClient } from './useAgentManager';
 import { useEnsureModelOperations } from './useEnsureModelOperations';
@@ -77,6 +79,7 @@ export type SaveOrganizationModelResult = {
 export function useSaveOrganizationModel(installation: string | undefined) {
   const client = useAgentManagerClient(installation);
   const ensureModelOperations = useEnsureModelOperations();
+  const organizations = useOrganizationDirectory();
   const queryClient = useQueryClient();
   const formLink = useRouteRef(organizationCredentialsRouteRef);
   const platformFormLink = useRouteRef(modelCredentialsRouteRef);
@@ -113,6 +116,10 @@ export function useSaveOrganizationModel(installation: string | undefined) {
       }
       const namespace =
         organization?.namespace ?? requestedNamespace ?? MODEL_CONFIG_NAMESPACE;
+      const scopeRefusal = organization
+        ? undefined
+        : modelScopeRefusal(organizations, installation, namespace);
+      if (scopeRefusal) throw new Error(scopeRefusal);
       const setModel = async (
         request: Parameters<typeof client.setOrganizationModel>[0],
       ) => {

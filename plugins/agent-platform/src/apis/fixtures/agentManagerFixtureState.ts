@@ -831,7 +831,12 @@ export class AgentManagerFixtureState {
   /** `delete_organization_object` for a model: the ModelConfig and its key. */
   deleteOrganizationObject(
     installation: string,
-    request: { namespace: string; name: string; kind: string },
+    request: {
+      namespace: string;
+      name: string;
+      kind: string;
+      dryRun?: boolean;
+    },
   ): CredentialResourceResult {
     if (request.kind !== 'model') {
       throw refusal(
@@ -843,18 +848,21 @@ export class AgentManagerFixtureState {
     this.mustManage(organization);
     const { models } = this.stateOf(installation);
     const key = keyOf(request.namespace, request.name);
-    if (!models.delete(key)) {
+    if (!models.has(key)) {
       throw refusal(
         'not_found',
         `model ${request.name} not found in ${request.namespace}`,
       );
     }
-    this.changed();
+    if (!request.dryRun) {
+      models.delete(key);
+      this.changed();
+    }
     return {
       namespace: request.namespace,
       kind: 'model',
       name: request.name,
-      deleted: true,
+      deleted: !request.dryRun,
       defaultModel: this.defaultModelIn(installation, request.namespace),
     };
   }
