@@ -1,33 +1,34 @@
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- the fixture Mimir is the gs plugin's.
+import type { MimirFixtureApi } from '@giantswarm/backstage-plugin-gs/fixtures';
 import { AgentgatewayGenAiClientCostUsdTotal as Cost } from '@giantswarm/backstage-plugin-gs-common';
 import {
-  counterIncreaseOf,
-  DAY,
-  FIXTURE_PERSON_EMAIL,
-  gatewaySeries,
   isUnreachableInstallation,
   type FixtureDataSet,
 } from '@giantswarm/backstage-plugin-gs-common/fixtures';
 import {
-  encodeKagentAgentId,
+  callerEmail,
+  modelCostOf,
+  modelCostQueries,
+  needsAttributedCount,
   type ModelCostResponse,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
-
-/** The gateway's `user` values that name nobody, as the backend reads them. */
-const UNATTRIBUTED_USERS = ['', 'unknown'];
+import { FIXTURE_USER } from './fixtureIdentity';
 
 /**
  * The person's model cost on one installation over the last `days` days, as
- * agent-platform-backend's `readModelCost` reads it from Mimir, here from the
- * fixture gateway series the fixture Mimir answers from: the growth of the
- * person's cost series by agent, `partial` when some calls in the window name
- * no one. kagent on an unreachable installation cannot say who the person is.
+ * agent-platform-backend's `readModelCost` reads it: kagent names the person
+ * (the fixture user; kagent on an unreachable installation cannot be asked),
+ * the backend's queries run through the fixture Mimir, and the shared
+ * `modelCostOf` decides what their answers come to.
  */
-export function fixtureModelCost(
-  data: FixtureDataSet,
-  installation: string,
-  days: number,
-  now: number,
-): ModelCostResponse {
+export async function fixtureModelCost(options: {
+  data: FixtureDataSet;
+  mimir: Pick<MimirFixtureApi, 'query'>;
+  installation: string;
+  days: number;
+  now: number;
+}): Promise<ModelCostResponse> {
+  const { data, mimir, installation, days, now } = options;
   if (isUnreachableInstallation(data, installation)) {
     return {
       status: 'unavailable',
@@ -35,50 +36,27 @@ export function fixtureModelCost(
       reason: 'identity-unreadable',
     };
   }
-  const start = now - days * DAY;
-  const costSeries = gatewaySeries(data, installation).filter(
-    series =>
-      series.labels.__name__ === Cost.name &&
-      series.points[0] !== undefined &&
-      series.points[0][0] <= now,
+  const user = callerEmail(FIXTURE_USER);
+  if (!user) {
+    return { status: 'unavailable', windowDays: days, reason: 'no-identity' };
+  }
+  const queries = modelCostQueries(Cost.name, user, days);
+  const run = async (query: string) =>
+    (
+      await mimir.query({
+        installationName: installation,
+        query,
+      })
+    ).data.result;
+  const [byAgent, unattributed] = await Promise.all([
+    run(queries.byAgent),
+    run(queries.unattributed),
+  ]);
+  const attributed = needsAttributedCount(byAgent)
+    ? await run(queries.attributed)
+    : undefined;
+  return modelCostOf(
+    { byAgent, unattributed, attributed },
+    { days, evaluatedAt: now },
   );
-
-  const byAgent = new Map<string, number>();
-  let totalUsd = 0;
-  for (const series of costSeries) {
-    if (series.labels.user !== FIXTURE_PERSON_EMAIL) {
-      continue;
-    }
-    const cost = counterIncreaseOf(series, start, now) ?? 0;
-    if (cost <= 0) {
-      continue;
-    }
-    totalUsd += cost;
-    const agentId = encodeKagentAgentId(
-      series.labels.agent_namespace,
-      series.labels.agent,
-    );
-    byAgent.set(agentId, (byAgent.get(agentId) ?? 0) + cost);
-  }
-
-  const unattributed = (user: string | undefined) =>
-    UNATTRIBUTED_USERS.includes(user ?? '');
-  if (totalUsd <= 0) {
-    const attributed = costSeries.some(s => !unattributed(s.labels.user));
-    return {
-      status: 'unavailable',
-      windowDays: days,
-      reason: attributed ? 'no-spend' : 'not-recorded',
-    };
-  }
-  return {
-    status: 'actual',
-    windowDays: days,
-    totalUsd,
-    byAgent: [...byAgent]
-      .map(([agentId, costUsd]) => ({ agentId, costUsd }))
-      .sort((a, b) => b.costUsd - a.costUsd),
-    partial: costSeries.some(s => unattributed(s.labels.user)),
-    evaluatedAt: now,
-  };
 }

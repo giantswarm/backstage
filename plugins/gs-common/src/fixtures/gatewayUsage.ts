@@ -165,6 +165,16 @@ export function counterIncreaseOf(
   );
 }
 
+/**
+ * A label set's identity, its labels in name order: the key the series, the
+ * evaluator's vector matching and the range answers group by.
+ */
+export function labelKey(labels: Readonly<Record<string, string>>): string {
+  return JSON.stringify(
+    Object.entries(labels).sort(([a], [b]) => a.localeCompare(b)),
+  );
+}
+
 /** A number in [0, 1) from the given parts, the same every time. */
 function unit(...parts: (string | number)[]): number {
   return hashOf(parts.join('|')) / 4294967296;
@@ -242,11 +252,12 @@ export function gatewayDaysOf(
   // The teammates: most working days, a few weekends, more lately.
   for (const agent of agents) {
     for (const user of TEAMMATES) {
-      const weight = 0.4 + 1.2 * unit(agent.namespace, agent.name, user);
+      const id = [installation, agent.namespace, agent.name, user];
+      const weight = 0.4 + 1.2 * unit(...id);
       for (let day = firstDay; day <= today; day += DAY) {
         const weekday = new Date(day).getUTCDay();
         const weekend = weekday === 0 || weekday === 6;
-        const chance = unit(agent.name, user, day, 'active');
+        const chance = unit(...id, day, 'active');
         if (chance > (weekend ? 0.15 : 0.7)) {
           continue;
         }
@@ -256,10 +267,7 @@ export function gatewayDaysOf(
           agent,
           user,
           day,
-          weight *
-            trend *
-            share *
-            (20000 + 160000 * unit(agent.name, user, day, 'input')),
+          weight * trend * share * (20000 + 160000 * unit(...id, day, 'input')),
         );
       }
     }
@@ -270,13 +278,14 @@ export function gatewayDaysOf(
   const [unattributed] = agents;
   if (unattributed && installation === FIXTURE_INSTALLATION) {
     for (let day = firstDay; day <= today; day += DAY) {
-      if (unit(unattributed.name, day, UNATTRIBUTED) < 0.25) {
+      const id = [installation, unattributed.namespace, unattributed.name];
+      if (unit(...id, day, UNATTRIBUTED) < 0.25) {
         const share = day === today ? todayShare : 1;
         record(
           unattributed,
           UNATTRIBUTED,
           day,
-          share * (5000 + 30000 * unit(unattributed.name, day, 'input')),
+          share * (5000 + 30000 * unit(...id, day, 'input')),
         );
       }
     }
@@ -308,7 +317,7 @@ export function gatewayDaysOf(
   return days;
 }
 
-/** Adds `value` to the series of `labels` over `[from, to]`. */
+/** Collects each series' growth per day. */
 class SeriesBuilder {
   private readonly series = new Map<
     string,
@@ -316,7 +325,6 @@ class SeriesBuilder {
   >();
 
   constructor(
-    private readonly firstDay: number,
     private readonly lastDay: number,
     private readonly now: number,
   ) {}
@@ -325,9 +333,7 @@ class SeriesBuilder {
     if (value === 0) {
       return;
     }
-    const key = JSON.stringify(
-      Object.entries(labels).sort(([a], [b]) => a.localeCompare(b)),
-    );
+    const key = labelKey(labels);
     let entry = this.series.get(key);
     if (!entry) {
       entry = { labels, growth: new Map() };
@@ -337,14 +343,16 @@ class SeriesBuilder {
   }
 
   /**
-   * The series, each from the first day's start: a point at every day's
-   * start and the last at `now`, so a day's growth spreads over it.
+   * The series, each from the start of the first day it grew, at 0, as the
+   * gateway creates a series on its first call: a point at every day's start
+   * and the last at `now`, so a day's growth spreads over it.
    */
   build(): FixtureCounterSeries[] {
     return [...this.series.values()].map(({ labels, growth }) => {
       const points: [number, number][] = [];
       let value = 0;
-      for (let day = this.firstDay; day <= this.lastDay; day += DAY) {
+      const firstDay = Math.min(...growth.keys());
+      for (let day = firstDay; day <= this.lastDay; day += DAY) {
         points.push([day, value]);
         value += growth.get(day) ?? 0;
       }
@@ -376,9 +384,7 @@ export function gatewaySeriesOf(
   installation: string,
   now: number,
 ): FixtureCounterSeries[] {
-  const today = startOfDay(now);
-  const firstDay = today - (GATEWAY_HISTORY_DAYS - 1) * DAY;
-  const builder = new SeriesBuilder(firstDay, today, now);
+  const builder = new SeriesBuilder(startOfDay(now), now);
   const gateway = { gateway: 'agentgateway' };
 
   for (const record of gatewayDaysOf(data, installation, now)) {
@@ -463,9 +469,10 @@ const built = new WeakMap<
 >();
 
 /**
- * {@link gatewaySeriesOf} for a data set, built once per installation up to
- * the moment of its first read, so every fixture that reads the gateway (the
- * fixture Mimir, the person's model cost) reads the same figures.
+ * {@link gatewaySeriesOf} for a data set, up to the time it counts back from
+ * (`now`), built once per installation, so every fixture that reads the
+ * gateway (the fixture Mimir, the person's model cost) reads the same
+ * figures, the same for the same seed and `now`.
  */
 export function gatewaySeries(
   data: FixtureDataSet,
@@ -478,7 +485,7 @@ export function gatewaySeries(
   }
   let series = byInstallation.get(installation);
   if (!series) {
-    series = gatewaySeriesOf(data, installation, Date.now());
+    series = gatewaySeriesOf(data, installation, data.now);
     byInstallation.set(installation, series);
   }
   return series;

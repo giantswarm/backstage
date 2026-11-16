@@ -34,12 +34,6 @@ export function useMimirQueryFn(): (
       const credentials =
         await kubernetesAuthProvidersApi.getCredentials(authProvider);
 
-      if (!credentials.token) {
-        throw new Error(
-          `No OIDC token available for installation "${installationName}"`,
-        );
-      }
-
       return mimirApi.query({
         installationName,
         query,

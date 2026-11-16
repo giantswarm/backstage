@@ -1,27 +1,46 @@
 import {
   counterValueAt,
+  labelKey,
   type FixtureCounterSeries,
 } from '@giantswarm/backstage-plugin-gs-common/fixtures';
 
 /**
  * The part of PromQL the portal's queries use, evaluated over fixture
- * counter series: selectors with matchers, ranges, `offset` and `@`;
- * `increase`, `min_over_time`, `last_over_time`, `label_replace` and
- * `histogram_quantile`; `sum`, `count`, `min`, `max` and `avg`, optionally
- * `by` labels; `or`, `and`, `unless`; arithmetic and comparisons with a
- * number. Anything else is refused as Mimir refuses a query it cannot parse
- * (`InputError`), so a page that starts sending a new shape fails loudly
- * instead of reading an empty answer.
+ * series:
  *
- * A series is sampled continuously from its first point on, so a range
- * function reads its value at the range's ends; `increase` does not
- * extrapolate.
+ * - selectors with matchers, ranges, `offset` and `@ <time>`;
+ * - `increase`, `rate`, `min_over_time`, `max_over_time`, `avg_over_time`,
+ *   `last_over_time`, `label_replace` and `histogram_quantile`;
+ * - `sum`, `count`, `min`, `max` and `avg`, with `by` or `without`;
+ * - `or`, `and`, `unless`, arithmetic and comparisons, between vectors with
+ *   `on` or `ignoring` and `group_left` or `group_right`, or with a number.
+ *
+ * A query outside it fails with an {@link UnsupportedQueryError}; the
+ * fixture Mimir answers it with no series and a console warning.
+ *
+ * The series are sampled continuously from their first point on, linear
+ * between points, so a range function reads the values at the range's ends:
+ * `increase` and `rate` do not extrapolate, and `avg_over_time` is the mean
+ * of the two ends.
  */
 
 type Labels = Record<string, string>;
 type Sample = { labels: Labels; value: number };
 
-type Node =
+type Matcher = { label: string; test: (value: string) => boolean };
+
+/** How a binary operation between two vectors matches their samples. */
+type VectorMatching = {
+  /** `on`: only these labels; `ignoring`: all but these. */
+  on: boolean;
+  labels: string[];
+  /** Which side may have many samples per match. */
+  group?: 'left' | 'right';
+  /** The labels a group copies from the side with one sample. */
+  include: string[];
+};
+
+export type PromqlNode =
   | { kind: 'number'; value: number }
   | { kind: 'string'; text: string }
   | {
@@ -32,19 +51,29 @@ type Node =
       offset: number;
       at?: number;
     }
-  | { kind: 'call'; name: string; args: Node[] }
-  | { kind: 'aggregate'; op: string; by?: string[]; arg: Node }
-  | { kind: 'binary'; op: string; left: Node; right: Node };
-
-type Matcher = { label: string; op: '=' | '!=' | '=~' | '!~'; value: string };
+  | { kind: 'call'; name: string; args: PromqlNode[] }
+  | {
+      kind: 'aggregate';
+      op: string;
+      grouping?: { without: boolean; labels: string[] };
+      arg: PromqlNode;
+    }
+  | {
+      kind: 'binary';
+      op: string;
+      left: PromqlNode;
+      right: PromqlNode;
+      matching?: VectorMatching;
+    };
 
 type Value =
   { kind: 'scalar'; value: number } | { kind: 'vector'; samples: Sample[] };
 
-export class PromqlError extends Error {
+/** A query, or a part of one, the evaluator does not read. */
+export class UnsupportedQueryError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'InputError';
+    this.name = 'UnsupportedQueryError';
   }
 }
 
@@ -58,14 +87,14 @@ const DURATION_UNITS: Record<string, number> = {
   y: 31536000,
 };
 
-/** A PromQL duration (`30d`, `1h30m`, `300s`) in seconds. */
+/** A PromQL duration (`30d`, `1h30m`, `300s`) or a number, in seconds. */
 export function parseDuration(text: string): number {
   if (/^\d+(\.\d+)?$/.test(text)) {
     return Number(text);
   }
   const parts = [...text.matchAll(/(\d+)(ms|[smhdwy])/g)];
   if (parts.length === 0 || parts.map(p => p[0]).join('') !== text) {
-    throw new PromqlError(`bad duration: ${text}`);
+    throw new UnsupportedQueryError(`bad duration: ${text}`);
   }
   return parts.reduce(
     (seconds, [, count, unit]) =>
@@ -74,16 +103,20 @@ export function parseDuration(text: string): number {
   );
 }
 
-type Token =
-  | { type: 'ident'; text: string }
-  | { type: 'number'; text: string }
-  | { type: 'duration'; text: string }
-  | { type: 'string'; text: string }
-  | { type: 'symbol'; text: string };
+type Token = {
+  type: 'ident' | 'number' | 'duration' | 'string' | 'symbol';
+  text: string;
+};
 
 function tokenize(query: string): Token[] {
   const tokens: Token[] = [];
   let i = 0;
+  const patterns: [Token['type'], RegExp][] = [
+    ['duration', /^\d+(ms|[smhdwy])(\d+(ms|[smhdwy]))*(?![\w.])/],
+    ['number', /^(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?/],
+    ['ident', /^[a-zA-Z_:][a-zA-Z0-9_:]*/],
+    ['symbol', /^(=~|!~|!=|==|>=|<=|[(){}[\],=<>/*+\-@])/],
+  ];
   while (i < query.length) {
     const rest = query.slice(i);
     const space = /^\s+/.exec(rest);
@@ -91,83 +124,76 @@ function tokenize(query: string): Token[] {
       i += space[0].length;
       continue;
     }
-    const duration = /^\d+(ms|[smhdwy])(\d+(ms|[smhdwy]))*(?![\w.])/.exec(rest);
-    if (duration) {
-      tokens.push({ type: 'duration', text: duration[0] });
-      i += duration[0].length;
-      continue;
-    }
-    const number = /^(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?/.exec(rest);
-    if (number) {
-      tokens.push({ type: 'number', text: number[0] });
-      i += number[0].length;
-      continue;
-    }
-    const ident = /^[a-zA-Z_:][a-zA-Z0-9_:]*/.exec(rest);
-    if (ident) {
-      tokens.push({ type: 'ident', text: ident[0] });
-      i += ident[0].length;
-      continue;
-    }
     if (rest[0] === '"' || rest[0] === "'") {
-      const quote = rest[0];
       let text = '';
       let j = 1;
-      for (; j < rest.length && rest[j] !== quote; j++) {
+      for (; j < rest.length && rest[j] !== rest[0]; j++) {
         if (rest[j] === '\\') {
           j++;
         }
         text += rest[j];
       }
       if (j >= rest.length) {
-        throw new PromqlError('unterminated string');
+        throw new UnsupportedQueryError('unterminated string');
       }
       tokens.push({ type: 'string', text });
       i += j + 1;
       continue;
     }
-    const symbol = /^(=~|!~|!=|==|>=|<=|[(){}[\],=<>/*+\-@])/.exec(rest);
-    if (symbol) {
-      tokens.push({ type: 'symbol', text: symbol[0] });
-      i += symbol[0].length;
-      continue;
+    const found = patterns
+      .map(([type, pattern]) => ({ type, match: pattern.exec(rest) }))
+      .find(({ match }) => match);
+    if (!found) {
+      throw new UnsupportedQueryError(`unexpected character "${rest[0]}"`);
     }
-    throw new PromqlError(`unexpected character "${rest[0]}"`);
+    tokens.push({ type: found.type, text: found.match![0] });
+    i += found.match![0].length;
   }
   return tokens;
 }
 
 const AGGREGATIONS = ['sum', 'count', 'min', 'max', 'avg'];
-const FUNCTIONS = [
+const RANGE_FUNCTIONS = [
   'increase',
+  'rate',
   'min_over_time',
+  'max_over_time',
+  'avg_over_time',
   'last_over_time',
-  'label_replace',
-  'histogram_quantile',
 ];
+const FUNCTIONS = [...RANGE_FUNCTIONS, 'label_replace', 'histogram_quantile'];
 const COMPARISONS = ['>', '<', '>=', '<=', '==', '!='];
+
+/** A regex matcher as PromQL anchors it. */
+function anchored(pattern: string): RegExp {
+  try {
+    return new RegExp(`^(?:${pattern})$`);
+  } catch {
+    throw new UnsupportedQueryError(`bad regular expression: ${pattern}`);
+  }
+}
 
 class Parser {
   private position = 0;
 
   constructor(private readonly tokens: Token[]) {}
 
-  parse(): Node {
+  parse(): PromqlNode {
     const node = this.expression();
     if (this.peek()) {
-      throw new PromqlError(`unexpected "${this.peek()!.text}"`);
+      throw new UnsupportedQueryError(`unexpected "${this.peek()!.text}"`);
     }
     return node;
   }
 
-  private peek(): Token | undefined {
-    return this.tokens[this.position];
+  private peek(offset = 0): Token | undefined {
+    return this.tokens[this.position + offset];
   }
 
   private next(): Token {
     const token = this.tokens[this.position++];
     if (!token) {
-      throw new PromqlError('unexpected end of query');
+      throw new UnsupportedQueryError('unexpected end of query');
     }
     return token;
   }
@@ -183,72 +209,80 @@ class Parser {
 
   private expect(text: string): void {
     if (!this.accept(text)) {
-      throw new PromqlError(
+      throw new UnsupportedQueryError(
         `expected "${text}", found "${this.peek()?.text ?? 'the end'}"`,
       );
     }
   }
 
-  private expression(): Node {
-    let left = this.unless();
-    while (this.accept('or')) {
-      left = { kind: 'binary', op: 'or', left, right: this.unless() };
-    }
-    return left;
-  }
+  /** Binary operators, loosest first, each level left-associative. */
+  private static readonly LEVELS = [
+    ['or'],
+    ['and', 'unless'],
+    COMPARISONS,
+    ['+', '-'],
+    ['*', '/'],
+  ];
 
-  private unless(): Node {
-    let left = this.comparison();
+  private expression(level = 0): PromqlNode {
+    if (level === Parser.LEVELS.length) {
+      return this.primary();
+    }
+    let left = this.expression(level + 1);
     for (;;) {
-      const op = ['unless', 'and'].find(o => this.accept(o));
+      const op = Parser.LEVELS[level].find(o => this.accept(o));
       if (!op) {
         return left;
       }
-      left = { kind: 'binary', op, left, right: this.comparison() };
-    }
-  }
-
-  private comparison(): Node {
-    let left = this.additive();
-    for (;;) {
-      const op = COMPARISONS.find(o => this.accept(o));
-      if (!op) {
-        return left;
+      if (this.accept('bool')) {
+        throw new UnsupportedQueryError('"bool" is not supported');
       }
-      left = { kind: 'binary', op, left, right: this.additive() };
+      const matching = this.vectorMatching();
+      left = {
+        kind: 'binary',
+        op,
+        left,
+        right: this.expression(level + 1),
+        matching,
+      };
     }
   }
 
-  private additive(): Node {
-    let left = this.multiplicative();
-    for (;;) {
-      const op = ['+', '-'].find(o => this.accept(o));
-      if (!op) {
-        return left;
+  private vectorMatching(): VectorMatching | undefined {
+    const on = this.accept('on');
+    if (!on && !this.accept('ignoring')) {
+      return undefined;
+    }
+    const matching: VectorMatching = {
+      on,
+      labels: this.labelList(),
+      include: [],
+    };
+    for (const group of ['left', 'right'] as const) {
+      if (this.accept(`group_${group}`)) {
+        matching.group = group;
+        matching.include = this.peek()?.text === '(' ? this.labelList() : [];
       }
-      left = { kind: 'binary', op, left, right: this.multiplicative() };
     }
+    return matching;
   }
 
-  private multiplicative(): Node {
-    let left = this.primary();
-    for (;;) {
-      const op = ['*', '/'].find(o => this.accept(o));
-      if (!op) {
-        return left;
-      }
-      left = { kind: 'binary', op, left, right: this.primary() };
-    }
-  }
-
-  private primary(): Node {
+  private primary(): PromqlNode {
     const token = this.peek();
     if (!token) {
-      throw new PromqlError('unexpected end of query');
+      throw new UnsupportedQueryError('unexpected end of query');
     }
     if (token.type === 'number') {
       this.position++;
       return { kind: 'number', value: Number(token.text) };
+    }
+    if (this.accept('-')) {
+      return {
+        kind: 'binary',
+        op: '*',
+        left: { kind: 'number', value: -1 },
+        right: this.primary(),
+      };
     }
     if (this.accept('(')) {
       const node = this.expression();
@@ -257,22 +291,21 @@ class Parser {
     }
     if (token.type === 'ident' && AGGREGATIONS.includes(token.text)) {
       this.position++;
-      let by = this.grouping();
+      let grouping = this.grouping();
       this.expect('(');
       const arg = this.expression();
       this.expect(')');
-      by ??= this.grouping();
-      return { kind: 'aggregate', op: token.text, by, arg };
+      grouping ??= this.grouping();
+      return { kind: 'aggregate', op: token.text, grouping, arg };
     }
-    if (
-      token.type === 'ident' &&
-      this.tokens[this.position + 1]?.text === '('
-    ) {
+    if (token.type === 'ident' && this.peek(1)?.text === '(') {
       if (!FUNCTIONS.includes(token.text)) {
-        throw new PromqlError(`function "${token.text}" is not supported`);
+        throw new UnsupportedQueryError(
+          `function "${token.text}" is not supported`,
+        );
       }
       this.position += 2;
-      const args: Node[] = [];
+      const args: PromqlNode[] = [];
       if (!this.accept(')')) {
         do {
           args.push(this.argument());
@@ -284,11 +317,11 @@ class Parser {
     if (token.type === 'ident' || token.text === '{') {
       return this.selector();
     }
-    throw new PromqlError(`unexpected "${token.text}"`);
+    throw new UnsupportedQueryError(`unexpected "${token.text}"`);
   }
 
   /** A function argument: an expression, or a string. */
-  private argument(): Node {
+  private argument(): PromqlNode {
     const token = this.peek();
     if (token?.type === 'string') {
       this.position++;
@@ -297,13 +330,15 @@ class Parser {
     return this.expression();
   }
 
-  private grouping(): string[] | undefined {
-    if (this.accept('without')) {
-      throw new PromqlError('"without" is not supported');
-    }
-    if (!this.accept('by')) {
+  private grouping(): { without: boolean; labels: string[] } | undefined {
+    const without = this.accept('without');
+    if (!without && !this.accept('by')) {
       return undefined;
     }
+    return { without, labels: this.labelList() };
+  }
+
+  private labelList(): string[] {
     this.expect('(');
     const labels: string[] = [];
     if (!this.accept(')')) {
@@ -318,33 +353,52 @@ class Parser {
   private ident(): string {
     const token = this.next();
     if (token.type !== 'ident') {
-      throw new PromqlError(`expected a label name, found "${token.text}"`);
+      throw new UnsupportedQueryError(
+        `expected a label name, found "${token.text}"`,
+      );
     }
     return token.text;
   }
 
-  private selector(): Node {
-    let name: string | undefined;
-    if (this.peek()?.type === 'ident') {
-      name = this.next().text;
+  private matcher(): Matcher {
+    const label = this.ident();
+    const op = this.next().text;
+    const value = this.next();
+    if (value.type !== 'string') {
+      throw new UnsupportedQueryError(
+        `expected a string, found "${value.text}"`,
+      );
     }
-    const matchers: Matcher[] = [];
-    if (this.accept('{')) {
-      if (!this.accept('}')) {
-        do {
-          const label = this.ident();
-          const op = this.next().text as Matcher['op'];
-          if (!['=', '!=', '=~', '!~'].includes(op)) {
-            throw new PromqlError(`bad matcher operator "${op}"`);
-          }
-          const value = this.next();
-          if (value.type !== 'string') {
-            throw new PromqlError(`expected a string, found "${value.text}"`);
-          }
-          matchers.push({ label, op, value: value.text });
-        } while (this.accept(','));
-        this.expect('}');
+    const text = value.text;
+    switch (op) {
+      case '=':
+        return { label, test: v => v === text };
+      case '!=':
+        return { label, test: v => v !== text };
+      case '=~': {
+        const pattern = anchored(text);
+        return { label, test: v => pattern.test(v) };
       }
+      case '!~': {
+        const pattern = anchored(text);
+        return { label, test: v => !pattern.test(v) };
+      }
+      default:
+        throw new UnsupportedQueryError(`bad matcher operator "${op}"`);
+    }
+  }
+
+  private selector(): PromqlNode {
+    const name = this.peek()?.type === 'ident' ? this.next().text : undefined;
+    const matchers: Matcher[] = [];
+    if (this.accept('{') && !this.accept('}')) {
+      do {
+        matchers.push(this.matcher());
+      } while (this.accept(','));
+      this.expect('}');
+    }
+    if (name) {
+      matchers.push({ label: '__name__', test: v => v === name });
     }
     let range: number | undefined;
     if (this.accept('[')) {
@@ -357,7 +411,13 @@ class Parser {
       if (this.accept('offset')) {
         offset = parseDuration(this.next().text);
       } else if (this.accept('@')) {
-        at = Number(this.next().text);
+        const token = this.next();
+        at = token.type === 'number' ? Number(token.text) : NaN;
+        if (!Number.isFinite(at)) {
+          throw new UnsupportedQueryError(
+            `"@ ${token.text}" is not supported, only "@ <unix time>"`,
+          );
+        }
       } else {
         break;
       }
@@ -366,23 +426,9 @@ class Parser {
   }
 }
 
-/** Parses a query, or throws a {@link PromqlError}. */
-export function parsePromql(query: string): Node {
+/** Parses a query, or throws an {@link UnsupportedQueryError}. */
+export function parsePromql(query: string): PromqlNode {
   return new Parser(tokenize(query)).parse();
-}
-
-function matches(labels: Labels, matcher: Matcher): boolean {
-  const value = labels[matcher.label] ?? '';
-  switch (matcher.op) {
-    case '=':
-      return value === matcher.value;
-    case '!=':
-      return value !== matcher.value;
-    case '=~':
-      return new RegExp(`^(?:${matcher.value})$`).test(value);
-    default:
-      return !new RegExp(`^(?:${matcher.value})$`).test(value);
-  }
 }
 
 function withoutName(labels: Labels): Labels {
@@ -390,55 +436,70 @@ function withoutName(labels: Labels): Labels {
   return rest;
 }
 
-/** The label set's identity, the metric name left out, as vector matching reads it. */
-function signature(labels: Labels): string {
-  return JSON.stringify(
-    Object.entries(withoutName(labels)).sort(([a], [b]) => a.localeCompare(b)),
-  );
+/** The labels vector matching compares. */
+function matchedLabels(labels: Labels, matching?: VectorMatching): Labels {
+  if (matching?.on) {
+    return Object.fromEntries(
+      matching.labels
+        .filter(label => labels[label] !== undefined)
+        .map(label => [label, labels[label]]),
+    );
+  }
+  const rest = withoutName(labels);
+  for (const label of matching?.labels ?? []) {
+    delete rest[label];
+  }
+  return rest;
 }
 
-type Context = { series: readonly FixtureCounterSeries[]; time: number };
+function signature(labels: Labels, matching?: VectorMatching): string {
+  return labelKey(matchedLabels(labels, matching));
+}
 
-/** The series a selector names, with the time its range ends at, in ms. */
+type Context = {
+  series: readonly FixtureCounterSeries[];
+  /** Unix seconds. */
+  time: number;
+  /** Each selector's series, which stay the same over a range query's steps. */
+  selected: Map<PromqlNode, FixtureCounterSeries[]>;
+};
+
+/** The series a selector names, and the time its range ends at, in ms. */
 function select(
-  node: Extract<Node, { kind: 'selector' }>,
+  node: Extract<PromqlNode, { kind: 'selector' }>,
   context: Context,
 ): { series: FixtureCounterSeries[]; end: number } {
-  const matchers = node.name
-    ? [
-        ...node.matchers,
-        { label: '__name__', op: '=' as const, value: node.name },
-      ]
-    : node.matchers;
-  return {
-    series: context.series.filter(s =>
-      matchers.every(m => matches(s.labels, m)),
-    ),
-    end: ((node.at ?? context.time) - node.offset) * 1000,
-  };
+  let series = context.selected.get(node);
+  if (!series) {
+    series = context.series.filter(s =>
+      node.matchers.every(m => m.test(s.labels[m.label] ?? '')),
+    );
+    context.selected.set(node, series);
+  }
+  return { series, end: ((node.at ?? context.time) - node.offset) * 1000 };
 }
 
 function vector(value: Value): Sample[] {
   if (value.kind !== 'vector') {
-    throw new PromqlError('expected an instant vector');
+    throw new UnsupportedQueryError('expected an instant vector');
   }
   return value.samples;
 }
 
 function scalar(value: Value): number {
   if (value.kind !== 'scalar') {
-    throw new PromqlError('expected a scalar');
+    throw new UnsupportedQueryError('expected a number');
   }
   return value.value;
 }
 
 function rangeFunction(
   name: string,
-  arg: Node | undefined,
+  arg: PromqlNode | undefined,
   context: Context,
 ): Sample[] {
   if (arg?.kind !== 'selector' || arg.range === undefined) {
-    throw new PromqlError(`${name} expects a range vector`);
+    throw new UnsupportedQueryError(`${name} expects a range vector`);
   }
   const { series, end } = select(arg, context);
   const start = end - arg.range * 1000;
@@ -450,25 +511,33 @@ function rangeFunction(
     }
     const from = counterValueAt(s, Math.max(start, first))!;
     const to = counterValueAt(s, end)!;
-    // A counter only grows: its least value in the range is the first.
-    const value = { increase: to - from, min_over_time: from }[name] ?? to;
+    const values: Record<string, number> = {
+      increase: to - from,
+      rate: (to - from) / arg.range,
+      min_over_time: Math.min(from, to),
+      max_over_time: Math.max(from, to),
+      avg_over_time: (from + to) / 2,
+      last_over_time: to,
+    };
     samples.push({
       labels: name === 'last_over_time' ? s.labels : withoutName(s.labels),
-      value,
+      value: values[name],
     });
   }
   return samples;
 }
 
-function labelReplace(args: Node[], context: Context): Sample[] {
+function labelReplace(args: PromqlNode[], context: Context): Sample[] {
   const texts = args
     .slice(1)
     .map(arg => (arg.kind === 'string' ? arg.text : undefined));
   if (args.length !== 5 || texts.some(text => text === undefined)) {
-    throw new PromqlError('label_replace expects a vector and four strings');
+    throw new UnsupportedQueryError(
+      'label_replace expects a vector and four strings',
+    );
   }
   const [destination, replacement, source, regex] = texts as string[];
-  const pattern = new RegExp(`^(?:${regex})$`);
+  const pattern = anchored(regex);
   return vector(evaluate(args[0], context)).map(sample => {
     const match = pattern.exec(sample.labels[source] ?? '');
     if (!match) {
@@ -499,12 +568,21 @@ function histogramQuantile(phi: number, samples: Sample[]): Sample[] {
     if (le === undefined) {
       continue;
     }
-    const key = signature(labels);
+    const key = labelKey(labels);
     const group = groups.get(key) ?? { labels, buckets: [] };
     group.buckets.push([le === '+Inf' ? Infinity : Number(le), sample.value]);
     groups.set(key, group);
   }
   return [...groups.values()].map(({ labels, buckets }) => {
+    if (Number.isNaN(phi)) {
+      return { labels, value: NaN };
+    }
+    if (phi < 0) {
+      return { labels, value: -Infinity };
+    }
+    if (phi > 1) {
+      return { labels, value: Infinity };
+    }
     buckets.sort(([a], [b]) => a - b);
     const total = buckets[buckets.length - 1]?.[1] ?? 0;
     if (
@@ -530,18 +608,26 @@ function histogramQuantile(phi: number, samples: Sample[]): Sample[] {
 }
 
 function aggregate(
-  node: Extract<Node, { kind: 'aggregate' }>,
+  node: Extract<PromqlNode, { kind: 'aggregate' }>,
   context: Context,
 ): Sample[] {
   const groups = new Map<string, { labels: Labels; values: number[] }>();
+  const { without = false, labels: listed = [] } = node.grouping ?? {};
   for (const sample of vector(evaluate(node.arg, context))) {
-    const labels: Labels = {};
-    for (const label of node.by ?? []) {
-      if (sample.labels[label]) {
-        labels[label] = sample.labels[label];
+    let labels: Labels = {};
+    if (without) {
+      labels = withoutName(sample.labels);
+      for (const label of listed) {
+        delete labels[label];
+      }
+    } else {
+      for (const label of listed) {
+        if (sample.labels[label]) {
+          labels[label] = sample.labels[label];
+        }
       }
     }
-    const key = signature(labels);
+    const key = labelKey(labels);
     const group = groups.get(key) ?? { labels, values: [] };
     group.values.push(sample.value);
     groups.set(key, group);
@@ -589,63 +675,126 @@ function compare(op: string, a: number, b: number): boolean {
   }
 }
 
+function setOperation(
+  op: string,
+  lhs: Sample[],
+  rhs: Sample[],
+  matching?: VectorMatching,
+): Sample[] {
+  const inRight = new Set(rhs.map(s => signature(s.labels, matching)));
+  if (op === 'and') {
+    return lhs.filter(s => inRight.has(signature(s.labels, matching)));
+  }
+  if (op === 'unless') {
+    return lhs.filter(s => !inRight.has(signature(s.labels, matching)));
+  }
+  const inLeft = new Set(lhs.map(s => signature(s.labels, matching)));
+  return [
+    ...lhs,
+    ...rhs.filter(s => !inLeft.has(signature(s.labels, matching))),
+  ];
+}
+
+/**
+ * Arithmetic or a comparison between two vectors, one to one or with a
+ * group: each sample of the side with many meets the one sample of the other
+ * side with the same matched labels.
+ */
+function vectorOperation(
+  op: string,
+  lhs: Sample[],
+  rhs: Sample[],
+  matching?: VectorMatching,
+): Sample[] {
+  const comparison = COMPARISONS.includes(op);
+  const groupRight = matching?.group === 'right';
+  const [many, one] = groupRight ? [rhs, lhs] : [lhs, rhs];
+  const ones = new Map<string, Sample>();
+  for (const sample of one) {
+    const key = signature(sample.labels, matching);
+    if (ones.has(key)) {
+      throw new UnsupportedQueryError(
+        'many-to-many matching: more than one sample on the "one" side',
+      );
+    }
+    ones.set(key, sample);
+  }
+  const results: Sample[] = [];
+  const seen = new Set<string>();
+  for (const sample of many) {
+    const other = ones.get(signature(sample.labels, matching));
+    if (!other) {
+      continue;
+    }
+    const [left, right] = groupRight ? [other, sample] : [sample, other];
+    if (comparison && !compare(op, left.value, right.value)) {
+      continue;
+    }
+    let labels: Labels;
+    if (matching?.group) {
+      labels = comparison ? { ...sample.labels } : withoutName(sample.labels);
+      for (const label of matching.include) {
+        if (other.labels[label]) {
+          labels[label] = other.labels[label];
+        } else {
+          delete labels[label];
+        }
+      }
+    } else if (comparison) {
+      labels = left.labels;
+    } else {
+      labels = matchedLabels(left.labels, matching);
+    }
+    const key = labelKey(labels);
+    if (!matching?.group && seen.has(key)) {
+      throw new UnsupportedQueryError('duplicate series in a one-to-one match');
+    }
+    seen.add(key);
+    results.push({
+      labels,
+      value: comparison ? left.value : arithmetic(op, left.value, right.value),
+    });
+  }
+  return results;
+}
+
 function binary(
-  node: Extract<Node, { kind: 'binary' }>,
+  node: Extract<PromqlNode, { kind: 'binary' }>,
   context: Context,
 ): Value {
   const left = evaluate(node.left, context);
   const right = evaluate(node.right, context);
   if (['or', 'and', 'unless'].includes(node.op)) {
-    const lhs = vector(left);
-    const rhs = vector(right);
-    const inRight = new Set(rhs.map(s => signature(s.labels)));
-    if (node.op === 'and') {
-      return {
-        kind: 'vector',
-        samples: lhs.filter(s => inRight.has(signature(s.labels))),
-      };
-    }
-    if (node.op === 'unless') {
-      return {
-        kind: 'vector',
-        samples: lhs.filter(s => !inRight.has(signature(s.labels))),
-      };
-    }
-    const inLeft = new Set(lhs.map(s => signature(s.labels)));
     return {
       kind: 'vector',
-      samples: [...lhs, ...rhs.filter(s => !inLeft.has(signature(s.labels)))],
+      samples: setOperation(
+        node.op,
+        vector(left),
+        vector(right),
+        node.matching,
+      ),
     };
   }
   const comparison = COMPARISONS.includes(node.op);
   if (left.kind === 'scalar' && right.kind === 'scalar') {
+    if (comparison) {
+      throw new UnsupportedQueryError('a comparison of two numbers needs bool');
+    }
     return {
       kind: 'scalar',
-      value: comparison
-        ? Number(compare(node.op, left.value, right.value))
-        : arithmetic(node.op, left.value, right.value),
+      value: arithmetic(node.op, left.value, right.value),
     };
   }
   if (left.kind === 'vector' && right.kind === 'vector') {
-    const byRight = new Map(
-      right.samples.map(s => [signature(s.labels), s.value]),
-    );
-    const samples: Sample[] = [];
-    for (const sample of left.samples) {
-      const other = byRight.get(signature(sample.labels));
-      if (other === undefined) {
-        continue;
-      }
-      if (comparison) {
-        if (compare(node.op, sample.value, other)) samples.push(sample);
-      } else {
-        samples.push({
-          labels: withoutName(sample.labels),
-          value: arithmetic(node.op, sample.value, other),
-        });
-      }
-    }
-    return { kind: 'vector', samples };
+    return {
+      kind: 'vector',
+      samples: vectorOperation(
+        node.op,
+        left.samples,
+        right.samples,
+        node.matching,
+      ),
+    };
   }
   const samples: Sample[] = [];
   for (const sample of vector(left.kind === 'vector' ? left : right)) {
@@ -653,27 +802,27 @@ function binary(
       left.kind === 'vector'
         ? [sample.value, scalar(right)]
         : [scalar(left), sample.value];
-    if (comparison) {
-      if (compare(node.op, a, b)) samples.push(sample);
-    } else {
+    if (!comparison) {
       samples.push({
         labels: withoutName(sample.labels),
         value: arithmetic(node.op, a, b),
       });
+    } else if (compare(node.op, a, b)) {
+      samples.push(sample);
     }
   }
   return { kind: 'vector', samples };
 }
 
-function evaluate(node: Node, context: Context): Value {
+function evaluate(node: PromqlNode, context: Context): Value {
   switch (node.kind) {
     case 'number':
       return { kind: 'scalar', value: node.value };
     case 'string':
-      throw new PromqlError('unexpected string');
+      throw new UnsupportedQueryError('unexpected string');
     case 'selector': {
       if (node.range !== undefined) {
-        throw new PromqlError('a range vector needs a function');
+        throw new UnsupportedQueryError('a range vector needs a function');
       }
       const { series, end } = select(node, context);
       return {
@@ -718,13 +867,23 @@ export function formatValue(value: number): string {
 }
 
 /**
- * Evaluates a parsed query at `time` (Unix seconds) over `series`: a scalar
- * or the samples of an instant vector.
+ * Evaluates a parsed query at each of `times` (Unix seconds) over `series`:
+ * the samples of the instant vector at each time. A query whose result is a
+ * number, not a vector, is not supported.
  */
 export function evaluatePromql(
-  query: Node,
+  query: PromqlNode,
   series: readonly FixtureCounterSeries[],
-  time: number,
-): Value {
-  return evaluate(query, { series, time });
+  times: readonly number[],
+): Sample[][] {
+  const selected = new Map<PromqlNode, FixtureCounterSeries[]>();
+  return times.map(time => {
+    const value = evaluate(query, { series, time, selected });
+    if (value.kind !== 'vector') {
+      throw new UnsupportedQueryError(
+        'a query that answers a number, not series',
+      );
+    }
+    return value.samples;
+  });
 }

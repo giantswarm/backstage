@@ -124,13 +124,8 @@ const MARKERS = [
     marker: 'Fixture mode does not answer the Kubernetes request',
   },
   {
-    source:
-      'packages/app/src/modules/kubernetes/fixtures/KubernetesAuthProvidersFixtureApi.ts',
-    marker: 'fixture-installation-token',
-  },
-  {
     source: 'plugins/gs/src/apis/mimir/fixtures/MimirFixtureApi.ts',
-    marker: 'Fixture Mimir cannot evaluate the query',
+    marker: 'Fixture Mimir answers no series',
   },
   {
     source: 'plugins/gs-common/src/fixtures/gatewayUsage.ts',

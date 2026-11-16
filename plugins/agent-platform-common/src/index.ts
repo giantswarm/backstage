@@ -18,6 +18,7 @@ export * from './usageWindow';
 export * from './formatDay';
 export * from './formatNumbers';
 export * from './modelCost';
+export * from './modelCostRead';
 export * from './promql';
 export * from './kagent/kagentIdentity';
 export * from './kagent/kagentSchema';

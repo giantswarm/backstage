@@ -191,10 +191,10 @@ from kagent.
   backend's words; a cancel reaches the streams following the turn at once,
   and a deleted session ends its streams and is gone from every read.
 - kagent on the unreachable installation fails every call as a timeout.
-- The person's model cost (Usage · Your sessions) is read from the gateway
-  series the fixture Mimir answers from, as agent-platform-backend reads it
-  from Mimir (`fixtureModelCost.ts`): the growth of the person's cost series
-  by agent, partial on `meadow`, where some calls name no one, and
+- The person's model cost (Usage · Your sessions) runs agent-platform-backend's
+  queries through the fixture Mimir (`fixtureModelCost.ts`), and the backend's
+  own decision (`modelCostOf` in agent-platform-common) reads their answers:
+  partial on `meadow`, where some calls name no one, and
   `identity-unreadable` on the unreachable installation.
 
 ### workspace-manager, toolchain-manager and skill-manager
@@ -308,16 +308,23 @@ the person (`FIXTURE_PERSON_EMAIL`) through their sessions on the days each
 ran, and two teammates on most working days of the 100 days before, more
 lately; on `meadow` a share of one agent's calls names no one. Cost, tokens
 by type, calls, durations, output speed, the inference listener's statuses
-and price lookups all count the same calls. The series are built once, on
-first read, up to that moment.
+and price lookups all count the same calls. Each series starts on the day of
+its first call, as the gateway creates it. The series count back from the
+data set's time (`now`), so the same seed and time give the same figures.
+
+The fixture Mimir needs no token: the Mimir hooks pass the person's token
+for the installation as they find it, and the real `MimirClient` refuses to
+ask without one.
 
 The queries are evaluated, not matched (`promql.ts`): selectors with
-`offset` and `@`, `increase`, `min_over_time`, `last_over_time`,
-`label_replace`, `histogram_quantile`, the aggregations with `by`, `or`,
-`and`, `unless`, and arithmetic and comparisons. A metric without fixture
-series answers an empty vector, as Mimir does; a query the evaluator cannot
-read fails as Mimir fails a bad query (`InputError`), with a console error:
-extend the evaluator, or the series a new page reads.
+`offset` and `@ <time>`; `increase`, `rate`, `min_over_time`,
+`max_over_time`, `avg_over_time`, `last_over_time`, `label_replace` and
+`histogram_quantile`; the aggregations with `by` or `without`; `or`, `and`,
+`unless`, arithmetic and comparisons, with `on` or `ignoring` and
+`group_left` or `group_right`. That covers the gs pages' Mimir widgets too.
+A metric without fixture series answers no series, as Mimir does; so does a
+query the evaluator cannot read, with a console warning that names what it
+could not read: extend the evaluator, or the series a new page reads.
 
 ### Objects in the Kubernetes API
 

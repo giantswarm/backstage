@@ -70,6 +70,7 @@ export {
   gatewayDaysOf,
   gatewaySeries,
   gatewaySeriesOf,
+  labelKey,
   type FixtureCounterSeries,
   type FixtureGatewayDay,
 } from './gatewayUsage';

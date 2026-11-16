@@ -42,7 +42,8 @@ export interface MimirApi {
   query(params: {
     installationName: string;
     query: string;
-    oidcToken: string;
+    /** The person's token for the installation; the API refuses without one where it needs it. */
+    oidcToken: string | undefined;
   }): Promise<MimirQueryResponse>;
 
   /**
@@ -58,7 +59,7 @@ export interface MimirApi {
     start: string;
     end: string;
     step: string;
-    oidcToken: string;
+    oidcToken: string | undefined;
   }): Promise<MimirRangeQueryResponse>;
 }
 

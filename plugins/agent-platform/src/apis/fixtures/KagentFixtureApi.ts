@@ -17,10 +17,8 @@ import type {
   StreamEnd,
 } from '../types';
 
-import {
-  baseDataSet,
-  type FixtureDataSet,
-} from '@giantswarm/backstage-plugin-gs-common/fixtures';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- the fixture Mimir is the gs plugin's.
+import { MimirFixtureApi } from '@giantswarm/backstage-plugin-gs/fixtures';
 
 import { agentManagerFixtureState } from './agentManagerFixtureState';
 import { fixtureModelCost } from './fixtureModelCost';
@@ -41,8 +39,10 @@ import {
 export class KagentFixtureApi implements KagentApi {
   constructor(
     private readonly state: () => KagentFixtureState = kagentFixtureState,
-    private readonly data: () => FixtureDataSet = baseDataSet,
   ) {}
+
+  /** Mimir over the gateway series of the sessions' data set. */
+  private readonly mimir = new MimirFixtureApi(() => this.state().data);
 
   async listInstallations(): Promise<KagentInstallation[]> {
     return this.state().listInstallations();
@@ -101,7 +101,13 @@ export class KagentFixtureApi implements KagentApi {
     days: number,
   ): Promise<ModelCostResponse> {
     served(installation);
-    return fixtureModelCost(this.data(), installation, days, Date.now());
+    return fixtureModelCost({
+      data: this.state().data,
+      mimir: this.mimir,
+      installation,
+      days,
+      now: Date.now(),
+    });
   }
 
   async cancelTask(

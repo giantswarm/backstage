@@ -1,7 +1,7 @@
 // eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Mimir is the gs plugin's.
 import { MimirFixtureApi } from '@giantswarm/backstage-plugin-gs/fixtures';
 import {
-  baseDataSet,
+  createFixtureDataSet,
   FIXTURE_AGENT_MODEL,
   FIXTURE_PERSON_EMAIL,
 } from '@giantswarm/backstage-plugin-gs-common/fixtures';
@@ -20,8 +20,15 @@ import { agentManagerFixtureState } from './agentManagerFixtureState';
 import { FIXTURE_USER } from './fixtureIdentity';
 import { fixtureModelCost } from './fixtureModelCost';
 
-const mimir = new MimirFixtureApi();
-const token = { oidcToken: 'fixture' };
+const NOW = Date.now();
+const data = createFixtureDataSet({ now: NOW });
+const mimir = new MimirFixtureApi(
+  () => data,
+  () => NOW,
+);
+const token = { oidcToken: undefined };
+const costOf = (installation: string) =>
+  fixtureModelCost({ data, mimir, installation, days: 30, now: NOW });
 
 function query(installationName: string, promql: string) {
   return mimir.query({ installationName, query: promql, ...token });
@@ -33,12 +40,16 @@ function total(result: { value: [number, string] }[]): number {
 
 describe('the gateway metrics in fixture mode', () => {
   it('answers every query of the usage pages', async () => {
-    const now = Date.now();
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const now = NOW;
     const instant = [
       ...Object.values(llmUsageQueriesFor({ days: 30 })),
       ...Object.values(llmUsageQueriesFor({ days: 7, org: 'meadow-lupin' })),
       ...Object.values(
-        llmUsageQueriesFor({ month: new Date(now).toISOString().slice(0, 7) }),
+        llmUsageQueriesFor({
+          month: new Date(now).toISOString().slice(0, 7),
+          now,
+        }),
       ),
       ...Object.values(byPersonQueriesFor({ days: 30 })),
       ...Object.values(tokenRateQueries()),
@@ -61,6 +72,9 @@ describe('the gateway metrics in fixture mode', () => {
       expect(answer.data.result.length).toBeGreaterThan(0);
       expect(answer.data.result[0].values).toHaveLength(29);
     }
+    // Every query evaluated, none answered empty for want of support.
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   it('prices the agents with sessions, on their default model', async () => {
@@ -72,8 +86,8 @@ describe('the gateway metrics in fixture mode', () => {
       ),
     );
     const withSessions = new Set(
-      baseDataSet()
-        .sessions.filter(s => s.installation === 'fennel')
+      data.sessions
+        .filter(s => s.installation === 'fennel')
         .map(s => `${s.agent.namespace}/${s.agent.name}`),
     );
     expect([...withSessions].every(agent => agents.has(agent))).toBe(true);
@@ -94,8 +108,7 @@ describe('the gateway metrics in fixture mode', () => {
 
   it('gives the person the cost Usage · Cost shows them', async () => {
     expect(FIXTURE_USER.email).toBe(FIXTURE_PERSON_EMAIL);
-    const now = Date.now();
-    const cost = fixtureModelCost(baseDataSet(), 'fennel', 30, now);
+    const cost = await costOf('fennel');
     expect(cost).toMatchObject({ status: 'actual', partial: false });
     if (cost.status !== 'actual') {
       return;
@@ -110,20 +123,19 @@ describe('the gateway metrics in fixture mode', () => {
     expect(Number(person?.value[1])).toBeCloseTo(cost.totalUsd, 6);
 
     const agentIds = new Set(
-      baseDataSet()
-        .sessions.filter(s => s.installation === 'fennel')
+      data.sessions
+        .filter(s => s.installation === 'fennel')
         .map(s => encodeKagentAgentId(s.agent.namespace, s.agent.name)),
     );
     expect(cost.byAgent.every(entry => agentIds.has(entry.agentId))).toBe(true);
   });
 
-  it('says where some calls name no one, and where kagent cannot answer', () => {
-    const now = Date.now();
-    expect(fixtureModelCost(baseDataSet(), 'meadow', 30, now)).toMatchObject({
+  it('says where some calls name no one, and where kagent cannot answer', async () => {
+    expect(await costOf('meadow')).toMatchObject({
       status: 'actual',
       partial: true,
     });
-    expect(fixtureModelCost(baseDataSet(), 'tarragon', 30, now)).toEqual({
+    expect(await costOf('tarragon')).toEqual({
       status: 'unavailable',
       windowDays: 30,
       reason: 'identity-unreadable',

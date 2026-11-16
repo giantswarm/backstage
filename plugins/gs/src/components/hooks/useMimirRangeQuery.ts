@@ -89,12 +89,6 @@ export function useMimirRangeQuery(options: {
       const credentials =
         await kubernetesAuthProvidersApi.getCredentials(authProvider);
 
-      if (!credentials.token) {
-        throw new Error(
-          `No OIDC token available for installation "${installationName}"`,
-        );
-      }
-
       return mimirApi.queryRange({
         installationName,
         query,

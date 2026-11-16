@@ -34,16 +34,23 @@ const series = [
   ),
 ];
 
-function evaluate(query: string, time = T) {
-  return evaluatePromql(parsePromql(query), series, time);
-}
+const node = { __name__: 'kube_node_info', cluster_id: 'c' };
+const gauges = [
+  counter({ ...node, node: 'n1', nodepool: 'p1' }, 0),
+  counter({ ...node, node: 'n2', nodepool: 'p2' }, 0),
+  counter(
+    { __name__: 'capacity', cluster_id: 'c', node: 'n1', resource: 'cpu' },
+    2,
+  ),
+  counter(
+    { __name__: 'capacity', cluster_id: 'c', node: 'n2', resource: 'cpu' },
+    4,
+  ),
+];
 
-function samples(query: string, time = T) {
-  const value = evaluate(query, time);
-  if (value.kind !== 'vector') {
-    throw new Error('not a vector');
-  }
-  return value.samples
+function samples(query: string, time = T, over = series) {
+  const [result] = evaluatePromql(parsePromql(query), over, [time]);
+  return result
     .map(s => ({ ...s.labels, value: s.value }))
     .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
 }
@@ -112,15 +119,65 @@ describe('the fixture PromQL evaluator', () => {
     expect(samples('sum(increase(kube_pod_info[1d]))')).toEqual([]);
   });
 
-  it('refuses what it cannot read, as Mimir refuses a bad query', () => {
-    expect(() => parsePromql('rate(cost[1d])')).toThrow(
-      expect.objectContaining({ name: 'InputError' }),
+  it('reads rates, gauges over time and groupings without labels', () => {
+    expect(samples('sum(rate(cost{agent="a"}[1d]))')).toEqual([
+      { value: 3 / DAY },
+    ]);
+    expect(samples('sum(avg_over_time(cost{user="y"}[1d]))')).toEqual([
+      { value: 19 },
+    ]);
+    expect(samples('max without (user) (cost{agent="a"})')).toEqual([
+      { agent: 'a', value: 20 },
+    ]);
+  });
+
+  it('matches vectors on labels and copies labels into a group', () => {
+    const query =
+      'max by (cluster_id, node, resource) (capacity) * on (cluster_id, node) group_left (nodepool) (kube_node_info)';
+    expect(samples(query, T, gauges)).toEqual([
+      {
+        cluster_id: 'c',
+        node: 'n1',
+        nodepool: 'p1',
+        resource: 'cpu',
+        value: 0,
+      },
+      {
+        cluster_id: 'c',
+        node: 'n2',
+        nodepool: 'p2',
+        resource: 'cpu',
+        value: 0,
+      },
+    ]);
+    expect(
+      samples(
+        'capacity / ignoring (resource) group_left () capacity',
+        T,
+        gauges,
+      ),
+    ).toHaveLength(2);
+  });
+
+  it('answers the quantile bounds outside [0, 1]', () => {
+    const quantile = (phi: number) =>
+      samples(
+        `histogram_quantile(${phi}, sum by (le) (increase(duration_bucket[1d])))`,
+      )[0].value;
+    expect(quantile(2)).toBe(Infinity);
+    expect(quantile(-1)).toBe(-Infinity);
+  });
+
+  it('refuses what it cannot read', () => {
+    const unsupported = expect.objectContaining({
+      name: 'UnsupportedQueryError',
+    });
+    expect(() => parsePromql('topk(3, cost)')).toThrow(unsupported);
+    expect(() => parsePromql('sum by (agent) (cost')).toThrow(unsupported);
+    expect(() => parsePromql('increase(cost[1d] @ start())')).toThrow(
+      unsupported,
     );
-    expect(() => parsePromql('sum by (agent) (cost')).toThrow(
-      expect.objectContaining({ name: 'InputError' }),
-    );
-    expect(() => evaluate('cost[1d]')).toThrow(
-      expect.objectContaining({ name: 'InputError' }),
-    );
+    expect(() => samples('cost[1d]')).toThrow(unsupported);
+    expect(() => samples('1 / 2')).toThrow(unsupported);
   });
 });
