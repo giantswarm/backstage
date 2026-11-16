@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Select } from '@backstage/ui';
+import { mockPhoneLayout } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 import type { AgentRow } from '../AgentsDataProvider';
 import type { Toolchain, ToolchainPick } from '../../lib/toolchainManager';
@@ -178,6 +179,22 @@ describe('ToolchainPicker', () => {
     expect(caretOf(screen.getByRole('button', { name: /^Toolchains:/ }))).toBe(
       selectCaret,
     );
+  });
+
+  it('leaves the caret out at phone width, still announcing its popup', () => {
+    const layout = mockPhoneLayout();
+    try {
+      render(<Harness onChange={jest.fn()} />);
+      const trigger = screen.getByRole('button', {
+        name: 'Toolchains: 1 selected',
+      });
+      // The toolbox icon only: no caret after the count.
+      expect(trigger.querySelectorAll('svg')).toHaveLength(1);
+      expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
+      expect(trigger).toHaveTextContent('1');
+    } finally {
+      layout.restore();
+    }
   });
 
   it('renders nothing where agent-manager mounts no toolchains', () => {
