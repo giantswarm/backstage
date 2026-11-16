@@ -146,6 +146,19 @@ isPhone ? (
 );
 ```
 
+A table of many columns gets as squeezed above phone width: beside the side
+rail at 768px a card is about 424px wide. There, measure the container instead
+of the viewport: `useCompactLayout(tableMinWidth(columnConfig))` returns a ref
+and whether to take the compact layout, true at phone width and while the
+element the ref is on is narrower than the shown columns need (160px for the
+name column, 80px for each other one, or a column's own minimum passed to
+`tableMinWidth`). Put the ref on a wrapper whose width comes from its parent,
+branch on the answer instead of `usePhoneLayout()`, and pass it to
+`usePhoneColumns(columnConfig, keep, { compact })`. It measures before the
+first paint and re-renders only when the answer flips. The Hosting · Capacity
+and Model hosting tables do this; it is meant for the other wide tables too.
+`mockContainerWidth` (`ui-react/testUtils`) drives the width in a test.
+
 Invariants:
 
 - An **actions column never disappears** at phone width: it becomes the row's
