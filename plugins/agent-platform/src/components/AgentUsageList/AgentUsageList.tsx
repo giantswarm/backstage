@@ -13,11 +13,19 @@ import { ShowMore, USED_BY_ROWS } from '../ShowMore';
 
 const AVATAR_SIZE = 96;
 
-const NAME_LINK = {
-  display: 'block',
+/**
+ * At phone width the name wraps to two lines, then an ellipsis: a phone has
+ * no hover to read the rest. NameCell's clamp.
+ */
+const NAME_TWO_LINES = {
+  minWidth: 0,
+  maxWidth: '100%',
+  overflowWrap: 'anywhere',
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
   overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap',
+  whiteSpace: 'normal',
 } as const;
 
 /** One agent that uses the thing the page is about, and how. */
@@ -120,9 +128,14 @@ export function AgentUsageList({
                       row's own href navigates on a press but is no anchor to
                       open in a new tab or read on hover. */}
                     {href ? (
-                      // Truncating itself: bui's Link is an inline block,
-                      // which the label's ellipsis does not reach.
-                      <Link href={href} title={row.name} style={NAME_LINK}>
+                      // The link truncates itself: bui's Link is an inline
+                      // block, which the label's ellipsis does not reach.
+                      <Link
+                        href={href}
+                        truncate={isPhone ? undefined : true}
+                        title={isPhone ? undefined : row.name}
+                        style={isPhone ? NAME_TWO_LINES : undefined}
+                      >
                         {row.name}
                       </Link>
                     ) : (

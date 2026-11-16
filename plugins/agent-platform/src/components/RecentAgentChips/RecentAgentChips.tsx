@@ -1,6 +1,7 @@
 import { useId } from 'react';
 import { Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import { usePhoneLayout } from '@giantswarm/backstage-plugin-ui-react';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
 import type { AgentRow } from '../AgentsDataProvider';
 import { AgentAvatar } from '../AgentAvatar';
@@ -12,9 +13,8 @@ export type RecentAgentChipsProps = {
 };
 
 const useStyles = makeStyles({
-  // A long name ends in an ellipsis inside the column, its full text on
-  // hover: centred, the label and the row would otherwise size to the
-  // longest name.
+  // Centred, the label and the row would otherwise size to the longest name
+  // and run off a phone's screen.
   fit: {
     maxWidth: '100%',
   },
@@ -22,17 +22,34 @@ const useStyles = makeStyles({
     minWidth: 0,
     maxWidth: '100%',
   },
+  // On a desktop a long name ends in an ellipsis, its full text on hover.
   name: {
     minWidth: 0,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
+  // A phone has no hover: the chip grows to two lines of name instead.
+  chipTwoLines: {
+    height: 'auto',
+    minHeight: '2rem',
+    paddingBlock: 'var(--bui-space-1)',
+  },
+  nameTwoLines: {
+    minWidth: 0,
+    textAlign: 'start',
+    overflowWrap: 'anywhere',
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    overflow: 'hidden',
+  },
 });
 
 /** The agents of the person's latest sessions, one press from being chosen. */
 export function RecentAgentChips({ agents, onPick }: RecentAgentChipsProps) {
   const classes = useStyles();
+  const isPhone = usePhoneLayout();
   const labelId = useId();
   const buildAvatarUrl = useAgentAvatarUrl();
 
@@ -70,10 +87,15 @@ export function RecentAgentChips({ agents, onPick }: RecentAgentChipsProps) {
                 }
               />
             }
-            className={classes.chip}
+            className={
+              isPhone ? `${classes.chip} ${classes.chipTwoLines}` : classes.chip
+            }
             onPress={() => onPick(agent)}
           >
-            <span className={classes.name} title={agent.name}>
+            <span
+              className={isPhone ? classes.nameTwoLines : classes.name}
+              title={isPhone ? undefined : agent.name}
+            >
               {agent.name}
             </span>
           </Button>

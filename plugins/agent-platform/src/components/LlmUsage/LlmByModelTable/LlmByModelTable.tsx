@@ -5,6 +5,7 @@ import {
   columnMax,
   DataBar,
   ShowMore,
+  tableMinWidth,
   tableRowId,
   useCompactLayout,
   usePhoneColumns,
@@ -22,6 +23,7 @@ import { sortUsageRows } from '../../AgentUsageSection/helpers';
 import { UsageCard } from '../UsageCard';
 import { NameCell } from '../NameCell';
 import { useMeasureColor } from '../../../lib/measures';
+import { useVisibleSort } from '../../../hooks/useVisibleSort';
 
 /**
  * How many models the table shows before *Show all N models*. The models in
@@ -68,9 +70,6 @@ export function LlmByModelTable({
   currency = USD,
 }: LlmByModelTableProps) {
   const colorFor = useMeasureColor();
-  // Six columns, each needing about 80px for its header's label beside the
-  // sort indicator.
-  const [tableRef, isCompact] = useCompactLayout(480);
 
   // One maximum per column, so a bar is read against the column it sits in.
   const max = useMemo(
@@ -84,14 +83,16 @@ export function LlmByModelTable({
     [rows],
   );
 
-  const columnConfig: ColumnConfig<LlmModelRow>[] = [
+  // The columns, for the compact layout or the full one: compact, the model
+  // id wraps to two lines.
+  const columnsFor = (compact: boolean): ColumnConfig<LlmModelRow>[] => [
     {
       id: 'model',
       label: 'Model',
       isRowHeader: true,
       isSortable: true,
       // Two lines at phone width: a model id cut to one line read as "a…".
-      cell: row => <NameCell title={row.model} />,
+      cell: row => <NameCell title={row.model} compact={compact} />,
     },
     {
       id: 'calls',
@@ -173,6 +174,10 @@ export function LlmByModelTable({
       ),
     },
   ];
+  const [tableRef, isCompact] = useCompactLayout(
+    tableMinWidth(columnsFor(false)),
+  );
+  const columnConfig = columnsFor(isCompact);
   // At phone width, and beside the side rail at tablet width, the model, what
   // it cost and its context creep (T22 B10): six columns in 343px clipped
   // every figure. The volume is in the tab's KPI tiles and the cost-per-day
@@ -191,6 +196,11 @@ export function LlmByModelTable({
     // Off for the reason AgentsTable documents: `useCompletePagination` does
     // not reset its offset when the data shrinks.
     paginationOptions: { type: 'none' },
+  });
+  // The default sort is on Spend, which the compact layout keeps.
+  useVisibleSort(tableProps.sort, shownColumns, {
+    column: 'costUsd',
+    direction: 'descending',
   });
 
   return (

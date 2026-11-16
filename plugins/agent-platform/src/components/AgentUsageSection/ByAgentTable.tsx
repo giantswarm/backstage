@@ -6,6 +6,7 @@ import {
   columnMax,
   DataBar,
   ShowMore,
+  tableMinWidth,
   useCompactLayout,
   usePhoneColumns,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -20,6 +21,7 @@ import {
   type Currency,
 } from '../../lib/formatNumbers';
 import { useMeasureColor } from '../../lib/measures';
+import { useVisibleSort } from '../../hooks/useVisibleSort';
 import { lastDaysNoun } from '../../lib/usageWindow';
 import { NameCell } from '../LlmUsage/NameCell';
 import { sortUsageRows } from './helpers';
@@ -157,11 +159,10 @@ export function ByAgentTable({
     [rows, costOf],
   );
   const anyReported = rows.some(row => row.costUsd !== undefined);
-  // Six columns, seven with the Reported cost, each needing about 80px for
-  // its header's label beside the sort indicator.
-  const [tableRef, isCompact] = useCompactLayout(anyReported ? 560 : 480);
 
-  const columnConfig: ColumnConfig<ByAgentRow>[] = [
+  // The columns, for the compact layout or the full one: compact, the name
+  // wraps to two lines and carries the runtime's reported cost.
+  const columnsFor = (compact: boolean): ColumnConfig<ByAgentRow>[] => [
     {
       id: 'agentName',
       label: 'Agent',
@@ -173,8 +174,9 @@ export function ByAgentTable({
         <NameCell
           title={row.agentName}
           href={row.href}
+          compact={compact}
           description={
-            isCompact && row.costUsd !== undefined
+            compact && row.costUsd !== undefined
               ? `${formatUsd(row.costUsd)} reported by its runtime`
               : undefined
           }
@@ -311,6 +313,10 @@ export function ByAgentTable({
         ]
       : []),
   ];
+  const [tableRef, isCompact] = useCompactLayout(
+    tableMinWidth(columnsFor(false)),
+  );
+  const columnConfig = columnsFor(isCompact);
 
   // At phone width, and beside the side rail at tablet width, the agent, its
   // sessions and the estimate (T22 B11): six or seven columns in 343px
@@ -334,6 +340,11 @@ export function ByAgentTable({
     // Off for the reason AgentsTable documents: `useCompletePagination` does
     // not reset its offset when the data shrinks.
     paginationOptions: { type: 'none' },
+  });
+  // Compact, the tokens are hidden: sort by sessions, the busiest first.
+  useVisibleSort(tableProps.sort, shownColumns, {
+    column: 'sessions',
+    direction: 'descending',
   });
 
   return (

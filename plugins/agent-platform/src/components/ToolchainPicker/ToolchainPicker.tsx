@@ -12,7 +12,6 @@ import {
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { RiArrowDownSLine } from '@remixicon/react';
-import { usePhoneLayout } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
 import { useToolchains } from '../../hooks/useToolchainManager';
@@ -31,10 +30,10 @@ import { ToolboxIcon } from './ToolboxIcon';
 const LATEST = 'latest';
 
 const useStyles = makeStyles({
-  // An icon, the number of picks and a caret, at a fixed width: the agent
-  // and workspace beside it keep their room however many are picked
-  // (giantswarm/giantswarm#39204). The names are in the tooltip and the
-  // popover.
+  // An icon, the number of picks and a caret (no caret in a compact
+  // composer), not growing with the names: the agent and workspace beside it
+  // keep their room however many are picked (giantswarm/giantswarm#39204).
+  // The names are in the tooltip and the popover.
   trigger: {
     flex: '0 0 auto',
     fontVariantNumeric: 'tabular-nums',
@@ -78,6 +77,12 @@ export type ToolchainPickerProps = {
   value: ToolchainPick[] | undefined;
   onChange: (picks: ToolchainPick[] | undefined) => void;
   isDisabled?: boolean;
+  /**
+   * The composer is too narrow for its controls (its own measure,
+   * `useCompactLayout`): the button leaves out its caret, so the agent and
+   * workspace beside it keep room for their names.
+   */
+  isCompact?: boolean;
 };
 
 /** The picks with `name` at `version` (absent: not mounted). */
@@ -164,9 +169,9 @@ export function ToolchainPicker({
   value,
   onChange,
   isDisabled = false,
+  isCompact = false,
 }: ToolchainPickerProps) {
   const classes = useStyles();
-  const isPhone = usePhoneLayout();
   const { info } = useAgentManagerInfo(agent.installation);
   const supported = Boolean(info?.capabilities?.[TOOLCHAINS_CAPABILITY]);
   const { list } = useToolchains(supported ? agent.installation : undefined);
@@ -193,12 +198,12 @@ export function ToolchainPicker({
           variant="tertiary"
           size="small"
           iconStart={<ToolboxIcon />}
-          // No caret at phone width: its room goes to the agent and the
-          // workspace beside it, whose names it squeezed to a letter or two
-          // with many toolchains picked. The popup is still announced
+          // No caret in a compact composer: its room goes to the agent and
+          // the workspace beside it, whose names it squeezed to a letter or
+          // two with many toolchains picked. The popup is still announced
           // (`aria-haspopup`) and the tooltip says what the button holds.
           iconEnd={
-            isPhone ? undefined : (
+            isCompact ? undefined : (
               <RiArrowDownSLine aria-hidden className={classes.caret} />
             )
           }
