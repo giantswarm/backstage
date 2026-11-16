@@ -121,7 +121,7 @@ finding is right as it is.
   three words in 24 characters (`Running`, `Not ready`); 40 characters at
   most. A record's name (a link's text, the row header's text other than a
   badge), a name in one token (`gpu-pool-a`, `api.example.io`) or of
-  capitalised words (`Bramble Clover`), a list of versions and longer text
+  capitalised words (`Bramble Clover`, `Sage Basil 2`), a list of versions and longer text
   are free text, left to `truncation`. A table that scrolls sideways
   cuts nothing; only the cell does. One finding per table, column and kind,
   with the number of rows it holds for.

@@ -538,6 +538,9 @@ test('isShortValue: dates, durations, counts, sizes, versions and status labels'
   for (const v of [
     '144 vCPUs · 1152 GiB',
     'Nov 12, 2026, 14:03',
+    'Nov 12, 2026, 2:03 PM',
+    'Monday 14:03',
+    '16 GiB · 4 GPU',
     '2026-11-12',
     '3 hours ago',
     '12',
@@ -561,6 +564,8 @@ test('isShortValue: names, descriptions and long text are free text', () => {
     'A very long agent name in the long-names scenario',
     'Created 2 days ago by someone on another team',
     'Bramble Clover',
+    'Sage Basil 2',
+    'Juniper Mallow',
     '0.6.1, 0.5.0, 0.4.0, 0.3.0',
     '',
   ]) {

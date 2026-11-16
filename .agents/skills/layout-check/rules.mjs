@@ -249,6 +249,8 @@ export function truncationRule(layout) {
   return findings;
 }
 
+const CALENDAR =
+  /^(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|june?|july?|aug(ust)?|sept?(ember)?|oct(ober)?|nov(ember)?|dec(ember)?|mon(day)?|tue(s|sday)?|wed(nesday)?|thu(rs|rsday)?|fri(day)?|sat(urday)?|sun(day)?)\.?$/i;
 const VERSION = /^v?\d+(\.\d+)+([-+][\w.-]+)?$/i;
 /** A name or a path in one token: letters joined by - _ . / : (`gpu-pool-a`, `api.example.io`). */
 const IDENTIFIER = /^(?=.*[a-z])[\w]+([-_./:@][\w]+)+$/i;
@@ -276,10 +278,12 @@ export function isShortValue(text) {
   const items = t.split(/\s*,\s*/);
   if (items.length > 1 && items.every(i => VERSION.test(i))) return false;
   const words = tokens.filter(w => !/\d/.test(w));
+  // Two or more capitalised words are a name ("Bramble Clover", "Sage Basil
+  // 2"); labels are in sentence case ("Not ready"). Units (GiB, GPU, PM)
+  // and the names of months and days don't count.
+  const capitalised = words.filter(w => /^\p{Lu}\p{Ll}{2,}$/u.test(w) && !CALENDAR.test(w));
+  if (capitalised.length >= 2 && words.every(w => /^\p{Lu}/u.test(w))) return false;
   if (/\d/.test(t)) return words.length <= 3;
-  // Every word capitalised is a name ("Bramble Clover"); labels are in
-  // sentence case ("Not ready").
-  if (tokens.length > 1 && tokens.every(w => /^\p{Lu}/u.test(w))) return false;
   return tokens.length <= 3 && t.length <= 24;
 }
 
