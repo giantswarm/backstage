@@ -31,7 +31,7 @@ export const SIGNED_IN_CONFIG_PATHS: readonly string[] = [
   // each target's endpoint and client stay with the backend.
   'gs.clusterTokenBroker.targets{}',
   // Link templates on the cluster, deployment and home pages: the fleet's
-  // Grafana, Happa and Teleport hostnames.
+  // Grafana and Teleport hostnames.
   'gs.clusterDetails.resources',
   'gs.deploymentDetails.resources',
   'gs.homepage.resources',
