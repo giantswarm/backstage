@@ -3,6 +3,7 @@ import {
   FIXTURE_PROVIDERS,
   MINUTE,
   fixtureDataSet,
+  onFixtureScenarioReset,
   hashOf,
   inInstallation,
   isWorkspaceOrganization,
@@ -967,6 +968,9 @@ export class WorkspaceManagerFixtureState {
 }
 
 let state: WorkspaceManagerFixtureState | undefined;
+onFixtureScenarioReset(() => {
+  state = undefined;
+});
 
 /** The state every workspace-manager fixture reads: built on first use. */
 export function workspaceManagerFixtureState(): WorkspaceManagerFixtureState {

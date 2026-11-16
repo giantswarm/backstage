@@ -66,6 +66,7 @@ export {
   fixtureDataSet,
   fixtureScenario,
   fixtureScenarioError,
+  onFixtureScenarioReset,
   scenarioDataSet,
   setFixtureScenarioForTests,
   withFixtureScenario,

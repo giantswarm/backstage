@@ -374,7 +374,7 @@ export class KubernetesFixtureApi implements KubernetesApi {
       return statusResponse(
         500,
         'InternalError',
-        `Reading ${plural} failed: fixture scenario "error" fails every read.`,
+        `Reading ${plural} failed: the error fixture scenario fails every read.`,
       );
     }
     const objects = this.objects(

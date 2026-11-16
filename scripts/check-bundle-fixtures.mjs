@@ -125,7 +125,7 @@ const MARKERS = [
   },
   {
     source: 'plugins/gs-common/src/fixtures/scenarios.ts',
-    marker: 'fixture scenario "error" fails every call',
+    marker: 'the error fixture scenario fails every call',
   },
 ];
 

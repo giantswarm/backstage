@@ -55,20 +55,24 @@ export const FIXTURE_SCENARIO_PARAM = 'fixtures';
 /** Where a tab keeps its scenario (sessionStorage). */
 const TAB_SCENARIO_KEY = 'giantswarm.fixtures.scenario';
 
-/** The scenario the persisted query caches were written under (localStorage). */
-const CACHE_SCENARIO_KEY = 'giantswarm.fixtures.cacheScenario';
-
-/** What the query caches the plugins persist to localStorage are named. */
-const PERSISTED_QUERY_CACHE = /react-query-cache$/;
-
 export function isFixtureScenario(value: unknown): value is FixtureScenario {
   return FIXTURE_SCENARIOS.includes(value as FixtureScenario);
 }
 
+function keepForTab(scenario: FixtureScenario): void {
+  try {
+    window.sessionStorage.setItem(TAB_SCENARIO_KEY, scenario);
+  } catch {
+    // Without storage the scenario lasts until the page reloads.
+  }
+}
+
 /**
- * The fixture scenario of this page load: the one the `fixtures` query
- * parameter names, kept for the tab, else the tab's, else `base`. A name
- * fixture mode does not know serves `base`, with a console error.
+ * The fixture scenario the URL and the tab name: the one the `fixtures`
+ * query parameter names, kept for the tab, else the tab's, else `base`. A
+ * name fixture mode does not know serves `base`, for the tab too, with a
+ * console error. Reads them each time: {@link fixtureScenarioOfPage} is the
+ * page's.
  */
 export function readFixtureScenario(): FixtureScenario {
   if (typeof window === 'undefined') {
@@ -83,13 +87,10 @@ export function readFixtureScenario(): FixtureScenario {
       console.error(
         `Fixture mode has no scenario ${asked}, only ${FIXTURE_SCENARIOS.join(', ')}: serving base.`,
       );
+      keepForTab('base');
       return 'base';
     }
-    try {
-      window.sessionStorage.setItem(TAB_SCENARIO_KEY, asked);
-    } catch {
-      // Without storage the scenario lasts until the page reloads.
-    }
+    keepForTab(asked);
     return asked;
   }
   try {
@@ -103,29 +104,39 @@ export function readFixtureScenario(): FixtureScenario {
   return 'base';
 }
 
+let pageScenario: FixtureScenario | undefined;
+
 /**
- * Drops the query caches the plugins persist to localStorage when they were
- * written under another fixture scenario than this page load's: they are
- * restored before any fixture API answers, so an `error` page would show the
- * rows a `base` page cached. Call it before the app renders. Without a
- * scenario ever picked it does nothing.
+ * The fixture scenario of this page load, read once
+ * ({@link readFixtureScenario}): every fixture API and the persisted query
+ * caches serve the same one while the app navigates without the parameter.
+ * The app reads it as it starts, before any redirect can drop the
+ * parameter; loading a URL with another value switches it, without
+ * restarting the server.
  */
-export function dropQueryCachesOfOtherFixtureScenario(): void {
-  try {
-    const scenario = readFixtureScenario();
-    const storage = window.localStorage;
-    const written = storage.getItem(CACHE_SCENARIO_KEY) ?? 'base';
-    if (written === scenario) {
-      return;
-    }
-    for (let i = storage.length - 1; i >= 0; i--) {
-      const key = storage.key(i);
-      if (key && PERSISTED_QUERY_CACHE.test(key)) {
-        storage.removeItem(key);
-      }
-    }
-    storage.setItem(CACHE_SCENARIO_KEY, scenario);
-  } catch {
-    // No storage: nothing persisted to drop.
+export function fixtureScenarioOfPage(): FixtureScenario {
+  pageScenario ??= readFixtureScenario();
+  return pageScenario;
+}
+
+/** Sets the page's scenario, for tests; `undefined` reads it again. */
+export function setFixtureScenarioOfPageForTests(
+  scenario: FixtureScenario | undefined,
+): void {
+  pageScenario = scenario;
+}
+
+/**
+ * The `buster` of a persisted query cache: `buster`, and outside production
+ * builds the page's fixture scenario unless it is `base`. A cache written
+ * under another scenario, by this tab or another one, is then never
+ * restored: an `error` page would otherwise show the rows a `many` page
+ * cached.
+ */
+export function fixtureScenarioCacheBuster(buster = ''): string {
+  if (process.env.NODE_ENV === 'production') {
+    return buster;
   }
+  const scenario = fixtureScenarioOfPage();
+  return scenario === 'base' ? buster : `${buster}#fixtures=${scenario}`;
 }

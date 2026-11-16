@@ -1,4 +1,8 @@
-import { readFixtureScenario, type FixtureScenario } from '../fixtureMode';
+import {
+  fixtureScenarioOfPage,
+  setFixtureScenarioOfPageForTests,
+  type FixtureScenario,
+} from '../fixtureMode';
 import {
   baseDataSet,
   createFixtureDataSet,
@@ -6,28 +10,39 @@ import {
   type FixtureDataSetSettings,
 } from './dataSet';
 
-let current: FixtureScenario | undefined;
-
 const dataSets = new Map<FixtureScenario, FixtureDataSet>();
 
+/** What {@link setFixtureScenarioForTests} resets besides the data sets. */
+const resets = new Set<() => void>();
+
 /**
- * The scenario this page serves: the one the `fixtures` query parameter of
- * the URL the page loaded with names, else the one the tab loaded last, else
- * `base`. Read once per page load, so every fixture API serves the same one
- * while the app navigates without the parameter; loading a URL with another
- * value switches it, without restarting the server.
+ * The scenario this page serves ({@link fixtureScenarioOfPage}): read once
+ * per page load, as the app starts.
  */
 export function fixtureScenario(): FixtureScenario {
-  current ??= readFixtureScenario();
-  return current;
+  return fixtureScenarioOfPage();
 }
 
-/** Sets the scenario, for tests; `undefined` reads it again. */
+/**
+ * Registers how to drop a state built from {@link fixtureDataSet}, such as
+ * a module's shared fixture state, so a test that switches the scenario
+ * gets one built from the new data set. Every module-level state built from
+ * the data set registers one.
+ */
+export function onFixtureScenarioReset(reset: () => void): void {
+  resets.add(reset);
+}
+
+/**
+ * Sets the scenario, for tests; `undefined` reads it again. Drops the data
+ * sets and every state registered with {@link onFixtureScenarioReset}.
+ */
 export function setFixtureScenarioForTests(
   scenario: FixtureScenario | undefined,
 ): void {
-  current = scenario;
+  setFixtureScenarioOfPageForTests(scenario);
   dataSets.clear();
+  resets.forEach(reset => reset());
 }
 
 const EMPTY: FixtureDataSetSettings = {
@@ -79,6 +94,7 @@ const LONG_NAMES: FixtureDataSetSettings = {
   // leave its pools none.
   gpuClusters: { nameLength: 40 },
   gpuPools: { nameLength: LONG },
+  cacheClaims: { nameLength: LONG },
   hostedModels: { nameLength: LONG },
 };
 
@@ -118,7 +134,7 @@ export function fixtureDataSet(): FixtureDataSet {
 export function fixtureScenarioError(api: string, method: string): Error {
   return Object.assign(
     new Error(
-      `${api}.${method} failed: fixture scenario "error" fails every call.`,
+      `${api}.${method} failed: the error fixture scenario fails every call.`,
     ),
     { name: 'InternalServerError', status: 500 },
   );

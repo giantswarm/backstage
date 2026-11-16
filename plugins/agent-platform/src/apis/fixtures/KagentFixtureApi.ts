@@ -29,7 +29,7 @@ import {
 
 /**
  * kagent in fixture mode (`agentPlatform.fixtures: true`): the installations
- * of the base data set, the fixture user signed in, and each installation's
+ * of the page's data set (`fixtureDataSet()`), the fixture user signed in, and each installation's
  * sessions with their conversations from `KagentFixtureState` (shared with
  * agent-manager's `start_session`, which creates sessions in it). Answers
  * cross as JSON, as over HTTP, so no page shares the fixture's objects.

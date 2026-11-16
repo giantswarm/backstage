@@ -48,6 +48,7 @@ import { AddToolchainSourceButton } from '../AddToolchainSourceDialog';
 import { SharedIdentityNote } from '../SharedIdentityNote';
 import { ToolchainGrantPrompt } from '../ToolchainGrantPrompt';
 import { ToolchainReadFailure } from '../ToolchainReadFailure';
+import { ToolchainsUnchecked } from '../ToolchainsUnchecked';
 
 export type CustomizeToolchainsPanelProps = {
   search: string;
@@ -338,7 +339,7 @@ function InstallationToolchains({
 export function CustomizeToolchainsPanel({
   search,
 }: CustomizeToolchainsPanelProps) {
-  const { installations, sharedIdentity, hasToolchains, answered, unknown } =
+  const { installations, sharedIdentity, hasToolchains, unchecked, recheck } =
     useScopedToolchainInstallations();
 
   if (hasToolchains === false) {
@@ -354,13 +355,8 @@ export function CustomizeToolchainsPanel({
       />
     );
   }
-  if (hasToolchains === undefined && answered === 'partly') {
-    return (
-      <EmptyStateCard
-        title="Toolchains could not be checked"
-        description={`Muster on ${unknown.join(', ')} did not answer, so it is not known whether the toolchain-manager runs there. Try again later.`}
-      />
-    );
+  if (hasToolchains === 'unchecked') {
+    return <ToolchainsUnchecked unchecked={unchecked} onRetry={recheck} />;
   }
   if (hasToolchains === undefined) {
     return <LoadingIndicator label="Reading the toolchains…" />;

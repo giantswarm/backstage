@@ -1,5 +1,6 @@
 import {
   fixtureDataSet,
+  onFixtureScenarioReset,
   inInstallation,
   type FixtureDataSet,
   type FixtureToolchain,
@@ -553,6 +554,9 @@ function nextMinor(version: string): string {
 }
 
 let state: ToolchainManagerFixtureState | undefined;
+onFixtureScenarioReset(() => {
+  state = undefined;
+});
 
 /** The state every toolchain-manager fixture reads: built on first use. */
 export function toolchainManagerFixtureState(): ToolchainManagerFixtureState {

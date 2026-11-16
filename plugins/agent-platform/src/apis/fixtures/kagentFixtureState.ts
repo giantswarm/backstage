@@ -18,6 +18,7 @@ import {
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   fixtureDataSet,
+  onFixtureScenarioReset,
   DAY,
   inInstallation,
   type FixtureDataSet,
@@ -969,6 +970,9 @@ export class KagentFixtureState {
 }
 
 let state: KagentFixtureState | undefined;
+onFixtureScenarioReset(() => {
+  state = undefined;
+});
 
 /** The state every kagent fixture reads: built on first use. */
 export function kagentFixtureState(): KagentFixtureState {

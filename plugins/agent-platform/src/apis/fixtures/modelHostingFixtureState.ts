@@ -1,5 +1,6 @@
 import {
   fixtureDataSet,
+  onFixtureScenarioReset,
   hashOf,
   isUnreachableInstallation,
   unreachableInstallationError,
@@ -2543,8 +2544,11 @@ function digestOf(name: string): string {
 }
 
 let shared: ModelHostingFixtureState | undefined;
+onFixtureScenarioReset(() => {
+  shared = undefined;
+});
 
-/** The state every fixture handler of model hosting shares, from the base data set. */
+/** The state every fixture handler of model hosting shares, from the page's data set (`fixtureDataSet()`). */
 export function modelHostingFixtureState(): ModelHostingFixtureState {
   shared ??= new ModelHostingFixtureState(fixtureDataSet());
   return shared;

@@ -1,6 +1,7 @@
 import { dump } from 'js-yaml';
 import {
   fixtureDataSet,
+  onFixtureScenarioReset,
   inInstallation,
   type AgentState,
   type FixtureDataSet,
@@ -323,8 +324,9 @@ export class AgentManagerFixtureState {
     private readonly data: FixtureDataSet = fixtureDataSet(),
     private readonly now: () => number = Date.now,
     /**
-     * kagent's state, the shared one for the base data set; another data set
-     * gets a state of its own, so its sessions stay out of the shared one.
+     * kagent's state, the shared one for the page's data set
+     * (`fixtureDataSet()`); another data set gets a state of its own, so its
+     * sessions stay out of the shared one.
      */
     kagent?: () => KagentFixtureState,
   ) {
@@ -1585,6 +1587,9 @@ function egressPoliciesOf(namespace: string): AgentManagerEgressPolicy[] {
 }
 
 let state: AgentManagerFixtureState | undefined;
+onFixtureScenarioReset(() => {
+  state = undefined;
+});
 
 /** The state every agent-manager fixture reads: built on first use. */
 export function agentManagerFixtureState(): AgentManagerFixtureState {

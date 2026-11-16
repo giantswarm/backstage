@@ -100,38 +100,44 @@ export class FixtureInstallationUnknownError extends Error {
 }
 
 /**
- * How muster fails a call in the `error` scenario, by installation: the
- * first answers muster-backend's 401 (the sign-in to the tool's server for a
- * tool call, a refused token for anything else), the second has signed the
- * person out (their portal session is gone), the others are unreachable.
+ * The installation whose person is signed out in the `error` scenario; the
+ * other reachable ones answer muster-backend's 401.
  */
-function scenarioError(installation: string, server?: string): Error {
-  if (installation === FIXTURE_INSTALLATIONS[0]) {
-    return server
-      ? new MusterUnauthorizedError(
-          `Sign in to ${server} to use its tools.`,
-          'server_sign_in_required',
-          server,
-          installation,
-        )
-      : new MusterUnauthorizedError(
-          `muster on ${installation} refused the token.`,
-          'token_rejected',
-          undefined,
-          installation,
-        );
-  }
-  if (installation === FIXTURE_INSTALLATIONS[1]) {
-    return sessionExpiredError(installation);
-  }
-  return unreachableInstallationError(installation);
-}
+const SIGNED_OUT_INSTALLATION = FIXTURE_INSTALLATIONS[1];
 
 /**
- * The installation a call targets, failing loudly for one not served, and
- * as {@link scenarioError} says in the `error` scenario.
+ * How muster fails a call to a reachable installation in the `error`
+ * scenario: one has the person signed out (their portal session is gone),
+ * the others answer muster-backend's 401 (the sign-in to the tool's server
+ * for a tool call, a refused token for anything else). An unreachable one
+ * fails as it always does.
  */
-function served(installation: string | undefined, server?: string): string {
+function scenarioError(installation: string, server?: string): Error {
+  if (installation === SIGNED_OUT_INSTALLATION) {
+    return sessionExpiredError(installation);
+  }
+  return server
+    ? new MusterUnauthorizedError(
+        `Sign in to ${server} to use its tools.`,
+        'server_sign_in_required',
+        server,
+        installation,
+      )
+    : new MusterUnauthorizedError(
+        `muster on ${installation} refused the token.`,
+        'token_rejected',
+        undefined,
+        installation,
+      );
+}
+
+/** Whether calls to a reachable installation fail, as in `error`. */
+function failsInScenario(installation: string): boolean {
+  return fixtureScenario() === 'error' && !isUnreachable(installation);
+}
+
+/** The installation a call targets, failing loudly for one not served. */
+function known(installation: string | undefined): string {
   const target = installation ?? FIXTURE_INSTALLATION;
   if (!isFixtureInstallation(target)) {
     const error = new FixtureInstallationUnknownError(target);
@@ -139,7 +145,16 @@ function served(installation: string | undefined, server?: string): string {
     console.error(error.message);
     throw error;
   }
-  if (fixtureScenario() === 'error') {
+  return target;
+}
+
+/**
+ * The installation a call to its muster targets ({@link known}), failing as
+ * {@link scenarioError} says in the `error` scenario.
+ */
+function served(installation: string | undefined, server?: string): string {
+  const target = known(installation);
+  if (failsInScenario(target)) {
     throw scenarioError(target, server);
   }
   return target;
@@ -195,7 +210,7 @@ function isUnreachable(installation: string): boolean {
 
 /**
  * The muster plugin's API in fixture mode (`muster.fixtures: true`): the
- * installations of the base data set (`FIXTURE_INSTALLATIONS`), each with a
+ * installations of the page's data set (`FIXTURE_INSTALLATIONS`), each with a
  * muster that has signed the person in. Each reachable installation's muster
  * aggregates the data set's connectors there, in their states, offers its
  * workflows and their executions, and knows its toolset presets; the
@@ -611,13 +626,23 @@ export class MusterFixtureApi implements MusterApi {
     return this.dispatch(name, args, options.installation, options.signal);
   }
 
+  /**
+   * Reports, never throws, as the real client does: no sign-in succeeds in
+   * the `error` scenario.
+   */
   async signIn(installation?: string): Promise<boolean> {
-    served(installation);
-    return true;
+    return !failsInScenario(known(installation));
   }
 
+  /**
+   * Only resolves the person's token, never calls muster: in the `error`
+   * scenario it fails only where the person is signed out.
+   */
   async authHeaders(installation?: string): Promise<Record<string, string>> {
-    served(installation);
+    const target = known(installation);
+    if (failsInScenario(target) && target === SIGNED_OUT_INSTALLATION) {
+      throw sessionExpiredError(target);
+    }
     return {};
   }
 

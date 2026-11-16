@@ -51,9 +51,30 @@ describe('musterFixtureApi in the fixture scenarios', () => {
     expect(signedOut.reason).toBe('session-expired');
     await expect(api.listConnectorNames('fennel')).rejects.toBeTruthy();
 
-    // tarragon: not reachable, its background reads included.
-    await expect(api.getServerInfo('tarragon')).rejects.toMatchObject({
+    // tarragon: not reachable, as always: its reads fail with a 503, its
+    // background reads answer `unavailable`.
+    await expect(api.listServers('tarragon')).rejects.toMatchObject({
       status: 503,
+    });
+    await expect(api.getServerInfo('tarragon')).resolves.toEqual({
+      unavailable: true,
+    });
+    await expect(api.listConnectorNames('tarragon')).resolves.toEqual({
+      servers: [],
+      unavailable: true,
+    });
+    await expect(api.getAuthStatus('tarragon')).resolves.toMatchObject({
+      unavailable: true,
+    });
+
+    // As the real client: signIn reports, never throws; authHeaders only
+    // resolves a token, which only the signed-out installation lacks.
+    await expect(api.signIn('meadow')).resolves.toBe(false);
+    await expect(api.signIn('fennel')).resolves.toBe(false);
+    await expect(api.authHeaders('meadow')).resolves.toEqual({});
+    await expect(api.authHeaders('tarragon')).resolves.toEqual({});
+    await expect(api.authHeaders('fennel')).rejects.toMatchObject({
+      reason: 'session-expired',
     });
   });
 

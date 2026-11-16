@@ -3,6 +3,7 @@ import { baseDataSet } from './dataSet';
 import {
   fixtureDataSet,
   fixtureScenario,
+  onFixtureScenarioReset,
   scenarioDataSet,
   setFixtureScenarioForTests,
   withFixtureScenario,
@@ -114,6 +115,32 @@ describe('fixture scenarios', () => {
     for (const pool of data.gpuPools) {
       expect(pool.name.startsWith(`${pool.cluster}-`)).toBe(true);
     }
+  });
+
+  it('gives cache claims long names in long-names', () => {
+    const data = scenarioDataSet('long-names');
+    // The mounted claim keeps the name the serving slice gives it.
+    const unmounted = data.cacheClaims.filter(c => c.state !== 'mounted');
+    expect(unmounted.length).toBeGreaterThan(0);
+    for (const claim of unmounted) {
+      expect(claim.name.length).toBeGreaterThanOrEqual(60);
+    }
+  });
+
+  it('drops the registered states when a test switches the scenario', () => {
+    let built: string | undefined;
+    const stateOf = () => {
+      built ??= fixtureScenario();
+      return built;
+    };
+    onFixtureScenarioReset(() => {
+      built = undefined;
+    });
+    setFixtureScenarioForTests('many');
+    expect(stateOf()).toBe('many');
+    setFixtureScenarioForTests('empty');
+    expect(stateOf()).toBe('empty');
+    expect(fixtureDataSet()).toBe(scenarioDataSet('empty'));
   });
 
   describe('withFixtureScenario', () => {
