@@ -503,6 +503,7 @@ describe('builder settings', () => {
   it('builds nothing under a parent list of none', () => {
     const data = createFixtureDataSet({ now, installations: { count: 0 } });
     expect(data).toEqual({
+      now,
       installations: [],
       organizations: [],
       agents: [],

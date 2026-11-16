@@ -128,6 +128,14 @@ const MARKERS = [
     marker: 'Fixture mode does not answer the Kubernetes request',
   },
   {
+    source: 'plugins/gs/src/apis/mimir/fixtures/MimirFixtureApi.ts',
+    marker: 'Fixture Mimir answers no series',
+  },
+  {
+    source: 'plugins/gs-common/src/fixtures/gatewayUsage.ts',
+    marker: 'sorrel@example.com',
+  },
+  {
     source: 'plugins/gs-common/src/fixtures/scenarios.ts',
     marker: 'the error fixture scenario fails every call',
   },

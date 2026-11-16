@@ -340,7 +340,8 @@ export class KagentFixtureState {
   >();
 
   constructor(
-    private readonly data: FixtureDataSet = fixtureDataSet(),
+    /** The data set the sessions come from; the gateway's figures too. */
+    readonly data: FixtureDataSet = fixtureDataSet(),
     private readonly now: () => number = Date.now,
   ) {}
 

@@ -23,21 +23,21 @@ auth:
 gs:
   fixtures: true
   # Made-up installations, served by the fixture Kubernetes API
-  # (FIXTURE_INSTALLATIONS in gs-common). No metrics backend: the usage pages
-  # say so instead of failing.
+  # (FIXTURE_INSTALLATIONS in gs-common). Their Mimir is the fixture one,
+  # which answers the agent gateway's metrics from the data set.
   installations:
     meadow:
       pipeline: testing
       authProvider: serviceAccount
-      mimirEnabled: false
+      mimirEnabled: true
     fennel:
       pipeline: testing
       authProvider: serviceAccount
-      mimirEnabled: false
+      mimirEnabled: true
     tarragon:
       pipeline: testing
       authProvider: serviceAccount
-      mimirEnabled: false
+      mimirEnabled: true
 
 muster:
   fixtures: true

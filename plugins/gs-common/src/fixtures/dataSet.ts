@@ -57,6 +57,8 @@ import { createRandom } from './random';
  * client's answer: each fixture maps them onto the type its client reads.
  */
 export type FixtureDataSet = {
+  /** The time the data set counts back from, in ms. */
+  now: number;
   installations: FixtureInstallation[];
   organizations: FixtureOrganization[];
   agents: FixtureAgent[];
@@ -192,6 +194,7 @@ export function createFixtureDataSet(
   // they were.
   const hosting = buildHosting(context, installations, organizations, settings);
   return {
+    now: context.now,
     installations,
     organizations,
     agents,
