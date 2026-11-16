@@ -338,7 +338,7 @@ function InstallationToolchains({
 export function CustomizeToolchainsPanel({
   search,
 }: CustomizeToolchainsPanelProps) {
-  const { installations, sharedIdentity, hasToolchains } =
+  const { installations, sharedIdentity, hasToolchains, answered, unknown } =
     useScopedToolchainInstallations();
 
   if (hasToolchains === false) {
@@ -351,6 +351,14 @@ export function CustomizeToolchainsPanel({
       <EmptyStateCard
         title="Toolchains are not available here"
         description="No environment in scope runs the toolchain-manager. Pick another environment, or ask your platform team to turn toolchains on."
+      />
+    );
+  }
+  if (hasToolchains === undefined && answered === 'partly') {
+    return (
+      <EmptyStateCard
+        title="Toolchains could not be checked"
+        description={`Muster on ${unknown.join(', ')} did not answer, so it is not known whether the toolchain-manager runs there. Try again later.`}
       />
     );
   }

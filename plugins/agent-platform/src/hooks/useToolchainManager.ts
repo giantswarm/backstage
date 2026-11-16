@@ -104,6 +104,8 @@ export function useScopedToolchainInstallations(): {
    * `installations` may be missing some that have it.
    */
   answered: 'reading' | 'partly' | 'all';
+  /** The installations in scope whose muster could not say. */
+  unknown: string[];
 } {
   const inventory = useInstallationInventory();
   const { scope } = useInstallationScope();
@@ -122,10 +124,13 @@ export function useScopedToolchainInstallations(): {
     () => (sharedKey ? sharedKey.split(',') : []),
     [sharedKey],
   );
+  const unknown = scoped.filter(
+    name => availability.presenceOf(name) === 'unknown',
+  );
   let answered: 'reading' | 'partly' | 'all' = 'all';
   if (availability.isLoading || inventory.isLoading || inventory.isProbing) {
     answered = 'reading';
-  } else if (scoped.some(name => availability.presenceOf(name) === 'unknown')) {
+  } else if (unknown.length > 0) {
     answered = 'partly';
   }
   let hasToolchains: boolean | undefined;
@@ -134,7 +139,7 @@ export function useScopedToolchainInstallations(): {
   } else if (answered === 'all') {
     hasToolchains = false;
   }
-  return { installations, sharedIdentity, hasToolchains, answered };
+  return { installations, sharedIdentity, hasToolchains, answered, unknown };
 }
 
 /**

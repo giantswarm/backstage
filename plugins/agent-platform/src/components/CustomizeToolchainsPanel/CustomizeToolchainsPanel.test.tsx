@@ -35,6 +35,8 @@ let mockScope: {
   installations: string[];
   sharedIdentity: string[];
   hasToolchains?: boolean;
+  answered?: 'reading' | 'partly' | 'all';
+  unknown?: string[];
 };
 let mockList: { isPending: boolean; error: Error | null; data?: ToolchainList };
 const TOOLS: Record<string, string[]> = {
@@ -193,6 +195,26 @@ describe('CustomizeToolchainsPanel', () => {
     expect(
       screen.getByText('Toolchains are not available here'),
     ).toBeInTheDocument();
+  });
+
+  it('says when no installation could say whether it runs the toolchain-manager', async () => {
+    mockScope = {
+      installations: [],
+      sharedIdentity: [],
+      answered: 'partly',
+      unknown: ['gazelle', 'otter'],
+    };
+    await renderPanel();
+
+    expect(
+      screen.getByText('Toolchains could not be checked'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Muster on gazelle, otter did not answer/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Reading the toolchains…'),
+    ).not.toBeInTheDocument();
   });
 
   it('says why toolchains are withheld where muster has no per-user sign-in', async () => {
