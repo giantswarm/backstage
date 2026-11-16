@@ -1,8 +1,10 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import {
+  mockContainerWidth,
   mockDesktopLayout,
   mockPhoneLayout,
+  type MockedContainerWidth,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import userEvent from '@testing-library/user-event';
@@ -1397,6 +1399,55 @@ describe('ServedModelsTable · at scale', () => {
       screen.getByText('No models match “nothing-like-it”.'),
     ).toBeVisible();
     expect(screen.queryByText(NO_SERVED_MODELS)).toBeNull();
+  });
+});
+
+// Beside the side rail at 768px a group's card is 424px wide: its columns
+// were squeezed to slivers and the actions cut off (layout check, #3553).
+describe('ServedModelsTable in a narrow card', () => {
+  let layout: MockedLayout;
+  let container: MockedContainerWidth;
+  afterEach(() => {
+    layout.restore();
+    container.restore();
+  });
+
+  const actions = (row: ServedModelRow) => (
+    <button type="button">Actions for {row.name}</button>
+  );
+  const list = () =>
+    screen.queryByRole('list', {
+      name: 'Models on inst-1, KServe · kserve-vllm',
+    });
+
+  it('lists the models as stacked rows on a desktop when the card is too narrow for the table', async () => {
+    layout = mockDesktopLayout();
+    container = mockContainerWidth(424);
+    await renderTable(
+      <ServedModelsTable rows={rows} renderActions={actions} />,
+    );
+
+    const items = within(list()!).getAllByRole('listitem');
+    expect(items).toHaveLength(2);
+    expect(
+      within(items[0]).getByRole('button', { name: 'Actions for qwen3-14b' }),
+    ).toBeVisible();
+  });
+
+  it('shows the table when the card is wide enough, and stacked rows once it narrows', async () => {
+    layout = mockDesktopLayout();
+    container = mockContainerWidth(936);
+    await renderTable(
+      <ServedModelsTable rows={rows} renderActions={actions} />,
+    );
+
+    const grids = screen.getAllByRole('grid').length;
+    expect(list()).toBeNull();
+
+    act(() => container.setWidth(424));
+    expect(list()).toBeInTheDocument();
+    // The group whose few columns still fit keeps its table.
+    expect(screen.getAllByRole('grid')).toHaveLength(grids - 1);
   });
 });
 

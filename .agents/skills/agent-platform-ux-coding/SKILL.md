@@ -432,7 +432,9 @@ them and never invent a palette.
   `agent-shell.css` fallback scrolls tables with four or more columns at 7rem
   each; it is a safety net, not a design.
 - The tab underline is measured in screen coordinates. Never scroll bui's
-  `TabList` yourself; `RouteTabs` owns the phone tab strip.
+  `TabList` yourself; `RouteTabs` owns the tab strip's scrolling at every
+  width where its tabs don't fit (phone and narrow windows), with scroll
+  buttons for a mouse.
 - react-aria draws tab strips one commit late, which matters for tests and
   observers.
 - Form controls are 16px at phone width, set in `agent-shell.css`, to stop
