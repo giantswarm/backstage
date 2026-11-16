@@ -253,6 +253,26 @@ describe('CustomizeToolchainsPanel', () => {
     expect(screen.queryByRole('row', { name: /^go/ })).not.toBeInTheDocument();
   });
 
+  it('says the portal session ended, with Sign in again, over installations that could not say for other reasons too', async () => {
+    mockScope = {
+      installations: [],
+      sharedIdentity: [],
+      hasToolchains: 'unchecked',
+      unchecked: [
+        { installation: 'gazelle', failure: 'signedOut' },
+        { installation: 'graveler', failure: 'notAnswering' },
+      ],
+      recheck: jest.fn(() => Promise.resolve()),
+    };
+    mockSessionEnded = true;
+    await renderPanel();
+
+    expect(screen.getAllByText('Your portal session ended')).toHaveLength(1);
+    expect(
+      screen.getByRole('button', { name: 'Sign in again' }),
+    ).toBeInTheDocument();
+  });
+
   it('says why no installation could say whether it runs the toolchain-manager, and asks again', async () => {
     const recheck = jest.fn(() => Promise.resolve());
     mockScope = {

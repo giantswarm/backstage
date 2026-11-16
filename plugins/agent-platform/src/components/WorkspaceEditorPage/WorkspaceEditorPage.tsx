@@ -751,10 +751,11 @@ function EditorBody({
   const classes = useStyles();
   const accordionClasses = useSimpleAccordionStyles();
 
-  // With no form to keep, the sign-in is all the page says.
+  // With no form to keep, the sign-in is all the page says; so too in place
+  // of a sign-in to the manager or a provider, which waits for it.
   if (
     sessionEnded &&
-    (Boolean(loadError) || !draft || !availability.isAvailable)
+    (Boolean(loadError) || !draft || !availability.isAvailable || Boolean(gate))
   ) {
     return <PortalSessionEndedAlert />;
   }

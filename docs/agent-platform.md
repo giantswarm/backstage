@@ -864,12 +864,12 @@ served models, GPU node pools, the Tools step, Serve model and Pull model, the
 workspace editor and the Toolchains tab show `PortalSessionEndedAlert`; a page
 that gathers reads of many sources asks the query cache whether one of them was
 refused that way (`usePortalSessionEnded`) and shows the alert one time (the
-workspace editor above its form, which it keeps). A refused load or pull says
-it in words only (giantswarm/backstage#3565). Such a read is not retried. The agent-platform backend never answers Backstage's
-`AuthenticationError` itself: an installation's refusal of the person's token
-(kagent, its gateway, Mimir) and a missing installation token, on the kagent,
-try and credential routes, are `InstallationAuthenticationError`, a 401 that
-keeps its own message. The status and the error's name decide, never the text.
+workspace editor above its form, which it keeps). Such a read is not retried.
+A refused load or pull says it in words only (giantswarm/backstage#3565). The
+agent-platform backend never answers Backstage's `AuthenticationError` itself:
+an installation's refusal of the person's token (kagent, its gateway, Mimir)
+and a missing installation token, on the kagent, try and credential routes,
+are `InstallationAuthenticationError`, a 401 that keeps its own message. The status and the error's name decide, never the text.
 
 For a Helm-rendered model, Technical details name the release from the
 CR's `helm.toolkit.fluxcd.io/*` labels and `meta.helm.sh/*` annotations. Where

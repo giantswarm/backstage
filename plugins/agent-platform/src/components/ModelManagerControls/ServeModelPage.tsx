@@ -43,7 +43,7 @@ import {
   type ServeSeed,
 } from '../../lib/modelManagerServe';
 import { formatBytes } from '../../lib/formatNumbers';
-import { PortalSessionEndedError } from '../../lib/portalSession';
+import { isPortalSessionRefusal } from '../../lib/portalSession';
 import {
   modelManagerFitQueryKey,
   modelManagerNodesQueryKey,
@@ -553,8 +553,8 @@ export function ServeModelPage({
   // The portal refused the session token on a read: said once, with the
   // sign-in, where the presets' or else the fit's failure shows. A refused
   // load keeps its words (`load.error`).
-  const presetsRefused = presets.error instanceof PortalSessionEndedError;
-  const fitRefused = activeFit.error instanceof PortalSessionEndedError;
+  const presetsRefused = isPortalSessionRefusal(presets.error);
+  const fitRefused = isPortalSessionRefusal(activeFit.error);
 
   const isBusy = load.isPending;
   const fitBlocks =

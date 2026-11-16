@@ -187,6 +187,8 @@ export function RepositoryPicker({
   const [selectAll, setSelectAll] = useState<{
     busy: boolean;
     error?: string;
+    /** The portal refused the session token on one of its reads. */
+    sessionEnded?: boolean;
   }>({ busy: false });
 
   const owner = source.owner.trim();
@@ -282,10 +284,14 @@ export function RepositoryPicker({
       });
       setSelectAll({ busy: false });
     } catch (cause) {
-      setSelectAll({
-        busy: false,
-        error: classifyWorkspaceManagerError(cause).message,
-      });
+      setSelectAll(
+        isPortalSessionRefusal(cause)
+          ? { busy: false, sessionEnded: true }
+          : {
+              busy: false,
+              error: classifyWorkspaceManagerError(cause).message,
+            },
+      );
     }
   }, [browse, data, client, onChange, source]);
 
@@ -393,6 +399,11 @@ export function RepositoryPicker({
                       : `Select all ${data.total} matches`}
                   </Button>
                 </Flex>
+              )}
+              {/* Read outside the query cache: the page cannot know of
+                  this refusal, so the picker says it. */}
+              {selectAll.sessionEnded && !sessionEndedShown && (
+                <PortalSessionEndedAlert />
               )}
               {selectAll.error && (
                 <Text variant="body-small" color="danger">

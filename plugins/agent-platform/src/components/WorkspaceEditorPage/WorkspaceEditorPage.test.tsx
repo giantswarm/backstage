@@ -1708,6 +1708,61 @@ describe('WorkspaceEditorPage with a refused portal session', () => {
     ).toBeInTheDocument();
   });
 
+  it('says it in place of the provider sign-in when the portal refuses the preview', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [{ ...UNGRANTED_GITLAB, name: 'github', kind: 'github' }],
+      repositories: ACME,
+      workspaces: [storedWorkspace({ filters: { languages: ['Go'] } })],
+    });
+    refusing(fake, ['preview_workspace']);
+    await render(fake, { name: 'portal' });
+    await settlePreview();
+
+    expect(
+      await screen.findByText('Your portal session ended'),
+    ).toBeInTheDocument();
+    expect(signInButtons()).toHaveLength(1);
+  });
+
+  it('says it in the picker when the portal refuses the reads of Select all matches', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: manyRepositories('github', 'big', 500),
+    });
+    const answer = fake.callTool.getMockImplementation()!;
+    fake.callTool.mockImplementation(async (name: string, args) => {
+      if (name.endsWith('list_repositories') && args.pageSize === 200) {
+        throw new MusterUnauthorizedError(
+          'Failed user token verification',
+          undefined,
+          undefined,
+          'lab',
+          'AuthenticationError',
+        );
+      }
+      return answer(name, args);
+    });
+    await render(fake);
+
+    fireEvent.change(await source0Owner(), { target: { value: 'big' } });
+    const picker = () => within(source(0).getByTestId('repository-picker'));
+    await picker().findByText('(500)');
+    fireEvent.change(picker().getByRole('searchbox'), {
+      target: { value: 'repo-04' },
+    });
+    fireEvent.click(
+      await picker().findByRole('button', { name: 'Select all 10 matches' }),
+    );
+
+    expect(
+      await picker().findByText('Your portal session ended'),
+    ).toBeInTheDocument();
+    expect(signInButtons()).toHaveLength(1);
+    expect(
+      screen.queryByText(/Could not select all matches/),
+    ).not.toBeInTheDocument();
+  });
+
   it('keeps the words of a repositories read that failed for another reason', async () => {
     const fake = createWorkspaceManagerFake({
       providers: [GITHUB],

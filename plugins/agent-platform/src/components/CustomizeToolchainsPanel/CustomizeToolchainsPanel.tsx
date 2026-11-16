@@ -347,6 +347,9 @@ export function CustomizeToolchainsPanel({
   // toolchains, sources and tools fail the same way until a sign-in, which
   // is the one thing to say.
   const sessionEnded = usePortalSessionEnded();
+  if (sessionEnded) {
+    return <PortalSessionEndedAlert />;
+  }
 
   if (hasToolchains === false) {
     return sharedIdentity.length > 0 ? (
@@ -366,9 +369,6 @@ export function CustomizeToolchainsPanel({
   }
   if (hasToolchains === undefined) {
     return <LoadingIndicator label="Reading the toolchains…" />;
-  }
-  if (sessionEnded) {
-    return <PortalSessionEndedAlert />;
   }
   return (
     <Flex direction="column" gap="7">
