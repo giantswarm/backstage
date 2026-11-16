@@ -271,6 +271,10 @@ const useStyles = makeStyles({
     alignItems: 'flex-start',
     flexWrap: 'wrap',
     gap: 8,
+    // No wider than the header: a select holding a long value truncates it
+    // rather than push the page past the screen.
+    maxWidth: '100%',
+    minWidth: 0,
     '&:has(.bui-FieldLabelWrapper)': {
       alignItems: 'flex-end',
     },
