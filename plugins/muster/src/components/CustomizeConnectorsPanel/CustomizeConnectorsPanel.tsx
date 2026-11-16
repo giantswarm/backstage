@@ -1,6 +1,4 @@
 import { type ReactNode, useCallback, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useApi } from '@backstage/frontend-plugin-api';
 import {
   Alert,
   Button,
@@ -33,11 +31,11 @@ import {
   stopRowPress,
   useCatalogFilters,
   usePhoneLayout,
-  type PollingQuery,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { musterApiRef, type AuthStatusResponse } from '../../apis';
-import { musterPollingOptions } from '../../lib/musterPolling';
+import { useConnectorAccess } from '../../hooks/useConnectorAccess';
+import { familyAccess, instanceAccess } from '../../lib/connectorAccess';
 import { ConnectorLogo } from '../ConnectorLogo';
+import { FamilySignIn } from '../FamilySignIn';
 import { serverListEntries, serverListRows } from '../../lib/serverList';
 import type { ServerListEntry } from '../../lib/serverList';
 import { isRegisteredRow, MUSTER_DESCRIPTION } from '../../lib/connectorTags';
@@ -48,8 +46,6 @@ import { SESSION_ENDED_DESCRIPTION } from '../../lib/sessionEnded';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { QueryClientProvider } from '../QueryClientProvider';
 import {
-  authStatusQueryKey,
-  connectingPollInterval,
   deactivatedSignInGate,
   isSsoRefused,
   needsSignIn,
@@ -70,8 +66,6 @@ import {
   CONNECTOR_REACH_LABELS,
   CONNECTOR_REACH_ORDER,
   type ConnectorReach,
-  connectorReach,
-  connectorStatus,
   musterAuthLabel,
   musterReach,
   type MusterSessionState,
@@ -109,8 +103,61 @@ type Row = {
    */
   signInButton?: boolean;
   reach?: ConnectorReach;
+  /** A family's members waiting for this person's sign-in. */
+  waiting?: string[];
   tags: string[];
 };
+
+/** What a family row offers: its sign-in, or its instances to check. */
+function familyAction(row: Row): 'sign-in' | 'instances' | undefined {
+  if (row.entry.row.kind !== 'family') {
+    return undefined;
+  }
+  if (row.waiting && row.waiting.length > 0) {
+    return 'sign-in';
+  }
+  return row.reach === 'partial' ||
+    row.reach === 'sign-in' ||
+    row.reach === 'not-connected'
+    ? 'instances'
+    : undefined;
+}
+
+function FamilyActionCell({
+  row,
+  installation,
+  wrap,
+}: {
+  row: Row;
+  installation: string;
+  wrap?: boolean;
+}) {
+  const links = useServerPageLinks();
+  const action = familyAction(row);
+  if (action === 'sign-in') {
+    return (
+      <StopRowPress>
+        <FamilySignIn
+          installation={installation}
+          displayName={row.entry.displayName}
+          waiting={row.waiting ?? []}
+          status={row.status}
+          wrap={wrap}
+        />
+      </StopRowPress>
+    );
+  }
+  if (action === 'instances') {
+    return (
+      <Link
+        href={links.server(row.entry.id, installation, { tab: 'instances' })}
+      >
+        View instances
+      </Link>
+    );
+  }
+  return null;
+}
 
 /** A row muster asks this person to sign in to. */
 type SignInRow = Row & { signInServer: string };
@@ -416,6 +463,11 @@ function ConnectorStackedRow({
   return (
     <StackedRow
       {...props}
+      {...(familyAction(row)
+        ? {
+            actions: <FamilyActionCell row={row} installation={installation} />,
+          }
+        : {})}
       {...(row.status.label
         ? {
             status: (
@@ -482,22 +534,9 @@ function ConnectorsTable({
   const requiresAuth = activeInstallationInfo?.requiresAuth ?? false;
   const hasSession = session.authenticated || !requiresAuth;
   const links = useServerPageLinks();
-  const musterApi = useApi(musterApiRef);
 
   const catalogue = useToolCatalogue(installation, hasSession);
-  const authStatus = useQuery({
-    queryKey: authStatusQueryKey(installation),
-    queryFn: () => musterApi.getAuthStatus(installation),
-    enabled: hasSession,
-    // While muster still connects a server; not from a hidden tab, not after
-    // muster refused the person. No read on becoming visible: the client
-    // keeps focus refetches off and `staleTime` at 0.
-    ...musterPollingOptions(
-      (query: PollingQuery<AuthStatusResponse>) =>
-        connectingPollInterval(query.state.data),
-      { refetchOnVisible: false },
-    ),
-  });
+  const authStatus = useConnectorAccess(installation, hasSession);
 
   // Every connector, muster's own row among them.
   const listRows = useMemo(
@@ -552,26 +591,35 @@ function ConnectorsTable({
         };
       }
       const server = rowServer(entry, installation);
-      const status =
-        entry.row.kind === 'server'
-          ? authStatus.data?.servers.find(s => s.name === entry.id)
+      const family =
+        entry.row.kind === 'family'
+          ? familyAccess(entry.row.servers, authStatus.data)
           : undefined;
+      const instance =
+        entry.row.kind === 'server' && server
+          ? instanceAccess(server, authStatus.data)
+          : undefined;
+      const access = family ?? instance;
+      const status = instance?.auth;
       // An SSO server that refused the sign-in has no button, but its hint
       // says why, so it takes the sign-in row too.
       const asksSignIn = Boolean(
-        status && (needsSignIn(status) || isSsoRefused(status)),
+        entry.row.kind === 'server' &&
+        status &&
+        (needsSignIn(status) || isSsoRefused(status)),
       );
-      const reach = connectorReach(entry, status);
+      const reach = access?.reach;
       return {
         id: entry.key,
         entry,
         description: server?.getDescription(),
         auth: authLabel(server),
         tools: toolsLabel(entry),
-        status: connectorStatus(entry, status),
+        status: access?.status ?? { label: '', tone: 'neutral' },
+        ...(family ? { waiting: family.waiting } : {}),
         ...(asksSignIn && server?.canAuthenticateInteractively()
           ? {
-              signInServer: entry.id,
+              signInServer: instance?.name ?? entry.id,
               signInButton: Boolean(
                 status && needsSignIn(status) && !signInRefusalOf(status),
               ),
@@ -686,9 +734,9 @@ function ConnectorsTable({
       label: 'Status',
       isSortable: true,
       defaultWidth: '1.3fr',
-      // The longest word of a state ("Connected", "Deactivated") with its
-      // dot and hint; the state wraps between its words below its share.
-      minWidth: 136,
+      // The longest word of a state ("Disconnected") with its dot and hint;
+      // the state wraps between its words below its share.
+      minWidth: 168,
       cell: row => (
         <ConnectorStatusCell row={row} installation={installation} />
       ),
@@ -700,10 +748,15 @@ function ConnectorsTable({
       // "Sign in" on one line; a longer label wraps.
       minWidth: 96,
       // No room taken where no connector offers a sign-in.
-      isHidden: !rows.some(row => row.signInButton),
-      cell: row => (
-        <ConnectorSignInCell row={row} installation={installation} />
-      ),
+      isHidden: !rows.some(row => row.signInButton || familyAction(row)),
+      cell: row =>
+        familyAction(row) ? (
+          <Cell>
+            <FamilyActionCell row={row} installation={installation} wrap />
+          </Cell>
+        ) : (
+          <ConnectorSignInCell row={row} installation={installation} />
+        ),
     }),
   ];
 
@@ -777,6 +830,24 @@ function ConnectorsTable({
           session={session}
           installation={installation}
           context="Tool counts and sign-ins need a Muster session."
+        />
+      )}
+      {hasSession && authStatus.data?.unavailable && (
+        <Alert
+          status="warning"
+          title="Connector access status is unavailable"
+          description="Your sign-in state could not be checked. Tool counts alone do not confirm access."
+          customActions={
+            <Button
+              size="small"
+              variant="secondary"
+              onPress={() => {
+                void authStatus.refetch();
+              }}
+            >
+              Retry
+            </Button>
+          }
         />
       )}
       {catalogue.error && (

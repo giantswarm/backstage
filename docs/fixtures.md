@@ -112,8 +112,9 @@ scenario to its cache's `buster` (`fixtureScenarioCacheBuster`, outside
 production builds and for every scenario but `base`), so a cache written under
 another scenario, by this tab or another one, is never restored.
 
-Customize · Skills lists what gs-backend reads from GitHub in every scenario
-(item 9b of giantswarm/giantswarm#39251).
+Customize · Skills reads the portal's own skill source through
+`SkillDiscoveryFixtureApi`, which serves the base data set in every scenario
+(see "gs-backend's skill routes").
 
 ### The installations
 
@@ -562,6 +563,19 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
 
 A page that reads a new field or shows a new state extends a builder or a
 mapper in the same pull request, and the base data set gets the state.
+
+### The layout check
+
+The [`layout-check`](../.agents/skills/layout-check/SKILL.md) skill measures
+pages of the running fixture mode in a headless Chromium of its own, at
+several widths and in the states a spec steps through, and reports overflow,
+overlapping elements, misaligned rows, squeezed or cut-off text, controls that
+move or resize between states and content off its control's centre. It reads
+the portal's URL from `.fixtures-server.json`:
+
+```bash
+node .agents/skills/layout-check/layout-check.mjs --page /customize/agents
+```
 
 ## Adding a fixture mode
 
