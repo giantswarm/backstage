@@ -220,6 +220,8 @@ export function alignmentRule(layout) {
 export function truncationRule(layout) {
   const findings = [];
   for (const t of layout.truncated) {
+    // In a table, a header and a short value are the `table-fit` rule's.
+    if (t.inTable === 'header' || (t.inTable === 'cell' && isShortValue(t.text))) continue;
     const across = t.axis === 'x';
     const unit = across ? 'px wide' : 'px high';
     // Two letters or less: narrower than two em.
@@ -245,6 +247,81 @@ export function truncationRule(layout) {
     }
   }
   return findings;
+}
+
+const VERSION = /^v?\d+(\.\d+)+([-+][\w.-]+)?$/i;
+/** A name or a path in one token: letters joined by - _ . / : (`gpu-pool-a`, `api.example.io`). */
+const IDENTIFIER = /^(?=.*[a-z])[\w]+([-_./:@][\w]+)+$/i;
+
+/**
+ * Whether a table cell's text is a short value, which must fit its column
+ * without wrapping or an ellipsis: a date, a duration, a count, a size, a
+ * version, a status label. A short value has a digit and no more than three
+ * words besides its numbers (`144 vCPUs · 1152 GiB`, `Nov 12, 2026, 14:03`,
+ * `3 hours ago`), or is up to three words in 24 characters (`Running`,
+ * `Not ready`). A name in one token (`gpu-pool-a`) and longer text are free
+ * text, which may end in an ellipsis.
+ */
+export function isShortValue(text) {
+  const t = (text ?? '').trim();
+  if (!t || t.length > 40) return false;
+  const tokens = t
+    .split(/\s+/)
+    .map(w => w.replace(/^[(["']+|[)\]"',;:]+$/g, ''))
+    .filter(w => /[\p{L}\p{N}]/u.test(w));
+  if (tokens.some(w => IDENTIFIER.test(w) && !VERSION.test(w) && !/^\d/.test(w))) {
+    return false;
+  }
+  // A list of versions is a list, not a value.
+  const items = t.split(/\s*,\s*/);
+  if (items.length > 1 && items.every(i => VERSION.test(i))) return false;
+  const words = tokens.filter(w => !/\d/.test(w));
+  if (/\d/.test(t)) return words.length <= 3;
+  // Every word capitalised is a name ("Bramble Clover"); labels are in
+  // sentence case ("Not ready").
+  if (tokens.length > 1 && tokens.every(w => /^\p{Lu}/u.test(w))) return false;
+  return tokens.length <= 3 && t.length <= 24;
+}
+
+/**
+ * In a table, typical content fits its column: a column header cut off (with
+ * an ellipsis or not, with a tooltip or not), and a short value (see
+ * `isShortValue`) cut off or wrapped onto a second line. Long free text
+ * ending in an ellipsis is left to `truncationRule`. One finding per column
+ * and kind, with the number of rows it holds for.
+ */
+export function tableFitRule(layout) {
+  const groups = new Map();
+  for (const c of layout.cells ?? []) {
+    let kind;
+    if (c.header) {
+      if (!c.cut) continue;
+      kind = 'header';
+    } else if (c.recordName || !isShortValue(c.text)) {
+      continue;
+    } else if (c.cut) {
+      kind = 'cut';
+    } else if (c.lines > 1) {
+      kind = 'wrap';
+    } else {
+      continue;
+    }
+    const key = `${c.table}|${c.col}|${kind}`;
+    const group = groups.get(key);
+    if (group) group.count++;
+    else groups.set(key, { kind, cell: c, count: 1 });
+  }
+  return [...groups.values()].map(({ kind, cell: c, count }) => {
+    const column = c.column ? ` in column "${c.column}"` : '';
+    const shown = `${Math.round(c.shown)} of ${Math.round(c.needed)}px shown`;
+    const more = count > 1 ? `, and in ${count - 1} more row${count > 2 ? 's' : ''}` : '';
+    const message = {
+      header: `column header "${c.text}" is cut off${c.ellipsis ? ' with an ellipsis' : ''} (${shown}): a header always fits its column`,
+      cut: `short value "${c.text}"${column} is cut off${c.ellipsis ? ' with an ellipsis' : ''} (${shown})${more}: a short value fits its column`,
+      wrap: `short value "${c.text}"${column} wraps onto ${c.lines} lines${more}: a short value fits its column on one line`,
+    }[kind];
+    return { rule: 'table-fit', message, elements: [element(c, c.box)] };
+  });
 }
 
 /** A control cut off by an ancestor that hides its overflow. */
@@ -349,6 +426,7 @@ export const RULES = {
   alignment: alignmentRule,
   truncation: layout => [...truncationRule(layout), ...clippedRule(layout)],
   centering: centeringRule,
+  'table-fit': tableFitRule,
 };
 
 /** Every rule on one measurement; `shift` needs two and runs separately. */

@@ -32,6 +32,50 @@ CSV export, or the faceted `FiltersLayout` sidebar pattern.
 > (not `[]`) while loading, or the empty state flashes instead of the skeleton;
 > and column `id`s must match the row field names your `sortFn` reads.
 
+## Rule: typical content fits
+
+In a table, a column header and the values a column usually holds fit their
+column: no ellipsis, no second line. A person scans a column to compare its
+values; "144 vCPUs · 11…" or a date broken over two lines can't be compared,
+and a header cut to "Provi…" leaves the column unnamed. A tooltip doesn't
+help: nobody hovers every row to read a number.
+
+- **Headers are never cut off.** A column is at least as wide as its header.
+  Shorten the header ("Priority", not "Service priority") before you widen
+  the column.
+- **Short values don't wrap or truncate**: dates, durations, counts, sizes,
+  versions, status labels, anything of a few words. Render them `nowrap`
+  without an ellipsis, and make the column at least as wide as its usual
+  value. bui's `CellText` truncates, so the width is what keeps it whole.
+- **Only long free text may end in an ellipsis**: names, titles,
+  descriptions. Then its full value is there on hover or focus (`CellText`
+  sets `title`; a custom cell sets it, or a tooltip), and one column (the
+  name) takes the width left over.
+- **Too many columns for the width**: pick a layout, don't squeeze.
+  - The table's compact layout (stacked rows or hidden columns, see "Phone
+    width" below) when a person scans it for one record. Its trigger counts
+    the content: pass each column's real minimum to
+    `tableMinWidth(columnConfig, { created: 150, capacity: 160 })`, so
+    `useCompactLayout` switches before a value is cut, not after.
+  - Sideways scroll inside the table when every column is needed side by
+    side (a person turned on every column, data of unknown shape). Once the
+    table scrolls anyway, each column gets its content's width: `minWidth`
+    from the header and the usual value, never a value that cuts them.
+    Never page-level sideways scroll.
+
+How to size a column: take the widest usual value (a date in the portal's
+format, a capacity of three-digit numbers, the longest status label) and the
+header at the table's font size (14px for bui, about 7.5px a character for
+digits and lower case), plus the cell's padding (24px in bui). In the
+core-components `Table`, `cellStyle: { whiteSpace: 'nowrap' }` and
+`headerStyle: { whiteSpace: 'nowrap' }` on the column keep the value and the
+header on one line, and `width` (or a `minWidth` in `cellStyle`) holds them.
+
+The layout check's `table-fit` rule enforces this on the rendered page: a
+cut-off header, and a short value cut off or wrapped, fail the check (the
+`layout-check` skill). Check `long-names` too: a name may end in an
+ellipsis there, a date may not.
+
 ## bui Table (`@backstage/ui`)
 
 Data-driven: pass `columnConfig` + `data` (each row must have an `id: string |

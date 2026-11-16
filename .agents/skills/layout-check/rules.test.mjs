@@ -18,6 +18,8 @@ import {
   overlapRule,
   rowsOf,
   shiftRule,
+  isShortValue,
+  tableFitRule,
   truncationRule,
 } from './rules.mjs';
 
@@ -28,6 +30,7 @@ const layout = (overrides = {}) => ({
   centering: [],
   flexRows: [],
   truncated: [],
+  cells: [],
   sticking: [],
   ...overrides,
 });
@@ -510,4 +513,168 @@ test('notFoundOf names the portal 404 page and a page\'s own not-found heading',
     }),
     null,
   );
+});
+
+const cell = (text, extra = {}) => ({
+  role: 'gridcell',
+  name: text,
+  path: 'td.bui-TableCell > div > p',
+  box: box(0, 0, 120, 40),
+  table: 1,
+  col: 2,
+  column: 'Capacity',
+  header: false,
+  text,
+  lines: 1,
+  cut: false,
+  needed: 100,
+  shown: 100,
+  ellipsis: false,
+  fullText: false,
+  ...extra,
+});
+
+test('isShortValue: dates, durations, counts, sizes, versions and status labels', () => {
+  for (const v of [
+    '144 vCPUs · 1152 GiB',
+    'Nov 12, 2026, 14:03',
+    '2026-11-12',
+    '3 hours ago',
+    '12',
+    '1.29.4',
+    'v1.2.3-gs.1',
+    '42%',
+    '$1,234.56',
+    'Running',
+    'Not ready',
+    'Service priority',
+  ]) {
+    assert.equal(isShortValue(v), true, v);
+  }
+});
+
+test('isShortValue: names, descriptions and long text are free text', () => {
+  for (const v of [
+    'gpu-pool-a',
+    'api.example.io',
+    'Waits for the nightly build and reports what failed',
+    'A very long agent name in the long-names scenario',
+    'Created 2 days ago by someone on another team',
+    'Bramble Clover',
+    '0.6.1, 0.5.0, 0.4.0, 0.3.0',
+    '',
+  ]) {
+    assert.equal(isShortValue(v), false, v);
+  }
+});
+
+test('table-fit: a short value cut off with an ellipsis, even with its value on hover', () => {
+  // giantswarm/backstage#3564: the capacity of a cluster, every column on.
+  const findings = tableFitRule(
+    layout({
+      cells: [cell('144 vCPUs · 1152 GiB', { cut: true, ellipsis: true, fullText: true, needed: 132, shown: 96 })],
+    }),
+  );
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].rule, 'table-fit');
+  assert.equal(findings[0].severity, undefined);
+  assert.match(findings[0].message, /short value "144 vCPUs · 1152 GiB" in column "Capacity" is cut off with an ellipsis \(96 of 132px shown\)/);
+});
+
+test('table-fit: column headers cut off, with an ellipsis or without', () => {
+  // giantswarm/backstage#3564: "Provider" and "Service priority".
+  const findings = tableFitRule(
+    layout({
+      cells: [
+        cell('Provider', { role: 'columnheader', header: true, column: undefined, col: 3, cut: true, ellipsis: true, needed: 58, shown: 41 }),
+        cell('Service priority', { role: 'columnheader', header: true, column: undefined, col: 4, cut: true, needed: 110, shown: 70 }),
+        cell('Name', { role: 'columnheader', header: true, column: undefined, col: 0 }),
+      ],
+    }),
+  );
+  assert.deepEqual(
+    findings.map(f => f.message),
+    [
+      'column header "Provider" is cut off with an ellipsis (41 of 58px shown): a header always fits its column',
+      'column header "Service priority" is cut off (70 of 110px shown): a header always fits its column',
+    ],
+  );
+});
+
+test('table-fit: a long header cut off is a finding too', () => {
+  const findings = tableFitRule(
+    layout({ cells: [cell('Number of nodes ready in the cluster right now', { header: true, cut: true })] }),
+  );
+  assert.equal(findings.length, 1);
+});
+
+test('table-fit: a date wrapping onto a second line', () => {
+  // giantswarm/backstage#3564: the Created column.
+  const findings = tableFitRule(
+    layout({ cells: [cell('Nov 12, 2026, 14:03', { column: 'Created', lines: 2 })] }),
+  );
+  assert.equal(findings.length, 1);
+  assert.match(findings[0].message, /short value "Nov 12, 2026, 14:03" in column "Created" wraps onto 2 lines/);
+});
+
+test('table-fit: one finding per column, counting the rows', () => {
+  const findings = tableFitRule(
+    layout({
+      cells: [
+        cell('Nov 12, 2026, 14:03', { column: 'Created', lines: 2 }),
+        cell('Nov 13, 2026, 09:12', { column: 'Created', lines: 2 }),
+        cell('Nov 14, 2026, 18:40', { column: 'Created', lines: 2 }),
+        cell('Nov 14, 2026, 18:40', { column: 'Created', lines: 2, table: 2 }),
+      ],
+    }),
+  );
+  assert.equal(findings.length, 2);
+  assert.match(findings[0].message, /, and in 2 more rows:/);
+  assert.doesNotMatch(findings[1].message, /more row/);
+});
+
+test('table-fit: long free text may end in an ellipsis or wrap', () => {
+  assert.deepEqual(
+    tableFitRule(
+      layout({
+        cells: [
+          cell('A very long agent name in the long-names scenario', { cut: true, ellipsis: true, fullText: true }),
+          cell('Waits for the nightly build and reports what failed', { lines: 3 }),
+          cell('gpu-pool-a-with-a-long-name', { cut: true, ellipsis: true }),
+          cell('144 vCPUs · 1152 GiB'),
+          // A record's name: a link's text, or the row header's.
+          cell('Basil', { recordName: true, cut: true, ellipsis: true, fullText: true }),
+        ],
+      }),
+    ),
+    [],
+  );
+});
+
+test('truncation: in a table, leaves headers and short values to table-fit', () => {
+  const findings = truncationRule(
+    layout({
+      truncated: [
+        truncated('Provider', 41, 58, { inTable: 'header' }),
+        truncated('144 vCPUs · 1152 GiB', 96, 132, { inTable: 'cell' }),
+        truncated('A very long agent name in the long-names scenario', 96, 332, { inTable: 'cell' }),
+      ],
+    }),
+  );
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].severity, 'warning');
+  assert.match(findings[0].message, /A very long agent name/);
+});
+
+test('checkLayout: runs table-fit', () => {
+  const findings = checkLayout(layout({ cells: [cell('Running', { lines: 2 })] }));
+  assert.deepEqual(findings.map(f => f.rule), ['table-fit']);
+});
+
+test('truncation: a name in a table is free text', () => {
+  const findings = truncationRule(
+    layout({ truncated: [truncated('Basil', 30, 40, { inTable: 'name' })] }),
+  );
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].severity, 'warning');
 });

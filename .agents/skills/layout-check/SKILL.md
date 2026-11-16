@@ -109,6 +109,21 @@ finding is right as it is.
   hover (a `title`, a tooltip by `aria-describedby`, or `data-full-text`, on
   it or up to three ancestors), and a **warning** when it isn't. A scroll
   container cuts nothing: a person scrolls to the rest.
+  In a table, headers and short values are `table-fit`'s instead.
+- **table-fit**: in a table (`table`, `grid`, `treegrid` and their cells,
+  row headers and column headers), typical content fits its column (the
+  `tables` skill, "Rule: typical content fits"). A column header cut off by
+  its cell or something in it, with an ellipsis or not, with a tooltip or
+  not; a short value cut off or wrapped onto a second line. A short value
+  has a digit and at most three words besides its numbers (`144 vCPUs ·
+  1152 GiB`, `Nov 12, 2026, 14:03`, `3 hours ago`, `1.29.4`), or is up to
+  three words in 24 characters (`Running`, `Not ready`); 40 characters at
+  most. A record's name (a link's text, the row header's text other than a
+  badge), a name in one token (`gpu-pool-a`, `api.example.io`) or of
+  capitalised words (`Bramble Clover`), a list of versions and longer text
+  are free text, left to `truncation`. A table that scrolls sideways
+  cuts nothing; only the cell does. One finding per table, column and kind,
+  with the number of rows it holds for.
 - **centering**: in a button, tab, select trigger, menu item, switch or link
   styled as a button (`role=button`, or bui's or MUI's button classes), the
   text and icons sit more than 2px off the centre of the

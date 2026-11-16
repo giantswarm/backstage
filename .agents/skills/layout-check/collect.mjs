@@ -562,6 +562,131 @@ export function collectLayout(options) {
     flexRows.push({ ...describe(el), layer: layerIdOf(el), children: rows });
   }
 
+  // Tables: each cell's and column header's text, by block (a cell's title
+  // and its description are two), with how many lines it takes and whether
+  // the cell, or something in it, cuts it off. Only what is inside the cell
+  // counts as cutting: a table scrolled sideways cuts nothing.
+  const CELL =
+    '[role=cell], [role=gridcell], [role=rowheader], [role=columnheader], td, th';
+  const TABLE = '[role=table], [role=grid], [role=treegrid], table';
+  const tableOf = memo(cell => {
+    const t = cell.closest(TABLE);
+    return t && !ignored(t) ? t : undefined;
+  });
+  const isHeader = cell =>
+    cell.getAttribute('role') === 'columnheader' ||
+    (!cell.getAttribute('role') && cell.tagName === 'TH' && Boolean(cell.closest('thead')));
+  const columnOf = cell => [...cell.parentElement.children].indexOf(cell);
+  const headersOf = memo(table => {
+    const labels = new Map();
+    for (const h of table.querySelectorAll(CELL)) {
+      if (isHeader(h) && tableOf(h) === table) {
+        labels.set(columnOf(h), (h.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40));
+      }
+    }
+    return labels;
+  });
+  /**
+   * Whether text in a cell is a record's name, free text that may end in an
+   * ellipsis: a link's text, or the row header's text other than a badge.
+   */
+  const isName = (el, cell) => {
+    if (el.closest('a[href], [role=link]') && cell.contains(el.closest('a[href], [role=link]'))) {
+      return true;
+    }
+    if (cell.getAttribute('role') !== 'rowheader' && !(cell.tagName === 'TH' && !isHeader(cell))) {
+      return false;
+    }
+    for (let e = el; e && e !== cell; e = e.parentElement) {
+      if ([...e.classList].some(c => /Badge|Chip|Tag|Status/.test(c))) return false;
+    }
+    return true;
+  };
+  /** The nearest box at or above a text's parent, up to its cell: a block of the cell. */
+  const blockOf = (el, cell) => {
+    for (let e = el; e && e !== cell; e = e.parentElement) {
+      const d = style(e).display;
+      if (d !== 'inline' && d !== 'contents') return e;
+    }
+    return cell;
+  };
+  const cells = [];
+  for (const cell of body.querySelectorAll(CELL)) {
+    if (ignored(cell) || !visible(cell)) continue;
+    const table = tableOf(cell);
+    if (!table) continue;
+    const header = isHeader(cell);
+    const blocks = new Map();
+    const tw = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+    for (let node = tw.nextNode(); node; node = tw.nextNode()) {
+      const parent = node.parentElement;
+      if (!node.nodeValue.trim() || !parent || SKIP_TEXT.has(parent.tagName)) continue;
+      // A cell nested in this one is measured on its own.
+      if (parent.closest(CELL) !== cell || !visible(parent)) continue;
+      const block = blockOf(parent, cell);
+      if (!blocks.has(block)) blocks.set(block, []);
+      blocks.get(block).push(node);
+    }
+    for (const [block, nodes] of blocks) {
+      const raw = [];
+      let shown = 0;
+      let cut = false;
+      let ellipsis = false;
+      let fullText = false;
+      for (const node of nodes) {
+        const chain = clipChain(node.parentElement).filter(c => cell.contains(c.el));
+        range.selectNodeContents(node);
+        for (const cr of range.getClientRects()) {
+          const r = box(cr);
+          if (r.w <= 1 || r.h <= 1) continue;
+          raw.push(r);
+          const { rect, clipper } = applyClip(r, chain);
+          if (clipper) cut = true;
+          shown += rect ? rect.w : 0;
+        }
+        for (let e = node.parentElement; e && e !== cell.parentElement; e = e.parentElement) {
+          const s = style(e);
+          if (s.textOverflow === 'ellipsis' && hides(s.overflowX)) ellipsis = true;
+          if (s.webkitLineClamp && s.webkitLineClamp !== 'none') ellipsis = true;
+          if (e.title || e.getAttribute('aria-describedby') || e.getAttribute('data-full-text')) {
+            fullText = true;
+          }
+        }
+      }
+      if (raw.length === 0) continue;
+      // Lines: boxes that start below the middle of the line before.
+      let lines = 0;
+      let lineBottom = -Infinity;
+      for (const r of [...raw].sort((a, b) => a.y - b.y)) {
+        if (r.y >= lineBottom - r.h / 2) lines++;
+        lineBottom = Math.max(lineBottom, r.y + r.h);
+      }
+      const col = columnOf(cell);
+      cells.push({
+        ...describe(block),
+        role: roleOf(cell),
+        box: box(rectOf(cell)),
+        table: idOf(table),
+        col,
+        column: header ? undefined : headersOf(table).get(col),
+        header,
+        recordName: !header && isName(nodes[0].parentElement, cell),
+        text: nodes
+          .map(n => n.nodeValue)
+          .join('')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 80),
+        lines,
+        cut,
+        needed: round(raw.reduce((sum, r) => sum + r.w, 0)),
+        shown: round(shown),
+        ellipsis,
+        fullText,
+      });
+    }
+  }
+
   // Text cut off by its own box, where it hides its overflow (a scroll
   // container lets a person scroll to the rest).
   const truncated = [];
@@ -582,7 +707,17 @@ export function collectLayout(options) {
         fullText = true;
       }
     }
+    const cell = el.closest(CELL);
     truncated.push({
+      // In a table the `table-fit` rule reads it: a header, or a cell's value.
+      inTable:
+        cell && tableOf(cell)
+          ? isHeader(cell)
+            ? 'header'
+            : isName(el, cell)
+              ? 'name'
+              : 'cell'
+          : undefined,
       ...describe(el),
       layer: layerIdOf(el),
       box: box(rectOf(el)),
@@ -621,6 +756,7 @@ export function collectLayout(options) {
     centering,
     flexRows,
     truncated,
+    cells,
     sticking,
   };
 }
