@@ -41,6 +41,7 @@ import {
 
 import type { GpuNodePoolRow } from '../../hooks/useClusterManager';
 import type { NodeSizePrices } from '../../hooks/useNodeSizePrices';
+import { describeWhereItRuns } from '../../lib/whereItRuns';
 import { poolPhaseLabel } from '../../lib/poolLifecycle';
 import { describeHourlyRange } from '../../lib/poolPricing';
 import {
@@ -154,7 +155,8 @@ const POOL_COLUMN_MIN_WIDTHS: Record<string, number> = {
   accelerator: 130,
   phase: 140,
   cost: 120,
-  version: 160,
+  // "control plane 1.33.5" under the pool's version, in the narrow layout.
+  version: 170,
   controlPlaneVersion: 220,
   actions: ACTIONS_COLUMN_WIDTH,
 };
@@ -341,11 +343,7 @@ function getColumnConfig(
           title={row.pool.name}
           description={
             isNarrow
-              ? [
-                  row.poolName,
-                  row.cluster.name,
-                  showInstallation ? row.installation : undefined,
-                ]
+              ? [row.poolName, describeWhereItRuns(row, showInstallation)]
                   .filter(Boolean)
                   .join(' · ')
               : row.poolName
@@ -483,21 +481,24 @@ export function GpuNodePoolsPanel({
       showInstallation,
     ],
   );
-  const fullColumns = useMemo(() => columnsFor(false), [columnsFor]);
-  const narrowColumns = useMemo(() => columnsFor(true), [columnsFor]);
   // Too narrow for every column, the table leaves out where the pool runs
   // and the control plane's version, and folds them into other cells; too
   // narrow for the rest, and at phone width, each pool is a stacked row.
-  const fit = useFittingColumns(fullColumns, {
+  const fit = useFittingColumns(columnsFor, {
     minWidths: POOL_COLUMN_MIN_WIDTHS,
     dropFirst: POOL_COLUMNS_DROPPED_FIRST,
-    narrowColumns,
   });
   const columnConfig = fit.columns;
+  // The default sort, on Environment, moves to the name while the narrow
+  // layout hides it, as does a sort on any column it hides.
+  const hiddenColumns = useMemo(
+    () => [...(hideColumns ?? []), ...fit.hiddenIds],
+    [hideColumns, fit.hiddenIds],
+  );
   const { sort, onSortChange } = useVisibleSort(
     BY_INSTALLATION,
     BY_NAME,
-    hideColumns,
+    hiddenColumns,
   );
   const { tableProps } = useTable<GpuNodePoolRow>({
     mode: 'complete',

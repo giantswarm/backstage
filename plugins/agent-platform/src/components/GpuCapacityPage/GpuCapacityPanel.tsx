@@ -514,8 +514,9 @@ type CapacityLayout = {
   isCompact: boolean;
   /**
    * Too narrow for every column, not yet compact: Environment, Allocatable
-   * and Requested are left out, the environment under the node's name and
-   * what is requested under the free count.
+   * and Requested are left out, the environment under the node's name,
+   * what is allocatable under the GPU count and what is requested under
+   * the free count.
    */
   isNarrow?: boolean;
   /** The page drops the Environment column; a phone row names it otherwise. */
@@ -595,7 +596,15 @@ function getColumnConfig(
           return total === undefined ? (
             <UnknownCell reason="Neither the device plugin nor gpu-feature-discovery reports a GPU count for this node." />
           ) : (
-            <CellText title={String(total)} />
+            <CellText
+              title={String(total)}
+              // Allocatable is hidden in the narrow layout; GPUs is not.
+              description={
+                layout.isNarrow && node.allocatable !== undefined
+                  ? `${node.allocatable} allocatable`
+                  : undefined
+              }
+            />
           );
         }),
       },
@@ -753,10 +762,12 @@ const CAPACITY_COLUMN_MIN_WIDTHS: Record<string, number> = {
   installation: 130,
   product: 120,
   memory: 90,
-  total: 80,
+  // "6 allocatable" under the count, in the narrow layout.
+  total: 110,
   allocatable: 110,
   requested: 110,
-  free: 80,
+  // "12 requested" under the count, in the narrow layout.
+  free: 110,
   budget: 160,
   cache: 170,
 };
@@ -798,29 +809,23 @@ export function GpuCapacityPanel({
   // that, without Environment, Allocatable and Requested; too narrow for
   // the rest (beside the side rail too, not only at phone width), the
   // compact layout.
-  const fullColumns = useMemo(
-    () => columnsFor({ isCompact: false }),
+  const fittingColumnsFor = useCallback(
+    (isNarrow: boolean) => columnsFor({ isCompact: false, isNarrow }),
     [columnsFor],
   );
-  const narrowColumns = useMemo(
-    () => columnsFor({ isCompact: false, isNarrow: true }),
-    [columnsFor],
-  );
-  const fit = useFittingColumns(fullColumns, {
+  const fit = useFittingColumns(fittingColumnsFor, {
     minWidths: CAPACITY_COLUMN_MIN_WIDTHS,
     dropFirst: CAPACITY_COLUMNS_DROPPED_FIRST,
-    narrowColumns,
   });
   const isCompact = fit.isCompact;
   const phoneColumns = useMemo(
     () => columnsFor({ isCompact: true }),
     [columnsFor],
   );
-  const compactColumns = usePhoneColumns(
-    phoneColumns,
-    phoneCapacityColumns(columns),
-    { compact: isCompact },
-  );
+  const keptColumns = useMemo(() => phoneCapacityColumns(columns), [columns]);
+  const compactColumns = usePhoneColumns(phoneColumns, keptColumns, {
+    compact: isCompact,
+  });
   const shownColumns = isCompact ? compactColumns : fit.columns;
   const containerRef = fit.ref;
   const hasHost = useMemo(() => nodes.some(isHostMemoryNode), [nodes]);
@@ -828,10 +833,24 @@ export function GpuCapacityPanel({
     () => nodes.some(node => node.eligible === false),
     [nodes],
   );
+  // The default sort, on Environment, moves to the node's name while the
+  // narrow or the compact layout hides it, as does a sort on any column
+  // they hide.
+  const hiddenColumns = useMemo(
+    () => [
+      ...(hideColumns ?? []),
+      ...(isCompact
+        ? phoneColumns
+            .map(column => column.id)
+            .filter(id => !keptColumns.includes(id))
+        : fit.hiddenIds),
+    ],
+    [hideColumns, isCompact, phoneColumns, keptColumns, fit.hiddenIds],
+  );
   const { sort, onSortChange } = useVisibleSort(
     BY_INSTALLATION,
     BY_NAME,
-    hideColumns,
+    hiddenColumns,
   );
   const { tableProps } = useTable<GpuNode>({
     mode: 'complete',

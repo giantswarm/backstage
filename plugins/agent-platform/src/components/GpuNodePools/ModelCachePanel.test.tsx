@@ -274,8 +274,14 @@ describe('ModelCachePanel at phone width', () => {
       expect(headers()).not.toContain('Environment');
       expect(headers()).not.toContain('Cluster');
       expect(
-        screen.getAllByText(`model-serving · ${CLUSTER.name} · inst-1`),
+        screen.getAllByText(
+          `model-serving · ${CLUSTER.name} · ${CLUSTER.organization} · inst-1`,
+        ),
       ).not.toHaveLength(0);
+
+      expect(
+        screen.getByRole('columnheader', { name: 'Claim' }),
+      ).toHaveAttribute('aria-sort', 'ascending');
 
       act(() => container.setWidth(700));
       expect(screen.queryByRole('grid')).toBeNull();

@@ -1,6 +1,6 @@
-import { useCallback, useMemo } from 'react';
+import { useMemo } from 'react';
 import type { ColumnConfig, TableItem } from '@backstage/ui';
-import { tableMinWidth, useCompactLayout } from '../useCompactLayout';
+import { tableMinWidth, useWidthTier } from '../useCompactLayout';
 
 export type FittingColumns<T extends TableItem> = {
   /** Put on a wrapper whose width comes from its parent, as for `useCompactLayout`. */
@@ -11,23 +11,34 @@ export type FittingColumns<T extends TableItem> = {
   isNarrow: boolean;
   /** Too narrow for the rest too, or at phone width: take the compact layout. */
   isCompact: boolean;
+  /**
+   * The ids of the columns hidden in the layout shown (`dropFirst` while
+   * narrow), for ui-react's `useVisibleSort`, so the sort moves off them.
+   */
+  hiddenIds: readonly string[];
 };
+
+const NONE: readonly string[] = [];
 
 /**
  * A bui table whose columns keep their headers and values whole (the
  * `tables` skill, "Rule: typical content fits"), in three steps as its
  * container narrows: every column; without the `dropFirst` columns
- * (`isNarrow`), whose values the caller folds into another cell; then the
- * compact layout (`isCompact`, stacked rows or the phone columns), which the
- * caller renders.
+ * (`isNarrow`), whose values `columnsFor(true)` folds into other cells; then
+ * the compact layout (`isCompact`, stacked rows or the phone columns), which
+ * the caller renders. One measurement (`useWidthTier`) decides.
  *
- * Each column gets its entry in `minWidths` as its `minWidth`, so bui shares
- * the width out by `fr` but never gives a column less: the header with its
- * sort arrow and padding, and the usual value. A column with none keeps
- * `tableMinWidth`'s defaults, 160px for the name and 80px for the others.
+ * Each column gets its entry in `minWidths` as bui's `minWidth`, so bui
+ * shares the width out by `fr` but never gives a column less: the header
+ * with its sort arrow and padding, and the usual value. `tableMinWidth`
+ * reads them from the columns; a column with none counts 160px for the name
+ * and 80px for the others.
+ *
+ * Pass `columnsFor` stable (`useCallback`) and `minWidths` and `dropFirst`
+ * as module constants: the columns are built once per change of them.
  *
  * ```tsx
- * const fit = useFittingColumns(columns, {
+ * const fit = useFittingColumns(columnsFor, {
  *   minWidths: { status: 130, cost: 120 },
  *   dropFirst: ['cluster'],
  * });
@@ -37,59 +48,50 @@ export type FittingColumns<T extends TableItem> = {
  * ```
  */
 export function useFittingColumns<T extends TableItem>(
-  columns: readonly ColumnConfig<T>[],
+  columnsFor: (isNarrow: boolean) => readonly ColumnConfig<T>[],
   {
     minWidths,
-    dropFirst = [],
-    narrowColumns,
+    dropFirst = NONE,
   }: {
     minWidths: Readonly<Record<string, number>>;
     dropFirst?: readonly string[];
-    /**
-     * The columns' narrow form, when their cells take in what the dropped
-     * columns showed (where a pool runs, under its name); `columns` without
-     * it.
-     */
-    narrowColumns?: readonly ColumnConfig<T>[];
   },
 ): FittingColumns<T> {
-  const dropKey = dropFirst.join('\u0000');
   const full = useMemo(
-    () => sizeColumns(columns, minWidths, ''),
-    [columns, minWidths],
+    () => sizeColumns(columnsFor(false), minWidths, NONE),
+    [columnsFor, minWidths],
   );
   const narrow = useMemo(
-    () => sizeColumns(narrowColumns ?? columns, minWidths, dropKey),
-    [narrowColumns, columns, minWidths, dropKey],
+    () => sizeColumns(columnsFor(true), minWidths, dropFirst),
+    [columnsFor, minWidths, dropFirst],
   );
+  const [ref, tier] = useWidthTier([
+    tableMinWidth(full),
+    tableMinWidth(narrow),
+  ]);
+  const isNarrow = tier >= 1;
 
-  const [fullRef, isNarrow] = useCompactLayout(tableMinWidth(full, minWidths));
-  const [narrowRef, isCompact] = useCompactLayout(
-    tableMinWidth(narrow, minWidths),
-  );
-  const ref = useCallback(
-    (node: Element | null) => {
-      fullRef(node);
-      narrowRef(node);
-    },
-    [fullRef, narrowRef],
-  );
-
-  return { ref, columns: isNarrow ? narrow : full, isNarrow, isCompact };
+  return {
+    ref,
+    columns: isNarrow ? narrow : full,
+    isNarrow,
+    isCompact: tier >= 2,
+    hiddenIds: isNarrow ? dropFirst : NONE,
+  };
 }
 
-/** The columns with their minimums, those in `dropKey` hidden. */
+/** The columns with their minimums, those in `drop` hidden. */
 function sizeColumns<T extends TableItem>(
   columns: readonly ColumnConfig<T>[],
   minWidths: Readonly<Record<string, number>>,
-  dropKey: string,
+  drop: readonly string[],
 ): ColumnConfig<T>[] {
-  const drop = new Set(dropKey ? dropKey.split('\u0000') : []);
-  return columns.map(column => ({
-    ...column,
-    ...(minWidths[column.id] !== undefined && {
-      minWidth: minWidths[column.id],
-    }),
-    ...(drop.has(column.id) && { isHidden: true }),
-  }));
+  return columns.map(column => {
+    const minWidth = minWidths[column.id];
+    return {
+      ...column,
+      ...(minWidth !== undefined && { minWidth }),
+      ...(drop.includes(column.id) && { isHidden: true }),
+    };
+  });
 }

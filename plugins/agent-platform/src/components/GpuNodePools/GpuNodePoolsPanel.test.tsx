@@ -306,8 +306,12 @@ describe('GpuNodePoolsPanel at phone width', () => {
         'Status',
         'Pool Kubernetes',
       ]);
-      expect(screen.getByText('l4 · wc1 · inst-1')).toBeInTheDocument();
+      expect(screen.getByText('l4 · wc1 · org-a · inst-1')).toBeInTheDocument();
       expect(screen.getByText('control plane 1.33.5')).toBeInTheDocument();
+      // The default sort, on Environment, moves to a column still shown.
+      expect(
+        screen.getByRole('columnheader', { name: 'Pool' }),
+      ).toHaveAttribute('aria-sort', 'ascending');
 
       act(() => container.setWidth(600));
       expect(screen.queryByRole('grid')).toBeNull();

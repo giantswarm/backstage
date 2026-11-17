@@ -32,15 +32,17 @@ const NARROW = [
 ];
 // Name 160 (the default), Zone 150, Cost 120: 430 for all, 280 without Zone.
 const MIN_WIDTHS = { zone: 150, cost: 120 };
+const DROP_FIRST = ['zone'];
+const columnsFor = (isNarrow: boolean) => (isNarrow ? NARROW : COLUMNS);
 
 function Probe() {
-  const fit = useFittingColumns(COLUMNS, {
+  const fit = useFittingColumns(columnsFor, {
     minWidths: MIN_WIDTHS,
-    dropFirst: ['zone'],
-    narrowColumns: NARROW,
+    dropFirst: DROP_FIRST,
   });
   return (
     <div ref={fit.ref}>
+      <p>hidden: {fit.hiddenIds.join(',')}</p>
       {fit.isCompact ? (
         <p>compact</p>
       ) : (
@@ -71,8 +73,11 @@ describe('useFittingColumns', () => {
     render(<Probe />);
     expect(headers()).toEqual(['Name', 'Zone', 'Cost']);
 
+    expect(screen.getByText('hidden:')).toBeInTheDocument();
+
     act(() => container.setWidth(400));
     expect(headers()).toEqual(['Name', 'Cost']);
+    expect(screen.getByText('hidden: zone')).toBeInTheDocument();
     expect(screen.getByText('a in z1')).toBeInTheDocument();
 
     act(() => container.setWidth(250));

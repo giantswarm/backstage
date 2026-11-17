@@ -35,6 +35,7 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import type { ModelCacheRow } from '../../hooks/useClusterManager';
+import { describeWhereItRuns } from '../../lib/whereItRuns';
 import {
   cacheKeptByCluster,
   describeClaimSize,
@@ -282,8 +283,7 @@ function getColumnConfig(
             isNarrow
               ? [
                   row.claim.namespace,
-                  row.cluster.name,
-                  showInstallation ? row.installation : undefined,
+                  describeWhereItRuns(row, showInstallation),
                 ]
                   .filter(Boolean)
                   .join(' · ')
@@ -436,21 +436,24 @@ export function ModelCachePanel({
       }).filter(column => !hideColumns?.includes(column.id as 'installation')),
     [removable, onRemove, hideColumns, showInstallation],
   );
-  const fullColumns = useMemo(() => columnsFor(false), [columnsFor]);
-  const narrowColumns = useMemo(() => columnsFor(true), [columnsFor]);
   // Too narrow for every column, the table names where a claim is under its
   // name instead of in Environment and Cluster; too narrow for the rest, and
   // at phone width, each claim is a stacked row.
-  const fit = useFittingColumns(fullColumns, {
+  const fit = useFittingColumns(columnsFor, {
     minWidths: CACHE_COLUMN_MIN_WIDTHS,
     dropFirst: CACHE_COLUMNS_DROPPED_FIRST,
-    narrowColumns,
   });
   const columnConfig = fit.columns;
+  // The default sort, on Environment, moves to the claim while the narrow
+  // layout hides it, as does a sort on any column it hides.
+  const hiddenColumns = useMemo(
+    () => [...(hideColumns ?? []), ...fit.hiddenIds],
+    [hideColumns, fit.hiddenIds],
+  );
   const { sort, onSortChange } = useVisibleSort(
     BY_INSTALLATION,
     BY_CLAIM,
-    hideColumns,
+    hiddenColumns,
   );
   const { tableProps } = useTable<ModelCacheRow>({
     mode: 'complete',

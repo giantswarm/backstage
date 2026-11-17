@@ -29,8 +29,7 @@ import {
   StackedRowList,
   StatusHint,
   stopRowPress,
-  tableMinWidth,
-  useCompactLayout,
+  useFittingColumns,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
   describeServedModel,
@@ -1371,21 +1370,19 @@ function ServedModelsGroupTable({
   query: string;
 }) {
   const columns = useMemo(() => columnsForRows(group.rows), [group.rows]);
-  const columnConfig = useMemo(
-    () =>
-      getColumnConfig(hrefFor, columns, group.endpoint, renderActions).map(
-        column => ({
-          ...column,
-          minWidth: SERVED_MODEL_COLUMN_MIN_WIDTHS[column.id],
-        }),
-      ),
+  const columnsFor = useCallback(
+    () => getColumnConfig(hrefFor, columns, group.endpoint, renderActions),
     [hrefFor, columns, group.endpoint, renderActions],
   );
   // Stacked rows wherever the table's columns would squeeze, each column
   // held to its minimum: beside the side rail too, not only at phone width.
-  const [containerRef, isCompact] = useCompactLayout(
-    tableMinWidth(columnConfig, SERVED_MODEL_COLUMN_MIN_WIDTHS),
-  );
+  const {
+    ref: containerRef,
+    columns: columnConfig,
+    isCompact,
+  } = useFittingColumns(columnsFor, {
+    minWidths: SERVED_MODEL_COLUMN_MIN_WIDTHS,
+  });
 
   const { tableProps } = useTable<ServedModelRow>({
     mode: 'complete',
