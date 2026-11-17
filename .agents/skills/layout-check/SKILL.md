@@ -106,9 +106,32 @@ finding is right as it is.
   squeezed to less than two em (a letter or two), with a tooltip or not; a
   control cut off by an ancestor that hides its overflow. Text that ends in
   an ellipsis (or a line clamp) is fine when its full value is there on
-  hover (a `title`, a tooltip by `aria-describedby`, or `data-full-text`, on
+  hover (a `title`, `data-full-text`, or an `aria-describedby` naming a
+  tooltip or a description holding the text, on
   it or up to three ancestors), and a **warning** when it isn't. A scroll
-  container cuts nothing: a person scrolls to the rest.
+  container cuts nothing: a person scrolls to the rest. Text in a table is
+  `table-fit`'s, not this rule's: with `--rules truncation` alone, text in
+  tables is not checked.
+- **table-fit**: all text in a table, typical content fitting its column
+  (the `tables` skill, "Rule: typical content fits"). A table here has rows
+  and column headers (`table`, `grid` or `treegrid` with a `columnheader`
+  or a `th` in its `thead`); a tag group or a list without them is no table.
+  Failing: a column header cut off (with an ellipsis or not, with a tooltip
+  or not) or wrapped onto a second line; a short value cut off or wrapped.
+  Cut off means cut by the cell or something in it, or spilling out of the
+  cell over the next column; a table that scrolls sideways cuts nothing. A
+  short value is a status label (in a badge or chip by its class,
+  `role=status`, or beside a `StatusDot`), or text of one of these shapes,
+  at most 40 characters: a date or time, a duration or age, a number with
+  or without a unit, a version, or a combination of them joined by `·`,
+  `,` or `/` (`144 vCPUs · 1152 GiB`, `Nov 12, 2026, 14:03`, `about 2
+  months ago`, `v1.29.4`, `0.4.1, 0.3.0`), in a link or a row header too.
+  Everything else is free text (names, descriptions, IDs, URLs, paths),
+  held to what `truncation` holds text to: cut off without an ellipsis or
+  squeezed fails, an ellipsis with nothing on hover is a warning. A value
+  laid out as several flex items in a row (`144 vCPUs`, `·`, `1152 GiB`) is
+  measured as one when it wraps. One finding per table, column and kind,
+  with the number of other rows it holds for.
 - **centering**: in a button, tab, select trigger, menu item, switch or link
   styled as a button (`role=button`, or bui's or MUI's button classes), the
   text and icons sit more than 2px off the centre of the
