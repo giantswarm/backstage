@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Cell, Table, Text, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
 import {
@@ -6,9 +6,6 @@ import {
   DataBar,
   INITIAL_ROWS,
   ShowMore,
-  tableMinWidth,
-  useCompactLayout,
-  usePhoneColumns,
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmPersonRow } from '../../../lib/llmUsage';
 import {
@@ -22,7 +19,7 @@ import { sortUsageRows } from '../../AgentUsageSection/helpers';
 import { UsageCard } from '../UsageCard';
 import { NameCell } from '../NameCell';
 import { USAGE_COLUMN_MIN_WIDTH } from '../columnWidths';
-import { useVisibleSort } from '../../../hooks/useVisibleSort';
+import { useUsageTableColumns } from '../../../hooks/useUsageTableColumns';
 import { useMeasureColor } from '../../../lib/measures';
 
 export type LlmByPersonTableProps = {
@@ -61,73 +58,66 @@ export function LlmByPersonTable({
     [rows],
   );
 
-  const columnsFor = (compact: boolean): ColumnConfig<LlmPersonRow>[] => [
-    {
-      id: 'label',
-      label: 'Person',
-      isRowHeader: true,
-      isSortable: true,
-      minWidth: USAGE_COLUMN_MIN_WIDTH.name,
-      cell: row => <NameCell title={row.label} compact={compact} />,
-    },
-    {
-      id: 'tokens',
-      label: 'Tokens',
-      isSortable: true,
-      minWidth: USAGE_COLUMN_MIN_WIDTH.tokens,
-      cell: row => (
-        <Cell>
-          <DataBar
-            label={formatTokens(row.tokens)}
-            value={row.tokens}
-            max={max.tokens}
-            color={colorFor('tokens')}
-          />
-        </Cell>
-      ),
-    },
-    {
-      id: 'costUsd',
-      label: 'Spend',
-      isSortable: true,
-      minWidth: USAGE_COLUMN_MIN_WIDTH.spend,
-      cell: row => (
-        <Cell>
-          <DataBar
-            label={formatMoney(row.costUsd, currency)}
-            value={row.costUsd}
-            max={max.cost}
-            color={colorFor('cost')}
-          />
-        </Cell>
-      ),
-    },
-    {
-      id: 'sharePct',
-      label: 'Share of spend',
-      isSortable: true,
-      minWidth: USAGE_COLUMN_MIN_WIDTH.share,
-      cell: row => (
-        <Cell>
-          <DataBar
-            label={formatPercent(row.sharePct)}
-            value={row.sharePct}
-            max={max.ratio}
-            color={colorFor('ratio')}
-          />
-        </Cell>
-      ),
-    },
-  ];
-  // At phone width, and in a card too narrow for every column, the person
-  // and what they cost, as the other tables.
-  const [tableRef, isCompact] = useCompactLayout(
-    tableMinWidth(columnsFor(false)),
-  );
-  const shownColumns = usePhoneColumns(
-    columnsFor(isCompact),
-    ['label', 'costUsd'],
-    { compact: isCompact },
+  const columnsFor = useCallback(
+    (compact: boolean): ColumnConfig<LlmPersonRow>[] => [
+      {
+        id: 'label',
+        label: 'Person',
+        isRowHeader: true,
+        isSortable: true,
+        minWidth: USAGE_COLUMN_MIN_WIDTH.name,
+        cell: row => <NameCell title={row.label} compact={compact} />,
+      },
+      {
+        id: 'tokens',
+        label: 'Tokens',
+        isSortable: true,
+        minWidth: USAGE_COLUMN_MIN_WIDTH.tokens,
+        cell: row => (
+          <Cell>
+            <DataBar
+              label={formatTokens(row.tokens)}
+              value={row.tokens}
+              max={max.tokens}
+              color={colorFor('tokens')}
+            />
+          </Cell>
+        ),
+      },
+      {
+        id: 'costUsd',
+        label: 'Spend',
+        isSortable: true,
+        minWidth: USAGE_COLUMN_MIN_WIDTH.spend,
+        cell: row => (
+          <Cell>
+            <DataBar
+              label={formatMoney(row.costUsd, currency)}
+              value={row.costUsd}
+              max={max.cost}
+              color={colorFor('cost')}
+            />
+          </Cell>
+        ),
+      },
+      {
+        id: 'sharePct',
+        label: 'Share of spend',
+        isSortable: true,
+        minWidth: USAGE_COLUMN_MIN_WIDTH.share,
+        cell: row => (
+          <Cell>
+            <DataBar
+              label={formatPercent(row.sharePct)}
+              value={row.sharePct}
+              max={max.ratio}
+              color={colorFor('ratio')}
+            />
+          </Cell>
+        ),
+      },
+    ],
+    [max, colorFor, currency],
   );
 
   const { tableProps } = useTable<LlmPersonRow>({
@@ -141,11 +131,14 @@ export function LlmByPersonTable({
     // not reset its offset when the data shrinks.
     paginationOptions: { type: 'none' },
   });
-  // The default sort is on Spend, which the compact layout keeps.
-  useVisibleSort(tableProps.sort, shownColumns, {
-    column: 'costUsd',
-    direction: 'descending',
-  });
+  // At phone width, and in a card too narrow for every column, the person
+  // and what they cost, as the other tables.
+  // It keeps Spend, the default sort.
+  const { ref: tableRef, columns: shownColumns } = useUsageTableColumns(
+    columnsFor,
+    ['label', 'costUsd'],
+    tableProps.sort,
+  );
 
   return (
     <UsageCard title="By person" note={note} wide>

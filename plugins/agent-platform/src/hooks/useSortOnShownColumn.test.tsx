@@ -1,6 +1,6 @@
 import { renderHook } from '@testing-library/react';
 import type { ColumnConfig, SortDescriptor } from '@backstage/ui';
-import { useVisibleSort } from './useVisibleSort';
+import { useSortOnShownColumn } from './useSortOnShownColumn';
 
 type Row = { id: string };
 const column = (id: string, isHidden = false): ColumnConfig<Row> => ({
@@ -11,11 +11,11 @@ const column = (id: string, isHidden = false): ColumnConfig<Row> => ({
 });
 const fallback: SortDescriptor = { column: 'cost', direction: 'descending' };
 
-describe('useVisibleSort', () => {
+describe('useSortOnShownColumn', () => {
   it('sorts by the fallback when the sorted column is hidden', () => {
     const onSortChange = jest.fn();
     renderHook(() =>
-      useVisibleSort(
+      useSortOnShownColumn(
         {
           descriptor: { column: 'turns', direction: 'ascending' },
           onSortChange,
@@ -30,7 +30,7 @@ describe('useVisibleSort', () => {
   it('leaves a sort on a shown column alone', () => {
     const onSortChange = jest.fn();
     renderHook(() =>
-      useVisibleSort(
+      useSortOnShownColumn(
         {
           descriptor: { column: 'turns', direction: 'ascending' },
           onSortChange,
@@ -45,7 +45,7 @@ describe('useVisibleSort', () => {
   it('does not switch to a fallback that is hidden too', () => {
     const onSortChange = jest.fn();
     renderHook(() =>
-      useVisibleSort(
+      useSortOnShownColumn(
         {
           descriptor: { column: 'turns', direction: 'ascending' },
           onSortChange,

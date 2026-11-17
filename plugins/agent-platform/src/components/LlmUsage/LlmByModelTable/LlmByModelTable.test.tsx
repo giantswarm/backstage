@@ -1,4 +1,5 @@
 import {
+  mockContainerWidth,
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
@@ -179,10 +180,45 @@ describe('LlmByModelTable at phone width', () => {
 
     expect(headers()).toEqual(['Model', 'Spend', 'Tokens/call']);
     const name = screen.getByText(ROWS[0].model);
-    // Wraps to two lines rather than truncating to one; past the second
-    // line, the `title` holds the rest.
+    // Wraps to two lines rather than truncating to one, and no `title=`.
     expect(name).not.toHaveAttribute('data-truncate');
-    expect(name).toHaveAttribute('title', 'claude-sonnet-5');
+    expect(name).not.toHaveAttribute('title');
+  });
+
+  // The card's content box at 375px: the kept columns' minimums must fit
+  // it, or bui's resizable container scrolls the table sideways.
+  it('fits its three columns in a phone card without scrolling', () => {
+    layout = mockPhoneLayout();
+    const container = mockContainerWidth(309);
+    try {
+      render(<LlmByModelTable rows={ROWS} emptyMessage="none" />);
+
+      const widths = screen
+        .getAllByRole('columnheader')
+        .map(cell => parseFloat(cell.style.width));
+      expect(widths.every(width => width > 0)).toBe(true);
+      expect(widths.reduce((sum, width) => sum + width, 0)).toBeLessThanOrEqual(
+        309,
+      );
+    } finally {
+      container.restore();
+    }
+  });
+
+  it('shows the rest of a cut name on hover in a compact table on a desktop', () => {
+    layout = mockDesktopLayout();
+    const container = mockContainerWidth(424);
+    try {
+      render(<LlmByModelTable rows={ROWS} emptyMessage="none" />);
+
+      expect(headers()).toEqual(['Model', 'Spend', 'Tokens/call']);
+      expect(screen.getByText(ROWS[0].model)).toHaveAttribute(
+        'title',
+        ROWS[0].model,
+      );
+    } finally {
+      container.restore();
+    }
   });
 
   it('keeps every column on a desktop', () => {

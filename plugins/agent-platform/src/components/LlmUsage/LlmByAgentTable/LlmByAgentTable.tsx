@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Badge, Cell, Flex, Table, Text, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
 import {
@@ -7,9 +7,6 @@ import {
   InfoHint,
   INITIAL_ROWS,
   ShowMore,
-  tableMinWidth,
-  useCompactLayout,
-  usePhoneColumns,
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmAgentRow } from '../../../lib/llmUsage';
 import {
@@ -24,7 +21,7 @@ import { sortUsageRows } from '../../AgentUsageSection/helpers';
 import { UsageCard } from '../UsageCard';
 import { NameCell } from '../NameCell';
 import { USAGE_COLUMN_MIN_WIDTH } from '../columnWidths';
-import { useVisibleSort } from '../../../hooks/useVisibleSort';
+import { useUsageTableColumns } from '../../../hooks/useUsageTableColumns';
 import { useMeasureColor } from '../../../lib/measures';
 
 export type LlmByAgentTableProps = {
@@ -102,91 +99,82 @@ export function LlmByAgentTable({
     [rows],
   );
 
-  const columnsFor = (compact: boolean): ColumnConfig<LlmAgentRow>[] => [
-    {
-      id: 'label',
-      label: 'Agent',
-      isRowHeader: true,
-      isSortable: true,
-      minWidth: USAGE_COLUMN_MIN_WIDTH.name,
-      cell: row => <AgentCell row={row} compact={compact} />,
-    },
-    {
-      id: 'calls',
-      label: 'Model calls',
-      isSortable: true,
-      minWidth: USAGE_COLUMN_MIN_WIDTH.calls,
-      cell: row => (
-        <Cell>
-          <DataBar
-            label={formatCount(row.calls)}
-            value={row.calls}
-            max={max.calls}
-            color={colorFor('calls')}
-          />
-        </Cell>
-      ),
-    },
-    {
-      id: 'tokens',
-      label: 'Tokens',
-      isSortable: true,
-      minWidth: USAGE_COLUMN_MIN_WIDTH.tokens,
-      cell: row => (
-        <Cell>
-          <DataBar
-            label={formatTokens(row.tokens)}
-            value={row.tokens}
-            max={max.tokens}
-            color={colorFor('tokens')}
-          />
-        </Cell>
-      ),
-    },
-    {
-      id: 'costUsd',
-      label: 'Spend',
-      isSortable: true,
-      minWidth: USAGE_COLUMN_MIN_WIDTH.spend,
-      cell: row => (
-        <Cell>
-          <DataBar
-            label={formatMoney(row.costUsd, currency)}
-            value={row.costUsd}
-            max={max.cost}
-            color={colorFor('cost')}
-          />
-        </Cell>
-      ),
-    },
-    {
-      id: 'sharePct',
-      label: 'Share of spend',
-      isSortable: true,
-      minWidth: USAGE_COLUMN_MIN_WIDTH.share,
-      cell: row => (
-        <Cell>
-          <DataBar
-            label={formatPercent(row.sharePct)}
-            value={row.sharePct}
-            max={max.ratio}
-            color={colorFor('ratio')}
-          />
-        </Cell>
-      ),
-    },
-  ];
-  // At phone width, and wherever the card is narrower than the columns'
-  // minimums, the agent and what it cost (T22 B10): five columns in 343px
-  // squashed every figure to a clipped sliver. A known agent's calls
-  // and tokens are on its own Usage tab, a link away.
-  const [tableRef, isCompact] = useCompactLayout(
-    tableMinWidth(columnsFor(false)),
-  );
-  const shownColumns = usePhoneColumns(
-    columnsFor(isCompact),
-    ['label', 'costUsd'],
-    { compact: isCompact },
+  const columnsFor = useCallback(
+    (compact: boolean): ColumnConfig<LlmAgentRow>[] => [
+      {
+        id: 'label',
+        label: 'Agent',
+        isRowHeader: true,
+        isSortable: true,
+        minWidth: USAGE_COLUMN_MIN_WIDTH.name,
+        cell: row => <AgentCell row={row} compact={compact} />,
+      },
+      {
+        id: 'calls',
+        label: 'Model calls',
+        isSortable: true,
+        minWidth: USAGE_COLUMN_MIN_WIDTH.calls,
+        cell: row => (
+          <Cell>
+            <DataBar
+              label={formatCount(row.calls)}
+              value={row.calls}
+              max={max.calls}
+              color={colorFor('calls')}
+            />
+          </Cell>
+        ),
+      },
+      {
+        id: 'tokens',
+        label: 'Tokens',
+        isSortable: true,
+        minWidth: USAGE_COLUMN_MIN_WIDTH.tokens,
+        cell: row => (
+          <Cell>
+            <DataBar
+              label={formatTokens(row.tokens)}
+              value={row.tokens}
+              max={max.tokens}
+              color={colorFor('tokens')}
+            />
+          </Cell>
+        ),
+      },
+      {
+        id: 'costUsd',
+        label: 'Spend',
+        isSortable: true,
+        minWidth: USAGE_COLUMN_MIN_WIDTH.spend,
+        cell: row => (
+          <Cell>
+            <DataBar
+              label={formatMoney(row.costUsd, currency)}
+              value={row.costUsd}
+              max={max.cost}
+              color={colorFor('cost')}
+            />
+          </Cell>
+        ),
+      },
+      {
+        id: 'sharePct',
+        label: 'Share of spend',
+        isSortable: true,
+        minWidth: USAGE_COLUMN_MIN_WIDTH.share,
+        cell: row => (
+          <Cell>
+            <DataBar
+              label={formatPercent(row.sharePct)}
+              value={row.sharePct}
+              max={max.ratio}
+              color={colorFor('ratio')}
+            />
+          </Cell>
+        ),
+      },
+    ],
+    [max, colorFor, currency],
   );
 
   const { tableProps } = useTable<LlmAgentRow>({
@@ -200,11 +188,16 @@ export function LlmByAgentTable({
     // not reset its offset when the data shrinks.
     paginationOptions: { type: 'none' },
   });
-  // The default sort is on Spend, which the compact layout keeps.
-  useVisibleSort(tableProps.sort, shownColumns, {
-    column: 'costUsd',
-    direction: 'descending',
-  });
+  // At phone width, and wherever the card is narrower than the columns'
+  // minimums, the agent and what it cost (T22 B10): five columns in 343px
+  // squashed every figure to a clipped sliver. A known agent's calls
+  // and tokens are on its own Usage tab, a link away.
+  // It keeps Spend, the default sort.
+  const { ref: tableRef, columns: shownColumns } = useUsageTableColumns(
+    columnsFor,
+    ['label', 'costUsd'],
+    tableProps.sort,
+  );
 
   return (
     <UsageCard title="By agent" note={note} wide>
