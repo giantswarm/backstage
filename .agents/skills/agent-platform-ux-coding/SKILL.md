@@ -6,9 +6,10 @@ description: Rules for building UI in the agent-platform shell — patterns to r
 # Agent Platform UI: UX and coding rules
 
 Load this skill before you touch anything that renders in the agent-platform
-shell: `/`, `/sessions/**`, `/usage/**`, `/profile` and `/customize/**`, built
-from `plugins/agent-platform`, `plugins/muster`, the shell components in
-`plugins/ui-react` and `packages/app/src/modules/agentShell`. The old
+shell: `/`, `/sessions/**`, `/usage/**`, `/profile`, `/customize/**` and,
+where configured, `/platform/**`, built from `plugins/agent-platform`,
+`plugins/muster`, the shell components in `plugins/ui-react`,
+`plugins/gs/src/components/platform` and `packages/app/src/modules/agentShell`. The old
 `/agent-platform/**` addresses only redirect. Where a page lives, how it is
 addressed and linked, and what adding or moving one takes are the
 [`urls`](../urls/SKILL.md) skill's rules.
@@ -100,6 +101,10 @@ them and never invent a palette.
   a search or filter is in force so it can be cleared. Selects use
   `searchableIf(options)` for type-ahead.
 - A list that matches nothing shows `CatalogNoMatch` with "Clear filters".
+- A list whose columns a person chooses puts `ColumnPicker` (`ui-react`) at
+  the end of its filter bar, keeps the choice with `useTableColumns`, and
+  leaves it out at phone width, where the list stacks. The Platform section's
+  clusters list is the precedent.
 - Card and row grids follow the existing presentation: avatar or tile plus
   bold name where the resource has an identity mark, stock `CellText`
   otherwise.
@@ -136,7 +141,10 @@ them and never invent a palette.
   labels describe configuration separately from access state.
 
 - Empty lists and not-found pages use `EmptyStateCard`; a not-found page adds a
-  back link. A failed read of a whole page is a danger `Alert` with a back link.
+  back link. A list read across environments names the ones that failed in
+  `UnreachableInstallationsAlert` (`ui-react`), with Try again, once every
+  environment answered; with nothing to show the failure is the list's answer
+  (`everything`), never an empty state. A failed read of a whole page is a danger `Alert` with a back link.
 - Loading a region uses `LoadingIndicator` with a "Reading …" label. Detail
   pages render their loading frame in the final geometry with
   `ShellPageTitleSkeleton`, `ShellPageBadgeSkeleton` and

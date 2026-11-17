@@ -17,6 +17,7 @@ import {
   agentPlatformAccessReviewOf,
   agentPlatformKubernetesObjectsOf,
 } from '@giantswarm/backstage-plugin-agent-platform/fixtures';
+import { gsKubernetesObjectsOf } from '@giantswarm/backstage-plugin-gs/fixtures';
 
 /**
  * The objects of an installation one plugin's fixtures hold, as its
@@ -29,12 +30,13 @@ export type FixtureObjectsSource = (
 
 /**
  * The plugins' objects fixture mode serves: muster's MCP servers and
- * workflows, and agent-platform's Agents, their carriers, models and
- * Harnesses.
+ * workflows, agent-platform's Agents, their carriers, models and Harnesses,
+ * and gs's Cluster API clusters with their node pools.
  */
 const FIXTURE_OBJECTS: readonly FixtureObjectsSource[] = [
   musterKubernetesObjectsOf,
   agentPlatformKubernetesObjectsOf,
+  gsKubernetesObjectsOf,
 ];
 
 /**
@@ -60,13 +62,11 @@ const FIXTURE_ACCESS_REVIEWS: readonly FixtureAccessReviewSource[] = [
 ];
 
 /**
- * The API groups the fixture installation serves beyond the ones every
- * resource class reads: the Agent Platform's (kagent, muster). Groups that
- * turn on other platform components in the installation inventory, model
- * hosting (`serving.kserve.io`) and cluster management (`cluster.x-k8s.io`),
- * are left out until fixtures serve them.
+ * The API groups the fixture installation leaves out although a resource
+ * class reads them: model hosting's (`serving.kserve.io`), which turns on a
+ * platform component in the installation inventory, until fixtures serve it.
  */
-const LEFT_OUT_GROUPS = new Set(['serving.kserve.io', 'cluster.x-k8s.io']);
+const LEFT_OUT_GROUPS = new Set(['serving.kserve.io']);
 
 type Resource = {
   group: string;
@@ -157,8 +157,8 @@ function unhandled(method: string, path: string): Response {
 /**
  * The Kubernetes API in fixture mode (`gs.fixtures: true`): the fixture
  * installations (`FIXTURE_INSTALLATIONS`), each reachable, serving the API
- * groups of the portal's resource classes (kagent's and muster's among them,
- * not kserve's or Cluster API's) and holding the objects of the plugins'
+ * groups of the portal's resource classes (kagent's, muster's and Cluster
+ * API's among them, not kserve's) and holding the objects of the plugins'
  * fixtures (`FIXTURE_OBJECTS`). Discovery answers what the classes support, a
  * list or a read answers those objects, and the person may do anything an
  * access review asks about. Any other request fails with a 501 and a console

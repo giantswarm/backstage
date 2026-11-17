@@ -429,21 +429,23 @@ Two constraints:
 
 ## Optional features
 
-Some optional features can be enabled and disabled via the app configuration. For example, the configuration snippet below will enable the `installationsPage` feature:
+The classic Clusters, Deployments and Installations pages, Flux and AI Chat
+are page extensions listed under `app.extensions` in `app-config.yaml`
+(`page:gs/clusters`, `page:gs/deployments`, `page:gs/installations`, …); a
+deployment's `app.extensions` replaces that list, so it repeats what it keeps.
+
+`gs.features` holds what is off unless a deployment turns it on:
 
 ```yaml
 gs:
   features:
-    installationsPage:
+    platformSection:
       enabled: true
 ```
 
-The following optional features are available:
-
-- `clustersPage`: Enable the Clusters page, which lists all clusters -- both management and workload clusters -- in the installations the user has access to via the Backstage instance.
-- `deploymentsPage`: Enable the Deployments page, which lists all the deployments -- `HelmRelease` and `App CR` resources -- in the installations the user has access to via the Backstage instance.
-- `installationsPage`: Enable the Installations page, which lists all Resource entities of type _instalation_ in the catalog.
-- `scaffolder`: Enables the scaffolder that lists available templates.
+- `platformSection`: the Platform section of the Agent Platform shell
+  (`/platform`, the clusters list) with its rail item. See
+  [Agent Platform configuration](agent-platform-configuration.md#the-platform-section-gsfeaturesplatformsection).
 
 ## Egress through an HTTP proxy
 

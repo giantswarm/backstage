@@ -44,6 +44,8 @@ change needs something the rules do not settle, it needs a decision first.
 /customize/workspaces[/new]
 /customize/workspaces/<inst>/<org>/<name>[/sessions|/details]
 /customize/workspaces/<inst>/<org>/<name>/edit
+/platform                                               → /platform/clusters
+/platform/clusters                                      gs.features.platformSection only
 /agent-platform/**  →  one-hop redirects until the end of 2026
 ```
 
@@ -58,11 +60,22 @@ How it is mounted:
   `attachTo: { id: 'page:app/agent-shell-customize', input: 'pages' }`.
 - `/sessions`, `/usage` and `/profile` are agent-platform's own
   `PageBlueprint`s.
+- `/platform` is the app's page (`page:app/agent-shell-platform`,
+  `packages/app/src/modules/agentShell/platformPageExtension.tsx`), a tab per
+  area (`platformTabIds.ts`), the bare path redirecting to the first,
+  Clusters. Only where `gs.features.platformSection.enabled` is on: its `if`
+  reads the `platform-section` flag `PortalFeatureFlags` reports from that
+  key, and `isAgentArea` counts `/platform` in the shell only then
+  (`useIsAgentArea`). Item 1 of giantswarm/giantswarm#39295; the planned
+  tree is `/platform/clusters/<inst>/<ns>/<name>[/node-pools|/gateways|/access]`,
+  `/platform/environments` and `/platform/environments/<inst>`.
 - `/agent-platform` (`page:agent-platform`) and `/agents` are the app's
   catch-alls (`legacyPagesModule.tsx`), which call
   `legacyAgentPlatformTarget` (`legacyPaths.ts`).
 
-Every page is enabled by default and gated by `AGENT_SHELL_ON`. Deployments
+Every page is enabled by default and gated by `AGENT_SHELL_ON`; the Platform
+section's page also by its configuration key, which only adds the page where
+it is set. Deployments
 replace `app.extensions` wholesale, so an opt-in extension silently drops out
 there; attach in code, never through config.
 
@@ -70,10 +83,13 @@ there; attach in code, never through config.
 
 ### 1. The URL tree follows the rail
 
-The only roots are `/`, `/sessions`, `/usage`, `/profile` and `/customize`.
-A new root needs a decision, a check that no classic route uses it, and an
-entry in `AGENT_AREA_PREFIXES` (`agentArea.ts`), which decides where the
-shell renders. The rail lights an item on its own path and every path below
+The only roots are `/`, `/sessions`, `/usage`, `/profile`, `/customize`,
+`/organizations` and, where the deployment turns it on, `/platform`
+(giantswarm/giantswarm#39295; no classic route uses it). A new root needs a
+decision, a check that no classic route uses it, and an entry in
+`AGENT_AREA_PREFIXES` (`agentArea.ts`), which decides where the shell renders;
+a root behind configuration is added in `isAgentArea` under its setting
+instead, as `/platform` is. The rail lights an item on its own path and every path below
 it, so a page under the right root needs no rail configuration.
 
 ### 2. A resource's pages sit under its list

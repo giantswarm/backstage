@@ -188,3 +188,77 @@ export function collectClusterAccessUpdates(
 
   return updates;
 }
+
+/** The reason a rejected read gives: the person declined the sign-in. */
+export const SIGN_IN_DECLINED_REASON = 'the sign-in was declined';
+
+/**
+ * The installations a cluster list failed on, once each, with a short
+ * reason; a rejection (the person declined a sign-in) among them. A 404 is
+ * not a failure: no Cluster API there, an empty list. An incompatibility
+ * names the API versions that do not match.
+ */
+export function unlistedInstallationsOf(
+  errors: ErrorInfoUnion[],
+): { installation: string; reason: string }[] {
+  const byInstallation = new Map<string, string>();
+  for (const errorInfo of errors) {
+    if (byInstallation.has(errorInfo.cluster)) {
+      continue;
+    }
+    if (errorInfo.type === 'incompatibility') {
+      byInstallation.set(errorInfo.cluster, 'API version not supported');
+      continue;
+    }
+    if (isNotFoundError(errorInfo)) {
+      continue;
+    }
+    if (errorInfo.error.name === 'RejectedError') {
+      byInstallation.set(errorInfo.cluster, SIGN_IN_DECLINED_REASON);
+      continue;
+    }
+    byInstallation.set(
+      errorInfo.cluster,
+      describeClusterError(errorInfo.error),
+    );
+  }
+  return [...byInstallation].map(([installation, reason]) => ({
+    installation,
+    reason,
+  }));
+}
+
+/**
+ * Per installation, which related reads failed and why, the first failure of
+ * each kind; a 404 (the kind is not served there) is no failure.
+ */
+export function relatedReadFailuresOf(
+  errorsByRead: Record<
+    'controlPlanes' | 'providerClusters' | 'identities',
+    ErrorInfoUnion[]
+  >,
+): Record<
+  string,
+  Partial<Record<'controlPlanes' | 'providerClusters' | 'identities', string>>
+> {
+  const failures: Record<
+    string,
+    Partial<Record<'controlPlanes' | 'providerClusters' | 'identities', string>>
+  > = {};
+  for (const [read, errors] of Object.entries(errorsByRead) as [
+    'controlPlanes' | 'providerClusters' | 'identities',
+    ErrorInfoUnion[],
+  ][]) {
+    for (const errorInfo of errors) {
+      if (errorInfo.type !== 'incompatibility' && isNotFoundError(errorInfo)) {
+        continue;
+      }
+      const installation = (failures[errorInfo.cluster] ??= {});
+      installation[read] ??=
+        errorInfo.type === 'incompatibility'
+          ? 'API version not supported'
+          : describeClusterError(errorInfo.error);
+    }
+  }
+  return failures;
+}

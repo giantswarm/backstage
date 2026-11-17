@@ -847,6 +847,8 @@ describe('getTelemetryPageViewPayload', () => {
       '/settings',
       '/settings/general',
       '/customize',
+      '/platform',
+      '/platform/clusters',
       '/customize/agents',
       '/customize/skills',
       '/customize/connectors',

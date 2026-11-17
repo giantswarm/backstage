@@ -8,7 +8,9 @@ import {
   readPortals,
   type Portals,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
+import { usePlatformSectionConfigured } from './platformSection';
 
 /**
  * The routes the agent shell owns while the Agent Platform is available: the
@@ -27,15 +29,43 @@ const AGENT_AREA_PREFIXES = [
   '/customize',
   '/agent-platform',
 ];
+
+/**
+ * The Platform section's root, in the agent area only where the deployment
+ * turned the section on (`gs.features.platformSection.enabled`): elsewhere
+ * the address renders as it did before the section existed.
+ */
+const PLATFORM_SECTION_PREFIX = '/platform';
 /* eslint-enable giantswarm/no-restricted-syntax */
 
-/** Whether a pathname lies in the agent area (`/` or under one of its roots). */
-export function isAgentArea(pathname: string): boolean {
+function isUnder(pathname: string, prefix: string): boolean {
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
+
+/**
+ * Whether a pathname lies in the agent area (`/` or under one of its roots),
+ * `/platform` among them when `platformSection` is on.
+ */
+export function isAgentArea(
+  pathname: string,
+  { platformSection = false }: { platformSection?: boolean } = {},
+): boolean {
   return (
     pathname === '/' ||
-    AGENT_AREA_PREFIXES.some(
-      prefix => pathname === prefix || pathname.startsWith(`${prefix}/`),
-    )
+    AGENT_AREA_PREFIXES.some(prefix => isUnder(pathname, prefix)) ||
+    (platformSection && isUnder(pathname, PLATFORM_SECTION_PREFIX))
+  );
+}
+
+/**
+ * {@link isAgentArea} with the deployment's Platform section setting, for
+ * code inside the app.
+ */
+export function useIsAgentArea(): (pathname: string) => boolean {
+  const platformSection = usePlatformSectionConfigured();
+  return useCallback(
+    (pathname: string) => isAgentArea(pathname, { platformSection }),
+    [platformSection],
   );
 }
 
@@ -70,6 +100,7 @@ export function useAgentShellAvailable(): boolean {
  */
 export function useAgentShellArea(): boolean {
   const available = useAgentShellAvailable();
+  const inAgentArea = useIsAgentArea();
   const { pathname } = useLocation();
-  return available && isAgentArea(pathname);
+  return available && inAgentArea(pathname);
 }

@@ -33,6 +33,7 @@ A key works only in the channel it is meant for:
 | `app.portals.agentPlatform`                               | `false`    | Yes, to serve the shell to everyone            | Shell only for people who opt in with the `agent-platform-shell` flag    |
 | `app.portals.platformPortal`                              | `true`     | No                                             | —                                                                        |
 | `app.extensions: page:agent-platform`                     | enabled    | No                                             | —                                                                        |
+| `gs.features.platformSection.enabled`                     | `false`    | No                                             | No `/platform` route and no Platform item in the rail                    |
 | `gs.installations.<name>.baseDomain`                      | —          | Yes, per installation running the platform     | No kagent, muster, Mimir or avatar endpoint can be derived               |
 | `gs.installations.<name>.mimirEnabled`                    | `true`     | Set `false` on installations without Mimir     | Usage metrics are requested from a Mimir that does not exist             |
 | `gs.installations.<name>.currency`                        | USD        | No                                             | Costs shown in USD                                                       |
@@ -125,6 +126,27 @@ the shell is off, and it is not listed in the settings while
 `app.portals.agentPlatform` is on. Every shell extension keys on the flag
 internally. The app reads it once per load (`isAgentShellOn`), so toggling it
 in the settings takes effect after a reload.
+
+## The Platform section: `gs.features.platformSection`
+
+```yaml
+gs:
+  features:
+    platformSection:
+      enabled: true
+```
+
+Turns on `/platform` with its rail item, after Usage (in the Profile menu on a
+phone): the clusters list (see
+[agent-platform.md](agent-platform.md#platform)). Off by default; without it
+neither the route nor the rail item exists and `/platform` renders as before.
+The key is public (`@visibility frontend`), because the app decides which pages
+it mounts as it starts, before sign-in. `PortalFeatureFlags` reports it as the
+`platform-section` feature flag the page's extension keys on; that flag is not
+registered, so no browser can turn it on. It needs the shell
+(`app.portals.agentPlatform`) and the clusters the person reads through
+`gs.installations`; the list reads `gs.kubernetesVersions` for the end-of-life
+mark.
 
 ## Installations: `gs.installations.<name>`
 

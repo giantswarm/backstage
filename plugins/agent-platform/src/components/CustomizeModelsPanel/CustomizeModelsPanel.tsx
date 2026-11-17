@@ -24,6 +24,7 @@ import {
   useCatalogFilters,
   usePhoneColumns,
   usePhoneLayout,
+  UnreachableInstallationsAlert,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -49,7 +50,6 @@ import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 import { ModelHostingHint } from '../ModelHostingHint';
 import type { ModelRow } from '../ModelsTable';
 import { useServing } from '../ServingProvider';
-import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 
 export type CustomizeModelsPanelProps = {
   search: string;

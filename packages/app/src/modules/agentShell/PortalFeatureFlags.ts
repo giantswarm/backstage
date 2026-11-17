@@ -12,6 +12,10 @@ import {
   isAgentShellOptInOffered,
   readPortals,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
+  PLATFORM_SECTION_FLAG,
+  isPlatformSectionConfigured,
+} from './platformSection';
 
 /** Where fixture mode notes that it turned the Organizations flag on. */
 export const FIXTURE_ORGANIZATIONS_STARTED =
@@ -32,7 +36,9 @@ export const FIXTURE_ORGANIZATIONS_STARTED =
  * and the shell's extensions (its `/` home, Customize, the classic home's
  * hand-over) as well as the plugins rendering inside it all key on this one
  * flag — so the deployment's choice reaches every one of them through here,
- * at app start, exactly as a flag would.
+ * at app start, exactly as a flag would. The Platform section's flag
+ * (`platform-section`) is the same kind of bridge, without a browser opt-in:
+ * it reads `gs.features.platformSection.enabled` and nothing else.
  *
  * The flag is listed on the settings page only while it means something
  * (the deployment has the Agent Platform off); otherwise toggling it would
@@ -93,6 +99,9 @@ export class PortalFeatureFlags implements FeatureFlagsApi {
   }
 
   isActive(name: string): boolean {
+    if (name === PLATFORM_SECTION_FLAG) {
+      return isPlatformSectionConfigured(this.config);
+    }
     if (name === ORGANIZATIONS_FLAG) {
       return (
         this.config.getOptionalBoolean('agentPlatform.organizations.enabled') ??

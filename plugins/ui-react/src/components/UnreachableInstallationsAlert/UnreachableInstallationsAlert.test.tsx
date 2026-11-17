@@ -316,4 +316,25 @@ describe('UnreachableInstallationsAlert', () => {
       );
     });
   });
+
+  it('offers the page’s own remedy beside Try again', async () => {
+    const onRetry = jest.fn();
+    const onSignIn = jest.fn();
+    await renderInTestApp(
+      <UnreachableInstallationsAlert
+        installations={['gremlin']}
+        failures={{ gremlin: { reason: 'session expired' } }}
+        resourceName="clusters"
+        onRetry={onRetry}
+        actions={<button onClick={onSignIn}>Sign in again</button>}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Sign in again' }),
+    );
+    expect(onSignIn).toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(onRetry).toHaveBeenCalled();
+  });
 });

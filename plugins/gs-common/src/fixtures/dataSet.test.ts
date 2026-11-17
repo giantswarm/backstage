@@ -525,7 +525,81 @@ describe('builder settings', () => {
       gpuPools: [],
       cacheClaims: [],
       hostedModels: [],
+      clusters: [],
     });
+  });
+
+  it('gives each installation its management cluster and workload clusters in every state', () => {
+    const data = createFixtureDataSet({ now });
+    for (const { name } of data.installations) {
+      const clusters = data.clusters.filter(c => c.installation === name);
+      expect(clusters).toContainEqual(
+        expect.objectContaining({
+          name,
+          kind: 'management',
+          organization: 'giantswarm',
+        }),
+      );
+      const states = new Set(
+        clusters.filter(c => c.kind === 'workload').map(c => c.state),
+      );
+      expect([...states].sort()).toEqual(['creating', 'deleting', 'ready']);
+    }
+  });
+
+  it('lists the GPU clusters of model hosting among the clusters', () => {
+    const data = createFixtureDataSet({ now });
+    for (const gpu of data.gpuClusters) {
+      expect(data.clusters).toContainEqual(
+        expect.objectContaining({
+          installation: gpu.installation,
+          name: gpu.name,
+          organization: gpu.organization,
+        }),
+      );
+    }
+  });
+
+  it('gives a GPU cluster the Kubernetes version of its release', () => {
+    const data = createFixtureDataSet({ now });
+    const isGpu = (c: { description?: string }) =>
+      c.description?.startsWith('GPU') ?? false;
+    const byRelease = new Map(
+      data.clusters
+        .filter(c => !isGpu(c))
+        .map(c => [c.releaseVersion, c.kubernetesVersion]),
+    );
+    const gpu = data.clusters.filter(
+      c => isGpu(c) && byRelease.has(c.releaseVersion),
+    );
+    expect(gpu.length).toBeGreaterThan(0);
+    expect(gpu.map(c => c.kubernetesVersion)).toEqual(
+      gpu.map(c => byRelease.get(c.releaseVersion)),
+    );
+  });
+
+  it('names a made-up organization as an organization, without the namespace prefix', () => {
+    const data = createFixtureDataSet({ now, organizations: { count: 0 } });
+    const workload = data.clusters.filter(c => c.kind === 'workload');
+    expect(workload.length).toBeGreaterThan(0);
+    expect(workload.every(c => !c.organization.startsWith('org-'))).toBe(true);
+  });
+
+  it('gives a cluster being created no node pools yet', () => {
+    const data = createFixtureDataSet({ now });
+    const creating = data.clusters.filter(c => c.state === 'creating');
+    expect(creating.length).toBeGreaterThan(0);
+    expect(creating.every(c => c.pools.length === 0)).toBe(true);
+  });
+
+  it('keeps cluster and pool names within the Kubernetes limit', () => {
+    const data = createFixtureDataSet({ now, clusters: { nameLength: 63 } });
+    for (const cluster of data.clusters) {
+      expect(cluster.name.length).toBeLessThanOrEqual(63);
+      for (const pool of cluster.pools) {
+        expect(pool.name.length).toBeLessThanOrEqual(63);
+      }
+    }
   });
 
   it('gives each installation toolset presets made from its connectors and workflows', () => {

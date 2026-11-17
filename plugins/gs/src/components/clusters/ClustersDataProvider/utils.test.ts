@@ -8,6 +8,8 @@ import {
   collectClusterAccessUpdates,
   collectClusterData,
   describeClusterError,
+  relatedReadFailuresOf,
+  unlistedInstallationsOf,
 } from './utils';
 
 function failure(cluster: string, error: Error): ErrorInfoUnion {
@@ -172,6 +174,39 @@ describe('collectClusterData', () => {
       location: 'westeurope',
       appVersion: '0.5.0',
       appSourceLocation: 'https://github.com/giantswarm/cluster-aks',
+    });
+  });
+});
+
+describe('unlistedInstallationsOf', () => {
+  it('names each failed installation once, a declined sign-in among them, and not one without Cluster API', () => {
+    expect(
+      unlistedInstallationsOf([
+        failure('fennel', new Error('timed out')),
+        failure('fennel', new Error('again')),
+        failure('meadow', named('RejectedError')),
+        failure('tarragon', named('NotFoundError')),
+      ]),
+    ).toEqual([
+      { installation: 'fennel', reason: 'API unreachable (timeout)' },
+      { installation: 'meadow', reason: 'the sign-in was declined' },
+    ]);
+  });
+});
+
+describe('relatedReadFailuresOf', () => {
+  it('names the related reads that failed per installation, not a kind that is not served', () => {
+    expect(
+      relatedReadFailuresOf({
+        controlPlanes: [failure('meadow', named('ForbiddenError'))],
+        providerClusters: [failure('fennel', named('NotFoundError'))],
+        identities: [failure('meadow', new Error('timed out'))],
+      }),
+    ).toEqual({
+      meadow: {
+        controlPlanes: 'Access forbidden',
+        identities: 'API unreachable (timeout)',
+      },
     });
   });
 });

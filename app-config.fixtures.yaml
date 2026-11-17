@@ -22,6 +22,22 @@ auth:
 
 gs:
   fixtures: true
+  # The shell's Platform section, so its clusters list can be checked.
+  features:
+    platformSection:
+      enabled: true
+  # Kubernetes end-of-life dates for the fixture clusters' versions: 1.30,
+  # the oldest release's, is past its end of life.
+  kubernetesVersions:
+    '1.30':
+      minorVersion: '1.30'
+      eolDate: '2025-06-28'
+    '1.31':
+      minorVersion: '1.31'
+      eolDate: '2027-03-28'
+    '1.32':
+      minorVersion: '1.32'
+      eolDate: '2027-08-28'
   # Made-up installations, served by the fixture Kubernetes API
   # (FIXTURE_INSTALLATIONS in gs-common). Their Mimir is the fixture one,
   # which answers the agent gateway's metrics from the data set.

@@ -10,9 +10,13 @@ import {
   WORKFLOW_PAGE_TABS,
 } from '@giantswarm/backstage-plugin-muster';
 import { CUSTOMIZE_TAB_IDS } from '../modules/agentShell/customizeTabIds';
+import { PLATFORM_TAB_IDS } from '../modules/agentShell/platformTabIds';
 
 /** The `/customize/:tab` tabs, a fixed set safe to report as a view. */
 const CUSTOMIZE_TABS: ReadonlySet<string> = new Set(CUSTOMIZE_TAB_IDS);
+
+/** The `/platform/:tab` tabs, a fixed set safe to report as a view. */
+const PLATFORM_TABS: ReadonlySet<string> = new Set(PLATFORM_TAB_IDS);
 
 /**
  * A workflow page's tabs below its own address (Overview, the index, left
@@ -772,6 +776,19 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
       }
       payload = { page: 'Usage', view: usageView };
       route = tabRoute('/usage', view, USAGE_PATHS);
+      break;
+    }
+
+    // The shell's Platform section, where a deployment turned it on: the
+    // bare path redirects to its first tab, Clusters. Any other address
+    // only redirects to it.
+    case pathname === '/platform' || pathname.startsWith('/platform/'): {
+      const tab = segments.slice(1).join('/');
+      payload = {
+        page: 'Platform',
+        view: PLATFORM_TABS.has(tab) ? tab : 'redirect',
+      };
+      route = tabRoute('/platform', tab, PLATFORM_TABS);
       break;
     }
 

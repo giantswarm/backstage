@@ -2,6 +2,7 @@ import { createFrontendModule } from '@backstage/frontend-plugin-api';
 import { agentShellLayout } from './layoutExtension';
 import { agentShellThemeRoot } from './themeRootExtension';
 import { agentShellCustomizePage } from './customizePageExtension';
+import { agentShellPlatformPage } from './platformPageExtension';
 import { agentShellFeatureFlagsApi } from './featureFlagsApiExtension';
 import { agentShellNotificationsApi } from './notificationsApiExtension';
 import { AGENT_SHELL_FLAG } from './predicates';
@@ -30,5 +31,6 @@ export const agentShellModule = createFrontendModule({
     agentShellLayout,
     agentShellThemeRoot,
     agentShellCustomizePage,
+    agentShellPlatformPage,
   ],
 });

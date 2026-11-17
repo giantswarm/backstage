@@ -2,14 +2,24 @@ import { ReactNode, useState } from 'react';
 import { Alert, Button, ButtonIcon, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import CloseIcon from '@material-ui/icons/Close';
+import { countNoun } from '../../utils/countNoun';
 import {
-  countNoun,
   groupNames,
   joinNames,
   NAMED_IN_SENTENCE,
-  SimpleAccordion,
-} from '@giantswarm/backstage-plugin-ui-react';
-import type { ReadFailure } from '../../lib/readFailure';
+} from '../../utils/joinNames';
+import { SimpleAccordion } from '../SimpleAccordion';
+
+/**
+ * Why one installation's read failed: a short reason ("timed out") and the
+ * request id the backend sent the failed call with, when it has one.
+ */
+export type InstallationReadFailure = {
+  reason: string;
+  requestId?: string;
+};
+
+type ReadFailure = InstallationReadFailure;
 
 const useStyles = makeStyles({
   // The close button in the top-right corner, level with the title, rather
@@ -72,6 +82,11 @@ export type UnreachableInstallationsAlertProps = {
    * looks empty. Without it, the closable warning.
    */
   everything?: { title: string };
+  /**
+   * More buttons beside "Try again", for a remedy the page offers itself,
+   * such as a sign-in that expired.
+   */
+  actions?: ReactNode;
 };
 
 /**
@@ -105,6 +120,7 @@ export function UnreachableInstallationsAlert({
   onRetry,
   isRetrying = false,
   everything,
+  actions,
 }: UnreachableInstallationsAlertProps) {
   // Above every early return: hiding the card while the list loads, or while
   // nothing failed, must not forget that it was closed.
@@ -130,6 +146,7 @@ export function UnreachableInstallationsAlert({
     onClose: everything ? undefined : onClose,
     status: everything ? ('danger' as const) : ('warning' as const),
     retry: onRetry ? { onRetry, isRetrying } : undefined,
+    actions,
   };
 
   if (count <= NAMED_IN_SENTENCE) {
@@ -235,12 +252,14 @@ function ReadFailureCard({
   status,
   onClose,
   retry,
+  actions,
 }: {
   title: string;
   description: ReactNode;
   status: 'warning' | 'danger';
   onClose?: () => void;
   retry?: { onRetry: () => void; isRetrying: boolean };
+  actions?: ReactNode;
 }) {
   const classes = useStyles();
 
@@ -252,8 +271,9 @@ function ReadFailureCard({
       title={title}
       description={description}
       customActions={
-        retry || onClose ? (
+        retry || onClose || actions ? (
           <Flex align="center" gap="1">
+            {actions}
             {retry && (
               <Button
                 variant="secondary"

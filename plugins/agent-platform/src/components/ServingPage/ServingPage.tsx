@@ -24,6 +24,7 @@ import {
   EmptyStateCard,
   LoadingIndicator,
   useProvidePageHeaderActions,
+  UnreachableInstallationsAlert,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { installationErrorLine } from '@giantswarm/backstage-plugin-muster';
 
@@ -65,7 +66,6 @@ import { useServedModelRows } from '../ServedModelRowsProvider';
 import { useServing } from '../ServingProvider';
 import { ModelManagerSignInAlerts } from '../ModelManagerSignInAlerts';
 import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
-import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 import {
   hasServedModelTimeline,
   isOpenedServedModel,
