@@ -1,5 +1,5 @@
 import type { PropsWithChildren } from 'react';
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { analyticsApiRef } from '@backstage/core-plugin-api';
 import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -155,7 +155,11 @@ it('reads the installation tool schema once for consecutive writes', async () =>
   await act(async () => {
     await result.current.setDefault({ modelConfig: model });
   });
-  expect(mockCallTool).toHaveBeenCalledTimes(2);
+  expect(
+    mockCallTool.mock.calls.filter(
+      ([tool]) => tool === 'x_agent-manager_set_organization_model',
+    ),
+  ).toHaveLength(2);
   expect(mockDescribeTool).toHaveBeenCalledTimes(1);
   expect(mockDescribeTool).toHaveBeenCalledWith(
     'x_agent-manager_set_organization_model',
@@ -183,4 +187,82 @@ it('refuses a namespace it cannot tell from an organization, writing nothing', a
     );
   });
   expect(mockCallTool).not.toHaveBeenCalled();
+});
+
+describe('in an organization applied from git, where agent-manager opens pull requests', () => {
+  const NAMESPACE = 'agents-payments-x7k2q';
+  const PULL_REQUEST = {
+    repository: 'giantswarm/gazelle-configs',
+    base: 'main',
+    pullRequest: 'https://github.com/giantswarm/gazelle-configs/pull/7',
+    number: 7,
+  };
+  const organizationModel = new ModelConfig(
+    {
+      apiVersion: 'api.kagent.dev/v1alpha3',
+      kind: 'ModelConfig',
+      metadata: { name: 'sonnet', namespace: NAMESPACE },
+      spec: { provider: 'Anthropic', model: 'claude-sonnet' },
+    } as ModelConfigInterface,
+    'gazelle',
+  );
+
+  function answer(orphaned?: { status: string; reason: string }) {
+    mockCallTool.mockImplementation(async (tool: string, args) => {
+      switch (tool) {
+        case 'x_agent-manager_get_info':
+          return { capabilities: { organizations: true, commit: true } };
+        case 'x_agent-manager_list_organizations':
+          return {
+            organizations: [
+              {
+                name: 'payments',
+                parent: 'org-acme',
+                namespace: NAMESPACE,
+                ...(orphaned ? { orphaned } : {}),
+                permissions: { manage: false, member: true },
+              },
+            ],
+          };
+        default:
+          return args.mode === 'commit'
+            ? { defaultModel: 'other', commit: PULL_REQUEST }
+            : { defaultModel: 'sonnet' };
+      }
+    });
+  }
+
+  it('moves the mark by pull request, and reports no default set', async () => {
+    answer({ status: 'False', reason: 'InInventory' });
+    const { result } = setup();
+    let saved;
+    await act(async () => {
+      saved = await result.current.setDefault({
+        modelConfig: organizationModel,
+      });
+    });
+    expect(mockCallTool).toHaveBeenCalledWith(
+      'x_agent-manager_set_organization_model',
+      expect.objectContaining({ default: true, mode: 'commit' }),
+      'gazelle',
+      { urlElicitation: false },
+    );
+    expect(saved).toEqual({ commit: PULL_REQUEST });
+    await waitFor(() =>
+      expect(result.current.pullRequest).toEqual(PULL_REQUEST),
+    );
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+
+  it('moves the mark of a live organization live', async () => {
+    answer();
+    const { result } = setup();
+    await act(async () => {
+      await result.current.setDefault({ modelConfig: organizationModel });
+    });
+    const [, args] = mockCallTool.mock.calls.find(
+      ([tool]) => tool === 'x_agent-manager_set_organization_model',
+    )!;
+    expect(args).not.toHaveProperty('mode');
+  });
 });

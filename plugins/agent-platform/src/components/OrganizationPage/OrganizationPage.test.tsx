@@ -14,6 +14,7 @@ import {
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
+  CONTENT_PULL_REQUEST,
   CREDENTIAL_OPERATION,
   fakeOrganizationAccess,
   fakeOrganizationsMuster,
@@ -2060,5 +2061,235 @@ describe('OrganizationPage', () => {
     expect(
       await screen.findByText('You are not a member of payments'),
     ).toBeInTheDocument();
+  });
+
+  describe('content writes follow how the organization is applied', () => {
+    /** The operator's condition on an organization Flux applies from git. */
+    const IN_GIT = {
+      orphaned: { status: 'False', reason: 'InInventory' },
+    } satisfies OrganizationsScenario['memberStatus'];
+    const FROM_GIT: OrganizationsScenario = {
+      ...SCENARIO,
+      commitMode: true,
+      memberStatus: IN_GIT,
+    };
+
+    async function addGroup(scenario: OrganizationsScenario) {
+      const user = userEvent.setup();
+      const page = await renderPage('', scenario);
+      await user.type(
+        await screen.findByRole('textbox', { name: /Group/ }),
+        'sre',
+      );
+      await user.click(screen.getByRole('button', { name: 'Add group' }));
+      await waitFor(() =>
+        expect(
+          toolCalls(page.callTool, 'add_organization_member'),
+        ).toHaveLength(1),
+      );
+      return toolCalls(page.callTool, 'add_organization_member')[0];
+    }
+
+    it.each([
+      ['from git, on an installation with commit mode', FROM_GIT, 'commit'],
+      [
+        'created live, on an installation with commit mode',
+        { ...SCENARIO, commitMode: true },
+        undefined,
+      ],
+      [
+        'from git, on an installation without commit mode',
+        { ...SCENARIO, memberStatus: IN_GIT },
+        undefined,
+      ],
+    ] as const)(
+      'writes an organization %s in its mode',
+      async (_, scenario, mode) => {
+        const args = await addGroup(scenario);
+        // A live write sends no mode at all: the call it was before.
+        expect('mode' in args ? args.mode : 'absent').toBe(mode ?? 'absent');
+      },
+    );
+
+    it('shows the pull request a write opened, and lists nothing new', async () => {
+      await addGroup(FROM_GIT);
+
+      const outcome = await screen.findByTestId(
+        'organization-member-pull-request',
+      );
+      expect(outcome).toHaveTextContent('Pull request #7 opened');
+      expect(outcome).toHaveTextContent(
+        'The change applies once the pull request is merged.',
+      );
+      expect(
+        within(outcome).getByRole('link', { name: /Review pull request/ }),
+      ).toHaveAttribute('href', CONTENT_PULL_REQUEST.pullRequest);
+      expect(screen.queryByRole('rowheader', { name: /sre/ })).toBeNull();
+    });
+
+    it('reads gitops for an organization the person manages', async () => {
+      const args = await addGroup({
+        ...SCENARIO,
+        commitMode: true,
+        organization: {
+          name: 'payments',
+          parent: 'org-acme',
+          namespace: PAYMENTS.namespace,
+          harnesses: ['kagent'],
+          workerReplicas: 3,
+          gitops: 'flux-giantswarm/agent-platform-organizations',
+        },
+      });
+      expect(args).toEqual(expect.objectContaining({ mode: 'commit' }));
+    });
+
+    it.each([
+      ['/models', 'Replace the key of gpt', 'tenant-credential-gpt'],
+      [
+        '/connectors',
+        'Replace the credential of jira',
+        'tenant-credential-jira',
+      ],
+      [
+        '/egress',
+        'Replace the credential of payments-api',
+        'tenant-credential-stripe',
+      ],
+    ])(
+      'asks for a credential of %s by pull request, on the form that says so',
+      async (tab, button, secret) => {
+        const user = userEvent.setup();
+        const { callTool } = await renderPage(tab, FROM_GIT);
+        await user.click(await screen.findByRole('button', { name: button }));
+        await user.click(
+          within(await screen.findByRole('dialog')).getByRole('button', {
+            name: 'Continue',
+          }),
+        );
+        await waitFor(() =>
+          expect(
+            toolCalls(callTool, 'replace_organization_credential'),
+          ).toEqual([expect.objectContaining({ secret, mode: 'commit' })]),
+        );
+        // The form reads the operation's mode: a pull request.
+        expect(await screen.findByTestId('location')).toHaveTextContent(
+          CREDENTIAL_OPERATION,
+        );
+      },
+    );
+
+    it('adds a model by pull request, and its key goes to the form', async () => {
+      const user = userEvent.setup();
+      const { callTool } = await renderPage('/models', FROM_GIT);
+      await user.click(
+        await screen.findByRole('button', { name: 'Add model' }),
+      );
+      const dialog = await screen.findByRole('dialog');
+      await user.type(
+        within(dialog).getByRole('textbox', { name: /Name/ }),
+        'claude',
+      );
+      await user.type(
+        within(dialog).getByRole('textbox', { name: /Model/ }),
+        'claude-sonnet-4-6',
+      );
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Continue to the key' }),
+      );
+      await waitFor(() =>
+        expect(toolCalls(callTool, 'set_organization_model')).toEqual([
+          expect.objectContaining({ name: 'claude', mode: 'commit' }),
+        ]),
+      );
+      expect(await screen.findByTestId('location')).toHaveTextContent(
+        CREDENTIAL_OPERATION,
+      );
+    });
+
+    it('keeps the model dialog open with the pull request when no key is asked', async () => {
+      const user = userEvent.setup();
+      await renderPage('/models', { ...FROM_GIT, modelKeyPresent: true });
+      await user.click(
+        await screen.findByRole('button', { name: 'Add model' }),
+      );
+      const dialog = await screen.findByRole('dialog');
+      await user.type(
+        within(dialog).getByRole('textbox', { name: /Name/ }),
+        'claude',
+      );
+      await user.type(
+        within(dialog).getByRole('textbox', { name: /Model/ }),
+        'claude-sonnet-4-6',
+      );
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Continue to the key' }),
+      );
+
+      expect(
+        await within(dialog).findByTestId('organization-content-pull-request'),
+      ).toHaveTextContent('Pull request #7 opened');
+      expect(
+        within(dialog).queryByRole('button', { name: 'Continue to the key' }),
+      ).toBeNull();
+      expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+    });
+
+    it('keeps the removal dialog open with the pull request', async () => {
+      const user = userEvent.setup();
+      const { callTool } = await renderPage('', FROM_GIT);
+      await user.click(
+        await screen.findByRole('button', {
+          name: 'Remove jane@example.com as user',
+        }),
+      );
+      const dialog = await screen.findByRole('dialog');
+      await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
+
+      expect(
+        await within(dialog).findByTestId('organization-member-pull-request'),
+      ).toHaveTextContent('Pull request #7 opened');
+      expect(toolCalls(callTool, 'remove_organization_member')).toEqual([
+        expect.objectContaining({ mode: 'commit' }),
+      ]);
+    });
+
+    it("shows agent-manager's refusal of a pull request for a live object, and keeps the action", async () => {
+      const sentence =
+        "ModelConfig agents-payments-x7k2q/gpt was written live, not applied from git, so no file in the organization's content path defines it: change it with mode apply";
+      const user = userEvent.setup();
+      await renderPage('/models', {
+        ...FROM_GIT,
+        replaceError: `conflict: ${sentence}`,
+      });
+      await user.click(
+        await screen.findByRole('button', { name: 'Replace the key of gpt' }),
+      );
+      const dialog = await screen.findByRole('dialog');
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Continue' }),
+      );
+
+      expect(
+        await within(dialog).findByText(new RegExp(`answered: ${sentence}`)),
+      ).toBeInTheDocument();
+      expect(
+        within(dialog).getByRole('button', { name: 'Continue' }),
+      ).toBeEnabled();
+    });
+
+    it("shows agent-manager's refusal of a live write of an object from git, and keeps the action", async () => {
+      const sentence =
+        'RoleBinding agents-payments-x7k2q/organization-users is applied from git by the Flux Kustomization flux-giantswarm/payments, which would revert a live change: use mode commit to change it with a pull request';
+      await addGroup({
+        ...SCENARIO,
+        commitMode: true,
+        addError: `gitops_owned: ${sentence}`,
+      });
+
+      const alert = await screen.findByText(sentence);
+      expect(alert).toBeInTheDocument();
+      expect(screen.getByText('Could not add the group')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Add group' })).toBeEnabled();
+    });
   });
 });

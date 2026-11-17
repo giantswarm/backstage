@@ -5,6 +5,7 @@ import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react
 
 import {
   credentialFormOf,
+  type CredentialCommit,
   preparedCredentialOperation,
 } from '../lib/credentialOperations';
 import {
@@ -16,6 +17,7 @@ import {
   type ModelConfigFormValues,
 } from '../lib/modelConfigs';
 import {
+  modeArgument,
   modelNameTakenMessage,
   type OrganizationNamespace,
 } from '../lib/organizations';
@@ -38,6 +40,7 @@ import { modelScopeRefusal } from './modelScope';
 import { modelKeyReference } from './modelKeyReference';
 import { useAgentManagerClient } from './useAgentManager';
 import { useEnsureModelOperations } from './useEnsureModelOperations';
+import { useOrganizationContentMode } from './useOrganizationContentMode';
 
 export type SaveOrganizationModelInput = {
   /** The organization namespace the model is in, or goes to. */
@@ -63,6 +66,11 @@ export type SaveOrganizationModelResult = {
   isDefault: boolean;
   /** Edit only: the model's change is written (before any new key). */
   changed?: boolean;
+  /**
+   * The pull request the write opened, in mode commit: nothing is written
+   * live until it is merged.
+   */
+  commit?: CredentialCommit;
 };
 
 /**
@@ -89,6 +97,10 @@ export type SaveOrganizationModelResult = {
  * it sends the display name only when it changed. An omitted argument keeps
  * the stored value.
  *
+ * An organization's model is written in its organization's mode
+ * ({@link useOrganizationContentMode}): by pull request for one applied from
+ * git where agent-manager opens pull requests, the new key too.
+ *
  * The provider of an existing model does not change here: the stored key is
  * the old provider's, and agent-manager cannot write a new provider and its
  * new key in one step, so either order leaves the model on a key of the
@@ -97,6 +109,7 @@ export type SaveOrganizationModelResult = {
 export function useSaveOrganizationModel(installation: string | undefined) {
   const client = useAgentManagerClient(installation);
   const ensureModelOperations = useEnsureModelOperations();
+  const contentMode = useOrganizationContentMode();
   const organizations = useOrganizationDirectory();
   const queryClient = useQueryClient();
   const formLink = useRouteRef(modelCredentialsRouteRef);
@@ -108,13 +121,13 @@ export function useSaveOrganizationModel(installation: string | undefined) {
   >({
     // A write that waits for its key is tracked where it is finished: the
     // credential form's save. An edit's change is written here.
-    event: ({ form, changed }, { original }) => {
+    event: ({ form, changed, commit }, { original }) => {
       if (original) {
         return changed
           ? { name: 'AgentPlatform.modelUpdated', attributes: {} }
           : null;
       }
-      return form
+      return form || commit
         ? null
         : { name: 'AgentPlatform.modelCreated', attributes: {} };
     },
@@ -137,6 +150,12 @@ export function useSaveOrganizationModel(installation: string | undefined) {
         ? undefined
         : modelScopeRefusal(organizations, installation, namespace);
       if (scopeRefusal) throw new Error(scopeRefusal);
+      // An organization's model follows its organization; the
+      // installation's models, which are no organization's, are live. Read
+      // at the first write, once.
+      let mode: Promise<{ mode?: 'commit' }> | undefined;
+      const modeOf = () =>
+        (mode ??= contentMode(installation, namespace).then(modeArgument));
       const setModel = async (
         request: Parameters<typeof client.setOrganizationModel>[0],
         {
@@ -146,6 +165,7 @@ export function useSaveOrganizationModel(installation: string | undefined) {
       ) => {
         const { createOnly, settings } =
           await ensureModelOperations(installation);
+        const writeMode = await modeOf();
         return client
           .setOrganizationModel({
             ...request,
@@ -154,6 +174,7 @@ export function useSaveOrganizationModel(installation: string | undefined) {
             ...(create && createOnly ? { create: true } : {}),
             // The same holds for the settings.
             ...(settings ? modelSettings : {}),
+            ...writeMode,
           })
           .catch(error => {
             // A refused setting, in the form's words and not the API
@@ -225,6 +246,7 @@ export function useSaveOrganizationModel(installation: string | undefined) {
         return {
           isDefault: result.defaultModel === name,
           ...(operation ? { form: formOf(operation) } : {}),
+          ...(!operation && result.commit ? { commit: result.commit } : {}),
         };
       }
 
@@ -240,6 +262,7 @@ export function useSaveOrganizationModel(installation: string | undefined) {
         throw new Error('This provider cannot be edited through this form.');
       let changed = false;
       let isDefault = false;
+      let commit: CredentialCommit | undefined;
       if (modelConfigFormChanged(values, initial)) {
         const displayName = values.displayName.trim();
         const result = await setModel(
@@ -269,10 +292,15 @@ export function useSaveOrganizationModel(installation: string | undefined) {
           // writes the change with it.
           return { isDefault, form: formOf(operation) };
         }
-        changed = true;
+        // A pull request writes nothing live until it is merged.
+        if (result.commit) {
+          commit = result.commit;
+        } else {
+          changed = true;
+        }
       }
       if (!replaceKey) {
-        return { isDefault, changed };
+        return { isDefault, changed, ...(commit ? { commit } : {}) };
       }
       try {
         const { secret, key } = modelKeyReference(original);
@@ -281,6 +309,7 @@ export function useSaveOrganizationModel(installation: string | undefined) {
           secret,
           key,
           requestId: crypto.randomUUID(),
+          ...(await modeOf()),
         });
         const operation = preparedCredentialOperation(result);
         if (!operation) {
@@ -290,7 +319,7 @@ export function useSaveOrganizationModel(installation: string | undefined) {
         }
         return { isDefault, changed, form: formOf(operation) };
       } catch (error) {
-        if (!changed) {
+        if (!changed && !commit) {
           // Nothing was written: the page says why, with the sign-in to
           // agent-manager or the refusal of a person without the right.
           if (
@@ -312,7 +341,9 @@ export function useSaveOrganizationModel(installation: string | undefined) {
             : credentialRequestErrorMessage(error as Error);
         await invalidateModelReads(queryClient, installation, namespace);
         throw new Error(
-          `The model change is saved, but the new key could not be asked for. ${why}`,
+          commit?.pullRequest
+            ? `The pull request with the model change is opened (${commit.pullRequest}), but the new key could not be asked for. ${why}`
+            : `The model change is saved, but the new key could not be asked for. ${why}`,
           { cause: error },
         );
       }

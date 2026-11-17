@@ -52,6 +52,11 @@ import { modelProblem } from '../../lib/modelProblem';
 import { AgentManagerNotConnectedError } from '../../lib/agentManager';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { OrganizationWriteError } from '../OrganizationWriteError';
+import { PullRequestOutcome } from '../PullRequestOutcome';
+import {
+  CONTENT_PULL_REQUEST_NEXT,
+  CONTENT_PULL_REQUEST_UNCHANGED,
+} from '../../lib/organizations';
 import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { PortalSessionEndedError } from '../../lib/portalSession';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
@@ -428,8 +433,9 @@ function ModelDetailPageContent() {
     }
     resetSetDefault();
     let form: string | undefined;
+    let commit: unknown;
     try {
-      ({ form } = await setDefault({ modelConfig }));
+      ({ form, commit } = await setDefault({ modelConfig }));
     } catch {
       // Left on the page: the error renders in the alert above the tabs.
       return;
@@ -437,6 +443,10 @@ function ModelDetailPageContent() {
     if (form) {
       // The model has no key yet: the move finishes on the credential form.
       navigate(form);
+      return;
+    }
+    if (commit) {
+      // The pull request shows above the tabs: the mark moves once it merges.
       return;
     }
     toastApi.post({
@@ -625,6 +635,14 @@ function ModelDetailPageContent() {
           adminAction="sets its default model"
           title="Could not make this the default model"
           onSignedIn={resetSetDefault}
+        />
+      )}
+      {settingDefault.pullRequest && (
+        <PullRequestOutcome
+          commit={settingDefault.pullRequest}
+          next={CONTENT_PULL_REQUEST_NEXT}
+          unchanged={CONTENT_PULL_REQUEST_UNCHANGED}
+          testId="model-default-pull-request"
         />
       )}
       {deletion.checkError && (

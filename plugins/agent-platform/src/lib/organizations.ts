@@ -163,6 +163,61 @@ export function organizationDeleteMode(
 }
 
 /**
+ * Whether Flux applies the organization from the installation's git
+ * repository. A person who manages it reads `gitops`; a member reads only
+ * its status, where the operator's `orphaned` condition says the same: the
+ * operator sets it, in any state, on an organization of the installation's
+ * Kustomization only.
+ */
+export function isAppliedFromGit(
+  organization: Pick<ListedOrganization, 'orphaned' | 'organization'>,
+): boolean {
+  return (
+    Boolean(organization.organization?.gitops) ||
+    organization.orphaned !== undefined
+  );
+}
+
+/**
+ * How the portal writes an organization's content (its models, connectors,
+ * egress policies, members and credentials): by pull request for an
+ * organization applied from git on an installation whose agent-manager opens
+ * pull requests, live otherwise. The person gets no choice: the portal keeps
+ * an organization's content where the organization itself is. agent-manager
+ * still decides for an object that exists by how that object is applied, and
+ * refuses the other mode (`gitops_owned`, `conflict`).
+ */
+export function organizationContentMode(
+  organization:
+    Pick<ListedOrganization, 'orphaned' | 'organization'> | undefined,
+  commitMode: boolean,
+): OrganizationWriteMode {
+  return commitMode && organization && isAppliedFromGit(organization)
+    ? 'commit'
+    : 'apply';
+}
+
+/** What a content write's pull request does once merged. */
+export const CONTENT_PULL_REQUEST_NEXT =
+  'The change applies once the pull request is merged.';
+
+/** Why a content write in mode commit opened no pull request. */
+export const CONTENT_PULL_REQUEST_UNCHANGED = 'git already holds this change.';
+
+/** How a write of an organization's content goes: live or by pull request. */
+export type OrganizationWriteMode = 'apply' | 'commit';
+
+/**
+ * The `mode` argument of a content write: only `commit` is sent, so a live
+ * write stays the call it was.
+ */
+export function modeArgument(mode: OrganizationWriteMode | undefined): {
+  mode?: 'commit';
+} {
+  return mode === 'commit' ? { mode } : {};
+}
+
+/**
  * What the person may do with a listed organization, as the API server
  * answers agent-manager's access reviews with the person's token.
  */
@@ -327,6 +382,8 @@ export type OrganizationMembers = {
 export type MemberRequest = {
   namespace: string;
   role?: MemberRole;
+  /** A pull request instead of a live write ({@link organizationContentMode}). */
+  mode?: 'commit';
 } & ({ group: string; user?: never } | { user: string; group?: never });
 
 /** `add_organization_member` and `remove_organization_member`. */
@@ -335,6 +392,8 @@ export type MemberResult = {
   member: OrganizationMember;
   changed: boolean;
   bindings?: string[];
+  /** The pull request of a change in mode commit. */
+  commit?: OrganizationCommit;
 };
 
 /** One Secret-backed header of a connector. */
@@ -413,6 +472,8 @@ export type OrganizationModelRequest = {
   cacheTTL?: string;
   /** Idempotency key: one per intended change. */
   requestId: string;
+  /** A pull request instead of a live write ({@link organizationContentMode}). */
+  mode?: 'commit';
 };
 
 /**
@@ -428,6 +489,8 @@ export type OrganizationCredentialReplacement = {
   key: string;
   /** Idempotency key: one per intended change. */
   requestId: string;
+  /** A pull request instead of a live write ({@link organizationContentMode}). */
+  mode?: 'commit';
 };
 
 /**

@@ -113,7 +113,29 @@ export type OrganizationsScenario = {
   modelKeyPresent?: boolean;
   /** What `set_organization_model` fails with. */
   modelError?: string;
+  /** What `add_organization_member` fails with. */
+  addError?: string;
+  /**
+   * `get_info` reports the `commit` capability: agent-manager opens pull
+   * requests on this installation.
+   */
+  commitMode?: boolean;
 };
+
+/** The pull request a content write in mode commit opens. */
+export const CONTENT_PULL_REQUEST = {
+  repository: 'giantswarm/gazelle-configs',
+  base: 'main',
+  branch: 'agent-manager/set-payments-x_a1b2',
+  pullRequest: 'https://github.com/giantswarm/gazelle-configs/pull/7',
+  number: 7,
+  review: 'the platform team reviews it',
+};
+
+/** `commit` for a write called with `mode: commit`. */
+function commitOf(args: Record<string, unknown>) {
+  return args.mode === 'commit' ? { commit: CONTENT_PULL_REQUEST } : {};
+}
 
 /**
  * `list_organizations` for a scenario: the organizations the person belongs
@@ -265,7 +287,11 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
         case 'x_agent-manager_get_info':
           return {
             namespaces: { default: 'kagent', managed: scenario.managed ?? [] },
-            capabilities: { organizations: true, egressPolicies: true },
+            capabilities: {
+              organizations: true,
+              egressPolicies: true,
+              ...(scenario.commitMode ? { commit: true } : {}),
+            },
           };
         case 'x_agent-manager_list_organizations':
           if (mineFailures > 0) {
@@ -330,6 +356,12 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
           ) {
             throw new Error(scenario.removeError);
           }
+          if (
+            name === 'x_agent-manager_add_organization_member' &&
+            scenario.addError
+          ) {
+            throw new Error(scenario.addError);
+          }
           const result: MemberResult = {
             namespace: String(args.namespace),
             member: {
@@ -339,6 +371,7 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
               binding: `organization-${String(args.role ?? 'user')}s`,
             },
             changed: true,
+            ...commitOf(args),
           };
           return result;
         }
@@ -362,6 +395,7 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
               kind: 'model',
               name: args.name,
               ...(args.default ? { defaultModel: args.name } : {}),
+              ...commitOf(args),
               credentials: [
                 {
                   secret: `tenant-credential-${String(args.name)}`,

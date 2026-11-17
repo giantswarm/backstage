@@ -59,6 +59,12 @@ import { useModelSettingsSupport } from '../../hooks/useModelSettingsSupport';
 import { refusedSettingErrors } from '../../lib/modelSettings';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { OrganizationWriteError } from '../OrganizationWriteError';
+import { PullRequestOutcome } from '../PullRequestOutcome';
+import type { CredentialCommit } from '../../lib/credentialOperations';
+import {
+  CONTENT_PULL_REQUEST_NEXT,
+  CONTENT_PULL_REQUEST_UNCHANGED,
+} from '../../lib/organizations';
 import { ModelConfigFormFields } from '../ModelConfigForm';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { DefaultModelChoice } from './DefaultModelChoice';
@@ -212,6 +218,9 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   // `forms` skill), and leaves once that setting changes.
   const settingErrors = refusedSettingErrors(error);
   const { save: saveOrganization, reset: resetOrganization } = organizationSave;
+  // The pull request a save opened, in mode commit: the page stays with it,
+  // and nothing more is saved from it.
+  const [pullRequest, setPullRequest] = useState<CredentialCommit>();
   const providers = useMemo<readonly ModelProvider[]>(() => {
     const offered = providersFor(namespace, directory);
     return offered.includes(initialValues.provider) || !edit
@@ -357,7 +366,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
       return;
     }
     resetOrganization();
-    let saved: { isDefault: boolean; form?: string };
+    let saved: { isDefault: boolean; form?: string; commit?: CredentialCommit };
     try {
       saved = await saveOrganization({
         organization,
@@ -374,6 +383,10 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     if (saved.form) {
       // The model is written once its key is saved there.
       navigate(saved.form);
+      return;
+    }
+    if (saved.commit) {
+      setPullRequest(saved.commit);
       return;
     }
     const label = values.displayName.trim() || values.name;
@@ -442,7 +455,9 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
       <Button
         variant="primary"
         onPress={onSubmit}
-        isDisabled={Boolean(heldReason) || isSaving || !isChanged}
+        isDisabled={
+          Boolean(heldReason) || isSaving || !isChanged || Boolean(pullRequest)
+        }
         aria-describedby={describedBy}
       >
         {label}
@@ -455,7 +470,15 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
       return <DisabledAction reason={heldReason}>{primary}</DisabledAction>;
     }
     return primary();
-  }, [edit, onSubmit, isSaving, isChanged, continuesToKey, heldReason]);
+  }, [
+    edit,
+    onSubmit,
+    isSaving,
+    isChanged,
+    continuesToKey,
+    heldReason,
+    pullRequest,
+  ]);
   useProvidePageHeaderActions(actions);
 
   return (
@@ -613,6 +636,15 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
             edit ? 'Could not save the model' : 'Could not connect the model'
           }
           onSignedIn={resetOrganization}
+        />
+      )}
+
+      {pullRequest && (
+        <PullRequestOutcome
+          commit={pullRequest}
+          next={CONTENT_PULL_REQUEST_NEXT}
+          unchanged={CONTENT_PULL_REQUEST_UNCHANGED}
+          testId="model-pull-request"
         />
       )}
     </WizardFrame>

@@ -26,6 +26,8 @@ import {
 } from '../../hooks/useOrganization';
 import { useOrganizationAccess } from '../../hooks/useOrganizationAccess';
 import {
+  CONTENT_PULL_REQUEST_NEXT,
+  CONTENT_PULL_REQUEST_UNCHANGED,
   FIRST_ADMINS_BINDING,
   MEMBER_ROLE_DESCRIPTIONS,
   MEMBER_ROLES,
@@ -34,6 +36,7 @@ import {
   type MemberRole,
   type OrganizationMember,
 } from '../../lib/organizations';
+import { PullRequestOutcome } from '../PullRequestOutcome';
 
 /** A group comes first: membership then changes in the identity provider. */
 type MemberKind = 'group' | 'person';
@@ -165,6 +168,14 @@ function AddMember({
           status="danger"
           title={`Could not add the ${noun}`}
           description={add.error.message}
+        />
+      )}
+      {add.data?.commit && (
+        <PullRequestOutcome
+          commit={add.data.commit}
+          next={CONTENT_PULL_REQUEST_NEXT}
+          unchanged={CONTENT_PULL_REQUEST_UNCHANGED}
+          testId="organization-member-pull-request"
         />
       )}
     </Flex>
@@ -309,6 +320,7 @@ export function MembersTab({
         busyLabel="Removing…"
         destructive
         isBusy={remove.isPending}
+        isDone={Boolean(remove.data?.commit)}
         error={
           remove.error && removing ? (
             <>
@@ -328,14 +340,30 @@ export function MembersTab({
               removing.name,
               removing.role,
             ),
-            { onSuccess: () => setRemoving(undefined) },
+            {
+              // In mode commit the dialog stays with the pull request.
+              onSuccess: result => {
+                if (!result.commit) setRemoving(undefined);
+              },
+            },
           );
         }}
       >
         {removing && (
-          <Text>
-            {removing.name} loses the {removing.role} role in this organization.
-          </Text>
+          <Flex direction="column" gap="3">
+            <Text>
+              {removing.name} loses the {removing.role} role in this
+              organization.
+            </Text>
+            {remove.data?.commit && (
+              <PullRequestOutcome
+                commit={remove.data.commit}
+                next={CONTENT_PULL_REQUEST_NEXT}
+                unchanged={CONTENT_PULL_REQUEST_UNCHANGED}
+                testId="organization-member-pull-request"
+              />
+            )}
+          </Flex>
         )}
       </ConfirmDialog>
       {access.members && (

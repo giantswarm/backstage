@@ -7,11 +7,13 @@ import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react
 
 import {
   credentialFormOf,
+  type CredentialCommit,
   type CredentialResourceResult,
   preparedCredentialOperation,
 } from '../lib/credentialOperations';
 import { AgentManagerError } from '../lib/agentManager';
 import {
+  modeArgument,
   modelNameTakenMessage,
   type OrganizationNamespace,
 } from '../lib/organizations';
@@ -25,6 +27,7 @@ import {
 } from '../routes';
 import { useAgentManagerClient } from './useAgentManager';
 import { useEnsureModelOperations } from './useEnsureModelOperations';
+import { useOrganizationContentMode } from './useOrganizationContentMode';
 import { readModelKeyReference } from './modelKeyReference';
 import {
   modelSettingRefusal,
@@ -64,6 +67,11 @@ export type CredentialRequest =
  * for that id. agent-manager's own link (`credentials[].formUrl`) is never
  * followed. An answer without a request (the credential already exists) is
  * a finished write: the lists are read again.
+ *
+ * The write's mode follows the organization ({@link useOrganizationContentMode}):
+ * by pull request for one applied from git where agent-manager opens pull
+ * requests, and the credential form then says so. An answer with a pull
+ * request and no request is the pull request opened (`commit`).
  */
 export function useOrganizationCredentialRequest(
   installation: string,
@@ -71,6 +79,7 @@ export function useOrganizationCredentialRequest(
 ) {
   const client = useAgentManagerClient(installation);
   const ensureModelOperations = useEnsureModelOperations();
+  const contentMode = useOrganizationContentMode();
   const kubernetesApi = useApi(kubernetesApiRef);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -84,6 +93,7 @@ export function useOrganizationCredentialRequest(
     }
     const { namespace } = organization;
     const requestId = crypto.randomUUID();
+    const mode = modeArgument(await contentMode(installation, namespace));
     switch (request.kind) {
       case 'model': {
         const { createOnly, settings } =
@@ -102,6 +112,7 @@ export function useOrganizationCredentialRequest(
               ? newModelSettingsArguments(request.provider, request.settings)
               : {}),
             requestId,
+            ...mode,
           });
         } catch (error) {
           if (
@@ -130,6 +141,7 @@ export function useOrganizationCredentialRequest(
           secret,
           key,
           requestId,
+          ...mode,
         });
       }
       default:
@@ -138,17 +150,23 @@ export function useOrganizationCredentialRequest(
           secret: request.secret,
           key: request.key,
           requestId,
+          ...mode,
         });
     }
   };
 
   return useTrackedMutation<
-    { result: CredentialResourceResult; form?: string },
+    {
+      result: CredentialResourceResult;
+      form?: string;
+      /** The pull request a write in mode commit opened. */
+      commit?: CredentialCommit;
+    },
     Error,
     CredentialRequest
   >({
-    event: ({ result, form }, request) =>
-      request.kind === 'model' && !form
+    event: ({ result, form, commit }, request) =>
+      request.kind === 'model' && !form && !commit
         ? {
             name:
               result.created === false
@@ -161,7 +179,7 @@ export function useOrganizationCredentialRequest(
       const result = await send(request);
       const operation = preparedCredentialOperation(result);
       if (!operation) {
-        return { result };
+        return result.commit ? { result, commit: result.commit } : { result };
       }
       // A model's request opens where every model's does, wherever it was
       // started; a connector's stays under its organization.
@@ -190,9 +208,13 @@ export function useOrganizationCredentialRequest(
             );
       return { result, form };
     },
-    onSuccess: ({ form }) => {
+    onSuccess: ({ form, commit }) => {
       if (form) {
         navigate(form);
+        return undefined;
+      }
+      // Nothing is written yet: the dialog shows the pull request.
+      if (commit) {
         return undefined;
       }
       toastApi.post({
