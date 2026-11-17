@@ -23,6 +23,7 @@ export const PLATFORM_NAMESPACE = 'agent-platform';
 export async function kubectl(args: string[], input?: string) {
   const child = run('kubectl', ['--kubeconfig', KUBECONFIG!, ...args], {
     encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
   });
   if (input !== undefined) {
     child.child.stdin?.end(input);

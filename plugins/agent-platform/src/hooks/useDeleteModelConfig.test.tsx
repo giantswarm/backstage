@@ -1,5 +1,5 @@
 import { PropsWithChildren } from 'react';
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { analyticsApiRef } from '@backstage/core-plugin-api';
 import { mockApis, TestApiProvider } from '@backstage/test-utils';
@@ -8,19 +8,26 @@ import {
   ModelConfig,
   ModelConfigInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { useDeleteModelConfig } from './useDeleteModelConfig';
+import { AgentManagerError } from '../lib/agentManager';
+import {
+  AgentManagerUnavailableError,
+  useDeleteModelConfig,
+} from './useDeleteModelConfig';
 
 // The reads and writes are mocked; the provenance/ownership helpers and the
 // resource classes are the real ones, so the label reading and GVK resolution
 // under test are the real thing.
-const mockUseSelfSubjectAccessReview = jest.fn();
 const mockDeleteResource = jest.fn();
+const mockDeleteModel = jest.fn();
+let mockWithoutClient = false;
+jest.mock('./useAgentManager', () => ({
+  useAgentManagerClient: () =>
+    mockWithoutClient ? undefined : { deleteModel: mockDeleteModel },
+}));
 const mockFetchResourceList = jest.fn();
 
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
-  useSelfSubjectAccessReview: (...args: unknown[]) =>
-    mockUseSelfSubjectAccessReview(...args),
   deleteResource: (...args: unknown[]) => mockDeleteResource(...args),
   fetchResourceList: (...args: unknown[]) => mockFetchResourceList(...args),
 }));
@@ -68,11 +75,14 @@ function makeAgentJson(modelConfig: string) {
 function setup({
   modelConfig = makeModelConfig(),
   allowed = true,
+  checkFailure,
   agents = [] as ReturnType<typeof makeAgentJson>[],
   didReadAgents = true,
 }: {
   modelConfig?: ModelConfig | undefined;
   allowed?: boolean;
+  /** The dry run fails with this, which is no refusal. */
+  checkFailure?: Error;
   agents?: ReturnType<typeof makeAgentJson>[];
   didReadAgents?: boolean;
 } = {}) {
@@ -87,10 +97,25 @@ function setup({
     return agents;
   });
 
-  mockUseSelfSubjectAccessReview.mockReturnValue({
-    allowed,
-    isLoading: false,
-  });
+  // agent-manager's dry run answers whether this person may delete it.
+  mockDeleteModel.mockImplementation(
+    async (
+      _namespace: string,
+      _name: string,
+      options?: { dryRun?: boolean },
+    ) => {
+      if (options?.dryRun && checkFailure) {
+        throw checkFailure;
+      }
+      if (options?.dryRun && !allowed) {
+        throw new AgentManagerError(
+          'forbidden',
+          'forbidden: needs agent-platform:admin',
+        );
+      }
+      return { deleted: !options?.dryRun };
+    },
+  );
 
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
     <TestApiProvider
@@ -114,40 +139,70 @@ function setup({
 
 beforeEach(() => {
   jest.mocked(analyticsApi.captureEvent).mockClear();
-  mockUseSelfSubjectAccessReview.mockReset();
   mockDeleteResource.mockReset();
+  mockDeleteModel.mockReset();
   mockDeleteResource.mockResolvedValue(undefined);
   mockFetchResourceList.mockReset();
+  mockWithoutClient = false;
 });
 
 describe('useDeleteModelConfig', () => {
-  it('offers the deletion for an unowned model we may delete', () => {
+  it('offers the deletion when agent-manager accepts it for this person', async () => {
     const { result } = setup();
 
-    expect(result.current.isDeletable).toBe(true);
+    expect(result.current.isCheckingDeletable).toBe(true);
+    expect(result.current.isDeletable).toBe(false);
+    await waitFor(() => expect(result.current.isDeletable).toBe(true));
     expect(result.current.isCheckingDeletable).toBe(false);
   });
 
-  it('checks the permission against the named ModelConfig', () => {
-    setup();
+  it("asks agent-manager's dry run for the named model, not the cluster", async () => {
+    const { result } = setup();
 
-    expect(mockUseSelfSubjectAccessReview).toHaveBeenCalledWith(
-      CLUSTER,
-      {
-        group: 'api.kagent.dev',
-        resource: 'modelconfigs',
-        namespace: NAMESPACE,
-        name: 'qwen3',
-        verb: 'delete',
-      },
-      { enabled: true },
-    );
+    await waitFor(() => expect(result.current.isDeletable).toBe(true));
+    expect(mockDeleteModel).toHaveBeenCalledWith(NAMESPACE, 'qwen3', {
+      dryRun: true,
+    });
+    expect(mockDeleteModel).toHaveBeenCalledTimes(1);
   });
 
-  it('refuses when the access review says no', () => {
+  it('withholds the deletion when agent-manager refuses this person', async () => {
     const { result } = setup({ allowed: false });
 
+    await waitFor(() => expect(result.current.isCheckingDeletable).toBe(false));
     expect(result.current.isDeletable).toBe(false);
+    expect(result.current.checkError).toBeNull();
+    expect(mockDeleteModel).toHaveBeenCalledWith(NAMESPACE, 'qwen3', {
+      dryRun: true,
+    });
+  });
+
+  it('says why when the dry run fails without a refusal, and checks again', async () => {
+    const failure = new Error('muster: request timed out');
+    const { result } = setup({ checkFailure: failure });
+
+    await waitFor(() => expect(result.current.checkError).toBe(failure));
+    expect(result.current.isDeletable).toBe(false);
+
+    mockDeleteModel.mockResolvedValue({ deleted: false });
+    act(() => result.current.recheckDeletable());
+
+    await waitFor(() => expect(result.current.isDeletable).toBe(true));
+    expect(result.current.checkError).toBeNull();
+  });
+
+  it('says why Delete is not offered when the portal has no agent-manager client', () => {
+    mockWithoutClient = true;
+    const { result } = setup();
+
+    expect(result.current.isDeletable).toBe(false);
+    expect(result.current.checkError).toBeInstanceOf(
+      AgentManagerUnavailableError,
+    );
+    expect(result.current.checkError?.message).toBe(
+      'The portal cannot reach agent-manager on gazelle, which deletes models, so Delete is not offered.',
+    );
+    expect(mockDeleteModel).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -167,56 +222,7 @@ describe('useDeleteModelConfig', () => {
 
     expect(result.current.isDeletable).toBe(false);
     expect(result.current.owner).toBe(owner);
-  });
-
-  it('deletes the model and its conventional key secret', async () => {
-    const { result } = setup();
-
-    await act(async () => {
-      await result.current.deleteModelConfig();
-    });
-
-    expect(mockDeleteResource).toHaveBeenCalledTimes(2);
-    expect(mockDeleteResource).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        name: 'qwen3',
-        namespace: NAMESPACE,
-        gvk: expect.objectContaining({ plural: 'modelconfigs' }),
-      }),
-    );
-    expect(mockDeleteResource).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        name: 'kagent-qwen3',
-        gvk: expect.objectContaining({ plural: 'secrets', isCore: true }),
-      }),
-    );
-    // Reported without the model's name.
-    expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
-    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: 'AgentPlatform.modelDeleted',
-        attributes: {},
-      }),
-    );
-  });
-
-  it('leaves a foreign key secret alone', async () => {
-    // A hand-provisioned Secret under any other name may be shared with other
-    // models; only the portal/agentlab-conventional `kagent-<name>` is 1:1.
-    const { result } = setup({
-      modelConfig: makeModelConfig({ apiKeySecret: 'my-shared-key' }),
-    });
-
-    await act(async () => {
-      await result.current.deleteModelConfig();
-    });
-
-    expect(mockDeleteResource).toHaveBeenCalledTimes(1);
-    expect(mockDeleteResource).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'qwen3' }),
-    );
+    expect(mockDeleteModel).not.toHaveBeenCalled();
   });
 
   it('refuses while an agent still references the model', async () => {
@@ -239,7 +245,8 @@ describe('useDeleteModelConfig', () => {
       await result.current.deleteModelConfig();
     });
 
-    expect(mockDeleteResource).toHaveBeenCalled();
+    expect(mockDeleteModel).toHaveBeenCalledWith(NAMESPACE, 'qwen3');
+    expect(mockDeleteResource).not.toHaveBeenCalled();
   });
 
   it('refuses when the referenced-by check cannot be read', async () => {
@@ -256,41 +263,32 @@ describe('useDeleteModelConfig', () => {
 
     expect(mockDeleteResource).not.toHaveBeenCalled();
   });
+});
 
-  it('treats an already-deleted model as success', async () => {
-    const notFound = new Error('gone');
-    notFound.name = 'NotFoundError';
-    mockDeleteResource.mockRejectedValueOnce(notFound);
-    // The secret ride-along still runs afterwards.
-    mockDeleteResource.mockResolvedValueOnce(undefined);
-
-    const { result } = setup();
-
-    await act(async () => {
-      await result.current.deleteModelConfig();
-    });
-
-    expect(result.current.error).toBeNull();
-    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+it('deletes through agent-manager without a model or Secret write from the portal', async () => {
+  const { result } = setup();
+  await act(async () => {
+    await result.current.deleteModelConfig();
   });
+  expect(mockDeleteModel).toHaveBeenCalledWith(NAMESPACE, 'qwen3');
+  expect(mockDeleteResource).not.toHaveBeenCalled();
+  expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+  expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+    expect.objectContaining({
+      action: 'AgentPlatform.modelDeleted',
+      attributes: {},
+    }),
+  );
+});
 
-  it('does not fail the deletion when only the secret cleanup fails', async () => {
-    mockDeleteResource.mockImplementation(
-      async ({ name }: { name: string }) => {
-        if (name === 'kagent-qwen3') {
-          const error = new Error('secrets is forbidden');
-          error.name = 'ForbiddenError';
-          throw error;
-        }
-      },
+it('does not report a deletion when the manager refuses it', async () => {
+  const { result } = setup();
+  mockDeleteModel.mockRejectedValue(new Error('forbidden'));
+  await act(async () => {
+    await expect(result.current.deleteModelConfig()).rejects.toThrow(
+      'forbidden',
     );
-
-    const { result } = setup();
-
-    await act(async () => {
-      await result.current.deleteModelConfig();
-    });
-
-    expect(result.current.error).toBeNull();
   });
+  expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  expect(mockDeleteResource).not.toHaveBeenCalled();
 });

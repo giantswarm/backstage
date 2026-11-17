@@ -12,6 +12,7 @@ import {
   type StartSessionRequest,
 } from '../../../lib/agentManager';
 import {
+  MODEL_OPERATION_FIELDS,
   ORGANIZATIONS_CAPABILITY,
   type MemberRequest,
   type OrganizationCredentialReplacement,
@@ -27,6 +28,13 @@ import {
 } from '../agentManagerFixtureState';
 import { FIXTURE_HARNESS } from '../agentPlatformFixtureData';
 import { asJson, text } from './jsonTools';
+
+/**
+ * The installation whose agent-manager predates model credential operations:
+ * its `set_organization_model` takes none of {@link MODEL_OPERATION_FIELDS},
+ * so the portal refuses every model write there.
+ */
+export const WITHOUT_MODEL_OPERATIONS = 'fennel';
 
 /** What the fixture agent-manager of an installation composes and can do. */
 const infoOf = (installation: string, managed: string[]): AgentManagerInfo => ({
@@ -113,6 +121,13 @@ export function agentManagerFixtureServer(
         installation,
         args as OrganizationModelRequest,
       ),
+    [AGENT_MANAGER_TOOLS.deleteOrganizationObject]: (args, { installation }) =>
+      state().deleteOrganizationObject(installation, {
+        namespace: text(args, 'namespace'),
+        name: text(args, 'name'),
+        kind: text(args, 'kind'),
+        dryRun: args.dryRun === true,
+      }),
     [AGENT_MANAGER_TOOLS.replaceOrganizationCredential]: (
       args,
       { installation },
@@ -178,6 +193,26 @@ export function agentManagerFixtureServer(
   return {
     server: AGENT_MANAGER_SERVER,
     tools: asJson(tools),
+    inputSchemas: {
+      [AGENT_MANAGER_TOOLS.setOrganizationModel]: installation => ({
+        type: 'object',
+        properties: Object.fromEntries(
+          [
+            'namespace',
+            'name',
+            'provider',
+            'model',
+            'create',
+            'default',
+            'requestId',
+            'insecureSkipTLSVerify',
+            ...(installation === WITHOUT_MODEL_OPERATIONS
+              ? []
+              : MODEL_OPERATION_FIELDS),
+          ].map(field => [field, {}]),
+        ),
+      }),
+    },
   };
 }
 

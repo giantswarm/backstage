@@ -60,12 +60,15 @@ import {
   agentObjectOf,
   carrierObjectOf,
   harnessObjectOf,
+  isVertexProvider,
   listedOrganizationOf,
   modelConfigObjectOf,
   permissionsOf,
+  providerBlockOf,
   type FixtureAgentRecord,
   type FixtureModel,
 } from './agentPlatformFixtureData';
+import { MODEL_CONFIG_NAMESPACE } from '../../lib/modelConfigs';
 import { PLATFORM_TENANT_NAMESPACE } from '../../lib/tenants';
 import { FIXTURE_USER } from './fixtureIdentity';
 import { kagentFixtureState, KagentFixtureState } from './kagentFixtureState';
@@ -97,6 +100,21 @@ export const OPERATION_TTL_MS = 30 * 60 * 1000;
 
 /** The model the agents the data set builds as failed read: none has it. */
 export const RETIRED_MODEL_CONFIG = 'retired';
+
+/** The Vertex AI model each organization has and no agent uses. */
+export const UNUSED_VERTEX_MODEL = 'gemini-vertex';
+
+/** The installation's default model, which its Helm release renders. */
+export const HELM_PLATFORM_MODEL = 'platform-default';
+
+/** The Secrets agent-manager owns, and writes, in the installation namespace. */
+const PLATFORM_CREDENTIAL_PREFIX = 'tenant-credential-';
+
+/** agent-manager's checks of a Vertex AI model's location and project. */
+const VERTEX_LOCATION = /^(global|us|eu|[a-z]+-[a-z]+[0-9]+)$/;
+const GOOGLE_PROJECT_ID = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
+
+const GOOGLE_SERVICE_ACCOUNT_JSON = 'google-service-account-json' as const;
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -139,6 +157,8 @@ type StoredOperation = {
   operation: CredentialOperation;
   /** Writes what the operation prepared, once its values are saved. */
   apply: () => CredentialResourceResult;
+  /** The Google Cloud project a service-account key must belong to, by `secret/key`. */
+  projects?: Record<string, string>;
 };
 
 type InstallationState = {
@@ -173,6 +193,9 @@ function keyNameOf(provider: string | undefined): string {
       return 'ANTHROPIC_API_KEY';
     case 'Gemini':
       return 'GOOGLE_API_KEY';
+    case 'AnthropicVertexAI':
+    case 'GeminiVertexAI':
+      return 'GOOGLE_APPLICATION_CREDENTIALS';
     default:
       return 'API_KEY';
   }
@@ -383,8 +406,30 @@ export class AgentManagerFixtureState {
           secret: `${FIXTURE_MODEL_CONFIG}-model-key`,
           key: keyNameOf('OpenAI'),
         });
+        models.set(keyOf(organization.namespace, UNUSED_VERTEX_MODEL), {
+          namespace: organization.namespace,
+          name: UNUSED_VERTEX_MODEL,
+          displayName: 'Gemini on Vertex AI',
+          provider: 'GeminiVertexAI',
+          model: 'gemini-2.5-flash',
+          default: false,
+          secret: `${UNUSED_VERTEX_MODEL}-model-key`,
+          key: keyNameOf('GeminiVertexAI'),
+          projectID: 'fixture-models',
+          location: 'europe-west1',
+        });
         members.set(organization.namespace, membersOf(organization));
       }
+      models.set(keyOf(MODEL_CONFIG_NAMESPACE, HELM_PLATFORM_MODEL), {
+        namespace: MODEL_CONFIG_NAMESPACE,
+        name: HELM_PLATFORM_MODEL,
+        provider: 'OpenAI',
+        model: 'gpt-4.1',
+        default: true,
+        secret: 'kagent-openai',
+        key: keyNameOf('OpenAI'),
+        helmRelease: 'kagent',
+      });
       state = { organizations, agents, models, members, erasing: new Map() };
       this.installations.set(installation, state);
     }
@@ -565,7 +610,7 @@ export class AgentManagerFixtureState {
       connectors: connectorsOf().map(connector => connector.name),
       egressPolicies: egressPoliciesOf(namespace).map(policy => policy.name),
       credentials: [
-        ...models.map(model => model.secret),
+        ...models.flatMap(model => (model.secret ? [model.secret] : [])),
         ...connectorsOf().flatMap(connector =>
           connector.credentials.map(credential => credential.secret),
         ),
@@ -761,7 +806,35 @@ export class AgentManagerFixtureState {
       accepted: true,
       resolvedRefs: true,
       default: model.default,
+      ...(model.helmRelease && { managedBy: 'Helm' }),
     }));
+  }
+
+  /**
+   * Where a model write lands: an organization's namespace, which takes its
+   * admin role, or the installation's (`undefined`, platform scope), which
+   * takes a cluster admin, as the fixture person is everywhere.
+   */
+  private modelTarget(
+    installation: string,
+    namespace: string,
+  ): FixtureOrganization | undefined {
+    if (namespace === MODEL_CONFIG_NAMESPACE) {
+      return undefined;
+    }
+    const organization = this.writableIn(installation, namespace);
+    this.mustManage(organization);
+    return organization;
+  }
+
+  /** agent-manager's refusal to write a model another tool renders. */
+  private mustNotBeHelms(model: FixtureModel): void {
+    if (model.helmRelease) {
+      throw refusal(
+        'gitops_owned',
+        `ModelConfig ${model.namespace}/${model.name} is managed by Helm: change it through that owner`,
+      );
+    }
   }
 
   private markDefault(installation: string, model: FixtureModel): void {
@@ -780,12 +853,13 @@ export class AgentManagerFixtureState {
 
   private prepare(
     installation: string,
-    organization: FixtureOrganization,
+    organization: FixtureOrganization | undefined,
     operation: Omit<
       CredentialOperation,
       'id' | 'version' | 'state' | 'mode' | 'organization' | 'expiresAt'
     >,
     apply: () => CredentialResourceResult,
+    projects?: Record<string, string>,
   ): CredentialResourceResult {
     const id = hexId(48);
     const result: CredentialResourceResult = {
@@ -802,14 +876,17 @@ export class AgentManagerFixtureState {
         expiresAt: new Date(this.now() + OPERATION_TTL_MS).toISOString(),
         state: 'pending',
         mode: 'apply',
-        organization: {
-          namespace: organization.namespace,
-          parent: organization.parent,
-          organization: organization.name,
-        },
+        organization: organization
+          ? {
+              namespace: organization.namespace,
+              parent: organization.parent,
+              organization: organization.name,
+            }
+          : { scope: 'platform', namespace: MODEL_CONFIG_NAMESPACE },
         result,
       },
       apply,
+      ...(projects && { projects }),
     });
     return result;
   }
@@ -818,8 +895,7 @@ export class AgentManagerFixtureState {
     installation: string,
     request: OrganizationModelRequest,
   ): CredentialResourceResult {
-    const organization = this.writableIn(installation, request.namespace);
-    this.mustManage(organization);
+    const organization = this.modelTarget(installation, request.namespace);
     return this.once(
       installation,
       'set_organization_model',
@@ -828,13 +904,135 @@ export class AgentManagerFixtureState {
     );
   }
 
+  /** `delete_organization_object` for a model: the ModelConfig and its key. */
+  deleteOrganizationObject(
+    installation: string,
+    request: {
+      namespace: string;
+      name: string;
+      kind: string;
+      dryRun?: boolean;
+    },
+  ): CredentialResourceResult {
+    if (request.kind !== 'model') {
+      throw refusal(
+        'invalid_request',
+        `fixture mode deletes models only, not a ${request.kind}`,
+      );
+    }
+    this.modelTarget(installation, request.namespace);
+    const { models } = this.stateOf(installation);
+    const key = keyOf(request.namespace, request.name);
+    const model = models.get(key);
+    if (!model) {
+      throw refusal(
+        'not_found',
+        `model ${request.name} not found in ${request.namespace}`,
+      );
+    }
+    this.mustNotBeHelms(model);
+    if (!request.dryRun) {
+      models.delete(key);
+      this.changed();
+    }
+    return {
+      namespace: request.namespace,
+      kind: 'model',
+      name: request.name,
+      deleted: !request.dryRun,
+      defaultModel: this.defaultModelIn(installation, request.namespace),
+      note: 'its credential Secret, if any, stays: another object may name it',
+    };
+  }
+
+  /**
+   * Writes the request's settings into the model as agent-manager does, and
+   * refuses what it refuses: Vertex AI settings on another provider, a
+   * Vertex AI model without a valid location and project, an endpoint the
+   * provider has no field for. Answers whether anything changed.
+   */
+  private configureModel(
+    model: FixtureModel,
+    request: OrganizationModelRequest,
+  ): boolean {
+    const before = JSON.stringify(model);
+    if (isVertexProvider(model.provider)) {
+      if (request.projectID) model.projectID = request.projectID;
+      if (request.location) model.location = request.location;
+      if (!VERTEX_LOCATION.test(model.location ?? '')) {
+        throw refusal(
+          'invalid_request',
+          'Vertex AI requires a location: global, us, eu or a Google region such as europe-west1',
+        );
+      }
+      if (!GOOGLE_PROJECT_ID.test(model.projectID ?? '')) {
+        throw refusal(
+          'invalid_request',
+          'Vertex AI requires a Google project ID: 6 to 30 lowercase letters, digits or hyphens, starting with a letter',
+        );
+      }
+    } else if (request.projectID || request.location) {
+      throw refusal(
+        'invalid_request',
+        'projectID and location apply only to Vertex AI models',
+      );
+    }
+    if (request.endpoint !== undefined) {
+      if (!['OpenAI', 'Anthropic', 'Ollama'].includes(model.provider ?? '')) {
+        if (request.endpoint) {
+          throw refusal(
+            'invalid_request',
+            'endpoint is not supported for this provider',
+          );
+        }
+      } else {
+        model.endpoint = request.endpoint || undefined;
+      }
+    }
+    if (request.displayName !== undefined) {
+      model.displayName = request.displayName || undefined;
+    }
+    if (request.model) {
+      model.model = request.model;
+    }
+    return JSON.stringify(model) !== before;
+  }
+
   private writeModel(
     installation: string,
-    organization: FixtureOrganization,
+    organization: FixtureOrganization | undefined,
     request: OrganizationModelRequest,
   ): CredentialResourceResult {
+    const { namespace, name } = request;
     const { models } = this.stateOf(installation);
-    const existing = models.get(keyOf(request.namespace, request.name));
+    const existing = models.get(keyOf(namespace, name));
+    if (existing && request.create) {
+      throw refusal(
+        'already_exists',
+        `ModelConfig ${namespace}/${name} exists already: pick another name, or call without create to change or replace it`,
+      );
+    }
+    if (
+      organization &&
+      (request.endpoint ||
+        request.insecureSkipTLSVerify ||
+        request.noCredential)
+    ) {
+      throw refusal(
+        'invalid_request',
+        `endpoint, insecureSkipTLSVerify and noCredential apply only to installation models (namespace ${MODEL_CONFIG_NAMESPACE})`,
+      );
+    }
+    if (existing) {
+      this.mustNotBeHelms(existing);
+    }
+    if (request.default) {
+      for (const other of this.modelsIn(installation, namespace)) {
+        if (other.default && other !== existing) {
+          this.mustNotBeHelms(other);
+        }
+      }
+    }
     if (existing) {
       if (request.provider && request.provider !== existing.provider) {
         throw refusal(
@@ -842,33 +1040,72 @@ export class AgentManagerFixtureState {
           `model ${existing.name} keeps its provider ${existing.provider}: its key is that provider's`,
         );
       }
-      const model = request.model || existing.model;
+      const changed = this.configureModel(existing, request);
       const makeDefault = Boolean(request.default) && !existing.default;
-      if (model !== existing.model || makeDefault) {
-        existing.model = model;
-        if (makeDefault) {
-          this.markDefault(installation, existing);
-        }
+      if (makeDefault) {
+        this.markDefault(installation, existing);
+      }
+      if (changed || makeDefault) {
         this.changed();
       }
       return {
-        namespace: request.namespace,
+        namespace,
         kind: 'model',
-        name: request.name,
+        name,
         created: false,
-        defaultModel: this.defaultModelIn(installation, request.namespace),
+        defaultModel: this.defaultModelIn(installation, namespace),
       };
     }
     const provider = (request.provider ?? 'OpenAI') as FixtureModel['provider'];
+    const vertex = isVertexProvider(provider);
     const model: FixtureModel = {
-      namespace: request.namespace,
-      name: request.name,
+      namespace,
+      name,
       provider,
       model: request.model ?? '',
       default: false,
-      secret: `${request.name}-model-key`,
+      secret: organization
+        ? `${name}-model-key`
+        : `${PLATFORM_CREDENTIAL_PREFIX}${name}`,
       key: keyNameOf(provider),
     };
+    this.configureModel(model, request);
+    if (request.noCredential) {
+      if (vertex) {
+        throw refusal(
+          'invalid_request',
+          'Vertex AI requires a service account credential',
+        );
+      }
+      model.secret = '';
+      model.key = '';
+    }
+    const pair = {
+      secret: model.secret,
+      key: model.key,
+      ...(vertex && { inputFormat: GOOGLE_SERVICE_ACCOUNT_JSON }),
+    };
+    const land = (): CredentialResourceResult => {
+      models.set(keyOf(model.namespace, model.name), model);
+      const isFirst = this.modelsIn(installation, model.namespace).length === 1;
+      if (request.default || isFirst) {
+        this.markDefault(installation, model);
+      }
+      this.changed();
+      return {
+        namespace: model.namespace,
+        kind: 'model',
+        name: model.name,
+        created: true,
+        defaultModel: this.defaultModelIn(installation, model.namespace),
+        ...(model.secret && {
+          credentials: [{ ...pair, state: 'present' as const }],
+        }),
+      };
+    };
+    if (!model.secret) {
+      return land();
+    }
     return this.prepare(
       installation,
       organization,
@@ -879,38 +1116,28 @@ export class AgentManagerFixtureState {
             object: {
               kind: 'ModelConfig',
               metadata: { name: model.name },
-              spec: { provider: model.provider, model: model.model },
+              spec: {
+                provider: model.provider,
+                model: model.model,
+                apiKeySecret: model.secret,
+                apiKeySecretKey: model.key,
+                ...providerBlockOf(model),
+              },
             },
           },
         ],
         references: [],
         result: {
-          namespace: request.namespace,
+          namespace,
           kind: 'model',
-          name: request.name,
-          credentials: [
-            { secret: model.secret, key: model.key, state: 'missing' },
-          ],
+          name,
+          credentials: [{ ...pair, state: 'missing' }],
         },
       },
-      () => {
-        models.set(keyOf(model.namespace, model.name), model);
-        const isFirst =
-          this.modelsIn(installation, model.namespace).length === 1;
-        if (request.default || isFirst) {
-          this.markDefault(installation, model);
-        }
-        return {
-          namespace: model.namespace,
-          kind: 'model',
-          name: model.name,
-          created: true,
-          defaultModel: this.defaultModelIn(installation, model.namespace),
-          credentials: [
-            { secret: model.secret, key: model.key, state: 'present' },
-          ],
-        };
-      },
+      land,
+      vertex && model.projectID
+        ? { [`${model.secret}/${model.key}`]: model.projectID }
+        : undefined,
     );
   }
 
@@ -921,15 +1148,21 @@ export class AgentManagerFixtureState {
     secret: string,
     key: string,
   ): CredentialReference[] {
+    const models = this.modelsIn(installation, namespace)
+      .filter(model => model.secret === secret && model.key === key)
+      .map((model): CredentialReference => ({
+        kind: 'ModelConfig',
+        name: model.name,
+        key: model.key,
+        provider: model.provider,
+        ...(model.projectID && { projectID: model.projectID }),
+        ...(model.location && { location: model.location }),
+      }));
+    if (namespace === MODEL_CONFIG_NAMESPACE) {
+      return models;
+    }
     return [
-      ...this.modelsIn(installation, namespace)
-        .filter(model => model.secret === secret && model.key === key)
-        .map((model): CredentialReference => ({
-          kind: 'ModelConfig',
-          name: model.name,
-          key: model.key,
-          provider: model.provider,
-        })),
+      ...models,
       ...connectorsOf()
         .filter(connector =>
           connector.credentials.some(
@@ -964,8 +1197,16 @@ export class AgentManagerFixtureState {
     installation: string,
     request: OrganizationCredentialReplacement,
   ): CredentialResourceResult {
-    const organization = this.writableIn(installation, request.namespace);
-    this.mustManage(organization);
+    const organization = this.modelTarget(installation, request.namespace);
+    if (
+      !organization &&
+      !request.secret.startsWith(PLATFORM_CREDENTIAL_PREFIX)
+    ) {
+      throw refusal(
+        'invalid_request',
+        `agent-manager writes only ${PLATFORM_CREDENTIAL_PREFIX}* Secrets in the installation namespace: replace the value of Secret ${request.secret} where it is managed`,
+      );
+    }
     const references = this.readersOf(
       installation,
       request.namespace,
@@ -978,7 +1219,16 @@ export class AgentManagerFixtureState {
         `no object of the organization reads ${request.secret}/${request.key}`,
       );
     }
-    const pair = { secret: request.secret, key: request.key };
+    const vertex = references.find(
+      reference =>
+        reference.kind === 'ModelConfig' &&
+        isVertexProvider(reference.provider),
+    );
+    const pair = {
+      secret: request.secret,
+      key: request.key,
+      ...(vertex && { inputFormat: GOOGLE_SERVICE_ACCOUNT_JSON }),
+    };
     return this.once(
       installation,
       'replace_organization_credential',
@@ -1004,6 +1254,9 @@ export class AgentManagerFixtureState {
             created: false,
             credentials: [{ ...pair, state: 'present' }],
           }),
+          vertex?.projectID
+            ? { [`${pair.secret}/${pair.key}`]: vertex.projectID }
+            : undefined,
         ),
     );
   }
@@ -1075,7 +1328,27 @@ export class AgentManagerFixtureState {
           .join(', ')}.`,
       );
     }
-    const result = stored.apply();
+    const notes: string[] = [];
+    for (const value of values) {
+      const project = stored.projects?.[`${value.secret}/${value.key}`];
+      if (project === undefined) continue;
+      const keyProject = serviceAccountKeyProject(value.value);
+      if (keyProject === undefined) {
+        throw new CredentialRefusal(
+          400,
+          'invalid_request',
+          'upload a Google service-account JSON key',
+        );
+      }
+      if (keyProject !== project) {
+        notes.push(
+          `the key's service account belongs to project ${keyProject} and the model calls Vertex AI in project ${project}: it needs Vertex AI access in ${project}`,
+        );
+      }
+    }
+    const applied = stored.apply();
+    const note = [applied.note, ...notes].filter(Boolean).join('; ');
+    const result = note ? { ...applied, note } : applied;
     stored.operation = {
       ...stored.operation,
       version: String(Number(stored.operation.version) + 1),
@@ -1611,6 +1884,31 @@ export class AgentManagerFixtureState {
       objects,
     });
     return objects;
+  }
+}
+
+/**
+ * agent-manager's check of a Vertex AI key's JSON: the project of a service
+ * account key, or `undefined` for anything else. A key of another project
+ * than the model's is accepted with a note. agent-manager also parses the
+ * private key, which no fixture page needs.
+ */
+function serviceAccountKeyProject(raw: string): string | undefined {
+  try {
+    const key = JSON.parse(raw) as Record<string, unknown>;
+    if (
+      raw.length <= 64 * 1024 &&
+      key.type === 'service_account' &&
+      typeof key.project_id === 'string' &&
+      key.project_id !== '' &&
+      typeof key.client_email === 'string' &&
+      key.client_email !== ''
+    ) {
+      return key.project_id;
+    }
+    return undefined;
+  } catch {
+    return undefined;
   }
 }
 

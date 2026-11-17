@@ -29,6 +29,7 @@ export function parseToolErrorCode(
  * - `invalid_request` -- a schema violation or an unpinnable skill, or an
  *   admission policy that denied the write.
  * - `conflict` -- an existing name or a suspended release.
+ * - `already_exists` -- a write with `create` whose object exists by then.
  * - `gitops_owned` -- a live write to a release applied from git.
  * - `forbidden` -- the apiserver's refusal for the person (a viewer's Deploy).
  * - `unsupported` -- an operation this installation does not offer.
@@ -37,6 +38,7 @@ export const AGENT_MANAGER_REFUSAL_CODES = [
   'not_found',
   'invalid_request',
   'conflict',
+  'already_exists',
   'gitops_owned',
   'forbidden',
   'unsupported',

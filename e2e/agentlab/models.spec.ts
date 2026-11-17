@@ -103,7 +103,7 @@ test('Connect a model waits for the Owner choices, then offers the lab organizat
     // An organization's model: its key goes on the credential form, so the
     // page asks for none. Not sent: that would create the model.
     await expect(
-      admin.getByRole('button', { name: 'Continue to the key' }),
+      admin.getByRole('button', { name: 'Continue to credential' }),
     ).toBeVisible();
     await expect(admin.getByLabel(/^API key/)).toHaveCount(0);
   } finally {

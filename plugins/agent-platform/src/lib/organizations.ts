@@ -389,6 +389,13 @@ export function memberKindLabel(kind: string): string {
  * a new key for an existing model is `replace_organization_credential`.
  */
 export type OrganizationModelRequest = {
+  projectID?: string;
+  location?: string;
+  endpoint?: string;
+  displayName?: string;
+  insecureSkipTLSVerify?: boolean;
+  noCredential?: boolean;
+  create?: boolean;
   namespace: string;
   name: string;
   provider?: string;
@@ -413,3 +420,29 @@ export type OrganizationCredentialReplacement = {
   /** Idempotency key: one per intended change. */
   requestId: string;
 };
+
+/**
+ * The `set_organization_model` arguments the portal's model forms send; an
+ * agent-manager whose tool lacks one of them predates model credential
+ * operations.
+ */
+export const MODEL_OPERATION_FIELDS = [
+  'projectID',
+  'location',
+  'endpoint',
+  'displayName',
+  'noCredential',
+] as const;
+
+/** Whether a `set_organization_model` input schema takes every model field. */
+export function hasModelOperations(
+  inputSchema: { properties?: Record<string, unknown> } | undefined,
+): boolean {
+  const properties = inputSchema?.properties ?? {};
+  return MODEL_OPERATION_FIELDS.every(field =>
+    Object.hasOwn(properties, field),
+  );
+}
+
+export const MODEL_OPERATIONS_MISSING =
+  'This installation needs an agent-manager release with model credential operations. No model was written.';

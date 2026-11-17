@@ -1,3 +1,4 @@
+/* eslint-disable @backstage/no-mixed-plugin-imports -- The Agent Platform composes installation APIs across plugins. */
 import { useState } from 'react';
 import { analyticsApiRef } from '@backstage/frontend-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
@@ -17,7 +18,7 @@ import {
 import { CREDENTIAL_OPERATION } from '../lib/__fixtures__/agentManagerOrganizations';
 import { AgentManagerError } from '../lib/agentManager';
 import { INITIAL_MODEL_CONFIG_FORM } from '../lib/modelConfigs';
-import { organizationsRouteRef } from '../routes';
+import { organizationsRouteRef, modelsRouteRef } from '../routes';
 import {
   type SaveOrganizationModelInput,
   useSaveOrganizationModel,
@@ -52,6 +53,23 @@ const SONNET = new ModelConfig(
 );
 
 const analyticsApi = mockApis.analytics.mock();
+
+/** Why the organization directory cannot answer for gazelle, when it cannot. */
+let mockDirectoryFailure: string | undefined;
+jest.mock('../components/OrganizationDirectoryProvider', () => {
+  const actual = jest.requireActual(
+    '../components/OrganizationDirectoryProvider',
+  );
+  return {
+    ...actual,
+    useOrganizationDirectory: () => {
+      const value = actual.useOrganizationDirectory();
+      return mockDirectoryFailure
+        ? { ...value, failureOf: () => mockDirectoryFailure }
+        : value;
+    },
+  };
+});
 
 /** Saves `input` on a click, and shows what the save answered. */
 function Harness({ input }: { input: SaveOrganizationModelInput }) {
@@ -101,7 +119,25 @@ async function saveWith(
   await renderInTestApp(
     <TestApiProvider
       apis={[
-        [musterApiRef, { callTool } as never],
+        [
+          musterApiRef,
+          {
+            callTool,
+            describeTool: async () => ({
+              inputSchema: {
+                properties: Object.fromEntries(
+                  [
+                    'projectID',
+                    'location',
+                    'endpoint',
+                    'displayName',
+                    'noCredential',
+                  ].map(key => [key, {}]),
+                ),
+              },
+            }),
+          } as never,
+        ],
         [analyticsApiRef, analyticsApi],
       ]}
     >
@@ -113,7 +149,12 @@ async function saveWith(
         <Harness input={input} />
       </QueryClientProvider>
     </TestApiProvider>,
-    { mountedRoutes: { '/organizations': organizationsRouteRef } },
+    {
+      mountedRoutes: {
+        '/organizations': organizationsRouteRef,
+        '/customize/models': modelsRouteRef,
+      },
+    },
   );
   await userEvent.click(screen.getByRole('button', { name: 'Save' }));
   return callTool;
@@ -173,17 +214,107 @@ const pending = async () => ({
 
 beforeEach(() => {
   analyticsApi.captureEvent.mockClear();
+  mockDirectoryFailure = undefined;
 });
 
 describe('useSaveOrganizationModel', () => {
+  it('keeps a supported custom endpoint and its noncredential query parameters', async () => {
+    const endpoint = 'https://models.example/v1?api-version=2026-01-01';
+    const callTool = await saveWith(
+      {
+        namespace: 'kagent',
+        values: { ...VALUES, provider: 'OpenAI', endpoint },
+      },
+      present,
+    );
+    await screen.findByTestId('answer');
+    expect(setCalls(callTool)[0]).toEqual(
+      expect.objectContaining({ endpoint }),
+    );
+  });
+
+  it.each(['Gemini', 'AnthropicVertexAI', 'GeminiVertexAI'] as const)(
+    'omits hidden endpoint settings for %s after a provider change',
+    async provider => {
+      const callTool = await saveWith(
+        {
+          namespace: 'kagent',
+          values: {
+            ...VALUES,
+            provider,
+            endpoint: 'https://previous-provider.example/v1',
+            insecureSkipTlsVerify: true,
+            projectID: 'vertex-test',
+            location: 'eu',
+          },
+        },
+        present,
+      );
+      await screen.findByTestId('answer');
+      expect(setCalls(callTool)).toHaveLength(1);
+      expect(setCalls(callTool)[0]).not.toHaveProperty('endpoint');
+      expect(setCalls(callTool)[0]).not.toHaveProperty('insecureSkipTLSVerify');
+    },
+  );
+
+  it('prepares installation Vertex metadata through the manager and opens its installation credential page', async () => {
+    const callTool = await saveWith(
+      {
+        namespace: 'kagent',
+        values: {
+          ...VALUES,
+          provider: 'GeminiVertexAI',
+          model: 'gemini-2.5-pro',
+          projectID: 'vertex-test',
+          location: 'global',
+        },
+      },
+      pending,
+    );
+    expect(await screen.findByTestId('answer')).toHaveTextContent(
+      `/customize/models/credentials/gazelle/kagent/${CREDENTIAL_OPERATION}`,
+    );
+    expect(setCalls(callTool)).toEqual([
+      expect.objectContaining({
+        namespace: 'kagent',
+        provider: 'GeminiVertexAI',
+        projectID: 'vertex-test',
+        location: 'global',
+        create: true,
+      }),
+    ]);
+    expect(setCalls(callTool)[0]).not.toHaveProperty('apiKey');
+  });
+  it('refuses a namespace it cannot tell from an organization, writing nothing', async () => {
+    mockDirectoryFailure = 'Could not reach agent-manager on gazelle.';
+    const callTool = await saveWith(
+      { namespace: 'agents-payments-x7k2q', values: VALUES },
+      pending,
+    );
+    expect(await screen.findByTestId('error')).toHaveTextContent(
+      "Could not tell whether agents-payments-x7k2q is an organization's namespace or the installation's",
+    );
+    expect(setCalls(callTool)).toEqual([]);
+  });
+
+  it("still saves in the installation's namespace while the organizations cannot be read", async () => {
+    mockDirectoryFailure = 'Could not reach agent-manager on gazelle.';
+    const callTool = await saveWith(
+      { namespace: 'kagent', values: VALUES },
+      pending,
+    );
+    expect(await screen.findByTestId('answer')).toBeInTheDocument();
+    expect(setCalls(callTool)).toHaveLength(1);
+  });
+
   it('asks agent-manager for a new model, without a key, and answers the credential form', async () => {
     const callTool = await saveWith(
-      { organization: PAYMENTS, values: { ...VALUES, apiKey: 'sk-typed' } },
+      { organization: PAYMENTS, values: VALUES },
       pending,
     );
 
     expect(await screen.findByTestId('answer')).toHaveTextContent(
-      `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
+      `/customize/models/credentials/gazelle/agents-payments-x7k2q/${CREDENTIAL_OPERATION}`,
     );
     expect(callTool).toHaveBeenCalledWith(
       'x_agent-manager_set_organization_model',
@@ -192,6 +323,9 @@ describe('useSaveOrganizationModel', () => {
         name: 'claude-sonnet',
         provider: 'Anthropic',
         model: 'claude-sonnet-4-6',
+        create: true,
+        displayName: '',
+        noCredential: false,
         requestId: expect.any(String),
       },
       'gazelle',
@@ -265,7 +399,7 @@ describe('useSaveOrganizationModel', () => {
     );
 
     expect(await screen.findByTestId('answer')).toHaveTextContent(
-      `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
+      `/customize/models/credentials/gazelle/agents-payments-x7k2q/${CREDENTIAL_OPERATION}`,
     );
     expect(callTool.mock.calls).toEqual([
       [
@@ -320,7 +454,7 @@ describe('useSaveOrganizationModel', () => {
     );
 
     expect(await screen.findByTestId('answer')).toHaveTextContent(
-      `/credentials/${CREDENTIAL_OPERATION}`,
+      `/credentials/gazelle/${PAYMENTS.namespace}/${CREDENTIAL_OPERATION}`,
     );
     expect(callTool.mock.calls.map(([tool]) => tool)).toEqual([
       'x_agent-manager_set_organization_model',

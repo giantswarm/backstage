@@ -1,3 +1,4 @@
+/* eslint-disable @backstage/no-mixed-plugin-imports -- The Agent Platform composes installation APIs across plugins. */
 import type { KubernetesApi } from '@backstage/plugin-kubernetes-react';
 import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 
@@ -413,6 +414,19 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
     },
   );
   const api = {
+    describeTool: jest.fn(async () => ({
+      inputSchema: {
+        properties: Object.fromEntries(
+          [
+            'projectID',
+            'location',
+            'endpoint',
+            'displayName',
+            'noCredential',
+          ].map(key => [key, {}]),
+        ),
+      },
+    })),
     callTool,
     listInstallations: jest.fn(async () => ({
       installations: [{ name: 'gazelle', requiresAuth: true }],
