@@ -67,6 +67,11 @@ jest.mock('../InstallationChip', () => ({
 
 let mockDeleteCheckError: Error | null = null;
 const mockRecheckDeletable = jest.fn();
+// How the organization's content is written: live, as without commit mode.
+jest.mock('../../hooks/useOrganizationContentMode', () => ({
+  useOrganizationContentModeOf: () => 'apply',
+}));
+
 jest.mock('../../hooks/useDeleteModelConfig', () => ({
   AgentManagerUnavailableError: jest.requireActual(
     '../../hooks/useDeleteModelConfig',

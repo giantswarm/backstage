@@ -48,6 +48,7 @@ import { modelStatus } from '../../lib/customize';
 import { markedIn, defaultIn, listed } from '../../lib/defaultModel';
 import { tenantInSentence } from '../../lib/tenants';
 import { useSetDefaultModelConfig } from '../../hooks/useSetDefaultModelConfig';
+import { useOrganizationContentModeOf } from '../../hooks/useOrganizationContentMode';
 import { modelProblem } from '../../lib/modelProblem';
 import { AgentManagerNotConnectedError } from '../../lib/agentManager';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
@@ -417,8 +418,13 @@ function ModelDetailPageContent() {
   ]);
   // An organization's model agent-manager wrote is edited, and made the
   // default, through it: agent-manager is no owner that withholds either.
+  // So is one Flux applies from its organization's git path, where
+  // agent-manager changes it by pull request.
+  const contentMode = useOrganizationContentModeOf(installation, namespace);
   const ownerSavesEdits = Boolean(
-    owner && modelConfig && !modelConfigEditOwner(modelConfig, directory),
+    owner &&
+    modelConfig &&
+    !modelConfigEditOwner(modelConfig, directory, contentMode),
   );
   const settingDefault = useSetDefaultModelConfig();
   const { setDefault, isSetting, reset: resetSetDefault } = settingDefault;

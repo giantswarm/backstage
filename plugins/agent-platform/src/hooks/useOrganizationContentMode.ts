@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { AgentManagerClient } from '../apis/AgentManagerClient';
 import { MODEL_CONFIG_NAMESPACE } from '../lib/modelConfigs';
@@ -62,5 +62,58 @@ export function useOrganizationContentMode(): (
       return organizationContentMode(organization, true);
     },
     [musterApi, queryClient],
+  );
+}
+
+/**
+ * The same answer as {@link useOrganizationContentMode}, read while a page
+ * renders: `undefined` until it is known, and `apply` wherever the reads fail
+ * (the write asks again and refuses then). Pages use it to offer the changes
+ * agent-manager makes by pull request.
+ */
+export function useOrganizationContentModeOf(
+  installation: string | undefined,
+  namespace: string | undefined,
+): OrganizationWriteMode | undefined {
+  const musterApi = useMusterPluginApi();
+  const relevant = Boolean(
+    musterApi &&
+    installation &&
+    namespace &&
+    namespace !== MODEL_CONFIG_NAMESPACE,
+  );
+  const info = useQuery({
+    ...agentManagerInfoQuery(musterApi, installation ?? ''),
+    enabled: relevant,
+  });
+  const commitMode =
+    info.data?.capabilities?.commit === true &&
+    info.data?.capabilities?.[ORGANIZATIONS_CAPABILITY] === true;
+  const listing = useQuery({
+    queryKey: musterOrganizationsQueryKey(installation ?? ''),
+    queryFn: () =>
+      new AgentManagerClient(musterApi!, installation!).listOrganizations(),
+    staleTime: 60_000,
+    retry: false,
+    enabled: relevant && commitMode,
+  });
+  if (!relevant) {
+    return 'apply';
+  }
+  if (info.isError || (info.data && !commitMode)) {
+    return 'apply';
+  }
+  if (!info.data) {
+    return undefined;
+  }
+  if (listing.isError) {
+    return 'apply';
+  }
+  if (!listing.data) {
+    return undefined;
+  }
+  return organizationContentMode(
+    listing.data.organizations.find(listed => listed.namespace === namespace),
+    true,
   );
 }

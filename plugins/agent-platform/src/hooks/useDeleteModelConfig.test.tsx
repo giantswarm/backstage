@@ -21,8 +21,35 @@ const mockDeleteResource = jest.fn();
 const mockDeleteModel = jest.fn();
 let mockWithoutClient = false;
 jest.mock('./useAgentManager', () => ({
+  ...jest.requireActual('./useAgentManager'),
   useAgentManagerClient: () =>
     mockWithoutClient ? undefined : { deleteModel: mockDeleteModel },
+}));
+// agent-manager's get_info and list_organizations, which decide the mode of
+// an organization's delete; the installation's namespace reads neither.
+const mockCallTool = jest.fn();
+jest.mock('./useMusterPluginApi', () => ({
+  useMusterPluginApi: () => ({ callTool: mockCallTool }),
+}));
+const ORGANIZATION_NAMESPACE = 'agents-payments-x7k2q';
+jest.mock('../components/OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../components/OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () => ({
+    directory: new Map([
+      [
+        'agents-payments-x7k2q',
+        {
+          namespace: 'agents-payments-x7k2q',
+          organization: 'payments',
+          parent: 'org-acme',
+        },
+      ],
+    ]),
+    installations: ['gazelle'],
+    isLoadingOf: () => false,
+    failureOf: () => undefined,
+    discoveryFailureOf: () => undefined,
+  }),
 }));
 const mockFetchResourceList = jest.fn();
 
@@ -40,15 +67,17 @@ const analyticsApi = mockApis.analytics.mock();
 function makeModelConfig({
   labels,
   apiKeySecret = 'kagent-qwen3',
+  namespace = NAMESPACE,
 }: {
   labels?: Record<string, string>;
   apiKeySecret?: string;
+  namespace?: string;
 } = {}): ModelConfig {
   return new ModelConfig(
     {
       apiVersion: 'api.kagent.dev/v1alpha3',
       kind: 'ModelConfig',
-      metadata: { name: 'qwen3', namespace: NAMESPACE, labels },
+      metadata: { name: 'qwen3', namespace, labels },
       spec: {
         provider: 'OpenAI',
         model: 'qwen3-8-27b',
@@ -144,6 +173,7 @@ beforeEach(() => {
   mockDeleteResource.mockResolvedValue(undefined);
   mockFetchResourceList.mockReset();
   mockWithoutClient = false;
+  mockCallTool.mockReset();
 });
 
 describe('useDeleteModelConfig', () => {
@@ -245,7 +275,7 @@ describe('useDeleteModelConfig', () => {
       await result.current.deleteModelConfig();
     });
 
-    expect(mockDeleteModel).toHaveBeenCalledWith(NAMESPACE, 'qwen3');
+    expect(mockDeleteModel).toHaveBeenCalledWith(NAMESPACE, 'qwen3', {});
     expect(mockDeleteResource).not.toHaveBeenCalled();
   });
 
@@ -270,7 +300,7 @@ it('deletes through agent-manager without a model or Secret write from the porta
   await act(async () => {
     await result.current.deleteModelConfig();
   });
-  expect(mockDeleteModel).toHaveBeenCalledWith(NAMESPACE, 'qwen3');
+  expect(mockDeleteModel).toHaveBeenCalledWith(NAMESPACE, 'qwen3', {});
   expect(mockDeleteResource).not.toHaveBeenCalled();
   expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
   expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
@@ -291,4 +321,111 @@ it('does not report a deletion when the manager refuses it', async () => {
   });
   expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   expect(mockDeleteResource).not.toHaveBeenCalled();
+});
+
+describe("an organization's model, deleted in the organization's mode", () => {
+  const PULL_REQUEST = {
+    repository: 'giantswarm/gazelle-configs',
+    base: 'main',
+    pullRequest: 'https://github.com/giantswarm/gazelle-configs/pull/7',
+    number: 7,
+  };
+  /** The operator's condition on an organization Flux applies from git. */
+  const IN_GIT = { status: 'False', reason: 'InInventory' };
+
+  function agentManager(commit: boolean, orphaned?: typeof IN_GIT) {
+    mockCallTool.mockImplementation(async (tool: string) => {
+      if (tool === 'x_agent-manager_get_info') {
+        return { capabilities: { organizations: true, commit } };
+      }
+      return {
+        organizations: [
+          {
+            name: 'payments',
+            parent: 'org-acme',
+            namespace: ORGANIZATION_NAMESPACE,
+            ...(orphaned ? { orphaned } : {}),
+            permissions: { manage: false, member: true },
+          },
+        ],
+      };
+    });
+  }
+
+  it.each([
+    ['from git, with commit mode', true, IN_GIT, 'commit'],
+    ['created live, with commit mode', true, undefined, undefined],
+    ['from git, without commit mode', false, IN_GIT, undefined],
+  ] as const)(
+    'deletes the model of an organization %s in that mode',
+    async (_, commit, orphaned, mode) => {
+      agentManager(commit, orphaned);
+      const { result } = setup({
+        modelConfig: makeModelConfig({ namespace: ORGANIZATION_NAMESPACE }),
+      });
+      await waitFor(() => expect(result.current.isDeletable).toBe(true));
+      await act(async () => {
+        await result.current.deleteModelConfig();
+      });
+
+      const expected = mode ? { mode } : {};
+      // The dry run asks as the delete will be made.
+      expect(mockDeleteModel).toHaveBeenCalledWith(
+        ORGANIZATION_NAMESPACE,
+        'qwen3',
+        { dryRun: true, ...expected },
+      );
+      expect(mockDeleteModel).toHaveBeenLastCalledWith(
+        ORGANIZATION_NAMESPACE,
+        'qwen3',
+        expected,
+      );
+    },
+  );
+
+  it('answers the pull request, and reports no deletion', async () => {
+    agentManager(true, IN_GIT);
+    const { result } = setup({
+      modelConfig: makeModelConfig({ namespace: ORGANIZATION_NAMESPACE }),
+    });
+    await waitFor(() => expect(result.current.isDeletable).toBe(true));
+    mockDeleteModel.mockResolvedValue({ deleted: false, commit: PULL_REQUEST });
+
+    let answer;
+    await act(async () => {
+      answer = await result.current.deleteModelConfig();
+    });
+
+    expect(answer).toEqual({ commit: PULL_REQUEST });
+    await waitFor(() =>
+      expect(result.current.pullRequest).toEqual(PULL_REQUEST),
+    );
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+
+  const fromOrganizationPath = () =>
+    makeModelConfig({
+      namespace: ORGANIZATION_NAMESPACE,
+      labels: {
+        'kustomize.toolkit.fluxcd.io/name': 'payments',
+        'app.kubernetes.io/managed-by': 'agent-manager',
+      },
+    });
+
+  it('offers the delete of a model Flux applies from the organization in commit mode', async () => {
+    agentManager(true, IN_GIT);
+    const { result } = setup({ modelConfig: fromOrganizationPath() });
+
+    await waitFor(() => expect(result.current.isDeletable).toBe(true));
+    expect(result.current.owner).toBeUndefined();
+  });
+
+  it('withholds it, as before, without commit mode', async () => {
+    agentManager(false, IN_GIT);
+    const { result } = setup({ modelConfig: fromOrganizationPath() });
+
+    await waitFor(() => expect(mockCallTool).toHaveBeenCalled());
+    expect(result.current.isDeletable).toBe(false);
+    expect(result.current.owner).toBe('Flux');
+  });
 });
