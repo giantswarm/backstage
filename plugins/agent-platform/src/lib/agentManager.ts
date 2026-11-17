@@ -76,6 +76,7 @@ export const AGENT_MANAGER_TOOLS = {
   removeOrganizationMember: 'remove_organization_member',
   listOrganizationConnectors: 'list_organization_connectors',
   setOrganizationModel: 'set_organization_model',
+  deleteOrganizationObject: 'delete_organization_object',
   replaceOrganizationCredential: 'replace_organization_credential',
 } as const;
 
@@ -786,12 +787,15 @@ export const EGRESS_POLICIES_CAPABILITY = 'egressPolicies';
 
 /**
  * One origin of an EgressPolicy. `credentialHeader` names the request header
- * the egress gateway fills from the policy's credential; the Secret behind it
- * is never reported.
+ * the egress gateway fills from the policy's credential. `credentialSecret`
+ * and `credentialKey` name the Secret and key it reads, never the value; an
+ * agent-manager older than giantswarm/agent-manager#371 leaves them out.
  */
 export type EgressDestination = {
   origin: string;
   credentialHeader?: string;
+  credentialSecret?: string;
+  credentialKey?: string;
 };
 
 /** `list_egress_policies`: an EgressPolicy an agent of its namespace may pick. */

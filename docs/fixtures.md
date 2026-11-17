@@ -253,8 +253,27 @@ in an organization being erased) and kept in memory until the page reloads:
   gone, with its agents and models;
 - adding a model or asking for a new key of a model or a connector: the tool
   prepares a credential operation, the credential form reads and saves it,
-  and the save writes the model. An operation expires after 30 minutes
-  (`OPERATION_TTL_MS`).
+  and the save writes the model. The Models page opens the form at
+  `/customize/models/credentials/<installation>/<namespace>/<operation>` for
+  both scopes, as agent-manager's `credentials.uiURL` names it; the form reads
+  the organization or the installation from the operation. An operation
+  expires after 30 minutes
+  (`OPERATION_TTL_MS`). A Vertex AI model's key is a service-account JSON of
+  its project (`inputFormat: google-service-account-json`), checked on save;
+  a write with `create` of a model that exists is `already_exists`;
+- the installation's models, in `kagent`, in platform scope (the person is a
+  cluster admin): `endpoint` and `noCredential` apply only there, and only
+  `tenant-credential-*` Secrets are replaced;
+- deleting a model (`delete_organization_object`), and its dry run, which
+  decides whether the model page offers the deletion.
+
+Each organization has two models: `default`, which its agents use, and
+`gemini-vertex` on Vertex AI, which none uses, so its deletion completes.
+Each installation's `kagent` namespace has `platform-default`, its default,
+which a Helm release renders: agent-manager refuses to change it, delete it or
+move the default off it (`gitops_owned`). `fennel`'s agent-manager predates
+model credential operations: its `set_organization_model` schema lacks the
+model fields, so the portal refuses every model write there.
 
 `set_organization_model`, `replace_organization_credential` and
 `start_session` honour their idempotency key (`requestId`): a retry answers

@@ -21,7 +21,7 @@ import {
   type Currency,
 } from '../../lib/formatNumbers';
 import { useMeasureColor } from '../../lib/measures';
-import { useVisibleSort } from '../../hooks/useVisibleSort';
+import { useSortOnShownColumn } from '../../hooks/useSortOnShownColumn';
 import { lastDaysNoun } from '../../lib/usageWindow';
 import { NameCell } from '../LlmUsage/NameCell';
 import { sortUsageRows } from './helpers';
@@ -342,7 +342,7 @@ export function ByAgentTable({
     paginationOptions: { type: 'none' },
   });
   // Compact, the tokens are hidden: sort by sessions, the busiest first.
-  useVisibleSort(tableProps.sort, shownColumns, {
+  useSortOnShownColumn(tableProps.sort, shownColumns, {
     column: 'sessions',
     direction: 'descending',
   });

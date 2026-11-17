@@ -1,40 +1,45 @@
 import { useCallback, useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import {
   Agent,
   CustomResourceMatcher,
-  deleteResource,
   fetchResourceList,
   ModelConfig,
-  useSelfSubjectAccessReview,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
-import {
-  keySecretName,
-  MODEL_CONFIG_NAMESPACE,
-  modelConfigOwner,
-} from '../lib/modelConfigs';
+import { AgentManagerError } from '../lib/agentManager';
+import { modelConfigEditOwner } from '../lib/modelConfigs';
+import { musterModelDeleteCheckQueryKey } from '../lib/queryKeys';
 import { useOrganizationDirectory } from '../components/OrganizationDirectoryProvider';
+import { useAgentManagerClient } from './useAgentManager';
 
-const SECRET_GVK: CustomResourceMatcher = {
-  group: '',
-  apiVersion: 'v1',
-  plural: 'secrets',
-  isCore: true,
-};
+/**
+ * The portal has no agent-manager client for the installation (no Muster API
+ * in this app), so it cannot ask whether the person may delete the model.
+ */
+export class AgentManagerUnavailableError extends Error {
+  constructor(installation: string) {
+    super(
+      `The portal cannot reach agent-manager on ${installation}, which deletes models, so Delete is not offered.`,
+    );
+    this.name = 'AgentManagerUnavailableError';
+  }
+}
 
 /**
  * Deleting one ModelConfig, and the checks that decide whether to offer it.
  *
  * Two gates decide the affordance: the CR must not be tool-owned (rendered by
  * Helm, applied by a Flux Kustomization, or asserted by agentlab — all of
- * which would fight the deletion or quietly re-create the model), and the
- * cluster must say this user may delete it (`SelfSubjectAccessReview`, which
- * decides what is *shown* — authorization stays the apiserver's, since the
- * proxy forwards the user's own OIDC token).
+ * which would fight the deletion or quietly re-create the model), and
+ * agent-manager, which deletes it, must accept the deletion as this person: a
+ * dry run of `delete_organization_object` (organization admin in an
+ * organization, cluster-admin for the installation's models). A `forbidden`
+ * answer withholds the affordance; any other failure leaves the question open
+ * (`checkError`), for the page to say why and to check again.
  *
  * The mutation refuses to delete a model an `Agent` still references. That
  * check reads a **fresh** list at mutation time, not the query cache — a
@@ -52,26 +57,51 @@ const SECRET_GVK: CustomResourceMatcher = {
 export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
   const kubernetesApi = useApi(kubernetesApiRef);
   const queryClient = useQueryClient();
-  const { directory } = useOrganizationDirectory();
 
   const cluster = modelConfig?.cluster ?? '';
+  const client = useAgentManagerClient(cluster);
+  const { directory } = useOrganizationDirectory();
   const name = modelConfig?.getName();
   const namespace = modelConfig?.getNamespace();
-  const owner = modelConfig ? modelConfigOwner(modelConfig) : undefined;
+  const owner = modelConfig
+    ? modelConfigEditOwner(modelConfig, directory)
+    : undefined;
 
-  const { allowed: isAllowed, isLoading: isCheckingPermission } =
-    useSelfSubjectAccessReview(
+  const deleteCheck = useQuery({
+    queryKey: musterModelDeleteCheckQueryKey(
       cluster,
-      {
-        group: ModelConfig.group,
-        resource: ModelConfig.plural,
-        namespace,
-        // Named, so a grant restricted via `resourceNames` answers accurately.
-        name,
-        verb: 'delete',
-      },
-      { enabled: Boolean(modelConfig) },
-    );
+      namespace ?? '',
+      name ?? '',
+    ),
+    enabled: Boolean(client && modelConfig && namespace && name && !owner),
+    queryFn: async () => {
+      try {
+        await client!.deleteModel(namespace!, name!, { dryRun: true });
+      } catch (error) {
+        if (error instanceof AgentManagerError && error.code === 'forbidden') {
+          return false;
+        }
+        throw error;
+      }
+      return true;
+    },
+    staleTime: 60_000,
+    retry: false,
+  });
+  const isAllowed = deleteCheck.data === true;
+  const isCheckingPermission = deleteCheck.isLoading;
+  const unavailable = useMemo(
+    () =>
+      modelConfig && !client
+        ? new AgentManagerUnavailableError(cluster)
+        : undefined,
+    [modelConfig, client, cluster],
+  );
+  const checkError = unavailable ?? (deleteCheck.error as Error | null);
+  const { refetch } = deleteCheck;
+  const recheckDeletable = useCallback(() => {
+    refetch();
+  }, [refetch]);
 
   const invalidateReads = async (gvks: CustomResourceMatcher[]) => {
     await Promise.all(
@@ -142,55 +172,12 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
       }
 
       const gvk = modelConfig.getResolvedGVK();
-      let deleted = true;
-      try {
-        await deleteResource({
-          kubernetesApi,
-          cluster,
-          gvk,
-          name,
-          namespace,
-        });
-      } catch (error) {
-        // Already gone — someone else deleted it, or an earlier attempt got
-        // further than its error suggested. Either way the goal is met.
-        if ((error as Error).name !== 'NotFoundError') {
-          throw error;
-        }
-        deleted = false;
+      if (!client || !namespace) {
+        throw new Error('agent-manager is not reachable on this installation.');
       }
-
-      const invalidated = [gvk];
-
-      // The key Secret rides along only when it is ours: named by the
-      // portal/agentlab convention, i.e. 1:1 with this model. A foreign Secret
-      // the CR referenced (hand-provisioned, possibly shared) stays. Best
-      // effort — the model is gone by now, and an orphaned key Secret is
-      // inert, so a failure here must not report the deletion as failed.
-      if (
-        modelConfig.getApiKeySecret() ===
-        keySecretName(name, namespace ?? MODEL_CONFIG_NAMESPACE, directory)
-      ) {
-        try {
-          await deleteResource({
-            kubernetesApi,
-            cluster,
-            gvk: SECRET_GVK,
-            name: keySecretName(
-              name,
-              namespace ?? MODEL_CONFIG_NAMESPACE,
-              directory,
-            ),
-            namespace,
-          });
-          invalidated.push(SECRET_GVK);
-        } catch {
-          // Keep the Secret.
-        }
-      }
-
-      await invalidateReads(invalidated);
-      return { deleted };
+      const result = await client.deleteModel(namespace, name);
+      await invalidateReads([gvk]);
+      return { deleted: Boolean(result.deleted) };
     },
   });
 
@@ -208,6 +195,12 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
       /** Still establishing the above. Withhold the affordance rather than guess. */
       isCheckingDeletable: Boolean(modelConfig) && isCheckingPermission,
       /**
+       * Why agent-manager's dry run could not say whether this person may
+       * delete the model (not a refusal: that withholds the affordance).
+       */
+      checkError: modelConfig && !owner ? checkError : null,
+      recheckDeletable,
+      /**
        * The tool that owns the CR (`'Helm'`, `'Flux'`, `'agentlab'`, …), when
        * that is what withholds the affordance — for the page to explain.
        */
@@ -222,6 +215,8 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
       owner,
       isAllowed,
       isCheckingPermission,
+      checkError,
+      recheckDeletable,
       deleteModelConfig,
       mutation.isPending,
       mutation.error,

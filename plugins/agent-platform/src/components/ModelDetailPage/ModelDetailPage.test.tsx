@@ -65,10 +65,17 @@ jest.mock('../InstallationChip', () => ({
   InstallationChip: () => null,
 }));
 
+let mockDeleteCheckError: Error | null = null;
+const mockRecheckDeletable = jest.fn();
 jest.mock('../../hooks/useDeleteModelConfig', () => ({
+  AgentManagerUnavailableError: jest.requireActual(
+    '../../hooks/useDeleteModelConfig',
+  ).AgentManagerUnavailableError,
   useDeleteModelConfig: () => ({
     isDeletable: false,
     isCheckingDeletable: false,
+    checkError: mockDeleteCheckError,
+    recheckDeletable: mockRecheckDeletable,
     deleteModelConfig: jest.fn(),
     isDeleting: false,
     error: null,
@@ -497,6 +504,48 @@ describe('ModelDetailPage', () => {
     ).toHaveAttribute('role', 'note');
     // The form speaks Vertex AI: no "not editable here".
     expect(screen.queryByText(/is not editable here/)).toBeNull();
+  });
+
+  it('says why Delete is not offered when its check failed, and checks again', async () => {
+    mockDeleteCheckError = new Error('muster: request timed out');
+    try {
+      await renderPage();
+
+      expect(
+        await screen.findByText(
+          'Could not check whether you can delete this model',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/request timed out/)).toBeInTheDocument();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Check again' }),
+      );
+      expect(mockRecheckDeletable).toHaveBeenCalled();
+    } finally {
+      mockDeleteCheckError = null;
+    }
+  });
+
+  it('says why Delete is not offered when the portal cannot reach agent-manager', async () => {
+    const { AgentManagerUnavailableError } = jest.requireActual(
+      '../../hooks/useDeleteModelConfig',
+    );
+    mockDeleteCheckError = new AgentManagerUnavailableError('gazelle');
+    try {
+      await renderPage();
+
+      expect(
+        await screen.findByText('Delete is not offered here'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'The portal cannot reach agent-manager on gazelle, which deletes models, so Delete is not offered.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
+    } finally {
+      mockDeleteCheckError = null;
+    }
   });
 
   it('says nothing about metering for a model the gateway meters', async () => {
@@ -1042,7 +1091,6 @@ describe('ModelDetailPage', () => {
 
       expect(mockSetDefault).toHaveBeenCalledWith({
         modelConfig: expect.objectContaining({ cluster: 'inst-1' }),
-        expected: ['haiku'],
       });
       expect(
         await screen.findByText('Sonnet 4.5 is now the default model'),

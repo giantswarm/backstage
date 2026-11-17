@@ -39,6 +39,7 @@ import {
   MODEL_PROVIDER_OPTIONS,
   modelNameError,
 } from '../../lib/modelConfigs';
+import { slugify } from '../../lib/slugify';
 import {
   type OrganizationConnector,
   type OrganizationNamespace,
@@ -84,7 +85,8 @@ function ReadState({
 type ModelRow = AgentManagerModelConfig & { id: string };
 
 /**
- * A new model of the organization: its name, provider and model id. The key
+ * A new model of the organization: its name, provider and model id. The
+ * technical name is filled in from the name. The key
  * is not asked here: agent-manager prepares a credential request for it and
  * the next page, the credential form, takes it.
  */
@@ -102,9 +104,20 @@ function AddModelDialog({
   const [model, setModel] = useState('');
   const scope = useRef<HTMLDivElement>(null);
   const validation = useFieldValidation(scope, { isOpen });
-  const trimmedName = name.trim();
+  const displayName = name.trim();
+  const technicalName = slugify(displayName);
   const trimmedModel = model.trim();
-  const nameError = modelNameError(trimmedName, true);
+  // The dialog has no technical name field: a name it cannot be made from is
+  // refused in terms of the name.
+  let nameError: string | undefined;
+  if (!displayName) {
+    nameError = 'Enter a name for the model.';
+  } else if (!technicalName) {
+    nameError =
+      'Use at least one letter a–z or digit in the name: the model’s technical name is made from them.';
+  } else {
+    nameError = modelNameError(technicalName);
+  }
   const modelError = trimmedModel
     ? undefined
     : "Enter the provider's model id.";
@@ -133,7 +146,8 @@ function AddModelDialog({
         request.mutate(
           {
             kind: 'model',
-            name: trimmedName,
+            name: technicalName,
+            displayName,
             provider,
             model: trimmedModel,
           },
@@ -148,7 +162,11 @@ function AddModelDialog({
       <Flex direction="column" gap="3" ref={scope}>
         <TextField
           label="Name"
-          description="The model's name in the organization, e.g. claude-sonnet."
+          description={
+            technicalName
+              ? `People creating agents see the model under this name. Its technical name is ${technicalName}; it cannot be changed once the model exists.`
+              : 'People creating agents see the model under this name, e.g. Claude Sonnet.'
+          }
           isRequired
           value={name}
           onChange={setName}
@@ -587,21 +605,85 @@ export function ConnectorsTab({
 
 type EgressRow = AgentManagerEgressPolicy & { id: string };
 
+/**
+ * An egress policy's credential Secrets and keys, once each, with the
+ * headers and origins that send each: several destinations may read the same
+ * pair. A destination that names no Secret and key (none, or an
+ * agent-manager older than giantswarm/agent-manager#371) gives none.
+ */
+function egressCredentialPairsOf(
+  policy: AgentManagerEgressPolicy,
+): { secret: string; key: string; headers: string[]; origins: string[] }[] {
+  const pairs = new Map<
+    string,
+    { secret: string; key: string; headers: string[]; origins: string[] }
+  >();
+  for (const destination of policy.destinations) {
+    const { credentialSecret: secret, credentialKey: key } = destination;
+    if (!secret || !key) {
+      continue;
+    }
+    const id = `${secret}/${key}`;
+    const pair = pairs.get(id) ?? { secret, key, headers: [], origins: [] };
+    if (
+      destination.credentialHeader &&
+      !pair.headers.includes(destination.credentialHeader)
+    ) {
+      pair.headers.push(destination.credentialHeader);
+    }
+    pair.origins.push(destination.origin);
+    pairs.set(id, pair);
+  }
+  return [...pairs.values()];
+}
+
+/**
+ * What tells a policy's pairs apart: their headers, as on the Connectors
+ * tab, or their origins when two pairs have the same headers.
+ */
+function egressPairNames(
+  pairs: ReturnType<typeof egressCredentialPairsOf>,
+): string[] {
+  const byHeaders = pairs.map(pair => pair.headers.join(', '));
+  return byHeaders.every(
+    (name, index) => name && byHeaders.indexOf(name) === index,
+  )
+    ? byHeaders
+    : pairs.map(pair => pair.origins.join(', '));
+}
+
 /** An organization's egress policies: the origins its agents may reach. */
-export function EgressTab({ installation, organization }: TabProps) {
+export function EgressTab({
+  installation,
+  organization,
+  changesDisabledBy,
+}: WritingTabProps) {
   const policies = useAgentManagerEgressPolicies(
     installation,
     organization.namespace,
   );
-  if (policies.isLoading || policies.failure) {
+  const request = useOrganizationCredentialRequest(installation, organization);
+  const access = useOrganizationAccess(installation, organization.namespace);
+  const [replacing, setReplacing] = useState<{
+    label: string;
+    request: CredentialRequest;
+  }>();
+  if (policies.isLoading || access.isLoading || policies.failure) {
     return (
       <ReadState
-        isLoading={policies.isLoading}
+        isLoading={policies.isLoading || access.isLoading}
         failure={policies.failure}
         noun="egress policies"
       />
     );
   }
+  // One Replace per Secret and key: a rotation writes that Secret only, for
+  // every object that reads it; the policy and its destinations are not
+  // sent. `managedBy` (app.kubernetes.io/managed-by, Helm for one) does not
+  // say the platform owns the policy: agent-manager refuses a copy the
+  // platform curates, and the dialog says why.
+  const replaceable = (row: AgentManagerEgressPolicy) =>
+    access.credentials ? egressCredentialPairsOf(row) : [];
   const columns: ColumnConfig<EgressRow>[] = [
     {
       id: 'name',
@@ -627,6 +709,57 @@ export function EgressTab({ installation, organization }: TabProps) {
       ),
     },
   ];
+  // Without a credential to replace, the tab stays as it was: no empty
+  // column.
+  if (policies.egressPolicies.some(row => replaceable(row).length > 0)) {
+    columns.push({
+      id: 'replace',
+      label: '',
+      defaultWidth: '1fr',
+      // The button's whole label, on a phone too.
+      minWidth: 160,
+      cell: row => {
+        const pairs = replaceable(row);
+        const names = egressPairNames(pairs);
+        return (
+          <Cell>
+            <Flex gap="1" style={{ flexWrap: 'wrap' }}>
+              {pairs.map((pair, index) => {
+                const what =
+                  pairs.length === 1
+                    ? row.name
+                    : `${row.name} (${names[index]})`;
+                return (
+                  <Button
+                    key={`${pair.secret}/${pair.key}`}
+                    variant="tertiary"
+                    size="small"
+                    aria-label={`Replace the credential of ${what}`}
+                    isDisabled={changesDisabledBy !== undefined}
+                    aria-describedby={changesDisabledBy}
+                    onPress={() =>
+                      setReplacing({
+                        label: what,
+                        request: {
+                          kind: 'credential',
+                          secret: pair.secret,
+                          key: pair.key,
+                        },
+                      })
+                    }
+                  >
+                    {pairs.length === 1
+                      ? 'Replace credential'
+                      : `Replace ${names[index]}`}
+                  </Button>
+                );
+              })}
+            </Flex>
+          </Cell>
+        );
+      },
+    });
+  }
   return (
     <PageSection
       title="Egress"
@@ -644,6 +777,15 @@ export function EgressTab({ installation, organization }: TabProps) {
           pagination={{ type: 'none' }}
         />
       )}
+      <ReplaceCredentialDialog
+        // Closed when the changes turn off: its confirm would write.
+        target={changesDisabledBy === undefined ? replacing : undefined}
+        onClose={() => {
+          setReplacing(undefined);
+          request.reset();
+        }}
+        request={request}
+      />
     </PageSection>
   );
 }

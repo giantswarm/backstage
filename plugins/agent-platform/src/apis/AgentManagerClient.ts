@@ -1,3 +1,4 @@
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- agent-manager is reached through Muster.
 import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 
 import {
@@ -23,6 +24,7 @@ import {
   type ValidateAgentResult,
 } from '../lib/agentManager';
 import type { CredentialResourceResult } from '../lib/credentialOperations';
+import { modelEndpointProblem } from '../lib/modelEndpoint';
 import type {
   MemberRequest,
   MemberResult,
@@ -398,13 +400,37 @@ export class AgentManagerClient {
   /**
    * Creates or changes an organization's model. Never takes a key: a
    * missing one comes back as a credential request (`credentialOperation`).
+   * Callers check the installation's tool first (`useEnsureModelOperations`).
    */
-  setOrganizationModel(
+  async setOrganizationModel(
     request: OrganizationModelRequest,
   ): Promise<CredentialResourceResult> {
+    const endpointProblem = modelEndpointProblem(request.endpoint ?? '');
+    if (endpointProblem) throw new Error(endpointProblem);
     return this.call<CredentialResourceResult>(
       AGENT_MANAGER_TOOLS.setOrganizationModel,
       { ...request },
+    );
+  }
+
+  /**
+   * Deletes a model as the caller. With `dryRun`, agent-manager checks the
+   * deletion as the caller and writes nothing: its answer is whether the
+   * caller may delete the model.
+   */
+  deleteModel(
+    namespace: string,
+    name: string,
+    options: { dryRun?: boolean } = {},
+  ): Promise<CredentialResourceResult> {
+    return this.call<CredentialResourceResult>(
+      AGENT_MANAGER_TOOLS.deleteOrganizationObject,
+      {
+        namespace,
+        name,
+        kind: 'model',
+        ...(options.dryRun ? { dryRun: true } : {}),
+      },
     );
   }
 
