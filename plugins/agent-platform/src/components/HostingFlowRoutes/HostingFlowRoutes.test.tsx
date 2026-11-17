@@ -7,7 +7,11 @@ import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react
 import type { NodePoolWriteResult } from '../../lib/clusterManager';
 import type { ModelManagerLoadAnswer } from '../../lib/modelManager';
 import { modelsRouteRef } from '../../routes';
-import { AddGpuNodePoolRoute, ServeModelRoute } from './HostingFlowRoutes';
+import {
+  AddGpuNodePoolRoute,
+  PullModelRoute,
+  ServeModelRoute,
+} from './HostingFlowRoutes';
 
 const mockToastPost = jest.fn();
 jest.mock('@backstage/frontend-plugin-api', () => {
@@ -30,9 +34,19 @@ jest.mock('../ServingProvider', () => ({
 
 const pool = { name: 'inst-1', backend: 'kserve', capabilities: {} };
 let mockLoadTargets: (typeof pool)[] = [pool];
+let mockPullTargets: (typeof pool)[] = [pool];
 jest.mock('../ServingPage', () => ({
   OPENED_SERVED_MODEL_KEY: 'openedServedModel',
-  useServingTargets: () => ({ loadTargets: mockLoadTargets }),
+  useServingTargets: () => ({
+    loadTargets: mockLoadTargets,
+    pullTargets: mockPullTargets,
+  }),
+}));
+
+// Whether a read in the query cache was refused for the portal session.
+let mockSessionEnded = false;
+jest.mock('../../hooks/usePortalSessionEnded', () => ({
+  usePortalSessionEnded: () => mockSessionEnded,
 }));
 
 // Which installations withhold cluster-manager and model-manager for want of
@@ -166,6 +180,8 @@ beforeEach(() => {
     reachableInstallations: ['inst-1'],
   };
   mockLoadTargets = [pool];
+  mockPullTargets = [pool];
+  mockSessionEnded = false;
   mockPoolInstallations = ['inst-1'];
 });
 
@@ -210,6 +226,49 @@ describe('ServeModelRoute', () => {
         'No backend can serve a model yet. Add a model backend or a GPU node pool first.',
       ),
     ).toBeInTheDocument();
+  });
+  it('says the portal session ended, with Sign in again, where the refused reads leave nothing to serve on', async () => {
+    mockLoadTargets = [];
+    mockSessionEnded = true;
+    await renderAt(path, <ServeModelRoute />);
+
+    expect(screen.getByText('Your portal session ended')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Sign in again' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/No backend can serve a model yet/),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe('PullModelRoute', () => {
+  const path = '/customize/models/hosting/pull';
+
+  it('says so, in the flow’s frame, where nothing can pull', async () => {
+    mockPullTargets = [];
+    await renderAt(path, <PullModelRoute />);
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Pull model' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('No backend in reach can pull models by reference.'),
+    ).toBeInTheDocument();
+  });
+
+  it('says the portal session ended, with Sign in again, where the refused reads leave nothing to pull on', async () => {
+    mockPullTargets = [];
+    mockSessionEnded = true;
+    await renderAt(path, <PullModelRoute />);
+
+    expect(screen.getByText('Your portal session ended')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Sign in again' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/No backend in reach can pull/),
+    ).not.toBeInTheDocument();
   });
 });
 

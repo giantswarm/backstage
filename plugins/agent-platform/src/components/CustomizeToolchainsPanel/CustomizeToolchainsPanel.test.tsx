@@ -2,6 +2,7 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 
+import { PortalSessionEndedError } from '../../lib/portalSession';
 import type {
   Toolchain,
   ToolchainList,
@@ -75,6 +76,11 @@ jest.mock('../../hooks/useToolchainManager', () => ({
     data: { sources: [SOURCE] },
   }),
 }));
+// Whether a read in the query cache was refused for the portal session.
+let mockSessionEnded = false;
+jest.mock('../../hooks/usePortalSessionEnded', () => ({
+  usePortalSessionEnded: () => mockSessionEnded,
+}));
 jest.mock('../AddToolchainSourceDialog', () => ({
   AddToolchainSourceButton: () => <button>Add source</button>,
 }));
@@ -91,6 +97,7 @@ function renderPanel(search = '') {
 }
 
 beforeEach(() => {
+  mockSessionEnded = false;
   mockScope = {
     installations: ['gazelle'],
     sharedIdentity: [],
@@ -215,6 +222,55 @@ describe('CustomizeToolchainsPanel', () => {
     expect(
       screen.queryByRole('button', { name: 'Retry' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('says the portal session ended once, with Sign in again, in place of the reads the portal refused', async () => {
+    mockScope = {
+      installations: ['gazelle', 'graveler'],
+      sharedIdentity: [],
+      hasToolchains: true,
+    };
+    mockList = {
+      isPending: false,
+      error: new PortalSessionEndedError(),
+    };
+    mockSessionEnded = true;
+    await renderPanel();
+
+    expect(screen.getAllByText('Your portal session ended')).toHaveLength(1);
+    expect(
+      screen.getAllByRole('button', { name: 'Sign in again' }),
+    ).toHaveLength(1);
+    expect(screen.queryByText(/could not be read/)).not.toBeInTheDocument();
+  });
+
+  it('says the portal session ended, not a dash in each row, when the portal refuses the tools reads', async () => {
+    // The list was read before; the rows' tools reads are what failed.
+    mockSessionEnded = true;
+    await renderPanel();
+
+    expect(screen.getByText('Your portal session ended')).toBeInTheDocument();
+    expect(screen.queryByRole('row', { name: /^go/ })).not.toBeInTheDocument();
+  });
+
+  it('says the portal session ended, with Sign in again, over installations that could not say for other reasons too', async () => {
+    mockScope = {
+      installations: [],
+      sharedIdentity: [],
+      hasToolchains: 'unchecked',
+      unchecked: [
+        { installation: 'gazelle', failure: 'signedOut' },
+        { installation: 'graveler', failure: 'notAnswering' },
+      ],
+      recheck: jest.fn(() => Promise.resolve()),
+    };
+    mockSessionEnded = true;
+    await renderPanel();
+
+    expect(screen.getAllByText('Your portal session ended')).toHaveLength(1);
+    expect(
+      screen.getByRole('button', { name: 'Sign in again' }),
+    ).toBeInTheDocument();
   });
 
   it('says why no installation could say whether it runs the toolchain-manager, and asks again', async () => {

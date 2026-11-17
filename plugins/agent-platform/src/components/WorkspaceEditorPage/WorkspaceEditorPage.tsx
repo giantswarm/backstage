@@ -30,6 +30,7 @@ import { useServerSignIn } from '@giantswarm/backstage-plugin-muster';
 
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
+import { usePortalSessionEnded } from '../../hooks/usePortalSessionEnded';
 import {
   useWorkspaceManagerAvailability,
   useWorkspaceManagerClient,
@@ -61,7 +62,9 @@ import {
   type WorkspacePreview,
   type WorkspaceStorage,
 } from '../../lib/workspaceManager';
+import { isPortalSessionRefusal } from '../../lib/portalSession';
 import { slugify } from '../../lib/slugify';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import {
   editorGate,
   WorkspaceEditorGate,
@@ -196,6 +199,10 @@ function WorkspaceEditor({
     [providersQuery.data],
   );
   const edited = useEditedWorkspace(client, name);
+  // The portal refused the session token: every read of the page (the
+  // workspace, the providers, a source's repositories, the preview) fails
+  // the same way until a sign-in, said once above the form.
+  const sessionEnded = usePortalSessionEnded();
   const tabHref = useWorkspacesTabHref(organization);
   // Editing closes to the workspace's page, its address's parent; creating to
   // the Workspaces tab.
@@ -499,6 +506,7 @@ function WorkspaceEditor({
           new Set(draft?.sources.map(source => source.provider)).size
         }
         disk={disk}
+        sessionEndedShown={sessionEnded}
       />
     </Flex>
   );
@@ -536,6 +544,7 @@ function WorkspaceEditor({
             (!draft && (edited.isLoading || availability.isLoading)))
         }
         loadError={edited.error}
+        sessionEnded={sessionEnded}
         installation={installation}
         draft={draft}
         problem={problem}
@@ -598,6 +607,7 @@ function WorkspaceEditor({
                       : undefined
                   }
                   draftCount={onlySourceCount}
+                  sessionEndedShown={sessionEnded}
                 />
               ))
             : null
@@ -670,6 +680,8 @@ type EditorBodyProps = {
   isEdit: boolean;
   isLoading: boolean;
   loadError: unknown;
+  /** The portal refused the session token on one of the page's reads. */
+  sessionEnded: boolean;
   installation: string;
   draft: WorkspaceDraft | undefined;
   problem: SaveProblem | undefined;
@@ -710,6 +722,7 @@ function EditorBody({
   isEdit,
   isLoading,
   loadError,
+  sessionEnded,
   installation,
   draft,
   problem,
@@ -738,6 +751,14 @@ function EditorBody({
   const classes = useStyles();
   const accordionClasses = useSimpleAccordionStyles();
 
+  // With no form to keep, the sign-in is all the page says; so too in place
+  // of a sign-in to the manager or a provider, which waits for it.
+  if (
+    sessionEnded &&
+    (Boolean(loadError) || !draft || !availability.isAvailable || Boolean(gate))
+  ) {
+    return <PortalSessionEndedAlert />;
+  }
   if (!availability.isLoading && !availability.isAvailable) {
     return (
       <EmptyStateCard
@@ -762,6 +783,13 @@ function EditorBody({
     return <Skeleton width="100%" height={240} />;
   }
 
+  // A providers read the portal refused is said by the session alert alone:
+  // in the providers warning's place where a blocked save focuses it, else
+  // above the form.
+  const providersRefused = isPortalSessionRefusal(providersError);
+  const sessionEndedAbove =
+    (sessionEnded || providersRefused) &&
+    !(providersMissing && providersRefused);
   const nameError = errorFor('name');
   const nameBlur = blurProps('name');
   const displayNameBlur = blurProps('displayName');
@@ -784,38 +812,43 @@ function EditorBody({
           description={problem.message}
         />
       )}
+      {sessionEndedAbove && <PortalSessionEndedAlert />}
       {providersMissing && (
         <div ref={providersAlert} tabIndex={-1}>
-          <Alert
-            status="warning"
-            title={
-              providersError
-                ? 'Could not read the providers'
-                : 'No provider to pick from'
-            }
-            description={
-              <Flex direction="column" gap="1">
-                <Text variant="body-medium">
-                  {providersError
-                    ? 'A source needs a provider, so the workspace cannot be saved until the providers can be read. Try again later, or ask your platform team.'
-                    : `A source needs a provider, and none is configured on ${installation}. Ask your platform team to add one.`}
-                </Text>
-                {Boolean(providersError) && (
-                  <SimpleAccordion title="Technical details" headingLevel={2}>
-                    <Text
-                      variant="body-small"
-                      style={{ overflowWrap: 'anywhere' }}
-                    >
-                      {classifyWorkspaceManagerError(providersError).message}
-                    </Text>
-                  </SimpleAccordion>
-                )}
-              </Flex>
-            }
-          />
+          {providersRefused ? (
+            <PortalSessionEndedAlert />
+          ) : (
+            <Alert
+              status="warning"
+              title={
+                providersError
+                  ? 'Could not read the providers'
+                  : 'No provider to pick from'
+              }
+              description={
+                <Flex direction="column" gap="1">
+                  <Text variant="body-medium">
+                    {providersError
+                      ? 'A source needs a provider, so the workspace cannot be saved until the providers can be read. Try again later, or ask your platform team.'
+                      : `A source needs a provider, and none is configured on ${installation}. Ask your platform team to add one.`}
+                  </Text>
+                  {Boolean(providersError) && (
+                    <SimpleAccordion title="Technical details" headingLevel={2}>
+                      <Text
+                        variant="body-small"
+                        style={{ overflowWrap: 'anywhere' }}
+                      >
+                        {classifyWorkspaceManagerError(providersError).message}
+                      </Text>
+                    </SimpleAccordion>
+                  )}
+                </Flex>
+              }
+            />
+          )}
         </div>
       )}
-      {Boolean(providersError) && !providersMissing && (
+      {Boolean(providersError) && !providersMissing && !providersRefused && (
         <Alert
           status="warning"
           title="Could not read the providers"
