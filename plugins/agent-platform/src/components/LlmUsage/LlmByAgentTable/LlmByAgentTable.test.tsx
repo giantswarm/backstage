@@ -1,7 +1,9 @@
 import { ShellScopeProvider } from '@giantswarm/backstage-plugin-ui-react';
 import {
+  mockContainerWidth,
   mockDesktopLayout,
   mockPhoneLayout,
+  type MockedContainerWidth,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { render, screen, within } from '@testing-library/react';
@@ -292,6 +294,29 @@ describe('LlmByAgentTable at phone width', () => {
       'Spend',
       'Share of spend',
     ]);
+  });
+
+  // Beside the side rail at 768px the card is about 424px: too narrow for
+  // the five columns' minimums, which hold each header and figure whole.
+  describe('in a card too narrow for every column', () => {
+    let container: MockedContainerWidth;
+    afterEach(() => container.restore());
+
+    it('keeps the agent and its cost on a desktop', () => {
+      layout = mockDesktopLayout();
+      container = mockContainerWidth(424);
+      render(<LlmByAgentTable rows={ROWS} emptyMessage="none" />);
+
+      expect(headers()).toEqual(['Agent', 'Spend']);
+    });
+
+    it('keeps every column once the card is wide enough', () => {
+      layout = mockDesktopLayout();
+      container = mockContainerWidth(936);
+      render(<LlmByAgentTable rows={ROWS} emptyMessage="none" />);
+
+      expect(headers()).toHaveLength(5);
+    });
   });
 
   it('opens what Removed means on a press, not only on hover (C23)', async () => {
