@@ -95,6 +95,8 @@ const SCENARIO: OrganizationsScenario = {
         {
           origin: 'https://api.stripe.com:443',
           credentialHeader: 'Authorization',
+          credentialSecret: 'tenant-credential-stripe',
+          credentialKey: 'token',
         },
       ],
     },
@@ -465,12 +467,18 @@ describe('OrganizationPage', () => {
           name: 'Replace the credential of jira',
         }),
       ],
+      '/egress': async () => [
+        await screen.findByRole('button', {
+          name: 'Replace the credential of payments-api',
+        }),
+      ],
     };
 
     it.each([
       ['Members', ''],
       ['Models', '/models'],
       ['Connectors', '/connectors'],
+      ['Egress', '/egress'],
     ])('turns every change on %s off and says why', async (_tab, path) => {
       await renderPage(path, PENDING_ERASE);
 
@@ -488,6 +496,7 @@ describe('OrganizationPage', () => {
       ['Members', ''],
       ['Models', '/models'],
       ['Connectors', '/connectors'],
+      ['Egress', '/egress'],
     ])(
       'turns every change on %s off while it is Erasing and says why',
       async (_tab, path) => {
@@ -511,6 +520,8 @@ describe('OrganizationPage', () => {
       ['Members', '', 'Missing from git', MISSING_FROM_GIT],
       ['Models', '/models', 'Missing from git', MISSING_FROM_GIT],
       ['Connectors', '/connectors', 'Missing from git', MISSING_FROM_GIT],
+      ['Egress', '/egress', 'in git', IN_GIT],
+      ['Egress', '/egress', 'Missing from git', MISSING_FROM_GIT],
     ])(
       'offers every change on %s while it is %s',
       async (_tab, path, _state, scenario) => {
@@ -544,6 +555,18 @@ describe('OrganizationPage', () => {
         /^Replace the credential of jira$/,
         'Erasing',
       ],
+      [
+        'Replace credential',
+        '/egress',
+        /^Replace the credential of payments-api$/,
+        'Pending erase',
+      ],
+      [
+        'Replace credential',
+        '/egress',
+        /^Replace the credential of payments-api$/,
+        'Erasing',
+      ],
     ])(
       'closes an open %s dialog once the organization turns %s',
       async (_dialog, path, opener, state) => {
@@ -572,16 +595,6 @@ describe('OrganizationPage', () => {
         );
       },
     );
-
-    it('lists the egress policies on Pending erase, a tab with nothing to change', async () => {
-      await renderPage('/egress', PENDING_ERASE);
-
-      expect(await screen.findByText('payments-api')).toBeInTheDocument();
-      expect(screen.getByText(WHY)).toBeInTheDocument();
-      expect(
-        screen.queryByRole('button', { name: /^(Add|Remove|Replace|Edit)/ }),
-      ).not.toBeInTheDocument();
-    });
   });
 
   it('shows the members agent-manager lists, each with its role, from the organization namespace it names', async () => {
@@ -1083,6 +1096,137 @@ describe('OrganizationPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('asks for a new egress credential on the credential form', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderPage('/egress', SCENARIO);
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Replace the credential of payments-api',
+      }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByText('Replace the credential of payments-api?'),
+    ).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Continue' }));
+
+    // Only the Secret and key: the policy and its destinations are not
+    // sent, so they cannot change.
+    await waitFor(() =>
+      expect(toolCalls(callTool, 'replace_organization_credential')).toEqual([
+        {
+          namespace: PAYMENTS.namespace,
+          secret: 'tenant-credential-stripe',
+          key: 'token',
+          requestId: expect.any(String),
+        },
+      ]),
+    );
+    expect(await screen.findByTestId('location')).toHaveTextContent(
+      `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
+    );
+  });
+
+  it('offers one Replace per Secret and key of an egress policy', async () => {
+    await renderPage('/egress', {
+      ...SCENARIO,
+      egressPolicies: [
+        {
+          name: 'payments-api',
+          namespace: PAYMENTS.namespace,
+          destinations: [
+            {
+              origin: 'https://api.stripe.com:443',
+              credentialHeader: 'Authorization',
+              credentialSecret: 'tenant-credential-stripe',
+              credentialKey: 'token',
+            },
+            {
+              origin: 'https://files.stripe.com:443',
+              credentialHeader: 'Authorization',
+              credentialSecret: 'tenant-credential-stripe',
+              credentialKey: 'token',
+            },
+          ],
+        },
+        {
+          name: 'search',
+          namespace: PAYMENTS.namespace,
+          destinations: [
+            {
+              origin: 'https://search.example.com:443',
+              credentialHeader: 'Authorization',
+              credentialSecret: 'tenant-credential-search',
+              credentialKey: 'token',
+            },
+            {
+              origin: 'https://index.example.com:443',
+              credentialHeader: 'Authorization',
+              credentialSecret: 'tenant-credential-index',
+              credentialKey: 'token',
+            },
+          ],
+        },
+      ],
+    });
+
+    // Two destinations that read the same Secret and key: one Replace.
+    expect(
+      await screen.findAllByRole('button', {
+        name: /^Replace the credential of payments-api/,
+      }),
+    ).toHaveLength(1);
+    expect(
+      screen.getByRole('button', {
+        name: 'Replace the credential of payments-api',
+      }),
+    ).toHaveTextContent('Replace credential');
+    // Two Secrets behind the same header: told apart by their origins.
+    expect(
+      screen.getByRole('button', {
+        name: 'Replace the credential of search (https://search.example.com:443)',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', {
+        name: 'Replace the credential of search (https://index.example.com:443)',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('offers no Replace for an egress destination that names no Secret and key', async () => {
+    await renderPage('/egress', {
+      ...SCENARIO,
+      egressPolicies: [
+        {
+          name: 'payments-api',
+          namespace: PAYMENTS.namespace,
+          destinations: [
+            // An agent-manager older than giantswarm/agent-manager#371 names
+            // the header only.
+            {
+              origin: 'https://api.stripe.com:443',
+              credentialHeader: 'Authorization',
+            },
+            { origin: 'https://status.stripe.com:443' },
+          ],
+        },
+      ],
+    });
+
+    expect(
+      await screen.findByText(
+        'https://api.stripe.com:443 (adds Authorization), https://status.stripe.com:443',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^Replace/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('columnheader')).toHaveLength(2);
+  });
+
   describe('deleting the organization', () => {
     const MANAGED = {
       name: 'payments',
@@ -1498,6 +1642,16 @@ describe('OrganizationPage', () => {
       expect(
         screen.queryByRole('button', { name: /^Replace the credential of / }),
       ).not.toBeInTheDocument();
+    });
+
+    it('shows a member the egress policies as before, with no credential change', async () => {
+      await renderPage('/egress', MEMBER_ONLY);
+
+      expect(await screen.findByText('payments-api')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /^Replace/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.getAllByRole('columnheader')).toHaveLength(2);
     });
 
     it('offers an organization admin who does not manage the organization its changes', async () => {

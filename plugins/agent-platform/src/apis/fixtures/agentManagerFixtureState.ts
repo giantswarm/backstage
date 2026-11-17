@@ -943,6 +943,20 @@ export class AgentManagerFixtureState {
           key,
           url: connector.url,
         })),
+      ...egressPoliciesOf(namespace).flatMap(
+        (policy): CredentialReference[] => {
+          const origins = policy.destinations
+            .filter(
+              destination =>
+                destination.credentialSecret === secret &&
+                destination.credentialKey === key,
+            )
+            .map(destination => destination.origin);
+          return origins.length > 0
+            ? [{ kind: 'EgressPolicy', name: policy.name, key, origins }]
+            : [];
+        },
+      ),
     ];
   }
 
@@ -1636,6 +1650,8 @@ function egressPoliciesOf(namespace: string): AgentManagerEgressPolicy[] {
         {
           origin: 'https://registry.example.com:443',
           credentialHeader: 'Authorization',
+          credentialSecret: 'package-registry-token',
+          credentialKey: 'token',
         },
       ],
     },

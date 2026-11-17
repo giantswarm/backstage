@@ -802,7 +802,7 @@ views read again; an edit of the model id is finished when the call answers.
 An edit keeps the provider: the stored key is the provider's, and
 agent-manager writes a new provider and its new key in two steps, with the
 wrong key in between. A new key, from Edit model or from Replace key and
-Replace credential on the organization's Models and Connectors tabs, is
+Replace credential on the organization's Models, Connectors and Egress tabs, is
 `replace_organization_credential` on the Secret and key the object reads (a
 model's from its ModelConfig, read as the person): the request writes that
 Secret only, for every object that reads it, and the form lists them and where

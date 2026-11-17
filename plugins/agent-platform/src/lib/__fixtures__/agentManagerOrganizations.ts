@@ -45,7 +45,13 @@ export type OrganizationsScenario = {
   egressPolicies?: {
     name: string;
     namespace: string;
-    destinations: { origin: string; credentialHeader?: string }[];
+    destinations: {
+      origin: string;
+      credentialHeader?: string;
+      credentialSecret?: string;
+      credentialKey?: string;
+    }[];
+    managedBy?: string;
   }[];
   /**
    * `get_organization`'s organization, as an organizations-admin reads it;
