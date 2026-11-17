@@ -528,7 +528,9 @@ export class MusterFixtureState {
       args.name,
       'Failed to delete MCP server',
     );
-    this.storeOf(installation).connectors.delete(stored.connector.name);
+    this.storeOf(installation).connectors.delete(
+      connectorKeyOf(stored.connector),
+    );
     this.changed(installation);
     return `MCP server '${stored.connector.name}' deleted successfully`;
   }

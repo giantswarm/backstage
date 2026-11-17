@@ -290,14 +290,16 @@ export function normalizeSelection(selectors: string[]): string[] {
  * (`server:<namespace>/<name>`), which its agents alone are offered, nor the
  * tools picked one by one from the servers of the organization it leaves
  * (`tool:x_<leaving>_…`; muster refuses a shared server whose exposed names
- * start like that). The selection as it is while no namespace is chosen, when
- * every server is offered, and for the platform's namespace, whose name a
- * shared server's tools may start with.
+ * start like that), except the platform's namespace, whose name a shared
+ * server's tools may start with. `tenant` `null` is no namespace of this
+ * installation, for an agent moved to another one: every organization's
+ * servers go. The selection as it is while no namespace is chosen
+ * (`undefined`), when every server is offered.
  */
 export function selectionForTenant(
   selectors: string[],
   leaving: string | undefined,
-  tenant: string | undefined,
+  tenant: string | null | undefined,
 ): string[] {
   if (tenant === undefined || leaving === tenant) {
     return selectors;
@@ -311,7 +313,7 @@ export function selectionForTenant(
     if (parsed?.kind === 'server') {
       return (
         !isOrganizationServerKey(parsed.name) ||
-        parsed.name.startsWith(`${tenant}/`)
+        (tenant !== null && parsed.name.startsWith(`${tenant}/`))
       );
     }
     return !(
@@ -954,6 +956,7 @@ export function buildCatalogue(
         needsSignIn: needsAuth.has(surface),
         canSignIn: needsAuth.has(surface),
         unknownServer: true,
+        ...(isOrganizationServerKey(surface) ? { organizationOwn: true } : {}),
         group: 'registered',
       };
       buckets.set(surface, bucket);
@@ -972,6 +975,7 @@ export function buildCatalogue(
         needsSignIn: true,
         canSignIn: true,
         unknownServer: true,
+        ...(isOrganizationServerKey(name) ? { organizationOwn: true } : {}),
         group: 'registered',
       });
     }

@@ -237,6 +237,8 @@ type Scenario = {
   resolutionFails?: string;
   /** The HTTP status the failed resolution carries, when it has one. */
   resolutionFailsStatus?: number;
+  /** More servers muster says the session must sign in to, beside `pro`. */
+  alsoRequiringAuth?: string[];
 };
 
 /**
@@ -346,15 +348,14 @@ function makeMusterApi(scenario: Scenario) {
 
   const listTools = jest.fn(async () => ({
     tools: visible(),
-    servers_requiring_auth: scenario.signedIn
-      ? []
-      : [
-          {
-            name: 'pro',
-            status: 'auth_required',
-            auth_tool: 'core_auth_login',
-          },
-        ],
+    servers_requiring_auth: [
+      ...(scenario.signedIn ? [] : ['pro']),
+      ...(scenario.alsoRequiringAuth ?? []),
+    ].map(name => ({
+      name,
+      status: 'auth_required',
+      auth_tool: 'core_auth_login',
+    })),
   }));
 
   const getAuthStatus = jest.fn(async () => ({
@@ -1144,6 +1145,39 @@ describe('NewAgentToolsPage', () => {
       await ownPicks(user);
       await user.click(access('Payments wiki', 'All'));
       expect(toolsetOutput()).toBe(`server:${PAYMENTS}/wiki`);
+    });
+
+    it("tells the organization's own connectors apart, and leaves another's out, where only muster's session names them", async () => {
+      // No CR of an organization's namespace could be read: muster's tools
+      // and its sign-in list are what name those servers.
+      const tool = (namespace: string) => ({
+        name: `x_${namespace}_wiki_search`,
+        summary: 'Search the wiki',
+        server: `${namespace}/wiki`,
+        kind: 'tool' as const,
+        annotations: { readOnlyHint: true },
+      });
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+        extraTools: [tool(PAYMENTS), tool(RISK)],
+        alsoRequiringAuth: [`${PAYMENTS}/notes`, `${RISK}/notes`],
+      });
+      await renderStep({ api, tenants: [PAYMENTS, RISK] });
+      await connectorsListed();
+
+      for (const own of [`${PAYMENTS}/wiki`, `${PAYMENTS}/notes`]) {
+        expect(
+          within(
+            await screen.findByRole('group', { name: `Connector ${own}` }),
+          ).getByText("The organization's own connector"),
+        ).toBeInTheDocument();
+      }
+      for (const others of [`${RISK}/wiki`, `${RISK}/notes`]) {
+        expect(
+          screen.queryByRole('group', { name: `Connector ${others}` }),
+        ).toBeNull();
+      }
     });
 
     it("keeps an agent's bare selector of its organization's connector as it is, unmatched", async () => {

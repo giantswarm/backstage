@@ -28,6 +28,7 @@ import {
   selectorLabel,
   selectorForTool,
   selectorProblem,
+  selectionForTenant,
   serverOfTool,
   ServerInfo,
   toggleSelector,
@@ -974,4 +975,54 @@ describe('isToolsetRefusal', () => {
   ])('%s', (_case, error, refused) => {
     expect(isToolsetRefusal(error)).toBe(refused);
   });
+});
+
+describe('selectionForTenant', () => {
+  const selection = [
+    'server:github',
+    'server:agents-payments-x7k2q/wiki',
+    'server:agents-risk-p3m9z/wiki',
+    'tool:x_agents-payments-x7k2q_wiki_search',
+    'tool:x_kagent_list_agents',
+    'preset:read-only',
+  ];
+
+  it.each([
+    [
+      'another organization',
+      'agents-payments-x7k2q',
+      'agents-risk-p3m9z',
+      [
+        'server:github',
+        'server:agents-risk-p3m9z/wiki',
+        'tool:x_kagent_list_agents',
+        'preset:read-only',
+      ],
+    ],
+    [
+      // A shared server's tools may start with the platform's namespace.
+      'an organization, from the platform',
+      'kagent',
+      'agents-payments-x7k2q',
+      [
+        'server:github',
+        'server:agents-payments-x7k2q/wiki',
+        'tool:x_agents-payments-x7k2q_wiki_search',
+        'tool:x_kagent_list_agents',
+        'preset:read-only',
+      ],
+    ],
+    [
+      'another installation',
+      'agents-payments-x7k2q',
+      null,
+      ['server:github', 'tool:x_kagent_list_agents', 'preset:read-only'],
+    ],
+    ['no namespace yet', 'agents-payments-x7k2q', undefined, selection],
+  ])(
+    'keeps for %s only what the agent there is offered',
+    (_, leaving, tenant, kept) => {
+      expect(selectionForTenant(selection, leaving, tenant)).toEqual(kept);
+    },
+  );
 });

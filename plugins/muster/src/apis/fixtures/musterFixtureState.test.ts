@@ -230,6 +230,24 @@ describe('the connector writes in fixture mode', () => {
     );
   });
 
+  it("deletes an organization's connector by muster's key for it", async () => {
+    const [own] = inInstallation(
+      baseDataSet().organizationConnectors,
+      INSTALLATION,
+    );
+    const owned = () =>
+      musterKubernetesObjectsOf(INSTALLATION).filter(
+        o => o.kind === 'MCPServer' && o.metadata.namespace === own.namespace,
+      );
+    expect(owned()).toHaveLength(1);
+
+    await call('core_mcpserver_delete', {
+      name: `${own.namespace}/${own.name}`,
+    });
+
+    expect(owned()).toHaveLength(0);
+  });
+
   it('answers the same objects while nothing changed', () => {
     expect(musterKubernetesObjectsOf(INSTALLATION)).toBe(
       musterKubernetesObjectsOf(INSTALLATION),

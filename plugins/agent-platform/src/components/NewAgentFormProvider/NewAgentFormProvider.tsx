@@ -838,11 +838,15 @@ export function NewAgentFormProvider({
       ...tagUpdaters,
       // Changing the installation clears the model and Harness selections:
       // both are scoped to an installation, so the previous pick may not exist
-      // here.
+      // here; so are an organization's connectors.
       setInstallation: installation =>
         setState(prev => ({
           ...prev,
           installation,
+          toolset:
+            prev.installation === installation
+              ? prev.toolset
+              : selectionForTenant(prev.toolset, prev.tenant, null),
           tenantChoices: undefined,
           tenantChoicesBlocked: undefined,
           tenantChoicesUnread: undefined,

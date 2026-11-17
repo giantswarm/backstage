@@ -1,15 +1,16 @@
 import { useMemo } from 'react';
 import { useResources } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  connectorAuthName,
   MCPServer,
-  MUSTER_NAMESPACE,
   type ToolSummary,
 } from '@giantswarm/backstage-plugin-muster';
 
-import { connectorLabels, type ServerInfo } from '../lib/toolset';
-
-/** The separator of a server key outside muster's namespace. */
-const SERVER_KEY_SEPARATOR = '/';
+import {
+  connectorLabels,
+  isOrganizationServerKey,
+  type ServerInfo,
+} from '../lib/toolset';
 
 /**
  * The grouping's view of one MCPServer CR, named as muster names it
@@ -22,14 +23,12 @@ const SERVER_KEY_SEPARATOR = '/';
 export function serverInfoOf(server: MCPServer): ServerInfo {
   const displayName = server.getDisplayNameAnnotation();
   const icon = server.getStatusIcon();
-  const namespace = server.getNamespace();
-  const tenant = namespace && namespace !== MUSTER_NAMESPACE ? namespace : '';
+  const name = connectorAuthName(server);
+  const tenant = isOrganizationServerKey(name) ? server.getNamespace() : '';
   const prefix = server.getToolNamePrefix();
   const tags = server.getTags();
   return {
-    name: tenant
-      ? `${tenant}${SERVER_KEY_SEPARATOR}${server.getName()}`
-      : server.getName(),
+    name,
     family: server.getFamily(),
     group: server.getToolGroupKey(),
     toolNamePrefix: tenant
@@ -47,31 +46,46 @@ export function serverInfoOf(server: MCPServer): ServerInfo {
 }
 
 /**
- * The connectors an agent in `tenant` may be given, and their tools: muster's
- * own servers, for everyone, and the servers of the agent's own namespace;
- * another namespace's servers are its agents' only. Every server and tool
- * when no tenant is known. An organization's own RemoteMCPServers
- * (`list_organization_connectors`) are not muster servers: an agent's
- * toolset selects muster's, so they are not offered here.
+ * The connectors an agent in `tenant` may be given, their tools, and the ones
+ * muster says the session must sign in to: muster's own servers, for
+ * everyone, and the servers of the agent's own namespace; another
+ * namespace's servers are its agents' only, whether a CR, a tool's `server`
+ * or muster's sign-in list names them. Everything when no tenant is known.
+ * An organization's own RemoteMCPServers (`list_organization_connectors`)
+ * are not muster servers: an agent's toolset selects muster's, so they are
+ * not offered here.
  */
 export function connectorsForTenant(
   servers: readonly ServerInfo[],
   tools: readonly ToolSummary[],
   tenant: string | undefined,
-): { servers: ServerInfo[]; tools: ToolSummary[] } {
+  serversRequiringAuth: readonly string[] = [],
+): {
+  servers: ServerInfo[];
+  tools: ToolSummary[];
+  serversRequiringAuth: string[];
+} {
   if (!tenant) {
-    return { servers: [...servers], tools: [...tools] };
+    return {
+      servers: [...servers],
+      tools: [...tools],
+      serversRequiringAuth: [...serversRequiringAuth],
+    };
   }
-  const isOthers = (server: ServerInfo) =>
-    server.name.includes(SERVER_KEY_SEPARATOR) &&
-    !server.name.startsWith(`${tenant}${SERVER_KEY_SEPARATOR}`);
+  const isOthersKey = (key: string) =>
+    isOrganizationServerKey(key) && !key.startsWith(`${tenant}/`);
   const othersPrefixes = servers
-    .filter(isOthers)
+    .filter(server => isOthersKey(server.name))
     .map(server => `${server.toolNamePrefix}_`);
   return {
-    servers: servers.filter(server => !isOthers(server)),
+    servers: servers.filter(server => !isOthersKey(server.name)),
     tools: tools.filter(
-      tool => !othersPrefixes.some(prefix => tool.name.startsWith(prefix)),
+      tool =>
+        !(tool.server && isOthersKey(tool.server)) &&
+        !othersPrefixes.some(prefix => tool.name.startsWith(prefix)),
+    ),
+    serversRequiringAuth: serversRequiringAuth.filter(
+      name => !isOthersKey(name),
     ),
   };
 }
