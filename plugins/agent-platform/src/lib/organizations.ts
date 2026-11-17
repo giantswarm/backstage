@@ -446,3 +446,20 @@ export function hasModelOperations(
 
 export const MODEL_OPERATIONS_MISSING =
   'This installation needs an agent-manager release with model credential operations. No model was written.';
+
+/**
+ * Whether a `set_organization_model` input schema takes `create`: refuse a
+ * model of that name, live or in git, with `already_exists` instead of
+ * changing it. agent-manager 2.24.0 and older lack it and refuse the unknown
+ * argument with `invalid_request`, so it is sent only where the tool lists it.
+ */
+export function takesCreateOnly(
+  inputSchema: { properties?: Record<string, unknown> } | undefined,
+): boolean {
+  return Object.hasOwn(inputSchema?.properties ?? {}, 'create');
+}
+
+/** A new model's name that a model of the namespace has already. */
+export function modelNameTakenMessage(namespace: string, name: string): string {
+  return `The namespace ${namespace} already has a model named ${name}. Choose another name, or edit that model.`;
+}

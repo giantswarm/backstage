@@ -1043,6 +1043,67 @@ describe('CredentialFormPage', () => {
     });
   });
 
+  describe('when a model of the new name was made since the request', () => {
+    /** agent-manager's answer to the save of a create whose name is taken. */
+    const nameTaken = () =>
+      refusal(
+        409,
+        'already_exists',
+        'already exists: the object this operation creates exists now, live or in git; prepare it again',
+      );
+
+    it('says the name is taken, takes no value, and leaves an uncertain request to expire', async () => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi();
+      // The refused apply leaves the request uncertain, which takes no cancel.
+      api.getOperation
+        .mockImplementationOnce(read())
+        .mockImplementation(
+          read({ ...CONFIRMATION, version: '4', state: 'uncertain' }),
+        );
+      api.saveOperation.mockRejectedValueOnce(await nameTaken());
+      await renderForm(api);
+
+      await user.type(await screen.findByLabelText(/^Value/), VALUE);
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(await screen.findByText('The name is taken')).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /someone made a model named claude-sonnet, so nothing was saved\. Start again from the organization’s tab and choose another name\./,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/already_exists/)).not.toBeInTheDocument();
+      expect(screen.queryByText('Not saved')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/^Value/)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+      await waitFor(() => expect(api.getOperation).toHaveBeenCalledTimes(2));
+      expect(api.cancelOperation).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole('button', { name: 'Cancel request' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('cancels a request the refusal left pending', async () => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi();
+      api.saveOperation.mockRejectedValueOnce(await nameTaken());
+      await renderForm(api);
+
+      await user.type(await screen.findByLabelText(/^Value/), VALUE);
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(await screen.findByText('The name is taken')).toBeInTheDocument();
+      await waitFor(() =>
+        expect(api.cancelOperation).toHaveBeenCalledWith(
+          'gazelle',
+          OPERATION,
+          '"3"',
+        ),
+      );
+    });
+  });
+
   it('keeps the value on a refusal that a retry may fix', async () => {
     const user = userEvent.setup();
     const api = fakeCredentialsApi();

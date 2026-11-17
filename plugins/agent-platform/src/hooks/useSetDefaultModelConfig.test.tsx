@@ -14,10 +14,16 @@ const mockCallTool = jest.fn();
 const analyticsApi = mockApis.analytics.mock();
 const mockDescribeTool = jest.fn(async () => ({
   inputSchema: {
+    // The tool takes create: a write of an existing model still never sends it.
     properties: Object.fromEntries(
-      ['projectID', 'location', 'endpoint', 'displayName', 'noCredential'].map(
-        field => [field, {}],
-      ),
+      [
+        'projectID',
+        'location',
+        'endpoint',
+        'displayName',
+        'noCredential',
+        'create',
+      ].map(field => [field, {}]),
     ),
   },
 }));

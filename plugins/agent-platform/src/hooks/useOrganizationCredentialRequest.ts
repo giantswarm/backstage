@@ -9,7 +9,11 @@ import {
   type CredentialResourceResult,
   preparedCredentialOperation,
 } from '../lib/credentialOperations';
-import type { OrganizationNamespace } from '../lib/organizations';
+import { AgentManagerError } from '../lib/agentManager';
+import {
+  modelNameTakenMessage,
+  type OrganizationNamespace,
+} from '../lib/organizations';
 import {
   musterAgentManagerModelConfigsQueryKey,
   musterOrganizationConnectorsQueryKey,
@@ -70,16 +74,32 @@ export function useOrganizationCredentialRequest(
     const { namespace } = organization;
     const requestId = crypto.randomUUID();
     switch (request.kind) {
-      case 'model':
-        await ensureModelOperations(installation);
-        return client.setOrganizationModel({
-          namespace,
-          name: request.name,
-          displayName: request.displayName,
-          provider: request.provider,
-          model: request.model,
-          requestId,
-        });
+      case 'model': {
+        const { createOnly } = await ensureModelOperations(installation);
+        try {
+          return await client.setOrganizationModel({
+            namespace,
+            name: request.name,
+            displayName: request.displayName,
+            provider: request.provider,
+            model: request.model,
+            // A new model: a model of that name is refused, not changed,
+            // where the tool takes it (an older agent-manager refuses it).
+            ...(createOnly ? { create: true } : {}),
+            requestId,
+          });
+        } catch (error) {
+          if (
+            error instanceof AgentManagerError &&
+            error.code === 'already_exists'
+          ) {
+            throw new Error(modelNameTakenMessage(namespace, request.name), {
+              cause: error,
+            });
+          }
+          throw error;
+        }
+      }
       case 'model-key': {
         // A rotation writes the Secret only: the model is not sent again.
         const { secret, key } = await readModelKeyReference({
