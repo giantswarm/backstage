@@ -967,3 +967,57 @@ it("answers a delete dry run with the person's permission, deleting nothing", as
     client.deleteModel(userNamespace, theirs.name, { dryRun: true }),
   ).rejects.toThrow();
 });
+
+it('writes and reports the model settings as agent-manager does', async () => {
+  const { client, state } = setup();
+  const listed = () =>
+    state
+      .listModelConfigs(INSTALLATION, MODEL_CONFIG_NAMESPACE)
+      .find(model => model.name === 'claude');
+  await client.setOrganizationModel({
+    namespace: MODEL_CONFIG_NAMESPACE,
+    name: 'claude',
+    provider: 'Anthropic',
+    model: 'claude-sonnet-4-6',
+    noCredential: true,
+    create: true,
+    requestId: 'request-1',
+  });
+  // A new Anthropic model caches its prompts for 5 minutes.
+  expect(listed()).toMatchObject({ promptCaching: true, cacheTTL: '5m' });
+  expect(listed()).not.toHaveProperty('maxTokens');
+
+  await client.setOrganizationModel({
+    namespace: MODEL_CONFIG_NAMESPACE,
+    name: 'claude',
+    maxTokens: 4096,
+    requestId: 'request-2',
+  });
+  expect(listed()).toMatchObject({ maxTokens: 4096, promptCaching: true });
+
+  await client.setOrganizationModel({
+    namespace: MODEL_CONFIG_NAMESPACE,
+    name: 'claude',
+    maxTokens: 0,
+    promptCaching: false,
+    requestId: 'request-3',
+  });
+  expect(listed()).toMatchObject({ promptCaching: false });
+  expect(listed()).not.toHaveProperty('maxTokens');
+  expect(listed()).not.toHaveProperty('cacheTTL');
+
+  await expect(
+    client.setOrganizationModel({
+      namespace: MODEL_CONFIG_NAMESPACE,
+      name: 'local',
+      provider: 'Ollama',
+      model: 'llama3',
+      noCredential: true,
+      maxTokens: 100,
+      requestId: 'request-4',
+    }),
+  ).rejects.toMatchObject({
+    code: 'invalid_request',
+    message: expect.stringContaining('spec.ollama.maxTokens'),
+  });
+});

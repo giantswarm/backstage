@@ -55,6 +55,7 @@ import { slugify } from '../../lib/slugify';
 import { OWNER_LABEL, ownerOf, tenantInSentence } from '../../lib/tenants';
 import { useModelNamespaces } from '../../hooks/useModelNamespaces';
 import { useSaveOrganizationModel } from '../../hooks/useSaveOrganizationModel';
+import { useModelSettingsSupport } from '../../hooks/useModelSettingsSupport';
 import {
   AgentManagerError,
   AgentManagerNotConnectedError,
@@ -203,6 +204,13 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   // An organization's model is saved through agent-manager, never with a
   // Secret written from here; the platform's with the person's own writes.
   const organization = directory.get(namespace);
+  // An organization's model has its settings (token limit, prompt caching)
+  // where the installation's agent-manager takes them; elsewhere they stay
+  // hidden and are never sent.
+  const settingsSupported = useModelSettingsSupport(
+    organization ? installation : undefined,
+  );
+  const showSettings = Boolean(organization) && settingsSupported === true;
   const { isSaving, error } = organizationSave;
   const { save: saveOrganization, reset: resetOrganization } = organizationSave;
   const providers = useMemo<readonly ModelProvider[]>(() => {
@@ -570,6 +578,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         onMoreOptionsOpenChange={setMoreOptionsOpen}
         replaceKey={replaceKey}
         onReplaceKeyChange={setReplaceKey}
+        settings={showSettings}
       />
 
       {!edit && installation && (

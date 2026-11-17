@@ -19,6 +19,7 @@ import {
   type OrganizationModelRequest,
 } from '../../../lib/organizations';
 import { DEFAULT_WORKSPACE_CAPABILITY } from '../../../lib/defaultWorkspace';
+import { MODEL_SETTINGS_FIELDS } from '../../../lib/modelSettings';
 import { PLATFORM_TENANT_NAMESPACE } from '../../../lib/tenants';
 import { TOOLCHAINS_CAPABILITY } from '../../../lib/toolchainManager';
 import type { ListModelConfigsAnswer } from '../../AgentManagerClient';
@@ -208,7 +209,7 @@ export function agentManagerFixtureServer(
             'insecureSkipTLSVerify',
             ...(installation === WITHOUT_MODEL_OPERATIONS
               ? []
-              : MODEL_OPERATION_FIELDS),
+              : [...MODEL_OPERATION_FIELDS, ...MODEL_SETTINGS_FIELDS]),
           ].map(field => [field, {}]),
         ),
       }),

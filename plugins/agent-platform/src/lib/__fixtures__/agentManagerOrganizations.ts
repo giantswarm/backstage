@@ -40,6 +40,11 @@ export type OrganizationsScenario = {
   members?: OrganizationMember[];
   /** `list_model_configs`, per namespace. */
   models?: Record<string, AgentManagerModelConfig[]>;
+  /**
+   * Whether `set_organization_model` takes the model settings (`maxTokens`,
+   * `promptCaching`, `cacheTTL`), as agent-manager 3.1.0 and later do.
+   */
+  modelSettings?: boolean;
   /** `list_organization_connectors`. */
   connectors?: OrganizationConnector[];
   /** `list_egress_policies`' policies. */
@@ -423,6 +428,9 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
             'endpoint',
             'displayName',
             'noCredential',
+            ...(scenario.modelSettings
+              ? ['maxTokens', 'promptCaching', 'cacheTTL']
+              : []),
           ].map(key => [key, {}]),
         ),
       },

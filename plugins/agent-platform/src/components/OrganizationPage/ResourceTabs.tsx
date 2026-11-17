@@ -41,6 +41,13 @@ import {
 } from '../../lib/modelConfigs';
 import { slugify } from '../../lib/slugify';
 import {
+  INITIAL_MODEL_SETTINGS,
+  modelSettingsSummary,
+  type ModelSettingsValues,
+} from '../../lib/modelSettings';
+import { useModelSettingsSupport } from '../../hooks/useModelSettingsSupport';
+import { ModelSettingsFields } from '../ModelConfigForm';
+import {
   type OrganizationConnector,
   type OrganizationNamespace,
 } from '../../lib/organizations';
@@ -85,7 +92,9 @@ function ReadState({
 type ModelRow = AgentManagerModelConfig & { id: string };
 
 /**
- * A new model of the organization: its name, provider and model id. The
+ * A new model of the organization: its name, provider and model id, and,
+ * where the installation's agent-manager takes them, its settings (a new
+ * Anthropic model caches its prompts). The
  * technical name is filled in from the name. The key
  * is not asked here: agent-manager prepares a credential request for it and
  * the next page, the credential form, takes it.
@@ -94,12 +103,18 @@ function AddModelDialog({
   isOpen,
   onOpenChange,
   request,
+  settings,
 }: {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   request: ReturnType<typeof useOrganizationCredentialRequest>;
+  /** Whether to offer the model's settings. */
+  settings: boolean;
 }) {
   const [name, setName] = useState('');
+  const [settingsValues, setSettingsValues] = useState<ModelSettingsValues>(
+    INITIAL_MODEL_SETTINGS,
+  );
   const [provider, setProvider] = useState<string>(LISTENER_PROVIDERS[0]);
   const [model, setModel] = useState('');
   const scope = useRef<HTMLDivElement>(null);
@@ -126,6 +141,7 @@ function AddModelDialog({
       setName('');
       setModel('');
       setProvider(LISTENER_PROVIDERS[0]);
+      setSettingsValues(INITIAL_MODEL_SETTINGS);
     }
     onOpenChange(open);
   };
@@ -150,6 +166,7 @@ function AddModelDialog({
             displayName,
             provider,
             model: trimmedModel,
+            ...(settings ? { settings: settingsValues } : {}),
           },
           {
             onSuccess: ({ form }) => {
@@ -191,6 +208,16 @@ function AddModelDialog({
           onChange={setModel}
           {...validation.textFieldProps('model', modelError)}
         />
+        {settings && (
+          <ModelSettingsFields
+            provider={provider}
+            values={settingsValues}
+            onChange={patch =>
+              setSettingsValues(previous => ({ ...previous, ...patch }))
+            }
+            framed={false}
+          />
+        )}
         <Text color="secondary">
           You enter the organization's key for it on the next page. It is never
           shown back.
@@ -261,6 +288,9 @@ export function ModelsTab({
   );
   const request = useOrganizationCredentialRequest(installation, organization);
   const access = useOrganizationAccess(installation, organization.namespace);
+  // The settings show where the installation's agent-manager takes and
+  // reports them; an older one reports none.
+  const settings = useModelSettingsSupport(installation) === true;
   const [adding, setAdding] = useState(false);
   const [replacing, setReplacing] = useState<{
     label: string;
@@ -276,6 +306,7 @@ export function ModelsTab({
           request.reset();
         }}
         request={request}
+        settings={settings}
       />
       <ReplaceCredentialDialog
         target={off ? undefined : replacing}
@@ -334,7 +365,12 @@ export function ModelsTab({
       label: 'Name',
       isRowHeader: true,
       defaultWidth: '2fr',
-      cell: row => <CellText title={row.name} />,
+      cell: row => (
+        <CellText
+          title={row.displayName || row.name}
+          description={row.displayName ? row.name : undefined}
+        />
+      ),
     },
     {
       id: 'model',
@@ -347,6 +383,24 @@ export function ModelsTab({
         />
       ),
     },
+    ...(settings
+      ? [
+          {
+            id: 'settings',
+            label: 'Settings',
+            defaultWidth: '2fr',
+            cell: (row: ModelRow) => {
+              const summary = modelSettingsSummary(row);
+              return (
+                <CellText
+                  title={summary?.tokens ?? summary?.caching ?? '—'}
+                  description={summary?.tokens ? summary.caching : undefined}
+                />
+              );
+            },
+          } satisfies ColumnConfig<ModelRow>,
+        ]
+      : []),
     {
       id: 'default',
       label: 'Default',

@@ -16,6 +16,12 @@ import {
   modelNameTakenMessage,
   type OrganizationNamespace,
 } from '../lib/organizations';
+import {
+  changedModelSettingsArguments,
+  type ModelSettingsArguments,
+  modelSettingRefusal,
+  newModelSettingsArguments,
+} from '../lib/modelSettings';
 import { modelCredentialsRouteRef } from '../routes';
 import {
   AgentManagerError,
@@ -74,6 +80,12 @@ export type SaveOrganizationModelResult = {
  *   model reads: it writes the Secret only, for every object that reads it.
  *   With a change too, the change is written first, then the key asked for.
  *
+ * An organization's model also has its settings (the token limit and prompt
+ * caching), sent only where the installation's tool takes them: a create
+ * sends those of its provider, an edit only the ones the person changed, as
+ * it sends the display name only when it changed. An omitted argument keeps
+ * the stored value.
+ *
  * The provider of an existing model does not change here: the stored key is
  * the old provider's, and agent-manager cannot write a new provider and its
  * new key in one step, so either order leaves the model on a key of the
@@ -124,15 +136,29 @@ export function useSaveOrganizationModel(installation: string | undefined) {
       if (scopeRefusal) throw new Error(scopeRefusal);
       const setModel = async (
         request: Parameters<typeof client.setOrganizationModel>[0],
-        { create = false }: { create?: boolean } = {},
+        {
+          create = false,
+          modelSettings = {},
+        }: { create?: boolean; modelSettings?: ModelSettingsArguments } = {},
       ) => {
-        const { createOnly } = await ensureModelOperations(installation);
-        return client.setOrganizationModel({
-          ...request,
-          // Only a new model's write, and only where the tool takes it: an
-          // older agent-manager refuses an argument it does not know.
-          ...(create && createOnly ? { create: true } : {}),
-        });
+        const { createOnly, settings } =
+          await ensureModelOperations(installation);
+        return client
+          .setOrganizationModel({
+            ...request,
+            // Only a new model's write, and only where the tool takes it: an
+            // older agent-manager refuses an argument it does not know.
+            ...(create && createOnly ? { create: true } : {}),
+            // The same holds for the settings.
+            ...(settings ? modelSettings : {}),
+          })
+          .catch(error => {
+            // A refused setting, in the form's words and not the API
+            // server's.
+            const refusal = modelSettingRefusal(error, request.provider);
+            if (refusal) throw new Error(refusal, { cause: error });
+            throw error;
+          });
       };
       const formOf = (operation: string) => {
         const form = formLink?.({ installation, namespace, operation });
@@ -156,7 +182,6 @@ export function useSaveOrganizationModel(installation: string | undefined) {
               insecureSkipTLSVerify: values.insecureSkipTlsVerify,
             }
           : {}),
-        displayName: values.displayName.trim(),
       };
 
       if (!original) {
@@ -171,13 +196,19 @@ export function useSaveOrganizationModel(installation: string | undefined) {
             namespace,
             name,
             ...configuration,
+            displayName: values.displayName.trim(),
             noCredential: values.provider === 'Ollama' || values.noCredential,
             provider: values.provider,
             model: values.model.trim(),
             ...(makeDefault ? { default: true } : {}),
             requestId: crypto.randomUUID(),
           },
-          { create: true },
+          {
+            create: true,
+            modelSettings: organization
+              ? newModelSettingsArguments(values.provider, values)
+              : {},
+          },
         ).catch(error => {
           // Someone made a model of that name since the read.
           if (
@@ -210,15 +241,27 @@ export function useSaveOrganizationModel(installation: string | undefined) {
       let changed = false;
       let isDefault = false;
       if (modelConfigFormChanged(values, initial)) {
-        const result = await setModel({
-          namespace,
-          name,
-          provider: values.provider,
-          model,
-          ...configuration,
-          noCredential: !original.getApiKeySecret(),
-          requestId: crypto.randomUUID(),
-        });
+        const displayName = values.displayName.trim();
+        const result = await setModel(
+          {
+            namespace,
+            name,
+            provider: values.provider,
+            model,
+            ...configuration,
+            // An omitted display name keeps the stored one; "" removes it.
+            ...(displayName !== initial.displayName.trim()
+              ? { displayName }
+              : {}),
+            noCredential: !original.getApiKeySecret(),
+            requestId: crypto.randomUUID(),
+          },
+          {
+            modelSettings: organization
+              ? changedModelSettingsArguments(values.provider, values, initial)
+              : {},
+          },
+        );
         isDefault = result.defaultModel === name;
         const operation = preparedCredentialOperation(result);
         if (operation) {

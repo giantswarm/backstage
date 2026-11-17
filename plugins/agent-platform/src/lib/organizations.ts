@@ -402,6 +402,15 @@ export type OrganizationModelRequest = {
   model?: string;
   /** Moves the organization's default mark to this model. */
   default?: boolean;
+  /**
+   * The token limit of an answer; `0` removes it. Sent only where the tool
+   * takes it (`takesModelSettings`), as are the two below.
+   */
+  maxTokens?: number;
+  /** Prompt caching (Anthropic); a new Anthropic model has it on. */
+  promptCaching?: boolean;
+  /** How long a cached prompt stays: `5m` or `1h`. */
+  cacheTTL?: string;
   /** Idempotency key: one per intended change. */
   requestId: string;
 };

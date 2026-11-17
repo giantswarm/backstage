@@ -52,6 +52,13 @@ const SONNET = new ModelConfig(
   'gazelle',
 );
 
+/** The edit form's values of {@link SONNET} as it is stored: no caching. */
+const SONNET_AS_STORED = {
+  ...VALUES,
+  model: 'claude-sonnet-4-5',
+  promptCaching: false,
+};
+
 const analyticsApi = mockApis.analytics.mock();
 
 /** Why the organization directory cannot answer for gazelle, when it cannot. */
@@ -109,6 +116,11 @@ async function saveWith(
    * agent-manager 2.24.0 and older do not.
    */
   createOnly = true,
+  /**
+   * Whether it takes the model settings (`maxTokens`, `promptCaching`,
+   * `cacheTTL`); agent-manager before 3.1.0 does not.
+   */
+  settings = false,
 ) {
   const callTool = jest.fn(
     async (
@@ -138,6 +150,9 @@ async function saveWith(
                     'displayName',
                     'noCredential',
                     ...(createOnly ? ['create'] : []),
+                    ...(settings
+                      ? ['maxTokens', 'promptCaching', 'cacheTTL']
+                      : []),
                   ].map(key => [key, {}]),
                 ),
               },
@@ -432,7 +447,7 @@ describe('useSaveOrganizationModel', () => {
     const callTool = await saveWith(
       {
         organization: PAYMENTS,
-        values: { ...VALUES, model: 'claude-sonnet-4-5' },
+        values: SONNET_AS_STORED,
         original: SONNET,
         replaceKey: true,
       },
@@ -464,7 +479,7 @@ describe('useSaveOrganizationModel', () => {
     const callTool = await saveWith(
       {
         organization: PAYMENTS,
-        values: { ...VALUES, model: 'claude-sonnet-4-5' },
+        values: SONNET_AS_STORED,
         original: SONNET,
         replaceKey: true,
       },
@@ -521,7 +536,7 @@ describe('useSaveOrganizationModel', () => {
       await saveWith(
         {
           organization: PAYMENTS,
-          values: { ...VALUES, model: 'claude-sonnet-4-5' },
+          values: SONNET_AS_STORED,
           original: SONNET,
           replaceKey: true,
         },
@@ -586,7 +601,7 @@ describe('useSaveOrganizationModel', () => {
     await saveWith(
       {
         organization: PAYMENTS,
-        values: { ...VALUES, model: 'claude-sonnet-4-5' },
+        values: SONNET_AS_STORED,
         original: SONNET,
         replaceKey: true,
       },
@@ -627,5 +642,241 @@ describe('useSaveOrganizationModel', () => {
     });
 
     expect(await screen.findByTestId('error')).toHaveTextContent('forbidden');
+  });
+
+  describe('the model settings', () => {
+    /** The stored Sonnet, with a token limit and caching for an hour. */
+    const STORED = new ModelConfig(
+      {
+        ...SONNET.jsonData,
+        metadata: {
+          ...SONNET.jsonData.metadata,
+          annotations: { 'ui.giantswarm.io/display-name': 'Sonnet' },
+        },
+        spec: {
+          ...SONNET.jsonData.spec,
+          anthropic: { maxTokens: 4096, promptCaching: true, cacheTTL: '1h' },
+        },
+      } as ModelConfigInterface,
+      'gazelle',
+    );
+    const STORED_VALUES = {
+      ...VALUES,
+      model: 'claude-sonnet-4-5',
+      displayName: 'Sonnet',
+      maxTokens: 4096,
+      promptCaching: true,
+      cacheTTL: '1h' as const,
+    };
+
+    it('sends a new Anthropic model with caching on for 5 minutes, the default', async () => {
+      const callTool = await saveWith(
+        { organization: PAYMENTS, values: VALUES },
+        pending,
+        [],
+        true,
+        true,
+      );
+
+      await screen.findByTestId('answer');
+      const [args] = setCalls(callTool);
+      expect(args).toMatchObject({ promptCaching: true, cacheTTL: '5m' });
+      // No token limit typed: the provider's default.
+      expect(args).not.toHaveProperty('maxTokens');
+    });
+
+    it('sends each setting of a new model', async () => {
+      const callTool = await saveWith(
+        {
+          organization: PAYMENTS,
+          values: {
+            ...VALUES,
+            displayName: 'Sonnet',
+            maxTokens: 8192,
+            promptCaching: true,
+            cacheTTL: '1h',
+          },
+        },
+        pending,
+        [],
+        true,
+        true,
+      );
+
+      await screen.findByTestId('answer');
+      expect(setCalls(callTool)[0]).toMatchObject({
+        displayName: 'Sonnet',
+        maxTokens: 8192,
+        promptCaching: true,
+        cacheTTL: '1h',
+      });
+    });
+
+    it('sends caching off without a cache time', async () => {
+      const callTool = await saveWith(
+        { organization: PAYMENTS, values: { ...VALUES, promptCaching: false } },
+        pending,
+        [],
+        true,
+        true,
+      );
+
+      await screen.findByTestId('answer');
+      const [args] = setCalls(callTool);
+      expect(args).toMatchObject({ promptCaching: false });
+      expect(args).not.toHaveProperty('cacheTTL');
+    });
+
+    it('sends only the token limit for a provider without prompt caching', async () => {
+      const callTool = await saveWith(
+        {
+          organization: PAYMENTS,
+          values: { ...VALUES, provider: 'OpenAI', maxTokens: 2048 },
+        },
+        pending,
+        [],
+        true,
+        true,
+      );
+
+      await screen.findByTestId('answer');
+      const [args] = setCalls(callTool);
+      expect(args).toMatchObject({ maxTokens: 2048 });
+      expect(args).not.toHaveProperty('promptCaching');
+      expect(args).not.toHaveProperty('cacheTTL');
+    });
+
+    it('sends no setting for a provider that has none', async () => {
+      const callTool = await saveWith(
+        {
+          organization: PAYMENTS,
+          values: {
+            ...VALUES,
+            provider: 'GeminiVertexAI',
+            projectID: 'fixture-models',
+            location: 'europe-west1',
+            maxTokens: 2048,
+          },
+        },
+        pending,
+        [],
+        true,
+        true,
+      );
+
+      await screen.findByTestId('answer');
+      const [args] = setCalls(callTool);
+      for (const setting of ['maxTokens', 'promptCaching', 'cacheTTL']) {
+        expect(args).not.toHaveProperty(setting);
+      }
+    });
+
+    it('sends no setting where the tool does not take them, an older agent-manager', async () => {
+      const callTool = await saveWith(
+        { organization: PAYMENTS, values: { ...VALUES, maxTokens: 2048 } },
+        pending,
+      );
+
+      await screen.findByTestId('answer');
+      const [args] = setCalls(callTool);
+      for (const setting of ['maxTokens', 'promptCaching', 'cacheTTL']) {
+        expect(args).not.toHaveProperty(setting);
+      }
+    });
+
+    it('sends no setting for a model of the platform', async () => {
+      const callTool = await saveWith(
+        { namespace: 'kagent', values: { ...VALUES, maxTokens: 2048 } },
+        present,
+        [],
+        true,
+        true,
+      );
+
+      await screen.findByTestId('answer');
+      const [args] = setCalls(callTool);
+      for (const setting of ['maxTokens', 'promptCaching', 'cacheTTL']) {
+        expect(args).not.toHaveProperty(setting);
+      }
+    });
+
+    it.each([
+      ['the token limit', { maxTokens: 16000 }, { maxTokens: 16000 }],
+      ['prompt caching', { promptCaching: false }, { promptCaching: false }],
+      ['the cache time', { cacheTTL: '5m' as const }, { cacheTTL: '5m' }],
+      [
+        'the display name',
+        { displayName: 'Claude' },
+        { displayName: 'Claude' },
+      ],
+    ])(
+      'sends only %s when an edit changes only that',
+      async (_what, change, sent) => {
+        const callTool = await saveWith(
+          {
+            organization: PAYMENTS,
+            values: { ...STORED_VALUES, ...change },
+            original: STORED,
+          },
+          present,
+          [],
+          true,
+          true,
+        );
+
+        await screen.findByTestId('answer');
+        const [args] = setCalls(callTool);
+        expect(args).toMatchObject(sent);
+        // Nothing else of the settings: an omitted one keeps its value.
+        expect(
+          ['displayName', 'maxTokens', 'promptCaching', 'cacheTTL'].filter(
+            setting => setting in args && !(setting in sent),
+          ),
+        ).toEqual([]);
+      },
+    );
+
+    it('removes the token limit and the display name with the values agent-manager documents', async () => {
+      const callTool = await saveWith(
+        {
+          organization: PAYMENTS,
+          values: { ...STORED_VALUES, maxTokens: undefined, displayName: '' },
+          original: STORED,
+        },
+        present,
+        [],
+        true,
+        true,
+      );
+
+      await screen.findByTestId('answer');
+      expect(setCalls(callTool)[0]).toMatchObject({
+        maxTokens: 0,
+        displayName: '',
+      });
+    });
+
+    it('says which setting the API server refused, without its raw text', async () => {
+      await saveWith(
+        {
+          organization: PAYMENTS,
+          values: { ...VALUES, provider: 'OpenAI', maxTokens: 2048 },
+        },
+        async () => {
+          throw new Error(
+            `invalid_request: dry run of create ModelConfig ${PAYMENTS.namespace}/claude-sonnet: strict decoding error: unknown field "spec.openAI.maxTokens"`,
+          );
+        },
+        [],
+        true,
+        true,
+      );
+
+      const error = await screen.findByTestId('error');
+      expect(error).toHaveTextContent(
+        'OpenAI models have no token limit, so the setting was refused and nothing was saved.',
+      );
+      expect(error).not.toHaveTextContent('strict decoding');
+    });
   });
 });

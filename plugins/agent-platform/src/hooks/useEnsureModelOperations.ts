@@ -7,6 +7,7 @@ import {
   MODEL_OPERATIONS_MISSING,
   takesCreateOnly,
 } from '../lib/organizations';
+import { takesModelSettings } from '../lib/modelSettings';
 import { musterToolSchemaQueryKey } from '../lib/queryKeys';
 import { useMusterPluginApi } from './useMusterPluginApi';
 
@@ -19,6 +20,11 @@ export type ModelOperations = {
    * then (`already_exists`) instead of changing that model.
    */
   createOnly: boolean;
+  /**
+   * It takes the model settings (`maxTokens`, `promptCaching`, `cacheTTL`):
+   * the forms send them only then.
+   */
+  settings: boolean;
 };
 
 /**
@@ -54,7 +60,10 @@ export function useEnsureModelOperations(): (
       if (!hasModelOperations(detail.inputSchema)) {
         throw new Error(MODEL_OPERATIONS_MISSING);
       }
-      return { createOnly: takesCreateOnly(detail.inputSchema) };
+      return {
+        createOnly: takesCreateOnly(detail.inputSchema),
+        settings: takesModelSettings(detail.inputSchema),
+      };
     },
     [musterApi, queryClient],
   );

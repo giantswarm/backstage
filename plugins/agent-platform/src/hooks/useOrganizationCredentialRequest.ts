@@ -25,6 +25,11 @@ import {
 import { useAgentManagerClient } from './useAgentManager';
 import { useEnsureModelOperations } from './useEnsureModelOperations';
 import { readModelKeyReference } from './modelKeyReference';
+import {
+  modelSettingRefusal,
+  type ModelSettingsValues,
+  newModelSettingsArguments,
+} from '../lib/modelSettings';
 
 /**
  * What a tab asks agent-manager for: a model, a new key for a model (its
@@ -39,6 +44,11 @@ export type CredentialRequest =
       displayName: string;
       provider: string;
       model: string;
+      /**
+       * The settings the dialog offered (token limit, prompt caching); sent
+       * only where the installation's tool takes them.
+       */
+      settings?: ModelSettingsValues;
     }
   | { kind: 'model-key'; name: string }
   | { kind: 'credential'; secret: string; key: string };
@@ -75,7 +85,8 @@ export function useOrganizationCredentialRequest(
     const requestId = crypto.randomUUID();
     switch (request.kind) {
       case 'model': {
-        const { createOnly } = await ensureModelOperations(installation);
+        const { createOnly, settings } =
+          await ensureModelOperations(installation);
         try {
           return await client.setOrganizationModel({
             namespace,
@@ -86,6 +97,9 @@ export function useOrganizationCredentialRequest(
             // A new model: a model of that name is refused, not changed,
             // where the tool takes it (an older agent-manager refuses it).
             ...(createOnly ? { create: true } : {}),
+            ...(settings && request.settings
+              ? newModelSettingsArguments(request.provider, request.settings)
+              : {}),
             requestId,
           });
         } catch (error) {
@@ -97,6 +111,8 @@ export function useOrganizationCredentialRequest(
               cause: error,
             });
           }
+          const refusal = modelSettingRefusal(error, request.provider);
+          if (refusal) throw new Error(refusal, { cause: error });
           throw error;
         }
       }

@@ -237,7 +237,13 @@ them. The New agent form takes its owners from `list_organizations` instead.
 Each namespace's default model carries the
 `agent-platform.giantswarm.io/is-default-model-config` annotation, as
 `list_model_configs` reports it (`default`), and the mark moves with
-`set_organization_model`'s `default`. Arguments and answers cross as JSON, as
+`set_organization_model`'s `default`. Its settings (`maxTokens`,
+`promptCaching`, `cacheTTL`) are written and listed as agent-manager does: a
+new Anthropic model caches for `5m`, an omitted setting keeps its value, and a
+setting the provider's block lacks is refused with the field it names; every
+organization's OpenAI model has a token limit of 8192. On `fennel`, whose
+agent-manager predates model operations, the tool's schema lists none of them.
+Arguments and answers cross as JSON, as
 over MCP and HTTP, so no page shares the fixture's objects. The writes are
 checked as agent-manager checks them (a person with the user role may not
 create agents, a name taken is a `conflict`, a model the namespace lacks fails
