@@ -1385,6 +1385,99 @@ describe('CredentialFormPage', () => {
     expect(await screen.findByText('This request is gone')).toBeInTheDocument();
   });
 
+  describe('when the request was started with another login', () => {
+    // agent-manager answers the same person, signed in with another login
+    // (another Dex connector), with a 403 that carries nothing of the request
+    // (giantswarm/agent-manager#418).
+    const otherLogin = () =>
+      refusal(
+        403,
+        'credential_operation_other_login',
+        'The credential operation was started with another login.',
+      );
+    const OTHER_LOGIN_TITLE = 'This request was started with another login';
+    const READ_TITLES = [
+      OTHER_LOGIN_TITLE,
+      'Could not read the request on gazelle',
+      'This request is gone',
+    ];
+
+    function expectNothingOfTheRequest() {
+      expect(screen.queryByText('What you are about to save')).toBeNull();
+      expect(screen.queryByText(/claude-sonnet/)).toBeNull();
+      expect(screen.queryByText(/tenant-credential-anthropic/)).toBeNull();
+      expect(screen.queryByText(/payments/)).toBeNull();
+      expect(screen.queryByLabelText(/^Value/)).toBeNull();
+    }
+
+    it.each([
+      {
+        answer: 'credential_operation_other_login',
+        error: otherLogin,
+        title: OTHER_LOGIN_TITLE,
+        text: 'Sign out, sign in the same way as when you started the request, then open this link again.',
+      },
+      {
+        answer: 'forbidden',
+        error: () => refusal(403, 'forbidden', 'You may not read it.'),
+        title: 'Could not read the request on gazelle',
+        text: 'You may not read it.',
+      },
+      {
+        answer: 'not_found',
+        error: () => refusal(404, 'not_found', 'not found'),
+        title: 'This request is gone',
+        text: /It expired, was cancelled, or was started by someone else/,
+      },
+    ])(
+      'says what a read refused with $answer means',
+      async ({ error, title, text }) => {
+        const api = fakeCredentialsApi(async () => {
+          throw await error();
+        });
+        await renderForm(api, { namespace: 'agents-payments-x7k2q' });
+
+        expect(await screen.findByText(title)).toBeInTheDocument();
+        expect(screen.getByText(text)).toBeInTheDocument();
+        // Each answer has its own text, and only its own.
+        for (const other of READ_TITLES.filter(t => t !== title)) {
+          expect(screen.queryByText(other)).toBeNull();
+        }
+        expectNothingOfTheRequest();
+      },
+    );
+
+    it('drops the value and shows nothing of the request when the save is refused', async () => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi();
+      api.saveOperation.mockRejectedValueOnce(await otherLogin());
+      await renderForm(api, { namespace: 'agents-payments-x7k2q' });
+
+      await user.type(await screen.findByLabelText(/^Value/), VALUE);
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(await screen.findByText(OTHER_LOGIN_TITLE)).toBeInTheDocument();
+      expect(screen.queryByText('Not saved')).toBeNull();
+      expectNothingOfTheRequest();
+      expect(document.body.innerHTML).not.toContain(VALUE);
+    });
+
+    it('shows nothing of the request when the cancel is refused', async () => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi();
+      api.cancelOperation.mockRejectedValueOnce(await otherLogin());
+      await renderForm(api, { namespace: 'agents-payments-x7k2q' });
+
+      await user.click(
+        await screen.findByRole('button', { name: 'Cancel request' }),
+      );
+
+      expect(await screen.findByText(OTHER_LOGIN_TITLE)).toBeInTheDocument();
+      expect(screen.queryByText('Not cancelled')).toBeNull();
+      expectNothingOfTheRequest();
+    });
+  });
+
   it('names the installation, not an organization, for a platform request', async () => {
     const api = fakeCredentialsApi(
       read({
