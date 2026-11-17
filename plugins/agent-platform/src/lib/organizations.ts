@@ -197,6 +197,15 @@ export function organizationContentMode(
     : 'apply';
 }
 
+/**
+ * Why a content write in `namespace` is refused on an installation with
+ * commit mode: `list_organizations` does not name its organization, so
+ * whether it is applied from git is not known.
+ */
+export function organizationModeUnknown(namespace: string): string {
+  return `Could not tell whether the organization of ${namespace} is applied from git, so nothing was written. Read the page again, then try again.`;
+}
+
 /** What a content write's pull request does once merged. */
 export const CONTENT_PULL_REQUEST_NEXT =
   'The change applies once the pull request is merged.';

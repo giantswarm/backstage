@@ -533,6 +533,75 @@ describe('useSaveOrganizationModel', () => {
       ).toEqual([expect.objectContaining({ mode: 'commit' })]);
     });
 
+    it('adds a model by pull request, its key on the form', async () => {
+      const callTool = await saveWith(
+        { organization: PAYMENTS, values: VALUES },
+        async tool =>
+          tool === 'x_agent-manager_set_organization_model'
+            ? pending()
+            : answers({ status: 'False', reason: 'InInventory' })(tool),
+      );
+
+      expect(await screen.findByTestId('answer')).toHaveTextContent(
+        CREDENTIAL_OPERATION,
+      );
+      expect(setCalls(callTool)).toEqual([
+        expect.objectContaining({ create: true, mode: 'commit' }),
+      ]);
+    });
+
+    it('keeps the pull request of the change when it goes on to the new key', async () => {
+      await saveWith(
+        {
+          organization: PAYMENTS,
+          values: VALUES,
+          original: SONNET,
+          replaceKey: true,
+        },
+        answers({ status: 'False', reason: 'InInventory' }),
+      );
+
+      const answer = JSON.parse(
+        (await screen.findByTestId('answer')).textContent ?? '{}',
+      );
+      expect(answer).toEqual(
+        expect.objectContaining({
+          commit: PULL_REQUEST,
+          form: expect.stringContaining(CREDENTIAL_OPERATION),
+        }),
+      );
+    });
+
+    it('refuses a namespace the listing does not name, writing nothing', async () => {
+      const callTool = await saveWith(
+        { organization: PAYMENTS, values: VALUES, original: SONNET },
+        async tool =>
+          tool === 'x_agent-manager_list_organizations'
+            ? { organizations: [] }
+            : answers()(tool),
+      );
+
+      expect(await screen.findByTestId('error')).toHaveTextContent(
+        `Could not tell whether the organization of ${PAYMENTS.namespace} is applied from git, so nothing was written.`,
+      );
+      expect(setCalls(callTool)).toEqual([]);
+    });
+
+    it("writes the installation's models live without reading the organizations", async () => {
+      const callTool = await saveWith(
+        { namespace: 'kagent', values: VALUES },
+        answers(),
+      );
+
+      await screen.findByTestId('answer');
+      expect(setCalls(callTool)[0]).not.toHaveProperty('mode');
+      expect(
+        callTool.mock.calls.filter(
+          ([tool]) => tool === 'x_agent-manager_list_organizations',
+        ),
+      ).toEqual([]);
+    });
+
     it('edits the model of a live organization live', async () => {
       const callTool = await saveWith(
         { organization: PAYMENTS, values: VALUES, original: SONNET },

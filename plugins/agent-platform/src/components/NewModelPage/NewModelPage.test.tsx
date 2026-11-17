@@ -1,6 +1,6 @@
 import { Route, Routes } from 'react-router-dom';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   ModelConfig,
@@ -583,6 +583,71 @@ describe("NewModelPage · editing an organization's model", () => {
     expect(await screen.findByText('The credential form')).toBeInTheDocument();
     expect(mockOrganizationSave).toHaveBeenCalledWith(
       expect.objectContaining({ replaceKey: true }),
+    );
+  });
+
+  it('stays with the pull request an edit by pull request opened, and saves nothing more from it', async () => {
+    const commit = {
+      repository: 'giantswarm/golem-configs',
+      base: 'main',
+      pullRequest: 'https://github.com/giantswarm/golem-configs/pull/7',
+      number: 7,
+    };
+    mockOrganizationSave.mockResolvedValue({
+      isDefault: false,
+      changed: false,
+      commit,
+    });
+    await renderPage(editOf());
+
+    const model = screen.getByRole('textbox', { name: /^Model/ });
+    await userEvent.clear(model);
+    await userEvent.type(model, 'claude-sonnet-4-6');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    const outcome = await screen.findByTestId('model-pull-request');
+    expect(outcome).toHaveTextContent('Pull request #7 opened');
+    expect(outcome).toHaveTextContent(
+      'The change applies once the pull request is merged.',
+    );
+    expect(
+      within(outcome).getByRole('link', { name: /Review pull request/ }),
+    ).toHaveAttribute('href', commit.pullRequest);
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+    expect(screen.queryByText("The model's page")).toBeNull();
+  });
+
+  it('keeps the pull request of the change in a toast on the way to the new key', async () => {
+    mockOrganizationSave.mockResolvedValue({
+      isDefault: false,
+      changed: false,
+      commit: {
+        pullRequest: 'https://github.com/giantswarm/golem-configs/pull/7',
+        number: 7,
+      },
+      form: `/organizations/golem/org-parent/acme/credentials/${'b2'.repeat(24)}`,
+    });
+    await renderPage(editOf());
+
+    const model = screen.getByRole('textbox', { name: /^Model/ });
+    await userEvent.clear(model);
+    await userEvent.type(model, 'claude-sonnet-4-6');
+    await userEvent.click(
+      screen.getByRole('switch', { name: 'Enter a new key on the next page' }),
+    );
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Continue to credential' }),
+    );
+
+    expect(await screen.findByText('The credential form')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Pull request #7 opened'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Review pull request' }),
+    ).toHaveAttribute(
+      'href',
+      'https://github.com/giantswarm/golem-configs/pull/7',
     );
   });
 

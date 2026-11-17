@@ -2090,26 +2090,120 @@ describe('OrganizationPage', () => {
       return toolCalls(page.callTool, 'add_organization_member')[0];
     }
 
-    it.each([
-      ['from git, on an installation with commit mode', FROM_GIT, 'commit'],
+    /** Opens a dialog's button and confirms it with `confirm`. */
+    async function confirmIn(
+      tab: string,
+      scenario: OrganizationsScenario,
+      button: string,
+      confirm: string,
+      tool: string,
+      fill?: (dialog: HTMLElement) => Promise<void>,
+    ) {
+      const user = userEvent.setup();
+      const { callTool } = await renderPage(tab, scenario);
+      await user.click(await screen.findByRole('button', { name: button }));
+      const dialog = await screen.findByRole('dialog');
+      await fill?.(dialog);
+      await user.click(within(dialog).getByRole('button', { name: confirm }));
+      await waitFor(() => expect(toolCalls(callTool, tool)).toHaveLength(1));
+      return toolCalls(callTool, tool)[0];
+    }
+
+    /** Each write of the organization's content, by what it does. */
+    const WRITES: Record<
+      string,
+      (scenario: OrganizationsScenario) => Promise<Record<string, unknown>>
+    > = {
+      'adds a member': addGroup,
+      'removes a member': scenario =>
+        confirmIn(
+          '',
+          scenario,
+          'Remove jane@example.com as user',
+          'Remove',
+          'remove_organization_member',
+        ),
+      'adds a model': scenario =>
+        confirmIn(
+          '/models',
+          scenario,
+          'Add model',
+          'Continue to the key',
+          'set_organization_model',
+          async dialog => {
+            await userEvent.type(
+              within(dialog).getByRole('textbox', { name: /Name/ }),
+              'claude',
+            );
+            await userEvent.type(
+              within(dialog).getByRole('textbox', { name: /Model/ }),
+              'claude-sonnet-4-6',
+            );
+          },
+        ),
+      "replaces a model's key": scenario =>
+        confirmIn(
+          '/models',
+          scenario,
+          'Replace the key of gpt',
+          'Continue',
+          'replace_organization_credential',
+        ),
+      "replaces a connector's credential": scenario =>
+        confirmIn(
+          '/connectors',
+          scenario,
+          'Replace the credential of jira',
+          'Continue',
+          'replace_organization_credential',
+        ),
+      "replaces an egress policy's credential": scenario =>
+        confirmIn(
+          '/egress',
+          scenario,
+          'Replace the credential of payments-api',
+          'Continue',
+          'replace_organization_credential',
+        ),
+    };
+
+    /** The three cases of the issue, each with the mode its writes take. */
+    const CASES: [string, OrganizationsScenario, 'commit' | undefined][] = [
+      ['from git, with commit mode', FROM_GIT, 'commit'],
       [
-        'created live, on an installation with commit mode',
+        'created live, with commit mode',
         { ...SCENARIO, commitMode: true },
         undefined,
       ],
       [
-        'from git, on an installation without commit mode',
+        'from git, without commit mode',
         { ...SCENARIO, memberStatus: IN_GIT },
         undefined,
       ],
-    ] as const)(
-      'writes an organization %s in its mode',
-      async (_, scenario, mode) => {
-        const args = await addGroup(scenario);
+    ];
+
+    it.each(
+      Object.keys(WRITES).flatMap(write =>
+        CASES.map(
+          ([name, scenario, mode]) => [write, name, scenario, mode] as const,
+        ),
+      ),
+    )(
+      '%s of an organization %s in that mode',
+      async (write, _, scenario, mode) => {
+        const args = await WRITES[write](scenario);
         // A live write sends no mode at all: the call it was before.
         expect('mode' in args ? args.mode : 'absent').toBe(mode ?? 'absent');
       },
     );
+
+    it('takes the key of a model added by pull request on the form', async () => {
+      await WRITES['adds a model'](FROM_GIT);
+      // The form reads the operation's mode from agent-manager: a pull request.
+      expect(await screen.findByTestId('location')).toHaveTextContent(
+        CREDENTIAL_OPERATION,
+      );
+    });
 
     it('shows the pull request a write opened, and lists nothing new', async () => {
       await addGroup(FROM_GIT);
@@ -2141,69 +2235,6 @@ describe('OrganizationPage', () => {
         },
       });
       expect(args).toEqual(expect.objectContaining({ mode: 'commit' }));
-    });
-
-    it.each([
-      ['/models', 'Replace the key of gpt', 'tenant-credential-gpt'],
-      [
-        '/connectors',
-        'Replace the credential of jira',
-        'tenant-credential-jira',
-      ],
-      [
-        '/egress',
-        'Replace the credential of payments-api',
-        'tenant-credential-stripe',
-      ],
-    ])(
-      'asks for a credential of %s by pull request, on the form that says so',
-      async (tab, button, secret) => {
-        const user = userEvent.setup();
-        const { callTool } = await renderPage(tab, FROM_GIT);
-        await user.click(await screen.findByRole('button', { name: button }));
-        await user.click(
-          within(await screen.findByRole('dialog')).getByRole('button', {
-            name: 'Continue',
-          }),
-        );
-        await waitFor(() =>
-          expect(
-            toolCalls(callTool, 'replace_organization_credential'),
-          ).toEqual([expect.objectContaining({ secret, mode: 'commit' })]),
-        );
-        // The form reads the operation's mode: a pull request.
-        expect(await screen.findByTestId('location')).toHaveTextContent(
-          CREDENTIAL_OPERATION,
-        );
-      },
-    );
-
-    it('adds a model by pull request, and its key goes to the form', async () => {
-      const user = userEvent.setup();
-      const { callTool } = await renderPage('/models', FROM_GIT);
-      await user.click(
-        await screen.findByRole('button', { name: 'Add model' }),
-      );
-      const dialog = await screen.findByRole('dialog');
-      await user.type(
-        within(dialog).getByRole('textbox', { name: /Name/ }),
-        'claude',
-      );
-      await user.type(
-        within(dialog).getByRole('textbox', { name: /Model/ }),
-        'claude-sonnet-4-6',
-      );
-      await user.click(
-        within(dialog).getByRole('button', { name: 'Continue to the key' }),
-      );
-      await waitFor(() =>
-        expect(toolCalls(callTool, 'set_organization_model')).toEqual([
-          expect.objectContaining({ name: 'claude', mode: 'commit' }),
-        ]),
-      );
-      expect(await screen.findByTestId('location')).toHaveTextContent(
-        CREDENTIAL_OPERATION,
-      );
     });
 
     it('keeps the model dialog open with the pull request when no key is asked', async () => {

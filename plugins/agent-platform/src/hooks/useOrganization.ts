@@ -208,8 +208,9 @@ export function useOrganizationMemberWrites(
     });
 
   const add = useTrackedMutation<MemberResult, Error, MemberRequest>({
+    // A pull request adds no one until it is merged.
     event: (result, request) =>
-      result.changed
+      result.changed && !result.commit
         ? {
             name: 'AgentPlatform.organizationMemberAdded',
             attributes: {
@@ -232,7 +233,7 @@ export function useOrganizationMemberWrites(
 
   const remove = useTrackedMutation<MemberResult, Error, MemberRequest>({
     event: (result, request) =>
-      result.changed
+      result.changed && !result.commit
         ? {
             name: 'AgentPlatform.organizationMemberRemoved',
             attributes: { kind: memberKind(request) },

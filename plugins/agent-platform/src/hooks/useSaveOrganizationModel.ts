@@ -317,7 +317,14 @@ export function useSaveOrganizationModel(installation: string | undefined) {
             'agent-manager answered the new key request without a credential request.',
           );
         }
-        return { isDefault, changed, form: formOf(operation) };
+        // The change's own pull request, if it opened one, goes with the
+        // form: the form's pull request carries the key only.
+        return {
+          isDefault,
+          changed,
+          form: formOf(operation),
+          ...(commit ? { commit } : {}),
+        };
       } catch (error) {
         if (!changed && !commit) {
           // Nothing was written: the page says why, with the sign-in to

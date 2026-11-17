@@ -381,6 +381,18 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
       return;
     }
     if (saved.form) {
+      // The change opened its own pull request before the key's: the form
+      // shows only the key's, so this one stays in a toast until closed.
+      if (saved.commit?.pullRequest) {
+        toastApi.post({
+          title: `Pull request${saved.commit.number ? ` #${saved.commit.number}` : ''} opened`,
+          description: `The model change is in it. ${CONTENT_PULL_REQUEST_NEXT} The new key goes in a pull request of its own.`,
+          status: 'success',
+          links: [
+            { label: 'Review pull request', href: saved.commit.pullRequest },
+          ],
+        });
+      }
       // The model is written once its key is saved there.
       navigate(saved.form);
       return;
