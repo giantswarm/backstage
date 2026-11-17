@@ -67,6 +67,11 @@ jest.mock('../InstallationChip', () => ({
 
 let mockDeleteCheckError: Error | null = null;
 const mockRecheckDeletable = jest.fn();
+// How the organization's content is written: live, as without commit mode.
+jest.mock('../../hooks/useOrganizationContentMode', () => ({
+  useOrganizationContentModeOf: () => 'apply',
+}));
+
 jest.mock('../../hooks/useDeleteModelConfig', () => ({
   AgentManagerUnavailableError: jest.requireActual(
     '../../hooks/useDeleteModelConfig',
@@ -93,11 +98,14 @@ jest.mock('../ModelConfigsProvider', () => ({
 
 const mockSetDefault = jest.fn();
 let mockSetDefaultError: Error | null = null;
+let mockSetDefaultPullRequest:
+  { pullRequest: string; number: number } | undefined;
 jest.mock('../../hooks/useSetDefaultModelConfig', () => ({
   useSetDefaultModelConfig: () => ({
     setDefault: mockSetDefault,
     isSetting: false,
     error: mockSetDefaultError,
+    pullRequest: mockSetDefaultPullRequest,
     reset: jest.fn(),
   }),
 }));
@@ -301,6 +309,7 @@ describe('ModelDetailPage', () => {
     mockSetDefault.mockReset();
     mockSetDefault.mockResolvedValue({});
     mockSetDefaultError = null;
+    mockSetDefaultPullRequest = undefined;
     mockLlmUsageInstallations = [];
     mockMayUpdate = true;
     mockContextWindows = undefined;
@@ -1095,6 +1104,32 @@ describe('ModelDetailPage', () => {
       expect(
         await screen.findByText('Sonnet 4.5 is now the default model'),
       ).toBeInTheDocument();
+    });
+
+    it('shows the pull request a move by pull request opened, and claims no default', async () => {
+      const commit = {
+        pullRequest: 'https://github.com/giantswarm/gazelle-configs/pull/7',
+        number: 7,
+      };
+      mockListedModels = [namedModel('haiku', true)];
+      mockSetDefault.mockResolvedValue({ commit });
+      // The hook reports the pull request of its last move.
+      mockSetDefaultPullRequest = commit;
+      await renderPage();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Set as default' }),
+      );
+      expect(mockSetDefault).toHaveBeenCalled();
+
+      const outcome = await screen.findByTestId('model-default-pull-request');
+      expect(outcome).toHaveTextContent('Pull request #7 opened');
+      expect(
+        within(outcome).getByRole('link', { name: /Review pull request/ }),
+      ).toHaveAttribute('href', commit.pullRequest);
+      expect(
+        screen.queryByText('Sonnet 4.5 is now the default model'),
+      ).toBeNull();
     });
 
     it('says why there is no default when several models are marked', async () => {

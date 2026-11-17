@@ -48,10 +48,16 @@ import { modelStatus } from '../../lib/customize';
 import { markedIn, defaultIn, listed } from '../../lib/defaultModel';
 import { tenantInSentence } from '../../lib/tenants';
 import { useSetDefaultModelConfig } from '../../hooks/useSetDefaultModelConfig';
+import { useOrganizationContentModeOf } from '../../hooks/useOrganizationContentMode';
 import { modelProblem } from '../../lib/modelProblem';
 import { AgentManagerNotConnectedError } from '../../lib/agentManager';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { OrganizationWriteError } from '../OrganizationWriteError';
+import { PullRequestOutcome } from '../PullRequestOutcome';
+import {
+  CONTENT_PULL_REQUEST_NEXT,
+  CONTENT_PULL_REQUEST_UNCHANGED,
+} from '../../lib/organizations';
 import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { PortalSessionEndedError } from '../../lib/portalSession';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
@@ -136,18 +142,32 @@ function ModelFrame({
 function ManagedByValue({
   owner,
   savesEdits = false,
+  byPullRequest = false,
+  pending = false,
 }: {
   owner: string;
   savesEdits?: boolean;
+  /** Edits open a pull request, which `owner` applies once merged. */
+  byPullRequest?: boolean;
+  /** Whether edits are saved here is not known yet: no sentence. */
+  pending?: boolean;
 }) {
+  let note: string;
+  if (byPullRequest) {
+    note = `Edits made here open a pull request, which ${owner} applies once it is merged.`;
+  } else if (savesEdits) {
+    note = `Edits made here are saved through ${owner}.`;
+  } else {
+    note = `${owner} would revert edits made here, so change the model where ${owner} is configured.`;
+  }
   return (
     <Flex direction="column" gap="1">
       <Text variant={useFactTextVariant()}>{owner}</Text>
-      <Text variant="body-small" color="secondary">
-        {savesEdits
-          ? `Edits made here are saved through ${owner}.`
-          : `${owner} would revert edits made here, so change the model where ${owner} is configured.`}
-      </Text>
+      {pending ? null : (
+        <Text variant="body-small" color="secondary">
+          {note}
+        </Text>
+      )}
     </Flex>
   );
 }
@@ -256,6 +276,8 @@ export function modelFacts({
   contextWindow,
   owner,
   ownerSavesEdits,
+  ownerPending,
+  editsByPullRequest,
   defaultState,
 }: {
   modelConfig: ModelConfig;
@@ -266,6 +288,10 @@ export function modelFacts({
   owner?: string;
   /** Edits are saved through `owner` (`modelConfigEditOwner`). */
   ownerSavesEdits?: boolean;
+  /** Whether `owner` takes edits made here is still being read. */
+  ownerPending?: boolean;
+  /** Edits made here open a pull request (`modelConfigEditOwner`). */
+  editsByPullRequest?: boolean;
   /** Whether it is the default, once the namespace's models are read. */
   defaultState?: ModelDefaultState;
 }): Fact[] {
@@ -302,7 +328,14 @@ export function modelFacts({
   if (owner) {
     facts.push({
       label: 'Managed by',
-      value: <ManagedByValue owner={owner} savesEdits={ownerSavesEdits} />,
+      value: (
+        <ManagedByValue
+          owner={owner}
+          savesEdits={ownerSavesEdits}
+          byPullRequest={editsByPullRequest}
+          pending={ownerPending}
+        />
+      ),
     });
   }
   if (created) {
@@ -412,24 +445,36 @@ function ModelDetailPageContent() {
   ]);
   // An organization's model agent-manager wrote is edited, and made the
   // default, through it: agent-manager is no owner that withholds either.
+  // So is one Flux applies from its organization's git path, where
+  // agent-manager changes it by pull request.
+  const contentMode = useOrganizationContentModeOf(installation, namespace);
+  // Until that mode is known, a Flux model of an organization neither offers
+  // its changes nor says Flux reverts them.
+  const ownerPending =
+    owner === 'Flux' && !contentMode && directory.has(namespace);
   const ownerSavesEdits = Boolean(
-    owner && modelConfig && !modelConfigEditOwner(modelConfig, directory),
+    owner &&
+    modelConfig &&
+    !modelConfigEditOwner(modelConfig, directory, contentMode),
   );
+  const editsByPullRequest = ownerSavesEdits && owner === 'Flux';
   const settingDefault = useSetDefaultModelConfig();
   const { setDefault, isSetting, reset: resetSetDefault } = settingDefault;
   const canSetDefault =
     Boolean(defaultState) &&
     !defaultState?.isDefault &&
     mayUpdate &&
-    !isCheckingPermission;
+    !isCheckingPermission &&
+    !ownerPending;
   const onSetDefault = useCallback(async () => {
     if (!modelConfig || !defaultState) {
       return;
     }
     resetSetDefault();
     let form: string | undefined;
+    let commit: unknown;
     try {
-      ({ form } = await setDefault({ modelConfig }));
+      ({ form, commit } = await setDefault({ modelConfig }));
     } catch {
       // Left on the page: the error renders in the alert above the tabs.
       return;
@@ -437,6 +482,10 @@ function ModelDetailPageContent() {
     if (form) {
       // The model has no key yet: the move finishes on the credential form.
       navigate(form);
+      return;
+    }
+    if (commit) {
+      // The pull request shows above the tabs: the mark moves once it merges.
       return;
     }
     toastApi.post({
@@ -597,6 +646,8 @@ function ModelDetailPageContent() {
     contextWindow,
     owner,
     ownerSavesEdits,
+    ownerPending,
+    editsByPullRequest,
     defaultState,
   });
 
@@ -625,6 +676,14 @@ function ModelDetailPageContent() {
           adminAction="sets its default model"
           title="Could not make this the default model"
           onSignedIn={resetSetDefault}
+        />
+      )}
+      {settingDefault.pullRequest && (
+        <PullRequestOutcome
+          commit={settingDefault.pullRequest}
+          next={CONTENT_PULL_REQUEST_NEXT}
+          unchanged={CONTENT_PULL_REQUEST_UNCHANGED}
+          testId="model-default-pull-request"
         />
       )}
       {deletion.checkError && (

@@ -10,6 +10,11 @@ import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react
 import { customizeExternalRouteRef, modelsRouteRef } from '../../routes';
 import { EditModelPage } from './EditModelPage';
 
+// How the organization's content is written: live, as without commit mode.
+jest.mock('../../hooks/useOrganizationContentMode', () => ({
+  useOrganizationContentModeOf: () => 'apply',
+}));
+
 const mockUseResource = jest.fn();
 let mockMayUpdate = true;
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({

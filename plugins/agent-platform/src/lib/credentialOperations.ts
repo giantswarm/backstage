@@ -46,6 +46,10 @@ export type CredentialCommit = {
   branch?: string;
   pullRequest?: string;
   number?: number;
+  /** The GitHub login the pull request is opened as. */
+  author?: string;
+  /** Who reviews it. */
+  review?: string;
 };
 
 /**

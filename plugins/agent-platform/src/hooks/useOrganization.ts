@@ -5,6 +5,7 @@ import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { AgentManagerError } from '../lib/agentManager';
 import {
   ORGANIZATIONS_CAPABILITY,
+  modeArgument,
   type MemberRequest,
   type MemberResult,
   type OrganizationConnector,
@@ -22,6 +23,7 @@ import {
   musterOrganizationQueryKey,
 } from '../lib/queryKeys';
 import { useAgentManagerClient, useAgentManagerInfo } from './useAgentManager';
+import { useOrganizationContentMode } from './useOrganizationContentMode';
 import {
   classifyReadFailure,
   type AgentManagerReadFailure,
@@ -189,13 +191,16 @@ function memberKind(request: MemberRequest): 'group' | 'person' {
  * Adding and removing an organization's members as the person
  * (`add_organization_member`, `remove_organization_member`). A refusal is
  * agent-manager's, in its own words: the page shows it as it comes, the
- * removal of `organization-admins`' last admin among them.
+ * removal of `organization-admins`' last admin among them. The mode follows
+ * the organization ({@link useOrganizationContentMode}): in mode commit the
+ * answer carries the pull request (`commit`) and nothing is bound yet.
  */
 export function useOrganizationMemberWrites(
   installation: string,
   namespace: string,
 ) {
   const client = useAgentManagerClient(installation);
+  const contentMode = useOrganizationContentMode();
   const queryClient = useQueryClient();
   const refresh = () =>
     queryClient.invalidateQueries({
@@ -203,8 +208,9 @@ export function useOrganizationMemberWrites(
     });
 
   const add = useTrackedMutation<MemberResult, Error, MemberRequest>({
+    // A pull request adds no one until it is merged.
     event: (result, request) =>
-      result.changed
+      result.changed && !result.commit
         ? {
             name: 'AgentPlatform.organizationMemberAdded',
             attributes: {
@@ -213,28 +219,34 @@ export function useOrganizationMemberWrites(
             },
           }
         : null,
-    mutationFn: request => {
+    mutationFn: async request => {
       if (!client) {
         throw new Error('agent-manager is not reachable on this installation.');
       }
-      return client.addOrganizationMember(request);
+      return client.addOrganizationMember({
+        ...request,
+        ...modeArgument(await contentMode(installation, namespace)),
+      });
     },
     onSuccess: refresh,
   });
 
   const remove = useTrackedMutation<MemberResult, Error, MemberRequest>({
     event: (result, request) =>
-      result.changed
+      result.changed && !result.commit
         ? {
             name: 'AgentPlatform.organizationMemberRemoved',
             attributes: { kind: memberKind(request) },
           }
         : null,
-    mutationFn: request => {
+    mutationFn: async request => {
       if (!client) {
         throw new Error('agent-manager is not reachable on this installation.');
       }
-      return client.removeOrganizationMember(request);
+      return client.removeOrganizationMember({
+        ...request,
+        ...modeArgument(await contentMode(installation, namespace)),
+      });
     },
     onSuccess: refresh,
   });

@@ -4,7 +4,10 @@ import {
   readProvenance,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
-import { type OrganizationDirectory } from './organizations';
+import {
+  type OrganizationDirectory,
+  type OrganizationWriteMode,
+} from './organizations';
 import { modelEndpointProblem } from './modelEndpoint';
 import {
   INITIAL_MODEL_SETTINGS,
@@ -487,14 +490,47 @@ export const AGENT_MANAGER_MANAGED_BY = 'agent-manager';
 export function modelConfigEditOwner(
   modelConfig: ModelConfig,
   directory: OrganizationDirectory,
+  /**
+   * How the organization's content is written
+   * (`useOrganizationContentModeOf`): in mode commit a model Flux applies from
+   * the organization's git path is no owner to step back for either, since
+   * agent-manager changes it by pull request.
+   */
+  contentMode?: OrganizationWriteMode,
 ): string | undefined {
   const owner = modelConfigOwner(modelConfig);
+  const namespace = modelConfig.getNamespace() ?? '';
   if (
     owner === AGENT_MANAGER_MANAGED_BY &&
-    (modelConfig.getNamespace() === MODEL_CONFIG_NAMESPACE ||
-      isListenerRouted(modelConfig.getNamespace() ?? '', directory))
+    (namespace === MODEL_CONFIG_NAMESPACE ||
+      isListenerRouted(namespace, directory))
+  ) {
+    return undefined;
+  }
+  if (
+    owner === 'Flux' &&
+    contentMode === 'commit' &&
+    directory.has(namespace) &&
+    isWrittenInGitByAgentManager(modelConfig)
   ) {
     return undefined;
   }
   return owner;
+}
+
+/**
+ * A ModelConfig a Flux Kustomization applies that no other tool claims: no
+ * Helm release, and `app.kubernetes.io/managed-by` absent or agent-manager's
+ * or the portal's, the owners agent-manager's mode commit writes for.
+ */
+function isWrittenInGitByAgentManager(modelConfig: ModelConfig): boolean {
+  const provenance = readProvenance(modelConfig);
+  return (
+    Boolean(provenance.fluxKustomization) &&
+    !provenance.helmRelease &&
+    !provenance.fluxHelmRelease &&
+    (!provenance.managedBy ||
+      provenance.managedBy === AGENT_MANAGER_MANAGED_BY ||
+      provenance.managedBy === BACKSTAGE_FIELD_MANAGER)
+  );
 }
