@@ -607,11 +607,21 @@ describe('CredentialFormPage', () => {
       expect(screen.queryByLabelText(/^Value/)).not.toBeInTheDocument();
       expect(api.cancelOperation).toHaveBeenCalledTimes(1);
 
+      // The person's own cancel fails too: it says why.
+      api.cancelOperation.mockRejectedValueOnce(
+        await refusal(503, 'unavailable', 'agent-manager is not reachable'),
+      );
       await user.click(offer);
+      expect(await screen.findByText('Not cancelled')).toBeInTheDocument();
+      expect(
+        screen.getByText(/agent-manager is not reachable/),
+      ).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Cancel request' }));
       expect(
         await screen.findByText('The request is cancelled.'),
       ).toBeInTheDocument();
-      expect(api.cancelOperation).toHaveBeenCalledTimes(2);
+      expect(api.cancelOperation).toHaveBeenCalledTimes(3);
       expect(
         screen.getByText('The objects that use this credential changed'),
       ).toBeInTheDocument();

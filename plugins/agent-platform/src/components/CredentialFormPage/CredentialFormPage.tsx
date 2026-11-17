@@ -405,6 +405,8 @@ export function CredentialFormPage({
   const phase = operationPhase(loaded?.operation, receipt, cancelled, stale);
   // Shown when the cancel after a refusal failed: the person cancels it.
   const [cancelOffered, setCancelOffered] = useState(false);
+  // The person pressed it: a failure of their cancel shows its reason.
+  const [cancelPressed, setCancelPressed] = useState(false);
 
   /**
    * Cancels a replacement refused with CONSUMERS_CHANGED: agent-manager
@@ -772,11 +774,29 @@ export function CredentialFormPage({
                 </Text>
                 <Button
                   variant="secondary"
-                  onPress={() => cancelRefused.mutate()}
+                  onPress={() => {
+                    setCancelPressed(true);
+                    cancelRefused.mutate();
+                  }}
                   isDisabled={cancelRefused.isPending}
                 >
                   Cancel request
                 </Button>
+                {cancelPressed &&
+                cancelRefused.error instanceof PortalSessionEndedError ? (
+                  <PortalSessionEndedAlert afterSignIn={AFTER_SIGN_IN} />
+                ) : null}
+                {cancelPressed &&
+                cancelRefused.error &&
+                !(cancelRefused.error instanceof PortalSessionEndedError) ? (
+                  <Alert
+                    status="danger"
+                    title="Not cancelled"
+                    description={credentialOperationErrorMessage(
+                      cancelRefused.error,
+                    )}
+                  />
+                ) : null}
               </>
             )}
           </Flex>
