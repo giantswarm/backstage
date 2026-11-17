@@ -767,6 +767,16 @@ export type AgentManagerModelConfig = {
    * reads this field and never the annotation, whose key agent-manager owns.
    */
   default?: boolean;
+  /**
+   * The model's settings, which agent-manager 3.1.0 and later report: the
+   * name people see, the token limit of an answer (absent: the provider's
+   * default), and prompt caching (absent for a provider without it), with
+   * its cache time while it is on.
+   */
+  displayName?: string;
+  maxTokens?: number;
+  promptCaching?: boolean;
+  cacheTTL?: string;
 };
 
 /**

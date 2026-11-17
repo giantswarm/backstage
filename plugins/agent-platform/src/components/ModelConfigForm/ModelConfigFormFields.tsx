@@ -21,6 +21,8 @@ import {
   ModelConfigFormValues,
   providerHasEndpoint,
 } from '../../lib/modelConfigs';
+import { type ModelSettingField } from '../../lib/modelSettings';
+import { ModelSettingsFields } from './ModelSettingsFields';
 
 export type ModelConfigFormFieldsProps = {
   values: ModelConfigFormValues;
@@ -50,6 +52,13 @@ export type ModelConfigFormFieldsProps = {
    */
   replaceKey?: boolean;
   onReplaceKeyChange?: (replaceKey: boolean) => void;
+  /**
+   * Whether to offer the model's settings (token limit, prompt caching): an
+   * organization's model on an installation whose agent-manager takes them.
+   */
+  settings?: boolean;
+  /** agent-manager's refusal of a setting, under that setting. */
+  settingErrors?: Partial<Record<ModelSettingField, string>>;
 };
 
 function modelPlaceholder(provider: ModelConfigFormValues['provider']): string {
@@ -83,6 +92,8 @@ export function ModelConfigFormFields({
   routed = false,
   replaceKey = false,
   onReplaceKeyChange,
+  settings = false,
+  settingErrors,
 }: ModelConfigFormFieldsProps) {
   const providerOption = MODEL_PROVIDER_OPTIONS.find(
     option => option.id === values.provider,
@@ -298,6 +309,15 @@ export function ModelConfigFormFields({
           />
         </CardBody>
       </Card>
+
+      {settings && (
+        <ModelSettingsFields
+          provider={values.provider}
+          values={values}
+          onChange={onChange}
+          errors={settingErrors}
+        />
+      )}
 
       {/* Edit keeps nothing here without an endpoint: the technical name is
           locked and said under the name. */}

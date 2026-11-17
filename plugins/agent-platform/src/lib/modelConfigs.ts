@@ -6,6 +6,12 @@ import {
 
 import { type OrganizationDirectory } from './organizations';
 import { modelEndpointProblem } from './modelEndpoint';
+import {
+  INITIAL_MODEL_SETTINGS,
+  modelSettingsChanged,
+  type ModelSettingsValues,
+  storedModelSettings,
+} from './modelSettings';
 
 /**
  * Where portal-created ModelConfigs (and their key Secrets) go: the namespace
@@ -123,8 +129,12 @@ export function isVertexAIProvider(
 /** The annotation `ModelConfig.getDisplayName()` prefers. */
 const DISPLAY_NAME_ANNOTATION = 'ui.giantswarm.io/display-name';
 
-/** Nonsecret configuration collected before a credential operation. */
-export type ModelConfigFormValues = {
+/**
+ * Nonsecret configuration collected before a credential operation, with the
+ * model's settings (token limit, prompt caching), which only an
+ * organization's model shows and sends.
+ */
+export type ModelConfigFormValues = ModelSettingsValues & {
   noCredential: boolean;
   /** ModelConfig CR name; immutable after creation. */
   name: string;
@@ -160,6 +170,7 @@ export const INITIAL_MODEL_CONFIG_FORM: ModelConfigFormValues = {
   projectID: '',
   location: '',
   insecureSkipTlsVerify: false,
+  ...INITIAL_MODEL_SETTINGS,
 };
 
 /** Whether the endpoint field applies to this provider at all. */
@@ -386,7 +397,8 @@ export function modelConfigFormChanged(
     values.projectID.trim() !== initial.projectID.trim() ||
     values.location.trim() !== initial.location.trim() ||
     values.noCredential !== initial.noCredential ||
-    values.insecureSkipTlsVerify !== initial.insecureSkipTlsVerify
+    values.insecureSkipTlsVerify !== initial.insecureSkipTlsVerify ||
+    modelSettingsChanged(values.provider, values, initial)
   );
 }
 
@@ -429,6 +441,7 @@ export function modelConfigFormValues(
     projectID: vertex?.projectID ?? '',
     location: vertex?.location ?? '',
     insecureSkipTlsVerify: modelConfig.getTls()?.disableVerify === true,
+    ...storedModelSettings(modelConfig),
   };
 }
 

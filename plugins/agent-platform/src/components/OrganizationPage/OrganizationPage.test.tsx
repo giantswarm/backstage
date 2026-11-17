@@ -810,6 +810,120 @@ describe('OrganizationPage', () => {
     ).toBeNull();
   });
 
+  describe('the model settings', () => {
+    const WITH_SETTINGS: OrganizationsScenario = {
+      ...SCENARIO,
+      modelSettings: true,
+      models: {
+        [PAYMENTS.namespace]: [
+          {
+            name: 'claude-sonnet',
+            namespace: PAYMENTS.namespace,
+            displayName: 'Claude Sonnet',
+            provider: 'Anthropic',
+            model: 'claude-sonnet-4-6',
+            accepted: true,
+            default: true,
+            promptCaching: true,
+            cacheTTL: '1h',
+            maxTokens: 8192,
+          },
+          {
+            name: 'gpt',
+            namespace: PAYMENTS.namespace,
+            provider: 'OpenAI',
+            model: 'gpt-5',
+            accepted: true,
+          },
+        ],
+      },
+    };
+
+    it("shows each model's stored settings", async () => {
+      await renderPage('/models', WITH_SETTINGS);
+
+      const sonnet = await screen.findByRole('row', { name: /Claude Sonnet/ });
+      expect(sonnet).toHaveTextContent('claude-sonnet');
+      expect(sonnet).toHaveTextContent('Token limit 8,192');
+      expect(sonnet).toHaveTextContent('Prompt caching, 1 hour');
+      const gpt = screen.getByRole('row', { name: /^gpt/ });
+      expect(gpt).toHaveTextContent('Provider’s token limit');
+      expect(gpt).not.toHaveTextContent('caching');
+    });
+
+    it('adds a model with its settings, an Anthropic one caching for 5 minutes by default', async () => {
+      const user = userEvent.setup();
+      const { callTool } = await renderPage('/models', WITH_SETTINGS);
+      await user.click(
+        await screen.findByRole('button', { name: 'Add model' }),
+      );
+      const dialog = await screen.findByRole('dialog');
+      expect(
+        within(dialog).getByRole('switch', { name: 'Prompt caching' }),
+      ).toBeChecked();
+      await user.type(
+        within(dialog).getByRole('textbox', { name: /^Name/ }),
+        'Claude Opus',
+      );
+      await user.type(
+        within(dialog).getByRole('textbox', { name: /^Model/ }),
+        'claude-opus-4-1',
+      );
+      await user.type(
+        within(dialog).getByRole('textbox', { name: /Token limit/ }),
+        '4096',
+      );
+      await user.tab();
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Continue to the key' }),
+      );
+
+      await waitFor(() =>
+        expect(toolCalls(callTool, 'set_organization_model')).toEqual([
+          expect.objectContaining({
+            maxTokens: 4096,
+            promptCaching: true,
+            cacheTTL: '5m',
+          }),
+        ]),
+      );
+    });
+
+    it('offers and sends no setting where agent-manager does not take them', async () => {
+      const user = userEvent.setup();
+      const { callTool } = await renderPage('/models', {
+        ...WITH_SETTINGS,
+        modelSettings: false,
+      });
+      const sonnet = await screen.findByRole('row', { name: /Claude Sonnet/ });
+      expect(sonnet).not.toHaveTextContent('Token limit');
+      await user.click(screen.getByRole('button', { name: 'Add model' }));
+      const dialog = await screen.findByRole('dialog');
+      expect(
+        within(dialog).queryByRole('switch', { name: 'Prompt caching' }),
+      ).toBeNull();
+      await user.type(
+        within(dialog).getByRole('textbox', { name: /^Name/ }),
+        'Claude Opus',
+      );
+      await user.type(
+        within(dialog).getByRole('textbox', { name: /^Model/ }),
+        'claude-opus-4-1',
+      );
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Continue to the key' }),
+      );
+
+      await waitFor(() =>
+        expect(toolCalls(callTool, 'set_organization_model')).toHaveLength(1),
+      );
+      const [args] = toolCalls(callTool, 'set_organization_model');
+      for (const setting of ['maxTokens', 'promptCaching', 'cacheTTL']) {
+        expect(args).not.toHaveProperty(setting);
+      }
+    });
+  });
+
   it('closes the model dialog and refreshes after an immediate write', async () => {
     const user = userEvent.setup();
     const { callTool } = await renderPage('/models', {

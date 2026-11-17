@@ -63,6 +63,10 @@ jest.mock('../OrganizationDirectoryProvider', () => ({
   }),
 }));
 
+jest.mock('../../hooks/useModelSettingsSupport', () => ({
+  useModelSettingsSupport: () => true,
+}));
+
 jest.mock('../../hooks/useSaveOrganizationModel', () => ({
   useSaveOrganizationModel: () => ({
     save: mockSave,

@@ -180,6 +180,10 @@ describe('modelConfigFormValues', () => {
       projectID: '',
       location: '',
       insecureSkipTlsVerify: true,
+      // No token limit stored, no caching on OpenAI.
+      maxTokens: undefined,
+      promptCaching: false,
+      cacheTTL: '5m',
     });
   });
 

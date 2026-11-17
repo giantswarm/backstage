@@ -89,6 +89,12 @@ jest.mock('../../hooks/useSaveOrganizationModel', () => ({
   }),
 }));
 
+// Whether the installation's agent-manager takes the model settings.
+let mockSettingsSupport: boolean | undefined = true;
+jest.mock('../../hooks/useModelSettingsSupport', () => ({
+  useModelSettingsSupport: () => mockSettingsSupport,
+}));
+
 let mockModelConfigs: MockModel[] = [];
 jest.mock('../ModelConfigsProvider', () => ({
   useModelConfigs: () => ({
@@ -196,6 +202,7 @@ beforeEach(() => {
     form: `/organizations/golem/org-parent/acme/credentials/${'b2'.repeat(24)}`,
   });
   mockOrganizationError = null;
+  mockSettingsSupport = true;
 });
 
 describe('NewModelPage', () => {
@@ -614,5 +621,194 @@ describe('NewModelPage · the environment select at scale', () => {
 
     await openEnvironments();
     expect(await screen.findByRole('searchbox')).toBeInTheDocument();
+  });
+});
+
+describe("NewModelPage · an organization's model settings", () => {
+  /** Picks the organization acme as the owner of a new model. */
+  async function chooseAcme() {
+    await userEvent.click(screen.getByRole('button', { name: /Owner/ }));
+    await userEvent.click(await screen.findByRole('option', { name: 'acme' }));
+  }
+
+  async function chooseProvider(label: string) {
+    await userEvent.click(screen.getByRole('button', { name: /Provider/ }));
+    await userEvent.click(await screen.findByRole('option', { name: label }));
+  }
+
+  beforeEach(() => {
+    mockNamespaces = ['kagent', 'org-acme'];
+  });
+
+  it('shows a new Anthropic model with prompt caching on for 5 minutes, and saves that', async () => {
+    await renderPage();
+    await chooseAcme();
+    await chooseProvider('Anthropic');
+
+    expect(
+      screen.getByRole('switch', { name: 'Prompt caching' }),
+    ).toBeChecked();
+    expect(
+      screen.getByRole('button', { name: /Cache time/ }),
+    ).toHaveTextContent('5 minutes');
+    expect(screen.getByRole('textbox', { name: /Token limit/ })).toHaveValue(
+      '',
+    );
+
+    await userEvent.type(screen.getByLabelText(/^Name/), 'Claude Opus');
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /^Model/ }),
+      'claude-opus',
+    );
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /Token limit/ }),
+      '8192',
+    );
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Continue to credential' }),
+    );
+
+    await waitFor(() => expect(mockOrganizationSave).toHaveBeenCalledTimes(1));
+    expect(mockOrganizationSave.mock.calls[0][0]).toMatchObject({
+      values: {
+        provider: 'Anthropic',
+        maxTokens: 8192,
+        promptCaching: true,
+        cacheTTL: '5m',
+      },
+    });
+  });
+
+  it('hides the cache time while prompt caching is off', async () => {
+    await renderPage();
+    await chooseAcme();
+    await chooseProvider('Anthropic');
+
+    await userEvent.click(
+      screen.getByRole('switch', { name: 'Prompt caching' }),
+    );
+
+    expect(
+      screen.queryByRole('button', { name: /Cache time/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('offers only the token limit for OpenAI, and nothing for Gemini on Vertex AI', async () => {
+    await renderPage();
+    await chooseAcme();
+    await chooseProvider('OpenAI (or compatible)');
+
+    expect(
+      screen.getByRole('textbox', { name: /Token limit/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('switch', { name: 'Prompt caching' }),
+    ).not.toBeInTheDocument();
+
+    await chooseProvider('Gemini on Vertex AI');
+
+    expect(
+      screen.queryByRole('textbox', { name: /Token limit/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Settings')).not.toBeInTheDocument();
+  });
+
+  it("offers no setting where the installation's agent-manager does not take them", async () => {
+    mockSettingsSupport = false;
+    await renderPage();
+    await chooseAcme();
+    await chooseProvider('Anthropic');
+
+    expect(
+      screen.queryByRole('switch', { name: 'Prompt caching' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('textbox', { name: /Token limit/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('offers no setting for a model of the platform', async () => {
+    mockNamespaces = ['kagent'];
+    await renderPage();
+    await chooseProvider('Anthropic');
+
+    expect(
+      screen.queryByRole('switch', { name: 'Prompt caching' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the stored settings of a model being edited, and saves a change to one', async () => {
+    await renderPage({
+      installation: 'golem',
+      modelConfig: new ModelConfig(
+        {
+          apiVersion: 'api.kagent.dev/v1alpha3',
+          kind: 'ModelConfig',
+          metadata: {
+            name: 'sonnet',
+            namespace: 'org-acme',
+            labels: { 'app.kubernetes.io/managed-by': 'agent-manager' },
+          },
+          spec: {
+            provider: 'Anthropic',
+            model: 'claude-sonnet-4-5',
+            apiKeySecret: 'tenant-credential-sonnet',
+            apiKeySecretKey: 'apiKey',
+            anthropic: { maxTokens: 4096, promptCaching: true, cacheTTL: '1h' },
+          },
+        } as ModelConfigInterface,
+        'golem',
+      ),
+      detailHref: '/customize/models/inst-1/kagent/sonnet',
+    });
+
+    const limit = screen.getByRole('textbox', { name: /Token limit/ });
+    expect(limit).toHaveValue('4096');
+    expect(
+      screen.getByRole('button', { name: /Cache time/ }),
+    ).toHaveTextContent('1 hour');
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+
+    // Typed and saved at once, without leaving the field first.
+    await userEvent.clear(limit);
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(mockOrganizationSave).toHaveBeenCalledTimes(1));
+    expect(mockOrganizationSave.mock.calls[0][0].values).toMatchObject({
+      maxTokens: undefined,
+      promptCaching: true,
+      cacheTTL: '1h',
+    });
+  });
+
+  it('keeps digits alone in the token limit', async () => {
+    await renderPage();
+    await chooseAcme();
+    const limit = screen.getByRole('textbox', { name: /Token limit/ });
+
+    await userEvent.type(limit, '08,1a92');
+
+    expect(limit).toHaveValue('8192');
+  });
+
+  it("shows agent-manager's refusal of a setting under it, until it changes", async () => {
+    const { ModelSettingRefusalError } = jest.requireActual(
+      '../../lib/modelSettings',
+    );
+    mockOrganizationError = new ModelSettingRefusalError(
+      'maxTokens',
+      true,
+      'The token limit was refused, and nothing was saved. Enter a whole number of tokens above 0, or leave it empty for the provider’s default.',
+    );
+    await renderPage();
+    await chooseAcme();
+
+    const limit = screen.getByRole('textbox', { name: /Token limit/ });
+    expect(limit).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText(/The token limit was refused/)).toBeInTheDocument();
+    // Under the field, not in the page's alert.
+    expect(
+      screen.queryByText('Could not connect the model'),
+    ).not.toBeInTheDocument();
   });
 });

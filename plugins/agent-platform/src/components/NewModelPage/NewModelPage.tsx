@@ -55,6 +55,8 @@ import { slugify } from '../../lib/slugify';
 import { OWNER_LABEL, ownerOf, tenantInSentence } from '../../lib/tenants';
 import { useModelNamespaces } from '../../hooks/useModelNamespaces';
 import { useSaveOrganizationModel } from '../../hooks/useSaveOrganizationModel';
+import { useModelSettingsSupport } from '../../hooks/useModelSettingsSupport';
+import { refusedSettingErrors } from '../../lib/modelSettings';
 import {
   AgentManagerError,
   AgentManagerNotConnectedError,
@@ -203,7 +205,17 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   // An organization's model is saved through agent-manager, never with a
   // Secret written from here; the platform's with the person's own writes.
   const organization = directory.get(namespace);
+  // An organization's model has its settings (token limit, prompt caching)
+  // where the installation's agent-manager takes them; elsewhere they stay
+  // hidden and are never sent.
+  const settingsSupported = useModelSettingsSupport(
+    organization ? installation : undefined,
+  );
+  const showSettings = Boolean(organization) && settingsSupported === true;
   const { isSaving, error } = organizationSave;
+  // agent-manager's refusal of a setting the form shows goes under it (the
+  // `forms` skill), and leaves once that setting changes.
+  const settingErrors = refusedSettingErrors(error);
   const { save: saveOrganization, reset: resetOrganization } = organizationSave;
   const providers = useMemo<readonly ModelProvider[]>(() => {
     const offered = providersFor(namespace, directory);
@@ -277,6 +289,9 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
       if (patch.name !== undefined) {
         setNameEdited(true);
       }
+      if (Object.keys(patch).some(field => field in settingErrors)) {
+        resetOrganization();
+      }
       setValues(prev => {
         const next = { ...prev, ...patch };
         if (patch.provider !== undefined) {
@@ -293,7 +308,9 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         return next;
       });
     },
-    [edit, nameEdited],
+    // settingErrors is derived fresh each render; key on its fields.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [edit, nameEdited, resetOrganization, Object.keys(settingErrors).join()],
   );
 
   const installationError =
@@ -570,6 +587,8 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         onMoreOptionsOpenChange={setMoreOptionsOpen}
         replaceKey={replaceKey}
         onReplaceKeyChange={setReplaceKey}
+        settings={showSettings}
+        settingErrors={settingErrors}
       />
 
       {!edit && installation && (
@@ -588,7 +607,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         />
       )}
 
-      {error && (
+      {error && Object.keys(settingErrors).length === 0 && (
         <SaveError
           error={error}
           installation={installation ?? ''}

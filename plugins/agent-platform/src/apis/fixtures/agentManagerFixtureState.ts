@@ -64,11 +64,13 @@ import {
   listedOrganizationOf,
   modelConfigObjectOf,
   permissionsOf,
+  providerBlockKey,
   providerBlockOf,
   type FixtureAgentRecord,
   type FixtureModel,
 } from './agentPlatformFixtureData';
 import { MODEL_CONFIG_NAMESPACE } from '../../lib/modelConfigs';
+import { DEFAULT_CACHE_TTL, providerSettings } from '../../lib/modelSettings';
 import { PLATFORM_TENANT_NAMESPACE } from '../../lib/tenants';
 import { FIXTURE_USER } from './fixtureIdentity';
 import { kagentFixtureState, KagentFixtureState } from './kagentFixtureState';
@@ -405,6 +407,7 @@ export class AgentManagerFixtureState {
           default: true,
           secret: `${FIXTURE_MODEL_CONFIG}-model-key`,
           key: keyNameOf('OpenAI'),
+          maxTokens: 8192,
         });
         models.set(keyOf(organization.namespace, UNUSED_VERTEX_MODEL), {
           namespace: organization.namespace,
@@ -807,6 +810,14 @@ export class AgentManagerFixtureState {
       resolvedRefs: true,
       default: model.default,
       ...(model.helmRelease && { managedBy: 'Helm' }),
+      ...(model.displayName && { displayName: model.displayName }),
+      ...(model.maxTokens && { maxTokens: model.maxTokens }),
+      ...(providerSettings(model.provider).caching && {
+        promptCaching: model.promptCaching === true,
+        ...(model.promptCaching && model.cacheTTL
+          ? { cacheTTL: model.cacheTTL }
+          : {}),
+      }),
     }));
   }
 
@@ -954,6 +965,7 @@ export class AgentManagerFixtureState {
   private configureModel(
     model: FixtureModel,
     request: OrganizationModelRequest,
+    fresh = false,
   ): boolean {
     const before = JSON.stringify(model);
     if (isVertexProvider(model.provider)) {
@@ -992,10 +1004,65 @@ export class AgentManagerFixtureState {
     if (request.displayName !== undefined) {
       model.displayName = request.displayName || undefined;
     }
+    this.configureSettings(model, request, fresh);
     if (request.model) {
       model.model = request.model;
     }
     return JSON.stringify(model) !== before;
+  }
+
+  /**
+   * The token limit and prompt caching, as agent-manager writes them: an
+   * omitted setting keeps its value, `maxTokens: 0` removes the limit, a new
+   * Anthropic model caches with `5m`, and a setting the provider's block
+   * lacks is refused as the API server's strict dry run refuses it, naming
+   * the field.
+   */
+  private configureSettings(
+    model: FixtureModel,
+    request: OrganizationModelRequest,
+    fresh = false,
+  ): void {
+    const { maxTokens, caching } = providerSettings(model.provider);
+    const unknown = (field: string) =>
+      refusal(
+        'invalid_request',
+        `dry run of ${fresh ? 'create' : 'update'} ModelConfig ${model.namespace}/${model.name}: strict decoding error: unknown field "spec.${providerBlockKey(model.provider)}.${field}"`,
+      );
+    if (request.maxTokens !== undefined) {
+      if (!maxTokens) throw unknown('maxTokens');
+      if (request.maxTokens < 0) {
+        throw refusal(
+          'invalid_request',
+          `maxTokens must be 0 (the provider's default) or more, not ${request.maxTokens}`,
+        );
+      }
+      model.maxTokens = request.maxTokens || undefined;
+    }
+    let promptCaching = request.promptCaching;
+    if (
+      promptCaching === undefined &&
+      fresh &&
+      model.provider === 'Anthropic'
+    ) {
+      promptCaching = true;
+    }
+    if (promptCaching !== undefined) {
+      if (!caching) throw unknown('promptCaching');
+      model.promptCaching = promptCaching;
+    }
+    if (request.cacheTTL !== undefined && request.cacheTTL !== '') {
+      if (!caching) throw unknown('cacheTTL');
+      if (request.cacheTTL !== '5m' && request.cacheTTL !== '1h') {
+        throw refusal(
+          'invalid_request',
+          `dry run of ${fresh ? 'create' : 'update'} ModelConfig ${model.namespace}/${model.name}: spec.${providerBlockKey(model.provider)}.cacheTTL: Unsupported value: "${request.cacheTTL}": supported values: "5m", "1h"`,
+        );
+      }
+      model.cacheTTL = request.cacheTTL;
+    } else if (promptCaching && !model.cacheTTL) {
+      model.cacheTTL = DEFAULT_CACHE_TTL;
+    }
   }
 
   private writeModel(
@@ -1040,7 +1107,11 @@ export class AgentManagerFixtureState {
           `model ${existing.name} keeps its provider ${existing.provider}: its key is that provider's`,
         );
       }
-      const changed = this.configureModel(existing, request);
+      // On a copy, kept only when every setting passes: a refused write
+      // changes nothing, as the API server's dry run refuses it whole.
+      const draft = { ...existing };
+      const changed = this.configureModel(draft, request);
+      Object.assign(existing, draft);
       const makeDefault = Boolean(request.default) && !existing.default;
       if (makeDefault) {
         this.markDefault(installation, existing);
@@ -1069,7 +1140,7 @@ export class AgentManagerFixtureState {
         : `${PLATFORM_CREDENTIAL_PREFIX}${name}`,
       key: keyNameOf(provider),
     };
-    this.configureModel(model, request);
+    this.configureModel(model, request, true);
     if (request.noCredential) {
       if (vertex) {
         throw refusal(

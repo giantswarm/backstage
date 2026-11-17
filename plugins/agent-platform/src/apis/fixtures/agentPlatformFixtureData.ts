@@ -474,6 +474,11 @@ export type FixtureModel = {
   endpoint?: string;
   /** The Helm release that renders the model, which a portal write must not fight. */
   helmRelease?: string;
+  /** The token limit of an answer; absent is the provider's default. */
+  maxTokens?: number;
+  /** Anthropic: prompt caching and its cache time. */
+  promptCaching?: boolean;
+  cacheTTL?: string;
 };
 
 /** The block of a ModelConfig's spec that holds a provider's settings. */
@@ -485,6 +490,11 @@ const PROVIDER_BLOCKS: Partial<Record<string, string>> = {
   GeminiVertexAI: 'geminiVertexAI',
 };
 
+/** The key of a provider's block in a ModelConfig's spec. */
+export function providerBlockKey(provider: string | undefined): string {
+  return PROVIDER_BLOCKS[provider ?? ''] ?? (provider ?? '').toLowerCase();
+}
+
 /** Whether a provider runs on Vertex AI, which reads a service-account key. */
 export function isVertexProvider(provider: string | undefined): boolean {
   return provider === 'AnthropicVertexAI' || provider === 'GeminiVertexAI';
@@ -493,12 +503,17 @@ export function isVertexProvider(provider: string | undefined): boolean {
 /** The provider block of a model's spec, as agent-manager writes it. */
 export function providerBlockOf(
   model: FixtureModel,
-): Record<string, Record<string, string>> {
+): Record<string, Record<string, string | number | boolean>> {
   const block = PROVIDER_BLOCKS[model.provider ?? ''];
   if (!block) {
     return {};
   }
-  const settings: Record<string, string> = {};
+  const settings: Record<string, string | number | boolean> = {};
+  if (model.maxTokens) settings.maxTokens = model.maxTokens;
+  if (model.promptCaching !== undefined) {
+    settings.promptCaching = model.promptCaching;
+  }
+  if (model.cacheTTL) settings.cacheTTL = model.cacheTTL;
   if (isVertexProvider(model.provider)) {
     if (model.projectID) settings.projectID = model.projectID;
     if (model.location) settings.location = model.location;
