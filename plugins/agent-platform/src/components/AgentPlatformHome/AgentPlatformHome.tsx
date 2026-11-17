@@ -9,6 +9,7 @@ import {
 import {
   EmptyStateCard,
   ShellDocumentTitle,
+  UnreachableInstallationsAlert,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
@@ -65,7 +66,6 @@ import { ServingProvider } from '../ServingProvider';
 import { SessionsDataProvider, useSessions } from '../SessionsDataProvider';
 import { SlackPromoBanner } from '../SlackPromoBanner';
 import { NEW_SESSION_DRAFT_NAME, StartNewSession } from '../StartNewSession';
-import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 import { greeting } from './helpers';
 import { OrganizationDirectoryProvider } from '../OrganizationDirectoryProvider';
 

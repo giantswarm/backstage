@@ -41,8 +41,8 @@ export function ModelDeleteDialog({
       onConfirm={onConfirm}
     >
       <Text variant="body-medium">
-        It leaves the picker, so no new agents can use it. Its stored API key is
-        removed too.
+        It leaves the picker, so no new agents can use it. Its stored credential
+        stays, since another model or connector may use it.
       </Text>
     </ConfirmDialog>
   );

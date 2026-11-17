@@ -3,7 +3,10 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Progress } from '@backstage/core-components';
 import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles, Theme } from '@material-ui/core';
-import { SectionHeader } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  SectionHeader,
+  UnreachableInstallationsAlert,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { agentDetailRouteRef } from '../../routes';
 import { useSessionUsage } from '../../hooks/useSessionUsage';
 import { useMusterServers } from '../../hooks/useMusterServers';
@@ -24,7 +27,6 @@ import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useAgents } from '../AgentsDataProvider';
 import { InstallationScopeNote } from '../InstallationScopeNote';
 import { NotReachableInstallationsNote } from '../NotReachableInstallationsNote';
-import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 import { ByAgentTable } from './ByAgentTable';
 import { CoverageNote } from './CoverageNote';
 import { TokensPerDayCard } from './TokensPerDayCard';

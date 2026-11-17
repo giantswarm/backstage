@@ -75,6 +75,29 @@ const sortBy = value => ({
   },
 });
 
+/** Turns on every column of the Platform section's clusters list. */
+const everyClusterColumn = {
+  name: 'every column',
+  run: async ({ page, skip }) => {
+    const button = page.locator('button[aria-label="Columns"]');
+    if (!(await shows(button))) skip('no column picker: no clusters listed, or phone width');
+    await button.click();
+    const group = page.getByRole('group', { name: 'Columns' });
+    await group.waitFor();
+    // The inputs sit under bui's drawn box: check them, not click them.
+    for (const box of await group.getByRole('checkbox').all()) {
+      if (!(await box.isChecked()) && !(await box.isDisabled())) {
+        await box.check({ force: true });
+      }
+    }
+    await page.keyboard.press('Escape');
+    const headers = page.getByRole('columnheader');
+    if ((await headers.count()) !== (await group.getByRole('checkbox').count())) {
+      throw new Error('the column picker did not show every column');
+    }
+  },
+};
+
 export default [
   { name: 'Home', path: '/' },
   { name: 'Sessions', path: '/sessions' },
@@ -189,6 +212,11 @@ export default [
   { name: 'Usage · Your sessions', path: '/usage/your-sessions' },
   { name: 'Usage · Connectors', path: '/usage/connectors' },
   { name: 'Profile', path: '/profile' },
+  {
+    name: 'Platform · Clusters',
+    path: '/platform/clusters',
+    states: [everyClusterColumn],
+  },
 ];
 
 /** A model's page: models are listed by installation, namespace and name, not under /hosting. */

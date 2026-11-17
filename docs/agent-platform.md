@@ -1,7 +1,8 @@
 # Agent Platform
 
 The **Agent Platform shell** is the portal's UI for working with agents. It
-serves `/`, `/sessions`, `/usage`, `/profile` and `/customize/**` and is built
+serves `/`, `/sessions`, `/usage`, `/profile` and `/customize/**`, and
+`/platform/**` where the deployment turns the Platform section on, and is built
 from the
 `agent-platform` plugin (`@giantswarm/backstage-plugin-agent-platform`), the
 `muster` plugin and the app's `agentShell` module
@@ -541,6 +542,34 @@ when calls were recorded and how many of the range's days that covers;
 otherwise they say nothing. Cost shows the change against the previous range
 only when the records reach back before it.
 
+## Platform
+
+`/platform` (`PlatformPage` in the app's `agentShell` module) lists what the
+portal reads of the platform, behind `gs.features.platformSection.enabled`
+(off by default; see [Agent Platform configuration](agent-platform-configuration.md#the-platform-section-gsfeaturesplatformsection)).
+Without it there is no route and no rail item. Its one tab so far, Clusters
+(`/platform/clusters`, the bare path redirects there), is
+`PlatformClustersPanel` from the gs plugin: every Cluster API cluster of every
+environment the person can read and has not switched off, read by the classic
+list's `ClustersDataProvider`. Search, then Environment, Organization, Status
+and Release dropdowns, a column picker at the end of the filter bar (Name
+always; Status, Environment, Organization, Release, Workers and Created by
+default; Provider, Region, Account, Service priority and Cluster app on
+request, kept per browser), and headers that sort. Release carries the
+Kubernetes minor version, marked EOL past its end of life
+(`gs.kubernetesVersions`). Environments whose clusters could not be read are named in the
+shared `UnreachableInstallationsAlert` once every environment has answered,
+with Try again, and Sign in again where a sign-in expired. With no cluster to
+show, a failure is the list's answer (a danger card with Try again), as are a
+failed read of the environments themselves and an ended session: the page
+says "No clusters yet" only once every environment answered without a
+failure. A column whose related read failed on an environment (control
+planes, provider clusters, identities) shows a dash that names the failure on
+hover and focus. Rows do not
+open a cluster yet. At phone width the list stacks: name and state, then
+environment, organization and release. The classic `/clusters` and
+`/installations` pages are unchanged.
+
 ## Profile and settings
 
 `/profile` shows who is signed in and the environments the portal
@@ -723,125 +752,24 @@ condition names and the controller's messages stay in Technical details,
 which open on arrival; the alert's Show conditions reopens them and scrolls
 them into view.
 
-The form (`NewModelPage`, `ModelConfigFormFields`; edit through
-`EditModelPage` at `/customize/models/<installation>/<namespace>/<name>/edit`)
-supports **OpenAI** (every OpenAI-compatible endpoint: vLLM, llama.cpp,
-OpenRouter), **Anthropic**, **Gemini** and **Ollama**, with a per-provider
-endpoint (`spec.openAI.baseUrl`, `spec.anthropic.baseUrl`, `spec.ollama.host`)
-and `spec.tls.disableVerify` for self-signed endpoints. CRs using the CRD's
-other providers (AzureOpenAI, Bedrock, the VertexAI variants, SAPAICore) are
-read-only, and the detail page says why.
+The model form (`NewModelPage`, `ModelConfigFormFields`, `EditModelPage`) collects only model metadata. OpenAI, Anthropic, Gemini, Ollama and the native AnthropicVertexAI and GeminiVertexAI providers are editable. Vertex models take a Google project and location; LLM gateway metering, rate limits and spend reporting are unavailable for their direct Google calls. Other unsupported providers remain read-only.
 
-**Key Secrets follow the agentlab contract** (`platform.extraModels`,
-giantswarm/agentlab#44): the Secret is `kagent-<model name>` in the
-ModelConfig's namespace, with one key named after the provider's canonical
-env var (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`). The name is
-fixed because the kagent controller injects it as that env var and the ADK
-runtime reads exactly those names. A model connected without a key still gets
-a placeholder Secret, because an agent pod without the env var crashloops.
-Ollama is the one keyless provider (no Secret).
+**Every model write goes through agent-manager.** Installation and organization models use `set_organization_model`, `replace_organization_credential` and `delete_organization_object` as the person. The portal checks the manager tool schema and refuses an incompatible version. It never creates, patches or deletes model credential Secrets through its Kubernetes client. Installation writes require cluster-admin authorization; organization writes require the organization admin role. Helm and Flux ownership guards still apply. Deleting a model retains its credential Secret.
 
-**The API key is write-only.** The edit form's empty key field leaves the
-Secret alone; a value replaces its contents (`data: null` plus `stringData` in
-one merge patch). Changing the provider always rewrites the Secret, with the
-key or the placeholder, because the old Secret holds the old env-var name. The
-portal writes only Secrets named by its own convention: a CR referencing a
-hand-provisioned Secret keeps that reference, and such a Secret is never
-deleted with the model.
+**Credentials belong to the shared credential form.** A new model, or Replace key and Replace credential on an organization's Models, Connectors and Egress tabs, opens the manager operation. Organization operations use `/organizations/<installation>/<parent>/<name>/credentials/<operation>`; installation operations use `/customize/models/credentials/<installation>/<namespace>/<operation>`. The operation declares its target, consumers and input format. `google-service-account-json` presents the JSON uploader, while `text` or an omitted format presents the ordinary value field. JSON and API keys never enter the model form, MCP arguments, browser storage or analytics. The manager validates a Google service-account key and its project before saving; the browser displays only its project and email. The old inline key form and direct Kubernetes write hook are removed.
 
-**Writes go through the Kubernetes proxy** (`createResource`, `patchResource`,
-`deleteResource`) with the caller's own OIDC token, so nothing in between holds
-the key and apiserver errors (`ConflictError` on a taken name) show inline. The
-`SelfSubjectAccessReview` gates decide only what is shown.
+A replacement writes only the referenced Secret, after confirming every consumer and destination. `credential_consumers_changed` refuses a stale request without writing; prepare another with a fresh `requestId`. Reads and saves recheck the current identity and authorization. Strong ETags, expiry, recovery and GitOps ownership checks apply to both scopes. Commit mode requires an explicit installation model directory; it never constructs an organization for the installation.
 
-**Ownership guards.** Edit and delete are withheld for CRs rendered by Helm,
-applied by a Flux Kustomization, or labelled `app.kubernetes.io/managed-by` by
-anything but the portal; the model page names the owner in a "Managed by"
-fact. A CR without markers (applied with kubectl) is editable. The portal
-labels what it creates `app.kubernetes.io/managed-by: giantswarm-backstage`.
+The provider is fixed during editing. Changing the model ID preserves its credential; replacing the key opens the shared form. Keyless OpenAI-compatible endpoints and Ollama do not receive placeholder Secrets. Set as default uses the same manager tool in either scope and preserves keyless models. The Models routes read the organization directory to resolve ownership and target the correct scope. Calls that can prepare credentials use `urlElicitation: false`, then open the returned operation in the current tab.
 
-**An organization's model is saved through agent-manager.** In an
-organization namespace (one agent-manager's `list_organizations` names), New
-model and Edit model call `set_organization_model` as the person
-(`useSaveOrganizationModel`) and write no Secret: an organization admin has no
-`patch` on Secrets, and its key is never typed into the model form. The form
-asks for the model's name (agent-manager keeps no display name), the provider
-and the model id. A new model continues to the credential form
-(`/organizations/<installation>/<parent>/<name>/credentials/<operation>`),
-which takes the key and finishes the write, then has the model and connector
-views read again; an edit of the model id is finished when the call answers.
-An edit keeps the provider: the stored key is the provider's, and
-agent-manager writes a new provider and its new key in two steps, with the
-wrong key in between. A new key, from Edit model or from Replace key and
-Replace credential on the organization's Models and Connectors tabs, is
-`replace_organization_credential` on the Secret and key the object reads (a
-model's from its ModelConfig, read as the person): the request writes that
-Secret only, for every object that reads it, and the form lists them and where
-each sends the value. With an edit of the model id, the edit is written
-first. The portal never sends `replaceCredential`. A refusal (another object
-reads another key of the Secret, an object applied from git, the objects
-changed since the request was prepared) says what to do. The last is
-agent-manager's save answer `409` with code `credential_consumers_changed`
-(agent-manager v2.24.0-rc.7 and later; rc.6 answers `conflict`, shown as Not
-saved): nothing was written, the form takes no value for that request any
-more, and the person starts the replacement again from the tab. Every request carries a fresh
-`requestId`, since agent-manager answers the same `requestId` with the old,
-stale operation.
-
-If the credential already exists, Add model completes the write, closes the
-dialog, refreshes the lists and reports the completed model write. Managed
-models do not offer Replace key.
-Organization model names use the same 63-character validation as the model
-form. A prepared operation needs the bound credential route; a missing route
-shows an error with instructions for the portal administrator.
-
-Each credential request has its own form state, including when another request
-opens in the same browser tab. Check again clears entered values and prevents
-saving or cancellation until the confirmation has loaded. Save and Cancel
-reload a changed confirmation and clear entered values; a successful read or
-write clears the recovery notice. A local save receipt or cancellation remains
-visible if another read fails; success does not start an extra confirmation
-read. Pending and uncertain apply operations
-take values; saving and uncertain commit operations finish with no values.
-An unreadable POST success or an error without agent-manager's code has code
-`outcome_unknown`. Only the credential route accepts JSON bodies up to 2 MiB,
-covering 16 maximum-length escaped values and names; other routes retain their
-existing limits.
-
-`set_organization_model` changes a model that exists, so a create first reads
-the organization's models (`list_model_configs`) and refuses a name it already
-has. A model agent-manager wrote there stays editable, since the edit goes
-through agent-manager. `useSaveModelConfig`
-refuses an organization namespace, and any namespace but `kagent` while the
-portal cannot tell whether it is an organization's (agent-manager not
-reachable or its organizations not read); Edit is withheld then too.
-
-The Models routes (`ModelsRouter`) read the organization directory
-(`OrganizationDirectoryProvider`) for all of this: without it every
-organization's model reads as the platform's, and Edit is withheld for a model
-agent-manager wrote. A call that may prepare a credential request
-(`set_organization_model`, `replace_organization_credential`) declares no URL
-elicitation (`callTool` with `urlElicitation: false`, the body's
-`urlElicitation: false` at muster-backend's `/call`): agent-manager then answers
-the request's id, and the portal opens its own credential form in the same
-tab. Declared, agent-manager asks the caller to open the form's page, which the
-portal puts to the person as an external page in a new tab. Such a call also
-gets no sign-in prompt: a missing sign-in to agent-manager fails it with
-muster's answer.
-
-**Set as default on an organization's model** (`useSetDefaultModelConfig`) is
-`set_organization_model` with the model's name and `default: true`, as the
-person: agent-manager puts the mark on it and takes it off every other model of
-the organization, two marks included. The portal patches no ModelConfig there,
-and the call sends only the namespace, the name, `default` and a request id, no
-key (agent-manager 2.24.0 takes all four). Only a model whose key Secret is
-missing answers a credential request; the page then opens the credential form,
-whose save finishes the move. A model that names no key Secret is refused before
-the call, since agent-manager would give it one. A model agent-manager wrote
-offers Set as default, and its Default model fact no longer sends the person to
-agent-manager's configuration. A person agent-manager refuses sees "Not
-permitted" with who can make the change, and a session without agent-manager
-gets the sign-in.
+Each credential request has its own form state. Check again clears entered
+values and blocks Save and Cancel until the confirmation loads. A save or
+cancellation keeps its local result when a later read fails; success does not
+start another confirmation read. Pending and uncertain apply operations take
+values; saving and uncertain commit operations finish without values. An
+unreadable POST success or an error without the manager code is
+`outcome_unknown`. Only the credential route accepts JSON bodies up to 2 MiB;
+other routes retain their existing limits.
 
 **A refused portal session** (`PortalSessionEndedError`, `lib/portalSession.ts`).
 The portal's backend refuses a session token it cannot verify, for example
@@ -1548,7 +1476,7 @@ Failures are classified as **absent** or **unwell**:
 - **Silent** — `404`, which the backend returns for every "no kagent here":
   kagent's own 404, an unknown-installation `400`, and connection failures (DNS,
   TLS, refused).
-- **Reported** in `UnreachableInstallationsAlert` — everything else: kagent
+- **Reported** in `UnreachableInstallationsAlert` (`ui-react`) — everything else: kagent
   `5xx` or `429`, timeouts, unreadable bodies. Otherwise a degraded
   installation's sessions would vanish silently.
 

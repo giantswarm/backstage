@@ -66,8 +66,8 @@ they serve their own data in every scenario.
 | Scenario     | What those fixture APIs serve                                                                                                                                                                                                                                                                                                                                                                                               |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `base`       | The base data set (see "The data set"). The default.                                                                                                                                                                                                                                                                                                                                                                        |
-| `empty`      | The three installations, with nothing in them: no organizations, agents, sessions, connectors, workflows, workspaces, toolchains, skill repositories or model backends.                                                                                                                                                                                                                                                     |
-| `many`       | Hundreds of items in each list a page shows: per installation about 250 agents, 200 connectors, 120 workflows and their executions, 300 sessions, 100 hosted models, and dozens of pools, workspaces and toolchains.                                                                                                                                                                                                        |
+| `empty`      | The three installations, with nothing in them: no organizations, agents, sessions, connectors, workflows, workspaces, toolchains, skill repositories, model backends or clusters (not even a management cluster).                                                                                                                                                                                                           |
+| `many`       | Hundreds of items in each list a page shows: per installation about 250 agents, 200 connectors, 120 workflows and their executions, 300 sessions, 100 hosted models, 100 clusters, and dozens of pools, workspaces and toolchains.                                                                                                                                                                                          |
 | `long-names` | Every name as long as a Kubernetes name may be (63 characters), display names as long in whole words. Except: GPU clusters 40, so their pools' names, which start with them, stay apart; the mounted cache claim, `hf-cache` as the serving slice names it; executions, named by their id; model backends, which model-manager names by their kind and the pages read as it; and the installations, which the config names. |
 | `loading`    | No call ever answers.                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `error`      | Every call fails (below).                                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -126,9 +126,9 @@ and no other). muster and kagent report `tarragon` as not reachable from the
 portal, as the base data set says. A call for any other installation fails
 with a console error, in every fixture API. With `gs.fixtures` the fixture
 Kubernetes API answers for each without a cluster: `/version` answers, `/apis`
-lists the API groups of the portal's resource classes (kagent's and muster's
-among them; model hosting's and Cluster API's are left out, so those
-components read as absent in the installation inventory), discovery answers
+lists the API groups of the portal's resource classes (kagent's, muster's and
+Cluster API's among them; model hosting's is left out, so that component reads
+as absent in the installation inventory), discovery answers
 the versions the classes support (the newest preferred), a list or a read of
 one object answers the objects the plugins' fixtures hold (see "Objects in the
 Kubernetes API"), every other list is empty and any other object not found,
@@ -253,8 +253,27 @@ in an organization being erased) and kept in memory until the page reloads:
   gone, with its agents and models;
 - adding a model or asking for a new key of a model or a connector: the tool
   prepares a credential operation, the credential form reads and saves it,
-  and the save writes the model. An operation expires after 30 minutes
-  (`OPERATION_TTL_MS`).
+  and the save writes the model. The Models page opens the form at
+  `/customize/models/credentials/<installation>/<namespace>/<operation>` for
+  both scopes, as agent-manager's `credentials.uiURL` names it; the form reads
+  the organization or the installation from the operation. An operation
+  expires after 30 minutes
+  (`OPERATION_TTL_MS`). A Vertex AI model's key is a service-account JSON of
+  its project (`inputFormat: google-service-account-json`), checked on save;
+  a write with `create` of a model that exists is `already_exists`;
+- the installation's models, in `kagent`, in platform scope (the person is a
+  cluster admin): `endpoint` and `noCredential` apply only there, and only
+  `tenant-credential-*` Secrets are replaced;
+- deleting a model (`delete_organization_object`), and its dry run, which
+  decides whether the model page offers the deletion.
+
+Each organization has two models: `default`, which its agents use, and
+`gemini-vertex` on Vertex AI, which none uses, so its deletion completes.
+Each installation's `kagent` namespace has `platform-default`, its default,
+which a Helm release renders: agent-manager refuses to change it, delete it or
+move the default off it (`gitops_owned`). `fennel`'s agent-manager predates
+model credential operations: its `set_organization_model` schema lacks the
+model fields, so the portal refuses every model write there.
 
 `set_organization_model`, `replace_organization_credential` and
 `start_session` honour their idempotency key (`requestId`): a retry answers
@@ -572,7 +591,15 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
   (`managerBuilders.ts`): the provider instances' owners and repositories,
   workspaces, toolchain sources and toolchains, and skill repositories; and
   model hosting (`hostingBuilders.ts`): model-manager's backends, their GPU
-  clusters with pools and cache claims, and their models. The
+  clusters with pools and cache claims, and their models; and the Cluster API
+  clusters (`clusterBuilders.ts`): each installation's management cluster,
+  named after it, workload clusters of its ready organizations, ready,
+  creating (no node pools yet) and deleting, on three releases (the oldest's
+  Kubernetes 1.30 past its end of life in `app-config.fixtures.yaml`), and the
+  GPU clusters among them. gs maps them onto Cluster, AWSCluster,
+  AWSClusterRoleIdentity, KubeadmControlPlane, MachinePool and AWSMachinePool
+  objects (`gsKubernetesObjectsOf` in `@giantswarm/backstage-plugin-gs/fixtures`),
+  which the Clusters pages and the Platform section's list read. The
   person has each role in the ready
   organizations of each installation (admin, editor, user, so the New agent form's "needs the
   editor role" shows), manages the orphaned, pending-erase and deleting ones and is no

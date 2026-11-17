@@ -48,7 +48,9 @@ export const SHELL_SPECS = [
   'mcp-sign-in-row.spec.ts',
   'notification-inbox.spec.ts',
   'organization-credentials.spec.ts',
+  'vertex-credentials.spec.ts',
   'organizations.spec.ts',
+  'platform-clusters.spec.ts',
   'profile-environments.spec.ts',
   'provider-connect.spec.ts',
   'muster-namespaced.spec.ts',
@@ -106,6 +108,7 @@ export const SHELL_SPECS = [
  */
 export const MOBILE_SPECS = [
   'organization-credentials.spec.ts',
+  'vertex-credentials.spec.ts',
   'mobile-hosting.spec.ts',
   'mobile-model-page.spec.ts',
   'mobile-navigation.spec.ts',

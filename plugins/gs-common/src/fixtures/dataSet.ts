@@ -48,6 +48,11 @@ import {
   type FixtureHostingData,
   type FixtureHostingSettings,
 } from './hostingBuilders';
+import {
+  buildClusters,
+  type FixtureCluster,
+  type FixtureClusterSettings,
+} from './clusterBuilders';
 import { createRandom } from './random';
 
 /**
@@ -75,6 +80,11 @@ export type FixtureDataSet = {
   toolchainSources: FixtureToolchainSource[];
   toolchains: FixtureToolchain[];
   skillRepositories: FixtureSkillRepository[];
+  /**
+   * The Cluster API clusters of each installation: its management cluster,
+   * workload clusters, and model hosting's GPU clusters among them.
+   */
+  clusters: FixtureCluster[];
 } & FixtureHostingData;
 
 /** The settings of a data set: the seed, "now", and each builder's. */
@@ -115,7 +125,8 @@ export type FixtureDataSetSettings = {
   skillRepositories?: BuilderSettings<SkillRepositoryState>;
   /** Per skill repository that lists its skills. */
   skills?: { count?: number; nameLength?: number };
-} & FixtureHostingSettings;
+} & FixtureHostingSettings &
+  FixtureClusterSettings;
 
 /** The seed of the base data set. */
 export const BASE_SEED = 20261114;
@@ -193,6 +204,15 @@ export function createFixtureDataSet(
   // Model hosting draws after them, so adding it left the lists above as
   // they were.
   const hosting = buildHosting(context, installations, organizations, settings);
+  // The clusters draw after model hosting, whose GPU clusters they list,
+  // so adding them left every list above as it was.
+  const clusters = buildClusters(
+    context,
+    installations,
+    organizations,
+    hosting.gpuClusters,
+    settings,
+  );
   return {
     now: context.now,
     installations,
@@ -209,6 +229,7 @@ export function createFixtureDataSet(
     toolchainSources,
     toolchains,
     skillRepositories,
+    clusters,
     ...hosting,
   };
 }

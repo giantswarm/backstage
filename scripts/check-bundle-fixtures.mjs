@@ -132,6 +132,14 @@ const MARKERS = [
     marker: 'Fixture Mimir answers no series',
   },
   {
+    source: 'plugins/gs/src/apis/kubernetes/fixtures/clusterObjects.ts',
+    marker: '-capa-controller',
+  },
+  {
+    source: 'plugins/gs-common/src/fixtures/clusterBuilders.ts',
+    marker: 'GPU nodes for model hosting',
+  },
+  {
     source: 'plugins/gs-common/src/fixtures/gatewayUsage.ts',
     marker: 'sorrel@example.com',
   },

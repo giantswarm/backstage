@@ -52,6 +52,7 @@ function AddModel() {
           request.mutate({
             kind: 'model',
             name: 'claude',
+            displayName: 'Claude',
             provider: 'Anthropic',
             model: 'claude-sonnet-4-6',
           })

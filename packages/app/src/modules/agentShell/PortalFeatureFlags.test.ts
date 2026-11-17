@@ -5,6 +5,7 @@ import {
   ORGANIZATIONS_FLAG,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { AGENT_SHELL_FLAG } from './predicates';
+import { PLATFORM_SECTION_FLAG } from './platformSection';
 import {
   FIXTURE_ORGANIZATIONS_STARTED,
   PortalFeatureFlags,
@@ -179,6 +180,34 @@ describe('PortalFeatureFlags', () => {
 
     it('leaves Organizations off outside fixture mode', () => {
       expect(flagsFor(undefined).isActive(ORGANIZATIONS_FLAG)).toBe(false);
+    });
+  });
+
+  describe('the Platform section flag', () => {
+    function flagsWith(data: object) {
+      return new PortalFeatureFlags(
+        mockApis.config({ data }),
+        mockApis.featureFlags({
+          initialStates: { [PLATFORM_SECTION_FLAG]: FeatureFlagState.Active },
+        }),
+      );
+    }
+
+    it('is off by default, whatever the browser holds', () => {
+      expect(flagsWith({}).isActive(PLATFORM_SECTION_FLAG)).toBe(false);
+    });
+
+    it('follows gs.features.platformSection.enabled', () => {
+      expect(
+        flagsWith({
+          gs: { features: { platformSection: { enabled: true } } },
+        }).isActive(PLATFORM_SECTION_FLAG),
+      ).toBe(true);
+      expect(
+        flagsWith({
+          gs: { features: { platformSection: { enabled: false } } },
+        }).isActive(PLATFORM_SECTION_FLAG),
+      ).toBe(false);
     });
   });
 });

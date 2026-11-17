@@ -117,6 +117,7 @@
   "gs.auth.extraScopes",
   "gs.auth.scopes",
   "gs.authProvider",
+  "gs.features.platformSection.enabled",
   "gs.fixtures",
   "gs.github.brokerAudience",
   "gs.signInFallbackProvider.connectorId",

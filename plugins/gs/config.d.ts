@@ -23,6 +23,19 @@ export interface Config {
      * @visibility frontend
      */
     fixtures?: boolean;
+    /** Optional parts of the portal, each off unless enabled here. */
+    features?: {
+      /**
+       * The Platform section of the Agent Platform shell (`/platform`, the
+       * clusters list) with its rail item. Off by default: without it,
+       * neither the route nor the rail item exists. Public because the app
+       * decides which pages to mount as it starts, before sign-in.
+       */
+      platformSection?: {
+        /** @visibility frontend */
+        enabled?: boolean;
+      };
+    };
     /**
      * Groups whose members the portal treats as Giant Swarm staff (the
      * cluster-access and SSH cards), matched against the installation

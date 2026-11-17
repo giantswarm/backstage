@@ -13,6 +13,8 @@ export type CredentialReferenceKind =
 
 /** An object of the organization that reads a credential Secret. */
 export type CredentialReference = {
+  projectID?: string;
+  location?: string;
   kind: CredentialReferenceKind;
   name: string;
   /** The key of the Secret the object reads. */
@@ -30,6 +32,7 @@ export type CredentialReference = {
 export type CredentialState = 'present' | 'committed' | 'missing' | 'replace';
 
 export type CredentialPair = {
+  inputFormat?: 'text' | 'google-service-account-json';
   secret: string;
   key: string;
   state: CredentialState;
@@ -58,6 +61,7 @@ export type CredentialResourceResult = {
   kind?: CredentialResourceKind;
   name?: string;
   created?: boolean;
+  deleted?: boolean;
   /** Models only: the organization's default model after the write. */
   defaultModel?: string;
   note?: string;
@@ -88,7 +92,12 @@ export type CredentialOperation = {
   expiresAt?: string;
   state: CredentialOperationState;
   mode: 'apply' | 'commit';
-  organization: { namespace?: string; parent?: string; organization?: string };
+  organization: {
+    scope?: 'platform';
+    namespace?: string;
+    parent?: string;
+    organization?: string;
+  };
   changes?: CredentialChange[];
   gitTarget?: { repository?: string; base?: string; directory?: string };
   references?: CredentialReference[];
