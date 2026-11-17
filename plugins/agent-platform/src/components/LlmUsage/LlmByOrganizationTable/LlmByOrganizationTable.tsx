@@ -6,6 +6,8 @@ import {
   DataBar,
   INITIAL_ROWS,
   ShowMore,
+  tableMinWidth,
+  useCompactLayout,
   usePhoneColumns,
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmOrganizationRow } from '../../../lib/llmUsage';
@@ -20,6 +22,8 @@ import {
 import { sortUsageRows } from '../../AgentUsageSection/helpers';
 import { UsageCard } from '../UsageCard';
 import { NameCell } from '../NameCell';
+import { USAGE_COLUMN_MIN_WIDTH } from '../columnWidths';
+import { useVisibleSort } from '../../../hooks/useVisibleSort';
 import { useMeasureColor } from '../../../lib/measures';
 
 export type LlmByOrganizationTableProps = {
@@ -70,14 +74,16 @@ export function LlmByOrganizationTable({
     [rows],
   );
 
-  const columnConfig: ColumnConfig<LlmOrganizationRow>[] = [
+  const columnsFor = (compact: boolean): ColumnConfig<LlmOrganizationRow>[] => [
     {
       id: 'label',
       label: 'Organization',
       isRowHeader: true,
       isSortable: true,
+      minWidth: USAGE_COLUMN_MIN_WIDTH.organization,
       cell: row => (
         <NameCell
+          compact={compact}
           title={row.label}
           description={row.description}
           href={hrefFor?.(row)}
@@ -88,6 +94,7 @@ export function LlmByOrganizationTable({
       id: 'calls',
       label: 'Model calls',
       isSortable: true,
+      minWidth: USAGE_COLUMN_MIN_WIDTH.calls,
       cell: row => (
         <Cell>
           <DataBar
@@ -103,6 +110,7 @@ export function LlmByOrganizationTable({
       id: 'tokens',
       label: 'Tokens',
       isSortable: true,
+      minWidth: USAGE_COLUMN_MIN_WIDTH.tokens,
       cell: row => (
         <Cell>
           <DataBar
@@ -118,6 +126,7 @@ export function LlmByOrganizationTable({
       id: 'costUsd',
       label: 'Spend',
       isSortable: true,
+      minWidth: USAGE_COLUMN_MIN_WIDTH.spend,
       cell: row => (
         <Cell>
           <DataBar
@@ -133,6 +142,7 @@ export function LlmByOrganizationTable({
       id: 'sharePct',
       label: 'Share of spend',
       isSortable: true,
+      minWidth: USAGE_COLUMN_MIN_WIDTH.share,
       cell: row => (
         <Cell>
           <DataBar
@@ -145,8 +155,16 @@ export function LlmByOrganizationTable({
       ),
     },
   ];
-  // At phone width the organization and what it cost, as the by-agent table.
-  const shownColumns = usePhoneColumns(columnConfig, ['label', 'costUsd']);
+  // At phone width, and in a card too narrow for every column, the
+  // organization and what it cost, as the by-agent table.
+  const [tableRef, isCompact] = useCompactLayout(
+    tableMinWidth(columnsFor(false)),
+  );
+  const shownColumns = usePhoneColumns(
+    columnsFor(isCompact),
+    ['label', 'costUsd'],
+    { compact: isCompact },
+  );
 
   const { tableProps } = useTable<LlmOrganizationRow>({
     mode: 'complete',
@@ -159,29 +177,36 @@ export function LlmByOrganizationTable({
     // not reset its offset when the data shrinks.
     paginationOptions: { type: 'none' },
   });
+  // The default sort is on Spend, which the compact layout keeps.
+  useVisibleSort(tableProps.sort, shownColumns, {
+    column: 'costUsd',
+    direction: 'descending',
+  });
 
   return (
     <UsageCard title="By organization" note={note} wide>
       {/* Sort-then-slice, as the by-agent table: `tableProps.data` is the
           sorted rows, and `ShowMore` hands the table its first page of them. */}
-      <ShowMore
-        items={tableProps.data ?? []}
-        initial={INITIAL_ROWS}
-        noun="organization"
-      >
-        {visible => (
-          <Table<LlmOrganizationRow>
-            {...tableProps}
-            data={visible}
-            columnConfig={shownColumns}
-            emptyState={
-              <Text variant="body-medium" color="secondary">
-                {emptyMessage}
-              </Text>
-            }
-          />
-        )}
-      </ShowMore>
+      <div ref={tableRef}>
+        <ShowMore
+          items={tableProps.data ?? []}
+          initial={INITIAL_ROWS}
+          noun="organization"
+        >
+          {visible => (
+            <Table<LlmOrganizationRow>
+              {...tableProps}
+              data={visible}
+              columnConfig={shownColumns}
+              emptyState={
+                <Text variant="body-medium" color="secondary">
+                  {emptyMessage}
+                </Text>
+              }
+            />
+          )}
+        </ShowMore>
+      </div>
     </UsageCard>
   );
 }

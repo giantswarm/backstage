@@ -142,4 +142,17 @@ describe('tableMinWidth', () => {
       ),
     ).toBe(TABLE_NAME_COLUMN_MIN_WIDTH + 120);
   });
+
+  it('takes a column’s numeric minWidth when the map has none', () => {
+    expect(
+      tableMinWidth(
+        [
+          column('name', { isRowHeader: true, minWidth: 120 }),
+          column('cost', { minWidth: 90 }),
+          column('share', { minWidth: 140 }),
+        ],
+        { share: 100 },
+      ),
+    ).toBe(120 + 90 + 100);
+  });
 });

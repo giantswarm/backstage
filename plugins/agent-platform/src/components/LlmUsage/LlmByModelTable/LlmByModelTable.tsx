@@ -22,6 +22,7 @@ import {
 import { sortUsageRows } from '../../AgentUsageSection/helpers';
 import { UsageCard } from '../UsageCard';
 import { NameCell } from '../NameCell';
+import { USAGE_COLUMN_MIN_WIDTH } from '../columnWidths';
 import { useMeasureColor } from '../../../lib/measures';
 import { useVisibleSort } from '../../../hooks/useVisibleSort';
 
@@ -89,6 +90,7 @@ export function LlmByModelTable({
     {
       id: 'model',
       label: 'Model',
+      minWidth: USAGE_COLUMN_MIN_WIDTH.name,
       isRowHeader: true,
       isSortable: true,
       // Two lines at phone width: a model id cut to one line read as "a…".
@@ -97,6 +99,7 @@ export function LlmByModelTable({
     {
       id: 'calls',
       label: 'Model calls',
+      minWidth: USAGE_COLUMN_MIN_WIDTH.calls,
       isSortable: true,
       cell: row => (
         <Cell>
@@ -112,6 +115,7 @@ export function LlmByModelTable({
     {
       id: 'tokens',
       label: 'Tokens',
+      minWidth: USAGE_COLUMN_MIN_WIDTH.tokens,
       isSortable: true,
       cell: row => (
         <Cell>
@@ -127,6 +131,7 @@ export function LlmByModelTable({
     {
       id: 'costUsd',
       label: 'Spend',
+      minWidth: USAGE_COLUMN_MIN_WIDTH.spend,
       isSortable: true,
       cell: row => (
         <Cell>
@@ -142,6 +147,9 @@ export function LlmByModelTable({
     {
       id: 'usdPerMillion',
       label: isConvertedCurrency(currency) ? 'Cost/1M tokens' : '$/1M tokens',
+      minWidth: isConvertedCurrency(currency)
+        ? USAGE_COLUMN_MIN_WIDTH.convertedRate
+        : USAGE_COLUMN_MIN_WIDTH.rate,
       isSortable: true,
       cell: row => (
         <Cell>
@@ -156,7 +164,9 @@ export function LlmByModelTable({
     },
     {
       id: 'avgTokensPerCall',
-      label: 'Avg tokens/call',
+      // The average is implied; "Avg tokens/call" did not fit a phone.
+      label: 'Tokens/call',
+      minWidth: USAGE_COLUMN_MIN_WIDTH.tokensPerCall,
       isSortable: true,
       cell: row => (
         <Cell>

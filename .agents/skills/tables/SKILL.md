@@ -74,6 +74,12 @@ digits and lower case), plus the cell's padding (24px in bui). In the
 core-components `Table`, `cellStyle: { whiteSpace: 'nowrap' }` and
 `headerStyle: { whiteSpace: 'nowrap' }` on the column keep the value and the
 header on one line, and `width` (or a `minWidth` in `cellStyle`) holds them.
+In the bui `Table`, a column's `minWidth` holds them: bui then shares the
+width out by `fr` but never gives a column less than its minimum, and
+`tableMinWidth` sums the minimums, so the compact layout takes over where
+they no longer fit. A header needs its text, the sort arrow's 20px when the
+column sorts (it takes its space while hidden) and the 24px padding. The
+Usage tables keep theirs in `LlmUsage/columnWidths.ts`.
 
 The layout check's `table-fit` rule enforces this on the rendered page: a
 cut-off header, and a short value cut off or wrapped, fail the check (the
@@ -158,9 +164,10 @@ bui's `Table` is `table-layout: fixed; width: 100%` with `overflow: hidden`
 cells. At phone width (343px of content at 375) it crams every column in:
 five columns leave the name a ~30px ellipsis and **clip the action buttons**.
 Its own scroll container (`ResizableTableContainer`) engages only when a column
-declares `width`/`minWidth`/`maxWidth`/`defaultWidth`, and then react-aria's
-75px column minimum freezes `fr` columns. An `overflowX: auto` wrapper around
-the table does nothing. So every bui table on an agent-shell page picks one
+declares `width`/`minWidth`/`maxWidth`/`defaultWidth`, and then every column
+keeps at least its minimum (react-aria's 75px for a column without one), so
+the table scrolls inside its card once they no longer fit. An `overflowX:
+auto` wrapper around the table does nothing. So every bui table on an agent-shell page picks one
 phone pattern (helpers in `@giantswarm/backstage-plugin-ui-react`):
 
 | Kind of table                                                                                     | Phone pattern                                                                                                                                                                                                              |

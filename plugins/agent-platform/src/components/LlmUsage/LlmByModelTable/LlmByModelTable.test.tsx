@@ -50,7 +50,7 @@ describe('LlmByModelTable', () => {
     // Tokens, not Model calls: a first click sorts ascending, and ascending
     // by calls happens to match the opening spend-descending order — so that
     // column would pass this test even with the sort broken. Tokens flips it.
-    await userEvent.click(screen.getByRole('columnheader', { name: /Tokens/ }));
+    await userEvent.click(screen.getByRole('columnheader', { name: 'Tokens' }));
 
     expect(renderedOrder()).toEqual(['claude-haiku-4-5', 'claude-sonnet-5']);
   });
@@ -155,7 +155,7 @@ describe('LlmByModelTable', () => {
 
       // Ascending by tokens: the smallest of all 300 come first.
       await userEvent.click(
-        screen.getByRole('columnheader', { name: /Tokens/ }),
+        screen.getByRole('columnheader', { name: 'Tokens' }),
       );
 
       const order = renderedOrder();
@@ -177,11 +177,12 @@ describe('LlmByModelTable at phone width', () => {
     layout = mockPhoneLayout();
     render(<LlmByModelTable rows={ROWS} emptyMessage="none" />);
 
-    expect(headers()).toEqual(['Model', 'Spend', 'Avg tokens/call']);
+    expect(headers()).toEqual(['Model', 'Spend', 'Tokens/call']);
     const name = screen.getByText(ROWS[0].model);
-    // Wraps to two lines rather than truncating to one, and no `title=`.
+    // Wraps to two lines rather than truncating to one; past the second
+    // line, the `title` holds the rest.
     expect(name).not.toHaveAttribute('data-truncate');
-    expect(name).not.toHaveAttribute('title');
+    expect(name).toHaveAttribute('title', 'claude-sonnet-5');
   });
 
   it('keeps every column on a desktop', () => {

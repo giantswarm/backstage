@@ -13,6 +13,7 @@ const useStyles = makeStyles({
   },
   // Two lines, then an ellipsis: a model id or `namespace/agent` is read, not
   // cut to "a…" as a single truncated line cuts it in a phone-width column.
+  // The `title` holds the rest for a pointer in a compact table.
   name: {
     minWidth: 0,
     maxWidth: '100%',
@@ -78,7 +79,7 @@ export function NameCell({
             variant="body-medium"
             className={isPhone ? classes.name : undefined}
             truncate={isPhone ? undefined : true}
-            title={isPhone ? undefined : title}
+            title={title}
           >
             {title}
           </Link>
@@ -88,7 +89,7 @@ export function NameCell({
             variant="body-medium"
             className={isPhone ? classes.name : undefined}
             truncate={isPhone ? undefined : true}
-            title={isPhone ? undefined : title}
+            title={title}
           >
             {title}
           </Text>
@@ -99,7 +100,7 @@ export function NameCell({
             color="secondary"
             className={isPhone ? classes.description : undefined}
             truncate={isPhone ? undefined : true}
-            title={isPhone ? undefined : description}
+            title={description}
           >
             {description}
           </Text>

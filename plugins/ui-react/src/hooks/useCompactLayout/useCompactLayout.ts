@@ -17,13 +17,17 @@ export const COMPACT_LAYOUT_HYSTERESIS = 24;
 
 /**
  * The narrowest a bui table shows all of `columns` at: the sum of the shown
- * columns' minimum widths — {@link TABLE_NAME_COLUMN_MIN_WIDTH} for the row
- * header, {@link TABLE_COLUMN_MIN_WIDTH} for the others, or the column's
- * entry in `minWidths` (an actions column with several buttons, say).
- * Hidden columns count for nothing. Pass it to {@link useCompactLayout}.
+ * columns' minimum widths. A column's minimum is its entry in `minWidths`
+ * (an actions column with several buttons, say), else its own numeric
+ * `minWidth`, else {@link TABLE_NAME_COLUMN_MIN_WIDTH} for the row header
+ * and {@link TABLE_COLUMN_MIN_WIDTH} for the others. Hidden columns count
+ * for nothing. Pass it to {@link useCompactLayout}.
  *
- * Not bui's `ColumnConfig.minWidth`: setting that engages bui's resizable
- * container, which freezes the table's `fr` columns (see the `tables` skill).
+ * A `minWidth` on a column engages bui's resizable container, which shares
+ * the width out by `fr` but never gives a column less than its minimum: the
+ * way to hold a header and a short value whole (the `tables` skill, "Rule:
+ * typical content fits"). The compact layout then takes over where the sum
+ * no longer fits.
  */
 export function tableMinWidth<T extends TableItem>(
   columns: readonly ColumnConfig<T>[],
@@ -35,6 +39,7 @@ export function tableMinWidth<T extends TableItem>(
       (sum, column) =>
         sum +
         (minWidths[column.id] ??
+          (typeof column.minWidth === 'number' ? column.minWidth : undefined) ??
           (column.isRowHeader
             ? TABLE_NAME_COLUMN_MIN_WIDTH
             : TABLE_COLUMN_MIN_WIDTH)),

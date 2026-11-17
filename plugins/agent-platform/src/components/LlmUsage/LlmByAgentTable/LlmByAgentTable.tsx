@@ -7,6 +7,8 @@ import {
   InfoHint,
   INITIAL_ROWS,
   ShowMore,
+  tableMinWidth,
+  useCompactLayout,
   usePhoneColumns,
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmAgentRow } from '../../../lib/llmUsage';
@@ -21,6 +23,8 @@ import {
 import { sortUsageRows } from '../../AgentUsageSection/helpers';
 import { UsageCard } from '../UsageCard';
 import { NameCell } from '../NameCell';
+import { USAGE_COLUMN_MIN_WIDTH } from '../columnWidths';
+import { useVisibleSort } from '../../../hooks/useVisibleSort';
 import { useMeasureColor } from '../../../lib/measures';
 
 export type LlmByAgentTableProps = {
@@ -47,12 +51,12 @@ const REMOVED_EXPLANATION =
  * opens from the hint beside it — on a press too, so a phone reaches it
  * (T22 C23; a `title=` never shows on touch).
  */
-function AgentCell({ row }: { row: LlmAgentRow }) {
+function AgentCell({ row, compact }: { row: LlmAgentRow; compact: boolean }) {
   if (row.kind !== 'removed') {
-    return <NameCell title={row.label} href={row.href} />;
+    return <NameCell title={row.label} href={row.href} compact={compact} />;
   }
   return (
-    <NameCell title={row.label}>
+    <NameCell title={row.label} compact={compact}>
       <Flex align="center" gap="1">
         <Badge size="small">{REMOVED_MARK}</Badge>
         <InfoHint label={`What ${REMOVED_MARK} means`}>
@@ -98,18 +102,20 @@ export function LlmByAgentTable({
     [rows],
   );
 
-  const columnConfig: ColumnConfig<LlmAgentRow>[] = [
+  const columnsFor = (compact: boolean): ColumnConfig<LlmAgentRow>[] => [
     {
       id: 'label',
       label: 'Agent',
       isRowHeader: true,
       isSortable: true,
-      cell: row => <AgentCell row={row} />,
+      minWidth: USAGE_COLUMN_MIN_WIDTH.name,
+      cell: row => <AgentCell row={row} compact={compact} />,
     },
     {
       id: 'calls',
       label: 'Model calls',
       isSortable: true,
+      minWidth: USAGE_COLUMN_MIN_WIDTH.calls,
       cell: row => (
         <Cell>
           <DataBar
@@ -125,6 +131,7 @@ export function LlmByAgentTable({
       id: 'tokens',
       label: 'Tokens',
       isSortable: true,
+      minWidth: USAGE_COLUMN_MIN_WIDTH.tokens,
       cell: row => (
         <Cell>
           <DataBar
@@ -140,6 +147,7 @@ export function LlmByAgentTable({
       id: 'costUsd',
       label: 'Spend',
       isSortable: true,
+      minWidth: USAGE_COLUMN_MIN_WIDTH.spend,
       cell: row => (
         <Cell>
           <DataBar
@@ -155,6 +163,7 @@ export function LlmByAgentTable({
       id: 'sharePct',
       label: 'Share of spend',
       isSortable: true,
+      minWidth: USAGE_COLUMN_MIN_WIDTH.share,
       cell: row => (
         <Cell>
           <DataBar
@@ -167,10 +176,18 @@ export function LlmByAgentTable({
       ),
     },
   ];
-  // At phone width the agent and what it cost (T22 B10): five columns in
-  // 343px squashed every figure to a clipped sliver. A known agent's calls
+  // At phone width, and wherever the card is narrower than the columns'
+  // minimums, the agent and what it cost (T22 B10): five columns in 343px
+  // squashed every figure to a clipped sliver. A known agent's calls
   // and tokens are on its own Usage tab, a link away.
-  const shownColumns = usePhoneColumns(columnConfig, ['label', 'costUsd']);
+  const [tableRef, isCompact] = useCompactLayout(
+    tableMinWidth(columnsFor(false)),
+  );
+  const shownColumns = usePhoneColumns(
+    columnsFor(isCompact),
+    ['label', 'costUsd'],
+    { compact: isCompact },
+  );
 
   const { tableProps } = useTable<LlmAgentRow>({
     mode: 'complete',
@@ -183,6 +200,11 @@ export function LlmByAgentTable({
     // not reset its offset when the data shrinks.
     paginationOptions: { type: 'none' },
   });
+  // The default sort is on Spend, which the compact layout keeps.
+  useVisibleSort(tableProps.sort, shownColumns, {
+    column: 'costUsd',
+    direction: 'descending',
+  });
 
   return (
     <UsageCard title="By agent" note={note} wide>
@@ -190,24 +212,26 @@ export function LlmByAgentTable({
           `ShowMore` hands the table its first page of them. Passing the raw
           `rows` instead would silently undo every column sort while the
           header's indicator still moved. */}
-      <ShowMore
-        items={tableProps.data ?? []}
-        initial={INITIAL_ROWS}
-        noun="agent"
-      >
-        {visible => (
-          <Table<LlmAgentRow>
-            {...tableProps}
-            data={visible}
-            columnConfig={shownColumns}
-            emptyState={
-              <Text variant="body-medium" color="secondary">
-                {emptyMessage}
-              </Text>
-            }
-          />
-        )}
-      </ShowMore>
+      <div ref={tableRef}>
+        <ShowMore
+          items={tableProps.data ?? []}
+          initial={INITIAL_ROWS}
+          noun="agent"
+        >
+          {visible => (
+            <Table<LlmAgentRow>
+              {...tableProps}
+              data={visible}
+              columnConfig={shownColumns}
+              emptyState={
+                <Text variant="body-medium" color="secondary">
+                  {emptyMessage}
+                </Text>
+              }
+            />
+          )}
+        </ShowMore>
+      </div>
     </UsageCard>
   );
 }
