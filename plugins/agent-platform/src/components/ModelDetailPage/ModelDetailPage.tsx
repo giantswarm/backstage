@@ -49,11 +49,9 @@ import { markedIn, defaultIn, listed } from '../../lib/defaultModel';
 import { tenantInSentence } from '../../lib/tenants';
 import { useSetDefaultModelConfig } from '../../hooks/useSetDefaultModelConfig';
 import { modelProblem } from '../../lib/modelProblem';
-import {
-  AgentManagerError,
-  AgentManagerNotConnectedError,
-} from '../../lib/agentManager';
+import { AgentManagerNotConnectedError } from '../../lib/agentManager';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
+import { OrganizationWriteError } from '../OrganizationWriteError';
 import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { PortalSessionEndedError } from '../../lib/portalSession';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
@@ -195,62 +193,6 @@ function DefaultModelValue({
         {note}
       </Text>
     </Flex>
-  );
-}
-
-/**
- * Why the default did not move. agent-manager's refusal of a person who may
- * not change an organization's models names who can; any other failure is
- * said as it came.
- */
-function SetDefaultError({
-  error,
-  installation,
-  organization,
-  onSignedIn,
-}: {
-  error: Error;
-  installation: string;
-  /** The organization the model is in, when it is one's. */
-  organization?: string;
-  /** Clears the refusal once the person signed in to agent-manager. */
-  onSignedIn: () => void;
-}) {
-  if (error instanceof PortalSessionEndedError) {
-    return <PortalSessionEndedAlert />;
-  }
-  // The call declares no URL elicitation, so a missing sign-in comes back
-  // as this error, with the sign-in offered here.
-  if (error instanceof AgentManagerNotConnectedError) {
-    return (
-      <ConnectAgentManagerAlert
-        installation={installation}
-        message={error.message}
-        action="An organization's default model is set"
-        signInRequired={error.signInRequired}
-        onSignedIn={onSignedIn}
-      />
-    );
-  }
-  if (
-    organization &&
-    error instanceof AgentManagerError &&
-    error.code === 'forbidden'
-  ) {
-    return (
-      <Alert
-        status="danger"
-        title="Not permitted"
-        description={`Only an admin of the organization ${organization} sets its default model. Ask one of its admins to make the change, or to make you an admin. agent-manager answered: ${error.message}`}
-      />
-    );
-  }
-  return (
-    <Alert
-      status="danger"
-      title="Could not make this the default model"
-      description={error.message}
-    />
   );
 }
 
@@ -675,10 +617,13 @@ function ModelDetailPageContent() {
       })}
     >
       {settingDefault.error && (
-        <SetDefaultError
+        <OrganizationWriteError
           error={settingDefault.error}
           installation={installation}
           organization={directory.get(namespace)?.organization}
+          signInAction="An organization's default model is set"
+          adminAction="sets its default model"
+          title="Could not make this the default model"
           onSignedIn={resetSetDefault}
         />
       )}
