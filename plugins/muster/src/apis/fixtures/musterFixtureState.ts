@@ -15,6 +15,7 @@ import { DISPLAY_NAME_ANNOTATION } from '../../lib/k8s/MCPServer';
 import type { ToolSummary } from '../types';
 import {
   connectorToolsOf,
+  connectorKeyOf,
   mcpServerObjectOf,
   musterWorkflowObjectOf,
   musterWorkflowOf,
@@ -200,10 +201,16 @@ export class MusterFixtureState {
     let store = this.installations.get(installation);
     if (!store) {
       const connectors = inInstallation(this.data.connectors, installation);
+      // muster serves the organizations' namespaces too, keyed
+      // `<namespace>/<name>`; workflows and the record use its own.
+      const served = [
+        ...connectors,
+        ...inInstallation(this.data.organizationConnectors ?? [], installation),
+      ];
       store = {
         connectors: new Map(
-          connectors.map(connector => [
-            connector.name,
+          served.map(connector => [
+            connectorKeyOf(connector),
             {
               connector,
               spec: { ...mcpServerObjectOf(connector).spec },

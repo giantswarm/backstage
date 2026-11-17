@@ -65,6 +65,7 @@ export {
 } from './lib/toolAnnotations';
 export type { ToolEffect } from './lib/toolAnnotations';
 export { serverPageResolver } from './lib/toolGrouping';
+export { MUSTER_NAMESPACE } from './lib/musterNamespace';
 export {
   isPermanentMusterReadError,
   musterPollingOptions,

@@ -2,36 +2,28 @@ import { useMemo } from 'react';
 import { useResources } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   MCPServer,
+  MUSTER_NAMESPACE,
   type ToolSummary,
 } from '@giantswarm/backstage-plugin-muster';
 
 import { connectorLabels, type ServerInfo } from '../lib/toolset';
 
-/**
- * The start of the namespaces whose MCPServers muster serves besides its
- * own (`TenantNamePrefix`, `ServedNamespace` in muster's
- * internal/api/mcpserver_namespace.go). muster's rule for which servers it
- * keys `<namespace>/<name>`, mirrored so the portal names them as muster
- * exposes them; it says nothing about which organization a namespace is.
- */
-const MUSTER_TENANT_NAMESPACE_PREFIX = 'org-';
-
 /** The separator of a server key outside muster's namespace. */
 const SERVER_KEY_SEPARATOR = '/';
 
 /**
- * The grouping's view of one MCPServer CR. muster keys a server of an
- * organization's namespace `<namespace>/<name>` (its tools' `server`, what
- * `server:` selects) and prefixes its tools `x_<namespace>_<segment>`; a
- * server of muster's own namespace keeps its name.
+ * The grouping's view of one MCPServer CR, named as muster names it
+ * (`MCPServerKey` in muster's internal/api/mcpserver_namespace.go): a server
+ * of muster's own namespace by its name, a server of every other namespace
+ * (`org-<name>`, an organization's `agents-<name>-<random>`) as
+ * `<namespace>/<name>` -- its tools' `server`, what `server:` selects -- with
+ * its tools prefixed `x_<namespace>_<segment>`.
  */
 export function serverInfoOf(server: MCPServer): ServerInfo {
   const displayName = server.getDisplayNameAnnotation();
   const icon = server.getStatusIcon();
   const namespace = server.getNamespace();
-  const tenant = namespace?.startsWith(MUSTER_TENANT_NAMESPACE_PREFIX)
-    ? namespace
-    : '';
+  const tenant = namespace && namespace !== MUSTER_NAMESPACE ? namespace : '';
   const prefix = server.getToolNamePrefix();
   const tags = server.getTags();
   return {

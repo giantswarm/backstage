@@ -146,7 +146,9 @@ directory and start again.
 
 The fixture `MusterApi` serves each installation's muster from the data set:
 its connectors (MCP servers) in every state muster knows, live and in the
-person's sign-in status (`auth://status`); the catalogue, with the tools,
+person's sign-in status (`auth://status`), and one connector, `wiki`, in each
+ready organization's namespace, which muster names `<namespace>/<name>` and
+whose tools it names `x_<namespace>_wiki_<tool>`; the catalogue, with the tools,
 resources and prompts of the connectors that serve the session (Connected and
 Running), the available workflows' `workflow_<name>` tools (an unavailable
 workflow has none, as muster lists no invalid one) and muster's own `core_*`

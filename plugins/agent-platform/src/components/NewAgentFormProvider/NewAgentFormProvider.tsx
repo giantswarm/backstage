@@ -50,6 +50,7 @@ import {
 import { withoutSignInTool } from '../../lib/signInTool';
 import {
   normalizeSelection,
+  selectionForTenant,
   toggleSelector,
   toolsetProblems,
 } from '../../lib/toolset';
@@ -510,7 +511,8 @@ function withOwnTenant(
  * The state with `tenant` picked: the agent's namespace, so a model (and the
  * Harness it brought) of another namespace is dropped, and the model picker
  * preselects the tenant's default instead. EgressPolicies are the namespace's
- * own, so the picked ones go too.
+ * own, so the picked ones go too, and so do the connectors of another
+ * organization's namespace ({@link selectionForTenant}).
  */
 function withTenant(
   state: NewAgentFormState,
@@ -519,12 +521,14 @@ function withTenant(
   if (state.tenant === tenant) {
     return state;
   }
+  const toolset = selectionForTenant(state.toolset, state.tenant, tenant);
   if (!state.modelConfigNamespace || state.modelConfigNamespace === tenant) {
-    return { ...state, tenant, egressPolicyRefs: [] };
+    return { ...state, tenant, toolset, egressPolicyRefs: [] };
   }
   return {
     ...state,
     tenant,
+    toolset,
     egressPolicyRefs: [],
     modelConfigName: undefined,
     modelConfigNamespace: undefined,

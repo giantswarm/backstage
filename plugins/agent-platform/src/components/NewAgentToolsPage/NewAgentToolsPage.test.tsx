@@ -77,6 +77,27 @@ function mcpServer(
   );
 }
 
+const PAYMENTS = 'agents-payments-x7k2q';
+const RISK = 'agents-risk-p3m9z';
+
+/** A server of an organization's own namespace, which muster keys `<namespace>/<name>`. */
+function organizationServer(namespace: string, displayName: string) {
+  return new MCPServer(
+    {
+      apiVersion: 'muster.giantswarm.io/v1alpha1',
+      kind: 'MCPServer',
+      metadata: {
+        name: 'wiki',
+        namespace,
+        annotations: { 'ui.giantswarm.io/display-name': displayName },
+      },
+      spec: { type: 'streamable-http' },
+      status: { state: 'Connected' },
+    } as never,
+    'gazelle',
+  );
+}
+
 const SERVER_CRS = [
   mcpServer(
     'kubernetes-gazelle',
@@ -398,24 +419,53 @@ const BASE_STATE: NewAgentFormState = {
   toolset: [],
 };
 
-/** Fills the step-1 fields the Tools step requires, then renders its child. */
-function Seed({ children }: { children: ReactNode }) {
+/**
+ * Fills the step-1 fields the Tools step requires, the agent in the first of
+ * `tenants`, then renders its child, with a button per tenant that picks it
+ * as the Owner field does, and then its model.
+ */
+function Seed({
+  children,
+  tenants = ['kagent'],
+}: {
+  children: ReactNode;
+  tenants?: string[];
+}) {
   const {
     setName,
     setInstallation,
     setTenantChoices,
     selectModelConfig,
+    selectTenant,
     isComplete,
   } = useNewAgentForm();
   useEffect(() => {
     setName('Reviewer');
     setInstallation('gazelle');
-    setTenantChoices(['kagent']);
-    selectModelConfig('opus', 'kagent');
+    setTenantChoices(tenants);
+    selectModelConfig('opus', tenants[0]);
     // One-shot seeding.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  return isComplete ? <>{children}</> : null;
+  return isComplete ? (
+    <>
+      {children}
+      {tenants.length > 1 &&
+        tenants.map(tenant => (
+          <button
+            key={tenant}
+            type="button"
+            onClick={() => {
+              // The model is the namespace's own: the person picks one again.
+              selectTenant(tenant);
+              selectModelConfig('opus', tenant);
+            }}
+          >
+            {`Owner ${tenant}`}
+          </button>
+        ))}
+    </>
+  ) : null;
 }
 
 /** Exposes the composed toolset for assertions on the step's output. */
@@ -451,6 +501,8 @@ async function renderStep(
     chatOnly?: boolean;
     /** The installation's MCPServer CRs, when not {@link SERVER_CRS}. */
     servers?: MCPServer[];
+    /** The namespaces the agent may go to, the first one picked. */
+    tenants?: string[];
   } = {},
 ) {
   mockUseResources.mockImplementation(
@@ -494,7 +546,7 @@ async function renderStep(
               : undefined
           }
         >
-          <Seed>
+          <Seed tenants={options.tenants}>
             {options.roundTrip ? <RoundTrip /> : <NewAgentToolsPage />}
             <ToolsetProbe />
           </Seed>
@@ -1056,6 +1108,87 @@ describe('NewAgentToolsPage', () => {
       ).toHaveLength(1);
       await user.click(access('app250', 'Read-only'));
       expect(toolsetOutput()).toBe('tool:x_app250_get');
+    });
+  });
+
+  describe("an organization's own connectors", () => {
+    const servers = [
+      ...SERVER_CRS,
+      organizationServer(PAYMENTS, 'Payments wiki'),
+      organizationServer(RISK, 'Risk wiki'),
+    ];
+
+    it("offers the organization's own connector, marked, and not another organization's; All selects it by muster's key", async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+      });
+      await renderStep({ api, servers, tenants: [PAYMENTS, RISK] });
+      const user = userEvent.setup();
+      await connectorsListed();
+
+      expect(
+        within(connector('Payments wiki')).getByText(
+          "The organization's own connector",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        within(connector('kubernetes')).queryByText(
+          "The organization's own connector",
+        ),
+      ).toBeNull();
+      expect(
+        screen.queryByRole('group', { name: 'Connector Risk wiki' }),
+      ).toBeNull();
+
+      await ownPicks(user);
+      await user.click(access('Payments wiki', 'All'));
+      expect(toolsetOutput()).toBe(`server:${PAYMENTS}/wiki`);
+    });
+
+    it("keeps an agent's bare selector of its organization's connector as it is, unmatched", async () => {
+      // Saved before the portal named an organization's servers as muster
+      // does: `server:wiki` selects no server of that name in muster.
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+      });
+      await renderStep({
+        api,
+        servers,
+        tenants: [PAYMENTS],
+        toolset: ['server:wiki'],
+      });
+      await connectorsListed();
+      // The selector shows as it is, the connector it meant unchosen.
+      expect(
+        within(summaryBar()).getByTitle('server:wiki'),
+      ).toBeInTheDocument();
+      expect(access('Payments wiki', 'All')).not.toBeChecked();
+      expect(toolsetOutput()).toBe('server:wiki');
+    });
+
+    it('drops the connector of the organization left when another one is picked', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+      });
+      await renderStep({ api, servers, tenants: [PAYMENTS, RISK] });
+      const user = userEvent.setup();
+      await connectorsListed();
+      await ownPicks(user);
+      await user.click(access('Payments wiki', 'All'));
+      await user.click(access('kubernetes', 'All'));
+
+      await user.click(screen.getByRole('button', { name: `Owner ${RISK}` }));
+
+      expect(toolsetOutput()).toBe('server:kubernetes');
+      expect(
+        await screen.findByRole('group', { name: 'Connector Risk wiki' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('group', { name: 'Connector Payments wiki' }),
+      ).toBeNull();
     });
   });
 

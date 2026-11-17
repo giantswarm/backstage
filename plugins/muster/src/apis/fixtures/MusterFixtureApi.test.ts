@@ -7,6 +7,7 @@ import {
 import { parseTransportDetection } from '../../lib/transportDetection';
 import { fixtureToolNames } from './fixtureToolNames';
 import { FixtureToolMissingError, MusterFixtureApi } from './MusterFixtureApi';
+import { connectorKeyOf } from './musterFixtureData';
 
 describe('MusterFixtureApi', () => {
   const getInfo = jest.fn(() => ({ version: '1' }));
@@ -183,7 +184,12 @@ describe('MusterFixtureApi', () => {
 
   describe('serving the base data set', () => {
     const data = baseDataSet();
-    const connectors = inInstallation(data.connectors, 'fennel');
+    // muster's own connectors and those of the organizations' namespaces,
+    // which muster names `<namespace>/<name>`.
+    const connectors = [
+      ...inInstallation(data.connectors, 'fennel'),
+      ...inInstallation(data.organizationConnectors, 'fennel'),
+    ];
     const serving = connectors.filter(c =>
       ['Connected', 'Running'].includes(c.state),
     );
@@ -198,7 +204,7 @@ describe('MusterFixtureApi', () => {
       );
       await expect(api.listConnectorNames('fennel')).resolves.toEqual({
         servers: connectors.map(c => ({
-          name: c.name,
+          name: connectorKeyOf(c),
           displayName: c.displayName,
         })),
       });
@@ -208,7 +214,8 @@ describe('MusterFixtureApi', () => {
       const { servers } = await api.getAuthStatus('fennel');
       const statusOf = (state: string) =>
         servers.find(
-          s => s.name === connectors.find(c => c.state === state)!.name,
+          s =>
+            s.name === connectorKeyOf(connectors.find(c => c.state === state)!),
         )?.status;
       expect(statusOf('Connected')).toBe('connected');
       expect(statusOf('Auth Required')).toBe('auth_required');
@@ -225,11 +232,13 @@ describe('MusterFixtureApi', () => {
       });
       const servers = new Set(tools?.map(t => t.server));
       for (const connector of connectors) {
-        expect(servers.has(connector.name)).toBe(serving.includes(connector));
+        expect(servers.has(connectorKeyOf(connector))).toBe(
+          serving.includes(connector),
+        );
       }
-      expect(tools?.filter(t => t.server === serving[0].name)).toHaveLength(
-        serving[0].toolsCount,
-      );
+      expect(
+        tools?.filter(t => t.server === connectorKeyOf(serving[0])),
+      ).toHaveLength(serving[0].toolsCount);
       const available = inInstallation(data.workflows, 'fennel').filter(
         w => w.state === 'available',
       );
@@ -298,7 +307,7 @@ describe('MusterFixtureApi', () => {
     it('lists the serving connectors’ resources and prompts', async () => {
       const resources = await api.filterResources({ installation: 'fennel' });
       expect(new Set(resources.resources?.map(r => r.server))).toEqual(
-        new Set(serving.map(c => c.name)),
+        new Set(serving.map(connectorKeyOf)),
       );
       const one = await api.filterResources({
         installation: 'fennel',

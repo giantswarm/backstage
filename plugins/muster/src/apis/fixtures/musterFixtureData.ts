@@ -120,7 +120,18 @@ export type MusterFixtureConnector = FixtureConnector & { toolPrefix?: string };
  * `MCPServer.getToolNamePrefix` reads it).
  */
 function toolSegmentOf(connector: MusterFixtureConnector): string {
-  return connector.toolPrefix || connector.name;
+  const segment = connector.toolPrefix || connector.name;
+  return connector.namespace ? `${connector.namespace}_${segment}` : segment;
+}
+
+/**
+ * What muster names a connector by: its name in muster's namespace,
+ * `<namespace>/<name>` in an organization's (`MCPServerKey`).
+ */
+export function connectorKeyOf(connector: FixtureConnector): string {
+  return connector.namespace
+    ? `${connector.namespace}/${connector.name}`
+    : connector.name;
 }
 
 /** Whether a connector serves this session tools, resources and prompts. */
@@ -149,7 +160,7 @@ export function mcpServerObjectOf(
     kind: 'MCPServer',
     metadata: {
       name: connector.name,
-      namespace: FIXTURE_MUSTER_NAMESPACE,
+      namespace: connector.namespace ?? FIXTURE_MUSTER_NAMESPACE,
       annotations: { 'ui.giantswarm.io/display-name': connector.displayName },
     },
     spec: {
@@ -182,7 +193,8 @@ export function mcpServerRuntimeOf(
 ): McpServerRuntime {
   return {
     name: connector.name,
-    namespace: FIXTURE_MUSTER_NAMESPACE,
+    ...(connector.namespace && { key: connectorKeyOf(connector) }),
+    namespace: connector.namespace ?? FIXTURE_MUSTER_NAMESPACE,
     displayName: connector.displayName,
     toolPrefix: connector.name,
     type: 'streamable-http',
@@ -202,7 +214,10 @@ export function mcpServerRuntimeOf(
 
 /** A connector as `/servers/names` names it. */
 export function connectorNameOf(connector: FixtureConnector): ConnectorName {
-  return { name: connector.name, displayName: connector.displayName };
+  return {
+    name: connectorKeyOf(connector),
+    displayName: connector.displayName,
+  };
 }
 
 /** What a connector's tools do, in turn; the first ones only read. */
@@ -252,7 +267,7 @@ export function connectorToolsOf(
       name: `x_${toolSegmentOf(connector)}_${tool}`,
       summary: description,
       description,
-      server: connector.name,
+      server: connectorKeyOf(connector),
       kind: 'tool',
       annotations: READ_ONLY_VERBS.has(verb)
         ? { readOnlyHint: true }
@@ -294,14 +309,14 @@ export function connectorResourcesOf(
       name: 'README',
       description: `How to use ${connector.displayName}.`,
       mimeType: 'text/markdown',
-      server: connector.name,
+      server: connectorKeyOf(connector),
     },
     {
       uri: `${connector.name}://config/limits`,
       name: 'Limits',
       description: 'The rate limits that apply to this connector.',
       mimeType: 'application/json',
-      server: connector.name,
+      server: connectorKeyOf(connector),
     },
   ];
 }
@@ -317,7 +332,7 @@ export function connectorPromptsOf(
     {
       name: `x_${toolSegmentOf(connector)}_summarize`,
       description: `Summarize what changed in ${connector.displayName} today.`,
-      server: connector.name,
+      server: connectorKeyOf(connector),
     },
   ];
 }
@@ -329,7 +344,7 @@ export function connectorPromptsOf(
  * login where it forwards it.
  */
 export function authStatusOf(connector: FixtureConnector): ServerAuthStatus {
-  const name = connector.name;
+  const name = connectorKeyOf(connector);
   switch (connector.state) {
     case 'Connected':
     case 'Running':
