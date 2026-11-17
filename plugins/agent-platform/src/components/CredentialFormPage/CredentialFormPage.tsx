@@ -767,8 +767,8 @@ export function CredentialFormPage({
             ) : (
               <>
                 <Text>
-                  The request is still open until it expires. Cancel it, so
-                  that it does not wait for a value.
+                  The request is still open until it expires. Cancel it, so that
+                  it does not wait for a value.
                 </Text>
                 <Button
                   variant="secondary"
