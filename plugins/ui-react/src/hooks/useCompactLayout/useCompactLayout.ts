@@ -8,6 +8,14 @@ export const TABLE_COLUMN_MIN_WIDTH = 80;
 export const TABLE_NAME_COLUMN_MIN_WIDTH = 160;
 
 /**
+ * How much wider than its minimum a compact container must get before it is
+ * full again. The switch changes the content's height, which can bring a
+ * classic scrollbar in or take it out; without the margin, that change of
+ * width could flip the layout back and forth.
+ */
+export const COMPACT_LAYOUT_HYSTERESIS = 24;
+
+/**
  * The narrowest a bui table shows all of `columns` at: the sum of the shown
  * columns' minimum widths — {@link TABLE_NAME_COLUMN_MIN_WIDTH} for the row
  * header, {@link TABLE_COLUMN_MIN_WIDTH} for the others, or the column's
@@ -48,7 +56,9 @@ export function tableMinWidth<T extends TableItem>(
  * it holds (a block wrapper around the table and its compact counterpart), so
  * the switch never changes what is measured. The element is measured before
  * the first paint, so the first frame already has the right layout, and then
- * observed; only a change of the answer re-renders.
+ * observed; only a change of the answer re-renders. Once compact, it stays
+ * so until the element is {@link COMPACT_LAYOUT_HYSTERESIS} wider than
+ * `minWidth`.
  *
  * ```tsx
  * const [containerRef, isCompact] = useCompactLayout(tableMinWidth(columns));
@@ -71,8 +81,14 @@ export function useCompactLayout(
       return undefined;
     }
     // A width of 0 is an element not laid out (hidden, or jsdom): no answer.
+    // Compact below `minWidth`, full again only from
+    // `minWidth + COMPACT_LAYOUT_HYSTERESIS`.
     const update = (width: number) =>
-      setIsNarrow(width > 0 && width < minWidth);
+      setIsNarrow(
+        narrow =>
+          width > 0 &&
+          width < (narrow ? minWidth + COMPACT_LAYOUT_HYSTERESIS : minWidth),
+      );
     update(node.getBoundingClientRect().width);
     if (typeof ResizeObserver === 'undefined') {
       return undefined;

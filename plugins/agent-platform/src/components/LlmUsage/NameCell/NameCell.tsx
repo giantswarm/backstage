@@ -38,12 +38,18 @@ export type NameCellProps = {
   description?: string;
   /** Under the name and description, e.g. a Removed badge. */
   children?: ReactNode;
+  /**
+   * The table shows its compact columns (`useCompactLayout`): the name wraps
+   * to two lines as at phone width, in a column narrower than on a desktop.
+   */
+  compact?: boolean;
 };
 
 /**
  * The name cell of an analytic table (a name plus numbers): bui's `CellText`
- * on a wide viewport; at phone width a cell whose name wraps to two lines and
- * whose description wraps, rather than both cut to one truncated line.
+ * on a wide viewport; at phone width, or in a compact table (`compact`), a
+ * cell whose name wraps to two lines and whose description wraps, rather than
+ * both cut to one truncated line.
  *
  * With `usePhoneColumns` a table keeps the name and one or two numbers at
  * phone width, so the name column is the wide one — but bui's `CellText`
@@ -54,9 +60,10 @@ export function NameCell({
   href,
   description,
   children,
+  compact = false,
 }: NameCellProps) {
   const classes = useStyles();
-  const isPhone = usePhoneLayout();
+  const isPhone = usePhoneLayout() || compact;
 
   if (!isPhone && children === undefined) {
     return <CellText title={title} href={href} description={description} />;

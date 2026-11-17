@@ -11,6 +11,7 @@ import {
   mockContainerWidth,
 } from '../../testUtils/mockContainerWidth';
 import {
+  COMPACT_LAYOUT_HYSTERESIS,
   TABLE_COLUMN_MIN_WIDTH,
   TABLE_NAME_COLUMN_MIN_WIDTH,
   tableMinWidth,
@@ -73,7 +74,26 @@ describe('useCompactLayout', () => {
     act(() => container!.setWidth(600));
     expect(committed.length).toBe(renders);
 
-    act(() => container!.setWidth(800));
+    act(() => container!.setWidth(800 + COMPACT_LAYOUT_HYSTERESIS));
+    expect(screen.getByText('full')).toBeInTheDocument();
+  });
+
+  it('stays compact just above the minimum, so a scrollbar coming and going cannot flip it', () => {
+    layout = mockDesktopLayout();
+    container = mockContainerWidth(790);
+    render(<Probe />);
+    expect(screen.getByText('compact')).toBeInTheDocument();
+
+    act(() => container!.setWidth(805));
+    expect(screen.getByText('compact')).toBeInTheDocument();
+    act(() => container!.setWidth(790));
+    act(() => container!.setWidth(805));
+    expect(screen.getByText('compact')).toBeInTheDocument();
+
+    act(() => container!.setWidth(800 + COMPACT_LAYOUT_HYSTERESIS));
+    expect(screen.getByText('full')).toBeInTheDocument();
+    // Full, it turns compact again only below the minimum itself.
+    act(() => container!.setWidth(805));
     expect(screen.getByText('full')).toBeInTheDocument();
   });
 

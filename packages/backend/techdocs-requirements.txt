@@ -1,0 +1,48 @@
+# Python packages for `techdocs.generator.runIn: local`, installed into the
+# image's venv by packages/backend/Dockerfile.
+#
+# Every package is pinned, transitive ones too. With only mkdocs-techdocs-core
+# pinned, pip resolved the rest at build time, and a new release anywhere in
+# the tree could break every TechDocs build. python-dateutil 4.0.0 did that:
+# it stopped pulling in six, which plantuml imports without declaring it.
+# Renovate proposes updates to these pins.
+certifi==2026.10.23
+charset-normalizer==3.5.2
+click==8.5.1
+colorama==0.4.6
+ghp-import==2.1.0
+httplib2==0.32.1
+idna==3.20
+Jinja2==3.1.6
+Markdown==3.3.7
+markdown-inline-graphviz-extension==1.1.1
+MarkupSafe==3.0.4
+mdx-truly-sane-lists==1.3
+mergedeep==1.3.4
+mkdocs==1.6.1
+mkdocs-get-deps==0.2.2
+mkdocs-material==9.1.3
+mkdocs-material-extensions==1.3.1
+mkdocs-monorepo-plugin==1.0.5
+mkdocs-techdocs-core==1.2.1
+packaging==26.3
+pathspec==1.1.1
+plantuml==0.3.0
+plantuml-markdown==3.5.1
+platformdirs==4.14.5
+Pygments==2.14.0
+pymdown-extensions==10.0.1
+pyparsing==3.3.3
+python-dateutil==2.9.0.post0
+python-slugify==9.1.3
+PyYAML==6.0.3
+pyyaml_env_tag==1.1
+regex==2026.11.15
+requests==2.34.2
+setuptools==84.2.1
+# plantuml imports six but doesn't declare it.
+six==1.17.0
+text-unidecode==1.3
+tzdata==2026.6
+urllib3==2.8.0
+watchdog==7.1.0

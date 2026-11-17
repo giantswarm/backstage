@@ -132,7 +132,8 @@ ENV VIRTUAL_ENV=/opt/venv
 RUN python3 -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-RUN pip3 install --no-cache-dir setuptools mkdocs-techdocs-core==1.2.1
+RUN --mount=type=bind,source=packages/backend/techdocs-requirements.txt,target=/tmp/techdocs-requirements.txt \
+    pip3 install --no-cache-dir -r /tmp/techdocs-requirements.txt
 
 # From here on we use the least-privileged `node` user to run the backend.
 USER node

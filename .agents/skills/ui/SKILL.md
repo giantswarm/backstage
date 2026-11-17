@@ -278,7 +278,10 @@ The bui `Table` (data-driven `columnConfig` + `data`, cells must return
 `Cell`/`CellText`) and the feature-rich core-components `Table` are both
 documented in depth in the **`tables`** skill, including the choice matrix and
 gotchas (loading skeleton needs `data={undefined}`). Read that skill for anything
-table-related; don't duplicate it here.
+table-related; don't duplicate it here. Its first rule: typical content fits.
+Headers and short values (dates, counts, sizes, versions, status labels)
+neither wrap nor end in an ellipsis; only free text (names, descriptions)
+may, with the full value on hover.
 
 ## Our shared library: the `ui-react` Storybook
 
@@ -369,6 +372,6 @@ just `curl` the GitHub raw URL from Bash instead.
 
 ## Related skills
 
-- **`tables`** — bui `Table` vs core-components `Table`, columns, filtering, faceted sidebars.
+- **`tables`** — typical content fits; bui `Table` vs core-components `Table`, columns, filtering, faceted sidebars.
 - **`components`** — component directory structure, named exports, barrel files.
 - **`upstream-search`** — searching a *local clone* of `backstage/backstage` (needs `BACKSTAGE_UPSTREAM_DIR` set; the Storybook technique above needs no clone).
