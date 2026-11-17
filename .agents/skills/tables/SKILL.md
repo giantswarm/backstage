@@ -48,8 +48,9 @@ help: nobody hovers every row to read a number.
   versions, combinations of them ("144 vCPUs · 1152 GiB"), and status
   labels. Render them `nowrap` without an ellipsis, and make the column at
   least as wide as its usual value. bui's `CellText` truncates, so the width
-  is what keeps it whole. Show a status as a badge or a `StatusDot` with its
-  label: that is how the layout check tells a label from a name.
+  is what keeps it whole. Show a status as a badge, a `StatusLabel` or a
+  `StatusDot` with its label: that is how the layout check tells a label
+  from a name.
 - **Only free text may end in an ellipsis**: names, titles, descriptions,
   IDs, URLs. Then its full value is there on hover or focus (`CellText`
   sets `title`; a custom cell sets it, or a tooltip), and one column (the

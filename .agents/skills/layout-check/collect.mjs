@@ -613,11 +613,13 @@ export function collectLayout(options) {
   const BADGE_CLASS = /Badge|Chip|Pill|StatusLabel|(^|-)Tag(-|$)/;
   /**
    * Whether text sits in a status badge or label: a badge's or chip's class,
-   * `role=status`, or a status dot (`data-tone`) beside it.
+   * `role=status`, `data-status-label` (ui-react's `StatusLabel`), or a
+   * status dot (`data-tone`) beside it.
    */
   const isStatus = (el, cell) => {
     for (let e = el; e && e !== cell; e = e.parentElement) {
       if (e.getAttribute('role') === 'status') return true;
+      if (e.hasAttribute('data-status-label')) return true;
       if ([...e.classList].some(c => BADGE_CLASS.test(c))) return true;
       if ([...e.children].some(c => c.hasAttribute('data-tone'))) return true;
     }
