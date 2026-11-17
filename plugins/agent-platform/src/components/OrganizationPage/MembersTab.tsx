@@ -230,7 +230,9 @@ export function MembersTab({
       id: 'binding',
       label: 'Binding',
       defaultWidth: '2fr',
-      // The note is read whole, so both lines wrap.
+      // The note is read whole, so both lines wrap, at whole words: on a
+      // phone the table scrolls inside its card rather than squeeze it.
+      minWidth: 160,
       cell: row => (
         <WrappingCellText
           title={row.binding}
