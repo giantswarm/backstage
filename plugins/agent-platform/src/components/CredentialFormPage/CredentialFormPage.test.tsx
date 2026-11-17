@@ -527,6 +527,106 @@ describe('CredentialFormPage', () => {
       expect(api.saveOperation).toHaveBeenCalledTimes(1);
     });
 
+    it('cancels the refused request with its current version, once', async () => {
+      const user = userEvent.setup();
+      // agent-manager keeps the refused request pending (agent-manager#427),
+      // and the refused save moved its version.
+      const moved = { ...REPLACEMENT, version: '4' };
+      const api = fakeCredentialsApi(read(REPLACEMENT));
+      api.getOperation
+        .mockImplementationOnce(read(REPLACEMENT))
+        .mockImplementation(read(moved));
+      api.saveOperation.mockRejectedValueOnce(
+        await refusal(
+          409,
+          'credential_consumers_changed',
+          'the objects that use this credential changed; prepare it again',
+        ),
+      );
+      await renderForm(api);
+      await user.type(await screen.findByLabelText(/^Value/), VALUE);
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(
+        await screen.findByText('The objects that use this credential changed'),
+      ).toBeInTheDocument();
+      await waitFor(() =>
+        expect(api.cancelOperation).toHaveBeenCalledWith(
+          'gazelle',
+          OPERATION,
+          '"4"',
+        ),
+      );
+      expect(api.cancelOperation).toHaveBeenCalledTimes(1);
+      expect(
+        screen.getByText(/Start the replacement again from the organization/),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Not cancelled')).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Cancel request' }),
+      ).not.toBeInTheDocument();
+
+      // Its link, opened again, shows the request as cancelled.
+      cleanup();
+      await renderForm(
+        fakeCredentialsApi(
+          read({ ...moved, version: '5', state: 'cancelled' }),
+        ),
+      );
+      expect(await screen.findByText('Request cancelled')).toBeInTheDocument();
+      expect(screen.queryByLabelText(/^Value/)).not.toBeInTheDocument();
+    });
+
+    it('keeps the explanation and offers Cancel request when the cancel fails', async () => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi(read(REPLACEMENT));
+      api.cancelOperation.mockRejectedValueOnce(
+        await refusal(412, 'precondition_failed', 'stale'),
+      );
+      api.saveOperation.mockRejectedValueOnce(
+        await refusal(
+          409,
+          'credential_consumers_changed',
+          'the objects that use this credential changed; prepare it again',
+        ),
+      );
+      await renderForm(api);
+      await user.type(await screen.findByLabelText(/^Value/), VALUE);
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      const offer = await screen.findByRole('button', {
+        name: 'Cancel request',
+      });
+      expect(
+        screen.getByText('The objects that use this credential changed'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getAllByRole('link', { name: 'Back to payments' }).length,
+      ).toBeGreaterThan(0);
+      expect(screen.queryByText('Not cancelled')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/^Value/)).not.toBeInTheDocument();
+      expect(api.cancelOperation).toHaveBeenCalledTimes(1);
+
+      // The person's own cancel fails too: it says why.
+      api.cancelOperation.mockRejectedValueOnce(
+        await refusal(503, 'unavailable', 'agent-manager is not reachable'),
+      );
+      await user.click(offer);
+      expect(await screen.findByText('Not cancelled')).toBeInTheDocument();
+      expect(
+        screen.getByText(/agent-manager is not reachable/),
+      ).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Cancel request' }));
+      expect(
+        await screen.findByText('The request is cancelled.'),
+      ).toBeInTheDocument();
+      expect(api.cancelOperation).toHaveBeenCalledTimes(3);
+      expect(
+        screen.getByText('The objects that use this credential changed'),
+      ).toBeInTheDocument();
+    });
+
     it("keeps an older agent-manager's conflict as Not saved, whatever its text", async () => {
       const user = userEvent.setup();
       const api = fakeCredentialsApi(read(REPLACEMENT));
