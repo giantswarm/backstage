@@ -698,6 +698,8 @@ export function EgressTab({
       id: 'replace',
       label: '',
       defaultWidth: '1fr',
+      // The button's whole label, on a phone too.
+      minWidth: 160,
       cell: row => {
         const pairs = replaceable(row);
         const names = egressPairNames(pairs);
