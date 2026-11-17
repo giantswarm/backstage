@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, open, test } from './fixtures';
+import { expect, expectNoHorizontalScroll, open, test } from './fixtures';
 
 /**
  * The Cost page's by-agent table tells a reader what a row is: an agent the
@@ -74,6 +74,41 @@ async function answerGatewayVectors(page: Page): Promise<void> {
   });
 }
 
+/** Column headers whose label is cut: wider than the room it has. */
+async function squeezedHeaders(page: Page): Promise<string[]> {
+  return page.evaluate(() =>
+    [...document.querySelectorAll('[role="columnheader"]')]
+      .filter(header => {
+        const label = header.querySelector('span') ?? header;
+        return (
+          label.textContent?.trim() && label.scrollWidth > label.clientWidth + 1
+        );
+      })
+      .map(header => header.textContent?.trim() ?? ''),
+  );
+}
+
+/** Tables that scroll sideways inside their card. */
+async function scrollingTables(page: Page): Promise<number> {
+  return page.evaluate(
+    () =>
+      [...document.querySelectorAll('[role="grid"]')].filter(table => {
+        const box = table.parentElement;
+        return box !== null && box.scrollWidth > box.clientWidth + 1;
+      }).length,
+  );
+}
+
+/** The column headers of the card titled `title`. */
+async function headersOf(page: Page, title: string): Promise<string[]> {
+  const card = page
+    .getByText(title, { exact: true })
+    .locator('xpath=ancestor::*[.//*[@role="grid"]][1]');
+  return (await card.getByRole('columnheader').allTextContents()).map(text =>
+    text.trim(),
+  );
+}
+
 /** The table row that carries `text` in its agent cell. */
 function rowWith(page: Page, text: string) {
   return page
@@ -131,4 +166,48 @@ test.describe('Usage → Cost, by agent', () => {
       await admin.unroute('**/api/gs/mimir/query?*');
     }
   });
+});
+
+// Layout check (table-fit): beside the side rail at 768px, and at 375px,
+// five equal columns of the by-agent table cut "Share of spend" and "Model
+// calls". Each column now has a minimum for its header and value, and a card
+// too narrow for them shows the agent and its spend.
+test('Usage → Cost keeps the by-agent headers and figures whole at tablet and phone width', async ({
+  admin,
+}) => {
+  await answerGatewayVectors(admin);
+  try {
+    await admin.setViewportSize({ width: 1440, height: 900 });
+    await open(admin, '/usage/cost');
+    const byAgent = admin.getByText('By agent', { exact: true });
+    const noObservability = admin.getByText(/has no observability stack/);
+    await expect(byAgent.or(noObservability).first()).toBeVisible();
+    test.skip(
+      await noObservability.isVisible(),
+      'the lab has no observability stack (platform.observability: false)',
+    );
+    await expect
+      .poll(() => headersOf(admin, 'By agent'), 'By agent at 1440px')
+      .toEqual(['Agent', 'Model calls', 'Tokens', 'Spend', 'Share of spend']);
+
+    for (const width of [768, 375]) {
+      await admin.setViewportSize({ width, height: 900 });
+      await expect
+        .poll(() => headersOf(admin, 'By agent'), `By agent at ${width}px`)
+        .toEqual(['Agent', 'Spend']);
+      // The table lays its columns out again a frame after the resize.
+      await expect
+        .poll(() => squeezedHeaders(admin), `no header cut at ${width}px`)
+        .toEqual([]);
+      await expect
+        .poll(
+          () => scrollingTables(admin),
+          `no table scrolls sideways at ${width}px`,
+        )
+        .toBe(0);
+      await expectNoHorizontalScroll(admin, `Usage → Cost at ${width}px`);
+    }
+  } finally {
+    await admin.unroute('**/api/gs/mimir/query?*');
+  }
 });

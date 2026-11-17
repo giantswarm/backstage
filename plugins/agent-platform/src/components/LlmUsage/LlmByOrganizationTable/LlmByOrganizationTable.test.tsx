@@ -1,3 +1,7 @@
+import {
+  mockContainerWidth,
+  mockDesktopLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { LlmOrganizationRow } from '../../../lib/llmUsage';
@@ -109,5 +113,24 @@ describe('LlmByOrganizationTable', () => {
         'The gateway attributed no calls to an organization in this window.',
       ),
     ).toBeInTheDocument();
+  });
+});
+
+describe('LlmByOrganizationTable in a card too narrow for every column', () => {
+  it('keeps the organization and its cost', () => {
+    const layout = mockDesktopLayout();
+    const container = mockContainerWidth(424);
+    try {
+      render(<LlmByOrganizationTable rows={ROWS} emptyMessage="none" />);
+
+      expect(
+        screen
+          .getAllByRole('columnheader')
+          .map(cell => cell.textContent?.trim()),
+      ).toEqual(['Organization', 'Spend']);
+    } finally {
+      container.restore();
+      layout.restore();
+    }
   });
 });
