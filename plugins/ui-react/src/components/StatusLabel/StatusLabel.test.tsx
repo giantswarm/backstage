@@ -30,6 +30,19 @@ describe('StatusLabel', () => {
     expect(screen.getByText('Not ready')).toBeInTheDocument();
   });
 
+  it.each([false, true])(
+    'marks itself for the layout check (inline: %s)',
+    inline => {
+      const { container } = render(
+        <StatusLabel label="Ready" intent="positive" inline={inline} />,
+      );
+
+      expect(container.querySelector('[data-status-label]')).toHaveTextContent(
+        'Ready',
+      );
+    },
+  );
+
   it.each(INTENTS)('colours the icon from the %s bui token', intent => {
     const { container } = render(<StatusLabel label="State" intent={intent} />);
 

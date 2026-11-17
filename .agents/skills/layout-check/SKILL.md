@@ -121,7 +121,8 @@ finding is right as it is.
   Cut off means cut by the cell or something in it, or spilling out of the
   cell over the next column; a table that scrolls sideways cuts nothing. A
   short value is a status label (in a badge or chip by its class,
-  `role=status`, or beside a `StatusDot`), or text of one of these shapes,
+  `role=status`, `data-status-label` as on ui-react's `StatusLabel`, or
+  beside a `StatusDot`), or text of one of these shapes,
   at most 40 characters: a date or time, a duration or age, a number with
   or without a unit, a version, or a combination of them joined by `·`,
   `,` or `/` (`144 vCPUs · 1152 GiB`, `Nov 12, 2026, 14:03`, `about 2
