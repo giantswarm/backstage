@@ -234,8 +234,9 @@ package role:
   skill. Pages of the Agent Platform shell: the `agent-platform-ux-coding`
   skill.
 - UI from a mockup: building or changing UI from a mockup or a design canvas
-  (an artboard, a `.dc.html` file) follows the `mockups` skill: read every
-  artboard in full, styles included, and write the inventory before any code.
+  (an artboard, a `.dc.html` file) follows the `mockups` skill: read the
+  relevant artboards and everything they import in full, styles included, and
+  write the inventory before any code.
 - Components: one directory per component, an `index.ts` with a named export,
   no default exports: the `components` skill.
 - Tables: the `tables` skill (the bui Table for simple tables; the
@@ -287,8 +288,8 @@ Before asking for review of a pull request that changes a page, run the
 check" above says, and fix what it finds or say in the description why a
 finding is right as it is.
 
-A pull request built from a mockup carries the "Differences from the mockup"
-table of the `mockups` skill.
+A pull request built from a mockup references the issue that links the mockup
+and carries the "Differences from the mockup" section of the `mockups` skill.
 
 ## Configuration and secrets
 
