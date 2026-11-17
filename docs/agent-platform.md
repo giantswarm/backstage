@@ -566,7 +566,10 @@ says "No clusters yet" only once every environment answered without a
 failure. A column whose related read failed on an environment (control
 planes, provider clusters, identities) shows a dash that names the failure on
 hover and focus. Each row opens
-its cluster's page. At phone width the list stacks: name and state, then
+its cluster's page: its name is the link (one tab stop per row), and a click
+anywhere else on the row opens it too. Back from a cluster's page, by the
+browser or a link, the list is as it was left (search, filters, sort, and
+paged to the row opened) without reading the clusters again. At phone width the list stacks: name and state, then
 environment, organization and release. The classic `/clusters` and
 `/installations` pages are unchanged.
 
@@ -576,8 +579,10 @@ A cluster's page, `/platform/clusters/<installation>/<namespace>/<name>`
 (`ClusterProvider`): its state beside the name, a sentence on its type,
 organization and environment, View manifest in the ⋯ menu, and a column of
 facts (Environment, linked to the management cluster's page for a workload
-cluster; Organization, Provider, Region, AWS account, Workers, Service
-priority, Created) with the tool links of `gs.clusterDetails.resources`. Its
+cluster; Organization, Provider, Region, AWS account linked to the AWS
+console, Workers, Created) with the tool links of
+`gs.clusterDetails.resources`. Service priority is among the labels on the
+Overview, as `gs.friendlyLabels` names it (by default it does). Its
 one tab so far, Overview (the bare path; any other tab redirects there),
 shows the release and Kubernetes version with its end of life, the labels and
 annotations `gs.friendlyLabels` and `gs.friendlyAnnotations` name and the
@@ -587,8 +592,11 @@ login` command (where the installation's base domain is known), and a
 Technical details fold-out with every label and annotation. A cluster being
 deleted says so and follows the deletion. An environment the portal does not
 know, a cluster the environment does not have, an environment the portal
-cannot reach and a failed read each get their own state, with a link back to
-the list.
+cannot reach and a failed read (with its cause and Try again) each get their
+own state, with a link back to the list. Where the Cluster resource does not
+exist but its App or HelmRelease does, the page shows the installer's status,
+as the classic page does: being created, failed to install, or being deleted
+with the installer still finalizing.
 
 ## Profile and settings
 

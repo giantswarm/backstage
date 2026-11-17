@@ -81,13 +81,16 @@ describe('PlatformPage', () => {
     );
   });
 
-  it('opens a cluster’s page at its address, without reading the list', async () => {
+  it('opens a cluster’s page at its address, under the list’s provider', async () => {
     await renderAt('/platform/clusters/meadow/org-fern/alder-birch');
 
     expect(screen.getByTestId('cluster-page')).toHaveTextContent(
       'meadow/org-fern/alder-birch',
     );
-    expect(screen.queryByTestId('clusters-provider')).not.toBeInTheDocument();
+    // Above both routes, so the list's clusters and view outlive the visit.
+    expect(screen.getByTestId('clusters-provider')).toContainElement(
+      screen.getByTestId('cluster-page'),
+    );
     expect(screen.getByRole('link', { name: 'Clusters' })).toHaveAttribute(
       'href',
       '/platform/clusters',

@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react';
+import { type MouseEvent, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { makeStyles } from '@material-ui/core';
 import {
   Alert,
   Button,
@@ -68,6 +70,15 @@ import {
 import { usePlatformClustersState } from '../PlatformClustersProvider';
 import { PlatformClusterStatusDot } from '../PlatformClusterStatusDot';
 import { type PlatformLinks, usePlatformLinks } from '../PlatformLinks';
+
+const useStyles = makeStyles({
+  // The whole row opens its cluster for the mouse (see `openRowOnClick`).
+  rows: {
+    '& tbody [role=row]': {
+      cursor: 'pointer',
+    },
+  },
+});
 
 /** Why a list that needs the portal session shows nothing while it is gone. */
 const SESSION_ENDED_DESCRIPTION =
@@ -553,13 +564,21 @@ export function PlatformClustersPanel() {
     retryInstallations,
     visibleColumns,
     setVisibleColumns,
+    view,
+    updateView,
+    start,
   } = usePlatformClustersState();
+  const classes = useStyles();
   const isPhone = usePhoneLayout();
   const links = usePlatformLinks();
-  const [search, setSearch] = useState('');
-  const [sort, setSort] = useState<SortDescriptor>(
-    PLATFORM_CLUSTERS_DEFAULT_SORT,
-  );
+  const navigate = useNavigate();
+  // The list reads its clusters from its first showing on.
+  useEffect(start, [start]);
+  // As the person left the list: kept in the provider, which outlives a visit
+  // to a cluster's page, so coming back shows the list as it was.
+  const { search, sort } = view;
+  const setSearch = (value: string) => updateView({ search: value });
+  const setSort = (value: SortDescriptor) => updateView({ sort: value });
 
   const rows = useMemo<PlatformClusterRow[]>(
     () => data.map(cluster => ({ ...cluster, id: getClusterKey(cluster) })),
@@ -573,7 +592,10 @@ export function PlatformClustersPanel() {
     items: rows,
     searched,
     facets: CLUSTER_FACETS,
+    initialSelection: view.selection,
   });
+  const { selection } = filters;
+  useEffect(() => updateView({ selection }), [selection, updateView]);
   const sorted = useMemo(
     () =>
       sortPlatformClusterRows(
@@ -599,6 +621,65 @@ export function PlatformClustersPanel() {
       })),
     [columnSpecs, visibleColumns],
   );
+
+  // The list as it was left: it pages far enough to show the cluster last
+  // opened from it again, until the search, a filter or the sort changes.
+  const listKey = `${search.trim()}|${filters.key}|${sort.column}|${sort.direction}`;
+  const [openedKey] = useState(listKey);
+  const openedIndex =
+    view.opened && listKey === openedKey
+      ? sorted.findIndex(row => row.id === view.opened)
+      : -1;
+  const initialShown =
+    openedIndex >= 0
+      ? Math.ceil((openedIndex + 1) / INITIAL_ROWS) * INITIAL_ROWS
+      : undefined;
+
+  /** The row a click went to: its key, and its cluster's page. */
+  const rowOf = (target: EventTarget) => {
+    const href = (target as Element)
+      .closest('tbody [role=row], li')
+      ?.querySelector('a[href]')
+      ?.getAttribute('href');
+    const row = href
+      ? sorted.find(candidate => clusterHref(links, candidate) === href)
+      : undefined;
+    return row && href ? { row, href } : undefined;
+  };
+
+  // Before a row's link navigates (capture runs first), the row is kept as
+  // the one opened, for the way back.
+  const rememberOpened = (event: MouseEvent<HTMLElement>) => {
+    const target = rowOf(event.target);
+    if (target) {
+      updateView({ opened: target.row.id });
+    }
+  };
+
+  // A click anywhere else on a table row opens it too, for the mouse only:
+  // the name is the row's one link and its one tab stop (the tables skill), so
+  // the row is no second link for the keyboard. A click on a control in the
+  // row, a selection of its text, or a click with a modifier is left alone.
+  const openRowOnClick = (event: MouseEvent<HTMLElement>) => {
+    const element = event.target as Element;
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey ||
+      element.closest('a, button, input, [role=checkbox]') ||
+      !element.closest('tbody [role=row]') ||
+      window.getSelection()?.toString()
+    ) {
+      return;
+    }
+    const target = rowOf(element);
+    if (target) {
+      navigate(target.href);
+    }
+  };
 
   if (status === 'loading') {
     return <LoadingIndicator label="Reading clusters…" />;
@@ -696,26 +777,33 @@ export function PlatformClustersPanel() {
           onClearFilters={filters.clear}
         />
       ) : (
-        <ShowMore
-          key={`${search.trim()}|${filters.key}|${sort.column}|${sort.direction}`}
-          items={sorted}
-          initial={INITIAL_ROWS}
-          noun="cluster"
+        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- the row click is the mouse's shortcut; the keyboard opens a row by its name, a link
+        <div
+          className={classes.rows}
+          onClickCapture={rememberOpened}
+          onClick={openRowOnClick}
         >
-          {page =>
-            isPhone ? (
-              <ClusterStackedList rows={page} links={links} />
-            ) : (
-              <Table<PlatformClusterRow>
-                columnConfig={columns}
-                data={page}
-                pagination={{ type: 'none' }}
-                sort={{ descriptor: sort, onSortChange: setSort }}
-                rowConfig={{ getHref: row => clusterHref(links, row) }}
-              />
-            )
-          }
-        </ShowMore>
+          <ShowMore
+            key={listKey}
+            items={sorted}
+            initial={INITIAL_ROWS}
+            initialShown={initialShown}
+            noun="cluster"
+          >
+            {page =>
+              isPhone ? (
+                <ClusterStackedList rows={page} links={links} />
+              ) : (
+                <Table<PlatformClusterRow>
+                  columnConfig={columns}
+                  data={page}
+                  pagination={{ type: 'none' }}
+                  sort={{ descriptor: sort, onSortChange: setSort }}
+                />
+              )
+            }
+          </ShowMore>
+        </div>
       )}
     </Flex>
   );

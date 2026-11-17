@@ -1,6 +1,7 @@
-import { type ReactNode } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { App, Cluster } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
@@ -18,9 +19,6 @@ let mockState: ClusterReadState;
 let mockBaseDomain: string | undefined;
 let mockInGit: boolean;
 
-jest.mock('../../QueryClientProvider', () => ({
-  QueryClientProvider: ({ children }: { children: ReactNode }) => children,
-}));
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
   useClustersInfo: () => ({ ...mockInstallations, retry: jest.fn() }),
@@ -46,7 +44,11 @@ jest.mock(
 jest.mock(
   '../../clusters/cluster-details/ClusterOverview/ClusterAboutCard/AWSAccountField',
   () => ({
-    useAWSAccount: () => ({ isLoading: false, accountId: '123456789012' }),
+    useAWSAccount: () => ({
+      isLoading: false,
+      accountId: '123456789012',
+      accountUrl: 'https://console.aws.amazon.com/?account=123456789012',
+    }),
   }),
 );
 jest.mock(
@@ -172,7 +174,14 @@ function clusterOf(
   );
 }
 
-function appOf(name: string, namespace: string): App {
+function appOf(
+  name: string,
+  namespace: string,
+  {
+    deleting = false,
+    release = { status: 'deployed' },
+  }: { deleting?: boolean; release?: { status: string; reason?: string } } = {},
+): App {
   return new App(
     {
       apiVersion: 'application.giantswarm.io/v1alpha1',
@@ -180,12 +189,14 @@ function appOf(name: string, namespace: string): App {
       metadata: {
         name,
         namespace,
+        ...(deleting && { deletionTimestamp: '2026-11-17T08:00:00Z' }),
         labels: {
           'kustomize.toolkit.fluxcd.io/name': 'fern-gitops',
           'kustomize.toolkit.fluxcd.io/namespace': 'flux-giantswarm',
         },
       },
       spec: { name: 'cluster-aws', namespace, version: '3.4.1' },
+      status: { release },
     } as any,
     'meadow',
   );
@@ -207,19 +218,24 @@ function Path() {
   return <output aria-label="path">{useLocation().pathname}</output>;
 }
 
+let queryClient: QueryClient;
+
 function renderPage(path = '/platform/clusters/meadow/org-fern/alder-birch') {
   return renderInTestApp(
-    <PageHeaderActionsProvider>
-      <PlatformLinksProvider links={LINKS}>
-        <Routes>
-          <Route
-            path="/platform/clusters/:installationName/:namespace/:name/*"
-            element={<PlatformClusterRoute />}
-          />
-        </Routes>
-        <Path />
-      </PlatformLinksProvider>
-    </PageHeaderActionsProvider>,
+    // The Platform page's query client, which the page reads through.
+    <QueryClientProvider client={queryClient}>
+      <PageHeaderActionsProvider>
+        <PlatformLinksProvider links={LINKS}>
+          <Routes>
+            <Route
+              path="/platform/clusters/:installationName/:namespace/:name/*"
+              element={<PlatformClusterRoute />}
+            />
+          </Routes>
+          <Path />
+        </PlatformLinksProvider>
+      </PageHeaderActionsProvider>
+    </QueryClientProvider>,
     { initialRouteEntries: [path] },
   );
 }
@@ -228,6 +244,7 @@ const workload = clusterOf('alder-birch', 'org-fern');
 
 describe('PlatformClusterPage', () => {
   beforeEach(() => {
+    queryClient = new QueryClient();
     mockInstallations = { clusters: ['meadow'], isLoading: false, error: null };
     mockDisabled = [];
     mockBaseDomain = 'meadow.example.com';
@@ -263,7 +280,12 @@ describe('PlatformClusterPage', () => {
     );
     expect(facts.textContent).toContain('fern');
     expect(facts.textContent).toContain('eu-central-1');
-    expect(facts.textContent).toContain('123456789012');
+    expect(
+      within(facts).getByRole('link', { name: /123456789012/ }),
+    ).toHaveAttribute(
+      'href',
+      'https://console.aws.amazon.com/?account=123456789012',
+    );
     expect(
       within(facts).getByRole('link', { name: /Cluster overview dashboard/ }),
     ).toHaveAttribute('href', 'https://grafana.example.com/d/cluster');
@@ -370,23 +392,97 @@ describe('PlatformClusterPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('says when the environment cannot be reached', async () => {
+  it('says when the environment cannot be reached, with Try again', async () => {
     mockDisabled = ['meadow'];
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
     await renderPage();
 
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Could not reach meadow',
     );
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ['installations', 'status'],
+    });
   });
 
-  it('says why the cluster could not be read', async () => {
+  it('says why the cluster could not be read, with Try again', async () => {
     mockState = stateOf({ error: new Error('the API answered 503') });
+    const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
     await renderPage();
 
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Could not read alder-birch',
     );
     expect(screen.getByRole('alert')).toHaveTextContent('the API answered 503');
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    const [{ predicate }] = invalidate.mock.calls[0] as any;
+    expect(predicate({ queryKey: ['cluster', 'meadow', 'get'] })).toBe(true);
+    expect(predicate({ queryKey: ['cluster', 'fennel', 'get'] })).toBe(false);
+  });
+
+  it('says the read failed, not that the cluster is being created, when its App is there', async () => {
+    mockState = stateOf({
+      clusterApp: appOf('alder-birch', 'org-fern'),
+      error: Object.assign(new Error('Access forbidden'), {
+        name: 'ForbiddenError',
+      }),
+    });
+    await renderPage();
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Could not read alder-birch',
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent('Access forbidden');
+    expect(screen.queryByText(/being created/)).not.toBeInTheDocument();
+  });
+
+  const gone = () =>
+    Object.assign(new Error('not found'), { name: 'NotFoundError' });
+
+  it('shows the App’s status while the cluster is being created', async () => {
+    mockState = stateOf({
+      clusterApp: appOf('alder-birch', 'org-fern', {
+        release: { status: 'pending-install' },
+      }),
+      error: gone(),
+    });
+    await renderPage();
+
+    expect(
+      screen.getByText('alder-birch is being created'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Pending install')).toBeInTheDocument();
+  });
+
+  it('shows a failed App as failed, with its reason', async () => {
+    mockState = stateOf({
+      clusterApp: appOf('alder-birch', 'org-fern', {
+        release: { status: 'failed', reason: 'values do not match the schema' },
+      }),
+      error: gone(),
+    });
+    await renderPage();
+
+    expect(
+      screen.getByText('alder-birch could not be installed'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('values do not match the schema'),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps saying the cluster is being deleted once its Cluster has gone before its App', async () => {
+    mockState = stateOf({
+      clusterApp: appOf('alder-birch', 'org-fern', { deleting: true }),
+      error: gone(),
+    });
+    await renderPage();
+
+    expect(
+      screen.getByText('alder-birch is being deleted'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/being created/)).not.toBeInTheDocument();
   });
 
   it('opens Overview for a tab the page does not have', async () => {

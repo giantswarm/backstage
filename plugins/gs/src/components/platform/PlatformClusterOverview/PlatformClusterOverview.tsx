@@ -207,16 +207,32 @@ function GitOpsSection({
   );
 }
 
-/** "owner/repo" of a repository link, the link itself where it has none. */
-function repositoryOf(url: string): string {
+/**
+ * Where a part of a source link starts that is no longer the repository: a
+ * GitLab `/-/…`, a GitHub or Gitea `/tree/…` or `/blob/…`, a Bitbucket
+ * `/src/…`.
+ */
+const BROWSE_SEGMENT = /\/(?:-|tree|blob|src)\//;
+
+/**
+ * The repository a source link points into, as its host's path names it:
+ * `owner/repo`, a GitLab subgroup's `group/sub/repo`, an Azure DevOps
+ * `org/project/repo`, without a trailing `.git`. The link itself where it is
+ * no URL.
+ */
+export function repositoryOf(url: string): string {
+  let path: string;
   try {
-    const [owner, repository] = new URL(url).pathname
-      .split('/')
-      .filter(Boolean);
-    return owner && repository ? `${owner}/${repository}` : url;
+    path = new URL(url).pathname;
   } catch {
     return url;
   }
+  const browse = path.search(BROWSE_SEGMENT);
+  const repository = (browse >= 0 ? path.slice(0, browse) : path)
+    .replace(/\/_git\//, '/')
+    .replace(/\.git$/, '')
+    .replace(/^\/+|\/+$/g, '');
+  return repository || url;
 }
 
 /**
@@ -347,8 +363,7 @@ function TechnicalDetails() {
  * has been read.
  */
 export function PlatformClusterOverview() {
-  const { cluster, clusterApp, clusterRelease, installationName } =
-    useCurrentCluster();
+  const { clusterApp, clusterRelease, installationName } = useCurrentCluster();
   const installer = clusterApp ?? clusterRelease;
   return (
     <Flex direction="column" gap="6">
@@ -362,7 +377,7 @@ export function PlatformClusterOverview() {
       )}
       <LoginSection />
       <TechnicalDetailsFoldOut defaultExpanded={false}>
-        <TechnicalDetails key={cluster.getName()} />
+        <TechnicalDetails />
       </TechnicalDetailsFoldOut>
     </Flex>
   );

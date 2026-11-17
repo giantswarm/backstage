@@ -6,13 +6,16 @@ import {
   useLocation,
   useParams,
 } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Flex, Link } from '@backstage/ui';
 import { Constants } from '@giantswarm/backstage-plugin-gs-common';
 import {
+  App,
   AWSCluster,
   AzureASOManagedCluster,
   AzureCluster,
   ErrorsProvider,
+  HelmRelease,
   toKubectlYaml,
   useClustersInfo,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -33,7 +36,6 @@ import {
   ShellPageTitleSkeleton,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { QueryClientProvider } from '../../QueryClientProvider';
 import { useDisabledInstallations } from '../../hooks/useDisabledInstallations';
 import {
   getClusterKey,
@@ -68,6 +70,10 @@ import {
 } from '../../clusters/utils';
 import { PlatformClusterOverview } from '../PlatformClusterOverview';
 import { PlatformClusterStatusDot } from '../PlatformClusterStatusDot';
+import {
+  installerOutcome,
+  PlatformInstallerStatus,
+} from '../PlatformInstallerStatus';
 import { usePlatformLinks } from '../PlatformLinks';
 
 /**
@@ -182,7 +188,7 @@ function AWSAccountValue({
 }: {
   infrastructureRef: InfrastructureRef;
 }) {
-  const { isLoading, errorMessage, accountId } =
+  const { isLoading, errorMessage, accountId, accountUrl } =
     useAWSAccount(infrastructureRef);
   return (
     <AsyncValue
@@ -190,7 +196,16 @@ function AWSAccountValue({
       errorMessage={errorMessage}
       value={accountId}
     >
-      {value => <Mono>{value}</Mono>}
+      {value =>
+        // To the AWS console, as the classic page's account links.
+        accountUrl ? (
+          <ExternalLink href={accountUrl}>
+            <Mono>{value}</Mono>
+          </ExternalLink>
+        ) : (
+          <Mono>{value}</Mono>
+        )
+      }
     </AsyncValue>
   );
 }
@@ -234,8 +249,9 @@ function ToolLinks({ links }: { links: ClusterToolLink[] }) {
   return (
     <nav aria-label="Tools">
       <Flex direction="column" gap="2" mt="4">
-        {links.map(link => (
-          <ExternalLink key={link.url} href={link.url}>
+        {links.map((link, index) => (
+          // Two configured links can fill in to the same URL.
+          <ExternalLink key={`${index}:${link.label}`} href={link.url}>
             {link.label.replace(/\s*(\\n|\n)\s*/g, ' ')}
           </ExternalLink>
         ))}
@@ -420,9 +436,76 @@ function ClusterPage() {
 }
 
 /**
+ * Reads the cluster and what installs it again: every request of the page to
+ * the cluster's installation.
+ */
+function useRereadCluster(installationName: string): () => void {
+  const queryClient = useQueryClient();
+  return () =>
+    void queryClient.invalidateQueries({
+      predicate: ({ queryKey }) =>
+        queryKey[0] === 'cluster' && queryKey[1] === installationName,
+    });
+}
+
+const INSTALLER_TITLES = {
+  deleting: (name: string) => `${name} is being deleted`,
+  failed: (name: string) => `${name} could not be installed`,
+  creating: (name: string) => `${name} is being created`,
+} as const;
+
+const INSTALLER_DESCRIPTIONS = {
+  deleting: (kind: string) =>
+    `Its Cluster resource is gone, and its ${kind} is still being removed.`,
+  failed: (kind: string) =>
+    `Its ${kind} failed, so its Cluster resource does not exist.`,
+  creating: (kind: string) =>
+    `Its ${kind} exists, and the Cluster resource it creates does not yet.`,
+} as const;
+
+/**
+ * A cluster whose Cluster resource does not exist while what installs it
+ * does: being created, failed to install, or deleted with its installer
+ * still finalizing. As the classic page does, it shows the installer's
+ * status.
+ */
+function InstallerOnly({
+  name,
+  installer,
+  onRetry,
+}: {
+  name: string;
+  installer: App | HelmRelease;
+  onRetry: () => void;
+}) {
+  const { clustersHref, frame } = useFrame(name);
+  const outcome = installerOutcome(installer);
+  return (
+    <ShellPage title={name} {...frame}>
+      <Flex direction="column" gap="4" align="start">
+        <Alert
+          status={outcome === 'failed' ? 'danger' : 'info'}
+          icon
+          title={INSTALLER_TITLES[outcome](name)}
+          description={INSTALLER_DESCRIPTIONS[outcome](installer.getKind())}
+          customActions={
+            <Button size="small" variant="secondary" onPress={onRetry}>
+              Try again
+            </Button>
+          }
+          style={{ alignSelf: 'stretch' }}
+        />
+        <PlatformInstallerStatus installer={installer} />
+        <BackToClusters href={clustersHref} />
+      </Flex>
+    </ShellPage>
+  );
+}
+
+/**
  * The cluster's read, in the states the page can be in: loading, not found
- * in its environment, still being created (its App or HelmRelease exists, its
- * Cluster not yet), unreadable, or read.
+ * in its environment, a failed read (with its cause, whatever the installer
+ * says), only its installer left (see `InstallerOnly`), or read.
  */
 function ClusterRead({ name }: { name: string }) {
   const {
@@ -434,6 +517,7 @@ function ClusterRead({ name }: { name: string }) {
     notFound,
     error,
   } = useAsyncCluster();
+  const reread = useRereadCluster(installationName);
 
   // A cluster that was read is shown, also where what installs it could not
   // be read (an imported cluster has neither App nor HelmRelease): the page
@@ -454,14 +538,11 @@ function ClusterRead({ name }: { name: string }) {
     );
   }
   const installer = clusterApp ?? clusterRelease;
-  if (installer && !cluster) {
-    return (
-      <NothingToShow
-        name={name}
-        title={`${name} is being created`}
-        description={`Its ${installer.getKind()} exists, and the Cluster resource it creates does not yet. Reload the page to follow its progress.`}
-      />
-    );
+  // Only a Cluster that is not there (a 404, as `useCluster` counts one)
+  // leaves the installer to speak for it; any other failure is the read's,
+  // and says why.
+  if (installer && (!error || error.name === 'NotFoundError')) {
+    return <InstallerOnly name={name} installer={installer} onRetry={reread} />;
   }
   return (
     <ReadFailed
@@ -472,6 +553,7 @@ function ClusterRead({ name }: { name: string }) {
           ? `${installationName} did not answer the request for the cluster: ${error.message}`
           : `${installationName} did not answer the request for the cluster.`
       }
+      onRetry={reread}
     />
   );
 }
@@ -490,6 +572,12 @@ function EnvironmentGate({
   const { installationName, name } = address;
   const installations = useClustersInfo();
   const disabled = useDisabledInstallations();
+  const queryClient = useQueryClient();
+  // The readiness check of the environments' backends, asked again.
+  const recheck = () =>
+    void queryClient.invalidateQueries({
+      queryKey: ['installations', 'status'],
+    });
 
   if (installations.error) {
     return (
@@ -518,7 +606,8 @@ function EnvironmentGate({
       <ReadFailed
         name={name}
         title={`Could not reach ${installationName}`}
-        description={`The portal cannot reach ${installationName} right now, so ${name} cannot be read. Try again later.`}
+        description={`The portal cannot reach ${installationName} right now, so ${name} cannot be read.`}
+        onRetry={recheck}
       />
     );
   }
@@ -534,19 +623,21 @@ function hideClassicErrors(): boolean {
  * A cluster's page in the shell's Platform section
  * (`/platform/clusters/<installation>/<namespace>/<name>`): its state, a
  * column of facts, and routed tabs, of which only Overview exists so far.
- * Reads the cluster as the classic cluster page does (`ClusterProvider`).
+ * Reads the cluster as the classic cluster page does (`ClusterProvider`),
+ * through the query client of the `PlatformClustersProvider` above it, which
+ * the clusters list reads through too.
  */
 export function PlatformClusterPage({ address }: { address: ClusterAddress }) {
   return (
-    <QueryClientProvider>
-      <ErrorsProvider ignoreError={hideClassicErrors}>
-        <EnvironmentGate address={address}>
-          <ClusterProvider address={address}>
-            <ClusterRead name={address.name} />
-          </ClusterProvider>
-        </EnvironmentGate>
-      </ErrorsProvider>
-    </QueryClientProvider>
+    <ErrorsProvider ignoreError={hideClassicErrors}>
+      {/* Another cluster's address starts the page's state afresh, under the
+          same query client and its cache. */}
+      <EnvironmentGate key={addressKey(address)} address={address}>
+        <ClusterProvider address={address}>
+          <ClusterRead name={address.name} />
+        </ClusterProvider>
+      </EnvironmentGate>
+    </ErrorsProvider>
   );
 }
 
@@ -566,8 +657,7 @@ export function PlatformClusterRoute() {
   if (!address) {
     return null;
   }
-  // Another cluster's address starts the page afresh.
-  return <PlatformClusterPage key={addressKey(address)} address={address} />;
+  return <PlatformClusterPage address={address} />;
 }
 
 function addressKey(address: ClusterAddress): string {

@@ -15,7 +15,11 @@ import {
   ShellDocumentTitle,
   ShellPage,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { platformClusterRouteRef, platformRouteRef } from '../routes';
+import {
+  platformClusterRouteRef,
+  platformClustersRouteRef,
+  platformRouteRef,
+} from '../routes';
 import { PLATFORM_TAB_IDS, type PlatformTabId } from '../platformTabIds';
 
 const PLATFORM_TAB_TITLES: Record<PlatformTabId, string> = {
@@ -43,22 +47,18 @@ function usePlatformPath(): string {
  */
 function usePlatformLinks(): PlatformLinks {
   const platform = usePlatformPath();
+  const clustersLink = useRouteRef(platformClustersRouteRef);
   const clusterLink = useRouteRef(platformClusterRouteRef);
-  return useMemo(
-    () => ({
+  return useMemo(() => {
+    if (!clustersLink || !clusterLink) {
+      throw new Error('The Platform page is not mounted at platformRouteRef');
+    }
+    return {
       platform,
-      clusters: `${platform}/clusters`,
-      cluster: params => {
-        if (!clusterLink) {
-          throw new Error(
-            'The Platform page is not mounted at platformRouteRef',
-          );
-        }
-        return clusterLink(params);
-      },
-    }),
-    [platform, clusterLink],
-  );
+      clusters: clustersLink(),
+      cluster: params => clusterLink(params),
+    };
+  }, [platform, clustersLink, clusterLink]);
 }
 
 /** Opens the first tab, keeping the query string. */
@@ -105,27 +105,22 @@ export function PlatformPage() {
       {/* Until a tab names itself. */}
       <ShellDocumentTitle title="Platform" />
       <PlatformLinksProvider links={usePlatformLinks()}>
-        <Routes>
-          <Route index element={<DefaultTabRedirect />} />
-          {PLATFORM_TAB_IDS.map(tab => (
+        {/* Above every route: the list's clusters and its view outlive a
+            visit to a cluster's page, and the pages share its query client.
+            The clusters are read only once the list has been shown. */}
+        <PlatformClustersProvider>
+          <Routes>
+            <Route index element={<DefaultTabRedirect />} />
+            {PLATFORM_TAB_IDS.map(tab => (
+              <Route key={tab} path={tab} element={<PlatformTab tab={tab} />} />
+            ))}
             <Route
-              key={tab}
-              path={tab}
-              element={
-                // The tab's count and its list read once, on the tab only:
-                // a cluster's page reads its own cluster.
-                <PlatformClustersProvider>
-                  <PlatformTab tab={tab} />
-                </PlatformClustersProvider>
-              }
+              path="clusters/:installationName/:namespace/:name/*"
+              element={<PlatformClusterRoute />}
             />
-          ))}
-          <Route
-            path="clusters/:installationName/:namespace/:name/*"
-            element={<PlatformClusterRoute />}
-          />
-          <Route path="*" element={<DefaultTabRedirect />} />
-        </Routes>
+            <Route path="*" element={<DefaultTabRedirect />} />
+          </Routes>
+        </PlatformClustersProvider>
       </PlatformLinksProvider>
     </PageHeaderActionsProvider>
   );

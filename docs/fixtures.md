@@ -586,7 +586,8 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
   Platform section's list and cluster pages read. The cluster pages' tool
   links are `gs.clusterDetails.resources` of `app-config.fixtures.yaml`, at
   made-up addresses; the fixture installations have no base domain, so the
-  login command is not shown. The
+  login command is not shown. The classic Deployments list shows the
+  clusters' Apps, and the Flux pages the Kustomizations and GitRepositories. The
   person has each role in the ready
   organizations of each installation (admin, editor, user, so the New agent form's "needs the
   editor role" shows), manages the orphaned, pending-erase and deleting ones and is no

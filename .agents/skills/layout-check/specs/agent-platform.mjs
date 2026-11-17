@@ -107,7 +107,15 @@ const openCluster = kind => async ({ page, skip }) => {
   // Table rows, or on a phone the stacked list's items.
   const rows = page.locator('tbody [role=row], li:has(a[href^="/platform/clusters/"])');
   if (!(await shows(rows))) skip('no clusters listed');
-  const href = await page.evaluate(want => {
+  // Management clusters are named after their environment and can sort past
+  // the first page: the search finds them by their organization.
+  const search = page.getByRole('searchbox', { name: 'Search clusters' });
+  if (kind === 'management' && (await shows(search, 2000))) {
+    await search.fill('giantswarm');
+  }
+  // Environments answer one by one: wait until a row of the kind is listed.
+  const handle = await page
+    .waitForFunction(want => {
     for (const row of document.querySelectorAll('tbody [role=row], li')) {
       const href = row
         .querySelector('a[href^="/platform/clusters/"]')
@@ -124,7 +132,9 @@ const openCluster = kind => async ({ page, skip }) => {
       }
     }
     return undefined;
-  }, kind);
+  }, kind, { timeout: 15000 })
+    .catch(() => undefined);
+  const href = handle ? await handle.jsonValue() : undefined;
   if (!href) skip(`no ${kind} cluster on the list's first page`);
   await page.goto(new URL(href, page.url()).href);
 };

@@ -9,6 +9,12 @@ export const customizeRouteRef = createRouteRef();
 /** The Platform section (`/platform`), where the deployment turned it on. */
 export const platformRouteRef = createRouteRef();
 
+/** The Platform section's clusters list, `/platform/clusters`. */
+export const platformClustersRouteRef = createSubRouteRef({
+  parent: platformRouteRef,
+  path: '/clusters',
+});
+
 /**
  * A cluster's page in the Platform section,
  * `/platform/clusters/<installation>/<namespace>/<name>`.
