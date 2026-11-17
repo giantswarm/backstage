@@ -403,6 +403,30 @@ export function CredentialFormPage({
   const pairs = loaded ? requestedPairs(loaded.operation) : [];
   const [stale, setStale] = useState(false);
   const phase = operationPhase(loaded?.operation, receipt, cancelled, stale);
+  // Shown when the cancel after a refusal failed: the person cancels it.
+  const [cancelOffered, setCancelOffered] = useState(false);
+
+  /**
+   * Cancels a replacement refused with CONSUMERS_CHANGED: agent-manager
+   * keeps it pending on purpose (giantswarm/agent-manager#427), so it would
+   * wait until it expires. The refused save may have moved its version, so
+   * it is read again first; then the same cancel as Cancel request.
+   */
+  const cancelRefused = useTrackedMutation<void, Error, void>({
+    event: null,
+    untrackedReason: 'cancelling a refused credential request writes nothing',
+    mutationFn: async () => {
+      if (!operationId) {
+        throw new Error('The request is not known.');
+      }
+      const current = await api.getOperation(installation, operationId);
+      if (current.operation.state === 'cancelled') {
+        return undefined;
+      }
+      return api.cancelOperation(installation, operationId, current.etag);
+    },
+    onError: () => setCancelOffered(true),
+  });
 
   const save = useTrackedMutation<CredentialResourceResult, Error, void>({
     event: () => ({
@@ -464,6 +488,7 @@ export function CredentialFormPage({
       } else if (code === CONSUMERS_CHANGED) {
         setValues({});
         setStale(true);
+        cancelRefused.mutate();
       } else if (code === 'outcome_unknown') {
         setValues({});
         setNotice(
@@ -734,6 +759,27 @@ export function CredentialFormPage({
         ) : null}
         {stale ? (
           <SaveError installation={installation} error={save.error} />
+        ) : null}
+        {stale && cancelOffered ? (
+          <Flex direction="column" gap="3" align="start">
+            {cancelRefused.isSuccess ? (
+              <Text>The request is cancelled.</Text>
+            ) : (
+              <>
+                <Text>
+                  The request is still open until it expires. Cancel it, so
+                  that it does not wait for a value.
+                </Text>
+                <Button
+                  variant="secondary"
+                  onPress={() => cancelRefused.mutate()}
+                  isDisabled={cancelRefused.isPending}
+                >
+                  Cancel request
+                </Button>
+              </>
+            )}
+          </Flex>
         ) : null}
         {!takesValues && !finishes && backLink ? <Flex>{backLink}</Flex> : null}
       </Flex>
