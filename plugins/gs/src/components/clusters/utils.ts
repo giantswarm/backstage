@@ -221,3 +221,22 @@ export function getClusterK8sAPIUrl(cluster: Cluster) {
 
   return url.startsWith('https://') ? url : `https://${url}`;
 }
+
+/**
+ * The `kubectl gs login` command for a cluster, with the installation's base
+ * domain: the management cluster's API alone, a workload cluster's with the
+ * client certificate flags.
+ */
+export function getKubectlGsLoginCommand(
+  baseDomain: string,
+  clusterName: string,
+  isMC: boolean,
+) {
+  const baseCommand = `kubectl gs login api.${baseDomain}`;
+
+  if (isMC) {
+    return baseCommand;
+  }
+
+  return `${baseCommand} \\\n  --workload-cluster ${clusterName} \\\n  --certificate-group system:masters`;
+}

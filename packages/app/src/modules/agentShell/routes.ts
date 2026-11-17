@@ -1,10 +1,22 @@
-import { createRouteRef } from '@backstage/frontend-plugin-api';
+import {
+  createRouteRef,
+  createSubRouteRef,
+} from '@backstage/frontend-plugin-api';
 import homePlugin from '@backstage/plugin-home/alpha';
 
 export const customizeRouteRef = createRouteRef();
 
 /** The Platform section (`/platform`), where the deployment turned it on. */
 export const platformRouteRef = createRouteRef();
+
+/**
+ * A cluster's page in the Platform section,
+ * `/platform/clusters/<installation>/<namespace>/<name>`.
+ */
+export const platformClusterRouteRef = createSubRouteRef({
+  parent: platformRouteRef,
+  path: '/clusters/:installationName/:namespace/:name',
+});
 
 /**
  * The shell's home (`/`), the new-session screen. The home plugin's own root

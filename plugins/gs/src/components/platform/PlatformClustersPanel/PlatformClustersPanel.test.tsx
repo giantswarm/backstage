@@ -12,6 +12,7 @@ import type {
   UnlistedInstallation,
 } from '../../clusters/ClustersDataProvider';
 import type { PlatformClustersStatus } from '../PlatformClustersProvider';
+import { type PlatformLinks, PlatformLinksProvider } from '../PlatformLinks';
 import { PlatformClustersPanel } from './PlatformClustersPanel';
 import {
   DEFAULT_PLATFORM_CLUSTER_COLUMNS,
@@ -90,6 +91,13 @@ const clusters = [
   cluster('dock-fern', { status: 'deleting' }),
 ];
 
+const LINKS: PlatformLinks = {
+  platform: '/platform',
+  clusters: '/platform/clusters',
+  cluster: ({ installationName, namespace, name }) =>
+    `/platform/clusters/${installationName}/${namespace}/${name}`,
+};
+
 function headers(): string[] {
   return screen
     .getAllByRole('columnheader')
@@ -139,7 +147,23 @@ describe('PlatformClustersPanel', () => {
     ).toBeInTheDocument();
   });
 
-  it('does not make rows links yet', async () => {
+  it('links each name to its cluster’s page', async () => {
+    await renderInTestApp(
+      <PlatformLinksProvider links={LINKS}>
+        <PlatformClustersPanel />
+      </PlatformLinksProvider>,
+    );
+    const table = screen.getByRole('grid');
+    expect(
+      within(table).getByRole('link', { name: 'alder-birch' }),
+    ).toHaveAttribute('href', '/platform/clusters/fennel/org-fern/alder-birch');
+    expect(within(table).getByRole('link', { name: 'meadow' })).toHaveAttribute(
+      'href',
+      '/platform/clusters/meadow/org-giantswarm/meadow',
+    );
+  });
+
+  it('draws no link without the Platform section’s links', async () => {
     await renderInTestApp(<PlatformClustersPanel />);
     const table = screen.getByRole('grid');
     expect(within(table).queryAllByRole('link')).toHaveLength(0);
@@ -347,13 +371,20 @@ describe('PlatformClustersPanel', () => {
   it('stacks the clusters at phone width, without the column picker', async () => {
     layout.restore();
     layout = mockPhoneLayout();
-    await renderInTestApp(<PlatformClustersPanel />);
+    await renderInTestApp(
+      <PlatformLinksProvider links={LINKS}>
+        <PlatformClustersPanel />
+      </PlatformLinksProvider>,
+    );
     const list = screen.getByRole('list', { name: 'Clusters' });
     const items = within(list).getAllByRole('listitem');
     expect(items).toHaveLength(4);
     expect(items[1].textContent).toContain('cedar-elm');
     expect(items[1].textContent).toContain('Creating');
     expect(items[1].textContent).toMatch(/meadow.*fern.*30\.1\.2/);
+    expect(
+      within(items[1]).getByRole('link', { name: /cedar-elm/ }),
+    ).toHaveAttribute('href', '/platform/clusters/meadow/org-fern/cedar-elm');
     expect(
       screen.queryByRole('button', { name: 'Columns' }),
     ).not.toBeInTheDocument();

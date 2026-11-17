@@ -27,20 +27,11 @@ import {
 } from '../../../../UI';
 import { formatVersion } from '../../../../utils/helpers';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
-import { useIsExpectedClusterError } from '../../../ClusterDetailsPage/useIsExpectedClusterError';
+import { useClusterKubernetesVersion } from '../../../ClusterDetailsPage/useClusterKubernetesVersion';
 import { ProviderClusterLocation } from './ProviderClusterLocation';
 import { AWSAccountField } from './AWSAccountField';
 import { ClusterSwitch } from '../../ClusterSwitch';
 import { clusterDetailsRouteRef } from '../../../../../routes';
-import {
-  AnyControlPlane,
-  ControlPlane,
-  findControlPlaneModel,
-  getErrorMessage,
-  getIncompatibilityMessage,
-  useResource,
-  useShowErrors,
-} from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   ClusterTypeManagementIcon,
   ClusterTypeWorkloadIcon,
@@ -110,64 +101,14 @@ function ProviderLocationDisplay({ provider }: ProviderLocationDisplayProps) {
 
 export function ClusterAboutCard() {
   const { cluster, installationName } = useCurrentCluster();
-  const isExpectedError = useIsExpectedClusterError();
 
   const managementClusterRouteLink = useRouteRef(clusterDetailsRouteRef)!;
 
-  // A Cluster may have no control plane reference yet (one still being
-  // created, or an imported one). Only the Kubernetes version depends on it,
-  // so that reads as not available and the rest of the card renders.
-  const controlPlaneRef = cluster.getControlPlaneRef();
-  const controlPlaneName = controlPlaneRef?.name ?? '';
-  const controlPlaneNamespace = controlPlaneRef?.namespace;
-
-  // The reference decides which control plane kind to read: a
-  // KubeadmControlPlane, or the AzureASOManagedControlPlane of an AKS
-  // cluster. A kind without a model in CONTROL_PLANE_MODELS (an EKS cluster's
-  // AWSManagedControlPlane, say) would only 404, so its fetch stays disabled
-  // and the Kubernetes version reads as not available.
-  const ControlPlaneModel = controlPlaneRef
-    ? findControlPlaneModel(controlPlaneRef)
-    : undefined;
-  const hasSupportedControlPlane = ControlPlaneModel !== undefined;
-
   const {
-    resource: controlPlane,
     isLoading: controlPlaneIsLoading,
-    errors: controlPlaneErrors,
-    error: controlPlaneError,
-    incompatibilities: controlPlaneIncompatibilities,
-  } = useResource<AnyControlPlane>(
-    installationName,
-    ControlPlaneModel ?? ControlPlane,
-    {
-      name: controlPlaneName,
-      namespace: controlPlaneNamespace,
-    },
-    { enabled: hasSupportedControlPlane },
-  );
-
-  let controlPlaneErrorMessage;
-  if (controlPlaneError && !isExpectedError(controlPlaneError)) {
-    controlPlaneErrorMessage = getErrorMessage({
-      error: controlPlaneError,
-      resourceKind: (ControlPlaneModel ?? ControlPlane).kind,
-      resourceName: controlPlaneName,
-      resourceNamespace: controlPlaneNamespace,
-    });
-  }
-  // A disabled query still returns incompatibilities from ControlPlane
-  // discovery that another page has cached. The hook cannot tell whether a
-  // caller disabled its query to mean "not yet" or "does not apply", so the
-  // card keeps them out itself when there is no supported control plane to
-  // read.
-  if (hasSupportedControlPlane && controlPlaneIncompatibilities[0]) {
-    controlPlaneErrorMessage = getIncompatibilityMessage(
-      controlPlaneIncompatibilities[0],
-    );
-  }
-
-  useShowErrors(hasSupportedControlPlane ? controlPlaneErrors : null);
+    version: k8sVersion,
+    errorMessage: controlPlaneErrorMessage,
+  } = useClusterKubernetesVersion();
 
   const clusters = useMemo(() => [cluster], [cluster]);
   const { capacities } = useWorkerCapacity(clusters);
@@ -186,7 +127,6 @@ export function ClusterAboutCard() {
   const servicePriority = getClusterServicePriority(cluster);
   const provider = calculateClusterProvider(cluster);
   const creationTimestamp = getClusterCreationTimestamp(cluster);
-  const k8sVersion = controlPlane ? controlPlane.getK8sVersion() : undefined;
 
   return (
     <InfoCard>

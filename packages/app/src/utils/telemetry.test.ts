@@ -526,6 +526,21 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/workspaces/:installation/:organization/:name/*',
     ],
     [
+      '/platform/clusters/meadow/org-fern/alder-birch',
+      { page: 'Platform cluster' },
+      '/platform/clusters/:installation/:namespace/:name',
+    ],
+    [
+      '/platform/clusters/meadow/org-fern/alder-birch/apps',
+      { page: 'Platform cluster', view: 'redirect' },
+      '/platform/clusters/:installation/:namespace/:name/*',
+    ],
+    [
+      '/platform/clusters/meadow',
+      { page: 'Platform', view: 'redirect' },
+      '/platform/*',
+    ],
+    [
       '/customize/toolchains/new',
       { page: 'Create toolchain' },
       '/customize/toolchains/new',
@@ -849,6 +864,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize',
       '/platform',
       '/platform/clusters',
+      '/platform/clusters/meadow/org-fern/alder-birch',
       '/customize/agents',
       '/customize/skills',
       '/customize/connectors',

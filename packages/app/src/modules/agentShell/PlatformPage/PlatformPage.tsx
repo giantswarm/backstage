@@ -1,8 +1,12 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { useMemo } from 'react';
 import {
+  PlatformClusterRoute,
   PlatformClustersPanel,
   PlatformClustersProvider,
+  type PlatformLinks,
+  PlatformLinksProvider,
   useMainSessionEnd,
   usePlatformClustersCount,
 } from '@giantswarm/backstage-plugin-gs';
@@ -11,7 +15,7 @@ import {
   ShellDocumentTitle,
   ShellPage,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { platformRouteRef } from '../routes';
+import { platformClusterRouteRef, platformRouteRef } from '../routes';
 import { PLATFORM_TAB_IDS, type PlatformTabId } from '../platformTabIds';
 
 const PLATFORM_TAB_TITLES: Record<PlatformTabId, string> = {
@@ -31,6 +35,30 @@ function usePlatformPath(): string {
     throw new Error('The Platform page is not mounted at platformRouteRef');
   }
   return platformLink();
+}
+
+/**
+ * The section's addresses for its pages in the gs plugin, through this
+ * page's route refs.
+ */
+function usePlatformLinks(): PlatformLinks {
+  const platform = usePlatformPath();
+  const clusterLink = useRouteRef(platformClusterRouteRef);
+  return useMemo(
+    () => ({
+      platform,
+      clusters: `${platform}/clusters`,
+      cluster: params => {
+        if (!clusterLink) {
+          throw new Error(
+            'The Platform page is not mounted at platformRouteRef',
+          );
+        }
+        return clusterLink(params);
+      },
+    }),
+    [platform, clusterLink],
+  );
 }
 
 /** Opens the first tab, keeping the query string. */
@@ -67,23 +95,38 @@ function PlatformTab({ tab }: { tab: PlatformTabId }) {
 
 /**
  * The shell's Platform section, where the deployment turned it on: a tab per
- * area at `/platform/<tab>`, `/platform` opening the first. Only Clusters
- * exists so far. Any other address goes to the first tab.
+ * area at `/platform/<tab>`, `/platform` opening the first, and a cluster's
+ * page at `/platform/clusters/<installation>/<namespace>/<name>[/<tab>]`.
+ * Only Clusters exists so far. Any other address goes to the first tab.
  */
 export function PlatformPage() {
   return (
     <PageHeaderActionsProvider>
       {/* Until a tab names itself. */}
       <ShellDocumentTitle title="Platform" />
-      <PlatformClustersProvider>
+      <PlatformLinksProvider links={usePlatformLinks()}>
         <Routes>
           <Route index element={<DefaultTabRedirect />} />
           {PLATFORM_TAB_IDS.map(tab => (
-            <Route key={tab} path={tab} element={<PlatformTab tab={tab} />} />
+            <Route
+              key={tab}
+              path={tab}
+              element={
+                // The tab's count and its list read once, on the tab only:
+                // a cluster's page reads its own cluster.
+                <PlatformClustersProvider>
+                  <PlatformTab tab={tab} />
+                </PlatformClustersProvider>
+              }
+            />
           ))}
+          <Route
+            path="clusters/:installationName/:namespace/:name/*"
+            element={<PlatformClusterRoute />}
+          />
           <Route path="*" element={<DefaultTabRedirect />} />
         </Routes>
-      </PlatformClustersProvider>
+      </PlatformLinksProvider>
     </PageHeaderActionsProvider>
   );
 }

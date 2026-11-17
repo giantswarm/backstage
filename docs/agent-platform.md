@@ -565,10 +565,30 @@ failed read of the environments themselves and an ended session: the page
 says "No clusters yet" only once every environment answered without a
 failure. A column whose related read failed on an environment (control
 planes, provider clusters, identities) shows a dash that names the failure on
-hover and focus. Rows do not
-open a cluster yet. At phone width the list stacks: name and state, then
+hover and focus. Each row opens
+its cluster's page. At phone width the list stacks: name and state, then
 environment, organization and release. The classic `/clusters` and
 `/installations` pages are unchanged.
+
+A cluster's page, `/platform/clusters/<installation>/<namespace>/<name>`
+(`PlatformClusterPage` from the gs plugin, at the app's
+`platformClusterRouteRef`), reads the cluster as the classic cluster page does
+(`ClusterProvider`): its state beside the name, a sentence on its type,
+organization and environment, View manifest in the ⋯ menu, and a column of
+facts (Environment, linked to the management cluster's page for a workload
+cluster; Organization, Provider, Region, AWS account, Workers, Service
+priority, Created) with the tool links of `gs.clusterDetails.resources`. Its
+one tab so far, Overview (the bare path; any other tab redirects there),
+shows the release and Kubernetes version with its end of life, the labels and
+annotations `gs.friendlyLabels` and `gs.friendlyAnnotations` name and the
+cluster's description, where its definition lives in Git (for a cluster
+whose App or HelmRelease a Flux Kustomization applies), the `kubectl gs
+login` command (where the installation's base domain is known), and a
+Technical details fold-out with every label and annotation. A cluster being
+deleted says so and follows the deletion. An environment the portal does not
+know, a cluster the environment does not have, an environment the portal
+cannot reach and a failed read each get their own state, with a link back to
+the list.
 
 ## Profile and settings
 

@@ -1,0 +1,400 @@
+import { type ReactNode } from 'react';
+import { Route, Routes, useLocation } from 'react-router-dom';
+import { screen, within } from '@testing-library/react';
+import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { App, Cluster } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import type { ClusterReadState } from '../../clusters/ClusterDetailsPage/useClusterFromUrl';
+import { type PlatformLinks, PlatformLinksProvider } from '../PlatformLinks';
+import { PlatformClusterRoute } from './PlatformClusterPage';
+
+let mockInstallations: {
+  clusters: string[];
+  isLoading: boolean;
+  error: Error | null;
+};
+let mockDisabled: string[];
+let mockState: ClusterReadState;
+let mockBaseDomain: string | undefined;
+let mockInGit: boolean;
+
+jest.mock('../../QueryClientProvider', () => ({
+  QueryClientProvider: ({ children }: { children: ReactNode }) => children,
+}));
+jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
+  useClustersInfo: () => ({ ...mockInstallations, retry: jest.fn() }),
+}));
+jest.mock('../../hooks/useDisabledInstallations', () => ({
+  useDisabledInstallations: () => ({
+    disabledInstallations: mockDisabled,
+    isLoading: false,
+  }),
+}));
+jest.mock('../../clusters/ClusterDetailsPage/useClusterFromUrl', () => ({
+  useCluster: () => mockState,
+}));
+jest.mock(
+  '../../clusters/ClusterDetailsPage/useClusterKubernetesVersion',
+  () => ({
+    useClusterKubernetesVersion: () => ({
+      isLoading: false,
+      version: 'v1.31.7',
+    }),
+  }),
+);
+jest.mock(
+  '../../clusters/cluster-details/ClusterOverview/ClusterAboutCard/AWSAccountField',
+  () => ({
+    useAWSAccount: () => ({ isLoading: false, accountId: '123456789012' }),
+  }),
+);
+jest.mock(
+  '../../clusters/cluster-details/ClusterOverview/ClusterAboutCard/ProviderClusterLocation',
+  () => ({ ProviderClusterLocation: () => 'eu-central-1' }),
+);
+jest.mock(
+  '../../clusters/cluster-details/ClusterOverview/ClusterToolsCard',
+  () => ({
+    useClusterToolLinks: () => ({
+      isLoading: false,
+      links: [
+        {
+          label: 'Cluster overview \n dashboard',
+          icon: 'GrafanaIcon',
+          url: 'https://grafana.example.com/d/cluster',
+        },
+      ],
+    }),
+  }),
+);
+jest.mock('../../hooks/useWorkerCapacity', () => ({
+  getClusterKey: ({
+    installationName,
+    namespace,
+    name,
+  }: {
+    installationName: string;
+    namespace?: string;
+    name: string;
+  }) => `${installationName}/${namespace}/${name}`,
+  useWorkerCapacity: () => ({
+    capacities: new Map([
+      [
+        'meadow/org-fern/alder-birch',
+        {
+          isLoading: false,
+          capacity: {
+            nodes: 12,
+            vcpus: 48,
+            memoryBytes: 192 * 1024 ** 3,
+            uncountedPools: [],
+          },
+        },
+      ],
+    ]),
+  }),
+}));
+jest.mock('../../hooks', () => ({
+  ...jest.requireActual('../../hooks'),
+  useFriendlyItemsConfiguration: () => undefined,
+  useInstallationsInfo: () => ({
+    installationsInfo: [{ name: 'meadow', baseDomain: mockBaseDomain }],
+    isLoading: false,
+  }),
+}));
+jest.mock('../../hooks/useK8sVersionEOLDate', () => ({
+  useK8sVersionEOLDate: () => '2027-03-28',
+}));
+jest.mock('@giantswarm/backstage-plugin-flux-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-flux-react'),
+  useGitOpsSource: () => ({
+    inGit: mockInGit,
+    isLoading: false,
+    url: 'https://github.com/example/fern-gitops/tree/main/clusters',
+    kustomization: { name: 'fern-gitops', namespace: 'flux-giantswarm' },
+    errors: [],
+  }),
+}));
+
+const LINKS: PlatformLinks = {
+  platform: '/platform',
+  clusters: '/platform/clusters',
+  cluster: ({ installationName, namespace, name }) =>
+    `/platform/clusters/${installationName}/${namespace}/${name}`,
+};
+
+function clusterOf(
+  name: string,
+  namespace: string,
+  {
+    management = false,
+    deleting = false,
+  }: { management?: boolean; deleting?: boolean } = {},
+): Cluster {
+  return new Cluster(
+    {
+      apiVersion: 'cluster.x-k8s.io/v1beta2',
+      kind: 'Cluster',
+      metadata: {
+        name,
+        namespace,
+        creationTimestamp: '2024-01-12T00:00:00Z',
+        ...(deleting && { deletionTimestamp: '2026-11-17T08:00:00Z' }),
+        labels: {
+          'cluster.x-k8s.io/cluster-name': name,
+          app: 'cluster-aws',
+          'app.kubernetes.io/version': '3.4.1',
+          'release.giantswarm.io/version': '31.1.0',
+          'giantswarm.io/organization': management ? 'giantswarm' : 'fern',
+          'giantswarm.io/service-priority': 'highest',
+        },
+        annotations: {
+          'cluster.giantswarm.io/description': 'Fern production',
+        },
+      },
+      spec: {
+        controlPlaneEndpoint: {
+          host: `api.${name}.meadow.example.com`,
+          port: 443,
+        },
+        infrastructureRef: {
+          apiGroup: 'infrastructure.cluster.x-k8s.io',
+          kind: 'AWSCluster',
+          name,
+        },
+      },
+      status: {
+        conditions: [{ type: 'ControlPlaneInitialized', status: 'True' }],
+      },
+    } as any,
+    'meadow',
+  );
+}
+
+function appOf(name: string, namespace: string): App {
+  return new App(
+    {
+      apiVersion: 'application.giantswarm.io/v1alpha1',
+      kind: 'App',
+      metadata: {
+        name,
+        namespace,
+        labels: {
+          'kustomize.toolkit.fluxcd.io/name': 'fern-gitops',
+          'kustomize.toolkit.fluxcd.io/namespace': 'flux-giantswarm',
+        },
+      },
+      spec: { name: 'cluster-aws', namespace, version: '3.4.1' },
+    } as any,
+    'meadow',
+  );
+}
+
+function stateOf(state: Partial<ClusterReadState>): ClusterReadState {
+  return {
+    installationName: 'meadow',
+    isDeleting: false,
+    loading: false,
+    notFound: false,
+    error: null,
+    refreshError: null,
+    ...state,
+  };
+}
+
+function Path() {
+  return <output aria-label="path">{useLocation().pathname}</output>;
+}
+
+function renderPage(path = '/platform/clusters/meadow/org-fern/alder-birch') {
+  return renderInTestApp(
+    <PageHeaderActionsProvider>
+      <PlatformLinksProvider links={LINKS}>
+        <Routes>
+          <Route
+            path="/platform/clusters/:installationName/:namespace/:name/*"
+            element={<PlatformClusterRoute />}
+          />
+        </Routes>
+        <Path />
+      </PlatformLinksProvider>
+    </PageHeaderActionsProvider>,
+    { initialRouteEntries: [path] },
+  );
+}
+
+const workload = clusterOf('alder-birch', 'org-fern');
+
+describe('PlatformClusterPage', () => {
+  beforeEach(() => {
+    mockInstallations = { clusters: ['meadow'], isLoading: false, error: null };
+    mockDisabled = [];
+    mockBaseDomain = 'meadow.example.com';
+    mockInGit = true;
+    mockState = stateOf({
+      cluster: workload,
+      clusterApp: appOf('alder-birch', 'org-fern'),
+    });
+  });
+
+  it('shows a workload cluster with its state, facts and Overview', async () => {
+    await renderPage();
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'alder-birch' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Ready')).toBeInTheDocument();
+    expect(
+      screen.getByText('Workload cluster of the fern organization in meadow.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Clusters' })).toHaveAttribute(
+      'href',
+      '/platform/clusters',
+    );
+    expect(screen.getByRole('tab', { name: 'Overview' })).toBeInTheDocument();
+    expect(screen.getAllByRole('tab')).toHaveLength(1);
+
+    const facts = screen.getByRole('complementary', { name: 'Details' });
+    // A workload cluster's environment leads to its management cluster.
+    expect(within(facts).getByRole('link', { name: 'meadow' })).toHaveAttribute(
+      'href',
+      '/platform/clusters/meadow/org-giantswarm/meadow',
+    );
+    expect(facts.textContent).toContain('fern');
+    expect(facts.textContent).toContain('eu-central-1');
+    expect(facts.textContent).toContain('123456789012');
+    expect(
+      within(facts).getByRole('link', { name: /Cluster overview dashboard/ }),
+    ).toHaveAttribute('href', 'https://grafana.example.com/d/cluster');
+
+    const release = screen.getByRole('region', { name: 'Release' });
+    expect(release.textContent).toContain('31.1.0');
+    expect(release.textContent).toContain(
+      '1.31.7 ·supported until 28 Mar 2027',
+    );
+
+    const labels = screen.getByRole('region', {
+      name: 'Labels and annotations',
+    });
+    expect(labels.textContent).toContain('Fern production');
+    expect(labels.textContent).toContain('Service priority');
+
+    const gitOps = screen.getByRole('region', { name: 'GitOps delivery' });
+    expect(gitOps.textContent).toContain('Kustomization fern-gitops');
+    expect(
+      within(gitOps).getByRole('link', { name: /example\/fern-gitops/ }),
+    ).toBeInTheDocument();
+
+    const login = screen.getByRole('region', { name: 'Work with the cluster' });
+    expect(login.textContent).toContain(
+      'kubectl gs login api.meadow.example.com',
+    );
+    expect(login.textContent).toContain('--workload-cluster alder-birch');
+
+    expect(
+      screen.getByRole('button', { name: /Technical details/ }),
+    ).toBeInTheDocument();
+  });
+
+  it('describes a management cluster and leaves its environment unlinked', async () => {
+    mockState = stateOf({
+      cluster: clusterOf('meadow', 'org-giantswarm', { management: true }),
+      clusterApp: appOf('meadow', 'org-giantswarm'),
+    });
+    await renderPage('/platform/clusters/meadow/org-giantswarm/meadow');
+
+    expect(
+      screen.getByText('Management cluster of the meadow environment.'),
+    ).toBeInTheDocument();
+    const facts = screen.getByRole('complementary', { name: 'Details' });
+    expect(
+      within(facts).queryByRole('link', { name: 'meadow' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('leaves out what the cluster does not have', async () => {
+    mockBaseDomain = undefined;
+    mockInGit = false;
+    await renderPage();
+
+    expect(
+      screen.queryByRole('region', { name: 'GitOps delivery' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('region', { name: 'Work with the cluster' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('says a cluster is being deleted', async () => {
+    mockState = stateOf({
+      cluster: clusterOf('alder-birch', 'org-fern', { deleting: true }),
+      isDeleting: true,
+    });
+    await renderPage();
+
+    expect(screen.getByText('Deleting')).toBeInTheDocument();
+    expect(
+      screen.getByText('alder-birch is being deleted'),
+    ).toBeInTheDocument();
+  });
+
+  it('reads in the final geometry while the cluster loads', async () => {
+    mockState = stateOf({ loading: true });
+    await renderPage();
+
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Reading alder-birch…' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Overview' })).toBeInTheDocument();
+  });
+
+  it('says when the environment has no such cluster', async () => {
+    mockState = stateOf({ notFound: true });
+    await renderPage();
+
+    expect(
+      screen.getByText('No cluster alder-birch in meadow'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Back to clusters' }),
+    ).toHaveAttribute('href', '/platform/clusters');
+  });
+
+  it('says when the portal knows no such environment', async () => {
+    await renderPage('/platform/clusters/nowhere/org-fern/alder-birch');
+
+    expect(screen.getByText('No environment nowhere')).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Back to clusters' }),
+    ).toBeInTheDocument();
+  });
+
+  it('says when the environment cannot be reached', async () => {
+    mockDisabled = ['meadow'];
+    await renderPage();
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Could not reach meadow',
+    );
+  });
+
+  it('says why the cluster could not be read', async () => {
+    mockState = stateOf({ error: new Error('the API answered 503') });
+    await renderPage();
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Could not read alder-birch',
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent('the API answered 503');
+  });
+
+  it('opens Overview for a tab the page does not have', async () => {
+    await renderPage('/platform/clusters/meadow/org-fern/alder-birch/apps');
+
+    expect(screen.getByRole('status', { name: 'path' })).toHaveTextContent(
+      '/platform/clusters/meadow/org-fern/alder-birch',
+    );
+    expect(screen.getByRole('region', { name: 'Release' })).toBeInTheDocument();
+  });
+});

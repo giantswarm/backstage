@@ -6,6 +6,7 @@ import {
   CellText,
   type ColumnConfig,
   Flex,
+  Link,
   SearchField,
   type SortDescriptor,
   Table,
@@ -25,8 +26,6 @@ import {
   matchesQuery,
   ShowMore,
   StackedRowList,
-  StatusDot,
-  type StatusDotTone,
   UnreachableInstallationsAlert,
   useCatalogFilters,
   usePhoneLayout,
@@ -43,7 +42,6 @@ import {
   type RelatedReadFailures,
   useClustersData,
 } from '../../clusters/ClustersDataProvider';
-import { ClusterStatuses } from '../../clusters/ClusterStatus';
 import {
   formatWorkerCpu,
   formatWorkerMemory,
@@ -68,12 +66,8 @@ import {
   statusLabel,
 } from './platformClusterColumns';
 import { usePlatformClustersState } from '../PlatformClustersProvider';
-
-const STATUS_TONES: Record<string, StatusDotTone> = {
-  [ClusterStatuses.Ready]: 'success',
-  [ClusterStatuses.Creating]: 'info',
-  [ClusterStatuses.Deleting]: 'neutral',
-};
+import { PlatformClusterStatusDot } from '../PlatformClusterStatusDot';
+import { type PlatformLinks, usePlatformLinks } from '../PlatformLinks';
 
 /** Why a list that needs the portal session shows nothing while it is gone. */
 const SESSION_ENDED_DESCRIPTION =
@@ -116,15 +110,6 @@ function searchText(row: PlatformClusterRow): string {
   return [row.name, row.description, row.installationName, row.organization]
     .filter(Boolean)
     .join(' ');
-}
-
-function ClusterStatusDot({ status }: { status: string }) {
-  return (
-    <StatusDot
-      tone={STATUS_TONES[status] ?? 'neutral'}
-      label={statusLabel(status)}
-    />
-  );
 }
 
 /**
@@ -252,12 +237,27 @@ function managementMark(row: PlatformClusterRow) {
   ) : undefined;
 }
 
+/** The cluster's page, where the list has the Platform section's links. */
+function clusterHref(
+  links: PlatformLinks | undefined,
+  row: PlatformClusterRow,
+): string | undefined {
+  // Cluster API clusters are namespaced: a row without one has no address.
+  return links && row.namespace
+    ? links.cluster({
+        installationName: row.installationName,
+        namespace: row.namespace,
+        name: row.name,
+      })
+    : undefined;
+}
+
 /**
- * The name, then the management cluster's mark after it, and the
- * description under them: `CellText`'s layout, which takes an icon only
- * before the name.
+ * The name, a link to the cluster's page, then the management cluster's mark
+ * after it, and the description under them: `CellText`'s layout, which takes
+ * an icon only before the name.
  */
-function nameCell(row: PlatformClusterRow) {
+function nameCell(row: PlatformClusterRow, href: string | undefined) {
   return (
     <Cell>
       <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -269,15 +269,27 @@ function nameCell(row: PlatformClusterRow) {
             minWidth: 0,
           }}
         >
-          <Text
-            as="p"
-            variant="body-medium"
-            truncate
-            title={row.name}
-            style={{ minWidth: 0 }}
-          >
-            {row.name}
-          </Text>
+          {href ? (
+            <Link
+              href={href}
+              variant="body-medium"
+              truncate
+              title={row.name}
+              style={{ minWidth: 0 }}
+            >
+              {row.name}
+            </Link>
+          ) : (
+            <Text
+              as="p"
+              variant="body-medium"
+              truncate
+              title={row.name}
+              style={{ minWidth: 0 }}
+            >
+              {row.name}
+            </Text>
+          )}
           {managementMark(row)}
         </span>
         {row.description && (
@@ -331,6 +343,7 @@ type ColumnSpec = Omit<ColumnConfig<PlatformClusterRow>, 'id' | 'label'>;
 function buildColumnSpecs(
   now: Date,
   failures: Record<string, RelatedReadFailures>,
+  links: PlatformLinks | undefined,
 ): Record<PlatformClusterColumn, ColumnSpec> {
   const failed = (row: PlatformClusterRow) =>
     failures[row.installationName] ?? {};
@@ -339,14 +352,14 @@ function buildColumnSpecs(
       isRowHeader: true,
       defaultWidth: '2fr',
       minWidth: MIN_WIDTHS.name,
-      cell: nameCell,
+      cell: row => nameCell(row, clusterHref(links, row)),
     },
     status: {
       defaultWidth: '1fr',
       minWidth: MIN_WIDTHS.status,
       cell: row => (
         <Cell>
-          <ClusterStatusDot status={row.status} />
+          <PlatformClusterStatusDot status={row.status} />
         </Cell>
       ),
     },
@@ -450,18 +463,25 @@ function buildColumnSpecs(
  * At phone width, one row per cluster: its name and state, then where it
  * runs, whose it is and its release.
  */
-function ClusterStackedList({ rows }: { rows: PlatformClusterRow[] }) {
+function ClusterStackedList({
+  rows,
+  links,
+}: {
+  rows: PlatformClusterRow[];
+  links: PlatformLinks | undefined;
+}) {
   return (
     <StackedRowList
       aria-label="Clusters"
       rows={rows.map(row => ({
         id: row.id,
+        href: clusterHref(links, row),
         title: (
           <>
             {row.name} {managementMark(row)}
           </>
         ),
-        status: <ClusterStatusDot status={row.status} />,
+        status: <PlatformClusterStatusDot status={row.status} />,
         facts: [row.installationName, row.organization, row.releaseVersion],
       }))}
     />
@@ -522,8 +542,8 @@ function UnlistedEnvironments({ everything }: { everything: boolean }) {
  * The Platform page's Clusters tab: every cluster the person can read, across
  * environments, searchable, filtered by environment, organization, status
  * and release, with a column picker at the end of the filter bar and headers
- * that sort. Rows do not open anything yet. Mounted inside a
- * `PlatformClustersProvider`.
+ * that sort. Each row opens its cluster's page. Mounted inside a
+ * `PlatformClustersProvider`, and a `PlatformLinksProvider` for the links.
  */
 export function PlatformClustersPanel() {
   const { data, relatedReadFailures } = useClustersData();
@@ -535,6 +555,7 @@ export function PlatformClustersPanel() {
     setVisibleColumns,
   } = usePlatformClustersState();
   const isPhone = usePhoneLayout();
+  const links = usePlatformLinks();
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortDescriptor>(
     PLATFORM_CLUSTERS_DEFAULT_SORT,
@@ -565,8 +586,8 @@ export function PlatformClustersPanel() {
   // One clock per read of the list, so every Created cell agrees.
   const now = useMemo(() => new Date(), [data]); // eslint-disable-line react-hooks/exhaustive-deps
   const columnSpecs = useMemo(
-    () => buildColumnSpecs(now, relatedReadFailures),
-    [now, relatedReadFailures],
+    () => buildColumnSpecs(now, relatedReadFailures, links),
+    [now, relatedReadFailures, links],
   );
   const columns = useMemo<ColumnConfig<PlatformClusterRow>[]>(
     () =>
@@ -683,13 +704,14 @@ export function PlatformClustersPanel() {
         >
           {page =>
             isPhone ? (
-              <ClusterStackedList rows={page} />
+              <ClusterStackedList rows={page} links={links} />
             ) : (
               <Table<PlatformClusterRow>
                 columnConfig={columns}
                 data={page}
                 pagination={{ type: 'none' }}
                 sort={{ descriptor: sort, onSortChange: setSort }}
+                rowConfig={{ getHref: row => clusterHref(links, row) }}
               />
             )
           }

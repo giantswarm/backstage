@@ -49,6 +49,11 @@ export type FixtureCluster = {
   servicePriority: 'highest' | 'medium' | 'lowest';
   createdAt: string;
   pools: FixtureClusterPool[];
+  /**
+   * The Git repository a Flux Kustomization applies the cluster's App from,
+   * where the cluster is managed through GitOps.
+   */
+  gitOpsRepository?: string;
 };
 
 export type FixtureClusterSettings = {
@@ -128,7 +133,8 @@ function pools(
  * then `count` workload clusters taking the states in turn, each of a ready
  * organization of its installation in turn (a made-up one where there is
  * none), on one of three releases (the oldest past its Kubernetes end of
- * life in `gs.kubernetesVersions` of the fixture config), then the GPU
+ * life in `gs.kubernetesVersions` of the fixture config), every other one
+ * managed through GitOps as the management clusters are, then the GPU
  * clusters model hosting serves from.
  */
 export function buildClusters(
@@ -162,6 +168,7 @@ export function buildClusters(
           servicePriority: 'highest',
           createdAt: isoAgo(context, context.random.int(400, 900) * DAY),
           pools: pools(context, installation.name, 'ready', 2),
+          gitOpsRepository: `${installation.name}-management-clusters`,
         }));
 
   const turns = new Map<string, number>();
@@ -184,11 +191,12 @@ export function buildClusters(
     (installation, state, nameLength, index): FixtureCluster => {
       const cluster = name(nameLength);
       const release = RELEASES[index % RELEASES.length];
+      const organization = organizationOf(installation.name);
       return {
         installation: installation.name,
         name: cluster.name,
         kind: 'workload',
-        organization: organizationOf(installation.name),
+        organization,
         state,
         ...(index % 3 === 0 && {
           description: `${cluster.displayName} workloads`,
@@ -204,6 +212,10 @@ export function buildClusters(
             ? isoAgo(context, context.random.int(1, 6) * HOUR)
             : isoAgo(context, context.random.int(20, 700) * DAY),
         pools: pools(context, cluster.name, state, 1 + (index % 3)),
+        // Every other one managed through GitOps, the rest applied by hand.
+        ...(index % 2 === 0 && {
+          gitOpsRepository: `${organization}-gitops`,
+        }),
       };
     },
   );

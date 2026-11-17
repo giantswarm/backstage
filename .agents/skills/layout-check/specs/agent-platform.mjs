@@ -98,6 +98,37 @@ const everyClusterColumn = {
   },
 };
 
+/**
+ * Opens a cluster's page from the Platform section's list, at any width: the
+ * first ready workload cluster, the first management cluster (in `org-giantswarm`) or
+ * the first one being deleted, by its row's link and text.
+ */
+const openCluster = kind => async ({ page, skip }) => {
+  // Table rows, or on a phone the stacked list's items.
+  const rows = page.locator('tbody [role=row], li:has(a[href^="/platform/clusters/"])');
+  if (!(await shows(rows))) skip('no clusters listed');
+  const href = await page.evaluate(want => {
+    for (const row of document.querySelectorAll('tbody [role=row], li')) {
+      const href = row
+        .querySelector('a[href^="/platform/clusters/"]')
+        ?.getAttribute('href');
+      if (!href) continue;
+      const text = row.textContent ?? '';
+      const management = href.includes('/org-giantswarm/');
+      if (
+        (want === 'management' && management) ||
+        (want === 'deleting' && text.includes('Deleting')) ||
+        (want === 'workload' && !management && text.includes('Ready'))
+      ) {
+        return href;
+      }
+    }
+    return undefined;
+  }, kind);
+  if (!href) skip(`no ${kind} cluster on the list's first page`);
+  await page.goto(new URL(href, page.url()).href);
+};
+
 export default [
   { name: 'Home', path: '/' },
   { name: 'Sessions', path: '/sessions' },
@@ -216,6 +247,21 @@ export default [
     name: 'Platform · Clusters',
     path: '/platform/clusters',
     states: [everyClusterColumn],
+  },
+  {
+    name: 'Platform cluster',
+    path: '/platform/clusters',
+    setup: openCluster('workload'),
+  },
+  {
+    name: 'Platform cluster · management',
+    path: '/platform/clusters',
+    setup: openCluster('management'),
+  },
+  {
+    name: 'Platform cluster · deleting',
+    path: '/platform/clusters',
+    setup: openCluster('deleting'),
   },
 ];
 

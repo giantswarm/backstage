@@ -46,6 +46,7 @@ change needs something the rules do not settle, it needs a decision first.
 /customize/workspaces/<inst>/<org>/<name>/edit
 /platform                                               → /platform/clusters
 /platform/clusters                                      gs.features.platformSection only
+/platform/clusters/<inst>/<ns>/<name>                   bare = Overview, the only tab yet
 /agent-platform/**  →  one-hop redirects until the end of 2026
 ```
 
@@ -66,8 +67,12 @@ How it is mounted:
   Clusters. Only where `gs.features.platformSection.enabled` is on: its `if`
   reads the `platform-section` flag `PortalFeatureFlags` reports from that
   key, and `isAgentArea` counts `/platform` in the shell only then
-  (`useIsAgentArea`). Item 1 of giantswarm/giantswarm#39295; the planned
-  tree is `/platform/clusters/<inst>/<ns>/<name>[/node-pools|/gateways|/access]`,
+  (`useIsAgentArea`). A cluster's page is
+  `/platform/clusters/<inst>/<ns>/<name>` (`platformClusterRouteRef`, a sub
+  route of `platformRouteRef`; the page is gs's `PlatformClusterRoute`, which
+  links through the `PlatformLinks` the app's page provides). Items 1 and 2 of
+  giantswarm/giantswarm#39295; the planned tree adds
+  `/platform/clusters/<inst>/<ns>/<name>[/node-pools|/gateways|/access]`,
   `/platform/environments` and `/platform/environments/<inst>`.
 - `/agent-platform` (`page:agent-platform`) and `/agents` are the app's
   catch-alls (`legacyPagesModule.tsx`), which call
@@ -106,6 +111,7 @@ The shapes:
 |---|---|
 | agents, models | `<inst>/<ns>/<name>` |
 | connectors, tools, workflows (muster resources) | `<inst>/<name>` |
+| clusters (Platform) | `<inst>/<ns>/<name>` |
 | sessions | `<inst>/<id>` |
 | skills | the `<owner>/<repo>[/<dir…>]` splat, or `-/<host>/<repo path>[/-/<dir…>]` |
 
@@ -150,7 +156,8 @@ against two).
   in `packages/app/src/App.tsx`, or a helper built on one. Helpers:
   `useCustomizePaths`, `useSkillPaths`, `useNewSessionHref`
   (agent-platform); `useServerPageLinks`, `useWorkflowPageLinks`,
-  `useConnectorListPaths`, `useConnectorWizardLinks` (muster).
+  `useConnectorListPaths`, `useConnectorWizardLinks` (muster);
+  `usePlatformLinks` (gs, from the app's Platform page).
 - Every route ref is exported in its plugin's `routes`, so the app and the
   other plugin can bind and link to it.
 - Splat paths (skills) are built through one helper (`useSkillPaths` on
