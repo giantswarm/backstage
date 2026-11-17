@@ -7,6 +7,12 @@ import {
 } from '@backstage/ui';
 import ViewColumnIcon from '@material-ui/icons/ViewColumn';
 
+/**
+ * The class the shell's field styles (`agent-shell.css`) take a button on,
+ * so a trigger beside a filter bar's dropdowns reads as one of them.
+ */
+export const FIELD_TRIGGER_CLASS = 'ui-react-FieldTrigger';
+
 /** One column a list can show or hide. */
 export type ColumnPickerOption = {
   id: string;
@@ -48,6 +54,9 @@ export function ColumnPicker({
         aria-label="Columns"
         variant="secondary"
         size="small"
+        // The look of the filter dropdowns beside it: the shell draws its
+        // fields' edge, radius and focus ring on this class too.
+        className={FIELD_TRIGGER_CLASS}
       />
       <Popover placement="bottom end">
         <div style={{ minWidth: 200, maxHeight: 420, overflowY: 'auto' }}>

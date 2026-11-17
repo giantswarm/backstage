@@ -247,9 +247,52 @@ function managementMark(row: PlatformClusterRow) {
   return row.type === ClusterTypes.Management ? (
     <ClusterTypeManagementIcon
       titleAccess="Management cluster"
-      style={{ fontSize: 18 }}
+      style={{ fontSize: 18, flex: 'none' }}
     />
   ) : undefined;
+}
+
+/**
+ * The name, then the management cluster's mark after it, and the
+ * description under them: `CellText`'s layout, which takes an icon only
+ * before the name.
+ */
+function nameCell(row: PlatformClusterRow) {
+  return (
+    <Cell>
+      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        <span
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--bui-space-1)',
+            minWidth: 0,
+          }}
+        >
+          <Text
+            as="p"
+            variant="body-medium"
+            truncate
+            title={row.name}
+            style={{ minWidth: 0 }}
+          >
+            {row.name}
+          </Text>
+          {managementMark(row)}
+        </span>
+        {row.description && (
+          <Text
+            variant="body-medium"
+            color="secondary"
+            truncate
+            title={row.description}
+          >
+            {row.description}
+          </Text>
+        )}
+      </div>
+    </Cell>
+  );
 }
 
 /**
@@ -296,13 +339,7 @@ function buildColumnSpecs(
       isRowHeader: true,
       defaultWidth: '2fr',
       minWidth: MIN_WIDTHS.name,
-      cell: row => (
-        <CellText
-          title={row.name}
-          description={row.description}
-          leadingIcon={managementMark(row)}
-        />
-      ),
+      cell: nameCell,
     },
     status: {
       defaultWidth: '1fr',
@@ -419,8 +456,11 @@ function ClusterStackedList({ rows }: { rows: PlatformClusterRow[] }) {
       aria-label="Clusters"
       rows={rows.map(row => ({
         id: row.id,
-        title: row.name,
-        leading: managementMark(row),
+        title: (
+          <>
+            {row.name} {managementMark(row)}
+          </>
+        ),
         status: <ClusterStatusDot status={row.status} />,
         facts: [row.installationName, row.organization, row.releaseVersion],
       }))}
