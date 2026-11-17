@@ -14,8 +14,10 @@ import {
 } from './ShellSessionsTable';
 import { SEARCH_MIN } from '@giantswarm/backstage-plugin-ui-react';
 import {
+  mockContainerWidth,
   mockDesktopLayout,
   mockPhoneLayout,
+  type MockedContainerWidth,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
@@ -1079,6 +1081,102 @@ describe('SessionsTable in the shell layout', () => {
       ),
     );
     expect(mockNavigate).toHaveBeenCalledWith('/sessions/gazelle/b');
+  });
+
+  // Beside the side rail at 768px, and in a narrow window, the columns of
+  // short values keep their widths: Environment goes first, then the list
+  // stacks its rows as at phone width.
+  describe('in a container too narrow for every column', () => {
+    let layout: MockedLayout;
+    let container: MockedContainerWidth;
+    afterEach(() => {
+      container.restore();
+      layout.restore();
+    });
+
+    const headers = () =>
+      screen.getAllByRole('columnheader').map(cell => cell.textContent?.trim());
+
+    it('shows every column when they fit', async () => {
+      layout = mockDesktopLayout();
+      container = mockContainerWidth(1100);
+      await renderShell();
+
+      expect(headers()).toContain('Environment');
+    });
+
+    it('drops Environment first', async () => {
+      layout = mockDesktopLayout();
+      container = mockContainerWidth(700);
+      await renderShell();
+
+      expect(headers()).toContain('Last active');
+      expect(headers()).not.toContain('Environment');
+    });
+
+    it('stacks the rows when the rest does not fit either', async () => {
+      layout = mockDesktopLayout();
+      container = mockContainerWidth(500);
+      await renderShell();
+
+      expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+      expect(screen.getByRole('list', { name: 'Today' })).toBeInTheDocument();
+    });
+
+    it('names the environment on the session’s second line once its column is gone', async () => {
+      layout = mockDesktopLayout();
+      container = mockContainerWidth(700);
+      await renderShell();
+
+      const row = screen
+        .getByRole('link', { name: 'Triage this week' })
+        .closest('[role="row"]') as HTMLElement;
+      expect(within(row).getByText('gazelle')).toBeInTheDocument();
+    });
+
+    describe('with sessions in a workspace', () => {
+      const withWorkspace = rows.map((row, index) =>
+        index === 0
+          ? {
+              ...row,
+              workspace: {
+                volumeHandle: 'fs-1::docs',
+                fetched: [],
+                providers: [],
+              },
+            }
+          : row,
+      );
+
+      it('drops Environment, then Workspace, then stacks, and comes back as it widens', async () => {
+        layout = mockDesktopLayout();
+        container = mockContainerWidth(1100);
+        await renderShell(withWorkspace);
+        expect(headers()).toEqual(
+          expect.arrayContaining(['Workspace', 'Environment']),
+        );
+
+        // Beside the side rail on a ~1024px window: the table stays.
+        act(() => container.setWidth(900));
+        expect(headers()).toContain('Workspace');
+        expect(headers()).not.toContain('Environment');
+
+        act(() => container.setWidth(750));
+        expect(headers()).not.toContain('Workspace');
+        expect(headers()).toContain('Last active');
+        const row = screen
+          .getByRole('link', { name: 'Triage this week' })
+          .closest('[role="row"]') as HTMLElement;
+        expect(within(row).getByText('gazelle · ws-docs')).toBeInTheDocument();
+
+        act(() => container.setWidth(500));
+        expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+
+        act(() => container.setWidth(750));
+        expect(screen.getAllByRole('grid').length).toBeGreaterThan(0);
+        expect(headers()).not.toContain('Workspace');
+      });
+    });
   });
 
   describe('at phone width (T22 B1)', () => {
