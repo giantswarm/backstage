@@ -71,12 +71,14 @@ type Row = {
   source: string;
 };
 
-/** "12 runs · 2 days ago", "No runs yet". */
+/** "12 runs · 2 days ago", "No runs yet": the age in full, never "about". */
 export function runsLabel(response: WorkflowExecutionListResponse): string {
   if (response.total === 0) {
     return 'No runs yet';
   }
-  const latest = formatRelativeTime(response.executions?.[0]?.started_at);
+  const latest = formatRelativeTime(response.executions?.[0]?.started_at, {
+    strict: true,
+  });
   const runs = countNoun(response.total, 'run');
   return latest ? `${runs} · ${latest}` : runs;
 }
@@ -205,8 +207,8 @@ function WorkflowRows({
       id: 'runs',
       label: 'Runs',
       defaultWidth: '1.5fr',
-      // "12 runs · about 2 hours ago" on one line.
-      minWidth: 200,
+      // "123 runs · 59 minutes ago" on one line.
+      minWidth: 210,
       cell: row => <CellText title={row.runs ?? ''} />,
     },
     {

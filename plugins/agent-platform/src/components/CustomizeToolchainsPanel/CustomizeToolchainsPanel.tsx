@@ -84,50 +84,32 @@ function ToolsCell({
   );
 }
 
-/** "0.2.0, 0.1.0": the published versions, newest first. */
-export function versionsLabel(toolchain: Toolchain): string {
-  return toolchain.versions.map(imageTag).join(', ');
-}
-
 /**
  * "0.6.1 · 4 older": the newest version and how many came before it, short
- * enough for its column whatever the count; {@link versionsLabel} on hover.
+ * enough for its column whatever the count. Without a list of versions, the
+ * newest the toolchain names.
  */
 export function shortVersionsLabel(toolchain: Toolchain): string {
-  const [newest, ...older] = toolchain.versions.map(imageTag);
+  const [newest, ...older] = (toolchain.versions ?? []).map(imageTag);
   if (newest === undefined) {
-    return '—';
+    return toolchain.version ? imageTag(toolchain.version) : '—';
   }
   return older.length > 0 ? `${newest} · ${older.length} older` : newest;
 }
 
-/** A toolchain's versions, newest first, and when the newest was published. */
+/** A toolchain's versions, newest first, and how long ago the newest came. */
 function VersionsCell({ toolchain }: { toolchain: Toolchain }) {
-  const latest = toolchain.publishedAt
-    ? `Latest ${getRelativeDate(toolchain.publishedAt, new Date())}`
-    : undefined;
   return (
-    <Cell>
-      <Text
-        as="p"
-        variant="body-medium"
-        title={versionsLabel(toolchain)}
-        style={{ whiteSpace: 'nowrap' }}
-      >
-        {shortVersionsLabel(toolchain)}
-      </Text>
-      {latest && (
-        <Text
-          as="p"
-          variant="body-small"
-          color="secondary"
-          truncate
-          title={latest}
-        >
-          {latest}
-        </Text>
-      )}
-    </Cell>
+    <CellText
+      title={shortVersionsLabel(toolchain)}
+      description={
+        toolchain.publishedAt
+          ? `Latest ${getRelativeDate(toolchain.publishedAt, new Date(), {
+              strict: true,
+            })}`
+          : undefined
+      }
+    />
   );
 }
 
@@ -181,8 +163,8 @@ function ToolchainsTable({
       id: 'versions',
       label: 'Versions',
       defaultWidth: '1fr',
-      // "0.6.1 · 4 older"; when the newest came may end in an ellipsis.
-      minWidth: 140,
+      // "0.6.1 · 12 older", and "Latest 59 minutes ago" under it.
+      minWidth: 170,
       cell: row => <VersionsCell toolchain={row} />,
     },
     {

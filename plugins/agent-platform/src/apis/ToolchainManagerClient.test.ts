@@ -60,6 +60,17 @@ describe('ToolchainManagerClient', () => {
     expect(list.toolchains).toEqual([GO]);
   });
 
+  it('gives a toolchain the manager sent without versions an empty list', async () => {
+    const { versions: _omitted, ...withoutVersions } = GO;
+    const { api } = makeMusterApi({ toolchains: [withoutVersions] });
+    const list = await new ToolchainManagerClient(
+      api,
+      'gazelle',
+    ).listToolchains();
+
+    expect(list.toolchains[0].versions).toEqual([]);
+  });
+
   it('answers grant_required as data, with no toolchains', async () => {
     const { api } = makeMusterApi({
       status: 'grant_required',

@@ -215,7 +215,12 @@ function ConnectorName({
               {row.entry.displayName}
             </Link>
           ) : (
-            <Text variant="body-medium" weight="bold" truncate>
+            <Text
+              variant="body-medium"
+              weight="bold"
+              truncate
+              title={row.entry.displayName}
+            >
               {row.entry.displayName}
             </Text>
           )}
@@ -717,8 +722,8 @@ function ConnectorsTable({
       label: 'Sign-in',
       isSortable: true,
       defaultWidth: '1.2fr',
-      // Its header with the sort arrow.
-      minWidth: 110,
+      // "Shared AWS identity", the longest way to sign in.
+      minWidth: 160,
       cell: row => <CellText title={row.auth} />,
     },
     {
@@ -726,8 +731,8 @@ function ConnectorsTable({
       label: 'Tools',
       isSortable: true,
       defaultWidth: '1fr',
-      // Its header with the sort arrow, and "10 tools".
-      minWidth: 100,
+      // "3 of 42 tools match" while a search matches tools.
+      minWidth: 170,
       cell: row => (
         <CellText
           title={

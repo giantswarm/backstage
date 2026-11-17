@@ -1,6 +1,10 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import {
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { WorkspaceRow } from '../../lib/workspaceList';
 import type { WorkspacesData } from '../WorkspacesDataProvider';
 import { workspacesRouteRef } from '../../routes';
@@ -477,5 +481,34 @@ describe('CustomizeWorkspacesPanel', () => {
       within(dialog).getByRole('button', { name: 'Delete workspace' }),
     );
     expect(mockRemove.mutate).toHaveBeenCalled();
+  });
+});
+
+// The tables skill: a list a person scans to open one item stacks its rows
+// at phone width; a table there cut a name to "platform-t…".
+describe('CustomizeWorkspacesPanel at phone width', () => {
+  let layout: MockedLayout;
+  beforeEach(() => {
+    mockData = data();
+    jest.clearAllMocks();
+  });
+  afterEach(() => layout.restore());
+
+  it('lists each workspace as a stacked row: its name, sync state, facts and actions', async () => {
+    layout = mockPhoneLayout();
+    await renderPanel();
+
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+    const list = screen.getByRole('list', { name: 'Workspaces' });
+    const row = within(list)
+      .getAllByRole('listitem')
+      .find(item => within(item).queryByRole('link', { name: 'docs' }));
+    expect(row).toBeDefined();
+    expect(within(row!).getByText('Synchronized')).toBeInTheDocument();
+    expect(within(row!).getByText(/12 repositories/)).toBeInTheDocument();
+    expect(within(row!).getByText(/2 sessions/)).toBeInTheDocument();
+    expect(
+      within(row!).getByRole('button', { name: 'Actions for docs' }),
+    ).toBeInTheDocument();
   });
 });
