@@ -3,7 +3,10 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import type { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
-import { preparedCredentialOperation } from '../lib/credentialOperations';
+import {
+  credentialFormOf,
+  preparedCredentialOperation,
+} from '../lib/credentialOperations';
 import {
   MODEL_CONFIG_NAMESPACE,
   isVertexAIProvider,
@@ -160,15 +163,12 @@ export function useSaveOrganizationModel(installation: string | undefined) {
             throw error;
           });
       };
-      const formOf = (operation: string) => {
-        const form = formLink?.({ installation, namespace, operation });
-        if (!form) {
-          throw new Error(
-            'The key is entered on the credential form, and this portal has none.',
-          );
-        }
-        return form;
-      };
+      const formOf = (operation: string) =>
+        credentialFormOf(
+          formLink,
+          { installation, namespace, operation },
+          'The key is entered on the credential form, and this portal has none.',
+        );
       const configuration = {
         ...(isVertexAIProvider(values.provider)
           ? {

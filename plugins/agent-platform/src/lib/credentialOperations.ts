@@ -139,6 +139,24 @@ export function preparedCredentialOperation(
 }
 
 /**
+ * The portal's credential form for a prepared operation: `formLink` is the
+ * form's route as `useRouteRef` gives it, `undefined` where this portal does
+ * not bind the route. Without one the person cannot enter the value, and the
+ * write is refused with `unavailable`, the caller's words for it.
+ */
+export function credentialFormOf<Params>(
+  formLink: ((params: Params) => string) | undefined,
+  params: Params,
+  unavailable: string,
+): string {
+  const form = formLink?.(params);
+  if (!form) {
+    throw new Error(unavailable);
+  }
+  return form;
+}
+
+/**
  * The Secret and key pairs the operation asks for, once each: what the
  * consumer reads and is missing or replaced.
  */

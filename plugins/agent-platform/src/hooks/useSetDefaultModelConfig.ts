@@ -5,7 +5,10 @@ import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react
 
 import { AgentManagerClient } from '../apis/AgentManagerClient';
 import { useOrganizationDirectory } from '../components/OrganizationDirectoryProvider';
-import { preparedCredentialOperation } from '../lib/credentialOperations';
+import {
+  credentialFormOf,
+  preparedCredentialOperation,
+} from '../lib/credentialOperations';
 import { modelCredentialsRouteRef } from '../routes';
 import { invalidateModelReads } from './defaultModelWrites';
 import { modelScopeRefusal } from './modelScope';
@@ -54,12 +57,13 @@ export function useSetDefaultModelConfig() {
         });
         const operation = preparedCredentialOperation(result);
         if (!operation) return {};
-        const form = credentialForm?.({ installation, namespace, operation });
-        if (!form)
-          throw new Error(
+        return {
+          form: credentialFormOf(
+            credentialForm,
+            { installation, namespace, operation },
             'This model needs a credential, but the credential form is unavailable.',
-          );
-        return { form };
+          ),
+        };
       } finally {
         await invalidateModelReads(queryClient, installation, namespace);
       }

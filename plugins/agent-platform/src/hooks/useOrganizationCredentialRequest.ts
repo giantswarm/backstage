@@ -6,6 +6,7 @@ import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import {
+  credentialFormOf,
   type CredentialResourceResult,
   preparedCredentialOperation,
 } from '../lib/credentialOperations';
@@ -164,24 +165,29 @@ export function useOrganizationCredentialRequest(
       }
       // A model's request opens where every model's does, wherever it was
       // started; a connector's stays under its organization.
+      const unavailable =
+        'The credential form is not configured. Ask the portal administrator to enable the organization credential route, then start again.';
       const form =
         request.kind === 'credential'
-          ? formLink?.({
-              installation,
-              parent: organization.parent,
-              name: organization.organization,
-              operation,
-            })
-          : modelFormLink?.({
-              installation,
-              namespace: organization.namespace,
-              operation,
-            });
-      if (!form) {
-        throw new Error(
-          'The credential form is not configured. Ask the portal administrator to enable the organization credential route, then start again.',
-        );
-      }
+          ? credentialFormOf(
+              formLink,
+              {
+                installation,
+                parent: organization.parent,
+                name: organization.organization,
+                operation,
+              },
+              unavailable,
+            )
+          : credentialFormOf(
+              modelFormLink,
+              {
+                installation,
+                namespace: organization.namespace,
+                operation,
+              },
+              unavailable,
+            );
       return { result, form };
     },
     onSuccess: ({ form }) => {

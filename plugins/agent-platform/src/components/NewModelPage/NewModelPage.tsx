@@ -57,13 +57,8 @@ import { useModelNamespaces } from '../../hooks/useModelNamespaces';
 import { useSaveOrganizationModel } from '../../hooks/useSaveOrganizationModel';
 import { useModelSettingsSupport } from '../../hooks/useModelSettingsSupport';
 import { refusedSettingErrors } from '../../lib/modelSettings';
-import {
-  AgentManagerError,
-  AgentManagerNotConnectedError,
-} from '../../lib/agentManager';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
-import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
-import { PortalSessionEndedError } from '../../lib/portalSession';
+import { OrganizationWriteError } from '../OrganizationWriteError';
 import { ModelConfigFormFields } from '../ModelConfigForm';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { DefaultModelChoice } from './DefaultModelChoice';
@@ -608,71 +603,18 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
       )}
 
       {error && Object.keys(settingErrors).length === 0 && (
-        <SaveError
+        <OrganizationWriteError
           error={error}
           installation={installation ?? ''}
-          isEdit={Boolean(edit)}
           organization={organization?.organization}
+          signInAction="An organization's models are saved"
+          adminAction="adds or changes its models"
+          title={
+            edit ? 'Could not save the model' : 'Could not connect the model'
+          }
           onSignedIn={resetOrganization}
         />
       )}
     </WizardFrame>
-  );
-}
-
-/**
- * Why the save failed, in words that say what to do: agent-manager's refusal
- * of a person who may not change the organization's models names that
- * right, and a muster session without agent-manager offers the sign-in.
- */
-function SaveError({
-  error,
-  installation,
-  isEdit,
-  organization,
-  onSignedIn,
-}: {
-  error: Error;
-  installation: string;
-  isEdit: boolean;
-  /** The organization the model is in, when it is one's. */
-  organization?: string;
-  onSignedIn: () => void;
-}) {
-  if (error instanceof PortalSessionEndedError) {
-    return <PortalSessionEndedAlert />;
-  }
-  if (error instanceof AgentManagerNotConnectedError) {
-    return (
-      <ConnectAgentManagerAlert
-        installation={installation}
-        message={error.message}
-        action="An organization's models are saved"
-        signInRequired={error.signInRequired}
-        onSignedIn={onSignedIn}
-      />
-    );
-  }
-  if (
-    organization &&
-    error instanceof AgentManagerError &&
-    error.code === 'forbidden'
-  ) {
-    return (
-      <Alert
-        status="danger"
-        title="Not permitted"
-        description={`Only an admin of the organization ${organization} adds or changes its models. Ask one of its admins to make the change, or to make you an admin. agent-manager answered: ${error.message}`}
-      />
-    );
-  }
-  return (
-    <Alert
-      status="danger"
-      title={
-        isEdit ? 'Could not save the model' : 'Could not connect the model'
-      }
-      description={error.message}
-    />
   );
 }
