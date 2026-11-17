@@ -242,16 +242,36 @@ const SETTING_HINTS: Record<(typeof MODEL_SETTINGS_FIELDS)[number], string> = {
 const SETTING_PATH =
   /\b(?:spec\.[A-Za-z]+\.)?(maxTokens|promptCaching|cacheTTL)\b/;
 
+/** A model setting, by its `set_organization_model` argument. */
+export type ModelSettingField = (typeof MODEL_SETTINGS_FIELDS)[number];
+
+/**
+ * agent-manager's or the API server's refusal of a setting, in the form's
+ * words: which setting, and what to do. `onField` says the form shows the
+ * setting, so the message goes under it; a setting the provider lacks
+ * (`unknown field`) has no field on the form and goes in the page's alert.
+ */
+export class ModelSettingRefusalError extends Error {
+  readonly name = 'ModelSettingRefusalError';
+  constructor(
+    readonly field: ModelSettingField,
+    readonly onField: boolean,
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+  }
+}
+
 /**
  * agent-manager's or the API server's refusal of a setting
- * (`invalid_request` that names the field, `spec.openAI.promptCaching`, say),
- * in the form's words: which setting, and what to do. `undefined` for any
- * other error.
+ * (`invalid_request` that names the field, `spec.openAI.promptCaching`, say)
+ * as a {@link ModelSettingRefusalError}; `undefined` for any other error.
  */
 export function modelSettingRefusal(
   error: unknown,
   provider?: string,
-): string | undefined {
+): ModelSettingRefusalError | undefined {
   if (
     !(error instanceof AgentManagerError) ||
     error.code !== 'invalid_request'
@@ -260,11 +280,30 @@ export function modelSettingRefusal(
   }
   const match = SETTING_PATH.exec(error.message);
   if (!match) return undefined;
-  const field = match[1] as (typeof MODEL_SETTINGS_FIELDS)[number];
+  const field = match[1] as ModelSettingField;
   const label = SETTING_LABELS[field];
   if (/unknown field|not declared/i.test(error.message)) {
     const whose = provider ? `${provider} models` : 'This provider’s models';
-    return `${whose} have no ${label}, so the setting was refused and nothing was saved. Leave the ${label} out.`;
+    return new ModelSettingRefusalError(
+      field,
+      false,
+      `${whose} have no ${label}, so the setting was refused and nothing was saved. Leave the ${label} out.`,
+      { cause: error },
+    );
   }
-  return `The ${label} was refused, and nothing was saved. ${SETTING_HINTS[field]}`;
+  return new ModelSettingRefusalError(
+    field,
+    field !== 'promptCaching',
+    `The ${label} was refused, and nothing was saved. ${SETTING_HINTS[field]}`,
+    { cause: error },
+  );
+}
+
+/** The setting a refusal shows under, when the form shows it. */
+export function refusedSettingErrors(
+  error: unknown,
+): Partial<Record<ModelSettingField, string>> {
+  return error instanceof ModelSettingRefusalError && error.onField
+    ? { [error.field]: error.message }
+    : {};
 }

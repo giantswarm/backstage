@@ -664,7 +664,6 @@ describe("NewModelPage · an organization's model settings", () => {
       screen.getByRole('textbox', { name: /Token limit/ }),
       '8192',
     );
-    await userEvent.tab();
     await userEvent.click(
       screen.getByRole('button', { name: 'Continue to credential' }),
     );
@@ -770,8 +769,8 @@ describe("NewModelPage · an organization's model settings", () => {
     ).toHaveTextContent('1 hour');
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
 
+    // Typed and saved at once, without leaving the field first.
     await userEvent.clear(limit);
-    await userEvent.tab();
     await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(mockOrganizationSave).toHaveBeenCalledTimes(1));
@@ -780,5 +779,36 @@ describe("NewModelPage · an organization's model settings", () => {
       promptCaching: true,
       cacheTTL: '1h',
     });
+  });
+
+  it('keeps digits alone in the token limit', async () => {
+    await renderPage();
+    await chooseAcme();
+    const limit = screen.getByRole('textbox', { name: /Token limit/ });
+
+    await userEvent.type(limit, '08,1a92');
+
+    expect(limit).toHaveValue('8192');
+  });
+
+  it("shows agent-manager's refusal of a setting under it, until it changes", async () => {
+    const { ModelSettingRefusalError } = jest.requireActual(
+      '../../lib/modelSettings',
+    );
+    mockOrganizationError = new ModelSettingRefusalError(
+      'maxTokens',
+      true,
+      'The token limit was refused, and nothing was saved. Enter a whole number of tokens above 0, or leave it empty for the provider’s default.',
+    );
+    await renderPage();
+    await chooseAcme();
+
+    const limit = screen.getByRole('textbox', { name: /Token limit/ });
+    expect(limit).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText(/The token limit was refused/)).toBeInTheDocument();
+    // Under the field, not in the page's alert.
+    expect(
+      screen.queryByText('Could not connect the model'),
+    ).not.toBeInTheDocument();
   });
 });

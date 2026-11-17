@@ -1053,6 +1053,12 @@ export class AgentManagerFixtureState {
     }
     if (request.cacheTTL !== undefined && request.cacheTTL !== '') {
       if (!caching) throw unknown('cacheTTL');
+      if (request.cacheTTL !== '5m' && request.cacheTTL !== '1h') {
+        throw refusal(
+          'invalid_request',
+          `dry run of ${fresh ? 'create' : 'update'} ModelConfig ${model.namespace}/${model.name}: spec.${providerBlockKey(model.provider)}.cacheTTL: Unsupported value: "${request.cacheTTL}": supported values: "5m", "1h"`,
+        );
+      }
       model.cacheTTL = request.cacheTTL;
     } else if (promptCaching && !model.cacheTTL) {
       model.cacheTTL = DEFAULT_CACHE_TTL;
@@ -1101,7 +1107,11 @@ export class AgentManagerFixtureState {
           `model ${existing.name} keeps its provider ${existing.provider}: its key is that provider's`,
         );
       }
-      const changed = this.configureModel(existing, request);
+      // On a copy, kept only when every setting passes: a refused write
+      // changes nothing, as the API server's dry run refuses it whole.
+      const draft = { ...existing };
+      const changed = this.configureModel(draft, request);
+      Object.assign(existing, draft);
       const makeDefault = Boolean(request.default) && !existing.default;
       if (makeDefault) {
         this.markDefault(installation, existing);

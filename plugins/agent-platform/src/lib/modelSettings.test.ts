@@ -11,6 +11,7 @@ import {
   modelSettingsSummary,
   newModelSettingsArguments,
   providerSettings,
+  refusedSettingErrors,
   storedModelSettings,
   takesModelSettings,
 } from './modelSettings';
@@ -153,29 +154,34 @@ describe('modelSettingsSummary', () => {
 
 describe('modelSettingRefusal', () => {
   it('names a setting the provider does not have, without the raw text', () => {
-    const message = modelSettingRefusal(
+    const refusal = modelSettingRefusal(
       new AgentManagerError(
         'invalid_request',
         'dry run of create ModelConfig ns/m: strict decoding error: unknown field "spec.openAI.promptCaching"',
       ),
       'OpenAI',
     );
-    expect(message).toBe(
-      'OpenAI models have no prompt caching, so the setting was refused and nothing was saved. Leave the prompt caching out.',
-    );
+    expect(refusal).toMatchObject({
+      field: 'promptCaching',
+      // The form has no such field: the page's alert says it.
+      onField: false,
+      message:
+        'OpenAI models have no prompt caching, so the setting was refused and nothing was saved. Leave the prompt caching out.',
+    });
+    expect(refusedSettingErrors(refusal)).toEqual({});
   });
 
-  it('names a refused value with what to enter', () => {
-    expect(
-      modelSettingRefusal(
-        new AgentManagerError(
-          'invalid_request',
-          'dry run of update ModelConfig ns/m: spec.anthropic.cacheTTL: Unsupported value: "2h"',
-        ),
+  it('names a refused value with what to enter, under its field', () => {
+    const refusal = modelSettingRefusal(
+      new AgentManagerError(
+        'invalid_request',
+        'dry run of update ModelConfig ns/m: spec.anthropic.cacheTTL: Unsupported value: "2h"',
       ),
-    ).toBe(
-      'The cache time was refused, and nothing was saved. Choose 5 minutes or 1 hour.',
     );
+    expect(refusedSettingErrors(refusal)).toEqual({
+      cacheTTL:
+        'The cache time was refused, and nothing was saved. Choose 5 minutes or 1 hour.',
+    });
   });
 
   it('leaves any other error alone', () => {

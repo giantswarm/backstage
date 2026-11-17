@@ -21,6 +21,7 @@ import {
   ModelConfigFormValues,
   providerHasEndpoint,
 } from '../../lib/modelConfigs';
+import { type ModelSettingField } from '../../lib/modelSettings';
 import { ModelSettingsFields } from './ModelSettingsFields';
 
 export type ModelConfigFormFieldsProps = {
@@ -56,6 +57,8 @@ export type ModelConfigFormFieldsProps = {
    * organization's model on an installation whose agent-manager takes them.
    */
   settings?: boolean;
+  /** agent-manager's refusal of a setting, under that setting. */
+  settingErrors?: Partial<Record<ModelSettingField, string>>;
 };
 
 function modelPlaceholder(provider: ModelConfigFormValues['provider']): string {
@@ -90,6 +93,7 @@ export function ModelConfigFormFields({
   replaceKey = false,
   onReplaceKeyChange,
   settings = false,
+  settingErrors,
 }: ModelConfigFormFieldsProps) {
   const providerOption = MODEL_PROVIDER_OPTIONS.find(
     option => option.id === values.provider,
@@ -311,6 +315,7 @@ export function ModelConfigFormFields({
           provider={values.provider}
           values={values}
           onChange={onChange}
+          errors={settingErrors}
         />
       )}
 

@@ -112,7 +112,7 @@ export function useOrganizationCredentialRequest(
             });
           }
           const refusal = modelSettingRefusal(error, request.provider);
-          if (refusal) throw new Error(refusal, { cause: error });
+          if (refusal) throw refusal;
           throw error;
         }
       }

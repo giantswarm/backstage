@@ -156,7 +156,7 @@ export function useSaveOrganizationModel(installation: string | undefined) {
             // A refused setting, in the form's words and not the API
             // server's.
             const refusal = modelSettingRefusal(error, request.provider);
-            if (refusal) throw new Error(refusal, { cause: error });
+            if (refusal) throw refusal;
             throw error;
           });
       };

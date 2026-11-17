@@ -1006,6 +1006,18 @@ it('writes and reports the model settings as agent-manager does', async () => {
   expect(listed()).not.toHaveProperty('maxTokens');
   expect(listed()).not.toHaveProperty('cacheTTL');
 
+  // A refused setting changes nothing, also the settings beside it.
+  await expect(
+    client.setOrganizationModel({
+      namespace: MODEL_CONFIG_NAMESPACE,
+      name: 'claude',
+      maxTokens: 2048,
+      cacheTTL: '2h',
+      requestId: 'request-5',
+    }),
+  ).rejects.toMatchObject({ code: 'invalid_request' });
+  expect(listed()).not.toHaveProperty('maxTokens');
+
   await expect(
     client.setOrganizationModel({
       namespace: MODEL_CONFIG_NAMESPACE,

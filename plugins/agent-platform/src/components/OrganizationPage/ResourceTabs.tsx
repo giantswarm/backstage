@@ -44,6 +44,7 @@ import {
   INITIAL_MODEL_SETTINGS,
   modelSettingsSummary,
   type ModelSettingsValues,
+  refusedSettingErrors,
 } from '../../lib/modelSettings';
 import { useModelSettingsSupport } from '../../hooks/useModelSettingsSupport';
 import { ModelSettingsFields } from '../ModelConfigForm';
@@ -136,6 +137,9 @@ function AddModelDialog({
   const modelError = trimmedModel
     ? undefined
     : "Enter the provider's model id.";
+  // A refused setting shows under it, and leaves once it changes.
+  const settingErrors = refusedSettingErrors(request.error);
+  const hasSettingError = Object.keys(settingErrors).length > 0;
   const close = (open: boolean) => {
     if (!open) {
       setName('');
@@ -153,7 +157,7 @@ function AddModelDialog({
       confirmLabel="Continue to the key"
       busyLabel="Preparing…"
       isBusy={request.isPending}
-      error={request.error?.message}
+      error={hasSettingError ? undefined : request.error?.message}
       onConfirm={() => {
         if (nameError || modelError) {
           validation.reveal();
@@ -212,10 +216,14 @@ function AddModelDialog({
           <ModelSettingsFields
             provider={provider}
             values={settingsValues}
-            onChange={patch =>
-              setSettingsValues(previous => ({ ...previous, ...patch }))
-            }
+            onChange={patch => {
+              if (Object.keys(patch).some(field => field in settingErrors)) {
+                request.reset();
+              }
+              setSettingsValues(previous => ({ ...previous, ...patch }));
+            }}
             framed={false}
+            errors={settingErrors}
           />
         )}
         <Text color="secondary">
