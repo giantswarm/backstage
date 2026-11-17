@@ -13,6 +13,7 @@ import {
   type MimirQueryResponse,
   type MimirService,
 } from '@giantswarm/backstage-plugin-gs-node';
+import { InstallationAuthenticationError } from './installationAuthenticationError';
 
 /** The part of `MimirService` the cost read needs; a stub in tests. */
 export type MimirQuerier = Pick<MimirService, 'query'>;
@@ -50,8 +51,13 @@ export async function readModelCost(options: {
   // Handled: the page shows the estimate and says why. No user in the
   // message, so one cause stays one line in the logs.
   const handled = (message: string, error: unknown) => {
-    if (error instanceof AuthenticationError) {
+    if (error instanceof InstallationAuthenticationError) {
       throw error;
+    }
+    // Mimir's refusal of the token, under a name of its own: Backstage's
+    // `AuthenticationError` means the portal refused the session token.
+    if (error instanceof AuthenticationError) {
+      throw new InstallationAuthenticationError(error.message);
     }
     logger.info(message, { installation, error: String(error) });
   };

@@ -15,6 +15,7 @@ import {
   withBuiltInPresets,
 } from '../lib/toolset';
 import { useMusterPluginApi } from './useMusterPluginApi';
+import { portalSessionError } from '../lib/portalSession';
 
 export type ToolsetPresets = {
   /**
@@ -41,7 +42,13 @@ function presetsQuery(musterApi: MusterApi | undefined, installation: string) {
     queryKey: musterToolsetPresetsQueryKey(installation),
     queryFn: () =>
       // `limit: 1`: the presets are the point; the page of tools is not.
-      musterApi!.filterTools({ installation, includePresets: true, limit: 1 }),
+      musterApi!
+        .filterTools({ installation, includePresets: true, limit: 1 })
+        // The portal refusing the session token is said as that, never in
+        // its words (`lib/portalSession.ts`).
+        .catch(failure => {
+          throw portalSessionError(failure);
+        }),
     // Installation configuration; a minute of staleness is fine.
     staleTime: 60_000,
   };

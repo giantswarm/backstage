@@ -30,6 +30,7 @@ import {
   useToolchainSources,
   useToolchains,
 } from '../../hooks/useToolchainManager';
+import { usePortalSessionEnded } from '../../hooks/usePortalSessionEnded';
 import { toolchainDetailRouteRef } from '../../routes';
 import {
   sharedIdentityReason,
@@ -45,6 +46,7 @@ import {
   type ToolchainSource,
 } from '../../lib/toolchainManager';
 import { AddToolchainSourceButton } from '../AddToolchainSourceDialog';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { SharedIdentityNote } from '../SharedIdentityNote';
 import { ToolchainGrantPrompt } from '../ToolchainGrantPrompt';
 import { ToolchainReadFailure } from '../ToolchainReadFailure';
@@ -341,6 +343,13 @@ export function CustomizeToolchainsPanel({
 }: CustomizeToolchainsPanelProps) {
   const { installations, sharedIdentity, hasToolchains, unchecked, recheck } =
     useScopedToolchainInstallations();
+  // The portal refused the session token: the reads of every installation's
+  // toolchains, sources and tools fail the same way until a sign-in, which
+  // is the one thing to say.
+  const sessionEnded = usePortalSessionEnded();
+  if (sessionEnded) {
+    return <PortalSessionEndedAlert />;
+  }
 
   if (hasToolchains === false) {
     return sharedIdentity.length > 0 ? (

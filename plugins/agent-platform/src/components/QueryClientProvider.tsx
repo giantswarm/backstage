@@ -12,6 +12,7 @@ import {
   shouldPersistQuery,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { shouldRetryMusterQuery } from '@giantswarm/backstage-plugin-muster';
+import { PortalSessionEndedError } from '../lib/portalSession';
 
 // Keep entries in cache for an hour and persist them to localStorage, mirroring
 // the gs fleet-list client (Clusters/Deployments). Together with a non-zero
@@ -134,12 +135,14 @@ export function shouldDehydrateAgentPlatformQuery(queryKey: QueryKey): boolean {
  * Whether a failed read is tried again: the muster plugin's rule
  * (`shouldRetryMusterQuery`, which never retries a muster auth failure, a
  * missing object, a refusal or an unavailable dependency, and reads through
- * the `cause` the plugin's own errors keep), and never a write kagent
- * rejected (`RejectedError`).
+ * the `cause` the plugin's own errors keep), never a write kagent rejected
+ * (`RejectedError`), and never a read the portal refused the session token
+ * for (`PortalSessionEndedError`): only a sign-in fixes that.
  */
 export function shouldRetryQuery(failureCount: number, error: unknown) {
   return (
     (error as Error | null)?.name !== 'RejectedError' &&
+    !(error instanceof PortalSessionEndedError) &&
     shouldRetryMusterQuery(failureCount, error)
   );
 }

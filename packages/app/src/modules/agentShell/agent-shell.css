@@ -573,10 +573,12 @@ html[data-agent-shell] [class*='Toast_container'] {
  * label and its count — "Agents (6)" — stay on one line (live round L8: at
  * 375px each label broke after its title). At phone width the tabs pad by
  * half bui's space-2, with the active underline inset to match, so the usual
- * three or four tabs fit without scrolling. A longer strip (Customize's six)
- * scrolls sideways: RouteTabs owns that at phone width (T72) — one row of
- * 44px tabs, the selected one scrolled into view, edge fades — which retired
- * R4's five-tab squeeze and the wrap to a second row.
+ * three or four tabs fit without scrolling. A strip too long for its width
+ * (Customize's seven on a phone or in a narrow window) scrolls sideways:
+ * RouteTabs owns that at every width (T72) — one row of tabs, 44px tall at
+ * phone width, the selected one scrolled into view, edge fades, and scroll
+ * buttons for a mouse — which retired R4's five-tab squeeze and the wrap to a
+ * second row.
  * Inside bui's components layer, so a component's unlayered overrides win.
  */
 @layer components {

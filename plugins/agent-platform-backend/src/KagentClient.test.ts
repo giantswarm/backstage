@@ -177,16 +177,19 @@ describe('KagentClient against a fake controller', () => {
       }
     });
 
-    it('maps a refused token to an AuthenticationError', async () => {
+    // Not Backstage's AuthenticationError: the page reads that name as the
+    // portal refusing the session token.
+    it("maps a refused token to the installation's own 401", async () => {
       const { client } = build();
       await expect(
         client.listSessions({ userToken: 'nope' }),
       ).rejects.toMatchObject({
-        name: 'AuthenticationError',
+        name: 'InstallationAuthenticationError',
+        statusCode: 401,
         message: expect.stringContaining(': token missing or invalid'),
       });
       await expect(client.getMe({})).rejects.toMatchObject({
-        name: 'AuthenticationError',
+        name: 'InstallationAuthenticationError',
       });
     });
 
@@ -1406,7 +1409,7 @@ describe('KagentClient against a fake controller', () => {
 
       await expect(
         client.listSessions({ ...USER, requestId: 'req-42' }),
-      ).rejects.toMatchObject({ name: 'AuthenticationError' });
+      ).rejects.toMatchObject({ name: 'InstallationAuthenticationError' });
 
       expect(sent).toEqual(['req-42']);
       // A refused token is a decision the page reports, not a fault: `info`,

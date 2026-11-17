@@ -12,6 +12,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { ToolsetResolution } from '../../hooks/useToolsetResolution';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { filterCatalogue } from '../../lib/filterCatalogue';
 import {
   bucketLabel,
@@ -310,6 +311,9 @@ export function ToolsetResolutionList({
         />
       );
     case 'error':
+      if (resolution.sessionEnded) {
+        return <PortalSessionEndedAlert />;
+      }
       return (
         <Alert
           status="warning"

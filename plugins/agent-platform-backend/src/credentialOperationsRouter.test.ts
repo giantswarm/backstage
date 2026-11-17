@@ -337,6 +337,18 @@ describe('the credential operations', () => {
     expect(fetchFn.mock.calls[0][1].headers['If-Match']).toBe('"7"');
   });
 
+  // Not Backstage's AuthenticationError, which the form reads as the portal
+  // refusing the session token.
+  it("names a save without the installation token as the installation's refusal", async () => {
+    const fetchFn = mockFetch(() => json(200, {}));
+    const res = await request(app(fetchFn as unknown as typeof fetch))
+      .post(path)
+      .set('If-Match', '"7"')
+      .send({ values: [{ secret: 's', key: 'k', value: SECRET_VALUE }] });
+    expect(res.status).toBe(401);
+    expect(res.body.error.name).toBe('InstallationAuthenticationError');
+  });
+
   it.each([
     ['no token', (r: request.Test) => r.set('If-Match', '"7"'), 401],
     [

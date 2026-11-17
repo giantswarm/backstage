@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button } from '@backstage/ui';
 import { EmptyStateCard } from '@giantswarm/backstage-plugin-ui-react';
 
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import type {
   ToolchainCheckFailure,
   UncheckedToolchainInstallation,
@@ -38,6 +39,14 @@ export function ToolchainsUnchecked({
   onRetry,
 }: ToolchainsUncheckedProps) {
   const [isRetrying, setRetrying] = useState(false);
+  // Only the portal session is in the way: a retry cannot help, a sign-in
+  // does.
+  if (
+    unchecked.length > 0 &&
+    unchecked.every(entry => entry.failure === 'signedOut')
+  ) {
+    return <PortalSessionEndedAlert />;
+  }
   const description = (['tokenRejected', 'signedOut', 'notAnswering'] as const)
     .map(failure => {
       const names = unchecked

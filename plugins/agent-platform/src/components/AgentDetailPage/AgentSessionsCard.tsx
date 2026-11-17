@@ -5,6 +5,7 @@ import { Button, Flex, Text } from '@backstage/ui';
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import { SessionsTable } from '../SessionsTable';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { markEarlierRevisions } from '../SessionsDataProvider/helpers';
 
 /**
@@ -50,6 +51,7 @@ export function AgentSessionsCard({
     isNotUserScoped,
     isUnavailable,
     failure,
+    sessionEnded,
     retry,
     isRetrying,
   } = sessions;
@@ -62,6 +64,10 @@ export function AgentSessionsCard({
     () => markEarlierRevisions(rows, currentRevision),
     [rows, currentRevision],
   );
+
+  if (sessionEnded && rows.length === 0) {
+    return <PortalSessionEndedAlert />;
+  }
 
   if (isUnavailable && failure) {
     // kagent answered and failed: the tab's whole answer is an error with why
@@ -121,6 +127,9 @@ export function AgentSessionsCard({
 
   return (
     <Flex direction="column" gap="3">
+      {/* A refetch the portal refused: the rows read before stay, and stop
+          keeping up until a sign-in. */}
+      {sessionEnded && <PortalSessionEndedAlert />}
       <Text variant="body-small" color="secondary">
         {caption}
       </Text>

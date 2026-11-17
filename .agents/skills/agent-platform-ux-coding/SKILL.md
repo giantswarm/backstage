@@ -395,9 +395,12 @@ them and never invent a palette.
   flips the radio to "Only the tools I choose below"
   (`NewAgentToolsPage/connectorChoice.ts`).
 - Full gateway keeps the grid off, and own picks from it start empty.
-- The 32-selector cap (`MAX_INLINE_SELECTORS`) mirrors a platform-wide limit
-  in muster, the agent chart and agent-manager. Keep its error; do not lift
-  it in Backstage alone.
+- Read the selector cap from `create_agent`'s input schema through Muster's
+  `describe_tool`; when it is absent, leave validation to the server.
+  Show Muster's resolution failures beside Continue and wait for the check;
+  keep the byte budget in Muster and the chart, not in the browser. Send the
+  selector list in the filter request body so UTF-8 URL expansion does not
+  exceed the HTTP request-header budget.
 
 ### Skills
 
@@ -440,7 +443,9 @@ them and never invent a palette.
   `agent-shell.css` fallback scrolls tables with four or more columns at 7rem
   each; it is a safety net, not a design.
 - The tab underline is measured in screen coordinates. Never scroll bui's
-  `TabList` yourself; `RouteTabs` owns the phone tab strip.
+  `TabList` yourself; `RouteTabs` owns the tab strip's scrolling at every
+  width where its tabs don't fit (phone and narrow windows), with scroll
+  buttons for a mouse.
 - react-aria draws tab strips one commit late, which matters for tests and
   observers.
 - Form controls are 16px at phone width, set in `agent-shell.css`, to stop

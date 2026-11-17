@@ -281,25 +281,51 @@ describe('RouteTabs', () => {
     );
   });
 
-  // T72: at phone width a strip of many tabs (Customize: six, with counts)
-  // scrolls sideways instead of squeezing its labels or wrapping a row.
-  describe('at phone width', () => {
-    const TAB_WIDTH = 120;
-    const STRIP_WIDTH = 300;
+  // T72: a strip of many tabs (Customize: seven, with counts) scrolls
+  // sideways where they don't fit, instead of squeezing its labels or
+  // wrapping a row: on a phone, and in a narrow window beside the shell's rail.
+  describe('scrolling', () => {
+    // jsdom has no element scrolling and no layout: the tabs are a row of
+    // `tabWidth` boxes, the strip a `stripWidth` viewport onto
+    // `contentWidth` of content.
+    let tabWidth: number;
+    let stripWidth: number;
+    let contentWidth: number;
     let layout: MockedLayout | undefined;
     let scrollTo: jest.Mock;
-    let hadScrollTo: boolean;
+    let scrollBy: jest.Mock;
+    let resizeCallbacks: Array<() => void>;
+    const originalResizeObserver = window.ResizeObserver;
+
+    /** What a ResizeObserver reports after a layout change. */
+    const notifyResize = () =>
+      act(() => resizeCallbacks.forEach(callback => callback()));
 
     beforeEach(() => {
-      hadScrollTo = 'scrollTo' in Element.prototype;
+      tabWidth = 120;
+      stripWidth = 300;
+      contentWidth = 600;
       scrollTo = jest.fn();
-      // jsdom has no element scrolling and no layout: give the tabs a row of
-      // 120px boxes and the strip a 300px viewport.
-      Object.defineProperty(Element.prototype, 'scrollTo', {
-        configurable: true,
-        writable: true,
-        value: scrollTo,
-      });
+      scrollBy = jest.fn();
+      resizeCallbacks = [];
+      for (const [name, value] of [
+        ['scrollTo', scrollTo],
+        ['scrollBy', scrollBy],
+      ] as const) {
+        Object.defineProperty(Element.prototype, name, {
+          configurable: true,
+          writable: true,
+          value,
+        });
+      }
+      window.ResizeObserver = class {
+        constructor(callback: () => void) {
+          resizeCallbacks.push(callback);
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      } as unknown as typeof ResizeObserver;
       jest
         .spyOn(Element.prototype, 'getBoundingClientRect')
         .mockImplementation(function rect(this: Element) {
@@ -307,8 +333,8 @@ describe('RouteTabs', () => {
             this.parentElement?.querySelectorAll(':scope > [role="tab"]') ?? [],
           );
           const index = tabs.indexOf(this);
-          const left = index < 0 ? 0 : index * TAB_WIDTH;
-          const width = index < 0 ? STRIP_WIDTH : TAB_WIDTH;
+          const left = index < 0 ? 0 : index * tabWidth;
+          const width = index < 0 ? stripWidth : tabWidth;
           return {
             left,
             right: left + width,
@@ -323,21 +349,26 @@ describe('RouteTabs', () => {
         });
       jest
         .spyOn(Element.prototype, 'clientWidth', 'get')
-        .mockImplementation(() => STRIP_WIDTH);
+        .mockImplementation(() => stripWidth);
+      jest
+        .spyOn(Element.prototype, 'scrollWidth', 'get')
+        .mockImplementation(() => contentWidth);
     });
 
     afterEach(() => {
       layout?.restore();
       layout = undefined;
       jest.restoreAllMocks();
-      if (hadScrollTo) {
-        return;
+      window.ResizeObserver = originalResizeObserver;
+      if (!originalResizeObserver) {
+        delete (window as { ResizeObserver?: unknown }).ResizeObserver;
       }
       delete (Element.prototype as Partial<Element>).scrollTo;
+      delete (Element.prototype as Partial<Element>).scrollBy;
     });
 
     it('scrolls the selected tab to the middle of the strip on mount, at once', async () => {
-      layout = mockPhoneLayout();
+      layout = mockDesktopLayout();
       const { container } = renderAt('/workflows/deploy/executions');
 
       // The third tab, at 240px, centred in 300px: 240 - (300 - 120) / 2.
@@ -365,21 +396,117 @@ describe('RouteTabs', () => {
       });
     });
 
-    it('keeps the strip still when a count up to 99 arrives, re-centring past it', async () => {
-      layout = mockPhoneLayout();
-      const { setTabs } = renderAt(
-        '/workflows/deploy/run',
-        withCount('loading'),
-      );
+    it('scrolls again when the tabs widen while it overflows (a count arriving)', async () => {
+      layout = mockDesktopLayout();
+      renderAt('/workflows/deploy/executions');
       await waitFor(() => expect(scrollTo).toHaveBeenCalledTimes(1));
 
-      setTabs(withCount(12));
-      setTabs(withCount(99));
+      // Nothing changed: nothing to do.
+      notifyResize();
       expect(scrollTo).toHaveBeenCalledTimes(1);
 
-      // Three digits outgrow the slot: the tabs' widths change.
-      setTabs(withCount(128));
+      // The tabs are drawn wider a commit after their spec changed.
+      tabWidth = 150;
+      notifyResize();
+      // The third tab, now at 300px: 300 - (300 - 150) / 2.
       expect(scrollTo).toHaveBeenCalledTimes(2);
+      expect(scrollTo).toHaveBeenLastCalledWith({
+        left: 225,
+        behavior: 'smooth',
+      });
+    });
+
+    it('keeps a scroll the person made by hand, until the selection changes', async () => {
+      layout = mockDesktopLayout();
+      const { container } = renderAt('/workflows/deploy/executions');
+      await waitFor(() => expect(scrollTo).toHaveBeenCalledTimes(1));
+
+      fireEvent.wheel(stripOf(container));
+      tabWidth = 150;
+      notifyResize();
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+
+      act(() => navigateTo('/workflows/deploy/run'));
+      expect(scrollTo).toHaveBeenCalledTimes(2);
+    });
+
+    it('leaves the scroll alone when only the strip resizes', async () => {
+      layout = mockDesktopLayout();
+      renderAt('/workflows/deploy/executions');
+      await waitFor(() => expect(scrollTo).toHaveBeenCalledTimes(1));
+
+      // A window dragged narrower, the rail folding: the tabs are as wide.
+      stripWidth = 280;
+      notifyResize();
+      stripWidth = 320;
+      notifyResize();
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+    });
+
+    it('scrolls to the selected tab when the strip starts to overflow', async () => {
+      layout = mockDesktopLayout();
+      contentWidth = stripWidth;
+      renderAt('/workflows/deploy/executions');
+      await waitFor(() =>
+        expect(scrollTo).toHaveBeenCalledWith({ left: 0, behavior: 'auto' }),
+      );
+
+      // The window narrows past the tabs' width.
+      contentWidth = 600;
+      notifyResize();
+      expect(scrollTo).toHaveBeenCalledTimes(2);
+      expect(scrollTo).toHaveBeenLastCalledWith({
+        left: 150,
+        behavior: 'smooth',
+      });
+    });
+
+    it('stays at the start where its tabs fit: no fades, no scroll buttons', async () => {
+      layout = mockDesktopLayout();
+      contentWidth = stripWidth;
+      const { container } = renderAt('/workflows/deploy/executions');
+
+      // Unclamped, the third tab would be centred at 150px.
+      await waitFor(() => expect(scrollTo).toHaveBeenCalledTimes(1));
+      expect(scrollTo).toHaveBeenCalledWith({ left: 0, behavior: 'auto' });
+      const strip = stripOf(container);
+      expect(strip).not.toHaveAttribute('data-overflow-start');
+      expect(strip).not.toHaveAttribute('data-overflow-end');
+      expect(container.querySelector('[data-scroll-tabs]')).toBeNull();
+    });
+
+    it('gives a mouse a button over each edge with tabs beyond it', async () => {
+      layout = mockDesktopLayout();
+      const { container } = renderAt('/workflows/deploy');
+      const strip = stripOf(container);
+      const button = (edge: string) =>
+        container.querySelector<HTMLElement>(`[data-scroll-tabs="${edge}"]`);
+
+      await waitFor(() => expect(button('end')).not.toBeNull());
+      expect(button('start')).toBeNull();
+      // Out of the tab order and the accessibility tree: the arrow keys
+      // move along the tabs.
+      expect(button('end')).toHaveAttribute('tabindex', '-1');
+      expect(button('end')).toHaveAttribute('aria-hidden', 'true');
+
+      await userEvent.click(button('end')!);
+      // Three quarters of the strip's 300px.
+      expect(scrollBy).toHaveBeenCalledWith({ left: 225, behavior: 'smooth' });
+      expect(scrollBy.mock.contexts[0]).toBe(strip);
+
+      strip.scrollLeft = 300;
+      fireEvent.scroll(strip);
+      expect(button('start')).not.toBeNull();
+      expect(button('end')).toBeNull();
+    });
+
+    it('gives a touch screen no scroll buttons: it swipes', async () => {
+      layout = mockPhoneLayout();
+      const { container } = renderAt('/workflows/deploy');
+      await waitFor(() =>
+        expect(stripOf(container)).toHaveAttribute('data-overflow-end'),
+      );
+      expect(container.querySelector('[data-scroll-tabs]')).toBeNull();
     });
 
     it('scrolls only the strip, never the page', async () => {
@@ -440,71 +567,35 @@ describe('RouteTabs', () => {
       expect(edges()).toEqual([true, false]);
     });
 
-    it('scrolls one row of 44px-tall tabs, and lays out nothing at desktop width', () => {
-      layout = mockPhoneLayout();
+    it('scrolls at every width, with 44px-tall tabs at phone width', () => {
       const { container } = renderAt('/workflows/deploy');
       const stripClass = Array.from(stripOf(container).classList).find(
         name => !name.startsWith('bui'),
       );
 
-      // jsdom applies no media rules, so the phone rules are read from the
+      // jsdom applies no media rules, so the rules are read from the
       // stylesheet JSS injected.
-      const { byMedia, plain: desktopRules } = injectedRules();
+      const { byMedia, plain } = injectedRules();
       const phoneRules = byMedia.get(PHONE_QUERY) ?? [];
       const forStrip = (rules: string[], selector: string) =>
         rules.filter(text => text.startsWith(`.${stripClass}${selector} {`));
 
-      expect(forStrip(phoneRules, '')).toEqual([
+      expect(forStrip(plain, '')).toEqual([
         expect.stringMatching(/overflow-x: auto;.*overflow-y: hidden;/),
       ]);
-      expect(forStrip(phoneRules, ' .bui-TabList')).toEqual([
+      expect(forStrip(plain, ' .bui-TabList')).toEqual([
         expect.stringContaining('flex-wrap: nowrap;'),
       ]);
-      const [tabRule, ...more] = forStrip(phoneRules, ' .bui-Tab');
+      const [tabRule, ...more] = forStrip(plain, ' .bui-Tab');
       expect(more).toEqual([]);
-      for (const declaration of [
-        'flex-shrink: 0;',
-        'white-space: nowrap;',
-        'height: 44px;',
-        'min-width: 44px;',
-      ]) {
-        expect(tabRule).toContain(declaration);
-      }
-      expect(forStrip(phoneRules, ' > .bui-Tabs')).toEqual([
+      expect(tabRule).toContain('flex-shrink: 0;');
+      expect(tabRule).toContain('white-space: nowrap;');
+      expect(forStrip(plain, ' > .bui-Tabs')).toEqual([
         expect.stringContaining('width: max-content;'),
       ]);
-      expect(forStrip(desktopRules, '')).toEqual([]);
-    });
-  });
-
-  describe('at desktop width', () => {
-    let layout: MockedLayout | undefined;
-
-    afterEach(() => {
-      layout?.restore();
-      layout = undefined;
-    });
-
-    it('leaves bui’s strip alone: no scrolling, no edge fades', async () => {
-      layout = mockDesktopLayout();
-      const scrollTo = jest.fn();
-      Object.defineProperty(Element.prototype, 'scrollTo', {
-        configurable: true,
-        writable: true,
-        value: scrollTo,
-      });
-      try {
-        const { container } = renderAt('/workflows/deploy/executions');
-        const strip = stripOf(container);
-        // Past react-aria's second commit, when a phone strip would scroll.
-        await act(() => new Promise(resolve => setTimeout(resolve, 0)));
-
-        expect(scrollTo).not.toHaveBeenCalled();
-        expect(strip).not.toHaveAttribute('data-overflow-start');
-        expect(strip).not.toHaveAttribute('data-overflow-end');
-      } finally {
-        delete (Element.prototype as Partial<Element>).scrollTo;
-      }
+      const [phoneTabRule] = forStrip(phoneRules, ' .bui-Tab');
+      expect(phoneTabRule).toContain('height: 44px;');
+      expect(phoneTabRule).toContain('min-width: 44px;');
     });
   });
 });
