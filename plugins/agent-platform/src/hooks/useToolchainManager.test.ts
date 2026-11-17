@@ -25,4 +25,18 @@ describe('toolchainCheckFailureOf', () => {
     // No read failed with a reason: an unreachable muster, never asked.
     expect(toolchainCheckFailureOf(undefined)).toBe('notAnswering');
   });
+
+  it('reads the portal refusing the session token on the server list as a signed-out person', () => {
+    expect(
+      toolchainCheckFailureOf(
+        new MusterUnauthorizedError(
+          'Failed user token verification',
+          undefined,
+          undefined,
+          'meadow',
+          'AuthenticationError',
+        ),
+      ),
+    ).toBe('signedOut');
+  });
 });

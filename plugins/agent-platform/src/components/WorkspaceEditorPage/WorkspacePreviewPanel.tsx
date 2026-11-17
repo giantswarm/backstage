@@ -1,12 +1,14 @@
 import { Alert, Button, Flex, Skeleton, Text } from '@backstage/ui';
 
 import { EDITOR_PAGE_SIZE } from '../../hooks/useWorkspaceEditor';
+import { isPortalSessionRefusal } from '../../lib/portalSession';
 import { shortAge } from '../../lib/shortAge';
 import {
   classifyWorkspaceManagerError,
   type PreviewRepository,
   type WorkspacePreview,
 } from '../../lib/workspaceManager';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 
 /** A size in KiB as people read it. */
 export function formatKiB(kib: number): string {
@@ -56,6 +58,11 @@ export type WorkspacePreviewPanelProps = {
   providerCount: number;
   /** The disk: "about 8 GiB, automatic", "7 GiB, at least 20 GiB". */
   disk: string | undefined;
+  /**
+   * The page says the portal session ended already: a preview the portal
+   * refused says nothing more here.
+   */
+  sessionEndedShown?: boolean;
 };
 
 /**
@@ -75,6 +82,7 @@ export function WorkspacePreviewPanel({
   onPage,
   providerCount,
   disk,
+  sessionEndedShown = false,
 }: WorkspacePreviewPanelProps) {
   const note = (
     <Text variant="body-small" color="secondary">
@@ -118,7 +126,10 @@ export function WorkspacePreviewPanel({
       data-testid="workspace-preview"
       aria-busy={isLoading || isStale}
     >
-      {Boolean(error) && (
+      {isPortalSessionRefusal(error) && !sessionEndedShown && (
+        <PortalSessionEndedAlert />
+      )}
+      {Boolean(error) && !isPortalSessionRefusal(error) && (
         <Alert
           status="warning"
           title="Could not preview the selection"

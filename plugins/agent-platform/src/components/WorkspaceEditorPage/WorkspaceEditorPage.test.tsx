@@ -12,6 +12,7 @@ import userEvent from '@testing-library/user-event';
 // eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Workspace tools use the muster frontend API.
 import {
   musterApiRef,
+  MusterUnauthorizedError,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
@@ -1617,6 +1618,169 @@ describe('WorkspaceEditorPage without providers', () => {
       ).toHaveAccessibleDescription(expect.stringContaining('Enter a name')),
     );
     expect(screen.queryByText('Choose a provider')).not.toBeInTheDocument();
+  });
+});
+
+describe('WorkspaceEditorPage with a refused portal session', () => {
+  /** The portal refusing the session token on these tools' calls. */
+  function refusing(fake: WorkspaceManagerFake, tools: string[]) {
+    const answer = fake.callTool.getMockImplementation()!;
+    fake.callTool.mockImplementation(async (name: string, args) => {
+      if (tools.some(tool => name.endsWith(tool))) {
+        throw new MusterUnauthorizedError(
+          'Failed user token verification',
+          undefined,
+          undefined,
+          'lab',
+          'AuthenticationError',
+        );
+      }
+      return answer(name, args);
+    });
+  }
+
+  const signInButtons = () =>
+    screen.queryAllByRole('button', { name: 'Sign in again' });
+
+  it('says the portal session ended, with Sign in again, in place of a workspace it could not read', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [storedWorkspace({ repositories: ['portal'] })],
+    });
+    refusing(fake, ['get_workspace']);
+    await render(fake, { name: 'portal' });
+
+    expect(
+      await screen.findByText('Your portal session ended'),
+    ).toBeInTheDocument();
+    expect(signInButtons()).toHaveLength(1);
+    expect(
+      screen.queryByText('Could not read the workspace'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/token verification/)).not.toBeInTheDocument();
+  });
+
+  it('says it once above the form when the portal refuses the providers read', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+    });
+    refusing(fake, ['list_providers']);
+    await render(fake);
+
+    expect(
+      await screen.findByText('Your portal session ended'),
+    ).toBeInTheDocument();
+    expect(signInButtons()).toHaveLength(1);
+    expect(
+      screen.queryByText('Could not read the providers'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /^Name/ })).toBeInTheDocument();
+  });
+
+  it('says it once, keeping the form, when the portal refuses the repositories and the preview', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+      workspaces: [storedWorkspace({ filters: { languages: ['Go'] } })],
+    });
+    refusing(fake, ['list_repositories', 'preview_workspace']);
+    await render(fake, { name: 'portal' });
+    await screen.findByTestId('workspace-source-0');
+    await settlePreview();
+
+    // Both reads ran, and the portal refused them.
+    const called = (tool: string) =>
+      fake.callTool.mock.calls.some(([name]) => name.endsWith(tool));
+    await waitFor(() => expect(called('preview_workspace')).toBe(true));
+    await waitFor(() => expect(called('list_repositories')).toBe(true));
+    expect(
+      await screen.findByText('Your portal session ended'),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(signInButtons()).toHaveLength(1));
+    expect(screen.queryByText(/^Could not list the/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Could not preview the selection'),
+    ).not.toBeInTheDocument();
+    expect(
+      source(0).getByRole('button', { name: 'Language: Go' }),
+    ).toBeInTheDocument();
+  });
+
+  it('says it in place of the provider sign-in when the portal refuses the preview', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [{ ...UNGRANTED_GITLAB, name: 'github', kind: 'github' }],
+      repositories: ACME,
+      workspaces: [storedWorkspace({ filters: { languages: ['Go'] } })],
+    });
+    refusing(fake, ['preview_workspace']);
+    await render(fake, { name: 'portal' });
+    await settlePreview();
+
+    expect(
+      await screen.findByText('Your portal session ended'),
+    ).toBeInTheDocument();
+    expect(signInButtons()).toHaveLength(1);
+  });
+
+  it('says it in the picker when the portal refuses the reads of Select all matches', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: manyRepositories('github', 'big', 500),
+    });
+    const answer = fake.callTool.getMockImplementation()!;
+    fake.callTool.mockImplementation(async (name: string, args) => {
+      if (name.endsWith('list_repositories') && args.pageSize === 200) {
+        throw new MusterUnauthorizedError(
+          'Failed user token verification',
+          undefined,
+          undefined,
+          'lab',
+          'AuthenticationError',
+        );
+      }
+      return answer(name, args);
+    });
+    await render(fake);
+
+    fireEvent.change(await source0Owner(), { target: { value: 'big' } });
+    const picker = () => within(source(0).getByTestId('repository-picker'));
+    await picker().findByText('(500)');
+    fireEvent.change(picker().getByRole('searchbox'), {
+      target: { value: 'repo-04' },
+    });
+    fireEvent.click(
+      await picker().findByRole('button', { name: 'Select all 10 matches' }),
+    );
+
+    expect(
+      await picker().findByText('Your portal session ended'),
+    ).toBeInTheDocument();
+    expect(signInButtons()).toHaveLength(1);
+    expect(
+      screen.queryByText(/Could not select all matches/),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps the words of a repositories read that failed for another reason', async () => {
+    const fake = createWorkspaceManagerFake({
+      providers: [GITHUB],
+      repositories: ACME,
+    });
+    const answer = fake.callTool.getMockImplementation()!;
+    fake.callTool.mockImplementation(async (name: string, args) => {
+      if (name.endsWith('list_repositories')) {
+        throw new Error('Tool execution failed: GitHub answered 502');
+      }
+      return answer(name, args);
+    });
+    await render(fake);
+
+    fireEvent.change(await source0Owner(), { target: { value: 'acme' } });
+
+    expect(await screen.findByText(/^Could not list the/)).toBeInTheDocument();
+    expect(signInButtons()).toHaveLength(0);
   });
 });
 

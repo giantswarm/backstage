@@ -44,6 +44,10 @@ let mockReading = false;
 const mockRefetch = jest.fn();
 /** Whether there is a muster plugin to ask. */
 let mockCanRead = true;
+jest.mock('../../../hooks/useToolsetSelectorLimit', () => ({
+  useToolsetSelectorLimit: () => 128,
+}));
+
 jest.mock('../../../hooks/useAgentManager', () => ({
   useAgentManagerInfo: (installation: string | undefined) => {
     const managed =

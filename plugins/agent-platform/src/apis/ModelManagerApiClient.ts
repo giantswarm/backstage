@@ -9,6 +9,7 @@ import {
 } from '@backstage/plugin-kubernetes-react';
 import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 import { getInstallationOidcToken } from '../lib/installationOidcToken';
+import { portalSessionError } from '../lib/portalSession';
 import {
   modelConfigRefSchema,
   modelManagerBackendSchema,
@@ -306,12 +307,18 @@ export class ModelManagerApiClient implements ModelManagerApi {
     );
     if (!response.ok) {
       const errorData = (await response.json().catch(() => ({}))) as {
-        error?: { message?: string };
+        error?: { message?: string; name?: unknown };
       };
-      throw new Error(
-        errorData?.error?.message ??
-          `The portal's backend did not answer the try of ${request.model} on ${installation} (status ${response.status}).`,
+      const error = Object.assign(
+        new Error(
+          errorData?.error?.message ??
+            `The portal's backend did not answer the try of ${request.model} on ${installation} (status ${response.status}).`,
+        ),
+        { status: response.status, errorName: errorData?.error?.name },
       );
+      // The portal refusing the session token is said as that, never in its
+      // words (`lib/portalSession.ts`).
+      throw portalSessionError(error);
     }
     const body = (await response.json().catch(() => undefined)) as
       TryServedModelResult | undefined;

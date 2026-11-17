@@ -32,6 +32,7 @@ import { workspaceNameLabel } from '../../lib/sessionWorkspace';
 import { ACTIVE_REFETCH_INTERVAL_MS } from '../../lib/kagentSessionPolling';
 import { sessionDetailRouteRef, sessionsRouteRef } from '../../routes';
 import { AgentPlatformProviders } from '../AgentPlatformProviders';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { useSessions } from '../SessionsDataProvider';
 import type { SessionRow } from '../SessionsDataProvider';
 import { sessionsListSearch } from '../SessionsTable/filters';
@@ -308,7 +309,8 @@ function RecentSessionsList({
   const allSessionsHref = shellRail ? sessionsRoute?.() : undefined;
   const baseId = useId();
   const { pathname } = useLocation();
-  const { rows, isLoading, nothingRead, retry, isRetrying } = useSessions();
+  const { rows, isLoading, nothingRead, sessionEnded, retry, isRetrying } =
+    useSessions();
   // No installation answered: not "No sessions yet". With one that answered
   // empty, the empty line stands and the Sessions page names the rest.
   const readFailed = nothingRead;
@@ -325,6 +327,10 @@ function RecentSessionsList({
         </Text>
       </Box>
     );
+  } else if (sessionEnded) {
+    // The alert above the list says why there is nothing: not "No sessions
+    // yet", and not a retry.
+    emptyLine = null;
   } else if (readFailed) {
     emptyLine = (
       <RecentSessionsReadError onRetry={retry} isRetrying={isRetrying} />
@@ -451,10 +457,20 @@ function RecentSessionsList({
     );
   }
 
+  // The portal refused the session token: no retry reads the list, a
+  // sign-in to the portal does. Said above the rows read before, which stop
+  // keeping up.
+  const sessionEndedAlert = sessionEnded && !sessionEnd && (
+    <Box px="2">
+      <PortalSessionEndedAlert />
+    </Box>
+  );
+
   if (shellRail) {
     const hasTimeGroups = grouped.groups.length > 0;
     return (
       <Flex direction="column" gap="1">
+        {sessionEndedAlert}
         {grouped.pinned.length > 0 && (
           <>
             <GroupHeader id={`${baseId}-pinned`} label="Pinned" />
@@ -528,6 +544,7 @@ function RecentSessionsList({
   return (
     <Flex direction="column" gap="1">
       <GroupHeader id={`${baseId}-recent`} label="Recent" />
+      {sessionEndedAlert}
       {body}
     </Flex>
   );

@@ -612,7 +612,7 @@ export async function createRouter(
     res.json(result);
   });
 
-  router.get('/tools/filter', async (req, res) => {
+  const filterTools = async (req: express.Request, res: express.Response) => {
     const { config: installation, client } = resolveInstallation(req);
     const args: Record<string, unknown> = {};
 
@@ -646,12 +646,17 @@ export async function createRouter(
     if (offset !== undefined) {
       args.offset = offset;
     }
-    // A toolset travels as one `toolset=` entry per selector (a selector never
-    // contains a comma or whitespace). Passed through verbatim: muster owns the
-    // grammar and answers an unknown preset or a malformed selector with its
-    // own message, which the frontend shows as is.
-    const toolset = repeatedQueryValues(req, 'toolset');
+    const toolset =
+      req.method === 'POST'
+        ? req.body?.toolset
+        : repeatedQueryValues(req, 'toolset');
     if (toolset !== undefined) {
+      if (
+        !Array.isArray(toolset) ||
+        !toolset.every(selector => typeof selector === 'string')
+      ) {
+        throw new InputError('toolset must be a list of selector strings');
+      }
       args.toolset = toolset;
     }
     const includePresets = singleQueryValue(
@@ -667,7 +672,9 @@ export async function createRouter(
       readCallOptions(req, installation),
     );
     res.json(result);
-  });
+  };
+  router.get('/tools/filter', filterTools);
+  router.post('/tools/filter', filterTools);
 
   // Resources and prompts mirror /tools/filter. `server` matters most for
   // resources: their scheme'd URIs are exposed unprefixed, so a pattern alone

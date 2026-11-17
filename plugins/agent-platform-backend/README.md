@@ -167,16 +167,22 @@ and refreshed in the background; the route never waits for a probe.
 The distinction matters because the frontend **silences** one and **surfaces** the
 other, and getting it wrong makes a broken kagent look like an empty account.
 
-| Connect outcome                                                  | Error                 | HTTP | Frontend treats as             |
-| ---------------------------------------------------------------- | --------------------- | ---- | ------------------------------ |
-| socket-level cause: DNS, refused, reset, TLS                     | `NotFoundError`       | 404  | not deployed here — **silent** |
-| `NotFound` (gone, or somebody else's); `Unimplemented`           | `NotFoundError`       | 404  | not deployed here — **silent** |
-| `Unauthenticated`                                                | `AuthenticationError` | 401  | read failure — reported        |
-| `PermissionDenied`                                               | `NotAllowedError`     | 403  | read failure — reported        |
-| `InvalidArgument`                                                | `InputError`          | 400  | rejected request — reported    |
-| `AlreadyExists`, `FailedPrecondition`, `Aborted`, an active task | `ConflictError`       | 409  | conflict — reported            |
-| `DeadlineExceeded` on a send                                     | 202 `pending`         | 202  | still running — poll           |
-| `Unavailable` without a socket cause, `Internal`, `Unknown`      | `UpstreamError`       | 500  | read failure — reported        |
+| Connect outcome                                                  | Error                             | HTTP | Frontend treats as                        |
+| ---------------------------------------------------------------- | --------------------------------- | ---- | ----------------------------------------- |
+| socket-level cause: DNS, refused, reset, TLS                     | `NotFoundError`                   | 404  | not deployed here — **silent**            |
+| `NotFound` (gone, or somebody else's); `Unimplemented`           | `NotFoundError`                   | 404  | not deployed here — **silent**            |
+| `Unauthenticated`                                                | `InstallationAuthenticationError` | 401  | read failure — reported, in its own words |
+| `PermissionDenied`                                               | `NotAllowedError`                 | 403  | read failure — reported                   |
+| `InvalidArgument`                                                | `InputError`                      | 400  | rejected request — reported               |
+| `AlreadyExists`, `FailedPrecondition`, `Aborted`, an active task | `ConflictError`                   | 409  | conflict — reported                       |
+| `DeadlineExceeded` on a send                                     | 202 `pending`                     | 202  | still running — poll                      |
+| `Unavailable` without a socket cause, `Internal`, `Unknown`      | `UpstreamError`                   | 500  | read failure — reported                   |
+
+`InstallationAuthenticationError` is not Backstage's `AuthenticationError`: the
+portal's backend answers that name when it refuses the person's session token
+before any route runs, and the frontend says "Your portal session ended" for it
+alone. A request without the installation token is an
+`InstallationAuthenticationError` as well.
 
 Plus `ServiceUnavailableError` (503) when _no_ installation is configured at all —
 a real misconfiguration, unlike the per-installation cases above. A send whose

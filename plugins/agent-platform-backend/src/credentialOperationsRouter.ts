@@ -1,5 +1,5 @@
 import { Config } from '@backstage/config';
-import { AuthenticationError, InputError } from '@backstage/errors';
+import { InputError } from '@backstage/errors';
 import express from 'express';
 import Router from 'express-promise-router';
 import { errorResponseBody } from '@giantswarm/backstage-plugin-gs-node';
@@ -7,6 +7,7 @@ import {
   AGENT_MANAGER_AUTH_HEADER,
   CREDENTIAL_OPERATION_PATTERN,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { InstallationAuthenticationError } from './installationAuthenticationError';
 import { readInstallationBaseDomain } from './installationDomain';
 
 /**
@@ -133,7 +134,9 @@ function readToken(req: express.Request): string {
   const header = req.headers[AGENT_MANAGER_AUTH_HEADER];
   const token = Array.isArray(header) ? header[0] : header;
   if (!token) {
-    throw new AuthenticationError(
+    // Not Backstage's AuthenticationError, which the form reads as the
+    // portal refusing the session token.
+    throw new InstallationAuthenticationError(
       'The request did not include a user token for the target installation.',
     );
   }

@@ -110,6 +110,12 @@ jest.mock('../../hooks/useMusterPluginApi', () => ({
   useMusterPluginApi: () => mockUseMusterPluginApi(),
 }));
 
+// Whether a read in the query cache was refused for the portal session.
+let mockSessionEnded = false;
+jest.mock('../../hooks/usePortalSessionEnded', () => ({
+  usePortalSessionEnded: () => mockSessionEnded,
+}));
+
 jest.mock('../../hooks/useStopServedModel', () => ({
   useStopServedModel: () => ({
     stop: mockStop,
@@ -369,6 +375,7 @@ describe('ServingPage', () => {
     mockCancelDownload.mockReset();
     mockUseMusterPluginApi.mockReset();
     mockUseMusterPluginApi.mockReturnValue(undefined);
+    mockSessionEnded = false;
     mockGroupsWithoutModels.mockReset();
     mockGroupsWithoutModels.mockReturnValue([]);
     mockPoolAddAction = undefined;
@@ -823,6 +830,23 @@ describe('ServingPage', () => {
         /may not delete LLMInferenceService qwen3-14b in kserve on inst-1/,
       ),
     ).toBeInTheDocument();
+  });
+
+  it('says the portal session ended, with Sign in again, instead of unreadable environments', async () => {
+    mockSessionEnded = true;
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      servedModels: [],
+      unreachableInstallations: ['inst-1'],
+    });
+
+    await renderSection();
+
+    expect(screen.getByText('Your portal session ended')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Sign in again' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Could not read/)).not.toBeInTheDocument();
   });
 
   it('explains the empty state when no installation has a serving backend', async () => {

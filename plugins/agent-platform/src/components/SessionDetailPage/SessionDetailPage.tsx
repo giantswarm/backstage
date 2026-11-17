@@ -103,6 +103,8 @@ import {
   STALLED_STATE_LABEL,
 } from './helpers';
 import { RuntimeLostNotice } from './RuntimeLostNotice';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 import { AnswerNotTakenNotice } from './AnswerNotTakenNotice';
 import {
   buildContinuationPrompt,
@@ -358,19 +360,23 @@ function Shell({
  * Why a Stop failed, for the person who pressed it.
  *
  * The backend's message, which names the refusal, plus what to do about it
- * where that is known. A 401 is the observed case: the Backstage pod rolled
- * while the tab stayed open and the tab's token no longer verifies — nothing is
- * wrong with the turn, and reloading signs the tab back in silently, after
- * which Stop works. Left as "Failed user token verification" that is a riddle.
+ * where that is known: a 401 is kagent refusing the installation token, which
+ * a reload mints again. The portal refusing the session token is not said
+ * here: the page shows `PortalSessionEndedAlert` for it.
  */
 function describeStopFailure(error: Error | null): string | undefined {
-  if (!error) {
+  if (!error || error instanceof PortalSessionEndedError) {
     return undefined;
   }
   if (isUnauthorizedError(error)) {
     return `${error.message}. Your sign-in expired — reload the page and stop the turn again.`;
   }
   return error.message;
+}
+
+/** The message of an error the page shows, except a refused portal session's. */
+function shownMessage(error: Error | null | undefined): string | undefined {
+  return error instanceof PortalSessionEndedError ? undefined : error?.message;
 }
 
 /**
@@ -1394,14 +1400,18 @@ export function SessionDetailPage() {
     return (
       <Shell>
         <Flex direction="column" gap="3">
-          <Alert
-            status="danger"
-            title="Could not load this session"
-            description={
-              error?.message ??
-              'kagent sent an unreadable response. The session may still exist.'
-            }
-          />
+          {error instanceof PortalSessionEndedError ? (
+            <PortalSessionEndedAlert />
+          ) : (
+            <Alert
+              status="danger"
+              title="Could not load this session"
+              description={
+                error?.message ??
+                'kagent sent an unreadable response. The session may still exist.'
+              }
+            />
+          )}
           <BackToSessions>Back to sessions</BackToSessions>
         </Flex>
       </Shell>
@@ -1625,6 +1635,12 @@ export function SessionDetailPage() {
             }
           />
         )}
+        {/* A send, an answer or a Stop the portal refused the session token
+            for: nothing reached kagent, and a sign-in is the way on. Said
+            once, above the box, instead of beside it in the backend's words. */}
+        {[send.error, confirmation.error, cancellation.error].some(
+          failure => failure instanceof PortalSessionEndedError,
+        ) && <PortalSessionEndedAlert />}
         {/* A session that cannot go on takes no more messages, so it shows no
             box: the notice above is the way on. The chip keeps the session's
             totals in reach without one. */}
@@ -1639,7 +1655,7 @@ export function SessionDetailPage() {
                   agentName={row.agentName || undefined}
                   connectorOf={connectorOf}
                   isAnswering={confirmation.isAnswering}
-                  error={confirmation.error?.message}
+                  error={shownMessage(confirmation.error)}
                   restore={confirmation.failed}
                   isUserScoped={isUserScoped}
                   onAnswer={answer => {
@@ -1672,7 +1688,9 @@ export function SessionDetailPage() {
             // A conflict has its own notice above; the composer must not also
             // report it as a generic failure. Nor must a lost runtime: the
             // notice carries the runtime's words as its evidence.
-            error={isConflict || runtimeLoss ? undefined : send.error?.message}
+            error={
+              isConflict || runtimeLoss ? undefined : shownMessage(send.error)
+            }
             // A failed Stop is reported as one, not as a message that was not
             // sent — the turn it aimed at is still running.
             stopError={describeStopFailure(cancellation.error)}
@@ -1918,7 +1936,10 @@ export function SessionDetailPage() {
           {/* A refresh that failed after the page had loaded. Shown rather than
             thrown: the conversation on screen is still real, it has just stopped
             keeping up, and the user needs to know which of the two it is. */}
-          {error && (
+          {error instanceof PortalSessionEndedError && (
+            <PortalSessionEndedAlert />
+          )}
+          {error && !(error instanceof PortalSessionEndedError) && (
             <Alert
               status="warning"
               title="This session may be out of date"
