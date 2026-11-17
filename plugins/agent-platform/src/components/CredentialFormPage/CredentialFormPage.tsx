@@ -114,6 +114,14 @@ const CONSUMERS_CHANGED = 'credential_consumers_changed';
  */
 const NAME_TAKEN = 'already_exists';
 
+/**
+ * agent-manager's code (403, giantswarm/agent-manager#418) on a read, a save
+ * or a cancel by the person who started the request, signed in with another
+ * login: Dex gives one person a subject per connector. The answer carries
+ * nothing of the request. `forbidden`, also a 403, is another refusal.
+ */
+const OTHER_LOGIN = 'credential_operation_other_login';
+
 /** What the request was to create, as the name-taken refusal says it. */
 function createdObject(operation: CredentialOperation | undefined): string {
   const name = operation?.result?.name;
@@ -509,7 +517,15 @@ export function CredentialFormPage({
     }
   };
 
-  const loaded = query.data;
+  // Set by a save or a cancel that agent-manager refused as another login's.
+  const [otherLoginWrite, setOtherLoginWrite] = useState(false);
+  // From then on the page shows nothing of the request, not even what an
+  // earlier read gave.
+  const otherLogin =
+    otherLoginWrite ||
+    (query.isError &&
+      credentialOperationErrorCode(query.error) === OTHER_LOGIN);
+  const loaded = otherLogin ? undefined : query.data;
   // A namespace link names no organization: the request it opens does, once
   // read and found to write in that namespace.
   const target =
@@ -598,8 +614,12 @@ export function CredentialFormPage({
       }
       return api.cancelOperation(installation, operationId, current.etag);
     },
-    onError: (_error, options) => {
-      if (!options?.ifPending) setCancelOffered(true);
+    onError: (error, options) => {
+      if (credentialOperationErrorCode(error) === OTHER_LOGIN) {
+        setOtherLoginWrite(true);
+      } else if (!options?.ifPending) {
+        setCancelOffered(true);
+      }
     },
   });
 
@@ -653,6 +673,10 @@ export function CredentialFormPage({
       if (error instanceof PortalSessionEndedError) {
         // Nothing was sent; the value is not kept for after the sign-in.
         clearValues();
+      } else if (code === OTHER_LOGIN) {
+        // Nothing was saved, and this login can never save it.
+        clearValues();
+        setOtherLoginWrite(true);
       } else if (code === 'precondition_failed') {
         clearValues();
         setNotice(
@@ -690,7 +714,12 @@ export function CredentialFormPage({
       setNotice(undefined);
     },
     onError: error => {
-      if (credentialOperationErrorCode(error) === 'precondition_failed') {
+      if (credentialOperationErrorCode(error) === OTHER_LOGIN) {
+        clearValues();
+        setOtherLoginWrite(true);
+      } else if (
+        credentialOperationErrorCode(error) === 'precondition_failed'
+      ) {
         clearValues();
         setNotice(
           'The request changed since you opened it. Check it again, then enter the value again.',
@@ -721,6 +750,18 @@ export function CredentialFormPage({
     return (
       <ShellPage title="Enter a credential" {...frame}>
         <ShellPageFactsSkeleton />
+      </ShellPage>
+    );
+  }
+
+  if (otherLogin) {
+    return (
+      <ShellPage title="Enter a credential" {...frame}>
+        <EmptyStateCard
+          title="This request was started with another login"
+          description="Sign out, sign in the same way as when you started the request, then open this link again."
+          actions={backLink}
+        />
       </ShellPage>
     );
   }
