@@ -1084,6 +1084,26 @@ describe('CredentialFormPage', () => {
       ).not.toBeInTheDocument();
     });
 
+    it('offers no Cancel request when reading the request again fails', async () => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi();
+      api.getOperation
+        .mockImplementationOnce(read())
+        .mockRejectedValue(new Error('agent-manager is not reachable'));
+      api.saveOperation.mockRejectedValueOnce(await nameTaken());
+      await renderForm(api);
+
+      await user.type(await screen.findByLabelText(/^Value/), VALUE);
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(await screen.findByText('The name is taken')).toBeInTheDocument();
+      await waitFor(() => expect(api.getOperation).toHaveBeenCalledTimes(2));
+      expect(
+        screen.queryByRole('button', { name: 'Cancel request' }),
+      ).not.toBeInTheDocument();
+      expect(api.cancelOperation).not.toHaveBeenCalled();
+    });
+
     it('cancels a request the refusal left pending', async () => {
       const user = userEvent.setup();
       const api = fakeCredentialsApi();

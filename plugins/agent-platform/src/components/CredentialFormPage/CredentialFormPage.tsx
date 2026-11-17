@@ -574,7 +574,8 @@ export function CredentialFormPage({
    * refused save may have moved its version, so it is read again first; then
    * the same cancel as Cancel request. `ifPending`: a save refused with
    * NAME_TAKEN may leave the request in a state that takes no cancel; it is
-   * then left to expire.
+   * then left to expire, and a failed attempt offers no Cancel request,
+   * which could not succeed either.
    */
   const cancelRefused = useTrackedMutation<
     void,
@@ -597,7 +598,9 @@ export function CredentialFormPage({
       }
       return api.cancelOperation(installation, operationId, current.etag);
     },
-    onError: () => setCancelOffered(true),
+    onError: (_error, options) => {
+      if (!options?.ifPending) setCancelOffered(true);
+    },
   });
 
   const save = useTrackedMutation<CredentialResourceResult, Error, void>({

@@ -451,7 +451,9 @@ export const MODEL_OPERATIONS_MISSING =
  * Whether a `set_organization_model` input schema takes `create`: refuse a
  * model of that name, live or in git, with `already_exists` instead of
  * changing it. agent-manager 2.24.0 and older lack it and refuse the unknown
- * argument with `invalid_request`, so it is sent only where the tool lists it.
+ * argument with `invalid_request`. Every release that passes
+ * {@link hasModelOperations} (3.1.0 and later) has it; it is still sent only
+ * where the tool lists it, so no schema ever gets an argument it lacks.
  */
 export function takesCreateOnly(
   inputSchema: { properties?: Record<string, unknown> } | undefined,
