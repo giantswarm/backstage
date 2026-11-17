@@ -206,6 +206,15 @@ first paint and re-renders only when the answer flips. The Hosting · Capacity
 and Model hosting tables do this; it is meant for the other wide tables too.
 `mockContainerWidth` (`ui-react/testUtils`) drives the width in a test.
 
+A table that should keep most of its columns on a laptop before it goes
+compact takes `useFittingColumns(columns, { minWidths, dropFirst,
+narrowColumns })`: each column gets its minimum as bui's `minWidth` (the
+header with its sort arrow and padding, and the usual value), and as the
+container narrows the table shows every column, then leaves out the
+`dropFirst` columns (`isNarrow`; their values fold into other cells, which
+`narrowColumns` renders), then takes the compact layout (`isCompact`). The
+GPU node pools, model cache and capacity tables use it.
+
 Invariants:
 
 - An **actions column never disappears** at phone width: it becomes the row's

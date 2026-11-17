@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo } from 'react';
+import { type ReactNode, useCallback, useMemo } from 'react';
 import {
   Alert,
   Button,
@@ -29,7 +29,7 @@ import {
   ShowMore,
   SimpleAccordion,
   StackedRowList,
-  usePhoneLayout,
+  useFittingColumns,
   useVisibleSort,
   type StackedRowItem,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -142,6 +142,32 @@ export function describePoolCost(
 
 /** The actions column's width, px: the lifecycle chevron and Remove pool. */
 const ACTIONS_COLUMN_WIDTH = 176;
+
+/**
+ * Each column's minimum width, px: its header with the sort arrow and the
+ * padding, and its usual value ("ready · 3 nodes", "$4.44/h now").
+ */
+const POOL_COLUMN_MIN_WIDTHS: Record<string, number> = {
+  name: 140,
+  installation: 130,
+  cluster: 110,
+  accelerator: 130,
+  phase: 140,
+  cost: 120,
+  version: 160,
+  controlPlaneVersion: 220,
+  actions: ACTIONS_COLUMN_WIDTH,
+};
+
+/**
+ * The columns a card too narrow for every one leaves out: where the pool
+ * runs goes under its name, the control plane's version under the pool's.
+ */
+const POOL_COLUMNS_DROPPED_FIRST = [
+  'installation',
+  'cluster',
+  'controlPlaneVersion',
+];
 
 /** The chevron that opens or closes a pool's lifecycle panel beneath the list. */
 function LifecycleToggle({
@@ -290,6 +316,10 @@ function getColumnConfig(
   openedId: string | undefined,
   onToggleLifecycle: (row: GpuNodePoolRow) => void,
   prices: NodeSizePrices | undefined,
+  {
+    isNarrow,
+    showInstallation,
+  }: { isNarrow: boolean; showInstallation: boolean },
 ): ColumnConfig<GpuNodePoolRow>[] {
   const costColumn: ColumnConfig<GpuNodePoolRow>[] = prices
     ? [
@@ -307,7 +337,20 @@ function getColumnConfig(
       isRowHeader: true,
       isSortable: true,
       cell: row => (
-        <CellText title={row.pool.name} description={row.poolName} />
+        <CellText
+          title={row.pool.name}
+          description={
+            isNarrow
+              ? [
+                  row.poolName,
+                  row.cluster.name,
+                  showInstallation ? row.installation : undefined,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
+              : row.poolName
+          }
+        />
       ),
     },
     {
@@ -349,7 +392,16 @@ function getColumnConfig(
       id: 'version',
       label: 'Pool Kubernetes',
       isSortable: true,
-      cell: row => <CellText title={row.pool.version || '—'} />,
+      cell: row => (
+        <CellText
+          title={row.pool.version || '—'}
+          description={
+            isNarrow && row.pool.controlPlaneVersion
+              ? `control plane ${row.pool.controlPlaneVersion}`
+              : undefined
+          }
+        />
+      ),
     },
     {
       id: 'controlPlaneVersion',
@@ -415,14 +467,33 @@ export function GpuNodePoolsPanel({
   hideColumns,
   prices,
 }: GpuNodePoolsPanelProps) {
-  const isPhone = usePhoneLayout();
-  const columnConfig = useMemo(
-    () =>
-      getColumnConfig(onRemove, opened?.id, onToggleLifecycle, prices).filter(
-        column => !hideColumns?.includes(column.id as 'installation'),
-      ),
-    [onRemove, opened?.id, onToggleLifecycle, prices, hideColumns],
+  const showInstallation = !hideColumns?.includes('installation');
+  const columnsFor = useCallback(
+    (isNarrow: boolean) =>
+      getColumnConfig(onRemove, opened?.id, onToggleLifecycle, prices, {
+        isNarrow,
+        showInstallation,
+      }).filter(column => !hideColumns?.includes(column.id as 'installation')),
+    [
+      onRemove,
+      opened?.id,
+      onToggleLifecycle,
+      prices,
+      hideColumns,
+      showInstallation,
+    ],
   );
+  const fullColumns = useMemo(() => columnsFor(false), [columnsFor]);
+  const narrowColumns = useMemo(() => columnsFor(true), [columnsFor]);
+  // Too narrow for every column, the table leaves out where the pool runs
+  // and the control plane's version, and folds them into other cells; too
+  // narrow for the rest, and at phone width, each pool is a stacked row.
+  const fit = useFittingColumns(fullColumns, {
+    minWidths: POOL_COLUMN_MIN_WIDTHS,
+    dropFirst: POOL_COLUMNS_DROPPED_FIRST,
+    narrowColumns,
+  });
+  const columnConfig = fit.columns;
   const { sort, onSortChange } = useVisibleSort(
     BY_INSTALLATION,
     BY_NAME,
@@ -449,34 +520,36 @@ export function GpuNodePoolsPanel({
     // tens, and never an unbounded DOM. At phone width each pool is a
     // stacked row, in the table's order.
     body = (
-      <ShowMore
-        items={tableProps.data ?? []}
-        initial={INITIAL_ROWS}
-        noun="pool"
-      >
-        {visible =>
-          isPhone ? (
-            <StackedRowList
-              aria-label="GPU node pools"
-              rows={visible.map(row =>
-                gpuNodePoolStackedRow(row, {
-                  isOpen: row.id === opened?.id,
-                  onToggleLifecycle,
-                  onRemove,
-                  prices,
-                  showInstallation: !hideColumns?.includes('installation'),
-                }),
-              )}
-            />
-          ) : (
-            <Table<GpuNodePoolRow>
-              {...tableProps}
-              data={visible}
-              columnConfig={columnConfig}
-            />
-          )
-        }
-      </ShowMore>
+      <div ref={fit.ref}>
+        <ShowMore
+          items={tableProps.data ?? []}
+          initial={INITIAL_ROWS}
+          noun="pool"
+        >
+          {visible =>
+            fit.isCompact ? (
+              <StackedRowList
+                aria-label="GPU node pools"
+                rows={visible.map(row =>
+                  gpuNodePoolStackedRow(row, {
+                    isOpen: row.id === opened?.id,
+                    onToggleLifecycle,
+                    onRemove,
+                    prices,
+                    showInstallation,
+                  }),
+                )}
+              />
+            ) : (
+              <Table<GpuNodePoolRow>
+                {...tableProps}
+                data={visible}
+                columnConfig={columnConfig}
+              />
+            )
+          }
+        </ShowMore>
+      </div>
     );
   } else if (isLoading) {
     body = <LoadingIndicator label="Reading node pools…" />;

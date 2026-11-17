@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo } from 'react';
+import { type ReactNode, useCallback, useMemo } from 'react';
 import {
   Alert,
   Button,
@@ -24,7 +24,7 @@ import {
   MENU_WIDTH,
   ShowMore,
   StackedRowList,
-  usePhoneLayout,
+  useFittingColumns,
   useVisibleSort,
   type StackedRowItem,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -239,9 +239,35 @@ export function modelCacheStackedRow(
   };
 }
 
+/** The actions column's width, px: Remove cache. */
+const ACTIONS_COLUMN_WIDTH = 148;
+
+/**
+ * Each column's minimum width, px: its header with the sort arrow and the
+ * padding, and its usual value ("$19.04/month", "about 2 months ago").
+ */
+const CACHE_COLUMN_MIN_WIDTHS: Record<string, number> = {
+  claim: 140,
+  installation: 130,
+  cluster: 110,
+  where: 100,
+  size: 110,
+  price: 130,
+  created: 160,
+  use: 120,
+  actions: ACTIONS_COLUMN_WIDTH,
+};
+
+/** The columns a card too narrow for every one leaves out, under the claim's name. */
+const CACHE_COLUMNS_DROPPED_FIRST = ['installation', 'cluster'];
+
 function getColumnConfig(
   removable: string[],
   onRemove: (row: ModelCacheRow) => void,
+  {
+    isNarrow,
+    showInstallation,
+  }: { isNarrow: boolean; showInstallation: boolean },
 ): ColumnConfig<ModelCacheRow>[] {
   return [
     {
@@ -250,7 +276,20 @@ function getColumnConfig(
       isRowHeader: true,
       isSortable: true,
       cell: row => (
-        <CellText title={row.claim.name} description={row.claim.namespace} />
+        <CellText
+          title={row.claim.name}
+          description={
+            isNarrow
+              ? [
+                  row.claim.namespace,
+                  row.cluster.name,
+                  showInstallation ? row.installation : undefined,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
+              : row.claim.namespace
+          }
+        />
       ),
     },
     {
@@ -305,6 +344,7 @@ function getColumnConfig(
             variant="body-medium"
             title={describePriceSource(row.claim)}
             data-testid="cache-price"
+            style={{ whiteSpace: 'nowrap' }}
           >
             {describeMonthlyPrice(row.claim.price) ?? 'no price'}
           </Text>
@@ -323,7 +363,7 @@ function getColumnConfig(
       cell: row =>
         row.claim.created ? (
           <Cell>
-            <Text variant="body-medium">
+            <Text variant="body-medium" style={{ whiteSpace: 'nowrap' }}>
               <DateComponent value={row.claim.created} relative />
             </Text>
           </Cell>
@@ -341,7 +381,7 @@ function getColumnConfig(
       label: '',
       // Room for Remove cache: shared out equally with the other columns,
       // the cell was narrower than the button.
-      width: 148,
+      width: ACTIONS_COLUMN_WIDTH,
       cell: row => (
         <Cell>
           <Flex justify="end">
@@ -387,14 +427,26 @@ export function ModelCachePanel({
   hideColumns,
   signIns = [],
 }: ModelCachePanelProps) {
-  const isPhone = usePhoneLayout();
-  const columnConfig = useMemo(
-    () =>
-      getColumnConfig(removable, onRemove).filter(
-        column => !hideColumns?.includes(column.id as 'installation'),
-      ),
-    [removable, onRemove, hideColumns],
+  const showInstallation = !hideColumns?.includes('installation');
+  const columnsFor = useCallback(
+    (isNarrow: boolean) =>
+      getColumnConfig(removable, onRemove, {
+        isNarrow,
+        showInstallation,
+      }).filter(column => !hideColumns?.includes(column.id as 'installation')),
+    [removable, onRemove, hideColumns, showInstallation],
   );
+  const fullColumns = useMemo(() => columnsFor(false), [columnsFor]);
+  const narrowColumns = useMemo(() => columnsFor(true), [columnsFor]);
+  // Too narrow for every column, the table names where a claim is under its
+  // name instead of in Environment and Cluster; too narrow for the rest, and
+  // at phone width, each claim is a stacked row.
+  const fit = useFittingColumns(fullColumns, {
+    minWidths: CACHE_COLUMN_MIN_WIDTHS,
+    dropFirst: CACHE_COLUMNS_DROPPED_FIRST,
+    narrowColumns,
+  });
+  const columnConfig = fit.columns;
   const { sort, onSortChange } = useVisibleSort(
     BY_INSTALLATION,
     BY_CLAIM,
@@ -422,32 +474,34 @@ export function ModelCachePanel({
     // A page of the sorted claims at a time (list scale). At phone width
     // each claim is a stacked row, in the table's order.
     body = (
-      <ShowMore
-        items={tableProps.data ?? []}
-        initial={INITIAL_ROWS}
-        noun="cache claim"
-      >
-        {visible =>
-          isPhone ? (
-            <StackedRowList
-              aria-label="Model cache claims"
-              rows={visible.map(row =>
-                modelCacheStackedRow(row, {
-                  removable: removable.includes(row.installation),
-                  onRemove,
-                  showInstallation: !hideColumns?.includes('installation'),
-                }),
-              )}
-            />
-          ) : (
-            <Table<ModelCacheRow>
-              {...tableProps}
-              data={visible}
-              columnConfig={columnConfig}
-            />
-          )
-        }
-      </ShowMore>
+      <div ref={fit.ref}>
+        <ShowMore
+          items={tableProps.data ?? []}
+          initial={INITIAL_ROWS}
+          noun="cache claim"
+        >
+          {visible =>
+            fit.isCompact ? (
+              <StackedRowList
+                aria-label="Model cache claims"
+                rows={visible.map(row =>
+                  modelCacheStackedRow(row, {
+                    removable: removable.includes(row.installation),
+                    onRemove,
+                    showInstallation,
+                  }),
+                )}
+              />
+            ) : (
+              <Table<ModelCacheRow>
+                {...tableProps}
+                data={visible}
+                columnConfig={columnConfig}
+              />
+            )
+          }
+        </ShowMore>
+      </div>
     );
   } else if (isLoading) {
     body = <LoadingIndicator label="Reading model caches…" />;

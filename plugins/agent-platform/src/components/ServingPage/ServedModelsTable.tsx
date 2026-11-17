@@ -912,6 +912,24 @@ function NameCell({
   );
 }
 
+/**
+ * Each column's minimum width, px: its header with the sort arrow and the
+ * padding, and its usual value ("Not ready · CrashLoopBackOff", a "Chat
+ * completions" badge). The table stacks its rows where they do not fit.
+ */
+const SERVED_MODEL_COLUMN_MIN_WIDTHS: Record<string, number> = {
+  name: 140,
+  readiness: 150,
+  modelSource: 120,
+  runtime: 100,
+  capabilities: 90,
+  api: 150,
+  node: 110,
+  gpuCount: 80,
+  usedBy: 120,
+  actions: 80,
+};
+
 function getColumnConfig(
   hrefFor: (consumer: ServedModelConsumer) => string | undefined,
   columns: ServedModelColumns,
@@ -1354,13 +1372,19 @@ function ServedModelsGroupTable({
 }) {
   const columns = useMemo(() => columnsForRows(group.rows), [group.rows]);
   const columnConfig = useMemo(
-    () => getColumnConfig(hrefFor, columns, group.endpoint, renderActions),
+    () =>
+      getColumnConfig(hrefFor, columns, group.endpoint, renderActions).map(
+        column => ({
+          ...column,
+          minWidth: SERVED_MODEL_COLUMN_MIN_WIDTHS[column.id],
+        }),
+      ),
     [hrefFor, columns, group.endpoint, renderActions],
   );
-  // Stacked rows wherever the table's columns would squeeze: beside the
-  // side rail too, not only at phone width.
+  // Stacked rows wherever the table's columns would squeeze, each column
+  // held to its minimum: beside the side rail too, not only at phone width.
   const [containerRef, isCompact] = useCompactLayout(
-    tableMinWidth(columnConfig),
+    tableMinWidth(columnConfig, SERVED_MODEL_COLUMN_MIN_WIDTHS),
   );
 
   const { tableProps } = useTable<ServedModelRow>({

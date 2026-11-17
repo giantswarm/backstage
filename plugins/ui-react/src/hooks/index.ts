@@ -5,6 +5,7 @@ export * from './useContainerDimensions';
 export * from './useCopyWithFeedback';
 export * from './useDetailsPane';
 export * from './useFilters';
+export * from './useFittingColumns';
 export * from './useIsTruncated';
 export * from './useOnDialogOpen';
 export * from './usePageAttention';

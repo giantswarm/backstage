@@ -1036,4 +1036,17 @@ describe('GpuCapacityPanel in a narrow card', () => {
     act(() => container.setWidth(424));
     expect(headers()).toEqual(['Node', 'Free']);
   });
+
+  it('leaves out Environment, Allocatable and Requested first, folded into other cells', async () => {
+    layout = mockDesktopLayout();
+    container = mockContainerWidth(700);
+    await renderPanel();
+
+    expect(headers()).toEqual(['Node', 'GPU', 'Memory', 'GPUs', 'Free']);
+    const node = screen
+      .getByText('gpu-node-1')
+      .closest('[role="row"]') as HTMLElement;
+    expect(within(node).getByText('inst-1')).toBeVisible();
+    expect(within(node).getByText('1 requested')).toBeVisible();
+  });
 });
