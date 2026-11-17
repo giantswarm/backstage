@@ -772,6 +772,11 @@ describe('OrganizationPage', () => {
       .getByRole('rowheader', { name: /^gpt/ })
       .closest('[role="row"]') as HTMLElement;
     expect(within(gpt).queryByText('Default')).toBeNull();
+    // Each name opens the model's page, where it is edited or deleted.
+    expect(within(gpt).getByRole('link', { name: /gpt/ })).toHaveAttribute(
+      'href',
+      `/customize/models/gazelle/${PAYMENTS.namespace}/gpt`,
+    );
   });
 
   it('lists a model named like one of its columns', async () => {
@@ -793,22 +798,21 @@ describe('OrganizationPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('hides key replacement for managed models', async () => {
+  it('offers Replace key on a model whatever tool manages it', async () => {
     await renderPage('/models', {
       ...SCENARIO,
       models: {
         [PAYMENTS.namespace]: SCENARIO.models![PAYMENTS.namespace].map(
-          model => ({
-            ...model,
-            managedBy: 'platform',
-          }),
+          model => ({ ...model, managedBy: 'Flux' }),
         ),
       },
     });
-    await screen.findByRole('rowheader', { name: /claude-sonnet/ });
+
+    // A model from git takes a new key too: by pull request, as the
+    // organization is applied.
     expect(
-      screen.queryByRole('button', { name: /Replace the key/ }),
-    ).toBeNull();
+      await screen.findByRole('button', { name: 'Replace the key of gpt' }),
+    ).toBeEnabled();
   });
 
   describe('the model settings', () => {

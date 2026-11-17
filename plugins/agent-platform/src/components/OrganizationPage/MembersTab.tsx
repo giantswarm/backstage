@@ -37,6 +37,7 @@ import {
   type OrganizationMember,
 } from '../../lib/organizations';
 import { PullRequestOutcome } from '../PullRequestOutcome';
+import { WrappingCellText } from './WrappingCellText';
 
 /** A group comes first: membership then changes in the identity provider. */
 type MemberKind = 'group' | 'person';
@@ -229,8 +230,11 @@ export function MembersTab({
       id: 'binding',
       label: 'Binding',
       defaultWidth: '2fr',
+      // The note is read whole, so both lines wrap, at whole words: on a
+      // phone the table scrolls inside its card rather than squeeze it.
+      minWidth: 160,
       cell: row => (
-        <CellText
+        <WrappingCellText
           title={row.binding}
           description={
             row.binding === FIRST_ADMINS_BINDING
@@ -244,6 +248,8 @@ export function MembersTab({
       id: 'actions',
       label: '',
       defaultWidth: '1fr',
+      // "Remove" whole, on a phone too.
+      minWidth: 100,
       // Only a group or a person is added or removed here; another
       // subject (a ServiceAccount) is changed where it was bound.
       cell: row =>

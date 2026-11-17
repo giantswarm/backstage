@@ -67,10 +67,24 @@ jest.mock('../InstallationChip', () => ({
 
 let mockDeleteCheckError: Error | null = null;
 const mockRecheckDeletable = jest.fn();
-// How the organization's content is written: live, as without commit mode.
+// How the organization's content is written: live, as without commit mode,
+// unless a case says otherwise.
+let mockContentMode: 'apply' | 'commit' = 'apply';
 jest.mock('../../hooks/useOrganizationContentMode', () => ({
-  useOrganizationContentModeOf: () => 'apply',
+  useOrganizationContentModeOf: () => mockContentMode,
 }));
+
+// The organizations agent-manager names, where a case needs them (`org-acme`
+// is one); otherwise the provider's own answer.
+let mockDirectory: unknown;
+jest.mock('../OrganizationDirectoryProvider', () => {
+  const actual = jest.requireActual('../OrganizationDirectoryProvider');
+  return {
+    ...actual,
+    useOrganizationDirectory: () =>
+      mockDirectory ?? actual.useOrganizationDirectory(),
+  };
+});
 
 jest.mock('../../hooks/useDeleteModelConfig', () => ({
   AgentManagerUnavailableError: jest.requireActual(
@@ -305,6 +319,8 @@ function namedModel(name: string, marked: boolean) {
 
 describe('ModelDetailPage', () => {
   beforeEach(() => {
+    mockContentMode = 'apply';
+    mockDirectory = undefined;
     mockListedModels = [];
     mockSetDefault.mockReset();
     mockSetDefault.mockResolvedValue({});
@@ -1019,6 +1035,40 @@ describe('ModelDetailPage', () => {
     expect(screen.queryByText('Managed by Helm')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
   });
+
+  it.each([
+    [
+      'by pull request',
+      'commit',
+      'Edits made here open a pull request, which Flux applies once it is merged.',
+    ],
+    [
+      'live',
+      'apply',
+      'Flux would revert edits made here, so change the model where Flux is configured.',
+    ],
+  ] as const)(
+    "says how edits of an organization's model from git go when its content is written %s",
+    async (_case, mode, sentence) => {
+      mockContentMode = mode;
+      mockDirectory = jest.requireActual(
+        '../../lib/__fixtures__/organizations',
+      ).TEST_ORGANIZATION_DIRECTORY;
+      mockUseResource.mockReturnValue({
+        resource: sonnet({
+          namespace: 'org-acme',
+          labels: { 'kustomize.toolkit.fluxcd.io/name': 'org-acme' },
+        }),
+        isLoading: false,
+        errors: [],
+      });
+      await renderPage('/customize/models/inst-1/org-acme/sonnet');
+
+      const facts = screen.getByRole('region', { name: 'Model details' });
+      expect(within(facts).getByText('Flux')).toBeInTheDocument();
+      expect(within(facts).getByText(sentence)).toBeInTheDocument();
+    },
+  );
 
   it('offers no Edit on a provider the form does not speak, and says so', async () => {
     mockUseResource.mockReturnValue({
