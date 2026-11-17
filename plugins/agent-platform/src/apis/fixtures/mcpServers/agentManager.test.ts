@@ -587,6 +587,34 @@ describe('the fixture agent-manager', () => {
     ]);
   });
 
+  it('asks for a new egress credential, with the origins it is sent to', async () => {
+    const { client, credentials, organizationWith } = setup();
+    const { namespace } = organizationWith('admin');
+    const [policy] = await client.listEgressPolicies(namespace!);
+    const [destination] = policy.destinations;
+
+    const operation = preparedCredentialOperation(
+      await client.replaceOrganizationCredential({
+        namespace: namespace!,
+        secret: destination.credentialSecret!,
+        key: destination.credentialKey!,
+        requestId: 'request-1',
+      }),
+    )!;
+    const { operation: read } = await credentials.getOperation(
+      INSTALLATION,
+      operation,
+    );
+    expect(read.references).toEqual([
+      {
+        kind: 'EgressPolicy',
+        name: policy.name,
+        key: destination.credentialKey,
+        origins: [destination.origin],
+      },
+    ]);
+  });
+
   it('refuses a credential request once it expired', async () => {
     const { client, credentials, organizationWith, advance } = setup();
     const { namespace } = organizationWith('admin');
