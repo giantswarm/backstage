@@ -389,6 +389,8 @@ export function ModelsTab({
             id: 'settings',
             label: 'Settings',
             defaultWidth: '2fr',
+            // "Token limit 128,000" and "Prompt caching, 5 minutes" whole.
+            minWidth: 200,
             cell: (row: ModelRow) => {
               const summary = modelSettingsSummary(row);
               return (
@@ -419,6 +421,8 @@ export function ModelsTab({
       id: 'accepted',
       label: 'Accepted',
       defaultWidth: '2fr',
+      // The header whole beside the Settings column.
+      minWidth: 110,
       cell: row => {
         let title = 'Unknown';
         if (row.accepted === true) {
@@ -433,6 +437,8 @@ export function ModelsTab({
       id: 'key',
       label: 'Key',
       defaultWidth: '1fr',
+      // "Replace key" whole.
+      minWidth: 110,
       cell: row => (
         <Cell>
           {access.credentials && !row.managedBy ? (
