@@ -22,6 +22,7 @@ import {
   ComposerFrame,
   matchesQuery,
   searchableIf,
+  useCompactLayout,
   useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
@@ -75,6 +76,14 @@ const OPTION_AVATAR_SIZE: AvatarSize = 48;
 
 /** Id of the picker's last option, an action rather than an agent. */
 const FOOTER_ACTION_ID = 'action:picker-footer';
+
+/**
+ * The composer's width, in px, below which its controls row is compact: the
+ * agent, the workspace, the toolchains button with its caret and the start
+ * button no longer fit at their natural widths, and the toolchains button
+ * leaves out its caret.
+ */
+const CONTROLS_MIN_WIDTH = 460;
 
 const useStyles = makeStyles(theme => ({
   // bui sets a leading icon flush against the label, which suits a line icon but
@@ -532,6 +541,7 @@ export function NewSessionComposer({
 }: NewSessionComposerProps) {
   const classes = useStyles();
   const touch = useTouchInput();
+  const [formRef, isCompact] = useCompactLayout(CONTROLS_MIN_WIDTH);
   const buildAvatarUrl = useAgentAvatarUrl();
   const [ownPrompt, setOwnPrompt] = useState(initialPrompt ?? '');
   const prompt = controlledPrompt ?? ownPrompt;
@@ -1141,6 +1151,7 @@ export function NewSessionComposer({
             setToolchainChoice({ agentId: selectedAgent.id, picks })
           }
           isDisabled={isStarting}
+          isCompact={isCompact}
         />
       )}
       {renderPickerAccessory?.(selectedAgent)}
@@ -1168,7 +1179,7 @@ export function NewSessionComposer({
     Boolean(startedIn) && error instanceof WorkspaceManagerError;
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form ref={formRef} onSubmit={handleSubmit}>
       <Flex direction="column" gap="2">
         {workspaceNotice}
         {error instanceof AgentManagerNotConnectedError && selectedAgent

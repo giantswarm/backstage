@@ -138,9 +138,17 @@ export function TopAgentsCard({
         <div className={classes.rows}>
           {shown.map(row => (
             <div key={row.id} className={classes.row}>
-              <span className={classes.name} title={row.label}>
-                {row.href ? <Link to={row.href}>{row.label}</Link> : row.label}
-              </span>
+              {/* The link itself truncates: in a truncating span its box
+                  ran on past the card's column. */}
+              {row.href ? (
+                <Link to={row.href} className={classes.name} title={row.label}>
+                  {row.label}
+                </Link>
+              ) : (
+                <span className={classes.name} title={row.label}>
+                  {row.label}
+                </span>
+              )}
               <div
                 className={classes.track}
                 role="img"
