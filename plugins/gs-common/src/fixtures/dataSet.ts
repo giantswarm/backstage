@@ -1,6 +1,7 @@
 import {
   buildAgents,
   buildConnectors,
+  buildOrganizationConnectors,
   buildExecutions,
   buildInstallations,
   buildOrganizations,
@@ -67,7 +68,10 @@ export type FixtureDataSet = {
   installations: FixtureInstallation[];
   organizations: FixtureOrganization[];
   agents: FixtureAgent[];
+  /** muster's own connectors, in its namespace. */
   connectors: FixtureConnector[];
+  /** The connectors of the organizations' own namespaces. */
+  organizationConnectors: FixtureConnector[];
   sessions: FixtureSession[];
   workflows: FixtureWorkflow[];
   executions: FixtureExecution[];
@@ -219,6 +223,10 @@ export function createFixtureDataSet(
     organizations,
     agents,
     connectors,
+    organizationConnectors: buildOrganizationConnectors(
+      organizations,
+      settings.connectors,
+    ),
     sessions: [...sessions, ...turnSessions],
     workflows,
     executions,

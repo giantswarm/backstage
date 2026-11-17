@@ -24,7 +24,7 @@ function withAuth(auth: Record<string, unknown> | undefined) {
     {
       apiVersion: 'muster.giantswarm.io/v1alpha1',
       kind: 'MCPServer',
-      metadata: { name: 'grafana-cloud', namespace: 'muster' },
+      metadata: { name: 'grafana-cloud', namespace: 'agent-platform' },
       spec: { type: 'streamable-http', auth },
     } as never,
     'gazelle',
@@ -132,7 +132,7 @@ describe('serverInfoOf tags', () => {
         kind: 'MCPServer',
         metadata: {
           name: 'jira',
-          namespace: 'muster',
+          namespace: 'agent-platform',
           annotations: { 'ui.giantswarm.io/tags': 'ticketing,ops' },
         },
         spec: { type: 'streamable-http' },
@@ -140,43 +140,57 @@ describe('serverInfoOf tags', () => {
       'gazelle',
     );
     expect(serverInfoOf(tagged).tags).toEqual(['ticketing', 'ops']);
-    expect(serverInfoOf(mcpServer('muster', 'github'))).not.toHaveProperty(
-      'tags',
-    );
+    expect(
+      serverInfoOf(mcpServer('agent-platform', 'github')),
+    ).not.toHaveProperty('tags');
   });
 });
 
 describe('connectorsForTenant', () => {
+  // muster keys every server outside its own namespace `<namespace>/<name>`:
+  // a Giant Swarm organization's `org-<name>` and an Agent Platform
+  // organization's `agents-<name>-<random>` alike.
   const servers = [
-    serverInfoOf(mcpServer('muster', 'github')),
+    serverInfoOf(mcpServer('agent-platform', 'github')),
     serverInfoOf(mcpServer('org-acme', 'jira')),
     serverInfoOf(mcpServer('org-beta', 'jira')),
+    serverInfoOf(mcpServer('agents-payments-x7k2q', 'wiki')),
+    serverInfoOf(mcpServer('agents-risk-p3m9z', 'wiki')),
   ];
   const tools = [
     { name: 'x_github_list_issues' },
     { name: 'x_org-acme_jira_search' },
     { name: 'x_org-beta_jira_search' },
+    { name: 'x_agents-payments-x7k2q_wiki_search' },
+    { name: 'x_agents-risk-p3m9z_wiki_search' },
   ] as ToolSummary[];
 
-  it("offers an agent the shared connectors and its own namespace's, never another's", () => {
-    const offered = connectorsForTenant(servers, tools, 'org-acme');
+  it.each([
+    ['org-acme', 'org-acme/jira', 'x_org-acme_jira_search'],
+    [
+      'agents-payments-x7k2q',
+      'agents-payments-x7k2q/wiki',
+      'x_agents-payments-x7k2q_wiki_search',
+    ],
+  ])(
+    "offers an agent in %s the shared connectors and its own namespace's, never another's",
+    (tenant, own, ownTool) => {
+      const offered = connectorsForTenant(servers, tools, tenant);
 
-    expect(offered.servers.map(server => server.name)).toEqual([
-      'github',
-      'org-acme/jira',
-    ]);
-    expect(offered.tools.map(tool => tool.name)).toEqual([
-      'x_github_list_issues',
-      'x_org-acme_jira_search',
-    ]);
-  });
+      expect(offered.servers.map(server => server.name)).toEqual([
+        'github',
+        own,
+      ]);
+      expect(offered.tools.map(tool => tool.name)).toEqual([
+        'x_github_list_issues',
+        ownTool,
+      ]);
+    },
+  );
 
-  it("offers an organization's agent the shared connectors only, while muster serves no organization namespace", () => {
-    // An organization namespace is `agents-<name>-<random>`; muster keys none
-    // of its servers today, and a Giant Swarm Organization's `org-acme` is
-    // not the organization's.
+  it("offers the platform's agents the shared connectors only", () => {
     expect(
-      connectorsForTenant(servers, tools, 'agents-payments-x7k2q').servers.map(
+      connectorsForTenant(servers, tools, 'kagent').servers.map(
         server => server.name,
       ),
     ).toEqual(['github']);
@@ -184,7 +198,7 @@ describe('connectorsForTenant', () => {
 
   it('offers every connector while the agent has no namespace yet', () => {
     expect(connectorsForTenant(servers, tools, undefined).servers).toHaveLength(
-      3,
+      5,
     );
   });
 });

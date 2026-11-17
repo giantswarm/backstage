@@ -193,6 +193,8 @@ type Scenario = {
   harness?: HarnessChoice;
   /** The toolset picked on the Tools step; `preset:read-only` by default. */
   toolset?: string[];
+  /** The agent's namespace; the platform's (`kagent`) by default. */
+  tenant?: string;
 };
 
 function makeMusterApi(scenario: Scenario = {}) {
@@ -268,12 +270,14 @@ function Seed({
   harness,
   egressText,
   toolset = ['preset:read-only'],
+  tenant = 'kagent',
 }: {
   children: ReactNode;
   withSkill?: boolean;
   harness?: HarnessChoice;
   egressText?: string;
   toolset?: string[];
+  tenant?: string;
 }) {
   const {
     setName,
@@ -298,8 +302,8 @@ function Seed({
       setEgressText(egressText);
     }
     setInstallation('gazelle');
-    setTenantChoices(['kagent']);
-    selectModelConfig('opus-4-7', 'kagent');
+    setTenantChoices([tenant]);
+    selectModelConfig('opus-4-7', tenant);
     selectHarness(harness);
     if (withSkill) {
       toggleSkill(SKILL);
@@ -339,6 +343,7 @@ async function renderReview(
               harness={scenario.harness}
               egressText={scenario.egressText}
               toolset={scenario.toolset}
+              tenant={scenario.tenant}
             >
               <NewAgentReviewPage />
             </Seed>
@@ -392,7 +397,7 @@ function grafanaCloud() {
       kind: 'MCPServer',
       metadata: {
         name: 'grafana-cloud',
-        namespace: 'muster',
+        namespace: 'agent-platform',
         annotations: { 'ui.giantswarm.io/display-name': 'Grafana Cloud' },
       },
       spec: { type: 'streamable-http', auth: { type: 'oauth' } },
@@ -531,6 +536,43 @@ describe('NewAgentReviewPage', () => {
     ).toEqual([
       'server:grafana-cloud',
       'tool:x_docs_search',
+      'tool:core_auth_login',
+    ]);
+  });
+
+  it("creates an organization's agent with its own connector by muster's key, able to sign in to it", async () => {
+    // A server of the organization's namespace, which muster keys
+    // `<namespace>/<name>`, and which signs each person in.
+    mockServerCrs = [
+      new MCPServer(
+        {
+          apiVersion: 'muster.giantswarm.io/v1alpha1',
+          kind: 'MCPServer',
+          metadata: { name: 'wiki', namespace: 'agents-payments-x7k2q' },
+          spec: { type: 'streamable-http', auth: { type: 'oauth' } },
+        } as never,
+        'gazelle',
+      ),
+    ];
+    const user = userEvent.setup();
+    const { callTool } = await renderReview({
+      tenant: 'agents-payments-x7k2q',
+      toolset: ['server:agents-payments-x7k2q/wiki'],
+    });
+
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    await user.click(deployButton());
+    await waitFor(() =>
+      expect(callTool).toHaveBeenCalledWith(
+        'x_agent-manager_create_agent',
+        expect.anything(),
+        'gazelle',
+      ),
+    );
+    const spec = specSentTo(callTool, 'x_agent-manager_create_agent');
+    expect(spec.namespace).toBe('agents-payments-x7k2q');
+    expect(spec.toolset).toEqual([
+      'server:agents-payments-x7k2q/wiki',
       'tool:core_auth_login',
     ]);
   });

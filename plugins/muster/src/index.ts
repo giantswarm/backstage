@@ -65,6 +65,7 @@ export {
 } from './lib/toolAnnotations';
 export type { ToolEffect } from './lib/toolAnnotations';
 export { serverPageResolver } from './lib/toolGrouping';
+export { connectorAuthName } from './lib/connectorAccess';
 export {
   isPermanentMusterReadError,
   musterPollingOptions,

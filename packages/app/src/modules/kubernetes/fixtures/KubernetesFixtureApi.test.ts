@@ -92,8 +92,18 @@ describe('KubernetesFixtureApi', () => {
     const servers = (await list.json()).items.map(
       (item: object) => new MCPServer(item as any, 'fennel'),
     );
-    expect(servers.map((s: MCPServer) => [s.getName(), s.getState()])).toEqual(
-      inInstallation(data.connectors, 'fennel').map(c => [c.name, c.state]),
+    // muster's own connectors, then one in each ready organization's namespace.
+    expect(
+      servers.map((s: MCPServer) => [
+        s.getNamespace(),
+        s.getName(),
+        s.getState(),
+      ]),
+    ).toEqual(
+      [
+        ...inInstallation(data.connectors, 'fennel'),
+        ...inInstallation(data.organizationConnectors, 'fennel'),
+      ].map(c => [c.namespace ?? 'agent-platform', c.name, c.state]),
     );
 
     const workflows = await (

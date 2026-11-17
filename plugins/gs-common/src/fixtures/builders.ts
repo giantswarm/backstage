@@ -146,6 +146,11 @@ export type FixtureAgent = {
 
 export type FixtureConnector = {
   installation: string;
+  /**
+   * The namespace of its MCPServer outside muster's own, an organization's,
+   * where muster keys it `<namespace>/<name>`; absent for muster's own.
+   */
+  namespace?: string;
   name: string;
   displayName: string;
   description: string;
@@ -410,6 +415,37 @@ export function buildConnectors(
         toolsCount: context.random.int(1, 24),
       };
     },
+  );
+}
+
+/**
+ * The connectors of the organizations' own namespaces: one MCPServer in each
+ * ready organization's namespace, which muster serves to that organization's
+ * agents. Drawn from no random number, so adding them left every other list
+ * as it was.
+ */
+export function buildOrganizationConnectors(
+  organizations: readonly FixtureOrganization[],
+  settings: BuilderSettings<ConnectorState> = {},
+): FixtureConnector[] {
+  if (settings.count === 0) {
+    return [];
+  }
+  return organizations.flatMap(organization =>
+    organization.state === 'ready' && organization.namespace
+      ? [
+          {
+            installation: organization.installation,
+            namespace: organization.namespace,
+            name: 'wiki',
+            displayName: `${organization.displayName} wiki`,
+            description: `The pages of ${organization.displayName}'s own wiki.`,
+            url: `https://wiki.${organization.name}.example.com/mcp`,
+            state: 'Connected' as const,
+            toolsCount: 6,
+          },
+        ]
+      : [],
   );
 }
 

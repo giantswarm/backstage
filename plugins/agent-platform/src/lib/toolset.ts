@@ -31,6 +31,7 @@ import {
   type ToolsetPreset,
 } from '@giantswarm/backstage-plugin-muster';
 import { countNoun, INITIAL_ROWS } from '@giantswarm/backstage-plugin-ui-react';
+import { PLATFORM_TENANT_NAMESPACE } from './tenants';
 
 /** The request header the Generic chart renders a toolset into. */
 export const TOOLSET_HEADER = 'X-Muster-Toolset';
@@ -284,6 +285,47 @@ export function normalizeSelection(selectors: string[]): string[] {
 }
 
 /**
+ * The selection an agent keeps when its namespace changes from `leaving` to
+ * `tenant`: without the servers of another namespace than `tenant`
+ * (`server:<namespace>/<name>`), which its agents alone are offered, nor the
+ * tools picked one by one from the servers of the organization it leaves
+ * (`tool:x_<leaving>_…`; muster refuses a shared server whose exposed names
+ * start like that), except the platform's namespace, whose name a shared
+ * server's tools may start with. `tenant` `null` is no namespace of this
+ * installation, for an agent moved to another one: every organization's
+ * servers go. The selection as it is while no namespace is chosen
+ * (`undefined`), when every server is offered.
+ */
+export function selectionForTenant(
+  selectors: string[],
+  leaving: string | undefined,
+  tenant: string | null | undefined,
+): string[] {
+  if (tenant === undefined || leaving === tenant) {
+    return selectors;
+  }
+  const leftTools =
+    leaving && leaving !== PLATFORM_TENANT_NAMESPACE
+      ? `x_${leaving}_`
+      : undefined;
+  const kept = selectors.filter(selector => {
+    const parsed = parseSelector(selector);
+    if (parsed?.kind === 'server') {
+      return (
+        !isOrganizationServerKey(parsed.name) ||
+        (tenant !== null && parsed.name.startsWith(`${tenant}/`))
+      );
+    }
+    return !(
+      parsed?.kind === 'tool' &&
+      leftTools &&
+      parsed.name.startsWith(leftTools)
+    );
+  });
+  return kept.length === selectors.length ? selectors : kept;
+}
+
+/**
  * The toolset the wizard declares for a selection. The empty selection is *no
  * tools*, declared as `preset:none`: an empty `toolset` list is a render error
  * in the chart and an absent value is the unscoped default, so "nothing chosen"
@@ -491,8 +533,8 @@ export function describeToolset(toolset: DeclaredToolset | undefined): {
 export interface ServerInfo {
   /**
    * muster's key for the server — the CR name, `<namespace>/<name>` for a
-   * server of an organization's namespace: what `server:<name>` selects for a
-   * single server.
+   * server outside muster's namespace (an organization's): what
+   * `server:<name>` selects for a single server.
    */
   name: string;
   /**
@@ -706,6 +748,19 @@ export interface ServerBucket {
   unknownServer: boolean;
   /** The CRs' tags, every member's for a family; none when absent. */
   tags?: string[];
+  /**
+   * A server of an organization's own namespace (muster keys it
+   * `<namespace>/<name>`), not one of muster's shared servers.
+   */
+  organizationOwn?: boolean;
+}
+
+/**
+ * Whether muster's key names a server outside its own namespace, keyed
+ * `<namespace>/<name>`: a server of an organization's namespace.
+ */
+export function isOrganizationServerKey(name: string): boolean {
+  return name.includes('/');
 }
 
 /** A bucket's name as people read it: its display name, else its name. */
@@ -877,6 +932,7 @@ export function buildCatalogue(
       toolNamePrefixes: [server.toolNamePrefix],
       unknownServer: false,
       ...(server.tags?.length ? { tags: [...server.tags] } : {}),
+      ...(isOrganizationServerKey(name) ? { organizationOwn: true } : {}),
       group: server.group,
     });
   }
@@ -900,6 +956,7 @@ export function buildCatalogue(
         needsSignIn: needsAuth.has(surface),
         canSignIn: needsAuth.has(surface),
         unknownServer: true,
+        ...(isOrganizationServerKey(surface) ? { organizationOwn: true } : {}),
         group: 'registered',
       };
       buckets.set(surface, bucket);
@@ -918,6 +975,7 @@ export function buildCatalogue(
         needsSignIn: true,
         canSignIn: true,
         unknownServer: true,
+        ...(isOrganizationServerKey(name) ? { organizationOwn: true } : {}),
         group: 'registered',
       });
     }
