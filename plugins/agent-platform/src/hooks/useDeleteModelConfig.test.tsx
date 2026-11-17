@@ -424,8 +424,40 @@ describe("an organization's model, deleted in the organization's mode", () => {
     agentManager(false, IN_GIT);
     const { result } = setup({ modelConfig: fromOrganizationPath() });
 
-    await waitFor(() => expect(mockCallTool).toHaveBeenCalled());
+    // Once get_info answered: the mode is known, and no listing is read.
+    await waitFor(() => expect(result.current.isCheckingDeletable).toBe(false));
+    expect(mockCallTool).toHaveBeenCalledWith(
+      'x_agent-manager_get_info',
+      {},
+      'gazelle',
+    );
+    expect(
+      mockCallTool.mock.calls.filter(
+        ([tool]) => tool === 'x_agent-manager_list_organizations',
+      ),
+    ).toEqual([]);
     expect(result.current.isDeletable).toBe(false);
     expect(result.current.owner).toBe('Flux');
   });
+
+  it.each(['conflict', 'gitops_owned'] as const)(
+    'keeps the delete offered when the dry run answers %s, for the confirm to show it',
+    async code => {
+      agentManager(true, IN_GIT);
+      const { result } = setup({
+        modelConfig: makeModelConfig({ namespace: ORGANIZATION_NAMESPACE }),
+      });
+      const sentence =
+        "ModelConfig agents-payments-x7k2q/qwen3 was written live, not applied from git, so no file in the organization's content path defines it: change it with mode apply";
+      mockDeleteModel.mockRejectedValue(new AgentManagerError(code, sentence));
+
+      await waitFor(() => expect(result.current.isDeletable).toBe(true));
+      expect(result.current.checkError).toBeNull();
+      await act(async () => {
+        await expect(result.current.deleteModelConfig()).rejects.toThrow(
+          sentence,
+        );
+      });
+    },
+  );
 });

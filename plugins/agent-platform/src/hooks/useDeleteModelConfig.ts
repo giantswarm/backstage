@@ -103,6 +103,15 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
         if (error instanceof AgentManagerError && error.code === 'forbidden') {
           return false;
         }
+        // How the model is applied stands in the way, not the person's
+        // right: the delete stays offered, and its confirm shows
+        // agent-manager's sentence.
+        if (
+          error instanceof AgentManagerError &&
+          (error.code === 'conflict' || error.code === 'gitops_owned')
+        ) {
+          return true;
+        }
         throw error;
       }
       return true;
@@ -111,7 +120,11 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
     retry: false,
   });
   const isAllowed = deleteCheck.data === true;
-  const isCheckingPermission = deleteCheck.isLoading;
+  // A Flux model of an organization waits for the mode, which decides
+  // whether it is offered at all.
+  const modePending =
+    !pageMode && Boolean(namespace && directory.has(namespace));
+  const isCheckingPermission = deleteCheck.isLoading || modePending;
   const unavailable = useMemo(
     () =>
       modelConfig && !client
