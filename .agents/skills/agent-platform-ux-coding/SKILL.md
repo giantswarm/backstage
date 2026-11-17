@@ -63,6 +63,8 @@ none fits, in your report or PR. A new variant is allowed only when nothing in
 the catalogue below can serve. Visual tokens live in
 `packages/app/src/modules/agentShell/agent-shell.css` and `theme.ts`; extend
 them and never invent a palette.
+A page built from a mockup or design canvas also follows the
+[`mockups`](../mockups/SKILL.md) skill: its values map to these tokens.
 
 ### Page frame and navigation
 
