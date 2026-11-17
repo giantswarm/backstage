@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router-dom';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import {
   ModelConfig,
   type ModelConfigInterface,
@@ -10,9 +11,11 @@ import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react
 import { customizeExternalRouteRef, modelsRouteRef } from '../../routes';
 import { EditModelPage } from './EditModelPage';
 
-// How the organization's content is written: live, as without commit mode.
+// How the organization's content is written: live, as without commit mode,
+// unless a case says otherwise.
+let mockContentMode: 'apply' | 'commit' = 'apply';
 jest.mock('../../hooks/useOrganizationContentMode', () => ({
-  useOrganizationContentModeOf: () => 'apply',
+  useOrganizationContentModeOf: () => mockContentMode,
 }));
 
 const mockUseResource = jest.fn();
@@ -109,6 +112,13 @@ function sonnet(
   );
 }
 
+/** A model Flux applies from its organization's git path. */
+const fromGit = () =>
+  sonnet({
+    namespace: 'org-acme',
+    labels: { 'kustomize.toolkit.fluxcd.io/name': 'org-acme' },
+  });
+
 function renderPage() {
   return renderInTestApp(
     <PageHeaderActionsProvider>
@@ -138,6 +148,7 @@ describe('EditModelPage', () => {
     mockDirectoryFailure = undefined;
     mockFailingInstallation = 'inst-1';
     mockMayUpdate = true;
+    mockContentMode = 'apply';
     mockSave.mockReset();
     mockSave.mockResolvedValue({ isDefault: false });
     mockUseResource.mockReturnValue({
@@ -260,6 +271,71 @@ describe('EditModelPage', () => {
     expect(
       screen.getByRole('heading', { name: 'Edit model' }),
     ).toBeInTheDocument();
+  });
+
+  it.each([
+    [
+      'live',
+      'apply',
+      () =>
+        sonnet({
+          namespace: 'org-acme',
+          labels: { 'app.kubernetes.io/managed-by': 'agent-manager' },
+        }),
+      'Agents on it pick up the change when you save.',
+    ],
+    [
+      'by pull request',
+      'commit',
+      fromGit,
+      'Saving opens a pull request. Agents on the model pick up the change after it is merged.',
+    ],
+  ] as const)(
+    'says when agents pick up a change saved %s',
+    async (_case, mode, make, sentence) => {
+      mockContentMode = mode;
+      mockUseResource.mockReturnValue({
+        resource: make(),
+        isLoading: false,
+        errors: [],
+      });
+      await renderPage();
+
+      expect(screen.getByText(sentence)).toBeInTheDocument();
+    },
+  );
+
+  it('says why the next save waits once a save opened a pull request, with its link', async () => {
+    mockContentMode = 'commit';
+    mockUseResource.mockReturnValue({
+      resource: fromGit(),
+      isLoading: false,
+      errors: [],
+    });
+    const pullRequest = 'https://github.com/example/organizations/pull/12';
+    mockSave.mockResolvedValue({
+      isDefault: false,
+      commit: { pullRequest, number: 12 },
+    });
+    await renderPage();
+
+    await userEvent.type(screen.getByLabelText(/^Name/), ' new');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await screen.findByText(/^Pull request #12 opened/);
+
+    // The next change, a new key, waits for the merge, and says so.
+    await userEvent.click(
+      screen.getByRole('switch', { name: 'Enter a new key on the next page' }),
+    );
+    const next = screen.getByRole('button', { name: 'Continue to credential' });
+    expect(next).toBeDisabled();
+    expect(next).toHaveAccessibleDescription(
+      'Pull request #12 holds this change. Edit the model again after it is merged.',
+    );
+    expect(screen.getByRole('link', { name: '#12' })).toHaveAttribute(
+      'href',
+      pullRequest,
+    );
   });
 
   it('offers no form without permission to change the model', async () => {

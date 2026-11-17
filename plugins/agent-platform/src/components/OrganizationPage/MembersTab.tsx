@@ -37,6 +37,7 @@ import {
   type OrganizationMember,
 } from '../../lib/organizations';
 import { PullRequestOutcome } from '../PullRequestOutcome';
+import { WrappingCellText } from './WrappingCellText';
 
 /** A group comes first: membership then changes in the identity provider. */
 type MemberKind = 'group' | 'person';
@@ -229,8 +230,9 @@ export function MembersTab({
       id: 'binding',
       label: 'Binding',
       defaultWidth: '2fr',
+      // The note is read whole, so both lines wrap.
       cell: row => (
-        <CellText
+        <WrappingCellText
           title={row.binding}
           description={
             row.binding === FIRST_ADMINS_BINDING

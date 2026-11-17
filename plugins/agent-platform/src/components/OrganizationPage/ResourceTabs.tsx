@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Alert,
   Button,
@@ -55,6 +56,8 @@ import {
   type OrganizationNamespace,
 } from '../../lib/organizations';
 import { PullRequestOutcome } from '../PullRequestOutcome';
+import { WrappingCellText } from './WrappingCellText';
+import { modelDetailRouteRef } from '../../routes';
 
 /**
  * The pull request a dialog's write opened, in mode commit: the dialog stays
@@ -335,6 +338,8 @@ export function ModelsTab({
   // The settings show where the installation's agent-manager takes and
   // reports them; an older one reports none.
   const settings = useModelSettingsSupport(installation) === true;
+  // Each model's page, where it is edited, made the default or deleted.
+  const modelDetailLink = useRouteRef(modelDetailRouteRef);
   const [adding, setAdding] = useState(false);
   const [replacing, setReplacing] = useState<{
     label: string;
@@ -413,6 +418,11 @@ export function ModelsTab({
         <CellText
           title={row.displayName || row.name}
           description={row.displayName ? row.name : undefined}
+          href={modelDetailLink?.({
+            installation,
+            namespace: organization.namespace,
+            name: row.name,
+          })}
         />
       ),
     },
@@ -485,7 +495,7 @@ export function ModelsTab({
       minWidth: 110,
       cell: row => (
         <Cell>
-          {access.credentials && !row.managedBy ? (
+          {access.credentials ? (
             <Button
               variant="tertiary"
               size="small"
@@ -611,8 +621,9 @@ export function ConnectorsTab({
       id: 'credentials',
       label: 'Credentials',
       defaultWidth: '2fr',
+      // Every header and Secret, read whole: the lines wrap.
       cell: row => (
-        <CellText
+        <WrappingCellText
           title={
             row.credentials.length === 0
               ? 'None'
@@ -629,6 +640,8 @@ export function ConnectorsTab({
       id: 'replace',
       label: '',
       defaultWidth: '1fr',
+      // The button's whole label, on a phone too, as on the Egress tab.
+      minWidth: 160,
       cell: row => {
         if (!access.credentials || row.curated) {
           return <Cell />;

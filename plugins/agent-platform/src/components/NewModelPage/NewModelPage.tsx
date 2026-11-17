@@ -1,5 +1,5 @@
 /* eslint-disable @backstage/no-mixed-plugin-imports -- The Agent Platform composes installation APIs across plugins. */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   toastApiRef,
@@ -73,6 +73,35 @@ import {
   useOrganizationDirectory,
 } from '../OrganizationDirectoryProvider';
 
+/**
+ * Why the primary button stays off after a save opened a pull request: the
+ * pull request holds the change, and the next edit comes after its merge.
+ */
+function PullRequestHeld({
+  id,
+  commit,
+}: {
+  id: string;
+  commit: CredentialCommit;
+}) {
+  if (!commit.pullRequest) {
+    return (
+      <Text id={id} variant="body-small" color="secondary">
+        Git already holds this change.
+      </Text>
+    );
+  }
+  return (
+    <Text id={id} variant="body-small" color="secondary">
+      {commit.number ? 'Pull request ' : 'A '}
+      <Link href={commit.pullRequest} variant="body-small">
+        {commit.number ? `#${commit.number}` : 'pull request'}
+      </Link>{' '}
+      holds this change. Edit the model again after it is merged.
+    </Text>
+  );
+}
+
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
 
@@ -91,6 +120,11 @@ export type ModelEdit = {
   modelConfig: ModelConfig;
   /** The model's own page: where Close, Cancel and a save lead. */
   detailHref: string;
+  /**
+   * A save opens a pull request (the organization's content is written in
+   * mode commit) rather than changing the model live.
+   */
+  byPullRequest?: boolean;
 };
 
 /**
@@ -454,6 +488,9 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   // Memoized so the frame's footer slot only updates when the handlers change,
   // not on every keystroke (see useProvidePageHeaderActions). Cancel belongs
   // to the frame's footer, so only the primary lives here.
+  // After a save opened a pull request the page saves nothing more: the
+  // line beside the button says why, and links the pull request.
+  const pullRequestHeldId = useId();
   const actions = useMemo(() => {
     let label: string;
     if (continuesToKey) {
@@ -475,6 +512,14 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         {label}
       </Button>
     );
+    if (pullRequest) {
+      return (
+        <Flex align="center" gap="3" style={{ flexWrap: 'wrap' }}>
+          <PullRequestHeld id={pullRequestHeldId} commit={pullRequest} />
+          {primary(pullRequestHeldId)}
+        </Flex>
+      );
+    }
     // Until the owners are known, a model sent now would go to the platform
     // although an Organization the person administers is still to be
     // offered: the button waits and says why.
@@ -490,6 +535,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     continuesToKey,
     heldReason,
     pullRequest,
+    pullRequestHeldId,
   ]);
   useProvidePageHeaderActions(actions);
 
@@ -511,7 +557,9 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     >
       {edit ? (
         <WizardStepHeading title="Change the model">
-          Agents on it pick up the change when you save.
+          {edit.byPullRequest
+            ? 'Saving opens a pull request. Agents on the model pick up the change after it is merged.'
+            : 'Agents on it pick up the change when you save.'}
         </WizardStepHeading>
       ) : (
         <WizardStepHeading title="Describe the model">

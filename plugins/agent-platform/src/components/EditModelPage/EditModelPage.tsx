@@ -168,6 +168,7 @@ export function EditModelPage() {
             installation,
             modelConfig,
             detailHref: closeHref,
+            byPullRequest: contentMode === 'commit',
           }}
         />
       );
