@@ -291,9 +291,10 @@ describe('CustomizeConnectorsPanel', () => {
 
     expect(await screen.findByText('2 tools')).toBeInTheDocument();
     const github = rowOf('github');
+    // The description may end in an ellipsis: the whole of it on hover.
     expect(
       within(github).getByText('Repositories and pull requests'),
-    ).toBeInTheDocument();
+    ).toHaveAttribute('title', 'Repositories and pull requests');
     expect(within(github).getByText('Your own account')).toBeInTheDocument();
     expect(
       await within(github).findByText('Sign in needed'),

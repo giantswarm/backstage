@@ -220,7 +220,12 @@ function ConnectorName({
             </Text>
           )}
           {row.description && (
-            <Text variant="body-small" color="secondary" truncate>
+            <Text
+              variant="body-small"
+              color="secondary"
+              truncate
+              title={row.description}
+            >
               {row.description}
             </Text>
           )}
@@ -712,6 +717,8 @@ function ConnectorsTable({
       label: 'Sign-in',
       isSortable: true,
       defaultWidth: '1.2fr',
+      // Its header with the sort arrow.
+      minWidth: 110,
       cell: row => <CellText title={row.auth} />,
     },
     {
@@ -719,6 +726,8 @@ function ConnectorsTable({
       label: 'Tools',
       isSortable: true,
       defaultWidth: '1fr',
+      // Its header with the sort arrow, and "10 tools".
+      minWidth: 100,
       cell: row => (
         <CellText
           title={

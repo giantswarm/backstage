@@ -165,6 +165,8 @@ function WorkflowRows({
       id: 'category',
       label: 'Category',
       defaultWidth: '1fr',
+      // Its header whole.
+      minWidth: 100,
       cell: row => <CellText title={row.category ?? ''} />,
     },
     {
@@ -203,6 +205,8 @@ function WorkflowRows({
       id: 'runs',
       label: 'Runs',
       defaultWidth: '1.5fr',
+      // "12 runs · about 2 hours ago" on one line.
+      minWidth: 200,
       cell: row => <CellText title={row.runs ?? ''} />,
     },
     {

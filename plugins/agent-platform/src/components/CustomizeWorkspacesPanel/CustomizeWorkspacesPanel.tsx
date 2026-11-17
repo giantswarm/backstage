@@ -315,7 +315,10 @@ export function CustomizeWorkspacesPanel({
       label: 'Workspace',
       isRowHeader: true,
       defaultWidth: '3fr',
-      minWidth: 200,
+      // The name ends in an ellipsis before the columns of short values
+      // lose a letter: at phone width it shares 343px with Last
+      // synchronization and the actions.
+      minWidth: 104,
       cell: row => (
         <CellText
           title={row.name}
@@ -350,13 +353,15 @@ export function CustomizeWorkspacesPanel({
       id: 'lastSync',
       label: 'Last synchronization',
       defaultWidth: '2fr',
-      minWidth: 152,
+      // Fits its header, and "Not synchronized yet" with its dot.
+      minWidth: 180,
       cell: row => <LastSyncCell row={row} />,
     },
     {
       id: 'sessions',
       label: 'Sessions',
       defaultWidth: '1fr',
+      minWidth: 100,
       cell: row => <CellText title={String(row.sessions)} />,
     },
     {

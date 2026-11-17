@@ -120,7 +120,11 @@ describe('CustomizeToolchainsPanel', () => {
     await renderPanel();
 
     const go = screen.getByRole('row', { name: /^go/ });
-    expect(within(go).getByText('0.2.0, 0.1.0')).toBeInTheDocument();
+    // The newest version and a count, every version on hover.
+    expect(within(go).getByText('0.2.0 · 1 older')).toHaveAttribute(
+      'title',
+      '0.2.0, 0.1.0',
+    );
     expect(
       within(go).getByText('go, gofmt, golangci-lint'),
     ).toBeInTheDocument();

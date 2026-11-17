@@ -89,6 +89,48 @@ export function versionsLabel(toolchain: Toolchain): string {
   return toolchain.versions.map(imageTag).join(', ');
 }
 
+/**
+ * "0.6.1 · 4 older": the newest version and how many came before it, short
+ * enough for its column whatever the count; {@link versionsLabel} on hover.
+ */
+export function shortVersionsLabel(toolchain: Toolchain): string {
+  const [newest, ...older] = toolchain.versions.map(imageTag);
+  if (newest === undefined) {
+    return '—';
+  }
+  return older.length > 0 ? `${newest} · ${older.length} older` : newest;
+}
+
+/** A toolchain's versions, newest first, and when the newest was published. */
+function VersionsCell({ toolchain }: { toolchain: Toolchain }) {
+  const latest = toolchain.publishedAt
+    ? `Latest ${getRelativeDate(toolchain.publishedAt, new Date())}`
+    : undefined;
+  return (
+    <Cell>
+      <Text
+        as="p"
+        variant="body-medium"
+        title={versionsLabel(toolchain)}
+        style={{ whiteSpace: 'nowrap' }}
+      >
+        {shortVersionsLabel(toolchain)}
+      </Text>
+      {latest && (
+        <Text
+          as="p"
+          variant="body-small"
+          color="secondary"
+          truncate
+          title={latest}
+        >
+          {latest}
+        </Text>
+      )}
+    </Cell>
+  );
+}
+
 /** The toolchains matching a search, by name, source or repository. */
 export function searchToolchains(
   toolchains: readonly Toolchain[],
@@ -139,16 +181,9 @@ function ToolchainsTable({
       id: 'versions',
       label: 'Versions',
       defaultWidth: '1fr',
-      cell: row => (
-        <CellText
-          title={versionsLabel(row)}
-          description={
-            row.publishedAt
-              ? `Latest ${getRelativeDate(row.publishedAt, new Date())}`
-              : undefined
-          }
-        />
-      ),
+      // "0.6.1 · 4 older"; when the newest came may end in an ellipsis.
+      minWidth: 140,
+      cell: row => <VersionsCell toolchain={row} />,
     },
     {
       id: 'tools',
@@ -208,6 +243,8 @@ function SourcesSection({ installation }: { installation: string }) {
       id: 'state',
       label: 'State',
       defaultWidth: '1fr',
+      // "Waiting for approval" with its dot.
+      minWidth: 170,
       cell: row => <SourceStateCell source={row} />,
     },
     {
