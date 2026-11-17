@@ -41,7 +41,7 @@ import {
   StackedRowList,
   StatusDot,
   stopRowPress,
-  usePhoneLayout,
+  useCompactLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { sessionDetailRouteRef } from '../../routes';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
@@ -129,11 +129,44 @@ type ShellColumn = {
   isRowHeader?: boolean;
   /**
    * The same width in every day's table, so the columns line up from one
-   * group to the next. The column without one takes the rest.
+   * group to the next: pixels for a column of short values (a state, a
+   * time), which must fit whole, a share of the table for a name. The
+   * column without one takes the rest.
    */
-  width?: string;
+  width?: `${number}px` | `${number}%`;
+  /**
+   * The least a column given a share of the table reads at; the session's
+   * own column needs {@link SESSION_COLUMN_MIN_WIDTH}.
+   */
+  minWidth?: number;
   cell: (row: SessionTableRow, group: SessionListGroup) => JSX.Element;
 };
+
+/** The least the Session column, the one without a width, reads at. */
+const SESSION_COLUMN_MIN_WIDTH = 160;
+
+/**
+ * The narrowest container that shows `columns` with every header and value
+ * whole: the pixel columns, the session's column at its minimum, and the
+ * columns given a share at theirs.
+ */
+export function shellColumnsMinWidth(
+  columns: readonly Pick<ShellColumn, 'width' | 'minWidth'>[],
+): number {
+  let fixed = SESSION_COLUMN_MIN_WIDTH;
+  let share = 0;
+  let floor = 0;
+  for (const { width, minWidth = 0 } of columns) {
+    if (width?.endsWith('px')) {
+      fixed += parseFloat(width);
+    } else if (width?.endsWith('%')) {
+      const fraction = parseFloat(width) / 100;
+      share += fraction;
+      floor = Math.max(floor, minWidth / fraction);
+    }
+  }
+  return Math.ceil(Math.max(fixed / (1 - share), floor));
+}
 
 /** The state of the session's newest turn, in the shell's words. */
 function ShellStateCell({
@@ -407,6 +440,7 @@ function shellColumns({
       id: 'agentName',
       label: 'Agent',
       width: '22%',
+      minWidth: 120,
       cell: row => (
         <Cell>
           <SessionAgent row={row} buildAvatarUrl={buildAvatarUrl} />
@@ -419,20 +453,22 @@ function shellColumns({
       id: 'workspace',
       label: 'Workspace',
       width: '14%',
+      minWidth: 100,
       cell: row => <WorkspaceCell row={row} />,
     });
   }
   columns.push({
     id: 'state',
     label: 'State',
-    width: '17%',
+    // "No activity yet" and "Waiting for you" with their dot.
+    width: '144px',
     cell: row => <ShellStateCell row={row} isLoading={isLoadingStates} />,
   });
   if (showInstallation) {
     columns.push({
       id: 'installation',
       label: 'Environment',
-      width: '12%',
+      width: '112px',
       cell: row => <CellText title={row.installation} />,
     });
   }
@@ -440,7 +476,8 @@ function shellColumns({
     {
       id: 'lastActiveAt',
       label: 'Last active',
-      width: '12%',
+      // The header, and a day of an earlier year ("12 Nov 2025").
+      width: '112px',
       cell: (row, group) => (
         <Cell>
           {row.lastActiveAt !== undefined ? (
@@ -742,8 +779,7 @@ export function ShellSessionsTable({
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const baseId = useId();
-  const isPhone = usePhoneLayout();
-  const containerRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   const hrefFor = useCallback(
     (row: SessionRow) =>
@@ -987,6 +1023,27 @@ export function ShellSessionsTable({
     ],
   );
 
+  // Too narrow for every column whole, the list drops Environment (a
+  // session's own page names it); too narrow for the rest, and at phone
+  // width, it takes the stacked rows.
+  const reducedColumns = useMemo(
+    () => columns.filter(column => column.id !== 'installation'),
+    [columns],
+  );
+  const [fullRef, isNarrow] = useCompactLayout(shellColumnsMinWidth(columns));
+  const [listRef, isCompact] = useCompactLayout(
+    shellColumnsMinWidth(reducedColumns),
+  );
+  const shownColumns = isNarrow ? reducedColumns : columns;
+  const setContainer = useCallback(
+    (node: HTMLDivElement | null) => {
+      containerRef.current = node;
+      fullRef(node);
+      listRef(node);
+    },
+    [fullRef, listRef],
+  );
+
   const onRowAction = useCallback(
     (row: SessionTableRow) => {
       const href = hrefFor(row);
@@ -1026,7 +1083,7 @@ export function ShellSessionsTable({
       : `Showing ${shownTotal} of ${total} sessions`;
 
   return (
-    <div ref={containerRef}>
+    <div ref={setContainer}>
       <Flex direction="column" gap="4">
         {showFilterBar && (
           <ShellFilterBar
@@ -1093,7 +1150,7 @@ export function ShellSessionsTable({
               >
                 {group.label}
               </Text>
-              {isPhone ? (
+              {isCompact ? (
                 <DayList
                   label={group.label}
                   rows={group.rows}
@@ -1120,7 +1177,7 @@ export function ShellSessionsTable({
                   headingId={headingId}
                   rows={group.rows}
                   group={group.id}
-                  columns={columns}
+                  columns={shownColumns}
                   onRowAction={onRowAction}
                 />
               )}

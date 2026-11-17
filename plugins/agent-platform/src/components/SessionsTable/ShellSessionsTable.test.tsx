@@ -11,11 +11,14 @@ import { SessionsTable } from './SessionsTable';
 import {
   MAX_RENDERED_SESSIONS,
   SESSIONS_PAGE_SIZE,
+  shellColumnsMinWidth,
 } from './ShellSessionsTable';
 import { SEARCH_MIN } from '@giantswarm/backstage-plugin-ui-react';
 import {
+  mockContainerWidth,
   mockDesktopLayout,
   mockPhoneLayout,
+  type MockedContainerWidth,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
@@ -1081,6 +1084,47 @@ describe('SessionsTable in the shell layout', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/sessions/gazelle/b');
   });
 
+  // Beside the side rail at 768px, and in a narrow window, the columns of
+  // short values keep their widths: Environment goes first, then the list
+  // stacks its rows as at phone width.
+  describe('in a container too narrow for every column', () => {
+    let layout: MockedLayout;
+    let container: MockedContainerWidth;
+    afterEach(() => {
+      container.restore();
+      layout.restore();
+    });
+
+    const headers = () =>
+      screen.getAllByRole('columnheader').map(cell => cell.textContent?.trim());
+
+    it('shows every column when they fit', async () => {
+      layout = mockDesktopLayout();
+      container = mockContainerWidth(1100);
+      await renderShell();
+
+      expect(headers()).toContain('Environment');
+    });
+
+    it('drops Environment first', async () => {
+      layout = mockDesktopLayout();
+      container = mockContainerWidth(700);
+      await renderShell();
+
+      expect(headers()).toContain('Last active');
+      expect(headers()).not.toContain('Environment');
+    });
+
+    it('stacks the rows when the rest does not fit either', async () => {
+      layout = mockDesktopLayout();
+      container = mockContainerWidth(500);
+      await renderShell();
+
+      expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+      expect(screen.getByRole('list', { name: 'Today' })).toBeInTheDocument();
+    });
+  });
+
   describe('at phone width (T22 B1)', () => {
     let layout: MockedLayout;
     afterEach(() => layout.restore());
@@ -1181,5 +1225,28 @@ describe('SessionsTable in the shell layout', () => {
         screen.queryByRole('list', { name: 'Today' }),
       ).not.toBeInTheDocument();
     });
+  });
+});
+
+describe('shellColumnsMinWidth', () => {
+  it('adds the pixel columns to the session column, scaled up by the shares', () => {
+    // (160 + 144 + 112) / (1 - 0.2)
+    expect(
+      shellColumnsMinWidth([
+        { width: '144px' },
+        { width: '112px' },
+        { width: '20%', minWidth: 100 },
+      ]),
+    ).toBe(520);
+  });
+
+  it('holds a shared column to its own minimum', () => {
+    // 150 / 0.1 beats (160 + 40) / 0.9
+    expect(
+      shellColumnsMinWidth([
+        { width: '40px' },
+        { width: '10%', minWidth: 150 },
+      ]),
+    ).toBe(1500);
   });
 });
