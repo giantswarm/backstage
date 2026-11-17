@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
   type MockedLayout,
+  mockContainerWidth,
   mockDesktopLayout,
   mockPhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
@@ -1467,6 +1468,43 @@ describe('CustomizeConnectorsPanel', () => {
       );
       expect(bodyRows()).toHaveLength(31);
     }, 20_000);
+  });
+
+  // Beside the side rail at ~1160px the name had been squeezed to its icon
+  // while the other columns kept their minimums.
+  describe('in a content column too narrow for every column', () => {
+    const headers = () =>
+      screen
+        .getAllByRole('columnheader')
+        .map(cell => cell.textContent?.trim())
+        .filter(Boolean);
+
+    it('leaves out Tags and Sign-in first, then stacks the rows', async () => {
+      const layout = mockDesktopLayout();
+      const container = mockContainerWidth(1200);
+      try {
+        await renderPanel();
+        expect(await screen.findByText('2 tools')).toBeInTheDocument();
+        expect(headers()).toEqual(
+          expect.arrayContaining(['Connector', 'Tags', 'Sign-in', 'Tools']),
+        );
+
+        act(() => container.setWidth(840));
+        expect(headers()).not.toContain('Tags');
+        expect(headers()).not.toContain('Sign-in');
+        expect(headers()).toEqual(
+          expect.arrayContaining(['Connector', 'Tools', 'Status']),
+        );
+
+        act(() => container.setWidth(500));
+        expect(
+          screen.getByRole('list', { name: 'Connectors' }),
+        ).toBeInTheDocument();
+      } finally {
+        container.restore();
+        layout.restore();
+      }
+    });
   });
 
   describe('at phone width (T22 B8)', () => {

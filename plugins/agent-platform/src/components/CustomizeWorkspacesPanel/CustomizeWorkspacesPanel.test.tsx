@@ -1,7 +1,9 @@
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
+  mockContainerWidth,
+  mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
@@ -510,5 +512,24 @@ describe('CustomizeWorkspacesPanel at phone width', () => {
     expect(
       within(row!).getByRole('button', { name: 'Actions for docs' }),
     ).toBeInTheDocument();
+  });
+
+  // Beside the side rail the content column is narrower than the viewport:
+  // the layout follows the column, not the window.
+  it('stacks the rows on a desktop when the content column is too narrow, and shows the table when it is wide enough', async () => {
+    layout = mockDesktopLayout();
+    const container = mockContainerWidth(700);
+    try {
+      await renderPanel();
+      expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('list', { name: 'Workspaces' }),
+      ).toBeInTheDocument();
+
+      act(() => container.setWidth(900));
+      expect(screen.getByRole('grid')).toBeInTheDocument();
+    } finally {
+      container.restore();
+    }
   });
 });
