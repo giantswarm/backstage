@@ -12,7 +12,10 @@ import {
   providerHasEndpoint,
   type ModelConfigFormValues,
 } from '../lib/modelConfigs';
-import type { OrganizationNamespace } from '../lib/organizations';
+import {
+  modelNameTakenMessage,
+  type OrganizationNamespace,
+} from '../lib/organizations';
 import { modelCredentialsRouteRef } from '../routes';
 import {
   AgentManagerError,
@@ -59,8 +62,11 @@ export type SaveOrganizationModelResult = {
  * credential form, which agent-manager's credential request leads to.
  *
  * - A create is `set_organization_model`; its key is missing, so the
- *   answer is a credential request. It first reads the organization's
- *   models, since the tool changes a model that exists instead of refusing.
+ *   answer is a credential request. It first reads the namespace's models,
+ *   for a quick answer on a name that is taken. It sends `create` where the
+ *   installation's tool takes it, so a model of that name made since that
+ *   read is refused (`already_exists`), not changed; an older agent-manager
+ *   has only the read.
  * - An edit's change of the model id is `set_organization_model`, finished
  *   when the call answers (it prepares a request only when the key Secret
  *   is missing).
@@ -118,9 +124,15 @@ export function useSaveOrganizationModel(installation: string | undefined) {
       if (scopeRefusal) throw new Error(scopeRefusal);
       const setModel = async (
         request: Parameters<typeof client.setOrganizationModel>[0],
+        { create = false }: { create?: boolean } = {},
       ) => {
-        await ensureModelOperations(installation);
-        return client.setOrganizationModel(request);
+        const { createOnly } = await ensureModelOperations(installation);
+        return client.setOrganizationModel({
+          ...request,
+          // Only a new model's write, and only where the tool takes it: an
+          // older agent-manager refuses an argument it does not know.
+          ...(create && createOnly ? { create: true } : {}),
+        });
       };
       const formOf = (operation: string) => {
         const form = formLink?.({ installation, namespace, operation });
@@ -152,20 +164,31 @@ export function useSaveOrganizationModel(installation: string | undefined) {
         // The fresh read gives immediate feedback; create guards the write race.
         const existing = await client.listModelConfigs(namespace);
         if (existing.some(model => model.name === name)) {
-          throw new Error(
-            `The namespace ${namespace} already has a model named ${name}. Choose another name, or edit that model.`,
-          );
+          throw new Error(modelNameTakenMessage(namespace, name));
         }
-        const result = await setModel({
-          namespace,
-          name,
-          create: true,
-          ...configuration,
-          noCredential: values.provider === 'Ollama' || values.noCredential,
-          provider: values.provider,
-          model: values.model.trim(),
-          ...(makeDefault ? { default: true } : {}),
-          requestId: crypto.randomUUID(),
+        const result = await setModel(
+          {
+            namespace,
+            name,
+            ...configuration,
+            noCredential: values.provider === 'Ollama' || values.noCredential,
+            provider: values.provider,
+            model: values.model.trim(),
+            ...(makeDefault ? { default: true } : {}),
+            requestId: crypto.randomUUID(),
+          },
+          { create: true },
+        ).catch(error => {
+          // Someone made a model of that name since the read.
+          if (
+            error instanceof AgentManagerError &&
+            error.code === 'already_exists'
+          ) {
+            throw new Error(modelNameTakenMessage(namespace, name), {
+              cause: error,
+            });
+          }
+          throw error;
         });
         const operation = preparedCredentialOperation(result);
         return {

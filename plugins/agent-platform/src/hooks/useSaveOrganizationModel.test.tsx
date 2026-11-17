@@ -104,6 +104,11 @@ async function saveWith(
   answer: (tool: string) => Promise<unknown>,
   /** The organization's models `list_model_configs` answers. */
   existing: { name: string }[] = [],
+  /**
+   * Whether the installation's `set_organization_model` takes `create`;
+   * agent-manager 2.24.0 and older do not.
+   */
+  createOnly = true,
 ) {
   const callTool = jest.fn(
     async (
@@ -132,6 +137,7 @@ async function saveWith(
                     'endpoint',
                     'displayName',
                     'noCredential',
+                    ...(createOnly ? ['create'] : []),
                   ].map(key => [key, {}]),
                 ),
               },
@@ -349,6 +355,39 @@ describe('useSaveOrganizationModel', () => {
     expect(setCalls(callTool)).toEqual([]);
   });
 
+  it('leaves create out where the tool does not take it, so an older agent-manager writes the model', async () => {
+    const callTool = await saveWith(
+      { organization: PAYMENTS, values: VALUES },
+      pending,
+      [],
+      false,
+    );
+
+    expect(await screen.findByTestId('answer')).toHaveTextContent(
+      CREDENTIAL_OPERATION,
+    );
+    expect(setCalls(callTool)).toHaveLength(1);
+    expect(setCalls(callTool)[0]).not.toHaveProperty('create');
+  });
+
+  it('says the name is taken when a model of that name was made since the read', async () => {
+    const callTool = await saveWith(
+      { organization: PAYMENTS, values: VALUES },
+      async () => {
+        throw new Error(
+          `already_exists: ModelConfig ${PAYMENTS.namespace}/claude-sonnet exists already: pick another name, or call without create to change or replace it`,
+        );
+      },
+    );
+
+    const error = await screen.findByTestId('error');
+    expect(error).toHaveTextContent(
+      `The namespace ${PAYMENTS.namespace} already has a model named claude-sonnet. Choose another name, or edit that model.`,
+    );
+    expect(error).not.toHaveTextContent('already_exists');
+    expect(setCalls(callTool)[0]).toMatchObject({ create: true });
+  });
+
   it('moves the default mark to the new model when asked', async () => {
     const callTool = await saveWith(
       { organization: PAYMENTS, values: VALUES, makeDefault: true },
@@ -382,6 +421,8 @@ describe('useSaveOrganizationModel', () => {
     );
     expect(callTool.mock.calls[0][1]).not.toHaveProperty('replaceCredential');
     expect(callTool.mock.calls[0][1]).not.toHaveProperty('default');
+    // An edit changes the model that exists: create would refuse it.
+    expect(callTool.mock.calls[0][1]).not.toHaveProperty('create');
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'AgentPlatform.modelUpdated' }),
     );

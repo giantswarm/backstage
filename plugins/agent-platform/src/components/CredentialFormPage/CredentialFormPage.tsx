@@ -106,6 +106,32 @@ const KIND_LABELS: Record<string, string> = {
  */
 const CONSUMERS_CHANGED = 'credential_consumers_changed';
 
+/**
+ * agent-manager's code for a save whose operation creates an object that
+ * exists by then, live or in git (409): someone made one of that name since
+ * the request was prepared. Nothing of this request stays written; only a
+ * new request, under another name, can go on.
+ */
+const NAME_TAKEN = 'already_exists';
+
+/** What the request was to create, as the name-taken refusal says it. */
+function createdObject(operation: CredentialOperation | undefined): string {
+  const name = operation?.result?.name;
+  if (!name) {
+    return 'an object with the name this request was to create';
+  }
+  switch (operation?.result?.kind) {
+    case 'model':
+      return `a model named ${name}`;
+    case 'connector':
+      return `a connector named ${name}`;
+    case 'egressPolicy':
+      return `an egress policy named ${name}`;
+    default:
+      return `an object named ${name}`;
+  }
+}
+
 /** A replacement (`replace_organization_credential`): it writes the Secret only. */
 const isReplacement = (operation: CredentialOperation) =>
   operation.result?.kind === 'credential';
@@ -317,10 +343,12 @@ function SaveError({
   installation,
   error,
   startAgainFrom,
+  operation,
 }: {
   installation: string;
   error: Error | null;
   startAgainFrom: string;
+  operation: CredentialOperation | undefined;
 }) {
   if (!error) {
     return null;
@@ -334,6 +362,15 @@ function SaveError({
         status="danger"
         title="The objects that use this credential changed"
         description={`Since this replacement was prepared, an object that uses the credential, or where it sends the value, changed, so nothing was saved. Start the replacement again from ${startAgainFrom}: the new request lists where the value goes now.`}
+      />
+    );
+  }
+  if (credentialOperationErrorCode(error) === NAME_TAKEN) {
+    return (
+      <Alert
+        status="danger"
+        title="The name is taken"
+        description={`Since this request was prepared, someone made ${createdObject(operation)}, so nothing was saved. Start again from ${startAgainFrom} and choose another name.`}
       />
     );
   }
@@ -531,25 +568,39 @@ export function CredentialFormPage({
   const [cancelPressed, setCancelPressed] = useState(false);
 
   /**
-   * Cancels a replacement refused with CONSUMERS_CHANGED: agent-manager
-   * keeps it pending on purpose (giantswarm/agent-manager#427), so it would
-   * wait until it expires. The refused save may have moved its version, so
-   * it is read again first; then the same cancel as Cancel request.
+   * Cancels a request refused with CONSUMERS_CHANGED or NAME_TAKEN:
+   * agent-manager keeps a refused replacement pending on purpose
+   * (giantswarm/agent-manager#427), so it would wait until it expires. The
+   * refused save may have moved its version, so it is read again first; then
+   * the same cancel as Cancel request. `ifPending`: a save refused with
+   * NAME_TAKEN may leave the request in a state that takes no cancel; it is
+   * then left to expire, and a failed attempt offers no Cancel request,
+   * which could not succeed either.
    */
-  const cancelRefused = useTrackedMutation<void, Error, void>({
+  const cancelRefused = useTrackedMutation<
+    void,
+    Error,
+    { ifPending?: boolean } | void
+  >({
     event: null,
     untrackedReason: 'cancelling a refused credential request writes nothing',
-    mutationFn: async () => {
+    mutationFn: async options => {
       if (!operationId) {
         throw new Error('The request is not known.');
       }
       const current = await api.getOperation(installation, operationId);
-      if (current.operation.state === 'cancelled') {
+      const { state } = current.operation;
+      if (
+        state === 'cancelled' ||
+        (options?.ifPending && state !== 'pending')
+      ) {
         return undefined;
       }
       return api.cancelOperation(installation, operationId, current.etag);
     },
-    onError: () => setCancelOffered(true),
+    onError: (_error, options) => {
+      if (!options?.ifPending) setCancelOffered(true);
+    },
   });
 
   const save = useTrackedMutation<CredentialResourceResult, Error, void>({
@@ -609,10 +660,10 @@ export function CredentialFormPage({
         );
         save.reset();
         reload();
-      } else if (code === CONSUMERS_CHANGED) {
+      } else if (code === CONSUMERS_CHANGED || code === NAME_TAKEN) {
         clearValues();
         setStale(true);
-        cancelRefused.mutate();
+        cancelRefused.mutate({ ifPending: code === NAME_TAKEN });
       } else if (code === 'outcome_unknown') {
         clearValues();
         setNotice(
@@ -814,6 +865,7 @@ export function CredentialFormPage({
                 installation={installation}
                 error={shownSaveError}
                 startAgainFrom={startAgainFrom}
+                operation={loaded?.operation}
               />
               <Flex gap="3">
                 <Button variant="secondary" onPress={reload} isDisabled={busy}>
@@ -905,6 +957,7 @@ export function CredentialFormPage({
                 installation={installation}
                 error={shownSaveError}
                 startAgainFrom={startAgainFrom}
+                operation={loaded?.operation}
               />
               {cancel.error instanceof PortalSessionEndedError ? (
                 <PortalSessionEndedAlert afterSignIn={AFTER_SIGN_IN} />
@@ -950,6 +1003,7 @@ export function CredentialFormPage({
             installation={installation}
             error={save.error}
             startAgainFrom={startAgainFrom}
+            operation={loaded?.operation}
           />
         ) : null}
         {stale && cancelOffered ? (
