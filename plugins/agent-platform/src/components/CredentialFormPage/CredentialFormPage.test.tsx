@@ -934,6 +934,37 @@ describe('CredentialFormPage', () => {
       ).toBeInTheDocument();
     });
 
+    it('says the request is another login’s when its cancel after the refusal is refused so', async () => {
+      const user = userEvent.setup();
+      const api = fakeCredentialsApi(read(REPLACEMENT));
+      api.saveOperation.mockRejectedValueOnce(
+        await refusal(
+          409,
+          'credential_consumers_changed',
+          'the objects that use this credential changed; prepare it again',
+        ),
+      );
+      api.cancelOperation.mockRejectedValueOnce(
+        await refusal(
+          403,
+          'credential_operation_other_login',
+          'The credential operation was started with another login.',
+        ),
+      );
+      await renderForm(api);
+      await user.type(await screen.findByLabelText(/^Value/), VALUE);
+      await user.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(
+        await screen.findByText('This request was started with another login'),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Cancel request' }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/tenant-credential-anthropic/)).toBeNull();
+      expect(document.body.innerHTML).not.toContain(VALUE);
+    });
+
     it("keeps an older agent-manager's conflict as Not saved, whatever its text", async () => {
       const user = userEvent.setup();
       const api = fakeCredentialsApi(read(REPLACEMENT));
