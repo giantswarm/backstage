@@ -661,9 +661,11 @@ export function EgressTab({
   }
   // One Replace per Secret and key: a rotation writes that Secret only, for
   // every object that reads it; the policy and its destinations are not
-  // sent. A policy the platform manages is not the organization's to change.
+  // sent. `managedBy` (app.kubernetes.io/managed-by, Helm for one) does not
+  // say the platform owns the policy: agent-manager refuses a copy the
+  // platform curates, and the dialog says why.
   const replaceable = (row: AgentManagerEgressPolicy) =>
-    access.credentials && !row.managedBy ? egressCredentialPairsOf(row) : [];
+    access.credentials ? egressCredentialPairsOf(row) : [];
   const columns: ColumnConfig<EgressRow>[] = [
     {
       id: 'name',

@@ -1195,6 +1195,20 @@ describe('OrganizationPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('offers Replace on an egress policy whatever tool manages it', async () => {
+    await renderPage('/egress', {
+      ...SCENARIO,
+      egressPolicies: [{ ...SCENARIO.egressPolicies![0], managedBy: 'Helm' }],
+    });
+
+    // app.kubernetes.io/managed-by does not say the platform owns it.
+    expect(
+      await screen.findByRole('button', {
+        name: 'Replace the credential of payments-api',
+      }),
+    ).toBeEnabled();
+  });
+
   it('offers no Replace for an egress destination that names no Secret and key', async () => {
     await renderPage('/egress', {
       ...SCENARIO,

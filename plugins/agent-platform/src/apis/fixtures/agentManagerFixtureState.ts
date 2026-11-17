@@ -1650,7 +1650,7 @@ function egressPoliciesOf(namespace: string): AgentManagerEgressPolicy[] {
         {
           origin: 'https://registry.example.com:443',
           credentialHeader: 'Authorization',
-          credentialSecret: 'package-registry-token',
+          credentialSecret: 'tenant-credential-package-registry',
           credentialKey: 'token',
         },
       ],
