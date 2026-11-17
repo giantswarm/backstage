@@ -621,6 +621,8 @@ export function ConnectorsTab({
       id: 'credentials',
       label: 'Credentials',
       defaultWidth: '2fr',
+      // The header whole beside Replace credential.
+      minWidth: 130,
       // Every header and Secret, read whole: the lines wrap.
       cell: row => (
         <WrappingCellText

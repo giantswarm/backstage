@@ -246,6 +246,8 @@ export function MembersTab({
       id: 'actions',
       label: '',
       defaultWidth: '1fr',
+      // "Remove" whole, on a phone too.
+      minWidth: 100,
       // Only a group or a person is added or removed here; another
       // subject (a ServiceAccount) is changed where it was bound.
       cell: row =>
