@@ -105,6 +105,8 @@ import {
 import { WorkspaceDeleteDialog } from '../WorkspaceDeleteDialog';
 import { WorkspaceManagerSignIn } from '../WorkspaceManagerSignIn';
 import { useWorkspacesTabHref } from '../WorkspaceEditorPage';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 import { workspacePageTabs } from './workspaceTabs';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
@@ -309,6 +311,13 @@ function WorkspaceDetailContent({
         name={name}
         sharedIdentity={availability.presence === 'sharedIdentity'}
       />
+    );
+  }
+  if (detail.error instanceof PortalSessionEndedError) {
+    return (
+      <ShellPage title={name} {...frame}>
+        <PortalSessionEndedAlert />
+      </ShellPage>
     );
   }
   if (detail.error) {

@@ -5,7 +5,9 @@ import {
   columnMax,
   DataBar,
   ShowMore,
+  tableMinWidth,
   tableRowId,
+  useCompactLayout,
   usePhoneColumns,
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmModelRow } from '../../../lib/llmUsage';
@@ -21,6 +23,7 @@ import { sortUsageRows } from '../../AgentUsageSection/helpers';
 import { UsageCard } from '../UsageCard';
 import { NameCell } from '../NameCell';
 import { useMeasureColor } from '../../../lib/measures';
+import { useVisibleSort } from '../../../hooks/useVisibleSort';
 
 /**
  * How many models the table shows before *Show all N models*. The models in
@@ -80,14 +83,16 @@ export function LlmByModelTable({
     [rows],
   );
 
-  const columnConfig: ColumnConfig<LlmModelRow>[] = [
+  // The columns, for the compact layout or the full one: compact, the model
+  // id wraps to two lines.
+  const columnsFor = (compact: boolean): ColumnConfig<LlmModelRow>[] => [
     {
       id: 'model',
       label: 'Model',
       isRowHeader: true,
       isSortable: true,
       // Two lines at phone width: a model id cut to one line read as "a…".
-      cell: row => <NameCell title={row.model} />,
+      cell: row => <NameCell title={row.model} compact={compact} />,
     },
     {
       id: 'calls',
@@ -169,14 +174,19 @@ export function LlmByModelTable({
       ),
     },
   ];
-  // At phone width the model, what it cost and its context creep (T22 B10):
-  // six columns in 343px clipped every figure. The volume is in the tab's
-  // KPI tiles and the cost-per-day chart; the blended rate is cost ÷ tokens.
-  const shownColumns = usePhoneColumns(columnConfig, [
-    'model',
-    'costUsd',
-    'avgTokensPerCall',
-  ]);
+  const [tableRef, isCompact] = useCompactLayout(
+    tableMinWidth(columnsFor(false)),
+  );
+  const columnConfig = columnsFor(isCompact);
+  // At phone width, and beside the side rail at tablet width, the model, what
+  // it cost and its context creep (T22 B10): six columns in 343px clipped
+  // every figure. The volume is in the tab's KPI tiles and the cost-per-day
+  // chart; the blended rate is cost ÷ tokens.
+  const shownColumns = usePhoneColumns(
+    columnConfig,
+    ['model', 'costUsd', 'avgTokensPerCall'],
+    { compact: isCompact },
+  );
 
   const { tableProps } = useTable<LlmModelRow>({
     mode: 'complete',
@@ -187,6 +197,11 @@ export function LlmByModelTable({
     // not reset its offset when the data shrinks.
     paginationOptions: { type: 'none' },
   });
+  // The default sort is on Spend, which the compact layout keeps.
+  useVisibleSort(tableProps.sort, shownColumns, {
+    column: 'costUsd',
+    direction: 'descending',
+  });
 
   return (
     <UsageCard title="By model" note={note} wide>
@@ -194,28 +209,30 @@ export function LlmByModelTable({
           `ShowMore` hands the table its first page of them. Passing the raw
           `rows` instead would silently undo every column sort while the
           header's indicator still moved. */}
-      <ShowMore
-        items={tableProps.data ?? []}
-        initial={BY_MODEL_ROWS}
-        noun="model"
-        revealAll
-      >
-        {visible => (
-          <Table<LlmModelRow>
-            {...tableProps}
-            data={visible.map(row => ({
-              ...row,
-              id: tableRowId('model', row.id),
-            }))}
-            columnConfig={shownColumns}
-            emptyState={
-              <Text variant="body-medium" color="secondary">
-                {emptyMessage}
-              </Text>
-            }
-          />
-        )}
-      </ShowMore>
+      <div ref={tableRef}>
+        <ShowMore
+          items={tableProps.data ?? []}
+          initial={BY_MODEL_ROWS}
+          noun="model"
+          revealAll
+        >
+          {visible => (
+            <Table<LlmModelRow>
+              {...tableProps}
+              data={visible.map(row => ({
+                ...row,
+                id: tableRowId('model', row.id),
+              }))}
+              columnConfig={shownColumns}
+              emptyState={
+                <Text variant="body-medium" color="secondary">
+                  {emptyMessage}
+                </Text>
+              }
+            />
+          )}
+        </ShowMore>
+      </div>
     </UsageCard>
   );
 }

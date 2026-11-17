@@ -8,6 +8,7 @@ import {
   MimirUnavailableError,
   type MimirQueryResponse,
 } from '@giantswarm/backstage-plugin-gs-node';
+import { InstallationAuthenticationError } from './installationAuthenticationError';
 import { modelCostQueries as modelCostQueriesOver } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { AgentgatewayGenAiClientCostUsdTotal as Cost } from '@giantswarm/backstage-plugin-gs-common';
 import { MimirQuerier, readModelCost } from './modelCost';
@@ -291,13 +292,28 @@ describe('readModelCost', () => {
     expect(logger.error).not.toHaveBeenCalled();
   });
 
-  it('lets a refused token through from kagent or Mimir, so the person can sign in again', async () => {
-    const refused = new AuthenticationError('token refused');
+  it("lets kagent's refusal of the token through, so the person can sign in again", async () => {
+    const refused = new InstallationAuthenticationError('token refused');
     await expect(
       read({ identity: { getMe: jest.fn().mockRejectedValue(refused) } }),
     ).rejects.toBe(refused);
-    await expect(
-      read({ mimir: { query: jest.fn().mockRejectedValue(refused) } }),
-    ).rejects.toBe(refused);
+  });
+
+  // Backstage's AuthenticationError is the portal refusing the session
+  // token: the page says the portal session ended for that name only.
+  it("names Mimir's refusal of the token as the installation's, not the portal's", async () => {
+    const error = await read({
+      mimir: {
+        query: jest
+          .fn()
+          .mockRejectedValue(new AuthenticationError('token refused')),
+      },
+    }).catch(e => e);
+    expect(error).toBeInstanceOf(InstallationAuthenticationError);
+    expect(error).toMatchObject({
+      name: 'InstallationAuthenticationError',
+      statusCode: 401,
+      message: 'token refused',
+    });
   });
 });

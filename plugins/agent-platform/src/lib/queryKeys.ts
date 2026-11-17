@@ -193,6 +193,21 @@ export function musterToolsetIncludesQueryKey(
   ] as const;
 }
 
+/**
+ * One tool's input schema on an installation (muster's `describe_tool`), read
+ * as the signed-in person; under the `muster` prefix for the same reasons as
+ * the reads above.
+ */
+export function musterToolSchemaQueryKey(installation: string, tool: string) {
+  return [
+    'muster',
+    'agent-platform',
+    'tool-schema',
+    installation,
+    tool,
+  ] as const;
+}
+
 export function musterToolsetResolutionQueryKey(
   installation: string,
   selectors: string[],

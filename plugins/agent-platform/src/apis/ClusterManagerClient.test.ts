@@ -1,7 +1,28 @@
-import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
+import {
+  MusterUnauthorizedError,
+  type MusterApi,
+} from '@giantswarm/backstage-plugin-muster';
 
 import { ClusterManagerNotConnectedError } from '../lib/clusterManager';
+import {
+  PORTAL_SESSION_ENDED_MESSAGE,
+  PortalSessionEndedError,
+} from '../lib/portalSession';
 import { ClusterManagerClient } from './ClusterManagerClient';
+
+/**
+ * The portal's backend refusing the session token before muster-backend runs:
+ * Backstage's `AuthenticationError`, which muster's client keeps as
+ * `errorName`.
+ */
+const portalRefusal = () =>
+  new MusterUnauthorizedError(
+    'Failed user token verification',
+    undefined,
+    undefined,
+    'gazelle',
+    'AuthenticationError',
+  );
 
 function makeMusterApi(answer: unknown = {}) {
   const callTool = jest.fn(
@@ -161,5 +182,34 @@ describe('ClusterManagerClient', () => {
       cache: true,
       mode: 'apply',
     });
+  });
+
+  it('says the portal session ended when the portal refuses the session token', async () => {
+    const { api, callTool } = makeMusterApi();
+    callTool.mockRejectedValue(portalRefusal());
+
+    const error = await new ClusterManagerClient(api, 'gazelle')
+      .listClusters()
+      .catch(e => e);
+
+    expect(error).toBeInstanceOf(PortalSessionEndedError);
+    expect(error.message).toBe(PORTAL_SESSION_ENDED_MESSAGE);
+  });
+
+  it("keeps muster's own sign-in refusal as cluster-manager's", async () => {
+    const { api, callTool } = makeMusterApi();
+    callTool.mockRejectedValue(
+      new MusterUnauthorizedError(
+        "auth_required: server 'cluster-manager' requires authentication",
+        'server_sign_in_required',
+        'cluster-manager',
+        'gazelle',
+        'MusterUnauthorizedError',
+      ),
+    );
+
+    await expect(
+      new ClusterManagerClient(api, 'gazelle').listClusters(),
+    ).rejects.toBeInstanceOf(ClusterManagerNotConnectedError);
   });
 });

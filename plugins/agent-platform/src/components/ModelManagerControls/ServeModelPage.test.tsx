@@ -17,6 +17,7 @@ import {
   type ServedModel,
   type ServingCapabilities,
 } from '../../lib/serving';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import { ServeModelPage, type LoadTarget } from './ServeModelPage';
 
@@ -668,6 +669,52 @@ describe('ServeModelPage', () => {
     );
     expect(verdict).toHaveTextContent('model-manager: deadline exceeded');
     expect(serveButton()).toBeDisabled();
+  });
+
+  it('says the portal session ended, with Sign in again, when the portal refuses the presets read', async () => {
+    listPresets.mockRejectedValue(new PortalSessionEndedError());
+    await render();
+
+    expect(
+      await screen.findByText('Your portal session ended'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByRole('button', { name: 'Sign in again' }),
+    ).toHaveLength(1);
+    expect(screen.queryByText(/could not be read/)).not.toBeInTheDocument();
+  });
+
+  it('says the portal session ended, with Sign in again, when the portal refuses the fit check', async () => {
+    checkFit.mockRejectedValue(new PortalSessionEndedError());
+    await render();
+
+    const verdict = await screen.findByTestId('serve-fit-verdict');
+    await waitFor(() =>
+      expect(verdict).toHaveTextContent('Your portal session ended'),
+    );
+    expect(
+      within(verdict).getByRole('button', { name: 'Sign in again' }),
+    ).toBeInTheDocument();
+    expect(verdict).not.toHaveTextContent('Could not check the fit');
+    expect(serveButton()).toBeDisabled();
+  });
+
+  it('keeps the words alone when the portal refuses the load', async () => {
+    loadModel.mockRejectedValue(new PortalSessionEndedError());
+    await render();
+    await waitFor(() =>
+      expect(screen.getByTestId('serve-fit-verdict')).toHaveTextContent('Fits'),
+    );
+    await waitFor(() => expect(serveButton()).toBeEnabled());
+
+    await userEvent.click(serveButton());
+
+    expect(
+      await screen.findByText(/^Your portal session ended, for example/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Sign in again' }),
+    ).not.toBeInTheDocument();
   });
 
   it('opens on the pool the link names, installation and pool preselected', async () => {

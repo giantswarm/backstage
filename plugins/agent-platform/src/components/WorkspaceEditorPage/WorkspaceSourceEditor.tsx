@@ -63,6 +63,11 @@ export type WorkspaceSourceEditorProps = {
    * only source: the source needs no preview of its own then.
    */
   draftCount?: SourceCount;
+  /**
+   * The page says the portal session ended already: a read the portal
+   * refused says nothing more here.
+   */
+  sessionEndedShown?: boolean;
 };
 
 /**
@@ -212,6 +217,7 @@ export function WorkspaceSourceEditor({
   showsPicksFirst,
   onExpand,
   draftCount,
+  sessionEndedShown,
 }: WorkspaceSourceEditorProps) {
   const provider = providers.find(p => p.name === source.provider);
   const isConnected = provider?.connected ?? false;
@@ -414,6 +420,7 @@ export function WorkspaceSourceEditor({
                 startsOnPicks={
                   showsPicksFirst === true && source.repositories.length > 0
                 }
+                sessionEndedShown={sessionEndedShown}
               />
               {field('repositories') && (
                 <Text variant="body-small" color="danger">

@@ -79,9 +79,9 @@ describe('a connector’s choice', () => {
     expect(readOnlyFits(JIRA)).toBe(true);
     const huge = bucket(
       'huge',
-      Array.from({ length: 40 }, (_, i) => reads(`x_huge_${i}`)),
+      Array.from({ length: 129 }, (_, i) => reads(`x_huge_${i}`)),
     );
-    expect(readOnlyFits(huge)).toBe(false);
+    expect(readOnlyFits(huge, 128)).toBe(false);
   });
 
   it('reads all, read-only, partial and none honestly', () => {
@@ -413,6 +413,7 @@ describe('a compact toolset (B1)', () => {
           'server:docs',
         ],
         wide,
+        32,
       ),
     ).toBe(
       'This toolset needs 36 selectors but may list at most 32; most come from jira (20), github (12) and workflows (2), so choose All or fewer tools there.',
@@ -422,6 +423,7 @@ describe('a compact toolset (B1)', () => {
       inlineCapProblem(
         Array.from({ length: 33 }, (_, i) => `server:s${i}`),
         wide,
+        32,
       ),
     ).toBe(
       'This toolset needs 33 selectors but may list at most 32; most come from other selectors (33), so choose All or fewer tools there.',
@@ -439,6 +441,7 @@ describe('a compact toolset (B1)', () => {
       inlineCapProblem(
         Array.from({ length: 33 }, (_, i) => `server:s${i}`),
         singles,
+        32,
       ),
     ).toBe(
       'This toolset needs 33 selectors but may list at most 32, so choose fewer connectors or tools.',
@@ -535,6 +538,7 @@ describe('a whole connector beside its single tools', () => {
       inlineCapProblem(
         ['server:kagent', ...many('kagent', 20), ...many('jira', 15)],
         wide,
+        32,
       ),
     ).toBe(
       'This toolset needs 36 selectors but may list at most 32; most come from kagent (21) and jira (15), so choose All or fewer tools there, and remove single tools listed beside All, which covers them.',
@@ -548,6 +552,7 @@ describe('a whole connector beside its single tools', () => {
           ...many('jira', 15),
         ],
         wide,
+        32,
       ),
     ).toBe(
       'This toolset needs 37 selectors but may list at most 32; most come from kagent (21) and jira (16), where All already covers the single tools listed beside it, so remove those.',

@@ -11,6 +11,7 @@ import type { GpuNodePoolRow } from '../../hooks/useClusterManager';
 import type { NodeSizePrices } from '../../hooks/useNodeSizePrices';
 import { poolPriceOf } from '../../lib/poolPricing';
 import { poolPhaseLabel } from '../../lib/poolLifecycle';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 import { GpuNodePoolsPanel } from './GpuNodePoolsPanel';
 
 const renderPanel = (isLoading: boolean) =>
@@ -162,6 +163,26 @@ describe('GpuNodePoolsPanel', () => {
       );
     const names = (count: number) =>
       Array.from({ length: count }, (_, index) => `inst-${index + 1}`);
+
+    it('says the portal session ended, with Sign in again, when the portal refused the session token', async () => {
+      await renderNotes(
+        [],
+        names(2).map(installation => ({
+          installation,
+          error: new PortalSessionEndedError(),
+        })),
+      );
+
+      expect(screen.getByText('Your portal session ended')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Sign in again' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(
+          'Could not read the node pools of some environments',
+        ),
+      ).not.toBeInTheDocument();
+    });
 
     it('names three environments in full, sharing a note, with no disclosure', async () => {
       await renderNotes(

@@ -180,6 +180,24 @@ describe('ToolchainPicker', () => {
     );
   });
 
+  it('leaves the caret out in a compact composer, still announcing its popup', () => {
+    render(
+      <ToolchainPicker
+        agent={agent}
+        value={undefined}
+        onChange={jest.fn()}
+        isCompact
+      />,
+    );
+    const trigger = screen.getByRole('button', {
+      name: 'Toolchains: 1 selected',
+    });
+    // The toolbox icon only: no caret after the count.
+    expect(trigger.querySelectorAll('svg')).toHaveLength(1);
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
+    expect(trigger).toHaveTextContent('1');
+  });
+
   it('renders nothing where agent-manager mounts no toolchains', () => {
     mockCapabilities = {};
     const { container } = render(<Harness onChange={jest.fn()} />);

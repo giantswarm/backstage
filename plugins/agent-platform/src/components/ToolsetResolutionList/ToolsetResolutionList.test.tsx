@@ -369,4 +369,24 @@ describe('ToolsetResolutionList', () => {
       screen.queryByRole('searchbox', { name: 'Search the resolved tools' }),
     ).not.toBeInTheDocument();
   });
+
+  it('says the portal session ended, with Sign in again, when the portal refused the session token', async () => {
+    await renderList({
+      tools: [],
+      unmatched: [],
+      truncated: false,
+      isLoading: false,
+      status: 'error',
+      error: 'Your portal session ended …',
+      sessionEnded: true,
+    });
+
+    expect(screen.getByText('Your portal session ended')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Sign in again' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Could not resolve the toolset'),
+    ).not.toBeInTheDocument();
+  });
 });

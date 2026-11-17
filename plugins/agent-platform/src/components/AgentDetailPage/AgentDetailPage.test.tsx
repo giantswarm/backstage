@@ -564,6 +564,7 @@ const NO_SESSIONS: AgentSessionsView = {
   isLoading: false,
   isNotUserScoped: false,
   isUnavailable: false,
+  sessionEnded: false,
   retry: () => {},
   isRetrying: false,
 };

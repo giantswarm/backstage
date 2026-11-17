@@ -32,9 +32,8 @@ const AUTHENTICATION_ERROR = 'AuthenticationError';
  * - a `MusterUnauthorizedError` of muster-backend (`status`, `errorName`),
  *   whose own 401s are named `MusterUnauthorizedError`.
  *
- * The agent-platform backend's credential route also answers
- * `AuthenticationError` when the request carries no installation token,
- * which a sign-in mints again too.
+ * The agent-platform backend never answers that name itself: a missing or
+ * refused installation token is its `InstallationAuthenticationError`.
  */
 export function isPortalSessionRefusal(error: unknown): boolean {
   if (error instanceof PortalSessionEndedError) {

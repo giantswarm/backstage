@@ -1,4 +1,8 @@
 import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
+import {
+  portalSessionError,
+  PortalSessionEndedError,
+} from '../lib/portalSession';
 
 import {
   CLUSTER_MANAGER_TOOLS,
@@ -62,7 +66,12 @@ export class ClusterManagerClient {
         this.installation,
       );
     } catch (error) {
-      throw classifyClusterManagerError(error);
+      // The portal refusing the session token is said as that, never in its
+      // words: nothing reached muster (`lib/portalSession.ts`).
+      const ended = portalSessionError(error);
+      throw ended instanceof PortalSessionEndedError
+        ? ended
+        : classifyClusterManagerError(error);
     }
     if (typeof result === 'string') {
       try {

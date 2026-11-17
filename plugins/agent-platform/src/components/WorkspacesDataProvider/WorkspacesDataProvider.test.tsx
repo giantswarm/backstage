@@ -57,6 +57,8 @@ let mockUnreachable: string[];
 let mockSharedIdentity: string[];
 /** The installations where the person has not signed in to the workspace-manager. */
 let mockNotSignedIn: string[];
+/** The portal refuses the person's session token on every read. */
+let mockPortalRefused = false;
 /** The workspace-manager's other tools, by name, as the person calls them. */
 let mockTools: Record<string, (args: any) => unknown>;
 
@@ -68,6 +70,16 @@ const mockMusterApi = {
     })),
   })),
   listServers: jest.fn(async (installation: string) => {
+    if (mockPortalRefused) {
+      // The portal's refusal of the session token, before muster-backend.
+      throw new MusterUnauthorizedError(
+        'Failed user token verification',
+        undefined,
+        undefined,
+        installation,
+        'AuthenticationError',
+      );
+    }
     if (mockUnreachable.includes(installation)) {
       throw new Error('muster: 503 Service Unavailable');
     }
@@ -225,7 +237,22 @@ describe('WorkspacesDataProvider', () => {
     mockSharedIdentity = [];
     mockNotSignedIn = [];
     mockTools = {};
+    mockPortalRefused = false;
     jest.clearAllMocks();
+  });
+
+  it('says the portal session ended when the portal refuses the server list that says where workspace-manager runs', async () => {
+    mockPortalRefused = true;
+    await renderWorkspaces();
+
+    expect(
+      await screen.findByText('Your portal session ended'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Sign in again' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/token verification/)).toBeNull();
+    expect(mockMusterApi.callTool).not.toHaveBeenCalled();
   });
 
   // giantswarm/backstage#3236 review: the sign-in follows the 401's reason,

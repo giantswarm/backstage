@@ -859,7 +859,7 @@ describe('MusterApiClient token selection for derived installations', () => {
 });
 
 describe('MusterApiClient.filterTools toolset arguments', () => {
-  it('sends one toolset= entry per selector, in order, plus include_presets', async () => {
+  it('sends selectors in a JSON body with the filter options in the query', async () => {
     const t = setup();
 
     await t.client.filterTools({
@@ -871,12 +871,26 @@ describe('MusterApiClient.filterTools toolset arguments', () => {
 
     const url = new URL(String(t.fetchMock.mock.calls[0][0]));
     expect(url.pathname).toBe('/api/muster/tools/filter');
-    expect(url.searchParams.getAll('toolset')).toEqual([
-      'preset:read-only',
-      'workflow:incident-triage',
-    ]);
+    expect(url.searchParams.has('toolset')).toBe(false);
+    const options = t.fetchMock.mock.calls[0][1] as RequestInit;
+    expect(options.method).toBe('POST');
+    expect(JSON.parse(options.body as string)).toEqual({
+      toolset: ['preset:read-only', 'workflow:incident-triage'],
+    });
     expect(url.searchParams.get('include_presets')).toBe('true');
     expect(url.searchParams.get('limit')).toBe('1000');
+  });
+
+  it('keeps a valid Unicode selection out of the encoded request URL', async () => {
+    const t = setup();
+    const toolset = [`tool:${'é'.repeat(4093)}x`];
+    expect(encodeURIComponent(toolset[0]).length).toBeGreaterThan(16 * 1024);
+    await t.client.filterTools({ installation: 'gazelle', toolset });
+    const [url, options] = t.fetchMock.mock.calls[0];
+    expect(String(url)).not.toContain('toolset=');
+    expect(JSON.parse((options as RequestInit).body as string)).toEqual({
+      toolset,
+    });
   });
 
   it('sends neither parameter when the caller gives no toolset', async () => {

@@ -15,6 +15,7 @@ import {
   EDITOR_PAGE_SIZE,
   useRepositoriesPage,
 } from '../../hooks/useWorkspaceEditor';
+import { isPortalSessionRefusal } from '../../lib/portalSession';
 import type { SourceDraft } from '../../lib/workspaceDraft';
 import { shortAge } from '../../lib/shortAge';
 import {
@@ -29,6 +30,7 @@ import {
   sameName,
   uniqueNames,
 } from '../../lib/workspaceSelection';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { repositoryNoun } from './repositoryNoun';
 import {
   countSummary,
@@ -144,6 +146,11 @@ export type RepositoryPickerProps = {
   providerKind: string | undefined;
   /** Opens on "selected only", the picks and exclusions, instead of the listing. */
   startsOnPicks?: boolean;
+  /**
+   * The page says the portal session ended already: a listing the portal
+   * refused says nothing more here.
+   */
+  sessionEndedShown?: boolean;
 };
 
 /**
@@ -164,6 +171,7 @@ export function RepositoryPicker({
   count,
   providerKind,
   startsOnPicks = false,
+  sessionEndedShown = false,
 }: RepositoryPickerProps) {
   const pickerRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState('');
@@ -179,6 +187,8 @@ export function RepositoryPicker({
   const [selectAll, setSelectAll] = useState<{
     busy: boolean;
     error?: string;
+    /** The portal refused the session token on one of its reads. */
+    sessionEnded?: boolean;
   }>({ busy: false });
 
   const owner = source.owner.trim();
@@ -274,10 +284,14 @@ export function RepositoryPicker({
       });
       setSelectAll({ busy: false });
     } catch (cause) {
-      setSelectAll({
-        busy: false,
-        error: classifyWorkspaceManagerError(cause).message,
-      });
+      setSelectAll(
+        isPortalSessionRefusal(cause)
+          ? { busy: false, sessionEnded: true }
+          : {
+              busy: false,
+              error: classifyWorkspaceManagerError(cause).message,
+            },
+      );
     }
   }, [browse, data, client, onChange, source]);
 
@@ -357,7 +371,10 @@ export function RepositoryPicker({
             </Text>
           )}
           {listing.isLoading && <Skeleton width="100%" height={120} />}
-          {listing.error && (
+          {isPortalSessionRefusal(listing.error) && !sessionEndedShown && (
+            <PortalSessionEndedAlert />
+          )}
+          {listing.error && !isPortalSessionRefusal(listing.error) && (
             <Alert
               status="warning"
               title={`Could not list the ${repositoryNoun(providerKind, 2)}`}
@@ -382,6 +399,11 @@ export function RepositoryPicker({
                       : `Select all ${data.total} matches`}
                   </Button>
                 </Flex>
+              )}
+              {/* Read outside the query cache: the page cannot know of
+                  this refusal, so the picker says it. */}
+              {selectAll.sessionEnded && !sessionEndedShown && (
+                <PortalSessionEndedAlert />
               )}
               {selectAll.error && (
                 <Text variant="body-small" color="danger">

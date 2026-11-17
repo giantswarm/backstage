@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 import { ToolchainReadFailure } from './ToolchainReadFailure';
 
 let mockSignInRequired = false;
@@ -39,6 +40,25 @@ describe('ToolchainReadFailure', () => {
       }),
     ).toBeInTheDocument();
     expect(screen.queryByText('auth_required')).not.toBeInTheDocument();
+  });
+
+  it('says the portal session ended, with Sign in again, for a read the portal refused', () => {
+    render(
+      <ToolchainReadFailure
+        installation="gazelle"
+        error={new PortalSessionEndedError()}
+        title="The toolchain sources could not be read"
+        onRetry={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Your portal session ended')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Sign in again' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('The toolchain sources could not be read'),
+    ).not.toBeInTheDocument();
   });
 
   it('says what could not be read for any other failure', () => {

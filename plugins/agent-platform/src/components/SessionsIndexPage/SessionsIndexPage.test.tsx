@@ -85,6 +85,7 @@ const loadedSessions: SessionsContextValue = {
   unreachableInstallations: [],
   readFailures: {},
   nothingRead: false,
+  sessionEnded: false,
   retry: () => {},
   isRetrying: false,
   notUserScopedInstallations: [],
@@ -273,6 +274,29 @@ describe('SessionsIndexPage', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
       expect(retry).toHaveBeenCalledTimes(1);
+    });
+
+    it('says the portal session ended, with Sign in again, when the portal refuses the session token', async () => {
+      mockUseSessions.mockReturnValue({
+        ...loadedSessions,
+        unreachableInstallations: ['gazelle'],
+        readFailures: { gazelle: { reason: 'request failed' } },
+        nothingRead: true,
+        sessionEnded: true,
+      });
+
+      await render();
+
+      expect(screen.getByText('Your portal session ended')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Sign in again' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('Could not read your sessions'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Try again' }),
+      ).not.toBeInTheDocument();
     });
 
     it('shows a retry under way', async () => {
