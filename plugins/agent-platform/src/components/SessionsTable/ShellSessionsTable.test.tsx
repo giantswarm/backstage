@@ -11,7 +11,6 @@ import { SessionsTable } from './SessionsTable';
 import {
   MAX_RENDERED_SESSIONS,
   SESSIONS_PAGE_SIZE,
-  shellColumnsMinWidth,
 } from './ShellSessionsTable';
 import { SEARCH_MIN } from '@giantswarm/backstage-plugin-ui-react';
 import {
@@ -1123,6 +1122,61 @@ describe('SessionsTable in the shell layout', () => {
       expect(screen.queryByRole('grid')).not.toBeInTheDocument();
       expect(screen.getByRole('list', { name: 'Today' })).toBeInTheDocument();
     });
+
+    it('names the environment on the session’s second line once its column is gone', async () => {
+      layout = mockDesktopLayout();
+      container = mockContainerWidth(700);
+      await renderShell();
+
+      const row = screen
+        .getByRole('link', { name: 'Triage this week' })
+        .closest('[role="row"]') as HTMLElement;
+      expect(within(row).getByText('gazelle')).toBeInTheDocument();
+    });
+
+    describe('with sessions in a workspace', () => {
+      const withWorkspace = rows.map((row, index) =>
+        index === 0
+          ? {
+              ...row,
+              workspace: {
+                volumeHandle: 'fs-1::docs',
+                fetched: [],
+                providers: [],
+              },
+            }
+          : row,
+      );
+
+      it('drops Environment, then Workspace, then stacks, and comes back as it widens', async () => {
+        layout = mockDesktopLayout();
+        container = mockContainerWidth(1100);
+        await renderShell(withWorkspace);
+        expect(headers()).toEqual(
+          expect.arrayContaining(['Workspace', 'Environment']),
+        );
+
+        // Beside the side rail on a ~1024px window: the table stays.
+        act(() => container.setWidth(900));
+        expect(headers()).toContain('Workspace');
+        expect(headers()).not.toContain('Environment');
+
+        act(() => container.setWidth(750));
+        expect(headers()).not.toContain('Workspace');
+        expect(headers()).toContain('Last active');
+        const row = screen
+          .getByRole('link', { name: 'Triage this week' })
+          .closest('[role="row"]') as HTMLElement;
+        expect(within(row).getByText('gazelle · ws-docs')).toBeInTheDocument();
+
+        act(() => container.setWidth(500));
+        expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+
+        act(() => container.setWidth(750));
+        expect(screen.getAllByRole('grid').length).toBeGreaterThan(0);
+        expect(headers()).not.toContain('Workspace');
+      });
+    });
   });
 
   describe('at phone width (T22 B1)', () => {
@@ -1225,28 +1279,5 @@ describe('SessionsTable in the shell layout', () => {
         screen.queryByRole('list', { name: 'Today' }),
       ).not.toBeInTheDocument();
     });
-  });
-});
-
-describe('shellColumnsMinWidth', () => {
-  it('adds the pixel columns to the session column, scaled up by the shares', () => {
-    // (160 + 144 + 112) / (1 - 0.2)
-    expect(
-      shellColumnsMinWidth([
-        { width: '144px' },
-        { width: '112px' },
-        { width: '20%', minWidth: 100 },
-      ]),
-    ).toBe(520);
-  });
-
-  it('holds a shared column to its own minimum', () => {
-    // 150 / 0.1 beats (160 + 40) / 0.9
-    expect(
-      shellColumnsMinWidth([
-        { width: '40px' },
-        { width: '10%', minWidth: 150 },
-      ]),
-    ).toBe(1500);
   });
 });

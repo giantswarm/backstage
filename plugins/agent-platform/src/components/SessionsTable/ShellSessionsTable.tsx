@@ -41,7 +41,7 @@ import {
   StackedRowList,
   StatusDot,
   stopRowPress,
-  useCompactLayout,
+  useWidthTier,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { sessionDetailRouteRef } from '../../routes';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
@@ -70,7 +70,9 @@ import {
   SessionListGroup,
   SessionDayGroup,
   sessionDayGroup,
+  sessionColumnMinWidth,
   SessionTableRow,
+  shellColumnsMinWidth,
   STATE_IDLE_LABEL,
   STATE_UNKNOWN_LABEL,
   withSessionStates,
@@ -134,39 +136,10 @@ type ShellColumn = {
    * column without one takes the rest.
    */
   width?: `${number}px` | `${number}%`;
-  /**
-   * The least a column given a share of the table reads at; the session's
-   * own column needs {@link SESSION_COLUMN_MIN_WIDTH}.
-   */
+  /** The least a column given a share of the table reads at. */
   minWidth?: number;
   cell: (row: SessionTableRow, group: SessionListGroup) => JSX.Element;
 };
-
-/** The least the Session column, the one without a width, reads at. */
-const SESSION_COLUMN_MIN_WIDTH = 160;
-
-/**
- * The narrowest container that shows `columns` with every header and value
- * whole: the pixel columns, the session's column at its minimum, and the
- * columns given a share at theirs.
- */
-export function shellColumnsMinWidth(
-  columns: readonly Pick<ShellColumn, 'width' | 'minWidth'>[],
-): number {
-  let fixed = SESSION_COLUMN_MIN_WIDTH;
-  let share = 0;
-  let floor = 0;
-  for (const { width, minWidth = 0 } of columns) {
-    if (width?.endsWith('px')) {
-      fixed += parseFloat(width);
-    } else if (width?.endsWith('%')) {
-      const fraction = parseFloat(width) / 100;
-      share += fraction;
-      floor = Math.max(floor, minWidth / fraction);
-    }
-  }
-  return Math.ceil(Math.max(fixed / (1 - share), floor));
-}
 
 /** The state of the session's newest turn, in the shell's words. */
 function ShellStateCell({
@@ -359,6 +332,7 @@ function shellColumns({
   showAgent,
   showInstallation,
   showWorkspace,
+  folded = {},
   currentYear,
   focusAfterDelete,
   onRowDeleted,
@@ -373,6 +347,11 @@ function shellColumns({
   showInstallation: boolean;
   /** On where a listed session works in a workspace. */
   showWorkspace: boolean;
+  /**
+   * The columns a narrower table leaves out, named on the session's second
+   * line instead, so sessions of one title stay apart.
+   */
+  folded?: { installation?: boolean; workspace?: boolean };
   currentYear: number;
   /** The row to focus once a row is deleted, by the deleted row's id. */
   focusAfterDelete: (rowId: string) => string | undefined;
@@ -387,6 +366,12 @@ function shellColumns({
       isRowHeader: true,
       cell: row => {
         const href = hrefFor(row);
+        const where = [
+          showInstallation && folded.installation ? row.installation : '',
+          showWorkspace && folded.workspace ? row.workspaceName : '',
+        ]
+          .filter(Boolean)
+          .join(' · ');
         return (
           <Cell>
             <Flex align="center" gap="2" style={{ minWidth: 0 }}>
@@ -430,6 +415,17 @@ function shellColumns({
                 </Badge>
               )}
             </Flex>
+            {where && (
+              <Text
+                variant="body-small"
+                color="secondary"
+                truncate
+                title={where}
+                style={{ display: 'block' }}
+              >
+                {where}
+              </Text>
+            )}
           </Cell>
         );
       },
@@ -460,15 +456,16 @@ function shellColumns({
   columns.push({
     id: 'state',
     label: 'State',
-    // "No activity yet" and "Waiting for you" with their dot.
-    width: '144px',
+    // "Waiting for you" (94px) with its dot, the padding and room to spare.
+    width: '152px',
     cell: row => <ShellStateCell row={row} isLoading={isLoadingStates} />,
   });
   if (showInstallation) {
     columns.push({
       id: 'installation',
       label: 'Environment',
-      width: '112px',
+      // Its header, with room to spare.
+      width: '120px',
       cell: row => <CellText title={row.installation} />,
     });
   }
@@ -481,7 +478,11 @@ function shellColumns({
       cell: (row, group) => (
         <Cell>
           {row.lastActiveAt !== undefined ? (
-            <Text variant="body-medium" color="secondary">
+            <Text
+              variant="body-medium"
+              color="secondary"
+              style={{ whiteSpace: 'nowrap' }}
+            >
               <SessionTime
                 at={row.lastActiveAt}
                 group={group}
@@ -586,7 +587,8 @@ function DayTable({
             <Column
               id={column.id}
               isRowHeader={column.isRowHeader}
-              style={column.width ? { width: column.width } : undefined}
+              // A header stays on one line; its column is as wide as it.
+              style={{ whiteSpace: 'nowrap', width: column.width }}
             >
               {column.hideLabel ? (
                 <VisuallyHidden>{column.label}</VisuallyHidden>
@@ -993,21 +995,20 @@ export function ShellSessionsTable({
     [notificationSettings],
   );
 
-  const columns = useMemo(
-    () =>
-      shellColumns({
-        buildAvatarUrl,
-        hrefFor,
-        isLoadingStates,
-        showAgent,
-        showInstallation,
-        showWorkspace,
-        currentYear,
-        focusAfterDelete,
-        onRowDeleted,
-        onTogglePin: togglePin,
-        notificationsFor,
-      }),
+  const columnOptions = useMemo(
+    () => ({
+      buildAvatarUrl,
+      hrefFor,
+      isLoadingStates,
+      showAgent,
+      showInstallation,
+      showWorkspace,
+      currentYear,
+      focusAfterDelete,
+      onRowDeleted,
+      onTogglePin: togglePin,
+      notificationsFor,
+    }),
     [
       buildAvatarUrl,
       hrefFor,
@@ -1022,26 +1023,37 @@ export function ShellSessionsTable({
       notificationsFor,
     ],
   );
+  const columns = useMemo(() => shellColumns(columnOptions), [columnOptions]);
 
-  // Too narrow for every column whole, the list drops Environment (a
-  // session's own page names it); too narrow for the rest, and at phone
-  // width, it takes the stacked rows.
-  const reducedColumns = useMemo(
-    () => columns.filter(column => column.id !== 'installation'),
-    [columns],
+  // One measurement, four layouts: every column whole; without Environment;
+  // without Workspace too; and the stacked rows, as at phone width. A column
+  // left out is named on the session's second line, as a stacked row names
+  // it, so sessions of one title stay apart.
+  const layouts = useMemo(() => {
+    const build = (folded: { installation?: boolean; workspace?: boolean }) =>
+      shellColumns({ ...columnOptions, folded }).filter(
+        column =>
+          !(folded.installation && column.id === 'installation') &&
+          !(folded.workspace && column.id === 'workspace'),
+      );
+    return [
+      columns,
+      build({ installation: true }),
+      build({ installation: true, workspace: true }),
+    ];
+  }, [columns, columnOptions]);
+  const sessionMinWidth = sessionColumnMinWidth(stateRows);
+  const [tierRef, tier] = useWidthTier(
+    layouts.map(layout => shellColumnsMinWidth(layout, sessionMinWidth)),
   );
-  const [fullRef, isNarrow] = useCompactLayout(shellColumnsMinWidth(columns));
-  const [listRef, isCompact] = useCompactLayout(
-    shellColumnsMinWidth(reducedColumns),
-  );
-  const shownColumns = isNarrow ? reducedColumns : columns;
+  const isCompact = tier >= layouts.length;
+  const shownColumns = layouts[Math.min(tier, layouts.length - 1)];
   const setContainer = useCallback(
     (node: HTMLDivElement | null) => {
       containerRef.current = node;
-      fullRef(node);
-      listRef(node);
+      tierRef(node);
     },
-    [fullRef, listRef],
+    [tierRef],
   );
 
   const onRowAction = useCallback(

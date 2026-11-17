@@ -205,6 +205,10 @@ branch on the answer instead of `usePhoneLayout()`, and pass it to
 first paint and re-renders only when the answer flips. The Hosting · Capacity
 and Model hosting tables do this; it is meant for the other wide tables too.
 `mockContainerWidth` (`ui-react/testUtils`) drives the width in a test.
+A table with more steps than full and compact (drop a column, then
+another, then stack) measures once with `useWidthTier([full, …])`, which
+returns how many of the widths the container is narrower than; the
+sessions list does this.
 
 Invariants:
 
