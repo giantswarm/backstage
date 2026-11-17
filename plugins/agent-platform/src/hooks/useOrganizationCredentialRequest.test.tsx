@@ -91,7 +91,11 @@ async function addModel(createOnly: boolean, answer: () => Promise<unknown>) {
   jest
     .mocked(api.describeTool)
     .mockResolvedValue(modelToolSchema(createOnly) as never);
-  callTool.mockImplementation(answer);
+  // get_info stays the fake's, which decides the write's mode: live.
+  const fake = callTool.getMockImplementation()!;
+  callTool.mockImplementation((name, ...rest) =>
+    name === 'x_agent-manager_get_info' ? fake(name, ...rest) : answer(),
+  );
   await renderInTestApp(
     <TestApiProvider
       apis={[

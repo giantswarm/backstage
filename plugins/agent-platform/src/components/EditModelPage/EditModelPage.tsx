@@ -19,7 +19,11 @@ import {
   modelConfigEditOwner,
   modelConfigFormValues,
 } from '../../lib/modelConfigs';
-import type { OrganizationDirectory } from '../../lib/organizations';
+import type {
+  OrganizationDirectory,
+  OrganizationWriteMode,
+} from '../../lib/organizations';
+import { useOrganizationContentModeOf } from '../../hooks/useOrganizationContentMode';
 import {
   organizationsUndecided,
   useOrganizationDirectory,
@@ -39,13 +43,15 @@ function editBlocker(
   directory: OrganizationDirectory,
   /** Why it cannot be told whether the namespace is an organization's. */
   undecided?: string,
+  /** How the organization's content is written (`modelConfigEditOwner`). */
+  contentMode?: OrganizationWriteMode,
 ): string | undefined {
   // An organization's model must not be saved as the platform's.
   if (undecided && modelConfig.getNamespace() !== MODEL_CONFIG_NAMESPACE) {
     return `Could not tell whether this model belongs to an organization, whose models are saved through agent-manager. Try again once agent-manager answers. ${undecided}`;
   }
   // An organization's model agent-manager wrote is edited through it.
-  const owner = modelConfigEditOwner(modelConfig, directory);
+  const owner = modelConfigEditOwner(modelConfig, directory, contentMode);
   if (owner) {
     return `This model is asserted by ${owner}, which would revert portal edits on its next run. Change it where ${owner} is configured.`;
   }
@@ -110,6 +116,9 @@ export function EditModelPage() {
   // taking an organization's model for the platform's.
   const organizations = useOrganizationDirectory();
   const { directory, isLoading: isLoadingDirectory } = organizations;
+  // In mode commit a model of the organization's git path is edited by pull
+  // request; the form waits for that answer.
+  const contentMode = useOrganizationContentModeOf(installation, namespace);
 
   const shownName = modelConfig?.getDisplayName() || name;
 
@@ -120,7 +129,8 @@ export function EditModelPage() {
   let body;
   if (
     isLoading ||
-    (modelConfig && (isCheckingPermission || isLoadingDirectory))
+    (modelConfig &&
+      (isCheckingPermission || isLoadingDirectory || !contentMode))
   ) {
     body = <LoadingIndicator label="Reading the model…" />;
   } else if (!modelConfig) {
@@ -147,6 +157,7 @@ export function EditModelPage() {
       mayUpdate,
       directory,
       organizationsUndecided(organizations, installation),
+      contentMode,
     );
     if (!blocker) {
       return (

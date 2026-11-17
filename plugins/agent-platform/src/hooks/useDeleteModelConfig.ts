@@ -11,10 +11,16 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { AgentManagerError } from '../lib/agentManager';
+import type { CredentialCommit } from '../lib/credentialOperations';
 import { modelConfigEditOwner } from '../lib/modelConfigs';
+import { modeArgument } from '../lib/organizations';
 import { musterModelDeleteCheckQueryKey } from '../lib/queryKeys';
 import { useOrganizationDirectory } from '../components/OrganizationDirectoryProvider';
 import { useAgentManagerClient } from './useAgentManager';
+import {
+  useOrganizationContentMode,
+  useOrganizationContentModeOf,
+} from './useOrganizationContentMode';
 
 /**
  * The portal has no agent-manager client for the installation (no Muster API
@@ -49,6 +55,14 @@ export class AgentManagerUnavailableError extends Error {
  * unsafe direction is proceeding, since deleting a referenced model breaks
  * every agent on it.
  *
+ * An organization's model is deleted in its organization's mode
+ * ({@link useOrganizationContentMode}): for one applied from git where
+ * agent-manager opens pull requests, the delete (and its dry run) is a pull
+ * request that removes the model's file, and the answer carries it
+ * (`commit`); the model stays until it is merged. That mode also lets a model
+ * Flux applies from the organization's path be deleted
+ * (`modelConfigEditOwner`).
+ *
  * Call this from inside the plugin's `QueryClientProvider` — from the page,
  * not the actions element handed to `useProvidePageHeaderActions` (see
  * `useDeleteAgent`). `modelConfig` is optional for the same reason: the page
@@ -63,8 +77,13 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
   const { directory } = useOrganizationDirectory();
   const name = modelConfig?.getName();
   const namespace = modelConfig?.getNamespace();
+  const contentMode = useOrganizationContentMode();
+  const pageMode = useOrganizationContentModeOf(
+    modelConfig ? cluster : undefined,
+    namespace,
+  );
   const owner = modelConfig
-    ? modelConfigEditOwner(modelConfig, directory)
+    ? modelConfigEditOwner(modelConfig, directory, pageMode)
     : undefined;
 
   const deleteCheck = useQuery({
@@ -76,10 +95,22 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
     enabled: Boolean(client && modelConfig && namespace && name && !owner),
     queryFn: async () => {
       try {
-        await client!.deleteModel(namespace!, name!, { dryRun: true });
+        await client!.deleteModel(namespace!, name!, {
+          dryRun: true,
+          ...modeArgument(await contentMode(cluster, namespace!)),
+        });
       } catch (error) {
         if (error instanceof AgentManagerError && error.code === 'forbidden') {
           return false;
+        }
+        // How the model is applied stands in the way, not the person's
+        // right: the delete stays offered, and its confirm shows
+        // agent-manager's sentence.
+        if (
+          error instanceof AgentManagerError &&
+          (error.code === 'conflict' || error.code === 'gitops_owned')
+        ) {
+          return true;
         }
         throw error;
       }
@@ -89,7 +120,11 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
     retry: false,
   });
   const isAllowed = deleteCheck.data === true;
-  const isCheckingPermission = deleteCheck.isLoading;
+  // A Flux model of an organization waits for the mode, which decides
+  // whether it is offered at all.
+  const modePending =
+    !pageMode && Boolean(namespace && directory.has(namespace));
+  const isCheckingPermission = deleteCheck.isLoading || modePending;
   const unavailable = useMemo(
     () =>
       modelConfig && !client
@@ -122,7 +157,11 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
     );
   };
 
-  const mutation = useTrackedMutation({
+  const mutation = useTrackedMutation<
+    { deleted: boolean; commit?: CredentialCommit },
+    Error,
+    void
+  >({
     // Only a deletion this call made: a model already gone was deleted by
     // someone else, or by an earlier attempt that reported it already.
     event: ({ deleted }) =>
@@ -175,15 +214,26 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
       if (!client || !namespace) {
         throw new Error('agent-manager is not reachable on this installation.');
       }
-      const result = await client.deleteModel(namespace, name);
+      const result = await client.deleteModel(
+        namespace,
+        name,
+        modeArgument(await contentMode(cluster, namespace)),
+      );
       await invalidateReads([gvk]);
-      return { deleted: Boolean(result.deleted) };
+      // A pull request deletes nothing until it is merged.
+      return {
+        deleted: Boolean(result.deleted),
+        ...(result.commit ? { commit: result.commit } : {}),
+      };
     },
   });
 
   const { mutateAsync, reset } = mutation;
-  const deleteModelConfig = useCallback(async () => {
-    await mutateAsync();
+  const deleteModelConfig = useCallback(async (): Promise<{
+    commit?: CredentialCommit;
+  }> => {
+    const { commit } = await mutateAsync();
+    return commit ? { commit } : {};
   }, [mutateAsync]);
 
   // Memoized as a whole because the page passes this straight into the element
@@ -208,6 +258,8 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
       deleteModelConfig,
       isDeleting: mutation.isPending,
       error: mutation.error as Error | null,
+      /** The pull request the delete opened, in mode commit. */
+      pullRequest: mutation.data?.commit,
       reset,
     }),
     [
@@ -220,6 +272,7 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
       deleteModelConfig,
       mutation.isPending,
       mutation.error,
+      mutation.data,
       reset,
     ],
   );

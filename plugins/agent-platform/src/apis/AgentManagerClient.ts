@@ -421,7 +421,7 @@ export class AgentManagerClient {
   deleteModel(
     namespace: string,
     name: string,
-    options: { dryRun?: boolean } = {},
+    options: { dryRun?: boolean; mode?: 'commit' } = {},
   ): Promise<CredentialResourceResult> {
     return this.call<CredentialResourceResult>(
       AGENT_MANAGER_TOOLS.deleteOrganizationObject,
@@ -430,6 +430,7 @@ export class AgentManagerClient {
         name,
         kind: 'model',
         ...(options.dryRun ? { dryRun: true } : {}),
+        ...(options.mode ? { mode: options.mode } : {}),
       },
     );
   }

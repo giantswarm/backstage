@@ -128,10 +128,19 @@ async function saveWith(
       _args: Record<string, unknown>,
       _installation: string,
       _options?: { urlElicitation?: boolean },
-    ) =>
-      tool === 'x_agent-manager_list_model_configs'
-        ? { modelConfigs: existing }
-        : answer(tool),
+    ) => {
+      if (tool === 'x_agent-manager_list_model_configs') {
+        return { modelConfigs: existing };
+      }
+      // agent-manager without commit mode, unless `answer` says otherwise:
+      // the writes are live.
+      if (tool === 'x_agent-manager_get_info') {
+        return Promise.resolve()
+          .then(() => answer(tool))
+          .catch(() => ({ capabilities: {} }));
+      }
+      return answer(tool);
+    },
   );
   await renderInTestApp(
     <TestApiProvider
@@ -179,6 +188,13 @@ async function saveWith(
   );
   await userEvent.click(screen.getByRole('button', { name: 'Save' }));
   return callTool;
+}
+
+/** Every call but the read of `get_info`, which decides the write's mode. */
+function writeCalls(callTool: jest.Mock) {
+  return callTool.mock.calls.filter(
+    ([tool]) => tool !== 'x_agent-manager_get_info',
+  );
 }
 
 /** The arguments of each `set_organization_model` call. */
@@ -434,13 +450,167 @@ describe('useSaveOrganizationModel', () => {
     expect(await screen.findByTestId('answer')).toHaveTextContent(
       JSON.stringify({ isDefault: true, changed: true }),
     );
-    expect(callTool.mock.calls[0][1]).not.toHaveProperty('replaceCredential');
-    expect(callTool.mock.calls[0][1]).not.toHaveProperty('default');
+    expect(setCalls(callTool)[0]).not.toHaveProperty('replaceCredential');
+    expect(setCalls(callTool)[0]).not.toHaveProperty('default');
     // An edit changes the model that exists: create would refuse it.
-    expect(callTool.mock.calls[0][1]).not.toHaveProperty('create');
+    expect(setCalls(callTool)[0]).not.toHaveProperty('create');
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'AgentPlatform.modelUpdated' }),
     );
+  });
+
+  describe('in an organization applied from git, where agent-manager opens pull requests', () => {
+    const PULL_REQUEST = {
+      repository: 'giantswarm/gazelle-configs',
+      base: 'main',
+      pullRequest: 'https://github.com/giantswarm/gazelle-configs/pull/7',
+      number: 7,
+    };
+    /** agent-manager with commit mode, and the organization's listing. */
+    const answers =
+      (orphaned?: { status: string; reason: string }) =>
+      async (tool: string) => {
+        switch (tool) {
+          case 'x_agent-manager_get_info':
+            return { capabilities: { organizations: true, commit: true } };
+          case 'x_agent-manager_list_organizations':
+            return {
+              organizations: [
+                {
+                  name: PAYMENTS.organization,
+                  parent: PAYMENTS.parent,
+                  namespace: PAYMENTS.namespace,
+                  ...(orphaned ? { orphaned } : {}),
+                  permissions: { manage: false, member: true },
+                },
+              ],
+            };
+          case 'x_agent-manager_replace_organization_credential':
+            return replaced();
+          default:
+            return { ...(await present()), commit: PULL_REQUEST };
+        }
+      };
+
+    it('edits the model by pull request, and says nothing is changed yet', async () => {
+      const callTool = await saveWith(
+        { organization: PAYMENTS, values: VALUES, original: SONNET },
+        answers({ status: 'False', reason: 'InInventory' }),
+      );
+
+      expect(await screen.findByTestId('answer')).toHaveTextContent(
+        JSON.stringify({
+          isDefault: false,
+          changed: false,
+          commit: PULL_REQUEST,
+        }),
+      );
+      expect(setCalls(callTool)).toEqual([
+        expect.objectContaining({ mode: 'commit' }),
+      ]);
+      expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+    });
+
+    it('asks for a new key by pull request', async () => {
+      const callTool = await saveWith(
+        {
+          organization: PAYMENTS,
+          values: SONNET_AS_STORED,
+          original: SONNET,
+          replaceKey: true,
+        },
+        answers({ status: 'False', reason: 'InInventory' }),
+      );
+
+      await screen.findByTestId('answer');
+      expect(
+        callTool.mock.calls
+          .filter(
+            ([tool]) =>
+              tool === 'x_agent-manager_replace_organization_credential',
+          )
+          .map(([, args]) => args),
+      ).toEqual([expect.objectContaining({ mode: 'commit' })]);
+    });
+
+    it('adds a model by pull request, its key on the form', async () => {
+      const callTool = await saveWith(
+        { organization: PAYMENTS, values: VALUES },
+        async tool =>
+          tool === 'x_agent-manager_set_organization_model'
+            ? pending()
+            : answers({ status: 'False', reason: 'InInventory' })(tool),
+      );
+
+      expect(await screen.findByTestId('answer')).toHaveTextContent(
+        CREDENTIAL_OPERATION,
+      );
+      expect(setCalls(callTool)).toEqual([
+        expect.objectContaining({ create: true, mode: 'commit' }),
+      ]);
+    });
+
+    it('keeps the pull request of the change when it goes on to the new key', async () => {
+      await saveWith(
+        {
+          organization: PAYMENTS,
+          values: VALUES,
+          original: SONNET,
+          replaceKey: true,
+        },
+        answers({ status: 'False', reason: 'InInventory' }),
+      );
+
+      const answer = JSON.parse(
+        (await screen.findByTestId('answer')).textContent ?? '{}',
+      );
+      expect(answer).toEqual(
+        expect.objectContaining({
+          commit: PULL_REQUEST,
+          form: expect.stringContaining(CREDENTIAL_OPERATION),
+        }),
+      );
+    });
+
+    it('refuses a namespace the listing does not name, writing nothing', async () => {
+      const callTool = await saveWith(
+        { organization: PAYMENTS, values: VALUES, original: SONNET },
+        async tool =>
+          tool === 'x_agent-manager_list_organizations'
+            ? { organizations: [] }
+            : answers()(tool),
+      );
+
+      expect(await screen.findByTestId('error')).toHaveTextContent(
+        `Could not tell whether the organization of ${PAYMENTS.namespace} is applied from git, so nothing was written.`,
+      );
+      expect(setCalls(callTool)).toEqual([]);
+    });
+
+    it("writes the installation's models live without reading the organizations", async () => {
+      const callTool = await saveWith(
+        { namespace: 'kagent', values: VALUES },
+        answers(),
+      );
+
+      await screen.findByTestId('answer');
+      expect(setCalls(callTool)[0]).not.toHaveProperty('mode');
+      expect(
+        callTool.mock.calls.filter(
+          ([tool]) => tool === 'x_agent-manager_list_organizations',
+        ),
+      ).toEqual([]);
+    });
+
+    it('edits the model of a live organization live', async () => {
+      const callTool = await saveWith(
+        { organization: PAYMENTS, values: VALUES, original: SONNET },
+        answers(),
+      );
+
+      await screen.findByTestId('answer');
+      expect(setCalls(callTool)[0]).not.toHaveProperty('mode');
+    });
   });
 
   it('asks for a new key alone through replace_organization_credential, never sending the model', async () => {
@@ -457,7 +627,7 @@ describe('useSaveOrganizationModel', () => {
     expect(await screen.findByTestId('answer')).toHaveTextContent(
       `/customize/models/credentials/gazelle/agents-payments-x7k2q/${CREDENTIAL_OPERATION}`,
     );
-    expect(callTool.mock.calls).toEqual([
+    expect(writeCalls(callTool)).toEqual([
       [
         'x_agent-manager_replace_organization_credential',
         {
@@ -487,9 +657,9 @@ describe('useSaveOrganizationModel', () => {
     );
     await screen.findByTestId('answer');
     await userEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(callTool).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(writeCalls(callTool)).toHaveLength(2));
 
-    const [first, second] = callTool.mock.calls.map(
+    const [first, second] = writeCalls(callTool).map(
       ([, args]) => (args as { requestId: string }).requestId,
     );
     expect(second).not.toBe(first);
@@ -512,11 +682,11 @@ describe('useSaveOrganizationModel', () => {
     expect(await screen.findByTestId('answer')).toHaveTextContent(
       `/credentials/gazelle/${PAYMENTS.namespace}/${CREDENTIAL_OPERATION}`,
     );
-    expect(callTool.mock.calls.map(([tool]) => tool)).toEqual([
+    expect(writeCalls(callTool).map(([tool]) => tool)).toEqual([
       'x_agent-manager_set_organization_model',
       'x_agent-manager_replace_organization_credential',
     ]);
-    expect(callTool.mock.calls[0][1]).not.toHaveProperty('replaceCredential');
+    expect(setCalls(callTool)[0]).not.toHaveProperty('replaceCredential');
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'AgentPlatform.modelUpdated' }),
     );

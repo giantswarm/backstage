@@ -49,9 +49,39 @@ import {
 import { useModelSettingsSupport } from '../../hooks/useModelSettingsSupport';
 import { ModelSettingsFields } from '../ModelConfigForm';
 import {
+  CONTENT_PULL_REQUEST_NEXT,
+  CONTENT_PULL_REQUEST_UNCHANGED,
   type OrganizationConnector,
   type OrganizationNamespace,
 } from '../../lib/organizations';
+import { PullRequestOutcome } from '../PullRequestOutcome';
+
+/**
+ * The pull request a dialog's write opened, in mode commit: the dialog stays
+ * open with it, and nothing is listed until it is merged.
+ */
+function DialogPullRequest({
+  request,
+}: {
+  request: ReturnType<typeof useOrganizationCredentialRequest>;
+}) {
+  const commit = request.data?.form ? undefined : request.data?.commit;
+  return commit ? (
+    <PullRequestOutcome
+      commit={commit}
+      next={CONTENT_PULL_REQUEST_NEXT}
+      unchanged={CONTENT_PULL_REQUEST_UNCHANGED}
+      testId="organization-content-pull-request"
+    />
+  ) : null;
+}
+
+/** Whether a dialog's write ended in a pull request, which it shows. */
+function openedPullRequest(
+  request: ReturnType<typeof useOrganizationCredentialRequest>,
+): boolean {
+  return Boolean(request.data?.commit && !request.data.form);
+}
 
 type TabProps = {
   installation: string;
@@ -157,6 +187,7 @@ function AddModelDialog({
       confirmLabel="Continue to the key"
       busyLabel="Preparing…"
       isBusy={request.isPending}
+      isDone={openedPullRequest(request)}
       error={hasSettingError ? undefined : request.error?.message}
       onConfirm={() => {
         if (nameError || modelError) {
@@ -173,8 +204,8 @@ function AddModelDialog({
             ...(settings ? { settings: settingsValues } : {}),
           },
           {
-            onSuccess: ({ form }) => {
-              if (!form) close(false);
+            onSuccess: ({ form, commit }) => {
+              if (!form && !commit) close(false);
             },
           },
         );
@@ -230,6 +261,7 @@ function AddModelDialog({
           You enter the organization's key for it on the next page. It is never
           shown back.
         </Text>
+        <DialogPullRequest request={request} />
       </Flex>
     </ConfirmDialog>
   );
@@ -256,23 +288,27 @@ function ReplaceCredentialDialog({
       confirmLabel="Continue"
       busyLabel="Preparing…"
       isBusy={request.isPending}
+      isDone={openedPullRequest(request)}
       error={
         request.error ? credentialRequestErrorMessage(request.error) : undefined
       }
       onConfirm={() =>
         target &&
         request.mutate(target.request, {
-          onSuccess: ({ form }) => {
-            if (!form) onClose();
+          onSuccess: ({ form, commit }) => {
+            if (!form && !commit) onClose();
           },
         })
       }
     >
-      <Text>
-        You enter the new value on the next page, which lists every object that
-        uses this credential and where each sends it. The current value stays in
-        use until you save the new one there.
-      </Text>
+      <Flex direction="column" gap="3">
+        <Text>
+          You enter the new value on the next page, which lists every object
+          that uses this credential and where each sends it. The current value
+          stays in use until you save the new one there.
+        </Text>
+        <DialogPullRequest request={request} />
+      </Flex>
     </ConfirmDialog>
   );
 }
