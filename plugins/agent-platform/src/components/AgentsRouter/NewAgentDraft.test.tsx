@@ -54,6 +54,10 @@ let mockAgentManagerInfo: {
 } = { isLoading: false };
 // alpha is offered; beta's muster could not be read, so the card says so and
 // links to signing in there.
+jest.mock('../../hooks/useToolsetSelectorLimit', () => ({
+  useToolsetSelectorLimit: () => 128,
+}));
+
 jest.mock('../../hooks/useAgentManager', () => ({
   useAgentManagerAvailability: () => ({
     available: ['alpha'],

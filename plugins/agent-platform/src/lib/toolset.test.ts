@@ -1,3 +1,4 @@
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Toolset fixtures consume Muster's catalogue contract.
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 import {
   connectionOf,
@@ -14,8 +15,8 @@ import {
   groupWorkflows,
   isDestructive,
   isReadOnly,
+  isToolsetRefusal,
   isUnknownPresetError,
-  MAX_INLINE_SELECTORS,
   normalizeSelection,
   offeredPresets,
   orderPresets,
@@ -72,20 +73,29 @@ describe('selector grammar', () => {
     expect(selectorProblem('preset:none')).toBeUndefined();
   });
 
-  it('caps a toolset at 32 inline selectors and says what to reduce', () => {
-    const fine = Array.from(
-      { length: MAX_INLINE_SELECTORS },
-      (_, i) => `tool:x_srv_t${i}`,
+  it('caps a toolset at 128 inline selectors and says what to reduce', () => {
+    const fine = Array.from({ length: 128 }, (_, i) => `tool:x_srv_t${i}`);
+    expect(toolsetProblems(fine, undefined, 128)).toEqual([]);
+    const problems = toolsetProblems(
+      [...fine, 'tool:x_srv_one_more'],
+      undefined,
+      128,
     );
-    expect(toolsetProblems(fine)).toEqual([]);
-    const problems = toolsetProblems([...fine, 'tool:x_srv_one_more']);
     expect(problems).toEqual([
-      'This toolset needs 33 selectors but may list at most 32, so choose fewer connectors or tools.',
+      'This toolset needs 129 selectors but may list at most 128, so choose fewer connectors or tools.',
     ]);
     // Where the catalogue can say more, the caller words it.
     expect(
-      toolsetProblems([...fine, 'tool:x_srv_one_more'], s => `${s.length}!`),
-    ).toEqual(['33!']);
+      toolsetProblems(
+        [...fine, 'tool:x_srv_one_more'],
+        s => `${s.length}!`,
+        128,
+      ),
+    ).toEqual(['129!']);
+  });
+
+  it('leaves the count to the server when no schema cap is available', () => {
+    expect(toolsetProblems(Array(129).fill('tool:x'))).toEqual([]);
   });
 
   it('splits a rendered header back into selectors', () => {
@@ -925,5 +935,43 @@ describe('buildCatalogue connections', () => {
     const byName = new Map(registered.servers.map(b => [b.name, b]));
     expect(byName.get('jira')?.connection).toBe('deactivated');
     expect(byName.get('pro')?.connection).toBeUndefined();
+  });
+});
+
+describe('isToolsetRefusal', () => {
+  it.each([
+    [
+      'unknown preset',
+      new Error('toolset [preset:foo] names unknown preset "foo"'),
+      true,
+    ],
+    [
+      'count',
+      new Error(
+        'toolset [a] has 129 selectors, more than the 128 allowed inline; define a preset',
+      ),
+      true,
+    ],
+    [
+      'bytes',
+      new Error(
+        'toolset encodes to 9000 bytes, more than the 8192 allowed inline; define a preset',
+      ),
+      true,
+    ],
+    ['422', Object.assign(new Error('refused'), { status: 422 }), true],
+    ['400', Object.assign(new Error('refused'), { status: 400 }), true],
+    [
+      '401',
+      Object.assign(new Error('session expired'), { status: 401 }),
+      false,
+    ],
+    ['403', Object.assign(new Error('forbidden'), { status: 403 }), false],
+    ['429', Object.assign(new Error('slow down'), { status: 429 }), false],
+    ['503', Object.assign(new Error('unavailable'), { status: 503 }), false],
+    ['no status', new Error('fetch failed'), false],
+    ['not an error', 'toolset [', false],
+  ])('%s', (_case, error, refused) => {
+    expect(isToolsetRefusal(error)).toBe(refused);
   });
 });
