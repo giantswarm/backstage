@@ -26,6 +26,8 @@ import {
 } from '../../hooks/useOrganization';
 import { useOrganizationAccess } from '../../hooks/useOrganizationAccess';
 import {
+  CONTENT_PULL_REQUEST_NEXT,
+  CONTENT_PULL_REQUEST_UNCHANGED,
   FIRST_ADMINS_BINDING,
   MEMBER_ROLE_DESCRIPTIONS,
   MEMBER_ROLES,
@@ -34,6 +36,8 @@ import {
   type MemberRole,
   type OrganizationMember,
 } from '../../lib/organizations';
+import { PullRequestOutcome } from '../PullRequestOutcome';
+import { WrappingCellText } from './WrappingCellText';
 
 /** A group comes first: membership then changes in the identity provider. */
 type MemberKind = 'group' | 'person';
@@ -167,6 +171,14 @@ function AddMember({
           description={add.error.message}
         />
       )}
+      {add.data?.commit && (
+        <PullRequestOutcome
+          commit={add.data.commit}
+          next={CONTENT_PULL_REQUEST_NEXT}
+          unchanged={CONTENT_PULL_REQUEST_UNCHANGED}
+          testId="organization-member-pull-request"
+        />
+      )}
     </Flex>
   );
 }
@@ -218,8 +230,11 @@ export function MembersTab({
       id: 'binding',
       label: 'Binding',
       defaultWidth: '2fr',
+      // The note is read whole, so both lines wrap, at whole words: on a
+      // phone the table scrolls inside its card rather than squeeze it.
+      minWidth: 160,
       cell: row => (
-        <CellText
+        <WrappingCellText
           title={row.binding}
           description={
             row.binding === FIRST_ADMINS_BINDING
@@ -233,6 +248,8 @@ export function MembersTab({
       id: 'actions',
       label: '',
       defaultWidth: '1fr',
+      // "Remove" whole, on a phone too.
+      minWidth: 100,
       // Only a group or a person is added or removed here; another
       // subject (a ServiceAccount) is changed where it was bound.
       cell: row =>
@@ -309,6 +326,7 @@ export function MembersTab({
         busyLabel="Removing…"
         destructive
         isBusy={remove.isPending}
+        isDone={Boolean(remove.data?.commit)}
         error={
           remove.error && removing ? (
             <>
@@ -328,14 +346,30 @@ export function MembersTab({
               removing.name,
               removing.role,
             ),
-            { onSuccess: () => setRemoving(undefined) },
+            {
+              // In mode commit the dialog stays with the pull request.
+              onSuccess: result => {
+                if (!result.commit) setRemoving(undefined);
+              },
+            },
           );
         }}
       >
         {removing && (
-          <Text>
-            {removing.name} loses the {removing.role} role in this organization.
-          </Text>
+          <Flex direction="column" gap="3">
+            <Text>
+              {removing.name} loses the {removing.role} role in this
+              organization.
+            </Text>
+            {remove.data?.commit && (
+              <PullRequestOutcome
+                commit={remove.data.commit}
+                next={CONTENT_PULL_REQUEST_NEXT}
+                unchanged={CONTENT_PULL_REQUEST_UNCHANGED}
+                testId="organization-member-pull-request"
+              />
+            )}
+          </Flex>
         )}
       </ConfirmDialog>
       {access.members && (

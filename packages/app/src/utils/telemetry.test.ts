@@ -856,6 +856,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/connectors/families',
       '/customize/connectors/internal',
       '/customize/models',
+      '/customize/models/credentials/gazelle/kagent/operation',
       '/customize/models/gazelle/agent-platform/gpt-4o',
       '/customize/models/gazelle/agent-platform/gpt-4o/usage',
       '/customize/models/gazelle/agent-platform/gpt-4o/used-by',

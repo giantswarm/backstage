@@ -484,4 +484,26 @@ describe('ModelsRouter', () => {
       expect(screen.getAllByTestId('path')[0]).toHaveTextContent(target);
     });
   });
+
+  it.each([
+    ['/customize/models/credentials'],
+    ['/customize/models/credentials/inst-1'],
+    // The namespace missing: the installation and the request alone.
+    ['/customize/models/credentials/inst-1/a1a1a1'],
+    ['/customize/models/credentials/inst-1/kagent/a1a1a1/extra'],
+  ])(
+    'says the credential link %s is incomplete, without leaving it',
+    async path => {
+      mockUseServing.mockReturnValue(withServingLayer);
+      renderTab(path);
+
+      expect(
+        await screen.findByText('This credential link is incomplete'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: 'Go to Models' }),
+      ).toHaveAttribute('href', '/customize/models');
+      expect(screen.getByTestId('path')).toHaveTextContent(path);
+    },
+  );
 });

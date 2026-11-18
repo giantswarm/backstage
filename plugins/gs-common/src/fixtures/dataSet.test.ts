@@ -508,6 +508,7 @@ describe('builder settings', () => {
       organizations: [],
       agents: [],
       connectors: [],
+      organizationConnectors: [],
       sessions: [],
       workflows: [],
       executions: [],

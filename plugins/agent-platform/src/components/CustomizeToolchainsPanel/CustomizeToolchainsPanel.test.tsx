@@ -9,7 +9,10 @@ import type {
   ToolchainSource,
 } from '../../lib/toolchainManager';
 import { toolchainsRouteRef } from '../../routes';
-import { CustomizeToolchainsPanel } from './CustomizeToolchainsPanel';
+import {
+  CustomizeToolchainsPanel,
+  shortVersionsLabel,
+} from './CustomizeToolchainsPanel';
 
 function toolchain(name: string, versions: string[]): Toolchain {
   return {
@@ -120,7 +123,8 @@ describe('CustomizeToolchainsPanel', () => {
     await renderPanel();
 
     const go = screen.getByRole('row', { name: /^go/ });
-    expect(within(go).getByText('0.2.0, 0.1.0')).toBeInTheDocument();
+    // The newest version and a count; the toolchain's page lists them all.
+    expect(within(go).getByText('0.2.0 · 1 older')).toBeInTheDocument();
     expect(
       within(go).getByText('go, gofmt, golangci-lint'),
     ).toBeInTheDocument();
@@ -340,5 +344,27 @@ describe('CustomizeToolchainsPanel', () => {
       '/customize/toolchains/gazelle/go?source=acme',
     );
     expect(within(theirs).getByText('acme-go')).toBeInTheDocument();
+  });
+});
+
+describe('shortVersionsLabel', () => {
+  const goWith = (version: string, versions?: string[]) =>
+    ({ name: 'go', version, versions }) as unknown as Parameters<
+      typeof shortVersionsLabel
+    >[0];
+
+  it('names the newest version and counts the older ones', () => {
+    expect(shortVersionsLabel(goWith('v0.6.1', ['v0.6.1', 'v0.5.0']))).toBe(
+      '0.6.1 · 1 older',
+    );
+  });
+
+  it('names one version alone', () => {
+    expect(shortVersionsLabel(goWith('v0.6.1', ['v0.6.1']))).toBe('0.6.1');
+  });
+
+  it('falls back to the toolchain’s newest version without a list', () => {
+    expect(shortVersionsLabel(goWith('v0.6.1', []))).toBe('0.6.1');
+    expect(shortVersionsLabel(goWith('v0.6.1'))).toBe('0.6.1');
   });
 });

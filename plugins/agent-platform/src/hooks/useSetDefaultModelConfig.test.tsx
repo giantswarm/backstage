@@ -1,6 +1,5 @@
-import { PropsWithChildren } from 'react';
-import { act, renderHook } from '@testing-library/react';
-import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
+import type { PropsWithChildren } from 'react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { analyticsApiRef } from '@backstage/core-plugin-api';
 import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -11,63 +10,48 @@ import {
 
 import { useSetDefaultModelConfig } from './useSetDefaultModelConfig';
 
-const mockPatchResource = jest.fn();
-const mockFetchResourceList = jest.fn();
-jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
-  ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
-  patchResource: (...args: unknown[]) => mockPatchResource(...args),
-  fetchResourceList: (...args: unknown[]) => mockFetchResourceList(...args),
+const mockCallTool = jest.fn();
+const analyticsApi = mockApis.analytics.mock();
+const mockDescribeTool = jest.fn(async () => ({
+  inputSchema: {
+    // The tool takes create: a write of an existing model still never sends it.
+    properties: Object.fromEntries(
+      [
+        'projectID',
+        'location',
+        'endpoint',
+        'displayName',
+        'noCredential',
+        'create',
+      ].map(field => [field, {}]),
+    ),
+  },
 }));
-
-// The platform namespace's path: no organization, so no credential form to
-// link to (the organization path is covered through the Models router).
-jest.mock('@backstage/frontend-plugin-api', () => ({
-  ...jest.requireActual('@backstage/frontend-plugin-api'),
-  useRouteRef: () => undefined,
+jest.mock('./useMusterPluginApi', () => ({
+  useMusterPluginApi: () => ({
+    callTool: mockCallTool,
+    describeTool: mockDescribeTool,
+  }),
 }));
-
-// The organization directory: empty, and answered unless a case says it
-// could not reach agent-manager.
-let mockDiscoveryErrors: string[] = [];
+let mockDirectoryFailure: string | undefined;
 jest.mock('../components/OrganizationDirectoryProvider', () => ({
   ...jest.requireActual('../components/OrganizationDirectoryProvider'),
   useOrganizationDirectory: () => ({
-    ...jest.requireActual('../lib/__fixtures__/organizations')
-      .TEST_ORGANIZATION_DIRECTORY,
-    discoveryErrors: mockDiscoveryErrors,
-    discoveryFailureOf: () => mockDiscoveryErrors[0],
+    directory: new Map(),
+    installations: ['gazelle'],
+    isLoadingOf: () => false,
+    failureOf: () => mockDirectoryFailure,
+    discoveryFailureOf: () => undefined,
   }),
 }));
-
-const MARK = 'agent-platform.giantswarm.io/is-default-model-config';
-const analyticsApi = mockApis.analytics.mock();
-
-function json(
-  name: string,
-  marked = false,
-  labels: Record<string, string> = {},
-) {
-  return {
-    apiVersion: 'api.kagent.dev/v1alpha3',
-    kind: 'ModelConfig',
-    metadata: {
-      name,
-      namespace: 'kagent',
-      labels,
-      ...(marked ? { annotations: { [MARK]: 'true' } } : {}),
-    },
-    spec: { provider: 'Anthropic', model: name },
-  } as ModelConfigInterface;
-}
+jest.mock('@backstage/frontend-plugin-api', () => ({
+  ...jest.requireActual('@backstage/frontend-plugin-api'),
+  useRouteRef: () => () => '/credential-form',
+}));
 
 function setup() {
-  const wrapper = ({ children }: PropsWithChildren<{}>) => (
-    <TestApiProvider
-      apis={[
-        [kubernetesApiRef, { proxy: jest.fn() }],
-        [analyticsApiRef, analyticsApi],
-      ]}
-    >
+  const wrapper = ({ children }: PropsWithChildren) => (
+    <TestApiProvider apis={[[analyticsApiRef, analyticsApi]]}>
       <QueryClientProvider
         client={
           new QueryClient({ defaultOptions: { mutations: { retry: false } } })
@@ -80,142 +64,205 @@ function setup() {
   return renderHook(() => useSetDefaultModelConfig(), { wrapper });
 }
 
-async function setDefaultError(
-  result: { current: ReturnType<typeof useSetDefaultModelConfig> },
-  input: Parameters<
-    ReturnType<typeof useSetDefaultModelConfig>['setDefault']
-  >[0],
-): Promise<Error> {
-  let error: Error | undefined;
-  await act(async () => {
-    try {
-      await result.current.setDefault(input);
-    } catch (caught) {
-      error = caught as Error;
-    }
-  });
-  if (!error) {
-    throw new Error('the move did not fail');
-  }
-  return error;
-}
+const model = new ModelConfig(
+  {
+    apiVersion: 'api.kagent.dev/v1alpha3',
+    kind: 'ModelConfig',
+    metadata: { name: 'sonnet', namespace: 'kagent' },
+    spec: { provider: 'Anthropic', model: 'claude-sonnet' },
+  } as ModelConfigInterface,
+  'gazelle',
+);
 
 beforeEach(() => {
-  mockDiscoveryErrors = [];
-  jest.mocked(analyticsApi.captureEvent).mockClear();
-  mockPatchResource.mockReset();
-  mockPatchResource.mockResolvedValue(undefined);
-  mockFetchResourceList.mockReset();
+  mockDirectoryFailure = undefined;
+  mockCallTool.mockReset();
+  analyticsApi.captureEvent.mockClear();
 });
 
-describe('useSetDefaultModelConfig', () => {
-  it('marks the new default first, then unmarks the old one, and reports it', async () => {
-    mockFetchResourceList.mockResolvedValue([
-      json('sonnet', true),
-      json('opus'),
-    ]);
-    const { result } = setup();
+it('sets the installation default through agent-manager without a credential value', async () => {
+  mockCallTool.mockResolvedValue({ defaultModel: 'sonnet' });
+  const { result } = setup();
+  await act(async () => {
+    await result.current.setDefault({ modelConfig: model });
+  });
+  expect(mockCallTool).toHaveBeenCalledWith(
+    'x_agent-manager_set_organization_model',
+    {
+      namespace: 'kagent',
+      name: 'sonnet',
+      default: true,
+      requestId: expect.any(String),
+    },
+    'gazelle',
+    { urlElicitation: false },
+  );
+  expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
+  expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+    expect.objectContaining({
+      action: 'AgentPlatform.defaultModelSet',
+      attributes: {},
+    }),
+  );
+});
 
+it('opens the credential form when the default operation needs a missing credential', async () => {
+  mockCallTool.mockResolvedValue({
+    pending: true,
+    credentialOperation: 'a1'.repeat(24),
+  });
+  const { result } = setup();
+  let saved;
+  await act(async () => {
+    saved = await result.current.setDefault({
+      modelConfig: model,
+    });
+  });
+  expect(saved).toEqual({ form: '/credential-form' });
+  expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+});
+
+it('refuses a manager without the model credential contract before issuing a write', async () => {
+  mockDescribeTool.mockResolvedValueOnce({ inputSchema: { properties: {} } });
+  const { result } = setup();
+  await act(async () => {
+    await expect(
+      result.current.setDefault({ modelConfig: model }),
+    ).rejects.toThrow('model credential operations');
+  });
+  expect(mockCallTool).not.toHaveBeenCalled();
+  expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+});
+
+it('does not report a default change when the manager refuses it', async () => {
+  mockCallTool.mockRejectedValue(new Error('forbidden'));
+  const { result } = setup();
+  await act(async () => {
+    await expect(
+      result.current.setDefault({ modelConfig: model }),
+    ).rejects.toThrow();
+  });
+  expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+});
+
+it('reads the installation tool schema once for consecutive writes', async () => {
+  mockDescribeTool.mockClear();
+  mockCallTool.mockResolvedValue({ defaultModel: 'sonnet' });
+  const { result } = setup();
+  await act(async () => {
+    await result.current.setDefault({ modelConfig: model });
+  });
+  await act(async () => {
+    await result.current.setDefault({ modelConfig: model });
+  });
+  expect(
+    mockCallTool.mock.calls.filter(
+      ([tool]) => tool === 'x_agent-manager_set_organization_model',
+    ),
+  ).toHaveLength(2);
+  expect(mockDescribeTool).toHaveBeenCalledTimes(1);
+  expect(mockDescribeTool).toHaveBeenCalledWith(
+    'x_agent-manager_set_organization_model',
+    'gazelle',
+  );
+});
+
+it('refuses a namespace it cannot tell from an organization, writing nothing', async () => {
+  mockDirectoryFailure = 'Could not reach agent-manager on gazelle.';
+  const { result } = setup();
+  const elsewhere = new ModelConfig(
+    {
+      apiVersion: 'api.kagent.dev/v1alpha3',
+      kind: 'ModelConfig',
+      metadata: { name: 'sonnet', namespace: 'agents-payments-x7k2q' },
+      spec: { provider: 'Anthropic', model: 'claude-sonnet' },
+    } as ModelConfigInterface,
+    'gazelle',
+  );
+  await act(async () => {
+    await expect(
+      result.current.setDefault({ modelConfig: elsewhere }),
+    ).rejects.toThrow(
+      "Could not tell whether agents-payments-x7k2q is an organization's namespace or the installation's",
+    );
+  });
+  expect(mockCallTool).not.toHaveBeenCalled();
+});
+
+describe('in an organization applied from git, where agent-manager opens pull requests', () => {
+  const NAMESPACE = 'agents-payments-x7k2q';
+  const PULL_REQUEST = {
+    repository: 'giantswarm/gazelle-configs',
+    base: 'main',
+    pullRequest: 'https://github.com/giantswarm/gazelle-configs/pull/7',
+    number: 7,
+  };
+  const organizationModel = new ModelConfig(
+    {
+      apiVersion: 'api.kagent.dev/v1alpha3',
+      kind: 'ModelConfig',
+      metadata: { name: 'sonnet', namespace: NAMESPACE },
+      spec: { provider: 'Anthropic', model: 'claude-sonnet' },
+    } as ModelConfigInterface,
+    'gazelle',
+  );
+
+  function answer(orphaned?: { status: string; reason: string }) {
+    mockCallTool.mockImplementation(async (tool: string, args) => {
+      switch (tool) {
+        case 'x_agent-manager_get_info':
+          return { capabilities: { organizations: true, commit: true } };
+        case 'x_agent-manager_list_organizations':
+          return {
+            organizations: [
+              {
+                name: 'payments',
+                parent: 'org-acme',
+                namespace: NAMESPACE,
+                ...(orphaned ? { orphaned } : {}),
+                permissions: { manage: false, member: true },
+              },
+            ],
+          };
+        default:
+          return args.mode === 'commit'
+            ? { defaultModel: 'other', commit: PULL_REQUEST }
+            : { defaultModel: 'sonnet' };
+      }
+    });
+  }
+
+  it('moves the mark by pull request, and reports no default set', async () => {
+    answer({ status: 'False', reason: 'InInventory' });
+    const { result } = setup();
+    let saved;
     await act(async () => {
-      await result.current.setDefault({
-        modelConfig: new ModelConfig(json('opus'), 'gazelle'),
-        expected: ['sonnet'],
+      saved = await result.current.setDefault({
+        modelConfig: organizationModel,
       });
     });
-
-    expect(mockFetchResourceList).toHaveBeenCalledWith(
-      expect.objectContaining({ cluster: 'gazelle', namespace: 'kagent' }),
+    expect(mockCallTool).toHaveBeenCalledWith(
+      'x_agent-manager_set_organization_model',
+      expect.objectContaining({ default: true, mode: 'commit' }),
+      'gazelle',
+      { urlElicitation: false },
     );
-    expect(mockPatchResource.mock.calls.map(([options]) => options)).toEqual([
-      expect.objectContaining({
-        name: 'opus',
-        patch: { metadata: { annotations: { [MARK]: 'true' } } },
-      }),
-      expect.objectContaining({
-        name: 'sonnet',
-        patch: { metadata: { annotations: { [MARK]: null } } },
-      }),
-    ]);
-    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: 'AgentPlatform.defaultModelSet',
-        attributes: {},
-      }),
+    expect(saved).toEqual({ commit: PULL_REQUEST });
+    await waitFor(() =>
+      expect(result.current.pullRequest).toEqual(PULL_REQUEST),
     );
-  });
-
-  it('refuses a namespace it cannot tell from an organization, writing nothing', async () => {
-    mockDiscoveryErrors = ['Could not reach agent-manager on gazelle.'];
-    const { result } = setup();
-
-    const error = await setDefaultError(result, {
-      modelConfig: new ModelConfig(
-        {
-          ...json('opus'),
-          metadata: { name: 'opus', namespace: 'agents-payments-x7k2q' },
-        },
-        'gazelle',
-      ),
-      expected: [],
-    });
-
-    expect(error.message).toMatch(/Could not tell whether/);
-    expect(mockFetchResourceList).not.toHaveBeenCalled();
-    expect(mockPatchResource).not.toHaveBeenCalled();
-  });
-
-  it('refuses a second mark that appeared meanwhile, writing nothing', async () => {
-    mockFetchResourceList.mockResolvedValue([
-      json('haiku', true),
-      json('opus'),
-    ]);
-    const { result } = setup();
-
-    const error = await setDefaultError(result, {
-      modelConfig: new ModelConfig(json('opus'), 'gazelle'),
-      expected: [],
-    });
-
-    expect(error.message).toMatch(/haiku became the default/);
-    expect(mockPatchResource).not.toHaveBeenCalled();
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
-  it('refuses to take the mark off a Helm-managed default', async () => {
-    mockFetchResourceList.mockResolvedValue([
-      json('sonnet', true, { 'app.kubernetes.io/managed-by': 'Helm' }),
-      json('opus'),
-    ]);
+  it('moves the mark of a live organization live', async () => {
+    answer();
     const { result } = setup();
-
-    const error = await setDefaultError(result, {
-      modelConfig: new ModelConfig(json('opus'), 'gazelle'),
-      expected: ['sonnet'],
+    await act(async () => {
+      await result.current.setDefault({ modelConfig: organizationModel });
     });
-
-    expect(error.message).toMatch(
-      /Move the default in that release's values\./,
-    );
-    expect(mockPatchResource).not.toHaveBeenCalled();
-  });
-
-  it('says there is no default when the old mark could not be removed', async () => {
-    mockFetchResourceList.mockResolvedValue([
-      json('sonnet', true),
-      json('opus'),
-    ]);
-    mockPatchResource
-      .mockResolvedValueOnce(undefined)
-      .mockRejectedValueOnce(new Error('forbidden'));
-    const { result } = setup();
-
-    const error = await setDefaultError(result, {
-      modelConfig: new ModelConfig(json('opus'), 'gazelle'),
-      expected: ['sonnet'],
-    });
-
-    expect(error.message).toBe(
-      'opus is marked as the default, but the mark on sonnet could not be removed, so there is no default until it is. Make opus the default again to retry. Reason: forbidden',
-    );
+    const [, args] = mockCallTool.mock.calls.find(
+      ([tool]) => tool === 'x_agent-manager_set_organization_model',
+    )!;
+    expect(args).not.toHaveProperty('mode');
   });
 });

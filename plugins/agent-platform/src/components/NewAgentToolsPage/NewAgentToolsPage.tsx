@@ -259,9 +259,24 @@ export function NewAgentToolsPage() {
   // The connectors follow the agent's organization: another one's servers
   // are not offered. Editing, the agent's own namespace.
   const tenant = edit ? edit.agent.namespace : state.tenant;
-  const { servers, tools: catalogueTools } = useMemo(
-    () => connectorsForTenant(installationServers, catalogue.tools, tenant),
-    [installationServers, catalogue.tools, tenant],
+  const {
+    servers,
+    tools: catalogueTools,
+    serversRequiringAuth,
+  } = useMemo(
+    () =>
+      connectorsForTenant(
+        installationServers,
+        catalogue.tools,
+        tenant,
+        catalogue.serversRequiringAuth,
+      ),
+    [
+      installationServers,
+      catalogue.tools,
+      tenant,
+      catalogue.serversRequiringAuth,
+    ],
   );
   // A connector muster signs in to per session or per person needs muster's
   // sign-in tool in the toolset, or the agent cannot start that sign-in
@@ -300,9 +315,8 @@ export function NewAgentToolsPage() {
   const isCatalogueLoading =
     Boolean(musterApi) && (catalogue.isLoading || isLoadingServers);
   const groups = useMemo(
-    () =>
-      buildCatalogue(catalogueTools, servers, catalogue.serversRequiringAuth),
-    [catalogueTools, servers, catalogue.serversRequiringAuth],
+    () => buildCatalogue(catalogueTools, servers, serversRequiringAuth),
+    [catalogueTools, servers, serversRequiringAuth],
   );
   const connectors = useMemo(() => connectorsOf(groups), [groups]);
   const inventory = useMemo(() => catalogueInventory(groups), [groups]);

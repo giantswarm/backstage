@@ -146,7 +146,9 @@ directory and start again.
 
 The fixture `MusterApi` serves each installation's muster from the data set:
 its connectors (MCP servers) in every state muster knows, live and in the
-person's sign-in status (`auth://status`); the catalogue, with the tools,
+person's sign-in status (`auth://status`), and one connector, `wiki`, in each
+ready organization's namespace, which muster names `<namespace>/<name>` and
+whose tools it names `x_<namespace>_wiki_<tool>`; the catalogue, with the tools,
 resources and prompts of the connectors that serve the session (Connected and
 Running), the available workflows' `workflow_<name>` tools (an unavailable
 workflow has none, as muster lists no invalid one) and muster's own `core_*`
@@ -237,7 +239,13 @@ them. The New agent form takes its owners from `list_organizations` instead.
 Each namespace's default model carries the
 `agent-platform.giantswarm.io/is-default-model-config` annotation, as
 `list_model_configs` reports it (`default`), and the mark moves with
-`set_organization_model`'s `default`. Arguments and answers cross as JSON, as
+`set_organization_model`'s `default`. Its settings (`maxTokens`,
+`promptCaching`, `cacheTTL`) are written and listed as agent-manager does: a
+new Anthropic model caches for `5m`, an omitted setting keeps its value, and a
+setting the provider's block lacks is refused with the field it names; every
+organization's OpenAI model has a token limit of 8192. On `fennel`, whose
+agent-manager predates model operations, the tool's schema lists none of them.
+Arguments and answers cross as JSON, as
 over MCP and HTTP, so no page shares the fixture's objects. The writes are
 checked as agent-manager checks them (a person with the user role may not
 create agents, a name taken is a `conflict`, a model the namespace lacks fails
@@ -253,8 +261,27 @@ in an organization being erased) and kept in memory until the page reloads:
   gone, with its agents and models;
 - adding a model or asking for a new key of a model or a connector: the tool
   prepares a credential operation, the credential form reads and saves it,
-  and the save writes the model. An operation expires after 30 minutes
-  (`OPERATION_TTL_MS`).
+  and the save writes the model. The Models page opens the form at
+  `/customize/models/credentials/<installation>/<namespace>/<operation>` for
+  both scopes, as agent-manager's `credentials.uiURL` names it; the form reads
+  the organization or the installation from the operation. An operation
+  expires after 30 minutes
+  (`OPERATION_TTL_MS`). A Vertex AI model's key is a service-account JSON of
+  its project (`inputFormat: google-service-account-json`), checked on save;
+  a write with `create` of a model that exists is `already_exists`;
+- the installation's models, in `kagent`, in platform scope (the person is a
+  cluster admin): `endpoint` and `noCredential` apply only there, and only
+  `tenant-credential-*` Secrets are replaced;
+- deleting a model (`delete_organization_object`), and its dry run, which
+  decides whether the model page offers the deletion.
+
+Each organization has two models: `default`, which its agents use, and
+`gemini-vertex` on Vertex AI, which none uses, so its deletion completes.
+Each installation's `kagent` namespace has `platform-default`, its default,
+which a Helm release renders: agent-manager refuses to change it, delete it or
+move the default off it (`gitops_owned`). `fennel`'s agent-manager predates
+model credential operations: its `set_organization_model` schema lacks the
+model fields, so the portal refuses every model write there.
 
 `set_organization_model`, `replace_organization_credential` and
 `start_session` honour their idempotency key (`requestId`): a retry answers

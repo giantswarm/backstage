@@ -1,3 +1,4 @@
+/* eslint-disable @backstage/no-mixed-plugin-imports -- The client composes the installation's Muster API. */
 import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 
 import { AgentManagerError } from '../lib/agentManager';
@@ -18,6 +19,49 @@ const REQUEST = {
   requestId: 'req-1',
   sessionName: 'Summarise the open incidents',
 };
+
+describe('AgentManagerClient model endpoints', () => {
+  it.each([
+    'https://user:synthetic-value@models.example/v1',
+    'https://models.example/v1?api_key=synthetic-value',
+    'https://models.example/v1?%61pi_key=synthetic-value',
+    'https://models.example/v1?api_key_synthetic-value',
+    'https://models.example/v1?safe=value;api_key=synthetic-value',
+    'https://models.example/v1#synthetic-value',
+  ])(
+    'rejects a credential-bearing endpoint before MCP transmission: %s',
+    async endpoint => {
+      const { api, callTool } = makeMusterApi(async () => ({ name: 'model' }));
+      Object.assign(api, {
+        describeTool: jest.fn(async () => ({
+          inputSchema: {
+            properties: Object.fromEntries(
+              [
+                'projectID',
+                'location',
+                'endpoint',
+                'displayName',
+                'noCredential',
+              ].map(field => [field, {}]),
+            ),
+          },
+        })),
+      });
+      const client = new AgentManagerClient(api, 'inst-1');
+      const operation = client.setOrganizationModel({
+        namespace: 'kagent',
+        name: 'model',
+        provider: 'OpenAI',
+        model: 'test-model',
+        requestId: 'model-endpoint-validation',
+        endpoint,
+      });
+      await expect(operation).rejects.toThrow(/credential/i);
+      await expect(operation).rejects.not.toThrow('synthetic-value');
+      expect(callTool).not.toHaveBeenCalled();
+    },
+  );
+});
 
 describe('AgentManagerClient.startSession', () => {
   it('calls start_session through muster on the installation, as the person', async () => {

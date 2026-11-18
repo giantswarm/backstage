@@ -37,6 +37,9 @@ import {
 /** Connectors shown before *Show more*: a few rows of the two-column grid. */
 export const INITIAL_CONNECTORS = 12;
 
+/** What marks a connector of the agent's organization's own namespace. */
+export const ORGANIZATION_OWN_LABEL = "The organization's own connector";
+
 const useStyles = makeStyles(theme => ({
   grid: {
     display: 'grid',
@@ -178,6 +181,13 @@ function ConnectorCard({
     >
       <Flex direction="column" gap="1" className={classes.name}>
         <Text weight="bold">{name}</Text>
+        {bucket.organizationOwn && (
+          // The organization page's words: its connectors "of its own",
+          // apart from the platform's shared ones.
+          <Text variant="body-small" color="secondary">
+            {ORGANIZATION_OWN_LABEL}
+          </Text>
+        )}
         <StatusDot tone={status.tone} label={status.label} />
         <Text variant="body-small" color="secondary">
           {toolsLine(bucket, status, readOnlyCount, state)}
