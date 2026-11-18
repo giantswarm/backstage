@@ -889,7 +889,8 @@ export function collectLayout(options) {
         path: pathOf(t),
         box: box(tr),
         columns: [...headersOf(t).values()].filter(Boolean).slice(0, 8),
-        container: { ...describe(e), box: box({ x: innerLeft, y: er.top, w: e.clientWidth, h: er.height }) },
+        // Named by its path: its text is the whole table's.
+        container: { role: roleOf(e), name: '', path: pathOf(e), box: box({ x: innerLeft, y: er.top, w: e.clientWidth, h: er.height }) },
         content: e.scrollWidth,
         client: e.clientWidth,
         cut: hides(s.overflowX),
