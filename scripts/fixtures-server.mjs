@@ -11,17 +11,21 @@
  *                          --config adds a config file on top of fixture
  *                          mode's (a running server keeps its own)
  *   yarn fixtures status   the running server's state, as JSON
+ *   yarn fixtures touch    keep the running server from stopping as idle,
+ *                          for a long run against it; starts none
  *   yarn fixtures stop     stop it
  *
  * The state is in `.fixtures-server.json` at the checkout's root: the URLs,
- * the ports, the process ids and a token. Only the supervisor writes it when
- * it starts, and a process counts as this checkout's server only while its
- * command line carries the token, so a stale state never makes `stop` signal
- * a process the operating system has given the same id. `start` and `stop`
- * take a lock (`.fixtures-server/lock`), so concurrent starts in one checkout
- * spawn one server. The server stops on its own once no `start` has asked for
- * it for FIXTURES_IDLE_MINUTES (default 60), and at once when the state no
- * longer names it, so it is never left running untracked.
+ * the ports, the process ids, the idle time and a token. The supervisor
+ * writes it when it starts; `start` and `touch` on a running server only
+ * move its `touchedAt`. A process counts as this checkout's server only
+ * while its command line carries the token, so a stale state never makes
+ * `stop` signal a process the operating system has given the same id.
+ * `start`, `touch` and `stop` take a lock (`.fixtures-server/lock`), so
+ * concurrent starts in one checkout spawn one server. The server stops on
+ * its own once no `start` or `touch` has asked for it for
+ * FIXTURES_IDLE_MINUTES (default 60), and at once when the state no longer
+ * names it, so it is never left running untracked.
  *
  * The ports come from the operating system, never 3000 or 7007 (another
  * portal's); FIXTURES_APP_PORT and FIXTURES_BACKEND_PORT pick them instead.
@@ -533,6 +537,27 @@ async function stopServer({ quiet = false } = {}) {
   }
 }
 
+/**
+ * Marks the running server as in use, as a `start` would, without starting
+ * one: the layout check calls it while it measures, so a run longer than
+ * the idle time keeps its server, and a server stopped meanwhile stays
+ * stopped.
+ */
+async function touch() {
+  const touched = await withLock(async () => {
+    const existing = running();
+    if (!existing) {
+      return false;
+    }
+    writeState({ ...existing, touchedAt: new Date().toISOString() });
+    return true;
+  });
+  if (!touched) {
+    console.log('No fixture server runs in this checkout.');
+    process.exitCode = 1;
+  }
+}
+
 function status() {
   const state = running();
   if (!state) {
@@ -544,9 +569,9 @@ function status() {
 }
 
 const command = process.argv[2] ?? 'start';
-const commands = { start, stop: () => stopServer(), status, run };
+const commands = { start, stop: () => stopServer(), status, touch, run };
 if (!commands[command]) {
-  console.error(`Usage: yarn fixtures [start|status|stop]`);
+  console.error(`Usage: yarn fixtures [start|status|touch|stop]`);
   process.exit(2);
 }
 try {
