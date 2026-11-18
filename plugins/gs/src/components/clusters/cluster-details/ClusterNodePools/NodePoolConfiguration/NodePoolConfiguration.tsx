@@ -189,7 +189,8 @@ export const NodePoolConfiguration = ({
   });
   const root = pool.getRootVolume();
   const rootParts = [
-    root?.ebs?.volumeSize,
+    // A quantity, `15Gi`: in the units the page uses elsewhere, `15 GiB`.
+    root?.ebs?.volumeSize?.replace(/^(\d+(?:\.\d+)?)([KMGTP])i$/, '$1 $2iB'),
     root?.ebs?.volumeType,
     root?.ebs?.encrypted ? 'encrypted' : undefined,
   ].filter(Boolean);

@@ -80,6 +80,10 @@ import {
   isManagementCluster,
   LIVE_CLUSTER_REFRESH_MS,
 } from '../../clusters/utils';
+import {
+  PlatformClusterNodePools,
+  usePlatformNodePoolCount,
+} from '../PlatformClusterNodePools';
 import { PlatformClusterOverview } from '../PlatformClusterOverview';
 import { PlatformClusterStatusDot } from '../PlatformClusterStatusDot';
 import {
@@ -90,10 +94,26 @@ import { usePlatformLinks } from '../PlatformLinks';
 
 /**
  * The cluster page's routed tabs, in strip order; Overview is the page's own
- * address. Node pools, Gateways and Access come with the next iteration
- * (giantswarm/giantswarm#39295).
+ * address. Gateways and Access come later (giantswarm/giantswarm#39295).
  */
-const CLUSTER_PAGE_TABS = [{ id: 'overview', path: '', title: 'Overview' }];
+const CLUSTER_PAGE_TABS = [
+  { id: 'overview', path: '', title: 'Overview' },
+  { id: 'node-pools', path: 'node-pools', title: 'Node pools' },
+];
+
+/** The tabs with the number of node pools on theirs, once it is known. */
+function useClusterPageTabs() {
+  const nodePools = usePlatformNodePoolCount();
+  return useMemo(
+    () =>
+      CLUSTER_PAGE_TABS.map(tab =>
+        tab.id === 'node-pools' && nodePools !== undefined
+          ? { ...tab, count: nodePools }
+          : tab,
+      ),
+    [nodePools],
+  );
+}
 
 /** The frame of every state of the page: breadcrumbs back to the list. */
 function useFrame(name: string) {
@@ -424,7 +444,11 @@ function ClusterPage() {
   const name = cluster.getName();
   const { frame } = useFrame(name);
   const basePath = useSplatBasePath();
-  const { search } = useLocation();
+  const { pathname, search } = useLocation();
+  const tabs = useClusterPageTabs();
+  // The facts column belongs to Overview; the other tabs take the width.
+  const isOverview =
+    pathname.replace(/\/+$/, '') === basePath.replace(/\/+$/, '');
   const [isManifestOpen, setManifestOpen] = useState(false);
   const manifest = useMemo(() => toKubectlYaml(cluster), [cluster]);
   const toastApi = useApi(toastApiRef);
@@ -478,9 +502,9 @@ function ClusterPage() {
           ]}
         />
       }
-      tabs={CLUSTER_PAGE_TABS}
+      tabs={tabs}
       tabsBasePath={basePath}
-      aside={<ClusterFacts />}
+      aside={isOverview ? <ClusterFacts /> : undefined}
     >
       <Flex direction="column" gap="5">
         <UnreachableNotice />
@@ -495,6 +519,7 @@ function ClusterPage() {
         )}
         <Routes>
           <Route index element={<PlatformClusterOverview />} />
+          <Route path="node-pools" element={<PlatformClusterNodePools />} />
           {/* A tab the page does not have lands on Overview. */}
           <Route
             path="*"
@@ -762,7 +787,7 @@ function hideClassicErrors(): boolean {
 /**
  * A cluster's page in the shell's Platform section
  * (`/platform/clusters/<installation>/<namespace>/<name>`): its state, a
- * column of facts, and routed tabs, of which only Overview exists so far.
+ * column of facts on Overview, and routed tabs: Overview and Node pools so far.
  * Reads the cluster as the classic cluster page does (`ClusterProvider`),
  * through the query client of the `PlatformClustersProvider` above it, which
  * the clusters list reads through too.

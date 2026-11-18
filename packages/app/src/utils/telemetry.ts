@@ -20,9 +20,10 @@ const PLATFORM_TABS: ReadonlySet<string> = new Set(PLATFORM_TAB_IDS);
 
 /**
  * A Platform cluster page's tabs below its own address (Overview, the index,
- * left out): none yet.
+ * left out). The node pool a person selects is in the query, which no view
+ * reports.
  */
-const PLATFORM_CLUSTER_TABS: ReadonlySet<string> = new Set();
+const PLATFORM_CLUSTER_TABS: ReadonlySet<string> = new Set(['node-pools']);
 
 /**
  * A workflow page's tabs below its own address (Overview, the index, left

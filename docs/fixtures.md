@@ -139,7 +139,8 @@ Cluster API's among them; model hosting's is left out, so that component reads
 as absent in the installation inventory), discovery answers
 the versions the classes support (the newest preferred), a list or a read of
 one object answers the objects the plugins' fixtures hold (see "Objects in the
-Kubernetes API"), every other list is empty and any other object not found,
+Kubernetes API"), a list narrowed by its `labelSelector` (`key=value`,
+`key!=value` and bare keys), every other list is empty and any other object not found,
 and access reviews are allowed, except that only an organization's admins may
 create its models (`ModelConfig`), so Connect a model offers an organization
 as owner only to them. Their cluster access is healthy from the start. Any
@@ -482,7 +483,11 @@ managers (see "Mimir").
 
 The fixture `MimirApi` (`plugins/gs/src/apis/mimir/fixtures/`) answers each
 fixture installation's agent gateway metrics, which Usage (Overview, Cost and
-the rates of Your sessions) reads. The series are derived from the data set
+the rates of Your sessions) reads, and the series of its clusters' nodes
+(`clusterNodeSeries` in gs-common): kube-state-metrics' and the kubelet's per
+node, with the `nodepool` label on `kube_node_labels`, and Karpenter's per
+node and per pool, which the cluster pages' Node pools tab and worker figures
+read. Those are gauges, one point each from the time the node or pool started. The series are derived from the data set
 (`gatewayUsage.ts` in gs-common): the ready agents of ready organizations,
 the ones with sessions, call the organization's default model
 (`FIXTURE_AGENT_MODEL`, the default ModelConfig's model) at its list price;
@@ -664,10 +669,19 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
   named after it, workload clusters of its ready organizations, ready,
   creating (no node pools yet) and deleting, on three releases (the oldest's
   Kubernetes 1.30 past its end of life in `app-config.fixtures.yaml`), and the
-  GPU clusters among them; the management clusters and every other workload
-  cluster are managed through GitOps. gs maps them onto Cluster, AWSCluster,
-  AWSClusterRoleIdentity, KubeadmControlPlane, App, MachinePool and
-  AWSMachinePool objects, plus a Flux Kustomization (applied, with its
+  GPU clusters among them, and one Azure (CAPZ) workload cluster, drawn from
+  its own seed; the management clusters and every other workload cluster are
+  managed through GitOps. Each pool has its nodes (instance type, zone, ready,
+  the CPU and memory its pods request, running pods); about one pool in four
+  of three nodes or more has a node that is not ready. Every other AWS
+  workload cluster has a Karpenter pool besides its Auto Scaling group pools,
+  spot and on-demand, about half of them with a zone requirement; the Azure
+  cluster has two pools. In `many`, each installation's first workload
+  cluster has 30 pools of 40 nodes (`busiestCluster`). gs maps them onto
+  Cluster, AWSCluster, AWSClusterRoleIdentity (or AzureCluster),
+  KubeadmControlPlane, App, MachinePool with AWSMachinePool or
+  KarpenterMachinePool (MachineDeployment with AzureMachineTemplate on Azure)
+  objects, plus a Flux Kustomization (applied, with its
   revision) and GitRepository per GitOps repository and a Release per release
   the clusters run (`gsKubernetesObjectsOf` in
   `@giantswarm/backstage-plugin-gs/fixtures`), which the Clusters pages and the

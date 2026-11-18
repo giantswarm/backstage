@@ -26,7 +26,9 @@ describe('gsKubernetesObjectsOf', () => {
   });
 
   it('reads back as the data set says through the Clusters pages', () => {
-    const clusters = inInstallation(fixtureDataSet().clusters, 'meadow');
+    const clusters = inInstallation(fixtureDataSet().clusters, 'meadow').filter(
+      c => c.provider === 'aws',
+    );
     const byName = (kind: string, name: string) =>
       objectsOfKind(kind).find(o => o.metadata.name === name)!;
 
@@ -67,12 +69,30 @@ describe('gsKubernetesObjectsOf', () => {
     }
   });
 
-  it('serves a MachinePool and an AWSMachinePool per node pool', () => {
-    const pools = inInstallation(fixtureDataSet().clusters, 'meadow').flatMap(
-      c => c.pools,
+  it('serves an Azure cluster with a MachineDeployment and AzureMachineTemplate per node pool', () => {
+    const azure = inInstallation(fixtureDataSet().clusters, 'meadow').filter(
+      c => c.provider === 'azure',
     );
+    expect(azure).toHaveLength(1);
+    const pools = azure.flatMap(c => c.pools);
+    expect(objectsOfKind('AzureCluster')).toHaveLength(1);
+    expect(objectsOfKind('MachineDeployment')).toHaveLength(pools.length);
+    expect(objectsOfKind('AzureMachineTemplate')).toHaveLength(pools.length);
+  });
+
+  it('serves a MachinePool per node pool, with its AWSMachinePool or KarpenterMachinePool', () => {
+    const pools = inInstallation(fixtureDataSet().clusters, 'meadow')
+      .filter(c => c.provider === 'aws')
+      .flatMap(c => c.pools);
+    const karpenter = pools.filter(pool => pool.kind === 'karpenter');
+    expect(karpenter.length).toBeGreaterThan(0);
     expect(objectsOfKind('MachinePool')).toHaveLength(pools.length);
-    expect(objectsOfKind('AWSMachinePool')).toHaveLength(pools.length);
+    expect(objectsOfKind('AWSMachinePool')).toHaveLength(
+      pools.length - karpenter.length,
+    );
+    expect(objectsOfKind('KarpenterMachinePool')).toHaveLength(
+      karpenter.length,
+    );
   });
 
   it('serves the App that installs each cluster, applied by Flux where the cluster is managed through GitOps', () => {

@@ -531,6 +531,11 @@ describe('getTelemetryPageViewPayload', () => {
       '/platform/clusters/:installation/:namespace/:name',
     ],
     [
+      '/platform/clusters/meadow/org-fern/alder-birch/node-pools',
+      { page: 'Platform cluster', view: 'node-pools' },
+      '/platform/clusters/:installation/:namespace/:name/node-pools',
+    ],
+    [
       '/platform/clusters/meadow/org-fern/alder-birch/apps',
       { page: 'Platform cluster', view: 'redirect' },
       '/platform/clusters/:installation/:namespace/:name/*',
@@ -865,6 +870,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/platform',
       '/platform/clusters',
       '/platform/clusters/meadow/org-fern/alder-birch',
+      '/platform/clusters/meadow/org-fern/alder-birch/node-pools',
       '/customize/agents',
       '/customize/skills',
       '/customize/connectors',
