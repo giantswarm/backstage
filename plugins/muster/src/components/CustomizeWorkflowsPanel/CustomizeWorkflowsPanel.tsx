@@ -99,21 +99,25 @@ const SOURCE_LABELS = {
 } as const;
 
 /**
- * Each column's minimum width, px: its header and its usual value, plus the
- * cell's padding.
+ * Each column's minimum width, px: its header and its usual value at 14px,
+ * plus the cell's 24px padding, measured. All seven sum to 959px, so they fit
+ * the Customize content column (984px at most) with room for the 24px the
+ * layout needs above its minimum to come back after a narrower window.
  */
 const WORKFLOW_COLUMN_MIN_WIDTHS: Readonly<Record<string, number>> = {
   name: TABLE_NAME_COLUMN_MIN_WIDTH,
-  category: 100,
+  // "maintenance".
+  category: 105,
   tags: TAGS_COLUMN_MIN_WIDTH,
-  // "3 steps", "4 tool steps in 1 loop"; a longer shape ends in an ellipsis.
-  steps: 110,
+  // "12 steps"; a grouped shape ("4 tool steps in 1 loop") ends in an
+  // ellipsis, with the rest on hover and on the workflow's page.
+  steps: 78,
   // The "Changes things" badge.
-  effect: 130,
+  effect: 123,
   // "123 runs · 59 minutes ago" on one line.
-  runs: 210,
+  runs: 186,
   // "Manually added".
-  source: 130,
+  source: 123,
 };
 
 /**

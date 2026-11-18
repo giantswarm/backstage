@@ -614,6 +614,31 @@ describe('CustomizeWorkflowsPanel in a card narrower than its columns', () => {
     }
   });
 
+  it('shows every column in the widest Customize column, and again after a narrower window', async () => {
+    const container = mockContainerWidth(984);
+    try {
+      await renderPanel();
+      const full = [
+        'Workflow',
+        'Category',
+        'Tags',
+        'Steps',
+        'Access',
+        'Runs',
+        'Source',
+      ];
+      expect(headers()).toEqual(full);
+
+      act(() => container.setWidth(704));
+      expect(headers()).toEqual(['Workflow', 'Steps', 'Access', 'Runs']);
+
+      act(() => container.setWidth(984));
+      expect(headers()).toEqual(full);
+    } finally {
+      container.restore();
+    }
+  });
+
   it('keeps the Category and Tags columns when a workflow past the first page has them', async () => {
     mockWorkflows = [
       ...Array.from({ length: 25 }, (_, i) =>
