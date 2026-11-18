@@ -16,14 +16,16 @@
  *   yarn fixtures stop     stop it
  *
  * The state is in `.fixtures-server.json` at the checkout's root: the URLs,
- * the ports, the process ids and a token. Only the supervisor writes it when
- * it starts, and a process counts as this checkout's server only while its
- * command line carries the token, so a stale state never makes `stop` signal
- * a process the operating system has given the same id. `start` and `stop`
- * take a lock (`.fixtures-server/lock`), so concurrent starts in one checkout
- * spawn one server. The server stops on its own once no `start` or `touch`
- * has asked for it for FIXTURES_IDLE_MINUTES (default 60), and at once when the state no
- * longer names it, so it is never left running untracked.
+ * the ports, the process ids, the idle time and a token. The supervisor
+ * writes it when it starts; `start` and `touch` on a running server only
+ * move its `touchedAt`. A process counts as this checkout's server only
+ * while its command line carries the token, so a stale state never makes
+ * `stop` signal a process the operating system has given the same id.
+ * `start`, `touch` and `stop` take a lock (`.fixtures-server/lock`), so
+ * concurrent starts in one checkout spawn one server. The server stops on
+ * its own once no `start` or `touch` has asked for it for
+ * FIXTURES_IDLE_MINUTES (default 60), and at once when the state no longer
+ * names it, so it is never left running untracked.
  *
  * The ports come from the operating system, never 3000 or 7007 (another
  * portal's); FIXTURES_APP_PORT and FIXTURES_BACKEND_PORT pick them instead.

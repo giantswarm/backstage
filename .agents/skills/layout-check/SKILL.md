@@ -24,6 +24,7 @@ the full Chromium renders on the GPU but was measured no faster (#3563).
 | `rules.mjs` | The rules, pure functions over the measurement. |
 | `rules.test.mjs` | Their tests: `node --test .agents/skills/layout-check/rules.test.mjs`. CI runs them (`.github/workflows/skill-tests.yaml`). |
 | `layout-check.test.mjs` | Tests of the command that need no browser, run the same way. |
+| `collect.test.mjs` | Tests of the measurement on small static pages in Playwright's Chromium (what a cell's content takes, text squeezed to no width, tables wider than their box): `node --test .agents/skills/layout-check/collect.test.mjs`. They need the repository's dependencies, so CI's skill-tests job, which installs none, skips them; run them when you change `collect.mjs`. |
 | `specs/agent-platform.mjs` | Every Agent Platform and muster page of the shell, with the states that broke before. |
 | `specs/plans.mjs` | Hive's pages of the plans plugin (Now, History, Plans and a plan's review, Knowledge). Start fixture mode with `--enable page:plans --enable api:plans`, which turns Hive on. |
 
@@ -34,8 +35,10 @@ Commands run from the repo root; `L=.agents/skills/layout-check`.
 Start fixture mode (`docs/fixtures.md`); the check reads the portal's URL
 from `.fixtures-server.json` and stops with one message when the portal
 does not answer. While it runs it keeps that server from stopping as idle
-(`yarn fixtures touch`), so a sweep longer than the server's idle time
-keeps its portal. Stop the server when you are done.
+(`yarn fixtures touch`, three times per idle time), so a sweep longer than
+the server's idle time keeps its portal; when a touch fails, the server is
+gone, and the run stops with that message and exit 2 instead of failing
+every page left. Stop the server when you are done.
 
 ```bash
 L=.agents/skills/layout-check
@@ -51,8 +54,11 @@ yarn fixtures stop
 - `--page` takes a concrete path, never a route template
   (`/sessions/:installation/:sessionId`, `/*`): the check refuses one, and
   any page that shows the portal's 404 page or a "… not found" heading,
-  as could not check, and so is a page that threw and shows the portal's
-  error panel ("Error in app"), after loading or after any state. For a
+  as could not check, and so is a page that crashed, after loading or after
+  any state: it shows the portal's error panel ("Error in app", "Error in
+  extension '<id>'"), throws an uncaught error, or logs that an error
+  boundary caught an error or that an extension threw (an extension that
+  throws renders nothing, so its page would otherwise pass without it). For a
   page of one record, run the spec's entry for it (`--only`), which opens
   the first record in each scenario: a record's path exists only in the
   scenario it was copied from. A shell-wide change (`/*`) means a few real
@@ -62,11 +68,13 @@ yarn fixtures stop
   screen; a laptop. Tables squeeze between the tablet and 1280: a column
   given less than its content while the others keep their minimums. Add the
   width where your layout changes (a breakpoint, a dialog's maximum).
-- The side rail is pinned open at its default width (224px) from 600px up,
-  on every page load, unless a step of the spec changed it: the content
-  column is the width less the rail's (about 800px at 1024), which is the
-  narrower case, where tables squeeze. Below 600px the rail is the bottom
-  bar.
+- The check relies on the side rail's default: in a fresh browser context
+  (every page check gets one) the rail is pinned open at 224px from 600px
+  up, so the content column is the width less the rail's (about 800px at
+  1024), the narrower case, where tables squeeze. Measured at 768, 1024,
+  1160 and 1280: `nav[aria-label=Main]` 224px wide, offering "Collapse
+  sidebar". Below 600px the rail is the bottom bar. A spec step that
+  collapses it changes this for the states after it.
 - `--scenarios base,many,long-names,empty,loading,error`: the fixture
   scenarios, each added to the URL as `?fixtures=<name>`. Without it the
   page loads with no parameter, which is `base`. What each scenario serves:
@@ -157,7 +165,12 @@ finding is right as it is.
   text is cut to less than six em and less than half of it, while the
   other columns leave at least 56px empty in every row, header included
   (16px or more each). The finding names the columns and the room each
-  keeps. Text squeezed to no width at all counts, as cut to 0px.
+  keeps. Only this check counts text squeezed to no width at all, as cut
+  to 0px, unless it is hidden on purpose (under `aria-hidden`,
+  `data-layout-check="ignore"`, a visually-hidden box, `max-width: 0`). A
+  cell's content is its text as painted (cut where it is cut) and the boxes
+  it lays out: icons, controls (also those shown on hover only), progress
+  bars, status dots, badges, boxes with a background or a border.
 - **table-scroll**: a table wider than the box that holds it, at a width
   where the page itself does not scroll sideways (that is `overflow`'s): it
   scrolls sideways inside its card, or is cut off by a box that hides its
@@ -165,7 +178,8 @@ finding is right as it is.
   skill). A table here has column headers, or a row of two or more cells.
   The finding names the table by its `aria-labelledby`, caption,
   `aria-label` (not bui's "Data table") or the last heading before it, its
-  column headers, and how much of it is out of view. A table that scrolls
+  column headers, its own width and how much of it is out of view (or cut
+  off on which side). A table that scrolls
   sideways by design (a log view, a wide matrix to pan) says so with
   `data-layout-check="scroll-x"` on the table or an ancestor up to its scroll
   container; nothing else is left out. A code block or any other box that

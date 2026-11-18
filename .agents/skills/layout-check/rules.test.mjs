@@ -6,6 +6,7 @@ import { test } from 'node:test';
 
 import {
   alignmentRule,
+  crashMessageOf,
   crashOf,
   squeezedColumns,
   tableScrollRule,
@@ -805,7 +806,7 @@ test('table-fit: no squeezed column where the other columns have no room to spar
 });
 
 test('table-fit: no squeezed column where a cut text still reads, or in a few rows only', () => {
-  // A long description shows 300px: readable, and its value is on hover.
+  // A long description shows 120 of 400px: more than six em, readable.
   const readable = connectorsAt1024();
   readable.cells = readable.cells.map(c => ({ ...c, shown: 120, needed: 400 }));
   assert.deepEqual(tableFitRule(layout(readable)), []);
@@ -825,8 +826,10 @@ const scrolling = (extra = {}) => ({
   box: box(250, 200, 746, 600),
   columns: ['Connector', 'Tags', 'Status'],
   container: { role: 'div', name: '', path: 'div > div.bui-TableScrollContainer', box: box(250, 200, 448, 600) },
-  content: 746,
+  width: 746,
   client: 448,
+  overLeft: 0,
+  overRight: 298,
   cut: false,
   allowed: false,
   ...extra,
@@ -852,6 +855,14 @@ test('table-scroll: a table cut off sideways by a box that hides its overflow', 
     layout({ viewport: { w: 1024, h: 900 }, scrollWidth: 1024, tableScrolls: [scrolling({ cut: true, columns: [] })] }),
   );
   assert.equal(findings[0].message, 'is 746px wide in a 448px box that cuts off the 298px on the right');
+  const left = tableScrollRule(
+    layout({
+      viewport: { w: 1024, h: 900 },
+      scrollWidth: 1024,
+      tableScrolls: [scrolling({ cut: true, columns: [], overLeft: 100, overRight: 198 })],
+    }),
+  );
+  assert.equal(left[0].message, 'is 746px wide in a 448px box that cuts off the 100px on the left and the 198px on the right');
 });
 
 test('table-scroll: not where the page scrolls sideways (overflow), nor a table that scrolls by design', () => {
@@ -865,7 +876,7 @@ test('table-scroll: not where the page scrolls sideways (overflow), nor a table 
   );
   // A pixel or two is rounding.
   assert.deepEqual(
-    tableScrollRule(layout({ viewport: { w: 768, h: 900 }, scrollWidth: 768, tableScrolls: [scrolling({ content: 450 })] })),
+    tableScrollRule(layout({ viewport: { w: 768, h: 900 }, scrollWidth: 768, tableScrolls: [scrolling({ width: 450 })] })),
     [],
   );
 });
@@ -884,7 +895,67 @@ test('crashOf names the error panel of a page that threw', () => {
     }),
     'the error panel "Error in app": Duplicate key "server:wiki" found in collection.',
   );
+  assert.equal(
+    crashOf({ alerts: ["Error: Error in extension 'page:customize/connectors'\nMessage\nboom"] }),
+    "the error panel \"Error in extension 'page:customize/connectors'\": boom",
+  );
   // A page's own alerts are no crash.
   assert.equal(crashOf({ alerts: ['Could not load the connectors: Error in the request'] }), null);
   assert.equal(crashOf({ alerts: [] }), null);
+});
+
+test('table-fit: a squeezed column is one finding, not one more per kind of its cells', () => {
+  // Its cells end in an ellipsis with nothing on hover: without the column
+  // finding they would be a no-hover warning each.
+  const data = connectorsAt1024();
+  data.cells = data.cells.map(c => ({ ...c, fullText: false }));
+  data.cells.push(header('Connector', { col: 0, cut: true, ellipsis: true, needed: 113, shown: 58 }));
+  const findings = tableFitRule(layout(data));
+  assert.deepEqual(
+    findings.map(f => f.message.split(' (')[0]),
+    ['column "Connector" is squeezed until its text cannot be read', 'column header "Connector" is cut off with an ellipsis'],
+  );
+});
+
+test('table-fit: text squeezed to no width counts for the squeezed column only', () => {
+  const vanished = [10, 11, 12].map(row => ({
+    role: 'link',
+    name: 'Aster Hazel',
+    path: 'td > div > a',
+    box: box(272, 371, 0, 20),
+    table: 1,
+    row,
+    col: 0,
+    column: 'Connector',
+    header: false,
+    text: 'Aster Hazel',
+    needed: 80,
+    shown: 0,
+    fontSize: 14,
+  }));
+  const data = { ...connectorsAt1024(), cells: [], vanished };
+  const findings = tableFitRule(layout(data));
+  assert.equal(findings.length, 1);
+  assert.match(findings[0].message, /^column "Connector" is squeezed until its text cannot be read \("Aster Hazel" shows 0 of 80px, and in 2 more rows\)/);
+  // Without room to spare beside it, nothing: no truncation or squeezed
+  // finding of its own.
+  data.space = data.space.map(s => (s.col === 0 ? s : { ...s, used: s.inner }));
+  assert.deepEqual(tableFitRule(layout(data)), []);
+});
+
+test('crashMessageOf: uncaught errors, error boundaries and extensions that threw', () => {
+  assert.equal(
+    crashMessageOf({ type: 'pageerror', text: 'TypeError: x is undefined\n    at f (app.js:1)' }),
+    'an uncaught error: TypeError: x is undefined',
+  );
+  assert.equal(
+    crashMessageOf({ type: 'console', text: "ForwardedError: Error in extension 'page:usage'; caused by Error: boom" }),
+    "the extension 'page:usage' threw",
+  );
+  assert.equal(
+    crashMessageOf({ type: 'console', text: 'The above error occurred in the <ConnectorsTable> component:\n\n    at ConnectorsTable' }),
+    '<ConnectorsTable> threw, caught by an error boundary',
+  );
+  assert.equal(crashMessageOf({ type: 'pageerror', text: 'ResizeObserver loop completed with undelivered notifications.' }), null);
+  assert.equal(crashMessageOf({ type: 'console', text: 'Failed to load resource: the server responded with a status of 503' }), null);
 });

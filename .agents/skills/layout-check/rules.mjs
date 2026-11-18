@@ -325,16 +325,16 @@ export function tableFitRule(layout) {
       else if (!c.fullText) kind = 'no-hover';
     }
     if (!kind) continue;
-    // A column squeezed beside columns with room to spare is reported as that.
-    if (kind === 'squeezed' && squeezed.has(`${c.table}|${c.col}`)) continue;
+    // A column squeezed beside columns with room to spare is reported as
+    // that, once: its cells' own findings would repeat it.
+    if (!c.header && squeezed.has(`${c.table}|${c.col}`)) continue;
     const key = `${c.table}|${c.col}|${kind}`;
     const group = groups.get(key);
     if (group) group.rows.add(c.row);
     else groups.set(key, { kind, cell: c, rows: new Set([c.row]) });
   }
   const columnFindings = [...squeezed.values()].map(({ cell: c, rows, spare }) => {
-    const others = rows.size - 1;
-    const more = others > 0 ? `, and in ${others} more row${others > 1 ? 's' : ''}` : '';
+    const more = moreRows(rows);
     const room = spare
       .map(s => `${s.column ? `"${s.column}"` : `column ${s.col + 1}`} (${Math.round(s.spare)}px)`)
       .join(', ');
@@ -348,8 +348,7 @@ export function tableFitRule(layout) {
     const column = c.column ? ` in column "${c.column}"` : '';
     const unit = c.axis === 'y' ? 'px high' : 'px';
     const shown = `${Math.round(c.shown)} of ${Math.round(c.needed)}${unit} shown`;
-    const others = rows.size - 1;
-    const more = others > 0 ? `, and in ${others} more row${others > 1 ? 's' : ''}` : '';
+    const more = moreRows(rows);
     const ellipsis = c.ellipsis ? ' with an ellipsis' : '';
     const message = {
       'header-cut': `column header "${c.text}" is cut off${ellipsis} (${shown}): a header always fits its column`,
@@ -367,6 +366,12 @@ export function tableFitRule(layout) {
       ...(kind === 'no-hover' && { severity: 'warning' }),
     };
   })];
+}
+
+/** ", and in N more rows" for a finding that holds in `rows` (a Set). */
+function moreRows(rows) {
+  const others = rows.size - 1;
+  return others > 0 ? `, and in ${others} more row${others > 1 ? 's' : ''}` : '';
 }
 
 /** Room a column keeps to spare that counts, per column and in all. */
@@ -399,7 +404,9 @@ export function squeezedColumns(layout) {
     }
   }
   const tight = new Map();
-  for (const c of layout.cells ?? []) {
+  // Text squeezed to no width (`vanished`) is read here only: the other
+  // checks see what a person sees, and that text is not to be seen.
+  for (const c of [...(layout.cells ?? []), ...(layout.vanished ?? []).map(v => ({ ...v, kind: 'leaf', cut: true, axis: 'x' }))]) {
     if (c.kind !== 'leaf' || c.header || !c.cut || c.axis !== 'x') continue;
     const em = c.fontSize ?? 14;
     if (!(c.shown < 6 * em && c.shown < 0.5 * c.needed)) continue;
@@ -430,17 +437,27 @@ export function squeezedColumns(layout) {
 export function tableScrollRule(layout) {
   if (layout.scrollWidth > layout.viewport.w + TOLERANCE) return [];
   return (layout.tableScrolls ?? [])
-    .filter(t => !t.allowed && t.content - t.client > TOLERANCE)
+    .filter(t => !t.allowed && t.width - t.client > TOLERANCE)
     .map(t => {
-      const hidden = t.content - t.client;
       const columns = t.columns?.length
-        ? ` (columns ${t.columns.map(c => `"${c}"`).join(', ')})`
+        ? `(columns ${t.columns.map(c => `"${c}"`).join(', ')}) `
         : '';
+      let message;
+      if (t.cut) {
+        // What sticks out past each edge of the box; a table that is its
+        // own box is cut on the right.
+        const right = t.overRight || (t.overLeft ? 0 : t.width - t.client);
+        const sides = [
+          t.overLeft > TOLERANCE ? `the ${Math.round(t.overLeft)}px on the left` : '',
+          right > TOLERANCE ? `the ${Math.round(right)}px on the right` : '',
+        ].filter(Boolean);
+        message = `${columns}is ${Math.round(t.width)}px wide in a ${t.client}px box that cuts off ${sides.join(' and ')}`;
+      } else {
+        message = `${columns}scrolls sideways: ${Math.round(t.width)}px of table in a ${t.client}px box, ${Math.round(t.width - t.client)}px out of view`;
+      }
       return {
         rule: 'table-scroll',
-        message: t.cut
-          ? `${columns ? `${columns.slice(1)} ` : ''}is ${t.content}px wide in a ${t.client}px box that cuts off the ${hidden}px on the right`
-          : `${columns ? `${columns.slice(1)} ` : ''}scrolls sideways: ${t.content}px of table in a ${t.client}px box, ${hidden}px out of view`,
+        message,
         elements: [element(t, t.box), element(t.container, t.container.box)],
       };
     });
@@ -623,13 +640,36 @@ export function crashOf({ alerts }) {
       .map(l => l.trim())
       .filter(Boolean);
     const title = lines
-      .map(l => /^(?:Error:\s*)?(Error in \S+)$/.exec(l)?.[1])
+      .map(l => /^(?:Error:\s*)?(Error in (?:extension '[^']+'|\S+))$/.exec(l)?.[1])
       .find(Boolean);
     if (!title) continue;
     const at = lines.indexOf('Message');
     const message = at >= 0 ? (lines[at + 1] ?? '').slice(0, 160) : '';
     return `the error panel "${title}"${message ? `: ${message}` : ''}`;
   }
+  return null;
+}
+
+/**
+ * Whether an error the page reported means part of it crashed, and its
+ * message: an uncaught error (`pageerror`), or on the console React's report
+ * of an error a boundary caught ("The above error occurred in the <X>
+ * component") or Backstage's for an extension that threw ("Error in
+ * extension '<id>'", which then renders nothing and shows no panel). Null
+ * for anything else, and for the browser's ResizeObserver notice, which is
+ * no error of the page.
+ */
+export function crashMessageOf({ type, text }) {
+  const first = String(text ?? '').split('\n')[0].trim();
+  if (type === 'pageerror') {
+    if (!first || /^ResizeObserver loop/.test(first)) return null;
+    return `an uncaught error: ${first.slice(0, 160)}`;
+  }
+  if (type !== 'console') return null;
+  const extension = /Error in extension '([^']+)'/.exec(text);
+  if (extension) return `the extension '${extension[1]}' threw`;
+  const boundary = /The above error occurred in the <([^>]+)> component/.exec(text);
+  if (boundary) return `<${boundary[1]}> threw, caught by an error boundary`;
   return null;
 }
 
