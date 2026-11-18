@@ -1,6 +1,6 @@
 import { ReactElement } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
-import { cleanup, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
@@ -42,9 +42,39 @@ jest.mock('@giantswarm/backstage-plugin-flux-react', () => ({
 let mockServers: MCPServer[] = [];
 let mockAuthenticated = true;
 let mockLoading = false;
+let mockLoadingKeys = false;
 const mockRefresh = jest.fn();
+// What a slow read of muster's keys changes, as the provider would: the
+// mocked instance re-renders its readers when a test calls mockUpdate().
+const mockListeners = new Set<() => void>();
+let mockVersion = 0;
+function mockUpdate(change: () => void) {
+  change();
+  mockVersion += 1;
+  mockListeners.forEach(listener => listener());
+}
 jest.mock('../MusterInstanceProvider', () => ({
-  useMusterInstance: () => ({
+  useMusterInstance: () => {
+    jest.requireActual('react').useSyncExternalStore(
+      (listener: () => void) => {
+        mockListeners.add(listener);
+        return () => mockListeners.delete(listener);
+      },
+      () => mockVersion,
+    );
+    return mockInstance();
+  },
+  useMusterSession: () => ({
+    authenticated: mockAuthenticated,
+    pending: false,
+    connecting: false,
+    connect: jest.fn(),
+  }),
+  useMusterMutationRefresh: () => mockRefresh,
+}));
+
+function mockInstance() {
+  return {
     installations: ['gazelle'],
     isLoadingInstallations: false,
     activeInstallation: 'gazelle',
@@ -59,17 +89,11 @@ jest.mock('../MusterInstanceProvider', () => ({
     mcpServers: mockServers,
     workflows: [],
     isLoading: mockLoading,
+    isLoadingServerKeys: mockLoadingKeys,
     retry: jest.fn(),
     refreshInventory: jest.fn(),
-  }),
-  useMusterSession: () => ({
-    authenticated: mockAuthenticated,
-    pending: false,
-    connecting: false,
-    connect: jest.fn(),
-  }),
-  useMusterMutationRefresh: () => mockRefresh,
-}));
+  };
+}
 
 const HELM = { 'app.kubernetes.io/managed-by': 'Helm' };
 /** The platform's charts label their infrastructure servers. */
@@ -338,6 +362,7 @@ beforeEach(() => {
   mockServers = makeServers();
   mockAuthenticated = true;
   mockLoading = false;
+  mockLoadingKeys = false;
   mockRefresh.mockClear();
 });
 
@@ -1189,6 +1214,67 @@ describe('ConnectorPage', () => {
         ['Golem wiki', `${BASE}/-/org-golem/wiki`],
       ]);
       expect(within(list).getByText('Namespace org-golem')).toBeInTheDocument();
+    });
+
+    describe("with muster outside the chart's namespace, its keys read slowly", () => {
+      // muster runs in `muster-system`: until its keys are read, its own
+      // `github` there looks like an organization's.
+      const ownGithub = () =>
+        makeServer({ name: 'github', namespace: 'muster-system' });
+
+      it('waits for the keys before deciding an old address, then opens the page in place', async () => {
+        mockLoadingKeys = true;
+        mockServers = [ownGithub()];
+        await renderAt(`${BASE}/github/details`);
+
+        // The page's loading frame: its skeletons, no tab content.
+        expect(document.querySelector('.bui-Skeleton')).not.toBeNull();
+        expect(
+          screen.getByText(`at ${BASE}/github/details`),
+        ).toBeInTheDocument();
+        expect(screen.queryByText(/No connector/)).toBeNull();
+
+        act(() =>
+          mockUpdate(() => {
+            mockLoadingKeys = false;
+            mockServers = [ownGithub().withMusterKey('github')];
+          }),
+        );
+
+        // Its own page, read: the tab strip past Tools.
+        expect(
+          await screen.findByRole('tab', { name: 'Details' }),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByText(`at ${BASE}/github/details`),
+        ).toBeInTheDocument();
+      });
+
+      it("moves an organization's address of muster's own server to its own", async () => {
+        mockServers = [ownGithub().withMusterKey('github')];
+        await renderAt(`${BASE}/-/muster-system/github`);
+
+        expect(
+          await screen.findByText(`at ${BASE}/github`),
+        ).toBeInTheDocument();
+      });
+
+      it('redirects to an organization connector only once the keys say it is one', async () => {
+        mockLoadingKeys = true;
+        mockServers = [orgWiki()];
+        await renderAt(`${BASE}/wiki`);
+        expect(screen.getByText(`at ${BASE}/wiki`)).toBeInTheDocument();
+
+        act(() =>
+          mockUpdate(() => {
+            mockLoadingKeys = false;
+            mockServers = [orgWiki().withMusterKey('org-gazelle/wiki')];
+          }),
+        );
+        expect(
+          await screen.findByText(`at ${BASE}/-/org-gazelle/wiki`),
+        ).toBeInTheDocument();
+      });
     });
 
     it("says there is none at an organization's address it does not have", async () => {

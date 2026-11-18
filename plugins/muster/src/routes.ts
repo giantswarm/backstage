@@ -3,6 +3,7 @@ import {
   createRouteRef,
   createSubRouteRef,
 } from '@backstage/frontend-plugin-api';
+import { ORGANIZATION_CONNECTOR_SEGMENT } from './lib/connectorAddress';
 
 /**
  * The Customize screen's Connectors tab (`/customize/connectors`): the
@@ -56,12 +57,12 @@ export const mcpServerToolRouteRef = createSubRouteRef({
 // never takes a muster connector's address; the form skill pages use for a
 // git host (`-/<host>/…`).
 export const mcpOrganizationServerRouteRef = createSubRouteRef({
-  path: '/:installation/-/:namespace/:server',
+  path: `/:installation/${ORGANIZATION_CONNECTOR_SEGMENT}/:namespace/:server` as const,
   parent: mcpServersRouteRef,
 });
 
 export const mcpOrganizationServerToolRouteRef = createSubRouteRef({
-  path: '/:installation/-/:namespace/:server/tools/:tool',
+  path: `/:installation/${ORGANIZATION_CONNECTOR_SEGMENT}/:namespace/:server/tools/:tool` as const,
   parent: mcpServersRouteRef,
 });
 

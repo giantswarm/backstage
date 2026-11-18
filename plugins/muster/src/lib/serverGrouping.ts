@@ -453,12 +453,8 @@ export function findServerRow(
 ): ServerPageRow | undefined {
   const params = connectorPageParams(key);
   if (params.namespace !== undefined) {
-    const server = servers.find(
-      s =>
-        !s.getFamily() &&
-        s.getNamespace() === params.namespace &&
-        s.getName() === params.server &&
-        isOrganizationServer(s),
+    const server = organizationServersNamed(servers, params.server).find(
+      s => s.getNamespace() === params.namespace,
     );
     return server ? { kind: 'server', server } : undefined;
   }
@@ -479,6 +475,57 @@ export function findServerRow(
     s => !s.getFamily() && s.getName() === key && !isOrganizationServer(s),
   );
   return server ? { kind: 'server', server } : undefined;
+}
+
+/**
+ * What a connector page's key names on this installation
+ * ({@link resolveConnectorAddress}).
+ */
+export type ConnectorAddressResolution =
+  /** The row the page shows. */
+  | { kind: 'row'; row: ServerPageRow }
+  /** Another address the connector has: the page key to go to. */
+  | { kind: 'moved'; key: string }
+  /** Several organizations' connectors the old address may mean. */
+  | { kind: 'choice'; named: MCPServer[] }
+  /** Nothing of that address. */
+  | { kind: 'none' };
+
+/**
+ * What a page key names on this installation: its row ({@link findServerRow});
+ * else, for an organization's connector's address before it had its own
+ * (`<name>`), that connector's address where one organization has a
+ * connector of that name, or the choice between them where several do; for
+ * `-/<namespace>/<name>` of a server muster calls its own (muster outside
+ * the chart's namespace, read before muster's keys were), its bare name.
+ *
+ * Tells organizations' servers from muster's own by muster's keys, so a
+ * caller acts on anything but a row only once those are read.
+ */
+export function resolveConnectorAddress(
+  servers: readonly MCPServer[],
+  key: string,
+): ConnectorAddressResolution {
+  const row = findServerRow(servers, key);
+  if (row) {
+    return { kind: 'row', row };
+  }
+  const params = connectorPageParams(key);
+  if (params.namespace !== undefined) {
+    const own = servers.find(
+      s =>
+        !s.getFamily() &&
+        s.getNamespace() === params.namespace &&
+        s.getName() === params.server &&
+        !isOrganizationServer(s),
+    );
+    return own ? { kind: 'moved', key: own.getName() } : { kind: 'none' };
+  }
+  const named = organizationServersNamed(servers, key);
+  if (named.length === 1) {
+    return { kind: 'moved', key: singularServerPageKey(named[0]) };
+  }
+  return named.length > 1 ? { kind: 'choice', named } : { kind: 'none' };
 }
 
 /**

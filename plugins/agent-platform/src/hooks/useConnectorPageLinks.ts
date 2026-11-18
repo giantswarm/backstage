@@ -1,6 +1,9 @@
 import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { connectorPageParams } from '@giantswarm/backstage-plugin-muster';
+import {
+  connectorPageHref,
+  connectorToolPageHref,
+} from '@giantswarm/backstage-plugin-muster';
 import {
   musterOrganizationServerExternalRouteRef,
   musterOrganizationServerToolExternalRouteRef,
@@ -9,24 +12,27 @@ import {
 } from '../routes';
 
 export interface ConnectorPageLinks {
+  /** Whether muster's connector pages are routed (its plugin is enabled). */
+  routed: boolean;
   /**
-   * A connector's page by its page key (muster's `lib/connectorAddress.ts`:
-   * its name, or `-/<namespace>/<name>` for an organization's).
+   * A connector's page by its page key (muster's `connectorPageHref`: its
+   * name, or `-/<namespace>/<name>` for an organization's), in muster's
+   * `useServerPageLinks` argument order.
    */
-  server: (installation: string, server: string) => string | undefined;
+  server: (server: string, installation: string) => string | undefined;
   /** A tool's page beneath the connector of that page key. */
   tool: (
-    installation: string,
     server: string,
     tool: string,
+    installation: string,
   ) => string | undefined;
 }
 
 /**
- * Links to muster's connector and tool pages, built by muster's own rule
- * (`connectorPageParams`), so an organization's connector opens at its own
- * `-/<namespace>/<name>` address. Undefined while the muster plugin is
- * disabled (its routes unbound), or without an installation.
+ * Links to muster's connector and tool pages through agent-platform's
+ * external route refs, built by muster's own rule (`connectorPageHref`,
+ * `connectorToolPageHref`). Undefined while the muster plugin is disabled
+ * (its routes unbound), or without an installation.
  */
 export function useConnectorPageLinks(): ConnectorPageLinks {
   const serverRoute = useRouteRef(musterServerExternalRouteRef);
@@ -37,24 +43,20 @@ export function useConnectorPageLinks(): ConnectorPageLinks {
   );
   return useMemo(
     () => ({
-      server: (installation, server) => {
-        if (!installation) {
-          return undefined;
-        }
-        const params = connectorPageParams(server);
-        return params.namespace === undefined
-          ? serverRoute?.({ installation, server })
-          : orgServerRoute?.({ installation, ...params });
-      },
-      tool: (installation, server, tool) => {
-        if (!installation) {
-          return undefined;
-        }
-        const params = connectorPageParams(server);
-        return params.namespace === undefined
-          ? toolRoute?.({ installation, server, tool })
-          : orgToolRoute?.({ installation, ...params, tool });
-      },
+      routed: Boolean(serverRoute && orgServerRoute),
+      server: (server, installation) =>
+        connectorPageHref(
+          { server: serverRoute, organizationServer: orgServerRoute },
+          server,
+          installation,
+        ),
+      tool: (server, tool, installation) =>
+        connectorToolPageHref(
+          { tool: toolRoute, organizationTool: orgToolRoute },
+          server,
+          tool,
+          installation,
+        ),
     }),
     [serverRoute, toolRoute, orgServerRoute, orgToolRoute],
   );

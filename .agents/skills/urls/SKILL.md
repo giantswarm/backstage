@@ -166,11 +166,15 @@ against two).
   `skillDetailPath`), never by concatenation at the call site.
 - A connector page's address is built and read through one helper,
   muster's `lib/connectorAddress.ts` (a page key, `<name>` or
-  `-/<ns>/<name>`, and `connectorPageParams`): `useServerPageLinks` in muster,
-  `useConnectorPageLinks` in agent-platform. An organization's connector
+  `-/<ns>/<name>` with `-` its `ORGANIZATION_CONNECTOR_SEGMENT`, and
+  `connectorPageHref` / `connectorToolPageHref`): `useServerPageLinks` in
+  muster, `useConnectorPageLinks` in agent-platform, both
+  `(server, installation)`. Routes, the router, telemetry's
+  `CONNECTOR_ADDRESSES` and the layout-check spec take the segment from it. An organization's connector
   never links by its name alone, which two organizations may share; its old
   address, `<inst>/<name>`, redirects to its own where the name is unique and
-  lists the connectors of that name where it is not.
+  lists the connectors of that name where it is not, deciding only once
+  muster's keys are read (`useConnectorAddress`).
 - The ESLint rule `giantswarm/no-restricted-syntax` fails CI on a literal
   that starts with a shell root in `plugins/*/src` and
   `packages/app/src/modules`. A route definition, `AGENT_AREA_PREFIXES` and

@@ -15,6 +15,7 @@ import { MusterSubPage } from '../MusterSubPage';
 import { RouteRefRedirect } from '../RouteRefRedirect';
 import { mcpServersRouteRef } from '../../routes';
 import { ToolPage } from '../ToolPage';
+import { ORGANIZATION_CONNECTOR_SEGMENT } from '../../lib/connectorAddress';
 
 const CONTEXT =
   'The connectors of an environment are read through its Kubernetes API.';
@@ -68,14 +69,17 @@ function InstallationRoutes({ usedBy }: { usedBy?: ReactElement }) {
       <Routes>
         {/* An organization's connector (`lib/connectorAddress.ts`). */}
         <Route
-          path="-/:namespace/:server/tools/:tool/*"
+          path={`${ORGANIZATION_CONNECTOR_SEGMENT}/:namespace/:server/tools/:tool/*`}
           element={<ToolPage />}
         />
         <Route
-          path="-/:namespace/:server/*"
+          path={`${ORGANIZATION_CONNECTOR_SEGMENT}/:namespace/:server/*`}
           element={<ConnectorPage usedBy={usedBy} />}
         />
-        <Route path="-/*" element={listRedirect} />
+        <Route
+          path={`${ORGANIZATION_CONNECTOR_SEGMENT}/*`}
+          element={listRedirect}
+        />
         <Route path=":server/tools/:tool/*" element={<ToolPage />} />
         <Route path=":server/edit/*">{wizardSteps}</Route>
         <Route path=":server/*" element={<ConnectorPage usedBy={usedBy} />} />

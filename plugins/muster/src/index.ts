@@ -66,8 +66,11 @@ export {
 export type { ToolEffect } from './lib/toolAnnotations';
 export { serverPageResolver } from './lib/toolGrouping';
 export {
-  connectorPageParams,
-  type ConnectorPageParams,
+  ORGANIZATION_CONNECTOR_SEGMENT,
+  connectorPageHref,
+  connectorToolPageHref,
+  type ConnectorPageRoutes,
+  type ConnectorToolPageRoutes,
 } from './lib/connectorAddress';
 export {
   connectorAuthName,

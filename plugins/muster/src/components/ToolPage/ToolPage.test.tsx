@@ -33,6 +33,9 @@ jest.mock('../MusterSubPage', () => ({
 
 let mockAuthenticated = true;
 let mockLoading = false;
+let mockLoadingKeys = false;
+// The organizations owning a `wiki`, by namespace.
+let mockWikiOwners = ['org-gazelle', 'org-golem'];
 jest.mock('../MusterInstanceProvider', () => ({
   useMusterInstance: () => ({
     installations: ['gazelle'],
@@ -62,7 +65,7 @@ jest.mock('../MusterInstanceProvider', () => ({
         'gazelle',
       ),
       // Two organizations' connectors of one name.
-      ...['org-gazelle', 'org-golem'].map(
+      ...mockWikiOwners.map(
         namespace =>
           new MCPServer(
             {
@@ -78,6 +81,7 @@ jest.mock('../MusterInstanceProvider', () => ({
     ],
     workflows: [],
     isLoading: mockLoading,
+    isLoadingServerKeys: mockLoadingKeys,
   }),
   useMusterSession: () => ({
     authenticated: mockAuthenticated,
@@ -179,6 +183,8 @@ async function renderAt(path: string, api = makeApi()) {
 beforeEach(() => {
   mockAuthenticated = true;
   mockLoading = false;
+  mockLoadingKeys = false;
+  mockWikiOwners = ['org-gazelle', 'org-golem'];
   window.localStorage.clear();
 });
 
@@ -203,6 +209,51 @@ describe('ToolPage', () => {
         ).toHaveAttribute('href', `${BASE}/gazelle/-/${namespace}/wiki`);
       },
     );
+
+    it("decides nothing about an old address before muster's keys are read", async () => {
+      mockLoadingKeys = true;
+      await renderAt(`${BASE}/gazelle/wiki/tools/x_org-golem_wiki_search`);
+
+      expect(
+        screen.getByText(
+          `at ${BASE}/gazelle/wiki/tools/x_org-golem_wiki_search`,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/No tool|no connector/)).toBeNull();
+    });
+
+    it("moves an old address of a tool it cannot find to the one organization's connector of that name", async () => {
+      mockWikiOwners = ['org-golem'];
+      await renderAt(`${BASE}/gazelle/wiki/tools/x_gone/run`);
+
+      expect(
+        await screen.findByText(
+          `at ${BASE}/gazelle/-/org-golem/wiki/tools/x_gone/run`,
+        ),
+      ).toBeInTheDocument();
+      expect(
+        await screen.findByText('No tool “x_gone” on gazelle'),
+      ).toBeInTheDocument();
+    });
+
+    it('lists the connectors of the name at an old address of a tool none of them has', async () => {
+      await renderAt(`${BASE}/gazelle/wiki/tools/x_gone`);
+
+      const list = await screen.findByRole('list', {
+        name: 'Connectors named wiki',
+      });
+      expect(
+        within(list)
+          .getAllByRole('link')
+          .map(link => link.getAttribute('href')),
+      ).toEqual([
+        `${BASE}/gazelle/-/org-gazelle/wiki`,
+        `${BASE}/gazelle/-/org-golem/wiki`,
+      ]);
+      expect(
+        screen.getByText(`at ${BASE}/gazelle/wiki/tools/x_gone`),
+      ).toBeInTheDocument();
+    });
 
     it('moves its address before the connector had its own to it, by the tool', async () => {
       await renderAt(

@@ -78,3 +78,67 @@ export function connectorPageKeyLabel(key: string): string {
     ? params.server
     : `${params.namespace}/${params.server}`;
 }
+
+/** The route functions a connector page's link is built with. */
+export interface ConnectorPageRoutes {
+  /** `<installation>/<server>` (muster's `mcpServer` route). */
+  server?: (params: { installation: string; server: string }) => string;
+  /** `<installation>/-/<namespace>/<server>` (`mcpOrganizationServer`). */
+  organizationServer?: (params: {
+    installation: string;
+    namespace: string;
+    server: string;
+  }) => string;
+}
+
+/** The route functions a tool page's link is built with. */
+export interface ConnectorToolPageRoutes {
+  /** `<installation>/<server>/tools/<tool>` (`mcpServerTool`). */
+  tool?: (params: {
+    installation: string;
+    server: string;
+    tool: string;
+  }) => string;
+  /** The same under an organization's connector (`mcpOrganizationServerTool`). */
+  organizationTool?: (params: {
+    installation: string;
+    namespace: string;
+    server: string;
+    tool: string;
+  }) => string;
+}
+
+/**
+ * A connector page's path, by its page key `server`, through the route that
+ * key takes; undefined without an installation or while that route is
+ * unbound. The one rule muster's and agent-platform's links share.
+ */
+export function connectorPageHref(
+  routes: ConnectorPageRoutes,
+  server: string,
+  installation: string,
+): string | undefined {
+  if (!installation) {
+    return undefined;
+  }
+  const params = connectorPageParams(server);
+  return params.namespace === undefined
+    ? routes.server?.({ installation, server })
+    : routes.organizationServer?.({ installation, ...params });
+}
+
+/** A tool page's path beneath the connector of page key `server`. */
+export function connectorToolPageHref(
+  routes: ConnectorToolPageRoutes,
+  server: string,
+  tool: string,
+  installation: string,
+): string | undefined {
+  if (!installation) {
+    return undefined;
+  }
+  const params = connectorPageParams(server);
+  return params.namespace === undefined
+    ? routes.tool?.({ installation, server, tool })
+    : routes.organizationTool?.({ installation, ...params, tool });
+}

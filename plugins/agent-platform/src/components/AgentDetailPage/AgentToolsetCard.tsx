@@ -241,7 +241,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
     return (name: string): string | undefined => {
       const server = pageOfTool(name);
       const href = server
-        ? connectorLinks.tool(installation, server, name)
+        ? connectorLinks.tool(server, name, installation)
         : undefined;
       if (href) {
         return href;

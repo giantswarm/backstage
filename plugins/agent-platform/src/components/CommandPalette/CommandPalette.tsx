@@ -39,7 +39,6 @@ import { useConnectorPageLinks } from '../../hooks/useConnectorPageLinks';
 import { skillSource, uniqueSkills } from '../../lib/customize';
 import {
   agentDetailRouteRef,
-  musterServerExternalRouteRef,
   musterWorkflowDetailExternalRouteRef,
   sessionDetailRouteRef,
   sessionsRouteRef,
@@ -452,7 +451,6 @@ function PaletteDialog({
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
   const skillPaths = useSkillPaths();
-  const serverRoute = useRouteRef(musterServerExternalRouteRef);
   const connectorLinks = useConnectorPageLinks();
   const customizePaths = useCustomizePaths();
   const { modelDetail: modelDetailRoute } = customizePaths;
@@ -525,7 +523,9 @@ function PaletteDialog({
       ];
     });
 
-    const connectorCandidates: PaletteCandidate[] = serverRoute
+    // Each entry's link and whether connectors are listed at all come from
+    // one source, `useConnectorPageLinks`.
+    const connectorCandidates: PaletteCandidate[] = connectorLinks.routed
       ? connectors.rows.map(connector => ({
           id: `connector:${connector.installation}/${connector.key}`,
           title: connector.displayName,
@@ -535,8 +535,8 @@ function PaletteDialog({
           ...(connector.page
             ? {
                 href: connectorLinks.server(
-                  connector.installation,
                   connector.page,
+                  connector.installation,
                 ),
               }
             : {}),
@@ -579,7 +579,7 @@ function PaletteDialog({
       sessions: sessionDetailRoute ? sessionCandidates : undefined,
       agents: agentDetailRoute ? agentCandidates : undefined,
       skills: skillCandidates,
-      connectors: serverRoute ? connectorCandidates : undefined,
+      connectors: connectorLinks.routed ? connectorCandidates : undefined,
       models: modelDetailRoute ? modelCandidates : undefined,
       workflows: workflowDetailRoute ? workflowCandidates : undefined,
     };
@@ -593,7 +593,6 @@ function PaletteDialog({
     sessionDetailRoute,
     agentDetailRoute,
     skillPaths,
-    serverRoute,
     connectorLinks,
     modelDetailRoute,
     workflowDetailRoute,

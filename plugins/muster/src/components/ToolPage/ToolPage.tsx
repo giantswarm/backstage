@@ -19,17 +19,15 @@ import {
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
-  findServerRow,
   mcpServerDisplayNames,
   serverPageKey,
+  singularServerPageKey,
   serverRowDisplayName,
 } from '../../lib/serverGrouping';
-import {
-  connectorPageKeyLabel,
-  connectorPageParams,
-  isOrganizationConnectorPageKey,
-} from '../../lib/connectorAddress';
+import { connectorPageKeyLabel } from '../../lib/connectorAddress';
 import { useConnectorPageKey } from '../../hooks/useConnectorPageKey';
+import { useConnectorAddress } from '../../hooks/useConnectorAddress';
+import { ConnectorNameChoice } from '../ConnectorPage/ConnectorNameChoice';
 import { toolEffect } from '../../lib/toolAnnotations';
 import {
   serverPageResolver,
@@ -95,7 +93,7 @@ export function ToolPage() {
 
 function ToolPageContent() {
   const { tool = '', '*': subPath = '' } = useParams();
-  const key = useConnectorPageKey();
+  const { key, resolution, deciding } = useConnectorAddress();
   const basePath = useSplatBasePath();
   // The address's own query, as it is: the tab links and the redirect keep
   // it. It carries the Tools search and filter the tool was opened from,
@@ -109,12 +107,11 @@ function ToolPageContent() {
   // The Usage tab's window, as the connector's Usage tab linked here with it.
   const usageDays = parseUsageWindowParam(params.get(USAGE_WINDOW_PARAM));
   const paths = useConnectorListPaths();
-  const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
-    useMusterInstance();
+  const { mcpServers, activeInstallation } = useMusterInstance();
   const session = useMusterSession();
   const links = useServerPageLinks();
   const listHref = useServersListHref(activeInstallation);
-  const row = useMemo(() => findServerRow(mcpServers, key), [mcpServers, key]);
+  const row = resolution.kind === 'row' ? resolution.row : undefined;
   const prefixes = useMemo(() => serverPrefixInfos(mcpServers), [mcpServers]);
   const shortName = shortToolName(tool, prefixes);
   const serverKey = row ? serverPageKey(row) : key;
@@ -175,24 +172,46 @@ function ToolPageContent() {
     row && activeInstallation
       ? representativeServer(row, activeInstallation)?.server
       : undefined;
-  // An organization's connector's tool at the address it had before the
-  // connector had its own (`<installation>/<name>/tools/<tool>`): the tool's
-  // name says which organization's it is.
-  const movedTo =
-    !row && activeInstallation && !isOrganizationConnectorPageKey(key)
-      ? pageOfTool(tool)
-      : undefined;
+  // A tool beneath an address its connector no longer has (an
+  // organization's before it had its own, `<installation>/<name>/tools/…`),
+  // by the rule of the connector's page: the tool's page beneath the
+  // connector's address, where one organization has a connector of that
+  // name, which says "No tool" there if the tool is gone. Where several do,
+  // the tool's owner among them, else the choice between them.
+  const ownerOfThisTool =
+    resolution.kind === 'choice' ? pageOfTool(tool) : undefined;
+  let movedKey: string | undefined;
+  if (resolution.kind === 'moved') {
+    movedKey = resolution.key;
+  } else if (
+    resolution.kind === 'choice' &&
+    resolution.named.some(
+      server => singularServerPageKey(server) === ownerOfThisTool,
+    )
+  ) {
+    movedKey = ownerOfThisTool;
+  }
   const movedHref =
-    movedTo &&
-    isOrganizationConnectorPageKey(movedTo) &&
-    connectorPageParams(movedTo).server === key
-      ? links.tool(movedTo, tool, activeInstallation!)
+    movedKey && activeInstallation
+      ? links.tool(movedKey, tool, activeInstallation)
       : undefined;
+  if (!deciding && !movedHref && resolution.kind === 'choice') {
+    return (
+      <ConnectorNameChoice
+        name={key}
+        installation={activeInstallation ?? ''}
+        named={resolution.named}
+        servers={mcpServers}
+      />
+    );
+  }
   let body: ReactNode;
   // The tab strip while the page can still turn out to be the tool's, and
   // once it is; never on a page that says there is no such tool.
   let withTabs = true;
-  if (isLoadingInstallations || isLoading) {
+  // Until the address is decided, its loading state: never a redirect or a
+  // "no connector" made before muster's keys tell its connectors apart.
+  if (deciding) {
     body = <LoadingIndicator label="Reading the environment's connectors…" />;
   } else if (movedHref) {
     return (

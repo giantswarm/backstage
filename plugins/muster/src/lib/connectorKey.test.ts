@@ -12,6 +12,7 @@ import {
   connectorPageKeys,
   findServerRow,
   organizationServersNamed,
+  resolveConnectorAddress,
 } from './serverGrouping';
 import {
   serverPageResolver,
@@ -134,6 +135,13 @@ describe('connector keys', () => {
     });
   });
 
+  it('offers the choice where several organizations have a connector of the old address', () => {
+    expect(resolveConnectorAddress([gazelleWiki, golemWiki], 'wiki')).toEqual({
+      kind: 'choice',
+      named: [gazelleWiki, golemWiki],
+    });
+  });
+
   it("gives an organization's server its own address even where it alone has its name", () => {
     const servers = [github, gazelleWiki];
     expect(findServerRow(servers, 'wiki')).toBeUndefined();
@@ -203,6 +211,30 @@ describe('connector keys', () => {
     const org = server('wiki', 'org-gazelle');
     // muster's `/servers/names`: its own servers by name, the others by key.
     const names = new Set(['github', 'jira', 'org-gazelle/wiki']);
+
+    it('resolves addresses by its keys: the bare name for its own, -/<namespace>/<name> for an organization', () => {
+      const keyed = withMusterKeys([own, org], () => names);
+      expect(resolveConnectorAddress(keyed, 'github')).toEqual({
+        kind: 'row',
+        row: { kind: 'server', server: keyed[0] },
+      });
+      // An organization's address of muster's own server: its bare name.
+      expect(resolveConnectorAddress(keyed, '-/muster-system/github')).toEqual({
+        kind: 'moved',
+        key: 'github',
+      });
+      expect(resolveConnectorAddress(keyed, 'wiki')).toEqual({
+        kind: 'moved',
+        key: '-/org-gazelle/wiki',
+      });
+      expect(resolveConnectorAddress(keyed, 'nope')).toEqual({ kind: 'none' });
+      // Before the keys, its own server looks like an organization's: what
+      // the pages wait out (`isLoadingServerKeys`) before acting on it.
+      expect(resolveConnectorAddress([own], 'github')).toEqual({
+        kind: 'moved',
+        key: '-/muster-system/github',
+      });
+    });
 
     it('reads its namespace from the names muster gives its servers', () => {
       expect(musterNamespaceOf([own, ownToo, org], names)).toBe(

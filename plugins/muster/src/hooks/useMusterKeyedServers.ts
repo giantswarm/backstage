@@ -14,6 +14,20 @@ import type { MCPServer } from '../lib/k8s';
  * answered, or without the muster plugin, the servers come back as they are.
  */
 export function useMusterKeyedServers(servers: MCPServer[]): MCPServer[] {
+  return useMusterKeyedServersState(servers).servers;
+}
+
+/**
+ * {@link useMusterKeyedServers}, and whether muster's keys are still being
+ * read (`isLoadingKeys`): until they are, an organization's server and
+ * muster's own outside the chart's namespace look alike, so a decision that
+ * tells them apart waits. A read that failed counts as done: the servers
+ * then keep the chart's namespace as muster's.
+ */
+export function useMusterKeyedServersState(servers: MCPServer[]): {
+  servers: MCPServer[];
+  isLoadingKeys: boolean;
+} {
   const musterApi = useApiHolder().get(musterApiRef);
   const installations = useMemo(
     () => [...new Set(servers.map(server => server.cluster))].sort(),
@@ -31,7 +45,9 @@ export function useMusterKeyedServers(servers: MCPServer[]): MCPServer[] {
       answer.data ? answer.data.servers.map(s => s.name).join(',') : '-',
     )
     .join('|');
-  return useMemo(() => {
+  const isLoadingKeys =
+    Boolean(musterApi) && answers.some(answer => answer.status === 'pending');
+  const keyed = useMemo(() => {
     const names = new Map(
       signature
         .split('|')
@@ -42,4 +58,5 @@ export function useMusterKeyedServers(servers: MCPServer[]): MCPServer[] {
     );
     return withMusterKeys(servers, installation => names.get(installation));
   }, [servers, installations, signature]);
+  return { servers: keyed, isLoadingKeys };
 }

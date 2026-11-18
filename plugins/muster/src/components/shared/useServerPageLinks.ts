@@ -7,7 +7,10 @@ import {
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { withQuery } from '../../lib/installationLink';
 import type { ConnectorPageTabPath } from '../ConnectorPage/connectorTabs';
-import { connectorPageParams } from '../../lib/connectorAddress';
+import {
+  connectorPageHref,
+  connectorToolPageHref,
+} from '../../lib/connectorAddress';
 import {
   mcpOrganizationServerRouteRef,
   mcpOrganizationServerToolRouteRef,
@@ -91,40 +94,33 @@ export function useServerPageLinks(): ServerPageLinks {
   return useMemo(
     () => ({
       server: (server, installation, options = {}) => {
-        if (!installation) {
-          return undefined;
-        }
-        const params = connectorPageParams(server);
-        const base =
-          params.namespace === undefined
-            ? serverRoute?.({ installation, server })
-            : orgServerRoute?.({ installation, ...params });
-        if (!base) {
-          return undefined;
-        }
-        return withQuery(options.tab ? `${base}/${options.tab}` : base, {
-          q: options.q,
-          effect: options.effect?.join(','),
-          [USAGE_WINDOW_PARAM]: windowParam(options.usageWindow),
-        });
+        const base = connectorPageHref(
+          { server: serverRoute, organizationServer: orgServerRoute },
+          server,
+          installation,
+        );
+        return base
+          ? withQuery(options.tab ? `${base}/${options.tab}` : base, {
+              q: options.q,
+              effect: options.effect?.join(','),
+              [USAGE_WINDOW_PARAM]: windowParam(options.usageWindow),
+            })
+          : undefined;
       },
       tool: (server, tool, installation, options = {}) => {
-        if (!installation) {
-          return undefined;
-        }
-        const params = connectorPageParams(server);
-        const base =
-          params.namespace === undefined
-            ? toolRoute?.({ installation, server, tool })
-            : orgToolRoute?.({ installation, ...params, tool });
-        if (!base) {
-          return undefined;
-        }
-        return withQuery(options.tab ? `${base}/${options.tab}` : base, {
-          q: options.q,
-          effect: options.effect?.join(','),
-          [USAGE_WINDOW_PARAM]: windowParam(options.usageWindow),
-        });
+        const base = connectorToolPageHref(
+          { tool: toolRoute, organizationTool: orgToolRoute },
+          server,
+          tool,
+          installation,
+        );
+        return base
+          ? withQuery(options.tab ? `${base}/${options.tab}` : base, {
+              q: options.q,
+              effect: options.effect?.join(','),
+              [USAGE_WINDOW_PARAM]: windowParam(options.usageWindow),
+            })
+          : undefined;
       },
     }),
     [serverRoute, toolRoute, orgServerRoute, orgToolRoute],
