@@ -205,6 +205,10 @@ package role:
   the swap table and the allowed legacy pieces: `docs/ui.md` and the `ui`
   skill. Pages of the Agent Platform shell: the `agent-platform-ux-coding`
   skill.
+- Text size: 12px is the smallest text in the portal (bui's `body-small`).
+  Smaller is an exception with a comment next to the style saying why; bui's
+  `body-x-small` and its small `Badge` and `Tag` are 10px: `docs/ui.md`,
+  "Text size: 12px at the smallest".
 - UI from a mockup: building or changing UI from a mockup or a design canvas
   (an artboard, a `.dc.html` file) follows the `mockups` skill: read the
   relevant artboards and everything they import in full, styles included, and
