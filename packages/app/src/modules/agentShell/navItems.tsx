@@ -1,4 +1,4 @@
-import type { IconComponent, RouteRef } from '@backstage/frontend-plugin-api';
+import type { IconElement, RouteRef } from '@backstage/frontend-plugin-api';
 import { agentPlatformPlugin } from '@giantswarm/backstage-plugin-agent-platform';
 import AddCircleOutlineIcon from '@material-ui/icons/AddCircleOutline';
 import BarChartIcon from '@material-ui/icons/BarChart';
@@ -13,7 +13,8 @@ import { customizeRouteRef, homeRouteRef, platformRouteRef } from './routes';
 type AgentShellNavItemBase = {
   id: string;
   title: string;
-  icon: IconComponent;
+  /** Drawn at the rail's and the menu's icon size. */
+  icon: IconElement;
   position: 'top' | 'bottom' | 'profileMenu';
   /** The label under the icon in the phone's bottom bar, when shorter. */
   barTitle?: string;
@@ -49,14 +50,14 @@ export const agentShellNavItems: AgentShellNavItem[] = [
   {
     id: 'new-session',
     title: 'New session',
-    icon: AddCircleOutlineIcon,
+    icon: <AddCircleOutlineIcon fontSize="small" />,
     routeRef: homeRouteRef,
     position: 'top',
   },
   {
     id: 'sessions',
     title: 'Sessions',
-    icon: ChatBubbleOutlineIcon,
+    icon: <ChatBubbleOutlineIcon fontSize="small" />,
     routeRef: agentPlatformPlugin.routes.sessions,
     position: 'top',
     mobileOnly: true,
@@ -64,14 +65,14 @@ export const agentShellNavItems: AgentShellNavItem[] = [
   {
     id: 'customize',
     title: 'Customize',
-    icon: TuneIcon,
+    icon: <TuneIcon fontSize="small" />,
     routeRef: customizeRouteRef,
     position: 'top',
   },
   {
     id: 'usage',
     title: 'Usage',
-    icon: BarChartIcon,
+    icon: <BarChartIcon fontSize="small" />,
     routeRef: agentPlatformPlugin.routes.usage,
     position: 'top',
     // The least-used destination on a phone (T22 D1).
@@ -84,7 +85,7 @@ export const agentShellNavItems: AgentShellNavItem[] = [
     // out, as every item whose route is not bound.
     id: 'platform',
     title: 'Platform',
-    icon: StorageIcon,
+    icon: <StorageIcon fontSize="small" />,
     routeRef: platformRouteRef,
     position: 'top',
     // The phone's bar holds five items (T22 D1).
@@ -95,7 +96,7 @@ export const agentShellNavItems: AgentShellNavItem[] = [
     // one's members, models, connectors and egress.
     id: 'organizations',
     title: 'Organizations',
-    icon: GroupIcon,
+    icon: <GroupIcon fontSize="small" />,
     routeRef: agentPlatformPlugin.routes.organizations,
     position: 'profileMenu',
   },
@@ -105,7 +106,7 @@ export const agentShellNavItems: AgentShellNavItem[] = [
     // agent-only deployment.
     id: 'platform-portal',
     title: 'Platform Portal',
-    icon: LaunchIcon,
+    icon: <LaunchIcon fontSize="small" />,
     path: '/clusters',
     position: 'bottom',
     newTab: true,
@@ -116,7 +117,7 @@ export const agentShellNavItems: AgentShellNavItem[] = [
     id: 'profile',
     title: 'Profile and settings',
     barTitle: 'Profile',
-    icon: SettingsIcon,
+    icon: <SettingsIcon fontSize="small" />,
     menu: 'profile',
     position: 'bottom',
   },

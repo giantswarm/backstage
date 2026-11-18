@@ -1,5 +1,5 @@
 import { ConfigReader } from '@backstage/config';
-import { getSentryTransportConfig } from './rootLogger';
+import { getLogFormat, getSentryTransportConfig } from './rootLogger';
 import { isIgnored, sendToSentry } from './sentryTestUtils';
 
 const sentry = {
@@ -130,5 +130,19 @@ describe('the Sentry filters', () => {
         message: 'Processing of component:default/x failed',
       }),
     ).toMatchObject({ message: 'Processing of an entity failed' });
+  });
+});
+
+describe('getLogFormat', () => {
+  it('writes JSON lines with a timestamp in production', () => {
+    const info = getLogFormat('production').transform({
+      level: 'info',
+      message: '"GET /api/catalog HTTP/1.1" 200 12 "-" "-"',
+      [Symbol.for('level')]: 'info',
+    } as any) as any;
+
+    const line = JSON.parse(info[Symbol.for('message')]);
+    expect(line).toMatchObject({ level: 'info' });
+    expect(new Date(line.timestamp).toISOString()).toBe(line.timestamp);
   });
 });
