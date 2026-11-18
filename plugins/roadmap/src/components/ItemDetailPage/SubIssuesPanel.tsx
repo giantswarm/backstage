@@ -37,12 +37,22 @@ const useStyles = makeStyles((theme: Theme) => ({
     flexGrow: 1,
   },
   stateChip: {
+    flexShrink: 0,
     height: 20,
     fontSize: 11,
     marginRight: theme.spacing(1),
   },
   parentNote: {
     marginBottom: theme.spacing(1),
+  },
+  // The theme keeps a dense list item on one line, cut.
+  subIssue: {
+    whiteSpace: 'normal',
+    overflowWrap: 'anywhere',
+  },
+  subIssueTitle: {
+    display: 'flex',
+    alignItems: 'baseline',
   },
 }));
 
@@ -144,8 +154,9 @@ export function SubIssuesPanel(props: {
           {subIssues.map(issue => (
             <ListItem key={issue.id} divider disableGutters>
               <ListItemText
+                className={classes.subIssue}
                 primary={
-                  <>
+                  <span className={classes.subIssueTitle}>
                     <Chip
                       className={classes.stateChip}
                       size="small"
@@ -155,7 +166,7 @@ export function SubIssuesPanel(props: {
                     <ExternalLink href={issue.htmlUrl} display="inline">
                       {issue.repo ?? ''}#{issue.number} {issue.title}
                     </ExternalLink>
-                  </>
+                  </span>
                 }
                 secondary={
                   issue.assignees.length > 0

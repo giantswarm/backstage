@@ -20,14 +20,18 @@ import path from 'node:path';
 const MARKERS = [
   {
     source: 'plugins/plans/src/apis/PlansFixtureApi.ts',
-    marker: 'example/meadow-plans',
+    marker: 'example/team-magazine',
+  },
+  {
+    source: 'plugins/plans/src/lib/scenarioFixtures.ts',
+    marker: 'woodruff',
   },
   {
     source: 'plugins/plans/src/lib/hiveFixtures.ts',
     marker: 'Pods, events and logs of a workload cluster from its page',
   },
   {
-    source: 'plugins/roadmap/src/apis/RoadmapFixtureApi.ts',
+    source: 'plugins/roadmap/src/apis/roadmapBoardFixtures.ts',
     marker: 'The change is proven in the lab',
   },
   {

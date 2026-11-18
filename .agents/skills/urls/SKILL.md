@@ -185,7 +185,8 @@ against two).
 - a telemetry case, and an entry in `knownTopLevelPaths`
   (`packages/app/src/utils/telemetry.test.ts`);
 - the area prefix, if it is a new root (rule 1);
-- an `e2e/agentlab` test.
+- a check in a browser and a run of the [`layout-check`](../layout-check/SKILL.md)
+  skill on it.
 
 ## Review checklist
 
@@ -200,5 +201,5 @@ A reviewer of a change that adds or moves a route checks:
 5. The route ref is exported.
 6. A moved address redirects in one hop through the mapping, with a test
    row, and keeps its telemetry names.
-7. A new page has its telemetry case and `knownTopLevelPaths` entry, and an
-   agentlab test; `e2e/agentlab` and `docs/` follow a move.
+7. A new page has its telemetry case and `knownTopLevelPaths` entry, and the
+   layout check ran on it; `e2e/agentlab` and `docs/` follow a move.

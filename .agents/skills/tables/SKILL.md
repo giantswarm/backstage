@@ -218,6 +218,16 @@ another, then stack) measures once with `useWidthTier([full, …])`, which
 returns how many of the widths the container is narrower than; the
 sessions list does this.
 
+A table that should keep most of its columns on a laptop before it goes
+compact takes `useFittingColumns(columnsFor, { minWidths, dropFirst })`:
+each column gets its minimum as bui's `minWidth` (the header with its sort
+arrow and padding, and the usual value), and as the container narrows the
+table shows every column, then leaves out the `dropFirst` columns
+(`isNarrow`; `columnsFor(true)` folds their values into other cells), then
+takes the compact layout (`isCompact`). Pass its `hiddenIds` to
+`useVisibleSort`, so a sort on a column it hides moves to one it shows. The
+GPU node pools, model cache, capacity and served models tables use it.
+
 Invariants:
 
 - An **actions column never disappears** at phone width: it becomes the row's
@@ -386,6 +396,10 @@ render: row => (
   <SubvalueCell value={<MainContent />} subvalue={row.description} />
 ),
 ```
+
+A subvalue, a cell's second line or a badge in a cell is 12px at the
+smallest, like all text: `body-small`, never `body-x-small` or a small
+`Badge` (10px). See "Text size: 12px at the smallest" in `docs/ui.md`.
 
 ### Hidden by Default Columns
 
