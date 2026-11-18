@@ -1,7 +1,15 @@
 import { ReactNode, useCallback, useMemo } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useApi } from '@backstage/frontend-plugin-api';
-import { Cell, CellText, ColumnConfig, Flex, Table } from '@backstage/ui';
+import {
+  Cell,
+  CellText,
+  ColumnConfig,
+  Flex,
+  Link,
+  Table,
+  Text,
+} from '@backstage/ui';
 import {
   type CatalogFacet,
   CatalogFilterBar,
@@ -14,6 +22,7 @@ import {
   type StackedRowItem,
   StackedRowList,
   ROW_TAGS_MAX,
+  type FittingTier,
   TABLE_NAME_COLUMN_MIN_WIDTH,
   TagList,
   TAGS_COLUMN_MIN_WIDTH,
@@ -101,21 +110,57 @@ const WORKFLOW_COLUMN_MIN_WIDTHS: Readonly<Record<string, number>> = {
   steps: 110,
   // The "Changes things" badge.
   effect: 130,
-  // "123 runs · 59 minutes ago".
-  runs: 190,
+  // "123 runs · 59 minutes ago" on one line.
+  runs: 210,
   // "Manually added".
   source: 130,
 };
 
 /**
- * The columns a card too narrow for every one leaves out first: category
- * and source go under the name, tags are on the workflow's page.
+ * The columns a card too narrow for every one leaves out first: their
+ * values go under the name.
  */
 const WORKFLOW_COLUMNS_DROPPED_FIRST: readonly string[] = [
   'category',
   'tags',
   'source',
 ];
+
+/**
+ * The name cell of the narrow table: the name (the row's link), then the
+ * category, source and description on one line, then the tags, so what the
+ * hidden columns held, and what a filter matched, stays on the row.
+ */
+function NarrowNameCell({ row, href }: { row: Row; href?: string }) {
+  const description = [row.category, row.source, row.description]
+    .filter(Boolean)
+    .join(' · ');
+  return (
+    <Cell>
+      <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
+        {href ? (
+          <Link href={href} variant="body-medium" truncate title={row.name}>
+            {row.name}
+          </Link>
+        ) : (
+          <Text as="p" variant="body-medium" truncate title={row.name}>
+            {row.name}
+          </Text>
+        )}
+        <Text
+          as="p"
+          variant="body-medium"
+          color="secondary"
+          truncate
+          title={description}
+        >
+          {description}
+        </Text>
+        {row.tags.length > 0 && <TagList tags={row.tags} max={ROW_TAGS_MAX} />}
+      </Flex>
+    </Cell>
+  );
+}
 
 /**
  * One rendered page of the table. The run queries live here, not above the
@@ -130,11 +175,17 @@ function WorkflowRows({
   installation,
   hasSession,
   tools,
+  hasCategory,
+  hasTags,
 }: {
   workflows: MusterWorkflow[];
   installation: string;
   hasSession: boolean;
   tools: ToolSummary[] | undefined;
+  /** Whether any workflow listed has a category; else the column takes no room. */
+  hasCategory: boolean;
+  /** Whether any workflow listed has tags; else the column takes no room. */
+  hasTags: boolean;
 }) {
   const musterApi = useApi(musterApiRef);
   const workflowLinks = useWorkflowPageLinks();
@@ -178,11 +229,8 @@ function WorkflowRows({
     };
   });
 
-  // A column none of the shown workflows fills takes no room.
-  const hasCategory = rows.some(row => row.category);
-  const hasTags = rows.some(row => row.tags.length > 0);
   const columnsFor = useCallback(
-    (isNarrow: boolean): ColumnConfig<Row>[] => [
+    (tier: FittingTier): ColumnConfig<Row>[] => [
       {
         id: 'name',
         label: 'Workflow',
@@ -190,20 +238,17 @@ function WorkflowRows({
         defaultWidth: '3fr',
         // The name is the row's link (M21): reachable by keyboard and opens
         // in a new tab on cmd/middle-click; the whole row stays clickable too.
-        // Narrow, the category and the source lead its description.
-        cell: row => (
-          <CellText
-            title={row.name}
-            description={
-              isNarrow
-                ? [row.category, row.source, row.description]
-                    .filter(Boolean)
-                    .join(' · ')
-                : row.description
-            }
-            href={hrefOf(row)}
-          />
-        ),
+        // Narrow, the category, source and tags go under it.
+        cell: row =>
+          tier === 'narrow' ? (
+            <NarrowNameCell row={row} href={hrefOf(row)} />
+          ) : (
+            <CellText
+              title={row.name}
+              description={row.description}
+              href={hrefOf(row)}
+            />
+          ),
       },
       {
         id: 'category',
@@ -378,6 +423,10 @@ function WorkflowsTable({
   );
   const filters = useCatalogFilters({ items: sorted, searched, facets });
   const visible = filters.filtered;
+  // From every workflow listed, not the page shown: Show more must not add a
+  // column and move the table to another layout.
+  const hasCategory = visible.some(workflow => workflow.getCategory());
+  const hasTags = visible.some(workflow => workflow.getTags().length > 0);
 
   const assist = createAssist?.(installation);
   if (workflows.length === 0) {
@@ -414,6 +463,8 @@ function WorkflowsTable({
             installation={installation}
             hasSession={hasSession}
             tools={catalogue.data?.tools ?? undefined}
+            hasCategory={hasCategory}
+            hasTags={hasTags}
           />
         )}
       </ShowMore>

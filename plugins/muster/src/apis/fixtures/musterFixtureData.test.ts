@@ -8,6 +8,7 @@ import {
   mcpServerStateSeverity,
   type MCPServerState,
 } from '../../lib/k8s/MCPServer';
+import { isGitOpsManaged } from '../../lib/gitops';
 import { MusterWorkflow } from '../../lib/k8s/MusterWorkflow';
 import {
   connectorNameOf,
@@ -182,6 +183,9 @@ describe('muster fixture data', () => {
       );
       expect(workflow.getName()).toBe(record.name);
       expect(workflow.getDescription()).toBe(record.description);
+      expect(workflow.getCategory()).toBe(record.category);
+      expect(workflow.getTags()).toEqual(record.tags);
+      expect(isGitOpsManaged(workflow)).toBe(record.gitops);
       expect(workflow.isValid()).toBe(record.state === 'available');
       expect(workflow.getValidationErrors().length > 0).toBe(
         record.state !== 'available',

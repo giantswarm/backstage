@@ -161,8 +161,9 @@ Running), the available workflows' `workflow_<name>` tools (an unavailable
 workflow has none, as muster lists no invalid one) and muster's own `core_*`
 tools, each described with its input schema; toolsets resolved within the
 catalogue (`filter_tools` with `toolset`) and the presets, the built-in ones
-and the installation's own; the workflows, their executions with their steps
-and their run statistics; and MCP usage and tool latency over any window,
+and the installation's own; the workflows (with a category, tags and GitOps
+provenance in turn, as `buildWorkflows` gives them), their executions with
+their steps and their run statistics; and MCP usage and tool latency over any window,
 narrowed to some connectors or one tool. A connector's tools are named after
 its tool prefix, or its name without one, and derived from it
 (`connectorToolsOf`), so every read names the same ones. The tools of the

@@ -414,4 +414,35 @@ describe('ByAgentTable at phone width', () => {
       container.restore();
     }
   });
+
+  it('keeps the token columns at 1024px with the side rail when a runtime reports a cost, naming it under the agent', () => {
+    layout = mockDesktopLayout();
+    const container = mockContainerWidth(1000);
+    try {
+      render(
+        <ByAgentTable
+          rows={[{ ...ROWS[0], costUsd: 3.25 }, ROWS[1]]}
+          rates={RATES}
+          emptyMessage="none"
+        />,
+      );
+      expect(headers()).toContain('Reported cost');
+
+      // Beside the side rail at 1024px: 670px for the table.
+      act(() => container.setWidth(670));
+      expect(headers()).toEqual([
+        'Agent',
+        'Sessions',
+        'Input tokens',
+        'Output tokens',
+        'Est. cost',
+      ]);
+      expect(
+        screen.getByText('19 turns · $3.25 reported by its runtime'),
+      ).toBeVisible();
+      expect(screen.getByText('40 turns')).toBeVisible();
+    } finally {
+      container.restore();
+    }
+  });
 });

@@ -572,7 +572,7 @@ describe('CustomizeWorkflowsPanel in a card narrower than its columns', () => {
   });
   afterEach(() => layout.restore());
 
-  it('names the category and source under the workflow, then stacks the rows', async () => {
+  it('names the category, source and tags under the workflow, then stacks the rows', async () => {
     const container = mockContainerWidth(1100);
     try {
       await renderPanel();
@@ -595,6 +595,8 @@ describe('CustomizeWorkflowsPanel in a card narrower than its columns', () => {
           'support · GitOps · Summarises the week’s tickets',
         ),
       ).toBeInTheDocument();
+      // The tags stay on the row: a Tags filter's match shows why.
+      expect(within(report).getByText('tickets')).toBeInTheDocument();
       expect(
         within(screen.getByRole('row', { name: /upgrade-check/ })).getByText(
           'Manually added',
@@ -607,6 +609,26 @@ describe('CustomizeWorkflowsPanel in a card narrower than its columns', () => {
       expect(
         screen.getByRole('list', { name: 'Workflows' }),
       ).toBeInTheDocument();
+    } finally {
+      container.restore();
+    }
+  });
+
+  it('keeps the Category and Tags columns when a workflow past the first page has them', async () => {
+    mockWorkflows = [
+      ...Array.from({ length: 25 }, (_, i) =>
+        makeWorkflow(`a-${String(i).padStart(2, '0')}`, 1),
+      ),
+      makeWorkflow('z-tagged', 1, { category: 'support', tags: 'tickets' }),
+    ];
+    const container = mockContainerWidth(1100);
+    try {
+      await renderPanel();
+      expect(
+        screen.queryByRole('row', { name: /z-tagged/ }),
+      ).not.toBeInTheDocument();
+      expect(headers()).toContain('Category');
+      expect(headers()).toContain('Tags');
     } finally {
       container.restore();
     }

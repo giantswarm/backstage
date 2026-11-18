@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { makeStyles, Paper, Theme } from '@material-ui/core';
 import { Cell, Skeleton, Table, Text, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
@@ -6,6 +6,7 @@ import {
   columnMax,
   DataBar,
   ShowMore,
+  type FittingTier,
   useFittingColumns,
   usePhoneColumns,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -21,6 +22,7 @@ import {
 } from '../../lib/formatNumbers';
 import { useMeasureColor } from '../../lib/measures';
 import { useSortOnShownColumn } from '../../hooks/useSortOnShownColumn';
+import { COMPACT_NAME_MIN_WIDTH } from '../../hooks/useUsageTableColumns';
 import { lastDaysNoun } from '../../lib/usageWindow';
 import { NameCell } from '../LlmUsage/NameCell';
 import { USAGE_COLUMN_MIN_WIDTH } from '../LlmUsage/columnWidths';
@@ -69,8 +71,16 @@ const BY_AGENT_COLUMN_MIN_WIDTHS: Readonly<Record<string, number>> = {
   costUsd: 140,
 };
 
-/** The column a card too narrow for every one leaves out first, under the agent. */
-const BY_AGENT_COLUMNS_DROPPED_FIRST: readonly string[] = ['turns'];
+/**
+ * The columns a card too narrow for every one leaves out first, both named
+ * under the agent.
+ */
+const BY_AGENT_COLUMNS_DROPPED_FIRST: readonly string[] = ['turns', 'costUsd'];
+
+/** Compact, the name wraps to two lines, so the kept figures get the width. */
+const BY_AGENT_COMPACT_MIN_WIDTHS: Readonly<Record<string, number>> = {
+  agentName: COMPACT_NAME_MIN_WIDTH,
+};
 
 export type ByAgentTableProps = {
   rows: ByAgentRow[];
@@ -178,171 +188,182 @@ export function ByAgentTable({
   );
   const anyReported = rows.some(row => row.costUsd !== undefined);
 
-  // The columns, for the full, narrow or compact layout: narrow, the turns go
+  // The columns of each layout: narrow, the turns and the reported cost go
   // under the agent's name; compact, the name wraps to two lines and carries
-  // the runtime's reported cost.
-  const columnsFor = (
-    narrow: boolean,
-    compact = false,
-  ): ColumnConfig<ByAgentRow>[] => [
-    {
-      id: 'agentName',
-      label: 'Agent',
-      isRowHeader: true,
-      isSortable: true,
-      // With the phone columns the Reported cost column is hidden; a runtime's
-      // own figure is named under the agent instead, so it stays on the row.
-      cell: row => (
-        <NameCell
-          title={row.agentName}
-          href={row.href}
-          compact={compact}
-          description={describeAgent(row, { narrow, compact })}
-        />
-      ),
-    },
-    {
-      id: 'sessions',
-      label: 'Sessions',
-      isSortable: true,
-      cell: row => (
-        <Cell>
-          <DataBar
-            label={formatCount(row.sessions)}
-            value={row.sessions}
-            max={max.sessions}
-            color={colorFor('sessions')}
+  // the reported cost.
+  const columnsFor = useCallback(
+    (tier: FittingTier): ColumnConfig<ByAgentRow>[] => [
+      {
+        id: 'agentName',
+        label: 'Agent',
+        isRowHeader: true,
+        isSortable: true,
+        // Narrow and compact, the Reported cost column is hidden; a runtime's
+        // own figure is named under the agent instead, so it stays on the row.
+        cell: row => (
+          <NameCell
+            title={row.agentName}
+            href={row.href}
+            compact={tier === 'compact'}
+            description={describeAgent(row, tier)}
           />
-        </Cell>
-      ),
-    },
-    {
-      id: 'turns',
-      label: 'Turns',
-      isSortable: true,
-      cell: row => (
-        <Cell>
-          <DataBar
-            label={formatCount(row.turns)}
-            value={row.turns}
-            max={max.turns}
-            color={colorFor('turns')}
-          />
-        </Cell>
-      ),
-    },
-    {
-      id: 'inputTokens',
-      label: 'Input tokens',
-      isSortable: true,
-      cell: row => (
-        <Cell>
-          <DataBar
-            label={formatTokens(row.inputTokens)}
-            value={row.inputTokens}
-            max={max.inputTokens}
-            color={colorFor('tokens')}
-          />
-        </Cell>
-      ),
-    },
-    {
-      id: 'outputTokens',
-      label: 'Output tokens',
-      isSortable: true,
-      cell: row => (
-        <Cell>
-          <DataBar
-            label={formatTokens(row.outputTokens)}
-            value={row.outputTokens}
-            max={max.outputTokens}
-            color={colorFor('outputTokens')}
-          />
-        </Cell>
-      ),
-    },
-    {
-      id: 'estCostUsd',
-      label: actualCost || isActualCostLoading ? 'Cost' : 'Est. cost',
-      // Not sortable: `sortUsageRows` compares the row's own numeric fields,
-      // and this one is looked up or computed at render. Sorting it would need
-      // it materialised onto the row, which is work for a column nobody ranks
-      // by — the table is already ordered by the input tokens.
-      cell: row => {
-        const cost = isCostLoading ? undefined : costOf(row);
-        return (
+        ),
+      },
+      {
+        id: 'sessions',
+        label: 'Sessions',
+        isSortable: true,
+        cell: row => (
           <Cell>
-            {/* A skeleton in place of the figure while it is in flight, for
+            <DataBar
+              label={formatCount(row.sessions)}
+              value={row.sessions}
+              max={max.sessions}
+              color={colorFor('sessions')}
+            />
+          </Cell>
+        ),
+      },
+      {
+        id: 'turns',
+        label: 'Turns',
+        isSortable: true,
+        cell: row => (
+          <Cell>
+            <DataBar
+              label={formatCount(row.turns)}
+              value={row.turns}
+              max={max.turns}
+              color={colorFor('turns')}
+            />
+          </Cell>
+        ),
+      },
+      {
+        id: 'inputTokens',
+        label: 'Input tokens',
+        isSortable: true,
+        cell: row => (
+          <Cell>
+            <DataBar
+              label={formatTokens(row.inputTokens)}
+              value={row.inputTokens}
+              max={max.inputTokens}
+              color={colorFor('tokens')}
+            />
+          </Cell>
+        ),
+      },
+      {
+        id: 'outputTokens',
+        label: 'Output tokens',
+        isSortable: true,
+        cell: row => (
+          <Cell>
+            <DataBar
+              label={formatTokens(row.outputTokens)}
+              value={row.outputTokens}
+              max={max.outputTokens}
+              color={colorFor('outputTokens')}
+            />
+          </Cell>
+        ),
+      },
+      {
+        id: 'estCostUsd',
+        label: actualCost || isActualCostLoading ? 'Cost' : 'Est. cost',
+        // Not sortable: `sortUsageRows` compares the row's own numeric fields,
+        // and this one is looked up or computed at render. Sorting it would need
+        // it materialised onto the row, which is work for a column nobody ranks
+        // by — the table is already ordered by the input tokens.
+        cell: row => {
+          const cost = isCostLoading ? undefined : costOf(row);
+          return (
+            <Cell>
+              {/* A skeleton in place of the figure while it is in flight, for
                 the reason `TotalsStrip` documents: an em dash here is a
                 finding, and "not yet" is not one. The bar stays empty either
                 way — `value` is undefined until there is a figure. */}
-            <DataBar
-              label={
-                isCostLoading ? (
-                  <Skeleton width={52} height={16} rounded />
-                ) : (
-                  formatMoney(cost, currency)
-                )
-              }
-              value={cost}
-              max={max.cost}
-              color={colorFor('cost')}
-            />
-          </Cell>
-        );
+              <DataBar
+                label={
+                  isCostLoading ? (
+                    <Skeleton width={52} height={16} rounded />
+                  ) : (
+                    formatMoney(cost, currency)
+                  )
+                }
+                value={cost}
+                max={max.cost}
+                color={colorFor('cost')}
+              />
+            </Cell>
+          );
+        },
       },
-    },
-    // Only when some runtime reported one: a column of "Not reported" teaches
-    // the reader to ignore it, while absence says the truth — no runtime in
-    // this window prices its own work.
-    ...(anyReported
-      ? [
-          {
-            id: 'costUsd',
-            label: 'Reported cost',
-            isSortable: true,
-            cell: (row: ByAgentRow) => (
-              <Cell>
-                {row.costUsd === undefined ? (
-                  // Words, not an em dash: beside a priced estimate a dash
-                  // reads as "zero-ish", and the fact is "this runtime does
-                  // not report costs".
-                  <Text
-                    as="span"
-                    variant="body-small"
-                    color="secondary"
-                    title="Only some runtimes report a cost — the claude harness does, ADK does not."
-                  >
-                    Not reported
-                  </Text>
-                ) : (
-                  <DataBar
-                    // USD on purpose: it is what the runtime said, not a
-                    // figure we price or convert.
-                    label={formatUsd(row.costUsd)}
-                    value={row.costUsd}
-                    max={max.costUsd}
-                    color={colorFor('cost')}
-                  />
-                )}
-              </Cell>
-            ),
-          } satisfies ColumnConfig<ByAgentRow>,
-        ]
-      : []),
-  ];
-  // Every column while their minimums fit the card; without Turns below
-  // that; the compact columns below that and at phone width.
+      // Only when some runtime reported one: a column of "Not reported" teaches
+      // the reader to ignore it, while absence says the truth — no runtime in
+      // this window prices its own work.
+      ...(anyReported
+        ? [
+            {
+              id: 'costUsd',
+              label: 'Reported cost',
+              isSortable: true,
+              cell: (row: ByAgentRow) => (
+                <Cell>
+                  {row.costUsd === undefined ? (
+                    // Words, not an em dash: beside a priced estimate a dash
+                    // reads as "zero-ish", and the fact is "this runtime does
+                    // not report costs".
+                    <Text
+                      as="span"
+                      variant="body-small"
+                      color="secondary"
+                      title="Only some runtimes report a cost — the claude harness does, ADK does not."
+                    >
+                      Not reported
+                    </Text>
+                  ) : (
+                    <DataBar
+                      // USD on purpose: it is what the runtime said, not a
+                      // figure we price or convert.
+                      label={formatUsd(row.costUsd)}
+                      value={row.costUsd}
+                      max={max.costUsd}
+                      color={colorFor('cost')}
+                    />
+                  )}
+                </Cell>
+              ),
+            } satisfies ColumnConfig<ByAgentRow>,
+          ]
+        : []),
+    ],
+    [
+      actualCost,
+      anyReported,
+      colorFor,
+      costOf,
+      currency,
+      isActualCostLoading,
+      isCostLoading,
+      max,
+    ],
+  );
+  // Every column while their minimums fit the card; without Turns and
+  // Reported cost below that; the compact columns below that and at phone
+  // width.
   const fit = useFittingColumns(columnsFor, {
     minWidths: BY_AGENT_COLUMN_MIN_WIDTHS,
     dropFirst: BY_AGENT_COLUMNS_DROPPED_FIRST,
+    compactMinWidths: BY_AGENT_COMPACT_MIN_WIDTHS,
   });
 
   // Compact, the agent, its sessions and the estimate (T22 B11): six or
   // seven columns in 343px clipped every figure. Turns and tokens are in the
   // totals above and on the agent's own Usage tab, a link away.
   const shownColumns = usePhoneColumns(
-    fit.isCompact ? columnsFor(true, true) : fit.columns,
+    fit.columns,
     ['agentName', 'sessions', 'estCostUsd'],
     { compact: fit.isCompact },
   );
@@ -428,20 +449,17 @@ export function ByAgentTable({
 }
 
 /**
- * The line under an agent's name: narrow, its turns, which have no column
- * then; compact, the cost its runtime reported, whose column is hidden.
+ * The line under an agent's name: the cost its runtime reported, whose column
+ * the narrow and the compact layout hide, and while narrow its turns too.
  */
-function describeAgent(
-  row: ByAgentRow,
-  { narrow, compact }: { narrow: boolean; compact: boolean },
-): string | undefined {
-  if (compact) {
-    return row.costUsd !== undefined
+function describeAgent(row: ByAgentRow, tier: FittingTier): string | undefined {
+  const parts = [
+    tier === 'narrow'
+      ? `${formatCount(row.turns)} ${row.turns === 1 ? 'turn' : 'turns'}`
+      : undefined,
+    tier !== 'full' && row.costUsd !== undefined
       ? `${formatUsd(row.costUsd)} reported by its runtime`
-      : undefined;
-  }
-  if (!narrow) {
-    return undefined;
-  }
-  return `${formatCount(row.turns)} ${row.turns === 1 ? 'turn' : 'turns'}`;
+      : undefined,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : undefined;
 }
