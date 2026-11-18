@@ -28,7 +28,7 @@ describe('api:plans', () => {
 
     expect(api).not.toBeInstanceOf(PlansApiClient);
     await expect(api.listRepos()).resolves.toEqual({
-      repositories: ['example/meadow-plans'],
+      repositories: ['example/bumblebee-plans'],
     });
   });
 

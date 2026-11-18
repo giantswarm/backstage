@@ -25,6 +25,7 @@ the full Chromium renders on the GPU but was measured no faster (#3563).
 | `rules.test.mjs` | Their tests: `node --test .agents/skills/layout-check/rules.test.mjs`. CI runs them (`.github/workflows/skill-tests.yaml`). |
 | `layout-check.test.mjs` | Tests of the command that need no browser, run the same way. |
 | `specs/agent-platform.mjs` | Every Agent Platform and muster page of the shell, with the states that broke before. |
+| `specs/plans.mjs` | Hive's pages of the plans plugin (Now, History, Plans and a plan's review, Knowledge). Start fixture mode with `--enable page:plans --enable api:plans`, which turns Hive on. |
 
 Commands run from the repo root; `L=.agents/skills/layout-check`.
 
@@ -54,7 +55,8 @@ yarn fixtures stop
   error panel ("Error in app"), after loading or after any state. For a
   page of one record, run the spec's entry for it (`--only`), which opens
   the first record in each scenario: a record's path exists only in the
-  scenario it was copied from.
+  scenario it was copied from. A shell-wide change (`/*`) means a few real
+  pages.
 - `--widths 375,768,1024,1160,1280` (the default): a phone; a tablet or
   narrow window; a small laptop; a laptop window a little narrower than its
   screen; a laptop. Tables squeeze between the tablet and 1280: a column
@@ -73,6 +75,10 @@ yarn fixtures stop
   out on every page, `--json` prints the findings as JSON, `--url` checks
   another portal (a dev server signed in as the guest), `--concurrency`
   sets how many pages load at once (3).
+
+Exit 2 is no pass: each page that could not be checked is named with the
+reason. The whole spec in all six scenarios is for an occasional sweep, not
+for every pull request.
 
 Warnings come after the findings, in a section of their own headed by
 their count per scenario, and don't fail the check: a long name ending in

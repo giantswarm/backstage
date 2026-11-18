@@ -71,12 +71,21 @@ const useStyles = makeStyles((theme: Theme) => ({
     display: 'flex',
     alignItems: 'flex-start',
     gap: theme.spacing(3),
+    // A phone has no room beside the documents' nav: the nav goes on top.
+    [theme.breakpoints.down('xs')]: {
+      flexDirection: 'column',
+      alignItems: 'stretch',
+    },
   },
   nav: {
     width: NAV_WIDTH,
     flexShrink: 0,
     position: 'sticky',
     top: theme.spacing(2),
+    [theme.breakpoints.down('xs')]: {
+      width: 'auto',
+      position: 'static',
+    },
   },
   statusDot: {
     display: 'inline-block',
@@ -670,7 +679,11 @@ export function PullReviewPage() {
                     title={file.status}
                   />
                 )}
-                {titles.get(file.filename) ?? basename(file.filename)}
+                <span
+                  title={titles.get(file.filename) ?? basename(file.filename)}
+                >
+                  {titles.get(file.filename) ?? basename(file.filename)}
+                </span>
               </ListRow>
             ))}
           </List>
