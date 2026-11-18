@@ -65,6 +65,14 @@ describe('ToolResultViewer', () => {
     expect(screen.getByText(/\bB$/)).toBeInTheDocument();
   });
 
+  it('writes a duration of a second or more in seconds, as the flow does', async () => {
+    await renderInTestApp(
+      <ToolResultViewer result={{ ok: true }} durationMs={5321} />,
+    );
+
+    expect(screen.getByText('5.3 s')).toBeInTheDocument();
+  });
+
   it('offers a re-run affordance when a handler is given', async () => {
     const onRerun = jest.fn();
     await renderInTestApp(

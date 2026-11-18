@@ -11,3 +11,4 @@ export type {
   ModelServedBy,
   ModelsTableProps,
 } from './ModelsTable';
+export { ModelReadinessLabel } from './readinessStatus';

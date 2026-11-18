@@ -8,7 +8,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { mimirApiRef } from '../../apis/mimir';
 import { MimirRangeQueryResponse } from '../../apis/mimir/types';
-import { mimirQueryRetry } from './mimirRetry';
+import { mimirPollingOptions, mimirQueryRetry } from './mimirRetry';
 import { useMimirAvailable } from './useMimirAvailable';
 
 /**
@@ -70,7 +70,7 @@ export function useMimirRangeQuery(options: {
     enabled && installationName && query && start && end && step,
   );
 
-  const { data, error, isPending, fetchStatus } = useQuery<
+  const { data, error, isPending, fetchStatus, isPlaceholderData } = useQuery<
     MimirRangeQueryResponse,
     Error
   >({
@@ -89,12 +89,6 @@ export function useMimirRangeQuery(options: {
       const credentials =
         await kubernetesAuthProvidersApi.getCredentials(authProvider);
 
-      if (!credentials.token) {
-        throw new Error(
-          `No OIDC token available for installation "${installationName}"`,
-        );
-      }
-
       return mimirApi.queryRange({
         installationName,
         query,
@@ -107,7 +101,7 @@ export function useMimirRangeQuery(options: {
     enabled: wanted && isAvailable === true,
     staleTime: 30_000,
     retry: mimirQueryRetry,
-    refetchInterval,
+    ...mimirPollingOptions(refetchInterval),
     placeholderData: keepPreviousAnswer ? keepPreviousData : undefined,
   });
   const isLoading = isAwaitingData({ isPending, fetchStatus });
@@ -121,7 +115,12 @@ export function useMimirRangeQuery(options: {
       isLoading: isLoading || (wanted && isAvailable === undefined),
       error: error as Error | null,
       isAvailable,
+      /**
+       * Whether `data` is the previous key's answer, held by
+       * `keepPreviousAnswer` while this key's first fetch runs.
+       */
+      isPlaceholderData,
     }),
-    [data, isLoading, error, wanted, isAvailable],
+    [data, isLoading, error, wanted, isAvailable, isPlaceholderData],
   );
 }

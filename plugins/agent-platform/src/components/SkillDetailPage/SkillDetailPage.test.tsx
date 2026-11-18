@@ -152,6 +152,9 @@ const loaded: SkillCatalog = {
   hasRepositories: true,
   failedRepositories: [],
   truncated: false,
+  privateRepositories: new Set(),
+  proposalTargets: [],
+  unproposableRepositories: [],
 };
 
 function renderPage(path = 'giantswarm/skills/ticket-triage') {
@@ -214,6 +217,17 @@ describe('evaluationPrompt', () => {
     );
   });
 
+  it('asks for a report only, and names a tag as a ref, for a skill without pull requests', () => {
+    const prompt = evaluationPrompt(
+      { ...skill, ref: 'v1.2.3', refKind: 'tag' },
+      { reportOnly: true },
+    );
+
+    expect(prompt).toContain('(ref v1.2.3)');
+    expect(prompt).toContain('do not open a pull request');
+    expect(prompt).not.toMatch(/Then open a pull request/);
+  });
+
   it('names the root SKILL.md for a skill at the repository root', () => {
     expect(evaluationPrompt({ ...skill, path: '' })).toContain(
       'file SKILL.md,',
@@ -236,29 +250,49 @@ describe('SkillDetailPage', () => {
     // The facts are a section of the Overview, not a column beside it.
     expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
     const facts = screen.getByRole('region', { name: 'Where it lives' });
-    expect(
-      within(facts).getByText('ticket-triage/SKILL.md'),
-    ).toBeInTheDocument();
+    // The path opens the SKILL.md at the latest commit, so the link stays put
+    // when the branch moves on.
+    const path = within(facts).getByRole('link', {
+      name: 'ticket-triage/SKILL.md (opens in a new tab)',
+    });
+    expect(path).toHaveAttribute(
+      'href',
+      `https://github.com/giantswarm/skills/blob/${skill.commit}/ticket-triage/SKILL.md`,
+    );
     expect(within(facts).getByText('main')).toBeInTheDocument();
     // The latest commit opens the skill's folder at that commit; there is no
     // View source button besides.
-    expect(
-      within(facts).getByRole('link', { name: 'a1b2c3d' }),
-    ).toHaveAttribute(
+    const commit = within(facts).getByRole('link', {
+      name: 'a1b2c3d (opens in a new tab)',
+    });
+    expect(commit).toHaveAttribute(
       'href',
       `https://github.com/giantswarm/skills/tree/${skill.commit}/ticket-triage`,
     );
+    // GitHub opens in a new tab, and every link out says so.
+    const source = within(facts).getByRole('link', {
+      name: 'giantswarm/skills (opens in a new tab)',
+    });
+    expect(source).toHaveAttribute('href', REPO);
+    for (const link of [commit, source, path]) {
+      expect(link).toHaveAttribute('target', '_blank');
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    }
     expect(screen.queryByRole('link', { name: /View source/ })).toBeNull();
-    // Labels, values and links read at the shell's body size.
+    // Labels and values read at the shell's body size. A link sets no size
+    // of its own: it takes its value's, which the list sets.
     for (const text of ['Branch', 'main']) {
       expect(within(facts).getByText(text)).toHaveAttribute(
         'data-variant',
         'body-medium',
       );
     }
-    expect(
-      within(facts).getByRole('link', { name: 'a1b2c3d' }),
-    ).toHaveAttribute('data-variant', 'body-medium');
+    for (const link of [commit, source, path]) {
+      expect(link.className).toMatch(/inheritFont/);
+      expect(link.closest('dd')).toHaveStyle({
+        fontSize: 'var(--bui-font-size-3)',
+      });
+    }
     // The full commit on hover.
     expect(within(facts).getByText('a1b2c3d')).toHaveAttribute(
       'title',
@@ -268,14 +302,59 @@ describe('SkillDetailPage', () => {
     expect(mockUseSkillContent).not.toHaveBeenCalled();
   });
 
+  it('shows the skill’s tags under what it is for, and none when it has none', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [{ ...skill, tags: ['triage', 'ops'] }],
+    };
+    const { unmount } = await renderPage();
+
+    const section = screen.getByRole('region', { name: 'What it’s for' });
+    const tags = within(section).getByRole('list', { name: 'Tags' });
+    expect(
+      within(tags)
+        .getAllByRole('listitem')
+        .map(item => item.textContent),
+    ).toEqual(['triage', 'ops']);
+    // Each opens Customize → Skills with that tag picked.
+    expect(within(tags).getByRole('link', { name: 'ops' })).toHaveAttribute(
+      'href',
+      '/customize/skills?tags=ops',
+    );
+    unmount();
+
+    mockCatalog = loaded;
+    await renderPage();
+    expect(screen.queryByRole('list', { name: 'Tags' })).toBeNull();
+  });
+
   it('links the latest commit of a skill at the repository root to the tree at that commit', async () => {
     mockCatalog = { ...loaded, skills: [{ ...skill, path: '' }] };
     await renderPage('giantswarm/skills');
 
-    expect(screen.getByRole('link', { name: 'a1b2c3d' })).toHaveAttribute(
+    expect(
+      screen.getByRole('link', { name: 'a1b2c3d (opens in a new tab)' }),
+    ).toHaveAttribute(
       'href',
       `https://github.com/giantswarm/skills/tree/${skill.commit}`,
     );
+    expect(
+      screen.getByRole('link', { name: 'SKILL.md (opens in a new tab)' }),
+    ).toHaveAttribute(
+      'href',
+      `https://github.com/giantswarm/skills/blob/${skill.commit}/SKILL.md`,
+    );
+  });
+
+  it('leaves the path as plain text while the latest commit is unknown', async () => {
+    mockCatalog = { ...loaded, skills: [{ ...skill, commit: '' }] };
+    await renderPage();
+
+    const facts = screen.getByRole('region', { name: 'Where it lives' });
+    expect(
+      within(facts).getByText('ticket-triage/SKILL.md'),
+    ).toBeInTheDocument();
+    expect(within(facts).queryByRole('link', { name: /SKILL\.md/ })).toBeNull();
   });
 
   it('draws Agent detail’s routed tabs below the skill’s own address', async () => {
@@ -359,7 +438,7 @@ describe('SkillDetailPage', () => {
     ).not.toBeInTheDocument();
     // The facts belong to the Overview.
     expect(
-      screen.queryByText('ticket-triage/SKILL.md'),
+      screen.queryByRole('link', { name: /ticket-triage\/SKILL\.md/ }),
     ).not.toBeInTheDocument();
   }, 30_000);
 
@@ -646,7 +725,9 @@ describe('SkillDetailPage', () => {
       screen.getByRole('button', { name: 'Evaluate with skill-evaluator' }),
     ).toBeInTheDocument();
     // The source is still a link away, from the latest commit.
-    expect(screen.getByRole('link', { name: 'a1b2c3d' })).toHaveAttribute(
+    expect(
+      screen.getByRole('link', { name: 'a1b2c3d (opens in a new tab)' }),
+    ).toHaveAttribute(
       'href',
       `https://github.com/giantswarm/skills/tree/${skill.commit}/ticket-triage`,
     );
@@ -672,7 +753,44 @@ describe('SkillDetailPage', () => {
     expect(mockUseSkillContent).not.toHaveBeenCalled();
   });
 
-  it('shows a skill outside github.com read-only: no Edit, no Evaluate, and why', async () => {
+  it('shows a read-only skill at a tag: no Edit, Evaluate, why, and the tag', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [{ ...skill, ref: 'v1.2.3', refKind: 'tag', readOnly: true }],
+    };
+    mockEvaluator = agent('skill-evaluator', []);
+    await renderPage();
+
+    expect(
+      screen.getByText('This skill comes from a read-only source.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Edit' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Evaluate with skill-evaluator' }),
+    ).toBeInTheDocument();
+    const facts = screen.getByRole('region', { name: 'Where it lives' });
+    expect(within(facts).getByText('Tag')).toBeInTheDocument();
+    expect(within(facts).getByText('v1.2.3')).toBeInTheDocument();
+  });
+
+  it('labels a commit ref Commit, its kind unnamed, and offers no Edit', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [{ ...skill, ref: 'a1b2c3d' }],
+    };
+    await renderPage();
+
+    const facts = screen.getByRole('region', { name: 'Where it lives' });
+    expect(within(facts).getByText('Commit')).toBeInTheDocument();
+    expect(within(facts).queryByText('Branch')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Edit' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows a skill outside github.com read-only: no Edit, a report-only Evaluate, and why', async () => {
     const gitSkill = {
       ...skill,
       repoUrl: 'http://gitea.lab.local/lab/skills',
@@ -689,12 +807,15 @@ describe('SkillDetailPage', () => {
       screen.queryByRole('button', { name: 'Edit' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Evaluate with skill-evaluator' }),
-    ).not.toBeInTheDocument();
+      screen.getByRole('button', { name: 'Evaluate with skill-evaluator' }),
+    ).toBeInTheDocument();
     // The latest commit is plain text: there is no github.com tree to open.
     // Short, as in the header's line, the full commit in its title.
     expect(screen.getAllByTitle(skill.commit)).toHaveLength(2);
-    expect(screen.queryByRole('link', { name: 'a1b2c3d' })).toBeNull();
+    expect(screen.queryByRole('link', { name: /^a1b2c3d/ })).toBeNull();
+    // So is the path.
+    expect(screen.getByText('ticket-triage/SKILL.md')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /SKILL\.md/ })).toBeNull();
     // Readable all the same: its instructions are a tab away.
     expect(screen.getByRole('tab', { name: 'Instructions' })).toHaveAttribute(
       'href',
@@ -822,8 +943,9 @@ describe('SkillDetailPage at phone width', () => {
     expect(
       screen
         .getByText('What it’s for')
-        .compareDocumentPosition(screen.getByText('ticket-triage/SKILL.md')) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
+        .compareDocumentPosition(
+          screen.getByRole('link', { name: /ticket-triage\/SKILL\.md/ }),
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 

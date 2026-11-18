@@ -3,6 +3,7 @@ import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { useQuery } from '@tanstack/react-query';
 import { getK8sGetPath } from './utils/k8sPath';
 import { k8sResponseError } from './utils/k8sResponseError';
+import { withPollingRule } from './utils/pollingOptions';
 import { CustomResourceMatcher } from '../lib/k8s/CustomResourceMatcher';
 import { QueryOptions } from './types';
 
@@ -48,6 +49,6 @@ export function useGetResource<T>(
 
       return app;
     },
-    ...queryOptions,
+    ...withPollingRule(queryOptions),
   });
 }

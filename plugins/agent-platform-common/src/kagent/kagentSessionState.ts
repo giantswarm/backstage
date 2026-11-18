@@ -1,6 +1,8 @@
 import { normalizeA2aState } from './kagentA2aV1';
 import { A2aTaskWire } from './kagentTaskSchema';
 import { normalizeTimestamp } from './kagentTimestamp';
+import { readKagentTimelinePosition } from './kagentMetadata';
+import { asRecord } from './record';
 
 /** Tone for the status badge; maps onto whatever the UI layer uses. */
 export type SessionStateTone =
@@ -216,26 +218,6 @@ export function describeSessionState(
 }
 
 /**
- * The session's state, taken from its **most recent** task.
- *
- * kagent returns tasks `ORDER BY created_at ASC`
- * (`go/core/internal/database/gen/tasks.sql.go`), so the array is chronological
- * and the last element is the newest turn. Its state is the session's state:
- * earlier turns having completed says nothing about whether the session is
- * currently working.
- *
- * Returns `undefined` when there are no tasks or none reported a state — a
- * session created but never run. That is a real condition ("no activity yet"),
- * distinct from any state kagent could report, so it must not be flattened into
- * one of them.
- */
-export function deriveSessionState(
-  tasks: A2aTaskWire[],
-): SessionState | undefined {
-  return readNewestTaskState(tasks)?.state;
-}
-
-/**
  * How long a session's newest task may sit in an active state without its
  * timestamp advancing before we stop treating it as live and report it
  * **stalled** instead.
@@ -261,7 +243,7 @@ export const ACTIVE_MAX_AGE_MS = 5 * 60_000;
 /** The newest task that reports a state, with the age basis for that state. */
 export type NewestTaskState = {
   state: SessionState;
-  /** Epoch ms the state last moved, when anything usable says. */
+  /** Epoch ms of the task's latest recorded activity. */
   changedAt?: number;
   /**
    * Where that task is in the list ({@link findNewestStatefulTaskIndex}), so
@@ -271,7 +253,26 @@ export type NewestTaskState = {
 };
 
 /**
- * The most recent usable `status.timestamp` anywhere in the conversation.
+ * The latest recorded activity on a task, including output between state changes.
+ */
+export function taskActivityAt(task: A2aTaskWire): number | undefined {
+  const timestamp = normalizeTimestamp(task.status?.timestamp);
+  let latest = timestamp === undefined ? undefined : Date.parse(timestamp);
+  for (const entry of [
+    ...(task.history ?? []),
+    ...(task.artifacts ?? []),
+    task.status?.message,
+  ]) {
+    const position = readKagentTimelinePosition(asRecord(entry)?.metadata);
+    if (position !== undefined && (latest === undefined || position > latest)) {
+      latest = position;
+    }
+  }
+  return latest;
+}
+
+/**
+ * The most recent usable activity timestamp anywhere in the conversation.
  *
  * The age basis of last resort. `timestamp` is optional at the parse boundary, and
  * `normalizeTimestamp` also rejects Go zero time and anything unparseable — so the
@@ -284,11 +285,10 @@ function newestUsableTimestamp(tasks: A2aTaskWire[]): number | undefined {
   // with an offset or a different fractional precision.
   let newest: number | undefined;
   for (const task of tasks) {
-    const at = normalizeTimestamp(task?.status?.timestamp);
-    if (at === undefined) {
+    const parsed = taskActivityAt(task);
+    if (parsed === undefined) {
       continue;
     }
-    const parsed = Date.parse(at);
     if (newest === undefined || parsed > newest) {
       newest = parsed;
     }
@@ -299,9 +299,12 @@ function newestUsableTimestamp(tasks: A2aTaskWire[]): number | undefined {
 /**
  * Walk back to the newest task that reports a state, and resolve when it moved.
  *
- * kagent returns tasks oldest-first, so the session's state is the newest task's.
- * The walk takes the state **and** the timestamp from the same task, so a trailing
- * task carrying no state cannot lend its timestamp to an earlier task's state.
+ * kagent returns tasks oldest-first (`ORDER BY created_at ASC`,
+ * `go/core/internal/database/gen/tasks.sql.go`), so the session's state is the
+ * newest task's. The walk takes the state **and** the timestamp from the same
+ * task, so a trailing task carrying no state cannot lend its timestamp to an
+ * earlier task's state. Undefined when no task reports a state: a session
+ * created but never run, distinct from any state kagent could report.
  *
  * When that task has no usable timestamp of its own, the conversation's newest
  * usable one stands in — losing the "same task" property deliberately. A missing
@@ -326,9 +329,8 @@ export function readNewestTaskState(
     return undefined;
   }
 
-  const own = normalizeTimestamp(status?.timestamp);
   const changedAt =
-    own === undefined ? newestUsableTimestamp(tasks) : Date.parse(own);
+    taskActivityAt(tasks[index]) ?? newestUsableTimestamp(tasks);
 
   return { state, changedAt, index };
 }
@@ -360,7 +362,7 @@ export function findNewestStatefulTaskIndex(
  *
  * - `working`: the agent is on a reply right now — the row that says so
  *   promises progress.
- * - `stalled`: the task is still active but its timestamp has not advanced for
+ * - `stalled`: the task is still active but its recorded activity has not advanced for
  *   {@link ACTIVE_MAX_AGE_MS}. Nothing arrives on its own any more, yet the
  *   session is not free either: kagent holds one active task per session and
  *   refuses a second message while this one stands. The honest display is
@@ -388,7 +390,7 @@ export type TurnProgress =
  * - the newest task is in an active state — it might still produce output;
  * - that state is not one of {@link AWAITING_INPUT_STATES}, where the agent is
  *   blocked on a human and no progress can arrive on its own;
- * - the state has moved inside {@link ACTIVE_MAX_AGE_MS}; past that the turn is
+ * - the task recorded activity inside {@link ACTIVE_MAX_AGE_MS}; past that the turn is
  *   **stalled**, not finished and not idle.
  *
  * A state with no usable timestamp anywhere counts as working: there is nothing to

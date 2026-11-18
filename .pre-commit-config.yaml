@@ -2,7 +2,7 @@
 #
 #    devctl
 #
-#    https://github.com/giantswarm/devctl/blob/c64a781d7ee888be4af92da9cce27c321300a589/pkg/gen/input/precommit/internal/file/pre-commit-config.yaml.template
+#    https://github.com/giantswarm/devctl/blob/adb46eb82425563eabc80f969126360b2af64392/pkg/gen/input/precommit/internal/file/pre-commit-config.yaml.template
 #
 minimum_pre_commit_version: '2.17'
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
@@ -37,7 +37,7 @@ repos:
         exclude: "(.*testdata/.*|^\\.yarn/.*|^helm/[^/]+/charts/.*|.*.patch)"
 
   - repo: https://github.com/compilerla/conventional-pre-commit
-    rev: v4.4.0
+    rev: v4.5.0
     hooks:
       - id: conventional-pre-commit
         stages: [commit-msg]
@@ -116,7 +116,7 @@ repos:
       - id: helm-schema-backstage
         name: "verify helm/backstage/values.schema.json is up to date"
         language: golang
-        additional_dependencies: ['github.com/giantswarm/schemalint/v2@v2.6.3', 'github.com/losisin/helm-values-schema-json/v2@v2.6.0']
+        additional_dependencies: ['github.com/giantswarm/schemalint/v2@v2.6.3', 'github.com/losisin/helm-values-schema-json/v2@v2.6.1']
         files: ^helm/backstage/(values\.yaml|\.schema\.yaml|values\.schema\.json|zz_generated\.app-platform\.values\.yaml)$
         pass_filenames: false
         require_serial: true
@@ -130,7 +130,7 @@ repos:
             python3 -c 'import json,sys; h=lambda o: {**{k:v for k,v in o.items() if k!="additionalProperties"},"unevaluatedProperties":False} if ("$ref" in o and o.get("additionalProperties") is False) else o; p=sys.argv[1]; f=open(p,encoding="utf-8"); d=json.load(f,object_hook=h); f.close(); f=open(p,"w",encoding="utf-8"); json.dump(d,f); f.close()' "$tmp"
             schemalint normalize "$tmp" -o "$tmp" --force
             if ! diff -u helm/backstage/values.schema.json "$tmp"; then
-              echo "helm/backstage/values.schema.json is out of date -- run 'devctl gen precommit' and commit the result" >&2
+              printf '%s\n' "helm/backstage/values.schema.json is out of date; run from the repository root and commit the result:" 'devctl gen precommit --language='"'"'node'"'"' --repo-name='"'"'backstage'"'"' --flavors='"'"'helmchart'"'"' --k8s-schema-version='"'"'v1.33.1'"'"'' >&2
               exit 1
             fi
   - repo: https://github.com/giantswarm/schemalint
@@ -148,6 +148,10 @@ repos:
     rev: "v1.14.2"
     hooks:
       - id: helm-docs
+        # The upstream script hook uses helm-docs from PATH. Build this rev
+        # in pre-commit's isolated Go environment so local and CI runs agree.
+        language: golang
+        entry: helm-docs
         args:
           - --chart-search-root=helm
           - --chart-to-generate=helm/backstage

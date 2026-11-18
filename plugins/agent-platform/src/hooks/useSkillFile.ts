@@ -1,11 +1,9 @@
-import {
-  discoveryApiRef,
-  fetchApiRef,
-  useApi,
-} from '@backstage/core-plugin-api';
+import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import { skillDiscoveryApiRef } from '../apis/SkillDiscoveryApi';
 import type { DiscoveredSkill, SkillFileContent } from '../lib/skills';
-import { skillReadError } from './useSkillContent';
+import { unreachableError } from '../lib/skillManager';
+import { useSkillSource } from './useSkillSource';
 
 /**
  * Reads one file of a skill at the commit the catalog pinned it to, through
@@ -21,15 +19,22 @@ export function useSkillFile(
   skill:
     Pick<DiscoveredSkill, 'repoUrl' | 'path' | 'commit' | 'ref'> | undefined,
   file: string | undefined,
+  installation?: string,
 ) {
-  const discoveryApi = useApi(discoveryApiRef);
-  const fetchApi = useApi(fetchApiRef);
-  const enabled = Boolean(skill && file);
+  const skillDiscoveryApi = useApi(skillDiscoveryApiRef);
+  const source = useSkillSource(installation);
+  const sourceKey =
+    source.kind === 'skill-manager' ? source.installation : source.kind;
+  const enabled =
+    Boolean(skill && file) &&
+    source.kind !== 'pending' &&
+    source.kind !== 'unreachable';
 
   const { data, error, isPending } = useQuery({
     queryKey: [
       'agent-platform',
       'skill-file',
+      sourceKey,
       skill?.repoUrl,
       skill?.path,
       skill?.commit,
@@ -40,25 +45,22 @@ export function useSkillFile(
     retry: false,
     queryFn: async (): Promise<SkillFileContent> => {
       const { repoUrl, path, commit, ref } = skill!;
-      const baseUrl = await discoveryApi.getBaseUrl('gs');
-      const params = new URLSearchParams({ repoUrl, path, commit });
-      if (ref) {
-        params.set('ref', ref);
+      if (source.kind === 'skill-manager') {
+        return source.client.getSkillFile({ repoUrl, path, commit }, file!);
       }
-      params.set('file', file!);
-      const response = await fetchApi.fetch(
-        `${baseUrl}/agent-skills/content/file?${params.toString()}`,
+      return skillDiscoveryApi.readSkillFile(
+        { repoUrl, path, commit, ref },
+        file!,
       );
-      if (!response.ok) {
-        throw await skillReadError(response, 'Could not read the file');
-      }
-      return (await response.json()) as SkillFileContent;
     },
   });
 
   return {
     file: data,
     isLoading: enabled && isPending,
-    error: error as Error | null,
+    error:
+      source.kind === 'unreachable'
+        ? unreachableError(source.installation)
+        : (error as Error | null),
   };
 }

@@ -142,9 +142,11 @@ export function AgentChangeHarnessDialog({
   );
   const missing = missingReleaseFile(missingFailure);
 
-  const notConnected =
-    failure?.kind === 'not-connected' ||
-    updating.failure?.kind === 'not-connected';
+  // The dry run's, else the write's.
+  const notConnectedFailure = [failure, updating.failure].find(
+    candidate => candidate?.kind === 'not-connected',
+  );
+  const notConnected = Boolean(notConnectedFailure);
   const isChecking = validated.isLoading || commitDryRun.isLoading;
   const isRefused = Boolean(failure) || violations.length > 0;
 
@@ -277,11 +279,17 @@ export function AgentChangeHarnessDialog({
           </SelectableCardGrid>
         )}
 
-        {failure?.kind === 'not-connected' && (
+        {/* The dry run's or the write's: a write refused for want of the
+            sign-in says so here too, not in the dialog's error. Signed in,
+            the write's refusal is cleared and the dry run re-reads by
+            itself, with every muster query; the person confirms again. */}
+        {notConnected && (
           <ConnectAgentManagerAlert
             installation={installation}
-            message={failure.message}
+            message={notConnectedFailure!.message}
+            signInRequired={notConnectedFailure!.signInRequired}
             action="The Harness is changed"
+            onSignedIn={updating.reset}
           />
         )}
         {failure && failure.kind !== 'not-connected' && (

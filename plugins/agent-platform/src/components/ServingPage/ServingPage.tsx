@@ -24,10 +24,12 @@ import {
   EmptyStateCard,
   LoadingIndicator,
   useProvidePageHeaderActions,
+  UnreachableInstallationsAlert,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { installationErrorLine } from '@giantswarm/backstage-plugin-muster';
 
 import { useDownloadRows, withDownloadRows } from '../../hooks/useDownloadRows';
+import { usePortalSessionEnded } from '../../hooks/usePortalSessionEnded';
 import {
   useHostingFlowOutcome,
   useOpenHostingFlow,
@@ -62,7 +64,8 @@ import {
 } from '../ModelHostingActions';
 import { useServedModelRows } from '../ServedModelRowsProvider';
 import { useServing } from '../ServingProvider';
-import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
+import { ModelManagerSignInAlerts } from '../ModelManagerSignInAlerts';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import {
   hasServedModelTimeline,
   isOpenedServedModel,
@@ -144,6 +147,9 @@ const TOAST_TIMEOUT_MS = 6000;
  */
 export function ServingPage() {
   const serving = useServing();
+  // The portal refused the session token: the reads of every source fail
+  // the same way until a sign-in, which is the one thing to say.
+  const sessionEnded = usePortalSessionEnded();
   const sharedIdentity = useModelHostingSharedIdentity();
   const { servedModels, installations } = serving;
   const { rows: servedRows } = useServedModelRows();
@@ -543,6 +549,13 @@ export function ServingPage() {
       installations,
       unreadable: serving.unreachableInstallations,
     });
+  // Where muster asked for the person's sign-in to model-manager, the page
+  // offers it; the read warning names only the installations some source
+  // could not read for another reason (KServe's read of the same
+  // installation failing, say), which a sign-in would not fix.
+  const signInRequired = serving.signInRequiredInstallations ?? [];
+  const readWarningInstallations =
+    serving.unreadableBeyondSignIn ?? serving.unreachableInstallations;
   let emptyBody: ReactNode;
   if (noServingLayer && serving.isLoading) {
     emptyBody = <LoadingIndicator label="Reading the serving layer…" />;
@@ -596,6 +609,10 @@ export function ServingPage() {
     );
   }
 
+  if (sessionEnded) {
+    return <PortalSessionEndedAlert />;
+  }
+
   return (
     <>
       {emptyBody ?? (
@@ -609,10 +626,13 @@ export function ServingPage() {
           {!openedRow && lifecyclePanel}
 
           <UnreachableInstallationsAlert
-            installations={serving.unreachableInstallations}
+            installations={readWarningInstallations}
             resourceName="served models"
             isLoading={isReadingServedModels}
           />
+          {!isReadingServedModels && signInRequired.length > 0 && (
+            <ModelManagerSignInAlerts installations={signInRequired} />
+          )}
 
           {!isReadingServedModels && downloadRows.errors.length > 0 && (
             <Alert

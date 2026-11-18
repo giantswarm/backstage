@@ -1,6 +1,7 @@
 import type { SessionUsageResponse } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { Stat, StatGrid } from '@giantswarm/backstage-plugin-ui-react';
 import { formatCount, formatTokens } from '../../../lib/formatNumbers';
+import { lastDaysNoun } from '../../../lib/usageWindow';
 
 export type SessionKpiTilesProps = {
   /** The kagent fan-out's answer for the resolved installation. */
@@ -29,7 +30,7 @@ export type SessionKpiTilesProps = {
 export function SessionKpiTiles({ usage, windowDays }: SessionKpiTilesProps) {
   const { totals } = usage;
   const agents = usage.byAgent.filter(entry => entry.agentId !== null).length;
-  const windowNote = `the last ${windowDays} days`;
+  const windowNote = lastDaysNoun(windowDays);
 
   return (
     <StatGrid>

@@ -1,4 +1,4 @@
-import { Alert, Flex, Link, Text } from '@backstage/ui';
+import { Alert, Flex, Text } from '@backstage/ui';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { ActionHistory } from './ActionHistory';
 import { CapabilityCard } from './CapabilityCard';
@@ -6,6 +6,7 @@ import { ErrorAlert } from './ErrorAlert';
 import { Loading } from './Loading';
 import { PlatformCapabilitiesProviders } from './Providers';
 import { useInstallations, useManagerInfo } from './queries';
+import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 
 /** Where the tab is explained: the plugin's page in the repository's docs. */
 export const DOCS_URL =
@@ -19,9 +20,9 @@ function Intro() {
       the Dev Portal, that the platform manager installs on an installation
       through pull requests to its repositories and compares with its
       definition.{' '}
-      <Link href={DOCS_URL} target="_blank" rel="noopener">
+      <ExternalLink href={DOCS_URL} display="inline">
         How it works
-      </Link>
+      </ExternalLink>
     </Text>
   );
 }

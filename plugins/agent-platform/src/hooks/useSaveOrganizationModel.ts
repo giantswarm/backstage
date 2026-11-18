@@ -1,0 +1,379 @@
+import { useQueryClient } from '@tanstack/react-query';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
+import type { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
+
+import {
+  credentialFormOf,
+  type CredentialCommit,
+  preparedCredentialOperation,
+} from '../lib/credentialOperations';
+import {
+  MODEL_CONFIG_NAMESPACE,
+  isVertexAIProvider,
+  modelConfigFormChanged,
+  modelConfigFormValues,
+  providerHasEndpoint,
+  type ModelConfigFormValues,
+} from '../lib/modelConfigs';
+import {
+  modeArgument,
+  modelNameTakenMessage,
+  type OrganizationNamespace,
+} from '../lib/organizations';
+import {
+  changedModelSettingsArguments,
+  type ModelSettingsArguments,
+  modelSettingRefusal,
+  newModelSettingsArguments,
+} from '../lib/modelSettings';
+import { modelCredentialsRouteRef } from '../routes';
+import {
+  AgentManagerError,
+  AgentManagerNotConnectedError,
+} from '../lib/agentManager';
+import { credentialRequestErrorMessage } from '../lib/credentialRequestErrors';
+import { PortalSessionEndedError } from '../lib/portalSession';
+import { useOrganizationDirectory } from '../components/OrganizationDirectoryProvider';
+import { invalidateModelReads } from './defaultModelWrites';
+import { modelScopeRefusal } from './modelScope';
+import { modelKeyReference } from './modelKeyReference';
+import { useAgentManagerClient } from './useAgentManager';
+import { useEnsureModelOperations } from './useEnsureModelOperations';
+import { useOrganizationContentMode } from './useOrganizationContentMode';
+
+export type SaveOrganizationModelInput = {
+  /** The organization namespace the model is in, or goes to. */
+  organization?: OrganizationNamespace;
+  namespace?: string;
+  values: ModelConfigFormValues;
+  /** The model being edited; absent for a create. */
+  original?: ModelConfig;
+  /** Create only: move the organization's default mark to the new model. */
+  makeDefault?: boolean;
+  /** Edit only: ask for a new key on the credential form. */
+  replaceKey?: boolean;
+};
+
+export type SaveOrganizationModelResult = {
+  /**
+   * The credential form to open: agent-manager prepared a credential
+   * request, and its write finishes when the person saves the key there.
+   * Absent when the write is finished.
+   */
+  form?: string;
+  /** Whether the organization's default model is this one after the write. */
+  isDefault: boolean;
+  /** Edit only: the model's change is written (before any new key). */
+  changed?: boolean;
+  /**
+   * The pull request the write opened, in mode commit: nothing is written
+   * live until it is merged.
+   */
+  commit?: CredentialCommit;
+};
+
+/**
+ * Creates or changes a model of an organization, as the person. The portal
+ * writes no Secret and sends no key; the key is entered on the portal's
+ * credential form, which agent-manager's credential request leads to.
+ *
+ * - A create is `set_organization_model`; its key is missing, so the
+ *   answer is a credential request. It first reads the namespace's models,
+ *   for a quick answer on a name that is taken. It sends `create` where the
+ *   installation's tool takes it, so a model of that name made since that
+ *   read is refused (`already_exists`), not changed; an older agent-manager
+ *   has only the read.
+ * - An edit's change of the model id is `set_organization_model`, finished
+ *   when the call answers (it prepares a request only when the key Secret
+ *   is missing).
+ * - A new key is `replace_organization_credential` on the Secret and key the
+ *   model reads: it writes the Secret only, for every object that reads it.
+ *   With a change too, the change is written first, then the key asked for.
+ *
+ * An organization's model also has its settings (the token limit and prompt
+ * caching), sent only where the installation's tool takes them: a create
+ * sends those of its provider, an edit only the ones the person changed, as
+ * it sends the display name only when it changed. An omitted argument keeps
+ * the stored value.
+ *
+ * An organization's model is written in its organization's mode
+ * ({@link useOrganizationContentMode}): by pull request for one applied from
+ * git where agent-manager opens pull requests, the new key too.
+ *
+ * The provider of an existing model does not change here: the stored key is
+ * the old provider's, and agent-manager cannot write a new provider and its
+ * new key in one step, so either order leaves the model on a key of the
+ * wrong provider for a while.
+ */
+export function useSaveOrganizationModel(installation: string | undefined) {
+  const client = useAgentManagerClient(installation);
+  const ensureModelOperations = useEnsureModelOperations();
+  const contentMode = useOrganizationContentMode();
+  const organizations = useOrganizationDirectory();
+  const queryClient = useQueryClient();
+  const formLink = useRouteRef(modelCredentialsRouteRef);
+
+  const mutation = useTrackedMutation<
+    SaveOrganizationModelResult,
+    Error,
+    SaveOrganizationModelInput
+  >({
+    // A write that waits for its key is tracked where it is finished: the
+    // credential form's save. An edit's change is written here.
+    event: ({ form, changed, commit }, { original }) => {
+      if (original) {
+        return changed
+          ? { name: 'AgentPlatform.modelUpdated', attributes: {} }
+          : null;
+      }
+      return form || commit
+        ? null
+        : { name: 'AgentPlatform.modelCreated', attributes: {} };
+    },
+    mutationFn: async ({
+      organization,
+      namespace: requestedNamespace,
+      values,
+      original,
+      makeDefault = false,
+      replaceKey = false,
+    }) => {
+      if (!client || !installation) {
+        throw new Error(
+          'agent-manager is not reachable on this installation. Models are saved through it.',
+        );
+      }
+      const namespace =
+        organization?.namespace ?? requestedNamespace ?? MODEL_CONFIG_NAMESPACE;
+      const scopeRefusal = organization
+        ? undefined
+        : modelScopeRefusal(organizations, installation, namespace);
+      if (scopeRefusal) throw new Error(scopeRefusal);
+      // An organization's model follows its organization; the
+      // installation's models, which are no organization's, are live. Read
+      // at the first write, once.
+      let mode: Promise<{ mode?: 'commit' }> | undefined;
+      const modeOf = () =>
+        (mode ??= contentMode(installation, namespace).then(modeArgument));
+      const setModel = async (
+        request: Parameters<typeof client.setOrganizationModel>[0],
+        {
+          create = false,
+          modelSettings = {},
+        }: { create?: boolean; modelSettings?: ModelSettingsArguments } = {},
+      ) => {
+        const { createOnly, settings } =
+          await ensureModelOperations(installation);
+        const writeMode = await modeOf();
+        return client
+          .setOrganizationModel({
+            ...request,
+            // Only a new model's write, and only where the tool takes it: an
+            // older agent-manager refuses an argument it does not know.
+            ...(create && createOnly ? { create: true } : {}),
+            // The same holds for the settings.
+            ...(settings ? modelSettings : {}),
+            ...writeMode,
+          })
+          .catch(error => {
+            // A refused setting, in the form's words and not the API
+            // server's.
+            const refusal = modelSettingRefusal(error, request.provider);
+            if (refusal) throw refusal;
+            throw error;
+          });
+      };
+      const formOf = (operation: string) =>
+        credentialFormOf(
+          formLink,
+          { installation, namespace, operation },
+          'The key is entered on the credential form, and this portal has none.',
+        );
+      const configuration = {
+        ...(isVertexAIProvider(values.provider)
+          ? {
+              projectID: values.projectID.trim(),
+              location: values.location.trim(),
+            }
+          : {}),
+        ...(!organization && providerHasEndpoint(values.provider)
+          ? {
+              endpoint: values.endpoint.trim(),
+              insecureSkipTLSVerify: values.insecureSkipTlsVerify,
+            }
+          : {}),
+      };
+
+      if (!original) {
+        const name = values.name.trim();
+        // The fresh read gives immediate feedback; create guards the write race.
+        const existing = await client.listModelConfigs(namespace);
+        if (existing.some(model => model.name === name)) {
+          throw new Error(modelNameTakenMessage(namespace, name));
+        }
+        const result = await setModel(
+          {
+            namespace,
+            name,
+            ...configuration,
+            displayName: values.displayName.trim(),
+            noCredential: values.provider === 'Ollama' || values.noCredential,
+            provider: values.provider,
+            model: values.model.trim(),
+            ...(makeDefault ? { default: true } : {}),
+            requestId: crypto.randomUUID(),
+          },
+          {
+            create: true,
+            modelSettings: organization
+              ? newModelSettingsArguments(values.provider, values)
+              : {},
+          },
+        ).catch(error => {
+          // Someone made a model of that name since the read.
+          if (
+            error instanceof AgentManagerError &&
+            error.code === 'already_exists'
+          ) {
+            throw new Error(modelNameTakenMessage(namespace, name), {
+              cause: error,
+            });
+          }
+          throw error;
+        });
+        const operation = preparedCredentialOperation(result);
+        return {
+          isDefault: result.defaultModel === name,
+          ...(operation ? { form: formOf(operation) } : {}),
+          ...(!operation && result.commit ? { commit: result.commit } : {}),
+        };
+      }
+
+      const name = original.getName();
+      if (values.provider !== original.getProvider()) {
+        throw new Error(
+          'An organization’s model keeps its provider: its key is the provider’s. Add a model for the other provider instead.',
+        );
+      }
+      const model = values.model.trim();
+      const initial = modelConfigFormValues(original);
+      if (!initial)
+        throw new Error('This provider cannot be edited through this form.');
+      let changed = false;
+      let isDefault = false;
+      let commit: CredentialCommit | undefined;
+      if (modelConfigFormChanged(values, initial)) {
+        const displayName = values.displayName.trim();
+        const result = await setModel(
+          {
+            namespace,
+            name,
+            provider: values.provider,
+            model,
+            ...configuration,
+            // An omitted display name keeps the stored one; "" removes it.
+            ...(displayName !== initial.displayName.trim()
+              ? { displayName }
+              : {}),
+            noCredential: !original.getApiKeySecret(),
+            requestId: crypto.randomUUID(),
+          },
+          {
+            modelSettings: organization
+              ? changedModelSettingsArguments(values.provider, values, initial)
+              : {},
+          },
+        );
+        isDefault = result.defaultModel === name;
+        const operation = preparedCredentialOperation(result);
+        if (operation) {
+          // The key Secret is missing: the request asks for the key and
+          // writes the change with it.
+          return { isDefault, form: formOf(operation) };
+        }
+        // A pull request writes nothing live until it is merged.
+        if (result.commit) {
+          commit = result.commit;
+        } else {
+          changed = true;
+        }
+      }
+      if (!replaceKey) {
+        return { isDefault, changed, ...(commit ? { commit } : {}) };
+      }
+      try {
+        const { secret, key } = modelKeyReference(original);
+        const result = await client.replaceOrganizationCredential({
+          namespace,
+          secret,
+          key,
+          requestId: crypto.randomUUID(),
+          ...(await modeOf()),
+        });
+        const operation = preparedCredentialOperation(result);
+        if (!operation) {
+          throw new Error(
+            'agent-manager answered the new key request without a credential request.',
+          );
+        }
+        // The change's own pull request, if it opened one, goes with the
+        // form: the form's pull request carries the key only.
+        return {
+          isDefault,
+          changed,
+          form: formOf(operation),
+          ...(commit ? { commit } : {}),
+        };
+      } catch (error) {
+        if (!changed && !commit) {
+          // Nothing was written: the page says why, with the sign-in to
+          // agent-manager or the refusal of a person without the right.
+          if (
+            error instanceof AgentManagerNotConnectedError ||
+            error instanceof PortalSessionEndedError ||
+            (error instanceof AgentManagerError && error.code === 'forbidden')
+          ) {
+            throw error;
+          }
+          throw new Error(credentialRequestErrorMessage(error as Error), {
+            cause: error,
+          });
+        }
+        // A refused portal session: the change before it was saved, so the
+        // session message's "nothing was sent" does not stand here.
+        const why =
+          error instanceof PortalSessionEndedError
+            ? 'Your portal session ended: reload the page to sign in again, then ask for the new key.'
+            : credentialRequestErrorMessage(error as Error);
+        await invalidateModelReads(queryClient, installation, namespace);
+        throw new Error(
+          commit?.pullRequest
+            ? `The pull request with the model change is opened (${commit.pullRequest}), but the new key could not be asked for. ${why}`
+            : `The model change is saved, but the new key could not be asked for. ${why}`,
+          { cause: error },
+        );
+      }
+    },
+    onSuccess: ({ form, changed }, { organization, namespace, original }) => {
+      // Invalidate rather than edit the cache: the QueryClient is persisted.
+      // A request still to be finished on the form is reread there.
+      const wrote = original ? changed : !form;
+      if (!installation || !wrote) {
+        return undefined;
+      }
+      return invalidateModelReads(
+        queryClient,
+        installation,
+        organization?.namespace ?? namespace ?? MODEL_CONFIG_NAMESPACE,
+      );
+    },
+  });
+
+  return {
+    save: mutation.mutateAsync,
+    isSaving: mutation.isPending,
+    error: mutation.error,
+    reset: mutation.reset,
+  };
+}

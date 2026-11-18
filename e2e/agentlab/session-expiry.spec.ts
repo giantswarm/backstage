@@ -16,8 +16,7 @@ import { SESSION_EXPIRED_MESSAGE } from '../../plugins/kubernetes-react/src/lib/
  */
 
 const scope = `?installation=${lab.installation}`;
-const yourConnectorsPath = `/customize/connectors${scope}`;
-const internalPath = `/customize/connectors/internal${scope}`;
+const connectorsPath = `/customize/connectors${scope}`;
 const MUSTER_AUTH_HEADER = 'backstage-muster-authorization';
 
 function jwtExp(token: string): number {
@@ -49,13 +48,12 @@ async function openSignedInWithClock(
 }
 
 /**
- * Opens a connector's page from the Internal sub-tab in the app, without a
+ * Opens a connector's page from the Connectors list in the app, without a
  * reload: the page asks muster for that connector's tools, a query no earlier
  * view has cached. The row links the server by its display name where its
  * chart gives one ("Workspace Manager"), else by `name`.
  */
 async function openConnectorInApp(page: Page, name: string) {
-  await page.getByRole('tab', { name: /^Internal/ }).click();
   await page
     .getByRole('link', {
       name: new RegExp(`^${name.replace(/-/g, '[- ]')}$`, 'i'),
@@ -71,7 +69,7 @@ test('an ID token near its exp is refreshed before it is forwarded to muster', a
   let skew = 0;
   const sent = recordMusterTokens(page, () => Date.now() + skew);
 
-  await open(page, yourConnectorsPath);
+  await open(page, connectorsPath);
   await connectToMuster(page, page.getByRole('grid'));
   expect(sent.length, 'the page forwarded a token to muster').toBeGreaterThan(
     0,
@@ -104,7 +102,7 @@ test('a tab past the token’s lifetime offers Sign in again, never the raw must
   let skew = 0;
   const sent = recordMusterTokens(page, () => Date.now() + skew);
 
-  await open(page, yourConnectorsPath);
+  await open(page, connectorsPath);
   await connectToMuster(page, page.getByRole('grid'));
   const first = sent[sent.length - 1].token;
 
@@ -150,7 +148,7 @@ test("muster's expired-token answer reads as Sign in again", async ({
       }),
     }),
   );
-  await open(admin, internalPath);
+  await open(admin, connectorsPath);
 
   await expect(admin.getByText(SESSION_EXPIRED_MESSAGE).first()).toBeVisible({
     timeout: 60_000,

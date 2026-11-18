@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Select, Text } from '@backstage/ui';
+import { Select } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import FolderOutlinedIcon from '@material-ui/icons/FolderOutlined';
 import {
-  SEARCH_MIN,
   matchesQuery,
+  searchableIf,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -18,13 +19,15 @@ import type { AgentRow } from '../AgentsDataProvider';
 const NO_WORKSPACE_ID = 'workspace:none';
 
 const useStyles = makeStyles({
-  // Compact like the agent picker beside it: the prompt stays the hero.
+  // Compact like the agent picker beside it: the prompt stays the hero. At
+  // most 240px; at least its folder and caret. How it shares a row with the
+  // agent is the row's (giantswarm/giantswarm#39204).
   select: {
-    maxWidth: 240,
-    minWidth: 0,
-  },
-  label: {
-    whiteSpace: 'nowrap',
+    // The folder, the caret's box and bui's gaps.
+    minWidth: 76,
+    '& .bui-SelectTrigger': {
+      maxWidth: 240,
+    },
   },
 });
 
@@ -54,15 +57,7 @@ export type WorkspacePickerProps = {
   value: Workspace | undefined;
   onChange: (workspace: Workspace | undefined) => void;
   isDisabled?: boolean;
-  /**
-   * Says "Workspace" before the select, as the agent picker's own label
-   * does where the pickers head the box.
-   */
-  showLabel?: boolean;
 };
-
-/** Where a preset came from, as the line beside the select says. */
-type PresetSource = 'last' | 'default';
 
 /**
  * The workspace a new session with `agent` starts preset to: the one last
@@ -75,18 +70,13 @@ export function presetWorkspace(
   remembered: string | null | undefined,
   agentDefault: string | undefined,
   workspaces: Workspace[],
-): { workspace: Workspace; source: PresetSource } | undefined {
+): Workspace | undefined {
   if (remembered === null) {
     return undefined;
   }
   const listed = (name: string | undefined) =>
     name ? workspaces.find(workspace => workspace.name === name) : undefined;
-  const last = listed(remembered);
-  if (last) {
-    return { workspace: last, source: 'last' };
-  }
-  const fallback = listed(agentDefault);
-  return fallback ? { workspace: fallback, source: 'default' } : undefined;
+  return listed(remembered) ?? listed(agentDefault);
 }
 
 /**
@@ -104,7 +94,6 @@ export function WorkspacePicker({
   value,
   onChange,
   isDisabled = false,
-  showLabel = false,
 }: WorkspacePickerProps) {
   const classes = useStyles();
   const { workspaces } = useSessionWorkspaces(agent.installation);
@@ -112,15 +101,11 @@ export function WorkspacePicker({
   const [searchText, setSearchText] = useState('');
 
   // The preset is adopted once the workspaces are listed, unless the person
-  // chose meanwhile.
+  // chose meanwhile; either way, once.
   const touched = useRef(false);
-  const [preset, setPreset] = useState<{
-    name: string;
-    source: PresetSource;
-  }>();
   const remembered = lastWorkspaceOf(agent.id);
   useEffect(() => {
-    if (touched.current || preset) {
+    if (touched.current) {
       return;
     }
     const found = presetWorkspace(
@@ -129,78 +114,77 @@ export function WorkspacePicker({
       workspaces,
     );
     if (found) {
-      setPreset({ name: found.workspace.name, source: found.source });
-      onChange(found.workspace);
+      touched.current = true;
+      onChange(found);
     }
-  }, [workspaces, remembered, agent.defaultWorkspace, preset, onChange]);
+  }, [workspaces, remembered, agent.defaultWorkspace, onChange]);
 
   const multipleOrganizations =
     new Set(workspaces.map(workspace => workspace.organization)).size > 1;
-  const options = useMemo(() => {
-    const listed = workspaces.map(workspace => ({
-      id: workspace.name,
-      label: workspace.name,
-      description: workspaceOptionDescription(workspace, multipleOrganizations),
-    }));
-    const all = [...listed, { id: NO_WORKSPACE_ID, label: 'No workspace' }];
-    return searchText.trim()
-      ? all.filter(option =>
-          matchesQuery(
-            searchText,
-            `${option.label} ${'description' in option ? option.description : ''}`,
-          ),
-        )
-      : all;
-  }, [workspaces, multipleOrganizations, searchText]);
+  const allOptions = useMemo(
+    () => [
+      ...workspaces.map(workspace => ({
+        id: workspace.name,
+        label: workspace.name,
+        description: workspaceOptionDescription(
+          workspace,
+          multipleOrganizations,
+        ),
+      })),
+      { id: NO_WORKSPACE_ID, label: 'No workspace' },
+    ],
+    [workspaces, multipleOrganizations],
+  );
+  const options = useMemo(
+    () =>
+      searchText.trim()
+        ? allOptions.filter(option =>
+            matchesQuery(
+              searchText,
+              `${option.label} ${'description' in option ? option.description : ''}`,
+            ),
+          )
+        : allOptions,
+    [allOptions, searchText],
+  );
 
   if (workspaces.length === 0) {
     return null;
   }
 
-  const isSearchable = workspaces.length + 1 > SEARCH_MIN;
+  const isSearchable = searchableIf(allOptions);
 
   return (
-    <>
-      {showLabel && (
-        <Text as="span" variant="body-small" className={classes.label}>
-          Workspace
-        </Text>
-      )}
-      <Select
-        aria-label="Workspace"
-        className={classes.select}
-        options={options}
-        selectedKey={value?.name ?? NO_WORKSPACE_ID}
-        onSelectionChange={key => {
+    <Select
+      aria-label="Workspace"
+      className={classes.select}
+      // The folder says what the select is, in place of a "Workspace"
+      // label: lighter in the row, and the select keeps its name.
+      icon={<FolderOutlinedIcon />}
+      options={options}
+      selectedKey={value?.name ?? NO_WORKSPACE_ID}
+      onSelectionChange={key => {
+        setSearchText('');
+        const id = key ? String(key) : NO_WORKSPACE_ID;
+        const workspace = workspaces.find(w => w.name === id);
+        touched.current = true;
+        rememberWorkspace(agent.id, workspace?.name);
+        onChange(workspace);
+      }}
+      onOpenChange={isOpen => {
+        if (!isOpen) {
           setSearchText('');
-          const id = key ? String(key) : NO_WORKSPACE_ID;
-          const workspace = workspaces.find(w => w.name === id);
-          touched.current = true;
-          rememberWorkspace(agent.id, workspace?.name);
-          onChange(workspace);
-        }}
-        onOpenChange={isOpen => {
-          if (!isOpen) {
-            setSearchText('');
-          }
-        }}
-        {...(isSearchable && {
-          search: {
-            inputValue: searchText,
-            onInputChange: setSearchText,
-            placeholder: `Search ${workspaces.length} workspaces`,
-            filter: () => true,
-          },
-        })}
-        isDisabled={isDisabled}
-      />
-      {preset && value?.name === preset.name && !touched.current && (
-        <Text as="span" variant="body-small" color="secondary">
-          {preset.source === 'last'
-            ? `Last used with ${agent.name}`
-            : `${agent.name}’s default`}
-        </Text>
-      )}
-    </>
+        }
+      }}
+      {...(isSearchable && {
+        search: {
+          inputValue: searchText,
+          onInputChange: setSearchText,
+          placeholder: `Search ${workspaces.length} workspaces`,
+          filter: () => true,
+        },
+      })}
+      isDisabled={isDisabled}
+    />
   );
 }

@@ -1,4 +1,6 @@
 [
+  "agentPlatform.fixtures",
+  "agentPlatform.organizations.enabled",
   "app.baseUrl",
   "app.branding.logo.height",
   "app.branding.theme.dark.backgroundColor",
@@ -115,6 +117,8 @@
   "gs.auth.extraScopes",
   "gs.auth.scopes",
   "gs.authProvider",
+  "gs.features.platformSection.enabled",
+  "gs.fixtures",
   "gs.github.brokerAudience",
   "gs.signInFallbackProvider.connectorId",
   "gs.signInFallbackProvider.message",
@@ -160,6 +164,7 @@
   "integrations.harness[].host",
   "kubernetes.frontend.podDelete.enabled",
   "kubernetes.podExecTerminal.enabled",
+  "muster.fixtures",
   "organization.name",
   "pagerDuty",
   "pagerDuty.apiBaseUrl",

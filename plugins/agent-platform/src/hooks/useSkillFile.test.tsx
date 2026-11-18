@@ -1,9 +1,18 @@
 import { PropsWithChildren } from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
-import { discoveryApiRef, fetchApiRef } from '@backstage/core-plugin-api';
+import { fetchApiRef } from '@backstage/core-plugin-api';
 import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  SkillDiscoveryClient,
+  skillDiscoveryApiRef,
+} from '../apis/SkillDiscoveryApi';
 import { useSkillFile } from './useSkillFile';
+import { useSkillSource, type SkillSource } from './useSkillSource';
+
+jest.mock('./useSkillSource', () => ({
+  useSkillSource: jest.fn(() => ({ kind: 'portal' })),
+}));
 
 const fetchMock = jest.fn();
 const fetchApi = { fetch: fetchMock } as unknown as typeof fetchApiRef.T;
@@ -23,8 +32,15 @@ function renderUseSkillFile(
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
     <TestApiProvider
       apis={[
-        [discoveryApiRef, mockApis.discovery()],
-        [fetchApiRef, fetchApi],
+        [
+          skillDiscoveryApiRef,
+          new SkillDiscoveryClient({
+            discoveryApi: mockApis.discovery(),
+            fetchApi: fetchApi,
+            // Only a proposal asks for a GitHub token.
+            githubAuthApi: {} as never,
+          }),
+        ],
       ]}
     >
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -83,6 +99,34 @@ describe('useSkillFile', () => {
     const { result } = renderUseSkillFile(skill, undefined);
 
     expect(result.current.isLoading).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('useSkillFile through skill-manager', () => {
+  it('reads get_skill_file on the installation, not gs-backend', async () => {
+    const answer = {
+      path: 'references/a.md',
+      size: 2,
+      sha: 'x',
+      binary: false,
+      truncated: false,
+      content: 'hi',
+    };
+    const getSkillFile = jest.fn().mockResolvedValue(answer);
+    jest.mocked(useSkillSource).mockReturnValue({
+      kind: 'skill-manager',
+      installation: 'graveler',
+      client: { getSkillFile },
+    } as unknown as SkillSource);
+
+    const { result } = renderUseSkillFile(skill, 'references/a.md');
+
+    await waitFor(() => expect(result.current.file).toEqual(answer));
+    expect(getSkillFile).toHaveBeenCalledWith(
+      { repoUrl: skill.repoUrl, path: skill.path, commit: skill.commit },
+      'references/a.md',
+    );
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -1,11 +1,13 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Button, Flex, Link, Text } from '@backstage/ui';
+import { Alert, Button, ButtonIcon, Flex, Link, Text } from '@backstage/ui';
+import CloseIcon from '@material-ui/icons/Close';
 import RefreshIcon from '@material-ui/icons/Refresh';
 import {
   EmptyStateCard,
   LoadingIndicator,
+  useSessionDraft,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -51,6 +53,7 @@ export type StartNewSessionComposerProps = Pick<
   | 'groupByNamespace'
   | 'recentAgentIds'
   | 'favoriteAgentIds'
+  | 'leadingAgentId'
   | 'searchable'
   | 'pickerPlaceholder'
   | 'pickerPlacement'
@@ -65,6 +68,7 @@ export type StartNewSessionComposerProps = Pick<
   // A caller's own preselection (the home screen's `?agent=` link) wins over
   // the remembered last-used agent.
   | 'defaultAgent'
+  | 'defaultOverridesTyping'
 >;
 
 export type StartNewSessionProps = {
@@ -74,7 +78,50 @@ export type StartNewSessionProps = {
   composerProps?: StartNewSessionComposerProps;
   /** Passed to `useCreateSession` as the derived title's bound. */
   titleMaxLength?: number;
+  /**
+   * Keeps the unsent prompt and the chosen agent as a draft under this name
+   * (`useSessionDraft`: the tab's `sessionStorage`, per person), so a reload,
+   * a sign-in that leaves the page or a link followed in the same tab does not
+   * lose them; the draft goes once the session starts. Without it nothing is
+   * stored. A stored draft replaces `composerProps.initialPrompt`, unless the
+   * person has typed or picked an agent before it was read.
+   */
+  draftName?: string;
+  /**
+   * A prompt a link brought (`#prompt=`): the field starts with it, marked as
+   * coming from a link, and it wins over a stored draft, prompt and agent
+   * alike — the link is the newer intent; a note offers the draft back.
+   * The field takes the focus, the caret after the prompt, once
+   * `linkedAgentPending` is over, unless the person has pressed a key or a
+   * pointer on the page by then. Without it the draft's precedence above
+   * holds.
+   */
+  linkedPrompt?: string;
+  /**
+   * The agent a link names may still arrive (more installations are being
+   * read): the linked prompt waits for it before it takes the focus.
+   */
+  linkedAgentPending?: boolean;
+  /**
+   * Preselected when neither `composerProps.defaultAgent` nor a restored
+   * draft names an agent: the installation's default agent. Wins over the
+   * last one used.
+   */
+  suggestedAgent?: AgentRow;
 };
+
+/** The draft of the home screen's composer. */
+export const NEW_SESSION_DRAFT_NAME = 'agent-platform-new-session';
+
+/**
+ * What a new session's draft keeps: the prompt as typed and the agent it is
+ * for, by id. Not the images (they would not fit the tab's storage), nor the
+ * workspace and the toolchains, which follow the agent's presets again.
+ */
+type NewSessionDraft = { prompt: string; agentId?: string };
+
+/** Bumped when {@link NewSessionDraft}'s shape changes. */
+const DRAFT_VERSION = 1;
 
 /**
  * Start a new session: pick an agent, write the prompt, and land on the
@@ -97,9 +144,29 @@ export function StartNewSession({
   layout = 'inline',
   composerProps,
   titleMaxLength,
+  draftName,
+  linkedPrompt,
+  linkedAgentPending = false,
+  suggestedAgent,
 }: StartNewSessionProps) {
   const navigate = useNavigate();
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
+  // Whether the person pressed a key or a pointer on the page since it
+  // opened: a linked prompt that has to wait for its agent then leaves the
+  // focus to them.
+  const [interacted, setInteracted] = useState(false);
+  useEffect(() => {
+    if (linkedPrompt === undefined || interacted) {
+      return undefined;
+    }
+    const onInput = () => setInteracted(true);
+    document.addEventListener('pointerdown', onInput, true);
+    document.addEventListener('keydown', onInput, true);
+    return () => {
+      document.removeEventListener('pointerdown', onInput, true);
+      document.removeEventListener('keydown', onInput, true);
+    };
+  }, [linkedPrompt, interacted]);
   const agentsRoute = useRouteRef(agentsRouteRef);
   const {
     rows: agents,
@@ -116,6 +183,80 @@ export function StartNewSession({
   } = useAgents();
   const { lastUsedAgent, rememberAgent } = useLastUsedAgent(agents);
   const creation = useCreateSession(entryPoint, { titleMaxLength });
+
+  // The prompt is held here and the composer shows it (`prompt`), so the
+  // draft is this state and restoring it is setting it. The agent stored is
+  // the one the person picked, else the restored one, else the one the
+  // composer preselected: a preselection (the last agent used, a sole agent)
+  // never replaces a restored agent, which may only be read later.
+  const [draftPrompt, setDraftPrompt] = useState(
+    linkedPrompt ?? composerProps?.initialPrompt ?? '',
+  );
+  const linkedPromptRef = useRef(linkedPrompt);
+  // Whether the field still starts from a link's prompt: marked so, until
+  // the person brings their own draft back.
+  const [fromLink, setFromLink] = useState(linkedPrompt !== undefined);
+  const [restoredAgentId, setRestoredAgentId] = useState<string>();
+  const [pickedAgentId, setPickedAgentId] = useState<string>();
+  const [preselectedAgentId, setPreselectedAgentId] = useState<string>();
+  // What the person did since the page opened: a draft read after that (the
+  // person's identity is asked first, so a moment later) gives back only
+  // what they have not set themselves, and their input replaces the rest.
+  const typedRef = useRef(false);
+  const pickedRef = useRef(false);
+  const onPromptChange = useCallback((next: string) => {
+    typedRef.current = true;
+    setDraftPrompt(next);
+  }, []);
+  // A stored draft wins over `initialPrompt`: it is the person's own. A
+  // linked prompt wins over the draft: following the link is newer.
+  const isLinked = useRef(linkedPrompt !== undefined);
+  // The stored draft a linked prompt replaced, offered back until dismissed.
+  const [replacedDraft, setReplacedDraft] = useState<NewSessionDraft>();
+  const onRestore = useCallback((stored: NewSessionDraft) => {
+    if (isLinked.current) {
+      if (stored.prompt.trim() && stored.prompt !== linkedPromptRef.current) {
+        setReplacedDraft(stored);
+      }
+      return;
+    }
+    if (!typedRef.current) {
+      setDraftPrompt(stored.prompt);
+    }
+    if (!pickedRef.current) {
+      setRestoredAgentId(stored.agentId);
+    }
+  }, []);
+  const draft = useSessionDraft<NewSessionDraft>({
+    name: draftName,
+    value: {
+      prompt: draftPrompt,
+      agentId: pickedAgentId ?? restoredAgentId ?? preselectedAgentId,
+    },
+    isDirty: draftPrompt.trim() !== '',
+    version: DRAFT_VERSION,
+    onRestore,
+  });
+  const { clear: clearDraft } = draft;
+  const restoredAgent = restoredAgentId
+    ? agents.find(agent => agent.id === restoredAgentId)
+    : undefined;
+
+  // The caller's own handler, read through a ref so the composer's stays put.
+  const onSelectedAgentChangeRef = useRef(composerProps?.onSelectedAgentChange);
+  onSelectedAgentChangeRef.current = composerProps?.onSelectedAgentChange;
+  const onSelectedAgentChange = useCallback(
+    (agent: AgentRow | undefined, selection: { byPerson: boolean }) => {
+      if (agent && selection.byPerson) {
+        pickedRef.current = true;
+        setPickedAgentId(agent.id);
+      } else if (agent) {
+        setPreselectedAgentId(agent.id);
+      }
+      onSelectedAgentChangeRef.current?.(agent, selection);
+    },
+    [],
+  );
 
   const { createSession } = creation;
   const onStart = useCallback(
@@ -140,6 +281,9 @@ export function StartNewSession({
         return;
       }
 
+      // Sent: the prompt travels with the navigation below, and the box it was
+      // typed in is left.
+      clearDraft();
       rememberAgent(agent);
 
       const href = sessionDetailRoute?.({
@@ -171,7 +315,7 @@ export function StartNewSession({
         },
       });
     },
-    [createSession, navigate, rememberAgent, sessionDetailRoute],
+    [clearDraft, createSession, navigate, rememberAgent, sessionDetailRoute],
   );
 
   // Every environment in scope answered without kagent: no agent can be
@@ -319,9 +463,25 @@ export function StartNewSession({
   const composer = (
     <NewSessionComposer
       {...composerProps}
+      prompt={draftPrompt}
+      onPromptChange={onPromptChange}
+      onSelectedAgentChange={onSelectedAgentChange}
+      // The person goes on writing a prompt a link brought.
+      focusPromptAtEnd={
+        linkedPrompt !== undefined && !linkedAgentPending && !interacted
+      }
       agents={agents}
       isLoadingAgents={isLoadingMoreAgents}
-      defaultAgent={composerProps?.defaultAgent ?? lastUsedAgent}
+      // The caller's agent (a `?agent=` link, the person's latest explicit
+      // choice) first, then the restored draft's, then the suggested one, then
+      // the last one used. The composer adopts a default that changes until
+      // the person picks one.
+      defaultAgent={
+        composerProps?.defaultAgent ??
+        restoredAgent ??
+        suggestedAgent ??
+        lastUsedAgent
+      }
       // Collapsed only when it sits above a list of sessions. Elsewhere it opens
       // showing the agent picker and the Start button: there is nothing for it
       // to make room for.
@@ -335,8 +495,52 @@ export function StartNewSession({
     />
   );
 
+  const restoreReplacedDraft = () => {
+    if (replacedDraft) {
+      setDraftPrompt(replacedDraft.prompt);
+      setRestoredAgentId(replacedDraft.agentId);
+      setFromLink(false);
+      setReplacedDraft(undefined);
+    }
+  };
+  const withLinkNotes = (
+    <Flex direction="column" gap="2">
+      {replacedDraft && (
+        <Alert
+          status="info"
+          title="A link replaced your earlier draft."
+          customActions={
+            <Flex gap="1" align="center">
+              <Button
+                size="small"
+                variant="secondary"
+                onPress={restoreReplacedDraft}
+              >
+                Restore
+              </Button>
+              <ButtonIcon
+                variant="tertiary"
+                size="small"
+                icon={<CloseIcon fontSize="small" />}
+                aria-label="Close draft note"
+                onPress={() => setReplacedDraft(undefined)}
+              />
+            </Flex>
+          }
+        />
+      )}
+      {fromLink && (
+        <Text variant="body-small" color="secondary">
+          From a link — check before starting.
+        </Text>
+      )}
+      {composer}
+    </Flex>
+  );
+  const shown = replacedDraft || fromLink ? withLinkNotes : composer;
+
   if (layout === 'standalone') {
-    return composer;
+    return shown;
   }
 
   if (layout === 'firstRun') {
@@ -345,7 +549,7 @@ export function StartNewSession({
         title="Start your first session"
         description="Pick an agent and say what you need."
       >
-        {composer}
+        {shown}
       </EmptyStateCard>
     );
   }
@@ -355,7 +559,7 @@ export function StartNewSession({
       <Text as="h2" variant="title-x-small">
         Start a new session
       </Text>
-      {composer}
+      {shown}
     </Flex>
   );
 }

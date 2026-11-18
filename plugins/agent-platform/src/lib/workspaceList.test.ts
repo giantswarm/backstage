@@ -17,7 +17,6 @@ const base: Workspace = {
   name: 'docs',
   organization: 'alpha',
   sources: [{ provider: 'github', owner: 'example-org' }],
-  sync: { schedule: 'nightly' },
   resourceVersion: '1',
   createdAt: '2026-10-01T00:00:00Z',
   repositories: 0,

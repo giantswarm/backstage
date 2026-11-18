@@ -14,6 +14,7 @@ plugin for workflow visualization.
 | `GET /api/muster/executions/:id`                               | `core_workflow_execution_get` (with `include_steps: true`) |
 | `GET /api/muster/auth/status`                                  | `resources/read` of `auth://status`                        |
 | `POST /api/muster/auth/login` (body `{ server }`)              | `core_auth_login`                                          |
+| `GET /api/muster/servers/names`                                | `core_mcpserver_list` (`showAll: true`)                    |
 
 `POST /auth/login` starts the OAuth flow for one _aggregated_ MCP server (as
 opposed to authenticating to muster itself). Muster answers in free text, so the
@@ -33,6 +34,15 @@ CLI reads it the same way. An unavailable resource answers
 frontend polls this route every few seconds while a sign-in is outstanding; the
 flag is what lets a waiting row distinguish "nothing needs a sign-in" from "the
 status can't be read".
+
+`GET /servers/names` answers `{ servers: [{ name, family?, displayName? }] }`:
+what the sign-in prompts (the notification inbox, the sign-in dialog, the
+connector alerts) call each connector, read as the person. muster lists the
+servers the person may see, the ones `auth://status` reports, so the names are
+there for people without Kubernetes access to the `MCPServer` objects too. Its
+readers run in the background, so a failed list answers
+`{ servers: [], unavailable: true }` with HTTP 200, and the prompts keep the
+servers' own names.
 
 **Both auth routes require the installation to declare an `authProvider`** and
 are inert otherwise. Muster scopes downstream auth state to one MCP session, and

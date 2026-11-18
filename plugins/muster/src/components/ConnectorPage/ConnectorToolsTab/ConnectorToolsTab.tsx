@@ -9,7 +9,7 @@ import {
   CatalogNoMatch,
   INITIAL_ROWS,
   LoadingIndicator,
-  SEARCH_MIN,
+  isSearchableList,
   ShowMore,
   StackedRowList,
   useCatalogFilters,
@@ -27,6 +27,7 @@ import {
   type ToolsListView,
   useServerPageLinks,
 } from '../../shared';
+import type { NoToolsExplanation } from '../../McpServersPage/serverDetail';
 import { ServerTools } from '../../ServerPage/useServerPageData';
 
 const useStyles = makeStyles({
@@ -129,8 +130,11 @@ export interface ConnectorToolsTabProps {
   server: string;
   installation: string;
   tools: ServerTools;
-  /** Why the connector lists no tools, when it lists none. */
-  emptyExplanation: string;
+  /**
+   * Why the connector lists no tools, when it lists none: a `warning` is an
+   * alert, otherwise plain text.
+   */
+  emptyExplanation: NoToolsExplanation;
   /** Shown instead of the list while the muster session is missing. */
   sessionGate?: ReactNode;
   /**
@@ -151,7 +155,7 @@ export interface ConnectorToolsTabProps {
  * page, which holds its schema, the form that runs it and the result. A search
  * and a "What it does" dropdown (only when the tools both read and change
  * things) with a count per choice sit above a long list. A short list
- * (`SEARCH_MIN` or fewer) is read, not searched, so it shows neither, unless
+ * (under `SEARCH_MIN`) is read, not searched, so it shows neither, unless
  * the tab opened with a search; a long one renders a page of tools at a time.
  * The search and filter are seeded once (`useToolSearchState`): from the
  * page's `?q=`, as the Customize list's search links a connector it matched by
@@ -242,12 +246,6 @@ export function ConnectorToolsTab({
       },
     );
   };
-  // A list of one kind has nothing to tell apart; a pick still standing stays
-  // drawn so it can be undone.
-  const effectDimensions = filters.dimensions.filter(
-    dimension => dimension.options.length > 1 || dimension.selected.length > 0,
-  );
-
   if (sessionGate) {
     return <>{sessionGate}</>;
   }
@@ -264,22 +262,28 @@ export function ConnectorToolsTab({
     );
   }
   if (all.length === 0) {
-    return signInGate ? (
-      <>{signInGate}</>
+    if (signInGate) {
+      return <>{signInGate}</>;
+    }
+    return emptyExplanation.tone === 'warning' ? (
+      <Alert status="warning" description={emptyExplanation.text} />
     ) : (
       <Text as="p" variant="body-medium" color="secondary">
-        {emptyExplanation}
+        {emptyExplanation.text}
       </Text>
     );
   }
 
-  // Three tools are read at a glance; a search and a filter over them is
-  // volume framing, unless a search is already in force.
-  const searchable =
-    all.length > SEARCH_MIN || openedSearched || query.trim() !== '';
+  // A tool or two is read at a glance; kept while a search or filter is in
+  // force (the URL's or a saved view's too), so it can be undone.
+  const searchable = isSearchableList(
+    all.length,
+    openedSearched || query.trim() !== '' || filters.isFiltered,
+  );
 
   return (
     <Flex direction="column" gap="0">
+      {signInGate}
       {searchable && (
         <div className={classes.toolbar}>
           <Box className={classes.search}>
@@ -292,7 +296,7 @@ export function ConnectorToolsTab({
             />
           </Box>
           <CatalogFilterBar
-            dimensions={effectDimensions}
+            dimensions={filters.dimensions}
             onSelect={filters.select}
             onClear={filters.clear}
           />

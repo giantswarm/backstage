@@ -3,7 +3,9 @@ import { FleetSessionStatesView } from '../../hooks/useFleetSessionStates';
 import { SessionRow } from '../SessionsDataProvider/helpers';
 import {
   formatSessionTime,
+  sessionColumnMinWidth,
   sessionDayGroup,
+  shellColumnsMinWidth,
   withSessionStates,
 } from './helpers';
 
@@ -176,17 +178,59 @@ describe('sessionDayGroup', () => {
 describe('formatSessionTime', () => {
   const started = new Date(2026, 9, 2, 9, 5).getTime();
 
-  it('shows the time of day under today and yesterday', () => {
-    const time = new Date(started).toLocaleTimeString(undefined, {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-    expect(formatSessionTime(started, 'today', 2026)).toBe(time);
-    expect(formatSessionTime(started, 'yesterday', 2026)).toBe(time);
+  it('shows the local time of day on a 24-hour clock under today and yesterday', () => {
+    expect(formatSessionTime(started, 'today', 2026)).toBe('09:05');
+    expect(formatSessionTime(started, 'yesterday', 2026)).toBe('09:05');
   });
 
   it('shows the date under earlier, with the year only when it is another', () => {
-    expect(formatSessionTime(started, 'earlier', 2026)).not.toContain('2026');
-    expect(formatSessionTime(started, 'earlier', 2027)).toContain('2026');
+    expect(formatSessionTime(started, 'earlier', 2026)).toBe('2 Oct');
+    expect(formatSessionTime(started, 'pinned', 2027)).toBe('2 Oct 2026');
+  });
+});
+
+describe('shellColumnsMinWidth', () => {
+  it('adds the pixel columns to the session column, scaled up by the shares', () => {
+    // (160 + 144 + 112) / (1 - 0.2)
+    expect(
+      shellColumnsMinWidth([
+        { width: '144px' },
+        { width: '112px' },
+        { width: '20%', minWidth: 100 },
+      ]),
+    ).toBe(520);
+  });
+
+  it('holds a shared column to its own minimum', () => {
+    // 150 / 0.1 beats (160 + 40) / 0.9
+    expect(
+      shellColumnsMinWidth([
+        { width: '40px' },
+        { width: '10%', minWidth: 150 },
+      ]),
+    ).toBe(1500);
+  });
+
+  it('takes the session column’s minimum it is given', () => {
+    expect(shellColumnsMinWidth([{ width: '100px' }], 250)).toBe(350);
+  });
+
+  it('fits no width when the shares leave the session nothing', () => {
+    expect(shellColumnsMinWidth([{ width: '60%' }, { width: '40%' }])).toBe(
+      Infinity,
+    );
+  });
+});
+
+describe('sessionColumnMinWidth', () => {
+  it('is a name’s minimum, or the badges beside a few words of the title', () => {
+    expect(sessionColumnMinWidth([{}])).toBe(160);
+    expect(sessionColumnMinWidth([{ runtimeLost: true }])).toBe(88 + 80);
+    expect(
+      sessionColumnMinWidth([{ runtimeLost: true }, { earlierRevision: true }]),
+    ).toBe(178);
+    expect(
+      sessionColumnMinWidth([{ runtimeLost: true, earlierRevision: true }]),
+    ).toBe(88 + 80 + 90);
   });
 });

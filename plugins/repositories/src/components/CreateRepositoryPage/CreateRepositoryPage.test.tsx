@@ -544,16 +544,18 @@ describe('CreateRepositoryPage', () => {
       'Repository giantswarm/shiny-service — being set up, see below',
     );
     expect(items.slice(1).map(item => item.textContent)).toEqual([
-      "Scaffold commit a1b2c3d on its default branch — v0.1.0 follows from the scaffold's auto-release",
+      "Scaffold commit a1b2c3d (opens in a new tab) on its default branch — v0.1.0 follows from the scaffold's auto-release",
       "Pull request, declaring shiny-service in the team's file",
     ]);
     expect(
       within(items[0]).queryByRole('link', {
-        name: 'giantswarm/shiny-service',
+        name: 'giantswarm/shiny-service (opens in a new tab)',
       }),
     ).toBeNull();
     expect(
-      within(items[1]).getByRole('link', { name: 'a1b2c3d' }),
+      within(items[1]).getByRole('link', {
+        name: 'a1b2c3d (opens in a new tab)',
+      }),
     ).toHaveAttribute(
       'href',
       'https://github.com/giantswarm/shiny-service/commit/a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
@@ -580,7 +582,7 @@ describe('CreateRepositoryPage', () => {
       timeout: 20,
     });
     expect(within(phases).getByTestId('phase-declared')).toHaveTextContent(
-      /^Declared after 13 s \(\+9 s\) pull request ↗$/,
+      /^Declared after 13 s \(\+9 s\) pull request\s\(opens in a new tab\)$/,
     );
     expect(within(phases).getByTestId('phase-merged')).toHaveTextContent(
       'Merged the declaration pull request has not merged yet',
@@ -600,13 +602,15 @@ describe('CreateRepositoryPage', () => {
     const readyAlert = await within(live).findByTestId('setup-ready');
     expect(readyAlert).toHaveTextContent('shiny-service is ready');
     expect(readyAlert).toHaveTextContent(
-      'Every phase is done: the first release v0.1.0 built green.',
+      'Every phase is done: the first release v0.1.0 (opens in a new tab) built green.',
     );
     expect(within(phases).getByTestId('phase-released')).toHaveTextContent(
-      /^Released after 4 min 10 s \(\+1 min 41 s\) v0\.1\.0 ↗$/,
+      /^Released after 4 min 10 s \(\+1 min 41 s\) v0\.1\.0\s\(opens in a new tab\)$/,
     );
     expect(
-      within(items[0]).getByRole('link', { name: 'giantswarm/shiny-service' }),
+      within(items[0]).getByRole('link', {
+        name: 'giantswarm/shiny-service (opens in a new tab)',
+      }),
     ).toHaveAttribute('href', 'https://github.com/giantswarm/shiny-service');
     expect(items[0]).toHaveTextContent('ready');
     expect(items[0]).not.toHaveTextContent('being set up');
@@ -651,7 +655,9 @@ describe('CreateRepositoryPage', () => {
     );
     const created = screen.getByTestId('repository-created');
     expect(
-      within(created).queryByRole('link', { name: 'giantswarm/shiny-service' }),
+      within(created).queryByRole('link', {
+        name: 'giantswarm/shiny-service (opens in a new tab)',
+      }),
     ).toBeNull();
     expect(created).toHaveTextContent('being set up');
     expect(within(live).queryByTestId('setup-ready')).toBeNull();

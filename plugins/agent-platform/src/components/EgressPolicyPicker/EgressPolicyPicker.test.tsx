@@ -11,6 +11,19 @@ import {
 } from '../NewAgentFormProvider';
 import { EgressPolicyPicker } from './EgressPolicyPicker';
 
+jest.mock('../../hooks/useToolsetSelectorLimit', () => ({
+  useToolsetSelectorLimit: () => 128,
+}));
+
+// The organizations agent-manager names for the person
+// (`list_organizations`).
+jest.mock('../OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () =>
+    jest.requireActual('../../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+}));
+
 const GITHUB: AgentManagerEgressPolicy = {
   name: 'github',
   namespace: 'org-otter',
@@ -58,6 +71,7 @@ const STATE: NewAgentFormState = {
   name: 'Builder',
   slug: 'builder',
   description: '',
+  tags: [],
   installation: 'gazelle',
   tenant: 'org-otter',
   modelConfigName: 'sonnet',

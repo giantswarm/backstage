@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { Alert, Button, Flex, Select, Text, TextField } from '@backstage/ui';
 import {
-  Alert,
-  Button,
-  ButtonLink,
-  Flex,
-  Select,
-  Text,
-  TextField,
-} from '@backstage/ui';
-import {
+  addTags,
+  commitTagDraft,
+  draftProblem,
   EmptyStateCard,
+  ExternalButtonLink,
+  LoadingIndicator,
+  sameTags,
   searchableIf,
+  tagCounts,
+  TagsField,
   TextAreaField,
   useFieldValidation,
   useProvidePageHeaderActions,
@@ -21,7 +21,6 @@ import {
   WizardStepHeading,
   CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 
 import {
   SKILL_NAME_RE,
@@ -29,11 +28,10 @@ import {
   type SkillPullRequest,
 } from '../../hooks/useProposeSkill';
 import type { SkillContent } from '../../hooks/useSkillContent';
-import {
-  canProposeSkillTo,
-  repoSlug,
-  type DiscoveredSkill,
-} from '../../lib/skills';
+import { useSkillCatalog } from '../../hooks/useSkillCatalog';
+import { uniqueSkills } from '../../lib/customize';
+import { repoSlug, skillTags, type DiscoveredSkill } from '../../lib/skills';
+import { repositoryKey } from '../../lib/skillRepositories';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useCloseHref } from '../../hooks/useCloseHref';
 import { skillsRouteRef } from '../../routes';
@@ -71,15 +69,13 @@ function SkillPullRequestOutcome({
             before {isUpdate ? 'the change' : 'the skill'} reaches the catalog.
           </Text>
           <div>
-            <ButtonLink
+            <ExternalButtonLink
               href={result.pullRequestUrl}
-              target="_blank"
-              rel="noopener noreferrer"
               variant="secondary"
               size="small"
             >
-              Review pull request ↗
-            </ButtonLink>
+              Review pull request
+            </ExternalButtonLink>
           </div>
         </Flex>
       }
@@ -114,23 +110,19 @@ function SkillPullRequestOutcome({
  */
 export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
   const navigate = useNavigate();
-  // The target repositories: the github.com entries of the same
-  // signed-in-config list the catalog is discovered from — the pull-request
-  // endpoint refuses any other repository, so offering one would only end in
-  // an error. An edit targets the skill's own repository.
-  const { config } = useSignedInConfig();
+  // The target repositories: the catalog's own, which the pull-request
+  // endpoint accepts; offering any other would only end in an error. An edit
+  // targets the skill's own repository.
+  const catalog = useSkillCatalog();
   const editRepoUrl = edit?.skill.repoUrl;
-  const configured = useMemo(
-    () =>
-      config?.getOptionalStringArray('agentPlatform.skills.repositories') ?? [],
-    [config],
-  );
   const repositories = useMemo(
-    () => (editRepoUrl ? [editRepoUrl] : configured.filter(canProposeSkillTo)),
-    [configured, editRepoUrl],
+    () => (editRepoUrl ? [editRepoUrl] : catalog.proposalTargets),
+    [catalog.proposalTargets, editRepoUrl],
   );
-  /** Configured repositories left out of the targets for not being on github.com. */
-  const skippedCount = edit ? 0 : configured.length - repositories.length;
+  /** Catalog repositories left out of the targets for not being on github.com. */
+  const skippedCount = edit ? 0 : catalog.unproposableRepositories.length;
+  // The targets are known once the catalog has read the sources.
+  const targetsLoading = !edit && catalog.isLoading;
   const { skills: customizeSkills } = useCustomizePaths();
   const skillsRoute = useRouteRef(skillsRouteRef);
   const closeHref = useCloseHref(
@@ -146,6 +138,29 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
   );
   const [instructions, setInstructions] = useState(
     edit?.content.instructions ?? '',
+  );
+  /** The edited skill's tags, as its SKILL.md reads now. */
+  const baselineTags = useMemo(
+    () => edit?.content.tags ?? (edit ? skillTags(edit.skill) : []),
+    [edit],
+  );
+  const [tags, setTags] = useState<string[]>(baselineTags);
+  /** What the Tags field holds but has not added yet. */
+  const [tagDraft, setTagDraft] = useState('');
+  // A draft that can be tags counts as added: submitting adds it, as the
+  // agent form's Continue does.
+  const submittedTags = useMemo(
+    () => commitTagDraft(tags, tagDraft, baselineTags).tags,
+    [tags, tagDraft, baselineTags],
+  );
+  // The tags the catalog's skills already use, offered while typing a tag.
+  const catalogSkills = catalog.skills;
+  const knownTags = useMemo(
+    () =>
+      tagCounts(
+        uniqueSkills(catalogSkills).map(skill => ({ tags: skillTags(skill) })),
+      ),
+    [catalogSkills],
   );
   const { proposeSkill, isProposing, error, result } = useProposeSkill();
 
@@ -171,6 +186,7 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
         : 'Use lowercase letters, digits and dashes, e.g. ticket-triage';
     })(),
     description: description.trim() ? undefined : 'Enter a description.',
+    tags: draftProblem(tagDraft, tags, baselineTags),
     instructions: instructions.trim() ? undefined : 'Enter the instructions.',
   };
   const isValid = Object.values(fieldErrors).every(problem => !problem);
@@ -179,7 +195,8 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
   const isChanged =
     !edit ||
     description.trim() !== edit.content.description.trim() ||
-    instructions.trim() !== edit.content.instructions.trim();
+    instructions.trim() !== edit.content.instructions.trim() ||
+    !sameTags(submittedTags, baselineTags);
   const validation = useFieldValidation();
   const { reveal, errorFor, fieldProps, textFieldProps } = validation;
   const repositoryError = useSelectFieldError(
@@ -194,12 +211,22 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
     if (!isChanged) {
       return;
     }
+    setTags(submittedTags);
+    setTagDraft('');
     try {
       await proposeSkill({
         repoUrl,
         skillName,
         description: description.trim(),
         instructions: instructions.trim(),
+        // Only a change: an edit that leaves them keeps the file's as written.
+        ...((
+          edit
+            ? !sameTags(submittedTags, baselineTags)
+            : submittedTags.length > 0
+        )
+          ? { tags: submittedTags }
+          : {}),
         ...(edit
           ? {
               kind: 'update' as const,
@@ -220,6 +247,8 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
     skillName,
     description,
     instructions,
+    submittedTags,
+    baselineTags,
     edit,
   ]);
 
@@ -229,6 +258,13 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
 
   // What the skill creator hand-off is about, read when it is pressed: the
   // skill being changed, or the new skill as typed so far.
+  // Where the chosen target scans and the ref it reads, as gs-backend
+  // describes its sources (skill-manager's targets scan the whole repository).
+  const selectedTarget = catalog.sources?.find(
+    target =>
+      repositoryKey(target.url) ===
+      repositoryKey(repoUrl ?? repositories[0] ?? ''),
+  );
   const getCreationTarget = useCallback(
     (): SkillCreationTarget =>
       edit
@@ -244,15 +280,32 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
               instructions.trim() !== edit.content.instructions.trim()
                 ? instructions
                 : undefined,
+            tags: sameTags(submittedTags, baselineTags)
+              ? undefined
+              : submittedTags,
           }
         : {
             kind: 'create',
             repoUrl: repoUrl ?? repositories[0] ?? '',
+            // Where discovery scans, and the branch it reads.
+            ...(selectedTarget?.path ? { path: selectedTarget.path } : {}),
+            ...(selectedTarget?.ref ? { branch: selectedTarget.ref } : {}),
             name: skillName,
             description,
             instructions,
+            ...(submittedTags.length > 0 ? { tags: submittedTags } : {}),
           },
-    [edit, repoUrl, repositories, skillName, description, instructions],
+    [
+      edit,
+      repoUrl,
+      repositories,
+      selectedTarget,
+      skillName,
+      description,
+      instructions,
+      submittedTags,
+      baselineTags,
+    ],
   );
 
   // Memoized so the frame's footer slot only updates when the handlers change,
@@ -303,18 +356,37 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
         </WizardStepHeading>
       )}
 
-      {repositories.length === 0 && skippedCount === 0 && (
-        <EmptyStateCard
-          title="No skill repositories"
-          description="A platform admin has to configure a skill repository first."
+      {targetsLoading && (
+        <LoadingIndicator label="Reading the skill repositories…" />
+      )}
+      {!targetsLoading &&
+        repositories.length === 0 &&
+        !catalog.hasRepositories && (
+          <EmptyStateCard
+            title="No skill repositories"
+            description="A platform admin has to configure a skill repository first."
+          />
+        )}
+      {!targetsLoading && repositories.length === 0 && catalog.error && (
+        <Alert
+          status="danger"
+          title="Could not read the skill repositories"
+          description={catalog.error.message}
         />
       )}
-      {repositories.length === 0 && skippedCount > 0 && (
-        <EmptyStateCard
-          title="No repository to propose to"
-          description="Skills are proposed as GitHub pull requests, but none of the configured repositories is on github.com. Add the skill in its repository instead."
-        />
-      )}
+      {!targetsLoading &&
+        repositories.length === 0 &&
+        !catalog.error &&
+        catalog.hasRepositories && (
+          <EmptyStateCard
+            title="No repository to propose to"
+            description={
+              skippedCount > 0
+                ? 'Skills are proposed as GitHub pull requests, but none of the configured repositories is on github.com. Add the skill in its repository instead.'
+                : 'None of the skill repositories takes new skills from the portal: they are read-only, scanned below a path, or not readable for you. Add the skill in its repository instead.'
+            }
+          />
+        )}
 
       {repositories.length > 0 && !result && (
         <SkillCreationAssist
@@ -385,6 +457,16 @@ export function AddSkillPage({ edit }: { edit?: SkillEdit } = {}) {
             value={description}
             onChange={setDescription}
             {...textFieldProps('description', fieldErrors.description)}
+          />
+          <TagsField
+            tags={tags}
+            draft={tagDraft}
+            error={errorFor('tags', fieldErrors.tags)}
+            counts={knownTags}
+            stored={baselineTags}
+            onDraftChange={setTagDraft}
+            onAdd={added => setTags(prev => addTags(prev, added, baselineTags))}
+            onRemove={tag => setTags(prev => prev.filter(each => each !== tag))}
           />
           <TextAreaField
             label="Instructions"

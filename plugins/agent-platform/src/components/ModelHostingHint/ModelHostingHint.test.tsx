@@ -9,6 +9,11 @@ let mockServing: {
   unreachableInstallations: string[];
 };
 
+let mockClusterManager: { available: string[]; isLoading: boolean };
+jest.mock('../../hooks/useClusterManager', () => ({
+  useClusterManagerAvailability: () => mockClusterManager,
+}));
+
 jest.mock('../ServingProvider', () => ({
   hasServingLayer: (serving: {
     installations: string[];
@@ -34,12 +39,15 @@ describe('ModelHostingHint', () => {
       installations: [],
       unreachableInstallations: [],
     };
+    mockClusterManager = { available: [], isLoading: false };
   });
 
   it('says what turns model hosting on, linking the configuration reference', async () => {
     await renderHint();
     expect(screen.getByText(hint)).toBeInTheDocument();
-    const link = screen.getByRole('link', { name: 'How to turn it on' });
+    const link = screen.getByRole('link', {
+      name: 'How to turn it on (opens in a new tab)',
+    });
     expect(link).toHaveAttribute('href', MODEL_HOSTING_DOCS_URL);
     expect(link).toHaveAttribute('target', '_blank');
   });
@@ -58,6 +66,18 @@ describe('ModelHostingHint', () => {
 
   it('says nothing when one could not be asked (the entry covers it)', async () => {
     mockServing.unreachableInstallations = ['golem'];
+    await renderHint();
+    expect(screen.queryByText(hint)).not.toBeInTheDocument();
+  });
+
+  it('says nothing while cluster-manager is still being asked', async () => {
+    mockClusterManager.isLoading = true;
+    await renderHint();
+    expect(screen.queryByText(hint)).not.toBeInTheDocument();
+  });
+
+  it('says nothing where cluster-manager runs (the entry leads to its GPU pools and cache)', async () => {
+    mockClusterManager.available = ['golem'];
     await renderHint();
     expect(screen.queryByText(hint)).not.toBeInTheDocument();
   });

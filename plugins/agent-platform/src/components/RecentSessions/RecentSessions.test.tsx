@@ -10,6 +10,7 @@ import { declaredStyle } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { kagentApiRef } from '../../apis';
 import { KagentApi } from '../../apis/types';
 import { sessionsRouteRef } from '../../routes';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 import { RecentSessions } from './RecentSessions';
 import {
   lastActiveAt,
@@ -19,7 +20,10 @@ import {
 } from './helpers';
 import type { SessionRow } from '../SessionsDataProvider';
 
+let mockSessionEnd: 'signed-in-elsewhere' | undefined;
+
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
+  useMainSessionEnd: () => mockSessionEnd,
   applyInstallationScope: (installations: string[]) => installations,
   useInstallations: () => ({
     installations: [{ name: 'gazelle' }],
@@ -672,6 +676,113 @@ describe('RecentSessions', () => {
     await renderRecent();
 
     expect(await screen.findByText('No sessions yet')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['the home list', false],
+    ['the shell rail', true],
+  ])(
+    'says the portal session ended in %s when the portal refuses the session token, not "No sessions yet"',
+    async (_where, shellRail) => {
+      listSessions.mockRejectedValue(new PortalSessionEndedError());
+
+      await renderRecent({ shellRail });
+
+      expect(
+        await screen.findByText('Your portal session ended'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Sign in again' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('No sessions yet')).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Try again' }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
+  it.each([
+    ['the home list', false],
+    ['the shell rail', true],
+  ])(
+    'asks for a sign-in in %s, not claiming no sessions, once the portal session ended',
+    async (_where, shellRail) => {
+      mockSessionEnd = 'signed-in-elsewhere';
+      listSessions.mockResolvedValue([]);
+      try {
+        await renderRecent({ shellRail });
+
+        expect(
+          await screen.findByText('Sign in again to see your sessions.'),
+        ).toBeInTheDocument();
+        expect(screen.queryByText('No sessions yet')).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole('button', { name: 'Try again' }),
+        ).not.toBeInTheDocument();
+      } finally {
+        mockSessionEnd = undefined;
+      }
+    },
+  );
+
+  describe('when the sessions could not be read', () => {
+    /** kagent down for a moment, as the API client reports it. */
+    const unavailable = () =>
+      Object.assign(
+        new Error(
+          'The Agent Platform is temporarily unavailable. Try again in a moment.',
+        ),
+        { status: 500, reason: 'unavailable', requestId: 'req-1' },
+      );
+
+    it.each([
+      ['the home list', false],
+      ['the shell rail', true],
+    ])(
+      'says so in %s instead of claiming no sessions, and reads again on request',
+      async (_where, shellRail) => {
+        listSessions.mockRejectedValueOnce(unavailable());
+
+        await renderRecent({ shellRail });
+
+        expect(
+          await screen.findByText('Could not read your sessions.'),
+        ).toBeInTheDocument();
+        // Announced, politely, as the page's card is.
+        expect(screen.getByRole('status')).toHaveTextContent(
+          'Could not read your sessions.',
+        );
+        expect(screen.queryByText('No sessions yet')).not.toBeInTheDocument();
+        expect(listSessions).toHaveBeenCalledTimes(1);
+
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Try again' }),
+        );
+
+        expect(await screen.findByText('Newest')).toBeInTheDocument();
+        expect(
+          screen.queryByText('Could not read your sessions.'),
+        ).not.toBeInTheDocument();
+        expect(listSessions).toHaveBeenCalledTimes(2);
+      },
+    );
+
+    it('stays quiet about an installation without kagent', async () => {
+      // kagent absent is a 404, which is not a failed read.
+      listSessions.mockRejectedValue(
+        Object.assign(new Error('not found'), {
+          name: 'NotFoundError',
+          status: 404,
+        }),
+      );
+
+      await renderRecent();
+
+      expect(await screen.findByText('No sessions yet')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Try again' }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it('reads the sessions within the flush the unbound case waits out', async () => {

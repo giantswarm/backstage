@@ -17,6 +17,7 @@ import {
   type ServedModel,
   type ServingCapabilities,
 } from '../../lib/serving';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import { ServeModelPage, type LoadTarget } from './ServeModelPage';
 
@@ -670,6 +671,52 @@ describe('ServeModelPage', () => {
     expect(serveButton()).toBeDisabled();
   });
 
+  it('says the portal session ended, with Sign in again, when the portal refuses the presets read', async () => {
+    listPresets.mockRejectedValue(new PortalSessionEndedError());
+    await render();
+
+    expect(
+      await screen.findByText('Your portal session ended'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByRole('button', { name: 'Sign in again' }),
+    ).toHaveLength(1);
+    expect(screen.queryByText(/could not be read/)).not.toBeInTheDocument();
+  });
+
+  it('says the portal session ended, with Sign in again, when the portal refuses the fit check', async () => {
+    checkFit.mockRejectedValue(new PortalSessionEndedError());
+    await render();
+
+    const verdict = await screen.findByTestId('serve-fit-verdict');
+    await waitFor(() =>
+      expect(verdict).toHaveTextContent('Your portal session ended'),
+    );
+    expect(
+      within(verdict).getByRole('button', { name: 'Sign in again' }),
+    ).toBeInTheDocument();
+    expect(verdict).not.toHaveTextContent('Could not check the fit');
+    expect(serveButton()).toBeDisabled();
+  });
+
+  it('keeps the words alone when the portal refuses the load', async () => {
+    loadModel.mockRejectedValue(new PortalSessionEndedError());
+    await render();
+    await waitFor(() =>
+      expect(screen.getByTestId('serve-fit-verdict')).toHaveTextContent('Fits'),
+    );
+    await waitFor(() => expect(serveButton()).toBeEnabled());
+
+    await userEvent.click(serveButton());
+
+    expect(
+      await screen.findByText(/^Your portal session ended, for example/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Sign in again' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('opens on the pool the link names, installation and pool preselected', async () => {
     await render({
       targets: [host, pool],
@@ -836,7 +883,7 @@ describe('ServeModelPage · the selects at scale', () => {
 
   const presetSelect = () => screen.findByRole('button', { name: /Preset/ });
 
-  it('offers three targets and two presets without a search', async () => {
+  it('offers type-ahead over three targets, none over two presets', async () => {
     listPresets.mockResolvedValue(presets);
     await render({
       targets: [pool, host, { ...pool, name: 'golem' }],
@@ -848,7 +895,7 @@ describe('ServeModelPage · the selects at scale', () => {
     expect(
       await screen.findByRole('option', { name: /golem/ }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
     await userEvent.keyboard('{Escape}');
 
     await waitFor(() => expect(listPresets).toHaveBeenCalled());
@@ -886,5 +933,6 @@ describe('ServeModelPage · the selects at scale', () => {
     await waitFor(() => expect(listPresets).toHaveBeenCalled());
     await userEvent.click(await presetSelect());
     expect(await screen.findByRole('searchbox')).toBeInTheDocument();
-  });
+    // 300 options each: slow on a loaded CI runner.
+  }, 30_000);
 });

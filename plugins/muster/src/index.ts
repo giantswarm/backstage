@@ -1,5 +1,7 @@
 export { musterPlugin as default } from './plugin';
+export { ConnectorTagSource, WorkflowTagSource } from './components/TagSources';
 export {
+  fixtureMcpServersDataRef,
   isMusterAuthFailure,
   isSessionExpiredError,
   musterApiRef,
@@ -13,6 +15,12 @@ export {
   toolErrorDetails,
 } from './apis';
 export type {
+  FixtureMcpServer,
+  FixtureMcpServersLoader,
+  FixtureToolCallContext,
+  FixtureToolHandler,
+  ConnectorName,
+  ConnectorNamesResponse,
   MusterApi,
   MusterAuthProvidersApi,
   MusterUnauthorizedReason,
@@ -57,24 +65,33 @@ export {
 } from './lib/toolAnnotations';
 export type { ToolEffect } from './lib/toolAnnotations';
 export { serverPageResolver } from './lib/toolGrouping';
+export { connectorAuthName } from './lib/connectorAccess';
+export {
+  isPermanentMusterReadError,
+  musterPollingOptions,
+} from './lib/musterPolling';
 export {
   connectorDisplayNames,
   connectorNameSource,
   mcpServerDisplayNames,
 } from './lib/serverGrouping';
 export type { ConnectorNameSource } from './lib/serverGrouping';
-export {
-  CONNECTOR_GROUPS,
-  connectorGroupInfo,
-  connectorGroupOfPath,
-  LEGACY_CONNECTOR_GROUP_PATHS,
-} from './lib/connectorGroups';
-export type { ConnectorGroup, ConnectorGroupInfo } from './lib/connectorGroups';
+export { RETIRED_CONNECTOR_GROUP_TAGS } from './lib/connectorTags';
+export { connectorIconOf } from '@giantswarm/backstage-plugin-gs-common';
 export { withInstallationQuery, withQuery } from './lib/installationLink';
 export {
   installationErrorLine,
   isMcpTransportText,
 } from './lib/installationError';
+export {
+  musterServerListQueryKey,
+  useMusterServerAvailability,
+} from './hooks/useMusterServerAvailability';
+export type {
+  MusterServerAvailability,
+  MusterServerAvailabilityOptions,
+  MusterServerPresence,
+} from './hooks/useMusterServerAvailability';
 export {
   MusterInstanceProvider,
   useMusterInstance,
@@ -96,10 +113,13 @@ export {
   ToolMarkers,
   hasMarkers,
   ServerSignIn,
+  useConnectorLabel,
+  useConnectorLabels,
   useServerSignIn,
   useServerNeedsSignIn,
   toneColors,
   severityTone,
+  SEVERITY_DOT_TONE,
   VIOLET,
 } from './components/shared';
 export type {
@@ -114,6 +134,7 @@ export type {
   ToolMarkersProps,
   ServerSignInProps,
   ServerSignInState,
+  SignedIn,
   DeviceCode,
   SignInNoun,
   Tone,
@@ -124,8 +145,21 @@ export {
   useMusterCustomizeCounts,
 } from './components/CustomizeMusterProvider';
 export type { MusterCustomizeCounts } from './components/CustomizeMusterProvider';
-export { CustomizeConnectorsPanel } from './components/CustomizeConnectorsPanel';
-export type { CustomizeConnectorsPanelProps } from './components/CustomizeConnectorsPanel';
+export {
+  CONNECTOR_REACH_LABELS,
+  CustomizeConnectorsPanel,
+} from './components/CustomizeConnectorsPanel';
+export { ConnectorLogo } from './components/ConnectorLogo';
+export type { ConnectorLogoProps } from './components/ConnectorLogo';
+export { ConnectorLogoStack } from './components/ConnectorLogoStack';
+export type {
+  ConnectorLogoStackItem,
+  ConnectorLogoStackProps,
+} from './components/ConnectorLogoStack';
+export type {
+  ConnectorReach,
+  CustomizeConnectorsPanelProps,
+} from './components/CustomizeConnectorsPanel';
 export { CustomizeWorkflowsPanel } from './components/CustomizeWorkflowsPanel';
 export type { CustomizeWorkflowsPanelProps } from './components/CustomizeWorkflowsPanel';
 export {

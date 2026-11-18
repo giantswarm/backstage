@@ -4,6 +4,7 @@ import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Cluster-manager calls and sign-in errors use the Muster API.
 import {
   musterApiRef,
   MusterUnauthorizedError,
@@ -20,6 +21,7 @@ import type {
   PresetSizeFit,
 } from '../../lib/clusterManager';
 import type { ServeChoice } from '../../lib/serveIntent';
+import { signInLands } from '../../lib/__testUtils__/serverSignInLands';
 import {
   AddGpuNodePoolPage,
   CLUSTER_PENDING,
@@ -34,9 +36,19 @@ import {
   EVERY_ZONE,
   PICK_A_ZONE,
 } from './PoolPlacementPicker';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
-jest.mock('../CodeBlock', () => ({
-  CodeBlock: ({ filename, content }: { filename: string; content: string }) => (
+jest.mock('@giantswarm/backstage-plugin-muster', () =>
+  jest
+    .requireActual('../../lib/__testUtils__/serverSignInLands')
+    .musterWithSignInLands(),
+);
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
+  FileView: ({ filename, content }: { filename: string; content: string }) => (
     <pre data-testid={`code-${filename}`}>{content}</pre>
   ),
 }));
@@ -544,6 +556,7 @@ async function renderPage(
     <TestApiProvider
       apis={[
         [musterApiRef, api],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
         [analyticsApiRef, analyticsApi],
       ]}
     >
@@ -571,6 +584,7 @@ async function renderPage(
  */
 beforeEach(() => {
   jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-11-10T12:00:00Z'));
 });
 
 afterEach(() => {
@@ -795,6 +809,32 @@ describe('AddGpuNodePoolPage', () => {
       await screen.findByText('Connect to cluster-manager'),
     ).toBeInTheDocument();
     expect(screen.queryByTestId('node-size-picker')).not.toBeInTheDocument();
+    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+
+  // The dry run's refusal is the write hook's: once the sign-in lands it is
+  // cleared and the dry run asks again, so the sizes come in; Deploy is the
+  // person's to press.
+  it('asks the dry run again once the sign-in lands', async () => {
+    const user = setupUser();
+    const scenario: Scenario = {
+      createError: new Error(
+        'tool not found: x_cluster-manager_create_node_pool',
+      ),
+    };
+    await renderPage(scenario);
+    await fillForm(user);
+    expect(
+      await screen.findByText('Connect to cluster-manager'),
+    ).toBeInTheDocument();
+
+    scenario.createError = undefined;
+    await signInLands(user);
+
+    expect(await screen.findByTestId('node-size-picker')).toBeInTheDocument();
+    expect(
+      screen.queryByText('Connect to cluster-manager'),
+    ).not.toBeInTheDocument();
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
 
@@ -1405,7 +1445,7 @@ describe('AddGpuNodePoolPage — the model cache’s standing cost (giantswarm/b
       'This cluster keeps a model cache: every pool of the cluster serves from it, so a pool cannot switch it off. To serve without one, remove the cache under Model cache.',
     );
     expect(kept).toHaveTextContent(
-      'The cache: hf-cache — 100 GiB gp3 at 500 MiB/s · $27.37/month · since',
+      'The cache: hf-cache — 100 GiB gp3 at 500 MiB/s · $27.37/month · Bound in eu-central-1b · created about 2 months ago.',
     );
     expect(kept).toHaveTextContent('Bound in eu-central-1b');
     expect(screen.queryByTestId('cache-consequence')).not.toBeInTheDocument();
@@ -1465,7 +1505,7 @@ describe('AddGpuNodePoolPage: the form stands in place (giantswarm/backstage#250
 });
 
 describe('AddGpuNodePoolPage: the selects at scale', () => {
-  it('offers three environments and three clusters without a search', async () => {
+  it('offers type-ahead over three environments and three clusters', async () => {
     const user = setupUser();
     await renderPage({
       clusterCount: 3,
@@ -1478,14 +1518,14 @@ describe('AddGpuNodePoolPage: the selects at scale', () => {
     expect(
       await screen.findByRole('option', { name: /^wc3/ }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
     await user.keyboard('{Escape}');
 
     await user.click(screen.getByRole('button', { name: /^inst-1/ }));
     expect(
       await screen.findByRole('option', { name: 'inst-3' }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
   });
 
   it('offers type-ahead over 300 clusters and 300 environments', async () => {
@@ -1506,7 +1546,7 @@ describe('AddGpuNodePoolPage: the selects at scale', () => {
     expect(await screen.findByRole('searchbox')).toBeInTheDocument();
   });
 
-  it('offers the two presets of I want to serve without a search', async () => {
+  it('offers type-ahead over the two presets and Any of I want to serve', async () => {
     const user = setupUser();
     await renderPage();
     await fillForm(user);
@@ -1516,7 +1556,7 @@ describe('AddGpuNodePoolPage: the selects at scale', () => {
     expect(
       await screen.findByRole('option', { name: /Qwen3 Coder Next/ }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
   });
 
   it('offers type-ahead over 300 presets in I want to serve', async () => {

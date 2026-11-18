@@ -1,4 +1,6 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { TestApiProvider } from '@backstage/test-utils';
+import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -18,22 +20,43 @@ const SIGN_IN: PendingConfirmation = {
   askedIn: 'status-1',
 };
 
+/** The person's answer in the external URL consent dialog. */
+const consentOpen = jest.fn();
+
+function withConsent(children: JSX.Element) {
+  return (
+    <TestApiProvider apis={[[externalUrlConsentApiRef, { open: consentOpen }]]}>
+      {children}
+    </TestApiProvider>
+  );
+}
+
 describe('SignInRequestPanel', () => {
-  it('outside a session, links the sign-in and lets the person say when they are done', async () => {
+  beforeEach(() => {
+    consentOpen.mockReset().mockResolvedValue('accept');
+  });
+
+  it('outside a session, asks before opening the sign-in and lets the person say when they are done', async () => {
     const onAnswer = jest.fn();
     const user = userEvent.setup();
     await renderInTestApp(
-      <SignInRequestPanel
-        pending={SIGN_IN}
-        isAnswering={false}
-        onAnswer={onAnswer}
-      />,
+      withConsent(
+        <SignInRequestPanel
+          pending={SIGN_IN}
+          isAnswering={false}
+          onAnswer={onAnswer}
+        />,
+      ),
     );
 
-    expect(screen.getByRole('link', { name: 'Sign in ↗' })).toHaveAttribute(
-      'href',
-      SIGN_IN.signIn!.url,
+    await user.click(
+      screen.getByRole('button', { name: 'Sign in (opens in a new tab)' }),
     );
+    expect(consentOpen).toHaveBeenCalledWith({
+      url: SIGN_IN.signIn!.url,
+      requester: 'muster',
+      message: 'Sign in to github to continue.',
+    });
     await user.click(screen.getByRole('button', { name: "I've signed in" }));
     expect(onAnswer).toHaveBeenLastCalledWith({
       taskId: 'task-1',
@@ -47,11 +70,13 @@ describe('SignInRequestPanel', () => {
     const onAnswer = jest.fn();
     const user = userEvent.setup();
     await renderInTestApp(
-      <SignInRequestPanel
-        pending={SIGN_IN}
-        isAnswering={false}
-        onAnswer={onAnswer}
-      />,
+      withConsent(
+        <SignInRequestPanel
+          pending={SIGN_IN}
+          isAnswering={false}
+          onAnswer={onAnswer}
+        />,
+      ),
     );
 
     await user.click(screen.getByRole('button', { name: 'Not now' }));
@@ -65,12 +90,14 @@ describe('SignInRequestPanel', () => {
 
   it('shows an answer that was not taken', async () => {
     await renderInTestApp(
-      <SignInRequestPanel
-        pending={SIGN_IN}
-        isAnswering={false}
-        error="The agent is not waiting for a decision"
-        onAnswer={jest.fn()}
-      />,
+      withConsent(
+        <SignInRequestPanel
+          pending={SIGN_IN}
+          isAnswering={false}
+          error="The agent is not waiting for a decision"
+          onAnswer={jest.fn()}
+        />,
+      ),
     );
 
     expect(

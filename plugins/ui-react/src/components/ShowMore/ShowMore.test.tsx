@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ShowMore } from './ShowMore';
+import { isSearchableList, ShowMore } from './ShowMore';
 
 const names = Array.from({ length: 23 }, (_, i) => `Agent ${i + 1}`);
 
@@ -139,5 +139,18 @@ describe('ShowMore', () => {
     renderList({ items: names.slice(0, 10) });
     expect(rendered()).toBe(10);
     expect(screen.queryByRole('button')).toBeNull();
+  });
+});
+
+describe('isSearchableList', () => {
+  it('searches a list from three entries on', () => {
+    expect(isSearchableList(0)).toBe(false);
+    expect(isSearchableList(2)).toBe(false);
+    expect(isSearchableList(3)).toBe(true);
+    expect(isSearchableList(300)).toBe(true);
+  });
+
+  it('keeps the search while it or a filter narrows the list', () => {
+    expect(isSearchableList(1, true)).toBe(true);
   });
 });

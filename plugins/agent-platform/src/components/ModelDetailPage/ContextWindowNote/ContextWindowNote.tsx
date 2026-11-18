@@ -1,6 +1,6 @@
-import { Alert, Flex, Link, Text } from '@backstage/ui';
+import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { MONO } from '@giantswarm/backstage-plugin-ui-react';
+import { ExternalLink, MONO } from '@giantswarm/backstage-plugin-ui-react';
 
 import type { ContextWindowLookup } from '../../../lib/contextWindows';
 
@@ -11,8 +11,9 @@ export const CONTEXT_WINDOWS_DOCS_URL =
 const TABLE_KEY = 'agentPlatform.models.contextWindows';
 
 const useStyles = makeStyles({
-  // bui `Text` and `Link` set their own colour (`--bui-fg-primary`); on the
-  // alert's tinted background they take the alert's instead, like its title.
+  // bui `Text` sets its own colour (`--bui-fg-primary`); on the alert's
+  // tinted background it takes the alert's instead, like its title. Links
+  // take the shell's link style (agent-shell.css).
   inherit: {
     color: 'inherit',
   },
@@ -76,15 +77,13 @@ export function ContextWindowNote({
                 <span style={MONO}>{TABLE_KEY}</span>.
               </>
             )}{' '}
-            <Link
+            <ExternalLink
               href={CONTEXT_WINDOWS_DOCS_URL}
-              target="_blank"
-              rel="noopener noreferrer"
               variant="body-small"
-              className={classes.inherit}
+              display="inline"
             >
               How to configure it
-            </Link>
+            </ExternalLink>
           </Text>
         </Flex>
       }

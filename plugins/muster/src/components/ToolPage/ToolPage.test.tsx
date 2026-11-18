@@ -16,6 +16,15 @@ jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
 }));
 
 // The muster providers, whose instance the mock below stands for.
+// The router's own query client is the module-level one; the test's fresh
+// client above it stands in for it, so each test reads afresh.
+jest.mock('../QueryClientProvider', () => ({
+  ...jest.requireActual('../QueryClientProvider'),
+  QueryClientProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
 jest.mock('../MusterSubPage', () => ({
   MusterSubPage: ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
@@ -178,7 +187,7 @@ describe('ToolPage', () => {
     expect(
       within(facts).getByRole('link', { name: 'aws-root' }),
     ).toHaveAttribute('href', `${BASE}/gazelle/aws-root`);
-    expect(within(facts).getByText('Exposed by muster as')).toBeInTheDocument();
+    expect(within(facts).getByText('Exposed by Muster as')).toBeInTheDocument();
     expect(within(facts).getByText('Only reads')).toBeInTheDocument();
 
     // Mounted only once opened, as the other pages' Technical details are.
@@ -241,6 +250,7 @@ describe('ToolPage', () => {
       'x_aws-root_list_buckets',
       {},
       'gazelle',
+      { signal: expect.any(AbortSignal), urlElicitation: true },
     );
   });
 
@@ -330,7 +340,7 @@ describe('ToolPage', () => {
       `${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets/run`,
     );
 
-    expect(screen.getByText(/Tools need a muster session/)).toBeInTheDocument();
+    expect(screen.getByText(/Tools need a Muster session/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Run' })).toBeNull();
     expect(api.describeTool).not.toHaveBeenCalled();
   });
@@ -630,14 +640,14 @@ describe('ToolPage at phone width', () => {
   });
   afterEach(() => layout.restore());
 
-  it("leads its Connectors crumb to the sub-tab that lists the tool's connector", async () => {
+  it('leads its Connectors crumb to the Connectors list', async () => {
     await renderAt(`${BASE}/gazelle/muster/tools/core_service_list`);
     expect(
       within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole(
         'link',
         { name: 'Connectors' },
       ),
-    ).toHaveAttribute('href', '/customize/connectors/internal');
+    ).toHaveAttribute('href', '/customize/connectors');
   });
 
   it('is a shell page: the tool as its h1, the trail under Customize, the full name in the header', async () => {
@@ -666,7 +676,7 @@ describe('ToolPage at phone width', () => {
     // the page.
     const name = screen.getByText('x_aws-root_list_buckets');
     expect(name.parentElement).toHaveTextContent(
-      'Exposed by muster as: x_aws-root_list_buckets',
+      'Exposed by Muster as: x_aws-root_list_buckets',
     );
     expect(name).toHaveStyle({ fontFamily: 'monospace' });
     expect(name.getAttribute('style')).toContain('overflow-wrap: anywhere');

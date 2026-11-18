@@ -1,0 +1,1 @@
+export { PlatformPage } from './PlatformPage';

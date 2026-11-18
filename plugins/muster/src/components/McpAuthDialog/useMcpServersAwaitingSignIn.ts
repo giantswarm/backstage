@@ -1,9 +1,11 @@
 import { useCallback, useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import type { PollingQuery } from '@giantswarm/backstage-plugin-ui-react';
 import {
   isMusterTokenMintError,
   musterApiRef,
+  type AuthStatusResponse,
   type ProviderAppAuthStatus,
   type ServerAuthStatus,
 } from '../../apis';
@@ -12,6 +14,7 @@ import {
   connectingPollInterval,
   needsSignIn,
 } from '../shared';
+import { musterPollingOptions } from '../../lib/musterPolling';
 
 /**
  * How often the status is re-read while nothing is happening: a server can
@@ -99,14 +102,18 @@ export function useMcpServersAwaitingSignIn(
       queryFn: () => musterApi.getAuthStatus(installation),
       enabled,
       // The read never asks the person to sign in (`getAuthStatus`); once the
-      // portal session is gone it stops until the person is back, on focus.
-      // While muster still connects a server it is re-read within seconds.
-      refetchInterval: query =>
-        isSessionExpired(query.state.error)
-          ? false
-          : connectingPollInterval(query.state.data) || AUTH_STATUS_REFRESH_MS,
-      // As the sign-in affordances read it: re-read on return from the IdP's
-      // tab, and an unreadable status is an answer, not a retry.
+      // portal session is gone (or muster refuses the person) it stops until
+      // the person is back, on focus. While muster still connects a server it
+      // is re-read within seconds. Not from a hidden tab; re-read on return
+      // from the IdP's tab, as the sign-in affordances read it, and an
+      // unreadable status is an answer, not a retry.
+      ...musterPollingOptions(
+        (query: PollingQuery<AuthStatusResponse>) =>
+          connectingPollInterval(query.state.data) || AUTH_STATUS_REFRESH_MS,
+      ),
+      // On every return to the tab, a stopped poll too: this read never
+      // asks the person to sign in (no sign-in challenge per call), and the
+      // return from the IdP's tab is when a sign-in lands.
       refetchOnWindowFocus: true,
       refetchOnMount,
       retry: false,

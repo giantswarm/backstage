@@ -3,6 +3,8 @@ import { Alert, Flex, Text } from '@backstage/ui';
 import {
   formatCount,
   formatSeconds,
+  lastDaysLabel,
+  lastDaysNoun,
   type UsageWindowDays,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
@@ -71,7 +73,7 @@ const SUBJECTS = {
     reading: "Reading this connector's usage…",
     failed: "Could not read this connector's usage",
     callsHint:
-      'Counts the calls muster dispatched to this connector, from agents, sessions and this portal alike.',
+      'Counts the calls Muster dispatched to this connector, from agents, sessions and this portal alike.',
     noCalls: 'No tool calls',
     reach: 'this connector',
   },
@@ -80,7 +82,7 @@ const SUBJECTS = {
     reading: "Reading this tool's usage…",
     failed: "Could not read this tool's usage",
     callsHint:
-      'Counts the calls muster dispatched to this tool, from agents, sessions and this portal alike.',
+      'Counts the calls Muster dispatched to this tool, from agents, sessions and this portal alike.',
     noCalls: 'No calls',
     reach: 'this tool',
   },
@@ -159,12 +161,12 @@ export function UsageFigures({
 
   const { totals } = usage;
   const errorRatio = errorRatioFigure(totals.error_ratio);
-  const sub = `every caller's, last ${days} days`;
+  const sub = `every caller's, ${lastDaysLabel(days)}`;
 
   return (
     <Flex direction="column" gap="4">
       <Text as="p" variant="body-medium" color="secondary">
-        {words.intro} over the last {days} days on {installation}.
+        {words.intro} over {lastDaysNoun(days)} on {installation}.
       </Text>
       <McpDataStartNote usage={usage} windowDays={days} />
 
@@ -215,13 +217,13 @@ export function UsageFigures({
         </>
       ) : (
         <EmptyStateCard
-          title={`${words.noCalls} in the last ${days} days`}
+          title={`${words.noCalls} in ${lastDaysNoun(days)}`}
           description={`Calls from agents, sessions and this portal show here once they reach ${words.reach}.`}
         />
       )}
 
       <Text as="p" variant="body-small" color="secondary">
-        Counted where muster dispatches each call, so a call through call_tool
+        Counted where Muster dispatches each call, so a call through call_tool
         counts for the tool it ran.
       </Text>
       {footer}

@@ -1,13 +1,13 @@
 import { EntityContentBlueprint } from '@backstage/plugin-catalog-react/alpha';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import Grid from '@material-ui/core/Grid';
-import Link from '@material-ui/core/Link';
 import Typography from '@material-ui/core/Typography';
 import {
   EntityDependencyOfComponentsCard,
   EntityDependsOnComponentsCard,
   EntityDependsOnResourcesCard,
 } from '@backstage/plugin-catalog';
+import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 
 function DependenciesContent() {
   const { entity } = useEntity();
@@ -26,9 +26,9 @@ function DependenciesContent() {
             <>
               {' '}
               Use the{' '}
-              <Link href={depsUrl} target="_blank" rel="noopener noreferrer">
+              <ExternalLink href={depsUrl} display="inline">
                 GitHub dependencies page
-              </Link>{' '}
+              </ExternalLink>{' '}
               for a more complete overview.
             </>
           ) : (

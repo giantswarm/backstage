@@ -49,7 +49,7 @@ describe('deriveSessionNotificationRow', () => {
       ['input-required', 'all', false, 'waiting'],
       ['input-required', 'muted', false, undefined],
       ['auth-required', 'default', false, 'waiting'],
-      // No stored level is Default.
+      // No stored level is `default`.
       ['input-required', undefined, false, 'waiting'],
 
       // Failed: portal-started sessions only, unless muted.

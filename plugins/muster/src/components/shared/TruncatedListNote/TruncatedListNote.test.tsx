@@ -13,7 +13,7 @@ describe('TruncatedListNote', () => {
     );
     expect(
       screen.getByText(
-        'This list is incomplete: muster returned 200 of 1,300 resources.',
+        'This list is incomplete: Muster returned 200 of 1,300 resources.',
       ),
     ).toBeInTheDocument();
   });
@@ -22,7 +22,7 @@ describe('TruncatedListNote', () => {
     render(<TruncatedListNote plural="tools" truncated />);
     expect(
       screen.getByText(
-        'This list may be incomplete: muster returned only part of the tools.',
+        'This list may be incomplete: Muster returned only part of the tools.',
       ),
     ).toBeInTheDocument();
   });
@@ -31,7 +31,7 @@ describe('TruncatedListNote', () => {
     render(<TruncatedListNote plural="prompts" shown={2} total={3} />);
     expect(
       screen.getByText(
-        'This list is incomplete: muster returned 2 of 3 prompts.',
+        'This list is incomplete: Muster returned 2 of 3 prompts.',
       ),
     ).toBeInTheDocument();
   });

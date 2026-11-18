@@ -8,6 +8,7 @@ import {
   MCPClient,
 } from '@ai-sdk/mcp';
 import { MusterMcpClient } from './MusterMcpClient';
+import { LostSessionTracker } from './lostSessions';
 
 const SESSION_HEADER_REQUIRED =
   'mcp: session header is required for non-initialize requests';
@@ -40,6 +41,8 @@ function callToolResult(payload: unknown) {
 describe('MusterMcpClient session recovery (unit)', () => {
   const logger = mockServices.logger.mock();
 
+  beforeEach(() => jest.clearAllMocks());
+
   function fakeMcpClient(execute: jest.Mock): MCPClient {
     return {
       toolsFromDefinitions: jest.fn(
@@ -50,12 +53,21 @@ describe('MusterMcpClient session recovery (unit)', () => {
     } as unknown as MCPClient;
   }
 
-  function buildClient(executes: jest.Mock[]) {
+  function buildClient(
+    executes: jest.Mock[],
+    {
+      now = Date.now,
+      lostSessions = new LostSessionTracker(),
+    }: { now?: () => number; lostSessions?: LostSessionTracker } = {},
+  ) {
     const factory = jest.fn(async () => fakeMcpClient(executes.shift()!));
     const client = new MusterMcpClient(
       { name: 'gazelle', url: 'http://muster/mcp' },
       logger,
       factory,
+      undefined,
+      now,
+      lostSessions,
     );
     return { client, factory };
   }
@@ -107,6 +119,137 @@ describe('MusterMcpClient session recovery (unit)', () => {
     expect(failure?.message).not.toMatch(/session header is required|MCP HTTP/);
     expect(factory).toHaveBeenCalledTimes(2);
     expect(execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('logs a recovered lost session at info, with the installation in the metadata', async () => {
+    const first = jest
+      .fn()
+      .mockRejectedValue(transportError(404, SESSION_NOT_FOUND));
+    const second = jest.fn().mockResolvedValue(callToolResult({ ok: true }));
+    const { client } = buildClient([first, second]);
+
+    await client.callTool('x_cm_list_clusters', {});
+
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.info).toHaveBeenCalledWith(
+      'Muster MCP session was lost; re-initializing and retrying once',
+      {
+        installation: 'gazelle',
+        cause: expect.stringContaining(SESSION_NOT_FOUND),
+      },
+    );
+  });
+
+  describe('a session lost on most requests', () => {
+    const FREQUENT_WARNING =
+      'Muster MCP sessions are lost often; requests re-initialize before they run';
+
+    /**
+     * Every MCP client answers its first request and has lost its session by
+     * the next one, so each request after the first loses the cached
+     * client's session and recovers on a fresh one.
+     */
+    async function lostOnEveryRequest(options: {
+      now: () => number;
+      lostSessions: LostSessionTracker;
+    }) {
+      const executes = Array.from({ length: 50 }, () =>
+        jest
+          .fn()
+          .mockResolvedValueOnce(callToolResult({ ok: true }))
+          .mockRejectedValue(transportError(404, SESSION_NOT_FOUND)),
+      );
+      const { client } = buildClient(executes, options);
+      await client.callTool('x_cm_list_clusters', {});
+      return client;
+    }
+
+    async function loseAndRecover(client: MusterMcpClient, times: number) {
+      for (let i = 0; i < times; i++) {
+        await client.callTool('x_cm_list_clusters', {});
+      }
+    }
+
+    it('warns once ten sessions are lost within ten minutes, with the installation in the metadata', async () => {
+      const client = await lostOnEveryRequest({
+        now: () => 0,
+        lostSessions: new LostSessionTracker(),
+      });
+
+      await loseAndRecover(client, 9);
+      expect(logger.warn).not.toHaveBeenCalled();
+
+      await loseAndRecover(client, 1);
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.warn).toHaveBeenCalledWith(FREQUENT_WARNING, {
+        installation: 'gazelle',
+        lostSessions: 10,
+        windowMinutes: 10,
+      });
+    });
+
+    it('counts a session once, however many requests were in flight on it', async () => {
+      const lost = jest
+        .fn()
+        .mockRejectedValue(transportError(404, SESSION_NOT_FOUND));
+      const fresh = Array.from({ length: 12 }, () =>
+        jest.fn().mockResolvedValue(callToolResult({ ok: true })),
+      );
+      const lostSessions = new LostSessionTracker();
+      const note = jest.spyOn(lostSessions, 'note');
+      const { client } = buildClient([lost, ...fresh], {
+        now: () => 0,
+        lostSessions,
+      });
+
+      await Promise.all(
+        Array.from({ length: 12 }, () =>
+          client.callTool('x_cm_list_clusters', {}),
+        ),
+      );
+
+      expect(note).toHaveBeenCalledTimes(12);
+      expect(new Set(note.mock.results.map(r => r.value))).toEqual(
+        new Set([false]),
+      );
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('adds up the losses of every client of the installation', async () => {
+      const lostSessions = new LostSessionTracker();
+      const muster = await lostOnEveryRequest({ now: () => 0, lostSessions });
+      const plans = await lostOnEveryRequest({ now: () => 0, lostSessions });
+
+      await loseAndRecover(muster, 5);
+      await loseAndRecover(plans, 5);
+
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.warn).toHaveBeenCalledWith(
+        FREQUENT_WARNING,
+        expect.objectContaining({ installation: 'gazelle' }),
+      );
+    });
+  });
+
+  it('warns about a failed request with the installation in the metadata, not the message', async () => {
+    const execute = jest
+      .fn()
+      .mockRejectedValue(transportError(400, SESSION_HEADER_REQUIRED));
+    const { client } = buildClient([execute, execute]);
+
+    await expect(client.callTool('x_cm_list_node_pools', {})).rejects.toThrow(
+      ServiceUnavailableError,
+    );
+
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Muster MCP request failed: the MCP session was lost and could not be re-established',
+      {
+        installation: 'gazelle',
+        cause: expect.stringContaining(SESSION_HEADER_REQUIRED),
+      },
+    );
   });
 
   it('does not retry a tool-level error and passes it through unchanged', async () => {

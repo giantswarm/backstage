@@ -18,7 +18,6 @@ const docs: WorkspaceRow = {
       filters: { topics: { names: ['docs'] } },
     },
   ],
-  sync: { schedule: 'nightly' },
   resourceVersion: '1',
   createdAt: '2026-10-01T00:00:00Z',
   lastSync: { time: '2026-10-14T03:00:00Z', result: 'Succeeded' },
@@ -101,8 +100,10 @@ function data(overrides: Partial<WorkspacesData> = {}): WorkspacesData {
     setOrganization: jest.fn(),
     rows: [docs, infra],
     isLoading: false,
+    totalCount: 2,
     failures: {},
     signIns: [],
+    sessionEnded: false,
     retry: jest.fn(),
     ...overrides,
   };
@@ -292,6 +293,24 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(screen.queryByText('No workspaces in alpha yet')).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(mockData.retry).toHaveBeenCalled();
+  });
+
+  it('says the portal session ended, with Sign in again, when the portal refuses the session token', async () => {
+    mockData = data({
+      rows: [],
+      totalCount: undefined,
+      failures: { gazelle: 'Your portal session ended …' },
+      sessionEnded: true,
+    });
+    await renderPanel();
+
+    expect(screen.getByText('Your portal session ended')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Sign in again' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Your workspaces could not be read'),
+    ).not.toBeInTheDocument();
   });
 
   it('offers the sign-in to workspace-manager, not muster’s refusal, where the person has not signed in to it', async () => {

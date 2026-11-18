@@ -27,9 +27,8 @@ const sonnet: ModelRow = {
 };
 const qwen: ModelRow = {
   ...sonnet,
-  id: 'golem/engineering/qwen',
+  id: 'golem/support/qwen',
   name: 'qwen',
-  namespace: 'engineering',
   displayName: 'Qwen 2.5',
   provider: 'Ollama',
   model: 'qwen2.5:32b',
@@ -61,8 +60,29 @@ jest.mock('../ModelConfigsProvider', () => ({
     unreachableInstallations: mockUnreachableInstallations,
   }),
 }));
+// The organization namespaces agent-manager names, by namespace.
+let mockDirectory = new Map<
+  string,
+  {
+    namespace: string;
+    organization: string;
+    parent: string;
+    displayName?: string;
+  }
+>();
+jest.mock('../OrganizationDirectoryProvider', () => ({
+  useOrganizationDirectory: () => ({ directory: mockDirectory }),
+}));
 jest.mock('../AgentsDataProvider', () => ({
   useAgents: () => ({ rows: agents, isLoading: false }),
+}));
+// The installations whose muster offers cluster-manager as the person.
+let mockClusterManager: string[] = [];
+jest.mock('../../hooks/useClusterManager', () => ({
+  useClusterManagerAvailability: () => ({
+    available: mockClusterManager,
+    isLoading: false,
+  }),
 }));
 jest.mock('../ServingProvider', () => ({
   hasServingLayer: (serving: { installations: string[] }) =>
@@ -107,6 +127,7 @@ describe('CustomizeModelsPanel', () => {
     mockModelsLoading = false;
     mockUnreachableInstallations = [];
     mockServingInstallations = [];
+    mockClusterManager = [];
   });
 
   it('lists the models with their usage and state', async () => {
@@ -117,6 +138,74 @@ describe('CustomizeModelsPanel', () => {
       expect.stringMatching(/Sonnet 4\.5.*Anthropic.*Used by 2 agents.*Ready/),
       expect.stringMatching(/Qwen 2\.5.*Ollama.*Not used yet.*Not serving/),
     ]);
+  });
+
+  it('says which model is its namespace default', async () => {
+    mockModelRows = [{ ...sonnet, isDefault: true }, qwen];
+    await renderPanel();
+
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows[0]).toHaveTextContent(/Default · Anthropic/);
+    expect(rows[1]).not.toHaveTextContent('Default');
+  });
+
+  it('names the namespace of models that share a name, and only theirs', async () => {
+    const otherSonnet = {
+      ...sonnet,
+      id: 'golem/engineering/sonnet',
+      namespace: 'engineering',
+    };
+    mockModelRows = [sonnet, otherSonnet, qwen];
+    await renderPanel();
+
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows[0]).toHaveTextContent(/namespace support · support/);
+    expect(rows[1]).toHaveTextContent(/namespace engineering · engineering/);
+    expect(rows[2]).not.toHaveTextContent(/namespace support · support/);
+  });
+
+  it('names each model’s owner once the list spans more than one', async () => {
+    const orgNamespace = 'agents-default-x7k2q';
+    mockDirectory = new Map([
+      [
+        orgNamespace,
+        {
+          namespace: orgNamespace,
+          organization: 'default',
+          parent: 'org-gs',
+          displayName: 'Lab',
+        },
+      ],
+    ]);
+    const platform = {
+      ...sonnet,
+      id: 'golem/kagent/anthropic',
+      name: 'anthropic',
+      namespace: 'kagent',
+      isDefault: true,
+    };
+    const organization = {
+      ...platform,
+      id: `golem/${orgNamespace}/anthropic`,
+      namespace: orgNamespace,
+    };
+    mockModelRows = [platform, organization];
+    await renderPanel();
+
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows[0]).toHaveTextContent(
+      'Default · Anthropic · claude-sonnet-4-5 · Owner: Platform',
+    );
+    expect(rows[1]).toHaveTextContent(
+      'Default · Anthropic · claude-sonnet-4-5 · Owner: Lab',
+    );
+    mockDirectory = new Map();
+  });
+
+  it('names no owner while every model has the same one', async () => {
+    await renderPanel();
+
+    expect(screen.queryByText(/Owner:/)).not.toBeInTheDocument();
   });
 
   it('makes each name a link to the model (M21)', async () => {
@@ -207,7 +296,9 @@ describe('CustomizeModelsPanel', () => {
     ).not.toBeInTheDocument();
     // Without one: the hint at what turns it on.
     expect(
-      screen.getByRole('link', { name: 'How to turn it on' }),
+      screen.getByRole('link', {
+        name: 'How to turn it on (opens in a new tab)',
+      }),
     ).toBeInTheDocument();
     unmount();
 
@@ -218,8 +309,79 @@ describe('CustomizeModelsPanel', () => {
       '/customize/models/hosting',
     );
     expect(
-      screen.queryByRole('link', { name: 'How to turn it on' }),
+      screen.queryByRole('link', {
+        name: 'How to turn it on (opens in a new tab)',
+      }),
     ).not.toBeInTheDocument();
+  });
+
+  it('offers model hosting where cluster-manager runs without a serving layer', async () => {
+    mockClusterManager = ['golem'];
+    await renderPanel();
+    // GPU pools and the model cache are managed there.
+    expect(screen.getByRole('link', { name: 'Model hosting' })).toHaveAttribute(
+      'href',
+      '/customize/models/hosting',
+    );
+    expect(
+      screen.queryByRole('link', {
+        name: 'How to turn it on (opens in a new tab)',
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  describe('the Model hosting row', () => {
+    function PathProbe() {
+      return <div data-testid="path">{useLocation().pathname}</div>;
+    }
+
+    async function renderAtModels() {
+      mockServingInstallations = ['golem'];
+      await renderInTestApp(
+        <>
+          <PathProbe />
+          <CustomizeModelsPanel search="" />
+        </>,
+        {
+          initialRouteEntries: ['/customize/models'],
+          mountedRoutes: {
+            '/customize/models': modelsRouteRef,
+            '/customize': customizeExternalRouteRef,
+          },
+        },
+      );
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        /^\/customize\/models$/,
+      );
+    }
+
+    it('opens Model hosting from its link', async () => {
+      await renderAtModels();
+
+      await userEvent.click(
+        screen.getByRole('link', { name: 'Model hosting' }),
+      );
+
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        /^\/customize\/models\/hosting$/,
+      );
+    });
+
+    it('opens Model hosting from anywhere on the card, its text included', async () => {
+      await renderAtModels();
+
+      // The card's link is visually hidden; bui forwards a click on the card's
+      // surface to it.
+      await userEvent.click(
+        screen.getByText(
+          'Admins can run models on their own GPUs and manage what is served.',
+        ),
+      );
+
+      expect(screen.getByTestId('path')).toHaveTextContent(
+        /^\/customize\/models\/hosting$/,
+      );
+    });
   });
 
   describe('at list scale', () => {
@@ -369,7 +531,9 @@ describe('CustomizeModelsPanel at phone width (T22 C7)', () => {
   });
 
   it('windows 300 models and keeps the provider filter', async () => {
-    mockModelRows = manyModels(300);
+    mockModelRows = manyModels(300).map((each, i) =>
+      i % 2 ? { ...each, provider: 'Ollama' } : each,
+    );
     await renderPanel();
 
     expect(headers()).toEqual(['Model', 'Status']);
@@ -416,15 +580,20 @@ describe('CustomizeModelsPanel provider filter (T49, T64)', () => {
   beforeEach(() => {
     mockModelsLoading = false;
     mockServingInstallations = [];
+    mockClusterManager = [];
   });
 
-  it('offers a one-option provider dropdown over three models of one provider', async () => {
+  it('offers no provider dropdown over three models of one provider', async () => {
     mockModelRows = [0, 1, 2].map(index => model(index, 'Anthropic'));
     await renderPanel();
 
     expect(bodyRows()).toHaveLength(3);
-    expect(providerDropdown()).toHaveTextContent('ProviderAll');
-    expect(await providerOptions()).toEqual(['Anthropic 3']);
+    expect(
+      screen.queryByRole('button', {
+        name: /Filter by provider/,
+        hidden: true,
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it('filters three models by provider, together with the search', async () => {

@@ -1,33 +1,92 @@
 import { useMemo } from 'react';
 import { useResources } from '@giantswarm/backstage-plugin-kubernetes-react';
-import { MCPServer } from '@giantswarm/backstage-plugin-muster';
+import {
+  connectorAuthName,
+  MCPServer,
+  type ToolSummary,
+} from '@giantswarm/backstage-plugin-muster';
 
-import { ORGANIZATION_PREFIX } from '../lib/tenants';
-import { connectorLabels, type ServerInfo } from '../lib/toolset';
+import {
+  connectorLabels,
+  isOrganizationServerKey,
+  type ServerInfo,
+} from '../lib/toolset';
 
 /**
- * The grouping's view of one MCPServer CR. muster keys a server of an
- * organization's namespace `<namespace>/<name>` (its tools' `server`, what
- * `server:` selects) and prefixes its tools `x_<namespace>_<segment>`; a
- * server of muster's own namespace keeps its name.
+ * The grouping's view of one MCPServer CR, named as muster names it
+ * (`MCPServerKey` in muster's internal/api/mcpserver_namespace.go): a server
+ * of muster's own namespace by its name, a server of every other namespace
+ * (`org-<name>`, an organization's `agents-<name>-<random>`) as
+ * `<namespace>/<name>` -- its tools' `server`, what `server:` selects -- with
+ * its tools prefixed `x_<namespace>_<segment>`.
  */
 export function serverInfoOf(server: MCPServer): ServerInfo {
   const displayName = server.getDisplayNameAnnotation();
-  const namespace = server.getNamespace();
-  const tenant = namespace?.startsWith(ORGANIZATION_PREFIX) ? namespace : '';
+  const icon = server.getStatusIcon();
+  const name = connectorAuthName(server);
+  const tenant = isOrganizationServerKey(name) ? server.getNamespace() : '';
   const prefix = server.getToolNamePrefix();
+  const tags = server.getTags();
   return {
-    name: tenant ? `${tenant}/${server.getName()}` : server.getName(),
+    name,
     family: server.getFamily(),
     group: server.getToolGroupKey(),
     toolNamePrefix: tenant
       ? `x_${tenant}_${prefix.slice('x_'.length)}`
       : prefix,
     state: server.getState(),
+    ...(server.getSuspended() ? { suspended: true } : {}),
     oauth: server.getAuth()?.type === 'oauth',
     signInTool:
       server.getAuth()?.type === 'oauth' && !server.isServedPerSession(),
     ...(displayName ? { displayName } : {}),
+    ...(tags.length > 0 ? { tags } : {}),
+    ...(icon ? { icon } : {}),
+  };
+}
+
+/**
+ * The connectors an agent in `tenant` may be given, their tools, and the ones
+ * muster says the session must sign in to: muster's own servers, for
+ * everyone, and the servers of the agent's own namespace; another
+ * namespace's servers are its agents' only, whether a CR, a tool's `server`
+ * or muster's sign-in list names them. Everything when no tenant is known.
+ * An organization's own RemoteMCPServers (`list_organization_connectors`)
+ * are not muster servers: an agent's toolset selects muster's, so they are
+ * not offered here.
+ */
+export function connectorsForTenant(
+  servers: readonly ServerInfo[],
+  tools: readonly ToolSummary[],
+  tenant: string | undefined,
+  serversRequiringAuth: readonly string[] = [],
+): {
+  servers: ServerInfo[];
+  tools: ToolSummary[];
+  serversRequiringAuth: string[];
+} {
+  if (!tenant) {
+    return {
+      servers: [...servers],
+      tools: [...tools],
+      serversRequiringAuth: [...serversRequiringAuth],
+    };
+  }
+  const isOthersKey = (key: string) =>
+    isOrganizationServerKey(key) && !key.startsWith(`${tenant}/`);
+  const othersPrefixes = servers
+    .filter(server => isOthersKey(server.name))
+    .map(server => `${server.toolNamePrefix}_`);
+  return {
+    servers: servers.filter(server => !isOthersKey(server.name)),
+    tools: tools.filter(
+      tool =>
+        !(tool.server && isOthersKey(tool.server)) &&
+        !othersPrefixes.some(prefix => tool.name.startsWith(prefix)),
+    ),
+    serversRequiringAuth: serversRequiringAuth.filter(
+      name => !isOthersKey(name),
+    ),
   };
 }
 
@@ -75,4 +134,42 @@ export function useMusterServers(
     isLoading: Boolean(installation) && isLoading,
     isUnavailable: errors.length > 0 && resources.length === 0,
   };
+}
+
+/**
+ * {@link useMusterServers} for several installations in one hook: each
+ * installation's MCPServer CRs, read from the same cached per-installation
+ * queries, for a list whose rows span installations. Keyed by installation;
+ * an installation not asked for has no entry.
+ */
+export function useMusterServersByInstallation(
+  installations: readonly string[],
+): ReadonlyMap<string, MusterServers> {
+  const { resources, clustersData, errors, isLoading } = useResources(
+    [...installations],
+    MCPServer,
+    {},
+    { enabled: installations.length > 0 },
+  );
+
+  return useMemo(() => {
+    const byInstallation = new Map<string, MusterServers>();
+    for (const installation of installations) {
+      const own = resources.filter(
+        resource => resource.cluster === installation,
+      );
+      const failed = errors.some(error => error.cluster === installation);
+      const answered =
+        failed || clustersData.some(data => data.cluster === installation);
+      const servers = own.map(serverInfoOf);
+      byInstallation.set(installation, {
+        servers,
+        resources: own,
+        labels: connectorLabels(servers),
+        isLoading: isLoading && !answered,
+        isUnavailable: failed && own.length === 0,
+      });
+    }
+    return byInstallation;
+  }, [installations, resources, clustersData, errors, isLoading]);
 }

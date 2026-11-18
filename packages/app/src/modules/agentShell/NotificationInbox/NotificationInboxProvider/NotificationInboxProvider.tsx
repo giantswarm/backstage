@@ -58,9 +58,18 @@ export type NotificationInboxValue = {
    * "Mark all read": every unread row, a write per source that has one (the
    * seen marks in one write; the store's unread notifications, read first,
    * in another). Rejects when a source could not mark them, after the others
-   * did.
+   * did; `markFailure` then says so.
    */
   markAllRead: () => Promise<void>;
+  /**
+   * Read marks the person asked for that could not be saved, after their
+   * retries: "Mark all read", or rows they opened. `rows` is how many of
+   * those rows are still unread; undefined once none is (a later mark, or
+   * another tab, read them). The rows stay unread meanwhile.
+   */
+  markFailure?: { rows: number };
+  /** Tries the marks of `markFailure` again. */
+  retryMarks: () => Promise<void>;
   /** The overlay (a popover on the rail, a sheet on a phone). */
   isOpen: boolean;
   setOpen: (open: boolean) => void;
@@ -79,6 +88,26 @@ const InboxContext = createContext<NotificationInboxValue | undefined>(
 export function useNotificationInbox(): NotificationInboxValue | undefined {
   return useContext(InboxContext);
 }
+
+/**
+ * What the person asked to mark read that could not be saved: "Mark all
+ * read", or rows they opened. `rowIds` are the rows it was to mark;
+ * `reported`, that "Mark all read" marked something already and has been
+ * reported, so Try again does not report it again.
+ */
+type MarkFailure = {
+  kind: 'all' | 'rows';
+  rowIds: string[];
+  reported: boolean;
+};
+
+/** One "Mark all read" across the sources, or its Try again. */
+type MarkAllWrite = {
+  /** The rows to mark (Try again); every unread row when left out. */
+  only?: readonly InboxRow[];
+  /** This "Mark all read" has been reported already. */
+  reported?: boolean;
+};
 
 /** Pinned rows first, then newest first; rows that cannot say when go last. */
 function byNewest(a: InboxRow, b: InboxRow): number {
@@ -128,39 +157,93 @@ function Inbox({ children }: { children: ReactNode }) {
   const [isOpen, setOpenState] = useState(false);
   const desktop = useDesktopNotifications();
 
+  const [failure, setFailure] = useState<MarkFailure>();
+  const addFailure = useCallback(
+    (kind: MarkFailure['kind'], rowIds: readonly string[], reported = false) =>
+      setFailure(previous => ({
+        // A failed "Mark all read" stays one; a failed row joins it.
+        kind: previous?.kind === 'all' ? 'all' : kind,
+        rowIds: [
+          ...(previous?.rowIds ?? []).filter(id => !rowIds.includes(id)),
+          ...rowIds,
+        ],
+        reported: Boolean(previous?.reported) || reported,
+      })),
+    [],
+  );
+
+  // Read inside callbacks: the rows as they are now.
+  const latestRows = useRef(rows);
+  latestRows.current = rows;
+
   // Rows whose read mark is on its way, so a row is written once however it
-  // was read: clicked, then on screen once its page opens.
-  const marking = useRef(new Set<string>());
+  // was read: clicked, then on screen once its page opens. A row the person
+  // opens while a mark of it is on its way waits for that one, and is marked
+  // after it if it is still unread: the mark on its way may be one that fails
+  // quietly. A row the person opened whose mark could not be saved (its
+  // source has retried) is a failure the overlay shows; a row only on screen
+  // is not their doing, and is marked again with the next read.
+  const marking = useRef(new Map<string, Promise<void>>());
   const markOnce = useCallback(
-    (row: InboxRow, opened: boolean) => {
-      const source = sourceOf(row);
-      if (!source || !row.unread || marking.current.has(row.id)) {
+    async (row: InboxRow, opened: boolean): Promise<void> => {
+      let current: InboxRow | undefined = row;
+      for (
+        let inFlight = marking.current.get(row.id);
+        inFlight;
+        inFlight = marking.current.get(row.id)
+      ) {
+        if (!opened) {
+          return;
+        }
+        await inFlight;
+        current = latestRows.current.find(each => each.id === row.id);
+      }
+      const source = current && sourceOf(current);
+      if (!current || !source || !current.unread) {
         return;
       }
-      marking.current.add(row.id);
-      source
-        .markRead(row, opened)
-        .catch(() => {})
-        .finally(() => marking.current.delete(row.id));
+      const write: Promise<void> = source
+        .markRead(current, opened)
+        .catch(() => {
+          if (opened) {
+            addFailure('rows', [row.id]);
+          }
+        })
+        .finally(() => {
+          if (marking.current.get(row.id) === write) {
+            marking.current.delete(row.id);
+          }
+        });
+      marking.current.set(row.id, write);
+      await write;
     },
-    [sourceOf],
+    [sourceOf, addFailure],
   );
 
   const markRead = useCallback(
-    (row: InboxRow) => markOnce(row, true),
+    (row: InboxRow) => {
+      markOnce(row, true);
+    },
     [markOnce],
   );
 
   // A write per source with unread rows, all settled before the one report:
   // "Mark all read" is reported when it marked anything, even if another
-  // source failed, and not for a click that found nothing left to mark.
+  // source failed, and not for a click that found nothing left to mark; its
+  // Try again is reported only if the first try marked nothing.
   const { mutateAsync: markAllSources } = useTrackedMutation(
     {
-      mutationFn: async () => {
+      mutationFn: async ({ only }: MarkAllWrite) => {
         const results = await Promise.allSettled(
-          latestSources.current
-            .filter(source => source.rows.some(row => row.unread))
-            .map(source => source.markAllRead()),
+          latestSources.current.flatMap(source => {
+            if (!only) {
+              return source.rows.some(row => row.unread)
+                ? [source.markAllRead()]
+                : [];
+            }
+            const own = only.filter(row => source.rows.includes(row));
+            return own.length > 0 ? [source.markAllRead(own)] : [];
+          }),
         );
         return {
           marked: results.some(
@@ -172,19 +255,72 @@ function Inbox({ children }: { children: ReactNode }) {
           )?.reason,
         };
       },
-      event: ({ marked }) =>
-        marked
+      event: ({ marked }, { reported }) =>
+        marked && !reported
           ? { name: 'AgentPlatform.notificationsMarkedRead', attributes: {} }
           : null,
     },
     inboxQueryClient,
   );
   const markAllRead = useCallback(async () => {
-    const { failure } = await markAllSources();
-    if (failure) {
-      throw failure;
+    const asked = latestRows.current
+      .filter(row => row.unread)
+      .map(row => row.id);
+    const { marked, failure: reason } = await markAllSources({});
+    if (reason) {
+      addFailure('all', asked, marked);
+      throw reason;
     }
-  }, [markAllSources]);
+    setFailure(undefined);
+  }, [markAllSources, addFailure]);
+
+  // Shown while a row it names is still unread: a row read since (Try
+  // again, a later mark, another tab) takes its part of the failure away.
+  const failedRows = useMemo(
+    () =>
+      failure
+        ? rows.filter(row => row.unread && failure.rowIds.includes(row.id))
+        : [],
+    [failure, rows],
+  );
+  const markFailure = useMemo(
+    () => (failedRows.length > 0 ? { rows: failedRows.length } : undefined),
+    [failedRows.length],
+  );
+  // Once none of its rows is unread the failure is over, so a later one
+  // starts afresh rather than joining one nobody sees.
+  const isFailureOver = Boolean(failure) && failedRows.length === 0;
+  useEffect(() => {
+    if (isFailureOver) {
+      setFailure(undefined);
+    }
+  }, [isFailureOver]);
+
+  // Try again marks the rows the alert speaks of, and nothing that arrived
+  // since. The failure stays (and the alert with it) until they are read.
+  const latestFailedRows = useRef(failedRows);
+  latestFailedRows.current = failedRows;
+  const retryMarks = useCallback(async () => {
+    const failed = latestFailedRows.current;
+    if (!failure || failed.length === 0) {
+      return;
+    }
+    if (failure.kind === 'rows') {
+      await Promise.all(failed.map(row => markOnce(row, true)));
+      return;
+    }
+    const { marked, failure: reason } = await markAllSources({
+      only: failed,
+      reported: failure.reported,
+    });
+    if (reason) {
+      addFailure(
+        'all',
+        failed.map(row => row.id),
+        marked,
+      );
+    }
+  }, [failure, markAllSources, markOnce, addFailure]);
 
   // Opening the overlay, however it opens, answers the toasts that point to
   // it; `interruptions` is read through a ref because it needs the opener.
@@ -229,8 +365,6 @@ function Inbox({ children }: { children: ReactNode }) {
 
   // The MCP sign-in row from a link (its toast, its desktop notification,
   // the address): opened in place, if it is still there.
-  const latestRows = useRef(rows);
-  latestRows.current = rows;
   const openMcpSignIn = useCallback(() => {
     const row = latestRows.current.find(each => each.kind === 'mcpSignIn');
     if (row) {
@@ -308,6 +442,8 @@ function Inbox({ children }: { children: ReactNode }) {
       markRead,
       openInPlace,
       markAllRead,
+      markFailure,
+      retryMarks,
       isOpen,
       setOpen,
       desktop,
@@ -319,6 +455,8 @@ function Inbox({ children }: { children: ReactNode }) {
       markRead,
       openInPlace,
       markAllRead,
+      markFailure,
+      retryMarks,
       isOpen,
       setOpen,
       desktop,

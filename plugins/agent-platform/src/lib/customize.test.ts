@@ -2,11 +2,9 @@ import type { AgentRow } from '../components/AgentsDataProvider';
 import type { ModelRow } from '../components/ModelsTable';
 import {
   agentHarnesses,
-  agentParts,
   agentsByModel,
   agentsBySkill,
   agentStatus,
-  connectorCount,
   harnessLabel,
   modelStatus,
   STALE_MODEL_DETAIL,
@@ -14,6 +12,7 @@ import {
   searchAgents,
   searchModels,
   searchSkills,
+  sortAgents,
   usedByLabel,
 } from './customize';
 import type { DiscoveredSkill } from './skills';
@@ -26,6 +25,7 @@ function agent(overrides: Partial<AgentRow> = {}): AgentRow {
     name: 'Support triage',
     technicalName: 'triage',
     description: 'Sorts tickets',
+    tags: [],
     skillCount: 0,
     readiness: 'ready',
     ...overrides,
@@ -81,75 +81,6 @@ describe('agentStatus', () => {
         }),
       ),
     ).toEqual({ label: 'Model not serving', tone: 'warning' });
-  });
-});
-
-describe('connectorCount', () => {
-  it('counts the servers a composed toolset names', () => {
-    expect(
-      connectorCount(
-        agent({
-          toolset: {
-            state: 'declared',
-            carrier: 'triage',
-            selectors: ['server:github', 'server:jira', 'server:github'],
-          },
-        }),
-      ),
-    ).toBe(2);
-  });
-
-  it('counts none for an agent without tools', () => {
-    expect(connectorCount(agent({ toolset: { state: 'no-gateway' } }))).toBe(0);
-    expect(
-      connectorCount(
-        agent({
-          toolset: {
-            state: 'declared',
-            carrier: 'triage',
-            selectors: ['preset:none'],
-          },
-        }),
-      ),
-    ).toBe(0);
-  });
-
-  it('does not count what only muster resolves', () => {
-    expect(connectorCount(agent())).toBeUndefined();
-    expect(
-      connectorCount(
-        agent({ toolset: { state: 'implicit-full', carrier: 'triage' } }),
-      ),
-    ).toBeUndefined();
-    expect(
-      connectorCount(
-        agent({
-          toolset: {
-            state: 'declared',
-            carrier: 'triage',
-            selectors: ['server:github', 'preset:read-only'],
-          },
-        }),
-      ),
-    ).toBeUndefined();
-  });
-});
-
-describe('agentParts', () => {
-  it('names skills and, when known, connectors', () => {
-    expect(agentParts(agent({ skillCount: 1 }))).toBe('1 skill');
-    expect(
-      agentParts(
-        agent({
-          skillCount: 2,
-          toolset: {
-            state: 'declared',
-            carrier: 'triage',
-            selectors: ['server:github'],
-          },
-        }),
-      ),
-    ).toBe('2 skills · 1 connector');
   });
 });
 
@@ -287,10 +218,16 @@ describe('search', () => {
     const onCodex = agent({ harness: 'codex', harnessTitle: 'Codex CLI' });
     expect(searchAgents([onCodex], 'codex')).toHaveLength(1);
     expect(searchAgents([onCodex], 'cli')).toHaveLength(1);
+    const tagged = agent({ tags: ['util', 'marketing'] });
+    expect(searchAgents([tagged], 'MARKET')).toHaveLength(1);
+    expect(searchAgents([agent()], 'util')).toHaveLength(0);
     expect(searchModels([model()], 'anthropic')).toHaveLength(1);
     expect(searchSkills([skill('triage')], 'giantswarm/skills')).toHaveLength(
       1,
     );
+    const taggedSkill = { ...skill('notes'), tags: ['on-call', 'kubernetes'] };
+    expect(searchSkills([taggedSkill], 'kubernetes')).toHaveLength(1);
+    expect(searchSkills([skill('notes')], 'kubernetes')).toHaveLength(0);
   });
 });
 
@@ -317,5 +254,43 @@ describe('Harnesses', () => {
       'Claude Code (claude-code)',
     );
     expect(harnessLabel('codex')).toBe('codex');
+  });
+});
+
+describe('sortAgents', () => {
+  const alpha = agent({
+    id: 'a',
+    name: 'Alpha',
+    createdAt: '2026-01-01T00:00:00Z',
+  });
+  const bravo = agent({
+    id: 'b',
+    name: 'bravo',
+    createdAt: '2026-10-01T00:00:00Z',
+  });
+  const charlie = agent({ id: 'c', name: 'Charlie' });
+  const rows = [charlie, bravo, alpha];
+  const names = (sorted: AgentRow[]) => sorted.map(row => row.name);
+
+  it('sorts by name, A–Z', () => {
+    expect(names(sortAgents(rows, 'name'))).toEqual([
+      'Alpha',
+      'bravo',
+      'Charlie',
+    ]);
+  });
+
+  it('sorts by creation, newest first, an unknown one last', () => {
+    expect(names(sortAgents(rows, 'recent'))).toEqual([
+      'bravo',
+      'Alpha',
+      'Charlie',
+    ]);
+  });
+
+  it('sorts by last use, the never used last by name', () => {
+    expect(
+      names(sortAgents(rows, 'lastUsed', new Map([['c', 1_000]]))),
+    ).toEqual(['Charlie', 'Alpha', 'bravo']);
   });
 });

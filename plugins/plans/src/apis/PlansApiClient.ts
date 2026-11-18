@@ -194,7 +194,12 @@ export class PlansApiClient implements PlansApi {
     });
     if (!response.ok) {
       const errorData = (await response.json().catch(() => ({}))) as {
-        error?: { name?: string; message?: string; authUrl?: string };
+        error?: {
+          name?: string;
+          message?: string;
+          authUrl?: string;
+          kind?: string;
+        };
       };
       // No error body of the backend's: the gateway answered for it, as it
       // does while a backend pod stops. Transient, so retried, never final.
@@ -215,7 +220,10 @@ export class PlansApiClient implements PlansApi {
       if (response.status === 403) error.name = 'ForbiddenError';
       if (response.status === 404) error.name = 'NotFoundError';
       if (response.status === 429) error.name = 'TooManyRequestsError';
-      if (response.status === 503 && !fromGateway) {
+      // A muster rollout interrupted the call (gs-node's MusterToolError
+      // `kind`): another replica answers it, so it stays retryable.
+      const interrupted = errorData?.error?.kind === 'interrupted';
+      if (response.status === 503 && !fromGateway && !interrupted) {
         error.name = 'ServiceUnavailableError';
       }
       throw error;

@@ -185,7 +185,7 @@ describe('TotalsStrip', () => {
         totals={TOTALS}
         windowDays={30}
         rates={{ blended: 3 / 1_000_000 }}
-        costBasis="Estimated: gazelle's observed cost per token over the last 7d."
+        costBasis="Estimated: gazelle's observed cost per token over the last 7 days."
       />,
     );
 

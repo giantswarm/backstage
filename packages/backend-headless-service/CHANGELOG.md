@@ -1,5 +1,13 @@
 # backend-headless-service
 
+## 0.7.4
+
+### Patch Changes
+
+- Updated dependencies [e351d7d]
+- Updated dependencies [c628d76]
+  - @giantswarm/backstage-plugin-auth-backend-module-gs@0.17.0
+
 ## 0.7.3
 
 ### Patch Changes

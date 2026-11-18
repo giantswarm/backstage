@@ -2,8 +2,10 @@ import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
+import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
 import {
   AuthStatusResponse,
+  ConnectorNamesResponse,
   MusterApi,
   musterApiRef,
   ServerAuthStatus,
@@ -49,54 +51,36 @@ function seedExpiredUrlWait(queryClient: QueryClient) {
   });
 }
 
-type Api = Pick<MusterApi, 'getAuthStatus' | 'signInServer' | 'signOutServer'>;
+type Api = Pick<
+  MusterApi,
+  'getAuthStatus' | 'listConnectorNames' | 'signInServer' | 'signOutServer'
+>;
 
 /**
- * The tab pre-opened by the Sign in click, which the hook navigates once
- * muster's challenge arrives.
+ * The person's answer in the external URL consent dialog. Dismissing it is
+ * the default, so the page stays on offer in the row; tests of an opened
+ * page answer `accept`.
  */
-interface FakeTab {
-  closed: boolean;
-  opener: unknown;
-  close: jest.Mock;
-  location: { href: string };
-}
-
-function makeTab(): FakeTab {
-  const tab: FakeTab = {
-    closed: false,
-    opener: window,
-    close: jest.fn(() => {
-      tab.closed = true;
-    }),
-    location: { href: 'about:blank' },
-  };
-  return tab;
-}
-
-let windowOpen: jest.SpyInstance;
+const consentOpen = jest.fn();
 
 beforeEach(() => {
-  // jsdom does not implement window.open. null is the popup-blocked answer,
-  // so by default these tests exercise the link fallback; tests for the
-  // direct-open path install a FakeTab instead.
-  windowOpen = jest.spyOn(window, 'open').mockReturnValue(null);
-});
-
-afterEach(() => {
-  windowOpen.mockRestore();
+  consentOpen.mockReset().mockResolvedValue('cancel');
 });
 
 function makeApi(options: {
   status?: ServerAuthStatus;
   signIn?: ServerSignInResult;
   signOut?: ServerSignOutResult;
+  names?: ConnectorNamesResponse;
 }): jest.Mocked<Api> {
   const response: AuthStatusResponse = {
     servers: options.status ? [options.status] : [],
   };
   return {
     getAuthStatus: jest.fn(() => Promise.resolve(response)),
+    listConnectorNames: jest.fn(() =>
+      Promise.resolve(options.names ?? { servers: [] }),
+    ),
     signInServer: jest.fn((_server: SignInTarget, _installation?: string) =>
       Promise.resolve(
         options.signIn ?? {
@@ -133,7 +117,12 @@ async function renderSignIn(
   noun?: SignInNoun,
 ) {
   const rendered = await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, api]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, api],
+        [externalUrlConsentApiRef, { open: consentOpen }],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <ServerSignIn
           serverName="pro"
@@ -153,7 +142,12 @@ async function renderAuthActions(
   queryClient = newQueryClient(),
 ) {
   const rendered = await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, api]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, api],
+        [externalUrlConsentApiRef, { open: consentOpen }],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <ServerAuthActions serverName="pro" installation="gazelle" {...props} />
       </QueryClientProvider>
@@ -163,7 +157,8 @@ async function renderAuthActions(
 }
 
 describe('ServerSignIn', () => {
-  it('opens the sign-in page directly in a tab pre-opened by the click', async () => {
+  it('opens the sign-in page once the person agrees, and reopens with a fresh challenge', async () => {
+    consentOpen.mockResolvedValue('accept');
     const api = makeApi({
       status: {
         name: 'pro',
@@ -171,24 +166,15 @@ describe('ServerSignIn', () => {
         auth_tool: 'core_auth_login',
       },
     });
-    const tab = makeTab();
-    windowOpen.mockReturnValue(tab as unknown as Window);
     await renderSignIn(api);
 
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
-    await waitFor(() => {
-      expect(api.signInServer).toHaveBeenCalledWith('pro', 'gazelle');
-    });
-    // The tab is opened synchronously in the click (popup blockers only allow
-    // that) and navigated once muster's challenge arrives.
-    expect(windowOpen).toHaveBeenCalledWith('', '_blank');
-    await waitFor(() => {
-      expect(tab.location.href).toBe(
-        'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
-      );
-    });
-    expect(tab.opener).toBeNull();
+    await waitFor(() =>
+      expect(consentOpen).toHaveBeenCalledWith(
+        expect.objectContaining({ url: AUTH_URL, requester: 'pro' }),
+      ),
+    );
     expect(
       await screen.findByText(/Waiting for you to finish signing in/),
     ).toBeInTheDocument();
@@ -196,10 +182,10 @@ describe('ServerSignIn', () => {
     // the URL muster issued: the state behind that expires after 10 minutes,
     // well inside the wait, so reopening asks for a fresh challenge instead.
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
-    const reopen = screen.getByRole('button', { name: 'Reopen sign-in page' });
+    const reopen = await screen.findByRole('button', {
+      name: 'Reopen sign-in page',
+    });
 
-    const freshTab = makeTab();
-    windowOpen.mockReturnValue(freshTab as unknown as Window);
     api.signInServer.mockResolvedValue({
       status: 'auth_required',
       authUrl: FRESH_AUTH_URL,
@@ -208,22 +194,21 @@ describe('ServerSignIn', () => {
     await userEvent.click(reopen);
 
     await waitFor(() => expect(api.signInServer).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(freshTab.location.href).toBe(FRESH_AUTH_URL));
+    await waitFor(() =>
+      expect(consentOpen).toHaveBeenLastCalledWith(
+        expect.objectContaining({ url: FRESH_AUTH_URL }),
+      ),
+    );
     expect(
-      screen.getByText(/Waiting for you to finish signing in/),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Reopen sign-in page' }),
+      await screen.findByRole('button', { name: 'Reopen sign-in page' }),
     ).toBeInTheDocument();
   });
 
   /**
-   * With popups blocked the URL is the only way in, so it stays a link -- but
-   * only while muster honours it. Once the hook has withdrawn it, the row must
-   * offer a fresh URL rather than nothing (or a dead link): a button, which
-   * with popups still blocked yields a fresh link.
+   * A page the person did not open stays on offer only while muster honours
+   * its URL. Once the hook has withdrawn it, the row offers a fresh one.
    */
-  it('offers a fresh sign-in URL once the popup-blocked link has expired', async () => {
+  it('asks for a fresh sign-in URL once the unopened one has expired', async () => {
     const api = makeApi({
       status: { name: 'pro', status: 'auth_required' },
     });
@@ -237,28 +222,30 @@ describe('ServerSignIn', () => {
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
 
     await userEvent.click(
-      screen.getByRole('button', { name: 'Open sign-in page' }),
+      screen.getByRole('button', {
+        name: 'Open sign-in page (opens in a new tab)',
+      }),
     );
 
     await waitFor(() => {
       expect(api.signInServer).toHaveBeenCalledWith('pro', 'gazelle');
     });
-    const link = await screen.findByRole('link', {
-      name: /Open sign-in page/,
-    });
-    expect(link).toHaveAttribute('href', AUTH_URL);
+    await waitFor(() =>
+      expect(consentOpen).toHaveBeenCalledWith(
+        expect.objectContaining({ url: AUTH_URL }),
+      ),
+    );
   });
 
   /**
    * A refused reopen (muster's login rate limit) must not cancel the wait on
-   * the tab opened earlier: the refusal is shown, the affordance stays.
+   * the page opened earlier: the refusal is shown, the affordance stays.
    */
   it('keeps waiting when muster refuses to reissue the sign-in page', async () => {
     const api = makeApi({
       status: { name: 'pro', status: 'auth_required' },
     });
-    const tab = makeTab();
-    windowOpen.mockReturnValue(tab as unknown as Window);
+    consentOpen.mockResolvedValue('accept');
     await renderSignIn(api);
 
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
@@ -266,8 +253,6 @@ describe('ServerSignIn', () => {
       name: 'Reopen sign-in page',
     });
 
-    const secondTab = makeTab();
-    windowOpen.mockReturnValue(secondTab as unknown as Window);
     api.signInServer.mockResolvedValue({
       status: 'error',
       message: 'Rate limit exceeded. Too many authentication attempts.',
@@ -275,9 +260,7 @@ describe('ServerSignIn', () => {
     await userEvent.click(reopen);
 
     expect(await screen.findByText(/Rate limit exceeded/)).toBeInTheDocument();
-    // The blank second tab is closed; the first one is left to finish.
-    expect(secondTab.close).toHaveBeenCalled();
-    expect(tab.close).not.toHaveBeenCalled();
+    expect(consentOpen).toHaveBeenCalledTimes(1);
     expect(
       screen.getByText(/Waiting for you to finish signing in/),
     ).toBeInTheDocument();
@@ -286,7 +269,7 @@ describe('ServerSignIn', () => {
     ).toBeInTheDocument();
   });
 
-  it('closes the pre-opened tab when muster answers without a sign-in page', async () => {
+  it('asks to open nothing when muster answers without a sign-in page', async () => {
     const api = makeApi({
       status: { name: 'pro', status: 'auth_required' },
       signIn: {
@@ -294,17 +277,15 @@ describe('ServerSignIn', () => {
         message: "Server 'pro' is already authenticated and connected.",
       },
     });
-    const tab = makeTab();
-    windowOpen.mockReturnValue(tab as unknown as Window);
     await renderSignIn(api);
 
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
-    // The tab would just strand the user on about:blank.
-    await waitFor(() => expect(tab.close).toHaveBeenCalled());
+    await waitFor(() => expect(api.signInServer).toHaveBeenCalled());
+    expect(consentOpen).not.toHaveBeenCalled();
   });
 
-  it('falls back to a prominent sign-in link when the popup was blocked', async () => {
+  it('offers the sign-in page again when the person did not open it', async () => {
     const api = makeApi({
       status: {
         name: 'pro',
@@ -319,17 +300,20 @@ describe('ServerSignIn', () => {
     await waitFor(() => {
       expect(api.signInServer).toHaveBeenCalledWith('pro', 'gazelle');
     });
-    const link = await screen.findByRole('link', {
-      name: /Open sign-in page/,
+    const open = await screen.findByRole('button', {
+      name: 'Open sign-in page (opens in a new tab)',
     });
-    expect(link).toHaveAttribute(
-      'href',
-      'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
-    );
-    expect(link).toHaveAttribute('target', '_blank');
     expect(
       screen.getByText(/Waiting for you to finish signing in/),
     ).toBeInTheDocument();
+
+    await userEvent.click(open);
+
+    expect(consentOpen).toHaveBeenCalledTimes(2);
+    expect(consentOpen).toHaveBeenLastCalledWith(
+      expect.objectContaining({ url: AUTH_URL }),
+    );
+    expect(api.signInServer).toHaveBeenCalledTimes(1);
   });
 
   /**
@@ -357,7 +341,9 @@ describe('ServerSignIn', () => {
     ).toHaveTextContent(/^This server's authorization server advertises/);
     // The sign-in link still works — the fallback often succeeds.
     expect(
-      screen.getByRole('link', { name: /Open sign-in page/ }),
+      screen.getByRole('button', {
+        name: 'Open sign-in page (opens in a new tab)',
+      }),
     ).toBeInTheDocument();
   });
 
@@ -382,15 +368,17 @@ describe('ServerSignIn', () => {
 
     expect(
       await screen.findByText(
-        /rejected muster's automatic client registration/,
+        /rejected Muster's automatic client registration/,
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: /Open sign-in page/ }),
+      screen.getByRole('button', {
+        name: 'Open sign-in page (opens in a new tab)',
+      }),
     ).toBeInTheDocument();
   });
 
-  it('notes when muster registered itself via Dynamic Client Registration', async () => {
+  it('notes when Muster registered itself via Dynamic Client Registration', async () => {
     const api = makeApi({
       status: { name: 'pro', status: 'auth_required' },
       signIn: {
@@ -428,7 +416,7 @@ describe('ServerSignIn', () => {
 
     expect(
       await screen.findByText(
-        /rejected muster's automatic client registration/,
+        /rejected Muster's automatic client registration/,
       ),
     ).toHaveTextContent(/^This connector's authorization server rejected/);
   });
@@ -447,7 +435,9 @@ describe('ServerSignIn', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 
-    await screen.findByRole('link', { name: /Open sign-in page/ });
+    await screen.findByRole('button', {
+      name: 'Open sign-in page (opens in a new tab)',
+    });
     expect(
       screen.queryByText(/may be rejected as an unregistered client/),
     ).not.toBeInTheDocument();
@@ -499,6 +489,28 @@ describe('ServerSignIn', () => {
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 
+  it("shows muster's reason, and no sign-in, for a sign-in that cannot pass", async () => {
+    const api = makeApi({
+      status: {
+        name: 'pro',
+        status: 'auth_required',
+        kind: 'grant',
+        error:
+          "Cannot sign in to 'pro': your login method cannot be checked here.",
+      },
+    });
+    await renderSignIn(api);
+
+    expect(
+      await screen.findByText(
+        "Cannot sign in to 'pro': your login method cannot be checked here.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(api.signInServer).not.toHaveBeenCalled();
+  });
+
   it('explains SSO-managed servers instead of offering a sign-in', async () => {
     const api = makeApi({
       status: {
@@ -520,6 +532,81 @@ describe('ServerSignIn', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
+  // The callers that name no display name (the agent platform's alerts) get
+  // the one muster-backend reads for everyone.
+  it('names the connector by the display name muster gives, when the caller gives none', async () => {
+    const api = makeApi({
+      status: {
+        name: 'pro',
+        status: 'auth_required',
+        token_exchange_enabled: true,
+        sso_attempt_failed: true,
+      },
+      names: { servers: [{ name: 'pro', displayName: 'Pro Search' }] },
+    });
+    await renderSignIn(api);
+
+    expect(
+      await screen.findByText(/^Pro Search uses your portal sign-in/),
+    ).toBeInTheDocument();
+    expect(api.listConnectorNames).toHaveBeenCalledWith('gazelle');
+  });
+
+  it('shows the display name next to the sign-in of a list', async () => {
+    const api = makeApi({
+      status: {
+        name: 'pro',
+        status: 'auth_required',
+        auth_tool: 'core_auth_login',
+      },
+      names: { servers: [{ name: 'pro', displayName: 'Pro Search' }] },
+    });
+    await renderSignIn(api);
+
+    expect(await screen.findByText('Pro Search')).toBeInTheDocument();
+    // Its own name beside it keeps the rows of a list apart.
+    expect(screen.getByText('pro').tagName).toBe('CODE');
+  });
+
+  // Two members of one family share the family's display name.
+  it('keeps two servers with one display name apart', async () => {
+    const api = makeApi({
+      status: {
+        name: 'gazelle-mcp-kubernetes',
+        status: 'auth_required',
+        auth_tool: 'core_auth_login',
+      },
+    });
+    await renderInTestApp(
+      <TestApiProvider
+        apis={[
+          [musterApiRef, api],
+          [externalUrlConsentApiRef, { open: consentOpen }],
+        ]}
+      >
+        <QueryClientProvider client={newQueryClient()}>
+          <ServerSignIn
+            serverName="gazelle-mcp-kubernetes"
+            displayName="Kubernetes"
+            installation="gazelle"
+            showName
+          />
+          <ServerSignIn
+            serverName="grizzly-mcp-kubernetes"
+            displayName="Kubernetes"
+            installation="gazelle"
+            showName
+          />
+        </QueryClientProvider>
+      </TestApiProvider>,
+    );
+
+    expect(screen.getByText('gazelle-mcp-kubernetes')).toBeInTheDocument();
+    expect(screen.getByText('grizzly-mcp-kubernetes')).toBeInTheDocument();
+    // The caller named them: nothing to read.
+    expect(api.listConnectorNames).not.toHaveBeenCalled();
+  });
+
   it('explains a connected SSO server without a failure muster kept from another session', async () => {
     const api = makeApi({
       status: {
@@ -533,7 +620,7 @@ describe('ServerSignIn', () => {
 
     expect(
       await screen.findByText(
-        "pro authenticates through SSO from muster's own session, so there is nothing to sign in to here.",
+        "pro authenticates through SSO from Muster's own session, so there is nothing to sign in to here.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/trusted audiences/)).not.toBeInTheDocument();
@@ -561,7 +648,7 @@ describe('ServerSignIn', () => {
 
     expect(
       await screen.findByText(
-        /Cannot read the muster auth status: auth:\/\/status returned no text content/,
+        /Cannot read the Muster auth status: auth:\/\/status returned no text content/,
       ),
     ).toBeInTheDocument();
   });
@@ -577,7 +664,7 @@ describe('ServerSignIn', () => {
 
     await waitFor(() => expect(api.getAuthStatus).toHaveBeenCalled());
     expect(
-      screen.queryByText(/Cannot read the muster auth status/),
+      screen.queryByText(/Cannot read the Muster auth status/),
     ).not.toBeInTheDocument();
   });
 
@@ -664,8 +751,30 @@ describe('ServerAuthActions', () => {
       expect(api.signInServer).toHaveBeenCalledWith('pro', 'gazelle');
     });
     expect(
-      await screen.findByRole('link', { name: /Open sign-in page/ }),
+      await screen.findByRole('button', {
+        name: 'Open sign-in page (opens in a new tab)',
+      }),
     ).toBeInTheDocument();
+  });
+
+  it("shows muster's reason in place of Sign in for a sign-in that cannot pass", async () => {
+    const api = makeApi({
+      status: {
+        name: 'pro',
+        status: 'reauth_required',
+        kind: 'grant',
+        error:
+          "Cannot sign in to 'pro': your login method cannot be checked here.",
+      },
+    });
+    await renderAuthActions(api);
+
+    expect(
+      await screen.findByText(
+        "Cannot sign in to 'pro': your login method cannot be checked here.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
   /**
@@ -683,7 +792,9 @@ describe('ServerAuthActions', () => {
       await screen.findByText(/Waiting for you to finish signing in/),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Open sign-in page' }),
+      screen.getByRole('button', {
+        name: 'Open sign-in page (opens in a new tab)',
+      }),
     ).toBeInTheDocument();
   });
 

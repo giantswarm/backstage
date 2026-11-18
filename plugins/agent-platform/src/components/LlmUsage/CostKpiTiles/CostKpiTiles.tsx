@@ -6,6 +6,13 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import { spendChangePct } from '../../../lib/usageKpis';
 import {
+  lastDaysNoun,
+  previousUsageMonth,
+  usageMonthLabel,
+  type UsageWindow,
+  usageWindowNoun,
+} from '../../../lib/usageWindow';
+import {
   formatMoney,
   formatPercent,
   isConvertedCurrency,
@@ -19,6 +26,8 @@ export type CostKpiTilesProps = {
   currency?: Currency;
   /** The window the figures cover, named in the labels and hints. */
   windowDays: number;
+  /** The window as the screen selected it, when it is a month; the days otherwise. */
+  window?: UsageWindow;
 };
 
 /**
@@ -45,20 +54,30 @@ export function CostKpiTiles({
   usage,
   currency = USD,
   windowDays,
+  window,
 }: CostKpiTilesProps) {
   const { totals } = usage;
   const converted = isConvertedCurrency(currency);
 
+  // The window before this one: the same days before a days window, the
+  // month before a month.
+  const previous =
+    window?.kind === 'month'
+      ? usageMonthLabel(previousUsageMonth(window.month))
+      : `previous ${windowDays} days`;
   const delta = spendChangePct(totals.costUsd, totals.previousCostUsd);
   const deltaLabel =
     delta === undefined
       ? undefined
-      : `${delta >= 0 ? '▲' : '▼'} ${formatPercent(Math.abs(delta))} vs previous ${windowDays} days`;
+      : `${delta >= 0 ? '▲' : '▼'} ${formatPercent(Math.abs(delta))} vs ${previous}`;
 
-  const windowNote = `the last ${windowDays} days`;
+  const windowNote = window
+    ? usageWindowNoun(window)
+    : lastDaysNoun(windowDays);
   // Said in the hint because the change is hidden, not zero, when the data
-  // does not reach back to the previous window (`dataBeforePreviousWindow`).
-  const deltaNote = `The change against the previous ${windowDays} days shows only when the data covers all of them.`;
+  // does not reach back to the previous window (`dataBeforePreviousWindow`),
+  // and never shown for a month still being written.
+  const deltaNote = `The change against ${previous} shows only when the data covers all of it, and not for a month still being written.`;
 
   return (
     <StatGrid>
@@ -87,7 +106,7 @@ export function CostKpiTiles({
       <Stat
         variant="tile"
         label="Cache read share"
-        hint="Shows cache reads as a share of all input tokens (plain, cache reads and writes). A high share means prompt caching pays off."
+        hint="Shows cache reads as a share of all input tokens, each counted once (fresh input, cache reads and cache writes). A high share means prompt caching pays off."
         value={formatPercent(totals.cacheReadSharePct)}
         sub="of input tokens, read from cache"
       />

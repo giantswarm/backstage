@@ -3,13 +3,16 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Progress } from '@backstage/core-components';
 import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles, Theme } from '@material-ui/core';
-import { SectionHeader } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  SectionHeader,
+  UnreachableInstallationsAlert,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { agentDetailRouteRef } from '../../routes';
 import { useSessionUsage } from '../../hooks/useSessionUsage';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { connectorName } from '../../lib/toolset';
 import { useTokenRates } from '../../hooks/useTokenRates';
-import { useModelCost, type ModelCostView } from '../../hooks/useModelCost';
+import { useModelCost } from '../../hooks/useModelCost';
 import { useUsageWindow } from '../../hooks/useUsageWindow';
 import { describeCostBasis } from '../../lib/costBasis';
 import { isConvertedCurrency, useCurrency } from '../../lib/formatNumbers';
@@ -17,13 +20,13 @@ import {
   describeActualCost,
   describeActualCostByAgent,
   describeModelCostFallback,
+  withFallbackReason,
 } from '../../lib/modelCostCopy';
 import { useUsageInstallation } from '../../hooks/useUsageInstallation';
 import { useKagentCapabilitiesMap } from '../../hooks/useKagentCapabilities';
 import { useAgents } from '../AgentsDataProvider';
 import { InstallationScopeNote } from '../InstallationScopeNote';
 import { NotReachableInstallationsNote } from '../NotReachableInstallationsNote';
-import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
 import { ByAgentTable } from './ByAgentTable';
 import { CoverageNote } from './CoverageNote';
 import { TokensPerDayCard } from './TokensPerDayCard';
@@ -37,6 +40,7 @@ import {
   sumDaily,
   toByAgentRows,
 } from './helpers';
+import { lastDaysNoun } from '../../lib/usageWindow';
 
 const useStyles = makeStyles((theme: Theme) => ({
   row: {
@@ -57,16 +61,16 @@ const PERSONAL_COPY = {
   title: 'Your sessions',
   description: (days: number, installation: string) => (
     <>
-      Your agent sessions on <strong>{installation}</strong> over the last{' '}
-      {days} days, from kagent's stored conversations — Slack included.
+      Your agent sessions on <strong>{installation}</strong> over{' '}
+      {lastDaysNoun(days)}, from kagent's stored conversations — Slack included.
     </>
   ),
   descriptionWithoutInstallation: (days: number) =>
-    `Your agent sessions over the last ${days} days, from kagent's stored conversations — Slack included.`,
+    `Your agent sessions over ${lastDaysNoun(days)}, from kagent's stored conversations — Slack included.`,
   topTools: 'Your top tools',
   topServers: 'Your top connectors',
   empty: (days: number, installation: string) =>
-    `You have no agent sessions on ${installation} in the last ${days} days.`,
+    `You have no agent sessions on ${installation} in ${lastDaysNoun(days)}.`,
   unreadable: (installation: string) =>
     `None of your sessions on ${installation} could be read.`,
 };
@@ -75,36 +79,19 @@ const SHARED_COPY = {
   title: 'Agent sessions',
   description: (days: number, installation: string) => (
     <>
-      Every user's agent sessions on <strong>{installation}</strong> over the
-      last {days} days, from kagent's stored conversations.
+      Every user's agent sessions on <strong>{installation}</strong> over{' '}
+      {lastDaysNoun(days)}, from kagent's stored conversations.
     </>
   ),
   descriptionWithoutInstallation: (days: number) =>
-    `Agent sessions over the last ${days} days, from kagent's stored conversations.`,
+    `Agent sessions over ${lastDaysNoun(days)}, from kagent's stored conversations.`,
   topTools: 'Top tools',
   topServers: 'Top connectors',
   empty: (days: number, installation: string) =>
-    `There are no agent sessions on ${installation} in the last ${days} days.`,
+    `There are no agent sessions on ${installation} in ${lastDaysNoun(days)}.`,
   unreadable: (installation: string) =>
     `No sessions on ${installation} could be read.`,
 };
-
-/**
- * The estimate's basis line, led by why there is no actual cost when the
- * fallback has a reason of its own to give.
- */
-function withFallbackReason(
-  cost: ModelCostView,
-  installation: string,
-  days: number,
-  basis: string,
-): string {
-  const reason =
-    cost.state === 'fallback'
-      ? describeModelCostFallback(cost.reason, installation, days)
-      : undefined;
-  return reason ? `${reason} ${basis}` : basis;
-}
 
 /**
  * The "Your sessions" view of the Usage tab, and every state it can be in.
@@ -179,9 +166,10 @@ export function AgentUsageSection() {
   // apart everywhere else.
   const {
     rates,
-    window: rateWindow,
+    windowDays: rateWindowDays,
     isLoading: isRateLoading,
     tier: rateTier,
+    error: rateError,
   } = useTokenRates(installation);
   // Only `installation` is a rate this table can claim was applied. Every
   // other tier here means no cost cell has a figure, and the note below has to
@@ -382,15 +370,17 @@ export function AgentUsageSection() {
               : undefined
           }
           isActualCostLoading={stripCost.state === 'loading'}
-          costBasis={withFallbackReason(
-            stripCost,
-            installation ?? '',
-            appliedDays,
-            describeCostBasis({
+          costBasis={withFallbackReason({
+            cost: stripCost,
+            installation: installation ?? '',
+            days: appliedDays,
+            rateFailure: rateTier === 'error' ? rateError : undefined,
+            basis: describeCostBasis({
               tier: rateTier,
+              error: rateError,
               model: undefined,
               installation: installation ?? '',
-              window: rateWindow,
+              windowDays: rateWindowDays,
               inputTokens: stripTotals.inputTokens,
               outputTokens: stripTotals.outputTokens,
               // The daily buckets carry no reported total, so a narrowed window
@@ -401,7 +391,7 @@ export function AgentUsageSection() {
                   stripTotals.inputTokens -
                   stripTotals.outputTokens,
             }),
-          )}
+          })}
         />
         <div className={classes.row}>
           <TokensPerDayCard
@@ -426,7 +416,7 @@ export function AgentUsageSection() {
         <ByAgentTable
           rows={byAgentRows}
           rates={rates}
-          rateWindow={rateWindow}
+          rateWindowDays={rateWindowDays}
           installation={installation}
           isRateLoading={isRateLoading}
           hasRate={hasRate}
@@ -505,7 +495,7 @@ export function AgentUsageSection() {
       {usage && selectedDays > windowDays && (
         <Text variant="body-small" color="secondary">
           kagent computes session usage over its own {windowDays}-day window, so
-          the last {selectedDays} days show the same figures as {windowDays}.
+          {lastDaysNoun(selectedDays)} show the same figures as {windowDays}.
         </Text>
       )}
       {isUserScoped === false && (

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { analyticsApiRef } from '@backstage/core-plugin-api';
@@ -255,6 +255,39 @@ describe('DefinitionEditorDialog', () => {
 
     expect(await screen.findByText(/Invalid JSON/)).toBeInTheDocument();
     expect(screen.queryByText('Definition is valid.')).not.toBeInTheDocument();
+  });
+
+  it('drops the verdict of a Validate that answers after an edit', async () => {
+    let finish: (value: unknown) => void = () => {};
+    let fail: (reason: Error) => void = () => {};
+    await renderDialog(
+      jest
+        .fn()
+        .mockImplementationOnce(
+          () => new Promise(resolve => (finish = resolve)),
+        )
+        .mockImplementationOnce(
+          () => new Promise((_, reject) => (fail = reject)),
+        ),
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Validate' }));
+    await userEvent.type(editor(), ' broken');
+    finish({});
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Validate' })).toBeEnabled(),
+    );
+    expect(screen.queryByText('Definition is valid.')).not.toBeInTheDocument();
+
+    await userEvent.clear(editor());
+    await userEvent.type(editor(), '{{"name":"b"}');
+    await userEvent.click(screen.getByRole('button', { name: 'Validate' }));
+    await userEvent.type(editor(), ' broken');
+    fail(new Error('about the old text'));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Validate' })).toBeEnabled(),
+    );
+    expect(screen.queryByText('about the old text')).not.toBeInTheDocument();
   });
 
   it('cannot be dismissed while a call is in flight', async () => {

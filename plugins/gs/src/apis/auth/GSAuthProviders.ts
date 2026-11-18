@@ -3,6 +3,7 @@ import {
   AuthRequestOptions,
   ConfigApi,
   OAuthRequestApi,
+  SessionState,
 } from '@backstage/core-plugin-api';
 import {
   AuthApi,
@@ -11,7 +12,9 @@ import {
   GSAuthProvidersApi,
   GSAuthProvidersApiCreateOptions,
   gsAuthProvidersApiRef,
+  MainSessionEnd,
 } from './types';
+import { MainSessionEndStore } from './mainSessionEnd';
 import { GiantSwarmIcon } from '../../assets/icons/CustomIcons';
 import {
   ClusterToken,
@@ -39,6 +42,7 @@ import {
   asLoginRequestCaller,
   asLoginRequestCallerApi,
 } from './loginRequestCaller';
+import type { ExternalUrlConsentApi } from '@giantswarm/backstage-plugin-ui-react';
 
 const OIDC_PROVIDER_NAME_PREFIX = 'oidc-';
 const MCP_PROVIDER_NAME_PREFIX = 'mcp-';
@@ -99,6 +103,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   private readonly configApi?: ConfigApi;
   private readonly discoveryApi: DiscoveryApiClient;
   private readonly oauthRequestApi: OAuthRequestApi;
+  private readonly externalUrlConsentApi: ExternalUrlConsentApi;
 
   // Per-installation kubernetes auth providers/APIs are populated lazily by
   // `ensureInitialized()` once the signed-in config (with the installations)
@@ -143,10 +148,15 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   // mint open the main sign-in.
   private readonly hasUserGesture: () => boolean;
 
+  // Recorded by the main provider's connectors, cleared once either of its
+  // APIs holds a session again.
+  private readonly mainSessionEnd = new MainSessionEndStore();
+
   constructor(options: GSAuthProvidersApiCreateOptions) {
     this.configApi = options.configApi;
     this.discoveryApi = options.discoveryApi;
     this.oauthRequestApi = options.oauthRequestApi;
+    this.externalUrlConsentApi = options.externalUrlConsentApi;
     this.clusterAccessStatusApi = options.clusterAccessStatusApi;
     this.signInConnectorMemory =
       options.signInConnectorMemory ?? new LocalStorageSignInConnectorMemory();
@@ -504,6 +514,9 @@ export class GSAuthProviders implements GSAuthProvidersApi {
       signInConnectorMemory: isMainProvider
         ? this.signInConnectorMemory
         : undefined,
+      onSessionEnded: isMainProvider
+        ? reason => this.mainSessionEnd.record(reason)
+        : undefined,
       sessionTransform: toOAuth2Session,
       popupOptions: {
         size: {
@@ -515,6 +528,15 @@ export class GSAuthProviders implements GSAuthProvidersApi {
 
     const defaultScopes = getOIDCScopes(this.configApi);
     const authApi = OAuth2.create({ authConnector, defaultScopes });
+    if (isMainProvider) {
+      // The main API and the fallback card share one backend session: a
+      // sign-in through either one restores it.
+      authApi.sessionState$().subscribe(state => {
+        if (state === SessionState.SignedIn) {
+          this.mainSessionEnd.clear();
+        }
+      });
+    }
     const lasting = new LastingIdTokens({
       authApi,
       refresh: async minLifetimeLeft => {
@@ -606,6 +628,10 @@ export class GSAuthProviders implements GSAuthProvidersApi {
     return [...kubernetesAuthProviders, ...this.mcpAuthProviders];
   }
 
+  getMainSessionEnd(): MainSessionEnd {
+    return this.mainSessionEnd;
+  }
+
   getBrokerCoveredInstallations(): string[] {
     const mainProviderName =
       this.configApi?.getOptionalString('gs.authProvider');
@@ -654,8 +680,8 @@ export class GSAuthProviders implements GSAuthProvidersApi {
   /**
    * Backstage's standard GitHub auth API (`githubAuthApiRef`) implemented on
    * the person's own GitHub grant in muster: tokens are minted from
-   * `POST /api/auth/github-token`, a missing grant sends the browser through
-   * muster's connect once (full-page, back to the current page), signing out
+   * `POST /api/auth/github-token`, a missing grant asks the person to open
+   * muster's connect (full-page, back to the current page), signing out
    * revokes the grant in muster. Configured by `gs.github`; returns undefined
    * otherwise, so the app can keep the upstream GitHub provider.
    *
@@ -674,6 +700,7 @@ export class GSAuthProviders implements GSAuthProvidersApi {
         authConnector: new GithubGrantAuthConnector({
           backendBaseUrl,
           mainAuthApi: asLoginRequestCallerApi('github-grant', mainAuthApi),
+          externalUrlConsentApi: this.externalUrlConsentApi,
         }),
         // What the portal's plugins ask for (see the app's github-auth
         // factory); echoed by the connector, since a GitHub App user token

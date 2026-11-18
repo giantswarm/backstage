@@ -8,7 +8,10 @@ import {
   type ReactNode,
 } from 'react';
 import { useQueryClient, type Query } from '@tanstack/react-query';
-import { musterInstallationsQueryKey } from '@giantswarm/backstage-plugin-muster';
+import {
+  musterInstallationsQueryKey,
+  musterServerListQueryKey,
+} from '@giantswarm/backstage-plugin-muster';
 import {
   Agent,
   Harness,
@@ -33,7 +36,6 @@ import { useAgentManagerAvailability } from '../../hooks/useAgentManager';
 import {
   kagentAgentNamespacesQueryKey,
   musterAgentManagerInfoQueryKey,
-  musterServersQueryKey,
 } from '../../lib/queryKeys';
 import { useNamespacedFallback } from '../../hooks/useNamespacedResources';
 import { useModelConfigs } from '../ModelConfigsProvider';
@@ -52,6 +54,7 @@ import {
   sortAgentRows,
   toAgentRow,
 } from './helpers';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 export type AgentsContextValue = {
   /**
@@ -151,6 +154,7 @@ function agentsRefetchInterval(query: Query<KubeObjectInterface[]>): number {
 
 export function AgentsDataProvider({ children }: { children: ReactNode }) {
   const { installations } = useInstallations();
+  const { directory: organizations } = useOrganizationDirectory();
   const allInstallations = installations.map(installation => installation.name);
 
   // Only query installations whose inventory has the `api.kagent.dev` API group and
@@ -524,7 +528,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
             queryKey[5] === plural,
         }),
         queryClient.invalidateQueries({
-          queryKey: musterServersQueryKey(installation),
+          queryKey: musterServerListQueryKey(installation),
         }),
         queryClient.invalidateQueries({
           queryKey: musterAgentManagerInfoQueryKey(installation),
@@ -550,6 +554,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
             // a row is "unresolved" rather than wrongly "implicit full" until then.
             carriersByInstallation[cluster],
             harnessesByInstallation[cluster],
+            organizations,
           ),
           ...sessionGate,
         }));
@@ -653,6 +658,7 @@ export function AgentsDataProvider({ children }: { children: ReactNode }) {
     unknownPin,
     inventoryFailuresKey,
     retry,
+    organizations,
   ]);
 
   return (

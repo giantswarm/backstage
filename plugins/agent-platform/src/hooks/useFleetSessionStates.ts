@@ -1,7 +1,10 @@
 import { useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQueries } from '@tanstack/react-query';
-import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  isAwaitingData,
+  pollingQueryOptions,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { SessionStateEntry } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { kagentApiRef } from '../apis';
 import { sessionStatesQueryKey } from '../lib/queryKeys';
@@ -104,8 +107,11 @@ export function useFleetSessionStates(
     queries: targets.map(installation => ({
       queryKey: sessionStatesQueryKey(installation),
       queryFn: () => kagentApi.listSessionStates(installation),
-      refetchInterval,
-      refetchIntervalInBackground: options?.refetchIntervalInBackground,
+      // Not after kagent refused the person (401, 403).
+      ...pollingQueryOptions(refetchInterval),
+      refetchIntervalInBackground: Boolean(
+        options?.refetchIntervalInBackground,
+      ),
     })),
   });
 

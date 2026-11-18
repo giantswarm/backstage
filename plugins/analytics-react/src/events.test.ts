@@ -49,6 +49,42 @@ describe('toPortalEvent', () => {
   });
 });
 
+describe('toPortalEvent with counts', () => {
+  it('takes whole numbers of 0 or more', () => {
+    expect(
+      toPortalEvent('AgentPlatform.agentViewed', { skills: 0, tools: 137 }),
+    ).toEqual({
+      name: 'AgentPlatform.agentViewed',
+      attributes: { skills: 0, tools: 137 },
+    });
+  });
+
+  it('takes an event with a count left out', () => {
+    expect(
+      toPortalEvent('AgentPlatform.customizeViewed', { agents: 3 }),
+    ).toEqual({
+      name: 'AgentPlatform.customizeViewed',
+      attributes: { agents: 3 },
+    });
+    expect(toPortalEvent('AgentPlatform.messageSent', {})).toBeDefined();
+  });
+
+  it.each([
+    ['a negative count', { turns: -1 }],
+    ['a fraction', { turns: 2.5 }],
+    ['NaN', { turns: NaN }],
+    ['Infinity', { turns: Infinity }],
+    ['a count as a string', { turns: '12' }],
+    ['a bucket', { turns: '2-4' }],
+    ['a boolean', { turns: true }],
+    ['an unlisted attribute', { turns: 1, sessionId: 'abc' }],
+  ])('drops %s', (_, attributes) => {
+    expect(
+      toPortalEvent('AgentPlatform.sessionViewed', attributes),
+    ).toBeUndefined();
+  });
+});
+
 describe('isPortalEventShaped', () => {
   it.each(['AgentPlatform.agentCreated', 'Muster.Servers.mcpServerAdded'])(
     'recognises %s as ours',

@@ -11,10 +11,9 @@ import {
   Text,
 } from '@backstage/ui';
 import { countNoun } from '@giantswarm/backstage-plugin-ui-react';
-import { isSsoServer, ServerSignIn } from '../shared';
+import { isSsoServer, ServerSignIn, useConnectorLabels } from '../shared';
 import { ProviderAppList } from '../ProviderAppSignIn/ProviderAppList';
 import { useMcpServersAwaitingSignIn } from './useMcpServersAwaitingSignIn';
-import { useServerLabels } from './useServerLabels';
 import { useOpenRows } from './hooks';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -65,21 +64,21 @@ const SIGN_IN_HINTS: Record<string, string> = {
 };
 
 /**
- * The dialog's count of what still needs a sign-in: the MCP servers and the
+ * The dialog's count of what still needs a sign-in: the connectors and the
  * connections (provider Apps) listed, in one sentence.
  */
 function waitingSummary(servers: number, connections: number): string {
   if (connections === 0) {
     return servers === 1
-      ? 'One MCP server needs your sign-in before agents and portal features can use its tools.'
-      : `${servers} MCP servers need your sign-in before agents and portal features can use their tools.`;
+      ? 'One connector needs your sign-in before agents and portal features can use its tools.'
+      : `${servers} connectors need your sign-in before agents and portal features can use their tools.`;
   }
   if (servers === 0) {
     return connections === 1
       ? 'One connection needs your sign-in before your agents can use it.'
       : `${connections} connections need your sign-in before your agents can use them.`;
   }
-  return `${countNoun(servers, 'MCP server')} and ${countNoun(
+  return `${countNoun(servers, 'connector')} and ${countNoun(
     connections,
     'connection',
   )} need your sign-in before agents and portal features can use them.`;
@@ -175,7 +174,7 @@ export function McpAuthDialog({
   const rows = useOpenRows(isOpen, waiting);
   const appRows = useOpenRows(isOpen, appsWaiting);
 
-  const labelOf = useServerLabels(installation, rows);
+  const labelOf = useConnectorLabels(installation, rows);
   const remaining = rows.filter(name => waiting.includes(name)).length;
   const appsRemaining = appRows.filter(name =>
     appsWaiting.includes(name),
@@ -204,11 +203,11 @@ export function McpAuthDialog({
         ? 'You are signed in to everything here.'
         : undefined;
   } else if (listed === 0) {
-    summary = 'You are signed in to every MCP server here.';
+    summary = 'You are signed in to every connector here.';
   } else if (pending === 0) {
     summary =
       appRows.length === 0
-        ? 'Done: you are signed in to every server listed.'
+        ? 'Done: you are signed in to every connector listed.'
         : 'Done: you are signed in to everything listed.';
   } else {
     summary = waitingSummary(remaining, appsRemaining);
@@ -221,14 +220,14 @@ export function McpAuthDialog({
       width="min(90vw, 560px)"
     >
       <DialogHeader>
-        {appsOnly ? 'Sign in to your connections' : 'Sign in to MCP servers'}
+        {appsOnly ? 'Sign in to your connections' : 'Sign in to connectors'}
       </DialogHeader>
       <DialogBody>
         <Flex direction="column" gap="3">
           {isLoading ? (
             <Flex direction="column" gap="2" aria-busy="true">
               <Text variant="body-small" color="secondary">
-                Checking which servers need your sign-in…
+                Checking which connectors need your sign-in…
               </Text>
               <Skeleton width="100%" height={40} />
             </Flex>
@@ -247,7 +246,7 @@ export function McpAuthDialog({
                 />
               )}
               {rows.length > 0 && (
-                <ul className={classes.list} aria-label="MCP servers">
+                <ul className={classes.list} aria-label="Connectors">
                   {rows.map(name => (
                     <li key={name} className={classes.row}>
                       <span className={classes.label}>
@@ -260,6 +259,7 @@ export function McpAuthDialog({
                       </span>
                       {waiting.includes(name) ? (
                         <ServerSignIn
+                          noun="connector"
                           serverName={name}
                           displayName={labelOf(name)}
                           installation={installation}
@@ -282,8 +282,8 @@ export function McpAuthDialog({
               {withSignIn > 0 && (
                 <Text variant="body-small" color="secondary">
                   {withSignIn === 1
-                    ? '1 more server comes with your portal sign-in.'
-                    : `${withSignIn} more servers come with your portal sign-in.`}
+                    ? '1 more connector comes with your portal sign-in.'
+                    : `${withSignIn} more connectors come with your portal sign-in.`}
                 </Text>
               )}
             </>

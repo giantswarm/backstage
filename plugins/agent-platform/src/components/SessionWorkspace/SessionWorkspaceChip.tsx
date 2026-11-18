@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useRef, useState } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Link } from '@backstage/core-components';
 import {
@@ -11,6 +11,8 @@ import {
   Flex,
   Skeleton,
   Text,
+  Tooltip,
+  TooltipTrigger,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import type { KagentSessionWorkspace } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -22,7 +24,7 @@ import type { SessionWorkspaceName } from '../../hooks/useWorkspaceNames';
 import {
   syncedAgo,
   UNNAMED_WORKSPACE_REASON,
-  workspaceChipLabel,
+  workspaceChipText,
 } from '../../lib/sessionWorkspace';
 import type { Workspace } from '../../lib/workspaceManager';
 import { workspaceDetailRouteRef } from '../../routes';
@@ -59,6 +61,18 @@ const useStyles = makeStyles({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
+  // Lines of their own above the details: a bold headline at the tooltip's
+  // own size, which says what the chip shows, then the full name when the
+  // chip cuts it off. On elements inside the tooltip: bui's `Tooltip` drops
+  // a `className`.
+  tooltipHeading: {
+    display: 'block',
+    fontWeight: 'bold',
+  },
+  tooltipName: {
+    display: 'block',
+    overflowWrap: 'anywhere',
+  },
   list: {
     margin: 0,
     paddingLeft: 0,
@@ -77,11 +91,19 @@ export type SessionWorkspaceChipProps = {
   name: SessionWorkspaceName;
 };
 
+/** Whether the label is cut off by the chip's width. */
+function isTruncated(element: HTMLElement | null): boolean {
+  return Boolean(element && element.scrollWidth > element.clientWidth);
+}
+
 /**
  * The session header's workspace: a chip with the workspace's name, its last
- * sync and how many repositories were fetched fresh at the start, opening a
- * drawer with the rest. A workspace the person cannot see any more shows
- * unnamed, never an error: the session works either way.
+ * sync and how many repositories were fetched fresh at the start in a tooltip
+ * on hover and keyboard focus, opening a drawer with the rest. The tooltip
+ * is headed "Workspace", and gives the full name when the chip cuts it off. The chip's accessible
+ * name carries the name and the details, so the tooltip hides nothing from a
+ * screen reader. A workspace the person cannot see any more shows unnamed,
+ * never an error: the session works either way.
  */
 export function SessionWorkspaceChip({
   sessionId,
@@ -90,21 +112,54 @@ export function SessionWorkspaceChip({
   name,
 }: SessionWorkspaceChipProps) {
   const classes = useStyles();
+  const labelRef = useRef<HTMLSpanElement>(null);
+  // Read when the tooltip opens: nothing re-renders an idle session's header
+  // on a clock, so the sync's age would otherwise be the age at the last
+  // render, and only an open tooltip shows whether the label is cut off.
+  const [opened, setOpened] = useState<{ now: Date; truncated: boolean }>();
   if (name.status === 'loading') {
     return <Skeleton width={160} height={24} />;
   }
-  const label = workspaceChipLabel(name, workspace.fetched.length);
+  const { label, details } = workspaceChipText(
+    name,
+    workspace.fetched.length,
+    opened?.now,
+  );
   return (
     <DialogTrigger>
-      <Button
-        size="small"
-        variant="secondary"
-        className={classes.chip}
-        aria-label={`Workspace: ${label}`}
-        aria-haspopup="dialog"
+      {/* Inside the dialog's trigger, so its press still reaches the button:
+          react-aria's tooltip trigger only adds hover and focus handling, and
+          closes the tooltip on a press. */}
+      <TooltipTrigger
+        delay={200}
+        onOpenChange={isOpen => {
+          if (isOpen) {
+            setOpened({
+              now: new Date(),
+              truncated: isTruncated(labelRef.current),
+            });
+          }
+        }}
       >
-        <span className={classes.chipLabel}>{label}</span>
-      </Button>
+        <Button
+          size="small"
+          variant="secondary"
+          className={classes.chip}
+          aria-label={`Workspace: ${label} · ${details}`}
+          aria-haspopup="dialog"
+        >
+          <span ref={labelRef} className={classes.chipLabel}>
+            {label}
+          </span>
+        </Button>
+        <Tooltip>
+          <span className={classes.tooltipHeading}>Workspace</span>
+          {opened?.truncated && (
+            <span className={classes.tooltipName}>{label}</span>
+          )}
+          {details}
+        </Tooltip>
+      </TooltipTrigger>
       <Dialog width={420} className={classes.drawer}>
         <DialogHeader>
           {name.status === 'named'

@@ -1,7 +1,14 @@
 import { useMemo } from 'react';
 import { useApi } from '@backstage/core-plugin-api';
-import { useQueries } from '@tanstack/react-query';
-import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
+import {
+  isAwaitingData,
+  type PollingQuery,
+} from '@giantswarm/backstage-plugin-ui-react';
+import {
+  musterPollingOptions,
+  musterSignInRequiredOf,
+} from '@giantswarm/backstage-plugin-muster';
 import { modelManagerApiRef } from '../../apis';
 import { useModelManagerInstallations } from '../../hooks/useModelManagerInstallations';
 import type {
@@ -9,7 +16,10 @@ import type {
   ModelManagerModel,
   ModelManagerNode,
 } from '../../lib/modelManager';
-import { modelsRefetchInterval } from '../../lib/modelLifecycle';
+import {
+  isModelLoadInProgress,
+  modelsRefetchInterval,
+} from '../../lib/modelLifecycle';
 import {
   sharedHostsOf,
   toGpuNodeFromManager,
@@ -126,26 +136,28 @@ export function useModelManagerServingSource(
   reachableInstallations: string[],
 ): ServingSourceSnapshot {
   const modelManagerApi = useApi(modelManagerApiRef);
+  const queryClient = useQueryClient();
   const { installations, isLoading: isListing } = useModelManagerInstallations(
     reachableInstallations,
   );
   const installationsKey = installations.join(',');
 
-  // The three reads poll in a tab that is not focused too, like the pools
-  // read (`useGpuNodePools`): a GPU pool's serve intent is served the moment
-  // its stack is ready, whichever tab is in front, and the person waiting
-  // for the served model's timeline — the pool panel's nested steps, the
-  // Serving view's row — sees it move when they look, not a page frozen at
-  // the moment they looked away. The query client refetches nothing on focus
-  // (`refetchOnWindowFocus: false`), so without this a hidden tab stays on
-  // the last read until a reload (giantswarm/backstage#2446).
+  // The three reads poll while the tab is visible, and stop once the last
+  // read failed for good (`musterPollingOptions`): a person who is not
+  // signed in to model-manager there gets the same answer every time, and
+  // each call makes muster create another sign-in challenge. Nor are they
+  // read again as the tab becomes visible then: the sign-in on the Serving
+  // view reads them again once it lands, and polling resumes.
+  //
+  // Not from a hidden tab: a tab left open in the background would otherwise
+  // call model-manager every minute for as long as it stays open. The one
+  // exception is the inventory while a served model is on its way in (below).
   const backendQueries = useQueries({
     queries: installations.map(installation => ({
       queryKey: modelManagerBackendsQueryKey(installation),
       queryFn: () => modelManagerApi.listBackends(installation),
       staleTime: BACKEND_REFETCH_MS,
-      refetchInterval: BACKEND_REFETCH_MS,
-      refetchIntervalInBackground: true,
+      ...musterPollingOptions(BACKEND_REFETCH_MS),
     })),
   });
 
@@ -204,9 +216,24 @@ export function useModelManagerServingSource(
       // 10 s while a served model is on its way or being deleted, so its
       // timeline moves as model-manager reports the steps; the inventory's
       // own rate otherwise.
-      refetchInterval: (query: { state: { data?: ModelManagerModel[] } }) =>
-        modelsRefetchInterval(query.state.data, MODELS_REFETCH_MS),
-      refetchIntervalInBackground: true,
+      //
+      // From a hidden tab too while a served model is on its way in: a GPU
+      // pool's serve intent loads one without anybody looking, and its
+      // timeline (the pool panel's nested steps, the Serving view's row)
+      // keeps moving there until the model answers
+      // (giantswarm/backstage#2446). Read per render from the cache, so it
+      // stops with the read that shows the model settled.
+      ...musterPollingOptions(
+        (query: PollingQuery<ModelManagerModel[]>) =>
+          modelsRefetchInterval(query.state.data, MODELS_REFETCH_MS),
+        {
+          inBackground: isModelLoadInProgress(
+            queryClient.getQueryData<ModelManagerModel[]>(
+              modelManagerModelsQueryKey(installation),
+            ),
+          ),
+        },
+      ),
     })),
   });
 
@@ -229,8 +256,7 @@ export function useModelManagerServingSource(
         ),
       ),
       staleTime: 30_000,
-      refetchInterval: NODES_REFETCH_MS,
-      refetchIntervalInBackground: true,
+      ...musterPollingOptions(NODES_REFETCH_MS),
     })),
   });
 
@@ -254,6 +280,7 @@ export function useModelManagerServingSource(
       {};
     const sharedHosts: Record<string, string[]> = {};
     const unreachable = new Set<string>();
+    const signInRequired = new Set<string>();
     const servedModels: ServingSourceSnapshot['servedModels'] = [];
     const gpuNodes: ServingSourceSnapshot['gpuNodes'] = [];
     const gpuCapacityUnavailable: Record<string, GpuCapacityUnavailableReason> =
@@ -264,6 +291,19 @@ export function useModelManagerServingSource(
       const modelQuery = modelQueries[index];
       const nodeQuery = nodeQueries[index];
       const descriptors = backends[installation];
+
+      // muster asked for the person's sign-in to model-manager (its 401,
+      // kept as the cause) on any of the three reads — the descriptors may
+      // still be fresh from the cache, or the grant lapsed between their
+      // polls: the page offers the sign-in, and the reads stop polling until
+      // it lands.
+      if (
+        [backendQuery, modelQuery, nodeQuery].some(query =>
+          musterSignInRequiredOf(query?.error),
+        )
+      ) {
+        signInRequired.add(installation);
+      }
 
       if (backendQuery?.isError) {
         unreachable.add(installation);
@@ -382,6 +422,7 @@ export function useModelManagerServingSource(
       backendLoading,
       sharedHosts,
       unreachableInstallations: Array.from(unreachable).sort(),
+      signInRequiredInstallations: Array.from(signInRequired).sort(),
       servedModels,
       gpuNodes,
       gpuCapacityUnavailable,

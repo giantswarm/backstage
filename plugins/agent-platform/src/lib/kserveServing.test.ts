@@ -733,7 +733,7 @@ describe('toServedModel during a start', () => {
     expect(toServedModel(starting, [running], undefined, now)).toMatchObject({
       readiness: 'starting',
       readinessMessage:
-        'Starting on gpu-node-2 for 4 min: the runtime loads the weights and warms up.',
+        'Starting on gpu-node-2 for 4 min 30 s: the runtime loads the weights and warms up.',
     });
   });
 
@@ -765,7 +765,32 @@ describe('toServedModel during a start', () => {
     ).toMatchObject({
       readiness: 'starting',
       readinessMessage:
-        'Starting on gpu-node-2 for 1 min: downloading the weights.',
+        'Starting on gpu-node-2 for 1 min 30 s: downloading the weights.',
+    });
+  });
+
+  it('leaves the span out below a second, and on a browser clock behind the cluster', () => {
+    const startedAt = (startTime: string) =>
+      pod({ status: { phase: 'Pending', startTime } });
+
+    for (const startTime of ['2026-09-28T10:05:30Z', '2026-09-28T10:05:32Z']) {
+      expect(
+        toServedModel(starting, [startedAt(startTime)], undefined, now),
+      ).toMatchObject({
+        readinessMessage: 'Starting on gpu-node-2: downloading the weights.',
+      });
+    }
+    expect(
+      toServedModel(
+        starting,
+        [startedAt('2026-09-28T10:05:27Z')],
+        undefined,
+        now + 900,
+      ),
+    ).toMatchObject({
+      // Whole seconds, rounded down: 3.9 s since the start reads 3 s.
+      readinessMessage:
+        'Starting on gpu-node-2 for 3 s: downloading the weights.',
     });
   });
 

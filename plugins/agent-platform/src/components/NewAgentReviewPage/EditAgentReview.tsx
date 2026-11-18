@@ -3,14 +3,16 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { dump } from 'js-yaml';
 import {
+  CommitSha,
+  FileView,
   usePhoneLayout,
   useProvidePageHeaderActions,
   WizardStepHeading,
-  CommitSha,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
+import { supportsTags } from '../../lib/agentManager';
 import { classifyCommitFailure } from '../../hooks/useAgentCommitCheck';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { useSignInTool } from '../../hooks/useSignInTool';
@@ -42,12 +44,14 @@ import {
 } from '../../lib/harnesses';
 import { declaredToolset, toolsetShape } from '../../lib/toolset';
 import { AgentWizardFrame, useAgentWizardLinks } from '../AgentWizardFrame';
-import { CodeBlock } from '../CodeBlock';
 import { CommitOutcome } from '../CommitOutcome';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { useRuntimeChoices } from '../HarnessPicker';
 import { type AgentWizardEdit, useNewAgentForm } from '../NewAgentFormProvider';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
+import { PrivateSkillsNote } from '../PrivateSkillsNote';
+import { pickedSourcesOf } from '../../lib/agentSpec';
+import { agentSkillsSecretOf } from '../../lib/privateSkills';
 import {
   Notes,
   PlainRow,
@@ -74,10 +78,16 @@ function WriteFailure({
   installation,
   failure,
   title,
+  onSignedIn,
 }: {
   installation: string;
   failure: AgentWriteFailure;
   title: string;
+  /**
+   * Clears the refusal once the person is signed in to agent-manager; a dry
+   * run's re-reads by itself, with every muster query.
+   */
+  onSignedIn?: () => void;
 }) {
   const refused = classifyCommitFailure(failure);
   if (refused?.kind === 'connect') {
@@ -85,8 +95,10 @@ function WriteFailure({
       <ConnectAgentManagerAlert
         installation={installation}
         message={refused.message}
+        signInRequired={refused.signInRequired}
         action="Agents are edited"
         needsGitHub={refused.github}
+        onSignedIn={onSignedIn}
       />
     );
   }
@@ -122,9 +134,9 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   const navigate = useNavigate();
   const { details: detailsLink, tools: toolsLink } = useAgentWizardLinks();
   const { state, isComplete, isToolsetValid } = useNewAgentForm();
-  const { hasRepositories } = useSkillCatalog();
+  const { hasRepositories } = useSkillCatalog(edit.installation);
   const { agent, installation, writeMode, detailHref } = edit;
-  const { info } = useAgentManagerInfo(installation);
+  const { info, isLoading: isInfoLoading } = useAgentManagerInfo(installation);
   // The platform Harness the runtime field shows, for its summary row.
   const { platformChoice } = useRuntimeChoices();
   // The Harness a refusal names, by the title the runtime field shows.
@@ -146,9 +158,11 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   if (hasSignInTool !== hadSignInTool) {
     signInChange = hasSignInTool ? 'added' : 'removed';
   }
+  const tagsSupported = supportsTags(info);
   const editState = useMemo(
-    () => editStateOfForm(agent, { ...state, toolset }),
-    [agent, state, toolset],
+    () =>
+      editStateOfForm(agent, { ...state, toolset }, { tags: tagsSupported }),
+    [agent, state, toolset, tagsSupported],
   );
   const changed = useMemo(
     () => changedFields(agent, editState),
@@ -163,8 +177,11 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   // requested while nothing changed.
   const dryRun = useValidateAgentUpdate(
     installation,
-    // Not before the sign-in tool is decided: the update would lack it.
-    isReady && dirty && !signIn.isLoading ? update : undefined,
+    // Not before the sign-in tool is decided, nor before agent-manager says
+    // whether it takes tags: the update would differ from what Save sends.
+    isReady && dirty && !signIn.isLoading && !isInfoLoading
+      ? update
+      : undefined,
     writeMode,
   );
   const violations = dryRun.result?.errors ?? [];
@@ -313,6 +330,11 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
           {state.description.trim() && (
             <PlainRow label="What it's for">{state.description}</PlainRow>
           )}
+          {(editState.tags.length > 0 || changed.includes('tags')) && (
+            <PlainRow label="Tags">
+              {editState.tags.length === 0 ? 'None' : editState.tags.join(', ')}
+            </PlainRow>
+          )}
           <PlainRow label="Model">
             {state.modelDisplayName ?? state.modelConfigName}
           </PlainRow>
@@ -373,6 +395,12 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
           />
         )}
 
+        <PrivateSkillsNote
+          installation={installation}
+          {...pickedSourcesOf(state)}
+          agentSecretName={agentSkillsSecretOf(agent)}
+        />
+
         {/* What decides whether Save is offered, in sight: agent-manager's dry
             run of exactly the change. */}
         {dryRun.isLoading && !dryRun.result && (
@@ -397,6 +425,9 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
           <WriteFailure
             installation={installation}
             failure={updating.failure}
+            // The save's refusal is kept until the next write: cleared once
+            // signed in, so the person saves again on the re-read dry run.
+            onSignedIn={updating.reset}
             title={
               viaPullRequest
                 ? 'Could not propose the change'
@@ -536,7 +567,7 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
                     </>
                   }
                 />
-                <CodeBlock
+                <FileView
                   filename={`${agent.name}-values.yaml`}
                   content={valuesYaml}
                   language="yaml"

@@ -25,7 +25,6 @@ import {
   installPersistedQueryDrop,
   KSERVE_POOL_BACKEND,
   L4_POOL_PRESETS,
-  modelManagerUnavailable,
   NO_SIZE,
   poolFitAnswer,
   stubModelManagerTools,
@@ -759,14 +758,10 @@ test.describe('models: Add GPU node pool — zones and model cache on the form (
 
 test.describe('models: the model cache is the cluster’s and billed while it stands (cluster-manager stubbed)', () => {
   test('the form’s cache line carries cluster-manager’s price and the standing-cost words; a kept claim shows on the Model cache card with its cost and goes with Remove cache', async ({
-    admin,
     page,
   }) => {
-    // The kept claim is read on Model hosting's Model cache tab, and Model
-    // hosting draws its tabs only where model-manager answers. Read before
-    // this page stubs muster's server list.
-    const unavailable = await modelManagerUnavailable(admin);
-    test.skip(!!unavailable, unavailable);
+    // The kept claim is read on Model hosting's Model cache tab, which the
+    // stubbed cluster-manager offers with or without model-manager in the lab.
     const { calls } = await reachForm(page, { keptCache: 'kept' });
     // Off by default, the kept claim is named as standing and costing;
     // switched on, the price is cluster-manager's, from the dry run — the
@@ -793,8 +788,6 @@ test.describe('models: the model cache is the cluster’s and billed while it st
     await snapshot(page, 'gpu-pool-cache-cost-line');
     await cancelAddPool(page);
 
-    // The kept claim: on Model hosting's Model cache tab, with its size, cost
-    // and since when.
     await page.getByRole('tab', { name: 'Model cache' }).click();
     await expect(page).toHaveURL(/\/customize\/models\/hosting\/cache/);
     const card = page.getByTestId('model-cache-panel');
@@ -806,6 +799,16 @@ test.describe('models: the model cache is the cluster’s and billed while it st
     await expect(row).toContainText('$27.37/month');
     await expect(row).toContainText('eu-central-1b');
     await expect(row).toContainText('Kept — nothing mounts it');
+    const created = row.locator('time');
+    await expect(created).toHaveText(/ ago$/);
+    await expect(created).toHaveAttribute(
+      'datetime',
+      '2026-09-17T06:59:00.000Z',
+    );
+    await expect(created).toHaveAttribute(
+      'title',
+      /2026, \d{2}:\d{2}:\d{2} \S+/,
+    );
     await snapshot(page, 'gpu-pool-cache-card');
 
     // Remove cache: the confirm names what goes and what stops, and calls the tool once acknowledged.

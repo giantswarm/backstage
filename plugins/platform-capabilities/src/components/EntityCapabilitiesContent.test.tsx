@@ -60,10 +60,9 @@ describe('EntityCapabilitiesContent', () => {
     expect(screen.getByTestId('intro')).toHaveTextContent(
       /^A platform capability is /,
     );
-    expect(screen.getByRole('link', { name: 'How it works' })).toHaveAttribute(
-      'href',
-      DOCS_URL,
-    );
+    expect(
+      screen.getByRole('link', { name: 'How it works (opens in a new tab)' }),
+    ).toHaveAttribute('href', DOCS_URL);
     const card = screen.getByTestId('capability-agent-platform');
     expect(within(card).getByTestId('capability-state')).toHaveTextContent(
       'Installed · 2 checks differ',
@@ -202,7 +201,9 @@ describe('EntityCapabilitiesContent', () => {
     });
     expect(
       within(dialog()).getByTestId('action-pull-requests'),
-    ).toHaveTextContent('example/example-configs#7 — open');
+    ).toHaveTextContent(
+      'example/example-configs#7 (opens in a new tab) — open',
+    );
   });
 
   it('disables Open pull requests without the session', async () => {

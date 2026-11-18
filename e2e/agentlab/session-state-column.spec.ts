@@ -47,8 +47,8 @@ async function snapshot(page: Page, name: string): Promise<void> {
  */
 const STATE_LABELS = ['Waiting for you', 'Working', 'Idle', 'Failed'];
 
-/** The shell's lists show search and filters only past this many rows (ui-react's `SEARCH_MIN`). */
-const SEARCH_MIN = 8;
+/** The shell's lists show search and filters from this many rows on (ui-react's `SEARCH_MIN`). */
+const SEARCH_MIN = 3;
 
 test('a session started in the portal reports its state on the list', async ({
   admin,
@@ -114,22 +114,23 @@ test('a session started in the portal reports its state on the list', async ({
     // --- Narrowing by it -------------------------------------------------
     // The shell lists sessions per day, newest first, and brings what needs a
     // person forward with the State dropdown (the one filter style), not a
-    // sortable column. Like every list, it offers search and filters only
-    // past `SEARCH_MIN` (8) rows: a short list is read, not filtered.
+    // sortable column. Like every list, it offers search and filters from
+    // `SEARCH_MIN` (3) rows on, and draws the State dropdown only where the
+    // sessions are in more than one state.
     const sessionRows = await admin
       .getByRole('row')
       .filter({ has: admin.locator('a[href*="/sessions/"]') })
       .count();
     const stateFilter = admin.getByRole('button', { name: /Filter by state/ });
-    if (sessionRows > SEARCH_MIN) {
+    if (sessionRows >= SEARCH_MIN) {
       await expect(
-        stateFilter,
-        'a list past SEARCH_MIN rows offers the State filter',
+        admin.getByRole('searchbox', { name: 'Search sessions' }),
+        'a list of SEARCH_MIN rows or more offers the search',
       ).toBeVisible();
     } else {
       await expect(
         stateFilter,
-        'a list of SEARCH_MIN rows or fewer offers no filters',
+        'a list under SEARCH_MIN rows offers no filters',
       ).toHaveCount(0);
     }
   } catch (error) {

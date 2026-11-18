@@ -14,17 +14,15 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
-  isSupportedProvider,
   isVertexAIProvider,
   MODEL_PROVIDER_OPTIONS,
   ModelConfigFieldErrors,
+  type ModelProvider,
   ModelConfigFormValues,
-  PROVIDER_SECRET_KEYS,
   providerHasEndpoint,
-  serviceAccountKeySummary,
 } from '../../lib/modelConfigs';
-import { SecretTextField } from './SecretTextField';
-import { ServiceAccountKeyField } from './ServiceAccountKeyField';
+import { type ModelSettingField } from '../../lib/modelSettings';
+import { ModelSettingsFields } from './ModelSettingsFields';
 
 export type ModelConfigFormFieldsProps = {
   values: ModelConfigFormValues;
@@ -43,88 +41,26 @@ export type ModelConfigFormFieldsProps = {
    */
   moreOptionsOpen: boolean;
   onMoreOptionsOpenChange: (open: boolean) => void;
+  /** The providers to offer; every one the form speaks when absent. */
+  providers?: readonly ModelProvider[];
   /**
-   * Edit only: the provider the model has on the cluster, which decides what
-   * an empty API key field means (see `planKeySecret`).
+   * Organization models use managed endpoints; the form asks for no override.
    */
-  originalProvider?: string;
-  /** Edit only: the Vertex AI project the model has on the cluster. */
-  originalProjectID?: string;
+  routed?: boolean;
+  /**
+   * Whether the save asks for a new key on the credential form.
+   */
+  replaceKey?: boolean;
+  onReplaceKeyChange?: (replaceKey: boolean) => void;
+  /**
+   * Whether to offer the model's settings (token limit, prompt caching): an
+   * organization's model on an installation whose agent-manager takes them.
+   */
+  settings?: boolean;
+  /** agent-manager's refusal of a setting, under that setting. */
+  settingErrors?: Partial<Record<ModelSettingField, string>>;
 };
 
-function providerLabel(provider: string): string {
-  return (
-    MODEL_PROVIDER_OPTIONS.find(option => option.id === provider)?.label ??
-    provider
-  );
-}
-
-/**
- * What the API key field says about itself. The key is optional throughout:
- * empty means the endpoint needs none on create, and "keep the stored key" on
- * an edit — unless the edit changes the provider, whose runtime does not read
- * the old provider's key, so empty means "none needed" there too.
- */
-function apiKeyCopy({
-  mode,
-  provider,
-  originalProvider,
-}: {
-  mode: 'create' | 'edit';
-  provider: ModelConfigFormValues['provider'];
-  originalProvider: string | undefined;
-}): { placeholder: string; description: string } {
-  if (mode === 'create') {
-    return {
-      placeholder: '',
-      description:
-        'Agents on this model authenticate with this key. Leave it empty if the endpoint needs none.',
-    };
-  }
-  if (originalProvider === provider) {
-    return {
-      placeholder: 'Leave empty to keep the current key',
-      description: 'Enter a value only to replace the stored key.',
-    };
-  }
-  const hadKey =
-    isSupportedProvider(originalProvider) &&
-    Boolean(PROVIDER_SECRET_KEYS[originalProvider]);
-  return {
-    placeholder: '',
-    description: hadKey
-      ? `The stored key is for ${providerLabel(originalProvider!)}, not ${providerLabel(provider)}. Enter a new one, or leave empty if the endpoint needs none.`
-      : 'Agents on this model authenticate with this key. Leave it empty if the endpoint needs none.',
-  };
-}
-
-/**
- * What the service account key field says about itself. Unlike an API key it
- * is never optional where the save would write a Secret: kagent accepts only
- * a real key. An edit of a Vertex AI model may keep the stored key.
- */
-function serviceAccountKeyCopy({
-  mode,
-  originalProvider,
-  originalProjectID,
-}: {
-  mode: 'create' | 'edit';
-  originalProvider: string | undefined;
-  originalProjectID: string | undefined;
-}): { description: string; isRequired: boolean; storedKeyProject?: string } {
-  const howTo =
-    'The JSON key file of a service account that can use Vertex AI. The model runs in the project of the key.';
-  if (mode === 'edit' && isVertexAIProvider(originalProvider)) {
-    return {
-      description: `${howTo} Choose a file only to replace the stored key.`,
-      isRequired: false,
-      storedKeyProject: originalProjectID || undefined,
-    };
-  }
-  return { description: howTo, isRequired: true };
-}
-
-/** The Model field's example, in the provider's own naming. */
 function modelPlaceholder(provider: ModelConfigFormValues['provider']): string {
   switch (provider) {
     case 'Ollama':
@@ -143,13 +79,6 @@ function modelPlaceholder(provider: ModelConfigFormValues['provider']): string {
  * The fields shared by the create and edit flows (`NewModelPage`). Pure
  * presentation: values and validation live with the page, which hands the
  * problems back as `errors` for each field to show under itself.
- *
- * Plain first, like the agent wizard's first step: what the model is called,
- * the provider and how to reach it, its key, then the model, whose id the
- * provider decides. The technical name is said under the
- * name, with the fact that it cannot be changed (M7, like the agent wizard);
- * its override (create only) and skipping TLS verification wait under More
- * options.
  */
 export function ModelConfigFormFields({
   values,
@@ -159,22 +88,23 @@ export function ModelConfigFormFields({
   validation,
   moreOptionsOpen,
   onMoreOptionsOpenChange,
-  originalProvider,
-  originalProjectID,
+  providers,
+  routed = false,
+  replaceKey = false,
+  onReplaceKeyChange,
+  settings = false,
+  settingErrors,
 }: ModelConfigFormFieldsProps) {
   const providerOption = MODEL_PROVIDER_OPTIONS.find(
     option => option.id === values.provider,
   );
-  const hasEndpoint = providerHasEndpoint(values.provider);
-  const needsKey = Boolean(PROVIDER_SECRET_KEYS[values.provider]);
+  const providerOptions = providers
+    ? MODEL_PROVIDER_OPTIONS.filter(option => providers.includes(option.id))
+    : MODEL_PROVIDER_OPTIONS;
+  const hasEndpoint = providerHasEndpoint(values.provider) && !routed;
   const isOllama = values.provider === 'Ollama';
-  const { textFieldProps, errorFor } = validation;
+  const { textFieldProps } = validation;
   const isVertexAI = isVertexAIProvider(values.provider);
-  const keyCopy = apiKeyCopy({
-    mode,
-    provider: values.provider,
-    originalProvider,
-  });
 
   // The disclosure's one line of what it holds now.
   const moreOptionsSummary = [
@@ -187,6 +117,23 @@ export function ModelConfigFormFields({
   ]
     .filter(Boolean)
     .join(', ');
+
+  // A stored credential is bound to its provider.
+  const providerLocked = mode === 'edit';
+  let providerDescription = providerOption?.description;
+  if (isVertexAI) {
+    providerDescription =
+      'Calls use Google Vertex AI through the platform credential provider. LLM gateway metering, rate limits and spend reporting are unavailable.';
+    if (providerLocked) {
+      providerDescription += ' To use another provider, add a model.';
+    }
+  } else if (providerLocked) {
+    providerDescription =
+      'It cannot be changed: the stored key is this provider’s. For another provider, add a model.';
+  } else if (routed) {
+    providerDescription =
+      'Calls go through the platform’s LLM gateway, which passes your key on and counts the usage for your organization.';
+  }
 
   return (
     <>
@@ -235,11 +182,12 @@ export function ModelConfigFormFields({
             <Select
               label="Provider"
               isRequired
-              options={MODEL_PROVIDER_OPTIONS.map(option => ({
+              options={providerOptions.map(option => ({
                 id: option.id,
                 label: option.label,
               }))}
               selectedKey={values.provider}
+              isDisabled={providerLocked}
               onSelectionChange={key => {
                 if (key) {
                   onChange({
@@ -247,7 +195,7 @@ export function ModelConfigFormFields({
                   });
                 }
               }}
-              description={providerOption?.description}
+              description={providerDescription}
             />
             {hasEndpoint && (
               <TextField
@@ -272,6 +220,21 @@ export function ModelConfigFormFields({
 
             {isVertexAI && (
               <TextField
+                label="Google Cloud project"
+                isRequired
+                value={values.projectID}
+                onChange={projectID => onChange({ projectID })}
+                description={
+                  mode === 'edit'
+                    ? 'The project belongs to the existing credential. Add another model to use a different project.'
+                    : 'The project Vertex AI runs the model in. The service account of the key you upload needs Vertex AI access there.'
+                }
+                isDisabled={mode === 'edit'}
+                {...textFieldProps('projectID', errors.projectID)}
+              />
+            )}
+            {isVertexAI && (
+              <TextField
                 label="Location"
                 isRequired
                 value={values.location}
@@ -285,58 +248,49 @@ export function ModelConfigFormFields({
         </CardBody>
       </Card>
 
-      {isVertexAI && (
+      {values.provider !== 'Ollama' && (
         <Card>
           <CardBody>
             <SectionHeader
               variant="title-x-small"
-              title="Service account key"
-              description="Stored as a Kubernetes Secret next to the model config; never shown again. Agents never see it: the platform exchanges it for short-lived tokens."
+              title="Credential"
+              description="Entered on the credential form and never shown again."
             />
-            <ServiceAccountKeyField
-              value={values.apiKey}
-              // The project is the key's: kagent refuses a key of another.
-              onChange={apiKey =>
-                onChange({
-                  apiKey,
-                  projectID: apiKey
-                    ? (serviceAccountKeySummary(apiKey)?.projectID ?? '')
-                    : (originalProjectID ?? ''),
-                })
-              }
-              // A chosen file is a selection, complete once made: its
-              // problem shows at once. A missing one waits for the submit.
-              error={
-                values.apiKey
-                  ? errors.apiKey
-                  : errorFor('apiKey', errors.apiKey)
-              }
-              {...serviceAccountKeyCopy({
-                mode,
-                originalProvider,
-                originalProjectID,
-              })}
-            />
-          </CardBody>
-        </Card>
-      )}
-
-      {needsKey && !isVertexAI && (
-        <Card>
-          <CardBody>
-            <SectionHeader
-              variant="title-x-small"
-              title="API key"
-              description="Stored as a Kubernetes Secret next to the model config; never shown again."
-            />
-            <SecretTextField
-              label="API key"
-              secondaryLabel="optional"
-              value={values.apiKey}
-              onChange={apiKey => onChange({ apiKey })}
-              placeholder={keyCopy.placeholder}
-              description={keyCopy.description}
-            />
+            {mode === 'create' && values.provider === 'OpenAI' && (
+              <Switch
+                label="Endpoint requires no credential"
+                isSelected={values.noCredential}
+                onChange={noCredential => onChange({ noCredential })}
+              />
+            )}
+            {values.noCredential ? (
+              <Text>This endpoint is used without a credential.</Text>
+            ) : null}
+            {!values.noCredential && mode === 'create' && (
+              <Text>
+                You enter the credential on the next page, the credential form,
+                once you continue.
+              </Text>
+            )}
+            {!values.noCredential && mode === 'edit' && (
+              <Switch
+                label="Enter a new key on the next page"
+                isSelected={replaceKey}
+                onChange={selected => onReplaceKeyChange?.(selected)}
+              />
+            )}
+            {mode === 'edit' && (
+              <Text
+                as="p"
+                variant="body-small"
+                color="secondary"
+                style={{ marginTop: 'var(--bui-space-1)' }}
+              >
+                Leave it off to keep the current key. A new key replaces it once
+                you save it on the credential form, for every model, connector
+                or egress policy that uses the same credential.
+              </Text>
+            )}
           </CardBody>
         </Card>
       )}
@@ -355,6 +309,15 @@ export function ModelConfigFormFields({
           />
         </CardBody>
       </Card>
+
+      {settings && (
+        <ModelSettingsFields
+          provider={values.provider}
+          values={values}
+          onChange={onChange}
+          errors={settingErrors}
+        />
+      )}
 
       {/* Edit keeps nothing here without an endpoint: the technical name is
           locked and said under the name. */}

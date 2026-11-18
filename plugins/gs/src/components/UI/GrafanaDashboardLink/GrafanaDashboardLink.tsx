@@ -1,6 +1,7 @@
-import { Link, Typography, Tooltip, styled, Box } from '@material-ui/core';
+import { Typography, Tooltip, styled, Box } from '@material-ui/core';
 import { GrafanaIcon } from '../../../assets/icons/CustomIcons';
 import { useGrafanaDashboardLink } from '../../hooks';
+import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 
 const StyledGrafanaIcon = styled(GrafanaIcon)(({ theme }) => ({
   marginRight: theme.spacing(0.5),
@@ -51,7 +52,7 @@ export const GrafanaDashboardLink = ({
     </Typography>
   );
 
-  if (disabledTitle !== '') {
+  if (disabledTitle !== '' || !linkUrl) {
     return (
       <Tooltip title={disabledTitle}>
         <Typography variant="inherit" color="textSecondary">
@@ -62,8 +63,8 @@ export const GrafanaDashboardLink = ({
   }
 
   return (
-    <Link href={linkUrl} target="_blank" rel="noopener noreferrer">
+    <ExternalLink href={linkUrl}>
       {tooltip ? <Tooltip title={tooltip}>{el}</Tooltip> : el}
-    </Link>
+    </ExternalLink>
   );
 };

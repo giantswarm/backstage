@@ -69,7 +69,7 @@ function ResourceCard({
     facts.push({ label: 'Managed by', value: provenance.managedBy });
   }
   if (!isGitOpsManaged(server)) {
-    facts.push({ label: 'Origin', value: 'Added through muster, not Git' });
+    facts.push({ label: 'Origin', value: 'Added through Muster, not Git' });
   }
   return (
     <InfoCard title="Resource">
@@ -146,7 +146,7 @@ export function ConnectorTechnicalDetails({
             <HealthDetails server={server} />
           ) : (
             <Text as="p" variant="body-small" color="secondary">
-              muster reports the connector as failed but gives no reason.
+              Muster reports the connector as failed but gives no reason.
             </Text>
           )}
         </InfoCard>

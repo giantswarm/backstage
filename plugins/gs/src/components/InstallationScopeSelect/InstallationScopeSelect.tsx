@@ -46,6 +46,8 @@ export type InstallationScopeSelectProps = {
  * Renders nothing on a portal that knows one installation, so the standalone
  * chart and single-installation portals look exactly as before. Mount it once
  * per page: it owns the URL side of the scope (`useInstallationScopeUrlSync`).
+ * Mount it below a `SharedInstallationScope`, which the view it narrows shares
+ * the choice through; outside one its choice has no effect.
  */
 export function InstallationScopeSelect({
   component,

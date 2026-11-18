@@ -92,9 +92,28 @@ describe('serverListEntries with display names', () => {
       [
         ['mcp-zendesk', 'Acme Support'],
         ['github', 'github'],
-        ['muster', 'muster'],
+        ['muster', 'Muster'],
       ],
     );
+  });
+
+  it('sorts by name whatever the case, and digits by their value', () => {
+    const named = serverListRows(
+      [
+        makeServer('connector-10'),
+        makeServer('connector-2'),
+        makeServer('Zebra'),
+        makeServer('apple'),
+      ],
+      undefined,
+    );
+    expect(serverListEntries(named, '').map(e => e.id)).toEqual([
+      'apple',
+      'connector-2',
+      'connector-10',
+      'muster',
+      'Zebra',
+    ]);
   });
 
   it('matches the display name and the name its page uses', () => {
@@ -103,6 +122,46 @@ describe('serverListEntries with display names', () => {
     ]);
     expect(serverListEntries(rows, 'zendesk').map(e => e.id)).toEqual([
       'mcp-zendesk',
+    ]);
+  });
+});
+
+describe('serverListEntries with tags', () => {
+  const tagged = (name: string, tags: string, family?: string) =>
+    new MCPServer(
+      {
+        apiVersion: 'muster.giantswarm.io/v1alpha1',
+        kind: 'MCPServer',
+        metadata: { name, annotations: { 'ui.giantswarm.io/tags': tags } },
+        spec: family ? { family: { name: family, instanceArg: 'mc' } } : {},
+      } as never,
+      'gazelle',
+    );
+  const rows = serverListRows(
+    [
+      tagged('jira', 'ticketing,ops'),
+      tagged('walrus-kubernetes', 'clusters', 'kubernetes'),
+      tagged('gazelle-kubernetes', 'ops', 'kubernetes'),
+      makeServer('github'),
+    ],
+    undefined,
+  );
+
+  it('gives a server its tags, a family its members’ tags and muster agent-platform', () => {
+    expect(rows.map(r => [r.id, r.tags])).toEqual([
+      ['kubernetes', ['clusters', 'ops']],
+      ['github', []],
+      ['jira', ['ticketing', 'ops']],
+      ['muster', ['agent-platform']],
+    ]);
+  });
+
+  it('matches a tag as a name match', () => {
+    expect(
+      serverListEntries(rows, 'ops').map(e => [e.id, e.toolMatches]),
+    ).toEqual([
+      ['jira', undefined],
+      ['kubernetes', undefined],
     ]);
   });
 });

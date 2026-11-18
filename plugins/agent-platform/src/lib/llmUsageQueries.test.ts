@@ -312,7 +312,7 @@ describe('the usage queries', () => {
       ...Object.values(counted),
       ...Object.values(llmUsageRangeQueriesFor()),
       ...Object.values(todayPartialQueries('600s')),
-    ];
+    ].filter((query): query is string => query !== undefined);
     for (const query of all) {
       expect(query).not.toMatch(/\brate\(/);
       // Each increase() is the left term of a counterIncrease.

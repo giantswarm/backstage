@@ -1,5 +1,9 @@
-import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
+import {
+  MusterUnauthorizedError,
+  type MusterApi,
+} from '@giantswarm/backstage-plugin-muster';
 
+import { PortalSessionEndedError } from '../lib/portalSession';
 import {
   WorkspaceManagerError,
   type Workspace,
@@ -18,6 +22,20 @@ function makeMusterApi(answer: unknown = {}) {
   return { api: { callTool } as unknown as MusterApi, callTool };
 }
 
+/**
+ * The portal's backend refusing the session token before muster-backend runs:
+ * Backstage's `AuthenticationError`, which muster's client keeps as
+ * `errorName`.
+ */
+const portalRefusal = () =>
+  new MusterUnauthorizedError(
+    'Failed user token verification',
+    undefined,
+    undefined,
+    'gazelle',
+    'AuthenticationError',
+  );
+
 const WORKSPACE: Workspace = {
   name: 'platform',
   organization: 'acme',
@@ -30,17 +48,15 @@ const WORKSPACE: Workspace = {
       exclude: ['legacy'],
     },
   ],
-  sync: { schedule: 'nightly' },
   sizing: { headroom: '8Gi', minimum: '32Gi' },
   resourceVersion: '4711',
   createdAt: '2026-10-01T08:00:00Z',
   lastSync: {
     time: '2026-10-12T02:00:00Z',
     result: 'Succeeded',
-    trigger: 'schedule',
+    trigger: 'change',
     job: 'platform-sync-29341',
   },
-  nextSync: '2026-10-13T02:00:00Z',
   repositories: 12,
   volume: {
     claimName: 'workspace-platform',
@@ -123,7 +139,6 @@ describe('WorkspaceManagerClient', () => {
           name: 'platform',
           organization: 'acme',
           sources: WORKSPACE.sources,
-          sync: { schedule: 'custom', weekdays: ['monday'], hour: 3 },
           sizing: { minimum: '32Gi' },
         }),
       'x_workspace-manager_create_workspace',
@@ -131,7 +146,6 @@ describe('WorkspaceManagerClient', () => {
         name: 'platform',
         organization: 'acme',
         sources: WORKSPACE.sources,
-        sync: { schedule: 'custom', weekdays: ['monday'], hour: 3 },
         sizing: { minimum: '32Gi' },
       },
       WORKSPACE,
@@ -343,5 +357,15 @@ describe('WorkspaceManagerClient', () => {
     await expect(client.listProviders()).rejects.toMatchObject({
       kind: 'unavailable',
     });
+  });
+
+  it('says the portal session ended when the portal refuses the session token', async () => {
+    const { api, callTool } = makeMusterApi();
+    callTool.mockRejectedValue(portalRefusal());
+    const client = new WorkspaceManagerClient(api, 'lab');
+
+    const error = await client.listWorkspaces('acme').catch(e => e);
+    expect(error).toBeInstanceOf(PortalSessionEndedError);
+    expect(error.message).not.toMatch(/token verification/);
   });
 });

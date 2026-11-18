@@ -3,7 +3,6 @@ import {
   ButtonLink,
   Flex,
   Grid,
-  Link,
   List,
   ListRow,
   Tag,
@@ -24,7 +23,8 @@ import {
   useHiveTeam,
 } from '../../hooks/useHive';
 import { formatDate } from '../../lib/dates';
-import { followsTeam, linkTarget, matchesSearch } from '../../lib/hive';
+import { followsTeam, matchesSearch } from '../../lib/hive';
+import { HiveLink } from '../HiveLink';
 import {
   ENTRY_KIND_LABELS,
   Group,
@@ -35,6 +35,7 @@ import {
 } from '../../lib/magazine';
 import { HiveScopeNote } from '../HiveScopeNote';
 import { HiveSourceState } from '../HiveSourceState';
+import { HiveTeamEmptyState } from '../HiveTeamEmptyState';
 
 const useStyles = makeStyles({
   summary: {
@@ -62,9 +63,7 @@ function GroupCard(props: { group: Group }) {
     <InfoCard
       title={
         group.url ? (
-          <Link href={group.url} {...linkTarget(group.url)}>
-            {group.title}
-          </Link>
+          <HiveLink href={group.url}>{group.title}</HiveLink>
         ) : (
           group.title
         )
@@ -119,9 +118,7 @@ function GroupCard(props: { group: Group }) {
                     <Badge size="small">{ENTRY_KIND_LABELS[entry.kind]}</Badge>
                   }
                 >
-                  <Link href={entry.url} {...linkTarget(entry.url)}>
-                    {entry.title}
-                  </Link>
+                  <HiveLink href={entry.url}>{entry.title}</HiveLink>
                 </ListRow>
               ))}
             </List>
@@ -227,7 +224,10 @@ export function HiveHistoryTab() {
   const [query] = useHiveSearch();
   const { data, isFetching, error, refetch } = useHiveHistory(team);
 
-  return data ? (
+  if (data && !data.view) {
+    return <HiveTeamEmptyState team={team} what="what moved" />;
+  }
+  return data?.view ? (
     <HistoryView
       history={data.view}
       query={query}

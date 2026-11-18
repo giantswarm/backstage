@@ -24,9 +24,9 @@ export type ReachableInstallations = {
 
 /**
  * The home installation (the one signed in with the main provider, see gs
- * `useHomeInstallation`) first, the rest in the order given. Exported for tests.
+ * `useHomeInstallation`) first, the rest in the order given.
  */
-export function homeFirst(
+function homeFirst(
   installations: string[],
   home: string | undefined,
 ): string[] {

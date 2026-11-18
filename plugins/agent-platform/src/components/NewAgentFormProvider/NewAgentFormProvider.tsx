@@ -6,25 +6,34 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { useSessionDraft } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  tagsFieldUpdaters,
+  type TagsFieldUpdaters,
+  draftProblem,
+  useSessionDraft,
+} from '@giantswarm/backstage-plugin-ui-react';
 
-import type {
-  AgentManagerAgent,
-  AgentPluginEntry,
-  AgentSkillEntry,
-  WriteMode,
+import {
+  supportsTags,
+  type AgentManagerAgent,
+  type AgentPluginEntry,
+  type AgentSkillEntry,
+  type WriteMode,
 } from '../../lib/agentManager';
+import { useAgentManagerInfo } from '../../hooks/useAgentManager';
+import { useToolsetSelectorLimit } from '../../hooks/useToolsetSelectorLimit';
 import {
   changedFields,
+  editStateOf,
   editStateOfForm,
   skillEntryKey,
 } from '../../lib/agentEdit';
 import { slugify } from '../../lib/slugify';
 import {
+  defaultTenant,
+  ownerOf,
   tenantGroups,
   tenantKindOf,
-  tenantKindProblem,
-  tenantPickProblem,
   type TenantKind,
 } from '../../lib/tenants';
 import { systemMessageProblem } from '../../lib/systemMessage';
@@ -32,6 +41,7 @@ import { egressProblem, parseEgressText } from '../../lib/egress';
 import { isCodingRuntime, type HarnessChoice } from '../../lib/harnesses';
 import { DiscoveredSkill, skillId } from '../../lib/skills';
 import {
+  allSkillNamesOf,
   DiscoveredPlugin,
   pluginEntryKey,
   pluginId,
@@ -40,33 +50,72 @@ import {
 import { withoutSignInTool } from '../../lib/signInTool';
 import {
   normalizeSelection,
+  selectionForTenant,
   toggleSelector,
   toolsetProblems,
 } from '../../lib/toolset';
+import {
+  createAgentsRefusedIn,
+  createAgentsRefusedOn,
+  ORGANIZATIONS_CAPABILITY,
+  type OrganizationDirectory,
+} from '../../lib/organizations';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
+
+/** Why a form has no tenant choices: see `NewAgentFormState.tenantChoicesUnread`. */
+export type TenantChoicesUnread = 'failed' | 'unlisted';
 
 export type NewAgentFormState = {
   name: string;
   slug: string;
   description: string;
+  /** Keywords to find the agent by, normalized and unique, as added. */
+  tags: string[];
+  /**
+   * What the Tags field holds but has not added yet. Not part of the agent;
+   * kept here so a draft that cannot be a tag blocks Continue like any other
+   * invalid field.
+   */
+  tagDraft?: string;
   installation: string | undefined;
   /**
    * Creating only: the tenants (namespaces) on the installation in which the
    * person may create an agent, as agent-manager's `get_info` answers them
    * for the caller (`namespaces.managed`, a `SelfSubjectAccessReview` per
-   * namespace). `undefined` until it has answered: then nothing is required.
+   * namespace). `undefined` until it has answered.
    */
   tenantChoices?: string[];
+  /**
+   * Creating only: the organization namespaces the person belongs to but may
+   * not create agents in (`list_organizations`' `createAgents` false), which
+   * the Organization field shows disabled with the reason. Never part of
+   * {@link tenantChoices}. Set with them; not kept in the draft.
+   */
+  tenantChoicesBlocked?: string[];
+  /**
+   * Creating only: why there are no {@link tenantChoices} to pick from:
+   * agent-manager's `get_info` could not be read on the installation
+   * (`failed`), or it answered without a `managed` list (`unlisted`, an
+   * agent-manager that does not say: no owner is required, and the create
+   * call gets its own answer). Not kept in the draft.
+   */
+  tenantChoicesUnread?: TenantChoicesUnread;
   /**
    * Creating only: the tenant, one of {@link tenantChoices}, the agent is
    * created in -- the namespace its model, Harness and release live in.
    */
   tenant?: string;
   /**
-   * Creating only: the kind of place chosen where several are offered
-   * (Platform, Organization, Other namespace), set before {@link tenant} when
-   * the kind's dropdown has nothing picked yet. Cleared with the environment.
+   * Creating only: the tenant the person last picked themselves, so another
+   * environment that offers it too picks it again instead of its default.
+   * Part of the draft, cleared by Start over.
    */
-  tenantKind?: TenantKind;
+  ownTenant?: string;
+  /**
+   * Creating only: the person's own last pick of each kind, so choosing
+   * Organization again brings back theirs.
+   */
+  ownTenantByKind?: Partial<Record<TenantKind, string>>;
   modelConfigName: string | undefined;
   modelConfigNamespace: string | undefined;
   /**
@@ -189,7 +238,7 @@ export type AgentWizardEdit = {
   detailHref: string | undefined;
 };
 
-export type NewAgentFormContextValue = {
+export type NewAgentFormContextValue = TagsFieldUpdaters & {
   state: NewAgentFormState;
   /** Set when the wizard edits an existing agent rather than creating one. */
   edit: AgentWizardEdit | undefined;
@@ -198,15 +247,24 @@ export type NewAgentFormContextValue = {
   setDescription: (description: string) => void;
   setInstallation: (installation: string | undefined) => void;
   /**
-   * Sets {@link NewAgentFormState.tenantChoices}. A tenant picked before
-   * stays when it is still a choice; otherwise the only choice is picked.
+   * Sets {@link NewAgentFormState.tenantChoices}. The tenant held stays when
+   * it is still a choice; else the person's own last pick, when it is one
+   * (it survives an environment change); else the platform, or the first
+   * choice offered where the platform is none. `blocked` sets
+   * {@link NewAgentFormState.tenantChoicesBlocked}; a held tenant that is
+   * blocked stays held, so the form refuses it with the reason instead of
+   * moving the agent to another organization unseen.
    */
-  setTenantChoices: (choices: string[]) => void;
-  /** Picks the tenant, and its kind; a model of another namespace is dropped. */
+  setTenantChoices: (choices: string[], blocked?: string[]) => void;
+  /** Sets {@link NewAgentFormState.tenantChoicesUnread}. */
+  setTenantChoicesUnread: (unread: TenantChoicesUnread | undefined) => void;
+  /** Picks the tenant; a model of another namespace is dropped. */
   selectTenant: (tenant: string) => void;
   /**
-   * Chooses the kind of place (Platform, Organization, Other namespace): the
-   * kind's only namespace is picked with it, a tenant of another kind goes.
+   * Chooses the kind of owner (Platform, Organization, Other namespace) and
+   * picks a tenant of it at once, so the kind's dropdown always has a value:
+   * the person's own last pick of that kind where it is still a choice, else
+   * the kind's first.
    */
   selectTenantKind: (kind: TenantKind) => void;
   selectModelConfig: (
@@ -228,8 +286,16 @@ export type NewAgentFormContextValue = {
   toggleSkill: (skill: DiscoveredSkill) => void;
   /** Editing only: drops one of the kept skills (see `keptSkills`). */
   removeKeptSkill: (skill: AgentSkillEntry) => void;
-  /** A Claude Code plugin: adds it if not picked, removes it if picked. */
+  /**
+   * Adds the plugin if not picked, removes it if picked. A Claude Code plugin
+   * is added whole; an Agent Plugins package with every skill it lists.
+   */
   togglePlugin: (plugin: DiscoveredPlugin) => void;
+  /**
+   * An Agent Plugins package: enables every skill it lists at the commit the
+   * skills step shows, and pins it to that commit.
+   */
+  selectAllPluginSkills: (plugin: DiscoveredPlugin) => void;
   /**
    * An Agent Plugins package: enables or disables one of its skills. The
    * package is picked while at least one of its skills is enabled.
@@ -259,13 +325,14 @@ export type NewAgentFormContextValue = {
   /** Sets {@link NewAgentFormState.signInToolDeclined}. */
   setSignInToolDeclined: (declined: boolean) => void;
   /**
-   * True when the toolset can be applied: none of the selectors malformed and
-   * no more than the inline cap. The empty selection is valid — it is no tools.
-   * What the Tools step's Continue and the review page's deploy gate on.
+   * Whether selectors satisfy the grammar and the advertised count. The empty
+   * selection represents no tools. Server validation checks the remaining
+   * constraints.
    */
   isToolsetValid: boolean;
   /** Why the toolset cannot be applied, empty when it can. */
   toolsetProblems: string[];
+  maxInlineSelectors?: number;
   reset: () => void;
   /**
    * The kept draft has been looked for (see `persistDraft`): until then the
@@ -306,6 +373,14 @@ export type NewAgentFormContextValue = {
    * and model are left out, since the form picks those itself.
    */
   isDirty: boolean;
+  /**
+   * Whether the installation's agent-manager keeps tags. False until its
+   * `get_info` is read: the Tags field is shown, and its problems count, only
+   * while true.
+   */
+  tagsOffered: boolean;
+  /** An edited agent's tags as read, for the Tags field; none on create. */
+  storedTags: readonly string[];
   /** True when the form has no validation errors. */
   isComplete: boolean;
   /**
@@ -323,10 +398,10 @@ export type NewAgentFormContextValue = {
 /** The step-1 fields a validation problem can belong to. */
 export type NewAgentField =
   | 'name'
+  | 'tags'
   | 'systemMessage'
   | 'installation'
   | 'tenant'
-  | 'tenantPick'
   | 'model'
   | 'slug'
   | 'egress';
@@ -337,14 +412,14 @@ const initialState: NewAgentFormState = {
   name: '',
   slug: '',
   description: '',
+  tags: [],
   installation: undefined,
   modelConfigName: undefined,
   modelConfigNamespace: undefined,
   modelDisplayName: undefined,
   harness: undefined,
   droppedHarness: undefined,
-  // Empty means "use the chart default": the spec sent to agent-manager omits
-  // it (agentSpecOf), and agent-manager keeps the chart's default prompt.
+  // An empty prompt is omitted from the spec so the chart supplies its default.
   systemMessage: '',
   egressText: '',
   egressPolicyRefs: [],
@@ -397,10 +472,12 @@ function hasCreateInput(state: NewAgentFormState): boolean {
       state.description,
       state.systemMessage,
       state.egressText,
+      state.tagDraft ?? '',
     ].some(text => text.trim() !== '') ||
     state.harness !== undefined ||
     state.egressPolicyRefs.length > 0 ||
     state.defaultWorkspace !== '' ||
+    state.tags.length > 0 ||
     state.selectedSkills.length > 0 ||
     state.selectedPlugins.length > 0 ||
     state.toolset.length > 0 ||
@@ -409,30 +486,33 @@ function hasCreateInput(state: NewAgentFormState): boolean {
 }
 
 /**
- * The state with its {@link NewAgentFormState.tenantKind} settled: `tenant`
- * kept where it is of that kind, else the kind's only namespace picked, else
- * none. No kind keeps `tenant` as it is.
+ * The state with `tenant` picked by the person themselves ({@link withTenant}),
+ * remembered as their own pick, overall and of its kind.
  */
-function withTenantKind(
+function withOwnTenant(
   state: NewAgentFormState,
-  tenant: string | undefined,
+  tenant: string,
+  directory: OrganizationDirectory,
 ): NewAgentFormState {
-  const kind = state.tenantKind;
-  if (!kind) {
-    return withTenant(state, tenant);
-  }
-  if (tenant && tenantKindOf(tenant) === kind) {
-    return withTenant(state, tenant);
-  }
-  const members = tenantGroups(state.tenantChoices ?? []).byKind[kind];
-  return withTenant(state, members.length === 1 ? members[0] : undefined);
+  return withTenant(
+    {
+      ...state,
+      ownTenant: tenant,
+      ownTenantByKind: {
+        ...state.ownTenantByKind,
+        [tenantKindOf(tenant, directory)]: tenant,
+      },
+    },
+    tenant,
+  );
 }
 
 /**
  * The state with `tenant` picked: the agent's namespace, so a model (and the
  * Harness it brought) of another namespace is dropped, and the model picker
  * preselects the tenant's default instead. EgressPolicies are the namespace's
- * own, so the picked ones go too.
+ * own, so the picked ones go too, and so do the connectors of another
+ * organization's namespace ({@link selectionForTenant}).
  */
 function withTenant(
   state: NewAgentFormState,
@@ -441,12 +521,14 @@ function withTenant(
   if (state.tenant === tenant) {
     return state;
   }
+  const toolset = selectionForTenant(state.toolset, state.tenant, tenant);
   if (!state.modelConfigNamespace || state.modelConfigNamespace === tenant) {
-    return { ...state, tenant, egressPolicyRefs: [] };
+    return { ...state, tenant, toolset, egressPolicyRefs: [] };
   }
   return {
     ...state,
     tenant,
+    toolset,
     egressPolicyRefs: [],
     modelConfigName: undefined,
     modelConfigNamespace: undefined,
@@ -485,9 +567,41 @@ function baselineOf(agent: AgentManagerAgent): AgentManagerAgent {
     : agent;
 }
 
+const NO_TAGS: readonly string[] = [];
+
 const NewAgentFormContext = createContext<NewAgentFormContextValue | undefined>(
   undefined,
 );
+
+/**
+ * The state with an Agent Plugins package picked with every skill it lists,
+ * pinned to the commit the skills step shows: the names are read at that
+ * commit, so a package an edited agent pinned earlier moves its pin with
+ * them, or it would name skills its pinned commit may not have. Unchanged
+ * for a package that lists no skills, whose empty selection would load
+ * nothing.
+ */
+function withAllPluginSkills(
+  prev: NewAgentFormState,
+  plugin: DiscoveredPlugin,
+): NewAgentFormState {
+  const skills = allSkillNamesOf(plugin);
+  if (skills.length === 0) {
+    return prev;
+  }
+  const id = pluginId(plugin);
+  const picked = { plugin, skills };
+  return {
+    ...prev,
+    selectedPlugins: prev.selectedPlugins.some(
+      selected => pluginId(selected.plugin) === id,
+    )
+      ? prev.selectedPlugins.map(selected =>
+          pluginId(selected.plugin) === id ? picked : selected,
+        )
+      : [...prev.selectedPlugins, picked],
+  };
+}
 
 /**
  * The wizard's state, shared by its steps. Creating starts empty; editing
@@ -516,12 +630,27 @@ export function NewAgentFormProvider({
   const [slugEdited, setSlugEdited] = useState(Boolean(edit));
   const [draftNoticeStep, setDraftNoticeStep] = useState<string>();
 
-  const isDirtyCreate = !edit && hasCreateInput(state);
+  const { info: agentManagerInfo } = useAgentManagerInfo(state.installation);
+  const maxInlineSelectors = useToolsetSelectorLimit(state.installation);
+  const { directory } = useOrganizationDirectory();
+  // Where agent-manager serves the organization tools, the choices are the
+  // organizations the person belongs to.
+  const byOrganization =
+    agentManagerInfo?.capabilities?.[ORGANIZATIONS_CAPABILITY] === true;
+  const tagsOffered = supportsTags(agentManagerInfo);
+
+  // Text left in a Tags field the installation does not offer is out of
+  // sight, so it does not make the form one to keep.
+  const isDirtyCreate =
+    !edit &&
+    hasCreateInput(tagsOffered ? state : { ...state, tagDraft: undefined });
   const draftValue = useMemo<NewAgentDraft>(() => {
     // The notice of a removal is said once, and whether the platform sets the
     // egress is read again, like the tenant choices.
     const {
       tenantChoices: _choices,
+      tenantChoicesBlocked: _blocked,
+      tenantChoicesUnread: _unread,
       droppedEgress: _dropped,
       egressSetByPlatform: _setByPlatform,
       ...kept
@@ -529,7 +658,12 @@ export function NewAgentFormProvider({
     return { state: kept, slugEdited };
   }, [state, slugEdited]);
   const onRestore = useCallback((draft: NewAgentDraft) => {
-    setState({ ...initialState, ...draft.state, tenantChoices: undefined });
+    setState({
+      ...initialState,
+      ...draft.state,
+      tenantChoices: undefined,
+      tenantChoicesBlocked: undefined,
+    });
     setSlugEdited(draft.slugEdited);
   }, []);
   const draft = useSessionDraft<NewAgentDraft>({
@@ -546,6 +680,16 @@ export function NewAgentFormProvider({
     dismissRestored: dismissDraftNotice,
   } = draft;
 
+  // An edited agent's tags as read: past the limit they may stay.
+  const storedTags = useMemo(
+    () => (edit ? editStateOf(edit.agent).tags : NO_TAGS),
+    [edit],
+  );
+  const tagUpdaters = useMemo(
+    () => tagsFieldUpdaters<NewAgentFormState>(setState, storedTags),
+    [storedTags],
+  );
+
   const value = useMemo<NewAgentFormContextValue>(() => {
     // An empty system prompt is valid: the chart ships a default
     // agent.systemMessage, so an empty field means "use the chart default"
@@ -556,6 +700,10 @@ export function NewAgentFormProvider({
     fieldErrors.egress = state.egressSetByPlatform
       ? undefined
       : egressProblem(parseEgressText(state.egressText));
+    // Not offered where agent-manager keeps no tags, so not checked there.
+    fieldErrors.tags = tagsOffered
+      ? draftProblem(state.tagDraft ?? '', state.tags, storedTags)
+      : undefined;
     if (!state.name.trim()) {
       fieldErrors.name = 'Enter a name for the agent.';
     }
@@ -573,19 +721,61 @@ export function NewAgentFormProvider({
     if (!state.installation) {
       fieldErrors.installation = 'Choose an environment.';
     }
-    if (!edit && state.installation && state.tenantChoices) {
-      if (state.tenantChoices.length === 0) {
-        fieldErrors.tenant = `You may not create agents on ${state.installation}. Choose another environment, or ask your platform team for the agent-platform:editor role.`;
-      } else if (!state.tenant) {
-        // Several kinds: the kind first (`tenant`), then the kind's dropdown
-        // (`tenantPick`), each its own field.
-        const { kinds } = tenantGroups(state.tenantChoices);
-        const kind = kinds.length === 1 ? kinds[0] : state.tenantKind;
-        if (kind) {
-          fieldErrors.tenantPick = tenantPickProblem(kind);
-        } else {
-          fieldErrors.tenant = tenantKindProblem(kinds);
-        }
+    // No agent is created without its place: Continue waits for agent-manager
+    // to say where the person may create, and stops where it could not. An
+    // agent-manager that answers without a list says nothing either way
+    // (`useCreatesAgentsNowhere` counts it as one the person may create on):
+    // the create call gets its own answer.
+    if (
+      !edit &&
+      state.installation &&
+      state.tenant &&
+      state.tenantChoicesBlocked?.includes(state.tenant)
+    ) {
+      // Held, as a draft brought it back, but the person may not create
+      // agents there: never submitted. Where they may create in none of
+      // their organizations, there is no other one to choose.
+      fieldErrors.tenant =
+        state.tenantChoices?.length === 0
+          ? createAgentsRefusedOn(state.installation)
+          : createAgentsRefusedIn(ownerOf(state.tenant, directory));
+    } else if (
+      !edit &&
+      state.installation &&
+      state.tenant &&
+      state.tenantChoices === undefined &&
+      state.tenantChoicesUnread !== 'unlisted'
+    ) {
+      // Held, as a draft brought it back, before agent-manager said where
+      // the person may create (or where it could not say): not submitted
+      // until it is known to be one of theirs.
+      fieldErrors.tenant =
+        state.tenantChoicesUnread === 'failed'
+          ? 'Could not read where you may create agents.'
+          : 'Still reading where you may create agents.';
+    } else if (
+      !edit &&
+      state.installation &&
+      !state.tenant &&
+      state.tenantChoicesUnread !== 'unlisted'
+    ) {
+      if (
+        state.tenantChoices?.length === 0 &&
+        state.tenantChoicesBlocked?.length
+      ) {
+        fieldErrors.tenant = createAgentsRefusedOn(state.installation);
+      } else if (state.tenantChoices?.length === 0) {
+        fieldErrors.tenant = byOrganization
+          ? `You belong to no organization on ${state.installation}. Choose another environment, or ask to be added to an organization.`
+          : `You may not create agents on ${state.installation}. Choose another environment, or ask your platform team for the agent-platform:editor role.`;
+      } else if (state.tenantChoices) {
+        // A guard only: a choice is always picked once there are choices
+        // (`setTenantChoices`).
+        fieldErrors.tenant = 'Choose an owner.';
+      } else if (state.tenantChoicesUnread === 'failed') {
+        fieldErrors.tenant = 'Could not read where you may create agents.';
+      } else {
+        fieldErrors.tenant = 'Still reading where you may create agents.';
       }
     }
     if (!state.modelConfigName || !state.modelConfigNamespace) {
@@ -597,10 +787,10 @@ export function NewAgentFormProvider({
         'systemMessage',
         'egress',
         'name',
+        'tags',
         'slug',
         'installation',
         'tenant',
-        'tenantPick',
         'model',
       ] as const
     )
@@ -612,7 +802,11 @@ export function NewAgentFormProvider({
     // steps may render at all (a deep link without them goes back to step 1),
     // while the toolset is step 3's own output and gates only the way forward —
     // and only when it cannot be applied; nothing selected is no tools.
-    const problems = toolsetProblems(state.toolset);
+    const problems = toolsetProblems(
+      state.toolset,
+      undefined,
+      maxInlineSelectors,
+    );
     const isToolsetValid = problems.length === 0;
 
     const isDirty = edit
@@ -641,16 +835,22 @@ export function NewAgentFormProvider({
       },
       setDescription: description =>
         setState(prev => ({ ...prev, description })),
+      ...tagUpdaters,
       // Changing the installation clears the model and Harness selections:
       // both are scoped to an installation, so the previous pick may not exist
-      // here.
+      // here; so are an organization's connectors.
       setInstallation: installation =>
         setState(prev => ({
           ...prev,
           installation,
+          toolset:
+            prev.installation === installation
+              ? prev.toolset
+              : selectionForTenant(prev.toolset, prev.tenant, null),
           tenantChoices: undefined,
+          tenantChoicesBlocked: undefined,
+          tenantChoicesUnread: undefined,
           tenant: undefined,
-          tenantKind: undefined,
           defaultWorkspace: '',
           egressPolicyRefs: [],
           modelConfigName: undefined,
@@ -659,44 +859,62 @@ export function NewAgentFormProvider({
           harness: undefined,
           droppedHarness: prev.harness?.name ?? prev.droppedHarness,
         })),
-      setTenantChoices: choices =>
+      setTenantChoices: (choices, blocked = []) =>
         setState(prev => {
+          const sameBlocked =
+            (prev.tenantChoicesBlocked ?? []).join(',') === blocked.join(',');
           if (
             prev.tenantChoices?.join(',') === choices.join(',') &&
-            (prev.tenant === undefined || choices.includes(prev.tenant))
+            sameBlocked &&
+            (prev.tenant === undefined
+              ? choices.length === 0
+              : choices.includes(prev.tenant) || blocked.includes(prev.tenant))
           ) {
             return prev;
           }
           let tenant = prev.tenant;
-          if (!tenant || !choices.includes(tenant)) {
-            tenant = choices.length === 1 ? choices[0] : undefined;
-          }
-          // A kind chosen without a pick (a restored draft) stays only where
-          // these choices still offer it as a choice among several.
-          const { kinds } = tenantGroups(choices);
-          let tenantKind: TenantKind | undefined;
-          if (tenant) {
-            tenantKind = tenantKindOf(tenant);
-          } else if (
-            prev.tenantKind &&
-            kinds.length > 1 &&
-            kinds.includes(prev.tenantKind)
+          // A held tenant the person may not create agents in stays held:
+          // the form refuses it with the reason, rather than moving the
+          // agent to another organization without a word.
+          if (
+            !tenant ||
+            !(choices.includes(tenant) || blocked.includes(tenant))
           ) {
-            tenantKind = prev.tenantKind;
+            const own = prev.ownTenant;
+            tenant =
+              own && choices.includes(own)
+                ? own
+                : defaultTenant(choices, directory);
           }
-          return withTenantKind(
-            { ...prev, tenantChoices: choices, tenantKind },
+          return withTenant(
+            {
+              ...prev,
+              tenantChoices: choices,
+              tenantChoicesBlocked: blocked.length > 0 ? blocked : undefined,
+              tenantChoicesUnread: undefined,
+            },
             tenant,
           );
         }),
+      setTenantChoicesUnread: unread =>
+        setState(prev =>
+          prev.tenantChoicesUnread === unread
+            ? prev
+            : { ...prev, tenantChoicesUnread: unread },
+        ),
       selectTenant: tenant =>
-        setState(prev =>
-          withTenant({ ...prev, tenantKind: tenantKindOf(tenant) }, tenant),
-        ),
+        setState(prev => withOwnTenant(prev, tenant, directory)),
       selectTenantKind: kind =>
-        setState(prev =>
-          withTenantKind({ ...prev, tenantKind: kind }, prev.tenant),
-        ),
+        setState(prev => {
+          if (prev.tenant && tenantKindOf(prev.tenant, directory) === kind) {
+            return prev;
+          }
+          const members = tenantGroups(prev.tenantChoices ?? [], directory)
+            .byKind[kind];
+          const own = prev.ownTenantByKind?.[kind];
+          const tenant = own && members.includes(own) ? own : members[0];
+          return tenant ? withOwnTenant(prev, tenant, directory) : prev;
+        }),
       // The ModelConfig's namespace is the agent's, and an Agent names a
       // Harness of its own namespace, so a model in another namespace drops
       // the Harness pick. A model outside the picked tenant is not taken: a
@@ -785,6 +1003,7 @@ export function NewAgentFormProvider({
         ),
       isToolsetValid,
       toolsetProblems: problems,
+      maxInlineSelectors,
       toggleSkill: skill =>
         setState(prev => {
           const id = skillId(skill);
@@ -806,18 +1025,29 @@ export function NewAgentFormProvider({
       togglePlugin: plugin =>
         setState(prev => {
           const id = pluginId(plugin);
-          const isSelected = prev.selectedPlugins.some(
-            selected => pluginId(selected.plugin) === id,
-          );
+          if (
+            prev.selectedPlugins.some(
+              selected => pluginId(selected.plugin) === id,
+            )
+          ) {
+            return {
+              ...prev,
+              selectedPlugins: prev.selectedPlugins.filter(
+                selected => pluginId(selected.plugin) !== id,
+              ),
+            };
+          }
+          // A package is added the one way it can be: with every skill.
+          if (plugin.format === 'agent-plugins') {
+            return withAllPluginSkills(prev, plugin);
+          }
           return {
             ...prev,
-            selectedPlugins: isSelected
-              ? prev.selectedPlugins.filter(
-                  selected => pluginId(selected.plugin) !== id,
-                )
-              : [...prev.selectedPlugins, { plugin, skills: [] }],
+            selectedPlugins: [...prev.selectedPlugins, { plugin, skills: [] }],
           };
         }),
+      selectAllPluginSkills: plugin =>
+        setState(prev => withAllPluginSkills(prev, plugin)),
       togglePluginSkill: (plugin, skill) =>
         setState(prev => {
           const id = pluginId(plugin);
@@ -867,6 +1097,8 @@ export function NewAgentFormProvider({
       },
       clearSavedDraft: clearDraft,
       isDirty,
+      tagsOffered,
+      storedTags,
       isComplete,
       validationErrors,
       fieldErrors,
@@ -882,6 +1114,12 @@ export function NewAgentFormProvider({
     draftNoticeStep,
     dismissDraftNotice,
     clearDraft,
+    tagUpdaters,
+    tagsOffered,
+    storedTags,
+    directory,
+    byOrganization,
+    maxInlineSelectors,
   ]);
 
   return (

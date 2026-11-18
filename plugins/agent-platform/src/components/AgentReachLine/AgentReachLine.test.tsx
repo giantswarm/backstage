@@ -1,7 +1,11 @@
 import { render, screen } from '@testing-library/react';
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 
-import { buildCatalogue, type CatalogueGroup } from '../../lib/toolset';
+import {
+  buildCatalogue,
+  type CatalogueGroup,
+  type ServerInfo,
+} from '../../lib/toolset';
 import { AgentReachLine } from './AgentReachLine';
 
 let mockGroups: CatalogueGroup[] | undefined;
@@ -11,6 +15,21 @@ const mockUseReachCatalogue = jest.fn(
 jest.mock('../../hooks/useReachCatalogue', () => ({
   useReachCatalogue: (installation: string | undefined, needed: boolean) =>
     mockUseReachCatalogue(installation, needed),
+}));
+// The installation's connectors, as `serverInfoOf` reads them.
+const mockMusterServers: { servers: ServerInfo[] } = { servers: [] };
+jest.mock('../../hooks/useMusterServers', () => ({
+  useMusterServers: () => {
+    const { connectorLabels: labelsOf } =
+      jest.requireActual('../../lib/toolset');
+    return {
+      servers: mockMusterServers.servers,
+      resources: [],
+      labels: labelsOf(mockMusterServers.servers),
+      isLoading: false,
+      isUnavailable: false,
+    };
+  },
 }));
 
 const reads = (name: string): ToolSummary => ({

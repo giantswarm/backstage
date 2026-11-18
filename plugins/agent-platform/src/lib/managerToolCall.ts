@@ -1,4 +1,5 @@
 import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
+import { portalSessionError, PortalSessionEndedError } from './portalSession';
 
 /** How a platform manager's client turns muster's failures into its errors. */
 export type ManagerErrors = {
@@ -26,7 +27,12 @@ export async function callManagerTool<T>(
   try {
     result = await musterApi.callTool(toolName, args, installation);
   } catch (error) {
-    throw errors.classify(error);
+    // The portal refusing the session token is said as that, never in its
+    // words: nothing reached muster (`portalSession.ts`).
+    const ended = portalSessionError(error);
+    throw ended instanceof PortalSessionEndedError
+      ? ended
+      : errors.classify(error);
   }
   if (typeof result === 'string') {
     try {

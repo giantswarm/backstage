@@ -8,6 +8,25 @@ export interface Config {
    * agent-manager's to report (`get_info`) and are not configured here.
    */
   agentPlatform?: {
+    /**
+     * Serve kagent, model-manager and agent-manager's credential operations
+     * from built-in fixtures instead of their backends: for local development
+     * and layout checks without a cluster. The tools the pages call through
+     * muster answer from fixtures with `muster.fixtures`. No effect in a
+     * production build, which contains no fixture code (docs/fixtures.md).
+     * Never set on a deployed portal.
+     * @visibility frontend
+     */
+    fixtures?: boolean;
+    organizations?: {
+      /**
+       * Enable Organizations for everyone in this portal. An explicit false
+       * disables the pages even with a saved browser opt-in. Unset uses the
+       * browser's agent-platform-organizations flag, off by default.
+       * @visibility frontend
+       */
+      enabled?: boolean;
+    };
     /** Model metadata the platform itself does not report. */
     models?: {
       /**
@@ -34,7 +53,7 @@ export interface Config {
        * file in a repo defines one skill (its containing directory is the
        * skill root); the frontmatter `name`/`description` are shown in the
        * picker. A selected skill is pinned to the head commit of the
-       * repository's default branch at discovery time and becomes a
+       * repository's default branch (or `ref`) at discovery time and becomes a
        * `skills[]` entry (`{ name, path, git: { url, commit } }`) of the
        * agent's chart values. The frontend reads the list from the signed-in
        * config.
@@ -46,8 +65,33 @@ export interface Config {
        * no REST API and no API rate limit — so a lab-local git server (Gitea,
        * `git http-backend`) works; the URL must be one agents can also fetch
        * at boot, since it travels into the chart's `git.url` unchanged.
+       *
+       * An entry is a URL, or an object:
+       * - `url`: the repository URL, as above.
+       * - `ref`: branch or tag name, `refs/heads/<name>`, `refs/tags/<name>`
+       *   or a full commit id; the default branch when unset. A name that is
+       *   both a branch and a tag is refused. Picked skills pin to the commit
+       *   it resolves to. Pull requests target it when it is a branch; a tag
+       *   or commit takes none.
+       * - `path`: directory to scan for skills (must exist); the whole
+       *   repository when unset. Skill paths stay repository-relative; new
+       *   skills go below it.
+       * - `readOnly`: no Add skill or edit pull requests into it (e.g. the
+       *   platform's own skills). Its skills still list and can be added to
+       *   agents.
+       *
+       * A URL listed twice is read once, by its first entry, and is read-only
+       * when any entry says so.
        */
-      repositories?: string[];
+      repositories?: Array<
+        | string
+        | {
+            url: string;
+            ref?: string;
+            path?: string;
+            readOnly?: boolean;
+          }
+      >;
     };
     /**
      * Which agent serves each meta-agent role (iteration-1 decision G13).

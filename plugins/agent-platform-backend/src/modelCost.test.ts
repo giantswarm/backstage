@@ -4,13 +4,17 @@ import {
   NotFoundError,
   ServiceUnavailableError,
 } from '@backstage/errors';
-import type { MimirQueryResponse } from '@giantswarm/backstage-plugin-gs-node';
 import {
-  callerEmail,
-  MimirQuerier,
-  modelCostQueries,
-  readModelCost,
-} from './modelCost';
+  MimirUnavailableError,
+  type MimirQueryResponse,
+} from '@giantswarm/backstage-plugin-gs-node';
+import { InstallationAuthenticationError } from './installationAuthenticationError';
+import { modelCostQueries as modelCostQueriesOver } from '@giantswarm/backstage-plugin-agent-platform-common';
+import { AgentgatewayGenAiClientCostUsdTotal as Cost } from '@giantswarm/backstage-plugin-gs-common';
+import { MimirQuerier, readModelCost } from './modelCost';
+
+const modelCostQueries = (user: string, days: number) =>
+  modelCostQueriesOver(Cost.name, user, days);
 
 function vector(
   samples: Array<{ metric?: Record<string, string>; value: string }>,
@@ -67,36 +71,6 @@ const read = (overrides: Partial<Parameters<typeof readModelCost>[0]> = {}) =>
     now: () => 1_700_000_000_000,
     ...overrides,
   });
-
-describe('callerEmail', () => {
-  it('prefers the email claim, then an email-shaped subject', () => {
-    expect(callerEmail({ sub: 'opaque', email: 'me@example.com' })).toBe(
-      'me@example.com',
-    );
-    expect(callerEmail({ sub: 'me@example.com' })).toBe('me@example.com');
-  });
-
-  it('names nobody for kagent’s shared user, an opaque subject or no claims', () => {
-    expect(callerEmail({ sub: 'admin@kagent.dev' })).toBeUndefined();
-    expect(callerEmail({ sub: 'CiQ0Zj' })).toBeUndefined();
-    expect(callerEmail({})).toBeUndefined();
-    expect(callerEmail(undefined)).toBeUndefined();
-  });
-});
-
-describe('modelCostQueries', () => {
-  it('filters the cost counter by the person and corrects for newborn series', () => {
-    const { byAgent } = modelCostQueries('me@example.com', 7);
-    expect(byAgent).toBe(
-      'sum by (agent_namespace, agent) (increase(agentgateway_gen_ai_client_cost_usd_total{user="me@example.com"}[7d]) or label_replace(min_over_time(agentgateway_gen_ai_client_cost_usd_total{user="me@example.com"}[7d]) unless last_over_time(agentgateway_gen_ai_client_cost_usd_total{user="me@example.com"}[1h] offset 7d), "first_sample", "true", "__name__", ".*"))',
-    );
-  });
-
-  it('escapes the identity, so a claim cannot widen the matcher', () => {
-    const { byAgent } = modelCostQueries('x"} or vector(1) #', 7);
-    expect(byAgent).toContain('{user="x\\"} or vector(1) #"}');
-  });
-});
 
 describe('readModelCost', () => {
   it('asks kagent who the caller is with their own token, and queries Mimir as them', async () => {
@@ -238,6 +212,15 @@ describe('readModelCost', () => {
     }
   });
 
+  it('asks Mimir not to warn about a failure, which the page handles', async () => {
+    const mimir = fakeMimir({ attributed: '1' });
+    await read({ mimir });
+
+    for (const [args] of mimir.query.mock.calls) {
+      expect(args.logFailures).toBe(false);
+    }
+  });
+
   it('answers unreadable for a Mimir that is down, and logs it below warn', async () => {
     const logger = mockServices.logger.mock();
     const mimir = {
@@ -249,6 +232,37 @@ describe('readModelCost', () => {
     });
     expect(logger.warn).not.toHaveBeenCalled();
     expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it('answers older-data-unavailable when Mimir has no healthy store-gateway', async () => {
+    const logger = mockServices.logger.mock();
+    const mimir = {
+      query: jest.fn().mockRejectedValue(
+        new MimirUnavailableError('Mimir could not answer the query', {
+          reason: 'older_data_unavailable',
+        }),
+      ),
+    };
+    await expect(read({ mimir, logger })).resolves.toMatchObject({
+      status: 'unavailable',
+      reason: 'older-data-unavailable',
+    });
+    // Handled: the page falls back to the estimate and says why.
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('answers unreadable for any other Mimir failure', async () => {
+    const mimir = {
+      query: jest
+        .fn()
+        .mockRejectedValue(
+          new MimirUnavailableError('Mimir could not answer the query'),
+        ),
+    };
+    await expect(read({ mimir })).resolves.toMatchObject({
+      status: 'unavailable',
+      reason: 'unreadable',
+    });
   });
 
   it('answers no-mimir, not an error, where the installation has none', async () => {
@@ -278,13 +292,28 @@ describe('readModelCost', () => {
     expect(logger.error).not.toHaveBeenCalled();
   });
 
-  it('lets a refused token through from kagent or Mimir, so the person can sign in again', async () => {
-    const refused = new AuthenticationError('token refused');
+  it("lets kagent's refusal of the token through, so the person can sign in again", async () => {
+    const refused = new InstallationAuthenticationError('token refused');
     await expect(
       read({ identity: { getMe: jest.fn().mockRejectedValue(refused) } }),
     ).rejects.toBe(refused);
-    await expect(
-      read({ mimir: { query: jest.fn().mockRejectedValue(refused) } }),
-    ).rejects.toBe(refused);
+  });
+
+  // Backstage's AuthenticationError is the portal refusing the session
+  // token: the page says the portal session ended for that name only.
+  it("names Mimir's refusal of the token as the installation's, not the portal's", async () => {
+    const error = await read({
+      mimir: {
+        query: jest
+          .fn()
+          .mockRejectedValue(new AuthenticationError('token refused')),
+      },
+    }).catch(e => e);
+    expect(error).toBeInstanceOf(InstallationAuthenticationError);
+    expect(error).toMatchObject({
+      name: 'InstallationAuthenticationError',
+      statusCode: 401,
+      message: 'token refused',
+    });
   });
 });

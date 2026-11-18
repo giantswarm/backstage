@@ -48,6 +48,7 @@ function makeWorkflow(
     description?: string;
     category?: string;
     gitops?: boolean;
+    tags?: string;
   } = {},
 ) {
   return new MusterWorkflow(
@@ -56,6 +57,9 @@ function makeWorkflow(
       kind: 'Workflow',
       metadata: {
         name,
+        ...(options.tags
+          ? { annotations: { 'ui.giantswarm.io/tags': options.tags } }
+          : {}),
         labels: {
           ...(options.category
             ? { [WORKFLOW_CATEGORY_LABEL]: options.category }
@@ -300,7 +304,7 @@ describe('CustomizeWorkflowsPanel', () => {
     expect(screen.getByText('4 steps')).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Run counts and the read-only badge need a muster session/,
+        /Run counts and the read-only badge need a Muster session/,
       ),
     ).toBeInTheDocument();
     expect(api.listExecutions).not.toHaveBeenCalled();
@@ -330,6 +334,46 @@ describe('CustomizeWorkflowsPanel', () => {
 
     expect(screen.getByText('ticket-report')).toBeInTheDocument();
     expect(screen.queryByText('upgrade-check')).not.toBeInTheDocument();
+  });
+
+  it('finds workflows by tag, and shows the category beside the tags', async () => {
+    mockWorkflows = [
+      makeWorkflow('ticket-report', 4, {
+        category: 'support',
+        tags: 'weekly,reports',
+      }),
+      makeWorkflow('upgrade-check', 1),
+    ];
+    await renderPanel('weekly');
+
+    const report = screen.getByRole('row', { name: /ticket-report/ });
+    expect(within(report).getByText('support')).toBeInTheDocument();
+    expect(
+      within(within(report).getByRole('list', { name: 'Tags' }))
+        .getAllByRole('listitem')
+        .map(item => item.textContent),
+    ).toEqual(['weekly', 'reports']);
+    expect(screen.queryByText('upgrade-check')).not.toBeInTheDocument();
+  });
+
+  it('filters by tags, even without a muster session', async () => {
+    mockAuthenticated = false;
+    mockWorkflows = [
+      makeWorkflow('alpha', 1, { tags: 'ops' }),
+      makeWorkflow('bravo', 1, { tags: 'ops,billing' }),
+      makeWorkflow('charlie', 1),
+    ];
+    await renderPanel();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Filter by tags/, hidden: true }),
+    );
+    await userEvent.click(
+      await screen.findByRole('option', { name: 'billing 1' }),
+    );
+    await userEvent.keyboard('{Escape}');
+    expect(screen.getAllByRole('row').slice(1)).toHaveLength(1);
+    expect(screen.getByRole('row', { name: /bravo/ })).toBeInTheDocument();
   });
 
   it('shows three workflows plainly: no reveal control, no pagination footer', async () => {
@@ -533,7 +577,7 @@ describe('CustomizeWorkflowsPanel last-run filter (T49, T64)', () => {
     api.filterTools.mockClear();
   });
 
-  it('offers a one-option dropdown over three workflows whose last runs all went the same way', async () => {
+  it('offers no last-run dropdown over three workflows whose last runs all went the same way', async () => {
     mockWorkflows = ['alpha', 'bravo', 'charlie'].map(name =>
       makeWorkflow(name, 2),
     );
@@ -552,7 +596,9 @@ describe('CustomizeWorkflowsPanel last-run filter (T49, T64)', () => {
       }),
     );
     expect(rows()).toHaveLength(3);
-    expect(await lastRunOptions()).toEqual(['Succeeded 3']);
+    expect(
+      screen.queryByRole('button', { name: /Filter by last run/ }),
+    ).not.toBeInTheDocument();
   });
 
   it('filters three workflows by their last run, the newest run deciding', async () => {
@@ -652,7 +698,9 @@ describe('CustomizeWorkflowsPanel last-run filter (T49, T64)', () => {
         ([options]) => options.workflowName === undefined,
       ),
     ).toHaveLength(1);
-  });
+    // 300 rows and a dozen clicks: about 3 s alone, past Jest's 5 s default
+    // when the whole suite shares a CI machine.
+  }, 30_000);
 
   it('says when the filter leaves nothing of a search, and clears it', async () => {
     mockWorkflows = ['alpha', 'bravo'].map(name => makeWorkflow(name, 2));

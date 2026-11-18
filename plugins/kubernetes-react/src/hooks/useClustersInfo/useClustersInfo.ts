@@ -19,5 +19,8 @@ export function useClustersInfo() {
   return {
     clusters: clustersQuery.data ?? [],
     isLoading: isRestoring || isAwaitingData(clustersQuery),
+    /** Why the installation list could not be read, while it could not. */
+    error: clustersQuery.data ? null : clustersQuery.error,
+    retry: clustersQuery.refetch,
   };
 }

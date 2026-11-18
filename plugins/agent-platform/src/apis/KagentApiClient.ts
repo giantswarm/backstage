@@ -12,7 +12,12 @@ import {
   idTokenLifetimeLeft,
 } from '@giantswarm/backstage-plugin-gs-react';
 import { getInstallationOidcToken } from '../lib/installationOidcToken';
-import type { KagentRequestErrorFields } from '../lib/readFailure';
+import { portalSessionError } from '../lib/portalSession';
+import {
+  isKagentUnavailable,
+  KAGENT_UNAVAILABLE_MESSAGE,
+  type KagentRequestErrorFields,
+} from '../lib/readFailure';
 import {
   KagentInstallation,
   parseKagentInstallations,
@@ -126,21 +131,36 @@ export function isUpstreamError(error: unknown): boolean {
  * the fields `describeReadFailure` turns into the page's words — the status,
  * the backend's failure reason and the request id it sent toward kagent.
  */
-async function readRequestError(
-  response: Response,
-): Promise<{ message?: string; fields: KagentRequestErrorFields }> {
+async function readRequestError(response: Response): Promise<{
+  message?: string;
+  name?: string;
+  fields: KagentRequestErrorFields;
+}> {
   const errorData = await response.json().catch(() => ({}));
-  const { message, reason } =
-    (errorData as { error?: { message?: string; reason?: string } })?.error ??
-    {};
+  const { message, reason, name } =
+    (
+      errorData as {
+        error?: { message?: string; reason?: string; name?: unknown };
+      }
+    )?.error ?? {};
   return {
     message,
+    name: typeof name === 'string' ? name : undefined,
     fields: {
       status: response.status,
       reason,
       requestId: response.headers.get(REQUEST_ID_HEADER) ?? undefined,
     },
   };
+}
+
+/**
+ * The backend's message as the `cause` of an error that says something
+ * friendlier, so the installation and the upstream detail survive for the
+ * console and Sentry; nothing when the body carried none.
+ */
+function backendCause(message: string | undefined): { cause?: Error } {
+  return message ? { cause: new Error(message) } : {};
 }
 
 /** How `relayStream`'s errors name the request they are about. */
@@ -237,10 +257,11 @@ export function isConflictError(error: unknown): boolean {
 }
 
 /**
- * A request the backend refused because the tab's Backstage token no longer
- * verifies: its 401, as {@link KagentApiClient.throwIfNotOk} names it. Seen
- * when the Backstage pod rolled while the page stayed open; a reload signs the
- * tab back in.
+ * A request refused for the person's installation token: the backend's 401,
+ * as {@link KagentApiClient.throwIfNotOk} names it, when kagent (or its
+ * gateway) refused the token or the request carried none. The portal's own
+ * refusal of the session token is a `PortalSessionEndedError` instead
+ * (`lib/portalSession.ts`).
  */
 export const UNAUTHORIZED_ERROR_NAME = 'UnauthorizedError';
 
@@ -268,6 +289,7 @@ function answerBody(
       rejectionReason: answer.rejectionReason,
     }),
     ...(answer.text && { text: answer.text }),
+    ...(answer.askedIn && { askedIn: answer.askedIn }),
   };
 }
 
@@ -733,12 +755,19 @@ export class KagentApiClient implements KagentApi {
         // report. The backend's own says why: `reason: "timeout"` is its wait
         // for kagent's first event running out, and several of those in a
         // row read as a runtime that cannot start (`useSendMessage`).
-        const { fields } = await readRequestError(response);
+        //
+        // `reason: "unavailable"` is kagent or its gateway answering gRPC
+        // `Unavailable`: the controller is down for a moment, and the person
+        // hears that in place of a bare status.
+        const { message, fields } = await readRequestError(response);
         throw Object.assign(
           streamTransportError(
-            `The ${wording.stream} failed with status ${response.status}.`,
+            isKagentUnavailable(fields)
+              ? KAGENT_UNAVAILABLE_MESSAGE
+              : `The ${wording.stream} failed with status ${response.status}.`,
           ),
           fields,
+          backendCause(message),
         );
       }
       // 4xx: a decision — a malformed message, a rejected token, an unknown
@@ -1000,10 +1029,26 @@ export class KagentApiClient implements KagentApi {
   ): Promise<void> {
     const { badRequestIsMissing = true } = options;
     if (!response.ok) {
-      const { message: bodyMessage, fields } = await readRequestError(response);
-      const message =
-        bodyMessage ?? `kagent request failed with status ${response.status}`;
-      const error = Object.assign(new Error(message), fields);
+      const {
+        message: bodyMessage,
+        name,
+        fields,
+      } = await readRequestError(response);
+      // kagent down for a moment reads as that, not as the backend's message,
+      // which quotes the gateway ("upstream call failed: Connect: Connection
+      // refused"). The status, reason and request id still travel on the error.
+      // The backend's own message stays on the error as its `cause`, for the
+      // console and Sentry: the installation and the gateway's words.
+      const unavailable = isKagentUnavailable(fields);
+      const message = unavailable
+        ? KAGENT_UNAVAILABLE_MESSAGE
+        : (bodyMessage ??
+          `The Agent Platform request failed with status ${response.status}.`);
+      const error = Object.assign(
+        new Error(message),
+        fields,
+        unavailable ? backendCause(bodyMessage) : {},
+      );
       // A 400 from this proxy means the backend has no kagent endpoint
       // configured for the requested installation (its `resolveInstallation`
       // raises InputError for a name outside the allowlist). That allowlist is
@@ -1037,7 +1082,12 @@ export class KagentApiClient implements KagentApi {
       if (response.status === 503) {
         error.name = 'ServiceUnavailableError';
       }
-      throw error;
+      // The portal's backend refusing the person's session token (a 401
+      // named `AuthenticationError`, before any route runs) is said as that,
+      // never in its words: a sign-in to the portal is the way on. kagent's
+      // refusal of the installation token has a name of its own
+      // (`InstallationAuthenticationError`) and keeps its message.
+      throw portalSessionError(Object.assign(error, { errorName: name }));
     }
   }
 }

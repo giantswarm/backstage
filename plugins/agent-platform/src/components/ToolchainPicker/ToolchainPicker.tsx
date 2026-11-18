@@ -7,9 +7,11 @@ import {
   Popover,
   Select,
   Text,
+  Tooltip,
+  TooltipTrigger,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import BuildIcon from '@material-ui/icons/Build';
+import { RiArrowDownSLine } from '@remixicon/react';
 
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
 import { useToolchains } from '../../hooks/useToolchainManager';
@@ -17,24 +19,41 @@ import {
   TOOLCHAINS_CAPABILITY,
   imageTag,
   samePicks,
-  toolchainsLabel,
+  toolchainLabel,
   type Toolchain,
   type ToolchainPick,
 } from '../../lib/toolchainManager';
 import type { AgentRow } from '../AgentsDataProvider';
+import { ToolboxIcon } from './ToolboxIcon';
 
 /** The version option that follows the toolchain's newest release. */
 const LATEST = 'latest';
 
 const useStyles = makeStyles({
+  // An icon, the number of picks and a caret (no caret in a compact
+  // composer), not growing with the names: the agent and workspace beside it
+  // keep their room however many are picked (giantswarm/giantswarm#39204).
+  // The names are in the tooltip and the popover.
   trigger: {
-    maxWidth: 280,
-    minWidth: 0,
-    '& > span': {
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap',
-    },
+    flex: '0 0 auto',
+    fontVariantNumeric: 'tabular-nums',
+  },
+  // The caret of the agent and workspace selects beside it: bui's Select
+  // draws `RiArrowDownSLine` in the secondary colour.
+  caret: {
+    color: 'var(--bui-fg-secondary)',
+  },
+  // Nothing picked: the icon alone, quieter.
+  triggerEmpty: {
+    color: 'var(--bui-fg-secondary)',
+  },
+  // On elements inside the tooltip: bui's `Tooltip` drops a `className`.
+  tooltipHeading: {
+    display: 'block',
+    fontWeight: 'bold',
+  },
+  tooltipLine: {
+    display: 'block',
   },
   content: {
     padding: 'var(--bui-space-3)',
@@ -58,6 +77,12 @@ export type ToolchainPickerProps = {
   value: ToolchainPick[] | undefined;
   onChange: (picks: ToolchainPick[] | undefined) => void;
   isDisabled?: boolean;
+  /**
+   * The composer is too narrow for its controls (its own measure,
+   * `useCompactLayout`): the button leaves out its caret, so the agent and
+   * workspace beside it keep room for their names.
+   */
+  isCompact?: boolean;
 };
 
 /** The picks with `name` at `version` (absent: not mounted). */
@@ -144,6 +169,7 @@ export function ToolchainPicker({
   value,
   onChange,
   isDisabled = false,
+  isCompact = false,
 }: ToolchainPickerProps) {
   const classes = useStyles();
   const { info } = useAgentManagerInfo(agent.installation);
@@ -162,20 +188,53 @@ export function ToolchainPicker({
 
   const change = (next: ToolchainPick[]) =>
     onChange(samePicks(next, defaults) ? undefined : next);
-  const summary = toolchainsLabel(picks);
 
   return (
     <DialogTrigger>
-      <Button
-        variant="tertiary"
-        size="small"
-        iconStart={<BuildIcon />}
-        className={classes.trigger}
-        isDisabled={isDisabled}
-        aria-label={`Toolchains: ${summary}`}
-      >
-        {summary}
-      </Button>
+      {/* Inside the dialog's trigger, so its press still reaches the button:
+          react-aria's tooltip trigger only adds hover and focus handling. */}
+      <TooltipTrigger delay={200}>
+        <Button
+          variant="tertiary"
+          size="small"
+          iconStart={<ToolboxIcon />}
+          // No caret in a compact composer: its room goes to the agent and
+          // the workspace beside it, whose names it squeezed to a letter or
+          // two with many toolchains picked. The popup is still announced
+          // (`aria-haspopup`) and the tooltip says what the button holds.
+          iconEnd={
+            isCompact ? undefined : (
+              <RiArrowDownSLine aria-hidden className={classes.caret} />
+            )
+          }
+          className={
+            picks.length > 0
+              ? classes.trigger
+              : `${classes.trigger} ${classes.triggerEmpty}`
+          }
+          isDisabled={isDisabled}
+          // The count, as the button shows it: the tooltip, which opens on
+          // focus too, is its description and says which, once.
+          aria-label={`Toolchains: ${
+            picks.length > 0 ? `${picks.length} selected` : 'none selected'
+          }`}
+          aria-haspopup="dialog"
+        >
+          {picks.length > 0 ? picks.length : null}
+        </Button>
+        <Tooltip>
+          <span className={classes.tooltipHeading}>Toolchains</span>
+          {picks.length > 0 ? (
+            picks.map(pick => (
+              <span key={pick.name} className={classes.tooltipLine}>
+                {toolchainLabel(pick)}
+              </span>
+            ))
+          ) : (
+            <span className={classes.tooltipLine}>None</span>
+          )}
+        </Tooltip>
+      </TooltipTrigger>
       {/* bui's Popover does not pass a name on, so the content is the named
           dialog. */}
       <Popover placement="bottom start">

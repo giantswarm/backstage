@@ -21,7 +21,7 @@ import { wizardEditBlocker } from '../../lib/mcpServerDefinition';
 import { connectorDisplayNameOn } from '../../lib/serverGrouping';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
-import { useConnectorGroupPaths } from '../shared/hooks';
+import { useConnectorListPaths } from '../shared/hooks';
 
 /** The connector wizard's steps, by the path segment each has. */
 export type ConnectorWizardStep = 'connect' | 'auth' | 'verify';
@@ -39,12 +39,11 @@ export type ConnectorWizardLinks = (
 ) => string | undefined;
 
 /**
- * The Connectors tab's list — the customer's own connectors, its default
- * sub-tab — where leaving the wizard lands. The wizard is routed under the
+ * The Connectors tab's list, where leaving the wizard lands. The wizard is routed under the
  * tab, so the tab's own route always resolves here.
  */
 export function useConnectorsListHref(): string {
-  const { connectors } = useConnectorGroupPaths();
+  const { connectors } = useConnectorListPaths();
   if (!connectors) {
     throw new Error('The connector wizard is not mounted under its tab');
   }

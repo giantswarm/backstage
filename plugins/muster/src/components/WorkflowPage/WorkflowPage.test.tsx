@@ -20,6 +20,10 @@ import { fleetImageScanWorkflow } from '../../lib/__fixtures__/fleetImageScan';
 import { DEFAULT_DETAILS_HEIGHT } from './WorkflowFlowCanvas';
 import { WorkflowPage } from './WorkflowPage';
 import { useWorkflowPageTarget } from './workflowPageTarget';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 // A textarea stands in for the CodeMirror editor, so the raw-YAML assertion
 // can read the definition as the textbox's value.
@@ -305,8 +309,8 @@ function makeApi() {
       failed: 1,
       inprogress: 0,
       success_rate: 0.5,
-      avg_duration_ms: 10000,
-      max_duration_ms: 18000,
+      avg_duration_ms: 300_000,
+      max_duration_ms: 330_000,
       per_day: [],
     })),
   };
@@ -354,7 +358,10 @@ async function renderAt(
         '/customize/workflows': workflowsRouteRef,
         '/customize': customizeExternalRouteRef,
       },
-      apis: [[musterApiRef, api as never]],
+      apis: [
+        [musterApiRef, api as never],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ],
     },
   );
   return api;
@@ -484,6 +491,29 @@ describe('WorkflowPage', () => {
     ).toBeInTheDocument();
     expect(section).toHaveTextContent('Deploys an app and tells the team.');
     expect(within(section).getByText(/^Created/)).toBeInTheDocument();
+  });
+
+  it('shows its tags under what it is for', async () => {
+    mockWorkflows = [
+      deployWith({}, { 'ui.giantswarm.io/tags': 'release,ops' }),
+    ];
+    await renderAt(`${BASE}/deploy`);
+
+    const section = await screen.findByRole('region', {
+      name: 'What it’s for',
+    });
+    expect(
+      within(within(section).getByRole('list', { name: 'Tags' }))
+        .getAllByRole('listitem')
+        .map(item => item.textContent),
+    ).toEqual(['release', 'ops']);
+    // Each opens Customize → Workflows with that tag picked.
+    expect(
+      within(section).getByRole('link', { name: 'release' }),
+    ).toHaveAttribute(
+      'href',
+      '/customize/workflows?installation=gazelle&tags=release',
+    );
   });
 
   it('says so where the definition gives no description', async () => {
@@ -1000,6 +1030,9 @@ describe('WorkflowPage', () => {
     expect(
       screen.getByText(/about three weeks, at most 10,000/),
     ).toBeInTheDocument();
+    // Minutes past a minute, not "300 s".
+    expect(screen.getByText('5 min')).toBeInTheDocument();
+    expect(screen.getByText('5 min 30 s')).toBeInTheDocument();
   });
 
   it('names a failed last run’s error on Usage', async () => {
@@ -1021,7 +1054,7 @@ describe('WorkflowPage', () => {
     const lastRun = await screen.findByTestId('workflow-last-run');
     expect(lastRun).toHaveTextContent('Failed');
     expect(lastRun).toHaveTextContent('apply refused');
-    expect(lastRun).toHaveTextContent('took 2.0 s');
+    expect(lastRun).toHaveTextContent('took 2 s');
   });
 
   it('lists the plain facts on Details, then the CR’s bookkeeping in a Technical details fold-out', async () => {
@@ -1029,7 +1062,7 @@ describe('WorkflowPage', () => {
 
     const facts = screen.getByRole('region', { name: 'Workflow details' });
     expect(facts).toHaveTextContent(
-      'Manually added — changed by agents through muster, not here',
+      'Manually added — changed by agents through Muster, not here',
     );
     expect(within(facts).getByText('Tool name')).toBeInTheDocument();
     expect(within(facts).getByText('workflow_deploy')).toBeInTheDocument();
@@ -1192,6 +1225,7 @@ describe('WorkflowPage', () => {
         'workflow_deploy',
         expect.objectContaining({ app: 'shop' }),
         'gazelle',
+        { signal: expect.any(AbortSignal), urlElicitation: true },
       ),
     );
     expect(
@@ -1230,7 +1264,7 @@ describe('WorkflowPage', () => {
       await screen.findByText('Sign in to a connector first'),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/muster refuses the run until you are/),
+      screen.getByText(/Muster refuses the run until you are/),
     ).toBeInTheDocument();
     // The form still shows: signing in makes the run possible.
     expect(
@@ -1319,7 +1353,7 @@ describe('WorkflowPage', () => {
         within(dialog).getByText('Leave while the workflow runs?'),
       ).toBeInTheDocument();
       expect(dialog).toHaveTextContent(
-        'muster keeps running it after you leave',
+        'Muster keeps running it after you leave',
       );
       // Still here, behind the modal dialog.
       expect(
@@ -1387,7 +1421,7 @@ describe('WorkflowPage', () => {
     const api = await renderAt(`${BASE}/deploy/run`);
 
     expect(
-      screen.getByText(/Running a workflow needs a muster session/),
+      screen.getByText(/Running a workflow needs a Muster session/),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Run' })).toBeNull();
     expect(api.filterTools).not.toHaveBeenCalled();
@@ -1531,7 +1565,7 @@ describe('WorkflowPage', () => {
     // Overview names what it needs the session for; statistics are on Usage.
     expect(
       screen.getByText(
-        /The last run on the flow and the read-only badge need a muster session/,
+        /The last run on the flow and the read-only badge need a Muster session/,
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Statistics need/)).toBeNull();
@@ -1560,7 +1594,7 @@ describe('WorkflowPage', () => {
     const api = await renderAt(`${BASE}/deploy/usage`);
 
     expect(
-      screen.getByText(/Statistics need a muster session/),
+      screen.getByText(/Statistics need a Muster session/),
     ).toBeInTheDocument();
     expect(screen.queryByText(/The last run on the flow/)).toBeNull();
     expect(screen.queryByText(/Every run counts/)).toBeNull();
@@ -1715,7 +1749,7 @@ describe('WorkflowPage at phone width', () => {
       screen.getByRole('region', { name: 'If a step fails' }),
     );
     expect(
-      cleanup.getByText('Cleanup muster runs when a step fails.'),
+      cleanup.getByText('Cleanup Muster runs when a step fails.'),
     ).toBeInTheDocument();
     expect(
       cleanup.getByRole('button', { name: /^Cleanup step: Roll back/ }),

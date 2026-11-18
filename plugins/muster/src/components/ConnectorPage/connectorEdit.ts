@@ -18,11 +18,11 @@ export const INSTANCES_EDIT_REASON =
   'Each instance is configured on its own (see Instances).';
 
 export const SESSION_EDIT_REASON =
-  'Editing needs your muster session, which is not connected.';
+  'Editing needs your Muster session, which is not connected.';
 
 /** Why the connector page's menu is empty: its every action is a live write. */
 export const SESSION_ACTIONS_REASON =
-  'Reconnecting, turning off or removing needs your muster session, which is not connected.';
+  'Reconnecting, turning off or removing needs your Muster session, which is not connected.';
 
 /**
  * Why the connector page's Edit cannot open the connector wizard for `row`,

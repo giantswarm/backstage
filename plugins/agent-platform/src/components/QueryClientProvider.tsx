@@ -1,12 +1,18 @@
-import { ReactNode, useMemo } from 'react';
+import { ReactNode, createContext, useContext, useMemo } from 'react';
 import type { QueryKey } from '@tanstack/react-query';
-import { QueryClient, QueryClientConfig } from '@tanstack/react-query';
+import {
+  QueryClient,
+  QueryClientConfig,
+  QueryClientProvider as TanstackQueryClientProvider,
+} from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { fixtureScenarioCacheBuster } from '@giantswarm/backstage-plugin-gs-common';
 import {
   createPluginQueryPersister,
   shouldPersistQuery,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { shouldRetryMusterQuery } from '@giantswarm/backstage-plugin-muster';
+import { PortalSessionEndedError } from '../lib/portalSession';
 
 // Keep entries in cache for an hour and persist them to localStorage, mirroring
 // the gs fleet-list client (Clusters/Deployments). Together with a non-zero
@@ -129,12 +135,14 @@ export function shouldDehydrateAgentPlatformQuery(queryKey: QueryKey): boolean {
  * Whether a failed read is tried again: the muster plugin's rule
  * (`shouldRetryMusterQuery`, which never retries a muster auth failure, a
  * missing object, a refusal or an unavailable dependency, and reads through
- * the `cause` the plugin's own errors keep), and never a write kagent
- * rejected (`RejectedError`).
+ * the `cause` the plugin's own errors keep), never a write kagent rejected
+ * (`RejectedError`), and never a read the portal refused the session token
+ * for (`PortalSessionEndedError`): only a sign-in fixes that.
  */
 export function shouldRetryQuery(failureCount: number, error: unknown) {
   return (
     (error as Error | null)?.name !== 'RejectedError' &&
+    !(error instanceof PortalSessionEndedError) &&
     shouldRetryMusterQuery(failureCount, error)
   );
 }
@@ -197,8 +205,8 @@ export async function markRestoredListsStale(
   ]);
 }
 
-// Once per page load: every mount of the provider restores, but only the
-// first restore comes from a blob older than this page's own reads.
+// Once per page load: every outermost mount of the provider restores, but only
+// the first restore comes from a blob older than this page's own reads.
 let restoredListsMarkedStale = false;
 function onRestored() {
   if (restoredListsMarkedStale) {
@@ -208,7 +216,20 @@ function onRestored() {
   markRestoredListsStale(queryClient);
 }
 
-export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
+/**
+ * Whether a `QueryClientProvider` of this plugin is already mounted above.
+ * Every mount uses the same client, so a nested one needs no
+ * `PersistQueryClientProvider` of its own: that would be one more restore from
+ * localStorage and one more persister subscription on the same cache. A
+ * router mounts one for all its routes, and a page or a view keeps its own so
+ * it still works where it is mounted alone (`CustomizeModelPage` is exported):
+ * under a router, that one provides the same client again, without a persister,
+ * so a react-query provider of another plugin in between never answers this
+ * plugin's hooks.
+ */
+const ProviderMounted = createContext(false);
+
+const RootQueryClientProvider = ({ children }: { children: ReactNode }) => {
   const persister = useMemo(
     () =>
       createPluginQueryPersister({
@@ -225,7 +246,8 @@ export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
       persistOptions={{
         persister,
         maxAge,
-        buster: AGENT_PLATFORM_CACHE_BUSTER,
+        // A cache of another fixture scenario is never restored either.
+        buster: fixtureScenarioCacheBuster(AGENT_PLATFORM_CACHE_BUSTER),
         // Two independent reasons to keep a query out of localStorage, both
         // applied. `shouldPersistQuery` carries the shared rules — the library's
         // "only persist successful queries" default plus the `meta`-based opt-out
@@ -238,7 +260,18 @@ export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
         },
       }}
     >
-      {children}
+      <ProviderMounted.Provider value>{children}</ProviderMounted.Provider>
     </PersistQueryClientProvider>
   );
+};
+
+export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
+  if (useContext(ProviderMounted)) {
+    return (
+      <TanstackQueryClientProvider client={queryClient}>
+        {children}
+      </TanstackQueryClientProvider>
+    );
+  }
+  return <RootQueryClientProvider>{children}</RootQueryClientProvider>;
 };

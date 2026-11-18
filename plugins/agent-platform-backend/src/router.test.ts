@@ -7,6 +7,7 @@ import {
 } from '@backstage/errors';
 import express from 'express';
 import request from 'supertest';
+import { AGENT_MANAGER_AUTH_HEADER } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   EndpointProbeResult,
   ReachabilityCache,
@@ -16,7 +17,11 @@ import {
   KagentClient,
   SESSION_NAME_MAX_LENGTH,
 } from './KagentClient';
-import { turnPendingError, upstreamError } from './kagent/errors';
+import {
+  turnPendingError,
+  upstreamError,
+  withKagentFailure,
+} from './kagent/errors';
 import { createRouter, kagentProbeUrl, RouterOptions } from './router';
 
 /**
@@ -145,6 +150,55 @@ describe('createRouter', () => {
     expect(response.body).toEqual({ status: 'ok', configured: 2 });
   });
 
+  it('forwards the maximum escaped credential body through the parent parser', async () => {
+    const values = Array.from({ length: 16 }, (_, index) => ({
+      secret: `tenant-credential-${index}`,
+      key: 'apiKey',
+      value: '\u0000'.repeat(16 * 1024),
+    }));
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify({ kind: 'connector', name: 'example' })),
+      );
+    try {
+      const parentApp = await buildApp(twoInstallations);
+      const response = await request(parentApp)
+        .post(
+          `/organizations/credential-operations/${'a1'.repeat(24)}?installation=gazelle`,
+        )
+        .set(AGENT_MANAGER_AUTH_HEADER, 'id-token')
+        .set('If-Match', '"1"')
+        .send({ values });
+      expect(response.status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ body: JSON.stringify({ values }) }),
+      );
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it.each([
+    [
+      `/organizations/credential-operations/${'a1'.repeat(24)}?installation=gazelle`,
+      2 * 1024 * 1024,
+    ],
+    ['/unrelated', 256 * 1024],
+  ])('rejects a body above the limit on %s', async (path, size) => {
+    const fetchMock = jest.spyOn(global, 'fetch');
+    try {
+      const response = await request(await buildApp(twoInstallations))
+        .post(path)
+        .send({ values: 'x'.repeat(size) });
+      expect(response.status).toBe(413);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it('lists installations by name with their reachability, sorted', async () => {
     // The probes have settled (the fake cache answers synchronously on its
     // first tick), so nothing is 'unknown' here.
@@ -216,6 +270,7 @@ describe('createRouter', () => {
           addStartupHook: hook => {
             hooks.push(hook);
           },
+          addShutdownHook: () => undefined,
         },
       });
 
@@ -251,6 +306,14 @@ describe('createRouter', () => {
         reachable: true,
         checkedAt: 1,
       });
+      pending.get('https://agentgateway.golem.example.io')!({
+        reachable: false,
+        reason: 'DNS lookup failed (ENOTFOUND)',
+        checkedAt: 1,
+      });
+      await new Promise(resolve => setTimeout(resolve, 0));
+      // Unreachable only after a second failed probe in a row.
+      void cache.refresh('https://agentgateway.golem.example.io');
       pending.get('https://agentgateway.golem.example.io')!({
         reachable: false,
         reason: 'DNS lookup failed (ENOTFOUND)',
@@ -337,6 +400,54 @@ describe('createRouter', () => {
     });
   });
 
+  describe('the request timeout and the keepalive', () => {
+    it.each([
+      [8000, true],
+      [7000, true],
+      [8001, false],
+      [undefined, false],
+    ])('timeoutMs %s warns: %s', async (timeoutMs, warns) => {
+      const logger = mockServices.logger.mock();
+      await createRouter({
+        logger,
+        config: mockServices.rootConfig({
+          data: {
+            ...twoInstallations,
+            ...(timeoutMs && { agentPlatform: { kagent: { timeoutMs } } }),
+          },
+        }),
+        client: mockClient,
+        reachability: reachableEverywhere(),
+      });
+
+      const warned = logger.warn.mock.calls.filter(([message]) =>
+        String(message).includes('too short for the kagent keepalive'),
+      );
+      expect(warned.map(([, meta]) => meta)).toEqual(
+        warns ? [{ timeoutMs, keepaliveMs: 8000 }] : [],
+      );
+    });
+  });
+
+  describe('kagent call metrics', () => {
+    it('creates one call duration histogram for every installation', async () => {
+      const histogram = { record: jest.fn() };
+      const metrics = { createHistogram: jest.fn(() => histogram) };
+      await createRouter({
+        logger: mockServices.logger.mock(),
+        config: mockServices.rootConfig({ data: twoInstallations }),
+        reachability: reachableEverywhere(),
+        metrics: metrics as unknown as RouterOptions['metrics'],
+      });
+
+      expect(metrics.createHistogram).toHaveBeenCalledTimes(1);
+      expect(metrics.createHistogram).toHaveBeenCalledWith(
+        'kagent.client.call.duration',
+        expect.objectContaining({ unit: 's' }),
+      );
+    });
+  });
+
   describe('Sentry noise', () => {
     // MiddlewareFactory.error() logs at `error` for any status >= 500, and the
     // root logger forwards warn/error to Sentry. So the expected outcome on a
@@ -371,6 +482,71 @@ describe('createRouter', () => {
         .set(KAGENT_AUTH_HEADER, 'user-token');
 
       expect(response.status).toBeGreaterThanOrEqual(500);
+    });
+
+    describe('reports a degraded kagent once, grouped by call and cause', () => {
+      const timedOut = (call: string) =>
+        withKagentFailure(
+          upstreamError(
+            "The kagent API for installation 'gazelle' did not respond in time.",
+            'timeout',
+          ),
+          {
+            installation: 'gazelle',
+            call,
+            code: 'DeadlineExceeded',
+            error: 'context deadline exceeded',
+          },
+        );
+
+      it.each([
+        ['/kagent/sessions', listSessions, 'SessionService/ListSessions'],
+        ['/kagent/sessions/abc', getSession, 'SessionService/GetSession'],
+        [
+          '/kagent/sessions/abc/tasks',
+          listSessionTasks,
+          'A2AService/ListTasks',
+        ],
+      ])('GET %s', async (path, method, call) => {
+        const logger = mockServices.logger.mock();
+        // The error middleware logs through a child: the same mock, so that
+        // a second report would show here.
+        logger.child.mockReturnValue(logger);
+        const config = mockServices.rootConfig({ data: twoInstallations });
+        const router = await createRouter({
+          logger,
+          config,
+          client: mockClient,
+          reachability: reachableEverywhere(),
+        });
+        const reporting = express();
+        reporting.use(router);
+        reporting.use(MiddlewareFactory.create({ logger, config }).error());
+        method.mockRejectedValue(timedOut(call));
+
+        const response = await request(reporting)
+          .get(path)
+          .query({ installation: 'gazelle' })
+          .set(KAGENT_AUTH_HEADER, 'user-token');
+
+        // The browser's answer is unchanged, the installation's name included.
+        expect(response.status).toBe(500);
+        expect(response.body).toMatchObject({
+          error: {
+            name: 'UpstreamError',
+            message:
+              "The kagent API for installation 'gazelle' did not respond in time.",
+            reason: 'timeout',
+          },
+          response: { statusCode: 500 },
+        });
+        expect(logger.warn).toHaveBeenCalledTimes(1);
+        expect(logger.warn).toHaveBeenCalledWith(
+          `kagent ${call} timed out`,
+          expect.objectContaining({ installation: 'gazelle', call }),
+        );
+        expect(logger.error).not.toHaveBeenCalled();
+      });
     });
   });
 
@@ -419,6 +595,9 @@ describe('createRouter', () => {
         .query({ installation: 'gazelle' });
 
       expect(response.status).toBe(401);
+      // Not Backstage's AuthenticationError, which the page reads as the
+      // portal refusing the session token.
+      expect(response.body.error.name).toBe('InstallationAuthenticationError');
       expect(listSessions).not.toHaveBeenCalled();
     });
 
@@ -2016,6 +2195,34 @@ describe('createRouter', () => {
       expect(response.body.error.message).toContain('no such agent');
     });
 
+    it('answers kagent unavailable as a 500 whose body names the reason', async () => {
+      // The outage of giantswarm/giantswarm#39044: the gateway could not reach
+      // the controller. The page keys "temporarily unavailable" off the reason;
+      // the status stays a 5xx, because the page reads a 503 as "kagent is not
+      // deployed here" and stays silent.
+      streamMessage.mockRejectedValue(
+        withKagentFailure(
+          upstreamError(
+            "The kagent API for installation 'gazelle' is unavailable: upstream call failed: Connect: Connection refused (os error 111)",
+            'unavailable',
+          ),
+          {
+            installation: 'gazelle',
+            call: 'A2AService/SendStreamingMessage',
+            code: 'Unavailable',
+          },
+        ),
+      );
+
+      const response = await post();
+
+      expect(response.status).toBe(500);
+      expect(response.body.error).toMatchObject({
+        name: 'UpstreamError',
+        reason: 'unavailable',
+      });
+    });
+
     it('keeps a new turn silent past the first-event wait an error, never a 202', async () => {
       // Unlike a resumed one, a new turn is answered with a task snapshot at
       // once; silence is a failure the frontend checks against the history
@@ -2169,6 +2376,19 @@ describe('createRouter', () => {
           text: 'Rideable proof-of-concept',
         },
         { userToken: 'user-token' },
+      );
+    });
+
+    it('forwards the status message the answer was given for', async () => {
+      answerConfirmation.mockResolvedValue({});
+
+      await post({ ...validBody, askedIn: 'status-msg-1' });
+
+      expect(answerConfirmation).toHaveBeenCalledWith(
+        'abc',
+        expect.anything(),
+        expect.objectContaining({ askedIn: 'status-msg-1' }),
+        expect.anything(),
       );
     });
 

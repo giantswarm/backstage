@@ -102,6 +102,9 @@ export function DefinitionEditorDialog({
   // unsaved, and closing would lose them.
   const [baseline, setBaseline] = useState('');
   const submitted = useRef('');
+  // The editor's text as of the last change: a Validate that answers after
+  // an edit judged text that is gone, and its verdict is dropped.
+  const current = useRef('');
   const [isDiscardOpen, setDiscardOpen] = useState(false);
   const isDirty = value !== baseline;
   const [error, setError] = useState<string | undefined>();
@@ -127,13 +130,18 @@ export function DefinitionEditorDialog({
   const parseProblem = 'problem' in parsed ? parsed.problem : undefined;
 
   const onError = (e: Error) => setError(mutationErrorMessage(e));
+  const isStale = () => current.current !== submitted.current;
   const validation = useTrackedMutation({
     event: null,
     untrackedReason: 'A validation that writes nothing.',
     mutationFn: (def: Record<string, unknown>) =>
       musterApi.callTool(validateTool, def, installation),
-    onSuccess: () => setMessage('Definition is valid.'),
-    onError,
+    onSuccess: () => {
+      if (!isStale()) setMessage('Definition is valid.');
+    },
+    onError: (e: Error) => {
+      if (!isStale()) onError(e);
+    },
   });
   const save = useTrackedMutation({
     ...(saveTracking.event
@@ -159,6 +167,7 @@ export function DefinitionEditorDialog({
 
   useOnDialogOpen(open, () => {
     const seeded = seed();
+    current.current = seeded;
     setValue(seeded);
     setBaseline(seeded);
     setDiscardOpen(false);
@@ -204,6 +213,7 @@ export function DefinitionEditorDialog({
           {renderEditor({
             value,
             onChange: edited => {
+              current.current = edited;
               setValue(edited);
               // The last call's verdict was about the text before this edit.
               setMessage(undefined);

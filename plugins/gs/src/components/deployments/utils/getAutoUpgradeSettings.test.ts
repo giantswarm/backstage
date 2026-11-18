@@ -3,8 +3,12 @@ import {
   deriveAutoUpgradeSettings,
   deriveChartVersion,
   describeAutoUpgrades,
+  templateRange,
   versionFromRevision,
+  type AutoUpgradeMode,
 } from './getAutoUpgradeSettings';
+import { Version } from '@giantswarm/semver-ts';
+import writtenRanges from './__fixtures__/app-deployment-written-ranges.json';
 
 describe('deriveAutoUpgradeMode', () => {
   it('returns no-upgrades when ref is undefined', () => {
@@ -364,4 +368,22 @@ describe('describeAutoUpgrades', () => {
       }),
     ).toEqual({ label: 'None' });
   });
+});
+
+describe('templateRange', () => {
+  // A copy of giantswarm/backstage-catalogs' template-test fixture: the range
+  // the edit template writes for each fixed mode. CI fails when the copy
+  // differs from the fixture on that repository's main branch.
+  it.each(writtenRanges.cases)(
+    'writes $semver for $mode of $chartVersion (pre-releases: $includePrereleases)',
+    ({ mode, chartVersion, includePrereleases, semver }) => {
+      expect(
+        templateRange(
+          mode as AutoUpgradeMode,
+          Version.parse(chartVersion),
+          includePrereleases,
+        ),
+      ).toBe(semver ?? undefined);
+    },
+  );
 });

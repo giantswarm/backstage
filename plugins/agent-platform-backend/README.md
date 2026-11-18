@@ -156,26 +156,33 @@ one **unauthenticated** `SystemService/GetVersion` per origin
 (`src/kagent/reachability.ts`) — no token, no user data, nothing performed. Behind
 the JWT policy that answers `Unauthenticated`, which proves the route exactly as
 a 401 did; any answer at all is the proof. A DNS failure, a refused or reset
-connection, a TLS failure or no answer within 3 s means `false`, with `reason`
-naming the failure class (codes only, never the host). Answers are cached five
-minutes in gs-node's `ReachabilityCache` and refreshed in the background; the
-route never waits for a probe.
+connection, a TLS failure or no answer within 3 s, on two probes in a row,
+means `false`, with `reason` naming the failure class (codes only, never the
+host); after a single failure the previous answer stands and the next request
+probes again. Answers are cached five minutes in gs-node's `ReachabilityCache`
+and refreshed in the background; the route never waits for a probe.
 
 ### Error mapping: "absent" vs "unwell"
 
 The distinction matters because the frontend **silences** one and **surfaces** the
 other, and getting it wrong makes a broken kagent look like an empty account.
 
-| Connect outcome                                                  | Error                 | HTTP | Frontend treats as             |
-| ---------------------------------------------------------------- | --------------------- | ---- | ------------------------------ |
-| socket-level cause: DNS, refused, reset, TLS                     | `NotFoundError`       | 404  | not deployed here — **silent** |
-| `NotFound` (gone, or somebody else's); `Unimplemented`           | `NotFoundError`       | 404  | not deployed here — **silent** |
-| `Unauthenticated`                                                | `AuthenticationError` | 401  | read failure — reported        |
-| `PermissionDenied`                                               | `NotAllowedError`     | 403  | read failure — reported        |
-| `InvalidArgument`                                                | `InputError`          | 400  | rejected request — reported    |
-| `AlreadyExists`, `FailedPrecondition`, `Aborted`, an active task | `ConflictError`       | 409  | conflict — reported            |
-| `DeadlineExceeded` on a send                                     | 202 `pending`         | 202  | still running — poll           |
-| `Unavailable` without a socket cause, `Internal`, `Unknown`      | `UpstreamError`       | 500  | read failure — reported        |
+| Connect outcome                                                  | Error                             | HTTP | Frontend treats as                        |
+| ---------------------------------------------------------------- | --------------------------------- | ---- | ----------------------------------------- |
+| socket-level cause: DNS, refused, reset, TLS                     | `NotFoundError`                   | 404  | not deployed here — **silent**            |
+| `NotFound` (gone, or somebody else's); `Unimplemented`           | `NotFoundError`                   | 404  | not deployed here — **silent**            |
+| `Unauthenticated`                                                | `InstallationAuthenticationError` | 401  | read failure — reported, in its own words |
+| `PermissionDenied`                                               | `NotAllowedError`                 | 403  | read failure — reported                   |
+| `InvalidArgument`                                                | `InputError`                      | 400  | rejected request — reported               |
+| `AlreadyExists`, `FailedPrecondition`, `Aborted`, an active task | `ConflictError`                   | 409  | conflict — reported                       |
+| `DeadlineExceeded` on a send                                     | 202 `pending`                     | 202  | still running — poll                      |
+| `Unavailable` without a socket cause, `Internal`, `Unknown`      | `UpstreamError`                   | 500  | read failure — reported                   |
+
+`InstallationAuthenticationError` is not Backstage's `AuthenticationError`: the
+portal's backend answers that name when it refuses the person's session token
+before any route runs, and the frontend says "Your portal session ended" for it
+alone. A request without the installation token is an
+`InstallationAuthenticationError` as well.
 
 Plus `ServiceUnavailableError` (503) when _no_ installation is configured at all —
 a real misconfiguration, unlike the per-installation cases above. A send whose

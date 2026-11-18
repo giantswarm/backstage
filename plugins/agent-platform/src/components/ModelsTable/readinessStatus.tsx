@@ -25,16 +25,26 @@ export const MODEL_READINESS_PRESENTATION: Record<
   pending: { label: 'Pending', intent: 'neutral', icon: HourglassEmptyIcon },
 };
 
-export function ModelReadinessCell({ row }: { row: ModelRow }) {
-  const { label, intent, icon } = MODEL_READINESS_PRESENTATION[row.readiness];
+/** A ModelConfig's readiness as a label, the controller's message on hover. */
+export function ModelReadinessLabel({
+  readiness,
+  message,
+}: {
+  readiness: ModelConfigReadiness;
+  message?: string;
+}) {
+  const { label, intent, icon } = MODEL_READINESS_PRESENTATION[readiness];
+  return (
+    <StatusLabel label={label} intent={intent} icon={icon} title={message} />
+  );
+}
 
+export function ModelReadinessCell({ row }: { row: ModelRow }) {
   return (
     <Cell>
-      <StatusLabel
-        label={label}
-        intent={intent}
-        icon={icon}
-        title={row.readinessMessage}
+      <ModelReadinessLabel
+        readiness={row.readiness}
+        message={row.readinessMessage}
       />
     </Cell>
   );

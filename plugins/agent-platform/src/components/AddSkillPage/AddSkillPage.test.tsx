@@ -8,18 +8,21 @@ import {
   sessionsRouteRef,
   skillsRouteRef,
 } from '../../routes';
+import type { DiscoveredSkill } from '../../lib/skills';
 import type { AgentRow } from '../AgentsDataProvider';
 import { skillCreationPrompt } from '../SkillCreationAssist';
 import { AddSkillPage, type SkillEdit } from './AddSkillPage';
 
 const REPO = 'https://github.com/giantswarm/skills';
 
-let mockRepositories: string[] = [];
+let mockRepositories: Array<
+  string | { url: string; ref?: string; path?: string; readOnly?: boolean }
+> = [];
 let mockMetaAgents: Record<string, string | undefined> = {};
 jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
   useSignedInConfig: () => ({
     config: {
-      getOptionalStringArray: () => mockRepositories,
+      getOptional: () => mockRepositories,
       getOptionalString: (key: string) =>
         mockMetaAgents[key.replace('agentPlatform.metaAgents.', '')],
     },
@@ -45,6 +48,8 @@ jest.mock('../AgentsDataProvider', () => ({
   ),
   useAgents: () => ({ rows: [mockSkillCreator], isLoading: false }),
 }));
+// What discovery found each configured ref to be, by repository key.
+let mockRefKinds: Record<string, string> = {};
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => undefined,
 }));
@@ -55,6 +60,54 @@ jest.mock('../../hooks/useCreateSession', () => ({
     isCreating: false,
     error: null,
     reset: jest.fn(),
+  }),
+}));
+
+// The catalog: its skills, for the tags they already use, and the
+// repositories it offers as targets (the portal's: its github.com entries).
+let mockCatalogSkills: DiscoveredSkill[] = [];
+let mockCatalogLoading = false;
+let mockCatalogError: Error | null = null;
+// skill-manager's targets, when set; otherwise the portal's sources decide.
+let mockProposalTargets: string[] | undefined;
+// The sources as gs-backend describes them: proposable when writable, on
+// github.com and read on a branch. None while the catalog loads, as the hook
+// answers.
+function mockSources() {
+  return (mockCatalogLoading ? [] : mockRepositories).map(entry => {
+    const e = typeof entry === 'string' ? { url: entry } : entry;
+    return {
+      url: e.url,
+      path: e.path ?? '',
+      ...(e.ref ? { ref: e.ref } : {}),
+      readOnly: Boolean(e.readOnly),
+      proposable:
+        e.url.startsWith('https://github.com/') &&
+        !e.readOnly &&
+        (!e.ref || mockRefKinds[e.url] === 'branch'),
+    };
+  });
+}
+jest.mock('../../hooks/useSkillCatalog', () => ({
+  useSkillCatalog: () => ({
+    skills: mockCatalogSkills,
+    isLoading: mockCatalogLoading,
+    error: mockCatalogError,
+    hasRepositories: mockRepositories.length > 0,
+    sources: mockSources(),
+    proposalTargets:
+      mockProposalTargets ??
+      mockSources()
+        .filter(source => source.proposable)
+        .map(source => source.url),
+    unproposableRepositories: mockProposalTargets
+      ? []
+      : mockSources()
+          .filter(
+            source =>
+              !source.readOnly && !source.url.startsWith('https://github.com/'),
+          )
+          .map(source => source.url),
   }),
 }));
 
@@ -124,8 +177,112 @@ beforeEach(() => {
   proposeSkill.mockResolvedValue(opened);
   mockState = { isProposing: false, error: null };
   mockRepositories = [REPO];
+  mockRefKinds = {};
+  mockCatalogLoading = false;
+  mockCatalogError = null;
   mockMetaAgents = {};
+  mockCatalogSkills = [];
+  mockProposalTargets = undefined;
   createSession.mockReset();
+});
+
+describe('AddSkillPage tags', () => {
+  const tagsField = () => screen.getByRole('textbox', { name: /^Tags/ });
+
+  it('sends the tags of a new skill, a typed one included', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.type(screen.getByLabelText(/^Name/), 'notes');
+    await user.type(screen.getByLabelText(/Description/), 'Take notes.');
+    await user.type(tagsField(), ' On_Call! {Enter}');
+    await user.type(tagsField(), 'util');
+    await user.type(screen.getByLabelText(/Instructions/), 'Write it down.');
+    await user.click(screen.getByRole('button', { name: 'Open pull request' }));
+
+    expect(proposeSkill).toHaveBeenCalledWith({
+      repoUrl: REPO,
+      skillName: 'notes',
+      description: 'Take notes.',
+      instructions: 'Write it down.',
+      tags: ['on-call', 'util'],
+    });
+  }, 30_000);
+
+  it('blocks the submit on a draft that cannot be a tag', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.type(screen.getByLabelText(/^Name/), 'notes');
+    await user.type(screen.getByLabelText(/Description/), 'Take notes.');
+    await user.type(screen.getByLabelText(/Instructions/), 'Write it down.');
+    await user.type(tagsField(), '!!!');
+    await user.click(screen.getByRole('button', { name: 'Open pull request' }));
+
+    expect(proposeSkill).not.toHaveBeenCalled();
+    expect(tagsField()).toHaveValue('!!!');
+  }, 30_000);
+
+  it('offers the tags the catalog’s skills use', async () => {
+    mockCatalogSkills = [
+      { ...edit.skill, tags: ['triage', 'ops'] },
+      { ...edit.skill, path: 'other', tags: ['triage'] },
+    ];
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.type(tagsField(), 'tri');
+
+    expect(
+      within(screen.getByRole('grid', { name: 'Suggested tags' }))
+        .getAllByRole('row')
+        .map(row => row.textContent),
+    ).toEqual(['triage']);
+  });
+
+  it('starts an edit from the skill’s tags and sends them only when changed', async () => {
+    const user = userEvent.setup();
+    const tagged: SkillEdit = {
+      ...edit,
+      content: { ...edit.content, tags: ['triage', 'ops'] },
+    };
+    await renderPage(tagged);
+
+    const current = screen.getByRole('grid', { name: 'Tags' });
+    expect(
+      within(current)
+        .getAllByRole('row')
+        .map(row => row.textContent),
+    ).toEqual(expect.arrayContaining([expect.stringContaining('triage')]));
+    // Nothing changed yet: nothing to propose.
+    expect(
+      screen.getByRole('button', { name: 'Open pull request' }),
+    ).toBeDisabled();
+
+    await user.type(tagsField(), 'k8s{Enter}');
+    await user.click(screen.getByRole('button', { name: 'Open pull request' }));
+
+    expect(proposeSkill).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'update',
+        tags: ['triage', 'ops', 'k8s'],
+      }),
+    );
+  }, 30_000);
+
+  it('keeps an edit’s tags out of the request when they did not change', async () => {
+    const user = userEvent.setup();
+    await renderPage({
+      ...edit,
+      content: { ...edit.content, tags: ['triage'] },
+    });
+
+    await user.type(screen.getByLabelText(/Description/), ' More.');
+    await user.click(screen.getByRole('button', { name: 'Open pull request' }));
+
+    expect(proposeSkill).toHaveBeenCalledTimes(1);
+    expect(proposeSkill.mock.calls[0][0]).not.toHaveProperty('tags');
+  }, 30_000);
 });
 
 describe('AddSkillPage', () => {
@@ -297,6 +454,49 @@ describe('AddSkillPage', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('waits for the catalog before saying there is no repository', async () => {
+    mockCatalogLoading = true;
+    await renderPage();
+
+    expect(screen.queryByText('No skill repositories')).not.toBeInTheDocument();
+    expect(
+      await screen.findByText('Reading the skill repositories…'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Open pull request' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('has nothing to propose to when every skill-manager source is read-only', async () => {
+    mockRepositories = ['https://github.com/giantswarm/agent-platform'];
+    mockProposalTargets = [];
+    await renderPage();
+
+    expect(screen.getByText('No repository to propose to')).toBeInTheDocument();
+    expect(
+      screen.getByText(/None of the skill repositories takes new skills/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Open pull request' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('names the read error, not a missing repository, when the catalog could not be read', async () => {
+    mockCatalogError = new Error('skill-manager is unreachable');
+    mockProposalTargets = [];
+    await renderPage();
+
+    expect(
+      screen.getByText('Could not read the skill repositories'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('skill-manager is unreachable'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('No repository to propose to'),
+    ).not.toBeInTheDocument();
+  });
+
   it('offers only github.com repositories, and says why the others are missing', async () => {
     mockRepositories = ['http://gitea.lab.local/lab/skills', REPO];
     await renderPage();
@@ -309,6 +509,51 @@ describe('AddSkillPage', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(/Only github.com repositories are offered/),
+    ).toBeInTheDocument();
+  });
+
+  it('says so when no configured repository takes new skills', async () => {
+    mockRepositories = [
+      { url: 'https://github.com/giantswarm/agent-platform', readOnly: true },
+    ];
+    await renderPage();
+
+    expect(
+      screen.getByText(/None of the skill repositories takes new skills/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('No skill repositories')).not.toBeInTheDocument();
+  });
+
+  it('never offers a read-only repository', async () => {
+    mockRepositories = [
+      { url: 'https://github.com/giantswarm/agent-platform', readOnly: true },
+      REPO,
+    ];
+    await renderPage();
+
+    expect(
+      screen.getByText(
+        `Repository: ${REPO.replace('https://github.com/', '')}`,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Only github.com repositories are offered/),
+    ).not.toBeInTheDocument();
+  });
+
+  it('offers a repository with a configured ref only once it is known to be a branch', async () => {
+    const TAGGED = 'https://github.com/giantswarm/tagged';
+    mockRepositories = [
+      { url: TAGGED, ref: 'v1' },
+      { url: REPO, ref: 'develop', path: 'skills' },
+    ];
+    mockRefKinds = { [TAGGED]: 'tag', [REPO]: 'branch' };
+    await renderPage();
+
+    expect(
+      screen.getByText(
+        `Repository: ${REPO.replace('https://github.com/', '')}`,
+      ),
     ).toBeInTheDocument();
   });
 
@@ -332,7 +577,7 @@ describe('AddSkillPage · the repository select at scale', () => {
   const openRepositories = async () =>
     userEvent.click(screen.getByRole('button', { name: /Repository/ }));
 
-  it('offers three repositories without a search', async () => {
+  it('offers type-ahead over three repositories', async () => {
     mockRepositories = repos(3);
     await renderPage();
 
@@ -340,7 +585,7 @@ describe('AddSkillPage · the repository select at scale', () => {
     expect(
       await screen.findByRole('option', { name: 'acme/skills-3' }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
   });
 
   it('offers type-ahead over 300 repositories', async () => {
@@ -423,13 +668,15 @@ describe('AddSkillPage editing an existing skill', () => {
 
     expect(screen.getByText('This file stays as it is')).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: 'references/setup.md' }),
+      screen.getByRole('link', {
+        name: 'references/setup.md (opens in a new tab)',
+      }),
     ).toHaveAttribute(
       'href',
       `${edit.skillHref}/instructions?file=references/setup.md`,
     );
     expect(
-      screen.getByRole('link', { name: 'Edit on GitHub ↗' }),
+      screen.getByRole('link', { name: 'Edit on GitHub (opens in a new tab)' }),
     ).toHaveAttribute(
       'href',
       `https://github.com/giantswarm/skills/tree/${COMMIT}/support/ticket-triage`,
@@ -589,6 +836,64 @@ describe('AddSkillPage · the skill creator hand-off', () => {
 
     expect(createSession.mock.calls[0][0].prompt).toContain(
       '```markdown\nHow to triage. Fast.\n```',
+    );
+  }, 30_000);
+
+  it('carries the tags of a new skill, a typed one included', async () => {
+    mockMetaAgents = { skillCreation: 'kagent/skill-creator' };
+    createSession.mockReturnValue(new Promise(() => {}));
+    const user = userEvent.setup();
+    await renderPage();
+
+    const tags = screen.getByRole('textbox', { name: /^Tags/ });
+    await user.type(tags, 'triage{Enter}');
+    await user.type(tags, 'kubernetes');
+    await user.click(
+      screen.getByRole('button', { name: 'Create with Skill Creator' }),
+    );
+
+    expect(createSession.mock.calls[0][0].prompt).toContain(
+      '`metadata.tags: "triage, kubernetes"`',
+    );
+  }, 30_000);
+
+  it('leaves an edit’s unchanged tags out of the hand-off', async () => {
+    mockMetaAgents = { skillCreation: 'kagent/skill-creator' };
+    createSession.mockReturnValue(new Promise(() => {}));
+    const user = userEvent.setup();
+    await renderPage({
+      ...edit,
+      content: { ...edit.content, tags: ['triage'] },
+    });
+
+    await user.click(
+      screen.getByRole('button', { name: 'Edit with Skill Creator' }),
+    );
+
+    expect(createSession.mock.calls[0][0].prompt).not.toContain(
+      'metadata.tags',
+    );
+  }, 30_000);
+
+  it('carries tags changed on an edit', async () => {
+    mockMetaAgents = { skillCreation: 'kagent/skill-creator' };
+    createSession.mockReturnValue(new Promise(() => {}));
+    const user = userEvent.setup();
+    await renderPage({
+      ...edit,
+      content: { ...edit.content, tags: ['triage'] },
+    });
+
+    await user.type(
+      screen.getByRole('textbox', { name: /^Tags/ }),
+      'kubernetes{Enter}',
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Edit with Skill Creator' }),
+    );
+
+    expect(createSession.mock.calls[0][0].prompt).toContain(
+      'Set its tags in the frontmatter to `metadata.tags: "triage, kubernetes"`.',
     );
   }, 30_000);
 

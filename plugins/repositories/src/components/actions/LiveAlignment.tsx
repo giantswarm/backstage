@@ -2,6 +2,10 @@ import { useState } from 'react';
 import { Flex, Text } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
+import {
+  pollingQueryOptions,
+  type PollingQuery,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { InventoryRecord, repositoriesApiRef } from '../../apis';
 import { alignmentPhases, phasesSettled } from '../../lib/phases';
 import { PhaseList } from '../PhaseList';
@@ -26,11 +30,15 @@ export function LiveAlignment({ repository }: { repository: string }) {
   const record = useQuery<InventoryRecord, Error>({
     queryKey: ['repositories', 'record', repository],
     queryFn: () => api.getRepository(repository),
-    refetchInterval: query =>
+    // Until the run settles. Not from a hidden tab: the record holds every
+    // phase the run reached, so the read made as the tab becomes visible
+    // again shows where it got to. Not after the backend refused the person,
+    // or answered that they are not connected to the repo-manager.
+    ...pollingQueryOptions((query: PollingQuery<InventoryRecord>) =>
       phasesSettled(alignmentPhases(query.state.data, since))
         ? false
         : RUN_POLL_MS,
-    refetchIntervalInBackground: true,
+    ),
   });
   return (
     <Flex direction="column" gap="2" data-testid="live-alignment">

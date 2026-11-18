@@ -19,7 +19,7 @@ import { useLocation } from 'react-router-dom';
 import { SidebarLogo } from './SidebarLogo';
 import { NavItemIcon } from './NavItemIcon';
 import { AgentShellNav } from '../agentShell/AgentShellNav';
-import { isAgentArea, usePortals } from '../agentShell/agentArea';
+import { useIsAgentArea, usePortals } from '../agentShell/agentArea';
 import { homeRouteRef } from '../agentShell/routes';
 import CreateComponentIcon from '@material-ui/icons/AddCircleOutline';
 import AndroidIcon from '@material-ui/icons/Android';
@@ -232,8 +232,9 @@ function ClassicSidebar({
  */
 function AppNavContent({ navItems }: NavContentComponentProps) {
   const portals = usePortals();
+  const inAgentArea = useIsAgentArea();
   const { pathname } = useLocation();
-  if (portals.agentPlatform && isAgentArea(pathname)) {
+  if (portals.agentPlatform && inAgentArea(pathname)) {
     return <AgentShellNav />;
   }
   return <ClassicSidebar navItems={navItems} portals={portals} />;

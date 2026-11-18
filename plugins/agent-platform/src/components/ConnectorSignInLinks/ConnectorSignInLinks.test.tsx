@@ -1,4 +1,6 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { TestApiProvider } from '@backstage/test-utils';
+import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
 import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -102,6 +104,11 @@ function Session({
   );
 }
 
+/** The person's answer in the external URL consent dialog. */
+const consentOpen = jest.fn();
+/** The address the last sign-in asked the person to open. */
+const openedUrl = (): string => consentOpen.mock.lastCall[0].url;
+
 async function renderSession({
   text = `Sign in here: ${LINK}`,
   pending,
@@ -116,14 +123,23 @@ async function renderSession({
   items?: TimelineItem[];
 } = {}) {
   const rendered = await renderInTestApp(
-    <Session text={text} pending={pending} onAnswer={onAnswer} items={items} />,
+    <TestApiProvider apis={[[externalUrlConsentApiRef, { open: consentOpen }]]}>
+      <Session
+        text={text}
+        pending={pending}
+        onAnswer={onAnswer}
+        items={items}
+      />
+    </TestApiProvider>,
     { initialRouteEntries: [path] },
   );
   return { ...rendered, onAnswer };
 }
 
 const signInLink = () =>
-  screen.getByRole('link', { name: 'Sign in to Grafana Cloud ↗' });
+  screen.getByRole('button', {
+    name: 'Sign in to Grafana Cloud (opens in a new tab)',
+  });
 const queryDone = () => screen.queryByText('Signed in to Grafana Cloud');
 
 /** What muster returns the sign-in's tab to, as the link asks it to. */
@@ -145,6 +161,7 @@ describe('ConnectorSignInLinks', () => {
   let close: jest.SpyInstance;
   beforeEach(() => {
     FakeChannel.open = [];
+    consentOpen.mockReset().mockResolvedValue('accept');
     window.sessionStorage.clear();
     (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel =
       FakeChannel;
@@ -159,15 +176,28 @@ describe('ConnectorSignInLinks', () => {
   it('shows a sign-in muster issued as an action naming the connector, never the URL', async () => {
     await renderSession();
 
-    const link = signInLink();
-    expect(link).toHaveAttribute('target', '_blank');
-    expect(new URL(link.getAttribute('href')!).searchParams.get('state')).toBe(
-      'abc123',
-    );
-    expect(returnPage(link.getAttribute('href')!).pathname).toBe(
-      '/sessions/gazelle/s1',
-    );
     expect(screen.queryByText(LINK)).not.toBeInTheDocument();
+    await userEvent.click(signInLink());
+
+    expect(consentOpen).toHaveBeenCalledWith(
+      expect.objectContaining({ requester: 'Grafana Cloud' }),
+    );
+    expect(new URL(openedUrl()).searchParams.get('state')).toBe('abc123');
+    expect(returnPage(openedUrl()).pathname).toBe('/sessions/gazelle/s1');
+  });
+
+  it('starts nothing when the person does not open the sign-in', async () => {
+    consentOpen.mockResolvedValueOnce('decline');
+    await renderSession();
+
+    await userEvent.click(signInLink());
+
+    expect(
+      screen.queryByText(
+        'Waiting for you to finish signing in to Grafana Cloud…',
+      ),
+    ).not.toBeInTheDocument();
+    expect(signInLink()).toBeInTheDocument();
   });
 
   it('leaves a link muster did not issue in this session as a link', async () => {
@@ -185,8 +215,8 @@ describe('ConnectorSignInLinks', () => {
     const user = userEvent.setup();
     await renderSession();
 
-    const href = signInLink().getAttribute('href')!;
     await user.click(signInLink());
+    const href = openedUrl();
     expect(
       screen.getByText(
         'Waiting for you to finish signing in to Grafana Cloud…',
@@ -203,8 +233,8 @@ describe('ConnectorSignInLinks', () => {
     const user = userEvent.setup();
     await renderSession({ pending: QUESTION });
 
-    const href = signInLink().getAttribute('href')!;
     await user.click(signInLink());
+    const href = openedUrl();
     returned(href, null);
     returned(href, 'another-server');
 
@@ -223,8 +253,8 @@ describe('ConnectorSignInLinks', () => {
       pending: QUESTION,
     });
 
-    const href = signInLink().getAttribute('href')!;
     await user.click(signInLink());
+    const href = openedUrl();
     await user.click(screen.getByRole('button', { name: "I've signed in" }));
     returned(href);
 
@@ -257,19 +287,23 @@ describe('ConnectorSignInLinks', () => {
     const onAnswer = jest.fn();
     const user = userEvent.setup();
     await renderInTestApp(
-      <ConnectorSignInLinks
-        items={[]}
-        servers={SERVERS}
-        labels={connectorLabels(SERVERS)}
-        pending={SIGN_IN}
-        onAnswer={onAnswer}
+      <TestApiProvider
+        apis={[[externalUrlConsentApiRef, { open: consentOpen }]]}
       >
-        <SignInRequestPanel
+        <ConnectorSignInLinks
+          items={[]}
+          servers={SERVERS}
+          labels={connectorLabels(SERVERS)}
           pending={SIGN_IN}
-          isAnswering={false}
           onAnswer={onAnswer}
-        />
-      </ConnectorSignInLinks>,
+        >
+          <SignInRequestPanel
+            pending={SIGN_IN}
+            isAnswering={false}
+            onAnswer={onAnswer}
+          />
+        </ConnectorSignInLinks>
+      </TestApiProvider>,
       { initialRouteEntries: ['/sessions/gazelle/s1'] },
     );
 
@@ -279,10 +313,11 @@ describe('ConnectorSignInLinks', () => {
     expect(
       screen.getByText('Sign in to github to continue.'),
     ).toBeInTheDocument();
-    const link = screen.getByRole('link', { name: 'Sign in ↗' });
-    const href = link.getAttribute('href')!;
+    await user.click(
+      screen.getByRole('button', { name: 'Sign in (opens in a new tab)' }),
+    );
+    const href = openedUrl();
     expect(returnPage(href).pathname).toBe('/sessions/gazelle/s1');
-    await user.click(link);
     returned(href, 'github');
     returned(href, 'github');
 
@@ -352,7 +387,9 @@ describe('ConnectorSignInLinks', () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('link', { name: 'Open the sign-in page again ↗' }),
+      screen.queryByRole('button', {
+        name: 'Open the sign-in page again (opens in a new tab)',
+      }),
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: "I've signed in" }));
     expect(queryDone()).toBeInTheDocument();
@@ -391,7 +428,8 @@ describe('ConnectorSignInLinks', () => {
 
   it('as the page muster returned to, tells the other tabs, marks it done and closes', async () => {
     const first = await renderSession({ pending: QUESTION });
-    const back = returnPage(signInLink().getAttribute('href')!);
+    await userEvent.click(signInLink());
+    const back = returnPage(openedUrl());
     first.unmount();
     // A tab of its own: muster's return opens with fresh storage.
     window.sessionStorage.clear();

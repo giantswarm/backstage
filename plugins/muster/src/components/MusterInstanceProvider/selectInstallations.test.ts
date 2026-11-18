@@ -1,7 +1,6 @@
 import type { InstallationInventoryEntry } from '@giantswarm/backstage-plugin-gs';
 import type { MusterInstallationInfo } from '../../apis/types';
 import {
-  homeFirst,
   InventoryView,
   selectMusterInstallations,
 } from './selectInstallations';
@@ -247,22 +246,5 @@ describe('selectMusterInstallations', () => {
       'wombat',
       'golem',
     ]);
-  });
-});
-
-describe('homeFirst', () => {
-  it('moves home to the front and keeps the rest in order', () => {
-    const list = [{ name: 'b' }, { name: 'home' }, { name: 'a' }];
-    expect(homeFirst(list, 'home').map(i => i.name)).toEqual([
-      'home',
-      'b',
-      'a',
-    ]);
-  });
-
-  it('leaves the order alone without a home or when home is absent', () => {
-    const list = [{ name: 'b' }, { name: 'a' }];
-    expect(homeFirst(list, undefined)).toBe(list);
-    expect(homeFirst(list, 'zzz')).toBe(list);
   });
 });

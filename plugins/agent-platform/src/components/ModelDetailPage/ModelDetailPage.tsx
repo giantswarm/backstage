@@ -7,8 +7,12 @@ import {
   useNavigate,
   useParams,
 } from 'react-router-dom';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Button, Flex, Link, Text } from '@backstage/ui';
+import {
+  toastApiRef,
+  useApi,
+  useRouteRef,
+} from '@backstage/frontend-plugin-api';
+import { Alert, Badge, Button, Flex, Link, Text } from '@backstage/ui';
 import {
   ErrorsProvider,
   ModelConfig,
@@ -32,6 +36,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
+  modelConfigEditOwner,
   modelConfigFormValues,
   modelConfigOwner,
 } from '../../lib/modelConfigs';
@@ -40,13 +45,31 @@ import {
   lookUpContextWindow,
 } from '../../lib/contextWindows';
 import { modelStatus } from '../../lib/customize';
+import { markedIn, defaultIn, listed } from '../../lib/defaultModel';
+import { tenantInSentence } from '../../lib/tenants';
+import { useSetDefaultModelConfig } from '../../hooks/useSetDefaultModelConfig';
+import { useOrganizationContentModeOf } from '../../hooks/useOrganizationContentMode';
 import { modelProblem } from '../../lib/modelProblem';
+import { AgentManagerNotConnectedError } from '../../lib/agentManager';
+import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
+import { OrganizationWriteError } from '../OrganizationWriteError';
+import { PullRequestOutcome } from '../PullRequestOutcome';
+import {
+  CONTENT_PULL_REQUEST_NEXT,
+  CONTENT_PULL_REQUEST_UNCHANGED,
+} from '../../lib/organizations';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
-import { useDeleteModelConfig } from '../../hooks/useDeleteModelConfig';
+import {
+  AgentManagerUnavailableError,
+  useDeleteModelConfig,
+} from '../../hooks/useDeleteModelConfig';
 import { clientLookupOf } from '../../lib/serving';
 import { modelEditRouteRef } from '../../routes';
 import { useAgents } from '../AgentsDataProvider';
 import { InstallationChip } from '../InstallationChip';
+import { useModelConfigs } from '../ModelConfigsProvider';
 import { toModelRow, toModelServedBy } from '../ModelsTable';
 import { useServing } from '../ServingProvider';
 import { ModelActionsMenu } from './ModelActionsMenu';
@@ -60,6 +83,7 @@ import {
   modelConfigIdOf,
 } from './modelUsage';
 import { useModelUsage } from './useModelUsage';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 /**
  * The page's outer frame: the platform-standard page frame (`ShellPage`) —
@@ -112,16 +136,136 @@ function ModelFrame({
 /**
  * The tool that owns the model, and what that means here: no Edit, since the
  * tool would revert it. The page's header offers none, and this says why.
+ * An organization's model agent-manager wrote is the exception
+ * (`savesEdits`): Edit saves it through agent-manager.
  */
-function ManagedByValue({ owner }: { owner: string }) {
+function ManagedByValue({
+  owner,
+  savesEdits = false,
+  byPullRequest = false,
+  pending = false,
+}: {
+  owner: string;
+  savesEdits?: boolean;
+  /** Edits open a pull request, which `owner` applies once merged. */
+  byPullRequest?: boolean;
+  /** Whether edits are saved here is not known yet: no sentence. */
+  pending?: boolean;
+}) {
+  let note: string;
+  if (byPullRequest) {
+    note = `Edits made here open a pull request, which ${owner} applies once it is merged.`;
+  } else if (savesEdits) {
+    note = `Edits made here are saved through ${owner}.`;
+  } else {
+    note = `${owner} would revert edits made here, so change the model where ${owner} is configured.`;
+  }
   return (
     <Flex direction="column" gap="1">
       <Text variant={useFactTextVariant()}>{owner}</Text>
+      {pending ? null : (
+        <Text variant="body-small" color="secondary">
+          {note}
+        </Text>
+      )}
+    </Flex>
+  );
+}
+
+/** Whether the model is its namespace's default, and how it would become it. */
+export type ModelDefaultState = {
+  isDefault: boolean;
+  /** The other models marked as the default there (`markedIn`). */
+  otherMarks: string[];
+  /** The owner inside a sentence (`tenantInSentence`). */
+  where: string;
+};
+
+/** The Default model fact's value: yes or no, and what that means here. */
+function DefaultModelValue({
+  state,
+  owner,
+}: {
+  state: ModelDefaultState;
+  owner?: string;
+}) {
+  let note: string;
+  if (state.isDefault) {
+    note = `New agents for ${state.where} start with this model.`;
+  } else if (owner === 'Helm') {
+    note =
+      "Helm manages this model: make it the default in its release's values.";
+  } else if (owner) {
+    note = `${owner} manages this model: make it the default where ${owner} is configured.`;
+  } else if (state.otherMarks.length > 1) {
+    note = `${state.where.charAt(0).toUpperCase()}${state.where.slice(1)} has no default: ${listed(state.otherMarks)} are all marked as the default.`;
+  } else if (state.otherMarks.length === 1) {
+    note = `The default for ${state.where} is ${state.otherMarks[0]}.`;
+  } else {
+    note = `${state.where.charAt(0).toUpperCase()}${state.where.slice(1)} has no default model.`;
+  }
+  return (
+    <Flex direction="column" gap="1">
+      <Text variant={useFactTextVariant()}>
+        {state.isDefault ? 'Yes' : 'No'}
+      </Text>
       <Text variant="body-small" color="secondary">
-        {owner} would revert edits made here, so change the model where {owner}{' '}
-        is configured.
+        {note}
       </Text>
     </Flex>
+  );
+}
+
+/**
+ * Why Delete is not offered when agent-manager's dry run could not answer:
+ * a missing sign-in offers it, an ended portal session says so, and any
+ * other failure is said as it came with a way to ask again.
+ */
+function DeleteCheckError({
+  error,
+  installation,
+  onRetry,
+}: {
+  error: Error;
+  installation: string;
+  onRetry: () => void;
+}) {
+  if (error instanceof PortalSessionEndedError) {
+    return <PortalSessionEndedAlert />;
+  }
+  if (error instanceof AgentManagerUnavailableError) {
+    return (
+      <Alert
+        status="info"
+        icon
+        title="Delete is not offered here"
+        description={error.message}
+      />
+    );
+  }
+  if (error instanceof AgentManagerNotConnectedError) {
+    return (
+      <ConnectAgentManagerAlert
+        installation={installation}
+        message={error.message}
+        action="Models are deleted"
+        signInRequired={error.signInRequired}
+        onSignedIn={onRetry}
+      />
+    );
+  }
+  return (
+    <Alert
+      status="warning"
+      icon
+      title="Could not check whether you can delete this model"
+      description={`Delete is hidden until agent-manager answers. agent-manager answered: ${error.message}`}
+      customActions={
+        <Button size="small" variant="secondary" onPress={onRetry}>
+          Check again
+        </Button>
+      }
+    />
   );
 }
 
@@ -131,6 +275,10 @@ export function modelFacts({
   installation,
   contextWindow,
   owner,
+  ownerSavesEdits,
+  ownerPending,
+  editsByPullRequest,
+  defaultState,
 }: {
   modelConfig: ModelConfig;
   installation: string;
@@ -138,6 +286,14 @@ export function modelFacts({
   contextWindow: ContextWindowLookup | undefined;
   /** The tool that asserts the model (`modelConfigOwner`), if any. */
   owner?: string;
+  /** Edits are saved through `owner` (`modelConfigEditOwner`). */
+  ownerSavesEdits?: boolean;
+  /** Whether `owner` takes edits made here is still being read. */
+  ownerPending?: boolean;
+  /** Edits made here open a pull request (`modelConfigEditOwner`). */
+  editsByPullRequest?: boolean;
+  /** Whether it is the default, once the namespace's models are read. */
+  defaultState?: ModelDefaultState;
 }): Fact[] {
   const created = modelConfig.getCreatedTimestamp();
   const provider = modelConfig.getProvider();
@@ -156,10 +312,30 @@ export function modelFacts({
     });
   }
   facts.push({ label: 'Environment', value: installation });
+  if (defaultState) {
+    facts.push({
+      label: 'Default model',
+      value: (
+        <DefaultModelValue
+          state={defaultState}
+          // An owner whose edits are saved through it (agent-manager, for an
+          // organization's model) is no reason to move the mark elsewhere.
+          owner={ownerSavesEdits ? undefined : owner}
+        />
+      ),
+    });
+  }
   if (owner) {
     facts.push({
       label: 'Managed by',
-      value: <ManagedByValue owner={owner} />,
+      value: (
+        <ManagedByValue
+          owner={owner}
+          savesEdits={ownerSavesEdits}
+          byPullRequest={editsByPullRequest}
+          pending={ownerPending}
+        />
+      ),
     });
   }
   if (created) {
@@ -235,6 +411,98 @@ function ModelDetailPageContent() {
 
   const deletion = useDeleteModelConfig(modelConfig);
 
+  // The default as the marks say it (`markedIn`): this model as just
+  // read, the namespace's others as listed. Unknown until the list has
+  // answered.
+  const toastApi = useApi(toastApiRef);
+  const { modelConfigsFor, isLoading: isLoadingModels } = useModelConfigs();
+  const { directory } = useOrganizationDirectory();
+  const defaultState = useMemo<ModelDefaultState | undefined>(() => {
+    if (!modelConfig || isLoadingModels) {
+      return undefined;
+    }
+    const namespaceModels = [
+      ...modelConfigsFor(installation).filter(
+        mc => (mc.getNamespace() ?? '') === namespace && mc.getName() !== name,
+      ),
+      modelConfig,
+    ];
+    return {
+      isDefault: defaultIn(namespaceModels, namespace) === name,
+      otherMarks: markedIn(namespaceModels, namespace).filter(
+        mark => mark !== name,
+      ),
+      where: tenantInSentence(namespace, directory),
+    };
+  }, [
+    modelConfig,
+    isLoadingModels,
+    modelConfigsFor,
+    installation,
+    namespace,
+    directory,
+    name,
+  ]);
+  // An organization's model agent-manager wrote is edited, and made the
+  // default, through it: agent-manager is no owner that withholds either.
+  // So is one Flux applies from its organization's git path, where
+  // agent-manager changes it by pull request.
+  const contentMode = useOrganizationContentModeOf(installation, namespace);
+  // Until that mode is known, a Flux model of an organization neither offers
+  // its changes nor says Flux reverts them.
+  const ownerPending =
+    owner === 'Flux' && !contentMode && directory.has(namespace);
+  const ownerSavesEdits = Boolean(
+    owner &&
+    modelConfig &&
+    !modelConfigEditOwner(modelConfig, directory, contentMode),
+  );
+  const editsByPullRequest = ownerSavesEdits && owner === 'Flux';
+  const settingDefault = useSetDefaultModelConfig();
+  const { setDefault, isSetting, reset: resetSetDefault } = settingDefault;
+  const canSetDefault =
+    Boolean(defaultState) &&
+    !defaultState?.isDefault &&
+    mayUpdate &&
+    !isCheckingPermission &&
+    !ownerPending;
+  const onSetDefault = useCallback(async () => {
+    if (!modelConfig || !defaultState) {
+      return;
+    }
+    resetSetDefault();
+    let form: string | undefined;
+    let commit: unknown;
+    try {
+      ({ form, commit } = await setDefault({ modelConfig }));
+    } catch {
+      // Left on the page: the error renders in the alert above the tabs.
+      return;
+    }
+    if (form) {
+      // The model has no key yet: the move finishes on the credential form.
+      navigate(form);
+      return;
+    }
+    if (commit) {
+      // The pull request shows above the tabs: the mark moves once it merges.
+      return;
+    }
+    toastApi.post({
+      title: `${modelConfig.getDisplayName()} is now the default model`,
+      description: `New agents for ${defaultState.where} start with it. Agents that already run on another model keep it.`,
+      status: 'success',
+      timeout: 6000,
+    });
+  }, [
+    modelConfig,
+    defaultState,
+    resetSetDefault,
+    setDefault,
+    toastApi,
+    navigate,
+  ]);
+
   // Read here, above the tabs, so Used by and the Usage tab share one
   // result. Only for a model there is: the not-found and error frames
   // never show it.
@@ -262,7 +530,7 @@ function ModelDetailPageContent() {
 
   const isEditable =
     Boolean(modelConfig) &&
-    !owner &&
+    (!owner || ownerSavesEdits) &&
     !isUnsupportedProvider &&
     mayUpdate &&
     !isCheckingPermission;
@@ -280,6 +548,15 @@ function ModelDetailPageContent() {
   const actions = useMemo(
     () => (
       <Flex gap="2" align="center">
+        {canSetDefault && (
+          <Button
+            variant="secondary"
+            onPress={onSetDefault}
+            isDisabled={(Boolean(owner) && !ownerSavesEdits) || isSetting}
+          >
+            {isSetting ? 'Setting as default…' : 'Set as default'}
+          </Button>
+        )}
         {isEditable && modelEditRoute && (
           <Button variant="secondary" onPress={openEdit}>
             Edit
@@ -290,7 +567,18 @@ function ModelDetailPageContent() {
         )}
       </Flex>
     ),
-    [isEditable, modelEditRoute, openEdit, modelConfig, deletion],
+    [
+      canSetDefault,
+      onSetDefault,
+      owner,
+      ownerSavesEdits,
+      isSetting,
+      isEditable,
+      modelEditRoute,
+      openEdit,
+      modelConfig,
+      deletion,
+    ],
   );
   useProvidePageHeaderActions(actions);
 
@@ -357,6 +645,10 @@ function ModelDetailPageContent() {
     installation,
     contextWindow,
     owner,
+    ownerSavesEdits,
+    ownerPending,
+    editsByPullRequest,
+    defaultState,
   });
 
   return (
@@ -365,6 +657,7 @@ function ModelDetailPageContent() {
       badges={
         <>
           <StatusDot tone={status.tone} label={status.label} />
+          {defaultState?.isDefault && <Badge size="small">Default</Badge>}
           <InstallationChip installation={installation} />
         </>
       }
@@ -374,6 +667,32 @@ function ModelDetailPageContent() {
         isLoading: agentsLoading,
       })}
     >
+      {settingDefault.error && (
+        <OrganizationWriteError
+          error={settingDefault.error}
+          installation={installation}
+          organization={directory.get(namespace)?.organization}
+          signInAction="An organization's default model is set"
+          adminAction="sets its default model"
+          title="Could not make this the default model"
+          onSignedIn={resetSetDefault}
+        />
+      )}
+      {settingDefault.pullRequest && (
+        <PullRequestOutcome
+          commit={settingDefault.pullRequest}
+          next={CONTENT_PULL_REQUEST_NEXT}
+          unchanged={CONTENT_PULL_REQUEST_UNCHANGED}
+          testId="model-default-pull-request"
+        />
+      )}
+      {deletion.checkError && (
+        <DeleteCheckError
+          error={deletion.checkError}
+          installation={installation}
+          onRetry={deletion.recheckDeletable}
+        />
+      )}
       <Routes>
         <Route
           index

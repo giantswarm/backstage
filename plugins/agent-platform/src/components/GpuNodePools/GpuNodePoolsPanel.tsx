@@ -48,6 +48,8 @@ import {
   type OpenedPool,
   type PoolServeState,
 } from './PoolLifecyclePanel';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 
 /** The default order, and the one while the Installation column is hidden. */
 const BY_INSTALLATION = {
@@ -435,6 +437,11 @@ export function GpuNodePoolsPanel({
     paginationOptions: { type: 'none' },
   });
   const openedRow = opened ? rows.find(row => row.id === opened.id) : undefined;
+  // The portal refused the session token: every read fails the same way until
+  // a sign-in, which is the one thing to say.
+  const sessionEnded = errors.some(
+    ({ error }) => error instanceof PortalSessionEndedError,
+  );
 
   let body: ReactNode;
   if (rows.length > 0) {
@@ -524,7 +531,10 @@ export function GpuNodePoolsPanel({
               data-testid="cluster-api-note"
             />
           )}
-          {errors.length > 0 && (
+          {/* The portal refused the session token: a sign-in, not the
+              environments, is what the reads wait for. */}
+          {sessionEnded && <PortalSessionEndedAlert />}
+          {errors.length > 0 && !sessionEnded && (
             <Alert
               status="info"
               title="Could not read the node pools of some environments"

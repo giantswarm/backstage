@@ -6,6 +6,7 @@ import { makeStyles } from '@material-ui/core/styles';
 import { useAgentShellArea } from '../agentArea';
 import { setAgentShellMark } from '../AgentShellThemeRoot/useAgentShellAttribute';
 import { agentShellLightColors } from '../theme';
+import { SignedInElsewhereNotice } from '../SignedInElsewhereNotice';
 import { SIGN_IN_LOGO_HEIGHT, SignInLogo } from './SignInLogo';
 import {
   type ShellSignInProvider,
@@ -112,6 +113,7 @@ export function ShellSignInPage({
           <h1 id="shell-sign-in-title" className={classes.title}>
             <SignInLogo />
           </h1>
+          <SignedInElsewhereNotice />
           {error && error.name !== 'PopupRejectedError' && (
             <Alert
               status="danger"

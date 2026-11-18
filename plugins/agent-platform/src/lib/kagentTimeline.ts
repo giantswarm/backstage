@@ -19,8 +19,10 @@ import {
   parseHistoryEntry,
   parsePart,
   readFunctionCall,
+  readProposedCall,
   readFunctionResponse,
   readKagentMetadataString,
+  readKagentTimelinePosition,
   readMessageText,
   readAttachment,
   readAttachmentPreview,
@@ -33,6 +35,11 @@ import {
   unwrapProxiedCall,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 
+import {
+  readAskUserQuestions,
+  readConfirmationHints,
+  withoutHints,
+} from './kagentConfirmation';
 import { readWorkspaceNotice, WorkspaceNotice } from './workspaceNotice';
 
 /** Fields every timeline item carries. */
@@ -102,8 +109,14 @@ export type TimelineItem =
        * matching on a tool name, and kagent's own UI branches at the same point.
        */
       asks: 'approval' | 'input';
-      /** The tool the agent proposed to run, when the payload named one. */
+      /**
+       * The tool the agent proposed to run, when the payload named one. For a
+       * call proposed through muster's `call_tool` this is the **inner** tool,
+       * as on a tool call.
+       */
       toolName?: string;
+      /** The proxy the proposed call would travel through, when it names one. */
+      via?: string;
       /**
        * The questions themselves, when this is an `ask_user`.
        *
@@ -351,14 +364,8 @@ function readTurnEnding(
  * - **Nothing throws.** A malformed message is counted in `skippedMessages` and
  *   the rest of the timeline renders.
  *
- * **On timestamps:** every item takes its *task's* timestamp, because A2A
- * messages carry none of their own and there is no finer-grained source. The
- * session's stored events looked like one, but a real payload from an internal
- * installation showed each
- * event's `data` to be a serialized ADK event with no `messageId` — nothing to
- * join on — and its `invocation_id` only distinguishes turns, which the task
- * already does. So items within a turn deliberately share a time, and the UI
- * should present it per turn rather than implying per-message precision.
+ * Items use their recorded timeline position when present, falling back to
+ * the task timestamp on controllers that supply no per-entry position.
  *
  * @param tasks - kagent's tasks, already in chronological order (it returns them
  *   `ORDER BY created_at ASC`).
@@ -385,11 +392,6 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
   let openApprovalIndex: number | undefined;
 
   tasks.forEach((task, taskIndex) => {
-    // Through `normalizeTimestamp` like every other kagent timestamp: these are
-    // non-pointer Go `time.Time`, so an unset one arrives as `0001-01-01T00:00:00Z`
-    // and renders as "Dec 31, 0000". It matters more here than anywhere else,
-    // because this is now the *only* timestamp source — it becomes `at` for every
-    // item in the task.
     const taskTimestamp = normalizeTimestamp(task.status?.timestamp);
     const status = readTurnStatus(task);
     const entries = historyWithPendingPrompt(task, status);
@@ -440,7 +442,11 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
         seenMessageIds.add(message.messageId);
       }
 
-      const at = taskTimestamp;
+      const position = readKagentTimelinePosition(message.metadata);
+      const at =
+        position === undefined
+          ? taskTimestamp
+          : new Date(position).toISOString();
       const author = readKagentMetadataString(message.metadata, 'author');
       const isUser = message.role === 'user';
       const opensTurn =
@@ -479,6 +485,7 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
       }
 
       const parts = Array.isArray(message.parts) ? message.parts : [];
+      const hints = isUser ? [] : readConfirmationHints(parts);
 
       // A verdict arrives as a data part on a *user* message. The verdict itself is
       // shown on the approval card rather than as a message of its own — but the
@@ -528,8 +535,9 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
         if (!textRun) {
           return;
         }
-        const text = textRun.chunks.join('').trim();
         const wasThought = textRun.isThought;
+        const joined = textRun.chunks.join('').trim();
+        const text = wasThought ? joined : withoutHints(joined, hints);
         textRun = undefined;
         if (!text) {
           return;
@@ -704,6 +712,7 @@ export function buildTimeline(tasks: A2aTaskWire[]): SessionTimeline {
             taskIndex,
             asks: isQuestion ? 'input' : 'approval',
             toolName: proposed?.name,
+            ...(proposed?.via ? { via: proposed.via } : {}),
             questions: isQuestion
               ? readAskUserQuestions(proposed?.args)
               : undefined,
@@ -857,63 +866,6 @@ function makeCallItem(input: {
     toolName: name ?? 'unknown tool',
     ...(via ? { via } : {}),
   };
-}
-
-/**
- * The tool an approval request is asking about.
- *
- * kagent wraps it as `args.originalFunctionCall` on the `adk_request_confirmation`
- * call (`buildApprovalMessage` in kagent's UI reads the same field).
- */
-function readProposedCall(
-  args: unknown,
-): { name?: string; args?: unknown } | undefined {
-  if (!args || typeof args !== 'object') {
-    return undefined;
-  }
-  const original = (args as { originalFunctionCall?: unknown })
-    .originalFunctionCall;
-  if (!original || typeof original !== 'object') {
-    return undefined;
-  }
-  const record = original as { name?: unknown; args?: unknown };
-  return {
-    name: typeof record.name === 'string' ? record.name : undefined,
-    args: record.args,
-  };
-}
-
-/**
- * The questions an `ask_user` call is putting to the user.
- *
- * Shape on the wire, from a live session on an internal installation:
- * `args: { questions: [{ question: "…" }] }` — one entry per question, and a real
- * `ask_user` can ask several at once.
- *
- * Anything that doesn't match is skipped rather than coerced: a question rendered
- * from a guessed field would put words in the agent's mouth, and the raw args are
- * still shown when nothing here matches.
- */
-function readAskUserQuestions(args: unknown): string[] {
-  if (!args || typeof args !== 'object') {
-    return [];
-  }
-  const { questions } = args as { questions?: unknown };
-  if (!Array.isArray(questions)) {
-    return [];
-  }
-  return questions
-    .map(entry => {
-      if (typeof entry === 'string') {
-        return entry;
-      }
-      if (entry && typeof entry === 'object') {
-        const { question } = entry as { question?: unknown };
-        return typeof question === 'string' ? question : undefined;
-      }
-      return undefined;
-    })
-    .filter((text): text is string => Boolean(text && text.trim()));
 }
 
 /**

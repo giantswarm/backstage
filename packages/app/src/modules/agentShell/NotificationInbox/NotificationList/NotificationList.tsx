@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { toastApiRef, useApi } from '@backstage/frontend-plugin-api';
 import { Button, Flex, Switch, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 import { LoadingIndicator } from '@giantswarm/backstage-plugin-ui-react';
+import { MarkFailureAlert } from '../MarkFailureAlert';
 import { NotificationRow } from '../NotificationRow';
 import { useNotificationInbox } from '../NotificationInboxProvider';
 
@@ -85,9 +85,9 @@ function DesktopNotificationsSwitch() {
 
 /**
  * The overlay's content, the same in the rail's popover and the phone's
- * sheet: "Mark all read", the rows newest first, and the desktop-
- * notifications switch. `onNavigate` closes the overlay when a row opens its
- * page.
+ * sheet: "Mark all read", read marks that could not be saved, the rows newest
+ * first, and the desktop-notifications switch. `onNavigate` closes the
+ * overlay when a row opens its page.
  */
 export function NotificationList({
   onNavigate,
@@ -99,25 +99,27 @@ export function NotificationList({
 }) {
   const classes = useStyles();
   const inbox = useNotificationInbox();
-  const toastApi = useApi(toastApiRef);
   const [marking, setMarking] = useState(false);
   const now = useNow();
   if (!inbox) {
     return null;
   }
-  const { rows, ready, unreadCount, markRead, openInPlace, markAllRead } =
-    inbox;
+  const {
+    rows,
+    ready,
+    unreadCount,
+    markRead,
+    openInPlace,
+    markAllRead,
+    markFailure,
+    retryMarks,
+  } = inbox;
 
   const onMarkAllRead = () => {
     setMarking(true);
+    // A failure shows as `markFailure`.
     markAllRead()
-      .catch(() =>
-        toastApi.post({
-          title: 'Could not mark the notifications read',
-          status: 'danger',
-          timeout: 8000,
-        }),
-      )
+      .catch(() => {})
       .finally(() => setMarking(false));
   };
 
@@ -180,6 +182,9 @@ export function NotificationList({
           </Button>
         )}
       </Flex>
+      {markFailure && (
+        <MarkFailureAlert rows={markFailure.rows} retry={retryMarks} />
+      )}
       {body}
       {inbox.desktop.permission !== 'unsupported' && (
         <div className={classes.footer}>

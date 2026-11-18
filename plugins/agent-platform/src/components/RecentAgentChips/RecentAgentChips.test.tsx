@@ -15,6 +15,7 @@ function agent(name: string): AgentRow {
     name,
     technicalName: name.toLowerCase().replace(/\s+/g, '-'),
     description: '',
+    tags: [],
     skillCount: 0,
     readiness: 'ready',
   };

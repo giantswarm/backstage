@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TestApiProvider } from '@backstage/test-utils';
+import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
 import {
   AuthStatusResponse,
   MusterApi,
@@ -12,6 +13,7 @@ import {
 import {
   CONNECTING_POLL_INTERVAL_MS,
   connectingPollInterval,
+  signInRefusalOf,
   useServerSignIn,
 } from './useServerSignIn';
 
@@ -45,9 +47,17 @@ function makeApi(initial: AuthStatusResponse): jest.Mocked<Api> {
   };
 }
 
+/** The person's answer in the external URL consent dialog. */
+const consentOpen = jest.fn();
+
 function wrapper(api: Api, queryClient: QueryClient) {
   return ({ children }: { children: ReactNode }) => (
-    <TestApiProvider apis={[[musterApiRef, api]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, api],
+        [externalUrlConsentApiRef, { open: consentOpen }],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </TestApiProvider>
   );
@@ -59,19 +69,11 @@ function newQueryClient() {
   });
 }
 
+beforeEach(() => {
+  consentOpen.mockReset().mockResolvedValue('accept');
+});
+
 describe('useServerSignIn', () => {
-  let windowOpen: jest.SpyInstance;
-
-  beforeEach(() => {
-    // jsdom does not implement window.open; null is the popup-blocked answer,
-    // which signIn() must tolerate (the URL then renders as a link).
-    windowOpen = jest.spyOn(window, 'open').mockReturnValue(null);
-  });
-
-  afterEach(() => {
-    windowOpen.mockRestore();
-  });
-
   /**
    * The completion signal. Driven with an injected poll interval so it runs in
    * milliseconds -- the real 5 s tick made this a flake risk on loaded CI
@@ -353,6 +355,43 @@ describe('useServerSignIn', () => {
     expect(result.current.authUrl).toBe(AUTH_URL);
   });
 
+  it("gives every caller for the same server the click's answer", async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    api.signInServer.mockResolvedValue({
+      status: 'error',
+      message: 'Rate limit exceeded. Too many authentication attempts.',
+    });
+    const queryClient = newQueryClient();
+    const options = { wrapper: wrapper(api, queryClient) };
+    // A table's state and its button, each in a cell of its own.
+    const both = renderHook(
+      () => [
+        useServerSignIn('pro', 'gazelle'),
+        useServerSignIn('pro', 'gazelle'),
+      ],
+      options,
+    );
+    const other = renderHook(
+      () => useServerSignIn('other', 'gazelle'),
+      options,
+    );
+
+    await waitFor(() => expect(both.result.current[1].needsLogin).toBe(true));
+    await act(async () => both.result.current[1].signIn());
+
+    await waitFor(() =>
+      expect(both.result.current[0].error).toBe(
+        'Rate limit exceeded. Too many authentication attempts.',
+      ),
+    );
+    expect(both.result.current[1].error).toBe(
+      'Rate limit exceeded. Too many authentication attempts.',
+    );
+    expect(other.result.current.error).toBeUndefined();
+  });
+
   /**
    * A real IdP round-trip can outlive the deadline (Miro's flow walks through
    * an organization picker, a team picker, and a consent page). When the user
@@ -423,6 +462,139 @@ describe('useServerSignIn', () => {
       expect(result.current.status?.status).toBe('connected'),
     );
     expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  describe('onSignedIn', () => {
+    // A sign-in finished in another tab: nothing started here, and returning
+    // to this tab re-reads the status (simulated by refetching it).
+    it('is called when the status moves to connected, with no sign-in started here', async () => {
+      const api = makeApi({
+        servers: [{ name: 'pro', status: 'auth_required' }],
+      });
+      const queryClient = newQueryClient();
+      const onSignedIn = jest.fn();
+      const { result } = renderHook(
+        () => useServerSignIn('pro', 'gazelle', { onSignedIn }),
+        { wrapper: wrapper(api, queryClient) },
+      );
+      await waitFor(() => expect(result.current.needsLogin).toBe(true));
+      expect(onSignedIn).not.toHaveBeenCalled();
+
+      api.getAuthStatus.mockResolvedValue({
+        servers: [{ name: 'pro', status: 'connected' }],
+      });
+      await act(async () => {
+        await queryClient.refetchQueries({
+          queryKey: ['muster', 'auth-status', 'gazelle'],
+        });
+      });
+
+      await waitFor(() => expect(onSignedIn).toHaveBeenCalledTimes(1));
+      // Made in another tab: nothing this tab started.
+      expect(onSignedIn).toHaveBeenCalledWith({ here: false });
+    });
+
+    it('is called when the sign-in started here lands', async () => {
+      const api = makeApi({
+        servers: [{ name: 'pro', status: 'auth_required' }],
+      });
+      const onSignedIn = jest.fn();
+      const { result } = renderHook(
+        () =>
+          useServerSignIn('pro', 'gazelle', { onSignedIn, pollIntervalMs: 20 }),
+        { wrapper: wrapper(api, newQueryClient()) },
+      );
+      await waitFor(() => expect(result.current.needsLogin).toBe(true));
+      await act(async () => result.current.signIn());
+      await waitFor(() => expect(result.current.isWaiting).toBe(true));
+
+      api.getAuthStatus.mockResolvedValue({
+        servers: [{ name: 'pro', status: 'connected' }],
+      });
+
+      await waitFor(() => expect(result.current.isWaiting).toBe(false));
+      expect(onSignedIn).toHaveBeenCalledTimes(1);
+      expect(onSignedIn).toHaveBeenCalledWith({ here: true });
+    });
+
+    // muster's "already authenticated and connected": the sign-in holds, so
+    // what waits on it goes ahead, whatever the status read said before.
+    it('is called when a sign-in click finds the server connected already', async () => {
+      const api = makeApi({
+        servers: [{ name: 'pro', status: 'connected' }],
+      });
+      api.signInServer.mockResolvedValue({
+        status: 'connected',
+        message: "Server 'pro' is already authenticated and connected.",
+      });
+      const onSignedIn = jest.fn();
+      const { result } = renderHook(
+        () => useServerSignIn('pro', 'gazelle', { onSignedIn }),
+        { wrapper: wrapper(api, newQueryClient()) },
+      );
+      await waitFor(() =>
+        expect(result.current.status?.status).toBe('connected'),
+      );
+      // A server connected on first sight says nothing about a refusal.
+      expect(onSignedIn).not.toHaveBeenCalled();
+
+      await act(async () => result.current.signIn());
+
+      await waitFor(() => expect(onSignedIn).toHaveBeenCalledTimes(1));
+      expect(onSignedIn).toHaveBeenCalledWith({ here: true });
+      expect(result.current.error).toBeUndefined();
+    });
+
+    // The click reports the landing; the status read it causes, moving from
+    // waiting to connected, is the same landing, not a second one.
+    it('is called once when a click finds the server connected while the status still waits', async () => {
+      const api = makeApi({
+        servers: [{ name: 'pro', status: 'auth_required' }],
+      });
+      api.signInServer.mockImplementation(async () => {
+        api.getAuthStatus.mockResolvedValue({
+          servers: [{ name: 'pro', status: 'connected' }],
+        });
+        return {
+          status: 'connected',
+          message: "Server 'pro' is already authenticated and connected.",
+        };
+      });
+      const onSignedIn = jest.fn();
+      const { result } = renderHook(
+        () => useServerSignIn('pro', 'gazelle', { onSignedIn }),
+        { wrapper: wrapper(api, newQueryClient()) },
+      );
+      await waitFor(() => expect(result.current.needsLogin).toBe(true));
+
+      await act(async () => result.current.signIn());
+
+      await waitFor(() => expect(result.current.isConnected).toBe(true));
+      expect(onSignedIn).toHaveBeenCalledTimes(1);
+    });
+
+    it('is not called while the sign-in is refused', async () => {
+      const api = makeApi({
+        servers: [{ name: 'pro', status: 'auth_required' }],
+      });
+      api.signInServer.mockResolvedValue({
+        status: 'error',
+        message: 'Rate limit exceeded.',
+      });
+      const onSignedIn = jest.fn();
+      const { result } = renderHook(
+        () => useServerSignIn('pro', 'gazelle', { onSignedIn }),
+        { wrapper: wrapper(api, newQueryClient()) },
+      );
+      await waitFor(() => expect(result.current.needsLogin).toBe(true));
+
+      await act(async () => result.current.signIn());
+
+      await waitFor(() =>
+        expect(result.current.error).toBe('Rate limit exceeded.'),
+      );
+      expect(onSignedIn).not.toHaveBeenCalled();
+    });
   });
 
   /**
@@ -543,6 +715,138 @@ describe('useServerSignIn', () => {
   });
 });
 
+/** A sign-in answer muster has not given yet. */
+function deferredAnswer(api: jest.Mocked<Api>) {
+  let resolve: ((result: ServerSignInResult) => void) | undefined;
+  api.signInServer.mockImplementationOnce(
+    () =>
+      new Promise<ServerSignInResult>(res => {
+        resolve = res;
+      }),
+  );
+  return async (result: ServerSignInResult) => {
+    await waitFor(() => expect(resolve).toBeDefined());
+    await act(async () => resolve!(result));
+  };
+}
+
+describe('useServerSignIn, opening the sign-in page', () => {
+  async function renderSignIn(api: jest.Mocked<Api>) {
+    const rendered = renderHook(() => useServerSignIn('pro', 'gazelle'), {
+      wrapper: wrapper(api, newQueryClient()),
+    });
+    await waitFor(() => expect(rendered.result.current.needsLogin).toBe(true));
+    return rendered;
+  }
+
+  it("asks the person to open muster's link, and records it opened on accept", async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const { result } = await renderSignIn(api);
+
+    await act(async () => result.current.signIn());
+
+    await waitFor(() => expect(result.current.signInTabOpened).toBe(true));
+    expect(consentOpen).toHaveBeenCalledTimes(1);
+    expect(consentOpen).toHaveBeenCalledWith({
+      url: AUTH_URL,
+      requester: 'pro',
+      message: 'Sign in to pro to continue.',
+    });
+  });
+
+  it('offers the page again when the person did not open it', async () => {
+    consentOpen.mockResolvedValueOnce('decline');
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const { result } = await renderSignIn(api);
+
+    await act(async () => result.current.signIn());
+    await waitFor(() => expect(consentOpen).toHaveBeenCalledTimes(1));
+    expect(result.current.signInTabOpened).toBe(false);
+    expect(result.current.authUrl).toBe(AUTH_URL);
+
+    await act(async () => result.current.openSignInPage());
+
+    await waitFor(() => expect(result.current.signInTabOpened).toBe(true));
+    expect(consentOpen).toHaveBeenCalledTimes(2);
+    expect(api.signInServer).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks to open a device code's page, naming the code", async () => {
+    const api = makeApi({ servers: [], providerApps: [] });
+    api.signInServer.mockResolvedValueOnce({
+      status: 'pending',
+      message: 'Enter the code.',
+      deviceCode: {
+        userCode: 'ABCD-1234',
+        verificationUrl: 'https://github.com/login/device',
+      },
+    } as ServerSignInResult);
+    const { result } = renderHook(
+      () => useServerSignIn('github', 'gazelle', { app: true }),
+      { wrapper: wrapper(api, newQueryClient()) },
+    );
+
+    await act(async () => result.current.signIn());
+
+    await waitFor(() =>
+      expect(consentOpen).toHaveBeenCalledWith({
+        url: 'https://github.com/login/device',
+        requester: 'github',
+        message: 'Enter the code ABCD-1234 on the page that opens.',
+      }),
+    );
+  });
+
+  it("does not ask for an earlier click's page once a later click answered", async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    const answerFirst = deferredAnswer(api);
+    const { result } = await renderSignIn(api);
+
+    await act(async () => result.current.signIn());
+    api.signInServer.mockResolvedValueOnce({
+      ...CHALLENGE,
+      authUrl: FRESH_AUTH_URL,
+    });
+    await act(async () => result.current.signIn());
+    await waitFor(() => expect(result.current.authUrl).toBe(FRESH_AUTH_URL));
+
+    await answerFirst(CHALLENGE);
+
+    expect(consentOpen).toHaveBeenCalledTimes(1);
+    expect(consentOpen).toHaveBeenCalledWith(
+      expect.objectContaining({ url: FRESH_AUTH_URL }),
+    );
+    expect(result.current.authUrl).toBe(FRESH_AUTH_URL);
+  });
+
+  it('asks nothing when muster refuses the sign-in', async () => {
+    const api = makeApi({
+      servers: [{ name: 'pro', status: 'auth_required' }],
+    });
+    api.signInServer.mockResolvedValueOnce({
+      status: 'error',
+      message: 'Too many sign-in attempts; try again in a minute.',
+    });
+    const { result } = await renderSignIn(api);
+
+    await act(async () => result.current.signIn());
+
+    await waitFor(() =>
+      expect(result.current.error).toBe(
+        'Too many sign-in attempts; try again in a minute.',
+      ),
+    );
+    expect(consentOpen).not.toHaveBeenCalled();
+    expect(result.current.isWaiting).toBe(false);
+  });
+});
+
 describe('connectingPollInterval', () => {
   it('re-reads within seconds while muster still connects a server', () => {
     expect(
@@ -562,5 +866,75 @@ describe('connectingPollInterval', () => {
       }),
     ).toBe(false);
     expect(connectingPollInterval(undefined)).toBe(false);
+  });
+});
+
+describe('signInRefusalOf', () => {
+  const REFUSAL =
+    "Cannot sign in to 'pro': your login method cannot be checked here.";
+
+  it.each([
+    ['auth_required', 'auth_required'],
+    ['reauth_required', 'reauth_required'],
+  ] as const)(
+    'reads a grant server in %s with an error and no auth_tool',
+    (_, status) => {
+      expect(
+        signInRefusalOf({ name: 'pro', status, kind: 'grant', error: REFUSAL }),
+      ).toBe(REFUSAL);
+    },
+  );
+
+  it.each([
+    [
+      'a server that offers the sign-in',
+      { auth_tool: 'core_auth_login', kind: 'grant' as const },
+    ],
+    ['an SSO server', { kind: 'sso' as const }],
+    ['a server from a muster without kind', {}],
+  ])('reads none for %s', (_, fields) => {
+    expect(
+      signInRefusalOf({
+        name: 'pro',
+        status: 'auth_required',
+        error: REFUSAL,
+        ...fields,
+      }),
+    ).toBeUndefined();
+  });
+
+  it('reads none for a connected grant server', () => {
+    expect(
+      signInRefusalOf({
+        name: 'pro',
+        status: 'connected',
+        kind: 'grant',
+        error: REFUSAL,
+      }),
+    ).toBeUndefined();
+  });
+
+  it('reads a provider App waiting for a sign-in with an error and no auth_tool', () => {
+    const app = {
+      name: 'github',
+      status: 'auth_required' as const,
+      error: REFUSAL,
+    };
+    expect(
+      signInRefusalOf(
+        { name: 'github', status: 'auth_required', error: REFUSAL },
+        app,
+      ),
+    ).toBe(REFUSAL);
+  });
+
+  it('reads none for a provider App with a code outstanding', () => {
+    const app = { name: 'chatgpt', status: 'pending' as const, error: REFUSAL };
+    expect(
+      signInRefusalOf(
+        { name: 'chatgpt', status: 'auth_required', error: REFUSAL },
+        app,
+      ),
+    ).toBeUndefined();
   });
 });

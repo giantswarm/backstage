@@ -9,6 +9,7 @@ import { ClusterAccessStatusApi } from '../clusterAccessStatus';
 import { Config, ConfigReader } from '@backstage/config';
 import { SESSION_EXPIRED_MESSAGE } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { SUBJECT_TOKEN_HEADER } from '@giantswarm/backstage-plugin-gs-common';
+import { ExternalUrlConsentManager } from '@giantswarm/backstage-plugin-ui-react';
 
 jest.mock('@backstage/core-app-api', () => ({
   ...jest.requireActual('@backstage/core-app-api'),
@@ -60,6 +61,7 @@ const discoveryApi = {
 
 function createApi() {
   return GSAuthProviders.create({
+    externalUrlConsentApi: new ExternalUrlConsentManager(jest.fn()),
     configApi,
     discoveryApi,
     oauthRequestApi,
@@ -142,6 +144,7 @@ describe('GSAuthProviders.getFallbackSignInAuthApi', () => {
       getOptionalString: jest.fn((key: string) => values[key]),
     } as unknown as ConfigApi;
     return GSAuthProviders.create({
+      externalUrlConsentApi: new ExternalUrlConsentManager(jest.fn()),
       configApi: scopedConfigApi,
       discoveryApi,
       oauthRequestApi,
@@ -210,6 +213,7 @@ describe('GSAuthProviders sign-in connector memory', () => {
       getOptionalString: jest.fn((key: string) => values[key]),
     } as unknown as ConfigApi;
     return GSAuthProviders.create({
+      externalUrlConsentApi: new ExternalUrlConsentManager(jest.fn()),
       configApi: scopedConfigApi,
       discoveryApi,
       oauthRequestApi: confirmingOauthRequestApi,
@@ -349,6 +353,7 @@ describe('GSAuthProviders.getGithubAuthApi', () => {
       }),
     } as unknown as ConfigApi;
     return GSAuthProviders.create({
+      externalUrlConsentApi: new ExternalUrlConsentManager(jest.fn()),
       configApi: scopedConfigApi,
       discoveryApi,
       oauthRequestApi,
@@ -397,6 +402,7 @@ describe('GSAuthProviders cluster token broker coverage', () => {
       new ConfigReader({ gs: { installations, clusterTokenBroker } }),
     );
     return GSAuthProviders.create({
+      externalUrlConsentApi: new ExternalUrlConsentManager(jest.fn()),
       configApi: {
         ...configApi,
         getOptionalString: jest.fn((key: string) =>
@@ -581,6 +587,7 @@ describe('GSAuthProviders cluster-token mint', () => {
       recordDegraded: jest.fn(),
     };
     const api = GSAuthProviders.create({
+      externalUrlConsentApi: new ExternalUrlConsentManager(jest.fn()),
       configApi: {
         ...configApi,
         getOptionalString: jest.fn((key: string) =>
@@ -795,6 +802,7 @@ describe('GSAuthProviders lasting ID tokens', () => {
       throw new Error(`unexpected fetch ${url}`);
     });
     return GSAuthProviders.create({
+      externalUrlConsentApi: new ExternalUrlConsentManager(jest.fn()),
       configApi: {
         ...configApi,
         getOptionalString: jest.fn((key: string) =>

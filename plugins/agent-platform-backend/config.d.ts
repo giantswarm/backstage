@@ -1,6 +1,29 @@
 export interface Config {
   agentPlatform?: {
     /**
+     * agent-manager's REST API, which the organization credential form posts a
+     * credential value to as the person (a value never enters an MCP call).
+     * Backend visibility only, as for `kagent`.
+     */
+    agentManager?: {
+      /**
+       * When an installation is not listed, its origin is derived as
+       * `https://agentgateway.<baseDomain>/agent-manager`, the agent-platform
+       * chart's `agentManager.route` (off by default there; the installation
+       * turns it on with its `jwtAuthentication` to serve the form).
+       */
+      installations?: {
+        [installationName: string]: {
+          /**
+           * The origin and path prefix of agent-manager's REST API on this
+           * installation, `https://<host>[/<prefix>]`, no trailing slash: the
+           * backend calls `<apiBaseUrl>/api/v1/credential-operations/<id>`.
+           */
+          apiBaseUrl?: string;
+        };
+      };
+    };
+    /**
      * Access to the kagent API v2 controller (gRPC), used by the Agent
      * Platform Sessions list, the session detail and chat, and the Usage tab.
      * The backend speaks native gRPC to each installation's controller route
@@ -26,7 +49,10 @@ export interface Config {
        * Per-request timeout in milliseconds toward a kagent controller. Bounds
        * how long an installation whose `agentgateway.<baseDomain>` host does not
        * resolve (i.e. kagent simply is not deployed there) can hold a request
-       * open. Defaults to 10000.
+       * open. Defaults to 10000. Keep it above 8000: a dead connection is found
+       * by its keepalive ping within 8 s, and the request waiting on it should
+       * fail as unavailable rather than time out first. The backend warns at
+       * startup when it is not.
        */
       timeoutMs?: number;
 

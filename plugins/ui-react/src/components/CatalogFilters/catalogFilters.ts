@@ -11,8 +11,12 @@ export type CatalogFacet<T> = {
   id: string;
   /** What the facet is about, named on its dropdown: "Source". */
   label: string;
-  /** The one value an item has on this facet; undefined when it has none. */
-  value: (item: T) => string | undefined;
+  /**
+   * The value an item has on this facet, or its values when it can have
+   * several (tags); undefined or empty when it has none. An item with several
+   * values is kept when any of them is picked, and counted under each.
+   */
+  value: (item: T) => string | readonly string[] | undefined;
   /** How a value reads in the dropdown; the value itself by default. */
   optionLabel?: (value: string) => string;
   /**
@@ -20,6 +24,14 @@ export type CatalogFacet<T> = {
    * label. Without it: the most common value first, then by label.
    */
   order?: readonly string[];
+  /**
+   * Whether an item without a value is a choice in itself, so one value that
+   * some items lack can narrow the list: a flag (Pinned, Starred, "Created
+   * by: Me") or Tags (untagged). Off by default: there a missing value is one
+   * not read yet or not matched, and the facet needs a value that some items
+   * with one lack.
+   */
+  missingIsChoice?: boolean;
 };
 
 /**
@@ -46,6 +58,15 @@ export type CatalogFilterDimension = {
   selected: string[];
 };
 
+function valuesOf<T>(facet: CatalogFacet<T>, item: T): readonly string[] {
+  const value = facet.value(item);
+  if (value === undefined) {
+    return [];
+  }
+  // A value listed twice still counts the item once.
+  return typeof value === 'string' ? [value] : [...new Set(value)];
+}
+
 function picksOf(
   selection: CatalogFilterSelection,
   facetId: string,
@@ -67,8 +88,7 @@ function matchesFacets<T>(
     if (picked.length === 0) {
       return true;
     }
-    const value = facet.value(item);
-    return value !== undefined && picked.includes(value);
+    return valuesOf(facet, item).some(value => picked.includes(value));
   });
 }
 
@@ -88,18 +108,23 @@ export function isCatalogFiltered(selection: CatalogFilterSelection): boolean {
   );
 }
 
+/** Items per value, and how many items have any value (`[]` is none). */
 function countValues<T>(
   items: readonly T[],
   facet: CatalogFacet<T>,
-): Map<string, number> {
+): { counts: Map<string, number>; withValue: number } {
   const counts = new Map<string, number>();
+  let withValue = 0;
   for (const item of items) {
-    const value = facet.value(item);
-    if (value !== undefined) {
+    const values = valuesOf(facet, item);
+    if (values.length > 0) {
+      withValue += 1;
+    }
+    for (const value of values) {
       counts.set(value, (counts.get(value) ?? 0) + 1);
     }
   }
-  return counts;
+  return { counts, withValue };
 }
 
 function sortOptions<T>(
@@ -131,11 +156,15 @@ function sortOptions<T>(
 /**
  * The facets to draw, with their options and counts.
  *
- * Every facet some item has a value on is drawn, even when that is one value
- * for the whole catalog — a dropdown of one option still says where the
- * skills come from, and a facet that came and went with the catalog's shape
- * was missed (T64). A facet no item has a value on (no favorites yet) has
- * nothing to offer and is left out, unless a pick on it is still standing.
+ * A facet is drawn only when picking from it can narrow the catalog: a value
+ * some of the items that have one lack (two repositories; `[a]` beside
+ * `[a, b]` where an item can have several), or, for a facet whose missing
+ * value is a choice (`missingIsChoice`), one value some items lack
+ * (Favorites: "Starred"; Tags, untagged being a choice). One value every item has, one
+ * value with the rest not read yet (one organization while agents load) or
+ * no value at all (no favorites yet) make a dropdown with nothing to choose,
+ * and it is left out — unless a pick on it is still standing, so it can be
+ * undone.
  * Its options are the catalog's values (not the search's, so options do not
  * come and go while typing); each count is over the search and the other
  * facets' picks.
@@ -152,17 +181,24 @@ export function catalogFilterDimensions<T>(
   const dimensions: CatalogFilterDimension[] = [];
   for (const facet of facets) {
     const picked = picksOf(selection, facet.id);
-    const catalogCounts = countValues(items, facet);
+    const { counts: catalogCounts, withValue } = countValues(items, facet);
     // A picked value the catalog no longer holds stays offered, at zero, so
     // the pick that empties the list can be undone.
     const ids = new Set([...catalogCounts.keys(), ...picked]);
-    if (ids.size === 0) {
+    // Picking a value narrows when some item it is weighed against lacks it:
+    // any item where a missing value is a choice, an item with some other
+    // value otherwise.
+    const weighed = facet.missingIsChoice ? items.length : withValue;
+    const canNarrow = [...catalogCounts.values()].some(
+      count => count < weighed,
+    );
+    if (!canNarrow && picked.length === 0) {
       continue;
     }
     const narrowed = searched.filter(item =>
       matchesFacets(item, facets, selection, facet.id),
     );
-    const counts = countValues(narrowed, facet);
+    const { counts } = countValues(narrowed, facet);
     const options = [...ids].map(id => ({
       id,
       label: facet.optionLabel?.(id) ?? id,

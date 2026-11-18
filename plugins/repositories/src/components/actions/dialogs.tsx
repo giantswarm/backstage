@@ -1,15 +1,11 @@
 import { ReactNode, useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  ButtonLink,
-  Flex,
-  Link,
-  Select,
-  Text,
-  TextField,
-} from '@backstage/ui';
+import { Alert, Flex, Select, Text, TextField } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
-import { DateComponent } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  DateComponent,
+  ExternalButtonLink,
+  ExternalLink,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { load } from 'js-yaml';
 import {
   Alignment,
@@ -474,13 +470,9 @@ export function AdoptDialog({
 
 function DocsLink() {
   return (
-    <Link
-      href={REPOSITORY_SETUP_DOCS_URL}
-      target="_blank"
-      rel="noopener noreferrer"
-    >
-      How alignment works ↗
-    </Link>
+    <ExternalLink href={REPOSITORY_SETUP_DOCS_URL} display="inline">
+      How alignment works
+    </ExternalLink>
   );
 }
 
@@ -494,15 +486,13 @@ function Dispatched({ dispatch }: { dispatch: Dispatch }) {
         <Flex direction="column" gap="2" data-testid="dispatch">
           <Text variant="body-small">{dispatch.then}</Text>
           <div>
-            <ButtonLink
+            <ExternalButtonLink
               href={dispatch.runsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
               variant="secondary"
               size="small"
             >
-              Workflow runs ↗
-            </ButtonLink>
+              Workflow runs
+            </ExternalButtonLink>
           </div>
         </Flex>
       }

@@ -4,6 +4,7 @@ import { analyticsApiRef, toastApiRef } from '@backstage/frontend-plugin-api';
 import { notificationsApiRef } from '@backstage/plugin-notifications';
 import { signalApiRef } from '@backstage/plugin-signals-react';
 import {
+  externalUrlConsentApiRef,
   ShellDocumentTitle,
   ShellDocumentTitleProvider,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -49,6 +50,7 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
         skills: createRouteRef(),
         models: createRouteRef(),
         profile: createRouteRef(),
+        organizations: createRouteRef(),
       },
     },
     RecentSessions: () => null,
@@ -76,6 +78,7 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
 const close = jest.fn();
 const post = jest.fn(() => ({ close }));
 const analyticsApi = mockApis.analytics.mock();
+const consentOpen = jest.fn();
 
 let upstream = createFakeUpstream();
 
@@ -109,6 +112,7 @@ async function renderShell({
       apis: [
         [toastApiRef, { post }],
         [analyticsApiRef, analyticsApi],
+        [externalUrlConsentApiRef, { open: consentOpen }],
         [signalApiRef, upstream.signalApi],
         ...(withNotificationsApi
           ? [[notificationsApiRef, upstream.notificationsApi] as const]
@@ -175,6 +179,7 @@ beforeEach(() => {
   upstream = createFakeUpstream();
   post.mockClear();
   close.mockClear();
+  consentOpen.mockClear();
   analyticsApi.captureEvent.mockClear();
   window.localStorage.clear();
   window.sessionStorage.clear();
@@ -299,7 +304,7 @@ describe('Notification inbox: rows from the upstream notifications store', () =>
           .getAllByRole('listitem')
           .map(row => row.textContent),
       ).toEqual([
-        expect.stringContaining('1 MCP server needs your sign-in'),
+        expect.stringContaining('1 connector needs your sign-in'),
         expect.stringContaining('Template run finished'),
         expect.stringContaining('SRE Agent needs your input'),
       ]);
@@ -543,14 +548,26 @@ describe('Notification inbox: rows from the upstream notifications store', () =>
       await userEvent.click(
         await within(overlay).findByRole('button', { name: 'Mark all read' }),
       );
-      await waitFor(() =>
-        expect(post).toHaveBeenCalledWith(
-          expect.objectContaining({
-            title: 'Could not mark the notifications read',
-          }),
-        ),
-      );
+      // Said in the overlay, for the one row still unread.
+      const alert = await within(overlay).findByRole('alert');
+      expect(alert).toHaveTextContent('Could not mark the notification read');
       expect(upstream.isRead('n1')).toBe(true);
+      expect(reportedEvents()).toEqual([
+        ['AgentPlatform.notificationsMarkedRead', {}],
+      ]);
+
+      // Try again marks the session row, and is the same "Mark all read":
+      // not reported a second time.
+      await userEvent.click(
+        within(alert).getByRole('button', { name: 'Try again' }),
+      );
+      await waitFor(() =>
+        expect(within(overlay).queryByRole('alert')).not.toBeInTheDocument(),
+      );
+      expect(fakeInbox.writes.markManySeen).toHaveBeenCalledTimes(2);
+      expect(
+        upstream.notificationsApi.updateNotifications,
+      ).toHaveBeenCalledTimes(1);
       expect(reportedEvents()).toEqual([
         ['AgentPlatform.notificationsMarkedRead', {}],
       ]);
@@ -879,6 +896,53 @@ describe('Notification inbox: rows from the upstream notifications store', () =>
           ]),
         );
       } finally {
+        Object.defineProperty(window, 'Notification', {
+          configurable: true,
+          value: original,
+        });
+      }
+    });
+
+    it('asks before opening a link out of the portal from a desktop notification', async () => {
+      const original = window.Notification;
+      const shown: Array<{ onclick: (() => void) | null }> = [];
+      class FakeNotification {
+        static permission: NotificationPermission = 'granted';
+        static requestPermission = jest.fn();
+        onclick: (() => void) | null = null;
+        constructor() {
+          shown.push(this);
+        }
+        close() {}
+      }
+      Object.defineProperty(window, 'Notification', {
+        configurable: true,
+        value: FakeNotification,
+      });
+      const windowOpen = jest.spyOn(window, 'open').mockReturnValue(null);
+      window.localStorage.setItem(DESKTOP_NOTIFICATIONS_STORAGE_KEY, 'on');
+      focused = false;
+      try {
+        await renderShell();
+        await firstRead();
+        await send({
+          id: 'n1',
+          title: 'CI run failed',
+          link: 'https://ci.example.com/runs/42',
+          created: now(),
+        });
+        await waitFor(() => expect(shown).toHaveLength(1));
+
+        act(() => shown[0].onclick?.());
+
+        expect(consentOpen).toHaveBeenCalledWith({
+          url: 'https://ci.example.com/runs/42',
+          requester: 'Portal notification',
+          message: 'CI run failed',
+        });
+        expect(windowOpen).not.toHaveBeenCalled();
+      } finally {
+        windowOpen.mockRestore();
         Object.defineProperty(window, 'Notification', {
           configurable: true,
           value: original,

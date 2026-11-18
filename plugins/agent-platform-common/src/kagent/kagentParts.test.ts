@@ -6,6 +6,7 @@ import {
   MUSTER_PROXY_LABEL,
   readUsageReport,
   readNestedTokenUsage,
+  readProposedCall,
   readTokenUsage,
   unwrapProxiedCall,
 } from './kagentParts';
@@ -55,6 +56,42 @@ describe('unwrapProxiedCall', () => {
     const call = { name: 'x_prometheus_execute_query', args: { query: 'up' } };
 
     expect(unwrapProxiedCall(call)).toBe(call);
+  });
+});
+
+describe('readProposedCall', () => {
+  it('names the tool behind call_tool, its own arguments and the hint', () => {
+    expect(
+      readProposedCall({
+        originalFunctionCall: {
+          id: 'c1',
+          name: 'call_tool',
+          args: {
+            name: 'x_site-control_schedule_rollback',
+            arguments: { release: 'v1.2.3', window: 'tonight' },
+          },
+        },
+        toolConfirmation: { hint: 'Please approve.' },
+      }),
+    ).toEqual({
+      name: 'x_site-control_schedule_rollback',
+      args: { release: 'v1.2.3', window: 'tonight' },
+      via: MUSTER_PROXY_LABEL,
+      hint: 'Please approve.',
+    });
+  });
+
+  it('reads a direct call as it is', () => {
+    expect(
+      readProposedCall({
+        originalFunctionCall: { name: 'flux_reconcile', args: { a: 1 } },
+      }),
+    ).toEqual({ name: 'flux_reconcile', args: { a: 1 } });
+  });
+
+  it('reads nothing without a proposed call', () => {
+    expect(readProposedCall({})).toBeUndefined();
+    expect(readProposedCall(undefined)).toBeUndefined();
   });
 });
 

@@ -6,25 +6,26 @@ import {
   useLocation,
   useParams,
 } from 'react-router-dom';
-import { Flex } from '@backstage/ui';
+import { ButtonLink, Flex } from '@backstage/ui';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- The installation scope is shared across Giant Swarm plugins.
 import {
   ALL_INSTALLATIONS,
+  SharedInstallationScope,
   useInstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
 import {
+  EmptyStateCard,
   ShellPage,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { QueryClientProvider } from '../QueryClientProvider';
+import { OrganizationDirectoryProvider } from '../OrganizationDirectoryProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
-import {
-  hasServingLayer,
-  ServingProvider,
-  useServing,
-} from '../ServingProvider';
+import { ServingProvider, useServing } from '../ServingProvider';
 import { ServedModelRowsProvider } from '../ServedModelRowsProvider';
 import { NewModelPage } from '../NewModelPage';
+import { CredentialFormPage } from '../CredentialFormPage';
 import { EditModelPage } from '../EditModelPage';
 import { ServingPage } from '../ServingPage';
 import { GpuCapacityPage } from '../GpuCapacityPage';
@@ -47,9 +48,9 @@ import {
 } from '../ModelHostingKpis';
 import { ShellCustomizeRedirect } from '../ShellCustomizeRedirect';
 import { CustomizeModelPage } from '../CustomizeModelPage';
-import { useClusterManagerAvailability } from '../../hooks/useClusterManager';
 import { ModelHostingSharedIdentityNote } from '../ModelHostingSharedIdentity';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
+import { useModelHosting } from '../../hooks/useModelHosting';
 import { isLegacyServeLink } from '../../lib/modelManagerServe';
 import { nothingCouldBeRead } from '../../lib/soleInstallation';
 import {
@@ -130,12 +131,17 @@ const HostingView = ({
  * actions a view registers (`ModelHostingActions`: Serve model, Add GPU node
  * pool…) land in this header's slot, top right.
  *
- * The figures show where a serving layer is in view. The tabs show where one
- * is in view or an environment is pinned: picking one in the header that
- * runs no serving layer changes the view's content, not the frame, so the
- * other tabs stay one click away. Only "All installations" on a portal
- * without a serving layer drops the strip; a deep link there keeps the frame
- * and lets the view's own empty state speak. The Model cache tab is offered
+ * The figures show where a serving layer is in view. The tabs show where
+ * Model hosting is offered (`useModelHosting`: a serving layer, or
+ * cluster-manager reachable as the person) or an environment is pinned:
+ * picking one in the header that runs no serving layer changes the view's
+ * content, not the frame, so the other tabs stay one click away. Only "All
+ * installations" on a portal offering neither drops the strip; a deep link
+ * there keeps the frame and lets the view's own empty state speak. At "All
+ * installations" without a serving layer the strip waits for cluster-manager's
+ * server lists: drawn while they are read, it would flash on every portal
+ * without cluster-manager, so on one with it the strip appears a moment after
+ * the view instead. The Model cache tab is offered
  * where cluster-manager runs, and kept while it is the open view, so a
  * switch of environment never leaves a view without its tab.
  *
@@ -157,14 +163,15 @@ const ShellModelHosting = () => {
   const { pathname, search } = useLocation();
   const { scope } = useInstallationScope();
   const serving = useServing();
-  const servingLayer = hasServingLayer(serving);
-  const clusterManager = useClusterManagerAvailability(
-    serving.reachableInstallations ?? [],
-  );
+  const hosting = useModelHosting(serving);
+  const { servingLayer, clusterManager } = hosting;
+  const runsClusterManager = clusterManager.available.length > 0;
   const onCache = pathname.replace(/\/$/, '') === `${basePath}/cache`;
-  const offersCache =
-    clusterManager.available.length > 0 || clusterManager.isLoading || onCache;
-  const showTabs = servingLayer || scope !== ALL_INSTALLATIONS;
+  const offersCache = runsClusterManager || clusterManager.isLoading || onCache;
+  // Where Model hosting is offered (`useModelHosting`: a serving layer, or
+  // cluster-manager reachable as the person), the tabs are the way to its
+  // views at every scope. Not while that is still being read: see above.
+  const showTabs = hosting.available || scope !== ALL_INSTALLATIONS;
   // Every environment in view failed to read its served models: a "Models
   // running: 0" tile would claim what the warning below says was not seen.
   const servedModelsUnread = nothingCouldBeRead({
@@ -235,16 +242,15 @@ const ShellModelHosting = () => {
  * element type, which React keeps across a switch): the served-model rows
  * (with the auto-wiring that completes a serve) keep running whichever view
  * is open — a model served from Running models still gets its ModelConfig
- * while the user waits for it on the list.
+ * while the user waits for it on the list. The query client is the router's
+ * (`ModelsRouter`).
  */
 const ModelsProviders = ({ children }: { children: ReactNode }) => (
-  <QueryClientProvider>
-    <ModelConfigsProvider>
-      <ServingProvider>
-        <ServedModelRowsProvider>{children}</ServedModelRowsProvider>
-      </ServingProvider>
-    </ModelConfigsProvider>
-  </QueryClientProvider>
+  <ModelConfigsProvider>
+    <ServingProvider>
+      <ServedModelRowsProvider>{children}</ServedModelRowsProvider>
+    </ServingProvider>
+  </ModelConfigsProvider>
 );
 
 /** A view under the tab's providers. */
@@ -271,6 +277,9 @@ function ModelRoute({ children }: { children: ReactNode }) {
   if (reserved === 'new') {
     return <RouteRefRedirect routeRef={newModelRouteRef} />;
   }
+  if (reserved === 'credentials') {
+    return <IncompleteCredentialLink />;
+  }
   if (reserved === 'hosting') {
     const view = namespace.toLowerCase();
     return (
@@ -286,31 +295,56 @@ function ModelRoute({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * A credential link without its installation, namespace or request: agent-manager
+ * always sends all three, so one missing is a broken link, said as such
+ * rather than redirected away from.
+ */
+function IncompleteCredentialLink() {
+  const { customize, models } = useCustomizePaths();
+  return (
+    <ShellPage
+      title="Enter a credential"
+      breadcrumbs={[
+        { label: 'Customize', href: customize },
+        { label: 'Models', href: models },
+        { label: 'Enter a credential' },
+      ]}
+    >
+      <EmptyStateCard
+        title="This credential link is incomplete"
+        description="A model's credential link names the installation, the namespace and the request. This one lacks a part, so it cannot open a request. Open the link agent-manager gave again, or start again from the model on the Models tab."
+        actions={<ButtonLink href={models}>Go to Models</ButtonLink>}
+      />
+    </ShellPage>
+  );
+}
+
 /** An unknown step of a model's edit: the edit itself, its nearest parent. */
 const EditRedirect = () => <Navigate to="." replace />;
 
-/**
- * Content of the Customize screen's Models tab below its list (a descendant
- * `<Routes>`, so the paths here are relative — no leading slash — matching
- * AgentsRouter): one model's page at `<installation>/<namespace>/<name>` with
- * its tabs, its edit at `…/<name>/edit`, the create flow at `new` and Model
- * hosting at `hosting/…`, its create flows framing themselves. `new` and
- * `hosting` are reserved words: no installation can be named so.
- *
- * One `<Routes>`, so react-router ranks every path against the model page's
- * three dynamic segments: a static segment outranks a dynamic one at the
- * same depth, and `ModelRoute` keeps any deeper address under `new` or
- * `hosting` from reading as a model on an installation named so.
- * ModelsRouter.test.tsx holds the rankings.
- *
- * The model's page mounts only the agent-platform data it reads
- * (`CustomizeModelPage`); the views share the tab's providers. Both share one
- * query client, so the list's reads are cache hits on the page.
- */
-export const ModelsRouter = () => {
+/** The Models tab's routes, inside the router's providers. */
+function InstallationModelCredentials() {
+  const { installation = '', namespace = '', operation = '' } = useParams();
+  return (
+    <CredentialFormPage
+      key={`${installation}/${namespace}/${operation}`}
+      installation={installation}
+      namespace={namespace}
+      operation={operation}
+    />
+  );
+}
+
+const ModelsRoutes = () => {
   return (
     <Routes>
       <Route path="new" element={withProviders(<NewModelPage />)} />
+      <Route
+        path="credentials/:installation/:namespace/:operation"
+        element={withProviders(<InstallationModelCredentials />)}
+      />
+      <Route path="credentials/*" element={<IncompleteCredentialLink />} />
       <Route
         path="hosting/serve"
         element={withProviders(<ServeModelRoute />)}
@@ -355,5 +389,44 @@ export const ModelsRouter = () => {
       />
       <Route path="*" element={<ShellCustomizeRedirect tab="models" />} />
     </Routes>
+  );
+};
+
+/**
+ * Content of the Customize screen's Models tab below its list (a descendant
+ * `<Routes>`, so the paths here are relative — no leading slash — matching
+ * AgentsRouter): one model's page at `<installation>/<namespace>/<name>` with
+ * its tabs, its edit at `…/<name>/edit`, the create flow at `new` and Model
+ * hosting at `hosting/…`, its create flows framing themselves. `new` and
+ * `hosting` are reserved words: no installation can be named so.
+ *
+ * One `<Routes>`, so react-router ranks every path against the model page's
+ * three dynamic segments: a static segment outranks a dynamic one at the
+ * same depth, and `ModelRoute` keeps any deeper address under `new` or
+ * `hosting` from reading as a model on an installation named so.
+ * ModelsRouter.test.tsx holds the rankings.
+ *
+ * The model's page mounts only the agent-platform data it reads
+ * (`CustomizeModelPage`); the views share the tab's providers. Both share one
+ * query client, so the list's reads are cache hits on the page.
+ *
+ * Every route reads the organization directory (`list_organizations`): which
+ * namespace is an organization's decides where New model offers a model, that
+ * an organization's model is saved through agent-manager, and that the model
+ * page and Edit model edit a model agent-manager wrote there. Without it, the
+ * directory is empty and every organization's model reads as the platform's.
+ *
+ * Reads the Environment selector's shared scope (`SharedInstallationScope`),
+ * as the Customize page around it does.
+ */
+export const ModelsRouter = () => {
+  return (
+    <SharedInstallationScope>
+      <QueryClientProvider>
+        <OrganizationDirectoryProvider>
+          <ModelsRoutes />
+        </OrganizationDirectoryProvider>
+      </QueryClientProvider>
+    </SharedInstallationScope>
   );
 };

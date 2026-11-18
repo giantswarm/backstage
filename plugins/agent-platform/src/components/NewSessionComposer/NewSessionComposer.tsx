@@ -21,7 +21,8 @@ import ArrowForwardIcon from '@material-ui/icons/ArrowForward';
 import {
   ComposerFrame,
   matchesQuery,
-  SEARCH_MIN,
+  searchableIf,
+  useCompactLayout,
   useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
@@ -62,6 +63,9 @@ import { ToolchainPicker } from '../ToolchainPicker';
 import { toolchainEntry, type ToolchainPick } from '../../lib/toolchainManager';
 import { WorkspaceStartNotice } from '../WorkspaceStartNotice';
 
+/** What the picker says on the installation's default agent (`leadingAgentId`). */
+const DEFAULT_AGENT_TAG = 'Default';
+
 /** Rows the textarea shows before and after it expands. */
 const COLLAPSED_ROWS = 1;
 const EXPANDED_ROWS = 3;
@@ -73,6 +77,14 @@ const OPTION_AVATAR_SIZE: AvatarSize = 48;
 /** Id of the picker's last option, an action rather than an agent. */
 const FOOTER_ACTION_ID = 'action:picker-footer';
 
+/**
+ * The composer's width, in px, below which its controls row is compact: the
+ * agent, the workspace, the toolchains button with its caret and the start
+ * button no longer fit at their natural widths, and the toolchains button
+ * leaves out its caret.
+ */
+const CONTROLS_MIN_WIDTH = 460;
+
 const useStyles = makeStyles(theme => ({
   // bui sets a leading icon flush against the label, which suits a line icon but
   // not an avatar: a filled circle needs real space or the two read as one
@@ -83,10 +95,35 @@ const useStyles = makeStyles(theme => ({
   },
   // Kept compact rather than filling the row, matching the prototype: the prompt
   // is the hero and the knobs are secondary, which a full-width picker undoes.
-  // It still shrinks on a narrow viewport.
+  // At most 260px; at least its avatar and caret. How it shares a row is the
+  // row's: `controlsPickers` and `pickerRow`.
   agentSelect: {
-    maxWidth: 260,
+    // The avatar, the caret's box and bui's gaps.
+    minWidth: 82,
+    '& .bui-SelectTrigger': {
+      maxWidth: 260,
+    },
+  },
+  // The agent where there is no other to choose: its avatar and name, without
+  // a select's caret. At least its avatar and a few letters.
+  agentFixed: {
+    minWidth: 64,
+    display: 'flex',
+  },
+  agentFixedContent: {
+    display: 'flex',
+    alignItems: 'center',
     minWidth: 0,
+    maxWidth: 260,
+    minHeight: '2rem',
+    paddingInline: 'var(--bui-space-1) var(--bui-space-2)',
+    fontSize: 'var(--bui-font-size-3)',
+    color: 'var(--bui-fg-primary)',
+  },
+  agentFixedName: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   // The agent-first invitation, per the prototype's Main artboard: while no
   // agent is chosen the picker carries an accent ring and a soft glow, so the
@@ -108,9 +145,29 @@ const useStyles = makeStyles(theme => ({
     display: 'flex',
     alignItems: 'center',
     flexWrap: 'wrap',
+    // Each picker as wide as its name needs, so the row wraps rather than
+    // sharing. bui's Select is `width: 100%`.
+    '& > .bui-Select, & > $agentFixed': {
+      flex: '0 1 auto',
+      width: 'auto',
+    },
     gap: 'var(--bui-space-2)',
     paddingBottom: 'var(--bui-space-2)',
     borderBottom: '1px solid var(--bui-border-1)',
+  },
+  // The pickers in the box's one-line controls row: each as wide as its name
+  // needs, and short of room the agent and workspace share it equally, so
+  // both stay readable (giantswarm/giantswarm#39204). The toolchains button
+  // keeps its width.
+  controlsPickers: {
+    display: 'flex',
+    alignItems: 'center',
+    minWidth: 0,
+    '& > .bui-Select, & > $agentFixed': {
+      flex: '1 1 0',
+      width: 'auto',
+      maxWidth: 'max-content',
+    },
   },
   pickerLabel: {
     paddingInlineStart: 'var(--bui-space-1)',
@@ -203,6 +260,12 @@ export type NewSessionComposerProps = {
    * offer are skipped.
    */
   favoriteAgentIds?: string[];
+  /**
+   * The agent listed first, ahead of the Recent group, while the search box is
+   * empty: the installation's default agent. Only read with
+   * `groupByNamespace`; an id not on offer is skipped.
+   */
+  leadingAgentId?: string;
   /** Gives the picker a search box whatever the number of agents. */
   searchable?: boolean;
   /** What the picker says while no agent is selected. */
@@ -225,16 +288,31 @@ export type NewSessionComposerProps = {
    * choosing it runs the action and selects nothing.
    */
   pickerFooterAction?: NewSessionComposerPickerAction;
-  /** The prompt the field starts with. */
+  /** The prompt the field starts with, while {@link prompt} is not given. */
   initialPrompt?: string;
+  /**
+   * The prompt, held by the caller (`StartNewSession`, which keeps it as a
+   * draft); {@link onPromptChange} then receives every edit. Without it the
+   * composer holds the prompt itself, starting from {@link initialPrompt}.
+   */
+  prompt?: string;
   /** The field's placeholder for the selected agent, or for none. */
   promptPlaceholder?: (agent: AgentRow | undefined) => string;
   /** Rendered beside the agent picker. */
   renderPickerAccessory?: (agent: AgentRow | undefined) => ReactNode;
   /** Rendered under the composer. */
   renderFooter?: (context: NewSessionComposerFooterContext) => ReactNode;
-  /** Called with the selected agent whenever it changes. */
-  onSelectedAgentChange?: (agent: AgentRow | undefined) => void;
+  /**
+   * Called with the selected agent whenever it changes, and whether the person
+   * picked it (`byPerson`) or the composer preselected it (a default, a sole
+   * agent).
+   */
+  onSelectedAgentChange?: (
+    agent: AgentRow | undefined,
+    selection: { byPerson: boolean },
+  ) => void;
+  /** Called with the prompt on every edit the person makes. */
+  onPromptChange?: (prompt: string) => void;
   /** Some installations are still being queried, so more agents may appear. */
   isLoadingAgents?: boolean;
   /**
@@ -259,6 +337,21 @@ export type NewSessionComposerProps = {
    */
   collapsible?: boolean;
   autoFocus?: boolean;
+  /**
+   * Focuses the prompt field with the caret after its text, once, as soon as
+   * it takes input (on an agent-first surface: once an agent is selected).
+   * Not while the focus is on anything else, such as the open picker. For a
+   * prompt a link brought, which the person goes on writing; the caller turns
+   * it off once the person has done anything on the page.
+   */
+  focusPromptAtEnd?: boolean;
+  /**
+   * The `defaultAgent` is adopted when it arrives even after the person has
+   * typed, until they pick an agent: a link named it, so it is the agent the
+   * person came for, and typing while it loads must not leave another one
+   * selected.
+   */
+  defaultOverridesTyping?: boolean;
   isStarting: boolean;
   /**
    * Why the last start failed. An `AgentManagerNotConnectedError` (sessions
@@ -420,21 +513,26 @@ export function NewSessionComposer({
   groupByNamespace = false,
   recentAgentIds,
   favoriteAgentIds,
+  leadingAgentId,
   searchable,
   pickerPlaceholder = 'Select an agent',
   pickerPlacement = 'controls',
   pickerLabel,
   pickerFooterAction,
   initialPrompt,
+  prompt: controlledPrompt,
   promptPlaceholder,
   renderPickerAccessory,
   renderFooter,
   onSelectedAgentChange,
+  onPromptChange,
   isLoadingAgents = false,
   agentFirst = false,
   defaultAgent,
   collapsible = false,
   autoFocus = false,
+  focusPromptAtEnd = false,
+  defaultOverridesTyping = false,
   isStarting,
   error,
   acceptsImages = false,
@@ -443,10 +541,25 @@ export function NewSessionComposer({
 }: NewSessionComposerProps) {
   const classes = useStyles();
   const touch = useTouchInput();
+  const [formRef, isCompact] = useCompactLayout(CONTROLS_MIN_WIDTH);
   const buildAvatarUrl = useAgentAvatarUrl();
-  const [prompt, setPrompt] = useState(initialPrompt ?? '');
+  const [ownPrompt, setOwnPrompt] = useState(initialPrompt ?? '');
+  const prompt = controlledPrompt ?? ownPrompt;
+  // Whether the person has typed: a default that arrives later no longer
+  // replaces an agent they saw selected while typing.
+  const typed = useRef(false);
+  const setPrompt = (next: string) => {
+    typed.current = true;
+    if (controlledPrompt === undefined) {
+      setOwnPrompt(next);
+    }
+    onPromptChange?.(next);
+  };
   const [searchText, setSearchText] = useState('');
-  const [expanded, setExpanded] = useState(!collapsible);
+  const [isFocusExpanded, setExpanded] = useState(!collapsible);
+  // A box with a prompt in it (one it starts with, a kept draft) shows it
+  // whole, focused or not.
+  const expanded = isFocusExpanded || prompt !== '';
   const [agentMissing, setAgentMissing] = useState(false);
   const agentSelectRef = useRef<HTMLDivElement>(null);
   // bui's field forwards its ref to the wrapper, not the textarea.
@@ -464,7 +577,7 @@ export function NewSessionComposer({
    * A dropdown with a single item is not a choice, so it is preselected and the
    * control disabled. It still *names* the agent, which is worth keeping: the dialog
    * on an agent's page is about that agent, and seeing it named confirms the target
-   * before you commit a paid turn to it. `InstallationSelect` makes the same call
+   * before you commit a paid turn to it. `useEnvironmentField` makes the same call
    * for a one-installation fleet.
    */
   const soleAgent = offered.length === 1 ? offered[0] : undefined;
@@ -494,17 +607,32 @@ export function NewSessionComposer({
   // routinely absent at mount and shows up a moment later. Seeding once meant the
   // picker still said "Select an agent", defeating the whole point of remembering.
   //
-  // Render-phase, and gated on the user not having touched the picker, so this can
-  // never overwrite a deliberate choice — including a deliberate *clearing*.
+  // Render-phase, and gated on the user not having touched the picker or typed,
+  // so this can never overwrite a deliberate choice — including a deliberate
+  // *clearing* — or switch the agent under someone writing to it.
   const touched = useRef(false);
   const adopted = useRef(effectiveDefault?.id);
   if (
     !touched.current &&
+    // Typing keeps the agent shown; an empty picker still takes one.
+    (!typed.current || selectedId === undefined || defaultOverridesTyping) &&
     effectiveDefault &&
     adopted.current !== effectiveDefault.id
   ) {
     adopted.current = effectiveDefault.id;
     setSelectedId(effectiveDefault.id);
+    setPickedOptionId(undefined);
+  }
+
+  // A sole startable agent is no choice, unless unavailable ones are listed
+  // beside it with their reasons or the picker also holds its footer action.
+  // There is nothing to keep a person's earlier choice against, so it is the
+  // selection: a pick of an agent that has since gone, or a stale default,
+  // would leave a disabled picker with nothing selected.
+  const noChoice =
+    Boolean(soleAgent) && listed.length === 1 && !pickerFooterAction;
+  if (noChoice && soleAgent && selectedId !== soleAgent.id) {
+    setSelectedId(soleAgent.id);
     setPickedOptionId(undefined);
   }
 
@@ -557,6 +685,13 @@ export function NewSessionComposer({
   // The workspace the last Start asked for: what the notice above the box
   // speaks of, whatever is picked since.
   const [startedIn, setStartedIn] = useState<Workspace>();
+  // The refusal a sign-in to agent-manager has answered since: the caller
+  // keeps the start's error until the next start, so the alert that asked for
+  // the sign-in would otherwise stay up after it landed.
+  const [signedInPast, setSignedInPast] = useState<unknown>();
+  // What the last Start sent, so a sign-in runs again exactly the start it
+  // answered, never one the person did not press.
+  const lastStart = useRef<{ agentId: string; text: string }>();
 
   // The same deterministic avatar the sessions table and the agent's own page
   // show, so one agent looks the same everywhere. Seeded from the technical name,
@@ -589,7 +724,7 @@ export function NewSessionComposer({
   // installation too (`agentOptionLabel`): the group heading is only visible
   // in the open list, and the selected value must still tell an "SRE Agent"
   // on one installation from its namesake on another.
-  const isSearchable = searchable ?? listed.length > SEARCH_MIN;
+  const isSearchable = searchable ?? searchableIf(listed);
   const isSearching = searchText.trim() !== '';
   const installations = useMemo(
     () => [...new Set(listed.map(agent => agent.installation))],
@@ -626,27 +761,43 @@ export function NewSessionComposer({
     const toOption = (agent: AgentRow) => optionsByAgentId.get(agent.id)!;
 
     if (groupByNamespace) {
-      const recent = isSearching
-        ? []
-        : (shownRecentIds ?? [])
-            .map(id => listed.find(agent => agent.id === id))
-            .filter((agent): agent is AgentRow => agent !== undefined);
+      if (isSearching) {
+        return matched.map(toOption);
+      }
+      // Out of its namespace's group, so it is listed once there; Recent and
+      // Favorites keep it, as they keep every agent of theirs.
+      const leading = listed.find(agent => agent.id === leadingAgentId);
+      const rest = leading ? listed.filter(agent => agent !== leading) : listed;
+      const recent = (shownRecentIds ?? [])
+        .map(id => listed.find(agent => agent.id === id))
+        .filter((agent): agent is AgentRow => agent !== undefined);
       // Every favorite on offer, uncapped, in display order as Customize
       // lists them: the person's own shortlist matters more than keeping the
       // namespace groups near the top.
-      const favoriteIds = new Set(isSearching ? [] : shownFavoriteIds);
+      const favoriteIds = new Set(shownFavoriteIds);
       const favorites = listed.filter(agent => favoriteIds.has(agent.id));
-      const namespaces = [
-        ...new Set(listed.map(agent => agent.namespace)),
-      ].sort((a, b) => a.localeCompare(b));
+      // Said on the option itself: the installation's default agent.
+      const leadingOptions = leading
+        ? [
+            {
+              ...toOption(leading),
+              description: [DEFAULT_AGENT_TAG, toOption(leading).description]
+                .filter(Boolean)
+                .join(' · '),
+            },
+          ]
+        : [];
+      // Grouped or flat by every agent on offer, the leading one included.
       if (
-        isSearching ||
-        (recent.length === 0 &&
-          favorites.length === 0 &&
-          namespaces.length <= 1)
+        recent.length === 0 &&
+        favorites.length === 0 &&
+        new Set(listed.map(agent => agent.namespace)).size <= 1
       ) {
-        return matched.map(toOption);
+        return [...leadingOptions, ...rest.map(toOption)];
       }
+      const namespaces = [...new Set(rest.map(agent => agent.namespace))].sort(
+        (a, b) => a.localeCompare(b),
+      );
       const repeated = (title: string, prefix: string, group: AgentRow[]) =>
         group.length > 0
           ? [
@@ -660,11 +811,12 @@ export function NewSessionComposer({
             ]
           : [];
       return [
+        ...leadingOptions,
         ...repeated('Recent', RECENT_OPTION_PREFIX, recent),
         ...repeated('Favorites', FAVORITE_OPTION_PREFIX, favorites),
         ...namespaces.map(namespace => ({
           title: namespace,
-          options: listed
+          options: rest
             .filter(agent => agent.namespace === namespace)
             .map(toOption),
         })),
@@ -690,6 +842,7 @@ export function NewSessionComposer({
     multipleInstallations,
     optionsByAgentId,
     groupByNamespace,
+    leadingAgentId,
     shownRecentIds,
     shownFavoriteIds,
     isSearching,
@@ -727,9 +880,13 @@ export function NewSessionComposer({
       : selectedId;
   }, [options, pickedOptionId, selectedId]);
 
+  // Every pick counts, the agent already selected included, so the caller
+  // hears that the person chose it.
+  const [pickCount, setPickCount] = useState(0);
+  // `touched` is set before the pick's state update, so it is current here.
   useEffect(() => {
-    onSelectedAgentChange?.(selectedAgent);
-  }, [onSelectedAgentChange, selectedAgent]);
+    onSelectedAgentChange?.(selectedAgent, { byPerson: touched.current });
+  }, [onSelectedAgentChange, selectedAgent, pickCount]);
 
   const selectAgent = useCallback((agent: AgentRow) => {
     if (!isStartableAgent(agent)) {
@@ -738,11 +895,31 @@ export function NewSessionComposer({
     touched.current = true;
     setSelectedId(agent.id);
     setPickedOptionId(undefined);
+    setPickCount(count => count + 1);
   }, []);
 
   // Agent-first and nothing chosen yet: the prompt field and Start wait,
   // visibly, for the picker.
   const awaitingAgent = agentFirst && !selectedAgent;
+
+  const promptFocusSettled = useRef(false);
+  useEffect(() => {
+    if (!focusPromptAtEnd || awaitingAgent || promptFocusSettled.current) {
+      return;
+    }
+    const textarea = fieldRef.current?.querySelector('textarea');
+    if (!textarea || textarea.disabled) {
+      return;
+    }
+    promptFocusSettled.current = true;
+    const active = document.activeElement;
+    if (active && active !== document.body && active !== textarea) {
+      return;
+    }
+    textarea.focus();
+    const end = textarea.value.length;
+    textarea.setSelectionRange(end, end);
+  }, [focusPromptAtEnd, awaitingAgent]);
 
   // Read for the agent chosen, so one that cannot take images says so the
   // moment an image meets it — or the moment it is chosen with images already
@@ -783,6 +960,7 @@ export function NewSessionComposer({
       return;
     }
     setStartedIn(inWorkspace);
+    lastStart.current = { agentId: selectedAgent.id, text };
     onStart(
       selectedAgent,
       text,
@@ -885,68 +1063,76 @@ export function NewSessionComposer({
     />
   );
 
+  // Once every agent is read, a sole agent is named rather than offered;
+  // while more may come, it stays a disabled picker.
+  const fixedAgent = noChoice && !isLoadingAgents ? selectedAgent : undefined;
+
   const picker = (
     <>
-      <Select
-        ref={agentSelectRef}
-        aria-label="Agent"
-        className={
-          awaitingAgent
-            ? `${classes.agentSelect} ${classes.agentSelectAttention}`
-            : classes.agentSelect
-        }
-        isInvalid={showAgentMissing}
-        // `leadingIcon` only reaches the options; the trigger has its own
-        // slot, and without this the chosen agent loses the avatar it had
-        // in the list.
-        icon={selectedAgent ? renderAvatar(selectedAgent) : undefined}
-        options={pickerOptions}
-        selectedKey={selectedKey}
-        onSelectionChange={key => {
-          setSearchText('');
-          const id = key ? String(key) : undefined;
-          if (id === FOOTER_ACTION_ID) {
-            pickerFooterAction?.onAction();
-            return;
+      {fixedAgent ? (
+        <div className={classes.agentFixed} role="group" aria-label="Agent">
+          <div className={classes.agentFixedContent} title={fixedAgent.name}>
+            {renderAvatar(fixedAgent)}
+            <span className={classes.agentFixedName}>{fixedAgent.name}</span>
+          </div>
+        </div>
+      ) : (
+        <Select
+          ref={agentSelectRef}
+          aria-label="Agent"
+          className={
+            awaitingAgent
+              ? `${classes.agentSelect} ${classes.agentSelectAttention}`
+              : classes.agentSelect
           }
-          touched.current = true;
-          setSelectedId(id && agentIdOfOption(id));
-          setPickedOptionId(id);
-        }}
-        onOpenChange={isOpen => {
-          setOpenedWith(
-            isOpen
-              ? { recent: recentAgentIds, favorites: favoriteAgentIds }
-              : undefined,
-          );
-          if (!isOpen) {
+          isInvalid={showAgentMissing}
+          // `leadingIcon` only reaches the options; the trigger has its own
+          // slot, and without this the chosen agent loses the avatar it had
+          // in the list.
+          icon={selectedAgent ? renderAvatar(selectedAgent) : undefined}
+          options={pickerOptions}
+          selectedKey={selectedKey}
+          onSelectionChange={key => {
             setSearchText('');
-          }
-        }}
-        placeholder={pickerPlaceholder}
-        // The search text is held here so the options can be the matches,
-        // agents found by name first, and so the Recent and Favorites groups
-        // can step aside while a search is typed. Without `groupByNamespace`
-        // the box keeps bui's own placeholder.
-        {...(isSearchable && {
-          search: {
-            inputValue: searchText,
-            onInputChange: setSearchText,
-            placeholder: groupByNamespace
-              ? `Search ${listed.length} agents`
-              : undefined,
-            // `matched` already is the search's result.
-            filter: () => true,
-          },
-        })}
-        // A sole startable agent is no choice, unless unavailable ones
-        // are listed beside it with their reasons or the picker also
-        // holds its footer action.
-        isDisabled={
-          isStarting ||
-          (Boolean(soleAgent) && listed.length === 1 && !pickerFooterAction)
-        }
-      />
+            const id = key ? String(key) : undefined;
+            if (id === FOOTER_ACTION_ID) {
+              pickerFooterAction?.onAction();
+              return;
+            }
+            touched.current = true;
+            setSelectedId(id && agentIdOfOption(id));
+            setPickedOptionId(id);
+            setPickCount(count => count + 1);
+          }}
+          onOpenChange={isOpen => {
+            setOpenedWith(
+              isOpen
+                ? { recent: recentAgentIds, favorites: favoriteAgentIds }
+                : undefined,
+            );
+            if (!isOpen) {
+              setSearchText('');
+            }
+          }}
+          placeholder={pickerPlaceholder}
+          // The search text is held here so the options can be the matches,
+          // agents found by name first, and so the Recent and Favorites groups
+          // can step aside while a search is typed. Without `groupByNamespace`
+          // the box keeps bui's own placeholder.
+          {...(isSearchable && {
+            search: {
+              inputValue: searchText,
+              onInputChange: setSearchText,
+              placeholder: groupByNamespace
+                ? `Search ${listed.length} agents`
+                : undefined,
+              // `matched` already is the search's result.
+              filter: () => true,
+            },
+          })}
+          isDisabled={isStarting || noChoice}
+        />
+      )}
       {offersWorkspaces && selectedAgent && (
         <WorkspacePicker
           key={selectedAgent.id}
@@ -954,7 +1140,6 @@ export function NewSessionComposer({
           value={workspace}
           onChange={next => chooseWorkspace(selectedAgent.id, next)}
           isDisabled={isStarting}
-          showLabel={pickerOnTop && Boolean(pickerLabel)}
         />
       )}
       {offersWorkspaces && selectedAgent && (
@@ -966,6 +1151,7 @@ export function NewSessionComposer({
             setToolchainChoice({ agentId: selectedAgent.id, picks })
           }
           isDisabled={isStarting}
+          isCompact={isCompact}
         />
       )}
       {renderPickerAccessory?.(selectedAgent)}
@@ -993,25 +1179,43 @@ export function NewSessionComposer({
     Boolean(startedIn) && error instanceof WorkspaceManagerError;
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form ref={formRef} onSubmit={handleSubmit}>
       <Flex direction="column" gap="2">
         {workspaceNotice}
-        {error instanceof AgentManagerNotConnectedError && selectedAgent ? (
-          <ConnectAgentManagerAlert
-            installation={selectedAgent.installation}
-            message={error.message}
-            action="Sessions are started"
-          />
-        ) : (
-          error &&
-          !workspaceSaysError && (
-            <Alert
-              status="danger"
-              title="Session not started"
-              description={typeof error === 'string' ? error : error.message}
-            />
-          )
-        )}
+        {error instanceof AgentManagerNotConnectedError && selectedAgent
+          ? error !== signedInPast && (
+              <ConnectAgentManagerAlert
+                installation={selectedAgent.installation}
+                message={error.message}
+                signInRequired={error.signInRequired}
+                action="Sessions are started"
+                // Signed in: the alert goes. Where the sign-in was made in
+                // this tab, the start it answered goes again, as after a
+                // workspace's sign-in, while the agent and the prompt are
+                // the ones refused. A sign-in made in another tab only clears
+                // the alert here: Start is the person's to press.
+                onSignedIn={({ here }) => {
+                  setSignedInPast(error);
+                  const refused = lastStart.current;
+                  if (
+                    here &&
+                    refused &&
+                    refused.agentId === selectedAgent.id &&
+                    refused.text === text
+                  ) {
+                    submit({ workspace: startedIn });
+                  }
+                }}
+              />
+            )
+          : error &&
+            !workspaceSaysError && (
+              <Alert
+                status="danger"
+                title="Session not started"
+                description={typeof error === 'string' ? error : error.message}
+              />
+            )}
         {modelWarning && selectedAgent && (
           <Alert
             status="warning"
@@ -1063,7 +1267,11 @@ export function NewSessionComposer({
                 field
               )
             }
-            leading={pickerOnTop ? undefined : picker}
+            leading={
+              pickerOnTop ? undefined : (
+                <div className={classes.controlsPickers}>{picker}</div>
+              )
+            }
             trailing={
               <>
                 <ButtonIcon

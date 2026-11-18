@@ -211,12 +211,27 @@ export function markEarlierRevisions(
 }
 
 /** Sort key for a timestamp, placing unknown values last in either direction. */
-function timestampValue(value: string | undefined): number | undefined {
+/** An ISO timestamp as epoch ms; undefined when absent or unparseable. */
+export function timestampValue(value: string | undefined): number | undefined {
   if (!value) {
     return undefined;
   }
   const parsed = Date.parse(value);
   return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+/**
+ * Compares two epoch-ms times newest first, an unknown time last whatever
+ * the direction; 0 for equal times, for the caller's tiebreak.
+ */
+export function newestFirst(
+  a: number | undefined,
+  b: number | undefined,
+): number {
+  if (a === b) return 0;
+  if (a === undefined) return 1;
+  if (b === undefined) return -1;
+  return b - a;
 }
 
 /**
@@ -309,15 +324,10 @@ export function sortSessionRows(
     if (byHome !== 0) {
       return byHome;
     }
-    const aTime = timestampValue(a.createdAt);
-    const bTime = timestampValue(b.createdAt);
-    if (aTime !== bTime) {
-      // Rows with no timestamp sort last regardless of direction.
-      if (aTime === undefined) return 1;
-      if (bTime === undefined) return -1;
-      return bTime - aTime;
-    }
-    return a.title.localeCompare(b.title);
+    return (
+      newestFirst(timestampValue(a.createdAt), timestampValue(b.createdAt)) ||
+      a.title.localeCompare(b.title)
+    );
   });
 }
 

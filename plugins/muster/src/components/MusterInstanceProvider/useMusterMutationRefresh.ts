@@ -20,7 +20,8 @@ const STATUS_FOLLOW_UP_MS = 2_500;
  *
  * Refreshes both read paths a mutation can invalidate: the CRD lists behind
  * the provider (`retry`) and the aggregator's runtime server list
- * (`['muster', 'servers', installation]`, used by the "Runtime (live)" block).
+ * (`['muster', 'servers', installation]`, behind the connector page's
+ * capability counts and the wizard's test step).
  * Fires once immediately and once after {@link STATUS_FOLLOW_UP_MS}.
  *
  * Tolerates a missing MusterInstanceProvider (unit tests render the dialogs

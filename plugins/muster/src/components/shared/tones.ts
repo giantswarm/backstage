@@ -1,4 +1,7 @@
-import { Tone } from '@giantswarm/backstage-plugin-ui-react';
+import type {
+  StatusDotTone,
+  Tone,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { MCPServerSeverity } from '../../lib/k8s';
 
 /**
@@ -26,3 +29,11 @@ export function severityTone(severity: MCPServerSeverity): Tone {
       return 'neutral';
   }
 }
+
+/** The MCPServer severity as a `StatusDot` tone. */
+export const SEVERITY_DOT_TONE: Record<MCPServerSeverity, StatusDotTone> = {
+  ok: 'success',
+  warning: 'warning',
+  error: 'danger',
+  unknown: 'neutral',
+};

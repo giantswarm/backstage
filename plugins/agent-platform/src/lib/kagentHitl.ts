@@ -6,8 +6,8 @@ import {
   describeSessionState,
   findNewestStatefulTaskIndex,
   parsePart,
+  readProposedCall,
   readUrlElicitationRequest,
-  unwrapProxiedCall,
   type UrlElicitationRequest,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 
@@ -197,18 +197,12 @@ export function readPendingConfirmation(
         continue;
       }
 
-      const proposed = (record.args as { originalFunctionCall?: unknown })
-        ?.originalFunctionCall;
-      const proposedRecord =
-        proposed && typeof proposed === 'object'
-          ? (proposed as { name?: unknown; args?: unknown })
-          : undefined;
-      const toolName =
-        typeof proposedRecord?.name === 'string'
-          ? proposedRecord.name
-          : undefined;
+      // Looked through muster's `call_tool`, so the card names the tool that
+      // would actually run and shows the arguments Allow would send.
+      const proposed = readProposedCall(record.args);
+      const toolName = proposed?.name;
       const isQuestion = toolName === ASK_USER_TOOL_NAME;
-      const questions = isQuestion ? readQuestions(proposedRecord?.args) : [];
+      const questions = isQuestion ? readQuestions(proposed?.args) : [];
 
       // An `ask_user` whose questions we could not read is **not** answerable, and
       // must not degrade into the approval UI. `readQuestions` returns `[]` for any
@@ -226,20 +220,12 @@ export function readPendingConfirmation(
         return { taskId, asks: 'input', toolName, questions, ...askedIn };
       }
 
-      // The proposed call, looked through muster's `call_tool` wrapper the same
-      // way the timeline looks through executed calls — so the approval card can
-      // say which tool would actually run and via which connector, and show the
-      // arguments Allow would send.
-      const effective = unwrapProxiedCall({
-        name: toolName,
-        args: proposedRecord?.args,
-      });
       return {
         taskId,
         asks: 'approval',
-        toolName: effective.name ?? toolName,
-        ...(effective.via !== undefined && { via: effective.via }),
-        ...(effective.args !== undefined && { args: effective.args }),
+        toolName,
+        ...(proposed?.via !== undefined && { via: proposed.via }),
+        ...(proposed?.args !== undefined && { args: proposed.args }),
         questions,
         ...askedIn,
       };

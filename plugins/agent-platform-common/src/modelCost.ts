@@ -27,6 +27,8 @@ export const MODEL_COST_MAX_DAYS = 90;
  * - `no-spend`: the gateway records users, but priced none of this person's
  *   calls in the window — no calls through it, or only unpriced models.
  * - `unreadable`: Mimir did not answer just now.
+ * - `older-data-unavailable`: Mimir has no healthy store-gateway just now, so
+ *   it cannot read the window's older data; usually back within minutes.
  */
 export type ModelCostUnavailableReason =
   | 'identity-unreadable'
@@ -34,7 +36,8 @@ export type ModelCostUnavailableReason =
   | 'no-mimir'
   | 'not-recorded'
   | 'no-spend'
-  | 'unreadable';
+  | 'unreadable'
+  | 'older-data-unavailable';
 
 /** One agent's share of the person's cost. */
 export type ModelCostAgentEntry = {

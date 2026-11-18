@@ -101,6 +101,8 @@ export type ModelRow = {
   isStale?: boolean;
   /** The in-cluster served model behind `endpoint`, when known. */
   servedBy?: ModelServedBy;
+  /** Its namespace's default model (`defaultModelIds`). */
+  isDefault?: boolean;
 };
 
 export function toModelRow(
@@ -209,6 +211,11 @@ function getColumnConfig(
                 title={row.displayName}
               >
                 {row.displayName}
+              </Text>
+            )}
+            {row.isDefault && (
+              <Text variant="body-small" color="secondary">
+                Default
               </Text>
             )}
             {row.displayName !== row.name && (

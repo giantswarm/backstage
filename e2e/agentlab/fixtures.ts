@@ -38,6 +38,26 @@ export class DexRefusedLogin extends Error {
 }
 
 /**
+ * Clicks `trigger`, a sign-in that opens a page muster issued, and agrees to
+ * open it in the external URL consent dialog; resolves the tab it opens in.
+ * The dialog names the page's address before anything opens.
+ */
+export async function openThroughConsent(
+  page: Page,
+  trigger: Locator,
+): Promise<Page> {
+  await trigger.click();
+  const consent = page.getByRole('dialog', { name: /^Open a page for / });
+  await expect(
+    consent,
+    'the sign-in page waits for the person to agree',
+  ).toBeVisible({ timeout: 60_000 });
+  const popup = page.waitForEvent('popup');
+  await consent.getByRole('button', { name: 'Open page in new tab' }).click();
+  return popup;
+}
+
+/**
  * Submits the lab Dex's login form in the popup the portal opened, with the
  * fixture password unless the test passes another (the wrong-password case),
  * and waits for Dex to send the popup on: the portal's own sign-in closes it
@@ -46,12 +66,82 @@ export class DexRefusedLogin extends Error {
  * Dex when this resolves; a popup still open is closed, the opener has what
  * it needs by then. A refusal throws {@link DexRefusedLogin} as soon as Dex
  * renders it: Dex answers the form with its login page again, naming it.
+ *
+ * A per-server sign-in can pass Dex twice: muster's OAuth proxy first asks
+ * who the person is (its own login), then the connector's authorization
+ * server, the lab Dex again, asks for its login. The hops between are
+ * server-side redirects, so the popup goes from one login form straight to
+ * the next; that one is answered too.
+ *
+ * The popup must land on Dex. With `mayBeGranted`, a sign-in the person may
+ * already hold a grant for may skip Dex instead: the popup closes or lands on
+ * muster's completion page, and this returns without a login.
  */
 export async function completeDexLogin(
   dex: Page,
   user: LabUser,
   password: string = lab.password,
+  { mayBeGranted = false }: { mayBeGranted?: boolean } = {},
 ): Promise<void> {
+  // The first form may take a moment (the popup opens blank and is sent
+  // through muster first); a second one follows its submission at once.
+  const first = !mayBeGranted || (await nextDexLogin(dex, 15_000)) === 'login';
+  // Only a submission Dex answered with another login form has one to wait
+  // for: a single login goes straight to closing the popup.
+  if (first && (await submitDexLogin(dex, user, password)) === 'next') {
+    if ((await nextDexLogin(dex, 5_000)) === 'login') {
+      await submitDexLogin(dex, user, password);
+    }
+  }
+  if (!dex.isClosed()) {
+    // A completion page: give it a moment in case it closes itself, then
+    // close it the way a person would.
+    await Promise.race([
+      dex.waitForEvent('close').catch(() => undefined),
+      new Promise(resolve => setTimeout(resolve, 3000)),
+    ]);
+    if (!dex.isClosed()) {
+      await dex.close();
+    }
+  }
+}
+
+/**
+ * Whether the popup shows the lab Dex's login form within `timeout`, or
+ * closed or stayed elsewhere (a completion page) instead.
+ */
+async function nextDexLogin(
+  dex: Page,
+  timeout: number,
+): Promise<'login' | 'closed' | 'elsewhere'> {
+  if (dex.isClosed()) {
+    return 'closed';
+  }
+  const closed = dex.waitForEvent('close', { timeout }).then(
+    () => 'closed' as const,
+    () => 'elsewhere' as const,
+  );
+  const login = dex
+    .locator('input[name="login"]')
+    .waitFor({ state: 'visible', timeout })
+    .then(
+      () => (dex.url().includes('/dex/') ? ('login' as const) : 'elsewhere'),
+      () => 'elsewhere' as const,
+    );
+  return Promise.race([closed, login]);
+}
+
+/**
+ * One submission of the lab Dex's login form; see {@link completeDexLogin}.
+ * `done` once the popup closes or leaves Dex, `next` when Dex shows a fresh
+ * login form (the next login of a per-server sign-in); a form naming the
+ * refusal throws.
+ */
+async function submitDexLogin(
+  dex: Page,
+  user: LabUser,
+  password: string,
+): Promise<'done' | 'next'> {
   await dex.waitForLoadState('domcontentloaded');
   await expect(dex, 'the popup lands on the lab Dex').toHaveURL(/\/dex\//);
   await dex.locator('input[name="login"]').fill(user.email);
@@ -70,14 +160,25 @@ export async function completeDexLogin(
       () => false,
     );
   // The page Dex renders for the submitted form: an error the popup showed
-  // before (a typo's) is gone from it unless Dex refused this login too.
+  // before (a typo's) is gone from it unless Dex refused this login too. A
+  // login form without that error is the next login, reached through
+  // server-side redirects that never commit a page outside Dex.
   const refusal = dex.getByText(/invalid .* and password/i);
-  const refused = dex.waitForEvent('load', { timeout: 60_000 }).then(
-    async () =>
-      !dex.isClosed() &&
-      dex.url().includes('/dex/') &&
-      (await refusal.isVisible().catch(() => false)),
-    () => false,
+  const loaded = dex.waitForEvent('load', { timeout: 60_000 }).then(
+    async () => {
+      if (dex.isClosed() || !dex.url().includes('/dex/')) {
+        return undefined;
+      }
+      if (await refusal.isVisible().catch(() => false)) {
+        return 'refused' as const;
+      }
+      const nextForm = await dex
+        .locator('input[name="login"]')
+        .isVisible()
+        .catch(() => false);
+      return nextForm ? ('next' as const) : undefined;
+    },
+    () => undefined,
   );
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timedOut = new Promise<'timeout'>(resolve => {
@@ -87,21 +188,23 @@ export async function completeDexLogin(
   const outcome = await Promise.race([
     settled(closed, 'done'),
     settled(leftDex, 'done'),
-    settled(refused, 'refused'),
+    settled(
+      loaded.then(page => page === 'refused'),
+      'refused',
+    ),
+    settled(
+      loaded.then(page => page === 'next'),
+      'next',
+    ),
     timedOut,
   ]).finally(() => clearTimeout(timer));
   if (outcome === 'refused') {
     throw new DexRefusedLogin(user.email, await refusal.innerText());
   }
-  expect(outcome, 'Dex accepted the login and sent the popup on').toBe('done');
-  if (!dex.isClosed()) {
-    // A completion page: give it a moment in case it closes itself, then
-    // close it the way a person would.
-    await Promise.race([closed, new Promise(r => setTimeout(r, 3000))]);
-    if (!dex.isClosed()) {
-      await dex.close();
-    }
-  }
+  expect(outcome, 'Dex accepted the login and sent the popup on').not.toBe(
+    'timeout',
+  );
+  return outcome === 'next' ? 'next' : 'done';
 }
 
 /**
@@ -213,9 +316,20 @@ export async function gotoApp(page: Page, path: string): Promise<void> {
  * the portal renders signed in. Fails with the page's state when the card is
  * not offered (the app did not load) or the popup never closes (Dex refused,
  * or the handler page did not hand the session to the opener).
+ *
+ * With `AGENTLAB_E2E_AUTH=guest` (a local dev server, `AuthMode` in `lab.ts`) the
+ * app signs the guest in by itself: the page loads and renders signed in, as
+ * the guest whichever `user` is asked for.
  */
 export async function signIn(page: Page, user: LabUser): Promise<void> {
   await gotoApp(page, '/');
+  if (lab.auth === 'guest') {
+    await expect(
+      portalChrome(page),
+      'the dev server signs the guest in and renders the portal',
+    ).toBeAttached({ timeout: 60_000 });
+    return;
+  }
   // The classic card's "Sign In" and the shell card's "Sign in with …" alike
   // (a case-insensitive substring).
   const card = page.getByRole('button', { name: 'Sign In' });
@@ -493,7 +607,18 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       await signIn(page, user);
       return page;
     });
-    await Promise.all(contexts.map(context => context.close()));
+    // A route handler still awaiting `route.fetch` when its context closes
+    // throws into the test that already passed.
+    await Promise.all(
+      contexts.map(async context => {
+        await Promise.all(
+          context
+            .pages()
+            .map(page => page.unrouteAll({ behavior: 'ignoreErrors' })),
+        );
+        await context.close();
+      }),
+    );
   },
 });
 
@@ -646,7 +771,7 @@ export async function openHome(admin: Page): Promise<void> {
 /**
  * The Notification inbox's toasts a fresh tab meets: the one summary of what
  * was unread at the tab's first read ("2 notifications need your attention")
- * and a new MCP sign-in row's ("1 MCP server needs your sign-in"). While a
+ * and a new MCP sign-in row's ("1 connector needs your sign-in"). While a
  * connector waits for the person's sign-in (the lab's `lab-oauth-fixture`
  * does), a fresh tab raises one at the foot of the page. It stands clear of
  * the bottom bar, a docked composer and a wizard's footer, but covers the foot
@@ -692,17 +817,22 @@ async function restoreInboxToasts(page: Page): Promise<void> {
 
 /**
  * Creates an agent in the New agent wizard the way a person does, as the
- * page's user: Details (no skills, no tools, the lab's default ModelConfig
- * unless `model` names another: the model radio's name, which is the
- * model's display name where it has one),
+ * page's user: Details (no skills, no tools, the model the wizard preselects,
+ * the place's default ModelConfig, unless `model` names another: the model
+ * radio's name, which is the model's display name where it has one),
  * agent-manager's dry run on Review, then Create agent. Resolves on the agent's
  * detail page and returns its path; from then on the agent exists and the
  * caller deletes it with {@link deleteAgentInPortal}, whatever happens next.
  *
- * Where the person may create agents in several places (agent-manager's
- * `get_info` `namespaces.managed`), the wizard offers no model until one is
- * picked: `options.organization`, by its name, or else Platform. The only
- * place is picked by the wizard itself.
+ * Where the person may create agents in several places, the wizard picks
+ * `options.organization`, by its name, or else Platform, or, where Platform
+ * is not offered, the lab's organization ({@link lab.organization}). The
+ * places are `get_info`'s `namespaces.managed` (the Owner field: Platform
+ * beside the organizations), or, where agent-manager serves the organization
+ * tools, the organizations the person belongs to (the Organization field: no
+ * Platform). The only place is picked by the wizard itself. A person who
+ * belongs to no organization cannot create, and the wizard says so: that
+ * fails at once.
  *
  * `options.harness` picks that Runtime card under More options instead of the
  * platform Harness; `options.onStep` runs on Details (once the pick is made),
@@ -748,45 +878,61 @@ export async function createAgentInWizard(
   await page
     .getByRole('textbox', { name: 'Instructions' })
     .fill('You are a test agent. Answer with exactly what you are asked for.');
-  const model = page
-    .getByRole('radiogroup', { name: 'Model' })
-    .getByRole('radio', { name: options.model ?? /default-model-config/ });
-  // Platform beside the organizations, or the organizations alone.
-  const kinds = page.getByRole('radiogroup', {
-    name: 'Who the agent belongs to',
-  });
-  // The Select's name is its value and its label: "Select an option
-  // Organization".
+  const models = page.getByRole('radiogroup', { name: 'Model' });
+  // Platform beside the organizations: the Owner radio group, whose
+  // Organization radio brings the organization dropdown. The organizations
+  // alone: that dropdown, as the Owner or Organization field. A Select's name
+  // is its value and its label: "acme Organization", "acme Owner".
+  const owner = page.getByRole('radiogroup', { name: 'Owner' });
   const organizationPicker = page.getByRole('button', {
-    name: /\bOrganization$/,
+    name: /\b(Organization|Owner)$/,
   });
-  await expect(model.or(kinds).or(organizationPicker).first()).toBeVisible({
-    timeout: 60_000,
-  });
-  // Until agent-manager's get_info answers, the models are offered before the
-  // places are known: decide on the place only once they are.
+  // The only place, stated in a line: under More options (opened above), or
+  // under an Environment dropdown in the main form.
+  const soleOwner = page.getByText(
+    /^(Owner: .+, the only one you may create agents for|Organization: .+, the only organization you belong to) on .+\.$/,
+  );
+  const noOrganization = page.getByText(
+    /^You belong to no organization on .+$/,
+  );
+  // The field shows once agent-manager's get_info (and, for organizations,
+  // list_my_organizations) answers; the models may be offered before. Decide
+  // on the owner only once it is known.
   await expect(
-    page.getByText('Reading where you may create agents…'),
-  ).toBeHidden({ timeout: 60_000 });
-  if (await kinds.isVisible()) {
-    await kinds
+    owner.or(organizationPicker).or(soleOwner).or(noOrganization).first(),
+  ).toBeVisible({ timeout: 60_000 });
+  if (await noOrganization.isVisible()) {
+    throw new Error(
+      `${await noOrganization.innerText()}: the wizard offers no place to create the agent in: no AgentPlatformOrganization of the lab binds the user (agent-manager's list_my_organizations)`,
+    );
+  }
+  if (await owner.isVisible()) {
+    await owner
       .getByRole('radio', {
         name: options.organization ? /^Organization/ : /^Platform/,
       })
       .check();
   }
-  if (await organizationPicker.isVisible()) {
-    if (!options.organization) {
-      throw new Error(
-        'the wizard offers organizations only, no Platform: pass options.organization',
-      );
-    }
+  // Without Platform on offer, the lab's own organization: other runs on a
+  // shared lab may add organizations the admin belongs to, which sort before
+  // it.
+  const organization =
+    options.organization ??
+    (!(await owner.isVisible()) && (await organizationPicker.isVisible())
+      ? lab.organization.name
+      : undefined);
+  if (organization && (await organizationPicker.isVisible())) {
     await organizationPicker.click();
-    await page
-      .getByRole('option', { name: options.organization, exact: true })
-      .click();
+    await page.getByRole('option', { name: organization, exact: true }).click();
   }
-  await model.check();
+  if (options.model) {
+    await models.getByRole('radio', { name: options.model }).check();
+  } else {
+    await expect(
+      models.getByRole('radio', { checked: true }),
+      'the wizard preselects the default model of the place picked',
+    ).toHaveCount(1, { timeout: 60_000 });
+  }
   if (options.harness) {
     await page
       .getByRole('radiogroup', { name: 'Runtime' })
@@ -1320,4 +1466,14 @@ export async function extensionDisabled(
         (entry as Record<string, unknown>)[id] === false,
     );
   }, extension);
+}
+
+/** New session's prompt field. */
+export function newSessionPrompt(page: Page): Locator {
+  return page.getByRole('textbox', { name: 'Prompt' });
+}
+
+/** New session's agent picker: the trigger of its listbox. */
+export function newSessionAgentPicker(page: Page): Locator {
+  return page.locator('button[aria-haspopup="listbox"]').first();
 }

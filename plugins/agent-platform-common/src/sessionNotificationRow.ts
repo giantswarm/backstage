@@ -7,9 +7,10 @@ import {
 import { SessionStateEntry } from './kagent/kagentSessionStates';
 
 /**
- * How much a person wants to hear about one session: **Default** (Waiting and
- * Failed), **All activity** (adds Turn finished) or **Muted** (nothing). A
- * session with no stored level is at `default`.
+ * How much a person wants to hear about one session: `default`, labelled
+ * **When action is required** (Waiting and Failed), **All activity** (adds
+ * Turn finished) or **Muted** (nothing). A session with no stored level is at
+ * `default`.
  */
 export const NOTIFICATION_LEVELS = ['default', 'all', 'muted'] as const;
 

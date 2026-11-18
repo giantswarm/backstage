@@ -165,29 +165,18 @@ describe('getTelemetryPageViewPayload', () => {
       });
     });
 
-    it.each(['infrastructure', 'internal'])(
-      'reports the Connectors tab’s %s sub-tab as its subview',
+    it.each(['infrastructure', 'families', 'internal'])(
+      'reports the retired %s sub-tab without a subview, as it redirects',
       sub => {
         expect(
           getTelemetryPageViewPayload(`/customize/connectors/${sub}`),
         ).toEqual({
           page: 'Customize',
           view: 'connectors',
-          subview: sub,
-          path: `/customize/connectors/${sub}`,
+          path: '/customize/connectors/*',
         });
       },
     );
-
-    it('reports the retired Families path without a subview, as it redirects', () => {
-      expect(
-        getTelemetryPageViewPayload('/customize/connectors/families'),
-      ).toEqual({
-        page: 'Customize',
-        view: 'connectors',
-        path: '/customize/connectors/*',
-      });
-    });
 
     it('reports an unknown Customize tab without a view or its text', () => {
       expect(getTelemetryPageViewPayload('/customize/acme')).toEqual({
@@ -314,6 +303,32 @@ describe('getTelemetryPageViewPayload', () => {
     ['/profile', { page: 'Profile' }, '/profile'],
     ['/profile/', { page: 'Profile' }, '/profile'],
     ['/profile/whatever', { page: 'Profile' }, '/profile/*'],
+    ['/organizations', { page: 'Organizations' }, '/organizations'],
+    [
+      '/organizations/acme-prod/org-acme/payments',
+      { page: 'Organization detail' },
+      '/organizations/:installation/:parent/:name',
+    ],
+    [
+      '/organizations/acme-prod/org-acme/payments/models',
+      { page: 'Organization detail', view: 'models' },
+      '/organizations/:installation/:parent/:name/models',
+    ],
+    [
+      `/organizations/acme-prod/org-acme/payments/credentials/${'a1'.repeat(24)}`,
+      { page: 'Organization credential form' },
+      '/organizations/:installation/:parent/:name/credentials/:operation',
+    ],
+    [
+      '/organizations/acme-prod/org-acme/payments/whatever',
+      { page: 'Organization detail', view: 'redirect' },
+      '/organizations/:installation/:parent/:name/*',
+    ],
+    [
+      '/organizations/acme-prod',
+      { page: 'Organizations redirect' },
+      '/organizations/*',
+    ],
     ['/sessions/', { page: 'Sessions index' }, '/sessions'],
     ['/usage/', { page: 'Usage', view: 'overview' }, '/usage'],
     [
@@ -432,7 +447,8 @@ describe('getTelemetryPageViewPayload', () => {
       { page: 'Connector', view: 'redirect' },
       '/customize/connectors/:installation/:server/*',
     ],
-    // An installation named like a sub-tab: two segments name a connector.
+    // An installation named like a retired sub-tab: two segments name a
+    // connector.
     [
       '/customize/connectors/infrastructure/x',
       { page: 'Connector', view: 'tools' },
@@ -672,13 +688,8 @@ describe('getTelemetryPageViewPayload', () => {
     ['/create/', { page: 'Software Templates index', path: '/create' }],
     ['/customize/', { page: 'Customize', path: '/customize' }],
     [
-      '/customize/connectors/infrastructure/',
-      {
-        page: 'Customize',
-        view: 'connectors',
-        subview: 'infrastructure',
-        path: '/customize/connectors/infrastructure',
-      },
+      '/customize/connectors/',
+      { page: 'Customize', view: 'connectors', path: '/customize/connectors' },
     ],
     [
       '/customize/agents/acme-prod/team-payments/invoice-helper/tools/',
@@ -836,6 +847,8 @@ describe('getTelemetryPageViewPayload', () => {
       '/settings',
       '/settings/general',
       '/customize',
+      '/platform',
+      '/platform/clusters',
       '/customize/agents',
       '/customize/skills',
       '/customize/connectors',
@@ -843,6 +856,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/connectors/families',
       '/customize/connectors/internal',
       '/customize/models',
+      '/customize/models/credentials/gazelle/kagent/operation',
       '/customize/models/gazelle/agent-platform/gpt-4o',
       '/customize/models/gazelle/agent-platform/gpt-4o/usage',
       '/customize/models/gazelle/agent-platform/gpt-4o/used-by',
@@ -907,6 +921,8 @@ describe('getTelemetryPageViewPayload', () => {
       '/usage/your-sessions',
       '/usage/connectors',
       '/profile',
+      '/organizations',
+      '/organizations/acme-prod/org-acme/payments/egress',
       // The old tree, redirect-only until the end of 2026.
       '/agent-platform',
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer',

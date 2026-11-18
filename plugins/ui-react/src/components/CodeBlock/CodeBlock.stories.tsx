@@ -18,8 +18,11 @@ const meta = {
             'button (with “Copied” feedback). Copy failures are reported through ' +
             'the app `errorApi`, like Backstage’s own `CopyTextButton`.',
           whenToUse:
-            'To present a shell command or short snippet a user is meant to copy. ' +
-            'No syntax highlighting is applied — for highlighted JSON use ' +
+            'To present a shell command, a short snippet or a log a user may ' +
+            'want to copy. For text with no bound, such as a build log, pass ' +
+            '`maxHeight` (and `scrollToEnd` where the end matters most). A file ' +
+            'a person reviews whole, with its name, is a `FileView`. No syntax ' +
+            'highlighting is applied — for highlighted JSON use ' +
             '`JsonHighlight`, and for an editable YAML surface use `YamlEditor`.',
           migration: 'mixed',
           extra:
@@ -68,5 +71,33 @@ export const Multiline: Story = {
       'helm repo update',
       'helm install my-app giantswarm/my-app',
     ].join('\n'),
+  },
+};
+
+export const WithMaxHeight: Story = {
+  name: 'With a maximum height',
+  args: {
+    maxHeight: '160px',
+    scrollToEnd: true,
+    'aria-label': 'Build log',
+    text: Array.from(
+      { length: 40 },
+      (_, i) =>
+        `#${i + 1} [build 3/4] RUN apk add --no-cache git jq kubectl helm`,
+    ).join('\n'),
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          '`maxHeight` caps the block for text of unknown length, such as a ' +
+          'build log: it scrolls inside the cap (at most two fifths of the ' +
+          'view on a phone) instead of stretching the page. While it ' +
+          'overflows it is a region named by `aria-label` or ' +
+          '`aria-labelledby` and a tab stop, so it scrolls from the keyboard. ' +
+          '`scrollToEnd` opens it at the end of the text, where a log’s error ' +
+          'is. The copy button stays in the corner and copies the whole text.',
+      },
+    },
   },
 };

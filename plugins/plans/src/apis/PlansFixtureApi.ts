@@ -4,8 +4,13 @@ import {
   fixtureKnowledgeTree,
   fixtureMeta,
   fixtureNow,
+  fixtureTeamSets,
 } from '../lib/hiveFixtures';
-import { HIVE_HISTORY_WINDOW, magazineFile } from '../lib/magazine';
+import {
+  HIVE_HISTORY_WINDOW,
+  MAGAZINE_TEAMS_FILE,
+  magazineFile,
+} from '../lib/magazine';
 import {
   MagazineConfigResponse,
   NewReviewComment,
@@ -128,14 +133,23 @@ const PULL_FILES: Record<number, string[]> = {
 const MERGED = ['hive/README.md', 'marge-rescue/README.md'];
 
 function magazineContent(path: string): string | undefined {
-  if (path === magazineFile('now')) {
-    return JSON.stringify(fixtureNow());
+  if (path === MAGAZINE_TEAMS_FILE) {
+    return JSON.stringify(fixtureTeamSets());
   }
-  if (path === magazineFile('meta')) {
-    return JSON.stringify(fixtureMeta());
-  }
-  if (path === magazineFile(HIVE_HISTORY_WINDOW)) {
-    return JSON.stringify(fixtureHistory());
+  // The default team's set, under `magazine/` and in its own folder.
+  for (const folder of [
+    undefined,
+    ...fixtureTeamSets().teams.map(set => set.path),
+  ]) {
+    if (path === magazineFile('now', folder)) {
+      return JSON.stringify(fixtureNow());
+    }
+    if (path === magazineFile('meta', folder)) {
+      return JSON.stringify(fixtureMeta());
+    }
+    if (path === magazineFile(HIVE_HISTORY_WINDOW, folder)) {
+      return JSON.stringify(fixtureHistory());
+    }
   }
   return undefined;
 }

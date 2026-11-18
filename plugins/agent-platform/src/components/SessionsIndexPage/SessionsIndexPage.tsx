@@ -8,6 +8,7 @@ import {
   EmptyStateCard,
   LoadingIndicator,
   ShellPage,
+  UnreachableInstallationsAlert,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
@@ -16,11 +17,10 @@ import {
   HIDE_INSTALLATION,
   isSoleInstallation,
 } from '../../lib/soleInstallation';
-import { InstallationScopeNote } from '../InstallationScopeNote';
 import { NotReachableInstallationsNote } from '../NotReachableInstallationsNote';
 import { SessionsDataProvider, useSessions } from '../SessionsDataProvider';
 import { SessionsTable } from '../SessionsTable';
-import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 
 /**
  * The page frame: the page titles itself and offers "New session", which goes
@@ -94,6 +94,10 @@ function SessionsIndexPageContent() {
     hasInstallations,
     unreachableInstallations,
     readFailures,
+    nothingRead,
+    sessionEnded,
+    retry,
+    isRetrying,
     notUserScopedInstallations,
     notReachableInstallations,
   } = useSessions();
@@ -155,11 +159,14 @@ function SessionsIndexPageContent() {
   return (
     <SessionsFrame>
       <Flex direction="column" gap="3">
-        <InstallationScopeNote component="kagent" />
-
         {/* Same gate as the Agents tab: the installation this tab reads could
             not be asked whether it runs kagent. Renders nothing otherwise. */}
         <InstallationInventoryGate context="Which environments run kagent is read through their Kubernetes API." />
+
+        {/* The portal refused the session token: every read fails the same
+            way until a sign-in, which is the one thing to say. Above the
+            rows read before, which stop keeping up. */}
+        {sessionEnded && <PortalSessionEndedAlert />}
 
         {/* No rows yet — show activity instead of an empty table skeleton. */}
         {isLoading && <LoadingIndicator label="Reading your sessions…" />}
@@ -210,12 +217,25 @@ function SessionsIndexPageContent() {
             is still being read, or once rows are on screen. A failed query
             is not one awaiting data, so a fleet whose every read failed still
             ends `isLoading`; one paused offline does not. */}
-        <UnreachableInstallationsAlert
-          installations={unreachableInstallations}
-          resourceName="sessions"
-          failures={readFailures}
-          isLoading={isLoading}
-        />
+        {!sessionEnded && (
+          <UnreachableInstallationsAlert
+            installations={unreachableInstallations}
+            resourceName="sessions"
+            failures={readFailures}
+            isLoading={isLoading}
+            // When no installation answered, the failure is the page's answer:
+            // an error the person cannot close, never the empty state. With one
+            // that answered, even empty, it is the closable warning. kagent down
+            // for a moment is the usual cause, so either card offers a retry.
+            everything={
+              nothingRead
+                ? { title: 'Could not read your sessions' }
+                : undefined
+            }
+            onRetry={retry}
+            isRetrying={isRetrying}
+          />
+        )}
 
         {/* Installations that run kagent but whose endpoint the portal cannot
             reach (the backend's unauthenticated probe says so). Never queried,

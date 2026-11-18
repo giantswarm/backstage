@@ -1,5 +1,10 @@
-import { Alert, Flex, Link, Text } from '@backstage/ui';
-import { safeWebURL } from '@giantswarm/backstage-plugin-ui-react';
+import { Alert, Button, Flex, Text } from '@backstage/ui';
+import { useApi } from '@backstage/core-plugin-api';
+import {
+  externalUrlConsentApiRef,
+  safeWebURL,
+  NewTabLabel,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { musterToolchainManagerQueryKey } from '../../lib/queryKeys';
@@ -35,6 +40,7 @@ export function ToolchainGrantPrompt({
   onConnected,
 }: ToolchainGrantPromptProps) {
   const queryClient = useQueryClient();
+  const consentApi = useApi(externalUrlConsentApiRef);
   if (!answer?.status) {
     return null;
   }
@@ -73,9 +79,20 @@ export function ToolchainGrantPrompt({
             {answer.message ?? `It answered ${answer.status}.`}
           </Text>
           {installURL && (
-            <Link href={installURL} target="_blank" rel="noopener">
-              Install the App
-            </Link>
+            <div>
+              <Button
+                variant="secondary"
+                size="small"
+                onPress={() =>
+                  void consentApi.open({
+                    url: installURL,
+                    requester: 'toolchain-manager',
+                  })
+                }
+              >
+                <NewTabLabel>Install the App</NewTabLabel>
+              </Button>
+            </div>
           )}
         </Flex>
       }

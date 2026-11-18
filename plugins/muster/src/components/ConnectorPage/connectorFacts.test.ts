@@ -1,7 +1,7 @@
 import type { McpUsage } from '../../apis';
 import { MCPServer } from '../../lib/k8s';
 import {
-  addedLine,
+  addedAt,
   callsLine,
   healthLine,
   runsAsCaller,
@@ -95,11 +95,13 @@ describe('connectorFacts', () => {
 
   it('dates the oldest instance', () => {
     expect(
-      addedLine([
+      addedAt([
         server({ created: '2026-09-02T10:00:00Z' }),
         server({ created: '2026-08-04T10:00:00Z' }),
+        server({ created: 'not a date' }),
       ]),
-    ).toBe('4 Aug 2026');
-    expect(addedLine([server({})])).toBeUndefined();
+    ).toBe('2026-08-04T10:00:00Z');
+    expect(addedAt([server({})])).toBeUndefined();
+    expect(addedAt([])).toBeUndefined();
   });
 });

@@ -1,11 +1,15 @@
 import {
   ApiBlueprint,
+  type ConfigApi,
+  configApiRef,
   coreExtensionData,
   createExtension,
+  createExtensionDataRef,
   createExtensionInput,
   createFrontendPlugin,
   ExtensionBoundary,
   discoveryApiRef,
+  githubAuthApiRef,
   fetchApiRef,
   PageBlueprint,
   SubPageBlueprint,
@@ -14,14 +18,26 @@ import {
   kubernetesApiRef,
   kubernetesAuthProvidersApiRef,
 } from '@backstage/plugin-kubernetes-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Model Manager tools are accessed through the Muster API.
 import { musterApiRef } from '@giantswarm/backstage-plugin-muster';
-import { AGENT_SHELL_ON } from '@giantswarm/backstage-plugin-agent-platform-common';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- the fixture MCP servers' type; erased at build time.
+import type { FixtureMcpServersLoader } from '@giantswarm/backstage-plugin-muster';
+import { lazyApi } from '@giantswarm/backstage-plugin-ui-react';
+import { FIXTURE_MCP_SERVERS } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  AGENT_SHELL_ON,
+  ORGANIZATIONS_FLAG,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import {
   KagentApiClient,
   kagentApiRef,
   ModelManagerApiClient,
   modelManagerApiRef,
+  AgentManagerCredentialsClient,
+  agentManagerCredentialsApiRef,
+  SkillDiscoveryClient,
+  skillDiscoveryApiRef,
 } from './apis';
 import {
   addGpuNodePoolRouteRef,
@@ -36,6 +52,7 @@ import {
   modelCacheRouteRef,
   modelDetailRouteRef,
   modelEditRouteRef,
+  modelCredentialsRouteRef,
   installationsExternalRouteRef,
   modelsRouteRef,
   musterServerExternalRouteRef,
@@ -68,6 +85,9 @@ import {
   newToolchainRouteRef,
   toolchainDetailRouteRef,
   newWorkspaceRouteRef,
+  organizationCredentialsRouteRef,
+  organizationDetailRouteRef,
+  organizationsRouteRef,
 } from './routes';
 
 /**
@@ -297,6 +317,39 @@ const profilePage = PageBlueprint.make({
   },
 });
 
+const organizationsPage = PageBlueprint.make({
+  name: 'organizations',
+  if: {
+    $all: [AGENT_SHELL_ON, { featureFlags: { $contains: ORGANIZATIONS_FLAG } }],
+  },
+  params: {
+    // eslint-disable-next-line giantswarm/no-restricted-syntax -- the organizations page's route definition
+    path: '/organizations',
+    routeRef: organizationsRouteRef,
+    noHeader: true,
+    loader: async () => {
+      const [{ OrganizationsRouter }, { ShellPageRoot }] = await Promise.all([
+        import('./components/OrganizationsRouter'),
+        import('./components/ShellPageRoot'),
+      ]);
+      return (
+        <ShellPageRoot title="Organizations">
+          <OrganizationsRouter />
+        </ShellPageRoot>
+      );
+    },
+  },
+});
+
+/**
+ * Whether `agentPlatform.fixtures` swaps an API for its fixture
+ * (docs/fixtures.md). Each factory checks `process.env.NODE_ENV` itself,
+ * before this, so the bundler drops the fixture import from production builds.
+ */
+function fixturesOn(configApi: ConfigApi): boolean {
+  return configApi.getOptionalBoolean('agentPlatform.fixtures') === true;
+}
+
 // Client for the kagent REST API, via the agent-platform-backend proxy. The
 // kubernetes APIs are dependencies because each installation's Dex ID token is
 // minted through them (kubernetesApi.getCluster →
@@ -308,12 +361,50 @@ const kagentApi = ApiBlueprint.make({
     defineParams({
       api: kagentApiRef,
       deps: {
+        configApi: configApiRef,
         discoveryApi: discoveryApiRef,
         fetchApi: fetchApiRef,
         kubernetesApi: kubernetesApiRef,
         kubernetesAuthProvidersApi: kubernetesAuthProvidersApiRef,
       },
-      factory: deps => new KagentApiClient(deps),
+      factory: ({ configApi, ...deps }) => {
+        if (process.env.NODE_ENV !== 'production' && fixturesOn(configApi)) {
+          return lazyApi(async () => {
+            const { kagentFixtureApi } =
+              await import('./apis/fixtures/KagentFixtureApi');
+            return kagentFixtureApi();
+          });
+        }
+        return new KagentApiClient(deps);
+      },
+    }),
+});
+
+// agent-manager's credential operations (the organization credential form):
+// through the portal's backend with the person's installation token, which the
+// kubernetes APIs mint. A credential value never goes through muster.
+const agentManagerCredentialsApi = ApiBlueprint.make({
+  name: 'agent-manager-credentials',
+  params: defineParams =>
+    defineParams({
+      api: agentManagerCredentialsApiRef,
+      deps: {
+        configApi: configApiRef,
+        discoveryApi: discoveryApiRef,
+        fetchApi: fetchApiRef,
+        kubernetesApi: kubernetesApiRef,
+        kubernetesAuthProvidersApi: kubernetesAuthProvidersApiRef,
+      },
+      factory: ({ configApi, ...deps }) => {
+        if (process.env.NODE_ENV !== 'production' && fixturesOn(configApi)) {
+          return lazyApi(async () => {
+            const { agentManagerCredentialsFixtureApi } =
+              await import('./apis/fixtures/AgentManagerCredentialsFixtureApi');
+            return agentManagerCredentialsFixtureApi();
+          });
+        }
+        return new AgentManagerCredentialsClient(deps);
+      },
     }),
 });
 
@@ -327,14 +418,80 @@ const modelManagerApi = ApiBlueprint.make({
     defineParams({
       api: modelManagerApiRef,
       deps: {
+        configApi: configApiRef,
         musterApi: musterApiRef,
         discoveryApi: discoveryApiRef,
         fetchApi: fetchApiRef,
         kubernetesApi: kubernetesApiRef,
         kubernetesAuthProvidersApi: kubernetesAuthProvidersApiRef,
       },
-      factory: deps => new ModelManagerApiClient(deps),
+      factory: ({ configApi, ...deps }) => {
+        if (process.env.NODE_ENV !== 'production' && fixturesOn(configApi)) {
+          return lazyApi(async () => {
+            const { modelManagerFixtureApi } =
+              await import('./apis/fixtures/ModelManagerFixtureApi');
+            return modelManagerFixtureApi(deps);
+          });
+        }
+        return new ModelManagerApiClient(deps);
+      },
     }),
+});
+
+// gs-backend's skill routes: the reads of `agentPlatform.skills.repositories`
+// (the portal's own skill source, where an installation has no skill-manager)
+// and the pull request that proposes a skill, as the person.
+const skillDiscoveryApi = ApiBlueprint.make({
+  name: 'skill-discovery',
+  params: defineParams =>
+    defineParams({
+      api: skillDiscoveryApiRef,
+      deps: {
+        configApi: configApiRef,
+        discoveryApi: discoveryApiRef,
+        fetchApi: fetchApiRef,
+        githubAuthApi: githubAuthApiRef,
+      },
+      factory: ({ configApi, ...deps }) => {
+        if (process.env.NODE_ENV !== 'production' && fixturesOn(configApi)) {
+          return lazyApi(async () => {
+            const { SkillDiscoveryFixtureApi } =
+              await import('./apis/fixtures/SkillDiscoveryFixtureApi');
+            return new SkillDiscoveryFixtureApi();
+          });
+        }
+        return new SkillDiscoveryClient(deps);
+      },
+    }),
+});
+
+// muster's `fixtureMcpServersDataRef`, made from the id both plugins read in
+// gs-common rather than imported from muster: extension data is matched by
+// id, and many tests mock the muster package wholesale, which would leave an
+// imported ref undefined when this module loads.
+const fixtureMcpServersDataRef =
+  createExtensionDataRef<FixtureMcpServersLoader>().with({
+    id: FIXTURE_MCP_SERVERS.dataRefId,
+  });
+
+// The tools of the MCP servers the agent-platform pages call through muster,
+// answered by the fixture `MusterApi` when `muster.fixtures` is on. Outside
+// production builds only: the loader, and the handler chunk with it, is
+// dropped from a production build (docs/fixtures.md).
+const fixtureMcpServers = createExtension({
+  kind: 'muster-fixture-servers',
+  attachTo: FIXTURE_MCP_SERVERS.attachTo,
+  output: [fixtureMcpServersDataRef],
+  factory: () => [
+    fixtureMcpServersDataRef(async () => {
+      if (process.env.NODE_ENV !== 'production') {
+        const { agentPlatformFixtureMcpServers } =
+          await import('./apis/fixtures/mcpServers');
+        return agentPlatformFixtureMcpServers;
+      }
+      return [];
+    }),
+  ],
 });
 
 // Create cluster and Delete on the gs plugin's Clusters pages, through
@@ -441,10 +598,18 @@ const workflowEditAssist = createExtension({
 
 export const agentPlatformPlugin = createFrontendPlugin({
   pluginId: 'agent-platform',
+  featureFlags: [
+    {
+      name: ORGANIZATIONS_FLAG,
+      description:
+        'Enable the experimental Organizations pages on supported installations (takes effect after a reload)',
+    },
+  ],
   extensions: [
     sessionsPage,
     usagePage,
     profilePage,
+    organizationsPage,
     agentsSubPage,
     skillsSubPage,
     modelsSubPage,
@@ -456,6 +621,9 @@ export const agentPlatformPlugin = createFrontendPlugin({
     workflowEditAssist,
     kagentApi,
     modelManagerApi,
+    agentManagerCredentialsApi,
+    skillDiscoveryApi,
+    fixtureMcpServers,
   ],
   routes: {
     root: rootRouteRef,
@@ -471,6 +639,9 @@ export const agentPlatformPlugin = createFrontendPlugin({
     skills: skillsRouteRef,
     newSkill: newSkillRouteRef,
     profile: profileRouteRef,
+    organizations: organizationsRouteRef,
+    organizationDetail: organizationDetailRouteRef,
+    organizationCredentials: organizationCredentialsRouteRef,
     usage: usageRouteRef,
     usageCost: usageCostRouteRef,
     usageConversations: usageConversationsRouteRef,
@@ -479,6 +650,7 @@ export const agentPlatformPlugin = createFrontendPlugin({
     newModel: newModelRouteRef,
     modelDetail: modelDetailRouteRef,
     modelEdit: modelEditRouteRef,
+    modelCredentials: modelCredentialsRouteRef,
     serving: servingRouteRef,
     serveModel: serveModelRouteRef,
     importModel: importModelRouteRef,

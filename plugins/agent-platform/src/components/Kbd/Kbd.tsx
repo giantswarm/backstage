@@ -5,8 +5,10 @@ const useStyles = makeStyles({
   kbd: {
     font: 'inherit',
     // Relative, so the cap keeps its proportion in whichever text holds it:
-    // the palette's body-x-small footer and the composer's body-small hint.
-    fontSize: '0.85em',
+    // the palette's footer and the composer's hint. Never under bui's 12px
+    // step, though: 0.85 of a body-small line is 10px, too small to read
+    // (issue #39049).
+    fontSize: 'max(0.85em, var(--bui-font-size-2))',
     border: '1px solid var(--bui-border-1)',
     borderRadius: 5,
     padding: '1px 5px',

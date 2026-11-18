@@ -11,10 +11,24 @@
  * — the portal composes nothing of its own.
  */
 
-import type { MusterServerPresence } from '../hooks/useMusterServerAvailability';
+import {
+  AGENT_MANAGER_REFUSAL_CODES,
+  type AgentManagerRefusalCode,
+  parseToolErrorCode,
+  AGENT_MANAGER_SERVER,
+} from '@giantswarm/backstage-plugin-gs-common';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Agent-manager calls share Muster's connection and sign-in contract.
+import {
+  type MusterServerPresence,
+  musterSignInRequiredOf,
+} from '@giantswarm/backstage-plugin-muster';
+import {
+  isPortalSessionRefusal,
+  PortalSessionEndedError,
+} from './portalSession';
 
 /** The MCPServer name muster registers agent-manager under. */
-export const AGENT_MANAGER_SERVER = 'agent-manager';
+export { AGENT_MANAGER_SERVER };
 
 /**
  * Why agent-manager cannot be used on an installation, in one sentence, from
@@ -54,6 +68,16 @@ export const AGENT_MANAGER_TOOLS = {
   listModelConfigs: 'list_model_configs',
   listEgressPolicies: 'list_egress_policies',
   startSession: 'start_session',
+  listOrganizations: 'list_organizations',
+  getOrganization: 'get_organization',
+  deleteOrganization: 'delete_organization',
+  listOrganizationMembers: 'list_organization_members',
+  addOrganizationMember: 'add_organization_member',
+  removeOrganizationMember: 'remove_organization_member',
+  listOrganizationConnectors: 'list_organization_connectors',
+  setOrganizationModel: 'set_organization_model',
+  deleteOrganizationObject: 'delete_organization_object',
+  replaceOrganizationCredential: 'replace_organization_credential',
 } as const;
 
 export type AgentManagerTool =
@@ -106,6 +130,8 @@ export type AgentSpec = {
   name: string;
   displayName: string;
   description?: string;
+  /** Keywords to find the agent by (the `ui.giantswarm.io/tags` annotation). */
+  tags?: string[];
   systemMessage?: string;
   /** Name of an existing ModelConfig in `namespace`. */
   modelConfig: string;
@@ -182,7 +208,32 @@ export type AgentManagerInfo = {
   harness: { name: string };
   /** The muster MCP URL composed into every agent; empty = the chart default. */
   muster: { url: string };
-  skillsRepositories: string[];
+  /** A URL, or `{ url, ref?, path?, readOnly? }`. */
+  skillsRepositories: Array<
+    string | { url: string; ref?: string; path?: string; readOnly?: boolean }
+  >;
+  /**
+   * The installation's default agent, `<namespace>/<name>`: where a new
+   * session starts unless the person picks another. Empty or absent (an
+   * agent-manager before giantswarm/agent-manager#290) when there is none.
+   */
+  defaultAgent?: string;
+  /**
+   * The installation's skills credential: the Secret (key `token`) in the
+   * agent's namespace every agent with a git skill fetches its skills with,
+   * unless it names its own `gitAuthSecretName`. Absent: such agents fetch
+   * anonymously, which a private repository refuses (and older agent-manager
+   * builds, which predate the credential, do the same).
+   */
+  skillsGitAuthSecretName?: string;
+  /** When agent-manager keeps that Secret filled with a minted App token. */
+  skillsGitAuthMint?: {
+    secretName: string;
+    refreshedAt?: string;
+    expiresAt?: string;
+    /** The last refresh's failure; empty after a success. */
+    error?: string;
+  };
 };
 
 /** The objects a create applies, as YAML, plus the values they carry. */
@@ -236,6 +287,7 @@ export type AgentStatus = {
   namespace: string;
   verdict: AgentStatusVerdict;
   summary: string;
+  releaseWithheld?: string;
   agent?: AgentObjectStatus;
   helmRelease?: {
     exists: boolean;
@@ -382,34 +434,22 @@ export function hasReachedWrittenRevision(
 
 /**
  * agent-manager's error codes, as its MCP tools prefix them
- * (`<code>: <message>`). `forbidden` is the apiserver's refusal for the person
- * (a viewer's Deploy), `conflict` an existing name or a suspended release,
- * `gitops_owned` a live write to a release applied from git,
- * `auth_required` a write in mode `commit` without the person's GitHub
- * authorization, `invalid_request` a schema violation or an unpinnable skill,
- * `unsupported` an operation this installation does not offer.
+ * (`<code>: <message>`): its refusals (`AGENT_MANAGER_REFUSAL_CODES`, which
+ * the backend answers with a 4xx), and `auth_required` a write in mode
+ * `commit` without the person's GitHub authorization, `unauthenticated` and
+ * `backend_error`.
  */
 export type AgentManagerErrorCode =
-  | 'not_found'
-  | 'invalid_request'
-  | 'conflict'
-  | 'gitops_owned'
+  | AgentManagerRefusalCode
   | 'auth_required'
-  | 'forbidden'
   | 'unauthenticated'
-  | 'unsupported'
   | 'backend_error'
   | 'unknown';
 
 const ERROR_CODES: readonly AgentManagerErrorCode[] = [
-  'not_found',
-  'invalid_request',
-  'conflict',
-  'gitops_owned',
+  ...AGENT_MANAGER_REFUSAL_CODES,
   'auth_required',
-  'forbidden',
   'unauthenticated',
-  'unsupported',
   'backend_error',
 ];
 
@@ -538,6 +578,16 @@ export function codingEgressRefusal(
  */
 export class AgentManagerNotConnectedError extends Error {
   readonly name = 'AgentManagerNotConnectedError';
+
+  /**
+   * muster asked for the person's sign-in to the server (its 401 with
+   * `server_sign_in_required`, kept as the cause), rather than answering
+   * "not connected" some other way (a tool not found, a server down), which
+   * a sign-in may not fix.
+   */
+  get signInRequired(): boolean {
+    return Boolean(musterSignInRequiredOf(this.cause));
+  }
 }
 
 /**
@@ -558,23 +608,36 @@ export function looksNotConnected(message: string): boolean {
 }
 
 /**
- * Classifies what a tool call threw. agent-manager's refusals become
- * {@link AgentManagerError} with their code; muster's "not connected" answers
- * become {@link AgentManagerNotConnectedError}; anything else is passed on.
+ * Classifies what a tool call threw. muster's "not connected" answers become
+ * {@link AgentManagerNotConnectedError}, its 401 asking for the person's
+ * sign-in first: that one reads `auth_required: …` like agent-manager's own
+ * refusal of a commit without a GitHub authorization, and would otherwise be
+ * taken for it and shown in muster's words. agent-manager's refusals become
+ * {@link AgentManagerError} with their code; anything else is passed on.
  */
 export function classifyAgentManagerError(error: unknown): Error {
   if (
     error instanceof AgentManagerError ||
-    error instanceof AgentManagerNotConnectedError
+    error instanceof AgentManagerNotConnectedError ||
+    error instanceof PortalSessionEndedError
   ) {
     return error;
   }
+  // The portal refused the person's session token before muster-backend
+  // ran: no sign-in to agent-manager fixes it, a sign-in to the portal does.
+  if (isPortalSessionRefusal(error)) {
+    return new PortalSessionEndedError({ cause: error });
+  }
   const message = error instanceof Error ? error.message : String(error);
-  const match = message.match(/^([a-z_]+):\s*([\s\S]*)$/);
-  if (match && (ERROR_CODES as readonly string[]).includes(match[1])) {
+  if (musterSignInRequiredOf(error)) {
+    return new AgentManagerNotConnectedError(message, { cause: error });
+  }
+  // The parser gs-node's MusterMcpClient reads a refusal's code with.
+  const parsed = parseToolErrorCode(message);
+  if (parsed && (ERROR_CODES as readonly string[]).includes(parsed.code)) {
     return new AgentManagerError(
-      match[1] as AgentManagerErrorCode,
-      match[2] || message,
+      parsed.code as AgentManagerErrorCode,
+      parsed.text || message,
       { cause: error },
     );
   }
@@ -602,10 +665,14 @@ export function helmInstallCommand(
 /**
  * How agent-manager manages an agent: `helmrelease` — a HelmRelease it can
  * write live; `gitops` — the release is applied by a Flux Kustomization, its
- * desired state lives in git and a live write is refused; `none` — a bare
- * `Agent` object with no release behind it, refused as well.
+ * desired state lives in git and a live write is refused; `platform` — the
+ * platform's own agent (labelled `agent-platform.giantswarm.io/managed-by:
+ * agent-platform`), refused in every mode, a pull request too; `none` — a bare
+ * `Agent` object with no release behind it, refused as well; `unknown` means
+ * Flux details are withheld, with the reason in `releaseWithheld`.
  */
-export type AgentManagedBy = 'helmrelease' | 'gitops' | 'none';
+export type AgentManagedBy =
+  'helmrelease' | 'gitops' | 'platform' | 'none' | 'unknown';
 
 /** What `get_agent` says about the release that owns the agent. */
 export type AgentHelmReleaseRef = {
@@ -633,6 +700,7 @@ export type AgentManagerAgent = {
   exists: boolean;
   displayName?: string;
   description?: string;
+  tags?: string[];
   modelConfig?: string;
   iconUrl?: string;
   systemMessage?: string;
@@ -654,10 +722,31 @@ export type AgentManagerAgent = {
   defaultWorkspace?: string;
   status?: AgentObjectStatus;
   managed: AgentManagedBy;
+  /** The installation's default agent (`get_info`'s `defaultAgent`). */
+  default?: boolean;
   helmRelease?: AgentHelmReleaseRef;
+  releaseWithheld?: string;
   /** The HelmRelease's inline values, when a release owns the agent. */
   values?: Record<string, unknown>;
 };
+
+/**
+ * The platform's default agent waiting for a default model: platform-owned,
+ * no ModelConfig of its own and not ready. agent-manager points it at the
+ * default ModelConfig once one is marked, so the fix is adding a model.
+ */
+export function awaitsDefaultModel(
+  agent:
+    | Pick<AgentManagerAgent, 'default' | 'managed' | 'modelConfig' | 'ready'>
+    | undefined,
+): boolean {
+  return (
+    agent?.default === true &&
+    agent.managed === 'platform' &&
+    !agent.modelConfig &&
+    agent.ready !== true
+  );
+}
 
 /** `list_model_configs`: a ModelConfig an agent may reference. */
 export type AgentManagerModelConfig = {
@@ -666,21 +755,57 @@ export type AgentManagerModelConfig = {
   provider?: string;
   model?: string;
   accepted: boolean | null;
+  /** The ResolvedRefs condition (its key Secret found, say); null while unreported. */
+  resolvedRefs?: boolean | null;
+  /** The Accepted condition's message. */
   message?: string;
   managedBy?: string;
+  /**
+   * The namespace's default model, as agent-manager resolves it (in an
+   * organization namespace, the organization's default): the one ModelConfig
+   * marked as the default; none or several marked is no default. The portal
+   * reads this field and never the annotation, whose key agent-manager owns.
+   */
+  default?: boolean;
+  /**
+   * The model's settings, which agent-manager 3.1.0 and later report: the
+   * name people see, the token limit of an answer (absent: the provider's
+   * default), and prompt caching (absent for a provider without it), with
+   * its cache time while it is on.
+   */
+  displayName?: string;
+  maxTokens?: number;
+  promptCaching?: boolean;
+  cacheTTL?: string;
 };
+
+/**
+ * `get_info`'s capability for `tags` on create and update: where the agent
+ * form offers tags.
+ */
+export const TAGS_CAPABILITY = 'tags';
+
+/** Whether an installation's agent-manager takes tags. */
+export function supportsTags(
+  info: Pick<AgentManagerInfo, 'capabilities'> | undefined,
+): boolean {
+  return info?.capabilities?.[TAGS_CAPABILITY] === true;
+}
 
 /** `get_info`'s capability for `egressPolicyRefs` and `list_egress_policies`. */
 export const EGRESS_POLICIES_CAPABILITY = 'egressPolicies';
 
 /**
  * One origin of an EgressPolicy. `credentialHeader` names the request header
- * the egress gateway fills from the policy's credential; the Secret behind it
- * is never reported.
+ * the egress gateway fills from the policy's credential. `credentialSecret`
+ * and `credentialKey` name the Secret and key it reads, never the value; an
+ * agent-manager older than giantswarm/agent-manager#371 leaves them out.
  */
 export type EgressDestination = {
   origin: string;
   credentialHeader?: string;
+  credentialSecret?: string;
+  credentialKey?: string;
 };
 
 /** `list_egress_policies`: an EgressPolicy an agent of its namespace may pick. */
@@ -703,6 +828,8 @@ export type AgentUpdate = {
   name: string;
   displayName?: string;
   description?: string;
+  /** Replaces the whole list; an empty list clears it. */
+  tags?: string[];
   systemMessage?: string;
   modelConfig?: string;
   iconUrl?: string;

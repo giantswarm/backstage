@@ -13,6 +13,7 @@ const useStyles = makeStyles({
   },
   // Two lines, then an ellipsis: a model id or `namespace/agent` is read, not
   // cut to "a…" as a single truncated line cuts it in a phone-width column.
+  // In a compact table above phone width, the `title` holds the rest.
   name: {
     minWidth: 0,
     maxWidth: '100%',
@@ -38,12 +39,18 @@ export type NameCellProps = {
   description?: string;
   /** Under the name and description, e.g. a Removed badge. */
   children?: ReactNode;
+  /**
+   * The table shows its compact columns (`useCompactLayout`): the name wraps
+   * to two lines as at phone width, in a column narrower than on a desktop.
+   */
+  compact?: boolean;
 };
 
 /**
  * The name cell of an analytic table (a name plus numbers): bui's `CellText`
- * on a wide viewport; at phone width a cell whose name wraps to two lines and
- * whose description wraps, rather than both cut to one truncated line.
+ * on a wide viewport; at phone width, or in a compact table (`compact`), a
+ * cell whose name wraps to two lines and whose description wraps, rather than
+ * both cut to one truncated line.
  *
  * With `usePhoneColumns` a table keeps the name and one or two numbers at
  * phone width, so the name column is the wide one — but bui's `CellText`
@@ -54,9 +61,14 @@ export function NameCell({
   href,
   description,
   children,
+  compact = false,
 }: NameCellProps) {
   const classes = useStyles();
-  const isPhone = usePhoneLayout();
+  const isPhoneLayout = usePhoneLayout();
+  const isPhone = isPhoneLayout || compact;
+  // A phone never shows `title=`; a pointer in a compact table on a wider
+  // screen reads the rest of a name cut after two lines there.
+  const hover = !isPhone || (compact && !isPhoneLayout);
 
   if (!isPhone && children === undefined) {
     return <CellText title={title} href={href} description={description} />;
@@ -71,7 +83,7 @@ export function NameCell({
             variant="body-medium"
             className={isPhone ? classes.name : undefined}
             truncate={isPhone ? undefined : true}
-            title={isPhone ? undefined : title}
+            title={hover ? title : undefined}
           >
             {title}
           </Link>
@@ -81,7 +93,7 @@ export function NameCell({
             variant="body-medium"
             className={isPhone ? classes.name : undefined}
             truncate={isPhone ? undefined : true}
-            title={isPhone ? undefined : title}
+            title={hover ? title : undefined}
           >
             {title}
           </Text>
@@ -92,7 +104,7 @@ export function NameCell({
             color="secondary"
             className={isPhone ? classes.description : undefined}
             truncate={isPhone ? undefined : true}
-            title={isPhone ? undefined : description}
+            title={hover ? description : undefined}
           >
             {description}
           </Text>

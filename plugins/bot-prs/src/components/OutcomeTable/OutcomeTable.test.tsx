@@ -51,7 +51,9 @@ describe('OutcomeTable', () => {
     const refs = screen
       .getAllByRole('link')
       .map(link => link.textContent ?? '');
-    expect(refs).toEqual(['#7', '#41', '#44']);
+    expect(refs).toEqual(
+      ['#7', '#41', '#44'].map(ref => `${ref} (opens in a new tab)`),
+    );
     expect(screen.getByText('happa')).toBeInTheDocument();
     expect(
       screen.queryByRole('columnheader', { name: 'Team' }),

@@ -2,6 +2,7 @@ import {
   getHelmReleaseName,
   getHelmReleaseNamespace,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { organizationNameOfNamespace } from '@giantswarm/backstage-plugin-gs-common';
 import { useAsyncCluster } from './useCurrentCluster';
 import { getClusterOrganization, isManagementCluster } from '../utils';
 
@@ -19,8 +20,6 @@ export type ClusterPageTarget = {
   /** The Flux HelmRelease whose chart rendered the cluster; absent for an App-based one. */
   helmRelease?: { name: string; namespace: string };
 };
-
-const ORG_NAMESPACE_PREFIX = 'org-';
 
 /**
  * The cluster of the page a `clusterActions` attachment of `page:gs/clusters`
@@ -44,9 +43,8 @@ export function useClusterPageTarget(): ClusterPageTarget | undefined {
     namespace,
     organization:
       getClusterOrganization(cluster) ??
-      (namespace.startsWith(ORG_NAMESPACE_PREFIX)
-        ? namespace.slice(ORG_NAMESPACE_PREFIX.length)
-        : ''),
+      organizationNameOfNamespace(namespace) ??
+      '',
     isManagementCluster: isManagementCluster(cluster),
     isDeleting,
     helmRelease:

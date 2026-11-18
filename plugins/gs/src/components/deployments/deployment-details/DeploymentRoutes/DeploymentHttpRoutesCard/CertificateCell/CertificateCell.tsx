@@ -29,9 +29,6 @@ const useStyles = makeStyles(theme => ({
   infoButton: {
     marginLeft: theme.spacing(0.5),
   },
-  tooltip: {
-    maxWidth: 600,
-  },
   tooltipContent: {
     display: 'grid',
     gridTemplateColumns: 'auto 1fr',
@@ -124,7 +121,7 @@ export function CertificateCell({ cert }: { cert?: HostnameCertInfo }) {
             variant="tertiary"
             size="small"
           />
-          <Tooltip className={classes.tooltip}>
+          <Tooltip>
             <div className={classes.tooltipContent}>
               {issuer && (
                 <>

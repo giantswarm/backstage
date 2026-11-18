@@ -1,4 +1,5 @@
 import { Typography } from '@material-ui/core';
+import { MetricsUnavailableAlert } from '@giantswarm/backstage-plugin-ui-react';
 import { NodePoolNode } from '../../../../hooks';
 import { NodePoolNodesTable } from '../NodePoolNodesTable';
 
@@ -21,9 +22,11 @@ export const NodePoolNodes = ({
 }: NodePoolNodesProps) => {
   if (error) {
     return (
-      <Typography color="error" variant="body2">
-        Failed to load node metrics: {error.message}
-      </Typography>
+      <MetricsUnavailableAlert
+        error={error}
+        title="Node metrics could not be loaded."
+        description={error.message}
+      />
     );
   }
 

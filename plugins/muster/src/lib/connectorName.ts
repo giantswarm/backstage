@@ -1,5 +1,9 @@
 import type { MCPServer } from './k8s';
-import { mcpServerDisplayNames } from './serverGrouping';
+import {
+  connectorDisplayNames,
+  connectorNameSource,
+  type ConnectorNameSource,
+} from './serverGrouping';
 
 /**
  * A muster server's name as Customize lists it: its family's for a family
@@ -8,15 +12,16 @@ import { mcpServerDisplayNames } from './serverGrouping';
  * where one tells it apart, the resource name otherwise). Where two of the
  * given (distinct) names would still read the same — two members of one
  * family — those keep their own resource names, so the rows stay apart.
+ * A name none of `sources` describes keeps itself.
  */
-export function connectorNames(
+export function connectorLabels(
   names: string[],
-  servers: MCPServer[],
+  sources: readonly ConnectorNameSource[],
 ): Map<string, string> {
-  const byName = new Map(servers.map(server => [server.getName(), server]));
-  const labels = mcpServerDisplayNames(servers);
+  const byName = new Map(sources.map(source => [source.name, source]));
+  const labels = connectorDisplayNames(sources);
   const labelOf = (name: string): string => {
-    const surface = byName.get(name)?.getFamily() ?? name;
+    const surface = byName.get(name)?.family ?? name;
     return labels.get(surface) ?? surface;
   };
   const unique = [...new Set(names)];
@@ -31,4 +36,12 @@ export function connectorNames(
       seen.get(shown[index])! > 1 ? name : shown[index],
     ]),
   );
+}
+
+/** {@link connectorLabels} of an installation's MCPServer resources. */
+export function connectorNames(
+  names: string[],
+  servers: MCPServer[],
+): Map<string, string> {
+  return connectorLabels(names, servers.map(connectorNameSource));
 }

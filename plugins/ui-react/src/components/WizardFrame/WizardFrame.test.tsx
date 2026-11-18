@@ -154,6 +154,21 @@ describe('WizardFrame', () => {
     );
   });
 
+  it('marks its links as controls, so the agent shell does not style them as text links', () => {
+    renderFrame();
+
+    // agent-shell.css underlines every bui link that is not `standalone`.
+    for (const link of [
+      screen.getByRole('link', { name: 'Close' }),
+      screen.getByRole('link', { name: 'Cancel' }),
+      within(screen.getByRole('list', { name: 'Steps' })).getByRole('link', {
+        name: 'Basics',
+      }),
+    ]) {
+      expect(link).toHaveAttribute('data-standalone');
+    }
+  });
+
   it.each(['Close', 'Cancel'])(
     'asks before %s discards a dirty flow, and stays on Keep editing',
     async name => {
@@ -329,6 +344,96 @@ describe('WizardFrame', () => {
       .join('\n');
     expect(styles).toContain(TWO_COLUMN_MEDIA);
     expect(styles).not.toMatch(/max-width: 720px/);
+  });
+
+  // A narrow window beside the shell's rail: the steps wrap under the title
+  // rather than squeeze it to a few letters.
+  // The steps sit centred between the heading and a spacer as wide as it.
+  // Where the two can't both keep the heading's floor — what the close
+  // button, the title and its context line take, at most 320px — the steps
+  // take a row of their own, centred, rather than squeeze the title.
+  describe('the header’s steps', () => {
+    let room: number;
+    const originalGetClientRects = Range.prototype.getClientRects;
+
+    beforeEach(() => {
+      // jsdom has no layout. The close button is 34px, the title 100px, its
+      // context line 150px: with the two 12px gaps, the heading needs 308px.
+      // The four steps are 100px each: 400px.
+      jest
+        .spyOn(Element.prototype, 'clientWidth', 'get')
+        .mockImplementation(function width(this: Element) {
+          return this.tagName === 'HEADER' ? room : 0;
+        });
+      jest
+        .spyOn(Element.prototype, 'scrollWidth', 'get')
+        .mockImplementation(function width(this: Element) {
+          return this.tagName === 'H1' ? 100 : 0;
+        });
+      jest
+        .spyOn(Element.prototype, 'getBoundingClientRect')
+        .mockImplementation(function rect(this: Element) {
+          let left = 0;
+          let width = 0;
+          if (this.tagName === 'LI') {
+            left = Array.from(this.parentElement!.children).indexOf(this) * 100;
+            width = 100;
+          } else if (this.getAttribute('aria-label') === 'Close') {
+            width = 34;
+          }
+          return { left, width, right: left + width } as DOMRect;
+        });
+      Range.prototype.getClientRects = () =>
+        [{ width: 150 }] as unknown as DOMRectList;
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+      Range.prototype.getClientRects = originalGetClientRects;
+    });
+
+    function header() {
+      return screen.getByRole('banner');
+    }
+    function heading() {
+      return screen.getByRole('heading', { level: 1 }).parentElement
+        ?.parentElement as HTMLElement;
+    }
+    function stepList() {
+      return screen.getByRole('list', { name: 'Steps' });
+    }
+
+    it('stay beside the title, centred, where both sides keep the heading’s floor', () => {
+      // 308 + 16 + 400 + 16 + 308 = 1048, inside the header's 16px padding.
+      room = 1080;
+      renderFrame();
+
+      expect(heading().style.minWidth).toBe('min(100%, 308px)');
+      expect(getComputedStyle(stepList()).justifyContent).not.toBe('center');
+      // Heading, steps and the spacer that centres them.
+      expect(header().children).toHaveLength(3);
+    });
+
+    it('take a row of their own, centred, where the title would lose its room', () => {
+      room = 1079;
+      renderFrame();
+
+      expect(getComputedStyle(stepList()).justifyContent).toBe('center');
+      expect(getComputedStyle(stepList()).flexBasis).toBe('100%');
+      expect(header().children).toHaveLength(2);
+    });
+
+    it('keep at most 320px for a long title, which ends in an ellipsis', () => {
+      room = 2000;
+      jest
+        .spyOn(Element.prototype, 'scrollWidth', 'get')
+        .mockImplementation(function width(this: Element) {
+          return this.tagName === 'H1' ? 600 : 0;
+        });
+      renderFrame();
+
+      expect(heading().style.minWidth).toBe('min(100%, 320px)');
+    });
   });
 
   describe('at phone width', () => {

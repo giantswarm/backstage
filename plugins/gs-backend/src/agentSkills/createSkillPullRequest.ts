@@ -3,6 +3,7 @@ import { dump } from 'js-yaml';
 import { GitHubApiError, parseRepoUrl } from './discoverAgentSkills';
 import { splitSkillMarkdown } from './frontmatter';
 import { isSkillFilePath } from './skillFiles';
+import { SkillTagsError, withSkillTags } from './skillTags';
 import { shortSha } from '@giantswarm/backstage-plugin-gs-common';
 
 /**
@@ -27,6 +28,11 @@ export interface CreateSkillPullRequestOptions {
   description: string;
   /** The SKILL.md body under the frontmatter. */
   instructions: string;
+  /**
+   * Frontmatter `metadata.tags`, valid tags (the route checks them). Replaces
+   * the skill's tags; `[]` removes them; absent keeps an update's as they are.
+   */
+  tags?: string[];
   /** The signed-in person's GitHub access token; the PR is authored as them. */
   token: string;
   /**
@@ -41,6 +47,11 @@ export interface CreateSkillPullRequestOptions {
    */
   path?: string;
   /**
+   * For `create`: the directory the new skill goes below (the repository's
+   * configured scan `path`); the repository root when absent.
+   */
+  parentDir?: string;
+  /**
    * For `update`: the commit the edit started from. The SKILL.md there is the
    * version the edit replaces: when the default branch's file is no longer
    * that blob, the update is refused with 409 instead of overwriting what
@@ -48,6 +59,12 @@ export interface CreateSkillPullRequestOptions {
    * start (the route always requires it).
    */
   baseCommit?: string;
+  /**
+   * The branch the pull request targets, where the catalog reads the
+   * repository from (the source's `ref`): the repository's default branch
+   * when absent. A ref that is not a branch is refused (422).
+   */
+  base?: string;
   /** For the best-effort cleanup of a branch a failed attempt left (debug). */
   logger?: LoggerService;
 }
@@ -59,7 +76,7 @@ export interface SkillPullRequest {
   /** The branch the SKILL.md was pushed to (`add-skill/<name>`, or
    * `update-skill/<directory as a slug>`; see {@link branchCandidates}). */
   branch: string;
-  /** The branch the pull request targets (the repo's default branch). */
+  /** The branch the pull request targets. */
   base: string;
   /** The path of the written SKILL.md within the repository. */
   path: string;
@@ -199,19 +216,34 @@ async function refuse(step: string, response: Response): Promise<never> {
  * The SKILL.md the pull request writes: YAML frontmatter plus the body. An
  * edit passes the existing file's frontmatter as `keepFrontmatter`, so keys
  * the form does not show (`license`, `allowed-tools`, …) survive it; `name`
- * and `description` always come first and from the form.
+ * and `description` always come first and from the form. `tags`, when given,
+ * replace `metadata.tags` (see `withSkillTags`); every other `metadata` key
+ * is kept. A `metadata` that is not a map, or `metadata.tags` the portal
+ * cannot read whole, cannot take tags: a 422.
  */
 export function renderSkillMarkdown(options: {
   skillName: string;
   description: string;
   instructions: string;
+  tags?: readonly string[];
   keepFrontmatter?: Record<string, unknown>;
 }): string {
   const {
     name: _name,
     description: _description,
-    ...kept
+    ...rest
   } = options.keepFrontmatter ?? {};
+  let kept = rest;
+  if (options.tags !== undefined) {
+    try {
+      kept = withSkillTags(rest, options.tags);
+    } catch (error) {
+      if (error instanceof SkillTagsError) {
+        throw new GitHubApiError(422, error.message);
+      }
+      throw error;
+    }
+  }
   // js-yaml's dump quotes and escapes whatever the description contains, so
   // the frontmatter stays parseable for any input the route's bounds allow.
   const frontmatter = dump(
@@ -251,11 +283,14 @@ export function renderSkillMarkdown(options: {
 export async function createSkillPullRequest(
   options: CreateSkillPullRequestOptions,
 ): Promise<SkillPullRequest> {
-  const { skillName, description, instructions, token, logger } = options;
+  const { skillName, description, instructions, tags, token, logger } = options;
   const isUpdate = options.kind === 'update';
   const { owner, repo } = parseRepoUrl(options.repoUrl);
   const api = `https://api.github.com/repos/${owner}/${repo}`;
-  const dir = isUpdate ? (options.path ?? '') : skillName;
+  const newDir = options.parentDir
+    ? `${options.parentDir}/${skillName}`
+    : skillName;
+  const dir = isUpdate ? (options.path ?? '') : newDir;
   const baseBranch = isUpdate
     ? updateBranchName(dir, repo)
     : `add-skill/${skillName}`;
@@ -271,19 +306,41 @@ export async function createSkillPullRequest(
     default_branch?: string;
     permissions?: { push?: boolean };
   };
-  const base = repoData.default_branch || 'main';
+  const base = options.base || repoData.default_branch || 'main';
   if (repoData.permissions && !repoData.permissions.push) {
     throw new GitHubApiError(
       403,
       `You don't have push access to ${owner}/${repo}, which opening the pull request needs (the branch is created as you).`,
     );
   }
+  if (options.base) {
+    // A configured ref may be a tag: pull requests only target branches.
+    const branchResponse = await githubRequest(
+      `${api}/git/ref/heads/${encodePath(options.base)}`,
+      token,
+    );
+    if (branchResponse.status === 404) {
+      await branchResponse.body?.cancel();
+      throw new GitHubApiError(
+        422,
+        `${options.base} is not a branch of ${owner}/${repo}, so skills cannot be proposed to it.`,
+      );
+    }
+    if (!branchResponse.ok) {
+      await refuse(`resolve ${owner}/${repo}@${base}`, branchResponse);
+    }
+    // Only the status matters: release the connection.
+    await branchResponse.body?.cancel();
+  }
 
   // The head of the default branch, as a bare SHA whatever kind of ref it is.
   // Resolved first, so the file checked below and the branch created from it
   // are the same commit.
+  // A configured branch is named in full: a tag of the same name is not it.
   const headResponse = await githubRequest(
-    `${api}/commits/${encodeURIComponent(base)}`,
+    `${api}/commits/${encodeURIComponent(
+      options.base ? `refs/heads/${base}` : base,
+    )}`,
     token,
   );
   if (!headResponse.ok) {
@@ -384,6 +441,7 @@ export async function createSkillPullRequest(
         skillName,
         description,
         instructions,
+        tags,
         keepFrontmatter,
       });
       if (proposed === started.content) {
@@ -413,6 +471,19 @@ export async function createSkillPullRequest(
       await refuse(`read ${owner}/${repo}'s contents`, existing);
     }
   }
+
+  // Rendered before the branch exists: a SKILL.md it refuses (the tags, a
+  // 422) leaves nothing behind in the repository.
+  const content = Buffer.from(
+    renderSkillMarkdown({
+      skillName,
+      description,
+      instructions,
+      tags,
+      keepFrontmatter,
+    }),
+    'utf8',
+  ).toString('base64');
 
   // The branch, off the head checked above (see branchCandidates).
   let branch: string | undefined;
@@ -486,15 +557,6 @@ export async function createSkillPullRequest(
     }
   };
 
-  const content = Buffer.from(
-    renderSkillMarkdown({
-      skillName,
-      description,
-      instructions,
-      keepFrontmatter,
-    }),
-    'utf8',
-  ).toString('base64');
   const origin = isUpdate
     ? `Edited from the skill's page in the portal${
         options.baseCommit

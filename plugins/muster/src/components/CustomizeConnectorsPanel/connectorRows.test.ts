@@ -6,6 +6,7 @@ import {
   connectorReach,
   connectorStatus,
   toolsLabel,
+  toolsUnavailable,
   unsearchedToolsNotes,
 } from './connectorRows';
 
@@ -32,12 +33,109 @@ function single(s: MCPServer, toolCount?: number): ServerListEntry {
     id: s.getName(),
     displayName: s.getName(),
     row: { kind: 'server', server: s },
+    tags: [],
     shadowed: false,
     toolCount,
   };
 }
 
+function oauthServer(
+  name: string,
+  grantScope?: 'session' | 'subject',
+  suspended = false,
+): MCPServer {
+  return new MCPServer(
+    {
+      apiVersion: 'muster.giantswarm.io/v1alpha1',
+      kind: 'MCPServer',
+      metadata: { name },
+      spec: {
+        type: 'streamable-http',
+        url: 'https://x.test',
+        suspended,
+        auth: grantScope
+          ? {
+              type: 'oauth',
+              authorizationServer: {
+                issuer: 'https://auth.example.com',
+                grantScope,
+              },
+            }
+          : { type: 'oauth' },
+      },
+      status: { state: 'Auth Required' },
+    } as never,
+    'gazelle',
+  );
+}
+
 describe('connectorStatus', () => {
+  it('says a session-scoped sign-in covers the portal only, not plain Connected', () => {
+    const portalOnly = {
+      label: 'Portal only',
+      tone: 'warning',
+      explanation:
+        'Your sign-in to grafana-cloud covers this portal only. Each agent conversation asks you to sign in again.',
+    };
+    const entry = single(oauthServer('grafana-cloud'));
+    expect(
+      connectorStatus(entry, {
+        name: 'grafana-cloud',
+        status: 'connected',
+        kind: 'grant',
+        grant_scope: 'session',
+      }),
+    ).toEqual(portalOnly);
+    // From the spec, where muster says nothing of the grant's scope.
+    expect(
+      connectorStatus(entry, { name: 'grafana-cloud', status: 'connected' }),
+    ).toEqual(portalOnly);
+    // Only on muster's word that this session is connected: without a report
+    // (loading, no muster session) nobody signed in, and a failed connection
+    // is no working sign-in.
+    const connected = { label: 'Connected', tone: 'success' };
+    expect(connectorStatus(entry)).toEqual(connected);
+    for (const status of [
+      'disconnected',
+      'unreachable',
+      'failed',
+      'error',
+    ] as const) {
+      expect(
+        connectorStatus(entry, { name: 'grafana-cloud', status }),
+      ).not.toHaveProperty('label', 'Portal only');
+    }
+    // A sign-in muster still asks for comes first.
+    expect(
+      connectorStatus(entry, {
+        name: 'grafana-cloud',
+        status: 'auth_required',
+      }),
+    ).toEqual({ label: 'Sign in needed', tone: 'warning' });
+    // Deactivated stays deactivated.
+    const off = oauthServer('grafana-cloud', undefined, true);
+    expect(connectorStatus(single(off))).toEqual({
+      label: 'Deactivated',
+      tone: 'neutral',
+    });
+  });
+
+  it('reads Connected where one sign-in serves all of the person’s sessions', () => {
+    const entry = single(oauthServer('github', 'subject'));
+    expect(
+      connectorStatus(entry, { name: 'github', status: 'connected' }),
+    ).toEqual({ label: 'Connected', tone: 'success' });
+    // muster's report wins over a spec that would say session.
+    expect(
+      connectorStatus(single(oauthServer('miro')), {
+        name: 'miro',
+        status: 'connected',
+        kind: 'grant',
+        grant_scope: 'subject',
+      }),
+    ).toEqual({ label: 'Connected', tone: 'success' });
+  });
+
   it('puts this person’s sign-in before the server’s state', () => {
     const entry = single(server('github', 'Auth Required'));
     expect(
@@ -114,6 +212,7 @@ describe('connectorStatus', () => {
         family: 'kubernetes',
         servers: [server('a'), server('b', 'Failed')],
       } as never,
+      tags: [],
       shadowed: false,
     };
     expect(connectorStatus(entry)).toEqual({
@@ -139,6 +238,7 @@ describe('connectorReach', () => {
     id: 'kubernetes',
     displayName: 'kubernetes',
     row: { kind: 'family', family: 'kubernetes', servers } as never,
+    tags: [],
     shadowed: false,
   });
 
@@ -160,6 +260,20 @@ describe('connectorReach', () => {
         status: 'reauth_required',
       }),
     ).toBe('sign-in');
+  });
+
+  it('files a sign-in serving this session only under its own bucket', () => {
+    const entry = single(oauthServer('grafana-cloud'));
+    expect(
+      connectorReach(entry, { name: 'grafana-cloud', status: 'connected' }),
+    ).toBe('portal-only');
+    expect(connectorReach(entry)).toBe('connected');
+    expect(
+      connectorReach(single(oauthServer('github', 'subject')), {
+        name: 'github',
+        status: 'connected',
+      }),
+    ).toBe('connected');
   });
 
   it('files an SSO server that refused the sign-in under not connected, never sign-in', () => {
@@ -221,7 +335,7 @@ describe('unsearchedToolsNotes', () => {
       'Only connector names were searched: the tools are still loading.',
     ]);
     expect(unsearchedToolsNotes('unavailable', [], false)).toEqual([
-      'Only connector names were searched: tools need a muster session.',
+      'Only connector names were searched: tools need a Muster session.',
     ]);
   });
 
@@ -261,7 +375,7 @@ describe('unsearchedToolsNotes', () => {
         false,
       ),
     ).toEqual([
-      'The tools of github were not searched: muster listed none of them.',
+      'The tools of github were not searched: Muster listed none of them.',
     ]);
   });
 
@@ -269,7 +383,7 @@ describe('unsearchedToolsNotes', () => {
     expect(
       unsearchedToolsNotes('partial', [row('github', 'sign-in')], true),
     ).toEqual([
-      'Some tools were not searched: muster returned only part of them.',
+      'Some tools were not searched: Muster returned only part of them.',
       'The tools of github were not searched: they need your sign-in.',
     ]);
   });
@@ -285,6 +399,7 @@ describe('unsearchedToolsNotes', () => {
         id: 'muster',
         displayName: 'muster',
         row: { kind: 'core' as const },
+        tags: [],
         shadowed: false,
         toolCount: 0,
       },
@@ -297,5 +412,21 @@ describe('unsearchedToolsNotes', () => {
     expect(
       unsearchedToolsNotes('loaded', [row('web-search', 'connected', 3)], true),
     ).toEqual([]);
+  });
+});
+
+describe('toolsUnavailable', () => {
+  it('holds for a connector not reached that lists no tools', () => {
+    for (const reach of ['not-connected', 'deactivated', 'sign-in'] as const) {
+      expect(toolsUnavailable({ toolCount: 0 }, reach)).toBe(true);
+      expect(toolsUnavailable({}, reach)).toBe(true);
+    }
+  });
+
+  it('leaves a count to a connected connector, or one that lists tools', () => {
+    expect(toolsUnavailable({ toolCount: 0 }, 'connected')).toBe(false);
+    expect(toolsUnavailable({ toolCount: 0 }, 'portal-only')).toBe(false);
+    expect(toolsUnavailable({ toolCount: 3 }, 'not-connected')).toBe(false);
+    expect(toolsUnavailable({ toolCount: 0 }, undefined)).toBe(false);
   });
 });

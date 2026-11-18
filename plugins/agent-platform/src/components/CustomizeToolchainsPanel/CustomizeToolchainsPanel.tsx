@@ -12,6 +12,7 @@ import {
 import {
   CatalogNoMatch,
   EmptyStateCard,
+  ExternalCellText,
   getRelativeDate,
   INITIAL_ROWS,
   LoadingIndicator,
@@ -29,6 +30,7 @@ import {
   useToolchainSources,
   useToolchains,
 } from '../../hooks/useToolchainManager';
+import { usePortalSessionEnded } from '../../hooks/usePortalSessionEnded';
 import { toolchainDetailRouteRef } from '../../routes';
 import {
   sharedIdentityReason,
@@ -44,9 +46,11 @@ import {
   type ToolchainSource,
 } from '../../lib/toolchainManager';
 import { AddToolchainSourceButton } from '../AddToolchainSourceDialog';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { SharedIdentityNote } from '../SharedIdentityNote';
 import { ToolchainGrantPrompt } from '../ToolchainGrantPrompt';
 import { ToolchainReadFailure } from '../ToolchainReadFailure';
+import { ToolchainsUnchecked } from '../ToolchainsUnchecked';
 
 export type CustomizeToolchainsPanelProps = {
   search: string;
@@ -193,7 +197,7 @@ function SourcesSection({ installation }: { installation: string }) {
       isRowHeader: true,
       defaultWidth: '2fr',
       cell: row => (
-        <CellText
+        <ExternalCellText
           title={row.repository}
           href={safeWebURL(row.url)}
           description={row.registry}
@@ -337,8 +341,15 @@ function InstallationToolchains({
 export function CustomizeToolchainsPanel({
   search,
 }: CustomizeToolchainsPanelProps) {
-  const { installations, sharedIdentity, hasToolchains } =
+  const { installations, sharedIdentity, hasToolchains, unchecked, recheck } =
     useScopedToolchainInstallations();
+  // The portal refused the session token: the reads of every installation's
+  // toolchains, sources and tools fail the same way until a sign-in, which
+  // is the one thing to say.
+  const sessionEnded = usePortalSessionEnded();
+  if (sessionEnded) {
+    return <PortalSessionEndedAlert />;
+  }
 
   if (hasToolchains === false) {
     return sharedIdentity.length > 0 ? (
@@ -352,6 +363,9 @@ export function CustomizeToolchainsPanel({
         description="No environment in scope runs the toolchain-manager. Pick another environment, or ask your platform team to turn toolchains on."
       />
     );
+  }
+  if (hasToolchains === 'unchecked') {
+    return <ToolchainsUnchecked unchecked={unchecked} onRetry={recheck} />;
   }
   if (hasToolchains === undefined) {
     return <LoadingIndicator label="Reading the toolchains…" />;

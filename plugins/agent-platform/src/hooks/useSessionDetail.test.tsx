@@ -216,6 +216,48 @@ describe('useSessionDetail', () => {
     expect(result.current.error).toBeUndefined();
   });
 
+  it('says a conversation from an older cache is not current until the opening read lands', async () => {
+    // The plugin's client trusts a read for a minute, as here.
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
+    });
+    const twoMinutesAgo = Date.now() - 120_000;
+    queryClient.setQueryData(sessionQueryKey('gazelle', 'abc'), SESSION, {
+      updatedAt: twoMinutesAgo,
+    });
+    queryClient.setQueryData(sessionTasksQueryKey('gazelle', 'abc'), [], {
+      updatedAt: twoMinutesAgo,
+    });
+    getSessionDetail.mockResolvedValue(SESSION);
+    let answer: (tasks: unknown[]) => void = () => {};
+    listSessionTasks.mockReturnValue(
+      new Promise(resolve => {
+        answer = resolve;
+      }),
+    );
+    const wrapper = ({ children }: PropsWithChildren<{}>) => (
+      <TestApiProvider apis={[[kagentApiRef, kagentApi]]}>
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      </TestApiProvider>
+    );
+
+    const { result } = renderHook(() => useSessionDetail('gazelle', 'abc'), {
+      wrapper,
+    });
+
+    expect(result.current.hasConversation).toBe(true);
+    expect(result.current.isConversationCurrent).toBe(false);
+
+    await act(async () => answer([workingTask()]));
+
+    await waitFor(() =>
+      expect(result.current.isConversationCurrent).toBe(true),
+    );
+    expect(result.current.taskCount).toBe(1);
+  });
+
   it('keeps a loaded session when a poll returns an unreadable 200', async () => {
     // `getSessionDetail` resolves undefined for any 200 that does not parse — an
     // expired oauth2-proxy serving an HTML sign-in page is the realistic trigger.

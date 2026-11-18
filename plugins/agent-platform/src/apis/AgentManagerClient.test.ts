@@ -1,3 +1,4 @@
+/* eslint-disable @backstage/no-mixed-plugin-imports -- The client composes the installation's Muster API. */
 import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 
 import { AgentManagerError } from '../lib/agentManager';
@@ -18,6 +19,49 @@ const REQUEST = {
   requestId: 'req-1',
   sessionName: 'Summarise the open incidents',
 };
+
+describe('AgentManagerClient model endpoints', () => {
+  it.each([
+    'https://user:synthetic-value@models.example/v1',
+    'https://models.example/v1?api_key=synthetic-value',
+    'https://models.example/v1?%61pi_key=synthetic-value',
+    'https://models.example/v1?api_key_synthetic-value',
+    'https://models.example/v1?safe=value;api_key=synthetic-value',
+    'https://models.example/v1#synthetic-value',
+  ])(
+    'rejects a credential-bearing endpoint before MCP transmission: %s',
+    async endpoint => {
+      const { api, callTool } = makeMusterApi(async () => ({ name: 'model' }));
+      Object.assign(api, {
+        describeTool: jest.fn(async () => ({
+          inputSchema: {
+            properties: Object.fromEntries(
+              [
+                'projectID',
+                'location',
+                'endpoint',
+                'displayName',
+                'noCredential',
+              ].map(field => [field, {}]),
+            ),
+          },
+        })),
+      });
+      const client = new AgentManagerClient(api, 'inst-1');
+      const operation = client.setOrganizationModel({
+        namespace: 'kagent',
+        name: 'model',
+        provider: 'OpenAI',
+        model: 'test-model',
+        requestId: 'model-endpoint-validation',
+        endpoint,
+      });
+      await expect(operation).rejects.toThrow(/credential/i);
+      await expect(operation).rejects.not.toThrow('synthetic-value');
+      expect(callTool).not.toHaveBeenCalled();
+    },
+  );
+});
 
 describe('AgentManagerClient.startSession', () => {
   it('calls start_session through muster on the installation, as the person', async () => {
@@ -101,5 +145,61 @@ describe('AgentManagerClient.startSession', () => {
     await expect(
       new AgentManagerClient(api, 'inst-1').startSession(REQUEST),
     ).rejects.toThrow(/without a session id/);
+  });
+});
+
+describe('AgentManagerClient.getOrganization', () => {
+  it('separates the organization from erases, which agent-manager answers side by side', async () => {
+    const { api, callTool } = makeMusterApi(async () => ({
+      name: 'payments',
+      parent: 'org-acme',
+      harnesses: ['kagent'],
+      workerReplicas: 1,
+      erases: { namespace: 'agents-payments-x7k2q', kept: 'tombstones' },
+    }));
+
+    const details = await new AgentManagerClient(api, 'inst-1').getOrganization(
+      'org-acme',
+      'payments',
+    );
+
+    expect(callTool).toHaveBeenCalledWith(
+      'x_agent-manager_get_organization',
+      { namespace: 'org-acme', name: 'payments' },
+      'inst-1',
+    );
+    expect(details.organization).toEqual({
+      name: 'payments',
+      parent: 'org-acme',
+      harnesses: ['kagent'],
+      workerReplicas: 1,
+    });
+    expect(details.erases).toEqual({
+      namespace: 'agents-payments-x7k2q',
+      kept: 'tombstones',
+    });
+  });
+});
+
+describe('AgentManagerClient.deleteOrganization', () => {
+  it('sends the typed name only when given, and mode commit only when asked', async () => {
+    const { api, callTool } = makeMusterApi(async () => ({ deleted: false }));
+    const client = new AgentManagerClient(api, 'inst-1');
+
+    await client.deleteOrganization({
+      parent: 'org-acme',
+      name: 'payments',
+      mode: 'commit',
+    });
+    await client.deleteOrganization({
+      parent: 'org-acme',
+      name: 'payments',
+      confirm: 'org-acme/payments',
+    });
+
+    expect(callTool.mock.calls.map(([, args]) => args)).toEqual([
+      { namespace: 'org-acme', name: 'payments', mode: 'commit' },
+      { namespace: 'org-acme', name: 'payments', confirm: 'org-acme/payments' },
+    ]);
   });
 });

@@ -8,7 +8,11 @@ import {
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { AgentRow } from '../AgentsDataProvider';
-import { AgentManagerNotConnectedError } from '../../lib/agentManager';
+import {
+  AgentManagerNotConnectedError,
+  classifyAgentManagerError,
+} from '../../lib/agentManager';
+import { MusterUnauthorizedError } from '@giantswarm/backstage-plugin-muster';
 import { MESSAGE_TEXT_MAX_LENGTH } from '../SessionComposer';
 import { mockImageEncoding, pngFile } from '../../lib/__fixtures__/images';
 import {
@@ -36,6 +40,7 @@ function agentRow(overrides: Partial<AgentRow> = {}): AgentRow {
     name: 'SRE Agent',
     technicalName: 'sre-agent',
     description: 'Investigates incidents',
+    tags: [],
     skillCount: 3,
     readiness: 'ready',
     ...overrides,
@@ -82,6 +87,8 @@ function renderComposer(
 const field = () => screen.getByRole('textbox', { name: 'Prompt' });
 const startButton = () => screen.getByRole('button', { name: 'Start' });
 const agentPicker = () => screen.getByRole('button', { name: /Agent/ });
+/** A sole agent, named rather than offered. */
+const fixedAgent = () => screen.getByRole('group', { name: 'Agent' });
 
 beforeEach(() => {
   onStart.mockReset();
@@ -89,7 +96,28 @@ beforeEach(() => {
 
 jest.mock('@giantswarm/backstage-plugin-muster', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-muster'),
-  ServerSignIn: () => <div data-testid="server-sign-in" />,
+  // Its `onSignedIn` stands for muster reporting the sign-in landed: made
+  // in this tab, or in another one.
+  ServerSignIn: ({
+    onSignedIn,
+  }: {
+    onSignedIn?: (signedIn: { here: boolean }) => void;
+  }) => (
+    <div data-testid="server-sign-in">
+      {onSignedIn && (
+        <>
+          <button type="button" onClick={() => onSignedIn({ here: true })}>
+            Sign-in lands
+          </button>
+          <button type="button" onClick={() => onSignedIn({ here: false })}>
+            Sign-in lands in another tab
+          </button>
+        </>
+      )}
+    </div>
+  ),
+  useConnectorLabel: (_installation: string, name: string) =>
+    name === 'agent-manager' ? 'Agent Manager' : name,
 }));
 
 describe('NewSessionComposer', () => {
@@ -98,7 +126,14 @@ describe('NewSessionComposer', () => {
       renderComposer({ collapsible: true });
 
       expect(startButton()).toBeInTheDocument();
-      expect(agentPicker()).toBeInTheDocument();
+      expect(fixedAgent()).toBeInTheDocument();
+    });
+
+    it('shows a prompt it starts with whole', () => {
+      renderComposer({ collapsible: true, initialPrompt: 'Kept from before' });
+
+      expect(field()).toHaveValue('Kept from before');
+      expect(field()).toHaveAttribute('rows', '3');
     });
 
     it('shows a single line until focused, then grows', async () => {
@@ -230,6 +265,25 @@ describe('NewSessionComposer', () => {
 
       expect(agentPicker()).toHaveTextContent('Issue Tracker');
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('keeps the agent shown while the person types when another default arrives', async () => {
+      const { rerender } = renderComposer({
+        agents: [sre, issues],
+        defaultAgent: sre,
+      });
+
+      await userEvent.type(field(), 'check');
+      rerender(
+        <NewSessionComposer
+          agents={[sre, issues]}
+          defaultAgent={issues}
+          isStarting={false}
+          onStart={onStart}
+        />,
+      );
+
+      expect(agentPicker()).toHaveTextContent('SRE Agent');
     });
 
     it('drops the message once an agent is chosen', async () => {
@@ -387,13 +441,13 @@ describe('NewSessionComposer', () => {
     });
 
     it('falls back to a sole agent when the default is not on offer', async () => {
-      // Otherwise this is a dead end: one agent available, none selected, and the
-      // picker disabled because there is nothing to choose.
+      // Otherwise this is a dead end: one agent available, none selected, and
+      // nothing to choose.
       renderComposer({ agents: [sre], defaultAgent: platform });
 
       await userEvent.type(field(), 'check');
 
-      expect(agentPicker()).toHaveTextContent('SRE Agent');
+      expect(fixedAgent()).toHaveTextContent('SRE Agent');
       expect(startButton()).toBeEnabled();
     });
 
@@ -446,7 +500,7 @@ describe('NewSessionComposer', () => {
 
         rerenderWith(rerender, { agents: [sre], defaultAgent: sre });
 
-        expect(agentPicker()).toHaveTextContent('SRE Agent');
+        expect(fixedAgent()).toHaveTextContent('SRE Agent');
       });
 
       it('does not overwrite an agent the user already chose', async () => {
@@ -460,20 +514,40 @@ describe('NewSessionComposer', () => {
         expect(agentPicker()).toHaveTextContent('Platform Agent');
       });
 
-      it('does not undo a deliberate clearing', async () => {
+      it('keeps a picked agent over a default that arrives later', async () => {
         const { rerender } = renderComposer({
-          agents: [sre],
+          agents: [sre, platform, issues],
           defaultAgent: sre,
         });
-        expect(agentPicker()).toHaveTextContent('SRE Agent');
-
-        // Touching the picker at all marks the selection as the user's, so a
-        // re-resolved default cannot reinstate itself.
         await userEvent.click(agentPicker());
-        await userEvent.keyboard('{Escape}');
-        rerenderWith(rerender, { agents: [sre], defaultAgent: sre });
+        await userEvent.click(
+          screen.getByRole('option', { name: /Platform Agent/ }),
+        );
 
-        expect(agentPicker()).toHaveTextContent('SRE Agent');
+        // A pick marks the selection as the person's: another default,
+        // resolved later, does not replace it.
+        rerenderWith(rerender, {
+          agents: [sre, platform, issues],
+          defaultAgent: issues,
+        });
+
+        expect(agentPicker()).toHaveTextContent('Platform Agent');
+      });
+
+      it('selects the sole agent left after the picked one has gone', async () => {
+        // The picked agent stops being ready: what remains is no choice, and a
+        // disabled picker with nothing in it would be a dead end.
+        const { rerender } = renderComposer({ agents: [sre, platform] });
+        await userEvent.click(agentPicker());
+        await userEvent.click(
+          screen.getByRole('option', { name: /Platform Agent/ }),
+        );
+
+        rerenderWith(rerender, { agents: [sre] });
+        await userEvent.type(field(), 'check');
+
+        expect(fixedAgent()).toHaveTextContent('SRE Agent');
+        expect(startButton()).toBeEnabled();
       });
     });
 
@@ -505,13 +579,24 @@ describe('NewSessionComposer', () => {
     });
 
     describe('a picker with nothing to choose', () => {
-      it('preselects a sole agent and disables the control', () => {
-        // A dropdown with a single item is not a choice. It still names the agent,
-        // which is what confirms the target inside the agent-page dialog.
+      it('names a sole agent instead of offering a picker', () => {
+        // A dropdown with a single item is not a choice. The agent is still
+        // named, which is what confirms the target inside the agent-page
+        // dialog.
         renderComposer({ agents: [sre] });
 
-        expect(agentPicker()).toHaveTextContent('SRE Agent');
+        expect(fixedAgent()).toHaveTextContent('SRE Agent');
+        expect(
+          screen.queryByRole('button', { name: /Agent/ }),
+        ).not.toBeInTheDocument();
+      });
+
+      it('keeps a disabled picker while more agents may come', () => {
+        // Named now, it would turn into a picker as the others are read.
+        renderComposer({ agents: [sre], isLoadingAgents: true });
+
         expect(agentPicker()).toBeDisabled();
+        expect(agentPicker()).toHaveTextContent('SRE Agent');
       });
 
       it('stays enabled once there is a real choice', () => {
@@ -524,8 +609,7 @@ describe('NewSessionComposer', () => {
         // Two agents but one non-ready is still no choice at all.
         renderComposer({ agents: [sre, broken] });
 
-        expect(agentPicker()).toBeDisabled();
-        expect(agentPicker()).toHaveTextContent('SRE Agent');
+        expect(fixedAgent()).toHaveTextContent('SRE Agent');
       });
     });
 
@@ -564,6 +648,58 @@ describe('NewSessionComposer', () => {
     });
   });
 
+  it('reports the prompt as it is typed, for a caller that keeps a draft', async () => {
+    const onPromptChange = jest.fn();
+    renderComposer({ onPromptChange });
+
+    await userEvent.type(field(), 'Hi');
+
+    expect(onPromptChange).toHaveBeenLastCalledWith('Hi');
+  });
+
+  it('shows the prompt a caller holds, and hands it every edit', async () => {
+    const onPromptChange = jest.fn();
+    const view = renderComposer({ prompt: 'Kept', onPromptChange });
+    expect(field()).toHaveValue('Kept');
+
+    await userEvent.type(field(), '!');
+    expect(onPromptChange).toHaveBeenLastCalledWith('Kept!');
+    // Held by the caller, which has not taken the edit.
+    expect(field()).toHaveValue('Kept');
+
+    view.rerender(
+      <NewSessionComposer
+        agents={[sre]}
+        isStarting={false}
+        onStart={onStart}
+        prompt="Restored"
+        onPromptChange={onPromptChange}
+      />,
+    );
+    expect(field()).toHaveValue('Restored');
+  });
+
+  it('says whether the person picked the agent or it was preselected', async () => {
+    const onSelectedAgentChange = jest.fn();
+    renderComposer({
+      agents: [sre, issues],
+      defaultAgent: sre,
+      onSelectedAgentChange,
+    });
+    expect(onSelectedAgentChange).toHaveBeenLastCalledWith(sre, {
+      byPerson: false,
+    });
+
+    await userEvent.click(agentPicker());
+    await userEvent.click(
+      await screen.findByRole('option', { name: /Issue Tracker/ }),
+    );
+
+    expect(onSelectedAgentChange).toHaveBeenLastCalledWith(issues, {
+      byPerson: true,
+    });
+  });
+
   it('says the fleet is still being read while installations respond', () => {
     renderComposer({ isLoadingAgents: true });
 
@@ -587,9 +723,169 @@ describe('NewSessionComposer', () => {
       error: new AgentManagerNotConnectedError('tool not found'),
     });
 
-    expect(screen.getByText('Connect to agent-manager')).toBeInTheDocument();
+    // Not muster's request for a sign-in: its answer stays in sight.
+    expect(screen.getByText('Connect to Agent Manager')).toBeInTheDocument();
+    expect(screen.getByText('tool not found')).toBeInTheDocument();
     expect(screen.getByTestId('server-sign-in')).toBeInTheDocument();
     expect(screen.queryByText('Session not started')).not.toBeInTheDocument();
+  });
+
+  // giantswarm/giantswarm#39050: muster's own text names the server by its
+  // technical name; the composer says it in the portal's words.
+  it("says muster's sign-in request in its own words, with the connector's display name", () => {
+    renderComposer({
+      defaultAgent: sre,
+      error: classifyAgentManagerError(
+        new MusterUnauthorizedError(
+          "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
+          'server_sign_in_required',
+          'agent-manager',
+          'gazelle',
+        ),
+      ),
+    });
+
+    expect(screen.getByText('Sign in to Agent Manager')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Sessions are started through the Agent Manager connector, which acts as you. You have not signed in to it on gazelle yet.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/requires authentication/)).toBeNull();
+    expect(screen.queryByText('Session not started')).not.toBeInTheDocument();
+  });
+
+  // The start's error belongs to the caller (`useCreateSession`'s mutation),
+  // which keeps it until the next start: the alert used to stay up after the
+  // sign-in, and a second click on its Sign in read muster's "already
+  // authenticated".
+  describe('once the sign-in to agent-manager lands', () => {
+    const signInRequired = () =>
+      classifyAgentManagerError(
+        new MusterUnauthorizedError(
+          "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
+          'server_sign_in_required',
+          'agent-manager',
+          'gazelle',
+        ),
+      );
+
+    it('takes the alert away and starts the refused session again, for a sign-in made in this tab', async () => {
+      const error = signInRequired();
+      const { rerender } = renderComposer({ defaultAgent: sre });
+      await userEvent.type(field(), 'check the ingress');
+      await userEvent.click(startButton());
+      onStart.mockClear();
+      // The start was refused: the caller hands its error back.
+      rerender(
+        <NewSessionComposer
+          agents={[sre]}
+          defaultAgent={sre}
+          isStarting={false}
+          onStart={onStart}
+          error={error}
+        />,
+      );
+      expect(screen.getByText('Sign in to Agent Manager')).toBeInTheDocument();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Sign-in lands' }),
+      );
+
+      expect(
+        screen.queryByText('Sign in to Agent Manager'),
+      ).not.toBeInTheDocument();
+      expect(onStart).toHaveBeenCalledTimes(1);
+      expect(onStart).toHaveBeenCalledWith(
+        sre,
+        'check the ingress',
+        [],
+        undefined,
+        undefined,
+      );
+      expect(field()).toHaveValue('check the ingress');
+    });
+
+    // Only the tab the person pressed Start in starts again: a sign-in made
+    // in another tab clears the alert here and leaves Start to the person.
+    it('only clears the alert for a sign-in made in another tab', async () => {
+      const error = signInRequired();
+      const { rerender } = renderComposer({ defaultAgent: sre });
+      await userEvent.type(field(), 'check the ingress');
+      await userEvent.click(startButton());
+      rerender(
+        <NewSessionComposer
+          agents={[sre]}
+          defaultAgent={sre}
+          isStarting={false}
+          onStart={onStart}
+          error={error}
+        />,
+      );
+      onStart.mockClear();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Sign-in lands in another tab' }),
+      );
+
+      expect(
+        screen.queryByText('Sign in to Agent Manager'),
+      ).not.toBeInTheDocument();
+      expect(onStart).not.toHaveBeenCalled();
+      expect(field()).toHaveValue('check the ingress');
+    });
+
+    // The start that was refused, not whatever the box holds by then.
+    it('only clears the alert once the prompt changed since the refused start', async () => {
+      const { rerender } = renderComposer({ defaultAgent: sre });
+      await userEvent.type(field(), 'check the ingress');
+      await userEvent.click(startButton());
+      rerender(
+        <NewSessionComposer
+          agents={[sre]}
+          defaultAgent={sre}
+          isStarting={false}
+          onStart={onStart}
+          error={signInRequired()}
+        />,
+      );
+      await userEvent.type(field(), ' and the egress');
+      onStart.mockClear();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Sign-in lands' }),
+      );
+
+      expect(
+        screen.queryByText('Sign in to Agent Manager'),
+      ).not.toBeInTheDocument();
+      expect(onStart).not.toHaveBeenCalled();
+    });
+
+    it('asks again when the start that followed is refused again', async () => {
+      const { rerender } = renderComposer({
+        defaultAgent: sre,
+        error: signInRequired(),
+      });
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Sign-in lands' }),
+      );
+      expect(
+        screen.queryByText('Sign in to Agent Manager'),
+      ).not.toBeInTheDocument();
+
+      rerender(
+        <NewSessionComposer
+          agents={[sre]}
+          defaultAgent={sre}
+          isStarting={false}
+          onStart={onStart}
+          error={signInRequired()}
+        />,
+      );
+
+      expect(screen.getByText('Sign in to Agent Manager')).toBeInTheDocument();
+    });
   });
 });
 
@@ -659,6 +955,25 @@ describe('opt-in picker options', () => {
       .filter(text => text === 'kagent' || text === 'research');
 
     expect(headings).toEqual(['kagent', 'research']);
+    expect(
+      within(screen.getByRole('group', { name: 'research' })).getByRole(
+        'option',
+        { name: /Research Agent/ },
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the namespace headings when the leading agent is alone in its namespace', async () => {
+    renderComposer({
+      // sre alone in kagent, research in research: two namespaces on offer.
+      agents: [sre, research],
+      groupByNamespace: true,
+      leadingAgentId: sre.id,
+    });
+
+    await userEvent.click(agentPicker());
+
+    expect(screen.getAllByRole('option')[0]).toHaveTextContent('SRE Agent');
     expect(
       within(screen.getByRole('group', { name: 'research' })).getByRole(
         'option',
@@ -794,6 +1109,8 @@ describe('opt-in picker options', () => {
       groupByNamespace: true,
       recentAgentIds: [research.id],
       favoriteAgentIds: [issues.id],
+      // The plain list's keyboard path; the searchable one is tested below.
+      searchable: false,
     });
 
     agentPicker().focus();
@@ -1168,7 +1485,7 @@ describe('opt-in picker options', () => {
   it('keeps a sole agent without a footer action as no choice', () => {
     renderComposer({ agents: [sre] });
 
-    expect(agentPicker()).toBeDisabled();
+    expect(fixedAgent()).toHaveTextContent('SRE Agent');
   });
 
   it('says nothing matches rather than offering only the footer action', async () => {
@@ -1250,7 +1567,9 @@ describe('opt-in picker options', () => {
     );
 
     expect(agentPicker()).toHaveTextContent('Issue Tracker');
-    expect(onSelectedAgentChange).toHaveBeenLastCalledWith(issues);
+    expect(onSelectedAgentChange).toHaveBeenLastCalledWith(issues, {
+      byPerson: true,
+    });
   });
 });
 

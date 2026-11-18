@@ -2,7 +2,11 @@ import { PropsWithChildren } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { TestApiProvider, mockApis } from '@backstage/test-utils';
 import { storageApiRef, type StorageApi } from '@backstage/core-plugin-api';
-import { useStoredSetting } from './useStoredSetting';
+import {
+  isTransientStoredSettingError,
+  StoredSettingReadError,
+  useStoredSetting,
+} from './useStoredSetting';
 
 const BUCKET = 'agent-platform';
 const KEY = 'someList';
@@ -170,6 +174,13 @@ describe('useStoredSetting', () => {
 
     expect(bucket.set).not.toHaveBeenCalled();
     expect(inner.snapshot(KEY).value).toEqual(['a', 'b']);
+    // The storage says nothing of why: not worth reading again.
+    await act(async () => {
+      await expect(result.current.update(append('c'))).rejects.toMatchObject({
+        name: 'StoredSettingReadError',
+        transient: false,
+      });
+    });
   });
 
   it('keeps showing a known value when a later read is not answered', async () => {
@@ -241,5 +252,33 @@ describe('useStoredSetting', () => {
     expect(result.current.snapshot.value).toEqual({
       sessions: { 'gazelle/abc': { level: 'muted', at: 2 } },
     });
+  });
+});
+
+describe('isTransientStoredSettingError', () => {
+  it('tries again after a transient read, the network or a 5xx, not after a timeout, a 4xx or a bug', () => {
+    const answered = (status: number) =>
+      Object.assign(new Error(`answered ${status}`), { status });
+
+    expect(
+      isTransientStoredSettingError(new StoredSettingReadError('503', true)),
+    ).toBe(true);
+    expect(
+      isTransientStoredSettingError(
+        Object.assign(new Error('unreachable'), { network: true }),
+      ),
+    ).toBe(true);
+    // A TypeError the write's own code throws is no network failure.
+    expect(isTransientStoredSettingError(new TypeError('x is undefined'))).toBe(
+      false,
+    );
+    expect(isTransientStoredSettingError(answered(503))).toBe(true);
+    expect(
+      isTransientStoredSettingError(
+        new StoredSettingReadError('timed out', false),
+      ),
+    ).toBe(false);
+    expect(isTransientStoredSettingError(answered(413))).toBe(false);
+    expect(isTransientStoredSettingError(new Error('other'))).toBe(false);
   });
 });

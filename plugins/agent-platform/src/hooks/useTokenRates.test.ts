@@ -163,7 +163,7 @@ describe('useTokenRates', () => {
     );
 
     expect(result.current.model).toBe('claude-sonnet-4-6');
-    expect(result.current.window).toBe('7d');
+    expect(result.current.windowDays).toBe(7);
   });
 
   it('reports loading, not "none", while the queries are in flight', () => {

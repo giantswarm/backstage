@@ -46,10 +46,17 @@ const STATUS_MEANING: Record<string, string> = {
 export function PricingCoverageAlert({
   rows,
   costHref,
+  scopeNote,
 }: {
   rows: UnpricedModelRow[];
   /** Link to the Cost tab, where {@link PricingCoverageNote} names the models. */
   costHref?: string;
+  /**
+   * A sentence after the description, for a view narrowed to one
+   * organization: the lookups carry no organization, so the warning is every
+   * organization's.
+   */
+  scopeNote?: string;
 }) {
   if (rows.length === 0) {
     return null;
@@ -66,7 +73,7 @@ export function PricingCoverageAlert({
       title={`${count} ${count === 1 ? 'model has' : 'models have'} no usable price`}
       description={`Every cost figure here understates the real bill by whatever ${
         count === 1 ? 'that model' : 'those models'
-      } spent. Token counts are unaffected.`}
+      } spent. Token counts are unaffected.${scopeNote ? ` ${scopeNote}` : ''}`}
       customActions={
         costHref ? (
           <Link href={costHref}>Which models, and why</Link>

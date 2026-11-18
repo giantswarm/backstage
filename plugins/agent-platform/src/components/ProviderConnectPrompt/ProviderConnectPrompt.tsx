@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Alert, Button, Flex, Link, Text } from '@backstage/ui';
+import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { useServerSignIn } from '@giantswarm/backstage-plugin-muster';
+import { NewTabLabel } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   providerDisplayName,
@@ -135,11 +136,12 @@ function MusterGrant({
   onConnected,
   waitingNote = 'Finish in the other tab. The owners and repositories appear here as soon as you are back.',
 }: ProviderConnectActionProps & { target: { name: string; app: boolean } }) {
+  const kind = providerKindName(provider.kind) || providerDisplayName(provider);
   const signIn = useServerSignIn(target.name, installation, {
     noun: 'connector',
     app: target.app,
+    displayName: kind,
   });
-  const kind = providerKindName(provider.kind) || providerDisplayName(provider);
   const copy = signInCopy(provider);
 
   // Granted is a sign-in this prompt started that muster now reports done; a
@@ -194,11 +196,25 @@ function MusterGrant({
             </Button>
           </div>
         ) : (
-          <Link href={signIn.authUrl} target="_blank" rel="noopener">
-            Open the {kind} sign-in
-          </Link>
+          <div>
+            <Button
+              variant="secondary"
+              size="small"
+              onPress={signIn.openSignInPage}
+            >
+              <NewTabLabel>Open the {kind} sign-in</NewTabLabel>
+            </Button>
+          </div>
         )}
       </Flex>
+    );
+  }
+
+  if (signIn.signInRefusal) {
+    return (
+      <Text variant="body-small" color="danger">
+        {signIn.signInRefusal}
+      </Text>
     );
   }
 
@@ -216,7 +232,11 @@ function MusterGrant({
           isDisabled={signIn.isPending}
           onPress={startSignIn}
         >
-          {signIn.isPending ? 'Opening…' : `${copy.cta} ↗`}
+          {signIn.isPending ? (
+            'Opening…'
+          ) : (
+            <NewTabLabel>{copy.cta}</NewTabLabel>
+          )}
         </Button>
       </div>
       <Text variant="body-small" color="secondary">

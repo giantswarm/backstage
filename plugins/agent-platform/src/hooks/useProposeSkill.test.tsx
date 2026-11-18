@@ -2,13 +2,30 @@ import { PropsWithChildren } from 'react';
 import { act, renderHook } from '@testing-library/react';
 import {
   analyticsApiRef,
-  discoveryApiRef,
   fetchApiRef,
   githubAuthApiRef,
 } from '@backstage/core-plugin-api';
 import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  baseDataSet,
+  inInstallation,
+} from '@giantswarm/backstage-plugin-gs-common/fixtures';
+import {
+  SkillDiscoveryClient,
+  skillDiscoveryApiRef,
+  type SkillDiscoveryApi,
+} from '../apis/SkillDiscoveryApi';
+import {
+  portalSkillRepositories,
+  SkillDiscoveryFixtureApi,
+} from '../apis/fixtures/SkillDiscoveryFixtureApi';
 import { useProposeSkill, type ProposedSkill } from './useProposeSkill';
+import { useSkillSource, type SkillSource } from './useSkillSource';
+
+jest.mock('./useSkillSource', () => ({
+  useSkillSource: jest.fn(),
+}));
 
 const analyticsApi = mockApis.analytics.mock();
 const discoveryApi = mockApis.discovery();
@@ -36,7 +53,13 @@ const skill: ProposedSkill = {
   instructions: 'Write things down.',
 };
 
-function renderUseProposeSkill() {
+function renderUseProposeSkill(
+  skillDiscoveryApi: SkillDiscoveryApi = new SkillDiscoveryClient({
+    discoveryApi,
+    fetchApi,
+    githubAuthApi,
+  }),
+) {
   const queryClient = new QueryClient({
     defaultOptions: { mutations: { retry: false } },
   });
@@ -44,9 +67,7 @@ function renderUseProposeSkill() {
     <TestApiProvider
       apis={[
         [analyticsApiRef, analyticsApi],
-        [discoveryApiRef, discoveryApi],
-        [fetchApiRef, fetchApi],
-        [githubAuthApiRef, githubAuthApi],
+        [skillDiscoveryApiRef, skillDiscoveryApi],
       ]}
     >
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -57,6 +78,7 @@ function renderUseProposeSkill() {
 
 beforeEach(() => {
   jest.mocked(analyticsApi.captureEvent).mockClear();
+  jest.mocked(useSkillSource).mockReturnValue({ kind: 'portal' });
   getAccessToken.mockReset();
   getAccessToken.mockResolvedValue('gh-token');
   fetchMock.mockReset();
@@ -132,5 +154,91 @@ describe('useProposeSkill', () => {
     });
 
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe('useProposeSkill through skill-manager', () => {
+  it('names the installation and carries the person’s muster token', async () => {
+    const authHeaders = jest
+      .fn()
+      .mockResolvedValue({ 'backstage-muster-authorization': 'muster-token' });
+    jest.mocked(useSkillSource).mockReturnValue({
+      kind: 'skill-manager',
+      installation: 'graveler',
+      client: { authHeaders },
+    } as unknown as SkillSource);
+
+    const { result } = renderUseProposeSkill();
+    await act(async () => {
+      await result.current.proposeSkill(skill);
+    });
+
+    expect(authHeaders).toHaveBeenCalled();
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers['backstage-muster-authorization']).toBe('muster-token');
+    expect(JSON.parse(init.body)).toEqual({
+      ...skill,
+      installation: 'graveler',
+    });
+  });
+
+  it('opens nothing while muster cannot be asked about skill-manager', async () => {
+    jest.mocked(useSkillSource).mockReturnValue({
+      kind: 'unreachable',
+      installation: 'graveler',
+    });
+
+    const { result } = renderUseProposeSkill();
+    await act(async () => {
+      await expect(result.current.proposeSkill(skill)).rejects.toThrow(
+        /muster on graveler/,
+      );
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('useProposeSkill in fixture mode', () => {
+  it('opens a made-up pull request without a GitHub token or a request to the pull-request route', async () => {
+    const [repository] = portalSkillRepositories();
+    const { result } = renderUseProposeSkill(new SkillDiscoveryFixtureApi());
+
+    let answer;
+    await act(async () => {
+      answer = await result.current.proposeSkill({
+        ...skill,
+        repoUrl: repository.url,
+      });
+    });
+
+    expect(answer).toMatchObject({
+      pullRequestUrl: `${repository.url}/pull/101`,
+      branch: 'add-skill/notes',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getAccessToken).not.toHaveBeenCalled();
+  });
+
+  it('does the same through skill-manager, without asking for muster headers', async () => {
+    const authHeaders = jest.fn();
+    jest.mocked(useSkillSource).mockReturnValue({
+      kind: 'skill-manager',
+      installation: 'fennel',
+      client: { authHeaders },
+    } as unknown as SkillSource);
+    const [repository] = inInstallation(
+      baseDataSet().skillRepositories,
+      'fennel',
+    );
+    const { result } = renderUseProposeSkill(new SkillDiscoveryFixtureApi());
+
+    await act(async () => {
+      await result.current.proposeSkill({ ...skill, repoUrl: repository.url });
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getAccessToken).not.toHaveBeenCalled();
+    expect(authHeaders).not.toHaveBeenCalled();
   });
 });

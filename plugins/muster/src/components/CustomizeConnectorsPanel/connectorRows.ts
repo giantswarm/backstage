@@ -1,4 +1,3 @@
-import type { StatusDotTone } from '@giantswarm/backstage-plugin-ui-react';
 import { countNoun, joinNames } from '@giantswarm/backstage-plugin-ui-react';
 import {
   MCPServer,
@@ -11,9 +10,13 @@ import type { ServerListEntry } from '../../lib/serverList';
 import { serverAuthMode, type ServerAuthMode } from '../../lib/serverAuthMode';
 import type { ServerAuthStatus } from '../../apis/types';
 import {
+  type ExplainedStatusText,
   isConnecting,
   isSsoRefused,
   needsSignIn,
+  PORTAL_ONLY_LABEL,
+  portalOnlyStatus,
+  SEVERITY_DOT_TONE,
   SSO_REFUSED_STATUS,
   type StatusText,
 } from '../shared';
@@ -26,13 +29,6 @@ export const SHELL_AUTH_LABELS: Record<ServerAuthMode, string> = {
   'token-exchange': 'Company login',
   sigv4: 'Shared AWS identity',
   unknown: 'Other sign-in',
-};
-
-const SEVERITY_TONE: Record<MCPServerSeverity, StatusDotTone> = {
-  ok: 'success',
-  warning: 'warning',
-  error: 'danger',
-  unknown: 'neutral',
 };
 
 /** The server that speaks for a row: itself, or a family's representative. */
@@ -64,17 +60,38 @@ export function toolsLabel(entry: ServerListEntry): string | undefined {
   return countNoun(entry.toolCount, 'tool');
 }
 
+/** What the Tools column shows where there is nothing to count. */
+export const NO_TOOLS_VALUE = '—';
+
+/**
+ * Whether a row's tool count means nothing: the connector is not reached
+ * (not connected, deactivated, awaiting a sign-in) and lists no tools, so
+ * "0 tools" would read as a connector without tools.
+ */
+export function toolsUnavailable(
+  entry: Pick<ServerListEntry, 'toolCount'>,
+  reach: ConnectorReach | undefined,
+): boolean {
+  return (
+    reach !== undefined &&
+    reach !== 'connected' &&
+    reach !== 'portal-only' &&
+    !(entry.toolCount && entry.toolCount > 0)
+  );
+}
+
 /**
  * A row's state: for one server, this person's sign-in when muster reports one
  * that asks something of them or a connect with their portal sign-in still
  * under way, "Cannot connect" for an SSO server that refused their sign-in,
- * else the server's own state; for a family, how many of its
- * instances are healthy.
+ * "Portal only" for a healthy one whose sign-in serves this muster session
+ * only (`portalOnlyStatus`), else the server's own state; for a family, how
+ * many of its instances are healthy.
  */
 export function connectorStatus(
   entry: ServerListEntry,
   authStatus?: ServerAuthStatus,
-): StatusText {
+): ExplainedStatusText {
   if (entry.row.kind === 'family') {
     const servers = entry.row.servers;
     const healthy = servers.filter(
@@ -85,7 +102,7 @@ export function connectorStatus(
         healthy === servers.length
           ? 'Connected'
           : `${healthy} of ${servers.length} connected`,
-      tone: SEVERITY_TONE[
+      tone: SEVERITY_DOT_TONE[
         servers
           .map(s => mcpServerStateSeverity(s.getState()))
           .reduce<MCPServerSeverity>(worstSeverity, 'ok')
@@ -110,20 +127,31 @@ export function connectorStatus(
   if (authStatus && isConnecting(authStatus)) {
     return { label: 'Connecting', tone: 'neutral' };
   }
+  const portalOnly = portalOnlyStatus(server, entry.displayName, authStatus);
+  if (portalOnly) {
+    return portalOnly;
+  }
   const state = server.getState();
   const severity = mcpServerStateSeverity(state);
   if (severity === 'ok') {
     return { label: 'Connected', tone: 'success' };
   }
-  return { label: state ?? 'Unknown', tone: SEVERITY_TONE[severity] };
+  return { label: state ?? 'Unknown', tone: SEVERITY_DOT_TONE[severity] };
 }
 
 /** Whether a person can reach a connector's tools now, in a few buckets. */
 export type ConnectorReach =
-  'connected' | 'partial' | 'sign-in' | 'not-connected' | 'deactivated';
+  | 'connected'
+  | 'portal-only'
+  | 'partial'
+  | 'sign-in'
+  | 'not-connected'
+  | 'deactivated';
 
 export const CONNECTOR_REACH_LABELS: Record<ConnectorReach, string> = {
   connected: 'Connected',
+  // Named as the row's state, so the filter and the row agree.
+  'portal-only': PORTAL_ONLY_LABEL,
   partial: 'Partly connected',
   'sign-in': 'Sign-in needed',
   'not-connected': 'Not connected',
@@ -133,6 +161,7 @@ export const CONNECTOR_REACH_LABELS: Record<ConnectorReach, string> = {
 /** The order the Connection filter offers its buckets in. */
 export const CONNECTOR_REACH_ORDER: readonly ConnectorReach[] = [
   'connected',
+  'portal-only',
   'partial',
   'sign-in',
   'not-connected',
@@ -141,8 +170,9 @@ export const CONNECTOR_REACH_ORDER: readonly ConnectorReach[] = [
 
 /**
  * A row's {@link connectorStatus} as a filter bucket (T49): the many states
- * muster reports fold into whether the tools answer, answer for some of a
- * family, wait on this person's sign-in, do not answer, or are switched off.
+ * muster reports fold into whether the tools answer, answer in the portal
+ * only (a sign-in serving this session), answer for some of a family, wait on
+ * this person's sign-in, do not answer, or are switched off.
  */
 export function connectorReach(
   entry: ServerListEntry,
@@ -172,6 +202,9 @@ export function connectorReach(
   }
   if (authStatus && isConnecting(authStatus)) {
     return 'not-connected';
+  }
+  if (portalOnlyStatus(server, entry.displayName, authStatus)) {
+    return 'portal-only';
   }
   return mcpServerStateSeverity(server.getState()) === 'ok'
     ? 'connected'
@@ -292,10 +325,10 @@ export function catalogueState({
  * covers connector names only.
  */
 const UNSEARCHED_CATALOGUE: Partial<Record<CatalogueState, string>> = {
-  partial: 'Some tools were not searched: muster returned only part of them.',
+  partial: 'Some tools were not searched: Muster returned only part of them.',
   loading: 'Only connector names were searched: the tools are still loading.',
   unavailable:
-    'Only connector names were searched: tools need a muster session.',
+    'Only connector names were searched: tools need a Muster session.',
 };
 
 /** Why the tools of the connectors in a group were not searched. */
@@ -304,7 +337,7 @@ type UnsearchedReason = 'sign-in' | 'unreachable' | 'unlisted';
 const UNSEARCHED_REASONS: Record<UnsearchedReason, string> = {
   'sign-in': 'they need your sign-in',
   unreachable: 'they could not be read',
-  unlisted: 'muster listed none of them',
+  unlisted: 'Muster listed none of them',
 };
 
 function unsearchedSentence(names: string[], reason: UnsearchedReason): string {

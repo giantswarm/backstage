@@ -280,6 +280,7 @@ export function ToolsetSummaryBar({
 }: ToolsetSummaryBarProps) {
   const classes = useStyles();
   const effect = toolsetEffect({ selectors, resolution, unsigned, problems });
+  const blocked = problems.length > 0;
   const isPhone = usePhoneLayout();
   const [isExpanded, setExpanded] = useState(false);
   const detailsId = useId();
@@ -381,7 +382,10 @@ export function ToolsetSummaryBar({
               {chips}
               {signInNote}
               {effect.hint && (
-                <Text variant="body-x-small" color="secondary">
+                <Text
+                  variant={blocked ? 'body-small' : 'body-x-small'}
+                  color={blocked ? 'danger' : 'secondary'}
+                >
                   {effect.hint}
                 </Text>
               )}
@@ -413,7 +417,10 @@ export function ToolsetSummaryBar({
             {effect.line}
           </Text>
           {effect.hint && (
-            <Text variant="body-x-small" color="secondary">
+            <Text
+              variant={blocked ? 'body-small' : 'body-x-small'}
+              color={blocked ? 'danger' : 'secondary'}
+            >
               {effect.hint}
             </Text>
           )}

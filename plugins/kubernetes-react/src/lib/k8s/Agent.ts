@@ -1,3 +1,7 @@
+import {
+  parseTags,
+  TAGS_ANNOTATION,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { KubeObject } from './KubeObject';
 import { harnessRuntimeOf, type HarnessRuntime } from './Harness';
 import {
@@ -70,14 +74,16 @@ export const AGENT_CONDITION_STAGE_ORDER: readonly string[] = [
   AgentConditionType.Ready,
 ];
 
-const BLOCKED_REASON = 'Blocked';
+/** The reason of a condition a stage before it failed. */
+export const AGENT_BLOCKED_REASON = 'Blocked';
 
 /**
  * Which part of the agent a failure is about: the model, the tools (an MCP
  * server or a sub-agent), the system prompt, or the platform (something the
  * agent's author cannot fix).
  */
-export type AgentFailureField = 'model' | 'tools' | 'systemPrompt' | 'platform';
+export type AgentFailureField =
+  'model' | 'tools' | 'systemPrompt' | 'skills' | 'platform';
 
 /** The condition that makes an agent `failed`, and what it is about. */
 export type AgentFailure = {
@@ -85,7 +91,31 @@ export type AgentFailure = {
   message?: string;
   /** `undefined` when the message names nothing this page can point to. */
   field?: AgentFailureField;
+  /**
+   * With `field: 'skills'`: the credential Secret the agent's git skills are
+   * fetched with, which is missing in the Harness's namespace.
+   */
+  missingSecret?: string;
 };
+
+/**
+ * The Secret a controller message says is missing (`secret "x" not found`,
+ * under a `build … revision provenance:` prefix). The message does not say
+ * what the Secret is for — a model key reads the same — so a caller matches
+ * the name against the references it knows.
+ */
+export function missingSecretOf(
+  message: string | undefined,
+): string | undefined {
+  return message?.match(/\bsecret "([^"]+)" not found/)?.[1];
+}
+
+/**
+ * The reason kagent gives `Ready=False` while the Harness boots the current
+ * revision for its golden snapshot. A boot that fails (a skill the fetch is
+ * refused, a wrong token) stays here: the reason is in the boot log only.
+ */
+export const AGENT_BOOT_PENDING_REASON = 'ActorTemplatePending';
 
 /**
  * The part of the agent a controller message is about, read from the prefixes
@@ -307,6 +337,16 @@ export class Agent extends KubeObject<AgentInterface> {
   }
 
   /**
+   * The keywords people find the agent by: the comma-joined
+   * `ui.giantswarm.io/tags` annotation, trimmed and lowercased, without
+   * empties or repeats. A value the chart would refuse (see `tagProblem` in
+   * ui-react, the one tag rule) is left out of what is shown.
+   */
+  getTags(): string[] {
+    return parseTags(this.getAnnotations()?.[TAGS_ANNOTATION]);
+  }
+
+  /**
    * The inline template. `undefined` when the agent names an `AgentTemplate`
    * instead, in which case every template reader below answers `undefined`
    * or empty and {@link getTemplateRef} names where to look.
@@ -380,6 +420,32 @@ export class Agent extends KubeObject<AgentInterface> {
   /** The skills mounted into the agent, each with its pin. */
   getSkills(): AgentSkill[] {
     return (this.getTemplate()?.skills ?? []).map(toAgentSkill);
+  }
+
+  /**
+   * The Secrets the agent's git skills are fetched with
+   * (`source.git.credentialRef.name`), each once.
+   */
+  getSkillsCredentialSecrets(): string[] {
+    const names = (this.getTemplate()?.skills ?? []).map(
+      skill =>
+        (skill.source.git as { credentialRef?: { name?: string } } | undefined)
+          ?.credentialRef?.name,
+    );
+    return [...new Set(names.filter((name): name is string => Boolean(name)))];
+  }
+
+  /**
+   * Whether the Harness is still booting the current revision for its golden
+   * snapshot (`Ready=False` {@link AGENT_BOOT_PENDING_REASON}).
+   */
+  isBootPending(): boolean {
+    const ready = this.getCondition(AgentConditionType.Ready);
+    return (
+      this.getReadiness() === 'notReady' &&
+      ready?.status === 'False' &&
+      ready.reason === AGENT_BOOT_PENDING_REASON
+    );
   }
 
   /** Number of skills mounted by the agent. */
@@ -494,12 +560,21 @@ export class Agent extends KubeObject<AgentInterface> {
       this.getCondition(type),
     ).filter(condition => condition?.status === 'False');
     const rootCause =
-      failing.find(condition => condition?.reason !== BLOCKED_REASON) ??
+      failing.find(condition => condition?.reason !== AGENT_BLOCKED_REASON) ??
       failing[0];
     if (!rootCause) {
       return undefined;
     }
     const message = rootCause.message || undefined;
+    const missing = missingSecretOf(message);
+    if (missing && this.getSkillsCredentialSecrets().includes(missing)) {
+      return {
+        condition: rootCause.type,
+        message,
+        field: 'skills',
+        missingSecret: missing,
+      };
+    }
     return {
       condition: rootCause.type,
       message,

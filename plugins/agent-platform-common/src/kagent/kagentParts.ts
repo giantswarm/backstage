@@ -115,6 +115,36 @@ export function unwrapProxiedCall(call: FunctionCall): FunctionCall & {
   };
 }
 
+/**
+ * The call a confirmation request proposes, as the person would approve it.
+ *
+ * kagent wraps it as `args.originalFunctionCall` on the `adk_request_confirmation`
+ * call (`buildApprovalMessage` in kagent's UI reads the same field). It is looked
+ * through muster's `call_tool` as an executed call is, so a reader names the tool
+ * that would run and shows that tool's own arguments. `hint` is the runtime's
+ * instruction to an API client (`args.toolConfirmation.hint`), when it gave one.
+ */
+export function readProposedCall(
+  confirmationArgs: unknown,
+): (FunctionCall & { via?: string; hint?: string }) | undefined {
+  const args = asRecord(confirmationArgs);
+  const original = asRecord(args?.originalFunctionCall);
+  if (!original) {
+    return undefined;
+  }
+  const effective = unwrapProxiedCall({
+    name: asNonEmptyString(original.name),
+    args: original.args,
+  });
+  const hint = asNonEmptyString(asRecord(args?.toolConfirmation)?.hint);
+  return {
+    ...(effective.name !== undefined && { name: effective.name }),
+    ...(effective.args !== undefined && { args: effective.args }),
+    ...(effective.via !== undefined && { via: effective.via }),
+    ...(hint !== undefined && { hint }),
+  };
+}
+
 export type FunctionCall = {
   /** Correlates a call with its response; absent on malformed payloads. */
   id?: string;

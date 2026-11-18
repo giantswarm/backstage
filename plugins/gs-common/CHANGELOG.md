@@ -1,5 +1,71 @@
 # @giantswarm/backstage-plugin-gs-common
 
+## 0.23.0
+
+### Minor Changes
+
+- 36f0927: Show Envoy Gateway policies in the cluster "Gateways" tab.
+
+  - `SecurityPolicy`, `BackendTrafficPolicy`, `ClientTrafficPolicy` and
+    `EnvoyExtensionPolicy` with their targets (`spec.targetRefs`, and the
+    deprecated `spec.targetRef`; policies using `spec.targetSelectors` show
+    "Selected by labels") and the `Accepted` condition per Gateway or
+    ListenerSet they attach to. Rejected policies are listed first.
+  - A policy without any status on a cluster that exports policy status is
+    flagged as "No status reported": Envoy Gateway writes none when the target
+    doesn't exist, isn't managed by it, or before reconciling.
+  - Policy status and `spec.targetRefs` come from metrics added in
+    observability-bundle 3.6.0 (giantswarm/observability-bundle#467); the
+    deprecated `spec.targetRef` is read on older bundles too. On clusters with
+    an older bundle, or when they fail to load, they are shown as "Not
+    available", with a notice saying which of the two it is.
+  - `@giantswarm/backstage-plugin-gs-common` exports the Envoy Gateway policy
+    metrics (`EnvoyGateway*PolicyCreated`, `*Info`, `*TargetInfo`,
+    `*StatusAncestorAccepted`).
+
+- 5ded107: A Tags field the installation does not offer (an older muster or agent-manager) no longer yields a problem, so an edit of a connector with more than 50 stored tags on such a muster no longer bounces from Sign-in back to Connect. Tags under five characters are no longer offered as near-duplicates of each other (`docs`, `dogs`). `TagVocabularyProvider` and `SharedTagsProvider` move to their own component directories; muster's `useConnectorGroupPaths` is now `useConnectorListPaths`, and `useTakesDisplayName`/`useTakesTags` are one `useToolTakesArgument`.
+
+  The 50-tag limit is checked as muster checks it (`exceedsTagLimit` in gs-common): a list past 50 is refused only when it holds a tag not already stored, so an unchanged or shortened list of tags written elsewhere goes through, and a create takes at most 50. gs-backend's skill pull request checks it against the SKILL.md's stored `metadata.tags` (a 422) instead of capping every request at 50.
+
+- 5ded107: The tag rule lives in `gs-common` (`TAGS_ANNOTATION`, `MAX_TAG_LENGTH`, `MAX_TAGS`, `TAG_PATTERN`, `isValidTag`, `parseTags`), which `ui-react` re-exports and gs-backend checks skill tags against. A skill edit that changes the tags of a SKILL.md whose `metadata.tags` is not a comma-separated list of tags (a YAML list, or a part like `on call`) is refused with a 422 instead of dropping what the form could not show.
+- 5bde8bf: Report a Mimir that cannot answer a query to Sentry once, under a fixed title,
+  and say on the page when older data is temporarily unavailable.
+
+  `MimirService` logs a Mimir that is down, slow or failing once as a warning
+  with a fixed message (`Mimir answered a query with HTTP <status>`,
+  `Mimir could not be reached`, or
+  `Mimir could not read older data: no healthy store-gateway`), with the
+  installation, the status and Mimir's own error text in the metadata, and throws
+  the new `MimirUnavailableError`. Its message no longer carries Mimir's body;
+  that stays in the warning (`mimirError`, left out of the answer to the
+  browser), and a connection error no longer names the query. A query Mimir
+  refused (a 4xx other than a refused token: bad PromQL, a range over its limits)
+  is an `InputError` (400) with Mimir's text instead, not logged and not retried
+  by the frontend. `query({ logFailures: false })` logs at `debug` for a caller
+  that handles the failure itself, as the model cost route does. The gs
+  backend's `/mimir/query` and `/mimir/query_range` routes answer a
+  `MimirUnavailableError` 503 themselves, so the error middleware no longer
+  reports it again. A Mimir without a healthy store-gateway answers
+  with `error.reason: 'older_data_unavailable'` (`MIMIR_UNAVAILABLE_REASONS` in
+  gs-common), and the model cost route answers `older-data-unavailable`.
+
+  gs-node's answer-it-in-the-router pattern is now generic:
+  `ReportedServiceUnavailableError` with `reportedErrorHandler()`, which replaces
+  `musterUnreachableErrorHandler()` (`MusterUnreachableError` is one), and
+  `errorResponseBody()` for a router that answers some other error with the body
+  the error middleware would send.
+
+  ui-react adds `MetricsUnavailableAlert` (with a `fallback` for a caller whose
+  generic failure is a line of text), `describeMimirFailure` and
+  `pickMimirError`, which every place that shows a failed Mimir read now uses: a
+  deployment's resource usage and hostnames, a cluster's gateways and node pool
+  nodes, the workload status summary, the Usage overview and cost pages, the
+  activity heatmap, an agent's and a model's Usage tab, and the cost estimate and
+  actual-cost hints.
+  `MimirClient` throws a `MimirQueryError` that carries the backend's `reason`.
+
+- 4c53a2b: Name the tool, its MCP server and the installation on a muster tool error, and give each known kind of failure its status: the refusals of agent-manager, model-manager and workspace-manager and muster's refusals of a connector write answer 4xx and no longer reach Sentry, a muster rollout's interruption is logged at info and answered with a 503 the muster, plans and roadmap pages retry, and a timeout (504), a server muster holds no connection to (503) and a missing tool (502) stay reported. Sentry groups muster tool errors by kind and tool, or by server for the kinds that belong to a whole server. The muster pages no longer retry a refusal. platform-capabilities and repositories no longer show muster's own failures as the manager's refusal. `gs-node` adds `MUSTER_TOOL_ERROR_STATUS`, `musterToolErrorKindOf`, `musterServerOfTool` and `markReported`; `gs-common` adds the refusal registry (`mcpToolRefusalOf`, `parseToolErrorCode`). bot-prs keeps offering the marge sign-in for a missing tool or a lost connection.
+
 ## 0.22.0
 
 ### Minor Changes

@@ -149,8 +149,10 @@ function rangeIncludesPrereleases(ref: OciRepositoryRef | undefined): boolean {
  * patches only) and `>=` for any upgrade, with a `-0` floor when pre-releases
  * are included. It is built from the version without a `v` prefix, which
  * admits the same versions and which the range checks here can read.
+ * `__fixtures__/app-deployment-written-ranges.json` is a copy of the template
+ * tests' fixture of these ranges; the tests check this function against it.
  */
-function templateRange(
+export function templateRange(
   mode: AutoUpgradeMode,
   version: Version,
   includePrereleases: boolean,

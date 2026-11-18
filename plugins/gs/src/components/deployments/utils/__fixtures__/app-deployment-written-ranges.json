@@ -1,0 +1,245 @@
+{
+  "description": "The semver range the app-deployment edit template (templates/app-deployment/template/manifest.yaml) writes for each fixed automatic-upgrades mode, chart version and pre-release choice; null: a pinned tag. giantswarm/backstage keeps a copy of this file to check the deployment page against it, and its CI fails when the copy differs from this file on main.",
+  "cases": [
+    {
+      "mode": "no-upgrades",
+      "chartVersion": "1.2.3",
+      "includePrereleases": false,
+      "semver": null
+    },
+    {
+      "mode": "no-upgrades",
+      "chartVersion": "1.2.3",
+      "includePrereleases": true,
+      "semver": null
+    },
+    {
+      "mode": "patch-upgrades",
+      "chartVersion": "1.2.3",
+      "includePrereleases": false,
+      "semver": "~1.2.3"
+    },
+    {
+      "mode": "patch-upgrades",
+      "chartVersion": "1.2.3",
+      "includePrereleases": true,
+      "semver": "~1.2.3-0"
+    },
+    {
+      "mode": "minor-upgrades",
+      "chartVersion": "1.2.3",
+      "includePrereleases": false,
+      "semver": "^1.2.3"
+    },
+    {
+      "mode": "minor-upgrades",
+      "chartVersion": "1.2.3",
+      "includePrereleases": true,
+      "semver": "^1.2.3-0"
+    },
+    {
+      "mode": "major-upgrades",
+      "chartVersion": "1.2.3",
+      "includePrereleases": false,
+      "semver": ">=1.2.3"
+    },
+    {
+      "mode": "major-upgrades",
+      "chartVersion": "1.2.3",
+      "includePrereleases": true,
+      "semver": ">=1.2.3-0"
+    },
+    {
+      "mode": "no-upgrades",
+      "chartVersion": "0.7.1",
+      "includePrereleases": false,
+      "semver": null
+    },
+    {
+      "mode": "no-upgrades",
+      "chartVersion": "0.7.1",
+      "includePrereleases": true,
+      "semver": null
+    },
+    {
+      "mode": "patch-upgrades",
+      "chartVersion": "0.7.1",
+      "includePrereleases": false,
+      "semver": "~0.7.1"
+    },
+    {
+      "mode": "patch-upgrades",
+      "chartVersion": "0.7.1",
+      "includePrereleases": true,
+      "semver": "~0.7.1-0"
+    },
+    {
+      "mode": "minor-upgrades",
+      "chartVersion": "0.7.1",
+      "includePrereleases": false,
+      "semver": ">=0.7.1 <1.0.0"
+    },
+    {
+      "mode": "minor-upgrades",
+      "chartVersion": "0.7.1",
+      "includePrereleases": true,
+      "semver": ">=0.7.1-0 <1.0.0"
+    },
+    {
+      "mode": "major-upgrades",
+      "chartVersion": "0.7.1",
+      "includePrereleases": false,
+      "semver": ">=0.7.1"
+    },
+    {
+      "mode": "major-upgrades",
+      "chartVersion": "0.7.1",
+      "includePrereleases": true,
+      "semver": ">=0.7.1-0"
+    },
+    {
+      "mode": "no-upgrades",
+      "chartVersion": "0.0.5",
+      "includePrereleases": false,
+      "semver": null
+    },
+    {
+      "mode": "no-upgrades",
+      "chartVersion": "0.0.5",
+      "includePrereleases": true,
+      "semver": null
+    },
+    {
+      "mode": "patch-upgrades",
+      "chartVersion": "0.0.5",
+      "includePrereleases": false,
+      "semver": "~0.0.5"
+    },
+    {
+      "mode": "patch-upgrades",
+      "chartVersion": "0.0.5",
+      "includePrereleases": true,
+      "semver": "~0.0.5-0"
+    },
+    {
+      "mode": "minor-upgrades",
+      "chartVersion": "0.0.5",
+      "includePrereleases": false,
+      "semver": ">=0.0.5 <1.0.0"
+    },
+    {
+      "mode": "minor-upgrades",
+      "chartVersion": "0.0.5",
+      "includePrereleases": true,
+      "semver": ">=0.0.5-0 <1.0.0"
+    },
+    {
+      "mode": "major-upgrades",
+      "chartVersion": "0.0.5",
+      "includePrereleases": false,
+      "semver": ">=0.0.5"
+    },
+    {
+      "mode": "major-upgrades",
+      "chartVersion": "0.0.5",
+      "includePrereleases": true,
+      "semver": ">=0.0.5-0"
+    },
+    {
+      "mode": "no-upgrades",
+      "chartVersion": "1.2.3-rc.1",
+      "includePrereleases": false,
+      "semver": null
+    },
+    {
+      "mode": "no-upgrades",
+      "chartVersion": "1.2.3-rc.1",
+      "includePrereleases": true,
+      "semver": null
+    },
+    {
+      "mode": "patch-upgrades",
+      "chartVersion": "1.2.3-rc.1",
+      "includePrereleases": false,
+      "semver": "~1.2.3-rc.1"
+    },
+    {
+      "mode": "patch-upgrades",
+      "chartVersion": "1.2.3-rc.1",
+      "includePrereleases": true,
+      "semver": "~1.2.3-rc.1"
+    },
+    {
+      "mode": "minor-upgrades",
+      "chartVersion": "1.2.3-rc.1",
+      "includePrereleases": false,
+      "semver": "^1.2.3-rc.1"
+    },
+    {
+      "mode": "minor-upgrades",
+      "chartVersion": "1.2.3-rc.1",
+      "includePrereleases": true,
+      "semver": "^1.2.3-rc.1"
+    },
+    {
+      "mode": "major-upgrades",
+      "chartVersion": "1.2.3-rc.1",
+      "includePrereleases": false,
+      "semver": ">=1.2.3-rc.1"
+    },
+    {
+      "mode": "major-upgrades",
+      "chartVersion": "1.2.3-rc.1",
+      "includePrereleases": true,
+      "semver": ">=1.2.3-rc.1"
+    },
+    {
+      "mode": "no-upgrades",
+      "chartVersion": "0.7.1-rc.1",
+      "includePrereleases": false,
+      "semver": null
+    },
+    {
+      "mode": "no-upgrades",
+      "chartVersion": "0.7.1-rc.1",
+      "includePrereleases": true,
+      "semver": null
+    },
+    {
+      "mode": "patch-upgrades",
+      "chartVersion": "0.7.1-rc.1",
+      "includePrereleases": false,
+      "semver": "~0.7.1-rc.1"
+    },
+    {
+      "mode": "patch-upgrades",
+      "chartVersion": "0.7.1-rc.1",
+      "includePrereleases": true,
+      "semver": "~0.7.1-rc.1"
+    },
+    {
+      "mode": "minor-upgrades",
+      "chartVersion": "0.7.1-rc.1",
+      "includePrereleases": false,
+      "semver": ">=0.7.1-rc.1 <1.0.0"
+    },
+    {
+      "mode": "minor-upgrades",
+      "chartVersion": "0.7.1-rc.1",
+      "includePrereleases": true,
+      "semver": ">=0.7.1-rc.1 <1.0.0"
+    },
+    {
+      "mode": "major-upgrades",
+      "chartVersion": "0.7.1-rc.1",
+      "includePrereleases": false,
+      "semver": ">=0.7.1-rc.1"
+    },
+    {
+      "mode": "major-upgrades",
+      "chartVersion": "0.7.1-rc.1",
+      "includePrereleases": true,
+      "semver": ">=0.7.1-rc.1"
+    }
+  ]
+}

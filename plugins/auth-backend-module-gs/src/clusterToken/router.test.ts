@@ -345,18 +345,9 @@ describe('createClusterTokenRouter', () => {
   it.each([
     [
       'a token store outage',
-      JSON.stringify({
-        error: 'temporarily_unavailable',
-        error_description: 'The server could not reach its token store',
-      }),
+      'The server could not reach its token store; retry the same request\n',
     ],
-    [
-      'pending OIDC discovery',
-      JSON.stringify({
-        error: 'service_unavailable',
-        error_description: 'OIDC discovery in progress, please retry',
-      }),
-    ],
+    ['pending OIDC discovery', 'OIDC discovery in progress, please retry\n'],
     ['an empty body', ''],
   ])(
     'maps a 503 for %s to a broker_unavailable reason',

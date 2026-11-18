@@ -13,7 +13,11 @@ import {
   urlHostname,
   type ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
-import type { StatusLabelIntent } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  formatLocalDateFull,
+  getRelativeDate,
+  type StatusLabelIntent,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * Serving backends a source can report. `kserve` — LLMInferenceServices read
@@ -528,6 +532,61 @@ export type ServingCapabilities = {
 };
 
 /** Every flag false: a source that can only list. */
+/**
+ * How far ahead an eviction can be and still be one. Ollama reports a model
+ * loaded with no keep-alive limit (`keep_alive: -1`) as expiring some 292
+ * years from now; that is "kept loaded", not a time worth telling.
+ */
+const MAX_EVICTION_AHEAD_MS = 365 * 24 * 60 * 60 * 1000;
+
+/**
+ * When the backend will evict a loaded model, as of `now`: `undefined` when
+ * the time does not parse, has passed (the inventory is polled, so a row can
+ * outlive its eviction by a poll) or is so far ahead that the model is in
+ * effect kept loaded ({@link MAX_EVICTION_AHEAD_MS}).
+ */
+export function scheduledEviction(
+  loadedUntil: string | undefined,
+  now: Date = new Date(),
+): Date | undefined {
+  if (!loadedUntil) {
+    return undefined;
+  }
+  const at = new Date(loadedUntil);
+  const ahead = at.getTime() - now.getTime();
+  if (Number.isNaN(ahead) || ahead <= 0 || ahead > MAX_EVICTION_AHEAD_MS) {
+    return undefined;
+  }
+  return at;
+}
+
+/**
+ * A served model's readiness message as of `now`: for a loaded model with a
+ * {@link scheduledEviction}, when it goes — relative, so tomorrow does not
+ * read as today, with the date and time after it as the message is shown on
+ * hover (`Loaded in memory; evicts in about 3 hours (16 Oct 2026, 14:05:12
+ * CEST).`); else the message the source gave. Built at render rather than
+ * stored on the row, so it counts from the moment it is shown, not from the
+ * last fetch. The date and time are the browser's: the serving pages live in
+ * the shell, where every time is local (`DateTimeZoneProvider`).
+ */
+export function servedReadinessMessage(
+  row: Pick<ServedModel, 'readiness' | 'readinessMessage' | 'loadedUntil'>,
+  now: Date = new Date(),
+): string | undefined {
+  const evicts =
+    row.readiness === 'ready'
+      ? scheduledEviction(row.loadedUntil, now)
+      : undefined;
+  if (!evicts) {
+    return row.readinessMessage;
+  }
+  return `Loaded in memory; evicts ${getRelativeDate(
+    evicts,
+    now,
+  )} (${formatLocalDateFull(evicts)}).`;
+}
+
 export const NO_SERVING_CAPABILITIES: ServingCapabilities = {
   pull: false,
   pullProgress: false,
@@ -541,19 +600,6 @@ export const NO_SERVING_CAPABILITIES: ServingCapabilities = {
   nodeInventory: false,
   search: false,
 };
-
-/** Whether any per-model operation is offered — decides the actions column. */
-export function hasServedModelActions(
-  capabilities: ServingCapabilities | undefined,
-): boolean {
-  return Boolean(
-    capabilities &&
-    (capabilities.load ||
-      capabilities.unload ||
-      capabilities.delete ||
-      capabilities.wire),
-  );
-}
 
 /** A GPU-carrying node as the capacity panel shows it. */
 export type GpuNode = {
@@ -746,6 +792,21 @@ export type ServingSourceSnapshot = {
    * (unreachable, or the user lacks permission) — surfaced, never dropped.
    */
   unreachableInstallations: string[];
+  /**
+   * The installations where muster asked for the person's sign-in to
+   * model-manager on a read of the serving layer (its 401 with
+   * `server_sign_in_required`): a sign-in fixes that read, so a page offers
+   * it. Optional; a source without a per-person sign-in leaves it out.
+   */
+  signInRequiredInstallations?: string[];
+  /**
+   * The installations of `unreachableInstallations` that some source could
+   * not read for a reason other than a sign-in it asked for (a cluster out
+   * of reach, a refusal): a page names these in its read warning, the
+   * others only get the sign-in. Set by {@link mergeServingSnapshots}, which
+   * alone knows which source failed where; a single source leaves it out.
+   */
+  unreadableBeyondSignIn?: string[];
   servedModels: ServedModel[];
   gpuNodes: GpuNode[];
   /** Installations whose GPU capacity could not be read, with why. */
@@ -967,18 +1028,6 @@ export function findServedModel(
 }
 
 /**
- * {@link findServedModel} by endpoint alone. Kept for callers that know
- * nothing but a base URL; prefer the lookup form where the client's model id
- * is at hand, or a multi-model host cannot be resolved.
- */
-export function findServedModelForEndpoint(
-  endpoint: string | undefined,
-  candidates: ServedModel[],
-): ServedModel | undefined {
-  return findServedModel({ endpoint }, candidates);
-}
-
-/**
  * Whether two rows *of different sources* describe the same served model on
  * the same installation and backend. A row with a namespace is a Kubernetes
  * object — a KServe LLMInferenceService read as a CR, the same object in a
@@ -1092,6 +1141,8 @@ export function mergeServingSnapshots(
   const gpuCapacityUnavailable: Record<string, GpuCapacityUnavailableReason> =
     {};
   const unreachable = new Set<string>();
+  const signInRequired = new Set<string>();
+  const unreadableBeyondSignIn = new Set<string>();
   const servedModels: ServedModel[] = [];
   const gpuNodes = new Map<string, GpuNode>();
   // Every installation any source lists, in source order — not the keys of
@@ -1161,7 +1212,15 @@ export function mergeServingSnapshots(
       );
     }
     Object.assign(gpuCapacityUnavailable, snapshot.gpuCapacityUnavailable);
-    snapshot.unreachableInstallations.forEach(name => unreachable.add(name));
+    snapshot.unreachableInstallations.forEach(name => {
+      unreachable.add(name);
+      if (!snapshot.signInRequiredInstallations?.includes(name)) {
+        unreadableBeyondSignIn.add(name);
+      }
+    });
+    snapshot.signInRequiredInstallations?.forEach(name =>
+      signInRequired.add(name),
+    );
     for (const [installation, flags] of Object.entries(
       snapshot.capabilities ?? {},
     )) {
@@ -1222,6 +1281,8 @@ export function mergeServingSnapshots(
     sharedHosts,
     gatewayHosts,
     unreachableInstallations: Array.from(unreachable).sort(),
+    signInRequiredInstallations: Array.from(signInRequired).sort(),
+    unreadableBeyondSignIn: Array.from(unreadableBeyondSignIn).sort(),
     servedModels,
     gpuNodes: Array.from(gpuNodes.values()).filter(isAcceleratorCapacityRow),
     gpuCapacityUnavailable,

@@ -2,6 +2,10 @@ import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
+  DateTimeZoneProvider,
+  formatLocalDateFull,
+} from '@giantswarm/backstage-plugin-ui-react';
+import {
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
@@ -42,6 +46,15 @@ const CLUSTER: ManagedCluster = {
   commitTarget: null,
 };
 
+const CREATED = '2026-09-18T20:31:04Z';
+
+beforeEach(() => {
+  jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-11-10T12:00:00Z'));
+});
+
+afterEach(() => jest.useRealTimers());
+
 const CLAIM: CacheClaim = {
   namespace: 'model-serving',
   name: 'hf-cache',
@@ -53,7 +66,7 @@ const CLAIM: CacheClaim = {
   storageClass: 'agent-platform-connectivity-hf-cache',
   tier: { type: 'gp3', iops: 3000, throughputMiBps: 500 },
   reclaimPolicy: 'Delete',
-  created: '2026-09-18T20:31:04Z',
+  created: CREATED,
   price: {
     monthlyUSD: 27.37,
     source: 'AWS EBS gp3 list price, EU (Frankfurt) (eu-central-1)',
@@ -74,32 +87,34 @@ const row = (
 });
 
 describe('ModelCachePanel', () => {
-  it('lists each claim with its size, price, since when and what uses it, and offers Remove cache where cluster-manager has the tool', async () => {
+  it('lists each claim with its size, price, when it was created and what uses it, and offers Remove cache where cluster-manager has the tool', async () => {
     const onRemove = jest.fn();
     await renderInTestApp(
-      <ModelCachePanel
-        rows={[
-          row(CLAIM),
-          row(
-            {
-              ...CLAIM,
-              name: 'hf-cache-eu-central-1a',
-              zone: 'eu-central-1a',
-              mounted: undefined,
-              price: undefined,
-              tier: undefined,
-              tierNote:
-                'StorageClass old of claim model-serving/hf-cache-eu-central-1a cannot be read',
-              priceNote:
-                "no price: the volume's tier is not known (its StorageClass could not be read)",
-            },
-            'inst-2',
-          ),
-        ]}
-        isLoading={false}
-        removable={['inst-1']}
-        onRemove={onRemove}
-      />,
+      <DateTimeZoneProvider timeZone="local">
+        <ModelCachePanel
+          rows={[
+            row(CLAIM),
+            row(
+              {
+                ...CLAIM,
+                name: 'hf-cache-eu-central-1a',
+                zone: 'eu-central-1a',
+                mounted: undefined,
+                price: undefined,
+                tier: undefined,
+                tierNote:
+                  'StorageClass old of claim model-serving/hf-cache-eu-central-1a cannot be read',
+                priceNote:
+                  "no price: the volume's tier is not known (its StorageClass could not be read)",
+              },
+              'inst-2',
+            ),
+          ]}
+          isLoading={false}
+          removable={['inst-1']}
+          onRemove={onRemove}
+        />
+      </DateTimeZoneProvider>,
     );
     expect(
       screen.getByText(
@@ -114,6 +129,8 @@ describe('ModelCachePanel', () => {
     ).toBeInTheDocument();
     expect(within(mounted).getByText('$27.37/month')).toBeInTheDocument();
     expect(within(mounted).getByText('eu-central-1b')).toBeInTheDocument();
+    const created = within(mounted).getByText('about 2 months ago');
+    expect(created).toHaveAttribute('title', formatLocalDateFull(CREATED));
     expect(
       within(mounted).getByText(
         'Mounted by the serving slice — every pool of the cluster serves from it',
@@ -130,7 +147,7 @@ describe('ModelCachePanel', () => {
       ),
     );
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     await user.click(
       screen.getByRole('button', { name: 'Remove cache hf-cache on wc1' }),
     );
@@ -235,14 +252,16 @@ describe('ModelCachePanel at phone width', () => {
   it('lists each claim as a stacked row, Remove cache in its menu, a read-only one saying why', async () => {
     layout = mockPhoneLayout();
     const onRemove = jest.fn();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     await renderInTestApp(
-      <ModelCachePanel
-        rows={ROWS}
-        isLoading={false}
-        removable={['inst-1']}
-        onRemove={onRemove}
-      />,
+      <DateTimeZoneProvider timeZone="local">
+        <ModelCachePanel
+          rows={ROWS}
+          isLoading={false}
+          removable={['inst-1']}
+          onRemove={onRemove}
+        />
+      </DateTimeZoneProvider>,
     );
 
     expect(screen.queryByRole('grid')).toBeNull();
@@ -257,6 +276,10 @@ describe('ModelCachePanel at phone width', () => {
     for (const fact of ['wc1', 'eu-central-1b', 'inst-1', '$27.37/month']) {
       expect(within(removable).getByText(fact)).toBeVisible();
     }
+    expect(within(removable).getByText('about 2 months ago')).toHaveAttribute(
+      'title',
+      formatLocalDateFull(CREATED),
+    );
     expect(
       within(removable).getByText(
         'Mounted by the serving slice — every pool of the cluster serves from it',

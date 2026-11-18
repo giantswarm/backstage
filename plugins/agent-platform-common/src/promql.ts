@@ -106,16 +106,23 @@ export function formatDuration(seconds: number): string {
  *   before.
  * - **Attribution:** the first value lands in the window (or daily bar) its
  *   first *scrape* falls in, at most one scrape interval after the call.
+ *
+ * `at` pins the evaluation to a Unix time (PromQL's `@` modifier), for a
+ * window that ended in the past, a calendar month: the range then reaches
+ * back from `at`, and the offsets are relative to it. Without it the window
+ * ends at the query's evaluation time, as before.
  */
 export function counterIncrease(
   series: string,
   range: string,
   offset?: string,
+  at?: number,
 ): string {
   const shift = offset ? ` offset ${offset}` : '';
+  const pin = at === undefined ? '' : ` @ ${at}`;
   const windowStart = formatDuration(
     durationSeconds(range) + (offset ? durationSeconds(offset) : 0),
   );
-  const newborn = `min_over_time(${series}[${range}]${shift}) unless last_over_time(${series}[${SERIES_BIRTH_LOOKBACK}] offset ${windowStart})`;
-  return `(increase(${series}[${range}]${shift}) or label_replace(${newborn}, "${FIRST_SAMPLE_LABEL}", "true", "__name__", ".*"))`;
+  const newborn = `min_over_time(${series}[${range}]${shift}${pin}) unless last_over_time(${series}[${SERIES_BIRTH_LOOKBACK}] offset ${windowStart}${pin})`;
+  return `(increase(${series}[${range}]${shift}${pin}) or label_replace(${newborn}, "${FIRST_SAMPLE_LABEL}", "true", "__name__", ".*"))`;
 }

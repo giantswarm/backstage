@@ -4,6 +4,8 @@ import { Alert, Button, Flex, Text, TextField } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import CheckIcon from '@material-ui/icons/Check';
 import {
+  tagCounts,
+  TagsField,
   useFieldValidation,
   useProvidePageHeaderActions,
   WizardStepHeading,
@@ -13,7 +15,7 @@ import { useMusterInstance } from '../MusterInstanceProvider';
 import { ActiveInstallationNote } from '../ActiveInstallationNote';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { useConnectorWizardLinks } from '../NewMcpServerEditGate';
-import { useTakesDisplayName } from '../NewMcpServerReviewPage';
+import { useToolTakesArgument } from '../shared/hooks';
 import { TextAreaField } from '../NewMcpServerPage/TextAreaField';
 import { useTransportDetection } from '../NewMcpServerPage/useTransportDetection';
 import { ConnectorWizardFrame } from './ConnectorWizardFrame';
@@ -126,6 +128,9 @@ function inStepWords(message: string | undefined): string | undefined {
  * later, read from the tool's input schema), and not on a family member,
  * whose members share one name a rename of one would split.
  *
+ * Tags show only where the installation's muster takes them (read from the
+ * create or update tool's input schema), since an older one refuses them.
+ *
  * The prototype's "Who can use it?" audience choice is deliberately absent:
  * muster registers a connector for the whole installation and has no
  * per-person visibility to map it to, so the wizard does not pretend to ask.
@@ -138,6 +143,10 @@ export function NewConnectorConnectPage() {
     state,
     setName,
     setDescription,
+    addTags,
+    removeTag,
+    setTagDraft,
+    commitTagDraft,
     setInstallation,
     setUrl,
     setTransport,
@@ -145,6 +154,8 @@ export function NewConnectorConnectPage() {
     fieldErrors,
     registeredName,
     registeredInstallation,
+    takesTags,
+    storedTags,
   } = useNewMcpServerForm();
 
   // The wizard registers onto the section's active installation, mirrored into
@@ -161,9 +172,10 @@ export function NewConnectorConnectPage() {
   // Until the schema is read the name stays read-only, as it was before
   // muster took a display name. A family's members are named together (the
   // name they agree on), so one member is not renamed on its own.
-  const updateTakesDisplayName = useTakesDisplayName(
+  const updateTakesDisplayName = useToolTakesArgument(
     'core_mcpserver_update',
     registeredInstallation,
+    'displayName',
     { enabled: Boolean(registeredName) },
   );
   const family = registeredName
@@ -171,6 +183,12 @@ export function NewConnectorConnectPage() {
         .find(server => server.getName() === registeredName)
         ?.getFamily()
     : undefined;
+  // The tags the installation's connectors already use, offered while typing:
+  // their own, not the read-only tool-group tag (`connectorTags`).
+  const knownTags = useMemo(
+    () => tagCounts(mcpServers.map(server => ({ tags: server.getTags() }))),
+    [mcpServers],
+  );
   const canRename = !registeredName || (updateTakesDisplayName && !family);
   let nameDescription = 'Shown when giving an agent access.';
   if (!canRename) {
@@ -201,6 +219,11 @@ export function NewConnectorConnectPage() {
       reveal();
       return;
     }
+    // A typed tag not yet added goes with the connector, as on the agent form.
+    // Where the field is not offered, its text stays out of the connector.
+    if (takesTags) {
+      commitTagDraft();
+    }
     const signIn = wizardLinks('auth', {
       name: registeredName,
       installation: registeredInstallation,
@@ -211,6 +234,8 @@ export function NewConnectorConnectPage() {
   }, [
     errorCount,
     reveal,
+    takesTags,
+    commitTagDraft,
     wizardLinks,
     navigate,
     registeredName,
@@ -290,6 +315,19 @@ export function NewConnectorConnectPage() {
         placeholder="e.g. Search, read and update tickets"
         {...validation.fieldProps('description', fieldErrors.description)}
       />
+
+      {takesTags && (
+        <TagsField
+          tags={state.tags}
+          draft={state.tagDraft}
+          error={validation.errorFor('tags', fieldErrors.tags)}
+          counts={knownTags}
+          stored={storedTags}
+          onDraftChange={setTagDraft}
+          onAdd={addTags}
+          onRemove={removeTag}
+        />
+      )}
 
       {validation.submitted && unanchoredErrors.length > 0 && (
         <Alert

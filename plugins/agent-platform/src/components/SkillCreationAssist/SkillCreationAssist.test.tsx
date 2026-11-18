@@ -306,6 +306,40 @@ describe('skillCreationPrompt', () => {
     );
   });
 
+  it('carries the tags of a new skill as frontmatter', () => {
+    const create = {
+      kind: 'create' as const,
+      repoUrl: 'https://github.com/giantswarm/skills',
+    };
+    expect(
+      skillCreationPrompt({ ...create, tags: ['triage', 'kubernetes'] }),
+    ).toContain(
+      'Its tags, in the frontmatter: `metadata.tags: "triage, kubernetes"`.',
+    );
+    expect(skillCreationPrompt({ ...create, tags: [] })).not.toContain('tags');
+  });
+
+  it('carries changed tags of a skill being changed, and their removal', () => {
+    const skill = {
+      name: 'ticket-triage',
+      repoUrl: 'https://github.com/giantswarm/skills',
+      path: 'support/ticket-triage',
+      commit: 'a1b2c3d',
+      ref: 'main',
+    };
+    expect(
+      skillCreationPrompt({ kind: 'update', skill, tags: ['triage'] }),
+    ).toContain(
+      'Set its tags in the frontmatter to `metadata.tags: "triage"`.',
+    );
+    expect(skillCreationPrompt({ kind: 'update', skill, tags: [] })).toContain(
+      'Remove its tags (`metadata.tags`) from the frontmatter.',
+    );
+    expect(skillCreationPrompt({ kind: 'update', skill })).not.toContain(
+      'tags',
+    );
+  });
+
   it('names the skill being changed exactly', () => {
     const prompt = skillCreationPrompt({
       kind: 'update',

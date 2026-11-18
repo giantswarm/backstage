@@ -1,11 +1,9 @@
 import { rowsOf, type MargeResult } from './marge';
 import {
-  ageDays,
   applyFilters,
   classificationOptions,
   countStats,
   filtersFromParams,
-  formatAge,
   greenByTeam,
   refsByTeam,
   groupRank,
@@ -32,8 +30,6 @@ const summary = {
   eligible: 0,
   unclassified: 1,
 };
-
-const now = Date.parse('2026-09-17T12:00:00Z');
 
 const result: MargeResult = {
   summary,
@@ -151,19 +147,6 @@ describe('groupRank', () => {
         .sort((a, b) => groupRank(a) - groupRank(b))
         .map(row => row.group),
     ).toEqual(['action_required', 'stale', 'unclassified']);
-  });
-});
-
-describe('ageDays', () => {
-  it('reads the age off created_at, so a PR opened today is today and not unknown', () => {
-    // rowsOf lists the groups in the engine's order: action_required,
-    // unclassified, stale.
-    expect(ageDays(rows[1], now)).toBe(0);
-    expect(formatAge(ageDays(rows[1], now))).toBe('today');
-    expect(ageDays(rows[2], now)).toBe(1);
-    expect(formatAge(ageDays(rows[2], now))).toBe('1 d');
-    expect(formatAge(ageDays({ age_days: undefined }))).toBe('—');
-    expect(ageDays({ age_days: 5 })).toBe(5);
   });
 });
 

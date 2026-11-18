@@ -1,6 +1,6 @@
 /**
- * The Usage screen's day labels, shared with the muster plugin's Connectors
- * section through the common package; see its `formatDay.ts`.
+ * The per-day charts' day labels, shared with the muster plugin's tool-call
+ * and workflow run charts through the common package; see its `formatDay.ts`.
  */
 export {
   formatDayTick,

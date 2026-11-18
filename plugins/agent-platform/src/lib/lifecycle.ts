@@ -1,3 +1,4 @@
+import { formatSeconds } from '@giantswarm/backstage-plugin-agent-platform-common';
 import type { LifecycleStepState } from './clusterManager';
 
 export type { LifecycleStepState };
@@ -28,25 +29,6 @@ export type LifecycleStep = {
   /** The step's own steps, when it stands for another long-running action (a pool's step serving a model). */
   steps?: LifecycleStep[];
 };
-
-const MINUTE = 60;
-const HOUR = 60 * MINUTE;
-
-/** `3 s`, `2 min 30 s`, `12 min`, `1 h 5 min` — a span a person reads at a glance. */
-export function formatSeconds(seconds: number): string {
-  const total = Math.max(0, Math.round(seconds));
-  if (total < MINUTE) {
-    return `${total} s`;
-  }
-  if (total < HOUR) {
-    const minutes = Math.floor(total / MINUTE);
-    const rest = total % MINUTE;
-    return rest ? `${minutes} min ${rest} s` : `${minutes} min`;
-  }
-  const hours = Math.floor(total / HOUR);
-  const minutes = Math.floor((total % HOUR) / MINUTE);
-  return minutes ? `${hours} h ${minutes} min` : `${hours} h`;
-}
 
 function ago(instant: string | undefined, now: number): string | undefined {
   if (!instant) {

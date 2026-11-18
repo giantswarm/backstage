@@ -12,9 +12,12 @@ import { musterSignInRequiredOf } from '../../apis/musterUnauthorized';
 import { ServerSignIn } from '../shared/ServerSignIn';
 import {
   authStatusQueryKey,
+  isSignInStatus,
   isSsoServer,
+  signInRefusalOf,
   useServerSignIn,
 } from '../shared/useServerSignIn';
+import { useConnectorLabel } from '../shared/hooks/useConnectorLabels';
 
 export type ConnectorSignInAlertProps = {
   /** The connector (muster server) the data is read through. */
@@ -69,22 +72,22 @@ export function ConnectorSignInAlert({
   const isSso =
     entries.length > 0 &&
     entries.every(entry => entry !== undefined && isSsoServer(entry));
+  const isRefused =
+    entries.length > 0 &&
+    entries.every(entry => signInRefusalOf(entry) !== undefined);
   const where = joinNames(installations);
+  // The title and the sentence name it once, as the first environment's
+  // muster does; each environment's row, as its own does.
+  const label = useConnectorLabel(installations[0], server);
   return (
     <Alert
       status="info"
-      title={
-        isSso
-          ? `Could not connect to ${server}`
-          : `Sign in to ${server} to ${purpose}`
-      }
+      title={alertTitle({ isSso, isRefused, label, purpose })}
       data-testid="connector-sign-in"
       description={
         <Flex direction="column" gap="2">
           <Text variant="body-small">
-            {isSso
-              ? `${server} reads this with your portal sign-in, and it has not connected on ${where} yet. This fills in once it does.`
-              : `${server} reads this with your own sign-in, and you have not signed in to it on ${where} yet. Sign in once; this fills in by itself.`}
+            {alertText({ isSso, isRefused, label, where })}
           </Text>
           <ShowMore
             items={installations}
@@ -111,6 +114,38 @@ export function ConnectorSignInAlert({
   );
 }
 
+type AlertCase = { isSso: boolean; isRefused: boolean; label: string };
+
+function alertTitle({
+  isSso,
+  isRefused,
+  label,
+  purpose,
+}: AlertCase & { purpose: string }): string {
+  if (isSso) {
+    return `Could not connect to ${label}`;
+  }
+  if (isRefused) {
+    return `Cannot sign in to ${label}`;
+  }
+  return `Sign in to ${label} to ${purpose}`;
+}
+
+function alertText({
+  isSso,
+  isRefused,
+  label,
+  where,
+}: AlertCase & { where: string }): string {
+  if (isSso) {
+    return `The ${label} connector reads this with your portal sign-in, and it has not connected on ${where} yet. This fills in once it does.`;
+  }
+  if (isRefused) {
+    return `The ${label} connector reads this with your own sign-in, and it cannot be signed in to from this portal session on ${where}. Each environment says why.`;
+  }
+  return `The ${label} connector reads this with your own sign-in, and you have not signed in to it on ${where} yet. Sign in once; this fills in by itself.`;
+}
+
 function InstallationSignIn({
   server,
   installation,
@@ -122,18 +157,21 @@ function InstallationSignIn({
   showInstallation: boolean;
   onSignedIn?: () => void;
 }) {
+  // Each environment's own muster names the connector.
+  const label = useConnectorLabel(installation, server);
   const { status } = useServerSignIn(server, installation, {
     noun: 'connector',
   });
   const queryClient = useQueryClient();
-  // A sign-in landed, or an SSO connector connected: muster's status moved
-  // to connected from a status it had read before. Not on first sight of
-  // `connected`, which may be stale next to the read that just asked for the
-  // sign-in. `useServerSignIn` reads its own reads again only after a
-  // sign-in, so the alert reads the page's.
-  const lastKnown = useRef(status?.status);
   const onSignedInRef = useRef(onSignedIn);
   onSignedInRef.current = onSignedIn;
+  // A sign-in that lands is the sign-in's own to report (`onSignedIn` below,
+  // after it read every muster query again). What it does not report is an
+  // SSO connector that connects: its status moves to connected from
+  // `sso_pending`, `failed` or the like, never from one a sign-in moves, and
+  // the alert says the page fills in once it does. Not on first sight of
+  // `connected`, which may be stale next to the read that asked for it.
+  const lastKnown = useRef(status?.status);
   useEffect(() => {
     const current = status?.status;
     if (current === undefined) {
@@ -144,6 +182,7 @@ function InstallationSignIn({
     if (
       previous !== undefined &&
       previous !== 'connected' &&
+      !isSignInStatus(previous) &&
       current === 'connected'
     ) {
       void queryClient.invalidateQueries({ queryKey: ['muster'] });
@@ -155,7 +194,9 @@ function InstallationSignIn({
     <ServerSignIn
       noun="connector"
       serverName={server}
+      displayName={label}
       installation={installation}
+      onSignedIn={() => onSignedInRef.current?.()}
     />
   );
   if (!showInstallation) {

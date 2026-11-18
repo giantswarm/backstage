@@ -6,7 +6,12 @@ import {
   openWizardMoreOptions,
   test,
 } from './fixtures';
-import { KUBECONFIG, kubectl, NEEDS_KUBECONFIG } from './kubectl';
+import {
+  KUBECONFIG,
+  kubectl,
+  labOrganizationNamespace,
+  NEEDS_KUBECONFIG,
+} from './kubectl';
 import { LEFTOVER_AGE, RUN, lab, type LabUser } from './lab';
 
 // An installation offers codex with a Harness of its own beside the platform
@@ -30,17 +35,25 @@ const metadataLabels = `
     ${RUN_LABEL}: ${RUN}`;
 
 /**
- * Where the wizard looks for Harnesses: the namespace of the model it
- * preselects, `default-model-config` in `kagent` first, as
- * `preselectedModelConfig` picks it. Undefined on a lab without one.
+ * Where the wizard looks for the admin's Harnesses: on a lab with
+ * organizations, the namespace of the organization it creates in (the lab's
+ * own, {@link labOrganizationNamespace}); elsewhere, the namespace of the
+ * model it preselects, the lab's default model (`lab.defaultModel`) in
+ * `kagent` first, as `preselectedModelConfig` picks it. Undefined on a lab
+ * without either.
  */
-async function modelNamespace(): Promise<string | undefined> {
+async function harnessNamespace(
+  organizationNamespace: string | undefined,
+): Promise<string | undefined> {
+  if (organizationNamespace) {
+    return organizationNamespace;
+  }
   const { stdout } = await kubectl([
     'get',
     'modelconfigs.api.kagent.dev',
     '--all-namespaces',
     '--field-selector',
-    'metadata.name=default-model-config',
+    `metadata.name=${lab.defaultModel}`,
     '-o',
     'jsonpath={.items[*].metadata.namespace}',
   ]);
@@ -154,9 +167,11 @@ test.describe('the Codex card in the wizard', () => {
   test.skip(!KUBECONFIG, NEEDS_KUBECONFIG);
 
   let namespace: string | undefined;
+  let organizationNamespace: string | undefined;
 
   test.beforeAll(async () => {
-    namespace = await modelNamespace();
+    organizationNamespace = await labOrganizationNamespace();
+    namespace = await harnessNamespace(organizationNamespace);
     await removeFixtures();
   });
 
@@ -168,7 +183,10 @@ test.describe('the Codex card in the wizard', () => {
   test('appears where the namespace offers a codex Harness and nowhere else', async ({
     admin,
   }) => {
-    test.skip(!namespace, 'the lab has no default-model-config');
+    test.skip(
+      !namespace,
+      `the lab has neither an organization nor a ${lab.defaultModel} ModelConfig`,
+    );
     test.setTimeout(4 * 60_000);
     await openRuntimes(admin);
     await expectRuntimesListed(admin);
@@ -208,6 +226,12 @@ test.describe('the Codex card in the wizard', () => {
   test('keeps the platform Harness for a person who may not list Harnesses', async ({
     signInAs,
   }) => {
+    // An organization's editor lists its Harnesses where they create: on a
+    // lab with organizations nobody may create but not list runtimes.
+    test.skip(
+      !!organizationNamespace,
+      'on a lab with organizations, whoever may create in one may list its Harnesses',
+    );
     test.setTimeout(4 * 60_000);
     await kubectl(['apply', '-f', '-'], MODEL_READER);
     try {

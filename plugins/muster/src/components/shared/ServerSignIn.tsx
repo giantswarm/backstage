@@ -1,11 +1,16 @@
 import { makeStyles, Theme } from '@material-ui/core';
-import { Button, ButtonLink, Text } from '@backstage/ui';
-import { DisabledAction } from '@giantswarm/backstage-plugin-ui-react';
+import { Button, Text } from '@backstage/ui';
+import {
+  DisabledAction,
+  NewTabLabel,
+} from '@giantswarm/backstage-plugin-ui-react';
 import {
   ServerSignInState,
+  SignedIn,
   SignInNoun,
   useServerSignIn,
 } from './useServerSignIn';
+import { useConnectorLabel } from './hooks/useConnectorLabels';
 
 /**
  * The gate reason for a deactivated server (`spec.suspended`): muster keeps it
@@ -108,7 +113,7 @@ function ssoExplanationText(
 ): string {
   return state.isSsoRefused
     ? ssoRefusedText(serverName, noun)
-    : `${serverName} authenticates through SSO from muster's own session, so there is nothing to sign in to here.`;
+    : `${serverName} authenticates through SSO from Muster's own session, so there is nothing to sign in to here.`;
 }
 
 /** What a row says while the sign-in page is open somewhere. */
@@ -133,7 +138,7 @@ function clientIdMethodNote(
     case 'cimd-fallback':
       return {
         color: 'warning',
-        text: `This ${noun}'s authorization server advertises neither support for muster's client identity (CIMD) nor automatic client registration — the sign-in may be rejected as an unregistered client.`,
+        text: `This ${noun}'s authorization server advertises neither support for Muster's client identity (CIMD) nor automatic client registration — the sign-in may be rejected as an unregistered client.`,
       };
     // muster#1086: distinct from cimd-fallback — the AS does offer client
     // registration but rejected muster's request (its actual rejection is in
@@ -141,12 +146,12 @@ function clientIdMethodNote(
     case 'dcr-failed':
       return {
         color: 'warning',
-        text: `This ${noun}'s authorization server rejected muster's automatic client registration — the sign-in may be rejected as an unregistered client.`,
+        text: `This ${noun}'s authorization server rejected Muster's automatic client registration — the sign-in may be rejected as an unregistered client.`,
       };
     case 'dcr':
       return {
         color: 'secondary',
-        text: `muster registered itself with this ${noun}'s authorization server automatically (Dynamic Client Registration).`,
+        text: `Muster registered itself with this ${noun}'s authorization server automatically (Dynamic Client Registration).`,
       };
     default:
       return undefined;
@@ -168,6 +173,30 @@ function SsoExplanation({ text }: { text: string }) {
       className={classes.fullRow}
     >
       {text}
+    </Text>
+  );
+}
+
+/**
+ * The state a list shows for a server whose sign-in cannot pass for this
+ * session ({@link AuthActionParts} `refused`).
+ */
+export const SIGN_IN_REFUSED_STATUS = {
+  label: 'Cannot sign in',
+  tone: 'danger',
+} as const;
+
+/** muster's reason a sign-in cannot pass, shown as it says it. */
+function SignInRefusal({ reason }: { reason: string }) {
+  const classes = useStyles();
+  return (
+    <Text
+      as="p"
+      variant="body-small"
+      color="danger"
+      className={classes.fullRow}
+    >
+      {reason}
     </Text>
   );
 }
@@ -197,6 +226,8 @@ function signInWait(
  * - `sso`: an SSO-managed server (token forwarding/exchange) that refused the
  *   person's sign-in: an explanation, no button.
  *   It never waits on a sign-in, since there is nothing to sign in to.
+ * - `refused`: muster reports that a sign-in cannot pass for this session
+ *   (`ServerSignInState.signInRefusal`): its reason, no button and no link.
  * - `sign-in`: muster reports a sign-in is needed, or one this tab started is
  *   outstanding. `gate` withholds it with a reason; `wait` is the outstanding
  *   flow.
@@ -206,6 +237,7 @@ function signInWait(
 export type AuthActionParts =
   | { kind: 'none' }
   | { kind: 'sso'; explanation: string }
+  | { kind: 'refused'; reason: string }
   | { kind: 'sign-in'; gate?: string; wait?: SignInWait }
   | { kind: 'sign-out' };
 
@@ -236,6 +268,9 @@ export function authActionParts(
           explanation: ssoExplanationText(serverName, state, noun),
         }
       : { kind: 'none' };
+  }
+  if (state.signInRefusal) {
+    return { kind: 'refused', reason: state.signInRefusal };
   }
   // `isWaiting` keeps the row alive while a sign-in this tab started is
   // outstanding, whatever the polled status currently claims -- and whether or
@@ -287,12 +322,12 @@ export function SignInFlow({
   prominent?: boolean;
   /**
    * The buttons alone, for a status cell: the wait and the notes are said by
-   * the status beside them (`ServerSignInStatus`).
+   * the status beside them (`SignInStatusText`).
    */
   compact?: boolean;
 }) {
   const classes = useStyles();
-  const { authUrl, isPending, signIn, signInTabOpened } = state;
+  const { authUrl, isPending, signIn, openSignInPage, signInTabOpened } = state;
 
   if (!wait) {
     return (
@@ -331,15 +366,13 @@ export function SignInFlow({
   } else if (authUrl) {
     wayIn = (
       <>
-        <ButtonLink
-          href={authUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+        <Button
           variant={prominent ? 'primary' : 'secondary'}
           size="small"
+          onPress={openSignInPage}
         >
-          Open sign-in page ↗
-        </ButtonLink>
+          <NewTabLabel>Open sign-in page</NewTabLabel>
+        </Button>
         {waiting}
       </>
     );
@@ -352,7 +385,11 @@ export function SignInFlow({
           isPending={isPending}
           onClick={signIn}
         >
-          {isPending ? 'Opening…' : 'Open sign-in page'}
+          {isPending ? (
+            'Opening…'
+          ) : (
+            <NewTabLabel>Open sign-in page</NewTabLabel>
+          )}
         </Button>
         {waiting}
       </>
@@ -403,18 +440,32 @@ export interface ServerSignInProps {
   /** The muster server name, as reported by `list_tools` / `auth://status`. */
   serverName: string;
   /**
-   * What the sentences call the server for people (its display name); the
-   * server name by default.
+   * What the sentences call the server for people (its display name); by
+   * default the name muster-backend reads for everyone
+   * (`useConnectorLabel`), the server name until it is known.
    */
   displayName?: string;
   installation?: string;
-  /** Show the server name next to the action (a list of several servers). */
+  /**
+   * Show the display name next to the action, with the server's own name
+   * where it differs (a list of several servers, the members of one family
+   * among them).
+   */
   showName?: boolean;
   /**
-   * What the copy calls the server: main's "server" by default (the classic
-   * portal, e.g. Bot PRs), "connector" in the agent platform's own sections.
+   * What the copy calls the server: "server" by default (the muster plugin's
+   * own MCP servers page), "connector" wherever people meet it as one (the
+   * agent platform, the sign-in dialog, Bot PRs).
    */
   noun?: SignInNoun;
+  /**
+   * Called once the person is signed in to the server: a sign-in that lands,
+   * here or in another tab, or a click that finds it connected already (see
+   * `UseServerSignInOptions.onSignedIn`). For a surface that shows the
+   * sign-in in place of a refused call, to clear the refusal and run it
+   * again.
+   */
+  onSignedIn?: (signedIn: SignedIn) => void;
 }
 
 /**
@@ -434,10 +485,20 @@ export function ServerSignIn({
   installation,
   showName,
   noun = 'server',
+  onSignedIn,
 }: ServerSignInProps) {
   const classes = useStyles();
-  const state = useServerSignIn(serverName, installation, { noun });
-  const parts = authActionParts(displayName ?? serverName, state, {
+  // Read only where the caller names no display name of its own.
+  const known = useConnectorLabel(installation, serverName, {
+    enabled: displayName === undefined,
+  });
+  const label = displayName ?? known;
+  const state = useServerSignIn(serverName, installation, {
+    noun,
+    onSignedIn,
+    displayName: label,
+  });
+  const parts = authActionParts(label, state, {
     noun,
     alwaysOffer: true,
   });
@@ -454,9 +515,29 @@ export function ServerSignIn({
     );
   }
 
+  if (parts.kind === 'refused') {
+    return (
+      <div className={classes.root}>
+        <SignInRefusal reason={parts.reason} />
+      </div>
+    );
+  }
+
   return (
     <div className={classes.root}>
-      {showName ? <code className={classes.name}>{serverName}</code> : null}
+      {showName ? (
+        <span className={classes.name}>
+          {label}
+          {/* A display name may be shared, by the members of one family: the
+              server's own name keeps the rows of a list apart. */}
+          {label !== serverName ? (
+            <>
+              {' '}
+              <code>{serverName}</code>
+            </>
+          ) : null}
+        </span>
+      ) : null}
       <SignInFlow
         state={state}
         wait={parts.kind === 'sign-in' ? parts.wait : undefined}
@@ -515,7 +596,10 @@ export function ServerAuthActions({
   noun = 'server',
 }: ServerAuthActionsProps) {
   const classes = useStyles();
-  const state = useServerSignIn(serverName, installation, { noun });
+  const state = useServerSignIn(serverName, installation, {
+    noun,
+    displayName: displayName ?? serverName,
+  });
   const parts = authActionParts(displayName ?? serverName, state, {
     noun,
     oauthConfigured,
@@ -531,6 +615,13 @@ export function ServerAuthActions({
         <div className={classes.inActionRow}>
           <SsoExplanation text={parts.explanation} />
           <Messages state={state} />
+        </div>
+      );
+    case 'refused':
+      return (
+        <div className={classes.inActionRow}>
+          {name}
+          <SignInRefusal reason={parts.reason} />
         </div>
       );
     case 'sign-in':

@@ -277,6 +277,22 @@ describe('PlansApiClient', () => {
     },
   );
 
+  it('leaves a call a muster rollout interrupted retryable', async () => {
+    const message =
+      'interrupted: the muster replica serving this call is shutting down';
+    fetchMock.mockResolvedValue(
+      jsonResponse(
+        { error: { name: 'MusterToolError', message, kind: 'interrupted' } },
+        503,
+      ),
+    );
+
+    await expect(client.listPulls()).rejects.toMatchObject({
+      name: 'Error',
+      message,
+    });
+  });
+
   it("keeps the backend's own 503 final", async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(

@@ -1,11 +1,10 @@
 import type { ReactNode } from 'react';
 import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { ServerSignIn } from '@giantswarm/backstage-plugin-muster';
 import { joinNames } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useUnderlyingModel } from '../../hooks/useUnderlyingModel';
-import { AGENT_MANAGER_SERVER } from '../../lib/agentManager';
+import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import type { SignInToolState } from '../../hooks/useSignInTool';
 import { SIGN_IN_TOOL } from '../../lib/signInTool';
 import { countNoun, parseSelector } from '../../lib/toolset';
@@ -297,32 +296,30 @@ export function Notes({ notes }: { notes: string[] }) {
   );
 }
 
-/** The person's muster session is not connected to agent-manager yet. */
+/**
+ * The person has not signed in to agent-manager yet: the create review's
+ * {@link ConnectAgentManagerAlert}.
+ */
 export function ConnectAgentManager({
   installation,
   message,
+  signInRequired,
+  onSignedIn,
 }: {
   installation: string;
   message: string;
+  /** See {@link ConnectAgentManagerAlert}'s `signInRequired`. */
+  signInRequired?: boolean;
+  /** See {@link ConnectAgentManagerAlert}'s `onSignedIn`. */
+  onSignedIn?: () => void;
 }) {
   return (
-    <Alert
-      status="warning"
-      title="Connect to agent-manager"
-      description={
-        <Flex direction="column" gap="2">
-          <Text variant="body-small">
-            Agents are created through agent-manager, reached through muster as
-            you. Your muster session on {installation} is not connected to it
-            yet: {message}
-          </Text>
-          <ServerSignIn
-            noun="connector"
-            serverName={AGENT_MANAGER_SERVER}
-            installation={installation}
-          />
-        </Flex>
-      }
+    <ConnectAgentManagerAlert
+      installation={installation}
+      message={message}
+      signInRequired={signInRequired}
+      action="Agents are created"
+      onSignedIn={onSignedIn}
     />
   );
 }

@@ -1,5 +1,36 @@
 # @giantswarm/backstage-plugin-roadmap
 
+## 0.1.1
+
+### Patch Changes
+
+- 4c53a2b: Name the tool, its MCP server and the installation on a muster tool error, and give each known kind of failure its status: the refusals of agent-manager, model-manager and workspace-manager and muster's refusals of a connector write answer 4xx and no longer reach Sentry, a muster rollout's interruption is logged at info and answered with a 503 the muster, plans and roadmap pages retry, and a timeout (504), a server muster holds no connection to (503) and a missing tool (502) stay reported. Sentry groups muster tool errors by kind and tool, or by server for the kinds that belong to a whole server. The muster pages no longer retry a refusal. platform-capabilities and repositories no longer show muster's own failures as the manager's refusal. `gs-node` adds `MUSTER_TOOL_ERROR_STATUS`, `musterToolErrorKindOf`, `musterServerOfTool` and `markReported`; `gs-common` adds the refusal registry (`mcpToolRefusalOf`, `parseToolErrorCode`). bot-prs keeps offering the marge sign-in for a missing tool or a lost connection.
+- Updated dependencies [db5c770]
+- Updated dependencies [5ded107]
+- Updated dependencies [8fd67a7]
+- Updated dependencies [8ab4a8f]
+- Updated dependencies [a665a44]
+- Updated dependencies [a2e34ef]
+- Updated dependencies [6bfac24]
+- Updated dependencies [0314965]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5bde8bf]
+- Updated dependencies [4f2299d]
+- Updated dependencies [0f927e4]
+- Updated dependencies [c72aab9]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [6dee1f6]
+- Updated dependencies [ed68f95]
+- Updated dependencies [3745db0]
+  - @giantswarm/backstage-plugin-analytics-react@0.3.0
+  - @giantswarm/backstage-plugin-ui-react@0.10.0
+
 ## 0.1.0
 
 ### Minor Changes

@@ -61,7 +61,8 @@ export type ToolsetReach = {
 };
 
 /**
- * Sorts a composed toolset's selectors by connector coverage. With `groups`
+ * Sorts a composed toolset's selectors by connector coverage, `labels` naming
+ * the connectors its `server:` selectors pick. With `groups`
  * (the caller's catalogue, as the Tools step builds it) each connector is
  * classified the way the grid shows it (`connectorState`); a connector whose
  * every listed tool is picked one by one counts as whole. Without it, only
@@ -72,6 +73,7 @@ export type ToolsetReach = {
 export function toolsetReach(
   selectors: readonly string[],
   groups?: readonly CatalogueGroup[],
+  labels?: ReadonlyMap<string, string>,
 ): ToolsetReach {
   const selected = new Set(selectors);
   const accounted = new Set<string>();
@@ -118,7 +120,7 @@ export function toolsetReach(
         presets.push(phrase);
       }
     } else if (parsed?.kind === 'server') {
-      connectors.push(parsed.name);
+      connectors.push(labels?.get(parsed.name) ?? parsed.name);
     } else if (parsed?.kind === 'workflow') {
       workflows.push(parsed.name);
     } else if (groups && parsed && isCoreTool({ name: parsed.name })) {
@@ -241,6 +243,7 @@ export function reachSentence({
 export function describeReach(
   toolset: DeclaredToolset | undefined,
   groups?: readonly CatalogueGroup[],
+  labels?: ReadonlyMap<string, string>,
 ): string | undefined {
   if (!toolset || toolset.state === 'unresolved') {
     return undefined;
@@ -258,10 +261,43 @@ export function describeReach(
       return 'Can use every connector you can.';
     default:
       return (
-        reachSentence(toolsetReach(toolset.selectors, groups)) ??
+        reachSentence(toolsetReach(toolset.selectors, groups, labels)) ??
         'Has no connectors.'
       );
   }
+}
+
+/**
+ * The connectors a composed toolset names, by surface name: with `groups`,
+ * every connector it picks any tool of, as {@link toolsetReach} sorts them;
+ * without, the ones its `server:` selectors name. Presets name none — the
+ * sentence says what they cover.
+ */
+export function reachedConnectors(
+  toolset: DeclaredToolset | undefined,
+  groups?: readonly CatalogueGroup[],
+): string[] {
+  if (toolset?.state !== 'declared') {
+    return [];
+  }
+  const shape = toolsetShape(toolset.selectors);
+  if (shape === 'none' || shape === 'full') {
+    return [];
+  }
+  const selected = new Set(toolset.selectors);
+  const names: string[] = [];
+  for (const bucket of groups ? connectorsOf(groups) : []) {
+    if (connectorState(bucket, selected).choice !== 'none') {
+      names.push(bucket.name);
+    }
+  }
+  for (const selector of toolset.selectors) {
+    const parsed = parseSelector(selector);
+    if (parsed?.kind === 'server' && !names.includes(parsed.name)) {
+      names.push(parsed.name);
+    }
+  }
+  return names;
 }
 
 /** Whether naming the reach needs the catalogue: a tool picked one by one. */

@@ -10,7 +10,9 @@ import {
   isAgentTransitional,
   KubeObjectInterface,
   ModelConfig,
+  RemoteMCPServer,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- GS owns the shared installation inventory.
 import {
   ALL_INSTALLATIONS,
   classifyInventoryFailure,
@@ -23,6 +25,7 @@ import {
   type InventoryFailure,
 } from '@giantswarm/backstage-plugin-gs';
 import { joinNames } from '@giantswarm/backstage-plugin-ui-react';
+import { modelLabel } from '../../lib/modelLabel';
 import {
   summarizeClientServing,
   type ClientServingState,
@@ -31,14 +34,21 @@ import {
 import { canonicalSkillId } from '../../lib/skills';
 import { agentManagerBlocker } from '../../lib/agentManager';
 import type { AgentManagerAvailability } from '../../hooks/useAgentManager';
+import type { DirectServer } from '../../lib/connectorMarks';
+import { directServerName, mcpBindingId } from '../AgentDetailPage/helpers';
 import {
+  isGatewayBinding,
   MUSTER_MCP_SERVER_NAME,
   toolsetOfAgent,
   type DeclaredToolset,
   type ToolsetCarrier,
 } from '../../lib/toolset';
 import { harnessChoiceOf, harnessTitle } from '../../lib/harnesses';
-import { CREATED_BY_ANNOTATION, tenantOf } from '../../lib/tenants';
+import {
+  CREATED_BY_ANNOTATION,
+  CREATED_BY_NAME_ANNOTATION,
+  ownerOf,
+} from '../../lib/tenants';
 import {
   DEFAULT_WORKSPACE_ANNOTATION,
   defaultWorkspaceName,
@@ -48,6 +58,10 @@ import {
   defaultToolchainsOf,
   type ToolchainPick,
 } from '../../lib/toolchainManager';
+import {
+  EMPTY_ORGANIZATION_DIRECTORY,
+  type OrganizationDirectory,
+} from '../../lib/organizations';
 
 /**
  * Baseline poll for the fleet-wide agent list. Deliberately equal to the query
@@ -123,27 +137,17 @@ export function getAgentRefetchInterval(
 }
 
 /**
- * Per-installation refetch interval for the agent list.
+ * Per-installation refetch interval for the agent list, re-evaluated by
+ * react-query after every fetch of that installation's list:
  *
- * `useResources` applies this to each installation's list query separately, and
- * react-query re-evaluates it after every fetch resolves — so this needs no
- * provider state and is self-correcting: an installation whose agents are all
- * ready stays on the baseline, and one whose agent starts converging tightens to
- * the fast interval and relaxes again once it settles.
+ * - no list yet, or an empty one: the baseline;
+ * - an agent still converging (see {@link isAgentConverging}): the
+ *   transitional tier;
+ * - every agent settled, or broken past the convergence window: the baseline.
  *
- * What this does **not** do is accelerate the first sighting of a *newly created*
- * agent. The decision is made from the data already in hand, so an installation
- * whose cached list predates the new agent stays on the baseline until the next
- * poll reveals it. Nothing invalidates the Agent list after creation (the flow
- * hands off to the scaffolder task page, and the agent does not exist yet at that
- * point), and `staleTime` suppresses a refetch on mount for a cache entry under a
- * minute old — so a new agent can take up to the baseline interval to appear, and
- * only then does the fast tier engage. Invalidating on creation would be the fix
- * if that wait proves annoying in practice.
- *
- * Note that interval refetches only fire while the tab is focused
- * (`refetchIntervalInBackground` defaults to `false`), which is the same
- * guard kagent's UI implements by hand with `document.hidden`.
+ * An agent deployed from this tab but not listed yet is not seen here;
+ * `AgentsDataProvider` tightens the interval for it. Interval refetches fire
+ * only while the tab is focused.
  */
 export function getAgentsRefetchInterval(
   query: Query<KubeObjectInterface[]>,
@@ -184,6 +188,8 @@ export type AgentRow = {
    */
   technicalName: string;
   description: string;
+  /** Keywords to find the agent by (`Agent.getTags()`); empty when none. */
+  tags: string[];
   /**
    * Human-readable model label resolved from the referenced ModelConfig: its
    * display name, else its `spec.model`, else its resource name. `undefined`
@@ -231,6 +237,12 @@ export type AgentRow = {
    * a model row carries. `undefined` when the agent references no model.
    */
   modelConfigId?: string;
+  /**
+   * The same-namespace `AgentTemplate` the agent runs (`spec.templateRef`),
+   * when its template is not inline: its model is named there, so a missing
+   * {@link modelConfigId} does not mean the agent has none.
+   */
+  templateRef?: string;
   /** Readiness derived from the Agent's conditions. */
   readiness: AgentReadiness;
   /**
@@ -249,6 +261,11 @@ export type AgentRow = {
    * the row was built without the namespace's servers in hand.
    */
   toolset?: DeclaredToolset;
+  /**
+   * The servers the agent binds directly rather than through the gateway,
+   * named as the agent page names them. Absent for none.
+   */
+  directServers?: DirectServer[];
   /**
    * What the serving layer says about the model behind the agent's
    * ModelConfig — the served model's readiness, or that nothing answers for
@@ -272,8 +289,8 @@ export type AgentRow = {
    */
   isSessionPending?: boolean;
   /**
-   * The tenant the agent belongs to ({@link tenantOf} its namespace):
-   * `platform`, `organization <name>`, or `namespace <name>`.
+   * The tenant the agent belongs to, as its owner ({@link ownerOf} its
+   * namespace): `Platform`, the organization's name, or `namespace <name>`.
    */
   tenant?: string;
   /**
@@ -283,6 +300,13 @@ export type AgentRow = {
    * not through agent-manager.
    */
   createdBy?: string;
+  /**
+   * The creator's display name ({@link CREATED_BY_NAME_ANNOTATION}), shown in
+   * place of `createdBy`; display only. `undefined` where none was recorded.
+   */
+  createdByName?: string;
+  /** When the `Agent` was created (`metadata.creationTimestamp`). */
+  createdAt?: string;
   /**
    * The name of the agent's default workspace
    * ({@link DEFAULT_WORKSPACE_ANNOTATION}): what a new session's workspace
@@ -347,25 +371,6 @@ export function resolveModelConfig(
 }
 
 /**
- * Resolve an agent's `spec.modelConfig` reference to a
- * human-readable label by joining against the ModelConfigs on the same
- * installation ({@link resolveModelConfig}).
- *
- * Falls back to the raw reference name when the ModelConfig can't be found,
- * and to `undefined` when the agent references no model at all.
- */
-export function resolveModelLabel(
-  agent: Agent,
-  modelConfigs: ModelConfig[],
-): string | undefined {
-  const ref = agent.getModelConfigName();
-  if (!ref) {
-    return undefined;
-  }
-  return modelLabel(resolveModelConfig(agent, modelConfigs)) ?? ref;
-}
-
-/**
  * How a ModelConfig resolves to the serving layer —
  * `useServing().servingStateFor`, partially applied to the installation.
  */
@@ -374,38 +379,23 @@ export type ResolveModelServing = (
 ) => ClientServingState | undefined;
 
 /**
- * What a reader calls the model: "ChatGPT (your subscription)" for a person's
- * own ChatGPT login, else the ModelConfig's display name, else the model it
- * configures, else its resource name.
- */
-function modelLabel(modelConfig: ModelConfig | undefined): string | undefined {
-  if (!modelConfig) {
-    return undefined;
-  }
-  if (modelConfig.isPersonalChatGptLogin()) {
-    return modelConfig.getDisplayName();
-  }
-  return (
-    modelConfig.getDisplayNameAnnotation() ??
-    modelConfig.getModel() ??
-    modelConfig.getName()
-  );
-}
-
-/**
  * Flatten an `Agent` into a plain {@link AgentRow}. With a
  * `resolveServing`, the row also carries the serving state of the model behind
  * the agent's ModelConfig; without one (no serving layer in view) it does not.
  * With `carriers` — the installation's `RemoteMCPServer`s — it carries the
  * toolset read off the agent's own carrier; without them it does not. With
  * `harnesses`, the installation's Harnesses, it carries its Harness's title.
+ * Its owner is named by `organizations`, which namespace is which
+ * organization as agent-manager answered it.
  */
 export function toAgentRow(
   agent: Agent,
   modelConfigs: ModelConfig[],
   resolveServing?: ResolveModelServing,
-  carriers?: readonly ToolsetCarrier[],
+  carriers?: readonly (ToolsetCarrier &
+    Pick<RemoteMCPServer, 'getAnnotations'>)[],
   harnesses?: readonly Harness[],
+  organizations: OrganizationDirectory = EMPTY_ORGANIZATION_DIRECTORY,
 ): AgentRow {
   const installation = agent.cluster;
   const namespace = agent.getNamespace() ?? '';
@@ -434,12 +424,31 @@ export function toAgentRow(
     }));
   const skillIds = gitSkills.map(skill => skill.id);
   const createdBy = agent.getAnnotations()?.[CREATED_BY_ANNOTATION]?.trim();
+  const createdByName = agent
+    .getAnnotations()
+    ?.[CREATED_BY_NAME_ANNOTATION]?.trim();
+  const createdAt = agent.getCreatedTimestamp();
   const defaultWorkspace = defaultWorkspaceName(
     agent.getAnnotations()?.[DEFAULT_WORKSPACE_ANNOTATION],
   );
   const defaultToolchains = defaultToolchainsOf(
     agent.getAnnotations()?.[DEFAULT_TOOLCHAINS_ANNOTATION],
   );
+  const directServers = agent
+    .getMcpBindings()
+    .filter(
+      binding => !isGatewayBinding(agent, binding, MUSTER_MCP_SERVER_NAME),
+    )
+    .map((binding, index) => ({
+      // The server name is not unique: two bindings may scope one server
+      // differently.
+      key: `${mcpBindingId(binding)}#${index}`,
+      name: directServerName(
+        binding,
+        carriers?.filter(carrier => carrier.getNamespace() === namespace),
+      ),
+      ...(binding.requireApproval ? { approval: true } : {}),
+    }));
   const skillPins = Object.fromEntries(
     gitSkills.map(skill => [skill.id, skill.pin]),
   );
@@ -451,6 +460,7 @@ export function toAgentRow(
     name: agent.getDisplayName(),
     technicalName: name,
     description: agent.getDescription() ?? '',
+    tags: agent.getTags(),
     model: modelLabel(modelConfig) ?? agent.getModelConfigName(),
     modelName: modelConfig?.getModel(),
     harness: harnessName,
@@ -464,14 +474,18 @@ export function toAgentRow(
     ...(modelConfigName
       ? { modelConfigId: `${installation}/${namespace}/${modelConfigName}` }
       : {}),
+    ...(agent.getTemplateRef() ? { templateRef: agent.getTemplateRef() } : {}),
     readiness: agent.getReadiness(),
     readinessMessage: agent.getReadinessMessage(),
-    tenant: tenantOf(namespace),
+    tenant: ownerOf(namespace, organizations),
     ...(createdBy ? { createdBy } : {}),
+    ...(createdByName ? { createdByName } : {}),
+    ...(createdAt ? { createdAt } : {}),
     ...(defaultWorkspace ? { defaultWorkspace } : {}),
     ...(defaultToolchains.length > 0 ? { defaultToolchains } : {}),
     ...(warnings.length > 0 ? { warnings } : {}),
     ...(serving ? { modelServing: summarizeClientServing(serving) } : {}),
+    ...(directServers.length > 0 ? { directServers } : {}),
     ...(carriers
       ? { toolset: toolsetOfAgent(agent, MUSTER_MCP_SERVER_NAME, carriers) }
       : {}),

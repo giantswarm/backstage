@@ -1,6 +1,6 @@
-import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
+import { ExternalLink, InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
-import { Box, Grid, Link, Typography } from '@material-ui/core';
+import { Box, Grid, Typography } from '@material-ui/core';
 import { CodeBlock, Heading } from '../../../../UI';
 import {
   getControlPlaneNodeAccessCommand,
@@ -61,13 +61,12 @@ export function ClusterSSHAccessCard() {
             </Box>
             <Typography variant="body2">
               Find all nodes via the{' '}
-              <Link
+              <ExternalLink
                 href={getNodeResourcesURL(clusterName, installationName)}
-                target="_blank"
-                rel="noopener noreferrer"
+                display="inline"
               >
                 Teleport resources UI
-              </Link>
+              </ExternalLink>
               .
             </Typography>
           </Box>

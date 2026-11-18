@@ -11,7 +11,7 @@ export type InventoryView = Pick<
 const CAN_STILL_ANSWER = new Set(['healthy', 'connecting']);
 
 /** Home first, otherwise the given order. */
-export function homeFirst<T extends { name: string }>(
+function homeFirst<T extends { name: string }>(
   installations: T[],
   home: string | undefined,
 ): T[] {

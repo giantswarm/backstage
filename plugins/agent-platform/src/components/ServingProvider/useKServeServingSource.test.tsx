@@ -241,6 +241,11 @@ describe('useKServeServingSource', () => {
       call => call[1] === LLMInferenceService,
     );
     expect(objectsCall?.[3]).toMatchObject({ enableDiscovery: false });
+    // The nodes are reused for a minute by a remount on the next page.
+    const nodesCall = mockUseResources.mock.calls.find(
+      call => call[1] === Node,
+    );
+    expect(nodesCall?.[3]).toMatchObject({ staleTime: 60_000 });
     // One workload-pod list per KServe installation, by the controller's
     // label; no per-node lists yet.
     expect(mockUsePodLists.mock.calls[0][0]).toEqual([

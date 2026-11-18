@@ -1,5 +1,6 @@
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import {
+  analyticsApiRef,
   storageApiRef,
   toastApiRef,
   type StorageApi,
@@ -27,14 +28,16 @@ import type { UseSendMessageResult } from '../../hooks/useSendMessage';
 import { createStreamTurn } from '../../lib/kagentStreamTurn';
 import { buildTimeline, type TimelineItem } from '../../lib/kagentTimeline';
 import type { EgressRefusal } from '../../lib/egressRefusals';
+import { remedyNeedsAgent } from '../../lib/egressRemedy';
 import { TINY_PNG_BASE64 } from '../../lib/__fixtures__/images';
 import {
-  deriveSessionState,
   formatBytes,
   normalizeSessionDetail,
   normalizeTaskList,
+  readNewestTaskState,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { buildContinuationPrompt } from '../../lib/continuationPrompt';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 import { SessionDetailPage } from './SessionDetailPage';
 import {
   mockCollapsibleLayout,
@@ -50,6 +53,7 @@ import {
   tasksClaudeHarness,
   tasksV099,
 } from '@giantswarm/backstage-plugin-agent-platform-common/testFixtures';
+import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
 
 // The route params the page reads. Driven directly rather than through a router so
 // each state can be rendered in isolation. The navigation is the page's own only
@@ -150,7 +154,7 @@ jest.mock('../../hooks/useTokenRates', () => ({
     model: undefined,
     isLoading: false,
     isAvailable: true,
-    window: '7d',
+    windowDays: 7,
   }),
 }));
 
@@ -399,13 +403,14 @@ const detail = normalizeSessionDetail(detailV099, 'gazelle').detail!;
 const loadedView: SessionDetailView = {
   detail,
   timeline,
-  state: deriveSessionState(tasks),
+  state: readNewestTaskState(tasks)?.state,
   // The fixture's newest task is `working`. Its timestamp is long past the
   // staleness bound, so the real hook would call it stale — set explicitly here so
   // these tests describe a live turn rather than depending on a fixture's age.
   isAgentWorking: true,
   taskCount: tasks.length,
   hasConversation: true,
+  isConversationCurrent: true,
   isLoading: false,
   isNotFound: false,
   error: undefined,
@@ -452,7 +457,11 @@ describe('SessionDetailPage', () => {
     mockPricedRate = undefined;
     mockEgressRefusals = [];
     mockUseEgressRemedy.mockReset();
-    mockUseEgressRemedy.mockReturnValue({ kind: 'pending' });
+    // As the hook does before it reads the agent: the `tcp` remedy needs
+    // none of it, the rest wait.
+    mockUseEgressRemedy.mockReturnValue((scheme: string) =>
+      remedyNeedsAgent(scheme) ? { kind: 'pending' } : { kind: 'tcp' },
+    );
     providedActions.mockClear();
     mockRenameSession.mockReset();
     mockSendMessage.mockReset();
@@ -731,6 +740,31 @@ describe('SessionDetailPage', () => {
     expect(screen.queryByTestId('timeline-egress-refused')).toBeNull();
   });
 
+  it('reads no remedy for raw TCP refusals alone, which need none of the agent', async () => {
+    mockEgressRefusals = [
+      {
+        scheme: 'tcp',
+        host: 'github.com',
+        port: 22,
+        at: new Date().toISOString(),
+        count: 1,
+      },
+    ];
+
+    await render();
+
+    expect(mockUseEgressRemedy).toHaveBeenLastCalledWith(
+      expect.objectContaining({ enabled: false }),
+    );
+    const entry = screen.getByTestId('timeline-egress-refused');
+    expect(
+      within(entry).getByText(
+        'No egress setting can allow it. If github.com offers HTTPS, have Issue tracker use that instead.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(entry).queryByRole('link')).toBeNull();
+  });
+
   it('shows the remedy for the session’s agent under its egress refusal', async () => {
     mockEgressRefusals = [
       {
@@ -741,10 +775,10 @@ describe('SessionDetailPage', () => {
         count: 2,
       },
     ];
-    mockUseEgressRemedy.mockReturnValue({
+    mockUseEgressRemedy.mockReturnValue(() => ({
       kind: 'platform',
       runtime: 'Claude Code',
-    });
+    }));
 
     await render();
 
@@ -798,6 +832,64 @@ describe('SessionDetailPage', () => {
 
     expect(screen.getByText('Could not load this session')).toBeInTheDocument();
     expect(screen.getByText(/status 500/)).toBeInTheDocument();
+  });
+
+  describe('when the portal refuses the session token', () => {
+    it('says the session ended, with Sign in again, instead of a read failure', async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        detail: undefined,
+        timeline: emptyTimeline,
+        error: new PortalSessionEndedError(),
+      });
+
+      await render();
+
+      expect(screen.getByText('Your portal session ended')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Sign in again' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('Could not load this session'),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText('Back to sessions')).toBeInTheDocument();
+    });
+
+    it('keeps the conversation and says the session ended on a refresh', async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        error: new PortalSessionEndedError(),
+      });
+
+      await render();
+
+      expect(screen.getByText('Your portal session ended')).toBeInTheDocument();
+      expect(
+        screen.queryByText('This session may be out of date'),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText('Which GitHub issues...')).toBeInTheDocument();
+    });
+
+    it('says the session ended on a send, not "Message not sent"', async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+      });
+      mockUseSendMessage.mockReturnValue(
+        idleSend({ error: new PortalSessionEndedError() }),
+      );
+
+      await render();
+
+      expect(
+        await screen.findByText('Your portal session ended'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Sign in again' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();
+      expect(screen.queryByText(/token verification/)).not.toBeInTheDocument();
+    });
   });
 
   it('keeps the session on screen when a refresh fails', async () => {
@@ -951,6 +1043,112 @@ describe('SessionDetailPage', () => {
       );
 
       expect(scrollTop).toBe(120);
+    });
+  });
+
+  describe('sending', () => {
+    const original = Element.prototype.scrollIntoView;
+    const scrollIntoView = jest.fn();
+    beforeEach(() => {
+      scrollIntoView.mockReset();
+      Element.prototype.scrollIntoView = scrollIntoView;
+    });
+    afterEach(() => {
+      Element.prototype.scrollIntoView = original;
+    });
+
+    it('puts the message sent at the top of the view, with room for its reply', async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+      });
+      // The send hook's optimistic echo, from the next render on.
+      mockSendMessage.mockImplementation(() => {
+        mockUseSendMessage.mockReturnValue(
+          idleSend({
+            isSending: true,
+            pending: { messageId: 'pending-1', text: 'and the staging one?' },
+          }),
+        );
+        return new Promise(() => {});
+      });
+      await render();
+      await screen.findByTestId('session-dock');
+
+      await userEvent.type(
+        screen.getByRole('textbox', { name: 'Message' }),
+        'and the staging one?',
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+      // Something renders the page again, and the echo with it.
+      setChatGpt({ ...NO_CHATGPT });
+
+      const turn = (await screen.findByText('and the staging one?')).closest(
+        '[data-turn-index]',
+      );
+      expect(turn).toHaveAttribute('data-reserved-turn');
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
+      expect(scrollIntoView.mock.contexts.at(-1)).toBe(turn);
+      // Nothing new below: the reply is to come.
+      expect(
+        screen.queryByRole('button', { name: 'Jump to bottom' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('puts a message sent again after a failed send at the top too', async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+      });
+      let failFirst: (error: Error) => void = () => {};
+      mockSendMessage
+        .mockImplementationOnce(() => {
+          mockUseSendMessage.mockReturnValue(
+            idleSend({
+              isSending: true,
+              pending: { messageId: 'attempt-1', text: 'and staging?' },
+            }),
+          );
+          return new Promise((_resolve, reject) => {
+            failFirst = reject;
+          });
+        })
+        .mockImplementationOnce(() => {
+          mockUseSendMessage.mockReturnValue(
+            idleSend({
+              isSending: true,
+              pending: { messageId: 'attempt-2', text: 'and staging?' },
+            }),
+          );
+          return new Promise(() => {});
+        });
+      await render();
+      await screen.findByTestId('session-dock');
+      const box = () => screen.getByRole('textbox', { name: 'Message' });
+
+      await userEvent.type(box(), 'and staging?');
+      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+      setChatGpt({ ...NO_CHATGPT });
+      await screen.findByText('and staging?');
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+      // A 502: the echo goes, and the person sends the same text again.
+      mockUseSendMessage.mockReturnValue(idleSend());
+      await act(async () => failFirst(new Error('Bad gateway')));
+      setChatGpt({ ...NO_CHATGPT });
+      await waitFor(() =>
+        expect(screen.queryByText('and staging?')).not.toBeInTheDocument(),
+      );
+      await userEvent.type(box(), 'and staging?');
+      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+      setChatGpt({ ...NO_CHATGPT });
+
+      const turn = (await screen.findByText('and staging?')).closest(
+        '[data-turn-index]',
+      );
+      expect(turn).toHaveAttribute('data-reserved-turn');
+      expect(scrollIntoView).toHaveBeenCalledTimes(2);
+      expect(scrollIntoView.mock.contexts.at(-1)).toBe(turn);
     });
   });
 
@@ -1578,21 +1776,21 @@ describe('SessionDetailPage', () => {
         turnProgress: { kind: 'stalled' as const, since },
         currentTaskId: 'task-9',
       };
-      const clock = new Date(since).toLocaleTimeString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
 
       it('says the agent has stopped reporting progress, and since when', async () => {
-        mockUseSessionDetail.mockReturnValue(stalledView);
+        mockUseSessionDetail.mockReturnValue({
+          ...stalledView,
+          turnProgress: {
+            kind: 'stalled' as const,
+            since: Date.now() - 12 * 60 * 1000,
+          },
+        });
         await render();
 
         expect(screen.queryByText('Working…')).not.toBeInTheDocument();
-        expect(
-          screen.getByText(
-            `The agent has not reported progress since ${clock}.`,
-          ),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/last reported progress/)).toHaveTextContent(
+          'The agent last reported progress 12 minutes ago.',
+        );
       });
 
       it('names the stall in the state too, not Working (R2-4)', async () => {
@@ -1636,9 +1834,7 @@ describe('SessionDetailPage', () => {
         await render();
 
         expect(screen.queryByText('Working…')).not.toBeInTheDocument();
-        expect(
-          screen.getByText(/has not reported progress/),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/last reported progress/)).toBeInTheDocument();
       });
 
       it('cancels the turn from the row, and puts the unanswered message back into the box', async () => {
@@ -1689,9 +1885,7 @@ describe('SessionDetailPage', () => {
         expect(
           screen.queryByRole('button', { name: 'Stop the turn' }),
         ).not.toBeInTheDocument();
-        expect(
-          screen.getByText(/has not reported progress/),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/last reported progress/)).toBeInTheDocument();
       });
     });
 
@@ -1775,9 +1969,7 @@ describe('SessionDetailPage', () => {
         );
 
         expect(screen.queryByText('Working…')).not.toBeInTheDocument();
-        expect(
-          screen.getByText(/has not reported progress/),
-        ).toBeInTheDocument();
+        expect(screen.getByText(/last reported progress/)).toBeInTheDocument();
         expect(
           screen.queryByRole('button', { name: 'Send' }),
         ).not.toBeInTheDocument();
@@ -1803,10 +1995,11 @@ describe('SessionDetailPage', () => {
         expect(composer()).toHaveValue('');
       });
 
-      it('tells a Stop refused with a 401 to reload the page', async () => {
-        // The Backstage pod rolled while the tab stayed open and the tab's
-        // token no longer verifies; a reload signs it back in silently.
-        const unauthorized = new Error('Failed user token verification');
+      it('tells a Stop kagent refused with a 401 to reload the page', async () => {
+        // kagent refused the installation token, which a reload mints again.
+        const unauthorized = new Error(
+          "Not authenticated against the kagent API for installation 'gazelle': token expired",
+        );
         unauthorized.name = 'UnauthorizedError';
         mockUseSessionDetail.mockReturnValue(staleView);
         mockUseCancelTask.mockReturnValue(idleCancel({ error: unauthorized }));
@@ -1815,10 +2008,28 @@ describe('SessionDetailPage', () => {
         expect(screen.getByText('Could not stop the turn')).toBeInTheDocument();
         expect(
           screen.getByText(
-            /Failed user token verification\. Your sign-in expired — reload the page and stop the turn again\./,
+            /token expired\. Your sign-in expired — reload the page and stop the turn again\./,
           ),
         ).toBeInTheDocument();
         expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();
+      });
+
+      it('says the portal session ended when the portal refuses a Stop', async () => {
+        mockUseSessionDetail.mockReturnValue(staleView);
+        mockUseCancelTask.mockReturnValue(
+          idleCancel({ error: new PortalSessionEndedError() }),
+        );
+        await render();
+
+        expect(
+          screen.getByText('Your portal session ended'),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByRole('button', { name: 'Sign in again' }),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByText('Could not stop the turn'),
+        ).not.toBeInTheDocument();
       });
     });
 
@@ -2273,16 +2484,20 @@ describe('SessionDetailPage', () => {
         },
       });
       const user = userEvent.setup();
-      await render();
+      const open = jest.fn().mockResolvedValue('accept');
+      await render([[externalUrlConsentApiRef, { open }]]);
 
       const card = screen.getByRole('form', {
         name: 'Question from the agent',
       });
-      const signIn = within(card).getByRole('link', {
-        name: 'Sign in to Grafana Cloud ↗',
+      const signIn = within(card).getByRole('button', {
+        name: 'Sign in to Grafana Cloud (opens in a new tab)',
       });
       expect(card).not.toHaveTextContent(LINK);
       await user.click(signIn);
+      expect(open).toHaveBeenCalledWith(
+        expect.objectContaining({ requester: 'Grafana Cloud' }),
+      );
       await user.click(
         within(card).getByRole('button', { name: "I've signed in" }),
       );
@@ -2613,7 +2828,7 @@ describe('SessionDetailPage', () => {
       ).toBeInTheDocument();
       // The runtime's words are the evidence under the explanation — and
       // nowhere the whole text of anything.
-      expect(screen.getByText(/kagent reported:/)).toHaveTextContent(ATENET);
+      expect(screen.getByText(/Platform details:/)).toHaveTextContent(ATENET);
       expect(screen.queryByText(ATENET)).not.toBeInTheDocument();
       // Suspected, not reported: the retry stays, and no mark yet.
       expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
@@ -3339,12 +3554,10 @@ describe('SessionDetailPage', () => {
       mockUseAnswerConfirmation.mockReturnValue(notTakenConfirmation());
       await render();
 
-      expect(
-        screen.getByText('Could not resume this session'),
-      ).toBeInTheDocument();
+      expect(screen.getByText('Answer not yet confirmed')).toBeInTheDocument();
       expect(
         screen.getByText(
-          /the question is still open and this session cannot continue/,
+          /The latest session read still showed an unanswered question/,
         ),
       ).toBeInTheDocument();
       expect(screen.getByText('Your answer: Cyclists')).toBeInTheDocument();
@@ -3364,7 +3577,7 @@ describe('SessionDetailPage', () => {
         screen.queryByRole('textbox', { name: 'Message' }),
       ).not.toBeInTheDocument();
       const notice = screen
-        .getByText('Could not resume this session')
+        .getByText('Answer not yet confirmed')
         .closest('.bui-Alert') as HTMLElement;
       expect(
         within(notice).getByRole('button', {
@@ -3491,9 +3704,7 @@ describe('SessionDetailPage', () => {
       );
       await render();
 
-      expect(
-        screen.getByText('Could not resume this session'),
-      ).toBeInTheDocument();
+      expect(screen.getByText('Answer not yet confirmed')).toBeInTheDocument();
       expect(screen.queryByText(/Your answer/)).not.toBeInTheDocument();
       await userEvent.click(startButton());
       await waitFor(() => {
@@ -3518,7 +3729,7 @@ describe('SessionDetailPage', () => {
       expect(screen.getByText('Answer not sent')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Send answer' })).toBeEnabled();
       expect(
-        screen.queryByText('Could not resume this session'),
+        screen.queryByText('Answer not yet confirmed'),
       ).not.toBeInTheDocument();
     });
 
@@ -3534,9 +3745,7 @@ describe('SessionDetailPage', () => {
       mockUseAnswerConfirmation.mockReturnValue(notTakenConfirmation());
       await render();
 
-      expect(
-        screen.getByText('Could not resume this session'),
-      ).toBeInTheDocument();
+      expect(screen.getByText('Answer not yet confirmed')).toBeInTheDocument();
       expect(
         screen.queryByText('The agent’s runtime could not be brought back'),
       ).not.toBeInTheDocument();
@@ -3560,7 +3769,7 @@ describe('SessionDetailPage', () => {
       await render();
 
       expect(
-        screen.queryByText('Could not resume this session'),
+        screen.queryByText('Answer not yet confirmed'),
       ).not.toBeInTheDocument();
       expect(
         screen.getByRole('form', { name: 'Question from the agent' }),
@@ -3577,7 +3786,7 @@ describe('SessionDetailPage', () => {
       await render();
 
       expect(
-        screen.queryByText('Could not resume this session'),
+        screen.queryByText('Answer not yet confirmed'),
       ).not.toBeInTheDocument();
       expect(
         screen.queryByRole('button', { name: /Continue in a new session/ }),
@@ -3691,7 +3900,7 @@ describe('SessionDetailPage', () => {
       const menu = await renderHeaderMenu();
       await openNotifications();
       expect(
-        screen.getByRole('menuitemradio', { name: 'Default' }),
+        screen.getByRole('menuitemradio', { name: 'When action is required' }),
       ).toHaveAttribute('aria-checked', 'true');
 
       await userEvent.click(
@@ -3715,7 +3924,7 @@ describe('SessionDetailPage', () => {
         screen.getByRole('menuitemradio', { name: 'All activity' }),
       ).toHaveAttribute('aria-checked', 'true');
       expect(
-        screen.getByRole('menuitemradio', { name: 'Default' }),
+        screen.getByRole('menuitemradio', { name: 'When action is required' }),
       ).toHaveAttribute('aria-checked', 'false');
     });
 
@@ -3944,7 +4153,6 @@ describe('SessionDetailPage', () => {
       name: 'ws-docs',
       organization: 'lab',
       sources: [],
-      sync: { schedule: 'nightly' },
       resourceVersion: '1',
       createdAt: '2026-10-01T00:00:00Z',
       repositories: 2,
@@ -4032,14 +4240,16 @@ describe('SessionDetailPage', () => {
       expect(mockWorkspaceInstallations).toHaveBeenLastCalledWith([]);
     });
 
-    it('shows the workspace’s name, last sync and fetched repositories as a chip opening a drawer', async () => {
+    it('shows the workspace’s name as a chip opening a drawer, its last sync and fetched repositories in its name and tooltip', async () => {
       withWorkspace();
       await renderWithWorkspaces();
 
       expect(mockWorkspaceInstallations).toHaveBeenLastCalledWith(['gazelle']);
+      // The chip shows the name alone; its accessible name keeps the rest.
       const chip = screen.getByRole('button', {
-        name: 'Workspace: ws-docs · synchronized 4 h ago · 1 fetched',
+        name: 'Workspace: ws-docs · Synchronized 4 h ago · 1 repository fetched',
       });
+      expect(chip).toHaveTextContent(/^ws-docs$/);
       await userEvent.click(chip);
 
       const drawer = screen.getByRole('dialog');
@@ -4072,16 +4282,94 @@ describe('SessionDetailPage', () => {
       expect(within(drawer).getByText('github')).toBeVisible();
     });
 
+    it('tells the workspace’s last sync and fetched repositories in a tooltip on hover, gone once the drawer opens', async () => {
+      const user = userEvent.setup();
+      withWorkspace();
+      await renderWithWorkspaces();
+      const chip = screen.getByRole('button', { name: /^Workspace: ws-docs/ });
+
+      // react-aria opens a tooltip on hover only once it has seen the pointer
+      // move over the page.
+      await user.hover(document.body);
+      await user.hover(chip);
+      const tooltip = await screen.findByRole('tooltip');
+      expect(tooltip).toHaveTextContent(
+        /^WorkspaceSynchronized 4 h ago · 1 repository fetched$/,
+      );
+      // A bold headline that says what the chip shows.
+      expect(within(tooltip).getByText('Workspace')).toHaveStyle({
+        display: 'block',
+      });
+      expect(['bold', '700']).toContain(
+        getComputedStyle(within(tooltip).getByText('Workspace')).fontWeight,
+      );
+
+      await user.click(chip);
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    });
+
+    it('tells the same on keyboard focus, and Enter still opens the drawer', async () => {
+      const user = userEvent.setup();
+      withWorkspace();
+      await renderWithWorkspaces();
+      const chip = screen.getByRole('button', { name: /^Workspace: ws-docs/ });
+
+      // A key press puts react-aria in keyboard modality, so the focus that
+      // follows is a visible one, whatever comes before the chip in the
+      // header.
+      await user.keyboard('{Tab}');
+      act(() => chip.focus());
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(
+        /^WorkspaceSynchronized 4 h ago · 1 repository fetched$/,
+      );
+
+      await user.keyboard('{Enter}');
+      expect(
+        within(screen.getByRole('dialog')).getByRole('heading', {
+          name: 'Workspace: ws-docs',
+        }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    });
+
+    it('adds the full name under the tooltip’s headline when the chip cuts it off', async () => {
+      const user = userEvent.setup();
+      withWorkspace();
+      await renderWithWorkspaces();
+      const chip = screen.getByRole('button', { name: /^Workspace: ws-docs/ });
+      // jsdom lays nothing out: the label reports itself wider than its box.
+      const label = within(chip).getByText('ws-docs');
+      Object.defineProperty(label, 'scrollWidth', { value: 400 });
+      Object.defineProperty(label, 'clientWidth', { value: 320 });
+
+      await user.hover(document.body);
+      await user.hover(chip);
+      const tooltip = await screen.findByRole('tooltip');
+      await waitFor(() =>
+        expect(tooltip).toHaveTextContent(
+          /^Workspacews-docsSynchronized 4 h ago · 1 repository fetched$/,
+        ),
+      );
+      // Under the bold headline, on a line of its own in the regular weight.
+      expect(within(tooltip).getByText('ws-docs')).toHaveStyle({
+        display: 'block',
+      });
+      expect(within(tooltip).getByText('ws-docs')).not.toHaveStyle({
+        fontWeight: '700',
+      });
+    });
+
     it('shows a workspace the person can no longer see unnamed, not as an error', async () => {
       withWorkspace();
       mockWorkspaceName = { status: 'unnamed' };
       await renderWithWorkspaces();
 
-      await userEvent.click(
-        screen.getByRole('button', {
-          name: 'Workspace: Workspace · 1 fetched',
-        }),
-      );
+      const chip = screen.getByRole('button', {
+        name: 'Workspace: Workspace · 1 repository fetched',
+      });
+      expect(chip).toHaveTextContent(/^Workspace$/);
+      await userEvent.click(chip);
 
       const drawer = screen.getByRole('dialog');
       expect(
@@ -4190,7 +4478,7 @@ describe('SessionDetailPage', () => {
 
       const dock = screen.getByTestId('session-dock');
       expect(
-        within(dock).getByText('Could not resume this session'),
+        within(dock).getByText('Answer not yet confirmed'),
       ).toBeInTheDocument();
       expect(within(dock).getByText('Your answer: prod')).toBeInTheDocument();
       expect(
@@ -4204,6 +4492,87 @@ describe('SessionDetailPage', () => {
       expect(
         within(dock).getByRole('button', { name: /Session cost and context/ }),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('the view signal', () => {
+    /** The page under a button that re-renders it, as a poll does. */
+    function Harness() {
+      const [, setTick] = useState(0);
+      return (
+        <>
+          <button type="button" onClick={() => setTick(tick => tick + 1)}>
+            poll
+          </button>
+          <SessionDetailPage />
+        </>
+      );
+    }
+
+    function viewEvents(captureEvent: jest.Mock) {
+      return captureEvent.mock.calls
+        .map(([event]) => event)
+        .filter(event => event.action === 'AgentPlatform.sessionViewed');
+    }
+
+    it('reports the session’s turns once it is read, and not again as it polls', async () => {
+      const analyticsApi = mockApis.analytics.mock();
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        detail: undefined,
+        timeline: emptyTimeline,
+        hasConversation: false,
+        isLoading: true,
+      });
+      await renderInTestApp(<Harness />, {
+        apis: [[analyticsApiRef, analyticsApi]],
+        mountedRoutes: { '/sessions': sessionsRouteRef },
+      });
+      const captureEvent = jest.mocked(analyticsApi.captureEvent);
+
+      expect(viewEvents(captureEvent)).toEqual([]);
+
+      // An earlier visit's cache, shown while the opening read is on its way:
+      // its turns may be out of date, so they are not reported.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        taskCount: 3,
+        isConversationCurrent: false,
+      });
+      await userEvent.click(screen.getByRole('button', { name: 'poll' }));
+      expect(viewEvents(captureEvent)).toEqual([]);
+
+      mockUseSessionDetail.mockReturnValue({ ...loadedView, taskCount: 7 });
+      await userEvent.click(screen.getByRole('button', { name: 'poll' }));
+      mockUseSessionDetail.mockReturnValue({ ...loadedView, taskCount: 12 });
+      await userEvent.click(screen.getByRole('button', { name: 'poll' }));
+
+      // The number, and neither the session nor its id.
+      expect(viewEvents(captureEvent)).toEqual([
+        expect.objectContaining({
+          action: 'AgentPlatform.sessionViewed',
+          attributes: { turns: 7 },
+        }),
+      ]);
+    });
+
+    it('reports nothing while the conversation is unread', async () => {
+      const analyticsApi = mockApis.analytics.mock();
+      // The session read answered, the tasks read did not: the turns are
+      // absent, not zero.
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        timeline: emptyTimeline,
+        taskCount: 0,
+        hasConversation: false,
+        isConversationCurrent: false,
+      });
+      await renderInTestApp(<SessionDetailPage />, {
+        apis: [[analyticsApiRef, analyticsApi]],
+        mountedRoutes: { '/sessions': sessionsRouteRef },
+      });
+
+      expect(viewEvents(jest.mocked(analyticsApi.captureEvent))).toEqual([]);
     });
   });
 });

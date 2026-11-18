@@ -1,4 +1,5 @@
 import { Navigate, useLocation } from 'react-router-dom';
+import { SharedInstallationScope } from '@giantswarm/backstage-plugin-gs';
 import {
   CustomizeMusterProvider,
   useMusterInstance,
@@ -49,7 +50,8 @@ function MusterDefaultRedirect() {
  *
  * Every old address redirects at once, except a connector's, tool's or
  * workflow's link without `?installation=`, which waits for the installation
- * its old page would have shown.
+ * its old page would have shown: the one chosen on Customize, which it reads
+ * through `SharedInstallationScope`.
  */
 export function LegacyAgentPlatformRedirect() {
   const { pathname, search } = useLocation();
@@ -57,8 +59,10 @@ export function LegacyAgentPlatformRedirect() {
     return <TargetRedirect />;
   }
   return (
-    <CustomizeMusterProvider>
-      <MusterDefaultRedirect />
-    </CustomizeMusterProvider>
+    <SharedInstallationScope>
+      <CustomizeMusterProvider>
+        <MusterDefaultRedirect />
+      </CustomizeMusterProvider>
+    </SharedInstallationScope>
   );
 }

@@ -1,5 +1,6 @@
 import {
   expect,
+  expectNoHorizontalScroll,
   expectWizardStep,
   open,
   openWizardMoreOptions,
@@ -8,6 +9,7 @@ import {
   searchRoster,
   test,
 } from './fixtures';
+import { lab } from './lab';
 
 /**
  * Customize's Agents tab as the admin reads it: the roster from the
@@ -23,7 +25,82 @@ import {
  */
 const rosterWait = 2 * 60_000;
 
-test('the roster lists the agent with its model, under Customize · Agents', async ({
+test('an agent omits unavailable deployment details and keeps its readiness at desktop and phone widths', async ({
+  admin,
+}) => {
+  test.setTimeout(rosterWait + 60_000);
+  await open(admin, '/customize/agents');
+  const agentLink = admin
+    .locator(`a[href^="/customize/agents/${lab.installation}/"]`)
+    .first();
+  await expect(agentLink).toBeVisible({ timeout: rosterWait });
+  const detailPath = await agentLink.getAttribute('href');
+  expect(detailPath).toBeTruthy();
+  const [, , , , namespace, name] = detailPath!.split('/');
+  const releaseWithheld =
+    'Reading the release details needs the agent-platform:editor role.';
+  let answered = 0;
+  await admin.route('**/api/muster/call**', async route => {
+    const call = route.request().postDataJSON() as {
+      name?: string;
+      arguments?: { name?: string };
+    } | null;
+    if (
+      call?.name !== 'x_agent-manager_get_agent' ||
+      call.arguments?.name !== name
+    ) {
+      await route.fallback();
+      return;
+    }
+    answered++;
+    await route.fulfill({
+      json: {
+        name,
+        namespace,
+        exists: true,
+        ready: true,
+        managed: 'unknown',
+        releaseWithheld,
+      },
+    });
+  });
+
+  await agentLink.click();
+  await expect(admin).toHaveURL(new RegExp(`${detailPath}$`));
+  const details = admin.getByRole('button', {
+    name: 'Technical details',
+    exact: true,
+  });
+  await expect(details).toBeVisible({ timeout: rosterWait });
+  if ((await details.getAttribute('aria-expanded')) !== 'true') {
+    await details.click();
+  }
+  await expect.poll(() => answered).toBeGreaterThan(0);
+
+  const readiness = admin
+    .getByRole('main')
+    .getByText('Ready', { exact: true })
+    .first();
+  for (const width of [1440, 375]) {
+    await admin.setViewportSize({ width, height: 900 });
+    await expect(readiness).toBeVisible();
+    await expect(admin.getByText(releaseWithheld, { exact: true })).toHaveCount(
+      0,
+    );
+    await expect(admin.getByText('Deployed by', { exact: true })).toHaveCount(
+      0,
+    );
+    await expect(
+      admin.getByText("Reconciling this agent's chart", { exact: true }),
+    ).toHaveCount(0);
+    await expectNoHorizontalScroll(
+      admin,
+      `Withheld release details at ${width}px`,
+    );
+  }
+});
+
+test('the roster lists the agent under Customize · Agents', async ({
   admin,
   labAgent,
 }) => {
@@ -39,18 +116,19 @@ test('the roster lists the agent with its model, under Customize · Agents', asy
   await expect(row, 'the roster lists the fixture agent').toBeVisible({
     timeout: rosterWait,
   });
-  // A row reads its name, its description, the model its ModelConfig
-  // serves (the lab's `aiModel`, a Claude model) and what it carries — the
-  // fixture agent has no skills and no tools.
+  // A row reads its name, its description and its tags — the fixture agent
+  // has none, so no tag group. The model, skills and connectors are on the
+  // agent's own page.
   await expect(row).toContainText(
     'Throwaway agent of the Playwright suite; deleted by the same run.',
   );
-  await expect(row).toContainText(/claude-/);
-  await expect(row).toContainText('0 skills · 0 connectors');
+  await expect(row.getByRole('list', { name: 'Tags' })).toHaveCount(0);
+  await expect(row).not.toContainText(/claude-|skills ·/);
   // The lab runs every agent on one Harness: main's singleHarness rule (#2858)
   // shows neither a Harness filter nor a Harness per row.
   await expect(
-    admin.getByRole('button', { name: /^Filter by harness/ }),
+    // Named by its value, then its field: "All Filter by harness".
+    admin.getByRole('button', { name: /\bFilter by harness$/ }),
   ).toHaveCount(0);
   await expect(admin.getByRole('link', { name: 'New agent' })).toHaveAttribute(
     'href',
@@ -80,12 +158,21 @@ test('an agent in the roster opens its detail page', async ({
     admin.getByRole('heading', { level: 1, name: labAgent.name }),
   ).toBeVisible();
   // The trail leads back to the list.
+  const crumb = admin
+    .getByRole('navigation', { name: 'Breadcrumb' })
+    // Exact: the back arrow's "Back to Agents" also contains the name.
+    .getByRole('link', { name: 'Agents', exact: true });
+  await expect(crumb).toHaveAttribute('href', '/customize/agents');
+  // A crumb and the rail's logo are controls, not text links: they keep
+  // their own look rather than the shell's text-link underline
+  // (agent-shell.css). The crumb keeps the link colour.
+  await expect(crumb).toHaveCSS('text-decoration-line', 'none');
+  await expect(crumb).toHaveCSS('color', 'rgb(0, 96, 156)');
   await expect(
     admin
-      .getByRole('navigation', { name: 'Breadcrumb' })
-      // Exact: the back arrow's "Back to Agents" also contains the name.
-      .getByRole('link', { name: 'Agents', exact: true }),
-  ).toHaveAttribute('href', '/customize/agents');
+      .getByRole('navigation', { name: 'Main', exact: true })
+      .getByRole('link', { name: 'Agent Platform', exact: true }),
+  ).toHaveCSS('text-decoration-line', 'none');
   // The shell's tabs, Overview's sections and the facts beside them. No
   // Tools tab: the fixture agent has no tools.
   await expect(
@@ -97,7 +184,7 @@ test('an agent in the roster opens its detail page', async ({
   await expect(
     admin
       .getByRole('complementary', { name: 'About this agent' })
-      .getByRole('link', { name: 'default-model-config' }),
+      .getByRole('link', { name: lab.defaultModelLabel, exact: true }),
   ).toBeVisible();
   await admin.getByRole('tab', { name: 'Sessions' }).click();
   await expect(admin).toHaveURL(new RegExp(`${href}/sessions$`));
@@ -145,7 +232,10 @@ test('the New agent wizard opens on Details, derives the technical name and list
 
   const models = admin.getByRole('radiogroup', { name: 'Model' });
   await expect(
-    models.getByRole('radio', { name: /default-model-config/ }),
+    models.getByRole('radio', {
+      name: `Select model ${lab.defaultModelLabel}, default`,
+      exact: true,
+    }),
     'the ModelConfigs an admin provisioned are offered',
   ).toBeVisible();
 

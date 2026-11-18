@@ -1,9 +1,11 @@
+import { UnreachableInstallationsAlert } from '@giantswarm/backstage-plugin-ui-react';
 import { useMemo } from 'react';
 import { Button, Flex, Text } from '@backstage/ui';
 
 import { AgentSessionsView } from '../../hooks/useAgentSessions';
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
 import { SessionsTable } from '../SessionsTable';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { markEarlierRevisions } from '../SessionsDataProvider/helpers';
 
 /**
@@ -42,8 +44,17 @@ export function AgentSessionsCard({
    */
   currentRevision?: string;
 }) {
-  const { rows, installation, isLoading, isNotUserScoped, isUnavailable } =
-    sessions;
+  const {
+    rows,
+    installation,
+    isLoading,
+    isNotUserScoped,
+    isUnavailable,
+    failure,
+    sessionEnded,
+    retry,
+    isRetrying,
+  } = sessions;
   // The same summary the Sessions tab reads, under the same query key: opening
   // this card after that tab costs nothing, and this page's read warms it back.
   const sessionStates = useFleetSessionStates(
@@ -54,7 +65,29 @@ export function AgentSessionsCard({
     [rows, currentRevision],
   );
 
+  if (sessionEnded && rows.length === 0) {
+    return <PortalSessionEndedAlert />;
+  }
+
+  if (isUnavailable && failure) {
+    // kagent answered and failed: the tab's whole answer is an error with why
+    // and a retry, the Sessions page's own card, never the "no sessions" line
+    // below.
+    return (
+      <UnreachableInstallationsAlert
+        installations={[installation]}
+        resourceName="sessions"
+        failures={{ [installation]: failure }}
+        everything={{ title: 'Could not read your sessions' }}
+        onRetry={retry}
+        isRetrying={isRetrying}
+      />
+    );
+  }
+
   if (isUnavailable) {
+    // kagent is not deployed or not reachable here: nothing a retry changes,
+    // and not an error of the person's reads.
     return (
       <Text variant="body-medium" color="secondary">
         Sessions could not be read from this environment.
@@ -94,6 +127,9 @@ export function AgentSessionsCard({
 
   return (
     <Flex direction="column" gap="3">
+      {/* A refetch the portal refused: the rows read before stay, and stop
+          keeping up until a sign-in. */}
+      {sessionEnded && <PortalSessionEndedAlert />}
       <Text variant="body-small" color="secondary">
         {caption}
       </Text>

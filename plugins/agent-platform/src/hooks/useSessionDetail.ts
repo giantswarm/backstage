@@ -5,7 +5,10 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  isAwaitingData,
+  pollingQueryOptions,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { kagentApiRef } from '../apis';
 import {
   A2aTaskWire,
@@ -99,6 +102,13 @@ export type SessionDetailView = {
    * "no activity", `Turns 0` and "no messages yet" over a session that has plenty.
    */
   hasConversation: boolean;
+  /**
+   * Whether the conversation in hand was read within the client's
+   * `staleTime`: false for one served from an older cache (an earlier visit,
+   * the persisted cache) until the read the page makes on opening lands.
+   * What a report of the session's turns, sent once, waits for.
+   */
+  isConversationCurrent: boolean;
   isLoading: boolean;
   /**
    * True when the session is not readable: it does not exist, was deleted, or
@@ -274,7 +284,9 @@ export function useSessionDetail(
     // A flat baseline, not the tasks' two tiers: this object is the title, the
     // agent and the timestamps, none of which move while an agent works. It polls
     // at all so a session renamed or deleted elsewhere stops looking current.
-    refetchInterval: BASELINE_REFETCH_INTERVAL_MS,
+    // Not from a hidden tab (read again as it becomes visible), not after
+    // kagent refused the person (401, 403).
+    ...pollingQueryOptions(BASELINE_REFETCH_INTERVAL_MS),
     ...settleOptions(sessionRead),
   });
 
@@ -282,7 +294,7 @@ export function useSessionDetail(
     queryKey: sessionTasksQueryKey(installation, sessionId),
     queryFn: () => kagentApi.listSessionTasks(installation, sessionId),
     enabled,
-    refetchInterval: getSessionTasksRefetchInterval,
+    ...pollingQueryOptions(getSessionTasksRefetchInterval),
     ...settleOptions(tasksRead),
   });
 
@@ -399,6 +411,7 @@ export function useSessionDetail(
     tasks,
     taskCount: tasks?.length ?? 0,
     hasConversation: tasks !== undefined,
+    isConversationCurrent: tasks !== undefined && !tasksQuery.isStale,
     // `isNotFound` short-circuits loading, because it is decided by the session
     // read alone and the page checks `isLoading` first. Without this, a session
     // that 404s immediately — `NotFoundError` is not retried, so that read settles

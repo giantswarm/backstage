@@ -1,6 +1,7 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { makeStyles, Theme } from '@material-ui/core';
 import {
+  Alert,
   Box,
   Flex,
   Link,
@@ -17,7 +18,9 @@ import {
   type Fact,
   INITIAL_ROWS,
   isAwaitingData,
+  isSearchableList,
   CatalogNoMatch,
+  DateComponent,
   matchesQuery,
   Mono,
   useFactTextVariant,
@@ -25,11 +28,13 @@ import {
   StackedRowList,
   type StackedRowItem,
 } from '@giantswarm/backstage-plugin-ui-react';
+import { musterServerListQueryKey } from '../../hooks/useMusterServerAvailability';
 import { musterApiRef } from '../../apis';
 import {
   DEACTIVATED_LABEL,
   MCPServer,
   type MCPServerAuth,
+  type MCPServerState,
   mcpServerStateSeverity,
 } from '../../lib/k8s';
 import {
@@ -37,33 +42,13 @@ import {
   readProvenance,
   provenanceReleaseId,
 } from '../../lib/gitops';
-import { decodeDexSubject } from '../../lib/dexSubject';
 import { withoutCrdDefaults } from '../../lib/mcpServerDefinition';
 import { AUTH_MODE_LABELS, serverAuthMode } from '../../lib/serverAuthMode';
-import {
-  formatRelativeTime,
-  formatTimestamp,
-} from '../../lib/formatRelativeTime';
-import {
-  StateBadge,
-  severityTone,
-  TruncatedListNote,
-  useServerPageLinks,
-} from '../shared';
+import { TruncatedListNote, useServerPageLinks } from '../shared';
 
 const useStyles = makeStyles((theme: Theme) => ({
   block: {
     marginBottom: theme.spacing(2),
-  },
-  // bui's Link is underlined by default and takes the body colour. Both rules
-  // live in bui's `components` cascade layer, so these unlayered ones win
-  // without needing extra specificity.
-  link: {
-    color: theme.palette.link,
-    textDecoration: 'none',
-    '&:hover': {
-      textDecoration: 'underline',
-    },
   },
   // A tool tag is already a pill: the underline only crowds the rows.
   //
@@ -249,7 +234,7 @@ export function AuthChain({ server }: { server: MCPServer }) {
         value: sigv4.roleArn ? (
           <Mono>{sigv4.roleArn}</Mono>
         ) : (
-          <Note>none — signs as muster's own identity</Note>
+          <Note>none — signs as Muster's own identity</Note>
         ),
       },
     );
@@ -320,14 +305,42 @@ export function AuthChain({ server }: { server: MCPServer }) {
           answer. */}
       {sigv4 && (
         <Note>
-          Requests are signed with muster's own AWS identity: all users share
-          it, CloudTrail attributes their actions to muster, and there is no
+          Requests are signed with Muster's own AWS identity: all users share
+          it, CloudTrail attributes their actions to Muster, and there is no
           user sign-in.
         </Note>
       )}
       <FactList facts={facts} maxWidth={null} />
     </>
   );
+}
+
+/** setTimeout's longest wait. */
+const MAX_TIMEOUT_MS = 2 ** 31 - 1;
+
+/** Whether `iso` is a time still to come. */
+function isAhead(iso: string | undefined): iso is string {
+  return Boolean(iso) && Date.parse(iso!) > Date.now();
+}
+
+/**
+ * Renders again once `iso` has passed, so a fact about a time still to come
+ * can stop showing when it no longer is.
+ */
+function useRenderWhenPassed(iso: string | undefined) {
+  const [passes, setPasses] = useState(0);
+  useEffect(() => {
+    const wait = iso ? Date.parse(iso) - Date.now() : NaN;
+    if (!(wait > 0)) {
+      return undefined;
+    }
+    // A time further off than the longest wait waits again.
+    const timer = setTimeout(
+      () => setPasses(count => count + 1),
+      Math.min(wait + 1, MAX_TIMEOUT_MS),
+    );
+    return () => clearTimeout(timer);
+  }, [iso, passes]);
 }
 
 /**
@@ -339,7 +352,7 @@ export function hasHealthDetails(server: MCPServer): boolean {
     server.getReadyCondition()?.message ||
     server.getLastConnected() ||
     (server.getConsecutiveFailures() ?? 0) > 0 ||
-    server.getNextRetryAfter() ||
+    isAhead(server.getNextRetryAfter()) ||
     server.getLastError(),
   );
 }
@@ -353,7 +366,12 @@ export function HealthDetails({ server }: { server: MCPServer }) {
   const classes = useStyles();
   const lastConnected = server.getLastConnected();
   const consecutiveFailures = server.getConsecutiveFailures();
-  const nextRetry = server.getNextRetryAfter();
+  const nextRetryAfter = server.getNextRetryAfter();
+  // A retry time that has passed is not the next one: muster has retried, or
+  // the status has not caught up. Left out, rather than "Next retry 2 minutes
+  // ago", until a refetch names the next.
+  useRenderWhenPassed(nextRetryAfter);
+  const nextRetry = isAhead(nextRetryAfter) ? nextRetryAfter : undefined;
   const lastError = server.getLastError();
 
   const facts: Fact[] = [];
@@ -372,15 +390,11 @@ export function HealthDetails({ server }: { server: MCPServer }) {
       ),
     });
   }
+  // How long ago and how soon, the local date and time on hover.
   if (lastConnected) {
     facts.push({
       label: 'Last connected',
-      value: (
-        <>
-          {formatRelativeTime(lastConnected)}{' '}
-          <Note>({formatTimestamp(lastConnected)})</Note>
-        </>
-      ),
+      value: <DateComponent value={lastConnected} relative />,
     });
   }
   if (typeof consecutiveFailures === 'number' && consecutiveFailures > 0) {
@@ -389,12 +403,7 @@ export function HealthDetails({ server }: { server: MCPServer }) {
   if (nextRetry) {
     facts.push({
       label: 'Next retry',
-      value: (
-        <>
-          {formatRelativeTime(nextRetry)}{' '}
-          <Note>({formatTimestamp(nextRetry)})</Note>
-        </>
-      ),
+      value: <DateComponent value={nextRetry} relative />,
     });
   }
 
@@ -414,131 +423,20 @@ export function HealthDetails({ server }: { server: MCPServer }) {
 }
 
 /**
- * Live runtime view from the muster aggregator (`core_mcpserver_list`), keyed
- * per installation so several expanded rows share one request. Degrades to an
- * inline note when muster is unreachable / auth-required.
+ * Why a connector lists no tools, and how loud to say it: `warning` for a
+ * connector that failed to connect. Other states that hold no connection
+ * (stopped, disconnected, connecting) are usually passing, so they stay
+ * `neutral`.
  */
-export function RuntimeState({ server }: { server: MCPServer }) {
-  const musterApi = useApi(musterApiRef);
-  const installation = server.cluster;
-  const name = server.getName();
+export type NoToolsExplanation = {
+  text: string;
+  tone: 'warning' | 'neutral';
+};
 
-  const { data, error, isPending, fetchStatus } = useQuery({
-    queryKey: ['muster', 'servers', installation],
-    queryFn: () => musterApi.listServers(installation),
-  });
-  const isLoading = isAwaitingData({ isPending, fetchStatus });
-
-  if (isLoading) {
-    return <Progress />;
-  }
-  if (error) {
-    return (
-      <Note>Live runtime state unavailable: {(error as Error).message}</Note>
-    );
-  }
-
-  const runtime = (data?.mcpServers ?? []).find(s => s.name === name);
-  if (!runtime) {
-    return <Note>Connector not present in the aggregator's runtime list.</Note>;
-  }
-
-  // The session rows describe this user's session, not the server: on a
-  // deactivated server they can still read "connected / 58 tools" from a
-  // sign-in the reconciler has since undone, which next to `Disconnected`
-  // looks like a working server with an empty Tools block. Said once, above
-  // the list, and naming the rows it means -- "the rows below" would take in
-  // Live state and Status, which are about the server.
-  const sessionRows =
-    runtime.sessionStatus !== undefined ||
-    runtime.sessionAuth !== undefined ||
-    runtime.toolsCount !== undefined ||
-    runtime.resourcesCount !== undefined ||
-    runtime.promptsCount !== undefined;
-  const staleSessionNote = server.getSuspended() && sessionRows;
-
-  const facts: Fact[] = [
-    {
-      label: 'Live state',
-      value: runtime.state ? (
-        <StateBadge
-          tone={severityTone(mcpServerStateSeverity(runtime.state as never))}
-          label={runtime.state}
-          // The CR's Ready condition explains the state (what Awaiting
-          // Session means for this server, why it is Failed); the runtime
-          // list carries the state alone.
-          title={server.getStateExplanation()}
-        />
-      ) : (
-        '—'
-      ),
-    },
-  ];
-  if (runtime.statusMessage) {
-    facts.push({ label: 'Status', value: runtime.statusMessage });
-  }
-  if (runtime.sessionStatus) {
-    facts.push({ label: 'Session', value: runtime.sessionStatus });
-  }
-  if (runtime.sessionAuth) {
-    facts.push({ label: 'Session auth', value: runtime.sessionAuth });
-  }
-  if (runtime.toolsCount !== undefined) {
-    facts.push({ label: 'Tools (session)', value: runtime.toolsCount });
-  }
-  if (runtime.resourcesCount !== undefined) {
-    facts.push({ label: 'Resources (session)', value: runtime.resourcesCount });
-  }
-  if (runtime.promptsCount !== undefined) {
-    facts.push({ label: 'Prompts (session)', value: runtime.promptsCount });
-  }
-  if (runtime.registeredBy) {
-    facts.push({
-      label: 'Registered by',
-      value: (
-        <span title={runtime.registeredBy}>
-          {runtime.registeredByEmail ??
-            decodeDexSubject(runtime.registeredBy) ??
-            runtime.registeredBy}
-        </span>
-      ),
-    });
-  }
-  if (runtime.consecutiveFailures) {
-    facts.push({
-      label: 'Consecutive failures',
-      value: runtime.consecutiveFailures,
-    });
-  }
-  if (runtime.nextRetryAfter) {
-    facts.push({
-      label: 'Next retry',
-      value: formatTimestamp(runtime.nextRetryAfter),
-    });
-  }
-  if (runtime.connectedAt) {
-    facts.push({
-      label: 'Connected at',
-      value: formatTimestamp(runtime.connectedAt),
-    });
-  }
-  if (runtime.error) {
-    facts.push({ label: 'Error', value: <Mono>{runtime.error}</Mono> });
-  }
-
-  return (
-    <Box>
-      {staleSessionNote && (
-        <Text variant="body-small" color="secondary">
-          {DEACTIVATED_LABEL} — the Session, Tools, Resources and Prompts rows
-          are your session's last connection to this connector, not a working
-          connector.
-        </Text>
-      )}
-      <FactList facts={facts} maxWidth={null} />
-    </Box>
-  );
-}
+const neutral = (text: string): NoToolsExplanation => ({
+  text,
+  tone: 'neutral',
+});
 
 /**
  * Why a server's tool list is empty, most deliberate cause first.
@@ -555,26 +453,80 @@ export function RuntimeState({ server }: { server: MCPServer }) {
  * Ready condition says about it (a token exchange broken for every caller
  * reads differently from an endpoint that does not answer).
  */
-export function noToolsExplanation(server: MCPServer): string {
+export function noToolsExplanation(server: MCPServer): NoToolsExplanation {
   if (server.getSuspended()) {
-    return `No tools exposed — this connector is deactivated.${activateHint(
-      server,
-    )}`;
+    return neutral(
+      `No tools exposed — this connector is deactivated.${activateHint(
+        server,
+      )}`,
+    );
   }
   const state = server.getState();
   if (state === 'Awaiting Session') {
-    return 'No tools exposed yet — this connector connects per session with your identity; its tools appear once muster has connected it for you.';
+    return neutral(
+      'No tools exposed yet — this connector connects per session with your identity; its tools appear once Muster has connected it for you.',
+    );
   }
   const authGated =
     state === 'Auth Required' && server.canAuthenticateInteractively();
   if (authGated) {
-    return 'No tools exposed — you are not signed in to this connector. Use “Sign in” in its actions.';
+    return neutral(
+      'No tools exposed — you are not signed in to this connector. Use “Sign in” in its actions.',
+    );
   }
   const explanation = server.getStateExplanation();
-  if (state === 'Failed' && explanation) {
-    return `No tools exposed — ${explanation}`;
+  if (state === 'Failed') {
+    return {
+      text: explanation
+        ? `No tools exposed — ${explanation}`
+        : `${notConnectedSentence(state)}, so its tools cannot be shown.`,
+      tone: 'warning',
+    };
   }
-  return 'No tools exposed (the connector may be down or unreachable).';
+  if (mcpServerStateSeverity(state) !== 'ok') {
+    return neutral(
+      `${notConnectedSentence(state)}, so its tools cannot be shown.`,
+    );
+  }
+  return neutral(
+    'No tools exposed (the connector may be down or unreachable).',
+  );
+}
+
+/**
+ * Why a connector of several instances lists no tools: a warning when every
+ * instance failed, as for a single failed connector.
+ */
+export function noInstanceToolsExplanation(
+  servers: MCPServer[],
+): NoToolsExplanation {
+  if (
+    servers.length > 0 &&
+    servers.every(
+      server => !server.getSuspended() && server.getState() === 'Failed',
+    )
+  ) {
+    return {
+      text: 'No tools exposed — every instance of this connector failed to connect.',
+      tone: 'warning',
+    };
+  }
+  return neutral('No instance offers tools right now.');
+}
+
+/** What muster reports of a connector it holds no connection to. */
+function notConnectedSentence(state: MCPServerState | undefined): string {
+  switch (state) {
+    case 'Failed':
+      return 'This connector failed to connect';
+    case 'Starting':
+    case 'Connecting':
+      return 'This connector is still connecting';
+    case undefined:
+      return 'This connector has not reported a connection yet';
+    default:
+      return `This connector is ${state.toLowerCase()}`;
+  }
 }
 
 /**
@@ -614,7 +566,12 @@ export function ServerTools({
 
   const tools = data?.tools ?? [];
   if (tools.length === 0) {
-    return <Note>{noToolsExplanation(server)}</Note>;
+    const empty = noToolsExplanation(server);
+    return empty.tone === 'warning' ? (
+      <Alert status="warning" description={empty.text} />
+    ) : (
+      <Note>{empty.text}</Note>
+    );
   }
 
   return (
@@ -622,10 +579,7 @@ export function ServerTools({
       <Note>
         {data?.total ?? tools.length} tool(s) under <Mono>{pattern}</Mono>
         {data?.truncated ? ' (first page)' : ''} —{' '}
-        <Link
-          className={classes.link}
-          href={links.server(serverKey, installation) ?? '#'}
-        >
+        <Link href={links.server(serverKey, installation) ?? '#'}>
           Open the server’s tools
         </Link>
       </Note>
@@ -641,7 +595,9 @@ export function ServerTools({
                 renders an `href`-carrying Tag as a pressable grid row, not an
                 anchor, which would cost the tool list middle-click and
                 open-in-new-tab. The title carries the summary on hover. */}
+            {/* `standalone`: a control filling the pill, not a text link. */}
             <Link
+              standalone
               className={classes.tagLink}
               href={links.tool(serverKey, tool.name, installation) ?? '#'}
               title={tool.summary ?? tool.description ?? tool.name}
@@ -659,8 +615,8 @@ export function ServerTools({
 
 /**
  * Per-session capability counts for one server, read from the same
- * `core_mcpserver_list` query RuntimeState uses (react-query dedupes it, so
- * this costs no extra request).
+ * `core_mcpserver_list` query the connector wizard's test step polls
+ * (react-query dedupes it, so this costs no extra request).
  *
  * Callers use it to decide whether a Resources or Prompts section is worth
  * rendering at all: most servers expose neither, and an always-present empty
@@ -683,7 +639,7 @@ export function useServerCapabilityCounts(
   const name = server?.getName();
 
   const { data, isSuccess } = useQuery({
-    queryKey: ['muster', 'servers', installation],
+    queryKey: musterServerListQueryKey(installation),
     queryFn: () => musterApi.listServers(installation),
     enabled: Boolean(server) && (options.enabled ?? true),
   });
@@ -699,7 +655,7 @@ export function useServerCapabilityCounts(
 /**
  * A server's resources or prompts as stacked rows, a name over its
  * description: a page of {@link INITIAL_ROWS} at a time, and a search over them
- * once there are more than a page — a server's handful is read, not searched.
+ * from `SEARCH_MIN` on (`isSearchableList`), kept while a search is typed.
  * The search starts the paging over. The tab carries the count, so the list
  * states none of its own.
  */
@@ -724,7 +680,7 @@ function CapabilityList<T>({
   row: (item: T) => StackedRowItem;
 }) {
   const [query, setQuery] = useState('');
-  const searchable = items.length > INITIAL_ROWS;
+  const searchable = isSearchableList(items.length, query !== '');
   const shown = searchable
     ? items.filter(item => matchesQuery(query, searchText(item)))
     : items;

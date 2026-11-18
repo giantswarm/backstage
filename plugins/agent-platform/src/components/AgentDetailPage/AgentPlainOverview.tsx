@@ -2,12 +2,15 @@ import { ReactNode, useMemo } from 'react';
 import { Link } from '@backstage/core-components';
 import { Badge, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import SecurityIcon from '@material-ui/icons/Security';
 import {
   Agent,
   AgentSkill,
   Harness,
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Connector identity is owned by the Muster plugin.
+import { ConnectorLogo } from '@giantswarm/backstage-plugin-muster';
 import {
   CollapsibleMarkdown,
   DateComponent,
@@ -17,12 +20,15 @@ import {
   PageSection,
   ShowMore,
   TechnicalDetailsFoldOut,
+  TagList,
+  tagHref,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentToolset } from '../../hooks/useAgentToolset';
 import { useReachCatalogue } from '../../hooks/useReachCatalogue';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { underlyingModelLine } from '../../hooks/useUnderlyingModel';
+import { modelLabel } from '../../lib/modelLabel';
 import {
   harnessChoiceOf,
   PLATFORM_DEFAULT_LABEL,
@@ -37,24 +43,44 @@ import {
   sameCommit,
   type DiscoveredSkill,
 } from '../../lib/skills';
+import { connectorMarks, namedPresets } from '../../lib/connectorMarks';
 import { bindsGateway } from '../../lib/toolset';
-import { describeReach, reachNeedsCatalogue } from '../../lib/toolsetReach';
+import {
+  describeReach,
+  reachedConnectors,
+  reachNeedsCatalogue,
+} from '../../lib/toolsetReach';
+import { useMusterServers } from '../../hooks/useMusterServers';
+import { useToolsetPresetIconsByInstallation } from '../../hooks/useToolsetPresets';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useSkillPaths } from '../../hooks/useSkillPaths';
 import { SKILL_CARDS_SHOWN } from '../CustomizeSkillsPanel';
 import { HarnessSummary } from '../HarnessSummary';
 import { ModelServingStatus } from '../ModelServingStatus';
-import { OrganizationValue } from '../OrganizationValue';
+import { OwnerValue } from '../OwnerValue';
 import { AgentTechnicalDetails } from './AgentTechnicalDetails';
 import { FailureMarker } from './FailureMarker';
-import { CREATED_BY_ANNOTATION } from '../../lib/tenants';
+import {
+  CREATED_BY_ANNOTATION,
+  CREATED_BY_NAME_ANNOTATION,
+  creatorOf,
+  tenantKindOf,
+  OWNER_LABEL,
+} from '../../lib/tenants';
+import {
+  EMPTY_ORGANIZATION_DIRECTORY,
+  type OrganizationDirectory,
+} from '../../lib/organizations';
 import {
   DEFAULT_WORKSPACE_ANNOTATION,
   defaultWorkspaceName,
 } from '../../lib/defaultWorkspace';
 import {
+  connectorIcons,
   describeToolScope,
+  directServerName,
   isGatewayServerBinding,
+  mcpBindingId,
   skillLabel,
 } from './helpers';
 
@@ -97,11 +123,40 @@ const useStyles = makeStyles(theme => ({
     flexDirection: 'column',
     gap: theme.spacing(1),
   },
+  logos: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: theme.spacing(1),
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+  },
+  logo: {
+    position: 'relative',
+    display: 'inline-flex',
+  },
+  // The approval request's shield, small on the logo's corner.
+  approvalMark: {
+    position: 'absolute',
+    right: -4,
+    bottom: -4,
+    width: 16,
+    height: 16,
+    borderRadius: '50%',
+    backgroundColor: 'var(--bui-warning-bg-subdued, #fff3e8)',
+    color: 'var(--bui-warning-fg-subdued, #7d3900)',
+    boxShadow: '0 0 0 2px var(--bui-bg-surface-1, #fff)',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    pointerEvents: 'none',
+    '& svg': { width: 11, height: 11 },
+  },
 }));
 
-/** The skill as the catalog discovered it, when the catalog has it. */
-function useCatalogSkills(): Map<string, DiscoveredSkill> {
-  const { skills } = useSkillCatalog();
+/** The skill as the agent's installation's catalog has it, when it does. */
+function useCatalogSkills(installation: string): Map<string, DiscoveredSkill> {
+  const { skills } = useSkillCatalog(installation);
   return useMemo(
     () => new Map(skills.map(skill => [canonicalSkillId(skill), skill])),
     [skills],
@@ -179,18 +234,22 @@ function SkillCard({
 
 function SkillsSection({
   agent,
+  installation,
   onUpdateSkills,
   onAddSkills,
   isGitOpsOwned,
+  isPlatformOwned = false,
 }: {
   agent: Agent;
+  installation: string;
   onUpdateSkills?: () => void;
   onAddSkills?: () => void;
   isGitOpsOwned: boolean;
+  isPlatformOwned?: boolean;
 }) {
   const classes = useStyles();
   const skills = agent.getSkills();
-  const catalog = useCatalogSkills();
+  const catalog = useCatalogSkills(installation);
 
   const action =
     onUpdateSkills && skills.length > 0 ? (
@@ -206,6 +265,11 @@ function SkillsSection({
           <Text variant="body-medium" color="secondary">
             No skills yet. Skills add know-how and procedures.
           </Text>
+          {isPlatformOwned && (
+            <Text variant="body-small" color="secondary">
+              It is owned by the platform, so it is read-only.
+            </Text>
+          )}
           {isGitOpsOwned && (
             <Text variant="body-small" color="secondary">
               {onAddSkills
@@ -253,9 +317,10 @@ function SkillsSection({
 
 /**
  * What the agent can reach, in the words the composer's reach line uses —
- * read from the toolset it declares; the exact tools are the Tools tab.
- * Servers bound directly rather than through the gateway, and agents it calls
- * as tools, follow by name.
+ * read from the toolset it declares; the exact tools are the Tools tab. The
+ * connectors it names, and the servers it binds directly rather than through
+ * the gateway, follow as a row of logos, each named on hover or focus; agents
+ * it calls as tools follow by name.
  */
 function ConnectorsSection({
   agent,
@@ -265,7 +330,7 @@ function ConnectorsSection({
   isFailing: boolean;
 }) {
   const classes = useStyles();
-  const { declared, isReading, isUnreadable } = useAgentToolset(agent);
+  const { declared, isReading, isUnreadable, servers } = useAgentToolset(agent);
   const groups = useReachCatalogue(
     agent.cluster,
     reachNeedsCatalogue(declared),
@@ -274,7 +339,44 @@ function ConnectorsSection({
     .getMcpBindings()
     .filter(binding => !isGatewayServerBinding(agent, binding));
   const hasGateway = bindsGateway(agent);
+  const reached = hasGateway ? reachedConnectors(declared, groups) : [];
+  // Labels and icons: read only when the toolset names a connector, as the
+  // composer's reach line does.
+  const muster = useMusterServers(
+    reached.length > 0 ? agent.cluster : undefined,
+  );
   const subAgents = agent.getSubAgentBindings();
+  // Muster's preset icons: read only when the toolset names a preset.
+  const presetScope =
+    hasGateway && namedPresets(declared).length > 0 ? agent.cluster : undefined;
+  const presetInstallations = useMemo(
+    () => (presetScope ? [presetScope] : []),
+    [presetScope],
+  );
+  const presetIcons = useToolsetPresetIconsByInstallation(presetInstallations);
+
+  const icons = useMemo(() => connectorIcons(muster.servers), [muster.servers]);
+
+  const marks = connectorMarks({
+    toolset: hasGateway ? declared : undefined,
+    groups,
+    icons,
+    labels: muster.labels,
+    presetIcons: presetScope ? presetIcons.get(presetScope) : undefined,
+    direct: direct.map((binding, index) => ({
+      // The server name is not unique: two bindings may scope one server
+      // differently.
+      key: `${mcpBindingId(binding)}#${index}`,
+      name: directServerName(binding, servers),
+      detail: `${describeToolScope(binding)}${
+        binding.requireApproval ? ' · asks you before every call' : ''
+      }`,
+      approval: Boolean(binding.requireApproval),
+    })),
+  });
+  const asksFirst = [
+    ...new Set(marks.filter(mark => mark.approval).map(mark => mark.name)),
+  ];
 
   let reach: string;
   if (!hasGateway) {
@@ -286,7 +388,7 @@ function ConnectorsSection({
     reach = 'Reading what it can reach…';
   } else {
     reach =
-      describeReach(declared, groups) ??
+      describeReach(declared, groups, muster.labels) ??
       (isUnreadable
         ? 'What it can reach could not be read.'
         : 'What it can reach is not known.');
@@ -295,21 +397,36 @@ function ConnectorsSection({
   return (
     <PageSection title="Connectors">
       <Text variant="body-medium">{reach}</Text>
-      {(direct.length > 0 || subAgents.length > 0) && (
-        <div className={classes.rows}>
-          {direct.map((binding, index) => (
-            <Flex
-              key={`${binding.server.name}#${index}`}
-              direction="column"
-              gap="1"
-            >
-              <Text variant="body-medium">{binding.server.name}</Text>
-              <Text variant="body-small" color="secondary">
-                {describeToolScope(binding)}
-                {binding.requireApproval ? ' · asks you before every call' : ''}
-              </Text>
-            </Flex>
+      {marks.length > 0 && (
+        <ul className={classes.logos} aria-label="Connectors">
+          {marks.map(mark => (
+            <li key={mark.key} className={classes.logo}>
+              <ConnectorLogo
+                name={mark.name}
+                icon={mark.icon}
+                detail={mark.detail}
+                tooltip
+              />
+              {mark.approval && (
+                <span
+                  className={classes.approvalMark}
+                  data-testid="approval-mark"
+                  aria-hidden
+                >
+                  <SecurityIcon />
+                </span>
+              )}
+            </li>
           ))}
+        </ul>
+      )}
+      {asksFirst.length > 0 && (
+        <Text variant="body-small" color="secondary">
+          Asks before every call: {asksFirst.join(', ')}
+        </Text>
+      )}
+      {subAgents.length > 0 && (
+        <div className={classes.rows}>
           {subAgents.map(ref => (
             <Flex
               key={`agent/${ref.name}/${ref.templateRef.name}`}
@@ -384,6 +501,9 @@ export type AgentPlainOverviewProps = {
   /** Opens the edit page, where skills are added. Absent when not editable. */
   onAddSkills?: () => void;
   isGitOpsOwned: boolean;
+  /** The platform's own agent (`managed: 'platform'`): read-only. */
+  isPlatformOwned?: boolean;
+  releaseDetailsUnavailable?: boolean;
 };
 
 /**
@@ -406,10 +526,14 @@ export function AgentPlainOverview({
   onUpdateSkills,
   onAddSkills,
   isGitOpsOwned,
+  isPlatformOwned,
+  releaseDetailsUnavailable,
 }: AgentPlainOverviewProps) {
   const classes = useStyles();
   const failure = agent.getFailure();
   const description = agent.getDescription();
+  const tags = agent.getTags();
+  const { agents: agentsPath } = useCustomizePaths();
 
   return (
     <div className={classes.sections}>
@@ -423,6 +547,10 @@ export function AgentPlainOverview({
             No description yet.
           </Text>
         )}
+        <TagList
+          tags={tags}
+          getHref={agentsPath ? tag => tagHref(agentsPath, tag) : undefined}
+        />
       </PageSection>
 
       <InstructionsSection
@@ -432,9 +560,11 @@ export function AgentPlainOverview({
 
       <SkillsSection
         agent={agent}
+        installation={installation}
         onUpdateSkills={onUpdateSkills}
         onAddSkills={onAddSkills}
         isGitOpsOwned={isGitOpsOwned}
+        isPlatformOwned={isPlatformOwned}
       />
 
       <ConnectorsSection agent={agent} isFailing={failure?.field === 'tools'} />
@@ -449,6 +579,7 @@ export function AgentPlainOverview({
           modelServing={modelServing}
           failure={failure}
           toolsHref={toolsHref}
+          releaseDetailsUnavailable={releaseDetailsUnavailable}
         />
       </TechnicalDetailsFoldOut>
     </div>
@@ -477,16 +608,8 @@ function ModelFact({
   if (!modelConfigName) {
     return isFailing ? <FailureMarker /> : <Text variant="body-small">—</Text>;
   }
-  // The ModelConfig's name — its friendly one where it carries one — as in the
-  // create flow's "Runs on …": an admin may abstract the model on purpose
-  // ("The Cheap One"), so the name stays (PO decision L6). The model it runs
-  // is the secondary line below, unless the name already says it; neither
-  // when the ModelConfig cannot be read, which is normal for a non-admin.
-  const label = modelConfig?.getDisplayName() ?? modelConfigName;
-  const underlyingModel =
-    modelConfig && modelConfig.getModel() !== label
-      ? underlyingModelLine(modelConfig)
-      : undefined;
+  const label = modelLabel(modelConfig) ?? modelConfigName;
+  const underlyingModel = underlyingModelLine(modelConfig, label);
   // The model's page, where the ModelConfig could be read: for a reader who
   // cannot read it (normal for a non-admin), the page could only say so. The
   // ModelConfig sits in the agent's namespace; without one there is no page
@@ -604,7 +727,7 @@ function RuntimeFact({
 
 /**
  * The facts beside the overview: the model and the runtime, where it runs,
- * the organization it belongs to, who created it and since when.
+ * its owner (the platform or an organization), who created it and how long ago.
  */
 export function agentFacts({
   agent,
@@ -614,6 +737,7 @@ export function agentFacts({
   harness,
   isReadingHarness = false,
   platformHarness,
+  directory = EMPTY_ORGANIZATION_DIRECTORY,
 }: {
   agent: Agent;
   installation: string;
@@ -627,6 +751,8 @@ export function agentFacts({
    * (or unless) `get_info` names it, so no Harness is marked on a guess.
    */
   platformHarness?: string;
+  /** Which namespace is which organization, for who created the agent. */
+  directory?: OrganizationDirectory;
 }): Fact[] {
   const failure = agent.getFailure();
   const created = agent.getCreatedTimestamp();
@@ -656,8 +782,13 @@ export function agentFacts({
     },
     { label: 'Environment', value: installation },
     {
-      label: 'Organization',
-      value: <OrganizationValue namespace={agent.getNamespace() ?? ''} />,
+      label: OWNER_LABEL,
+      value: (
+        <OwnerValue
+          namespace={agent.getNamespace() ?? ''}
+          installation={installation}
+        />
+      ),
     },
   ];
   const defaultWorkspace = defaultWorkspaceName(
@@ -667,15 +798,38 @@ export function agentFacts({
     facts.push({ label: 'Default workspace', value: defaultWorkspace });
   }
   const createdBy = agent.getAnnotations()?.[CREATED_BY_ANNOTATION]?.trim();
-  if (createdBy) {
-    facts.push({ label: 'Created by', value: createdBy });
+  const creator = creatorOf(
+    createdBy,
+    tenantKindOf(agent.getNamespace() ?? '', directory),
+    agent.getAnnotations()?.[CREATED_BY_NAME_ANNOTATION]?.trim(),
+  );
+  if (creator) {
+    facts.push({
+      label: 'Created by',
+      // A name, with the email it stands for as the secondary line.
+      value:
+        createdBy && creator !== createdBy ? (
+          <Flex direction="column" gap="1">
+            <Text variant="body-small">{creator}</Text>
+            <Text
+              variant="body-x-small"
+              color="secondary"
+              style={{ overflowWrap: 'anywhere' }}
+            >
+              {createdBy}
+            </Text>
+          </Flex>
+        ) : (
+          creator
+        ),
+    });
   }
   if (created) {
     facts.push({
       label: 'Created',
       value: (
         <Text variant="body-small">
-          <DateComponent value={created} />
+          <DateComponent value={created} relative />
         </Text>
       ),
     });

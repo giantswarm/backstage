@@ -64,6 +64,13 @@ export type HitlAnswer = {
   /** Positional, one entry per question. Empty for an approval. */
   answers?: string[][];
   rejectionReason?: string;
+  /**
+   * The `messageId` of the status message that asked. A task answered
+   * elsewhere (Slack answers the same task) and paused again keeps its id but
+   * asks in a new status message, so an answer naming another one is refused
+   * rather than applied to a request the person never saw.
+   */
+  askedIn?: string;
 };
 
 function asString(value: unknown): string | undefined {

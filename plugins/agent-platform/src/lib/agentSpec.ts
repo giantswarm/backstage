@@ -1,4 +1,8 @@
-import type { AgentSkillEntry, AgentSpec } from './agentManager';
+import type {
+  AgentPluginEntry,
+  AgentSkillEntry,
+  AgentSpec,
+} from './agentManager';
 import type { DiscoveredSkill } from './skills';
 import { parseEgressText } from './egress';
 import { pluginEntryOf } from './plugins';
@@ -19,6 +23,25 @@ export function skillEntryOf(skill: DiscoveredSkill): AgentSkillEntry {
 }
 
 /**
+ * Every skill and plugin the form holds — an edited agent's kept ones and the
+ * ones picked in the skills step — as contract entries.
+ */
+export function pickedSourcesOf(
+  state: Pick<
+    NewAgentFormState,
+    'keptSkills' | 'selectedSkills' | 'keptPlugins' | 'selectedPlugins'
+  >,
+): { skills: AgentSkillEntry[]; plugins: AgentPluginEntry[] } {
+  return {
+    skills: [...state.keptSkills, ...state.selectedSkills.map(skillEntryOf)],
+    plugins: [
+      ...state.keptPlugins,
+      ...state.selectedPlugins.map(pluginEntryOf),
+    ],
+  };
+}
+
+/**
  * The create-form model as agent-manager's contract. Empty optional fields are
  * left out so the chart's defaults apply (an empty system prompt is the chart's
  * default prompt, not an empty one).
@@ -30,6 +53,8 @@ export function agentSpecOf(
     toolset: string[];
     /** The canonical avatar URL for the technical name, when resolvable. */
     iconUrl?: string;
+    /** Whether agent-manager takes `tags` (`get_info`'s `tags`). */
+    tags?: boolean;
   },
 ): AgentSpec {
   const spec: AgentSpec = {
@@ -41,6 +66,9 @@ export function agentSpecOf(
   };
   if (state.description.trim()) {
     spec.description = state.description;
+  }
+  if (options.tags && state.tags.length > 0) {
+    spec.tags = state.tags;
   }
   if (state.systemMessage.trim()) {
     spec.systemMessage = state.systemMessage;

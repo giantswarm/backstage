@@ -16,6 +16,10 @@ import {
   TURN_TOKEN_MIN_LIFETIME_LEFT,
 } from './KagentApiClient';
 import { KAGENT_AUTH_HEADER } from './types';
+import {
+  PORTAL_SESSION_ENDED_MESSAGE,
+  PortalSessionEndedError,
+} from '../lib/portalSession';
 
 describe('KagentApiClient', () => {
   const fetchMock = jest.fn();
@@ -263,6 +267,77 @@ describe('KagentApiClient', () => {
       );
     });
 
+    describe('a refused portal session', () => {
+      // What Backstage's backend answers for a session token it cannot
+      // verify, before any route of the plugin runs (a restart of a portal
+      // without a database lost its signing keys).
+      const portalRefusal = () =>
+        jsonResponse(
+          {
+            error: {
+              name: 'AuthenticationError',
+              message: 'Failed user token verification',
+            },
+          },
+          401,
+        );
+
+      it('says the session ended on a read, in plain words', async () => {
+        fetchMock.mockResolvedValue(portalRefusal());
+
+        const error = await buildClient()
+          .listSessions('gazelle')
+          .catch(e => e);
+
+        expect(error).toBeInstanceOf(PortalSessionEndedError);
+        expect(error.message).toBe(PORTAL_SESSION_ENDED_MESSAGE);
+        expect(error.cause).toMatchObject({
+          status: 401,
+          message: 'Failed user token verification',
+        });
+      });
+
+      it('says the session ended on a send', async () => {
+        fetchMock.mockResolvedValue(portalRefusal());
+
+        await expect(
+          buildClient().streamMessage(
+            'gazelle',
+            'abc123',
+            { namespace: 'kagent', name: 'sre-agent' },
+            { messageId: 'msg-1', text: 'hi' },
+            () => {},
+          ),
+        ).rejects.toBeInstanceOf(PortalSessionEndedError);
+      });
+
+      it("keeps kagent's refusal of the installation token as it came", async () => {
+        fetchMock.mockResolvedValue(
+          jsonResponse(
+            {
+              error: {
+                name: 'InstallationAuthenticationError',
+                message:
+                  "Not authenticated against the kagent API for installation 'gazelle': token expired",
+              },
+            },
+            401,
+          ),
+        );
+
+        const error = await buildClient()
+          .listSessions('gazelle')
+          .catch(e => e);
+
+        expect(error).not.toBeInstanceOf(PortalSessionEndedError);
+        expect(error).toMatchObject({
+          name: 'UnauthorizedError',
+          message:
+            "Not authenticated against the kagent API for installation 'gazelle': token expired",
+        });
+      });
+    });
+
     it('surfaces the backend’s error message', async () => {
       fetchMock.mockResolvedValue(
         jsonResponse({ error: { message: 'kagent is not available' } }, 404),
@@ -277,8 +352,78 @@ describe('KagentApiClient', () => {
       fetchMock.mockResolvedValue(jsonResponse({}, 500));
 
       await expect(buildClient().listSessions('gazelle')).rejects.toThrow(
-        /status 500/,
+        'The Agent Platform request failed with status 500.',
       );
+    });
+
+    describe('kagent temporarily unavailable', () => {
+      const unavailable = () =>
+        jsonResponse(
+          {
+            error: {
+              name: 'UpstreamError',
+              message:
+                "The kagent API for installation 'gazelle' is unavailable: upstream call failed: Connect: Connection refused (os error 111)",
+              reason: 'unavailable',
+            },
+          },
+          500,
+          { 'x-request-id': 'req-9' },
+        );
+      const expected = {
+        message:
+          'The Agent Platform is temporarily unavailable. Try again in a moment.',
+        status: 500,
+        reason: 'unavailable',
+        requestId: 'req-9',
+      };
+
+      it('says so on a read, keeping the fields the page reads', async () => {
+        fetchMock.mockResolvedValue(unavailable());
+
+        const error = await buildClient()
+          .listSessions('gazelle')
+          .catch((e: unknown) => e);
+
+        expect(error).toMatchObject(expected);
+        // The backend's words stay on the error, for the console and Sentry.
+        expect((error as Error).cause).toEqual(
+          new Error(
+            "The kagent API for installation 'gazelle' is unavailable: upstream call failed: Connect: Connection refused (os error 111)",
+          ),
+        );
+        // A failed read, not kagent being absent: it is surfaced and retried.
+        expect(error).not.toMatchObject({ name: 'NotFoundError' });
+        expect(error).not.toMatchObject({ name: 'ServiceUnavailableError' });
+      });
+
+      it('says so on a write', async () => {
+        fetchMock.mockResolvedValue(unavailable());
+
+        await expect(
+          buildClient().renameSession('gazelle', 'abc123', 'New name'),
+        ).rejects.toMatchObject(expected);
+      });
+
+      it('keeps the backend’s message for another server error', async () => {
+        fetchMock.mockResolvedValue(
+          jsonResponse(
+            {
+              error: {
+                name: 'UpstreamError',
+                message:
+                  "The kagent API for installation 'gazelle' failed: boom",
+                reason: 'server-error',
+              },
+            },
+            500,
+          ),
+        );
+
+        await expect(buildClient().listSessions('gazelle')).rejects.toThrow(
+          "The kagent API for installation 'gazelle' failed: boom",
+        );
+      });
     });
   });
 
@@ -967,6 +1112,26 @@ describe('KagentApiClient', () => {
       });
     });
 
+    it('sends the status message the answer was given for', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({}));
+
+      await buildClient().answerConfirmation(
+        'gazelle',
+        'abc123',
+        { namespace: 'kagent', name: 'a' },
+        {
+          messageId: 'msg-1',
+          taskId: 'task-1',
+          decision: 'approve',
+          askedIn: 'status-msg-1',
+        },
+      );
+
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+        askedIn: 'status-msg-1',
+      });
+    });
+
     it('omits the optional fields it was not given', async () => {
       fetchMock.mockResolvedValue(jsonResponse({}));
 
@@ -1409,6 +1574,44 @@ describe('KagentApiClient', () => {
         reason: 'timeout',
         requestId: 'req-7',
       });
+    });
+
+    it('says the Agent Platform is temporarily unavailable when kagent answered gRPC Unavailable', async () => {
+      // The gateway could not reach the controller (a restart, a preempted
+      // pod): the backend answers its 500 with `reason: "unavailable"`. Still
+      // a failure to verify, now in words the composer can show.
+      fetchMock.mockResolvedValue(
+        jsonResponse(
+          {
+            error: {
+              name: 'UpstreamError',
+              message:
+                "The kagent API for installation 'gazelle' is unavailable: upstream call failed: Connect: Connection refused (os error 111)",
+              reason: 'unavailable',
+            },
+          },
+          500,
+          { 'x-request-id': 'req-8' },
+        ),
+      );
+
+      const error = (await buildClient()
+        .streamMessage('gazelle', 'abc123', agent, message, () => {})
+        .catch((e: unknown) => e)) as Error;
+
+      expect(error).toMatchObject({
+        name: 'StreamTransportError',
+        message:
+          'The Agent Platform is temporarily unavailable. Try again in a moment.',
+        status: 500,
+        reason: 'unavailable',
+        requestId: 'req-8',
+      });
+      expect(error.cause).toEqual(
+        new Error(
+          "The kagent API for installation 'gazelle' is unavailable: upstream call failed: Connect: Connection refused (os error 111)",
+        ),
+      );
     });
   });
 

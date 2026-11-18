@@ -1,5 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
+import { musterPollingOptions } from '@giantswarm/backstage-plugin-muster';
+import type { PollingQuery } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useWorkspaceManagerClient } from './useWorkspaceManager';
 import {
@@ -109,7 +111,10 @@ export function useWorkspaceDetail(
     retry: false,
     staleTime: 0,
     refetchOnMount: 'always',
-    refetchInterval: query => refetchInterval(query.state.data),
+    // Not after workspace-manager answered that the person is not signed in.
+    ...musterPollingOptions((query: PollingQuery<WorkspaceDetail>) =>
+      refetchInterval(query.state.data),
+    ),
     refetchOnWindowFocus: query =>
       refetchInterval(query.state.data) ? 'always' : false,
   });

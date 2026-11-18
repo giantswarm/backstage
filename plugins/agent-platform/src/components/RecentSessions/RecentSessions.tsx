@@ -1,9 +1,10 @@
-import { useId, useMemo } from 'react';
+import { type ReactNode, useId, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { RouteFunc, useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Badge,
   Box,
+  Button,
   ButtonIcon,
   Flex,
   Link,
@@ -11,7 +12,13 @@ import {
   Text,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
-import { StatusDot, TOUCH_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  PinIcon,
+  StatusDot,
+  TOUCH_MEDIA,
+} from '@giantswarm/backstage-plugin-ui-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- The portal session is the gs plugin's main sign-in.
+import { useMainSessionEnd } from '@giantswarm/backstage-plugin-gs';
 import { SESSION_STATE_LABELS } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import { useFleetSessionStates } from '../../hooks/useFleetSessionStates';
@@ -25,7 +32,7 @@ import { workspaceNameLabel } from '../../lib/sessionWorkspace';
 import { ACTIVE_REFETCH_INTERVAL_MS } from '../../lib/kagentSessionPolling';
 import { sessionDetailRouteRef, sessionsRouteRef } from '../../routes';
 import { AgentPlatformProviders } from '../AgentPlatformProviders';
-import { PinIcon } from '../PinIcon';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { useSessions } from '../SessionsDataProvider';
 import type { SessionRow } from '../SessionsDataProvider';
 import { sessionsListSearch } from '../SessionsTable/filters';
@@ -176,6 +183,7 @@ function SessionItem({
   return (
     <li className={pin ? `${classes.item} ${activeClass}` : undefined}>
       <Link
+        standalone
         href={href}
         className={
           pin
@@ -219,7 +227,7 @@ function SessionItem({
               {row.title}
             </Text>
             {(row.agentName || workspaceName) && (
-              <Text as="div" variant="body-x-small" color="secondary" truncate>
+              <Text as="div" variant="body-small" color="secondary" truncate>
                 {[row.agentName, workspaceName].filter(Boolean).join(' · ')}
               </Text>
             )}
@@ -249,10 +257,41 @@ function SessionItem({
 function GroupHeader({ id, label }: { id: string; label: string }) {
   return (
     <Box px="2">
-      <Text id={id} variant="body-x-small" color="secondary" weight="bold">
+      <Text id={id} variant="body-small" color="secondary" weight="bold">
         {label}
       </Text>
     </Box>
+  );
+}
+
+/**
+ * In place of "No sessions yet" when the list is empty because it could not be
+ * read: an empty rail during a kagent outage is not an empty history. The
+ * Sessions page names each environment and why; the rail says that the read
+ * failed and offers to read again.
+ */
+function RecentSessionsReadError({
+  onRetry,
+  isRetrying,
+}: {
+  onRetry: () => void;
+  isRetrying: boolean;
+}) {
+  return (
+    <Flex direction="column" gap="1" align="start" px="2">
+      {/* Announced once, politely: the rail is on every page. */}
+      <Text variant="body-small" color="danger" role="status">
+        Could not read your sessions.
+      </Text>
+      <Button
+        variant="secondary"
+        size="small"
+        isPending={isRetrying}
+        onPress={onRetry}
+      >
+        Try again
+      </Button>
+    </Flex>
   );
 }
 
@@ -270,7 +309,41 @@ function RecentSessionsList({
   const allSessionsHref = shellRail ? sessionsRoute?.() : undefined;
   const baseId = useId();
   const { pathname } = useLocation();
-  const { rows, isLoading } = useSessions();
+  const { rows, isLoading, nothingRead, sessionEnded, retry, isRetrying } =
+    useSessions();
+  // No installation answered: not "No sessions yet". With one that answered
+  // empty, the empty line stands and the Sessions page names the rest.
+  const readFailed = nothingRead;
+  // Without the portal session the list cannot be read: neither "No
+  // sessions yet" nor a retry, which needs the session the shell's banner
+  // offers to restore.
+  const sessionEnd = useMainSessionEnd();
+  let emptyLine: ReactNode;
+  if (sessionEnd) {
+    emptyLine = (
+      <Box px="2">
+        <Text variant="body-small" color="secondary">
+          Sign in again to see your sessions.
+        </Text>
+      </Box>
+    );
+  } else if (sessionEnded) {
+    // The alert above the list says why there is nothing: not "No sessions
+    // yet", and not a retry.
+    emptyLine = null;
+  } else if (readFailed) {
+    emptyLine = (
+      <RecentSessionsReadError onRetry={retry} isRetrying={isRetrying} />
+    );
+  } else {
+    emptyLine = (
+      <Box px="2">
+        <Text variant="body-small" color="secondary">
+          No sessions yet
+        </Text>
+      </Box>
+    );
+  }
   const { pinnedIds, isPinned, togglePin } = usePinnedSessions();
 
   // Every installation that has a session, not only the listed ones: the rail
@@ -351,13 +424,14 @@ function RecentSessionsList({
     <Flex px="2" align="center" gap="2">
       <Link
         href={allSessionsHref}
-        variant="body-x-small"
+        variant="body-small"
         aria-current={pathname === allSessionsHref ? 'page' : undefined}
       >
         All sessions
       </Link>
       {grouped.waitingCount > 0 && (
         <Link
+          standalone
           href={`${allSessionsHref}${sessionsListSearch({ state: 'waiting' })}`}
           aria-label={`${grouped.waitingCount} ${SESSION_STATE_LABELS.waiting.toLowerCase()}`}
           className={classes.countLink}
@@ -366,7 +440,7 @@ function RecentSessionsList({
         </Link>
       )}
       {grouped.recentOverflow > 0 && (
-        <Text variant="body-x-small" color="secondary">
+        <Text variant="body-small" color="secondary">
           {`${grouped.recentOverflow} more`}
         </Text>
       )}
@@ -383,10 +457,20 @@ function RecentSessionsList({
     );
   }
 
+  // The portal refused the session token: no retry reads the list, a
+  // sign-in to the portal does. Said above the rows read before, which stop
+  // keeping up.
+  const sessionEndedAlert = sessionEnded && !sessionEnd && (
+    <Box px="2">
+      <PortalSessionEndedAlert />
+    </Box>
+  );
+
   if (shellRail) {
     const hasTimeGroups = grouped.groups.length > 0;
     return (
       <Flex direction="column" gap="1">
+        {sessionEndedAlert}
         {grouped.pinned.length > 0 && (
           <>
             <GroupHeader id={`${baseId}-pinned`} label="Pinned" />
@@ -401,7 +485,7 @@ function RecentSessionsList({
                   href={`${allSessionsHref}${sessionsListSearch({
                     state: 'pinned',
                   })}`}
-                  variant="body-x-small"
+                  variant="body-small"
                 >
                   {grouped.pinnedOverflow} more pinned
                 </Link>
@@ -438,11 +522,7 @@ function RecentSessionsList({
           !hasTimeGroups && (
             <>
               <GroupHeader id={`${baseId}-empty`} label="Sessions" />
-              <Box px="2">
-                <Text variant="body-small" color="secondary">
-                  No sessions yet
-                </Text>
-              </Box>
+              {emptyLine}
             </>
           )}
         {allSessionsLink}
@@ -451,14 +531,8 @@ function RecentSessionsList({
   }
 
   let body;
-  if (recent.length === 0) {
-    body = (
-      <Box px="2">
-        <Text variant="body-small" color="secondary">
-          No sessions yet
-        </Text>
-      </Box>
-    );
+  if (readFailed || recent.length === 0) {
+    body = emptyLine;
   } else {
     body = (
       <ul className={classes.list} aria-labelledby={`${baseId}-recent`}>
@@ -470,6 +544,7 @@ function RecentSessionsList({
   return (
     <Flex direction="column" gap="1">
       <GroupHeader id={`${baseId}-recent`} label="Recent" />
+      {sessionEndedAlert}
       {body}
     </Flex>
   );

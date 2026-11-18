@@ -13,12 +13,3 @@ export function formatRelativeTime(iso?: string): string | undefined {
   }
   return getRelativeDate(iso, new Date());
 }
-
-/** ISO timestamp -> locale string, or `undefined` for missing/invalid input. */
-export function formatTimestamp(iso?: string): string | undefined {
-  if (!iso) {
-    return undefined;
-  }
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
-}

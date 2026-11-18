@@ -10,6 +10,7 @@ import {
   startBackend,
 } from '@internal/backend-common';
 import { brandingPlugin } from './branding';
+import { pgSearchEngineLoader } from './searchEngine';
 import { telemetryConfigPlugin } from './telemetry';
 
 // global-agent never reaches native fetch, which the catalog, the scaffolder
@@ -81,10 +82,11 @@ backend.add(rootLogger);
 backend.add(import('@backstage/plugin-search-backend'));
 
 // Postgres search engine: the index lives in the search plugin's database, so
-// it survives a restart and is one index for every replica. The module
-// registers itself only on Postgres 12 or newer; on sqlite (the dev server,
-// the lab) the in-memory engine stays.
-backend.add(import('@backstage/plugin-search-backend-module-pg'));
+// it survives a restart and is one index for every replica. Loaded only where
+// that database is Postgres, and the module registers itself only on Postgres
+// 12 or newer; on sqlite (the chart's default, the dev server, the lab) the
+// in-memory engine stays.
+backend.add(pgSearchEngineLoader);
 
 // search collators
 backend.add(import('@backstage/plugin-search-backend-module-catalog'));

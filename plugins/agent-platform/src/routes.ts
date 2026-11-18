@@ -125,6 +125,32 @@ export const toolchainDetailRouteRef = createSubRouteRef({
   parent: toolchainsRouteRef,
 });
 
+// The organizations the signed-in person belongs to (`/organizations`), one
+// list per installation whose agent-manager serves the organization tools,
+// and who can add them when they belong to none.
+export const organizationsRouteRef = createRouteRef();
+
+// One organization (`/organizations/<installation>/<parent>/<name>`), its
+// tabs below it (Members, Models, Connectors, Egress). An
+// AgentPlatformOrganization is unique by its parent namespace and name on one
+// installation, so all three are in the path; its organization namespace
+// (`agents-<name>-<random>`) is agent-manager's answer, never part of a link.
+export const organizationDetailRouteRef = createSubRouteRef({
+  path: '/:installation/:parent/:name',
+  parent: organizationsRouteRef,
+});
+
+// The Dev Portal's credential form of one organization's request
+// (`/organizations/<installation>/<parent>/<name>/credentials/<operation>`),
+// where a model key or a connector credential is entered and never shown
+// back. agent-manager's `credentials.uiURL` names it with the operation's id
+// as the last segment; the Models and Connectors tabs open it with the id
+// agent-manager answers.
+export const organizationCredentialsRouteRef = createSubRouteRef({
+  path: '/:installation/:parent/:name/credentials/:operation',
+  parent: organizationsRouteRef,
+});
+
 // The shell's minimal "Profile and settings" page (`/profile`): who is signed
 // in, the installations the portal talks to, and Sign out. Linked from the
 // shell rail's profile menu.
@@ -180,6 +206,11 @@ export const usageConnectorsRouteRef = createSubRouteRef({
 // app's Customize page, whose bare path is the list of ModelConfigs; one
 // model's page, the create and edit flows and Model hosting live underneath.
 export const modelsRouteRef = createRouteRef();
+
+export const modelCredentialsRouteRef = createSubRouteRef({
+  path: '/credentials/:installation/:namespace/:operation',
+  parent: modelsRouteRef,
+});
 
 // Connecting a model. `new` and `hosting` are reserved words here: no
 // installation can be named so.

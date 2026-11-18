@@ -1,6 +1,6 @@
 {
   "name": "@internal/backend-common",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "license": "Apache-2.0",
   "private": true,
   "main": "src/index.ts",
@@ -26,6 +26,11 @@
     "@backstage/backend-test-utils": "backstage:^",
     "@backstage/cli": "backstage:^",
     "@backstage/config-loader": "backstage:^",
+    "@backstage/plugin-kubernetes-backend": "backstage:^",
+    "@backstage/plugin-search-backend-module-pg": "backstage:^",
+    "@backstage/plugin-search-backend-node": "backstage:^",
+    "@types/express": "^5.0.0",
+    "express": "^5.0.0",
     "knex": "^3.1.0"
   },
   "files": [

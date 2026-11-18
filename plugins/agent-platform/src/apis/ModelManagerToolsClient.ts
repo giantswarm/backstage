@@ -1,4 +1,8 @@
 import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
+import {
+  portalSessionError,
+  PortalSessionEndedError,
+} from '../lib/portalSession';
 
 import {
   modelManagerFitResultSchema,
@@ -35,7 +39,7 @@ import {
  * word as `ModelManagerToolError` (see `classifyModelManagerToolError`).
  */
 export async function callModelManagerTool<T>(
-  musterApi: MusterApi,
+  musterApi: Pick<MusterApi, 'callTool'>,
   installation: string,
   tool: ModelManagerTool,
   args: Record<string, unknown> = {},
@@ -48,7 +52,12 @@ export async function callModelManagerTool<T>(
       installation,
     );
   } catch (error) {
-    throw classifyModelManagerToolError(error);
+    // The portal refusing the session token is said as that, never in its
+    // words: nothing reached muster (`lib/portalSession.ts`).
+    const ended = portalSessionError(error);
+    throw ended instanceof PortalSessionEndedError
+      ? ended
+      : classifyModelManagerToolError(error);
   }
   if (typeof result === 'string') {
     try {

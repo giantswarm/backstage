@@ -1,6 +1,7 @@
 import { Flex, Text } from '@backstage/ui';
 import {
   LoadingIndicator,
+  MetricsUnavailableAlert,
   Stat,
   StatGrid,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -13,6 +14,7 @@ import {
 } from '../../../lib/formatNumbers';
 import { CostPerDayCard } from '../../LlmUsage';
 import { MODEL_USAGE_WINDOW_DAYS, type ModelUsage } from '../useModelUsage';
+import { lastDaysLabel, lastDaysNoun } from '../../../lib/usageWindow';
 
 export type ModelUsageTabProps = {
   installation: string;
@@ -29,7 +31,7 @@ export type ModelUsageTabProps = {
 export function ModelUsageTab({
   installation,
   model,
-  usage: { slice, state },
+  usage: { slice, state, error },
 }: ModelUsageTabProps) {
   const currency = useCurrency(installation);
 
@@ -54,13 +56,18 @@ export function ModelUsageTab({
   }
   if (state === 'error' || !slice) {
     return (
-      <Text as="p" variant="body-medium" color="secondary">
-        Cost and token figures could not be read right now.
-      </Text>
+      <MetricsUnavailableAlert
+        error={error}
+        fallback={
+          <Text as="p" variant="body-medium" color="secondary">
+            Cost and token figures could not be read right now.
+          </Text>
+        }
+      />
     );
   }
 
-  const sub = `every user's, last ${MODEL_USAGE_WINDOW_DAYS} days`;
+  const sub = `every user's, ${lastDaysLabel(MODEL_USAGE_WINDOW_DAYS)}`;
   return (
     <Flex direction="column" gap="4">
       <StatGrid>
@@ -97,7 +104,7 @@ export function ModelUsageTab({
       )}
       <Text as="p" variant="body-small" color="secondary">
         {slice.calls === 0
-          ? `No calls to ${model} went through the gateway in the last ${MODEL_USAGE_WINDOW_DAYS} days.`
+          ? `No calls to ${model} went through the gateway in ${lastDaysNoun(MODEL_USAGE_WINDOW_DAYS)}.`
           : `This counts every gateway call to ${model} from any agent, including those through other configurations of this model on ${installation}.`}
       </Text>
     </Flex>

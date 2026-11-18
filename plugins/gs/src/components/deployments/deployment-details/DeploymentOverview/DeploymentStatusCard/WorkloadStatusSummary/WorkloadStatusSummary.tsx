@@ -17,6 +17,7 @@ import CancelOutlinedIcon from '@material-ui/icons/CancelOutlined';
 import CheckCircleOutlinedIcon from '@material-ui/icons/CheckCircleOutlined';
 import ExpandMoreIcon from '@material-ui/icons/ExpandMore';
 import HelpOutlineIcon from '@material-ui/icons/HelpOutline';
+import { describeMimirFailure } from '@giantswarm/backstage-plugin-ui-react';
 import { Heading } from '../../../../../UI';
 import { WorkloadReplicaStatus } from '../../../../../hooks/useMimirWorkloadStatus';
 
@@ -161,7 +162,10 @@ export const WorkloadStatusSummary = ({
     diagnosticContent =
       'Cannot determine target cluster for this deployment. Workload metrics are not available.';
   } else if (workloadsError) {
-    diagnosticContent = `Failed to query metrics: ${workloadsError.message}`;
+    const known = describeMimirFailure(workloadsError);
+    diagnosticContent = known
+      ? known.sentence
+      : `Failed to query metrics: ${workloadsError.message}`;
   } else if (!hasData && !workloadsLoading) {
     diagnosticContent = workloadsLabelSelector ? (
       <>

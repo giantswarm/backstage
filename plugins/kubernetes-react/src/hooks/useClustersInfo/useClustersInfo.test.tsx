@@ -35,14 +35,50 @@ describe('useClustersInfo', () => {
         client.getQueryCache().findAll({ fetchStatus: 'paused' }),
       ).not.toHaveLength(0),
     );
-    expect(result.current).toEqual({ clusters: [], isLoading: true });
+    expect(result.current).toMatchObject({
+      clusters: [],
+      isLoading: true,
+      error: null,
+    });
 
     act(() => focusManager.setFocused(true));
 
     await waitFor(() =>
-      expect(result.current).toEqual({
+      expect(result.current).toMatchObject({
         clusters: ['gazelle'],
         isLoading: false,
+        error: null,
+      }),
+    );
+  });
+
+  it('says why the list could not be read once the retries are spent, and reads it again on retry', async () => {
+    const getClusters = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('500 Internal Server Error'))
+      .mockResolvedValue([{ name: 'gazelle' }]);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <TestApiProvider apis={[[kubernetesApiRef, { getClusters } as any]]}>
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      </TestApiProvider>
+    );
+    const { result } = renderHook(() => useClustersInfo(), { wrapper });
+
+    await waitFor(() =>
+      expect(result.current.error?.message).toBe('500 Internal Server Error'),
+    );
+    expect(result.current).toMatchObject({ clusters: [], isLoading: false });
+
+    act(() => {
+      result.current.retry();
+    });
+    await waitFor(() =>
+      expect(result.current).toMatchObject({
+        clusters: ['gazelle'],
+        error: null,
       }),
     );
   });

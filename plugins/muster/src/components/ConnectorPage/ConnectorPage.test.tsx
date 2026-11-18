@@ -5,6 +5,9 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
+  DateTimeZoneProvider,
+  formatLocalDateFull,
+  getRelativeDate,
   PageHeaderActionsProvider,
   ShellScopeProvider,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -13,6 +16,7 @@ import {
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { musterApiRef } from '../../apis';
+import { stubImageLoad } from '../ConnectorLogo/stubImageLoad';
 import {
   MANAGEMENT_CLUSTER_LABEL,
   MCPServer,
@@ -25,6 +29,10 @@ import {
 } from '../../routes';
 import { ConnectorPage } from './ConnectorPage';
 import { useConnectorPageTarget } from './connectorPageTarget';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 jest.mock('@giantswarm/backstage-plugin-flux-react', () => ({
   useGitOpsSource: () => ({ isLoading: false }),
@@ -75,6 +83,8 @@ function makeServer(opts: {
   labels?: Record<string, string>;
   spec?: Record<string, unknown>;
   displayName?: string;
+  tags?: string;
+  lastConnected?: string;
 }): MCPServer {
   return new MCPServer(
     {
@@ -82,14 +92,13 @@ function makeServer(opts: {
       kind: 'MCPServer',
       metadata: {
         name: opts.name,
-        namespace: 'muster',
-        ...(opts.displayName
-          ? {
-              annotations: {
-                'ui.giantswarm.io/display-name': opts.displayName,
-              },
-            }
-          : {}),
+        namespace: 'agent-platform',
+        annotations: {
+          ...(opts.displayName
+            ? { 'ui.giantswarm.io/display-name': opts.displayName }
+            : {}),
+          ...(opts.tags ? { 'ui.giantswarm.io/tags': opts.tags } : {}),
+        },
         creationTimestamp: '2026-08-04T10:00:00Z',
         labels: {
           ...(opts.mc ? { [MANAGEMENT_CLUSTER_LABEL]: opts.mc } : {}),
@@ -107,11 +116,17 @@ function makeServer(opts: {
           : {}),
         ...opts.spec,
       },
-      status: { state: opts.state ?? 'Connected' },
+      status: {
+        state: opts.state ?? 'Connected',
+        ...(opts.lastConnected ? { lastConnected: opts.lastConnected } : {}),
+      },
     } as never,
     'gazelle',
   );
 }
+
+/** When the failed kubernetes instance last connected. */
+const LAST_CONNECTED = '2026-10-16T14:05:12Z';
 
 const makeServers = () => [
   makeServer({
@@ -126,11 +141,19 @@ const makeServers = () => [
     mc: 'gazelle',
     state: 'Failed',
     labels: INFRASTRUCTURE,
+    lastConnected: LAST_CONNECTED,
   }),
   makeServer({
     name: 'jira',
     spec: {
-      auth: { type: 'oauth' },
+      // One sign-in for all of the person's sessions, so it reads Connected.
+      auth: {
+        type: 'oauth',
+        authorizationServer: {
+          issuer: 'https://auth.jira.example.test',
+          grantScope: 'subject',
+        },
+      },
       description: 'Search, read and update tickets',
     },
   }),
@@ -158,7 +181,13 @@ function makeApi() {
     listServers: jest.fn(async () => ({
       mcpServers: [{ name: 'jira', resourcesCount: 2 }],
     })),
-    getAuthStatus: jest.fn(async () => ({ servers: [] })),
+    getAuthStatus: jest.fn(async () => ({
+      servers: mockServers.map(server => ({
+        name: server.getName(),
+        status: server.getState() === 'Failed' ? 'failed' : 'connected',
+      })),
+    })),
+    getServerInfo: jest.fn(async (): Promise<{ icon?: string }> => ({})),
     describeTool: jest.fn(async (name: string) => ({
       name,
       description: 'A tool.',
@@ -168,6 +197,11 @@ function makeApi() {
       async (_tool: string, _args?: unknown, _installation?: string) =>
         ({}) as object,
     ),
+    getMcpToolLatency: jest.fn(async () => ({
+      available: true,
+      range_hours: 720,
+      tools: [{ tool: 'x_jira_search_issues', p95_seconds: 2.5 }],
+    })),
     getMcpUsage: jest.fn(async () => ({
       available: true,
       range_hours: 720,
@@ -246,27 +280,33 @@ async function renderAt(
     defaultOptions: { queries: { retry: false } },
   });
   await renderInTestApp(
-    // The shell mounts the scope around its pages, as the app does.
-    <ShellScopeProvider>
-      <QueryClientProvider client={queryClient}>
-        <PageHeaderActionsProvider>
-          <Routes>
-            {/* The connector wizard, where Edit leads. */}
-            <Route
-              path="/customize/connectors/:installation/:server/edit"
-              element={<LocationProbe />}
-            />
-            <Route
-              path="/customize/connectors/:installation/:server/*"
-              element={<ConnectorPage usedBy={usedBy} />}
-            />
-          </Routes>
-        </PageHeaderActionsProvider>
-      </QueryClientProvider>
-    </ShellScopeProvider>,
+    // The shell mounts the scope and its clock around its pages, as the app
+    // does.
+    <DateTimeZoneProvider timeZone="local">
+      <ShellScopeProvider>
+        <QueryClientProvider client={queryClient}>
+          <PageHeaderActionsProvider>
+            <Routes>
+              {/* The connector wizard, where Edit leads. */}
+              <Route
+                path="/customize/connectors/:installation/:server/edit"
+                element={<LocationProbe />}
+              />
+              <Route
+                path="/customize/connectors/:installation/:server/*"
+                element={<ConnectorPage usedBy={usedBy} />}
+              />
+            </Routes>
+          </PageHeaderActionsProvider>
+        </QueryClientProvider>
+      </ShellScopeProvider>
+    </DateTimeZoneProvider>,
     {
       initialRouteEntries: [path],
-      apis: [[musterApiRef, api as never]],
+      apis: [
+        [musterApiRef, api as never],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ],
       mountedRoutes: {
         '/customize/connectors': mcpServersRouteRef,
         '/usage/connectors': usageConnectorsExternalRouteRef,
@@ -301,54 +341,50 @@ describe('ConnectorPage', () => {
       'href',
       '/customize/connectors',
     );
-    expect(screen.getByText('Connected')).toBeInTheDocument();
+    expect(await screen.findByText('Connected')).toBeInTheDocument();
     expect(
       screen.getByText('Search, read and update tickets'),
     ).toBeInTheDocument();
   });
 
-  it('leads its Connectors crumb back to the sub-tab that lists it', async () => {
-    await renderAt(`${BASE}/kubernetes`);
-    expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
-      'href',
-      '/customize/connectors/infrastructure',
-    );
-  });
-
-  it('points the Connectors crumb at the sub-tab while loading, once it is known', async () => {
+  it('leads its Connectors crumb back to the list, while loading too', async () => {
     mockLoading = true;
-    // Read before (the persisted cache): the row is known while loading.
     await renderAt(`${BASE}/kubernetes`);
     expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
       'href',
-      '/customize/connectors/infrastructure',
+      '/customize/connectors',
     );
-    cleanup();
-
-    await renderAt(`${BASE}/muster`);
-    expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
-      'href',
-      '/customize/connectors/internal',
-    );
-    cleanup();
-
-    // Not read yet: no link rather than one to a sub-tab that may not list it.
-    mockServers = [];
-    await renderAt(`${BASE}/jira`);
-    expect(
-      screen.queryByRole('link', { name: 'Connectors' }),
-    ).not.toBeInTheDocument();
   });
 
-  it("shows muster's own page with its endpoint to copy, under Internal", async () => {
+  it('says an infrastructure family has an instance per management cluster', async () => {
+    await renderAt(`${BASE}/kubernetes`);
+    expect(
+      screen.getByText(/It has an instance per management cluster/),
+    ).toBeInTheDocument();
+  });
+
+  it('lists the tag a family’s tool-group label reads as, linking to the list', async () => {
+    await renderAt(`${BASE}/kubernetes/details`);
+    const facts = await screen.findByRole('region', {
+      name: 'Connector details',
+    });
+    expect(
+      within(facts).getByRole('link', { name: 'infrastructure' }),
+    ).toHaveAttribute(
+      'href',
+      '/customize/connectors?installation=gazelle&tags=infrastructure',
+    );
+  });
+
+  it("shows muster's own page with its endpoint to copy, and that it is fixed", async () => {
     await renderAt(`${BASE}/muster`);
 
     expect(
-      screen.getByRole('heading', { level: 1, name: 'muster' }),
+      screen.getByRole('heading', { level: 1, name: 'Muster' }),
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Connectors' })).toHaveAttribute(
       'href',
-      '/customize/connectors/internal',
+      '/customize/connectors',
     );
     expect(
       screen.getByText(/It comes with the Agent Platform/),
@@ -375,6 +411,45 @@ describe('ConnectorPage', () => {
     expect(
       screen.queryByRole('button', { name: 'Edit' }),
     ).not.toBeInTheDocument();
+  });
+
+  describe("muster's logo", () => {
+    const SVG = 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=';
+    let restoreImage: () => void;
+    beforeEach(() => {
+      restoreImage = stubImageLoad();
+    });
+    afterEach(() => restoreImage());
+
+    it('shows the icon muster announces in the header, as an image', async () => {
+      const api = makeApi();
+      api.getServerInfo.mockImplementation(async () => ({ icon: SVG }));
+      await renderAt(`${BASE}/muster`, { api });
+
+      await waitFor(() =>
+        expect(document.querySelector(`img[src="${SVG}"]`)).not.toBeNull(),
+      );
+      expect(api.getServerInfo).toHaveBeenCalledWith('gazelle');
+    });
+
+    it('shows the letter tile when muster announces no icon', async () => {
+      const api = makeApi();
+      await renderAt(`${BASE}/muster`, { api });
+
+      await waitFor(() => expect(api.getServerInfo).toHaveBeenCalled());
+      expect(document.querySelector('img')).toBeNull();
+      expect(screen.getByText('M')).toBeInTheDocument();
+    });
+
+    it("does not ask muster for its icon on another connector's page", async () => {
+      const api = makeApi();
+      await renderAt(`${BASE}/jira`, { api });
+
+      expect(
+        await screen.findByRole('heading', { level: 1, name: 'jira' }),
+      ).toBeInTheDocument();
+      expect(api.getServerInfo).not.toHaveBeenCalled();
+    });
   });
 
   it('names the connector in the document title', async () => {
@@ -412,6 +487,27 @@ describe('ConnectorPage', () => {
     ).toEqual(['Back to Connectors', 'Connectors']);
   });
 
+  it('lists a connector’s tags on the Details tab', async () => {
+    mockServers = [makeServer({ name: 'jira', tags: 'ticketing,support' })];
+    await renderAt(`${BASE}/jira`);
+    await userEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    const facts = await screen.findByRole('region', {
+      name: 'Connector details',
+    });
+    expect(
+      within(within(facts).getByRole('list', { name: 'Tags' }))
+        .getAllByRole('listitem')
+        .map(item => item.textContent),
+    ).toEqual(['ticketing', 'support']);
+    // Each opens the connector's Customize list with that tag picked.
+    expect(
+      within(facts).getByRole('link', { name: 'support' }),
+    ).toHaveAttribute(
+      'href',
+      '/customize/connectors?installation=gazelle&tags=support',
+    );
+  });
+
   it('lists the facts on the Details tab, not beside the content', async () => {
     const api = await renderAt(`${BASE}/jira`);
     expect(
@@ -438,9 +534,79 @@ describe('ConnectorPage', () => {
       hours: 720,
       servers: ['jira'],
     });
-    expect(within(facts).getByText('4 Aug 2026')).toBeInTheDocument();
+    // Added: how long ago, the local date and time on hover.
+    const added = within(facts).getByText(
+      getRelativeDate('2026-08-04T10:00:00Z', new Date()),
+    );
+    expect(added).toHaveTextContent(/ ago$/);
+    expect(added).toHaveAttribute(
+      'title',
+      formatLocalDateFull('2026-08-04T10:00:00Z'),
+    );
     // The address is technical: in the fold-out's configuration.
     expect(screen.queryByText('https://jira.example.test/mcp')).toBeNull();
+  });
+
+  it('holds the Calls line in place with a skeleton while the usage is read', async () => {
+    const api = makeApi();
+    let answer: (usage: unknown) => void = () => {};
+    api.getMcpUsage.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          answer = resolve as typeof answer;
+        }),
+    );
+    await renderAt(`${BASE}/jira/details`, { api });
+
+    const facts = screen.getByRole('region', { name: 'Connector details' });
+    const labels = () =>
+      Array.from(facts.querySelectorAll('dt')).map(dt => dt.textContent);
+    // Every line from the first paint, Calls in the place it keeps.
+    expect(labels()).toEqual([
+      'Sign-in',
+      'Health',
+      'Calls, last 30 days',
+      'Added',
+    ]);
+    expect(within(facts).getByTestId('cell-skeleton')).toBeInTheDocument();
+
+    answer(await makeApi().getMcpUsage());
+    expect(
+      await within(facts).findByText('3,418 · 0.4% errors'),
+    ).toBeInTheDocument();
+    expect(within(facts).queryByTestId('cell-skeleton')).toBeNull();
+    expect(labels()).toEqual([
+      'Sign-in',
+      'Health',
+      'Calls, last 30 days',
+      'Added',
+    ]);
+  });
+
+  it('reads the calls on the Details tab addressed with a trailing slash', async () => {
+    const api = await renderAt(`${BASE}/jira/details/`);
+
+    const facts = screen.getByRole('region', { name: 'Connector details' });
+    expect(
+      await within(facts).findByText('3,418 · 0.4% errors'),
+    ).toBeInTheDocument();
+    expect(api.getMcpUsage).toHaveBeenCalledWith({
+      installation: 'gazelle',
+      hours: 720,
+      servers: ['jira'],
+    });
+  });
+
+  it('keeps the Calls line without a muster session, saying why', async () => {
+    mockAuthenticated = false;
+    const api = await renderAt(`${BASE}/jira/details`);
+
+    const facts = screen.getByRole('region', { name: 'Connector details' });
+    expect(within(facts).getByText('Calls, last 30 days')).toBeInTheDocument();
+    expect(
+      within(facts).getByText('Needs a Muster session'),
+    ).toBeInTheDocument();
+    expect(api.getMcpUsage).not.toHaveBeenCalled();
   });
 
   it('keeps the tools search across a visit to another tab', async () => {
@@ -484,6 +650,14 @@ describe('ConnectorPage', () => {
     ).not.toBeNull();
   });
 
+  it('holds the logo’s place with a skeleton, not the letter, while the connectors load', async () => {
+    mockLoading = true;
+    await renderAt(`${BASE}/jira`);
+
+    expect(document.querySelector('.bui-Skeleton')).not.toBeNull();
+    expect(screen.queryByText('j')).toBeNull();
+  });
+
   it('holds the Tools count’s place while the tools load', async () => {
     const api = makeApi();
     let answer: (value: unknown) => void = () => {};
@@ -500,6 +674,26 @@ describe('ConnectorPage', () => {
       tools,
     );
     expect(tools.querySelector('[data-count="loading"]')).toBeNull();
+  });
+
+  it('counts no tools for a connector muster is not connected to, and says why', async () => {
+    mockServers = [makeServer({ name: 'jira', state: 'Disconnected' })];
+    const api = makeApi();
+    api.filterTools.mockResolvedValue({
+      total: 0,
+      filtered_count: 0,
+      truncated: false,
+      tools: [],
+    } as never);
+    await renderAt(`${BASE}/jira`, { api });
+
+    expect(
+      await screen.findByText(
+        'This connector is disconnected, so its tools cannot be shown.',
+      ),
+    ).toBeInTheDocument();
+    const tools = screen.getByRole('tab', { name: 'Tools' });
+    expect(tools.querySelector('[data-count]')).toBeNull();
   });
 
   it('lists a few tools without search or filter, each a link to its page', async () => {
@@ -595,6 +789,20 @@ describe('ConnectorPage', () => {
       await screen.findByRole('tab', { name: /Instances/, selected: true }),
     ).toBeInTheDocument();
     expect(screen.getByText('walrus-mcp-kubernetes')).toBeInTheDocument();
+    // Last connected: how long ago, the local date and time on hover, as
+    // the expanded row's Health says it; a dash for one that never has.
+    const lastConnected = screen.getByText(
+      getRelativeDate(LAST_CONNECTED, new Date()),
+    );
+    expect(lastConnected).toHaveAttribute(
+      'title',
+      formatLocalDateFull(LAST_CONNECTED),
+    );
+    expect(
+      within(
+        screen.getByRole('row', { name: /walrus-mcp-kubernetes/ }),
+      ).getByTitle('—'),
+    ).toBeInTheDocument();
     // Helm-applied instances: changed in Git, not here.
     const edit = screen.getByRole('button', { name: 'Edit' });
     expect(edit).toBeDisabled();
@@ -609,7 +817,7 @@ describe('ConnectorPage', () => {
     expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
     expect(
       screen.getByRole('button', { name: 'Edit' }),
-    ).toHaveAccessibleDescription(/muster session, which is not connected/);
+    ).toHaveAccessibleDescription(/Muster session, which is not connected/);
     expect(screen.getByRole('button', { name: 'More actions' })).toBeDisabled();
   });
 
@@ -670,6 +878,103 @@ describe('ConnectorPage', () => {
 
     expect(signedOutHeader).toEqual(['Edit', 'More actions']);
     expect(headerButtons()).toEqual(signedOutHeader);
+  });
+
+  it("says a sign-in that cannot pass hides the tools, with muster's reason and no Sign in", async () => {
+    const reason =
+      "Cannot sign in to 'jira': your login method cannot be checked here.";
+    const api = makeApi();
+    api.getAuthStatus.mockResolvedValue({
+      servers: [
+        { name: 'jira', status: 'auth_required', kind: 'grant', error: reason },
+      ],
+    } as never);
+    api.filterTools.mockResolvedValue({
+      total: 0,
+      filtered_count: 0,
+      truncated: false,
+      tools: [],
+    });
+    await renderAt(`${BASE}/jira`, { api });
+
+    expect(
+      await screen.findByText(
+        'You cannot sign in to this connector here, so its tools stay hidden.',
+      ),
+    ).toBeInTheDocument();
+    expect(await screen.findByText(reason)).toBeInTheDocument();
+    expect(
+      screen.queryByText('Sign in to this connector to see its tools.'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Sign in' }),
+    ).not.toBeInTheDocument();
+  });
+
+  describe('a connector whose sign-in serves one session', () => {
+    beforeEach(() => {
+      mockServers = [
+        ...makeServers(),
+        makeServer({
+          name: 'grafana-cloud',
+          spec: { auth: { type: 'oauth' } },
+        }),
+      ];
+    });
+
+    function signedIn(status: Record<string, unknown> = {}) {
+      const api = makeApi();
+      api.getAuthStatus.mockResolvedValue({
+        servers: [
+          {
+            name: 'grafana-cloud',
+            status: 'connected',
+            kind: 'grant',
+            ...status,
+          },
+        ],
+      } as never);
+      return api;
+    }
+
+    it('says the sign-in covers the portal only, not plain Connected', async () => {
+      const user = userEvent.setup();
+      await renderAt(`${BASE}/grafana-cloud`, {
+        api: signedIn({ grant_scope: 'session' }),
+      });
+
+      expect(await screen.findByText('Portal only')).toBeInTheDocument();
+      expect(screen.queryByText('Connected')).toBeNull();
+      // react-aria opens a tooltip on hover only once it has seen a pointer
+      // move, and a hover's own move lands after its enter.
+      await user.hover(document.body);
+      await user.hover(
+        screen.getByRole('button', {
+          name: 'About the state of grafana-cloud',
+        }),
+      );
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(
+        'Your sign-in to grafana-cloud covers this portal only. Each agent conversation asks you to sign in again.',
+      );
+    });
+
+    it('reports unavailable access when muster does not report the session', async () => {
+      const api = makeApi();
+      api.getAuthStatus.mockResolvedValue({ servers: [] } as never);
+      await renderAt(`${BASE}/grafana-cloud`, { api });
+
+      expect(await screen.findByText('Status unavailable')).toBeInTheDocument();
+      expect(screen.queryByText('Portal only')).toBeNull();
+    });
+
+    it('reads Connected where Muster reports the grant as the person’s', async () => {
+      await renderAt(`${BASE}/grafana-cloud`, {
+        api: signedIn({ grant_scope: 'subject' }),
+      });
+
+      expect(await screen.findByText('Connected')).toBeInTheDocument();
+      expect(screen.queryByText('Portal only')).toBeNull();
+    });
   });
 
   describe('an SSO connector', () => {
@@ -803,6 +1108,158 @@ describe('ConnectorPage', () => {
   });
 });
 
+describe('ConnectorPage Tools tab', () => {
+  const NO_TOOLS = {
+    total: 0,
+    filtered_count: 0,
+    truncated: false,
+    tools: [],
+  };
+
+  it('warns that a failed connector exposes no tools', async () => {
+    mockServers = [
+      ...makeServers(),
+      makeServer({ name: 'linear', state: 'Failed' }),
+    ];
+    await renderAt(`${BASE}/linear`);
+
+    const explanation = await screen.findByText(
+      'This connector failed to connect, so its tools cannot be shown.',
+    );
+    expect(explanation.closest('[data-status]')).toHaveAttribute(
+      'data-status',
+      'warning',
+    );
+  });
+
+  it('warns when every instance of a connector failed', async () => {
+    mockServers = [
+      makeServer({
+        name: 'walrus-mcp-kubernetes',
+        family: 'kubernetes',
+        mc: 'walrus',
+        state: 'Failed',
+        labels: INFRASTRUCTURE,
+      }),
+      makeServer({
+        name: 'gazelle-mcp-kubernetes',
+        family: 'kubernetes',
+        mc: 'gazelle',
+        state: 'Failed',
+        labels: INFRASTRUCTURE,
+      }),
+    ];
+    const api = makeApi();
+    api.filterTools.mockResolvedValue(NO_TOOLS);
+    await renderAt(`${BASE}/kubernetes`, { api });
+
+    const explanation = await screen.findByText(
+      'No tools exposed — every instance of this connector failed to connect.',
+    );
+    expect(explanation.closest('[data-status]')).toHaveAttribute(
+      'data-status',
+      'warning',
+    );
+  });
+
+  it('explains partial personal access when the catalogue lists no tools', async () => {
+    const api = makeApi();
+    api.filterTools.mockResolvedValue(NO_TOOLS);
+    await renderAt(`${BASE}/kubernetes`, { api });
+
+    const explanation = await screen.findByText(
+      '1 of 2 instances are connected for you. View instances to check the others.',
+    );
+    expect(explanation.closest('[data-status]')).toHaveAttribute(
+      'data-status',
+      'info',
+    );
+  });
+
+  it('offers one sign-in for the family when its instances wait for grants', async () => {
+    const api = makeApi();
+    api.getAuthStatus.mockResolvedValue({
+      servers: ['walrus-mcp-kubernetes', 'gazelle-mcp-kubernetes'].map(
+        name => ({
+          name,
+          status: 'auth_required',
+          kind: 'grant',
+          auth_tool: 'core_auth_login',
+        }),
+      ),
+    } as never);
+    api.filterTools.mockResolvedValue(NO_TOOLS);
+    await renderAt(`${BASE}/kubernetes`, { api });
+
+    const alert = (
+      await screen.findByText('Sign in to see its tools.')
+    ).closest('[data-status]') as HTMLElement;
+    expect(alert).toHaveAttribute('data-status', 'warning');
+    expect(
+      within(alert).getByRole('button', { name: 'Sign in' }),
+    ).toBeVisible();
+    expect(
+      within(alert).queryByRole('link', { name: 'View instances' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps the failure plain while the sign-in error alert says something is wrong', async () => {
+    mockServers = [
+      ...makeServers().filter(server => server.getName() !== 'jira'),
+      makeServer({
+        name: 'jira',
+        state: 'Failed',
+        spec: {
+          auth: {
+            type: 'oauth',
+            authorizationServer: {
+              issuer: 'https://auth.jira.example.test',
+              grantScope: 'subject',
+            },
+          },
+        },
+      }),
+    ];
+    const api = makeApi();
+    api.getAuthStatus.mockResolvedValue({
+      servers: [{ name: 'jira', status: 'connected' }],
+    } as never);
+    api.filterTools.mockResolvedValue(NO_TOOLS);
+    (api as Record<string, unknown>).signOutServer = jest.fn(async () => {
+      throw new Error('network down');
+    });
+    await renderAt(`${BASE}/jira`, { api });
+
+    const explanation = await screen.findByText(
+      'This connector failed to connect, so its tools cannot be shown.',
+    );
+    expect(explanation.closest('[data-status]')).toHaveAttribute(
+      'data-status',
+      'warning',
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await userEvent.click(
+      await screen.findByRole('menuitem', { name: 'Sign out' }),
+    );
+
+    const error = await screen.findByText(
+      'Sign-out request failed: network down',
+    );
+    expect(error.closest('[data-status]')).toHaveAttribute(
+      'data-status',
+      'danger',
+    );
+    expect(
+      screen
+        .getByText(
+          'This connector failed to connect, so its tools cannot be shown.',
+        )
+        .closest('[data-status]'),
+    ).toBeNull();
+  });
+});
+
 describe('ConnectorPage Usage tab', () => {
   it("sits before Used by and shows the connector's figures", async () => {
     await renderAt(`${BASE}/jira/usage`, { usedBy: <TargetProbe /> });
@@ -874,6 +1331,23 @@ describe('ConnectorPage Usage tab', () => {
     expect(api.getMcpUsage).toHaveBeenCalledTimes(1);
   });
 
+  it('reads each tool’s p95 apart, on the Usage tab only', async () => {
+    const api = await renderAt(`${BASE}/jira/usage`);
+    await screen.findByText('1 of 2');
+
+    expect(api.getMcpToolLatency).toHaveBeenCalledWith({
+      installation: 'gazelle',
+      hours: 720,
+      servers: ['jira'],
+    });
+    expect(await screen.findByText('2.5 s')).toBeInTheDocument();
+
+    api.getMcpToolLatency.mockClear();
+    await userEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    await screen.findByText('3,418 · 0.4% errors');
+    expect(api.getMcpToolLatency).not.toHaveBeenCalled();
+  });
+
   it("reads a family's usage for all its instances", async () => {
     const api = await renderAt(`${BASE}/kubernetes/usage`);
 
@@ -901,7 +1375,7 @@ describe('ConnectorPage Usage tab', () => {
     const api = await renderAt(`${BASE}/jira/usage`);
 
     expect(
-      screen.getByText(/Usage figures need a muster session/),
+      screen.getByText(/Usage figures need a Muster session/),
     ).toBeInTheDocument();
     expect(api.getMcpUsage).not.toHaveBeenCalled();
   });
@@ -968,7 +1442,7 @@ describe('ConnectorPage Details tab', () => {
     expect(screen.queryByRole('heading', { name: 'Resource' })).toBeNull();
 
     await userEvent.click(foldOut());
-    expect(resourceFact('Namespace')).toHaveTextContent(/^muster$/);
+    expect(resourceFact('Namespace')).toHaveTextContent(/^agent-platform$/);
     expect(resourceFact('Name')).toHaveTextContent(/^jira$/);
     expect(
       screen.getByRole('heading', { name: 'Authentication' }),
@@ -1023,7 +1497,7 @@ describe('ConnectorPage Details tab', () => {
     expect(resourceFact('Name')).toHaveTextContent(/^mcp-jira$/);
   });
 
-  it('opens the fold-out on arrival while muster reports the connector failed', async () => {
+  it('opens the fold-out on arrival while Muster reports the connector failed', async () => {
     mockServers = [
       ...makeServers(),
       makeServer({ name: 'linear', state: 'Failed' }),

@@ -1,5 +1,9 @@
-import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
+import {
+  MusterUnauthorizedError,
+  type MusterApi,
+} from '@giantswarm/backstage-plugin-muster';
 
+import { PortalSessionEndedError } from '../lib/portalSession';
 import { ToolchainManagerError } from '../lib/toolchainManager';
 import { ToolchainManagerClient } from './ToolchainManagerClient';
 
@@ -13,6 +17,20 @@ function makeMusterApi(answer: unknown = {}) {
   );
   return { api: { callTool } as unknown as MusterApi, callTool };
 }
+
+/**
+ * The portal's backend refusing the session token before muster-backend runs:
+ * Backstage's `AuthenticationError`, which muster's client keeps as
+ * `errorName`.
+ */
+const portalRefusal = () =>
+  new MusterUnauthorizedError(
+    'Failed user token verification',
+    undefined,
+    undefined,
+    'gazelle',
+    'AuthenticationError',
+  );
 
 const GO = {
   name: 'go',
@@ -126,5 +144,17 @@ describe('ToolchainManagerClient', () => {
     await expect(
       new ToolchainManagerClient(failing, 'gazelle').listToolchains(),
     ).rejects.toThrow('upstream down');
+  });
+
+  it('says the portal session ended when the portal refuses the session token', async () => {
+    const { api, callTool } = makeMusterApi();
+    callTool.mockRejectedValue(portalRefusal());
+
+    const error = await new ToolchainManagerClient(api, 'gazelle')
+      .listToolchains()
+      .catch(e => e);
+
+    expect(error).toBeInstanceOf(PortalSessionEndedError);
+    expect(error.message).not.toMatch(/token verification/);
   });
 });

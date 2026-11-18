@@ -18,3 +18,5 @@ export type {
   MockedCollapsibleLayout,
 } from './mockCollapsibleLayout';
 export { declaredStyle } from './declaredStyle';
+export { mockContainerWidth } from './mockContainerWidth';
+export type { MockedContainerWidth } from './mockContainerWidth';

@@ -12,11 +12,9 @@ const mockClient = {
   addPackages: jest.fn(),
   buildStatus: jest.fn(),
 };
+let mockScope: Record<string, unknown>;
 jest.mock('../../hooks/useToolchainManager', () => ({
-  useScopedToolchainInstallations: () => ({
-    installations: ['gazelle'],
-    hasToolchains: true,
-  }),
+  useScopedToolchainInstallations: () => mockScope,
   useToolchainManagerClient: () => mockClient,
   useToolchainSources: () => ({
     isPending: false,
@@ -37,12 +35,25 @@ const mockCreate = {
   isPending: false,
   error: null as Error | null,
   data: undefined as CreateToolchainResult | undefined,
+  // Renders the page again after a test sets `data`, as the mutation would.
+  rerender: () => {},
 };
 jest.mock('../../hooks/useToolchainWrites', () => ({
-  useCreateToolchain: () => mockCreate,
+  useCreateToolchain: () => {
+    const [, rerender] = jest
+      .requireActual('react')
+      .useReducer((n: number) => n + 1, 0);
+    mockCreate.rerender = rerender;
+    return mockCreate;
+  },
 }));
-jest.mock('../CodeBlock', () => ({
-  CodeBlock: (props: { content: string }) => <pre>{props.content}</pre>,
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
+  FileView: (props: { content: string; filename: string }) => (
+    <pre data-testid="file-view" data-filename={props.filename}>
+      {props.content}
+    </pre>
+  ),
 }));
 
 function renderPage() {
@@ -59,6 +70,7 @@ function renderPage() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockScope = { installations: ['gazelle'], hasToolchains: true };
   mockCreate.data = undefined;
   mockClient.searchPackages.mockResolvedValue({
     source: 'alpine',
@@ -79,6 +91,30 @@ beforeEach(() => {
 });
 
 describe('NewToolchainPage', () => {
+  it('says why no environment could be checked, and asks again, instead of reading forever', async () => {
+    const recheck = jest.fn(() => Promise.resolve());
+    mockScope = {
+      installations: [],
+      sharedIdentity: [],
+      hasToolchains: 'unchecked',
+      unchecked: [{ installation: 'gazelle', failure: 'notAnswering' }],
+      recheck,
+    };
+    await renderPage();
+
+    expect(
+      screen.getByText('Toolchains could not be checked'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Muster on gazelle did not answer.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Reading the environments…'),
+    ).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(recheck).toHaveBeenCalledTimes(1);
+  });
+
   it('writes the Dockerfile from the picked packages and opens it as a pull request', async () => {
     await renderPage();
 
@@ -112,6 +148,69 @@ describe('NewToolchainPage', () => {
       name: 'helm-tools',
       source: 'agent-toolchains',
     });
+  });
+
+  it("shows a failed build's log under its own heading, scrolling inside a cap", async () => {
+    const log = 'ERROR: unable to select packages:\n  helmx (no such package)';
+    mockClient.buildStatus.mockResolvedValue({
+      build: {
+        toolchain: 'helm-tools',
+        source: 'agent-toolchains',
+        repository: 'giantswarm/agent-toolchains',
+        state: 'failed',
+        pull: 7,
+        jobs: [{ name: 'contract', state: 'failure' }],
+        log,
+      },
+    });
+    await renderPage();
+
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /Name/ }),
+      'helm-tools',
+    );
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: /Search packages/ }),
+      'helm',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Add' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Write Dockerfile' }),
+    );
+    await screen.findByText('# toolchain-manager: helm-tools');
+    act(() => {
+      mockCreate.data = {
+        created: {
+          toolchain: 'helm-tools',
+          source: 'agent-toolchains',
+          repository: 'giantswarm/agent-toolchains',
+          pull: 7,
+          pullURL: 'https://github.com/giantswarm/agent-toolchains/pull/7',
+          branch: 'toolchain/helm-tools',
+        },
+      };
+      mockCreate.rerender();
+    });
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Log of the failed job',
+        level: 3,
+      }),
+    ).toBeInTheDocument();
+    const block = screen.getByText(/unable to select packages/, {
+      selector: 'pre',
+    });
+    expect(block).toHaveTextContent('helmx (no such package)');
+    expect(block.style.getPropertyValue('--code-block-max-height')).toBe(
+      '520px',
+    );
+    // The Dockerfile is the one file on the page; the log is not one.
+    const files = screen.getAllByTestId('file-view');
+    expect(files).toHaveLength(1);
+    expect(files[0]).toHaveAttribute('data-filename', 'Dockerfile');
+    expect(files[0]).not.toContainElement(block);
   });
 
   it('drops a Dockerfile written for a name changed meanwhile', async () => {

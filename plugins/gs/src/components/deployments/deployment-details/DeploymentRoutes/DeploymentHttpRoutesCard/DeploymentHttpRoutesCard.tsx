@@ -1,7 +1,10 @@
-import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
-import { Cell, CellText, ColumnConfig, Link, Table } from '@backstage/ui';
+import {
+  ExternalLink,
+  InfoCard,
+  MetricsUnavailableAlert,
+} from '@giantswarm/backstage-plugin-ui-react';
+import { Cell, CellText, ColumnConfig, Table } from '@backstage/ui';
 import { Typography, makeStyles } from '@material-ui/core';
-import Alert from '@material-ui/lab/Alert';
 import { useCurrentDeployment } from '../../../DeploymentDetailsPage/useCurrentDeployment';
 import { findTargetClusterName } from '../../../utils/findTargetCluster';
 import { getWorkloadNamespace } from '../../../utils/getWorkloadIdentifiers';
@@ -37,13 +40,9 @@ const columnConfig: ColumnConfig<HostnameRow>[] = [
     isRowHeader: true,
     cell: row => (
       <Cell>
-        <Link
-          href={`https://${row.hostname}/`}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
+        <ExternalLink href={`https://${row.hostname}/`} variant="body-medium">
           {row.hostname}
-        </Link>
+        </ExternalLink>
       </Cell>
     ),
   },
@@ -92,7 +91,7 @@ export function DeploymentHttpRoutesCard() {
   if (error) {
     return (
       <InfoCard title={title}>
-        <Alert severity="warning">Metrics unavailable</Alert>
+        <MetricsUnavailableAlert error={error} />
       </InfoCard>
     );
   }

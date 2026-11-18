@@ -3,7 +3,8 @@ import {
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
 import { MusterServerClient } from '@giantswarm/backstage-plugin-gs-node';
-import { createRouter } from './router';
+import { DatabaseContentReadStore } from './ContentReadStore';
+import { createRouter, STORED_CONTENT_RETENTION_MS } from './router';
 
 /**
  * plansPlugin backend plugin
@@ -14,7 +15,8 @@ import { createRouter } from './router';
  * comments. Every GitHub call runs as the signed-in person: the frontend
  * forwards the caller's Dex ID token, muster holds the person's GitHub grant
  * and executes the GitHub MCP server's tools with it (`plans.muster`). No
- * GitHub credential exists in the portal.
+ * GitHub credential exists in the portal. Each person's file reads are kept
+ * in the plugin's database, so every backend instance serves them.
  *
  * @public
  */
@@ -27,14 +29,36 @@ export const plansPlugin = createBackendPlugin({
         logger: coreServices.logger,
         config: coreServices.rootConfig,
         httpAuth: coreServices.httpAuth,
+        database: coreServices.database,
+        scheduler: coreServices.scheduler,
       },
-      async init({ httpRouter, logger, config, httpAuth }) {
+      async init({
+        httpRouter,
+        logger,
+        config,
+        httpAuth,
+        database,
+        scheduler,
+      }) {
+        const contentStore = await DatabaseContentReadStore.create(database);
+        await scheduler.scheduleTask({
+          id: 'plans-prune-content-reads',
+          frequency: { hours: 1 },
+          timeout: { minutes: 5 },
+          fn: async () => {
+            const pruned = await contentStore.prune(
+              Date.now() - STORED_CONTENT_RETENTION_MS,
+            );
+            logger.info('Pruned old plans content reads', { pruned });
+          },
+        });
         httpRouter.use(
           await createRouter({
             logger,
             config,
             httpAuth,
             github: MusterServerClient.fromConfig(config, logger, 'plans'),
+            contentStore,
           }),
         );
       },

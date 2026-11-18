@@ -5,6 +5,7 @@ import { formatMoney, useCurrency } from '../../../lib/formatNumbers';
 import type { AgentRow } from '../../AgentsDataProvider';
 import { type AgentUsage, AgentUsageList } from '../../AgentUsageList';
 import { MODEL_USAGE_WINDOW_DAYS, type ModelUsage } from '../useModelUsage';
+import { lastDaysNoun } from '../../../lib/usageWindow';
 
 export type ModelUsedByTabProps = {
   installation: string;
@@ -65,8 +66,8 @@ export function ModelUsedByTab({
     >
       {slice && agents.length > 0 && (
         <Text as="p" variant="body-small" color="secondary">
-          Each agent shows its spend on this model over the last{' '}
-          {MODEL_USAGE_WINDOW_DAYS} days.
+          Each agent shows its spend on this model over{' '}
+          {lastDaysNoun(MODEL_USAGE_WINDOW_DAYS)}.
         </Text>
       )}
     </AgentUsageList>

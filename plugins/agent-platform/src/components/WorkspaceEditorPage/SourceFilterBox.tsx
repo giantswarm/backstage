@@ -334,7 +334,10 @@ export function SourceFilterBox({
             </div>
           </FilterDropdown>
 
-          <FilterDropdown label="Including" value={including.join(', ') || '—'}>
+          <FilterDropdown
+            label="Including"
+            value={including.join(', ') || 'none'}
+          >
             <Checkbox
               isSelected={source.includeArchived}
               onChange={on => onChange({ ...source, includeArchived: on })}

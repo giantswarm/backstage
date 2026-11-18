@@ -10,8 +10,14 @@ import {
   statusIntent,
   statusText,
   teamName,
+  teamSetFor,
 } from './hive';
-import { fixtureHistory, fixtureMeta, fixtureNow } from './hiveFixtures';
+import {
+  fixtureHistory,
+  fixtureMeta,
+  fixtureNow,
+  fixtureTeamSets,
+} from './hiveFixtures';
 
 const MAGAZINE_TEAM = fixtureMeta().sources.team;
 import { HIVE_TAB_ORDER, orderHiveTabs } from './hiveTabs';
@@ -23,17 +29,31 @@ describe('hive', () => {
     expect(sameTeam('Atlas 🗺️', 'Phoenix')).toBe(false);
   });
 
+  it("finds a team's data set by name or board option", () => {
+    const sets = fixtureTeamSets();
+    expect(teamSetFor(sets, 'Bumblebee🐝')?.path).toBe(
+      'magazine/teams/bumblebee',
+    );
+    expect(teamSetFor(sets, 'bumblebee')?.slug).toBe('bumblebee');
+    expect(teamSetFor(sets, 'Phoenix 🔥')).toBeUndefined();
+  });
+
   it('scopes Now to a team, keeping only other teams as upcoming', () => {
     const now = fixtureNow();
     const bumblebee = nowForTeam(now, 'Bumblebee🐝', MAGAZINE_TEAM);
     expect(bumblebee.lanes).toEqual(now.lanes);
+    expect(bumblebee.lanes.every(lane => lane.summary !== '')).toBe(true);
     expect(bumblebee.reviews).toEqual(now.reviews);
     expect(bumblebee.upcoming).toEqual(now.upcoming);
     expect(nowForTeam(now, ALL_TEAMS, MAGAZINE_TEAM).upcoming).toEqual([]);
 
-    // Another team: none of the magazine team's cards, plans or summary.
+    // Another team: none of the magazine team's cards, plans, summary or
+    // lane descriptions.
     const phoenix = nowForTeam(now, 'Phoenix 🔥', MAGAZINE_TEAM);
     expect(phoenix.lanes.every(lane => lane.total === 0)).toBe(true);
+    expect(phoenix.lanes.map(lane => lane.summary)).toEqual(
+      now.lanes.map(() => ''),
+    );
     expect(phoenix.blocked).toEqual([]);
     expect(phoenix.reviews).toEqual([]);
     expect(phoenix.summary).toEqual([]);
@@ -55,6 +75,7 @@ describe('hive', () => {
     const phoenix = nowForTeam(mixed, 'Phoenix 🔥', MAGAZINE_TEAM);
     expect(phoenix.lanes[0].cards).toEqual([phoenixCard]);
     expect(phoenix.lanes[0].total).toBe(1);
+    expect(phoenix.lanes[0].summary).toBe('');
     const bumblebee = nowForTeam(mixed, 'Bumblebee🐝', MAGAZINE_TEAM);
     expect(bumblebee.lanes[0].cards).not.toContain(phoenixCard);
   });

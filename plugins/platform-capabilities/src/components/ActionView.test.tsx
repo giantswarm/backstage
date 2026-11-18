@@ -1,6 +1,6 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, within } from '@testing-library/react';
-import { Action, ActionStateName } from '../apis';
+import { Action } from '../apis';
 import {
   AGENT_PLATFORM_DEFINITION,
   DENIED_ACTION,
@@ -11,7 +11,6 @@ import {
   REVERTED_ACTION,
   WITHDRAWN_ACTION,
 } from '../fixtures/fakeApi';
-import { ACTION_STATE_WORDS } from './ActionStateTag';
 import { ActionView } from './ActionView';
 
 const FILE = 'installations/rowan/config.yaml.patch';
@@ -50,12 +49,15 @@ describe('ActionView', () => {
         .map(d => d.textContent),
     ).toEqual(['3', 'on', 'off']);
     const result = within(record).getByTestId('action-result');
-    expect(within(result).getByRole('link', { name: FILE })).toHaveAttribute(
-      'href',
-      FILE_URL,
-    );
     expect(
-      within(result).getByRole('link', { name: 'example/example-configs' }),
+      within(result).getByRole('link', {
+        name: `${FILE} (opens in a new tab)`,
+      }),
+    ).toHaveAttribute('href', FILE_URL);
+    expect(
+      within(result).getByRole('link', {
+        name: 'example/example-configs (opens in a new tab)',
+      }),
     ).toHaveAttribute('href', 'https://github.com/example/example-configs');
     expect(record).not.toHaveTextContent(/unknown|reconcile/i);
   });
@@ -74,7 +76,9 @@ describe('ActionView', () => {
     );
     expect(
       within(record).getByTestId('action-pull-requests'),
-    ).toHaveTextContent('example/example-configs#9 — closed');
+    ).toHaveTextContent(
+      'example/example-configs#9 (opens in a new tab) — closed',
+    );
     expect(within(record).getByTestId('action-result')).toHaveTextContent(
       'denied by reviewer: not during the freeze',
     );
@@ -91,15 +95,18 @@ describe('ActionView', () => {
     );
     const rollout = within(record).getByTestId('action-rollout');
     expect(rollout).toHaveTextContent(
-      `rowan: removed — ${FILE} is gone from the default branch of example/example-configs again`,
-    );
-    expect(within(rollout).getByRole('link', { name: FILE })).toHaveAttribute(
-      'href',
-      FILE_URL,
+      `rowan: removed — ${FILE} (opens in a new tab) is gone from the default branch of example/example-configs (opens in a new tab) again`,
     );
     expect(
+      within(rollout).getByRole('link', {
+        name: `${FILE} (opens in a new tab)`,
+      }),
+    ).toHaveAttribute('href', FILE_URL);
+    expect(
       within(record).getByTestId('action-pull-requests'),
-    ).toHaveTextContent('example/example-configs#5 — merged');
+    ).toHaveTextContent(
+      'example/example-configs#5 (opens in a new tab) — merged',
+    );
   });
 
   it('a reverted action reads Reverted, not in sync, with the reverting pull request linked', async () => {
@@ -112,9 +119,11 @@ describe('ActionView', () => {
     expect(tag).toHaveAttribute('data-mark', 'not in sync');
     const pulls = within(record).getByTestId('action-pull-requests');
     expect(pulls).toHaveTextContent(
-      'example/example-configs#11 — merged, reverted by #12',
+      'example/example-configs#11 (opens in a new tab) — merged, reverted by #12 (opens in a new tab)',
     );
-    expect(within(pulls).getByRole('link', { name: '#12' })).toHaveAttribute(
+    expect(
+      within(pulls).getByRole('link', { name: '#12 (opens in a new tab)' }),
+    ).toHaveAttribute(
       'href',
       'https://github.com/example/example-configs/pull/12',
     );
@@ -152,40 +161,13 @@ describe('ActionView', () => {
       'Approval: not required',
     );
     expect(
-      within(record).getByRole('link', { name: 'example/example-configs#7' }),
+      within(record).getByRole('link', {
+        name: 'example/example-configs#7 (opens in a new tab)',
+      }),
     ).toHaveAttribute(
       'href',
       'https://github.com/example/example-configs/pull/7',
     );
     expect(record).not.toHaveTextContent(/unknown|pending/i);
-  });
-
-  it('has a word of its own for every state an action can be in', () => {
-    const states: ActionStateName[] = [
-      'pending approval',
-      'ready to merge',
-      'rolling out',
-      'waiting for the customer',
-      'enabled',
-      'drifted',
-      'failed',
-      'refused',
-      'denied',
-      'reverted',
-      'withdrawn',
-      'removed',
-    ];
-    for (const state of states) {
-      expect(ACTION_STATE_WORDS[state]).not.toBe('Unknown');
-    }
-    expect(ACTION_STATE_WORDS.refused).toBe('Refused');
-    expect(ACTION_STATE_WORDS.denied).toBe('Denied');
-    expect(ACTION_STATE_WORDS.reverted).toBe('Reverted');
-    expect(ACTION_STATE_WORDS.withdrawn).toBe('Withdrawn');
-    expect(ACTION_STATE_WORDS.removed).toBe('Removed');
-    // Every state reads its own word: no two of the action's states look alike.
-    expect(new Set(states.map(s => ACTION_STATE_WORDS[s])).size).toBe(
-      states.length,
-    );
   });
 });

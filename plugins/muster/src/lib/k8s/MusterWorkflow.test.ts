@@ -44,3 +44,26 @@ describe('MusterWorkflow runnable vs valid (D2 decoupling)', () => {
     expect(wf.hasValidationWarning()).toBe(true);
   });
 });
+
+describe('MusterWorkflow.getTags', () => {
+  it('reads the tags annotation beside the category label', () => {
+    const wf = new MusterWorkflow(
+      {
+        apiVersion: 'muster.giantswarm.io/v1alpha1',
+        kind: 'Workflow',
+        metadata: {
+          name: 'wf',
+          labels: { 'klaus-lab.giantswarm.io/category': 'triage' },
+          annotations: { 'ui.giantswarm.io/tags': 'oncall,alerts' },
+        },
+      } as never,
+      'gazelle',
+    );
+    expect(wf.getTags()).toEqual(['oncall', 'alerts']);
+    expect(wf.getCategory()).toBe('triage');
+  });
+
+  it('has none without the annotation', () => {
+    expect(makeWorkflow(undefined).getTags()).toEqual([]);
+  });
+});

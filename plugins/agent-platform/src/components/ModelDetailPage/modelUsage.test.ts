@@ -56,6 +56,7 @@ function usage(overrides: Partial<LlmUsage>): LlmUsage {
     },
     byAgent: [],
     byModel: [],
+    byOrganization: [],
     byAgentModel: [],
     costPerDay: { rows: [], series: [] },
     tokensPerDay: { rows: [], series: [] },

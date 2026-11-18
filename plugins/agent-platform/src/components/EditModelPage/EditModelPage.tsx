@@ -13,9 +13,21 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
+  isListenerRouted,
+  LISTENER_PROVIDERS,
+  MODEL_CONFIG_NAMESPACE,
+  modelConfigEditOwner,
   modelConfigFormValues,
-  modelConfigOwner,
 } from '../../lib/modelConfigs';
+import type {
+  OrganizationDirectory,
+  OrganizationWriteMode,
+} from '../../lib/organizations';
+import { useOrganizationContentModeOf } from '../../hooks/useOrganizationContentMode';
+import {
+  organizationsUndecided,
+  useOrganizationDirectory,
+} from '../OrganizationDirectoryProvider';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useCloseHref } from '../../hooks/useCloseHref';
 import { NewModelPage } from '../NewModelPage';
@@ -28,13 +40,30 @@ import { NewModelPage } from '../NewModelPage';
 function editBlocker(
   modelConfig: ModelConfig,
   mayUpdate: boolean,
+  directory: OrganizationDirectory,
+  /** Why it cannot be told whether the namespace is an organization's. */
+  undecided?: string,
+  /** How the organization's content is written (`modelConfigEditOwner`). */
+  contentMode?: OrganizationWriteMode,
 ): string | undefined {
-  const owner = modelConfigOwner(modelConfig);
+  // An organization's model must not be saved as the platform's.
+  if (undecided && modelConfig.getNamespace() !== MODEL_CONFIG_NAMESPACE) {
+    return `Could not tell whether this model belongs to an organization, whose models are saved through agent-manager. Try again once agent-manager answers. ${undecided}`;
+  }
+  // An organization's model agent-manager wrote is edited through it.
+  const owner = modelConfigEditOwner(modelConfig, directory, contentMode);
   if (owner) {
     return `This model is asserted by ${owner}, which would revert portal edits on its next run. Change it where ${owner} is configured.`;
   }
   if (!modelConfigFormValues(modelConfig)) {
     return `The edit form covers OpenAI-compatible, Anthropic, Gemini, Vertex AI and Ollama models, and this one uses ${modelConfig.getProvider()}. Manage it with kubectl.`;
+  }
+  const provider = modelConfig.getProvider();
+  if (
+    isListenerRouted(modelConfig.getNamespace() ?? '', directory) &&
+    !LISTENER_PROVIDERS.some(offered => offered === provider)
+  ) {
+    return `An organization's models use Anthropic or OpenAI through the platform's LLM gateway, and this one uses ${provider}. Manage it with kubectl.`;
   }
   if (!mayUpdate) {
     return 'You do not have permission to change this model.';
@@ -82,6 +111,15 @@ export function EditModelPage() {
       { enabled: Boolean(modelConfig) },
     );
 
+  // Which namespaces are organizations': the form saves an organization's
+  // model through agent-manager, so it waits for the answer rather than
+  // taking an organization's model for the platform's.
+  const organizations = useOrganizationDirectory();
+  const { directory, isLoading: isLoadingDirectory } = organizations;
+  // In mode commit a model of the organization's git path is edited by pull
+  // request; the form waits for that answer.
+  const contentMode = useOrganizationContentModeOf(installation, namespace);
+
   const shownName = modelConfig?.getDisplayName() || name;
 
   const backLink = detailHref ? (
@@ -89,7 +127,11 @@ export function EditModelPage() {
   ) : undefined;
 
   let body;
-  if (isLoading || (modelConfig && isCheckingPermission)) {
+  if (
+    isLoading ||
+    (modelConfig &&
+      (isCheckingPermission || isLoadingDirectory || !contentMode))
+  ) {
     body = <LoadingIndicator label="Reading the model…" />;
   } else if (!modelConfig) {
     body =
@@ -110,7 +152,13 @@ export function EditModelPage() {
         />
       );
   } else {
-    const blocker = editBlocker(modelConfig, mayUpdate);
+    const blocker = editBlocker(
+      modelConfig,
+      mayUpdate,
+      directory,
+      organizationsUndecided(organizations, installation),
+      contentMode,
+    );
     if (!blocker) {
       return (
         <NewModelPage
@@ -120,6 +168,7 @@ export function EditModelPage() {
             installation,
             modelConfig,
             detailHref: closeHref,
+            byPullRequest: contentMode === 'commit',
           }}
         />
       );

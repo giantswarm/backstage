@@ -1,11 +1,12 @@
 import { ReactNode } from 'react';
-import { Alert, Badge } from '@backstage/ui';
+import { Alert, Badge, Flex } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import LoopIcon from '@material-ui/icons/Loop';
 
 import {
   CANCELED_STATE,
-  isRuntimeLostFailureText,
+  classifyFailureText,
+  isCredentialsRefusedText,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { PHONE_MEDIA } from '@giantswarm/backstage-plugin-ui-react';
 import { TimelineItem } from '../../lib/kagentTimeline';
@@ -14,6 +15,7 @@ import { AttachmentEntry } from './AttachmentEntry';
 import { EgressRefusedEntry, EgressSettingsLink } from './EgressRefusedEntry';
 import { MessageMarkdown } from './MessageMarkdown';
 import { PayloadBlock } from './PayloadBlock';
+import { TurnFailureDetails } from './TurnFailureDetails';
 import { UserMessage } from './UserMessage';
 import { WorkspaceNoticeEntry } from './WorkspaceNoticeEntry';
 import {
@@ -229,6 +231,46 @@ function PendingMarker({
 }
 
 /**
+ * A tool as a row names it. Plain: the tool's name as words and the connector
+ * as Customize names it, or the proxy when no connector matches (the servers
+ * are still loading, or none has the prefix), so a proxied call never reads as
+ * a direct one. Technical: the exact identifier and the proxy.
+ */
+function ToolLabel({
+  toolName,
+  via,
+  technical,
+  connectorOf,
+  exactNameClassName,
+}: {
+  toolName: string;
+  via?: string;
+  technical: boolean;
+  connectorOf?: ConnectorOf;
+  exactNameClassName: string;
+}) {
+  const classes = useStyles();
+  if (technical) {
+    return (
+      <>
+        <span className={exactNameClassName}>{toolName}</span>
+        {via && <Badge size="small">via {via}</Badge>}
+      </>
+    );
+  }
+  const owner = connectorOf?.(toolName);
+  return (
+    <>
+      <span className={classes.rowTitle}>
+        {humanizeToolName(owner?.tool ?? toolName)}
+      </span>
+      {owner && <Badge size="small">{owner.connector}</Badge>}
+      {!owner && via && <Badge size="small">via {via}</Badge>}
+    </>
+  );
+}
+
+/**
  * The one-line header of a trace entry.
  *
  * `technical` decides the register. Plain names what happened in words — the
@@ -259,25 +301,16 @@ function CollapsedSummary({
           </span>
         </span>
       );
-    case 'tool-call': {
-      // Plain names the connector as Customize does, and the tool without
-      // the connector's prefix; technical keeps the exact identifiers.
-      const owner = technical ? undefined : connectorOf?.(item.toolName);
+    case 'tool-call':
       return (
         <span className={classes.triggerContent}>
-          {technical ? (
-            <span className={classes.rowName}>{item.toolName}</span>
-          ) : (
-            <span className={classes.rowTitle}>
-              {humanizeToolName(owner?.tool ?? item.toolName)}
-            </span>
-          )}
-          {/* Agents reach most MCP tools through muster's `call_tool`, so the
-              parser looks through that wrapper and names the real tool. Plain
-              names the connector the call went to; technical keeps the fact
-              that it was proxied, which is otherwise lost. */}
-          {owner && <Badge size="small">{owner.connector}</Badge>}
-          {technical && item.via && <Badge size="small">via {item.via}</Badge>}
+          <ToolLabel
+            toolName={item.toolName}
+            via={item.via}
+            technical={technical}
+            connectorOf={connectorOf}
+            exactNameClassName={classes.rowName}
+          />
           <PendingMarker
             isPending={item.isPending}
             isAgentWorking={isAgentWorking}
@@ -287,7 +320,6 @@ function CollapsedSummary({
           )}
         </span>
       );
-    }
     case 'agent-call':
       return (
         <span className={classes.triggerContent}>
@@ -303,7 +335,10 @@ function CollapsedSummary({
           />
         </span>
       );
-    case 'approval':
+    case 'approval': {
+      // The proposed tool names what needs approving, which is the point of
+      // the row. For a question it is always `ask_user` — noise.
+      const proposedTool = item.asks === 'approval' ? item.toolName : undefined;
       return (
         <span className={classes.triggerContent}>
           <span className={classes.rowTitle}>
@@ -311,16 +346,19 @@ function CollapsedSummary({
               ? 'User input requested'
               : 'Approval requested'}
           </span>
-          {/* The proposed tool names what needs approving, which is the point of
-              the row. For a question it is always `ask_user` — noise. */}
-          {item.asks === 'approval' && item.toolName && (
-            <span className={technical ? classes.summary : classes.rowTitle}>
-              {technical ? item.toolName : humanizeToolName(item.toolName)}
-            </span>
+          {proposedTool && (
+            <ToolLabel
+              toolName={proposedTool}
+              via={item.via}
+              technical={technical}
+              connectorOf={connectorOf}
+              exactNameClassName={classes.summary}
+            />
           )}
           <ApprovalVerdict item={item} />
         </span>
       );
+    }
     default:
       return null;
   }
@@ -454,10 +492,14 @@ export function TimelineEntry({
     // person who read them on gazelle. Said in the portal's words, with the
     // runtime's kept as the evidence; the page's notice below the conversation
     // carries the way out.
-    const runtimeLost = isRuntimeLostFailureText(item.reason);
+    const failure = classifyFailureText(item.reason);
+    const runtimeLost = failure === 'runtime-lost';
+    const modelUnavailable = failure === 'model-unavailable';
     let title = 'This turn failed';
     if (runtimeLost) {
       title = 'Could not reach the agent’s runtime';
+    } else if (modelUnavailable) {
+      title = 'Could not get an answer from the model';
     } else if (item.state === 'rejected') {
       title = 'This turn was rejected';
     }
@@ -469,6 +511,17 @@ export function TimelineEntry({
           message. The runtime said: {item.reason}
         </span>
       );
+    } else if (modelUnavailable && item.reason) {
+      description = (
+        <Flex direction="column" gap="2">
+          <span>
+            {isCredentialsRefusedText(item.reason)
+              ? 'The agent could not access its model. Ask your platform team to check the model’s credentials and permissions.'
+              : 'Try again, or ask your platform team for help if this continues.'}
+          </span>
+          <TurnFailureDetails text={item.reason} />
+        </Flex>
+      );
     } else if (item.reason) {
       description = (
         <span className={classes.failureReason}>{item.reason}</span>
@@ -478,6 +531,7 @@ export function TimelineEntry({
       <div
         data-testid="timeline-turn-failed"
         data-runtime-lost={runtimeLost ? 'true' : undefined}
+        data-model-unavailable={modelUnavailable ? 'true' : undefined}
       >
         <Alert status="danger" icon title={title} description={description} />
       </div>

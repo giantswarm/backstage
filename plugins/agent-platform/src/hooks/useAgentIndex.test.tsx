@@ -16,6 +16,7 @@ function agentRow(overrides: Partial<AgentRow> = {}): AgentRow {
     name: 'Issue tracker',
     technicalName: 'issue-tracker',
     description: '',
+    tags: [],
     skillCount: 0,
     readiness: 'ready',
     ...overrides,

@@ -1,4 +1,5 @@
-import { Alert, ButtonLink, Flex, Text } from '@backstage/ui';
+import { Alert, Flex, Text } from '@backstage/ui';
+import { ExternalButtonLink } from '@giantswarm/backstage-plugin-ui-react';
 import { Committed, Delivery } from '../../apis';
 import { messageTarget } from './channel';
 
@@ -39,15 +40,9 @@ export function PullRequestBody({ result }: { result: Committed }) {
         <DeliveryLine kind="The notice" delivery={result.notice} />
       )}
       <div>
-        <ButtonLink
-          href={pr.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          variant="secondary"
-          size="small"
-        >
-          Review pull request ↗
-        </ButtonLink>
+        <ExternalButtonLink href={pr.url} variant="secondary" size="small">
+          Review pull request
+        </ExternalButtonLink>
       </div>
     </Flex>
   );

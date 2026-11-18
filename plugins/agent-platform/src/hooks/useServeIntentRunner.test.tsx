@@ -232,9 +232,20 @@ async function render(
 const toolNames = (callTool: jest.Mock) =>
   callTool.mock.calls.map(call => call[0]);
 
-/** The query keys `invalidateQueries` was asked for. */
+/** The query keys `invalidateQueries` was asked for, by key or by predicate. */
 const invalidatedKeys = (invalidateQueries: jest.SpyInstance) =>
-  invalidateQueries.mock.calls.map(call => call[0]?.queryKey);
+  [
+    modelManagerBackendsQueryKey('inst-1'),
+    modelManagerModelsQueryKey('inst-1'),
+    modelManagerBackendsQueryKey('inst-2'),
+    modelManagerModelsQueryKey('inst-2'),
+  ].filter(key =>
+    invalidateQueries.mock.calls.some(([filters]) =>
+      filters?.predicate
+        ? filters.predicate({ queryKey: key })
+        : JSON.stringify(filters?.queryKey) === JSON.stringify(key),
+    ),
+  );
 
 describe('isPoolStackReady', () => {
   it('is the same gate as Serve your first model: every lifecycle step done', () => {
@@ -318,12 +329,10 @@ describe('useServeIntentRunner', () => {
     // backend after the list was read leaves the inventory unread until the
     // list is read again — so both go, for this installation.
     await waitFor(() =>
-      expect(invalidatedKeys(invalidateQueries)).toEqual(
-        expect.arrayContaining([
-          modelManagerBackendsQueryKey('inst-1'),
-          modelManagerModelsQueryKey('inst-1'),
-        ]),
-      ),
+      expect(invalidatedKeys(invalidateQueries)).toEqual([
+        modelManagerBackendsQueryKey('inst-1'),
+        modelManagerModelsQueryKey('inst-1'),
+      ]),
     );
   });
 

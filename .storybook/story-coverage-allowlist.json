@@ -1,8 +1,15 @@
 {
   "$comment": "Components exported by ui-react that are intentionally NOT storied. Each entry must have a justification here. The coverage gate (scripts/check-story-coverage.mts) fails if an entry no longer matches any export, so this list can't hide stale entries.",
-  "components": ["ShellDocumentTitle", "ShellScope"],
+  "components": [
+    "ShellDocumentTitle",
+    "ShellScope",
+    "SharedTagsProvider",
+    "TagVocabularyProvider"
+  ],
   "reasons": {
     "ShellDocumentTitle": "Sets the browser tab's title and renders nothing on the page; ShellPage's and WizardFrame's stories set one.",
-    "ShellScope": "A context provider with no output of its own; its effect shows in the components that read it (InfoHint, FactList)."
+    "ShellScope": "A context provider with no output of its own; its effect shows in the components that read it (InfoHint, FactList).",
+    "SharedTagsProvider": "A context provider with no output of its own; it carries the tags picked across a page's catalogs, which show in CatalogFilters' Tags facet.",
+    "TagVocabularyProvider": "A context provider with no output of its own; it collects the tags in use, which show as TagsField's suggestions (see its stories)."
   }
 }

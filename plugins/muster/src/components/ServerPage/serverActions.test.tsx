@@ -181,7 +181,7 @@ describe('ConfirmActionDialog', () => {
       screen.getByRole('button', { name: 'open deactivate' }),
     );
     expect(
-      await screen.findByText(/muster disconnects it/),
+      await screen.findByText(/Muster disconnects it/),
     ).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
 

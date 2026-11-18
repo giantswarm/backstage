@@ -1,23 +1,35 @@
 /**
- * Module-level store for the Agent Platform section's installation scope.
+ * Module-level stores for the installation scopes the Environment selectors
+ * pin, one per {@link InstallationScopeId}: Customize (its tabs and Models)
+ * and Usage, siblings that never read each other's choice.
  *
- * The scope is one value for the whole section: `'all'` (every platform
- * installation, the home installation first) or the name of one installation
- * the person pinned. The agent-platform tabs and the muster section (mounted
- * as a tab of the same page, but a different plugin with its own React
- * providers) must read the same value, so it lives here rather than in a React
- * context: `useSyncExternalStore` on both sides, no provider to share across
- * the plugin boundary -- the same shape as the installations config source.
+ * A scope is `'all'` (every platform installation, the home installation
+ * first) or the name of one installation the person pinned. Within one scope
+ * the agent-platform views and the muster views (a different plugin with its
+ * own React providers) must read the same value, so it lives here rather than
+ * in one plugin's React context -- the same shape as the installations config
+ * source.
  *
- * Persistence: the pinned installation is mirrored to localStorage under the
- * key the muster picker has always used, so a choice made before the section
- * shared one scope is honoured; `'all'` removes the key. The URL
- * (`?installation=`) is synced by `useInstallationScopeUrlSync`, mounted once
- * by the section's selector.
+ * Persistence: the pinned installation is mirrored to localStorage, one key
+ * per scope; Customize keeps the key the muster picker has always used, so a
+ * choice made before the section shared one scope is honoured. `'all'`
+ * removes the key. The URL (`?installation=`, on each scope's own pages) is
+ * synced by `useInstallationScopeUrlSync`, mounted once by the selector.
  */
 
-/** The localStorage key: the one the muster picker persisted its choice under. */
+/** Which selector's choice: Customize's (its tabs, Models) or Usage's. */
+export type InstallationScopeId = 'customize' | 'usage';
+
+/** Customize's localStorage key: the one the muster picker persisted under. */
 export const INSTALLATION_SCOPE_STORAGE_KEY = 'muster-installation';
+
+/** Usage's localStorage key. */
+export const USAGE_INSTALLATION_SCOPE_STORAGE_KEY = 'usage-installation';
+
+const STORAGE_KEYS: Record<InstallationScopeId, string> = {
+  customize: INSTALLATION_SCOPE_STORAGE_KEY,
+  usage: USAGE_INSTALLATION_SCOPE_STORAGE_KEY,
+};
 
 /** The search parameter deep links carry; absent means every installation. */
 export const INSTALLATION_SCOPE_SEARCH_PARAM = 'installation';
@@ -40,8 +52,17 @@ export type InstallationScopeState = {
   restored: boolean;
 };
 
-let state: InstallationScopeState | undefined;
-const listeners = new Set<() => void>();
+const states = new Map<InstallationScopeId, InstallationScopeState>();
+const listeners = new Map<InstallationScopeId, Set<() => void>>();
+
+function listenersOf(id: InstallationScopeId): Set<() => void> {
+  let set = listeners.get(id);
+  if (!set) {
+    set = new Set();
+    listeners.set(id, set);
+  }
+  return set;
+}
 
 function storage(): Storage | undefined {
   try {
@@ -53,21 +74,26 @@ function storage(): Storage | undefined {
 }
 
 /** The scope localStorage holds: a name, or `'all'` when nothing is stored. */
-export function readStoredInstallationScope(): InstallationScope {
+export function readStoredInstallationScope(
+  id: InstallationScopeId = 'customize',
+): InstallationScope {
   try {
-    const stored = storage()?.getItem(INSTALLATION_SCOPE_STORAGE_KEY);
+    const stored = storage()?.getItem(STORAGE_KEYS[id]);
     return stored ? stored : ALL_INSTALLATIONS;
   } catch {
     return ALL_INSTALLATIONS;
   }
 }
 
-function writeStoredInstallationScope(scope: InstallationScope): void {
+function writeStoredInstallationScope(
+  scope: InstallationScope,
+  id: InstallationScopeId,
+): void {
   try {
     if (scope === ALL_INSTALLATIONS) {
-      storage()?.removeItem(INSTALLATION_SCOPE_STORAGE_KEY);
+      storage()?.removeItem(STORAGE_KEYS[id]);
     } else {
-      storage()?.setItem(INSTALLATION_SCOPE_STORAGE_KEY, scope);
+      storage()?.setItem(STORAGE_KEYS[id], scope);
     }
   } catch {
     // localStorage may be unavailable (private mode); the in-memory store
@@ -75,22 +101,30 @@ function writeStoredInstallationScope(scope: InstallationScope): void {
   }
 }
 
-function ensureState(): InstallationScopeState {
+function ensureState(id: InstallationScopeId): InstallationScopeState {
+  let state = states.get(id);
   if (!state) {
-    state = { scope: readStoredInstallationScope(), restored: true };
+    state = { scope: readStoredInstallationScope(id), restored: true };
+    states.set(id, state);
   }
   return state;
 }
 
 /** Synchronous snapshot for `useSyncExternalStore`; stable between changes. */
-export function getInstallationScopeSnapshot(): InstallationScopeState {
-  return ensureState();
+export function getInstallationScopeSnapshot(
+  id: InstallationScopeId = 'customize',
+): InstallationScopeState {
+  return ensureState(id);
 }
 
-export function subscribeInstallationScope(listener: () => void): () => void {
-  listeners.add(listener);
+export function subscribeInstallationScope(
+  listener: () => void,
+  id: InstallationScopeId = 'customize',
+): () => void {
+  const set = listenersOf(id);
+  set.add(listener);
   return () => {
-    listeners.delete(listener);
+    set.delete(listener);
   };
 }
 
@@ -100,18 +134,21 @@ export function subscribeInstallationScope(listener: () => void): () => void {
  * may both call it for the same value (the URL sync and a picker) never
  * ping-pong.
  */
-export function setInstallationScope(next: InstallationScope): void {
-  const current = ensureState();
+export function setInstallationScope(
+  next: InstallationScope,
+  id: InstallationScopeId = 'customize',
+): void {
+  const current = ensureState(id);
   if (current.scope === next && !current.restored) {
     return;
   }
-  state = { scope: next, restored: false };
-  writeStoredInstallationScope(next);
-  listeners.forEach(listener => listener());
+  states.set(id, { scope: next, restored: false });
+  writeStoredInstallationScope(next, id);
+  listenersOf(id).forEach(listener => listener());
 }
 
-/** Test-only: forgets the in-memory state (not localStorage). */
+/** Test-only: forgets the in-memory state of every scope (not localStorage). */
 export function __resetInstallationScopeForTests(): void {
-  state = undefined;
+  states.clear();
   listeners.clear();
 }

@@ -1,0 +1,494 @@
+---
+name: tables
+description: Patterns for implementing tables. Covers the bui Table ('@backstage/ui') — preferred for new, simple tables — and the feature-rich '@backstage/core-components' Table with search, filtering, and column-visibility persistence.
+---
+
+## Choosing a table component
+
+Two table components are in use. **Prefer the bui `Table` (`@backstage/ui`) for
+new tables** — it matches the new Backstage design system and is the direction
+we're moving. But it is not yet a full replacement for the older component.
+
+| Need                                                            | Use                                                                  |
+| --------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Listing, incl. search, sorting, pagination, row selection       | **bui `Table`** from `@backstage/ui`                                 |
+| Column-visibility toggle, CSV export, faceted-sidebar filtering | **`Table`** from `@backstage/core-components` (material-table based) |
+
+As of `@backstage/ui` **0.17.0** the bui `Table` does support sorting
+(`isSortable` per column + `initialSort`), row selection, pagination,
+`isPending`/`error`/`emptyState` — and its `useTable` hook provides client-side
+search and filtering via `searchFn`/`filterFn` (with `searchDebounceMs`). Pair it
+with a bui `SearchField`. Reference:
+`plugins/agent-platform/src/components/SessionsTable/` (search + sort + pagination
+via `useTable`), `plugins/agent-platform/src/components/AgentsTable/` (plain
+listing), and `plugins/ai-chat/src/components/ConversationHistoryTable/`.
+
+The `@backstage/core-components` `Table` (documented in the bulk of this skill)
+wraps `@material-table/core` and remains the option when you need its
+`columnsButton` column-visibility toggle (with `useTableColumns` persistence),
+CSV export, or the faceted `FiltersLayout` sidebar pattern.
+
+> Two gotchas when using `useTable` in `'complete'` mode: pass `data: undefined`
+> (not `[]`) while loading, or the empty state flashes instead of the skeleton;
+> and column `id`s must match the row field names your `sortFn` reads.
+
+## Rule: typical content fits
+
+In a table, a column header and the values a column usually holds fit their
+column: no ellipsis, no second line. A person scans a column to compare its
+values; "144 vCPUs · 11…" or a date broken over two lines can't be compared,
+and a header cut to "Provi…" leaves the column unnamed. A tooltip doesn't
+help: nobody hovers every row to read a number.
+
+- **Headers are never cut off and stay on one line.** A column is at least
+  as wide as its header. Shorten the header ("Priority", not "Service
+  priority") before you widen the column.
+- **Short values don't wrap or truncate**: dates and times, durations and
+  ages, numbers with or without a unit (counts, sizes, percentages, costs),
+  versions, combinations of them ("144 vCPUs · 1152 GiB"), and status
+  labels. Render them `nowrap` without an ellipsis, and make the column at
+  least as wide as its usual value. bui's `CellText` truncates, so the width
+  is what keeps it whole. Show a status as a badge, a `StatusLabel` or a
+  `StatusDot` with its label: that is how the layout check tells a label
+  from a name.
+- **Only free text may end in an ellipsis**: names, titles, descriptions,
+  IDs, URLs. Then its full value is there on hover or focus (`CellText`
+  sets `title`; a custom cell sets it, or a tooltip), and one column (the
+  name) takes the width left over.
+- **Too many columns for the width**: pick a layout, don't squeeze.
+  - The table's compact layout (stacked rows or hidden columns, see "Phone
+    width" below) when a person scans it for one record. Its trigger counts
+    the content: pass each column's real minimum to
+    `tableMinWidth(columnConfig, { created: 150, capacity: 160 })`, so
+    `useCompactLayout` switches before a value is cut, not after.
+  - Sideways scroll inside the table when every column is needed side by
+    side (a person turned on every column, data of unknown shape). Once the
+    table scrolls anyway, each column gets its content's width: `minWidth`
+    from the header and the usual value, never a value that cuts them.
+    Never page-level sideways scroll.
+
+How to size a column: take the widest usual value (a date in the portal's
+format, a capacity of three-digit numbers, the longest status label) and the
+header at the table's font size (14px for bui, about 7.5px a character for
+digits and lower case), plus the cell's padding (24px in bui). In the
+core-components `Table`, `cellStyle: { whiteSpace: 'nowrap' }` and
+`headerStyle: { whiteSpace: 'nowrap' }` on the column keep the value and the
+header on one line, and `width` (or a `minWidth` in `cellStyle`) holds them.
+In the bui `Table`, a column's `minWidth` holds them: bui then shares the
+width out by `fr` but never gives a column less than its minimum, and
+`tableMinWidth` sums the minimums, so the compact layout takes over where
+they no longer fit. A header needs its text, the sort arrow's 20px when the
+column sorts (it takes its space while hidden) and the 24px padding. The
+Usage tables keep theirs in `LlmUsage/columnWidths.ts`.
+
+The layout check's `table-fit` rule enforces this on the rendered page: a
+cut-off header, and a short value cut off or wrapped, fail the check (the
+`layout-check` skill). Check `long-names` too: a name may end in an
+ellipsis there, a date may not.
+
+## bui Table (`@backstage/ui`)
+
+Data-driven: pass `columnConfig` + `data` (each row must have an `id: string |
+number`). Cells **must** return a cell component (`Cell`, `CellText`, or
+`CellProfile`) at the top level — bare text/fragments break the layout.
+
+```tsx
+import { Cell, CellText, ColumnConfig, Table } from '@backstage/ui';
+
+type Row = { id: string; name: string; status: string };
+
+const columnConfig: ColumnConfig<Row>[] = [
+  {
+    id: 'name',
+    label: 'Name',
+    isRowHeader: true,
+    cell: r => <CellText title={r.name} />,
+  },
+  // CellText renders title (+ optional description) as the standard cell text
+  {
+    id: 'status',
+    label: 'Status',
+    cell: r => (
+      <Cell>
+        <StatusBadge status={r.status} />
+      </Cell>
+    ),
+  },
+];
+
+<Table<Row>
+  columnConfig={columnConfig}
+  data={rows}
+  isPending={isLoading} // built-in loading state (`loading` is deprecated)
+  pagination={{ type: 'none' }} // or { type: 'page', ... }
+  emptyState={<Text>No results</Text>}
+/>;
+```
+
+Key points:
+
+- Declare `@backstage/ui` in the plugin's `package.json` (`"backstage:^"`).
+- `ColumnConfig` fields: `id`, `label`, `cell`, plus optional `isRowHeader`,
+  `isSortable`, `isHidden`, `width`/`minWidth`/`maxWidth`, `header`.
+- `Table` handles `isPending` / `emptyState` / `error` internally — you don't
+  need the manual loading/empty branches the core-components Table requires.
+- `CellText` takes `title` (required) + optional `description`, `leadingIcon`,
+  `href`. Use `Cell` to wrap arbitrary custom content.
+- For consumer-managed pagination/sort, pair with the `useTable` hook and spread
+  its `tableProps` (see `ConversationHistoryTable`).
+- `isSortable` sorts in-memory; there is still no built-in search/filter box.
+
+### Gotcha: the loading skeleton needs `data={undefined}`, not `[]`
+
+The animated skeleton (`TableBodySkeleton`) only renders when
+`isPending && data === undefined` (internally `isInitialLoading = pending &&
+!data`). If you pass `data={rows}` where `rows` is `[]` during load, `!data` is
+false, so the skeleton never shows and the `emptyState` flashes instead. Gate
+the data on your loading flag:
+
+```tsx
+<Table
+  columnConfig={columnConfig}
+  data={isLoading ? undefined : rows} // undefined → skeleton; [] → emptyState
+  isPending={isLoading}
+  emptyState={<Text>No results</Text>}
+/>
+```
+
+Then loading shows the skeleton, and only a settled empty result shows the
+empty state.
+
+### Phone width (≤599.95px): bui tables squash, they do not scroll
+
+bui's `Table` is `table-layout: fixed; width: 100%` with `overflow: hidden`
+cells. At phone width (343px of content at 375) it crams every column in:
+five columns leave the name a ~30px ellipsis and **clip the action buttons**.
+Its own scroll container (`ResizableTableContainer`) engages only when a column
+declares `width`/`minWidth`/`maxWidth`/`defaultWidth`, and then every column
+keeps at least its minimum (react-aria's 75px for a column without one), so
+the table scrolls inside its card once they no longer fit. An `overflowX:
+auto` wrapper around the table does nothing. So every bui table on an agent-shell page picks one
+phone pattern (helpers in `@giantswarm/backstage-plugin-ui-react`):
+
+| Kind of table                                                                                     | Phone pattern                                                                                                                                                                                                              |
+| ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A list a person scans to open or act on one item (sessions, connectors, served models, GPU pools) | **Stacked rows**: swap the table for `StackedRowList` when `usePhoneLayout()` is true. Line 1: title (a link; its hit area is the whole row), status, actions. Line 2: 2–4 facts joined by " · ".                          |
+| An analytic table, a name plus numbers (cost by agent/model, capacity)                            | **Column hiding**: `usePhoneColumns(columnConfig, ['agent', 'cost'])` sets `isHidden` on every column not kept (the `isRowHeader` column is always kept). Fold a dropped identity fact into the name cell's `description`. |
+| Data of unknown shape (a tool's result rows)                                                      | **Scroll inside the table**: `minWidth: 120` on each column, so bui's resizable container scrolls sideways. Never page-level horizontal scroll.                                                                            |
+
+```tsx
+const isPhone = usePhoneLayout();
+const columns = usePhoneColumns(columnConfig, ['agent', 'sessions', 'cost']);
+
+isPhone ? (
+  <ShowMore items={rows} noun="session">
+    {visible => (
+      <StackedRowList
+        aria-label="Sessions"
+        rows={visible.map(row => ({
+          id: row.id,
+          title: row.title,
+          href: row.href,
+          status: <StatusDot tone={row.tone} label={row.state} />,
+          facts: [row.agent, row.environment, row.started],
+          actions: <SessionMenu session={row} />,
+        }))}
+      />
+    )}
+  </ShowMore>
+) : (
+  <Table columnConfig={columns} data={rows} pagination={{ type: 'none' }} />
+);
+```
+
+A table of many columns gets as squeezed above phone width: beside the side
+rail at 768px a card is about 424px wide. There, measure the container instead
+of the viewport: `useCompactLayout(tableMinWidth(columnConfig))` returns a ref
+and whether to take the compact layout, true at phone width and while the
+element the ref is on is narrower than the shown columns need (160px for the
+name column, 80px for each other one, or a column's own minimum passed to
+`tableMinWidth`). Put the ref on a wrapper whose width comes from its parent,
+branch on the answer instead of `usePhoneLayout()`, and pass it to
+`usePhoneColumns(columnConfig, keep, { compact })`. It measures before the
+first paint and re-renders only when the answer flips. The Hosting · Capacity
+and Model hosting tables do this; it is meant for the other wide tables too.
+`mockContainerWidth` (`ui-react/testUtils`) drives the width in a test.
+A table with more steps than full and compact (drop a column, then
+another, then stack) measures once with `useWidthTier([full, …])`, which
+returns how many of the widths the container is narrower than; the
+sessions list does this.
+
+Invariants:
+
+- An **actions column never disappears** at phone width: it becomes the row's
+  trailing ⋯ menu or button (`StackedRowItem.actions`). Destructive actions
+  (Remove pool, Remove cache) go in the ⋯ menu.
+- A hidden column's value stays reachable: in the row's second line, the name
+  cell's description, or the item's own page. Text that lived only in a
+  `title=` tooltip goes inline (`StackedRowItem.details`); a phone never shows
+  `title=`.
+- No shell page renders a core-components table, and the shell has no rule
+  that makes one scroll: one added at phone width widens the page.
+
+Test the phone branch in jsdom with `mockPhoneLayout()` (and
+`mockDesktopLayout()` for the other branch), imported from
+`@giantswarm/backstage-plugin-ui-react/testUtils`; call `restore()` on the
+result in `afterEach`. jsdom has no `matchMedia`, so without it only the desktop branch
+is ever tested.
+
+## Table Structure
+
+### File Organization
+
+- Table components are organized in dedicated directories (e.g., `DeploymentsTable/`, `ClustersTable/`)
+- Separate column definitions into a `columns.tsx` file
+- Export a `getInitialColumns` function that accepts `visibleColumns` and returns `TableColumn<T>[]`
+- Define column field names as a const object (e.g., `DeploymentColumns`, `ClusterColumns`)
+
+### Table Component Pattern
+
+```tsx
+import { Table, TableColumn } from '@backstage/core-components';
+import { useTableColumns } from '@giantswarm/backstage-plugin-ui-react';
+
+// Use generic Table component with typed data
+<Table<YourDataType>
+  isLoading={loading}
+  options={{
+    pageSize: 50,
+    pageSizeOptions: [10, 25, 50, 100],
+    emptyRowsWhenPaging: false,
+    columnsButton: true, // Enable column visibility toggle
+  }}
+  data={data}
+  columns={columns}
+  style={{ width: '100%' }}
+  title={<Typography variant="h6">Title ({data.length})</Typography>}
+/>;
+```
+
+## Column Definitions
+
+### Required Imports
+
+```tsx
+import {
+  isTableColumnHidden,
+  semverCompareSort,
+  sortAndFilterOptions,
+} from '@giantswarm/backstage-plugin-ui-react';
+```
+
+### Column Visibility Persistence
+
+- Use `useTableColumns(TABLE_ID)` hook to persist column visibility in localStorage
+- Apply visibility with `isTableColumnHidden()` when generating columns:
+
+```tsx
+return columns.map(column => ({
+  ...column,
+  hidden: isTableColumnHidden(column.field, {
+    defaultValue: Boolean(column.hidden),
+    visibleColumns,
+    queryParameters, // Optional: show columns if they have query params
+  }),
+}));
+```
+
+## Sorting & Filtering
+
+### Semver Data
+
+- Use `customSort: semverCompareSort(row => row.version)` for version columns
+
+### Custom String Sorting/Filtering
+
+- Use `sortAndFilterOptions(row => row.fieldValue)` to add both `customSort` and `customFilterAndSearch`
+- Useful when the display value differs from the data value:
+
+```tsx
+{
+  title: 'Source',
+  field: 'source',
+  render: row => formatSource(row.sourceKind, row.sourceName),
+  ...sortAndFilterOptions(row => `${row.sourceKind} ${row.sourceName}`),
+}
+```
+
+### Gotcha: search matches the raw `field` value, not the rendered label
+
+The built-in quick-search ignores `render` and matches the raw value at
+`row[field]`. A column that renders a different label (e.g. `field: 'source'`
+holding `'gitops' | 'manual'` but rendering "GitOps" / "Manually added") will
+not match what the user sees typed in the search box. Fix it per column:
+
+- Add a `customFilterAndSearch` that matches the displayed label, **or**
+- Set `searchable: false` if the column should not participate in search (e.g. a
+  badge-only column).
+
+```tsx
+{
+  field: 'source',
+  customFilterAndSearch: (query, row) =>
+    SOURCE_LABELS[row.source].includes(query.toLowerCase()),
+  render: row => <SourceBadge source={row.source} />,
+}
+```
+
+### Token-boundary search
+
+The shared Table only **filters** rows on search; it cannot re-order them by a
+relevance score. If you need word-boundary matching (so `"dex"` does not match
+`"index"`), implement it inside `customFilterAndSearch` with a small tokenizer
+(split on `/[^a-z0-9]+/`, require each query token to be a prefix of some text
+token). Do not expect relevance ranking — only matching is achievable.
+
+### Prefer plain row objects over class instances
+
+Map domain objects (e.g. `KubeObject` subclasses) to a plain `RowType` in a data
+provider before passing them as `data`. Default `field`-based sort/search work on
+plain values; class getters do not, and you would otherwise need `customSort` +
+`customFilterAndSearch` on every column.
+
+### DateTime Columns
+
+- Set `type: 'datetime'` for automatic date sorting
+- Use `<DateComponent value={row.date} relative />` for rendering
+
+## Common Patterns
+
+### Link Columns with Route Refs
+
+A link in a cell is a text link: underlined and in the link colour (see "Links"
+in `docs/ui.md`). Only a title whose hit area is the whole row, as in
+`StackedRowList`, drops the underline.
+
+```tsx
+render: row => {
+  const LinkWrapper = () => {
+    const routeLink = useRouteRef(detailsRouteRef);
+    return (
+      <Link component={RouterLink} to={routeLink({ id: row.id })}>
+        <Typography variant="inherit" noWrap>{row.name}</Typography>
+      </Link>
+    );
+  };
+  return <LinkWrapper />;
+},
+```
+
+### Columns with Subvalues
+
+```tsx
+import { SubvalueCell } from '@backstage/core-components';
+
+render: row => (
+  <SubvalueCell value={<MainContent />} subvalue={row.description} />
+),
+```
+
+### Hidden by Default Columns
+
+- Set `hidden: true` on columns that should be hidden by default
+- Users can toggle visibility via the columns button
+
+### Refresh Action
+
+```tsx
+actions={[
+  {
+    icon: () => <SyncIcon />,
+    tooltip: 'Reload data',
+    isFreeAction: true,
+    onClick: () => retry(),
+  },
+]}
+```
+
+### Not Available State
+
+- Use `<NotAvailable />` component when data is missing
+
+### Responsive column widths & truncation
+
+To make one column (e.g. Name) absorb the remaining space while the rest stay
+compact, give the secondary columns explicit widths and the primary one
+`width: 'auto'`, and enable fixed layout:
+
+```tsx
+options={{ /* ... */ tableLayout: 'fixed' }}
+// columns:
+{ field: 'name', width: 'auto', /* ... */ }
+{ field: 'namespace', width: '15%' }
+{ field: 'source', width: '10%' }
+```
+
+With `tableLayout: 'fixed'`, cells honor the declared widths. This also makes
+**CSS ellipsis responsive**: render the name with `noWrap` so it truncates to
+the actual cell width (full text on a wide viewport, ellipsis only when narrow),
+and keep the full value in a `title`. Do **not** hard-truncate with
+`String.slice(0, N)` — that is fixed regardless of available width and loses
+information on wide screens.
+
+```tsx
+<Link to={to} title={row.name} noWrap display="block">
+  {row.name}
+</Link>
+```
+
+### Custom toolbar content (e.g. a "Create" button)
+
+To add a custom element next to the search / columns button, override
+`components.Toolbar` and render the default `MTableToolbar` plus your element.
+Requires declaring `@material-table/core` in the plugin's `package.json`.
+
+```tsx
+import { MTableToolbar } from '@material-table/core';
+
+// Memoize so the toolbar (and its search box / any open dialog) is not
+// remounted on every data refetch:
+const ToolbarComponent = useMemo(
+  () => (props: React.ComponentProps<typeof MTableToolbar>) => (
+    <Box display="flex" alignItems="center">
+      <Box flexGrow={1}>
+        <MTableToolbar {...props} />
+      </Box>
+      <Box flexShrink={0} mr={2}>
+        <CreateButton />
+      </Box>
+    </Box>
+  ),
+  [/* deps the button needs */],
+);
+
+<Table
+  components={{ Toolbar: ToolbarComponent }}
+  options={{ columnsButton: true }}
+/>;
+```
+
+Avoid the `components.Action` hack (a dummy free-action whose icon renders the
+button): material-table renders `Action` once per entry in `actions`, so it
+silently duplicates the moment a second action is added.
+
+## Faceted Sidebar Filters
+
+List pages (Deployments, Installations, Workflows) filter via a sidebar of
+facets, not just the built-in search. All building blocks come from
+`@giantswarm/backstage-plugin-ui-react`: `FiltersLayout`, `MultiplePicker`
+(+ `MultiplePickerOption`), `useFilters`, `FacetFilter`, `FiltersData`. Reference:
+`plugins/gs/src/components/deployments/` (`DeploymentsDataProvider`,
+`DeploymentsPage/filters/`).
+
+1. **Filter classes** implement `FacetFilter` (`filter(row)` + `toQueryValue()`),
+   one per facet, returning `true` when no values are selected.
+2. **A data provider** runs `useFilters<MyFilters>()` and computes
+   `filteredData = data.filter(row => activeFilters.every(f => f.filter(row)))`;
+   it exposes `{ data, filteredData, filters, queryParameters, updateFilters }`
+   via context. Derive facet options from `data` (not `filteredData`) so options
+   don't disappear as the user selects.
+3. **Picker components** read the context and render `<MultiplePicker autocomplete>`,
+   calling `updateFilters({ key: new MyFilter(values) })`.
+4. **Layout**: wrap in `<FiltersLayout>` with `.Filters` (the pickers) and
+   `.Content` (the Table). `useFilters` persists selections to `?filters[...]`
+   URL params automatically.

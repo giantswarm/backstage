@@ -4,6 +4,7 @@ import { categoricalColors } from '@giantswarm/backstage-plugin-ui-react';
 import {
   MEASURE_KEYS,
   measureSlot,
+  RESERVED_RED_SLOT,
   useMeasureColor,
   type MeasureKey,
 } from './measures';
@@ -56,6 +57,12 @@ describe('measure slots', () => {
     }
   });
 
+  it('leaves the red slot to errors', () => {
+    for (const measure of MEASURE_KEYS) {
+      expect(measureSlot(measure)).not.toBe(RESERVED_RED_SLOT);
+    }
+  });
+
   it.each(Object.entries(TABLE_COLUMNS))(
     'gives every column of %s a distinct hue',
     (_table, columns) => {
@@ -64,18 +71,6 @@ describe('measure slots', () => {
       expect(new Set(slots).size).toBe(columns.length);
     },
   );
-
-  it('shares a hue only between measures no table shows together', () => {
-    // `cost` covers measured and estimated spend, `calls` covers model, tool
-    // and MCP-server calls, `ratio` covers share-of-spend and $/1M. Each pair
-    // is safe only because it never co-occurs — which the per-table assertion
-    // above is what actually guards.
-    const shared = MEASURE_KEYS.filter(m =>
-      ['calls', 'cost', 'ratio', 'tokens'].includes(m),
-    );
-
-    expect(shared).toHaveLength(4);
-  });
 });
 
 describe('useMeasureColor', () => {

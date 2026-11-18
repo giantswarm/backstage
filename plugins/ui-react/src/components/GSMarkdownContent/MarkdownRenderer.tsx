@@ -11,7 +11,9 @@ import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { CodeSnippet, Link } from '@backstage/core-components';
 import { makeStyles } from '@material-ui/core/styles';
+import { ExternalLink } from '../ExternalLink';
 import { MermaidDiagram } from '../MermaidDiagram';
+import { isExternalHref } from '../../utils/isExternalHref';
 
 // The renderer of core-components' `MarkdownContent` (the same react-markdown,
 // remark-gfm, rehype-raw and rehype-sanitize releases, components and table
@@ -159,8 +161,19 @@ const components: Components = {
   h6: heading,
   // The id stays, so a footnote's back-reference lands on its reference, and
   // so does its label ("Back to content"), so it reads as more than "↩".
-  a: ({ href, children, id, title, target, rel, 'aria-label': ariaLabel }) =>
-    href ? (
+  // A link out of the portal is an `ExternalLink`: a new tab, which it says.
+  a: ({ href, children, id, title, target, rel, 'aria-label': ariaLabel }) => {
+    if (!href) {
+      return <>{children}</>;
+    }
+    if (isExternalHref(href)) {
+      return (
+        <ExternalLink href={href} display="inline" title={title}>
+          {children}
+        </ExternalLink>
+      );
+    }
+    return (
       <Link
         to={href}
         id={id}
@@ -171,9 +184,8 @@ const components: Components = {
       >
         {children}
       </Link>
-    ) : (
-      <>{children}</>
-    ),
+    );
+  },
 };
 
 const gfmRehypePlugins: ComponentProps<typeof ReactMarkdown>['rehypePlugins'] =

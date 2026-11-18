@@ -175,9 +175,16 @@ export function ToolDetailPanel({
   };
 
   const executeButton = (
-    <Button variant="primary" isPending={toolRun.isPending} onClick={submit}>
-      {toolRun.isPending ? 'Running…' : 'Run'}
-    </Button>
+    <Flex gap="2" align="center">
+      <Button variant="primary" isPending={toolRun.isPending} onClick={submit}>
+        {toolRun.isPending ? 'Running…' : 'Run'}
+      </Button>
+      {toolRun.isPending && (
+        <Button variant="secondary" onClick={toolRun.cancel}>
+          Cancel
+        </Button>
+      )}
+    </Flex>
   );
 
   if (isLoading) {

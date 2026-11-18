@@ -4,6 +4,7 @@ export {
   catalogFilterKey,
   isCatalogFiltered,
 } from './catalogFilters';
+export { TAGS_FACET_ID, tagsFacet } from './tagsFacet';
 export type {
   CatalogFacet,
   CatalogFilterDimension,

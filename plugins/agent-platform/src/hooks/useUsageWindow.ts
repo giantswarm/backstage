@@ -1,20 +1,28 @@
 import { useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  formatUsageWindowParam,
-  parseUsageWindowParam,
+  formatUsageWindow,
+  parseUsageWindow,
   USAGE_WINDOW_PARAM,
+  usageWindowDaysOnly,
+  type UsageWindow,
   type UsageWindowDays,
 } from '../lib/usageWindow';
 
 export type UsageWindowView = {
-  /** The window every gateway-derived Usage view reads, in whole days. */
+  /** The window the gateway views read: days back from today, or a month. */
+  window: UsageWindow;
+  /**
+   * The window as whole days, for the views that read days only (Your
+   * sessions, Connectors): the days window, or the default for a month.
+   */
   days: UsageWindowDays;
-  setDays: (days: UsageWindowDays) => void;
+  setWindow: (window: UsageWindow) => void;
 };
 
 /**
- * The Usage screen's selected time window, kept in the URL (`?window=7d`).
+ * The Usage screen's selected time window, kept in the URL (`?window=7d`,
+ * `?window=2026-10`).
  *
  * In the URL rather than in state so the scope survives a tab switch — the
  * second-level tabs are links that keep the query string — and travels in a
@@ -26,14 +34,14 @@ export type UsageWindowView = {
  */
 export function useUsageWindow(): UsageWindowView {
   const [searchParams, setSearchParams] = useSearchParams();
-  const days = parseUsageWindowParam(searchParams.get(USAGE_WINDOW_PARAM));
+  const window = parseUsageWindow(searchParams.get(USAGE_WINDOW_PARAM));
 
-  const setDays = useCallback(
-    (next: UsageWindowDays) => {
+  const setWindow = useCallback(
+    (next: UsageWindow) => {
       setSearchParams(
         current => {
           const params = new URLSearchParams(current);
-          const value = formatUsageWindowParam(next);
+          const value = formatUsageWindow(next);
           if (value === undefined) {
             params.delete(USAGE_WINDOW_PARAM);
           } else {
@@ -47,5 +55,5 @@ export function useUsageWindow(): UsageWindowView {
     [setSearchParams],
   );
 
-  return { days, setDays };
+  return { window, days: usageWindowDaysOnly(window), setWindow };
 }

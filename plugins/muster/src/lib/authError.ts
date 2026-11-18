@@ -19,7 +19,7 @@ export function isMusterAuthError(error: unknown): boolean {
 
 /** User-facing prompt shown in place of a raw transport error on a 401. */
 export const MUSTER_AUTH_PROMPT =
-  'Sign in to muster for this environment and try again.';
+  'Sign in to Muster for this environment and try again.';
 
 /**
  * Maps an error from a muster mutation (validate/save/run) to a message fit for

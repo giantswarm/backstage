@@ -24,9 +24,40 @@ export type KagentRequestErrorFields = {
 const REASONS: Record<string, string> = {
   token: 'no token for the environment',
   timeout: 'timed out',
-  unavailable: 'unreachable',
+  unavailable: 'temporarily unavailable',
   'server-error': 'server error',
 };
+
+/**
+ * What the page says when kagent is down for a moment: a write or a send that
+ * failed because the controller could not be reached through its gateway.
+ */
+export const KAGENT_UNAVAILABLE_MESSAGE =
+  'The Agent Platform is temporarily unavailable. Try again in a moment.';
+
+/**
+ * Whether a failed request is kagent being temporarily unavailable: the
+ * backend answered a 5xx with `reason: "unavailable"`, its word for a gRPC
+ * `Unavailable` from kagent or its gateway, as when the controller restarts
+ * and the gateway's connection to it is refused. Not kagent being absent,
+ * which the backend answers with a 404.
+ */
+export function isKagentUnavailable(error: unknown): boolean {
+  const { status, reason } = (error ?? {}) as KagentRequestErrorFields;
+  return status !== undefined && status >= 500 && reason === 'unavailable';
+}
+
+/**
+ * Whether a failed kagent read means "kagent is not deployed here": the
+ * backend's 404 for every such outcome (kagent's own, an unknown installation,
+ * a connection that failed at the socket), named `NotFoundError` by the
+ * client, or a `ServiceUnavailableError`. The common case across the fleet,
+ * not a failure to report or retry.
+ */
+export function isKagentNotDeployed(error: unknown): boolean {
+  const name = (error as Error | null | undefined)?.name;
+  return name === 'NotFoundError' || name === 'ServiceUnavailableError';
+}
 
 export function describeReadFailure(error: unknown): ReadFailure {
   const { status, reason, requestId } = (error ??

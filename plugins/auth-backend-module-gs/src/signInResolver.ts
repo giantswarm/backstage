@@ -81,23 +81,13 @@ function verifiedEmail(
   return userInfo.email_verified === true ? userInfo.email : undefined;
 }
 
-function signInWithGuestUser(ctx: AuthResolverContext) {
-  const guestUserRef = 'user:default/guest';
-
-  return ctx.issueToken({
-    claims: {
-      sub: guestUserRef,
-      ent: [guestUserRef],
-    },
-  });
-}
-
 /**
  * Maps an OIDC identity onto a Backstage user.
  *
  * Identities from the Giant Swarm Dex connectors, directly or through the Dex
  * of gazelle and graveler, are looked up in the catalog, whose users live in
- * the `default` namespace. Every other identity resolves
+ * the `default` namespace; one the catalog cannot match is refused. Every
+ * other identity resolves
  * to `user:oidc/<name>` from the token's `sub`, which the issuer keeps unique
  * (Dex encodes the connector and upstream user id into it). Such users have
  * no catalog entity and never resolve into `default`; a token without a `sub`
@@ -145,12 +135,10 @@ async function signInGiantSwarmUser(
       ? ['metadata.name', userInfo.preferred_username]
       : ['spec.profile.email', verifiedEmail(userInfo)];
   if (!value) {
-    return signInWithGuestUser(ctx);
+    throw new NotAllowedError(
+      'The identity token carries no verified email to find you in the catalog',
+    );
   }
 
-  try {
-    return await ctx.signInWithCatalogUser({ filter: { [field]: value } });
-  } catch (err) {
-    return signInWithGuestUser(ctx);
-  }
+  return ctx.signInWithCatalogUser({ filter: { [field]: value } });
 }

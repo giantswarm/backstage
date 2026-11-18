@@ -31,6 +31,10 @@ export type LlmUsageViewModel = {
   /** True when the pinned scope is "all" and one installation was chosen for us. */
   isResolvedFromAll: boolean;
   notReachable: string[];
+  /** Why the state is `error`: the first failed query's error. */
+  error?: Error | null;
+  /** Why `usage.callsPerDay` is `null`: the daily-calls query's error. */
+  callsPerDayError?: Error | null;
 };
 
 /**
@@ -62,10 +66,8 @@ export function useLlmUsageView(
     hasInstallations,
   } = useUsageInstallation();
 
-  const { usage, isLoading, isError, isAvailable } = useLlmUsage(
-    installation,
-    options,
-  );
+  const { usage, isLoading, isError, error, callsPerDayError, isAvailable } =
+    useLlmUsage(installation, options);
 
   const state = ((): LlmUsageState => {
     if (!isResolving && !hasInstallations) {
@@ -92,5 +94,13 @@ export function useLlmUsageView(
     return hasAnyLlmUsage(usage) ? 'ready' : 'empty';
   })();
 
-  return { state, usage, installation, isResolvedFromAll, notReachable };
+  return {
+    state,
+    usage,
+    installation,
+    isResolvedFromAll,
+    notReachable,
+    error,
+    callsPerDayError,
+  };
 }

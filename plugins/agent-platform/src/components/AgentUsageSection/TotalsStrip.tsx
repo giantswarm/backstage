@@ -12,6 +12,7 @@ import {
   USD,
   type Currency,
 } from '../../lib/formatNumbers';
+import { lastDaysNoun } from '../../lib/usageWindow';
 
 const useStyles = makeStyles((theme: Theme) => ({
   strip: {
@@ -101,7 +102,7 @@ export function TotalsStrip({
   currency?: Currency;
 }) {
   const classes = useStyles();
-  const windowNote = `in the last ${windowDays} days`;
+  const windowNote = `in ${lastDaysNoun(windowDays)}`;
   const spend = sessionSpend(totals, rates);
   const narrowed = narrowedFromDays !== undefined;
   const notNarrowable = (figure: string) =>

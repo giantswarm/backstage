@@ -2,6 +2,10 @@ import {
   KubeObject,
   Provenance,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
+  parseTags,
+  TAGS_ANNOTATION,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * Provenance detection is implemented in `kubernetes-react`: it only reads labels
@@ -222,7 +226,8 @@ function quoteScalar(value: string): string {
  * GitOps PR path. This is the artifact an operator commits to the
  * management-clusters repo; the app never applies it live (GitOps-managed
  * resources are read-only here). The apiVersion/kind come from the object, so
- * the same emitter serves both kinds.
+ * the same emitter serves both kinds. Its tags (`ui.giantswarm.io/tags`) ride
+ * along as the one annotation the manifest carries, so a commit keeps them.
  */
 export function toManifestYaml(
   obj: KubeObject,
@@ -231,12 +236,16 @@ export function toManifestYaml(
   const spec = (
     obj as unknown as { jsonData: { spec?: Record<string, unknown> } }
   ).jsonData.spec;
+  const tags = parseTags(obj.getAnnotations()?.[TAGS_ANNOTATION]);
   const manifest = {
     apiVersion: obj.getApiVersion() || 'muster.giantswarm.io/v1alpha1',
     kind: resourceKind(obj),
     metadata: {
       name: obj.getName(),
       namespace: obj.getNamespace() ?? defaultNamespace,
+      ...(tags.length > 0
+        ? { annotations: { [TAGS_ANNOTATION]: tags.join(',') } }
+        : {}),
     },
     spec: spec ?? {},
   };

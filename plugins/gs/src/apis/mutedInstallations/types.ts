@@ -15,6 +15,11 @@ export interface MutedInstallationsApi {
   /** Turn an installation off (muted=true) or back on (muted=false). */
   setMuted(installation: string, muted: boolean): void;
   toggle(installation: string): void;
+  /**
+   * Turn several installations off or back on at once, with one write and one
+   * notification.
+   */
+  setMutedMany(installations: string[], muted: boolean): void;
   /** Sorted snapshot of currently-muted installation names. */
   getSnapshot(): string[];
   /**

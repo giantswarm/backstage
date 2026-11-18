@@ -96,6 +96,15 @@ const shellPathMessage =
 const shellPathPattern =
   '/^\\x2F(agent-platform|customize|sessions|usage|profile)(\\x2F|\\?|#|$)/';
 
+const fixtureImportMessage =
+  'Fixture code stays out of production builds: load it with a dynamic ' +
+  "import() behind process.env.NODE_ENV !== 'production', never with a " +
+  'static import. docs/fixtures.md.';
+
+const tooltipClassNameMessage =
+  "bui's Tooltip drops a className: it applies to no element. Style an " +
+  'element inside the tooltip, or pass `style`.';
+
 module.exports = {
   root: true,
   plugins: ['giantswarm'],
@@ -143,6 +152,7 @@ module.exports = {
         '**/__fixtures__/**',
         '**/fixtures/**',
         '**/testUtils/**',
+        '**/__testUtils__/**',
         '**/testing/**',
         '**/*Fixtures.ts',
       ],
@@ -156,6 +166,60 @@ module.exports = {
           {
             selector: `TemplateLiteral > TemplateElement:first-child[value.raw=${shellPathPattern}]`,
             message: shellPathMessage,
+          },
+        ],
+      },
+    },
+    {
+      // A static import puts a fixture module in the production bundle
+      // (docs/fixtures.md). The core rule checks import and export
+      // declarations only, so the factories' dynamic `import()` passes. Tests,
+      // stories and the fixture modules themselves may import fixtures.
+      files: ['plugins/*/src/**/*.ts?(x)', 'packages/app/src/**/*.ts?(x)'],
+      excludedFiles: [
+        '**/*.test.ts?(x)',
+        '**/*.stories.tsx',
+        '**/setupTests.ts',
+        '**/testUtils/**',
+        '**/__testUtils__/**',
+        '**/__fixtures__/**',
+        '**/fixtures/**',
+        '**/*FixtureApi.ts',
+        '**/*Fixtures.ts',
+      ],
+      rules: {
+        'giantswarm/no-fixture-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: [
+                  '**/*FixtureApi',
+                  '**/*Fixtures',
+                  '**/fixtures',
+                  '**/fixtures/**',
+                  '**/__fixtures__/**',
+                ],
+                message: fixtureImportMessage,
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      // bui's `Tooltip` declares `className` but attaches it to no element
+      // (`useDefinition`'s default target, `root`, is not one of its class
+      // keys), so a class on it type-checks and does nothing. An error: the
+      // tree has none, and a copy only spreads the dead class.
+      files: ['**/*.tsx'],
+      rules: {
+        'giantswarm/no-restricted-bui-syntax': [
+          'error',
+          {
+            selector:
+              "JSXOpeningElement[name.name='Tooltip'] > JSXAttribute[name.name='className']",
+            message: tooltipClassNameMessage,
           },
         ],
       },

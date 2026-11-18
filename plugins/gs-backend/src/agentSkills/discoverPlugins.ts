@@ -72,9 +72,10 @@ export function pluginsOf(
       formats.set(claudeRoot, 'claude-code');
     }
     const root = manifestRoot(path, AGENT_PLUGINS_MANIFEST);
-    // `.claude-plugin/plugin.json` also ends in `/plugin.json`: its root is
-    // the Claude plugin's, never a `.claude-plugin` package.
-    if (root !== undefined && !root.endsWith('.claude-plugin')) {
+    // A hidden directory holding a `plugin.json` (`.claude-plugin`, and other
+    // tools' `.codex-plugin` or `.cursor-plugin`) is a manifest of its parent,
+    // never a package of its own.
+    if (root !== undefined && !(root.split('/').pop() ?? '').startsWith('.')) {
       formats.set(root, 'agent-plugins');
     }
   }

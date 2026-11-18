@@ -40,33 +40,4 @@ describe('AzureASOManagedControlPlane', () => {
   it('returns undefined without a spec and a status', () => {
     expect(makeControlPlane().getK8sVersion()).toBeUndefined();
   });
-
-  describe('matchesRef', () => {
-    it('matches a reference with apiGroup', () => {
-      expect(
-        AzureASOManagedControlPlane.matchesRef({
-          apiGroup: 'infrastructure.cluster.x-k8s.io',
-          kind: 'AzureASOManagedControlPlane',
-        }),
-      ).toBe(true);
-    });
-
-    it('matches a reference with apiVersion', () => {
-      expect(
-        AzureASOManagedControlPlane.matchesRef({
-          apiVersion: 'infrastructure.cluster.x-k8s.io/v1beta1',
-          kind: 'AzureASOManagedControlPlane',
-        }),
-      ).toBe(true);
-    });
-
-    it('does not match a KubeadmControlPlane reference', () => {
-      expect(
-        AzureASOManagedControlPlane.matchesRef({
-          apiGroup: 'controlplane.cluster.x-k8s.io',
-          kind: 'KubeadmControlPlane',
-        }),
-      ).toBe(false);
-    });
-  });
 });

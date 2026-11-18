@@ -16,12 +16,19 @@ import {
   useInstallationInventory,
   useInstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
-import { musterSignInRequiredOf } from '@giantswarm/backstage-plugin-muster';
-import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  musterPollingOptions,
+  musterServerListQueryKey,
+  musterSignInRequiredOf,
+  useMusterServerAvailability,
+} from '@giantswarm/backstage-plugin-muster';
+import {
+  isAwaitingData,
+  type PollingQuery,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import { WorkspaceManagerClient } from '../../apis/WorkspaceManagerClient';
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
-import { useMusterServerAvailability } from '../../hooks/useMusterServerAvailability';
 import { useAwaitedSyncs } from '../../hooks/useWorkspaceActions';
 import { forgetEndedSyncs } from '../../lib/awaitedSyncs';
 import { musterWorkspacesQueryKey } from '../../lib/queryKeys';
@@ -34,6 +41,10 @@ import {
   WORKSPACE_MANAGER_SERVER,
   type WorkspaceList,
 } from '../../lib/workspaceManager';
+import {
+  isPortalSessionRefusal,
+  PortalSessionEndedError,
+} from '../../lib/portalSession';
 
 /** The address's Organization scope: `?organization=<name>`. */
 export const ORGANIZATION_SEARCH_PARAM = 'organization';
@@ -68,6 +79,13 @@ export type WorkspacesData = {
   rows: WorkspaceRow[];
   /** Some installation's list has not answered yet. */
   isLoading: boolean;
+  /**
+   * How many workspaces the person has in scope, across every Organization
+   * (`rows` holds only the picked one's): `'loading'` until the inventory and
+   * every installation in scope answered, `undefined` when one could not be
+   * read (see `failures`), so never a partial total.
+   */
+  totalCount: number | 'loading' | undefined;
   /** Why an installation's workspaces could not be read, by installation. */
   failures: Record<string, string>;
   /**
@@ -76,6 +94,13 @@ export type WorkspacesData = {
    * 401's reason, never from its wording.
    */
   signIns: string[];
+  /**
+   * The portal refused the person's session token on a read: a list
+   * (`PortalSessionEndedError`) or the server list that says where
+   * workspace-manager runs. A sign-in to the portal is the way on, not a
+   * retry.
+   */
+  sessionEnded: boolean;
   /** Reads every installation's workspaces again. */
   retry: () => void;
 };
@@ -153,6 +178,9 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
       signIns: installations.filter((_, index) =>
         Boolean(musterSignInRequiredOf(results[index]?.error)),
       ),
+      sessionEnded: results.some(
+        result => result?.error instanceof PortalSessionEndedError,
+      ),
       isAwaiting: results.some(result => isAwaitingData(result)),
     }),
     [installations],
@@ -179,8 +207,11 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
         return list;
       },
       retry: false,
-      refetchInterval: (query: { state: { data?: WorkspaceList } }) =>
+      // While a sync or a deletion is under way; not from a hidden tab, not
+      // after workspace-manager answered that the person is not signed in.
+      ...musterPollingOptions((query: PollingQuery<WorkspaceList>) =>
         refetchInterval(installation, query.state.data),
+      ),
       refetchOnWindowFocus: (query: { state: { data?: WorkspaceList } }) =>
         refetchInterval(installation, query.state.data) ? 'always' : false,
     })),
@@ -198,7 +229,7 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
     // An installation whose muster did not answer is asked again whether it
     // has the workspace-manager.
     void queryClient.invalidateQueries({
-      queryKey: ['muster', 'agent-platform', 'mcp-servers'],
+      queryKey: musterServerListQueryKey(),
     });
   }, [queryClient, installations]);
 
@@ -253,6 +284,13 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
     [lists.errors, unreachableKey],
   );
 
+  // Also the reads that say which installation runs workspace-manager (its
+  // server list, `/installations`): refused, no list is ever asked for.
+  const sessionEnded =
+    lists.sessionEnded ||
+    isPortalSessionRefusal(availability.error) ||
+    isPortalSessionRefusal(availability.installationsError);
+
   let isAvailable: boolean | undefined;
   if (installations.length > 0) {
     isAvailable = true;
@@ -265,6 +303,13 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
     // inventory still probes, or a muster did not answer, it may be there,
     // and a deep link to the tab must not be told otherwise.
     isAvailable = false;
+  }
+
+  let totalCount: number | 'loading' | undefined = allRows.length;
+  if (isLoading || isInventoryPending) {
+    totalCount = 'loading';
+  } else if (Object.keys(failures).length > 0) {
+    totalCount = undefined;
   }
 
   const value = useMemo<WorkspacesData>(
@@ -284,11 +329,14 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
           (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
         ),
       isLoading,
+      totalCount,
       failures,
       signIns,
+      sessionEnded,
       retry,
     }),
     [
+      sessionEnded,
       allRows,
       awaited,
       failures,
@@ -296,6 +344,7 @@ export function WorkspacesDataProvider({ children }: { children: ReactNode }) {
       installations,
       isAvailable,
       isLoading,
+      totalCount,
       organization,
       organizations,
       setOrganization,

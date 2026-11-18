@@ -75,7 +75,8 @@ test('agent egress: a tls:// service needs a port and lands on the Configuration
       'the Configuration card lists the tls:// service under Extra egress',
     ).toBeVisible({ timeout: 60_000 });
     // A link on the card's tinted surface reads as one: the shell's link
-    // colour and a solid underline (agent-shell.css).
+    // colour and a solid underline, as every text link in the shell does
+    // (agent-shell.css).
     const link = card.getByRole('link').first();
     await expect(link).toHaveCSS('color', 'rgb(0, 96, 156)');
     await expect(link).toHaveCSS('text-decoration-line', 'underline');

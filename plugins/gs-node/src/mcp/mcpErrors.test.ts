@@ -1,8 +1,14 @@
 import {
+  SdkErrorCode,
+  SdkHttpError,
+  UnauthorizedError,
+} from '@modelcontextprotocol/client';
+import {
   describeMcpFailure,
   isClosedClientError,
   isLostSessionError,
   isRecoverableSessionError,
+  isUnauthorizedTransportError,
 } from './mcpErrors';
 
 /** What `@ai-sdk/mcp`'s http transport throws: an MCPClientError with the status. */
@@ -142,5 +148,35 @@ describe('describeMcpFailure', () => {
       undefined,
     );
     expect(describeMcpFailure(undefined)).toBeUndefined();
+  });
+});
+
+describe('the official MCP SDK errors', () => {
+  function sdkHttpError(status: number, text: string) {
+    return new SdkHttpError(
+      SdkErrorCode.ClientHttpNotImplemented,
+      `Error POSTing to endpoint: ${text}`,
+      { status, statusText: '', text },
+    );
+  }
+
+  it('reads a lost session from a 404 on a POST', () => {
+    const error = sdkHttpError(404, 'mcp: session not found');
+    expect(isLostSessionError(error)).toBe(true);
+    expect(describeMcpFailure(error)).toBe(
+      'the MCP session was lost and could not be re-established',
+    );
+  });
+
+  it('names the status of any other HTTP answer', () => {
+    expect(describeMcpFailure(sdkHttpError(502, 'bad gateway'))).toBe(
+      'the muster endpoint answered HTTP 502',
+    );
+  });
+
+  it('leaves a 401 to the proxies and reports it as one', () => {
+    const error = new UnauthorizedError();
+    expect(describeMcpFailure(error)).toBeUndefined();
+    expect(isUnauthorizedTransportError(error)).toBe(true);
   });
 });

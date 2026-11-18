@@ -3,7 +3,7 @@ import {
   LoggerService,
   RootConfigService,
 } from '@backstage/backend-plugin-api';
-import { InputError } from '@backstage/errors';
+import { AuthenticationError, InputError } from '@backstage/errors';
 import { GithubCredentialsProvider } from '@backstage/integration';
 import { z } from 'zod/v3';
 import express from 'express';
@@ -15,7 +15,6 @@ import {
 import {
   discoverAgentSkills,
   GitHubApiError,
-  parseRepoUrl,
   SkillDiscoverySnapshot,
 } from './agentSkills/discoverAgentSkills';
 import {
@@ -44,6 +43,13 @@ import {
 } from './agentSkills/skillDiscoveryCache';
 import { UpstreamReadGuard } from './agentSkills/upstreamReadGuard';
 import {
+  pullRequestBase,
+  skillRepositoriesByKey,
+  SkillRepository,
+} from './agentSkills/skillRepositories';
+import {
+  COMMIT_ID_RE,
+  isBelowPath,
   isSkillFilePath,
   MAX_INLINE_FILE_BYTES,
   needsFileBytes,
@@ -53,10 +59,20 @@ import {
 } from './agentSkills/skillFiles';
 import {
   containerRegistryServiceRef,
+  MUSTER_AUTH_HEADER,
+  MusterServerNotConnectedError,
   mimirServiceRef,
+  reportedErrorHandler,
 } from '@giantswarm/backstage-plugin-gs-node';
+import {
+  requireWritableSource,
+  skillSourcesReader,
+  type SkillSource,
+} from './agentSkills/skillManagerSources';
 import { readSignedInConfig } from './signedInConfig';
 import {
+  isValidTag,
+  MAX_TAG_LENGTH,
   shortSha,
   SUBJECT_TOKEN_HEADER,
 } from '@giantswarm/backstage-plugin-gs-common';
@@ -80,6 +96,9 @@ export async function createRouter({
   logger?: LoggerService;
 }): Promise<express.Router> {
   const router = Router();
+  const readSkillSources = logger
+    ? skillSourcesReader(config, logger)
+    : undefined;
   const isGitHubUrl = (repoUrl: string): boolean =>
     repoUrl.toLowerCase().startsWith('https://github.com/');
   // The skill pull request carries a whole SKILL.md (up to
@@ -97,31 +116,34 @@ export async function createRouter({
   // Every skill read upstream on a cache miss: misses remembered, concurrent
   // reads shared and capped (security audit 1, M2).
   const upstreamReads = new UpstreamReadGuard();
-
   /**
-   * The entry of `agentPlatform.skills.repositories` a caller-named
-   * repository URL is, compared the way the caches key it (`repositoryKey`:
-   * case-insensitive, tolerating `.git` and trailing slashes); `undefined`
-   * for any other repository. The skill read routes act only on these, and
-   * read the configured URL rather than the caller's spelling of it: this
-   * backend can reach hosts the browser cannot, and reads with the portal's
-   * own GitHub token.
+   * The entries of `agentPlatform.skills.repositories`, parsed once (and the
+   * ones left out logged once), by `repositoryKey`. The skill routes act only
+   * on these, looked up the way the caches key a caller-named URL
+   * (case-insensitive, tolerating `.git` and trailing slashes), and read the
+   * configured URL rather than the caller's spelling of it: this backend can
+   * reach hosts the browser cannot, and reads with the portal's own GitHub
+   * token. An entry may be a plain URL or `{ url, ref, path, readOnly }` (see
+   * `readSkillRepositories`).
    */
-  const configuredSkillRepository = (repoUrl: string): string | undefined => {
-    const repositories =
-      config.getOptionalStringArray('agentPlatform.skills.repositories') ?? [];
-    const target = repositoryKey(repoUrl);
-    return repositories.find(url => repositoryKey(url) === target)?.trim();
-  };
+  const skillRepositories = skillRepositoriesByKey(config, logger);
+  const configuredSkillRepository = (
+    repoUrl: string,
+  ): SkillRepository | undefined =>
+    skillRepositories.get(repositoryKey(repoUrl));
+
+  /** The 404 for a skill outside the configured `path` of its repository. */
+  const outsideScanPath = (repository: SkillRepository, path: string) =>
+    new GitFetchError(
+      404,
+      `${path || 'The root'} is not below ${repository.path} in ${repository.url}.`,
+    );
 
   /** The 400 for a repository that is not a configured skill source. */
   const notConfigured = (repoUrl: string) =>
     new InputError(
       `${repoUrl} is not one of the configured skill repositories`,
     );
-
-  /** A full commit id (SHA-1 or SHA-256). */
-  const COMMIT_RE = /^[0-9a-f]{40}$|^[0-9a-f]{64}$/;
 
   /**
    * An optional git ref. Empty (`?ref=`) means the default branch, exactly
@@ -405,7 +427,10 @@ export async function createRouter({
    *   contentReadable } — `contentReadable` is false for a skill whose
    *   SKILL.md the portal could not read (listed from the tree, with the
    *   metadata at hand; the portal cannot show or edit it)
-   * - ref, commit: the ref read and the commit it resolved to
+   * - ref, commit: the ref read and the commit it resolved to; refKind:
+   *   branch, tag or commit, for a configured ref
+   * - proposable: whether the pull-request route takes a skill into this
+   *   source; path: the directory scanned ('' = the whole repository)
    * - truncated: true when some skills may be missing (repo too large)
    * - readAt: when the listing was read upstream (ISO time)
    * - stale: true when an older listing is served because upstream failed
@@ -425,11 +450,12 @@ export async function createRouter({
       throw new InputError(parsed.error.toString());
     }
 
-    const { ref } = parsed.data;
-    const repoUrl = configuredSkillRepository(parsed.data.repoUrl);
-    if (!repoUrl) {
+    const repository = configuredSkillRepository(parsed.data.repoUrl);
+    if (!repository) {
       throw notConfigured(parsed.data.repoUrl);
     }
+    const { url: repoUrl, path: scanPath, readOnly } = repository;
+    const ref = parsed.data.ref ?? repository.ref;
     const isGitHub = isGitHubUrl(repoUrl);
 
     try {
@@ -442,15 +468,45 @@ export async function createRouter({
               ? discoverAgentSkills({
                   repoUrl,
                   ref,
+                  ...(scanPath ? { scanPath } : {}),
                   githubCredentialsProvider,
                   previous,
                   logger,
                   signal,
                 })
-              : discoverAgentSkillsFromGit({ repoUrl, ref, signal }),
+              : discoverAgentSkillsFromGit({
+                  repoUrl,
+                  ref,
+                  ...(scanPath ? { scanPath } : {}),
+                  signal,
+                }),
           ),
+        scanPath,
       );
-      res.json({ ...result, readAt: new Date(readAt).toISOString(), stale });
+      // Whether Add skill can target this source: the rules the pull-request
+      // route enforces, said here so the portal does not repeat them. Only
+      // for the configured ref; a caller's own `ref` takes no pull requests.
+      const proposable =
+        !readOnly &&
+        isGitHub &&
+        ref === repository.ref &&
+        (result.refKind ?? 'branch') === 'branch' &&
+        pullRequestBase(repository) !== null;
+      res.json({
+        ...result,
+        proposable,
+        path: scanPath,
+        // A read-only source lists its skills; the portal proposes no
+        // changes to them (the pull-request route refuses).
+        ...(readOnly
+          ? {
+              skills: result.skills.map(skill => ({ ...skill, readOnly })),
+              readOnly,
+            }
+          : {}),
+        readAt: new Date(readAt).toISOString(),
+        stale,
+      });
     } catch (error) {
       // Forward the upstream status (repo not found → 404, rate limit →
       // 403/429, unreachable git host → 502) rather than letting it surface
@@ -479,7 +535,7 @@ export async function createRouter({
     path: z.string().default('').refine(isSkillDirectory, {
       message: 'path must be a relative skill directory',
     }),
-    commit: z.string().regex(COMMIT_RE, {
+    commit: z.string().regex(COMMIT_ID_RE, {
       message: 'commit must be a full commit id',
     }),
     ref: optionalRef,
@@ -505,15 +561,17 @@ export async function createRouter({
     repoUrl: string,
     ref: string | undefined,
     commit: string,
+    scanPath: string,
     mustRead?: string,
   ): Promise<SkillDiscoverySnapshot> => {
-    const key = `${repositoryKey(repoUrl)}#${ref ?? ''}#${commit}`;
+    const key = `${repositoryKey(repoUrl)}#${ref ?? ''}#${commit}#${scanPath}`;
     const cloneAt =
       (keep: string | undefined) => async (signal: AbortSignal) => {
         const snapshot = await discoverAgentSkillsFromGit({
           repoUrl,
           ref,
           commit,
+          ...(scanPath ? { scanPath } : {}),
           mustRead: keep,
           signal,
         });
@@ -612,13 +670,18 @@ export async function createRouter({
     if (!parsed.success) {
       throw new InputError(parsed.error.toString());
     }
-    const { path, commit, ref } = parsed.data;
-    const repoUrl = configuredSkillRepository(parsed.data.repoUrl);
-    if (!repoUrl) {
+    const { path, commit } = parsed.data;
+    const repository = configuredSkillRepository(parsed.data.repoUrl);
+    if (!repository) {
       throw notConfigured(parsed.data.repoUrl);
     }
+    const { url: repoUrl, path: scanPath } = repository;
+    const ref = parsed.data.ref ?? repository.ref;
 
     try {
+      if (!isBelowPath(path, scanPath)) {
+        throw outsideScanPath(repository, path);
+      }
       let known = skillDiscoveryCache.readContent(repoUrl, path, commit);
       let files = skillDiscoveryCache.readSkillFiles(repoUrl, path, commit);
       // A commit whose whole skill list is known has no skill at a path
@@ -664,7 +727,7 @@ export async function createRouter({
         }
       } else {
         if (!known || !files) {
-          const snapshot = await readGitCommit(repoUrl, ref, commit);
+          const snapshot = await readGitCommit(repoUrl, ref, commit, scanPath);
           const raw = snapshot.contents.get(path);
           if (raw === undefined) {
             throw noSkillAt(
@@ -763,11 +826,13 @@ export async function createRouter({
     if (!parsed.success) {
       throw new InputError(parsed.error.toString());
     }
-    const { path, commit, ref, file } = parsed.data;
-    const repoUrl = configuredSkillRepository(parsed.data.repoUrl);
-    if (!repoUrl) {
+    const { path, commit, file } = parsed.data;
+    const repository = configuredSkillRepository(parsed.data.repoUrl);
+    if (!repository) {
       throw notConfigured(parsed.data.repoUrl);
     }
+    const { url: repoUrl, path: scanPath } = repository;
+    const ref = parsed.data.ref ?? repository.ref;
     const isGitHub = isGitHubUrl(repoUrl);
     const filePath = repositoryFilePath(path, file);
     const notFound = (message: string) => {
@@ -775,6 +840,9 @@ export async function createRouter({
     };
 
     try {
+      if (!isBelowPath(path, scanPath)) {
+        throw outsideScanPath(repository, path);
+      }
       let gitRead: SkillDiscoverySnapshot | undefined;
       let list = skillDiscoveryCache.readSkillFiles(repoUrl, path, commit);
       // A commit whose file lists are known answers a missing skill from
@@ -783,7 +851,13 @@ export async function createRouter({
         if (isGitHub) {
           list = (await readGitHubCommitFiles(repoUrl, commit)).get(path);
         } else {
-          gitRead = await readGitCommit(repoUrl, ref, commit, filePath);
+          gitRead = await readGitCommit(
+            repoUrl,
+            ref,
+            commit,
+            scanPath,
+            filePath,
+          );
           list = gitRead.files?.get(path);
         }
       }
@@ -829,7 +903,7 @@ export async function createRouter({
           );
         } else if (!read) {
           const bytes = (
-            await readGitCommit(repoUrl, ref, commit, filePath)
+            await readGitCommit(repoUrl, ref, commit, scanPath, filePath)
           ).fileContents?.get(filePath);
           if (!bytes) {
             notFound(
@@ -878,6 +952,9 @@ export async function createRouter({
    * - description: frontmatter `description`
    * - instructions: the SKILL.md body (up to 100,000 characters; the route's
    *   JSON body limit is raised to fit it)
+   * - tags: frontmatter `metadata.tags`, each lowercase letters and digits
+   *   with single `-` between, at most 63 characters; replaces the skill's
+   *   tags (`[]` removes them); absent keeps an update's
    * - kind: `create` (default) or `update`
    * - path: for `update`, the skill directory ('' at the repository root)
    * - baseCommit: for `update`, the commit the edit started from — a 409 when
@@ -920,6 +997,15 @@ export async function createRouter({
         }),
       description: z.string().trim().min(1).max(1024),
       instructions: z.string().trim().min(1).max(MAX_SKILL_INSTRUCTIONS),
+      tags: z
+        .array(
+          z.string().refine(isValidTag, {
+            message: `Each tag must be lowercase letters and digits with single dashes between, at most ${MAX_TAG_LENGTH} characters`,
+          }),
+        )
+        // The limit is checked against the stored tags when the SKILL.md is
+        // written (`withSkillTags`): an unchanged list past it goes through.
+        .optional(),
       kind: z.enum(['create', 'update']).optional(),
       path: z
         .string()
@@ -929,14 +1015,19 @@ export async function createRouter({
         .optional(),
       baseCommit: z
         .string()
-        .regex(COMMIT_RE, { message: 'baseCommit must be a full commit id' })
+        .regex(COMMIT_ID_RE, { message: 'baseCommit must be a full commit id' })
         .optional(),
+      installation: z.string().min(1).optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       throw new InputError(parsed.error.toString());
     }
     const { repoUrl, skillName, description, instructions, kind } = parsed.data;
+    const tags =
+      parsed.data.tags === undefined
+        ? undefined
+        : [...new Set(parsed.data.tags)];
     if (kind === 'update') {
       if (parsed.data.path === undefined) {
         throw new InputError(
@@ -954,26 +1045,80 @@ export async function createRouter({
       );
     }
 
-    // Only the configured sources: the catalog lists these and nothing else,
-    // so a pull request anywhere else would add a skill no one can see.
-    const repositories =
-      config.getOptionalStringArray('agentPlatform.skills.repositories') ?? [];
-    const slugOf = (url: string) => {
-      const { owner, repo } = parseRepoUrl(url.trim().replace(/\/+$/, ''));
-      return `${owner}/${repo}`.toLowerCase();
-    };
-    const target = slugOf(repoUrl);
-    const configured = repositories.some(url => {
-      try {
-        return slugOf(url) === target;
-      } catch {
-        return false;
+    // Only the catalog's writable sources: a pull request anywhere else would
+    // add a skill no one can see. With an installation, its skill-manager's
+    // sources as the person sees them; without one, the portal's configured
+    // list (deprecated).
+    let base: string | undefined;
+    let parentDir: string | undefined;
+    if (parsed.data.installation !== undefined) {
+      if (!readSkillSources) {
+        throw new Error('gs-backend reads skill sources only with a logger');
       }
-    });
-    if (!configured) {
-      throw new InputError(
-        `${repoUrl} is not one of the configured skill repositories`,
-      );
+      const musterToken = req.header(MUSTER_AUTH_HEADER);
+      if (!musterToken) {
+        throw new AuthenticationError(
+          `Missing ${MUSTER_AUTH_HEADER} header: the skill sources are read from the installation's skill-manager as the signed-in person.`,
+        );
+      }
+      let sources: SkillSource[];
+      try {
+        sources = await readSkillSources(parsed.data.installation, musterToken);
+      } catch (error) {
+        if (error instanceof MusterServerNotConnectedError) {
+          res.status(401).json({
+            error: {
+              name: error.name,
+              message: error.message,
+              server: error.server,
+              authUrl: error.authUrl,
+            },
+          });
+          return;
+        }
+        throw error;
+      }
+      base = requireWritableSource(sources, {
+        repoUrl,
+        kind: kind ?? 'create',
+        skillName,
+        path: parsed.data.path,
+      }).ref;
+    } else {
+      // Only the configured sources: the catalog lists these and nothing
+      // else, so a pull request anywhere else would add a skill no one can see.
+      const repository = configuredSkillRepository(repoUrl);
+      if (!repository) {
+        throw new InputError(
+          `${repoUrl} is not one of the configured skill repositories`,
+        );
+      }
+      // A read-only source (the platform's own skills) takes no pull requests
+      // from the portal; agent-manager refuses the same.
+      if (repository.readOnly) {
+        throw new InputError(`${repoUrl} is a read-only skill repository`);
+      }
+      // Pull requests target a branch: the configured one, else the default
+      // branch. A source read at a commit or a `refs/tags/` ref takes none (a
+      // plain name that is a tag is refused by `createSkillPullRequest`, which
+      // asks GitHub).
+      const branch = pullRequestBase(repository);
+      if (branch === null) {
+        throw new InputError(
+          `${repoUrl} is read at ${repository.ref}, not a branch`,
+        );
+      }
+      if (
+        kind === 'update' &&
+        !isBelowPath(parsed.data.path ?? '', repository.path)
+      ) {
+        throw new InputError(
+          `${parsed.data.path || 'The root'} is not below ${repository.path} in ${repoUrl}`,
+        );
+      }
+      base = branch || undefined;
+      // A new skill goes where discovery scans.
+      parentDir = repository.path || undefined;
     }
 
     try {
@@ -983,7 +1128,10 @@ export async function createRouter({
           skillName,
           description,
           instructions,
+          ...(tags !== undefined ? { tags } : {}),
           token,
+          ...(parentDir ? { parentDir } : {}),
+          ...(base ? { base } : {}),
           ...(kind === 'update'
             ? {
                 kind,
@@ -1011,6 +1159,13 @@ export async function createRouter({
       throw error;
     }
   });
+
+  // Last, so that every route above reaches it. A Mimir that could not answer
+  // `/mimir/query` or `/mimir/query_range` is a `MimirUnavailableError`,
+  // which `MimirService` has already logged once: this answers its 503, with
+  // the `reason` the frontend picks its words from, without the error
+  // middleware reporting it again.
+  router.use(reportedErrorHandler());
 
   return router;
 }

@@ -314,3 +314,28 @@ describe('MCPServer display name', () => {
     expect(annotated('  ').getDisplayName()).toBe('mcp-github');
   });
 });
+
+describe('MCPServer.getTags', () => {
+  const withAnnotations = (annotations?: Record<string, string>) =>
+    new MCPServer(
+      {
+        apiVersion: 'muster.giantswarm.io/v1alpha1',
+        kind: 'MCPServer',
+        metadata: { name: 'jira', ...(annotations ? { annotations } : {}) },
+        spec: {},
+      } as never,
+      'gazelle',
+    );
+
+  it('reads the tags annotation, dropping what is not a tag', () => {
+    expect(
+      withAnnotations({
+        'ui.giantswarm.io/tags': 'Ticketing, ops,, bad tag,ops',
+      }).getTags(),
+    ).toEqual(['ticketing', 'ops']);
+  });
+
+  it('has none without the annotation', () => {
+    expect(withAnnotations().getTags()).toEqual([]);
+  });
+});

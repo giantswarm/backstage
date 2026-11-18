@@ -959,7 +959,7 @@ export function WorkflowFlowCanvas({
     const when = formatRelativeTime(latest.started_at) ?? latest.started_at;
     runCaption = hasOverlay
       ? `Last run ${when} · ${outcome.label} — each step shows how it went.`
-      : `Last run ${when} · ${outcome.label} — muster recorded no per-step results for it.`;
+      : `Last run ${when} · ${outcome.label} — Muster recorded no per-step results for it.`;
   }
 
   const overlayOf = (key: string) => (hasOverlay ? overlay[key] : undefined);

@@ -1,5 +1,6 @@
 import {
-  getMcpUsage,
+  getMcpToolLatency,
+  readMcpUsage,
   usageWindow,
   pickPrometheusServer,
   quantileFromBuckets,
@@ -15,12 +16,32 @@ const INSTALLATION: MusterInstallationConfig = {
   url: 'https://muster.example/mcp',
 };
 
+/**
+ * A muster client answering from `handler`. The week-before-the-window read
+ * (a range query ending before now) answers empty unless `beforeWindow`
+ * answers it.
+ */
 function fakeClient(
   handler: (tool: string, args: Record<string, unknown>) => unknown,
+  beforeWindow?: (args: Record<string, unknown>) => unknown,
+  groupedCounts?: (args: Record<string, unknown>) => string,
 ): MusterMcpClient {
   return {
-    callTool: async (tool: string, args: Record<string, unknown>) =>
-      handler(tool, args),
+    callTool: async (tool: string, args: Record<string, unknown>) => {
+      if (
+        String(args.query).includes('sum by (mcpserver_name, tool, outcome)')
+      ) {
+        if (groupedCounts) return groupedCounts(args);
+        throw new Error('grouped query unavailable');
+      }
+      if (
+        tool.endsWith('execute_range_query') &&
+        Date.parse(String(args.end)) < Date.now()
+      ) {
+        return beforeWindow?.(args) ?? 'Result Type: matrix\nResult:';
+      }
+      return handler(tool, args);
+    },
   } as unknown as MusterMcpClient;
 }
 
@@ -133,7 +154,7 @@ describe('usageSelector', () => {
   });
 });
 
-describe('getMcpUsage', () => {
+describe('readMcpUsage', () => {
   it('reports unavailable when no prometheus server is registered', async () => {
     const client = fakeClient(tool => {
       if (tool === 'core_mcpserver_list') {
@@ -142,7 +163,7 @@ describe('getMcpUsage', () => {
       throw new Error(`unexpected tool ${tool}`);
     });
 
-    const usage = await getMcpUsage(client, INSTALLATION, {}, 24);
+    const { usage } = await readMcpUsage(client, INSTALLATION, {}, 24);
     expect(usage.available).toBe(false);
     expect(usage.reason).toMatch(/no prometheus mcp server/i);
     expect(usage.totals.calls).toBe(0);
@@ -152,7 +173,7 @@ describe('getMcpUsage', () => {
     const client = fakeClient(tool =>
       tool === 'core_mcpserver_list' ? SERVER_LIST : { data: { result: [] } },
     );
-    const usage = await getMcpUsage(client, INSTALLATION, {}, 24);
+    const { usage } = await readMcpUsage(client, INSTALLATION, {}, 24);
     expect(usage.available).toBe(false);
     expect(usage.reason).toMatch(
       /answered structured data, not the text the usage query parses/,
@@ -231,7 +252,18 @@ describe('getMcpUsage', () => {
       throw new Error(`unexpected query ${query}`);
     });
 
-    const usage = await getMcpUsage(client, INSTALLATION, {}, 24);
+    const { usage, complete } = await readMcpUsage(
+      client,
+      INSTALLATION,
+      {},
+      24,
+    );
+
+    // The per-tool latency, the slowest query, is not part of this read.
+    expect(
+      calls.some(call => String(call.args.query).includes('sum by (tool, le)')),
+    ).toBe(false);
+    expect(complete).toBe(true);
 
     // Every prometheus query is routed to the installation's own server via
     // the family routing parameter.
@@ -284,8 +316,8 @@ describe('getMcpUsage', () => {
         tool: 'x_kubernetes_list_pods',
         calls: 26,
         errors: 1,
-        // le1=50, le5=100 → rank 95 → 1 + 4 * (45/50).
-        p95_seconds: 4.6,
+        // Every tool's p95 is getMcpToolLatency's.
+        p95_seconds: null,
       },
       {
         tool: 'x_prometheus_execute_query',
@@ -323,71 +355,77 @@ describe('getMcpUsage', () => {
     );
 
     function narrowedClient(seen: Array<Record<string, unknown>>) {
-      return fakeClient((tool, args) => {
-        if (tool === 'core_mcpserver_list') {
-          return SERVER_LIST;
-        }
-        seen.push(args);
-        const end = Date.parse(String(args.end)) / 1000;
-        const query = String(args.query);
-        if (query.startsWith('sum by (outcome)') && !query.includes('{')) {
-          // The installation's records: a first sample three days before
-          // the window ends, nothing in the week before the window.
-          return [
-            'Result Type: matrix',
-            'Result: {outcome="ok"} =>',
-            `500 @[${end - 2 * 86400}]`,
-            `700 @[${end}]`,
-          ].join('\n');
-        }
-        if (query.startsWith('sum by (outcome)')) {
-          return [
-            'Result Type: matrix',
-            'Result: {outcome="ok"} =>',
-            `4 @[${end}]`,
-            '{outcome="error_result"} =>',
-            `1 @[${end}]`,
-          ].join('\n');
-        }
-        if (query.startsWith('sum by (tool, outcome)')) {
-          return [
-            'Result Type: matrix',
-            'Result:',
-            ...TOOLS.flatMap((name, index) => [
-              `{outcome="ok", tool="${name}"} =>`,
-              `${index + 1} @[${end}]`,
-            ]),
-          ].join('\n');
-        }
-        if (query.startsWith('sum by (mcpserver_name, outcome)')) {
-          return [
-            'Result Type: matrix',
-            'Result: {mcpserver_name="gazelle-mcp-kubernetes", outcome="ok"} =>',
-            `3 @[${end}]`,
-            '{mcpserver_name="graveler-mcp-kubernetes", outcome="ok"} =>',
-            `2 @[${end}]`,
-          ].join('\n');
-        }
-        if (query.startsWith('sum by (mcpserver_name, le)')) {
-          return [
-            'Result Type: matrix',
-            'Result: {le="1", mcpserver_name="gazelle-mcp-kubernetes"} =>',
-            `50 @[${end}]`,
-            '{le="5", mcpserver_name="gazelle-mcp-kubernetes"} =>',
-            `100 @[${end}]`,
-            '{le="+Inf", mcpserver_name="gazelle-mcp-kubernetes"} =>',
-            `100 @[${end}]`,
-          ].join('\n');
-        }
-        return 'Result Type: matrix\nResult:';
-      });
+      return fakeClient(
+        (tool, args) => {
+          if (tool === 'core_mcpserver_list') {
+            return SERVER_LIST;
+          }
+          seen.push(args);
+          const end = Date.parse(String(args.end)) / 1000;
+          const query = String(args.query);
+          if (query.startsWith('sum by (outcome)') && !query.includes('{')) {
+            // The installation's records: a first sample three days before
+            // the window ends, nothing in the week before the window.
+            return [
+              'Result Type: matrix',
+              'Result: {outcome="ok"} =>',
+              `500 @[${end - 2 * 86400}]`,
+              `700 @[${end}]`,
+            ].join('\n');
+          }
+          if (query.startsWith('sum by (outcome)')) {
+            return [
+              'Result Type: matrix',
+              'Result: {outcome="ok"} =>',
+              `4 @[${end}]`,
+              '{outcome="error_result"} =>',
+              `1 @[${end}]`,
+            ].join('\n');
+          }
+          if (query.startsWith('sum by (tool, outcome)')) {
+            return [
+              'Result Type: matrix',
+              'Result:',
+              ...TOOLS.flatMap((name, index) => [
+                `{outcome="ok", tool="${name}"} =>`,
+                `${index + 1} @[${end}]`,
+              ]),
+            ].join('\n');
+          }
+          if (query.startsWith('sum by (mcpserver_name, outcome)')) {
+            return [
+              'Result Type: matrix',
+              'Result: {mcpserver_name="gazelle-mcp-kubernetes", outcome="ok"} =>',
+              `3 @[${end}]`,
+              '{mcpserver_name="graveler-mcp-kubernetes", outcome="ok"} =>',
+              `2 @[${end}]`,
+            ].join('\n');
+          }
+          if (query.startsWith('sum by (mcpserver_name, le)')) {
+            return [
+              'Result Type: matrix',
+              'Result: {le="1", mcpserver_name="gazelle-mcp-kubernetes"} =>',
+              `50 @[${end}]`,
+              '{le="5", mcpserver_name="gazelle-mcp-kubernetes"} =>',
+              `100 @[${end}]`,
+              '{le="+Inf", mcpserver_name="gazelle-mcp-kubernetes"} =>',
+              `100 @[${end}]`,
+            ].join('\n');
+          }
+          return 'Result Type: matrix\nResult:';
+        },
+        args => {
+          seen.push(args);
+          return undefined;
+        },
+      );
     }
 
     it('narrows every figure to the connectors, but not where the records start', async () => {
       jest.useFakeTimers({ now: new Date('2026-10-14T10:30:00Z') });
       const seen: Array<Record<string, unknown>> = [];
 
-      const usage = await getMcpUsage(
+      const { usage } = await readMcpUsage(
         narrowedClient(seen),
         INSTALLATION,
         {},
@@ -398,17 +436,22 @@ describe('getMcpUsage', () => {
       const selector =
         '{mcpserver_name=~"gazelle-mcp-kubernetes|graveler-mcp-kubernetes"}';
       const queries = seen.map(args => String(args.query));
-      // The installation's records, read from a week before the window.
-      const coverage = seen.find(
+      // The installation's records, over the window and the week before it.
+      const coverage = seen.filter(
         args =>
           String(args.query) ===
           'sum by (outcome) (increase(muster_downstream_tool_calls_total[24h]))',
       );
-      // Its first evaluation is a step after the week before the window starts.
-      expect(coverage?.start).toBe('2026-09-09T00:00:00.000Z');
+      expect(coverage.map(args => [args.start, args.end])).toEqual(
+        expect.arrayContaining([
+          ['2026-09-16T00:00:00.000Z', '2026-10-15T00:00:00.000Z'],
+          // A step after the week before the window starts, to its start.
+          ['2026-09-09T00:00:00.000Z', '2026-09-15T00:00:00.000Z'],
+        ]),
+      );
       // Every other query, narrowed and over the window alone.
-      const narrowed = seen.filter(args => args !== coverage);
-      expect(narrowed).toHaveLength(6);
+      const narrowed = seen.filter(args => !coverage.includes(args));
+      expect(narrowed).toHaveLength(5);
       for (const args of narrowed) {
         expect(String(args.query)).toContain(selector);
         expect(args.start).toBe('2026-09-16T00:00:00.000Z');
@@ -426,7 +469,7 @@ describe('getMcpUsage', () => {
     it('narrows every figure to one tool of the connectors, its row the totals', async () => {
       const seen: Array<Record<string, unknown>> = [];
 
-      const usage = await getMcpUsage(
+      const { usage } = await readMcpUsage(
         narrowedClient(seen),
         INSTALLATION,
         {},
@@ -442,7 +485,7 @@ describe('getMcpUsage', () => {
           String(args.query) ===
           'sum by (outcome) (increase(muster_downstream_tool_calls_total[24h]))',
       );
-      expect(coverage).toHaveLength(1);
+      expect(coverage).toHaveLength(2);
       // The outcomes, the latency and the per-instance rollups; no per-tool
       // ones, which would only repeat the totals.
       const narrowed = seen.filter(args => !coverage.includes(args));
@@ -463,7 +506,7 @@ describe('getMcpUsage', () => {
     });
 
     it('lists every tool the connectors were called with, busiest first', async () => {
-      const usage = await getMcpUsage(
+      const { usage } = await readMcpUsage(
         narrowedClient([]),
         INSTALLATION,
         {},
@@ -481,7 +524,7 @@ describe('getMcpUsage', () => {
 
     it('reads one connector without the per-server queries, its row the totals', async () => {
       const seen: Array<Record<string, unknown>> = [];
-      const usage = await getMcpUsage(
+      const { usage } = await readMcpUsage(
         narrowedClient(seen),
         INSTALLATION,
         {},
@@ -504,7 +547,7 @@ describe('getMcpUsage', () => {
 
     it('reads no per-server latency without a filter, which nothing shows', async () => {
       const seen: Array<Record<string, unknown>> = [];
-      const usage = await getMcpUsage(
+      const { usage } = await readMcpUsage(
         narrowedClient(seen),
         INSTALLATION,
         {},
@@ -524,7 +567,7 @@ describe('getMcpUsage', () => {
     });
 
     it('keeps the busiest fifteen tools without a filter', async () => {
-      const usage = await getMcpUsage(
+      const { usage } = await readMcpUsage(
         narrowedClient([]),
         INSTALLATION,
         {},
@@ -536,7 +579,7 @@ describe('getMcpUsage', () => {
     });
 
     it('gives each connector its p95 latency', async () => {
-      const usage = await getMcpUsage(
+      const { usage } = await readMcpUsage(
         narrowedClient([]),
         INSTALLATION,
         {},
@@ -584,7 +627,12 @@ describe('getMcpUsage', () => {
     it('is the first daily bucket with a sample, a zero included', async () => {
       jest.useFakeTimers({ now: new Date('2026-10-14T10:30:00Z') });
 
-      const usage = await getMcpUsage(clientWithDays(3), INSTALLATION, {}, 168);
+      const { usage } = await readMcpUsage(
+        clientWithDays(3),
+        INSTALLATION,
+        {},
+        168,
+      );
 
       expect(usage.buckets).toHaveLength(7);
       expect(usage.data_start).toBe('2026-10-12T00:00:00.000Z');
@@ -593,23 +641,69 @@ describe('getMcpUsage', () => {
     it('is absent when muster recorded calls in the week before the window', async () => {
       // The window's first days were quiet, not unrecorded.
       jest.useFakeTimers({ now: new Date('2026-10-14T10:30:00Z') });
-      const client = fakeClient((tool, args) => {
-        if (tool === 'core_mcpserver_list') {
-          return SERVER_LIST;
-        }
-        const end = Date.parse(String(args.end)) / 1000;
-        return [
-          'Result Type: matrix',
-          'Result: {outcome="ok"} =>',
-          `4 @[${end - 9 * 86400}]`,
-          `2 @[${end}]`,
-        ].join('\n');
-      });
+      const client = fakeClient(
+        (tool, args) => {
+          if (tool === 'core_mcpserver_list') {
+            return SERVER_LIST;
+          }
+          const end = Date.parse(String(args.end)) / 1000;
+          return [
+            'Result Type: matrix',
+            'Result: {outcome="ok"} =>',
+            `2 @[${end}]`,
+          ].join('\n');
+        },
+        args => {
+          const end = Date.parse(String(args.end)) / 1000;
+          return [
+            'Result Type: matrix',
+            'Result: {outcome="ok"} =>',
+            `4 @[${end - 2 * 86400}]`,
+          ].join('\n');
+        },
+      );
 
-      const usage = await getMcpUsage(client, INSTALLATION, {}, 168);
+      const { usage, complete } = await readMcpUsage(
+        client,
+        INSTALLATION,
+        {},
+        168,
+      );
 
       expect(usage.totals.calls).toBe(2);
       expect(usage).not.toHaveProperty('data_start');
+      expect(complete).toBe(true);
+    });
+
+    it('is absent, and the answer not one to reuse, when the week before the window cannot be read', async () => {
+      jest.useFakeTimers({ now: new Date('2026-10-14T10:30:00Z') });
+      const client = fakeClient(
+        (tool, args) => {
+          if (tool === 'core_mcpserver_list') {
+            return SERVER_LIST;
+          }
+          const end = Date.parse(String(args.end)) / 1000;
+          return [
+            'Result Type: matrix',
+            'Result: {outcome="ok"} =>',
+            `2 @[${end}]`,
+          ].join('\n');
+        },
+        () => {
+          throw new Error('mimir 504');
+        },
+      );
+
+      const { usage, complete } = await readMcpUsage(
+        client,
+        INSTALLATION,
+        {},
+        168,
+      );
+
+      expect(usage.totals.calls).toBe(2);
+      expect(usage).not.toHaveProperty('data_start');
+      expect(complete).toBe(false);
     });
 
     it('counts only the outcomes the chart draws, as the chart does', async () => {
@@ -628,7 +722,7 @@ describe('getMcpUsage', () => {
         ].join('\n');
       });
 
-      const usage = await getMcpUsage(client, INSTALLATION, {}, 168);
+      const { usage } = await readMcpUsage(client, INSTALLATION, {}, 168);
 
       expect(usage.data_start).toBe('2026-10-14T00:00:00.000Z');
     });
@@ -636,7 +730,12 @@ describe('getMcpUsage', () => {
     it('is absent when no bucket has a sample', async () => {
       jest.useFakeTimers({ now: new Date('2026-10-14T10:30:00Z') });
 
-      const usage = await getMcpUsage(clientWithDays(0), INSTALLATION, {}, 168);
+      const { usage } = await readMcpUsage(
+        clientWithDays(0),
+        INSTALLATION,
+        {},
+        168,
+      );
 
       expect(usage.available).toBe(true);
       expect(usage).not.toHaveProperty('data_start');
@@ -680,7 +779,7 @@ describe('getMcpUsage', () => {
       return 'Result Type: vector\nResult: {} => 0 @[1]';
     });
 
-    const usage = await getMcpUsage(client, INSTALLATION, {}, 24);
+    const { usage } = await readMcpUsage(client, INSTALLATION, {}, 24);
     expect(usage.available).toBe(true);
     expect(usage.totals.calls).toBe(0);
     expect(fallbackCalls.length).toBeGreaterThan(0);
@@ -710,7 +809,12 @@ describe('getMcpUsage', () => {
       throw new Error('server_error: server error: 500');
     });
 
-    const usage = await getMcpUsage(client, INSTALLATION, {}, 24);
+    const { usage, complete } = await readMcpUsage(
+      client,
+      INSTALLATION,
+      {},
+      24,
+    );
     expect(usage.available).toBe(true);
     expect(usage.totals).toEqual({
       calls: 7,
@@ -721,6 +825,8 @@ describe('getMcpUsage', () => {
     });
     expect(usage.top_tools).toEqual([]);
     expect(usage.servers).toEqual([]);
+    // A later read may fill them in: not an answer to reuse.
+    expect(complete).toBe(false);
   });
 
   it('reports unavailable with the failure reason when queries error', async () => {
@@ -731,8 +837,190 @@ describe('getMcpUsage', () => {
       throw new Error('upstream exploded');
     });
 
-    const usage = await getMcpUsage(client, INSTALLATION, {}, 24);
+    const { usage } = await readMcpUsage(client, INSTALLATION, {}, 24);
     expect(usage.available).toBe(false);
     expect(usage.reason).toMatch(/upstream exploded/);
+  });
+});
+
+describe('grouped usage counts', () => {
+  it.each([24, 49, 168, 720, 2160])(
+    'reuses count rows for %s hours',
+    async hours => {
+      const reads: Record<string, unknown>[] = [];
+      const client = fakeClient(
+        (tool, args) => {
+          if (tool === 'core_mcpserver_list') return SERVER_LIST;
+          reads.push(args);
+          return 'Result Type: matrix\nResult:';
+        },
+        undefined,
+        args => {
+          reads.push(args);
+          const step = hours > 48 ? 86400 : 3600;
+          const last =
+            Date.parse(String(args.end)) / 1000 - ((hours * 3600) % step);
+          const first = last - step;
+          return [
+            'Result Type: matrix',
+            'Result: {mcpserver_name="a", tool="read", outcome="ok"} =>',
+            `4 @[${first}]`,
+            `6 @[${last}]`,
+            '{mcpserver_name="b", tool="read", outcome="ok"} =>',
+            `3 @[${last}]`,
+            '{mcpserver_name="a", tool="write", outcome="error"} =>',
+            `2 @[${last}]`,
+            '{mcpserver_name="old", tool="old", outcome="ok"} =>',
+            `5 @[${Date.parse(String(args.start)) / 1000}]`,
+          ].join('\n');
+        },
+      );
+      const { usage, complete } = await readMcpUsage(
+        client,
+        INSTALLATION,
+        {},
+        hours,
+      );
+      await getMcpToolLatency(client, INSTALLATION, {}, hours);
+      expect(reads).toHaveLength(3);
+      expect(reads.every(args => args.unlimited === 'true')).toBe(true);
+      expect(usage.totals).toMatchObject({
+        calls: 15,
+        errors: 2,
+        distinct_tools: 2,
+      });
+      expect(usage.top_tools).toEqual([
+        { tool: 'read', calls: 13, errors: 0, p95_seconds: null },
+        { tool: 'write', calls: 2, errors: 2, p95_seconds: null },
+      ]);
+      expect(usage.servers).toEqual([
+        { server: 'a', calls: 12, errors: 2, p95_seconds: null },
+        { server: 'b', calls: 3, errors: 0, p95_seconds: null },
+      ]);
+      expect(
+        usage.buckets.reduce(
+          (sum, bucket) => sum + bucket.ok + bucket.error,
+          0,
+        ),
+      ).toBe(15);
+      expect(usage.data_start).toBeUndefined();
+      expect(complete).toBe(true);
+    },
+  );
+
+  it('reads installation coverage separately from filtered counts', async () => {
+    const queries: string[] = [];
+    const client = fakeClient(
+      (tool, args) => {
+        if (tool === 'core_mcpserver_list') return SERVER_LIST;
+        queries.push(String(args.query));
+        const end = Date.parse(String(args.end)) / 1000;
+        return String(args.query).includes('sum by (outcome)')
+          ? `Result Type: matrix\nResult: {outcome="ok"} =>\n1 @[${end}]`
+          : 'Result Type: matrix\nResult:';
+      },
+      undefined,
+      args => {
+        queries.push(String(args.query));
+        return 'Result Type: matrix\nResult:';
+      },
+    );
+    const { usage, complete } = await readMcpUsage(
+      client,
+      INSTALLATION,
+      {},
+      720,
+      ['a'],
+    );
+    expect(queries[0]).toContain('mcpserver_name="a"');
+    expect(queries).toContain(
+      'sum by (outcome) (increase(muster_downstream_tool_calls_total[24h]))',
+    );
+    expect(usage.totals.calls).toBe(0);
+    expect(usage.data_start).toBeDefined();
+    expect(complete).toBe(true);
+  });
+});
+
+describe('getMcpToolLatency', () => {
+  it('answers each tool’s p95 from the one per-tool histogram query, narrowed to the connectors', async () => {
+    const queries: string[] = [];
+    const client = fakeClient((tool, args) => {
+      if (tool === 'core_mcpserver_list') {
+        return SERVER_LIST;
+      }
+      queries.push(String(args.query));
+      const end = Date.parse(String(args.end)) / 1000;
+      return [
+        'Result Type: matrix',
+        'Result: {le="1", tool="x_kubernetes_list_pods"} =>',
+        `50 @[${end}]`,
+        '{le="5", tool="x_kubernetes_list_pods"} =>',
+        `100 @[${end}]`,
+        '{le="+Inf", tool="x_kubernetes_list_pods"} =>',
+        `100 @[${end}]`,
+        '{le="+Inf", tool="x_kubernetes_idle"} =>',
+        `0 @[${end}]`,
+      ].join('\n');
+    });
+
+    const latency = await getMcpToolLatency(client, INSTALLATION, {}, 24, [
+      'gazelle-mcp-kubernetes',
+    ]);
+
+    expect(queries).toEqual([
+      'sum by (tool, le) (increase(muster_downstream_tool_call_duration_seconds_bucket{mcpserver_name="gazelle-mcp-kubernetes"}[1h]))',
+    ]);
+    expect(latency).toEqual({
+      available: true,
+      range_hours: 24,
+      tools: [
+        // No observations: no quantile, not a confident zero.
+        { tool: 'x_kubernetes_idle', p95_seconds: null },
+        // le1=50, le5=100 → rank 95 → 1 + 4 * (45/50).
+        { tool: 'x_kubernetes_list_pods', p95_seconds: 4.6 },
+      ],
+    });
+  });
+
+  it('reports unavailable when the query fails', async () => {
+    const client = fakeClient(tool => {
+      if (tool === 'core_mcpserver_list') {
+        return SERVER_LIST;
+      }
+      throw new Error('mimir 504');
+    });
+
+    const latency = await getMcpToolLatency(client, INSTALLATION, {}, 720);
+
+    expect(latency).toMatchObject({ available: false, tools: [] });
+    expect(latency.reason).toMatch(/gazelle-mcp-prometheus.*mimir 504/);
+  });
+
+  it('reads through a set prometheusServer without listing the servers', async () => {
+    const tools: string[] = [];
+    const client = fakeClient(tool => {
+      tools.push(tool);
+      return 'Result Type: matrix\nResult:';
+    });
+
+    const latency = await getMcpToolLatency(
+      client,
+      { ...INSTALLATION, prometheusServer: 'custom-prom' },
+      {},
+      24,
+    );
+
+    expect(latency.available).toBe(true);
+    expect(tools).not.toContain('core_mcpserver_list');
+  });
+
+  it('reports unavailable when no prometheus server is registered', async () => {
+    const client = fakeClient(() => ({ mcpServers: [] }));
+
+    const latency = await getMcpToolLatency(client, INSTALLATION, {}, 24);
+
+    expect(latency.available).toBe(false);
+    expect(latency.reason).toMatch(/no prometheus mcp server/i);
   });
 });

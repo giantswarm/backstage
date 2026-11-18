@@ -1,7 +1,8 @@
 import { Fragment } from 'react';
-import { Alert, Button, Flex, Link, Text } from '@backstage/ui';
+import { Alert, Button, Flex, Text } from '@backstage/ui';
 
 import type { BotPrRow } from '../../lib/marge';
+import { ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 
 export type LostAnswerAlertProps = {
   /** The teams whose answer never arrived. */
@@ -77,14 +78,13 @@ export function LostAnswerAlert({
               {prs.map((pr, index) => (
                 <Fragment key={pr.ref}>
                   {index > 0 ? ', ' : null}
-                  <Link
+                  <ExternalLink
                     href={pr.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
                     variant="body-small"
+                    display="inline"
                   >
                     {pr.ref}
-                  </Link>
+                  </ExternalLink>
                 </Fragment>
               ))}
             </Text>

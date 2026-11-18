@@ -11,3 +11,5 @@ export type {
 export { McpDataStartNote } from './McpDataStartNote';
 export type { McpDataStartNoteProps } from './McpDataStartNote';
 export { errorRatioFigure } from './utils/errorRatio';
+export { MCP_USAGE_STALE_MS, useToolLatency, withToolLatency } from './hooks';
+export type { ToolLatency } from './hooks';

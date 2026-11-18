@@ -148,6 +148,116 @@ describe('DefaultAuthConnector', () => {
       expect(session).toEqual(legacyRefreshResponse);
     });
 
+    describe('a refused refresh that ends the session', () => {
+      const CLAIMED =
+        'Refresh token is invalid or has already been claimed by another client.';
+
+      /**
+       * The auth backend's body for a refresh the issuer refused: an
+       * `AuthenticationError` whose `cause` is the issuer's OAuth error.
+       */
+      function refusedRefresh(
+        status: number,
+        cause?: { error: string; error_description: string },
+      ) {
+        const causeMessage = cause
+          ? `${cause.error} (${cause.error_description})`
+          : 'fetch failed';
+        jest.spyOn(global, 'fetch').mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              error: {
+                name: 'AuthenticationError',
+                message: `Refresh failed; caused by OPError: ${causeMessage}`,
+                ...(cause && {
+                  cause: { name: 'OPError', message: causeMessage, ...cause },
+                }),
+              },
+              response: { statusCode: status },
+            }),
+            { status, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      }
+
+      function connectorTelling(onSessionEnded: jest.Mock) {
+        return new DefaultAuthConnector({
+          cookieQueue: new ProviderCookieQueue(undefined),
+          configApi,
+          discoveryApi,
+          environment: 'development',
+          provider: { id: 'oidc-gazelle', title: 'gazelle', icon: () => null },
+          oauthRequestApi,
+          isMainProvider: true,
+          onSessionEnded,
+        });
+      }
+
+      it.each(['invalid_request', 'invalid_grant'])(
+        'says the person signed in elsewhere when Dex answers %s for a claimed token',
+        async dexError => {
+          refusedRefresh(401, { error: dexError, error_description: CLAIMED });
+          const onSessionEnded = jest.fn();
+
+          await expect(
+            connectorTelling(onSessionEnded).refreshSession({
+              scopes: new Set(['openid']),
+            }),
+          ).rejects.toMatchObject({ status: 401 });
+
+          expect(onSessionEnded).toHaveBeenCalledWith('signed-in-elsewhere');
+        },
+      );
+
+      it.each([
+        [
+          'an expired refresh token',
+          401,
+          {
+            error: 'invalid_grant',
+            error_description: 'Refresh token expired.',
+          },
+        ],
+        ['an unreachable issuer', 401, undefined],
+        [
+          'another OAuth error with the same text',
+          401,
+          { error: 'server_error', error_description: CLAIMED },
+        ],
+        [
+          'a refusal that is not a 401',
+          500,
+          { error: 'invalid_grant', error_description: CLAIMED },
+        ],
+      ])('says nothing for %s', async (_name, status, cause) => {
+        refusedRefresh(status, cause);
+        const onSessionEnded = jest.fn();
+
+        await expect(
+          connectorTelling(onSessionEnded).refreshSession({
+            scopes: new Set(['openid']),
+          }),
+        ).rejects.toMatchObject({ status });
+
+        expect(onSessionEnded).not.toHaveBeenCalled();
+      });
+
+      it('says nothing for a 401 without a JSON body', async () => {
+        jest
+          .spyOn(global, 'fetch')
+          .mockResolvedValue(new Response('Unauthorized', { status: 401 }));
+        const onSessionEnded = jest.fn();
+
+        await expect(
+          connectorTelling(onSessionEnded).refreshSession({
+            scopes: new Set(['openid']),
+          }),
+        ).rejects.toMatchObject({ status: 401 });
+
+        expect(onSessionEnded).not.toHaveBeenCalled();
+      });
+    });
+
     describe('cookie refreshes', () => {
       /** A fetch that answers after `ms`, counting the requests open at once. */
       function slowRefresh(ms = 5) {

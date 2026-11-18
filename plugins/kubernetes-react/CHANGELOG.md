@@ -1,5 +1,45 @@
 # @giantswarm/backstage-plugin-kubernetes-react
 
+## 1.1.0
+
+### Minor Changes
+
+- 5ded107: Agents can carry tags (the `ui.giantswarm.io/tags` annotation). The agent wizard adds them where the installation's agent-manager reports the `tags` capability, suggesting tags other agents use and pointing out a near-duplicate of an existing one; the agent page shows them; Customize → Agents shows up to three on each row, in place of the model, skills and connectors, searches them and filters by them with a Tags dropdown. `Agent.getTags()` reads them. A `CatalogFacet` may now give an item several values, and every filter bar's option labels are cut with an ellipsis at 16rem, read whole on hover.
+- ded8231: Export `getK8sGetPath`, the path of one object on the Kubernetes API, beside
+  `getK8sListPath`.
+
+### Patch Changes
+
+- 5ded107: Tag helpers (`parseTags`, `TAGS_ANNOTATION` and the rest), `TagsField`, `TagVocabularyContext` and the `tagsFacet` catalog facet move to `ui-react`, for every resource with tags.
+
+  A resource takes at most 50 tags (`MAX_TAGS`): `TagsField` and the agent, connector and skill forms refuse more with "At most 50 tags." An edit that leaves more tags written elsewhere as they are goes through, since it does not write them.
+
+- Updated dependencies [db5c770]
+- Updated dependencies [5ded107]
+- Updated dependencies [8fd67a7]
+- Updated dependencies [8ab4a8f]
+- Updated dependencies [a665a44]
+- Updated dependencies [a2e34ef]
+- Updated dependencies [6bfac24]
+- Updated dependencies [0314965]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5bde8bf]
+- Updated dependencies [4f2299d]
+- Updated dependencies [0f927e4]
+- Updated dependencies [c72aab9]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [6dee1f6]
+- Updated dependencies [ed68f95]
+- Updated dependencies [3745db0]
+  - @giantswarm/backstage-plugin-analytics-react@0.3.0
+  - @giantswarm/backstage-plugin-ui-react@0.10.0
+
 ## 1.0.0
 
 ### Major Changes

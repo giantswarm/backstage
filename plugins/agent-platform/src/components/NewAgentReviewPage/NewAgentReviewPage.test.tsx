@@ -7,6 +7,7 @@ import userEvent from '@testing-library/user-event';
 import {
   MCPServer,
   musterApiRef,
+  MusterUnauthorizedError,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
@@ -24,8 +25,18 @@ import { agentsRouteRef } from '../../routes';
 import { NewAgentFormProvider, useNewAgentForm } from '../NewAgentFormProvider';
 import { NewAgentReviewPage } from './NewAgentReviewPage';
 import { committedTo } from '../../lib/__fixtures__/gitOpsCommit';
+import { signInLands } from '../../lib/__testUtils__/serverSignInLands';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 const mockNavigate = jest.fn();
+jest.mock('@giantswarm/backstage-plugin-muster', () =>
+  jest
+    .requireActual('../../lib/__testUtils__/serverSignInLands')
+    .musterWithSignInLands(),
+);
 jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
   useNavigate: () => mockNavigate,
@@ -33,6 +44,7 @@ jest.mock('react-router-dom', () => ({
 
 jest.mock('../../hooks/useSkillCatalog', () => ({
   useSkillCatalog: () => ({
+    privateRepositories: new Set(),
     skills: [],
     isLoading: false,
     error: null,
@@ -76,14 +88,11 @@ jest.mock('../../hooks/useAgentIconUrl', () => ({
 
 // CodeMirror does not lay out in jsdom; a plain block exposes the YAML the
 // page hands it, which is what the assertions read.
-jest.mock('../CodeBlock', () => ({
-  CodeBlock: ({
-    content,
-    filename,
-  }: {
-    content: string;
-    filename?: string;
-  }) => <pre data-testid={`code-${filename ?? 'command'}`}>{content}</pre>,
+jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
+  FileView: ({ content, filename }: { content: string; filename: string }) => (
+    <pre data-testid={`code-${filename}`}>{content}</pre>
+  ),
 }));
 
 const HEAD = 'cb1fb768ba1d1b1e62c6e0b32c39a6b4bd3b58a1';
@@ -107,7 +116,7 @@ const INFO: AgentManagerInfo = {
     schemaSource: 'registry',
   },
   namespaces: { default: 'kagent', managed: ['kagent'] },
-  capabilities: { create: true, validate: true, commit: false },
+  capabilities: { create: true, validate: true, commit: false, tags: true },
   identity: 'caller',
   apiVersions: {
     agent: 'api.kagent.dev/v1alpha3',
@@ -184,6 +193,8 @@ type Scenario = {
   harness?: HarnessChoice;
   /** The toolset picked on the Tools step; `preset:read-only` by default. */
   toolset?: string[];
+  /** The agent's namespace; the platform's (`kagent`) by default. */
+  tenant?: string;
 };
 
 function makeMusterApi(scenario: Scenario = {}) {
@@ -259,19 +270,23 @@ function Seed({
   harness,
   egressText,
   toolset = ['preset:read-only'],
+  tenant = 'kagent',
 }: {
   children: ReactNode;
   withSkill?: boolean;
   harness?: HarnessChoice;
   egressText?: string;
   toolset?: string[];
+  tenant?: string;
 }) {
   const {
     setName,
     setDescription,
+    addTags,
     setSystemMessage,
     setEgressText,
     setInstallation,
+    setTenantChoices,
     selectModelConfig,
     selectHarness,
     toggleSkill,
@@ -281,12 +296,14 @@ function Seed({
   useEffect(() => {
     setName('Go service reviewer');
     setDescription('Reviews pull requests.');
+    addTags(['review', 'go']);
     setSystemMessage('You review pull requests.');
     if (egressText) {
       setEgressText(egressText);
     }
     setInstallation('gazelle');
-    selectModelConfig('opus-4-7', 'kagent');
+    setTenantChoices([tenant]);
+    selectModelConfig('opus-4-7', tenant);
     selectHarness(harness);
     if (withSkill) {
       toggleSkill(SKILL);
@@ -310,7 +327,12 @@ async function renderReview(
     },
   });
   await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, api]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, api],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         {/* The step's actions land in the wizard frame's footer through the
             page-header slot, which is what is driven. */}
@@ -321,6 +343,7 @@ async function renderReview(
               harness={scenario.harness}
               egressText={scenario.egressText}
               toolset={scenario.toolset}
+              tenant={scenario.tenant}
             >
               <NewAgentReviewPage />
             </Seed>
@@ -374,7 +397,7 @@ function grafanaCloud() {
       kind: 'MCPServer',
       metadata: {
         name: 'grafana-cloud',
-        namespace: 'muster',
+        namespace: 'agent-platform',
         annotations: { 'ui.giantswarm.io/display-name': 'Grafana Cloud' },
       },
       spec: { type: 'streamable-http', auth: { type: 'oauth' } },
@@ -394,6 +417,9 @@ describe('NewAgentReviewPage', () => {
     expect(plainRow("What it's for")).toHaveTextContent(
       'Reviews pull requests.',
     );
+    // Once agent-manager says it takes tags.
+    await screen.findByText('Tags', { selector: 'dt' });
+    expect(plainRow('Tags')).toHaveTextContent('review, go');
     // No display name was handed over, so the ModelConfig's name stands in.
     expect(plainRow('Model')).toHaveTextContent('opus-4-7');
     // The runtime field's mark; its title too, once the Harness is read.
@@ -412,6 +438,28 @@ describe('NewAgentReviewPage', () => {
     await waitFor(() => expect(deployButton()).toBeEnabled());
     // Nothing read about the ModelConfig: no underlying-model line.
     expect(within(technical).queryByText('Underlying model')).toBeNull();
+  });
+
+  it('sends no tags where agent-manager takes none', async () => {
+    const { callTool } = await renderReview({
+      info: { capabilities: { ...INFO.capabilities, tags: false } },
+    });
+
+    await waitFor(() =>
+      expect(callTool).toHaveBeenCalledWith(
+        'x_agent-manager_validate_agent',
+        expect.anything(),
+        'gazelle',
+      ),
+    );
+    expect(
+      specSentTo(callTool, 'x_agent-manager_validate_agent'),
+    ).not.toHaveProperty('tags');
+    expect(
+      within(screen.getByLabelText('Summary')).queryByText('Tags', {
+        selector: 'dt',
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it('keeps the ModelConfig name and names the model it runs under Technical details', async () => {
@@ -492,6 +540,43 @@ describe('NewAgentReviewPage', () => {
     ]);
   });
 
+  it("creates an organization's agent with its own connector by muster's key, able to sign in to it", async () => {
+    // A server of the organization's namespace, which muster keys
+    // `<namespace>/<name>`, and which signs each person in.
+    mockServerCrs = [
+      new MCPServer(
+        {
+          apiVersion: 'muster.giantswarm.io/v1alpha1',
+          kind: 'MCPServer',
+          metadata: { name: 'wiki', namespace: 'agents-payments-x7k2q' },
+          spec: { type: 'streamable-http', auth: { type: 'oauth' } },
+        } as never,
+        'gazelle',
+      ),
+    ];
+    const user = userEvent.setup();
+    const { callTool } = await renderReview({
+      tenant: 'agents-payments-x7k2q',
+      toolset: ['server:agents-payments-x7k2q/wiki'],
+    });
+
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    await user.click(deployButton());
+    await waitFor(() =>
+      expect(callTool).toHaveBeenCalledWith(
+        'x_agent-manager_create_agent',
+        expect.anything(),
+        'gazelle',
+      ),
+    );
+    const spec = specSentTo(callTool, 'x_agent-manager_create_agent');
+    expect(spec.namespace).toBe('agents-payments-x7k2q');
+    expect(spec.toolset).toEqual([
+      'server:agents-payments-x7k2q/wiki',
+      'tool:core_auth_login',
+    ]);
+  });
+
   it('holds Create while it is still read whether a connector needs the sign-in tool', async () => {
     mockServerCrs = [grafanaCloud()];
     mockServersLoading = true;
@@ -524,6 +609,7 @@ describe('NewAgentReviewPage', () => {
       name: 'go-service-reviewer',
       displayName: 'Go service reviewer',
       description: 'Reviews pull requests.',
+      tags: ['review', 'go'],
       systemMessage: 'You review pull requests.',
       modelConfig: 'opus-4-7',
       iconUrl: 'https://avatars.gazelle.example/v1/go-service-reviewer.png',
@@ -642,7 +728,7 @@ describe('NewAgentReviewPage', () => {
   it("leads a refusal it does not recognise plainly, with the dry run's violations folded, and withholds Deploy", async () => {
     await renderReview({
       violations: [
-        'modelConfig "opus-4-7" not found in namespace kagent; valid: default-model-config',
+        'modelConfig "opus-4-7" not found in namespace kagent; valid: anthropic-main',
         'skills[0].git.commit: must be a full commit id',
       ],
     });
@@ -658,7 +744,7 @@ describe('NewAgentReviewPage', () => {
     );
     const list = within(alert).getByRole('list', { name: 'Violations' });
     expect(within(list).getAllByRole('listitem')).toHaveLength(2);
-    expect(list).toHaveTextContent('valid: default-model-config');
+    expect(list).toHaveTextContent('valid: anthropic-main');
     expect(deployButton()).toBeDisabled();
   });
 
@@ -855,6 +941,35 @@ describe('NewAgentReviewPage', () => {
     expect(deployButton()).toBeDisabled();
   });
 
+  // The create's refusal is the mutation's, kept until the next write: once
+  // the sign-in lands it goes, and Create is the person's to press again.
+  it('clears the connect step of a refused create once the sign-in lands', async () => {
+    const user = userEvent.setup();
+    await renderReview({
+      createError: new MusterUnauthorizedError(
+        "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
+        'server_sign_in_required',
+        'agent-manager',
+        'gazelle',
+      ),
+    });
+    await screen.findByTestId('code-agent.yaml');
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    await user.click(deployButton());
+    expect(
+      await screen.findByText('Sign in to agent-manager'),
+    ).toBeInTheDocument();
+
+    await signInLands();
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Sign in to agent-manager'),
+      ).not.toBeInTheDocument(),
+    );
+    expect(deployButton()).toBeEnabled();
+  });
+
   it('hides the pull-request alternative while agent-manager does not report the capability', async () => {
     await renderReview();
     await screen.findByTestId('code-agent.yaml');
@@ -887,7 +1002,9 @@ describe('NewAgentReviewPage', () => {
       await screen.findByText(/Pull request #7 opened/),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: 'Review pull request ↗' }),
+      screen.getByRole('link', {
+        name: 'Review pull request (opens in a new tab)',
+      }),
     ).toHaveAttribute('href', 'https://github.com/org/gitops/pull/7');
     expect(mockNavigate).not.toHaveBeenCalled();
   });
@@ -961,7 +1078,8 @@ describe('NewAgentReviewPage', () => {
     expect(values).toHaveTextContent('name: go-service-reviewer');
     expect(values).toHaveTextContent('harness: kagent');
     expect(values).not.toHaveTextContent('skills');
-    const command = screen.getByTestId('code-command').textContent ?? '';
+    const command =
+      screen.getByText(/^helm install /, { selector: 'pre' }).textContent ?? '';
     expect(command).toContain('helm install go-service-reviewer');
     expect(command).toContain('oci://gsoci.azurecr.io/charts/giantswarm/agent');
     expect(command).toContain('--version 1.0.0');

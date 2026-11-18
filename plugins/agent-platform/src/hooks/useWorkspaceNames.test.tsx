@@ -20,7 +20,6 @@ function workspace(name: string, handle?: string): Workspace {
     name,
     organization: 'lab',
     sources: [],
-    sync: { schedule: 'nightly' },
     resourceVersion: '1',
     createdAt: '2026-10-01T00:00:00Z',
     repositories: 2,

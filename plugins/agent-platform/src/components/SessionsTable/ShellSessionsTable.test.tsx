@@ -12,12 +12,23 @@ import {
   MAX_RENDERED_SESSIONS,
   SESSIONS_PAGE_SIZE,
 } from './ShellSessionsTable';
-import { SEARCH_MIN } from '../../lib/toolset';
+import { SEARCH_MIN } from '@giantswarm/backstage-plugin-ui-react';
 import {
+  mockContainerWidth,
   mockDesktopLayout,
   mockPhoneLayout,
+  type MockedContainerWidth,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
+
+// The organizations agent-manager names for the person
+// (`list_organizations`).
+jest.mock('../OrganizationDirectoryProvider', () => ({
+  ...jest.requireActual('../OrganizationDirectoryProvider'),
+  useOrganizationDirectory: () =>
+    jest.requireActual('../../lib/__fixtures__/organizations')
+      .TEST_ORGANIZATION_DIRECTORY,
+}));
 
 jest.mock('../../hooks/useAgentAvatarUrl', () => ({
   useAgentAvatarUrl: () => () => 'https://avatars.example/agent.png',
@@ -392,6 +403,80 @@ describe('SessionsTable in the shell layout', () => {
     expect(dropdown('state')).toHaveTextContent('StateAll');
   });
 
+  it('offers no Environment filter while every session is from one environment', async () => {
+    await renderShell(filterable);
+
+    expect(queryDropdown('environment')).not.toBeInTheDocument();
+  });
+
+  it('filters by environment, every environment until one is picked', async () => {
+    const onWombat = (row: SessionRow): SessionRow => ({
+      ...row,
+      id: `wombat/${row.sessionId}`,
+      installation: 'wombat',
+    });
+    await renderShell([
+      ...filterable.slice(0, 2),
+      ...filterable.slice(2).map(onWombat),
+    ]);
+
+    expect(dropdown('environment')).toHaveTextContent('EnvironmentAll');
+    const [first, second] = filterable.map(row => row.title);
+    expect(screen.getAllByRole('rowheader')).toHaveLength(filterable.length);
+
+    await pick('environment', 'gazelle 2');
+    expect(
+      screen.getAllByRole('rowheader').map(cell => cell.textContent),
+    ).toEqual([first, second]);
+  });
+
+  it('keeps a standing Environment pick undoable once the Environment column is hidden', async () => {
+    const onWombat = (row: SessionRow): SessionRow => ({
+      ...row,
+      id: `wombat/${row.sessionId}`,
+      installation: 'wombat',
+    });
+    const fleet = [
+      ...filterable.slice(0, 2),
+      ...filterable.slice(2).map(onWombat),
+    ];
+    // The page hides the column when one environment is left answering.
+    function OneLeftAnswering() {
+      const [hidden, setHidden] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setHidden(true)}>
+            Lose wombat
+          </button>
+          <SessionsTable
+            rows={fleet}
+            sessionStates={states}
+            searchDebounceMs={0}
+            hideColumns={hidden ? ['installation'] : undefined}
+          />
+        </>
+      );
+    }
+    await renderInTestApp(<OneLeftAnswering />, {
+      apis: [[storageApiRef, mockApis.storage()]],
+      initialRouteEntries: ['/sessions'],
+      mountedRoutes: { '/sessions': sessionsRouteRef },
+    });
+
+    await pick('environment', 'gazelle 2');
+    await userEvent.click(screen.getByRole('button', { name: 'Lose wombat' }));
+
+    expect(dropdown('environment')).toBeInTheDocument();
+    await userEvent.click(
+      within(screen.getByRole('group', { name: 'Filters' })).getByRole(
+        'button',
+        { name: 'Clear filters' },
+      ),
+    );
+    expect(queryDropdown('environment')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('rowheader')).toHaveLength(fleet.length);
+  });
+
   it('counts the sessions on each state option, in the shell words', async () => {
     await renderShell(filterable);
 
@@ -453,7 +538,7 @@ describe('SessionsTable in the shell layout', () => {
     await renderShell(filterable);
 
     const search = screen.getByRole('searchbox', { name: 'Search sessions' });
-    expect(search).toHaveAttribute('placeholder', 'Search by title or agent');
+    expect(search).toHaveAttribute('placeholder', 'Search sessions');
 
     await user.type(search, 'release writer');
     expect(
@@ -489,7 +574,7 @@ describe('SessionsTable in the shell layout', () => {
   it('opens on the state a link asks for, even under SEARCH_MIN', async () => {
     // The needs-input toast's "Show waiting sessions" (T39).
     await renderShell(
-      rows,
+      rows.slice(0, 2),
       states,
       mockApis.storage(),
       '/sessions?state=waiting',
@@ -596,7 +681,7 @@ describe('SessionsTable in the shell layout', () => {
 
     await openNotifications('Release notes');
     expect(
-      screen.getByRole('menuitemradio', { name: 'Default' }),
+      screen.getByRole('menuitemradio', { name: 'When action is required' }),
     ).toHaveAttribute('aria-checked', 'true');
     await user.click(screen.getByRole('menuitemradio', { name: 'Muted' }));
 
@@ -624,7 +709,7 @@ describe('SessionsTable in the shell layout', () => {
     // Each row has its own level.
     await openNotifications('Triage this week');
     expect(
-      screen.getByRole('menuitemradio', { name: 'Default' }),
+      screen.getByRole('menuitemradio', { name: 'When action is required' }),
     ).toHaveAttribute('aria-checked', 'true');
   });
 
@@ -760,7 +845,7 @@ describe('SessionsTable in the shell layout', () => {
     }, 20_000);
   });
 
-  describe('at 3 sessions and at 300 (T39)', () => {
+  describe('at 2, 3 and 300 sessions (T39)', () => {
     const fleetOf = (count: number, agents = 3) =>
       Array.from({ length: count }, (_, index) =>
         session(
@@ -771,10 +856,10 @@ describe('SessionsTable in the shell layout', () => {
         ),
       );
 
-    it('lists three sessions bare: no search, no filters, no paging', async () => {
-      await renderShell(rows.slice(0, 3));
+    it('lists two sessions bare: no search, no filters, no paging', async () => {
+      await renderShell(rows.slice(0, 2));
 
-      expect(screen.getAllByRole('rowheader')).toHaveLength(3);
+      expect(screen.getAllByRole('rowheader')).toHaveLength(2);
       expect(
         screen.queryByRole('searchbox', { name: 'Search sessions' }),
       ).not.toBeInTheDocument();
@@ -787,13 +872,79 @@ describe('SessionsTable in the shell layout', () => {
       expect(screen.queryByText(/^Showing/)).not.toBeInTheDocument();
     });
 
-    it('draws one agent’s sessions as an Agent dropdown of one option (T64)', async () => {
+    it('lists three sessions with search and filters (SEARCH_MIN)', async () => {
+      await renderShell(
+        rows.slice(0, 3),
+        states,
+        mockApis.storage(),
+        '/sessions',
+      );
+
+      expect(
+        screen.getByRole('searchbox', { name: 'Search sessions' }),
+      ).toBeInTheDocument();
+      expect(dropdown('state')).toBeInTheDocument();
+      expect(dropdown('agent')).toBeInTheDocument();
+    });
+
+    it('filters by organization once the agents belong to two', async () => {
+      const inOrg = (row: SessionRow, namespace: string): SessionRow => ({
+        ...row,
+        agentNamespace: namespace,
+      });
+      await renderShell(
+        [
+          inOrg(rows[0], 'org-acme'),
+          inOrg(rows[1], 'kagent'),
+          inOrg(rows[2], 'org-acme'),
+        ],
+        states,
+        mockApis.storage(),
+        '/sessions',
+      );
+
+      expect(await optionsOf('organization')).toEqual(['acme 2', 'None 1']);
+      await pick('organization', /^acme/);
+      expect(
+        screen.getAllByRole('rowheader').map(cell => cell.textContent),
+      ).toEqual(['Triage this week', 'Pricing research']);
+    });
+
+    it('draws no Organization dropdown for one organization', async () => {
+      await renderShell(rows);
+
+      expect(dropdown('agent')).toBeInTheDocument();
+      expect(queryDropdown('organization')).not.toBeInTheDocument();
+    });
+
+    it('draws no Organization dropdown for one organization while others are unmatched', async () => {
+      // Sessions whose agent is not matched (yet) have no organization: not a
+      // second one to choose, so no dropdown that vanishes once they load.
+      await renderShell([
+        { ...rows[0], agentNamespace: 'org-acme' },
+        { ...rows[1], agentNamespace: undefined },
+        { ...rows[2], agentNamespace: 'org-acme' },
+        { ...rows[3], agentNamespace: undefined },
+      ]);
+
+      expect(dropdown('agent')).toBeInTheDocument();
+      expect(queryDropdown('organization')).not.toBeInTheDocument();
+    });
+
+    it('draws the Pinned dropdown once some sessions are pinned', async () => {
+      // A flag: a session without the pin is a choice in itself.
+      await renderShell(rows, states, await storageWithPins(['a']));
+
+      expect(dropdown('pinned')).toBeInTheDocument();
+    });
+
+    it('draws no Agent dropdown over one agent’s sessions', async () => {
       await renderShell(fleetOf(SEARCH_MIN + 1, 1));
 
       expect(
         screen.getByRole('searchbox', { name: 'Search sessions' }),
       ).toBeInTheDocument();
-      expect(await optionsOf('agent')).toEqual([`Agent 0 ${SEARCH_MIN + 1}`]);
+      expect(queryDropdown('agent')).not.toBeInTheDocument();
     });
 
     it('keeps 300 sessions to a bounded window, with search and a way back', async () => {
@@ -930,6 +1081,102 @@ describe('SessionsTable in the shell layout', () => {
       ),
     );
     expect(mockNavigate).toHaveBeenCalledWith('/sessions/gazelle/b');
+  });
+
+  // Beside the side rail at 768px, and in a narrow window, the columns of
+  // short values keep their widths: Environment goes first, then the list
+  // stacks its rows as at phone width.
+  describe('in a container too narrow for every column', () => {
+    let layout: MockedLayout;
+    let container: MockedContainerWidth;
+    afterEach(() => {
+      container.restore();
+      layout.restore();
+    });
+
+    const headers = () =>
+      screen.getAllByRole('columnheader').map(cell => cell.textContent?.trim());
+
+    it('shows every column when they fit', async () => {
+      layout = mockDesktopLayout();
+      container = mockContainerWidth(1100);
+      await renderShell();
+
+      expect(headers()).toContain('Environment');
+    });
+
+    it('drops Environment first', async () => {
+      layout = mockDesktopLayout();
+      container = mockContainerWidth(700);
+      await renderShell();
+
+      expect(headers()).toContain('Last active');
+      expect(headers()).not.toContain('Environment');
+    });
+
+    it('stacks the rows when the rest does not fit either', async () => {
+      layout = mockDesktopLayout();
+      container = mockContainerWidth(500);
+      await renderShell();
+
+      expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+      expect(screen.getByRole('list', { name: 'Today' })).toBeInTheDocument();
+    });
+
+    it('names the environment on the session’s second line once its column is gone', async () => {
+      layout = mockDesktopLayout();
+      container = mockContainerWidth(700);
+      await renderShell();
+
+      const row = screen
+        .getByRole('link', { name: 'Triage this week' })
+        .closest('[role="row"]') as HTMLElement;
+      expect(within(row).getByText('gazelle')).toBeInTheDocument();
+    });
+
+    describe('with sessions in a workspace', () => {
+      const withWorkspace = rows.map((row, index) =>
+        index === 0
+          ? {
+              ...row,
+              workspace: {
+                volumeHandle: 'fs-1::docs',
+                fetched: [],
+                providers: [],
+              },
+            }
+          : row,
+      );
+
+      it('drops Environment, then Workspace, then stacks, and comes back as it widens', async () => {
+        layout = mockDesktopLayout();
+        container = mockContainerWidth(1100);
+        await renderShell(withWorkspace);
+        expect(headers()).toEqual(
+          expect.arrayContaining(['Workspace', 'Environment']),
+        );
+
+        // Beside the side rail on a ~1024px window: the table stays.
+        act(() => container.setWidth(900));
+        expect(headers()).toContain('Workspace');
+        expect(headers()).not.toContain('Environment');
+
+        act(() => container.setWidth(750));
+        expect(headers()).not.toContain('Workspace');
+        expect(headers()).toContain('Last active');
+        const row = screen
+          .getByRole('link', { name: 'Triage this week' })
+          .closest('[role="row"]') as HTMLElement;
+        expect(within(row).getByText('gazelle · ws-docs')).toBeInTheDocument();
+
+        act(() => container.setWidth(500));
+        expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+
+        act(() => container.setWidth(750));
+        expect(screen.getAllByRole('grid').length).toBeGreaterThan(0);
+        expect(headers()).not.toContain('Workspace');
+      });
+    });
   });
 
   describe('at phone width (T22 B1)', () => {

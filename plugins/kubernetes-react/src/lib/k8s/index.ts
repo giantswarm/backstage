@@ -9,10 +9,13 @@ export * from './resourceRef';
 
 export {
   Agent,
+  AGENT_BLOCKED_REASON,
   AGENT_CONDITION_STAGE_ORDER,
   AgentConditionType,
   deriveAgentReadiness,
+  AGENT_BOOT_PENDING_REASON,
   failureFieldOf,
+  missingSecretOf,
   getAgentStatusChangedAt,
   isAgentStatusStale,
   isAgentTransitional,

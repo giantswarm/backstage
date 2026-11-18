@@ -1,0 +1,1 @@
+export { ExternalUrlConsentDialogHost } from './ExternalUrlConsentDialog';

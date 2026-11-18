@@ -300,6 +300,30 @@ describe('buildTimeline', () => {
   });
 
   describe('timestamps', () => {
+    it('uses recorded entry positions within a long-running turn', () => {
+      const { items } = timelineFor({
+        data: [
+          {
+            status: { state: 'working', timestamp: '2026-11-06T20:10:16Z' },
+            history: [
+              { role: 'user', messageId: 'u', parts: [{ text: 'Plan' }] },
+              {
+                role: 'agent',
+                messageId: 'a',
+                metadata: {
+                  'kagent.dev/a2a/timeline-position': '2026-11-06T20:19:10Z',
+                },
+                parts: [{ text: 'Rendering complete' }],
+              },
+            ],
+          },
+        ],
+      });
+      expect(items.map(item => item.at)).toEqual([
+        '2026-11-06T20:10:16Z',
+        '2026-11-06T20:19:10.000Z',
+      ]);
+    });
     it('gives every item its task’s timestamp', () => {
       // A2A messages carry no time of their own and there is no finer source:
       // the session's stored events turned out to be ADK events with no
@@ -755,6 +779,50 @@ describe('buildTimeline', () => {
         args: expect.objectContaining({ name: 'cluster-app' }),
         verdict: 'approved',
       });
+    });
+
+    it('names the muster tool behind call_tool and its own arguments', () => {
+      const proxied = structuredClone(approval) as typeof approval;
+      const confirm = proxied.data[0].history.find(
+        item => item.messageId === 'm-confirm-1',
+      ) as unknown as {
+        parts: { data: { args: { originalFunctionCall: object } } }[];
+      };
+      confirm.parts[0].data.args.originalFunctionCall = {
+        id: 'call-rollback-1',
+        name: 'call_tool',
+        args: {
+          name: 'x_site-control_schedule_rollback',
+          arguments: { release: 'v1.2.3', window: 'tonight' },
+        },
+      };
+
+      const { items } = timelineFor(proxied);
+
+      expect(items[1]).toEqual(
+        expect.objectContaining({
+          kind: 'approval',
+          toolName: 'x_site-control_schedule_rollback',
+          via: 'Muster',
+          args: { release: 'v1.2.3', window: 'tonight' },
+        }),
+      );
+    });
+
+    it('leaves the runtime’s confirmation hint out of the agent’s prose', () => {
+      // The v1 runtime sends its hint ("…responding with a FunctionResponse…")
+      // as the text of the input-required message; the approval says what is
+      // asked.
+      const { items } = timelineFor(kagent4a91c273);
+
+      expect(kinds(items)).toContain('approval');
+      expect(
+        items.some(
+          item =>
+            item.kind === 'agent-message' &&
+            item.text.includes('FunctionResponse'),
+        ),
+      ).toBe(false);
     });
 
     it('reads a rejection', () => {

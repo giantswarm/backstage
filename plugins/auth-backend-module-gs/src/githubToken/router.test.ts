@@ -3,6 +3,7 @@ import { ConfigReader } from '@backstage/config';
 import {
   AuthLoginResult,
   MusterServerGateway,
+  MusterUnreachableError,
 } from '@giantswarm/backstage-plugin-gs-node';
 import express from 'express';
 import request from 'supertest';
@@ -218,6 +219,55 @@ describe('createGithubTokenRouter', () => {
     expect(response.body.token).toBe('ghu_live');
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     expect(github.logins).toHaveLength(1);
+  });
+
+  describe('when muster cannot be asked to connect', () => {
+    class UnreachableGateway extends StubMusterGateway {
+      constructor(private readonly failure: Error) {
+        super();
+      }
+      async login(authToken: string): Promise<AuthLoginResult> {
+        this.logins.push(authToken);
+        throw this.failure;
+      }
+    }
+
+    async function exchangeWith(failure: Error) {
+      (logger.info as jest.Mock).mockClear();
+      (logger.warn as jest.Mock).mockClear();
+      const app = buildApp(new UnreachableGateway(failure))!;
+      brokerAnswers({ body: { error: 'invalid_target' }, status: 400 });
+      return request(app)
+        .post('/github-token')
+        .set(SUBJECT_TOKEN_HEADER, 'dex-id-token');
+    }
+
+    const NOT_ASKED =
+      'GitHub token: the broker released no grant and muster could not be asked to connect';
+
+    it('logs an unreachable muster at info, which the muster client has warned about already', async () => {
+      const response = await exchangeWith(
+        new MusterUnreachableError('gazelle', 'the connection was closed'),
+      );
+
+      expect(response.status).toBe(502);
+      expect(response.body.reason).toBe('exchange_failed');
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.info).toHaveBeenCalledWith(
+        NOT_ASKED,
+        expect.objectContaining({ server: 'github' }),
+      );
+    });
+
+    it('warns about any other failure', async () => {
+      const response = await exchangeWith(new Error('boom'));
+
+      expect(response.status).toBe(502);
+      expect(logger.warn).toHaveBeenCalledWith(
+        NOT_ASKED,
+        expect.objectContaining({ error: 'Error: boom' }),
+      );
+    });
   });
 
   it('reports a misconfigured grant target when the broker still refuses after muster connected', async () => {

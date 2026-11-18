@@ -1,16 +1,16 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQueryClient } from '@tanstack/react-query';
+import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
 import { MusterServerNotConnectedError, repositoriesApiRef } from '../apis';
 import { bounceAllowed, bounceToConnect } from './connectBounce';
 
 /**
- * Shows a failed request. A missing grant is not an error to read but a step
- * the page takes on its own: the browser is sent through muster's connect
- * once and comes back to this page with the grant in place -- no dialog, no
- * popup, no click. Only when that bounce did not produce a grant does the
- * alert stay and offer the connect as a button.
+ * Shows a failed request. A missing grant is a step, not an error: the alert
+ * offers muster's connect, which opens after the person agrees in the
+ * external URL consent dialog and comes back to this page with the grant in
+ * place. A connect that came back without a grant says so.
  */
 export function RepositoriesErrorAlert(props: { title: string; error: Error }) {
   const { title, error } = props;
@@ -25,12 +25,15 @@ export function RepositoriesErrorAlert(props: { title: string; error: Error }) {
 
 function ConnectAlert({ error }: { error: MusterServerNotConnectedError }) {
   const api = useApi(repositoriesApiRef);
+  const consentApi = useApi(externalUrlConsentApiRef);
   const queryClient = useQueryClient();
-  const [state, setState] = useState<
-    'idle' | 'bouncing' | 'returned' | 'failed'
-  >(() => (bounceAllowed() ? 'idle' : 'returned'));
+  const [returned] = useState(() => !bounceAllowed());
+  const [state, setState] = useState<'idle' | 'asking' | 'leaving' | 'failed'>(
+    'idle',
+  );
 
   const connect = useCallback(async () => {
+    setState('asking');
     let authUrl = error.authUrl;
     if (!authUrl) {
       const connection = await api.getConnection().catch(() => undefined);
@@ -44,24 +47,17 @@ function ConnectAlert({ error }: { error: MusterServerNotConnectedError }) {
       setState('failed');
       return;
     }
-    setState('bouncing');
-    bounceToConnect(authUrl);
-  }, [error.authUrl, api, queryClient]);
-
-  // First sight of a missing grant: go straight through muster's connect.
-  useEffect(() => {
-    if (state === 'idle') {
-      void connect();
-    }
-  }, [state, connect]);
+    const answer = await bounceToConnect(consentApi, authUrl);
+    setState(answer === 'accept' ? 'leaving' : 'idle');
+  }, [error.authUrl, api, queryClient, consentApi]);
 
   return (
     <Alert
       status="warning"
       title={
-        state === 'returned'
-          ? 'Connect to the repository manager'
-          : 'Connecting to the repository manager…'
+        state === 'leaving'
+          ? 'Connecting to the repository manager…'
+          : 'Connect to the repository manager'
       }
       description={
         <Flex direction="column" gap="2">
@@ -70,7 +66,7 @@ function ConnectAlert({ error }: { error: MusterServerNotConnectedError }) {
             your sign-in to giantswarm-repo-manager, which reads GitHub with
             your grant.
           </Text>
-          {state === 'returned' && (
+          {returned && state !== 'leaving' && (
             <Text color="secondary">
               The connect did not complete. Try again; if Dex asks for consent,
               grant it.
@@ -81,9 +77,14 @@ function ConnectAlert({ error }: { error: MusterServerNotConnectedError }) {
               muster offered no sign-in link: {error.message}
             </Text>
           )}
-          {state === 'returned' && (
+          {(state === 'idle' || state === 'asking') && (
             <div>
-              <Button variant="primary" size="small" onPress={connect}>
+              <Button
+                variant="primary"
+                size="small"
+                isPending={state === 'asking'}
+                onPress={connect}
+              >
                 Connect
               </Button>
             </div>

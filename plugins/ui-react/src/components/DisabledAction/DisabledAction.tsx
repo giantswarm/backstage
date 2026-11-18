@@ -16,9 +16,6 @@ const useStyles = makeStyles({
       pointerEvents: 'none',
     },
   },
-  tooltip: {
-    maxWidth: 280,
-  },
 });
 
 export interface DisabledActionProps {
@@ -97,9 +94,7 @@ export function DisabledAction({ reason, children }: DisabledActionProps) {
         {children(descriptionId)}
       </span>
       <VisuallyHidden id={descriptionId}>{reason}</VisuallyHidden>
-      <Tooltip triggerRef={wrapper} className={classes.tooltip}>
-        {reason}
-      </Tooltip>
+      <Tooltip triggerRef={wrapper}>{reason}</Tooltip>
     </TooltipTrigger>
   );
 }

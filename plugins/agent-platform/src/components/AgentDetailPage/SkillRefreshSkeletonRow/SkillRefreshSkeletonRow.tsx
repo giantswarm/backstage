@@ -1,6 +1,6 @@
 import { Flex } from '@backstage/ui';
 
-import { CellSkeleton } from '../CellSkeleton';
+import { CellSkeleton } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * A row of the Update skills table before the agent's skills are read, in the

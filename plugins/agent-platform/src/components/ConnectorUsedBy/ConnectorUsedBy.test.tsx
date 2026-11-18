@@ -58,6 +58,7 @@ function row(
     name,
     technicalName: name.toLowerCase().replace(/\s+/g, '-'),
     description: '',
+    tags: [],
     skillCount: 0,
     readiness: 'Ready' as AgentRow['readiness'],
     toolset,

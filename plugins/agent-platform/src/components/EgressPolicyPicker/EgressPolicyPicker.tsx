@@ -13,6 +13,7 @@ import { useFormHarnessRuntime } from '../../hooks/useFormHarnessRuntime';
 import type { AgentManagerEgressPolicy } from '../../lib/agentManager';
 import { tenantAdminsOf } from '../../lib/tenants';
 import { useNewAgentForm } from '../NewAgentFormProvider';
+import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 
 const useStyles = makeStyles({
   origins: {
@@ -56,6 +57,7 @@ export function egressPolicyOriginsLine(
  * removed on purpose, never dropped unseen.
  */
 export function EgressPolicyPicker() {
+  const { directory } = useOrganizationDirectory();
   const classes = useStyles();
   const { state, setEgressPolicyRefs } = useNewAgentForm();
   const { installation } = state;
@@ -80,7 +82,7 @@ export function EgressPolicyPicker() {
   const withCredential = egressPolicies.some(policy =>
     policy.destinations.some(destination => destination.credentialHeader),
   );
-  const admins = tenantAdminsOf(namespace);
+  const admins = tenantAdminsOf(namespace, directory);
   const description = `Shared sets of origins kept in ${namespace} by ${admins}. A change to a policy reaches the agent from its next session on.${
     withCredential
       ? ' Where an origin names a header, the gateway adds it from the policy’s credential and the agent acts with it.'

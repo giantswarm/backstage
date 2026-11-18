@@ -1,18 +1,34 @@
 import { FeatureFlagState } from '@backstage/frontend-plugin-api';
 import { mockApis } from '@backstage/frontend-test-utils';
-import { isAgentShellOn } from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
+  isAgentShellOn,
+  ORGANIZATIONS_FLAG,
+} from '@giantswarm/backstage-plugin-agent-platform-common';
 import { AGENT_SHELL_FLAG } from './predicates';
-import { PortalFeatureFlags } from './PortalFeatureFlags';
+import { PLATFORM_SECTION_FLAG } from './platformSection';
+import {
+  FIXTURE_ORGANIZATIONS_STARTED,
+  PortalFeatureFlags,
+} from './PortalFeatureFlags';
 
 function flagsFor(
   portals: { platformPortal?: boolean; agentPlatform?: boolean } | undefined,
   states: Record<string, FeatureFlagState> = {},
+  organizationsEnabled?: boolean,
 ) {
   const inner = mockApis.featureFlags({ initialStates: states });
   inner.registerFlag({ name: AGENT_SHELL_FLAG, pluginId: 'app' });
+  inner.registerFlag({ name: ORGANIZATIONS_FLAG, pluginId: 'agent-platform' });
   inner.registerFlag({ name: 'other-flag', pluginId: 'app' });
   return new PortalFeatureFlags(
-    mockApis.config({ data: portals ? { app: { portals } } : {} }),
+    mockApis.config({
+      data: {
+        ...(portals && { app: { portals } }),
+        ...(organizationsEnabled !== undefined && {
+          agentPlatform: { organizations: { enabled: organizationsEnabled } },
+        }),
+      },
+    }),
     inner,
   );
 }
@@ -53,9 +69,50 @@ describe('PortalFeatureFlags', () => {
 
     expect(names(flagsFor(undefined))).toEqual([
       AGENT_SHELL_FLAG,
+      ORGANIZATIONS_FLAG,
       'other-flag',
     ]);
-    expect(names(flagsFor({ agentPlatform: true }))).toEqual(['other-flag']);
+    expect(names(flagsFor({ agentPlatform: true }))).toEqual([
+      ORGANIZATIONS_FLAG,
+      'other-flag',
+    ]);
+  });
+
+  it.each([FeatureFlagState.None, FeatureFlagState.Active])(
+    'keeps the browser organizations opt-in when deployment config is unset, state=%s',
+    state => {
+      const flags = flagsFor(undefined, { [ORGANIZATIONS_FLAG]: state });
+      expect(flags.isActive(ORGANIZATIONS_FLAG)).toBe(
+        state === FeatureFlagState.Active,
+      );
+    },
+  );
+
+  it.each([
+    [false, FeatureFlagState.None],
+    [false, FeatureFlagState.Active],
+    [true, FeatureFlagState.None],
+    [true, FeatureFlagState.Active],
+  ])(
+    'uses deployment organizations=%s over browser state=%s',
+    (enabled, state) => {
+      const flags = flagsFor(
+        undefined,
+        { [ORGANIZATIONS_FLAG]: state },
+        enabled,
+      );
+      expect(flags.isActive(ORGANIZATIONS_FLAG)).toBe(enabled);
+      flags.save({ states: { [ORGANIZATIONS_FLAG]: FeatureFlagState.Active } });
+      expect(flags.isActive(ORGANIZATIONS_FLAG)).toBe(enabled);
+      expect(flags.getRegisteredFlags().map(flag => flag.name)).toEqual([
+        AGENT_SHELL_FLAG,
+        'other-flag',
+      ]);
+    },
+  );
+
+  it('keeps organizations off without deployment config or a browser opt-in', () => {
+    expect(flagsFor(undefined).isActive(ORGANIZATIONS_FLAG)).toBe(false);
   });
 
   it('latches the opt-in for render-time readers while the toggle keeps working', () => {
@@ -82,5 +139,75 @@ describe('PortalFeatureFlags', () => {
 
     flags.save({ states: { 'other-flag': FeatureFlagState.None } });
     expect(flags.isActive('other-flag')).toBe(false);
+  });
+
+  describe('in fixture mode', () => {
+    const fixtureFlags = (states: Record<string, FeatureFlagState> = {}) => {
+      const inner = mockApis.featureFlags({ initialStates: states });
+      inner.registerFlag({
+        name: ORGANIZATIONS_FLAG,
+        pluginId: 'agent-platform',
+      });
+      return {
+        inner,
+        flags: new PortalFeatureFlags(
+          mockApis.config({ data: { agentPlatform: { fixtures: true } } }),
+          inner,
+        ),
+      };
+    };
+
+    afterEach(() => window.localStorage.clear());
+
+    it('starts with Organizations on and keeps its toggle', () => {
+      const { flags } = fixtureFlags();
+      expect(flags.isActive(ORGANIZATIONS_FLAG)).toBe(true);
+      expect(flags.getRegisteredFlags().map(flag => flag.name)).toContain(
+        ORGANIZATIONS_FLAG,
+      );
+    });
+
+    it('keeps Organizations off once the person turned it off', () => {
+      fixtureFlags();
+      expect(window.localStorage.getItem(FIXTURE_ORGANIZATIONS_STARTED)).toBe(
+        'true',
+      );
+      const { flags } = fixtureFlags({
+        [ORGANIZATIONS_FLAG]: FeatureFlagState.None,
+      });
+      expect(flags.isActive(ORGANIZATIONS_FLAG)).toBe(false);
+    });
+
+    it('leaves Organizations off outside fixture mode', () => {
+      expect(flagsFor(undefined).isActive(ORGANIZATIONS_FLAG)).toBe(false);
+    });
+  });
+
+  describe('the Platform section flag', () => {
+    function flagsWith(data: object) {
+      return new PortalFeatureFlags(
+        mockApis.config({ data }),
+        mockApis.featureFlags({
+          initialStates: { [PLATFORM_SECTION_FLAG]: FeatureFlagState.Active },
+        }),
+      );
+    }
+
+    it('is off by default, whatever the browser holds', () => {
+      expect(flagsWith({}).isActive(PLATFORM_SECTION_FLAG)).toBe(false);
+    });
+
+    it('follows gs.features.platformSection.enabled', () => {
+      expect(
+        flagsWith({
+          gs: { features: { platformSection: { enabled: true } } },
+        }).isActive(PLATFORM_SECTION_FLAG),
+      ).toBe(true);
+      expect(
+        flagsWith({
+          gs: { features: { platformSection: { enabled: false } } },
+        }).isActive(PLATFORM_SECTION_FLAG),
+      ).toBe(false);
+    });
   });
 });

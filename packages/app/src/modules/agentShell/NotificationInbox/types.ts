@@ -142,11 +142,12 @@ export type ReadableInboxRowSource<Row extends InboxRow = InboxRow> =
      */
     markRead(row: Row, opened: boolean): Promise<void>;
     /**
-     * Marks every unread row of the source read, without reporting it (the
+     * Marks every unread row of the source read, or only those of `rows`
+     * (Try again after "Mark all read" failed), without reporting it (the
      * inbox reports "Mark all read" once for all sources). Resolves to
      * whether anything was marked.
      */
-    markAllRead(): Promise<boolean>;
+    markAllRead(rows?: readonly Row[]): Promise<boolean>;
     /**
      * Whether the row is about the page at `pathname`: no toast is raised for
      * it, and it counts as seen while the person works on that page.

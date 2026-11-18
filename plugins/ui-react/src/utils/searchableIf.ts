@@ -1,12 +1,11 @@
-import { SEARCH_MIN } from '../components/ShowMore/ShowMore';
+import { isSearchableList } from '../components/ShowMore/ShowMore';
 
 /**
- * Whether a Select over these options offers type-ahead: only past
- * {@link SEARCH_MIN}, where scrolling to the one wanted stops working. Three
- * installations are read, not searched; a search box over them is chrome.
+ * Whether a Select over these options offers type-ahead: the same rule as a
+ * list's search ({@link isSearchableList}), counted over its options.
  *
  * `<Select searchable={searchableIf(options)} options={options} />`
  */
 export function searchableIf(options: readonly unknown[]): boolean {
-  return options.length > SEARCH_MIN;
+  return isSearchableList(options.length);
 }

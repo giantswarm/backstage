@@ -2,6 +2,7 @@ import {
   isMusterUnauthorizedReason,
   type MusterUnauthorizedReason,
 } from '@giantswarm/backstage-plugin-gs-common';
+import { causeChain } from '@giantswarm/backstage-plugin-ui-react';
 import { isMusterTokenMintError } from './installationToken';
 
 export type { MusterUnauthorizedReason } from '@giantswarm/backstage-plugin-gs-common';
@@ -10,6 +11,10 @@ export type { MusterUnauthorizedReason } from '@giantswarm/backstage-plugin-gs-c
  * A 401 of muster-backend. `name` stays `UnauthorizedError`, the name every
  * caller already keys on; `reason` and `server` say what to do about it. An
  * answer from an older backend (or a proxy in front of it) carries no reason.
+ * `errorName` is the name the answer's body gives the error: the portal's
+ * own refusal of the person's session token (Backstage's
+ * `AuthenticationError`, before muster-backend runs) tells itself apart by
+ * it from muster-backend's own 401s.
  */
 export class MusterUnauthorizedError extends Error {
   readonly name = 'UnauthorizedError';
@@ -20,6 +25,7 @@ export class MusterUnauthorizedError extends Error {
     readonly reason?: MusterUnauthorizedReason,
     readonly server?: string,
     readonly installation?: string,
+    readonly errorName?: string,
   ) {
     super(message);
   }
@@ -37,19 +43,6 @@ export function unauthorizedBodyOf(body: unknown): {
     reason: isMusterUnauthorizedReason(reason) ? reason : undefined,
     server: typeof server === 'string' && server !== '' ? server : undefined,
   };
-}
-
-/**
- * `error` and the errors it was made from (`cause`): the plugins that call
- * muster wrap its errors in their own (`ClusterManagerError`, ...) and keep
- * the original as the cause.
- */
-function* causeChain(error: unknown): Generator<unknown> {
-  let current = error;
-  for (let depth = 0; current && depth < 5; depth++) {
-    yield current;
-    current = (current as { cause?: unknown }).cause;
-  }
 }
 
 /**

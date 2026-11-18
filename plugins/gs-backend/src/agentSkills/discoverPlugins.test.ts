@@ -81,6 +81,23 @@ describe('pluginsOf', () => {
     ]);
   });
 
+  it("reads another tool's manifest folder as no package", () => {
+    const plugins = pluginsOf(
+      [
+        'plugin.json',
+        '.claude-plugin/plugin.json',
+        '.codex-plugin/plugin.json',
+        '.cursor-plugin/plugin.json',
+        'p/.codex-plugin/plugin.json',
+      ],
+      [],
+      at,
+    );
+    expect(plugins.map(p => [p.path, p.format])).toEqual([
+      ['', 'agent-plugins'],
+    ]);
+  });
+
   it('finds nothing in a repository of plain skills', () => {
     expect(
       pluginsOf(

@@ -296,16 +296,9 @@ export function defaultToolchainsOf(
     .map(parseToolchainEntry);
 }
 
-/** "go 0.1.0, node latest": a set of toolchains in a line. */
-export function toolchainsLabel(picks: readonly ToolchainPick[]): string {
-  return picks.length === 0
-    ? 'No toolchains'
-    : picks
-        .map(
-          pick =>
-            `${pick.name} ${pick.version ? imageTag(pick.version) : 'latest'}`,
-        )
-        .join(', ');
+/** "go 0.1.0", "node latest": one toolchain as people read it. */
+export function toolchainLabel(pick: ToolchainPick): string {
+  return `${pick.name} ${pick.version ? imageTag(pick.version) : 'latest'}`;
 }
 
 /** Whether two sets of toolchains mount the same images. */

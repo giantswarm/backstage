@@ -7,7 +7,6 @@
   // Assign the reviewer (the generated renovate.json5 default) even on
   // automerge-enabled PRs at creation time, instead of only when checks fail.
   assignAutomerge: true,
-  prConcurrentLimit: 2,
   schedule: [
     'every weekend',
     'every weekday after 5pm',
@@ -45,7 +44,9 @@
       // pins, and @backstage/ui follows backstage.json, which Renovate does not
       // bump. Another version installs a second copy: RouteTabs' RouterProvider
       // no longer reaches the bui Tabs and Links, and their navigation falls
-      // back to the browser. They move with each Backstage bump.
+      // back to the browser, and ui-react's HintTooltip reads bui's
+      // TooltipTriggerStateContext from it, so its hints would never open.
+      // They move with each Backstage bump.
       matchPackageNames: ['react-aria', 'react-aria-components'],
       enabled: false,
     },
@@ -67,6 +68,15 @@
     {
       groupName: 'date-fns packages',
       matchPackageNames: ['date-fns', 'date-fns-tz'],
+    },
+    {
+      // The TechDocs generator's Python packages in
+      // packages/backend/techdocs-requirements.txt move in one PR.
+      // mkdocs-techdocs-core 1.2.1 holds several of them in place
+      // (mkdocs-material, pymdown-extensions, Markdown), so a bump to one of
+      // those on its own can't be installed and fails the image build.
+      groupName: 'techdocs python packages',
+      matchManagers: ['pip_requirements'],
     },
     {
       // Opt Giant Swarm-owned npm packages out of the 14-day minimumReleaseAge

@@ -203,7 +203,9 @@ const INFRASTRUCTURE_ERROR_NAMES = [
  * Whether an error from the muster client is an infrastructure fault rather than
  * muster deliberately declining a tool call. Tool-level refusals arrive as a
  * plain `Error` carrying muster's own message (thrown by
- * MusterMcpClient.unwrapTextContent on `isError`); everything here is a broken
+ * MusterMcpClient.unwrapTextContent on `isError`), but for a tool error whose
+ * kind muster's own failure names (`status` 5xx: a timeout, a lost
+ * connection, a missing tool, a rollout's interruption); everything here is a broken
  * dependency, and must keep its 5xx so it reaches Sentry instead of being
  * rendered to the user as a policy decision.
  */
@@ -217,7 +219,16 @@ export function isInfrastructureError(error: unknown): boolean {
     return true;
   }
   const candidate = error as
-    { name?: string; statusCode?: unknown; code?: unknown } | undefined;
+    | { name?: string; statusCode?: unknown; code?: unknown; status?: unknown }
+    | undefined;
+  // A MusterToolError whose kind is muster's own failure, not a refusal.
+  if (
+    candidate?.name === 'MusterToolError' &&
+    typeof candidate.status === 'number' &&
+    candidate.status >= 500
+  ) {
+    return true;
+  }
   // Any transport that reports an HTTP status (or a protocol-level code) on the
   // error is describing a broken hop, not a tool result.
   if (

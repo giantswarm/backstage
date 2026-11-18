@@ -14,6 +14,7 @@ import { NewAgentReviewPage } from '../NewAgentReviewPage';
 import { ShellCustomizeRedirect } from '../ShellCustomizeRedirect';
 import { RouteRefRedirect } from '../RouteRefRedirect';
 import { newAgentRouteRef } from '../../routes';
+import { OrganizationDirectoryProvider } from '../OrganizationDirectoryProvider';
 
 /**
  * `new` is a reserved word here: an address that starts with it is never an
@@ -58,62 +59,64 @@ export const AgentsRouter = () => {
   useScrollToTopOnNavigation();
   return (
     <QueryClientProvider>
-      <NewAgentFormProvider persistDraft>
-        <Routes>
-          <Route
-            path="new"
-            element={
-              <NewAgentStep>
-                <NewAgentPage />
-              </NewAgentStep>
-            }
-          />
-          <Route
-            path="new/skills"
-            element={
-              <NewAgentStep>
-                <NewAgentSkillsPage />
-              </NewAgentStep>
-            }
-          />
-          <Route
-            path="new/tools"
-            element={
-              <NewAgentStep>
-                <NewAgentToolsPage />
-              </NewAgentStep>
-            }
-          />
-          <Route
-            path="new/review"
-            element={
-              <NewAgentStep>
-                <NewAgentReviewPage />
-              </NewAgentStep>
-            }
-          />
-          <Route path="new/*" element={<Navigate to="." replace />} />
-          <Route
-            path=":installation/:namespace/:name/*"
-            element={
-              <AgentRoute>
-                <AgentDetailPage />
-              </AgentRoute>
-            }
-          />
-          {/* Editing is the create wizard, prefilled; it nests its own steps
+      <OrganizationDirectoryProvider>
+        <NewAgentFormProvider persistDraft>
+          <Routes>
+            <Route
+              path="new"
+              element={
+                <NewAgentStep details>
+                  <NewAgentPage />
+                </NewAgentStep>
+              }
+            />
+            <Route
+              path="new/skills"
+              element={
+                <NewAgentStep>
+                  <NewAgentSkillsPage />
+                </NewAgentStep>
+              }
+            />
+            <Route
+              path="new/tools"
+              element={
+                <NewAgentStep>
+                  <NewAgentToolsPage />
+                </NewAgentStep>
+              }
+            />
+            <Route
+              path="new/review"
+              element={
+                <NewAgentStep>
+                  <NewAgentReviewPage />
+                </NewAgentStep>
+              }
+            />
+            <Route path="new/*" element={<Navigate to="." replace />} />
+            <Route
+              path=":installation/:namespace/:name/*"
+              element={
+                <AgentRoute>
+                  <AgentDetailPage />
+                </AgentRoute>
+              }
+            />
+            {/* Editing is the create wizard, prefilled; it nests its own steps
               and its own form state (see EditAgentPage). */}
-          <Route
-            path=":installation/:namespace/:name/edit/*"
-            element={
-              <AgentRoute>
-                <EditAgentPage />
-              </AgentRoute>
-            }
-          />
-          <Route path="*" element={<ShellCustomizeRedirect tab="agents" />} />
-        </Routes>
-      </NewAgentFormProvider>
+            <Route
+              path=":installation/:namespace/:name/edit/*"
+              element={
+                <AgentRoute>
+                  <EditAgentPage />
+                </AgentRoute>
+              }
+            />
+            <Route path="*" element={<ShellCustomizeRedirect tab="agents" />} />
+          </Routes>
+        </NewAgentFormProvider>
+      </OrganizationDirectoryProvider>
     </QueryClientProvider>
   );
 };

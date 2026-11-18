@@ -20,12 +20,14 @@ import {
   NAMED_IN_SENTENCE,
   ShowMore,
   SimpleAccordion,
+  formatLocalDateFull,
+  getRelativeDate,
   StatusHint,
+  tableMinWidth,
+  useCompactLayout,
   usePhoneColumns,
-  usePhoneLayout,
   useVisibleSort,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { formatTime } from '../../lib/modelManagerServing';
 import { formatBytes } from '../../lib/formatNumbers';
 import {
   gpuFree,
@@ -97,10 +99,10 @@ const HOST_NO_GPU_FIGURES =
  * several servers on one machine lists one row per backend for the same
  * address, and the description is what tells them apart.
  */
-export const HOST_NODE_DESCRIPTION = 'Backend host';
+const HOST_NODE_DESCRIPTION = 'Backend host';
 
 /** The description of a backend host row: the server's name when known. */
-export function hostNodeDescription(node: GpuNode): string {
+function hostNodeDescription(node: GpuNode): string {
   return node.backend
     ? `${backendServerName(node.backend)} host`
     : HOST_NODE_DESCRIPTION;
@@ -304,21 +306,22 @@ export function phoneNodeFacts(
  * serving target is dimmed (not one model-image presets still serve on), its
  * few words keep to the cell, and the serving layer's reason is the
  * {@link StatusHint} beside them: a tooltip on hover, a popover on a press,
- * which is how a phone or a touch screen reads it (T22 B15). At phone width
- * the name wraps rather than truncates, and `phoneFacts` follow it.
+ * which is how a phone or a touch screen reads it (T22 B15). In the compact
+ * layout (a phone, or a card too narrow for every column) the name wraps
+ * rather than truncates, and `phoneFacts` follow it.
  */
 function NodeCell({
   node,
-  isPhone,
+  isCompact,
   phoneFacts,
 }: {
   node: GpuNode;
-  isPhone: boolean;
+  isCompact: boolean;
   phoneFacts: string[];
 }) {
   const description = describeNode(node);
   const ineligible = node.eligible === false;
-  const wrap = isPhone ? { overflowWrap: 'anywhere' as const } : undefined;
+  const wrap = isCompact ? { overflowWrap: 'anywhere' as const } : undefined;
   return (
     <Cell>
       <Text
@@ -327,7 +330,7 @@ function NodeCell({
         color={
           ineligible && !servesModelImagesOnly(node) ? 'secondary' : undefined
         }
-        truncate={isPhone ? undefined : true}
+        truncate={isCompact ? undefined : true}
         title={node.name}
         style={wrap}
       >
@@ -345,7 +348,7 @@ function NodeCell({
           <Text
             variant="body-medium"
             color="secondary"
-            truncate={isPhone ? undefined : true}
+            truncate={isCompact ? undefined : true}
             title={description}
             style={{ ...wrap, minWidth: 0 }}
           >
@@ -357,7 +360,7 @@ function NodeCell({
           />
         </span>
       )}
-      {isPhone &&
+      {isCompact &&
         phoneFacts.map(fact => (
           <Text
             key={fact}
@@ -452,11 +455,21 @@ function CacheCell({
       <CellText title="—" />
     );
   }
+  // Relative, so a scan yesterday does not read as today; the date and time
+  // after it, the detail being a hover already (the browser's zone: this page
+  // lives in the shell, where every time is local).
+  const scannedAt = cache.scannedAt ? new Date(cache.scannedAt) : undefined;
+  const scanned =
+    scannedAt && !Number.isNaN(scannedAt.getTime())
+      ? `scanned ${getRelativeDate(scannedAt, new Date())} (${formatLocalDateFull(
+          scannedAt,
+        )})`
+      : undefined;
   const detail = [
     cache.claim ? `Claim ${cache.claim}` : undefined,
     cache.mountPath ? `mounted at ${cache.mountPath}` : undefined,
     cache.shared ? 'shared storage, visible from every node' : undefined,
-    cache.scannedAt ? `scanned at ${formatTime(cache.scannedAt)}` : undefined,
+    scanned,
   ]
     .filter(Boolean)
     .join(', ');
@@ -497,15 +510,15 @@ function gpuFigure(
     );
 }
 
-/** How the panel is being read: at phone width, and whether anything hovers. */
+/** How the panel is being read: compact (a phone, or a narrow card), and whether it names the environment. */
 type CapacityLayout = {
-  isPhone: boolean;
+  isCompact: boolean;
   /** The page drops the Environment column; a phone row names it otherwise. */
   showInstallation: boolean;
 };
 
 const DESKTOP_LAYOUT: CapacityLayout = {
-  isPhone: false,
+  isCompact: false,
   showInstallation: true,
 };
 
@@ -524,9 +537,9 @@ function getColumnConfig(
       cell: node => (
         <NodeCell
           node={node}
-          isPhone={layout.isPhone}
+          isCompact={layout.isCompact}
           phoneFacts={
-            layout.isPhone
+            layout.isCompact
               ? phoneNodeFacts(node, {
                   columns,
                   noCacheHint: noCacheHints.has(node.id),
@@ -606,14 +619,14 @@ function getColumnConfig(
         cell: gpuFigure(node => {
           const free = gpuFree(node);
           if (free !== undefined) {
-            // At phone width the GPUs column is hidden; the total rides
+            // In the compact layout the GPUs column is hidden; the total rides
             // under the free count.
             const total = gpuTotal(node);
             return (
               <CellText
                 title={String(free)}
                 description={
-                  layout.isPhone && total !== undefined
+                  layout.isCompact && total !== undefined
                     ? `of ${total}`
                     : undefined
                 }
@@ -729,8 +742,19 @@ export function GpuCapacityPanel({
   isLoading,
   hideColumns,
 }: GpuCapacityPanelProps) {
-  const isPhone = usePhoneLayout();
   const columns = useMemo(() => columnsForNodes(nodes), [nodes]);
+  // The compact layout wherever the full table's columns would squeeze:
+  // beside the side rail too, not only at phone width.
+  const minWidth = useMemo(
+    () =>
+      tableMinWidth(
+        getColumnConfig(columns).filter(
+          column => !hideColumns?.includes(column.id as 'installation'),
+        ),
+      ),
+    [columns, hideColumns],
+  );
+  const [containerRef, isCompact] = useCompactLayout(minWidth);
   const noCacheHints = useMemo(
     () =>
       new Set(
@@ -743,14 +767,15 @@ export function GpuCapacityPanel({
   const columnConfig = useMemo(
     () =>
       getColumnConfig(columns, noCacheHints, {
-        isPhone,
+        isCompact,
         showInstallation: !hideColumns?.includes('installation'),
       }).filter(column => !hideColumns?.includes(column.id as 'installation')),
-    [columns, noCacheHints, hideColumns, isPhone],
+    [columns, noCacheHints, hideColumns, isCompact],
   );
   const shownColumns = usePhoneColumns(
     columnConfig,
     phoneCapacityColumns(columns),
+    { compact: isCompact },
   );
   const hasHost = useMemo(() => nodes.some(isHostMemoryNode), [nodes]);
   const hasIneligible = useMemo(
@@ -817,7 +842,7 @@ export function GpuCapacityPanel({
 
   return (
     <InfoCard title="GPU capacity">
-      <Flex direction="column" gap="3">
+      <Flex ref={containerRef} direction="column" gap="3">
         <Text as="p" variant="body-small" color="secondary">
           {columns.gpu &&
             'Product and memory come from gpu-feature-discovery labels, allocatable from the device plugin, and free is allocatable minus the GPUs that pods request.'}

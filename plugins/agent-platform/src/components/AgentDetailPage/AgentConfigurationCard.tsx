@@ -10,7 +10,6 @@ import {
   ModelConfig,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
-  DateComponent,
   InfoCard,
   MONO,
   NotAvailable,
@@ -315,6 +314,7 @@ export type AgentConfigurationCardProps = {
   failure?: AgentFailure;
   /** The Tools tab, which resolves the toolset this card summarises. */
   toolsHref?: string;
+  releaseDetailsUnavailable?: boolean;
 };
 
 /**
@@ -332,9 +332,9 @@ export function AgentConfigurationCard({
   modelServing,
   failure,
   toolsHref,
+  releaseDetailsUnavailable,
 }: AgentConfigurationCardProps) {
   const namespace = agent.getNamespace();
-  const created = agent.getCreatedTimestamp();
   const egress = agent.getEgress();
   const egressPolicyRefs = agent.getEgressPolicyRefs();
 
@@ -377,12 +377,9 @@ export function AgentConfigurationCard({
         </Flex>
       ),
     }),
-    Created: created ? (
-      <DateComponent value={created} relative />
-    ) : (
-      <NotAvailable />
-    ),
-    'Deployed by': <DeployedByValue agent={agent} />,
+    ...(!releaseDetailsUnavailable && {
+      'Deployed by': <DeployedByValue agent={agent} />,
+    }),
   };
 
   return (

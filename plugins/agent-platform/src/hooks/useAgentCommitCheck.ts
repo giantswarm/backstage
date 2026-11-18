@@ -29,7 +29,13 @@ import { useCommitAgentUpdateDryRun } from './useCommitAgentUpdateDryRun';
  */
 export type CommitFailure =
   | { kind: 'release-outside'; missing: MissingReleaseFile; message: string }
-  | { kind: 'connect'; github: boolean; message: string }
+  | {
+      kind: 'connect';
+      github: boolean;
+      message: string;
+      /** See `AgentManagerReadFailure.signInRequired`. */
+      signInRequired?: boolean;
+    }
   | { kind: 'other'; message: string };
 
 export function classifyCommitFailure(
@@ -44,7 +50,12 @@ export function classifyCommitFailure(
     return { kind: 'release-outside', missing, message };
   }
   if (failure.kind === 'not-connected') {
-    return { kind: 'connect', github: false, message };
+    return {
+      kind: 'connect',
+      github: false,
+      message,
+      signInRequired: failure.signInRequired,
+    };
   }
   if (missingGitHubAuthorization(failure)) {
     return { kind: 'connect', github: true, message };
@@ -68,7 +79,13 @@ export function classifyCommitFailure(
 export type AgentCommitCheck =
   | { status: 'off' | 'checking' | 'passed' | 'unchecked' }
   | { status: 'release-outside'; missing: MissingReleaseFile; message: string }
-  | { status: 'connect'; github: boolean; message: string };
+  | {
+      status: 'connect';
+      github: boolean;
+      message: string;
+      /** See `AgentManagerReadFailure.signInRequired`. */
+      signInRequired?: boolean;
+    };
 
 /**
  * `update_agent` in mode `commit` with `dryRun` and nothing to change: it
@@ -127,6 +144,7 @@ export function useAgentCommitCheck(
       status: 'connect',
       github: refused.github,
       message: refused.message,
+      signInRequired: refused.signInRequired,
     };
   }
   if (refused || !result) {

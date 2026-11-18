@@ -1,0 +1,254 @@
+import type {
+  ClusterWriteResult,
+  ObjectAction,
+} from '../../lib/clusterManager';
+import {
+  judgeNextPass,
+  objectKey,
+  summarizePass,
+  type RemovalPass,
+  type RemovalState,
+  type RemovalStates,
+} from './removalPasses';
+
+function object(name: string, action: string): ObjectAction {
+  return {
+    apiVersion: 'helm.toolkit.fluxcd.io/v2',
+    kind: 'HelmRelease',
+    name,
+    namespace: 'org-acme',
+    action,
+  };
+}
+
+function result(
+  objects: ObjectAction[],
+  extra: Partial<ClusterWriteResult> = {},
+): ClusterWriteResult {
+  return {
+    cluster: 'demo1',
+    namespace: 'org-acme',
+    pool: '',
+    mode: 'apply',
+    dryRun: false,
+    objects,
+    ...extra,
+  };
+}
+
+function passOf(
+  objects: ObjectAction[],
+  extra: Partial<ClusterWriteResult> = {},
+  states: RemovalStates = new Map(),
+): RemovalPass {
+  return {
+    label: 'Delete',
+    result: result(objects, extra),
+    at: new Date(),
+    states,
+  };
+}
+
+/** The objects, by name, read in one state. */
+function read(state: RemovalState, ...names: string[]): RemovalStates {
+  return new Map(
+    names.map(name => [objectKey(object(name, 'would-delete')), state]),
+  );
+}
+
+describe('summarizePass', () => {
+  it('tells objects removed anew from those an earlier pass deleted already', () => {
+    const passes = [
+      passOf([object('demo1', 'delete')]),
+      passOf([object('demo1', 'delete'), object('demo1-apps', 'delete')]),
+    ];
+
+    expect(summarizePass(passes, 1)).toEqual({
+      removed: [object('demo1-apps', 'delete')],
+      stillGoing: [object('demo1', 'delete')],
+      others: [],
+      changed: [],
+    });
+    expect(summarizePass(passes, 0).removed).toHaveLength(1);
+  });
+
+  it('tells an object read as being removed before the pass from one removed anew, after a reopen', () => {
+    // The dialog reopened: no earlier pass of this opening deleted demo1.
+    const passes = [
+      passOf(
+        [object('demo1', 'delete'), object('demo1-apps', 'delete')],
+        {},
+        read('going', 'demo1'),
+      ),
+    ];
+
+    expect(summarizePass(passes, 0)).toMatchObject({
+      removed: [object('demo1-apps', 'delete')],
+      stillGoing: [object('demo1', 'delete')],
+    });
+  });
+
+  it('counts a release that needed the pass as removed by it, though an earlier pass deleted it', () => {
+    // The Delete pass deleted the slice child while the cluster stood; the
+    // cluster gone, Finish removal suspends and deletes it again.
+    const passes = [
+      passOf([object('demo1-llm-d', 'delete')]),
+      passOf(
+        [object('demo1-llm-d', 'delete')],
+        {},
+        read('needs-pass', 'demo1-llm-d'),
+      ),
+    ];
+
+    expect(summarizePass(passes, 1)).toMatchObject({
+      removed: [object('demo1-llm-d', 'delete')],
+      stillGoing: [],
+    });
+  });
+
+  it('counts the past-tense deleted as a delete too', () => {
+    const passes = [
+      passOf([object('demo1', 'delete')]),
+      passOf([object('demo1', 'deleted')]),
+    ];
+
+    expect(summarizePass(passes, 1)).toMatchObject({
+      removed: [],
+      stillGoing: [object('demo1', 'deleted')],
+      others: [],
+    });
+  });
+
+  it('keeps every other action, and tells what changed from what did not', () => {
+    const passes = [
+      passOf([
+        object('a', 'update'),
+        object('b', 'unchanged'),
+        object('c', 'pending'),
+      ]),
+    ];
+
+    const { removed, others, changed } = summarizePass(passes, 0);
+    expect(removed).toEqual([]);
+    expect(others.map(o => o.name)).toEqual(['a', 'b', 'c']);
+    expect(changed.map(o => o.name)).toEqual(['a']);
+  });
+
+  it('tells objects of the same kind and name in other API groups apart', () => {
+    const passes = [
+      passOf([{ ...object('demo1', 'delete'), apiVersion: 'a.io/v1' }]),
+      passOf([
+        { ...object('demo1', 'delete'), apiVersion: 'a.io/v2' },
+        { ...object('demo1', 'delete'), apiVersion: 'b.io/v1' },
+      ]),
+    ];
+
+    const { removed, stillGoing } = summarizePass(passes, 1);
+    expect(stillGoing.map(o => o.apiVersion)).toEqual(['a.io/v2']);
+    expect(removed.map(o => o.apiVersion)).toEqual(['b.io/v1']);
+  });
+});
+
+describe('judgeNextPass', () => {
+  const passes = [
+    passOf([object('demo1', 'delete')], {
+      nextStep: 'wait for the uninstall',
+    }),
+  ];
+
+  it('is ready when a pass would delete an object no pass has deleted', () => {
+    expect(
+      judgeNextPass(
+        result([object('demo1', 'would-delete'), object('x', 'would-delete')]),
+        passes,
+      ),
+    ).toEqual({ state: 'ready', objects: [object('x', 'would-delete')] });
+  });
+
+  it('is ready when a pass would change anything else', () => {
+    expect(
+      judgeNextPass(result([object('demo1', 'would-update')]), passes),
+    ).toEqual({ state: 'ready', objects: [object('demo1', 'would-update')] });
+  });
+
+  it("waits with cluster-manager's next step when nothing new would go", () => {
+    expect(
+      judgeNextPass(
+        result([], { nextStep: 'cluster is being removed' }),
+        passes,
+      ),
+    ).toEqual({ state: 'waiting', reason: 'cluster is being removed' });
+    // Only the release again, without a step of its own: the last pass's.
+    expect(
+      judgeNextPass(result([object('demo1', 'would-delete')]), passes),
+    ).toEqual({ state: 'waiting', reason: 'wait for the uninstall' });
+    expect(
+      judgeNextPass(result([object('demo1', 'would-delete')]), [
+        passOf([object('demo1', 'delete')]),
+      ]),
+    ).toEqual({
+      state: 'waiting',
+      reason: '1 object is still being removed: HelmRelease org-acme/demo1.',
+    });
+  });
+
+  it('waits when a pass would only delete objects read as being removed, though no pass deleted them', () => {
+    // The dialog reopened and its first pass wrote nothing: the Cluster was
+    // still going. Its leftovers include a source terminating since before.
+    const reopened = [passOf([], { nextStep: 'cluster is being removed' })];
+
+    expect(
+      judgeNextPass(
+        result([object('demo1-apps', 'would-delete')]),
+        reopened,
+        read('going', 'demo1-apps'),
+      ),
+    ).toEqual({
+      state: 'waiting',
+      // The last pass's step spoke of the Cluster, not of this object.
+      reason:
+        '1 object is still being removed: HelmRelease org-acme/demo1-apps.',
+    });
+    expect(
+      judgeNextPass(
+        result([
+          object('demo1-apps', 'would-delete'),
+          object('demo1-x', 'would-delete'),
+        ]),
+        reopened,
+        read('going', 'demo1-apps'),
+      ),
+    ).toEqual({ state: 'ready', objects: [object('demo1-x', 'would-delete')] });
+  });
+
+  it('is ready for a release a pass deleted when it is read as needing another pass', () => {
+    const deletedWhileClusterStood = [
+      passOf([object('demo1-llm-d', 'delete')], { nextStep: 'uninstall' }),
+    ];
+
+    expect(
+      judgeNextPass(
+        result([object('demo1-llm-d', 'would-delete')]),
+        deletedWhileClusterStood,
+        read('needs-pass', 'demo1-llm-d'),
+      ),
+    ).toEqual({
+      state: 'ready',
+      objects: [object('demo1-llm-d', 'would-delete')],
+    });
+    // Suspended by that pass: going, nothing new.
+    expect(
+      judgeNextPass(
+        result([object('demo1-llm-d', 'would-delete')]),
+        deletedWhileClusterStood,
+        read('going', 'demo1-llm-d'),
+      ).state,
+    ).toBe('waiting');
+  });
+
+  it("is stuck when what is left is not cluster-manager's to remove", () => {
+    expect(
+      judgeNextPass(result([], { warnings: ['someone else owns it'] }), passes),
+    ).toEqual({ state: 'stuck', warnings: ['someone else owns it'] });
+  });
+});

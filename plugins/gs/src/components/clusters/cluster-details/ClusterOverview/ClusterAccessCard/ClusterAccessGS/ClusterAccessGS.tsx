@@ -1,4 +1,4 @@
-import { Box, Grid, Link, Typography } from '@material-ui/core';
+import { Box, Grid, Typography } from '@material-ui/core';
 
 import {
   TSH_INSTALLATION_DOCS_URL,
@@ -6,6 +6,7 @@ import {
   getKubernetesAPIAccessCommand,
 } from './utils';
 import {
+  ExternalLink,
   CodeBlock,
   SimpleAccordion,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -44,13 +45,9 @@ export const ClusterAccessGS = ({
           <Box width="100%">
             <Typography variant="body2">
               First{' '}
-              <Link
-                href={TSH_INSTALLATION_DOCS_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
+              <ExternalLink href={TSH_INSTALLATION_DOCS_URL} display="inline">
                 install tsh
-              </Link>
+              </ExternalLink>
               . Then run this command once:
             </Typography>
             <Box marginTop={1}>

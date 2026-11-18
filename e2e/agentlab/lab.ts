@@ -49,6 +49,44 @@ function portalModeFromEnv(): PortalMode {
 }
 
 /**
+ * How the suite signs in, as `AGENTLAB_E2E_AUTH` says:
+ *
+ * - `dex` (the default): the lab's Dex card and popup, as each lab user
+ *   ({@link lab.users}).
+ * - `guest`: a local dev server without `gs.authProvider` (`yarn start`),
+ *   whose sign-in page signs the guest in through the proxy, without a card
+ *   or popup. Every user is that one guest, so a spec that tells users apart
+ *   (roles, Dex refusals) proves nothing there; the mode is for proving a
+ *   page in the UI without a lab.
+ */
+export type AuthMode = 'dex' | 'guest';
+
+function authModeFromEnv(): AuthMode {
+  const mode = process.env.AGENTLAB_E2E_AUTH ?? 'dex';
+  if (mode !== 'dex' && mode !== 'guest') {
+    throw new Error(
+      `AGENTLAB_E2E_AUTH must be "dex" or "guest", not "${mode}"`,
+    );
+  }
+  return mode;
+}
+
+/** An `AgentPlatformOrganization`: its namespace (`parent`) and name. */
+export type LabOrganization = { parent: string; name: string };
+
+function organizationFromEnv(): LabOrganization {
+  const value =
+    process.env.AGENTLAB_ORGANIZATION ?? 'agentlab-organizations/default';
+  const [parent, name, ...rest] = value.split('/');
+  if (!parent || !name || rest.length > 0) {
+    throw new Error(
+      `AGENTLAB_ORGANIZATION must be "<parent>/<name>", not "${value}"`,
+    );
+  }
+  return { parent, name };
+}
+
+/**
  * The parallel worker this process is: Playwright's `TEST_PARALLEL_INDEX`,
  * `0` in the first worker and in the runner. The one source of which lab users
  * the process signs in as ({@link forWorker}).
@@ -58,16 +96,33 @@ export const LAB_WORKER = Number(process.env.TEST_PARALLEL_INDEX ?? 0);
 export const lab = {
   /** Backstage's public URL through the lab's edge. */
   baseURL:
-    process.env.AGENTLAB_BACKSTAGE_URL ?? 'https://backstage.127.0.0.1.nip.io',
+    process.env.AGENTLAB_BACKSTAGE_URL ?? 'https://portal.127.0.0.1.nip.io',
   /** The fixture password, the same for every lab user. */
   password: process.env.AGENTLAB_PASSWORD ?? 'password',
   /** Which portals the lab serves (`AGENTLAB_PORTAL_MODE`, see {@link PortalMode}). */
   portalMode: portalModeFromEnv(),
+  /** How the suite signs in (`AGENTLAB_E2E_AUTH`, see {@link AuthMode}). */
+  auth: authModeFromEnv(),
   /**
    * The installation name the portal's plugins address — the Helm release
    * name of the platform chart in the lab, not the kind cluster's name.
    */
   installation: process.env.AGENTLAB_INSTALLATION ?? 'agent-platform',
+  /**
+   * The lab's first organization (`AGENTLAB_ORGANIZATION`, `<parent>/<name>`),
+   * whose `organization-admins` binds the admin's group: where the admin
+   * creates agents when agent-manager offers organizations only.
+   */
+  organization: organizationFromEnv(),
+  /**
+   * The name of the agents' default ModelConfig the lab provisions on its
+   * `aiModel` (`AGENTLAB_DEFAULT_MODEL`), in `kagent` and in every
+   * organization namespace.
+   */
+  defaultModel: process.env.AGENTLAB_DEFAULT_MODEL ?? 'anthropic',
+  /** The default ModelConfig's display name, or its model ID without one. */
+  defaultModelLabel:
+    process.env.AGENTLAB_DEFAULT_MODEL_LABEL ?? 'claude-sonnet-4-6',
   /**
    * The MCPServer the lab registers for its own cluster: the `kubernetes`
    * family member `<cluster>-mcp-kubernetes`, the way every management

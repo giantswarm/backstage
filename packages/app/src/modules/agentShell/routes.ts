@@ -3,6 +3,9 @@ import homePlugin from '@backstage/plugin-home/alpha';
 
 export const customizeRouteRef = createRouteRef();
 
+/** The Platform section (`/platform`), where the deployment turned it on. */
+export const platformRouteRef = createRouteRef();
+
 /**
  * The shell's home (`/`), the new-session screen. The home plugin's own root
  * route, which the shell's home page takes over (`AgentShellHomePage`) as the

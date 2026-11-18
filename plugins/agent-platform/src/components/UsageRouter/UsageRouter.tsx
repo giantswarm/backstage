@@ -5,6 +5,7 @@ import {
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { SharedInstallationScope } from '@giantswarm/backstage-plugin-gs';
 import { QueryClientProvider } from '../QueryClientProvider';
 import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { AgentsDataProvider } from '../AgentsDataProvider';
@@ -13,6 +14,7 @@ import { UsageCostPage } from '../UsageCostPage';
 import { UsageConversationsPage } from '../UsageConversationsPage';
 import { UsageConnectorsPage } from '../UsageConnectorsPage';
 import { UsageScopeBar } from './UsageScopeBar';
+import { OrganizationDirectoryProvider } from '../OrganizationDirectoryProvider';
 
 // The Usage screen's views: Overview · Cost · Your sessions · Connectors.
 // Each answers one question and every metric has one home among them (see
@@ -159,15 +161,22 @@ const UsageViews = ({ sections }: { sections?: ReactNode[] }) => {
  * `sections` is the `sections` extension input (the muster plugin's connector
  * tool-call section); it is the Connectors view's content, and that view is
  * offered only when it holds something.
+ *
+ * Reads its own Environment choice (`SharedInstallationScope` `usage`),
+ * independent of the Customize page's: the two are siblings.
  */
 export const UsageRouter = ({ sections }: { sections?: ReactNode[] }) => (
-  <QueryClientProvider>
-    <ModelConfigsProvider>
-      <AgentsDataProvider>
-        <Routes>
-          <Route path="*" element={<UsageViews sections={sections} />} />
-        </Routes>
-      </AgentsDataProvider>
-    </ModelConfigsProvider>
-  </QueryClientProvider>
+  <SharedInstallationScope id="usage">
+    <QueryClientProvider>
+      <OrganizationDirectoryProvider>
+        <ModelConfigsProvider>
+          <AgentsDataProvider>
+            <Routes>
+              <Route path="*" element={<UsageViews sections={sections} />} />
+            </Routes>
+          </AgentsDataProvider>
+        </ModelConfigsProvider>
+      </OrganizationDirectoryProvider>
+    </QueryClientProvider>
+  </SharedInstallationScope>
 );

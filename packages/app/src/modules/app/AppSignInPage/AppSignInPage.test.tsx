@@ -3,7 +3,10 @@ import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { AGENT_SHELL_FLAG } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
   gsAuthApiRef,
+  type GSAuthProvidersApi,
+  gsAuthProvidersApiRef,
   gsFallbackSignInAuthApiRef,
+  type MainSessionEndReason,
 } from '@giantswarm/backstage-plugin-gs';
 import { screen } from '@testing-library/react';
 import { AppSignInPage } from './AppSignInPage';
@@ -39,7 +42,10 @@ const gs = {
 
 function renderSignIn(
   config: Record<string, unknown>,
-  { optIn = false }: { optIn?: boolean } = {},
+  {
+    optIn = false,
+    sessionEnd,
+  }: { optIn?: boolean; sessionEnd?: MainSessionEndReason } = {},
 ) {
   return renderInTestApp(<AppSignInPage onSignInSuccess={jest.fn()} />, {
     config: { app: { title: 'Giant Swarm Portal' }, ...config } as any,
@@ -53,6 +59,15 @@ function renderSignIn(
       }),
       [gsAuthApiRef, authApi],
       [gsFallbackSignInAuthApiRef, authApi],
+      [
+        gsAuthProvidersApiRef,
+        {
+          getMainSessionEnd: () => ({
+            reason: () => sessionEnd,
+            subscribe: () => () => {},
+          }),
+        } as unknown as GSAuthProvidersApi,
+      ],
     ],
   });
 }
@@ -141,6 +156,51 @@ describe('AppSignInPage', () => {
       await screen.findByRole('button', { name: 'Sign in with GitHub' }),
     ).toBeInTheDocument();
   });
+
+  it.each([
+    ['the classic', {}, 'Sign In'],
+    [
+      'the shell-style',
+      { portals: { agentPlatform: true } },
+      'Sign in with GitHub',
+    ],
+  ])(
+    'says on %s sign-in page that a sign-in elsewhere ended the session',
+    async (_page, app, button) => {
+      renderSignIn(
+        { gs, app: { title: 'Giant Swarm Portal', ...app } },
+        { sessionEnd: 'signed-in-elsewhere' },
+      );
+
+      expect(
+        await screen.findByRole('button', { name: button }),
+      ).toBeInTheDocument();
+      const notice = screen.getByRole('alert');
+      expect(notice).toHaveTextContent('You signed in somewhere else');
+      expect(notice).toHaveTextContent('Sign in again here to keep working.');
+    },
+  );
+
+  it.each([
+    ['the classic', {}, 'Sign In'],
+    [
+      'the shell-style',
+      { portals: { agentPlatform: true } },
+      'Sign in with GitHub',
+    ],
+  ])(
+    'adds no notice to %s sign-in page without a reason',
+    async (_page, app, button) => {
+      renderSignIn({ gs, app: { title: 'Giant Swarm Portal', ...app } });
+
+      expect(
+        await screen.findByRole('button', { name: button }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('You signed in somewhere else'),
+      ).not.toBeInTheDocument();
+    },
+  );
 
   it.each([
     ['classic-only', {}],

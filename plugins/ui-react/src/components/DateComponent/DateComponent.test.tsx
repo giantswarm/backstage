@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { DateComponent } from './DateComponent';
 import { DateTimeZoneProvider } from './DateTimeZone';
-import { formatLocalDate, formatLocalDateFull } from './utils';
+import { formatLocalDate, formatLocalDateFull, getRelativeDate } from './utils';
 
 const VALUE = '2026-10-11T15:50:12Z';
 
@@ -49,6 +49,33 @@ describe('DateComponent', () => {
     );
     const time = screen.getByTitle(formatLocalDateFull(VALUE));
     expect(time.textContent).toMatch(/ago|in /);
+  });
+
+  it('shows an unparsable relative value as given, in either clock', () => {
+    render(
+      <>
+        <DateComponent value="not a date" relative />
+        <DateTimeZoneProvider timeZone="local">
+          <DateComponent value="soon" relative />
+        </DateTimeZoneProvider>
+      </>,
+    );
+    expect(screen.getByText('not a date')).toBeInTheDocument();
+    expect(screen.getByText('soon')).toHaveAttribute('title', 'soon');
+  });
+});
+
+describe('getRelativeDate', () => {
+  it('says how far a date is from another', () => {
+    expect(getRelativeDate('2026-10-11T15:45:12Z', VALUE)).toBe(
+      '5 minutes ago',
+    );
+    expect(getRelativeDate('2026-10-11T15:55:12Z', VALUE)).toBe('in 5 minutes');
+  });
+
+  it('returns a value that does not parse as given instead of throwing', () => {
+    expect(getRelativeDate('not a date', VALUE)).toBe('not a date');
+    expect(getRelativeDate(VALUE, 'not a date')).toBe(VALUE);
   });
 });
 

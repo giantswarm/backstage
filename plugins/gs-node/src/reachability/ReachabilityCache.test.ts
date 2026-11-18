@@ -5,6 +5,7 @@ import {
   DEFAULT_REACHABILITY_TTL_MS,
   ReachabilityCache,
   reachabilityFields,
+  UNREACHABLE_AFTER_FAILED_PROBES,
 } from './ReachabilityCache';
 
 const URL_A =
@@ -29,6 +30,13 @@ function controlledProbe() {
 
 /** Lets the microtask queue drain so `.then` handlers after a resolve have run. */
 const settle = () => new Promise<void>(resolve => setTimeout(resolve, 0));
+
+/** Probes `url` as often as it takes to report it unreachable. */
+async function confirmUnreachable(cache: ReachabilityCache, url: string) {
+  for (let probe = 0; probe < UNREACHABLE_AFTER_FAILED_PROBES; probe += 1) {
+    await cache.refresh(url);
+  }
+}
 
 describe('ReachabilityCache', () => {
   let clock = 1_000_000;
@@ -62,13 +70,65 @@ describe('ReachabilityCache', () => {
       now,
     });
 
-    await cache.refresh(URL_A);
+    await confirmUnreachable(cache, URL_A);
 
     expect(cache.get(URL_A)).toEqual({
       reachable: false,
       reason: 'DNS lookup failed (ENOTFOUND)',
       checkedAt: now(),
     });
+  });
+
+  it('reports an endpoint unreachable only after two failed probes in a row, probing again at once after the first', async () => {
+    const { probe, pending } = controlledProbe();
+    const cache = new ReachabilityCache({ probe, now });
+    const unreachable = {
+      reachable: false,
+      reason: 'no answer within 5000 ms',
+      checkedAt: now(),
+    };
+
+    cache.get(URL_A);
+    pending[0].resolve(unreachable);
+    await settle();
+
+    expect(cache.get(URL_A)).toEqual({ reachable: 'unknown' });
+    expect(probe).toHaveBeenCalledTimes(2);
+
+    pending[1].resolve(unreachable);
+    await settle();
+
+    expect(cache.get(URL_A)).toEqual(unreachable);
+    expect(probe).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps serving a reachable answer after one failed probe, and starts the count over after a reachable one', async () => {
+    const { probe, pending } = controlledProbe();
+    const cache = new ReachabilityCache({ probe, now });
+    const unreachable = {
+      reachable: false,
+      reason: 'no answer within 5000 ms',
+      checkedAt: now(),
+    };
+    const reachable = { reachable: true, checkedAt: now() };
+
+    cache.get(URL_A);
+    pending[0].resolve(reachable);
+    await settle();
+    void cache.refresh(URL_A);
+    pending[1].resolve(unreachable);
+    await settle();
+
+    expect(cache.get(URL_A)).toEqual(reachable);
+    expect(probe).toHaveBeenCalledTimes(3);
+
+    pending[2].resolve(reachable);
+    await settle();
+    void cache.refresh(URL_A);
+    pending[3].resolve(unreachable);
+    await settle();
+
+    expect(cache.get(URL_A)).toEqual(reachable);
   });
 
   it('serves a fresh answer from the cache without re-probing', async () => {
@@ -102,18 +162,22 @@ describe('ReachabilityCache', () => {
     });
     expect(probe).toHaveBeenCalledTimes(2);
 
-    pending[1].resolve({
+    const refused = {
       reachable: false,
       reason: 'connection refused (ECONNREFUSED)',
       checkedAt: now(),
+    };
+    pending[1].resolve(refused);
+    await settle();
+    // One failure is not a finding yet: the old answer stays, probed again.
+    expect(cache.get(URL_A)).toEqual({
+      reachable: true,
+      checkedAt: firstCheckedAt,
     });
+    pending[2].resolve(refused);
     await settle();
 
-    expect(cache.get(URL_A)).toEqual({
-      reachable: false,
-      reason: 'connection refused (ECONNREFUSED)',
-      checkedAt: now(),
-    });
+    expect(cache.get(URL_A)).toEqual(refused);
   });
 
   it('honours a custom TTL', async () => {
@@ -128,13 +192,14 @@ describe('ReachabilityCache', () => {
   });
 
   it('re-probes a negative answer after the shorter negative TTL, a positive one only after the full TTL', async () => {
+    const refused: EndpointProbeResult = {
+      reachable: false,
+      reason: 'connection refused (ECONNREFUSED)',
+      checkedAt: 0,
+    };
     const answers: EndpointProbeResult[] = [
-      {
-        reachable: false,
-        reason: 'connection refused (ECONNREFUSED)',
-        checkedAt: 0,
-      },
-      { reachable: true, checkedAt: 0 },
+      refused,
+      refused,
       { reachable: true, checkedAt: 0 },
     ];
     const probe = jest.fn(async () => ({
@@ -143,25 +208,26 @@ describe('ReachabilityCache', () => {
     }));
     const cache = new ReachabilityCache({ probe, now });
 
-    await cache.refresh(URL_A);
+    await confirmUnreachable(cache, URL_A);
     clock += DEFAULT_NEGATIVE_REACHABILITY_TTL_MS - 1;
     cache.get(URL_A);
-    expect(probe).toHaveBeenCalledTimes(1);
+    expect(probe).toHaveBeenCalledTimes(2);
 
     clock += 1;
     // Stale: the negative answer is still served while the re-probe runs.
     expect(cache.get(URL_A).reachable).toBe(false);
-    expect(probe).toHaveBeenCalledTimes(2);
+    expect(probe).toHaveBeenCalledTimes(3);
     await settle();
     expect(cache.get(URL_A).reachable).toBe(true);
 
     // A positive answer keeps the full TTL.
     clock += DEFAULT_NEGATIVE_REACHABILITY_TTL_MS;
     cache.get(URL_A);
-    expect(probe).toHaveBeenCalledTimes(2);
-    clock += DEFAULT_REACHABILITY_TTL_MS;
-    cache.get(URL_A);
     expect(probe).toHaveBeenCalledTimes(3);
+    clock += DEFAULT_REACHABILITY_TTL_MS;
+    answers.push({ reachable: true, checkedAt: 0 });
+    cache.get(URL_A);
+    expect(probe).toHaveBeenCalledTimes(4);
   });
 
   it('honours a custom negative TTL', async () => {
@@ -172,13 +238,13 @@ describe('ReachabilityCache', () => {
     }));
     const cache = new ReachabilityCache({ probe, now, negativeTtlMs: 10 });
 
-    await cache.refresh(URL_A);
+    await confirmUnreachable(cache, URL_A);
     clock += 9;
     cache.get(URL_A);
-    expect(probe).toHaveBeenCalledTimes(1);
+    expect(probe).toHaveBeenCalledTimes(2);
     clock += 1;
     cache.get(URL_A);
-    expect(probe).toHaveBeenCalledTimes(2);
+    expect(probe).toHaveBeenCalledTimes(3);
   });
 
   it('deduplicates concurrent probes of the same URL', async () => {
@@ -214,7 +280,7 @@ describe('ReachabilityCache', () => {
     }));
     const cache = new ReachabilityCache({ probe, now });
 
-    await Promise.all([cache.refresh(URL_A), cache.refresh(URL_B)]);
+    await Promise.all([cache.refresh(URL_A), confirmUnreachable(cache, URL_B)]);
 
     expect(cache.get(URL_A).reachable).toBe(true);
     expect(cache.get(URL_B)).toEqual({
@@ -222,7 +288,7 @@ describe('ReachabilityCache', () => {
       reason: 'connection refused (ECONNREFUSED)',
       checkedAt: now(),
     });
-    expect(probe).toHaveBeenCalledTimes(2);
+    expect(probe).toHaveBeenCalledTimes(3);
   });
 
   it('records a probe that resolves with nothing as unreachable', async () => {
@@ -231,7 +297,7 @@ describe('ReachabilityCache', () => {
       now,
     });
 
-    await cache.refresh(URL_A);
+    await confirmUnreachable(cache, URL_A);
 
     expect(cache.get(URL_A)).toEqual({
       reachable: false,
@@ -248,7 +314,7 @@ describe('ReachabilityCache', () => {
       now,
     });
 
-    await cache.refresh(URL_A);
+    await confirmUnreachable(cache, URL_A);
 
     expect(cache.get(URL_A)).toEqual({
       reachable: false,
@@ -379,10 +445,11 @@ describe('ReachabilityCache', () => {
       const logger = mockServices.logger.mock();
       const answers: EndpointProbeResult[] = [
         { reachable: false, reason: 'no answer within 3000 ms', checkedAt: 1 },
+        { reachable: false, reason: 'no answer within 3000 ms', checkedAt: 2 },
         {
           reachable: false,
           reason: 'DNS lookup failed (ENOTFOUND)',
-          checkedAt: 2,
+          checkedAt: 3,
         },
       ];
       const cache = new ReachabilityCache({
@@ -391,6 +458,7 @@ describe('ReachabilityCache', () => {
         now,
       });
 
+      await cache.refresh(URL_A);
       await cache.refresh(URL_A);
       await cache.refresh(URL_A);
 

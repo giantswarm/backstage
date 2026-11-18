@@ -187,10 +187,7 @@ export function MergeGreenDialog({
         <SweepProgress progress={sweeps.progress} showTeam={teams.length > 1} />
       ) : null}
       {notConnected ? (
-        <ConnectMargeAlert
-          installation={installation}
-          message={notConnected.message}
-        />
+        <ConnectMargeAlert installation={installation} error={notConnected} />
       ) : null}
       {sweeps.rateLimitReset ? (
         <RateLimitAlert

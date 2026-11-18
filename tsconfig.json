@@ -12,6 +12,7 @@
   "exclude": ["node_modules"],
   "compilerOptions": {
     "outDir": "dist-types",
+    "tsBuildInfoFile": "node_modules/.cache/tsc/tsconfig.tsbuildinfo",
     "rootDir": ".",
     "jsx": "react-jsx",
     "moduleResolution": "bundler"

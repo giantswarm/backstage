@@ -17,17 +17,34 @@ function registeredPackages(): string[] {
   ].map(match => match[1]);
 }
 
-// Features this package defines itself (`./branding`), as opposed to the
-// service factories it takes from @internal/backend-common.
+// Backend plugins this package defines itself (`./branding`), as opposed to
+// the service factories it takes from @internal/backend-common and to its own
+// feature loaders (`./searchEngine`), which open no pool of their own.
 function registeredLocalPlugins(): string[] {
-  const local = new Set(
-    [...index.matchAll(/import\s*\{([^}]+)\}\s*from\s*'\.\/[^']+'/g)].flatMap(
-      match => match[1].split(',').map(name => name.trim()),
+  const local = new Map(
+    [...index.matchAll(/import\s*\{([^}]+)\}\s*from\s*'(\.\/[^']+)'/g)].flatMap(
+      match =>
+        match[1].split(',').map(name => [name.trim(), match[2]] as const),
     ),
   );
   return [...index.matchAll(/backend\.add\(\s*(\w+)\s*\)/g)]
     .map(match => match[1])
-    .filter(name => local.has(name));
+    .filter(name => local.has(name) && isPlugin(name, local.get(name)!));
+}
+
+// A plugin's registration is typed `plugin-v<version>` (a module's
+// `module-v<version>`); a loader has no registrations of its own.
+function isPlugin(name: string, path: string): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const feature = require(path)[name];
+  return (
+    feature.featureType === 'registrations' &&
+    feature
+      .getRegistrations()
+      .some((registration: { type: string }) =>
+        registration.type.startsWith('plugin'),
+      )
+  );
 }
 
 function role(packageName: string): string | undefined {

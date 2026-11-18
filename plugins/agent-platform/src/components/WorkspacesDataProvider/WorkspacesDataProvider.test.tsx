@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  musterApiRef,
   MusterUnauthorizedError,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
@@ -30,7 +31,6 @@ function workspace(name: string, organization: string): Workspace {
     sources: [
       { provider: 'github', owner: 'example-org', repositories: [name] },
     ],
-    sync: { schedule: 'nightly' },
     resourceVersion: '1',
     createdAt: '2026-10-01T00:00:00Z',
     lastSync: { time: '2026-10-14T03:00:00Z', result: 'Succeeded' },
@@ -57,6 +57,8 @@ let mockUnreachable: string[];
 let mockSharedIdentity: string[];
 /** The installations where the person has not signed in to the workspace-manager. */
 let mockNotSignedIn: string[];
+/** The portal refuses the person's session token on every read. */
+let mockPortalRefused = false;
 /** The workspace-manager's other tools, by name, as the person calls them. */
 let mockTools: Record<string, (args: any) => unknown>;
 
@@ -68,6 +70,16 @@ const mockMusterApi = {
     })),
   })),
   listServers: jest.fn(async (installation: string) => {
+    if (mockPortalRefused) {
+      // The portal's refusal of the session token, before muster-backend.
+      throw new MusterUnauthorizedError(
+        'Failed user token verification',
+        undefined,
+        undefined,
+        installation,
+        'AuthenticationError',
+      );
+    }
     if (mockUnreachable.includes(installation)) {
       throw new Error('muster: 503 Service Unavailable');
     }
@@ -125,8 +137,13 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
 }));
 
 function Availability() {
-  const { isAvailable } = useWorkspacesData();
-  return <p>{`available: ${String(isAvailable)}`}</p>;
+  const { isAvailable, totalCount } = useWorkspacesData();
+  return (
+    <>
+      <p>{`available: ${String(isAvailable)}`}</p>
+      <p>{`total: ${String(totalCount)}`}</p>
+    </>
+  );
 }
 
 /** Creates `platform-mcp`, or with `edit` saves a change to it, as the editor does. */
@@ -189,6 +206,7 @@ function renderWorkspaces(extra: JSX.Element | null = null) {
         {extra}
       </WorkspacesDataProvider>
     </QueryClientProvider>,
+    { apis: [[musterApiRef, mockMusterApi as unknown as MusterApi]] },
   );
 }
 
@@ -219,7 +237,22 @@ describe('WorkspacesDataProvider', () => {
     mockSharedIdentity = [];
     mockNotSignedIn = [];
     mockTools = {};
+    mockPortalRefused = false;
     jest.clearAllMocks();
+  });
+
+  it('says the portal session ended when the portal refuses the server list that says where workspace-manager runs', async () => {
+    mockPortalRefused = true;
+    await renderWorkspaces();
+
+    expect(
+      await screen.findByText('Your portal session ended'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Sign in again' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/token verification/)).toBeNull();
+    expect(mockMusterApi.callTool).not.toHaveBeenCalled();
   });
 
   // giantswarm/backstage#3236 review: the sign-in follows the 401's reason,
@@ -268,6 +301,32 @@ describe('WorkspacesDataProvider', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('available: undefined')).toBeInTheDocument();
     expect(screen.queryByText('Workspaces are not available here')).toBeNull();
+  });
+
+  describe('the total count', () => {
+    it('counts every Organization’s workspaces, where the table shows the picked one’s', async () => {
+      await renderWorkspaces();
+
+      await waitFor(() => expect(shownNames()).toEqual(['docs']));
+      expect(screen.getByText('total: 2')).toBeInTheDocument();
+    });
+
+    it('is loading while the inventory still probes for muster', async () => {
+      mockProbing = true;
+      await renderWorkspaces();
+
+      await waitFor(() => expect(shownNames()).toEqual(['docs']));
+      expect(screen.getByText('total: loading')).toBeInTheDocument();
+    });
+
+    it('is left out, not partial, where an installation’s muster did not answer', async () => {
+      mockMusterInstallations = ['gazelle', 'otter'];
+      mockUnreachable = ['otter'];
+      await renderWorkspaces();
+
+      await waitFor(() => expect(shownNames()).toEqual(['docs']));
+      expect(screen.getByText('total: undefined')).toBeInTheDocument();
+    });
   });
 
   it('offers no Organization scope to a person in one Organization', async () => {

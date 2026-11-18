@@ -12,9 +12,16 @@ import {
   MUSTER_AUTH_HEADER,
   MusterServerGateway,
   MusterServerNotConnectedError,
+  reportedErrorHandler,
+  MusterUnreachableError,
 } from '@giantswarm/backstage-plugin-gs-node';
 import express from 'express';
 import Router from 'express-promise-router';
+import {
+  ContentReadStore,
+  MemoryContentReadStore,
+  StoredContent,
+} from './ContentReadStore';
 
 /** `owner/repo` slug, e.g. `<owner>/<plans-repo>`. */
 const REPO_SLUG_PATTERN = /^[\w.-]+\/[\w.-]+$/;
@@ -37,9 +44,23 @@ const TREE_TTL_MS = 60_000;
 /**
  * A file read at a ref is one GitHub call through muster, about 3 s, and the
  * Magazine and plan pages read the same files on every load. Each person's
- * reads are kept this long: a ref that moves on is seen within this window.
+ * reads are kept this long, in a store every backend instance shares: a ref
+ * that moves on is seen within this window, by every instance at once.
  */
 const CONTENT_TTL_MS = 60_000;
+
+/**
+ * How long a stored file read is kept: an expired read is never served, so
+ * the plugin's prune task drops reads well past CONTENT_TTL_MS.
+ */
+export const STORED_CONTENT_RETENTION_MS = 60 * 60_000;
+
+/**
+ * How long an instance serves its own copy of a read before it asks the
+ * shared store again: two instances whose reads overlapped a change agree on
+ * the stored read within this window.
+ */
+const MEMORY_RECHECK_MS = 5_000;
 
 /**
  * Reads shared per key within `ttlMs`, the concurrent ones included. A failed
@@ -135,6 +156,11 @@ export interface RouterOptions {
   httpAuth: HttpAuthService;
   /** GitHub as the caller, through muster; undefined when unconfigured. */
   github?: MusterServerGateway;
+  /**
+   * Where each person's file reads are kept. Default: this process's memory,
+   * which neither another instance nor a restart sees.
+   */
+  contentStore?: ContentReadStore;
 }
 
 function singleQueryValue(value: unknown, name: string): string | undefined {
@@ -281,6 +307,7 @@ export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
   const { logger, config, httpAuth, github } = options;
+  const contentStore = options.contentStore ?? new MemoryContentReadStore();
 
   const repositories = (
     config.getOptionalStringArray('plans.repositories') ?? []
@@ -545,12 +572,70 @@ export async function createRouter(
   ): Promise<RepositoryTree> =>
     treeCache(`${repo}@${ref}`, () => fetchTree(gh, repo, ref));
 
-  const contentCache = ttlCache<string>(CONTENT_TTL_MS);
+  /**
+   * The store answering is no reason to fail a read GitHub answered: a
+   * failing store means reads come from GitHub, as on a cold start.
+   */
+  const orWithoutStore = async <T>(
+    what: string,
+    operation: () => Promise<T>,
+    fallback: T,
+  ): Promise<T> => {
+    try {
+      return await operation();
+    } catch (error) {
+      logger.warn(`Plans content read store failed to ${what}`, {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return fallback;
+    }
+  };
 
   /**
-   * A file at a ref, read once per person, repository, ref and path within
-   * CONTENT_TTL_MS. Kept per person, since each read runs with the person's
-   * own GitHub grant: no one is served a file their grant could not read.
+   * A person's read from the shared store while it is fresh, else from
+   * GitHub, then published for every instance. Answers the read that stands
+   * in the store: when another instance published a newer read meanwhile,
+   * that one, so an older read finishing last is neither stored nor served.
+   */
+  const readSharedContent = async (
+    user: string,
+    key: string,
+    read: () => Promise<string>,
+  ): Promise<StoredContent> => {
+    const stored = await orWithoutStore(
+      'look up a read',
+      () => contentStore.get(user, key),
+      undefined,
+    );
+    if (stored && Date.now() - stored.readAt < CONTENT_TTL_MS) {
+      return stored;
+    }
+    const readAt = Date.now();
+    const content = await read();
+    return orWithoutStore(
+      'keep a read',
+      () => contentStore.publish(user, key, { content, readAt }),
+      { content, readAt },
+    );
+  };
+
+  /**
+   * The first layer, this instance's copy of each read, in-flight ones
+   * included. A copy is served for MEMORY_RECHECK_MS at most, and never past
+   * the expiry of the shared read it came from: every instance asks the
+   * shared store again, so the read published there, a changed file read
+   * anew by any instance included, replaces every instance's copy.
+   */
+  const contentMemory = new Map<
+    string,
+    { expires: number; value: Promise<string> }
+  >();
+
+  /**
+   * A file at a ref, read from GitHub once per person, repository, ref and
+   * path within CONTENT_TTL_MS, whichever instance serves the person. Kept
+   * per person, since each read runs with the person's own GitHub grant: no
+   * one is served a file their grant could not read.
    */
   const getCachedFileContent = async (
     req: express.Request,
@@ -559,11 +644,42 @@ export async function createRouter(
     ref: string,
   ): Promise<string> => {
     const { principal } = await httpAuth.credentials(req, { allow: ['user'] });
+    const user = principal.userEntityRef;
+    const key = JSON.stringify([repo, ref, path]);
+    const id = JSON.stringify([user, key]);
+    const now = Date.now();
+    const hit = contentMemory.get(id);
+    if (hit && hit.expires > now) {
+      return hit.value;
+    }
+    for (const [cached, entry] of contentMemory) {
+      if (entry.expires <= now) {
+        contentMemory.delete(cached);
+      }
+    }
     const gh = githubFor(req);
-    return contentCache(
-      JSON.stringify([principal.userEntityRef, repo, ref, path]),
-      () => getFileContent(gh, repo, path, ref),
+    const read = readSharedContent(user, key, () =>
+      getFileContent(gh, repo, path, ref),
     );
+    const entry = {
+      expires: now + MEMORY_RECHECK_MS,
+      value: read.then(({ content }) => content),
+    };
+    contentMemory.set(id, entry);
+    read.then(
+      ({ readAt }) => {
+        entry.expires = Math.min(
+          Date.now() + MEMORY_RECHECK_MS,
+          readAt + CONTENT_TTL_MS,
+        );
+      },
+      () => {
+        if (contentMemory.get(id) === entry) {
+          contentMemory.delete(id);
+        }
+      },
+    );
+    return entry.value;
   };
 
   const parsePullNumber = (raw: string): number => {
@@ -891,6 +1007,12 @@ export async function createRouter(
       res: express.Response,
       next: express.NextFunction,
     ) => {
+      // Muster could not be reached at all: a 503 with muster's text, never
+      // one of GitHub's refusals that the texts below are matched against.
+      if (error instanceof MusterUnreachableError) {
+        next(error);
+        return;
+      }
       if (error instanceof MusterServerNotConnectedError) {
         res.status(401).json({
           error: {
@@ -928,6 +1050,9 @@ export async function createRouter(
       next(error);
     },
   );
+
+  // Last, so that the handlers above see the error first.
+  router.use(reportedErrorHandler());
 
   return router;
 }

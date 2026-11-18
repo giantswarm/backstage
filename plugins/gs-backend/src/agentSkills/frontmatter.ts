@@ -1,8 +1,11 @@
 import { loadAll } from 'js-yaml';
+import { skillTagsOf } from './skillTags';
 
 export interface SkillFrontmatter {
   name?: string;
   description?: string;
+  /** `metadata.tags`, parsed (see `skillTagsOf`); empty when absent. */
+  tags: string[];
 }
 
 // Leading YAML frontmatter block: `---` … `---` at the very start of the file
@@ -40,8 +43,9 @@ export function splitSkillMarkdown(content: string): {
 }
 
 /**
- * Extracts the `name` and `description` from a `SKILL.md`'s YAML frontmatter.
- * Returns an empty object when there is no frontmatter or it can't be parsed —
+ * Extracts the `name`, `description` and tags from a `SKILL.md`'s YAML
+ * frontmatter. Returns no name, description or tags when there is no
+ * frontmatter or it can't be parsed —
  * discovery falls back to a directory-derived name in that case.
  */
 export function parseFrontmatter(content: string): SkillFrontmatter {
@@ -50,5 +54,6 @@ export function parseFrontmatter(content: string): SkillFrontmatter {
     name: typeof fm.name === 'string' ? fm.name : undefined,
     description:
       typeof fm.description === 'string' ? fm.description : undefined,
+    tags: skillTagsOf(fm),
   };
 }

@@ -74,6 +74,16 @@ jest.mock('../ModelBackends', () => ({
   }),
 }));
 
+// The sign-in itself is muster's (its own tests); here, only where it shows.
+jest.mock('../ModelManagerSignInAlerts', () => ({
+  ModelManagerSignInAlerts: ({
+    installations,
+  }: {
+    installations: string[];
+  }) => (
+    <div data-testid="model-manager-sign-in">{installations.join(',')}</div>
+  ),
+}));
 jest.mock('../ServingProvider', () => ({
   useServing: () => mockUseServing(),
 }));
@@ -98,6 +108,12 @@ const mockUseMusterPluginApi = jest.fn();
 
 jest.mock('../../hooks/useMusterPluginApi', () => ({
   useMusterPluginApi: () => mockUseMusterPluginApi(),
+}));
+
+// Whether a read in the query cache was refused for the portal session.
+let mockSessionEnded = false;
+jest.mock('../../hooks/usePortalSessionEnded', () => ({
+  usePortalSessionEnded: () => mockSessionEnded,
 }));
 
 jest.mock('../../hooks/useStopServedModel', () => ({
@@ -359,6 +375,7 @@ describe('ServingPage', () => {
     mockCancelDownload.mockReset();
     mockUseMusterPluginApi.mockReset();
     mockUseMusterPluginApi.mockReturnValue(undefined);
+    mockSessionEnded = false;
     mockGroupsWithoutModels.mockReset();
     mockGroupsWithoutModels.mockReturnValue([]);
     mockPoolAddAction = undefined;
@@ -815,6 +832,23 @@ describe('ServingPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('says the portal session ended, with Sign in again, instead of unreadable environments', async () => {
+    mockSessionEnded = true;
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      servedModels: [],
+      unreachableInstallations: ['inst-1'],
+    });
+
+    await renderSection();
+
+    expect(screen.getByText('Your portal session ended')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Sign in again' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Could not read/)).not.toBeInTheDocument();
+  });
+
   it('explains the empty state when no installation has a serving backend', async () => {
     mockUseServing.mockReturnValue({
       ...baseServing,
@@ -1052,6 +1086,48 @@ describe('ServingPage', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(/^The served models on inst-3 could not be read\./),
+    ).toBeInTheDocument();
+  });
+
+  it('offers the sign-in to model-manager instead of the read warning where muster asked for it', async () => {
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      unreachableInstallations: ['inst-3', 'inst-4'],
+      signInRequiredInstallations: ['inst-4'],
+      unreadableBeyondSignIn: ['inst-3'],
+    });
+
+    await renderSection();
+
+    expect(screen.getByTestId('model-manager-sign-in')).toHaveTextContent(
+      'inst-4',
+    );
+    // The warning names only the environment a sign-in does not fix.
+    expect(
+      screen.getByText(/^The served models on inst-3 could not be read\./),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/inst-4 could not be read/),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps an environment in the read warning that another source could not read, next to the sign-in', async () => {
+    // KServe's read of inst-4 failed too: a sign-in to model-manager would
+    // not fix that.
+    mockUseServing.mockReturnValue({
+      ...baseServing,
+      unreachableInstallations: ['inst-4'],
+      signInRequiredInstallations: ['inst-4'],
+      unreadableBeyondSignIn: ['inst-4'],
+    });
+
+    await renderSection();
+
+    expect(screen.getByTestId('model-manager-sign-in')).toHaveTextContent(
+      'inst-4',
+    );
+    expect(
+      screen.getByText(/^The served models on inst-4 could not be read\./),
     ).toBeInTheDocument();
   });
 

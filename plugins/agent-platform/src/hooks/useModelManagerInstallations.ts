@@ -2,7 +2,7 @@ import { MODEL_MANAGER_SERVER } from '../lib/modelManagerBackends';
 import {
   useMusterServerAvailability,
   type MusterServerPresence,
-} from './useMusterServerAvailability';
+} from '@giantswarm/backstage-plugin-muster';
 
 export type ModelManagerInstallations = {
   /**

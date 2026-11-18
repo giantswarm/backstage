@@ -8,11 +8,13 @@ import {
   filterSessionsBySelection,
   sessionAgentOptions,
   sessionFacets,
+  sessionOrganization,
   sessionSelectionOf,
   SessionStateFilter,
   SHELL_SESSION_STATE_FILTERS,
 } from './filters';
 import { withSessionStates } from './helpers';
+import { organizationDirectory } from '../../lib/organizations';
 
 function row(
   id: string,
@@ -267,11 +269,109 @@ describe('the shell list’s dropdown filters (T92)', () => {
 
   it('names states in the shell words and agents as the picker did', () => {
     const facets = sessionFacets(rows, { showStates: true });
-    expect(facets.map(facet => facet.id)).toEqual(['state', 'agent', 'pinned']);
+    expect(facets.map(facet => facet.id)).toEqual([
+      'state',
+      'environment',
+      'tenant',
+      'agent',
+      'pinned',
+    ]);
     expect(facets[0].optionLabel?.('waiting')).toBe('Waiting for you');
-    expect(facets[1].optionLabel?.(agentKey(rows[0])!)).toBe('Issue tracker');
+    expect(facets[3].optionLabel?.(agentKey(rows[0])!)).toBe('Issue tracker');
     expect(
       sessionFacets(rows, { showStates: false }).map(facet => facet.id),
-    ).toEqual(['agent', 'pinned']);
+    ).toEqual(['environment', 'tenant', 'agent', 'pinned']);
+  });
+
+  it('filters by environment, every environment while none is picked', () => {
+    const fleet = withSessionStates(
+      [
+        row('a', 'SRE Agent', sre),
+        row('b', 'SRE Agent', { ...sre, installation: 'wombat' }),
+        row('c', 'SRE Agent', { ...sre, installation: 'dingo' }),
+      ],
+      undefined,
+    );
+    expect(ids(filterSessionsBySelection(fleet, {}))).toEqual(['a', 'b', 'c']);
+    expect(
+      ids(filterSessionsBySelection(fleet, { environment: ['wombat'] })),
+    ).toEqual(['b']);
+    expect(
+      ids(
+        filterSessionsBySelection(fleet, { environment: ['gazelle', 'dingo'] }),
+      ),
+    ).toEqual(['a', 'c']);
+  });
+
+  it('leaves Environment out where the list hides its Environment column', () => {
+    expect(
+      sessionFacets(rows, { showStates: true, showEnvironments: false }).map(
+        facet => facet.id,
+      ),
+    ).toEqual(['state', 'tenant', 'agent', 'pinned']);
+  });
+
+  it('filters by the namespace and names it as every Organization label does', () => {
+    // As agent-manager's `list_organizations` names the namespace.
+    const directory = organizationDirectory([
+      {
+        namespace: 'agents-acme-x7k2q',
+        organization: 'acme',
+        parent: 'org-acme',
+      },
+    ]);
+    const fleet = withSessionStates(
+      [
+        row('a', 'Issue tracker', {
+          namespace: 'agents-acme-x7k2q',
+          name: 'tracker',
+        }),
+        row('b', 'SRE Agent', { namespace: 'kagent', name: 'sre-agent' }),
+        row('c', 'Helper', { namespace: 'agents-acme-x7k2q', name: 'helper' }),
+        row('d', 'Unmatched'),
+        row('e', 'Marian’s', { namespace: 'org-marian', name: 'm' }),
+        row('f', 'Team', { namespace: 'team-x', name: 't' }),
+        row('g', 'Team org', { namespace: 'org-team-x', name: 't' }),
+      ],
+      undefined,
+    );
+    expect(fleet.map(r => sessionOrganization(r))).toEqual([
+      'agents-acme-x7k2q',
+      'kagent',
+      'agents-acme-x7k2q',
+      undefined,
+      'org-marian',
+      'team-x',
+      'org-team-x',
+    ]);
+    expect(
+      ids(
+        filterSessionsBySelection(
+          fleet,
+          { tenant: ['agents-acme-x7k2q'] },
+          directory,
+        ),
+      ),
+    ).toEqual(['a', 'c']);
+    // Two namespaces that read the same are still two choices.
+    expect(
+      ids(filterSessionsBySelection(fleet, { tenant: ['team-x'] }, directory)),
+    ).toEqual(['f']);
+
+    const organization = sessionFacets(fleet, {
+      showStates: false,
+      directory,
+    }).find(facet => facet.id === 'tenant')!;
+    expect(
+      ['agents-acme-x7k2q', 'kagent', 'org-marian', 'team-x', 'org-team-x'].map(
+        namespace => organization.optionLabel?.(namespace),
+      ),
+    ).toEqual([
+      'acme',
+      'None',
+      'marian',
+      'team-x (team-x)',
+      'team-x (org-team-x)',
+    ]);
   });
 });

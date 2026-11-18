@@ -3,6 +3,7 @@ import { useApi } from '@backstage/core-plugin-api';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
+import { musterPollingOptions } from '@giantswarm/backstage-plugin-muster';
 
 import { modelManagerApiRef } from '../apis';
 import { ModelManagerToolsClient } from '../apis/ModelManagerToolsClient';
@@ -16,7 +17,10 @@ import {
   type RemoveBackendResult,
   type WriteMode,
 } from '../lib/modelManagerBackends';
-import { modelManagerBackendsQueryKey } from '../lib/queryKeys';
+import {
+  isModelManagerQueryOf,
+  modelManagerBackendsQueryKey,
+} from '../lib/queryKeys';
 import { BACKEND_REFETCH_MS } from '../components/ServingProvider/useModelManagerServingSource';
 import { useMusterPluginApi } from './useMusterPluginApi';
 
@@ -61,7 +65,9 @@ export function useRegisteredBackends(installations: string[]) {
       queryKey: modelManagerBackendsQueryKey(installation),
       queryFn: () => modelManagerApi.listBackends(installation),
       staleTime: BACKEND_REFETCH_MS,
-      refetchInterval: BACKEND_REFETCH_MS,
+      // The serving source's rule for the same read: not from a hidden tab,
+      // not after muster answered that the person is not signed in.
+      ...musterPollingOptions(BACKEND_REFETCH_MS),
       retry: false,
     })),
   });
@@ -102,19 +108,25 @@ export type BackendWriteFailure = {
   kind: 'refused' | 'not-connected';
   /** model-manager's answer, verbatim. */
   message: string;
+  /**
+   * A `not-connected` that is muster asking for the person's sign-in
+   * (`ModelManagerNotConnectedError.signInRequired`).
+   */
+  signInRequired?: boolean;
 };
 
 export function classifyBackendWriteFailure(
   error: unknown,
 ): BackendWriteFailure {
   const message = error instanceof Error ? error.message : String(error);
-  return {
-    kind:
-      error instanceof ModelManagerNotConnectedError
-        ? 'not-connected'
-        : 'refused',
-    message,
-  };
+  if (error instanceof ModelManagerNotConnectedError) {
+    return {
+      kind: 'not-connected',
+      message,
+      signInRequired: error.signInRequired,
+    };
+  }
+  return { kind: 'refused', message };
 }
 
 export type BackendWriteState = {
@@ -170,14 +182,9 @@ export function useBackendWrite(
       if (!client || !invalidate) {
         return;
       }
-      // Every `['agent-platform', 'model-manager', <read>, installation]`
-      // key — the prefix is shared, the installation is the last segment.
       const invalidateReads = () =>
         queryClient.invalidateQueries({
-          predicate: query =>
-            query.queryKey[0] === 'agent-platform' &&
-            query.queryKey[1] === 'model-manager' &&
-            query.queryKey[3] === client.installation,
+          predicate: isModelManagerQueryOf(client.installation),
         });
       await invalidateReads();
       // model-manager's registry follows the backend document through a

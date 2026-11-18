@@ -2,6 +2,7 @@ import {
   AgentManagerError,
   AgentManagerNotConnectedError,
   agentManagerToolName,
+  awaitsDefaultModel,
   classifyAgentManagerError,
   helmInstallCommand,
   isSettledVerdict,
@@ -9,7 +10,9 @@ import {
   codingEgressRefusal,
   missingGitHubAuthorization,
   missingReleaseFile,
+  supportsTags,
 } from './agentManager';
+import { MusterUnauthorizedError } from '@giantswarm/backstage-plugin-muster';
 
 describe('agentManagerToolName', () => {
   it('addresses the tool the way muster exposes an aggregated server', () => {
@@ -45,6 +48,31 @@ describe('classifyAgentManagerError', () => {
       ),
     );
     expect(error).toBeInstanceOf(AgentManagerNotConnectedError);
+  });
+
+  // muster's 401 for a person who has not signed in to agent-manager reads
+  // like agent-manager's own `auth_required` refusal: it is the sign-in the
+  // session start and the wizard offer, not a refusal in muster's words.
+  it("takes muster's sign-in request for not connected, not for agent-manager's auth_required", () => {
+    const original = new MusterUnauthorizedError(
+      "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
+      'server_sign_in_required',
+      'agent-manager',
+      'gazelle',
+    );
+    const error = classifyAgentManagerError(original);
+    expect(error).toBeInstanceOf(AgentManagerNotConnectedError);
+    expect(error.cause).toBe(original);
+  });
+
+  it("keeps agent-manager's own auth_required a refusal", () => {
+    const error = classifyAgentManagerError(
+      new Error(
+        'auth_required: commit mode needs the person to sign in to GitHub: the commit is made with your GitHub authorization, and this call carries none',
+      ),
+    );
+    expect(error).toBeInstanceOf(AgentManagerError);
+    expect((error as AgentManagerError).code).toBe('auth_required');
   });
 
   it('passes an unrelated error through', () => {
@@ -214,5 +242,38 @@ describe('missingGitHubAuthorization', () => {
         message: failureOf(NO_TOKEN).message,
       }),
     ).toBe(false);
+  });
+});
+
+describe('supportsTags', () => {
+  it("reads agent-manager's tags capability", () => {
+    expect(supportsTags({ capabilities: { tags: true } })).toBe(true);
+    expect(supportsTags({ capabilities: {} })).toBe(false);
+    expect(supportsTags(undefined)).toBe(false);
+  });
+});
+
+describe('awaitsDefaultModel', () => {
+  const agent = {
+    default: true,
+    managed: 'platform' as const,
+    ready: false,
+  };
+
+  it('holds for the platform default agent without a model, not ready', () => {
+    expect(awaitsDefaultModel(agent)).toBe(true);
+  });
+
+  it.each([
+    ['with a model', { modelConfig: 'claude' }],
+    ['not the default', { default: false }],
+    ['not platform-owned', { managed: 'helmrelease' as const }],
+    ['ready', { ready: true }],
+  ])('does not hold %s', (_, change) => {
+    expect(awaitsDefaultModel({ ...agent, ...change })).toBe(false);
+  });
+
+  it('does not hold before agent-manager has answered', () => {
+    expect(awaitsDefaultModel(undefined)).toBe(false);
   });
 });

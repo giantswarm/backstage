@@ -5,7 +5,8 @@ export const COLUMN_RESERVE_VAR = '--session-column-reserve';
 /** CSS variable: the docked composer's current height (px). */
 export const DOCK_HEIGHT_VAR = '--session-dock-height';
 
-function px(value: string): number {
+/** A CSS length in px, as computed styles give it; 0 when there is none. */
+export function cssPx(value: string): number {
   const parsed = parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
 }
@@ -36,7 +37,7 @@ function measureReserve(column: HTMLElement): number {
     const parent: HTMLElement | null = node.parentElement;
     if (node !== column) {
       const style = getComputedStyle(node);
-      below += px(style.paddingBottom) + px(style.borderBottomWidth);
+      below += cssPx(style.paddingBottom) + cssPx(style.borderBottomWidth);
     }
     if (parent && !isRow(parent)) {
       for (

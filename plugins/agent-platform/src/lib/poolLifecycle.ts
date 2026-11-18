@@ -507,6 +507,25 @@ export function isPoolSettled(
   );
 }
 
+/**
+ * A pool being deployed: unsettled ({@link isPoolSettled}), and neither
+ * `failed` nor `removing`. Its serve intent's `load_model` is called from the
+ * pools read that shows its stack ready, so that read keeps going from a
+ * hidden tab while one is (giantswarm/backstage#2446).
+ */
+export function isPoolDeployInProgress(
+  rows: readonly { pool: NodePool; cluster: ManagedCluster }[] | undefined,
+): boolean {
+  return (rows ?? []).some(({ pool, cluster }) => {
+    const phase = poolPhase(pool, cluster);
+    return (
+      phase !== 'failed' &&
+      phase !== 'removing' &&
+      !isPoolSettled(pool, cluster)
+    );
+  });
+}
+
 /** react-query's `refetchInterval` for one installation's pools query. */
 export function gpuNodePoolsRefetchInterval(query: {
   state: { data?: { rows: { pool: NodePool; cluster: ManagedCluster }[] } };

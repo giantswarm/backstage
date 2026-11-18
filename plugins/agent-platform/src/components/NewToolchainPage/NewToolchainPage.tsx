@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
@@ -15,8 +15,11 @@ import {
   TextField,
 } from '@backstage/ui';
 import {
+  ExternalLink,
   type BreadcrumbItem,
+  CodeBlock,
   EmptyStateCard,
+  FileView,
   LoadingIndicator,
   PageSection,
   ShellPage,
@@ -24,7 +27,9 @@ import {
   useFieldValidation,
   useSelectFieldError,
   safeWebURL,
+  type PollingQuery,
 } from '@giantswarm/backstage-plugin-ui-react';
+import { musterPollingOptions } from '@giantswarm/backstage-plugin-muster';
 
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import {
@@ -32,6 +37,7 @@ import {
   useToolchainManagerClient,
   useToolchainSources,
 } from '../../hooks/useToolchainManager';
+import { ToolchainsUnchecked } from '../ToolchainsUnchecked';
 import { useCreateToolchain } from '../../hooks/useToolchainWrites';
 import {
   musterToolchainBuildQueryKey,
@@ -50,12 +56,18 @@ import {
   sharedIdentityTitle,
 } from '../../lib/sharedIdentity';
 import { toolchainDetailRouteRef, toolchainsRouteRef } from '../../routes';
-import { CodeBlock } from '../CodeBlock';
 import { ToolchainGrantPrompt } from '../ToolchainGrantPrompt';
 import { ToolchainReadFailure } from '../ToolchainReadFailure';
 
 /** The address's installation: `?installation=<name>`. */
 export const INSTALLATION_SEARCH_PARAM = 'installation';
+
+/**
+ * The failed job's log scrolls inside this height, so a long log does not
+ * push the rest of the page down; the same cap as a YAML `FileView`.
+ * `CodeBlock` lowers it to two fifths of the view on a phone.
+ */
+const BUILD_LOG_MAX_HEIGHT = '520px';
 
 /** How often the build state is read while it moves. */
 const BUILD_POLL_MS = 10_000;
@@ -102,15 +114,20 @@ function BuildStatus({
 }) {
   const client = useToolchainManagerClient(installation);
   const detailRoute = useRouteRef(toolchainDetailRouteRef);
+  const logHeadingId = useId();
   const status = useQuery({
     queryKey: musterToolchainBuildQueryKey(installation, source, name, pull),
     queryFn: () => client!.buildStatus({ name, source, pull }),
     enabled: Boolean(client),
     retry: false,
-    refetchInterval: query => {
-      const state = query.state.data?.build?.state;
-      return state && isFinalBuildState(state) ? false : BUILD_POLL_MS;
-    },
+    // Until the build is final; not from a hidden tab, not after muster
+    // answered that the person is not signed in to the toolchain-manager.
+    ...musterPollingOptions(
+      (query: PollingQuery<{ build?: ToolchainBuild }>) => {
+        const state = query.state.data?.build?.state;
+        return state && isFinalBuildState(state) ? false : BUILD_POLL_MS;
+      },
+    ),
   });
   const build = status.data?.build;
   if (status.error) {
@@ -139,25 +156,41 @@ function BuildStatus({
         tone={buildTone(build)}
         label={BUILD_STATE_LABEL[build.state]}
       />
-      {(build.jobs ?? []).map(job => (
-        <Text key={job.name} variant="body-small" color="secondary">
-          {safeWebURL(job.url) ? (
-            <Link href={safeWebURL(job.url)} target="_blank" rel="noopener">
-              {job.name}
-            </Link>
-          ) : (
-            job.name
-          )}
-          : {job.state}
-        </Text>
-      ))}
+      {(build.jobs ?? []).map(job => {
+        const jobURL = safeWebURL(job.url);
+        return (
+          <Text key={job.name} variant="body-small" color="secondary">
+            {jobURL ? (
+              <ExternalLink href={jobURL} display="inline">
+                {job.name}
+              </ExternalLink>
+            ) : (
+              job.name
+            )}
+            : {job.state}
+          </Text>
+        );
+      })}
       {build.state === 'published' && (
         <Text variant="body-medium">
           {build.image}.{' '}
           <Link href={detailRoute?.({ installation, name })}>Open {name}</Link>
         </Text>
       )}
-      {build.log && <CodeBlock content={build.log} filename="Failed job" />}
+      {build.log && (
+        <Flex direction="column" gap="1">
+          <Text as="h3" id={logHeadingId} variant="body-small" weight="bold">
+            Log of the failed job
+          </Text>
+          {/* The error is at the log's end: it opens there. */}
+          <CodeBlock
+            text={build.log}
+            maxHeight={BUILD_LOG_MAX_HEIGHT}
+            scrollToEnd
+            aria-labelledby={logHeadingId}
+          />
+        </Flex>
+      )}
     </Flex>
   );
 }
@@ -173,7 +206,7 @@ function BuildStatus({
  */
 export function NewToolchainPage() {
   const frame = useFrame();
-  const { installations, sharedIdentity, hasToolchains } =
+  const { installations, sharedIdentity, hasToolchains, unchecked, recheck } =
     useScopedToolchainInstallations();
   const [searchParams, setSearchParams] = useSearchParams();
   const requested = searchParams.get(INSTALLATION_SEARCH_PARAM);
@@ -213,6 +246,13 @@ export function NewToolchainPage() {
       </ShellPage>
     );
   }
+  if (hasToolchains === 'unchecked') {
+    return (
+      <ShellPage title="New toolchain" {...frame}>
+        <ToolchainsUnchecked unchecked={unchecked} onRetry={recheck} />
+      </ShellPage>
+    );
+  }
   if (!installation) {
     return (
       <ShellPage title="New toolchain" {...frame}>
@@ -248,6 +288,17 @@ export function NewToolchainPage() {
     >
       <NewToolchainForm key={installation} installation={installation} />
     </ShellPage>
+  );
+}
+
+/** The pull request that adds the toolchain, linked when its URL is safe. */
+function PullLink({ href, text }: { href: string | undefined; text: string }) {
+  return href ? (
+    <ExternalLink href={href} display="inline">
+      {text}
+    </ExternalLink>
+  ) : (
+    <>{text}</>
   );
 }
 
@@ -507,7 +558,7 @@ function NewToolchainForm({ installation }: { installation: string }) {
           />
         )}
         {written ? (
-          <CodeBlock
+          <FileView
             content={written.dockerfile}
             filename="Dockerfile"
             path={written.path.replace(/\/Dockerfile$/, '')}
@@ -561,13 +612,10 @@ function NewToolchainForm({ installation }: { installation: string }) {
           {created && (
             <Flex direction="column" gap="3">
               <Text variant="body-medium">
-                <Link
+                <PullLink
                   href={safeWebURL(created.pullURL)}
-                  target="_blank"
-                  rel="noopener"
-                >
-                  {created.repository}#{created.pull}
-                </Link>{' '}
+                  text={`${created.repository}#${created.pull}`}
+                />{' '}
                 adds {created.toolchain} on the branch {created.branch}.
               </Text>
               <BuildStatus

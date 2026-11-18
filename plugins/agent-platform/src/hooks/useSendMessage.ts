@@ -1,14 +1,14 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 import { useApi } from '@backstage/core-plugin-api';
-import { useQueryClient } from '@tanstack/react-query';
+import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 import {
   A2aTaskWire,
   countSendTimeout,
   SendTimeouts,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { isFirstEventTimeout, kagentApiRef } from '../apis';
-import { useStreamedTurn } from './useStreamedTurn';
+import { findTurnTask, useStreamedTurn } from './useStreamedTurn';
 import { sessionQueryKey, sessionTasksQueryKey } from './useSessionDetail';
 import { ComposerImage, toMessageImages } from '../lib/messageImages';
 
@@ -116,8 +116,20 @@ export function useSendMessage(
     [queryClient, installation, sessionId],
   );
   const mutation = useTrackedMutation({
-    // Neither the text nor its images: only that a message went.
-    event: () => ({ name: 'AgentPlatform.messageSent', attributes: {} }),
+    // Neither the text nor its images: that a message went, and how many
+    // turns the session has with it.
+    event: (_data, message) => {
+      const turns = turnsWithSentMessage(
+        queryClient,
+        installation,
+        sessionId,
+        message.messageId,
+      );
+      return {
+        name: 'AgentPlatform.messageSent',
+        attributes: turns === undefined ? {} : { turns },
+      };
+    },
     mutationFn: async (message: PendingMessage) => {
       if (!agent) {
         // Not a user-facing path: the composer is withheld when the session's
@@ -246,6 +258,27 @@ export function useSendMessage(
       reset,
     ],
   );
+}
+
+/**
+ * The session's turns once a sent message's turn is over, that turn included:
+ * the conversation as last read, plus the turn when that read does not hold
+ * it yet — the page was left during the turn, so nothing re-read it after.
+ * Undefined when the conversation was never read.
+ */
+function turnsWithSentMessage(
+  queryClient: QueryClient,
+  installation: string,
+  sessionId: string,
+  sentMessageId: string,
+): number | undefined {
+  const tasks = queryClient.getQueryData<A2aTaskWire[]>(
+    sessionTasksQueryKey(installation, sessionId),
+  );
+  if (!tasks) {
+    return undefined;
+  }
+  return tasks.length + (findTurnTask(tasks, { sentMessageId }) ? 0 : 1);
 }
 
 /** What {@link useSendMessage} hands to the composer. */

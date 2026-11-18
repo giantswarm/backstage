@@ -11,6 +11,7 @@ export { DateComponent } from './Date';
 export { GrafanaDashboardLink } from './GrafanaDashboardLink';
 export { GridItem } from './GridItem';
 export { Heading } from './Heading';
+export { InstallationLink } from './InstallationLink';
 export { JsonSchemaViewer } from './JsonSchemaViewer';
 export { KubernetesVersion } from './KubernetesVersion';
 export { NotAvailable } from './NotAvailable';

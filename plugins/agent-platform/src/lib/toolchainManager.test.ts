@@ -8,7 +8,7 @@ import {
   samePicks,
   toolchainEntry,
   toolchainManagerToolName,
-  toolchainsLabel,
+  toolchainLabel,
 } from './toolchainManager';
 
 describe('toolchainManager', () => {
@@ -42,11 +42,9 @@ describe('toolchainManager', () => {
     expect(defaultToolchainsOf(undefined)).toEqual([]);
   });
 
-  it('says a set of toolchains in a line', () => {
-    expect(
-      toolchainsLabel([{ name: 'go', version: 'v0.1.0' }, { name: 'node' }]),
-    ).toBe('go 0.1.0, node latest');
-    expect(toolchainsLabel([])).toBe('No toolchains');
+  it('says one toolchain with its version, or latest', () => {
+    expect(toolchainLabel({ name: 'go', version: 'v0.1.0' })).toBe('go 0.1.0');
+    expect(toolchainLabel({ name: 'node' })).toBe('node latest');
   });
 
   it('compares sets by what they mount, in any order', () => {

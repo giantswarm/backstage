@@ -1,5 +1,35 @@
 # @giantswarm/backstage-plugin-platform-capabilities
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [db5c770]
+- Updated dependencies [5ded107]
+- Updated dependencies [8fd67a7]
+- Updated dependencies [8ab4a8f]
+- Updated dependencies [a665a44]
+- Updated dependencies [a2e34ef]
+- Updated dependencies [6bfac24]
+- Updated dependencies [0314965]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5bde8bf]
+- Updated dependencies [4f2299d]
+- Updated dependencies [0f927e4]
+- Updated dependencies [c72aab9]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [6dee1f6]
+- Updated dependencies [ed68f95]
+- Updated dependencies [3745db0]
+  - @giantswarm/backstage-plugin-analytics-react@0.3.0
+  - @giantswarm/backstage-plugin-ui-react@0.10.0
+
 ## 0.1.0
 
 ### Minor Changes

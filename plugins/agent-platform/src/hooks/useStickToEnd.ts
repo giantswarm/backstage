@@ -128,11 +128,11 @@ function goesToEnd(event: KeyboardEvent): boolean {
  */
 const TOGGLES = '[aria-expanded], summary';
 
-function closestToggle(target: EventTarget | null): Element | null {
+export function closestToggle(target: EventTarget | null): Element | null {
   return target instanceof Element ? target.closest(TOGGLES) : null;
 }
 
-function isEditable(target: EventTarget | null): boolean {
+export function isEditable(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLElement &&
     (target.isContentEditable ||
@@ -141,7 +141,7 @@ function isEditable(target: EventTarget | null): boolean {
 }
 
 /** Space on a control presses it rather than scrolling. */
-function isControl(target: EventTarget | null): boolean {
+export function isControl(target: EventTarget | null): boolean {
   return (
     target instanceof Element &&
     target.closest('button, a, summary, [role="button"]') !== null
@@ -161,10 +161,7 @@ function isScrollable(style: CSSStyleDeclaration): boolean {
 function staysInside(target: EventTarget | null, scroller: Element): boolean {
   for (
     let node = target instanceof Element ? target : null;
-    node &&
-    node !== scroller &&
-    node !== document.body &&
-    node !== document.documentElement;
+    node && node !== scroller;
     node = node.parentElement
   ) {
     if (node.scrollHeight > node.clientHeight) {
@@ -187,9 +184,9 @@ function staysInside(target: EventTarget | null, scroller: Element): boolean {
  * stays there as the agent's reply streams in; once they scroll away, their
  * position is left alone until they come back to the end.
  *
- * `scroller` is what scrolls — `'document'` for a page that scrolls the
- * document (the session page), or a scroll box (the Create agent assist
- * panel; `null` until it mounts) — and `content` what grows inside it.
+ * `scroller` is the scroll box (the Create agent assist panel; `null` until it
+ * mounts) and `content` what grows inside it. The session page, which
+ * scrolls the document, does not stick to the end: see `useJumpToBottom`.
  *
  * Whether the reader follows the end is decided by what *they* do, not by
  * how far from the end the view happens to be when content arrives: moving up
@@ -203,8 +200,8 @@ function staysInside(target: EventTarget | null, scroller: Element): boolean {
  * the scroller up — at its top, scroll-locked behind a dialog, a pinch zoom,
  * a box inside taking the scroll — leaves nothing.
  *
- * Content is followed by watching the size of `content` (and, on the
- * document, of the body, for the chrome around it), which covers everything
+ * Content is followed by watching the size of `content` (and of the box, for
+ * the chrome around it), which covers everything
  * that grows it — streamed text, the Working line, tool activity, a message
  * the poll lands, the docked composer growing — whatever renders it, and
  * scrolls before paint. A change the reader makes is theirs: it never scrolls,
@@ -221,40 +218,30 @@ function staysInside(target: EventTarget | null, scroller: Element): boolean {
  */
 export function useStickToEnd(
   content: HTMLElement | null,
-  scroller: HTMLElement | null | 'document' = 'document',
+  scroller: HTMLElement | null,
 ): { stickToEnd: () => void; markReaderChange: () => void } {
   const following = useRef(true);
   const last = useRef<Pick<ScrollMetrics, 'top' | 'height'>>();
   const readerChangeUntil = useRef(0);
 
-  const scrollingElement = useCallback(
-    (): Element | null =>
-      scroller === 'document'
-        ? (document.scrollingElement ?? document.documentElement)
-        : scroller,
-    [scroller],
-  );
-
   const stickToEnd = useCallback(() => {
     following.current = true;
-    const element = scrollingElement();
-    if (!element) {
+    if (!scroller) {
       return;
     }
-    element.scrollTop = element.scrollHeight;
-    last.current = { top: element.scrollTop, height: element.scrollHeight };
-  }, [scrollingElement]);
+    scroller.scrollTop = scroller.scrollHeight;
+    last.current = { top: scroller.scrollTop, height: scroller.scrollHeight };
+  }, [scroller]);
 
   const markReaderChange = useCallback(() => {
     readerChangeUntil.current = performance.now() + READER_CHANGE_MS;
   }, []);
 
   useLayoutEffect(() => {
-    const element = scrollingElement();
+    const element = scroller;
     if (!content || !element) {
       return undefined;
     }
-    const onDocument = scroller === 'document';
     const remember = (metrics: ScrollMetrics) => {
       last.current = { top: metrics.top, height: metrics.height };
     };
@@ -279,21 +266,14 @@ export function useStickToEnd(
     const isHeld = () => touchHold !== undefined || scrollbarHold !== undefined;
 
     const isWithin = (target: EventTarget | null) =>
-      onDocument || (target instanceof Node && element.contains(target));
+      target instanceof Node && element.contains(target);
 
     /** Whether the scroller can move up at all right now. */
     const canMoveUp = () => {
       if (element.scrollTop <= 0) {
         return false;
       }
-      // A modal dialog locks the page (react-aria on the root, MUI on the
-      // body).
-      const locked = onDocument
-        ? [document.documentElement, document.body]
-        : [element];
-      return locked.every(
-        node => getComputedStyle(node).overflowY !== 'hidden',
-      );
+      return getComputedStyle(element).overflowY !== 'hidden';
     };
 
     const leave = () => {
@@ -405,15 +385,10 @@ export function useStickToEnd(
       event.target.addEventListener('touchcancel', onTouchEnd, passive);
     };
 
-    // A press on the scroller's own scrollbar: on the document it targets the
-    // root (or lands right of the content); on a box, the box past its
-    // content width. Firefox sends nothing for the viewport's scrollbar; its
-    // drags are read from the scroll events alone.
+    // A press on the box's own scrollbar: on the box, past its content width.
     const onMouseDown = (event: MouseEvent) => {
-      const onBar = onDocument
-        ? event.target === document.documentElement ||
-          event.clientX >= document.documentElement.clientWidth
-        : event.target === element && event.offsetX >= element.clientWidth;
+      const onBar =
+        event.target === element && event.offsetX >= element.clientWidth;
       if (onBar) {
         noteInput();
         holdScrollbar();
@@ -471,10 +446,9 @@ export function useStickToEnd(
       forgetInput();
     };
 
-    const scrollTarget: EventTarget = onDocument ? window : element;
     const passive = { passive: true } as const;
-    scrollTarget.addEventListener('scroll', onScroll, passive);
-    scrollTarget.addEventListener('scrollend', onScrollEnd, passive);
+    element.addEventListener('scroll', onScroll, passive);
+    element.addEventListener('scrollend', onScrollEnd, passive);
     window.addEventListener('wheel', onWheel, passive);
     window.addEventListener('touchstart', onTouchStart, passive);
     window.addEventListener('mousedown', onMouseDown, passive);
@@ -488,18 +462,14 @@ export function useStickToEnd(
     // Bubbling, on the window: after React's handlers, so a menu's own
     // `preventDefault` is seen.
     window.addEventListener('keydown', onKeyDown);
-    const observer =
-      typeof ResizeObserver === 'undefined'
-        ? undefined
-        : new ResizeObserver(onResize);
-    observer?.observe(content);
-    // On the document, the chrome around the conversation moves its end too
-    // (the title replacing its skeleton, the header compacting).
-    observer?.observe(onDocument ? document.body : element);
+    const observer = new ResizeObserver(onResize);
+    observer.observe(content);
+    // The chrome around the conversation in the box moves its end too.
+    observer.observe(element);
 
     return () => {
-      scrollTarget.removeEventListener('scroll', onScroll);
-      scrollTarget.removeEventListener('scrollend', onScrollEnd);
+      element.removeEventListener('scroll', onScroll);
+      element.removeEventListener('scrollend', onScrollEnd);
       window.removeEventListener('wheel', onWheel);
       window.removeEventListener('touchstart', onTouchStart);
       window.removeEventListener('mousedown', onMouseDown);
@@ -509,11 +479,11 @@ export function useStickToEnd(
       window.removeEventListener('click', onClick, true);
       window.removeEventListener('keydown', onToggleKey, true);
       window.removeEventListener('keydown', onKeyDown);
-      observer?.disconnect();
+      observer.disconnect();
       releaseTouch();
       releaseScrollbar();
     };
-  }, [content, scroller, scrollingElement, markReaderChange]);
+  }, [content, scroller, markReaderChange]);
 
   return { stickToEnd, markReaderChange };
 }

@@ -1,10 +1,13 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { formatLocalDateFull } from '@giantswarm/backstage-plugin-ui-react';
 import {
+  mockContainerWidth,
   mockDesktopLayout,
   mockPhoneLayout,
   mockViewport,
+  type MockedContainerWidth,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { GpuNode } from '../../lib/serving';
@@ -281,6 +284,9 @@ describe('formatGpuMemory', () => {
   });
 
   it('adds the memory budget and the model cache when a serving backend reports them', async () => {
+    const TWO_DAYS_AGO = new Date(
+      Date.now() - 2 * 24 * 60 * 60 * 1000,
+    ).toISOString();
     await renderInTestApp(
       <GpuCapacityPanel
         nodes={[
@@ -296,6 +302,7 @@ describe('formatGpuMemory', () => {
               models: 3,
               bytesUsed: 77540453864,
               error: 'scan pod timed out',
+              scannedAt: TWO_DAYS_AGO,
             },
           },
         ]}
@@ -317,7 +324,14 @@ describe('formatGpuMemory', () => {
     ).toBeInTheDocument();
     // A cluster node has no accelerated flag: no marker either way.
     expect(screen.queryByText('accelerated')).not.toBeInTheDocument();
-    expect(screen.getByText('3 models · 72.2 GiB')).toBeInTheDocument();
+    // When it was scanned, relative so yesterday does not read as today,
+    // the date and time after it.
+    expect(screen.getByText('3 models · 72.2 GiB')).toHaveAttribute(
+      'title',
+      `Claim hf-cache, mounted at /mnt/models, scanned 2 days ago (${formatLocalDateFull(
+        TWO_DAYS_AGO,
+      )})`,
+    );
     expect(screen.getByText('scan failed')).toBeInTheDocument();
     expect(
       screen.getByText(/what the serving layer fit-checks/),
@@ -809,6 +823,14 @@ describe('describeNode / lacksInstallationCache', () => {
     expect(describeNode(sparkPinnedOut)).toBe(NOT_SERVING_TARGET_DESCRIPTION);
     expect(describeNode(sparkTarget)).toBeUndefined();
     expect(describeNode(ollamaHost)).toBe('Backend host');
+    // The server's name when the host carries one, so two backends on one
+    // address read apart.
+    expect(describeNode({ ...ollamaHost, backend: 'ollama' })).toBe(
+      'Ollama host',
+    );
+    expect(describeNode({ ...ollamaHost, backend: 'lemonade' })).toBe(
+      'Lemonade host',
+    );
     expect(describeNode({ ...ollamaHost, eligible: false })).toBe(
       NOT_SERVING_TARGET_DESCRIPTION,
     );
@@ -956,5 +978,62 @@ describe('GpuCapacityPanel at phone width', () => {
     expect(
       phoneCapacityColumns({ gpu: false, budget: false, cache: true }),
     ).toEqual(['name']);
+  });
+});
+
+// Beside the side rail at 768px the card is 424px wide: ten columns of ~42px
+// squeezed every value and clipped the cells (layout check, #3553).
+describe('GpuCapacityPanel in a narrow card', () => {
+  let layout: MockedLayout;
+  let container: MockedContainerWidth;
+  afterEach(() => {
+    layout.restore();
+    container.restore();
+  });
+
+  const renderPanel = () =>
+    renderInTestApp(
+      <GpuCapacityPanel
+        nodes={[withPlugin, labelsOnly]}
+        installations={['inst-1', 'inst-2']}
+        unavailable={{}}
+        isLoading={false}
+      />,
+    );
+  const headers = () =>
+    screen.getAllByRole('columnheader').map(cell => cell.textContent?.trim());
+
+  it('takes the phone columns on a desktop when the card is too narrow for the full table', async () => {
+    layout = mockDesktopLayout();
+    container = mockContainerWidth(424);
+    await renderPanel();
+
+    expect(headers()).toEqual(['Node', 'Free']);
+    const node = screen
+      .getByText('gpu-node-1')
+      .closest('[role="row"]') as HTMLElement;
+    expect(
+      within(node).getByText('NVIDIA-GB10 · 120 GiB · 1 GPU · 1 requested'),
+    ).toBeVisible();
+  });
+
+  it('shows every column when the card is wide enough, and switches as it narrows', async () => {
+    layout = mockDesktopLayout();
+    container = mockContainerWidth(936);
+    await renderPanel();
+
+    expect(headers()).toEqual([
+      'Node',
+      'Environment',
+      'GPU',
+      'Memory',
+      'GPUs',
+      'Allocatable',
+      'Requested',
+      'Free',
+    ]);
+
+    act(() => container.setWidth(424));
+    expect(headers()).toEqual(['Node', 'Free']);
   });
 });

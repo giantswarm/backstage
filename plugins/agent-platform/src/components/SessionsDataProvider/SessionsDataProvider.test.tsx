@@ -11,6 +11,7 @@ import { kagentApiRef } from '../../apis';
 import { KagentApi, KagentInstallation } from '../../apis/types';
 import { KagentSession } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { SessionsDataProvider, useSessions } from './SessionsDataProvider';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 
 // Mock the fleet plumbing so the test drives the fan-out, classification and
 // loading logic directly. `mock`-prefixed names are the only out-of-scope
@@ -114,6 +115,7 @@ function renderProvider(
     defaultOptions: { queries: { retry: false } },
   }),
   storage: StorageApi = mockApis.storage(),
+  { enabled }: { enabled?: boolean } = {},
 ) {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <TestApiProvider
@@ -123,7 +125,9 @@ function renderProvider(
       ]}
     >
       <QueryClientProvider client={queryClient}>
-        <SessionsDataProvider>{children}</SessionsDataProvider>
+        <SessionsDataProvider enabled={enabled}>
+          {children}
+        </SessionsDataProvider>
       </QueryClientProvider>
     </TestApiProvider>
   );
@@ -226,6 +230,20 @@ describe('SessionsDataProvider', () => {
     await waitFor(() => expect(listSessions).toHaveBeenCalledTimes(1));
     expect(listSessions).toHaveBeenCalledWith('gazelle');
     expect(listSessions).not.toHaveBeenCalledWith('golem');
+  });
+
+  it('reads nothing, and lists nothing, while not enabled', async () => {
+    listSessions.mockResolvedValue([session()]);
+
+    const { result } = renderProvider(undefined, undefined, {
+      enabled: false,
+    });
+
+    await waitFor(() => expect(listInstallations).toHaveBeenCalled());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(listSessions).not.toHaveBeenCalled();
+    expect(result.current.rows).toEqual([]);
+    expect(result.current.isLoadingMore).toBe(false);
   });
 
   it('queries nothing until the allowlist resolves', async () => {
@@ -439,6 +457,130 @@ describe('SessionsDataProvider', () => {
 
       await waitFor(() => expect(result.current.rows).toHaveLength(1));
       expect(result.current.isLoading).toBe(false);
+    });
+  });
+
+  it('says the portal session ended when the portal refused the session token', async () => {
+    listSessions.mockImplementation((installation: string) =>
+      installation === 'gazelle'
+        ? Promise.reject(new PortalSessionEndedError())
+        : Promise.reject(namedError('NotFoundError')),
+    );
+
+    const { result } = renderProvider();
+
+    await waitFor(() => expect(result.current.sessionEnded).toBe(true));
+    expect(result.current.unreachableInstallations).toEqual(['gazelle']);
+  });
+
+  it('says the portal session ended on a refetch refused over rows read before', async () => {
+    listSessions.mockImplementation((installation: string) =>
+      installation === 'gazelle'
+        ? Promise.resolve([session()])
+        : Promise.reject(namedError('NotFoundError')),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { result } = renderProvider(queryClient);
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+
+    listSessions.mockImplementation(() =>
+      Promise.reject(new PortalSessionEndedError()),
+    );
+    await act(() => queryClient.refetchQueries());
+
+    await waitFor(() => expect(result.current.sessionEnded).toBe(true));
+    // The rows read before stay on screen, under the alert.
+    expect(result.current.rows).toHaveLength(1);
+  });
+
+  describe('a failed read the person can retry', () => {
+    const unavailable = () =>
+      Object.assign(namedError('Error'), {
+        status: 500,
+        reason: 'unavailable',
+      });
+
+    it('is the whole answer only when no installation answered', async () => {
+      listSessions.mockImplementation((installation: string) =>
+        installation === 'gazelle'
+          ? Promise.reject(unavailable())
+          : Promise.reject(namedError('NotFoundError')),
+      );
+
+      const { result } = renderProvider();
+
+      await waitFor(() =>
+        expect(result.current.unreachableInstallations).toEqual(['gazelle']),
+      );
+      expect(result.current.nothingRead).toBe(true);
+    });
+
+    it('is partial when another installation answered, even with no sessions', async () => {
+      listSessions.mockImplementation((installation: string) =>
+        installation === 'gazelle'
+          ? Promise.reject(unavailable())
+          : Promise.resolve([]),
+      );
+
+      const { result } = renderProvider();
+
+      await waitFor(() =>
+        expect(result.current.unreachableInstallations).toEqual(['gazelle']),
+      );
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.rows).toEqual([]);
+      expect(result.current.nothingRead).toBe(false);
+    });
+
+    it('reads again, once, only the installations whose failure is reported', async () => {
+      // The client's own policy retries; a person's Try again does not.
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: 3, retryDelay: 0 } },
+      });
+      listSessions.mockImplementation((installation: string) =>
+        installation === 'gazelle'
+          ? Promise.reject(unavailable())
+          : Promise.reject(namedError('NotFoundError')),
+      );
+
+      const { result } = renderProvider(queryClient);
+      await waitFor(() =>
+        expect(result.current.unreachableInstallations).toEqual(['gazelle']),
+      );
+      const calls = (installation: string) =>
+        listSessions.mock.calls.filter(([name]) => name === installation)
+          .length;
+      const before = { gazelle: calls('gazelle'), golem: calls('golem') };
+
+      act(() => result.current.retry());
+      await waitFor(() => expect(result.current.isRetrying).toBe(false));
+      await act(() => new Promise(resolve => setTimeout(resolve, 50)));
+
+      expect(calls('gazelle')).toBe(before.gazelle + 1);
+      // kagent is not deployed there: no retry changes that.
+      expect(calls('golem')).toBe(before.golem);
+      expect(result.current.unreachableInstallations).toEqual(['gazelle']);
+    });
+
+    it('shows the rows once the retry answers', async () => {
+      listSessions.mockImplementation((installation: string) =>
+        installation === 'gazelle'
+          ? Promise.reject(unavailable())
+          : Promise.resolve([]),
+      );
+      const { result } = renderProvider();
+      await waitFor(() =>
+        expect(result.current.unreachableInstallations).toEqual(['gazelle']),
+      );
+
+      listSessions.mockImplementation(() => Promise.resolve([session()]));
+      act(() => result.current.retry());
+
+      await waitFor(() => expect(result.current.rows).toHaveLength(1));
+      expect(result.current.unreachableInstallations).toEqual([]);
+      expect(result.current.nothingRead).toBe(false);
     });
   });
 

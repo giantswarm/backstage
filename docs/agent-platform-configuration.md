@@ -33,6 +33,7 @@ A key works only in the channel it is meant for:
 | `app.portals.agentPlatform`                               | `false`    | Yes, to serve the shell to everyone            | Shell only for people who opt in with the `agent-platform-shell` flag    |
 | `app.portals.platformPortal`                              | `true`     | No                                             | —                                                                        |
 | `app.extensions: page:agent-platform`                     | enabled    | No                                             | —                                                                        |
+| `gs.features.platformSection.enabled`                     | `false`    | No                                             | No `/platform` route and no Platform item in the rail                    |
 | `gs.installations.<name>.baseDomain`                      | —          | Yes, per installation running the platform     | No kagent, muster, Mimir or avatar endpoint can be derived               |
 | `gs.installations.<name>.mimirEnabled`                    | `true`     | Set `false` on installations without Mimir     | Usage metrics are requested from a Mimir that does not exist             |
 | `gs.installations.<name>.currency`                        | USD        | No                                             | Costs shown in USD                                                       |
@@ -63,8 +64,14 @@ A lab works without these; production needs them:
   [Meta-agents](#meta-agents-agentplatformmetaagents)).
 - **The avatar service.** Avatars come from the chart's DiceBear service
   (`dicebear`, on by default) at `avatars.<baseDomain>`, through
-  `plugins/agent-platform-backend/src/avatarRouter.ts`. Without it every avatar
-  fails, the backend logs a warning per image, and the UI shows initials.
+  `plugins/agent-platform-backend/src/avatarRouter.ts`. Without it, or when
+  the backend cannot connect to that host directly (no route to it, no
+  connection within 3 s of resolving its name), the UI shows initials and the
+  backend logs the finding once at info, then answers from it for a minute
+  (no service) or five minutes (no connection). A service that is reached but
+  answers slowly, with an error or with something other than an image, a
+  refused connection (a gateway that is down) and an egress proxy that cannot
+  be connected to log a warning per image.
 
 ## Portals: `app.portals`
 
@@ -92,7 +99,9 @@ with the tabs the plugins attach to it (`sub-page:agent-platform/agents`,
 enabled by default and mounted only where the shell is on, so
 `app.portals.agentPlatform` alone switches the Agent Platform on; `false` for
 one in `app.extensions` turns it off. The classic sidebar's Agent Platform item
-follows `app.portals`, not `nav-item:agent-platform`.
+follows `app.portals`. There is no `nav-item:agent-platform` extension: an
+`app.extensions` entry naming it logs `INVALID_EXTENSION_CONFIG_KEY` at
+start-up.
 
 ```yaml
 app:
@@ -117,6 +126,27 @@ the shell is off, and it is not listed in the settings while
 `app.portals.agentPlatform` is on. Every shell extension keys on the flag
 internally. The app reads it once per load (`isAgentShellOn`), so toggling it
 in the settings takes effect after a reload.
+
+## The Platform section: `gs.features.platformSection`
+
+```yaml
+gs:
+  features:
+    platformSection:
+      enabled: true
+```
+
+Turns on `/platform` with its rail item, after Usage (in the Profile menu on a
+phone): the clusters list (see
+[agent-platform.md](agent-platform.md#platform)). Off by default; without it
+neither the route nor the rail item exists and `/platform` renders as before.
+The key is public (`@visibility frontend`), because the app decides which pages
+it mounts as it starts, before sign-in. `PortalFeatureFlags` reports it as the
+`platform-section` feature flag the page's extension keys on; that flag is not
+registered, so no browser can turn it on. It needs the shell
+(`app.portals.agentPlatform`) and the clusters the person reads through
+`gs.installations`; the list reads `gs.kubernetesVersions` for the end-of-life
+mark.
 
 ## Installations: `gs.installations.<name>`
 
@@ -248,7 +278,9 @@ agent-manager an installation offers no agent creation
 | ------- | ------------------- | ------------------------------------------------------------------------------- |
 | `[]`    | required for skills | frontend (signed-in config) and gs-backend (`plugins/gs-backend/src/router.ts`) |
 
-Git repositories to discover skills from. Every `SKILL.md` is one skill (its
+Deprecated: read only on an installation whose muster does not list
+skill-manager. Where it does, skill-manager's sources are the skill list and
+this key is ignored. Git repositories to discover skills from. Every `SKILL.md` is one skill (its
 directory is the skill root; frontmatter `name` and `description` are shown).
 An agent's skill is pinned to the commit discovery read.
 

@@ -386,13 +386,13 @@ describe('useAnswerConfirmation', () => {
         expect(result.current.error).toBeNull();
       });
 
-      it('reports an answer kagent did not take, instead of resolving silently', async () => {
+      it('clears an unconfirmed-answer error when a later poll confirms it', async () => {
         // The observed case: a three-day-old session took the answer with a
         // 202, and its task kept waiting with no answer in its history. The
         // button came back and nothing else happened.
         jest.useFakeTimers();
         listSessionTasks.mockResolvedValue([answeredTask('input-required')]);
-        const { result } = renderWith(agent);
+        const { result, queryClient } = renderWith(agent);
 
         let outcome: Promise<unknown> = Promise.resolve();
         act(() => {
@@ -424,6 +424,19 @@ describe('useAnswerConfirmation', () => {
         expect(listSessionTasks).toHaveBeenCalledTimes(
           ANSWER_TAKEN_WAIT_MS / ANSWER_TAKEN_POLL_MS + 1,
         );
+        expect(result.current.error?.message).toBe(
+          'We could not confirm that the agent received your answer. Refresh the session before trying again.',
+        );
+
+        act(() => {
+          queryClient.setQueryData(TASKS_KEY, [
+            answeredTask('completed', [sentAnswer()]),
+          ]);
+        });
+        await waitFor(() => {
+          expect(result.current.error).toBeNull();
+          expect(result.current.failed).toBeNull();
+        });
       });
 
       it('counts an answer that lands late as taken', async () => {

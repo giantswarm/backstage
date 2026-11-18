@@ -1138,8 +1138,13 @@ describe('CapabilityCard', () => {
       expect(screen.queryByTestId('comparison')).toBeNull();
       const button = screen.getByRole('button', { name: 'Apply changes' });
       expect(button).toBeDisabled();
-      expect(button).toHaveAccessibleDescription(
-        'Comparing with the definition…',
+      // The description is the indicator's label, which LoadingIndicator
+      // shows on its own timer, after the bar's: waiting for the bar alone
+      // raced it on a loaded CI runner.
+      await waitFor(() =>
+        expect(button).toHaveAccessibleDescription(
+          'Comparing with the definition…',
+        ),
       );
       expect(button).toHaveAttribute('data-variant', 'secondary');
       expect(refreshButton()).toBeDisabled();

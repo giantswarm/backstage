@@ -1,10 +1,12 @@
 import { ReactNode } from 'react';
 import { QueryClient, QueryClientConfig } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { fixtureScenarioCacheBuster } from '@giantswarm/backstage-plugin-gs-common';
 import {
   createPluginQueryPersister,
   shouldPersistQuery,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+import { isPermanentReadError } from '@giantswarm/backstage-plugin-ui-react';
 
 const gcTime = 1000 * 60 * 60;
 const maxAge = gcTime;
@@ -17,11 +19,12 @@ const queryOptions: QueryClientConfig = {
       retry: (failureCount, error) => {
         const name = (error as Error).name;
 
+        // A permanent read error (a 401, a 403: the one a poll stops on,
+        // `isPermanentReadError`), and what this client adds to it.
         if (
+          isPermanentReadError(error) ||
           name === 'RejectedError' ||
-          name === 'NotFoundError' ||
-          name === 'UnauthorizedError' ||
-          name === 'ForbiddenError'
+          name === 'NotFoundError'
         ) {
           return false;
         }
@@ -63,6 +66,8 @@ export const QueryClientProvider = ({ children }: { children: ReactNode }) => {
       persistOptions={{
         persister,
         maxAge,
+        // A cache of another fixture scenario is never restored.
+        buster: fixtureScenarioCacheBuster(),
         // Keeps the library default (successful queries only) and additionally
         // drops anything tagged NON_PERSISTED_QUERY_META, e.g. permission probes
         // whose answer is tied to the signed-in identity.

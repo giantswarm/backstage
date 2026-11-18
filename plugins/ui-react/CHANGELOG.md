@@ -1,5 +1,141 @@
 # @giantswarm/backstage-plugin-ui-react
 
+## 0.10.0
+
+### Minor Changes
+
+- 5ded107: Agents can carry tags (the `ui.giantswarm.io/tags` annotation). The agent wizard adds them where the installation's agent-manager reports the `tags` capability, suggesting tags other agents use and pointing out a near-duplicate of an existing one; the agent page shows them; Customize → Agents shows up to three on each row, in place of the model, skills and connectors, searches them and filters by them with a Tags dropdown. `Agent.getTags()` reads them. A `CatalogFacet` may now give an item several values, and every filter bar's option labels are cut with an ellipsis at 16rem, read whole on hover.
+- 8fd67a7: Show a connector's "Calls, last 30 days" line on its Details tab from the first
+  paint, with a skeleton until the usage is read, so the facts below it no longer
+  jump. Where there is no figure the line says why: no muster session (and why
+  not), no usage metrics on the environment, or a failed read.
+
+  `CellSkeleton`, the one-line placeholder for a value still being read, moves
+  from agent-platform to `ui-react` and takes a `body-medium` variant and an
+  accessible `label`.
+
+- 8ab4a8f: Connectors show a logo: the icon muster wrote to the `MCPServer`'s `.status.icon` (the server's own, or muster's mark for a known service), else the letter tile. `ConnectorLogo` is exported from the muster plugin and used on the Connectors list, the connector page header and the agent overview, whose Connectors section now shows the agent's connectors as a row of logos named on hover or focus. Directly bound servers and `server:` selectors read by their display names. `ui-react` exports `HintTooltip`, the tap-friendly hint on a badge or a logo that the connector logos and the workflow effect badge share.
+- 6bfac24: Add `FileView`, a read-only view of a file with its name, an optional path
+  and a copy button above the content (YAML in a read-only `YamlEditor`), moved
+  here from agent-platform with a story and a test. `CodeBlock` takes an optional
+  `maxHeight`: longer text scrolls inside the block, capped at two fifths of the
+  view on a phone, and while it overflows the block is a tab stop and a region
+  named by the new `aria-label` or `aria-labelledby`. `scrollToEnd` opens a
+  capped block at the end of its text.
+- 0314965: Text links in the Agent Platform shell now share one style: the link colour and
+  a solid underline on every surface. Links that act as controls (rail items, the
+  logo, breadcrumbs, a wizard's steps, Close and Cancel, row and card titles, the
+  skill file tree, the connector tool pills) pass bui's `standalone` and keep
+  their own look.
+  `ExternalLink` now carries its link's underline onto its content, so an
+  underline also shows on an external link.
+- 5ded107: `TagList` draws a resource's tags read-only. Connectors and workflows have tags: a Tags filter and column on Customize, search by tag, a Tags row on their pages, and a Tags field when adding or editing a connector where muster takes them. The agent wizard's connector search matches tags too.
+- 5ded107: One tag vocabulary: `TagVocabularyProvider` counts tags across the sources it is given, read only while a `TagsField` is on screen, so suggestions and the "Existing:" hint span agents, skills, connectors and workflows. The sources are `AgentTagSource`, `SkillTagSource` (agent-platform), `ConnectorTagSource` and `WorkflowTagSource` (muster). A tag on an agent's, skill's, connector's or workflow's page links to its Customize tab with the tag picked (`?tags=<tag>`); the pick goes with a switch to another tab. `TagList` takes `getHref`; `SharedTagsProvider`, `tagHref`, `tagsOfSearch` and `withTagsSearch` share a Tags pick between catalogs.
+- 5ded107: Tag helpers (`parseTags`, `TAGS_ANNOTATION` and the rest), `TagsField`, `TagVocabularyContext` and the `tagsFacet` catalog facet move to `ui-react`, for every resource with tags.
+
+  A resource takes at most 50 tags (`MAX_TAGS`): `TagsField` and the agent, connector and skill forms refuse more with "At most 50 tags." An edit that leaves more tags written elsewhere as they are goes through, since it does not write them.
+
+- 5bde8bf: Report a Mimir that cannot answer a query to Sentry once, under a fixed title,
+  and say on the page when older data is temporarily unavailable.
+
+  `MimirService` logs a Mimir that is down, slow or failing once as a warning
+  with a fixed message (`Mimir answered a query with HTTP <status>`,
+  `Mimir could not be reached`, or
+  `Mimir could not read older data: no healthy store-gateway`), with the
+  installation, the status and Mimir's own error text in the metadata, and throws
+  the new `MimirUnavailableError`. Its message no longer carries Mimir's body;
+  that stays in the warning (`mimirError`, left out of the answer to the
+  browser), and a connection error no longer names the query. A query Mimir
+  refused (a 4xx other than a refused token: bad PromQL, a range over its limits)
+  is an `InputError` (400) with Mimir's text instead, not logged and not retried
+  by the frontend. `query({ logFailures: false })` logs at `debug` for a caller
+  that handles the failure itself, as the model cost route does. The gs
+  backend's `/mimir/query` and `/mimir/query_range` routes answer a
+  `MimirUnavailableError` 503 themselves, so the error middleware no longer
+  reports it again. A Mimir without a healthy store-gateway answers
+  with `error.reason: 'older_data_unavailable'` (`MIMIR_UNAVAILABLE_REASONS` in
+  gs-common), and the model cost route answers `older-data-unavailable`.
+
+  gs-node's answer-it-in-the-router pattern is now generic:
+  `ReportedServiceUnavailableError` with `reportedErrorHandler()`, which replaces
+  `musterUnreachableErrorHandler()` (`MusterUnreachableError` is one), and
+  `errorResponseBody()` for a router that answers some other error with the body
+  the error middleware would send.
+
+  ui-react adds `MetricsUnavailableAlert` (with a `fallback` for a caller whose
+  generic failure is a line of text), `describeMimirFailure` and
+  `pickMimirError`, which every place that shows a failed Mimir read now uses: a
+  deployment's resource usage and hostnames, a cluster's gateways and node pool
+  nodes, the workload status summary, the Usage overview and cost pages, the
+  activity heatmap, an agent's and a model's Usage tab, and the cost estimate and
+  actual-cost hints.
+  `MimirClient` throws a `MimirQueryError` that carries the backend's `reason`.
+
+- 0f927e4: Remove `LastDaysSelect`, together with `LastDaysSelectProps` and
+  `LAST_DAYS_SELECT_CLASS_NAME`. Nothing imports it since the Usage screen's time
+  range became `UsageWindowSelect` in `agent-platform`, whose options include
+  calendar months as well as day counts. Code that still imports it can use a bui
+  `Select` with its own options.
+- c72aab9: Links to Git repositories open in a new tab with the external link icon, and
+  say "(opens in a new tab)" to a screen reader: the Repository column of a
+  workspace's Repositories tab and of the toolchain Sources table, a toolchain's
+  Source, a skill's Source and Latest commit, and the repository named where an
+  agent is defined outside agent-manager's directory.
+
+  `ui-react` adds `ExternalCellText`, bui's `CellText` for a link that leaves the
+  app, and an `inline` display for `ExternalLink`, for a link in running text
+  that wraps with the sentence.
+
+- 5ded107: One rule for search across the agent platform: a list of entities shows its
+  search and filters from three entries on (`isSearchableList`, `SEARCH_MIN` now
+  3, was more than 8), and keeps them while a search or filter is in force; a
+  dropdown offers type-ahead from three options (`searchableIf`). Paging is
+  unchanged.
+- 5ded107: `catalogFilterDimensions` draws a filter only where picking from it can narrow
+  the list: it needs two values among the entries that have one, so one
+  repository, organization, model, agent or Harness gets no dropdown, even while
+  some entries have no value yet. A facet with `missingIsChoice` (a flag: Pinned,
+  Starred, "Created by: Me") is drawn from one value some entries lack. A filter
+  with a pick in force stays until it is cleared. A bar with no filters draws
+  nothing.
+- 5ded107: The Tags filter counts untagged as a choice (`missingIsChoice`), so one tag in use draws it. An empty list of values counts as no value.
+- 3745db0: Add `PinIcon`, a push-pin glyph (outline, or solid with `filled`), and
+  `ContentColumn`, a centred content column at the shell's content width, with
+  that width as `SHELL_CONTENT_MAX_WIDTH`. `ShellPage` now takes its maximum
+  width from the same constant (unchanged at 1080px). Both components come from
+  `agent-platform`, where `ContentColumn` was called `UsageColumn`.
+
+### Patch Changes
+
+- a2e34ef: `ExternalLink` draws the design system's focus ring when it has keyboard
+  focus, as bui's `Link` does.
+- 5ded107: A Tags field the installation does not offer (an older muster or agent-manager) no longer yields a problem, so an edit of a connector with more than 50 stored tags on such a muster no longer bounces from Sign-in back to Connect. Tags under five characters are no longer offered as near-duplicates of each other (`docs`, `dogs`). `TagVocabularyProvider` and `SharedTagsProvider` move to their own component directories; muster's `useConnectorGroupPaths` is now `useConnectorListPaths`, and `useTakesDisplayName`/`useTakesTags` are one `useToolTakesArgument`.
+
+  The 50-tag limit is checked as muster checks it (`exceedsTagLimit` in gs-common): a list past 50 is refused only when it holds a tag not already stored, so an unchanged or shortened list of tags written elsewhere goes through, and a create takes at most 50. gs-backend's skill pull request checks it against the SKILL.md's stored `metadata.tags` (a 422) instead of capping every request at 50.
+
+- 5ded107: The tag rule lives in `gs-common` (`TAGS_ANNOTATION`, `MAX_TAG_LENGTH`, `MAX_TAGS`, `TAG_PATTERN`, `isValidTag`, `parseTags`), which `ui-react` re-exports and gs-backend checks skill tags against. A skill edit that changes the tags of a SKILL.md whose `metadata.tags` is not a comma-separated list of tags (a YAML list, or a part like `on call`) is refused with a 422 instead of dropping what the form could not show.
+- 4f2299d: Created and connection times read as relative dates, the local date and time
+  on hover. The agent page says "Created 3 days ago" once, in the facts beside the
+  Overview, no longer in its header or in Technical details. A connector's "Added" fact says how long ago it was
+  added instead of a fixed UK-format UTC date. Its Health block ("Last
+  connected", "Next retry") and the Instances tab's "Last connected" column drop
+  the browser-locale timestamp and show the exact time on hover; a retry time
+  that has passed is no longer shown as the next one.
+
+  A relative `DateComponent` (and `getRelativeDate`) shows a value that does not
+  parse as given, as the absolute one already did, instead of throwing.
+
+- ed68f95: `InfoHint`'s tooltip keeps a multi-line hint's line breaks and wraps a long
+  unbroken word, as its popover already did: a `StatusHint` with several
+  sentences shows each on a line of its own instead of one run-on paragraph, and
+  a long model id stays inside the tooltip.
+- Updated dependencies [36f0927]
+- Updated dependencies [5ded107]
+- Updated dependencies [5ded107]
+- Updated dependencies [5bde8bf]
+- Updated dependencies [4c53a2b]
+  - @giantswarm/backstage-plugin-gs-common@0.23.0
+
 ## 0.9.0
 
 ### Minor Changes

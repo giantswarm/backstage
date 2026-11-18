@@ -1,9 +1,14 @@
 import { PropsWithChildren } from 'react';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { TestApiProvider } from '@backstage/test-utils';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  focusManager,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query';
 import {
   musterApiRef,
+  MusterUnauthorizedError,
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
 import { modelManagerApiRef } from '../../apis';
@@ -19,14 +24,20 @@ import {
   modelManagerModelSchema,
   modelManagerNodeSchema,
   parseModelManagerList,
+  type ModelManagerModel,
 } from '../../lib/modelManager';
 import { NO_SERVING_CAPABILITIES } from '../../lib/serving';
-import { useModelManagerServingSource } from './useModelManagerServingSource';
+import { classifyModelManagerToolError } from '../../lib/modelManagerBackends';
+import { MODEL_POLL_ACTIVE_MS } from '../../lib/modelLifecycle';
 import {
+  BACKEND_REFETCH_MS,
+  MODELS_REFETCH_MS,
+  useModelManagerServingSource,
+} from './useModelManagerServingSource';
+import {
+  isModelManagerQueryOf,
   modelManagerBackendQueryKey,
   modelManagerBackendsQueryKey,
-  modelManagerModelsQueryKey,
-  modelManagerNodesQueryKey,
 } from '../../lib/queryKeys';
 
 const listBackends = jest.fn();
@@ -155,6 +166,7 @@ describe('useModelManagerServingSource', () => {
       backendLoading: {},
       sharedHosts: {},
       unreachableInstallations: [],
+      signInRequiredInstallations: [],
       servedModels: [],
       gpuNodes: [],
       gpuCapacityUnavailable: {},
@@ -374,33 +386,188 @@ describe('useModelManagerServingSource', () => {
     expect(result.current.servedModels.length).toBeGreaterThan(0);
   });
 
-  it('polls the descriptors, the inventory and the node view in a tab that is not focused too', async () => {
-    // The query client refetches nothing on focus, so a hidden tab would
-    // otherwise stay on its last read until a reload — a served model's
-    // timeline frozen, a pool's serve intent never seen served
-    // (giantswarm/backstage#2446). Same policy as the pools read.
-    let client: QueryClient | undefined;
-    const { result } = renderSource(undefined, queryClient => {
-      client = queryClient;
-    });
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
+  describe('polling', () => {
+    /** muster's 401 for a person not signed in to model-manager on `gpu`. */
+    const signInRequired = () =>
+      classifyModelManagerToolError(
+        new MusterUnauthorizedError(
+          'sign in to model-manager',
+          'server_sign_in_required',
+          'model-manager',
+          'gpu',
+        ),
+      );
+    const backendCallsOn = (installation: string) =>
+      listBackends.mock.calls.filter(([name]) => name === installation).length;
+    const advance = async (ms: number) => {
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(ms);
+      });
+    };
 
-    const backgroundPolicyOf = (queryKey: readonly unknown[]) =>
-      client
-        ?.getQueryCache()
-        .find({ queryKey })
-        ?.observers.map(
-          observer => observer.options.refetchIntervalInBackground,
-        );
-    expect(backgroundPolicyOf(modelManagerBackendsQueryKey('gpu'))).toEqual([
-      true,
-    ]);
-    expect(backgroundPolicyOf(modelManagerModelsQueryKey('gpu'))).toEqual([
-      true,
-    ]);
-    expect(backgroundPolicyOf(modelManagerNodesQueryKey('gpu'))).toEqual([
-      true,
-    ]);
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      focusManager.setFocused(undefined);
+      jest.useRealTimers();
+    });
+
+    it('reads list_backends once where muster asks for a sign-in to model-manager, not once a minute', async () => {
+      listBackends.mockImplementation(async (installation: string) => {
+        if (installation === 'gpu') {
+          throw signInRequired();
+        }
+        return [ollama];
+      });
+
+      const { result } = renderSource();
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.unreachableInstallations).toEqual(['gpu']);
+      expect(result.current.signInRequiredInstallations).toEqual(['gpu']);
+
+      await advance(10 * BACKEND_REFETCH_MS);
+
+      expect(backendCallsOn('gpu')).toBe(1);
+      // The installation the person is signed in to keeps polling.
+      expect(backendCallsOn('lab')).toBe(11);
+    });
+
+    it('polls again once the sign-in landed and the reads were invalidated', async () => {
+      let signedIn = false;
+      listBackends.mockImplementation(async (installation: string) => {
+        if (installation === 'gpu' && !signedIn) {
+          throw signInRequired();
+        }
+        return [installation === 'gpu' ? kserve : ollama];
+      });
+      let client: QueryClient | undefined;
+      const { result } = renderSource(undefined, queryClient => {
+        client = queryClient;
+      });
+      await waitFor(() =>
+        expect(result.current.signInRequiredInstallations).toEqual(['gpu']),
+      );
+
+      // What the Serving view's sign-in card does once muster connects.
+      signedIn = true;
+      await act(async () => {
+        await client!.invalidateQueries({
+          predicate: isModelManagerQueryOf('gpu'),
+        });
+      });
+      await waitFor(() =>
+        expect(result.current.installations).toEqual(['lab', 'gpu']),
+      );
+      expect(result.current.signInRequiredInstallations).toEqual([]);
+      expect(backendCallsOn('gpu')).toBe(2);
+
+      await advance(2 * BACKEND_REFETCH_MS);
+      expect(backendCallsOn('gpu')).toBe(4);
+    });
+
+    it('reads nothing from a hidden tab, and reads again as it becomes visible', async () => {
+      const { result } = renderSource();
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      const calls = () =>
+        listBackends.mock.calls.length +
+        listModels.mock.calls.length +
+        listNodes.mock.calls.length;
+      const before = calls();
+
+      act(() => focusManager.setFocused(false));
+      await advance(10 * BACKEND_REFETCH_MS);
+      expect(calls()).toBe(before);
+
+      // Back in front after a while: the served models and their timelines
+      // are read at once, not at the next tick (giantswarm/backstage#2446).
+      act(() => focusManager.setFocused(true));
+      await advance(0);
+      expect(backendCallsOn('gpu')).toBe(2);
+      expect(
+        listModels.mock.calls.filter(([name]) => name === 'gpu'),
+      ).toHaveLength(2);
+    });
+
+    it('does not read a query stopped on a sign-in again as the tab becomes visible', async () => {
+      listBackends.mockImplementation(async (installation: string) => {
+        if (installation === 'gpu') {
+          throw signInRequired();
+        }
+        return [ollama];
+      });
+      const { result } = renderSource();
+      await waitFor(() =>
+        expect(result.current.signInRequiredInstallations).toEqual(['gpu']),
+      );
+
+      act(() => focusManager.setFocused(false));
+      await advance(2 * BACKEND_REFETCH_MS);
+      act(() => focusManager.setFocused(true));
+      await advance(0);
+
+      // Only the sign-in reads it again.
+      expect(backendCallsOn('gpu')).toBe(1);
+    });
+
+    it('offers the sign-in where list_models asks for it while the backends still read, and stops that poll', async () => {
+      listModels.mockImplementation(async (installation: string) => {
+        if (installation === 'gpu') {
+          throw signInRequired();
+        }
+        return ollamaModels;
+      });
+
+      const { result } = renderSource();
+      await waitFor(() =>
+        expect(result.current.signInRequiredInstallations).toEqual(['gpu']),
+      );
+      expect(result.current.unreachableInstallations).toEqual(['gpu']);
+
+      await advance(10 * MODELS_REFETCH_MS);
+      expect(
+        listModels.mock.calls.filter(([name]) => name === 'gpu'),
+      ).toHaveLength(1);
+    });
+
+    it('keeps reading the inventory from a hidden tab while a served model is on its way in, and stops once it answers (giantswarm/backstage#2446)', async () => {
+      const [model] = kserveModels;
+      const loading = {
+        ...model,
+        running: {
+          ...model.running!,
+          phase: 'downloading',
+          steps: [{ name: 'downloading', state: 'inProgress' }],
+        },
+      } as ModelManagerModel;
+      let answered = false;
+      listModels.mockImplementation(async (installation: string) => {
+        if (installation === 'gpu') {
+          return answered ? kserveModels : [loading];
+        }
+        return ollamaModels;
+      });
+      const modelCallsOn = (installation: string) =>
+        listModels.mock.calls.filter(([name]) => name === installation).length;
+      const { result } = renderSource();
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      act(() => focusManager.setFocused(false));
+      await advance(3 * MODEL_POLL_ACTIVE_MS);
+      expect(modelCallsOn('gpu')).toBe(4);
+      // Nothing else from the hidden tab: lab's inventory is settled, and
+      // the descriptors wait for the person.
+      expect(modelCallsOn('lab')).toBe(1);
+      expect(backendCallsOn('gpu')).toBe(1);
+
+      // The read that shows the model answering ends it.
+      answered = true;
+      await advance(MODEL_POLL_ACTIVE_MS);
+      const settled = modelCallsOn('gpu');
+      await advance(10 * MODELS_REFETCH_MS);
+      expect(modelCallsOn('gpu')).toBe(settled);
+    });
   });
 
   it('lists the host of an Ollama-backed model-manager that reports a node inventory, off the rows', async () => {

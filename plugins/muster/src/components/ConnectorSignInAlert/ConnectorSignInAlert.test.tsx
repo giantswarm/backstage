@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
 import {
   AuthStatusResponse,
+  ConnectorNamesResponse,
   MusterApi,
   musterApiRef,
   MusterUnauthorizedError,
@@ -12,8 +13,15 @@ import {
   ConnectorSignInAlert,
   splitConnectorSignIns,
 } from './ConnectorSignInAlert';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
-type Api = Pick<MusterApi, 'getAuthStatus' | 'signInServer' | 'signOutServer'>;
+type Api = Pick<
+  MusterApi,
+  'getAuthStatus' | 'listConnectorNames' | 'signInServer' | 'signOutServer'
+>;
 
 function status(value: 'auth_required' | 'connected'): AuthStatusResponse {
   return {
@@ -26,10 +34,16 @@ function status(value: 'auth_required' | 'connected'): AuthStatusResponse {
 async function renderAlert(
   props: Partial<Parameters<typeof ConnectorSignInAlert>[0]> = {},
   initial: AuthStatusResponse = status('auth_required'),
+  names:
+    | ConnectorNamesResponse
+    | ((installation?: string) => ConnectorNamesResponse) = { servers: [] },
 ) {
   let current = initial;
   const api: Api = {
     getAuthStatus: jest.fn(async () => current),
+    listConnectorNames: jest.fn(async (installation?: string) =>
+      typeof names === 'function' ? names(installation) : names,
+    ),
     signInServer: jest.fn(async () => ({
       status: 'auth_required' as const,
       authUrl: 'https://muster.gazelle.example.io/oauth/proxy/start?state=abc',
@@ -41,7 +55,12 @@ async function renderAlert(
     defaultOptions: { queries: { retry: false } },
   });
   await renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, api as MusterApi]]}>
+    <TestApiProvider
+      apis={[
+        [musterApiRef, api as MusterApi],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ]}
+    >
       <QueryClientProvider client={queryClient}>
         <ConnectorSignInAlert
           server="cluster-manager"
@@ -90,6 +109,59 @@ describe('ConnectorSignInAlert', () => {
     expect(api.signInServer).toHaveBeenCalledWith('cluster-manager', 'gazelle');
   });
 
+  it('names the connector by its display name', async () => {
+    await renderAlert({}, status('auth_required'), {
+      servers: [{ name: 'cluster-manager', displayName: 'Cluster Manager' }],
+    });
+
+    expect(
+      await screen.findByText(
+        'Sign in to Cluster Manager to see GPU node pools',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The Cluster Manager connector reads this with your own sign-in, and you have not signed in to it on gazelle yet. Sign in once; this fills in by itself.',
+      ),
+    ).toBeVisible();
+  });
+
+  // Each environment's muster names its own connectors: its row's
+  // explanation names it so (an SSO connector's row says, in a sentence that
+  // names it, that there is nothing to sign in to).
+  it("names the connector in each environment's row as that environment does", async () => {
+    const { api } = await renderAlert(
+      { installations: ['gazelle', 'golem'] },
+      {
+        servers: [
+          {
+            name: 'cluster-manager',
+            status: 'failed',
+            token_exchange_enabled: true,
+          },
+        ],
+      },
+      installation => ({
+        servers: [
+          {
+            name: 'cluster-manager',
+            displayName:
+              installation === 'gazelle' ? 'Cluster Manager' : 'Clusters',
+          },
+        ],
+      }),
+    );
+
+    expect(
+      await screen.findByText(/^Cluster Manager authenticates through SSO/),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(/^Clusters authenticates through SSO/),
+    ).toBeInTheDocument();
+    expect(api.listConnectorNames).toHaveBeenCalledWith('gazelle');
+    expect(api.listConnectorNames).toHaveBeenCalledWith('golem');
+  });
+
   it('reads the page again once the sign-in lands', async () => {
     const onSignedIn = jest.fn();
     const { queryClient, signInLands } = await renderAlert({ onSignedIn });
@@ -130,6 +202,35 @@ describe('ConnectorSignInAlert', () => {
       screen.queryByText('Sign in to cluster-manager to see GPU node pools'),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull();
+  });
+
+  it("says a sign-in cannot pass, with muster's reason and no Sign in", async () => {
+    const reason =
+      "Cannot sign in to 'cluster-manager': your login method cannot be checked here.";
+    const { api } = await renderAlert(
+      {},
+      {
+        servers: [
+          {
+            name: 'cluster-manager',
+            status: 'auth_required',
+            kind: 'grant',
+            error: reason,
+          },
+        ],
+      },
+    );
+
+    expect(
+      await screen.findByText('Cannot sign in to cluster-manager'),
+    ).toBeInTheDocument();
+    expect(await screen.findByText(reason)).toBeInTheDocument();
+    expect(
+      screen.queryByText('Sign in to cluster-manager to see GPU node pools'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Sign in once/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull();
+    expect(api.signInServer).not.toHaveBeenCalled();
   });
 
   it('names each environment that needs the sign-in', async () => {

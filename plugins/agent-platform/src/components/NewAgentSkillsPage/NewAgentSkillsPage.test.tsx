@@ -1,5 +1,6 @@
 import { ReactNode, useEffect } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, screen, within } from '@testing-library/react';
 import userEvent, {
   PointerEventsCheckLevel,
@@ -71,7 +72,9 @@ const RESOLVED = {
   error: null,
   hasRepositories: true,
   failedRepositories: [],
+  failureMessages: {} as Record<string, string>,
   truncated: false,
+  privateRepositories: new Set<string>() as ReadonlySet<string>,
 };
 
 // Mutable so a test can flip it to loading. The `mock` prefix is what lets
@@ -95,12 +98,27 @@ jest.mock('../AgentsDataProvider', () => ({
   useAgents: () => mockAgents,
 }));
 
+// get_info of the installation's agent-manager: what the private-skills note
+// reads. Undefined (not read) unless a test sets it.
+let mockAgentManagerInfo: Record<string, unknown> | undefined;
+jest.mock('../../hooks/useAgentManager', () => ({
+  ...jest.requireActual('../../hooks/useAgentManager'),
+  useAgentManagerInfo: () => ({
+    info: mockAgentManagerInfo,
+    isLoading: false,
+    error: null,
+    canRead: true,
+    refetch: jest.fn(),
+  }),
+}));
+
 jest.mock('../ModelConfigsProvider', () => ({
   ...jest.requireActual('../ModelConfigsProvider'),
   ModelConfigsProvider: ({ children }: { children: ReactNode }) => children,
 }));
 
 beforeEach(() => {
+  mockAgentManagerInfo = undefined;
   Object.assign(mockCatalog, RESOLVED);
   Object.assign(mockAgents, { rows: [], isLoading: false });
 });
@@ -132,11 +150,17 @@ async function pickFilter(field: string, option: string) {
 
 /** Fills the step-1 fields the skills step requires, then renders its child. */
 function Seed({ children }: { children: ReactNode }) {
-  const { setName, setInstallation, selectModelConfig, isComplete } =
-    useNewAgentForm();
+  const {
+    setName,
+    setInstallation,
+    setTenantChoices,
+    selectModelConfig,
+    isComplete,
+  } = useNewAgentForm();
   useEffect(() => {
     setName('Reviewer');
     setInstallation('gazelle');
+    setTenantChoices(['kagent']);
     selectModelConfig('opus', 'kagent');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -167,18 +191,77 @@ function PluginProbe() {
 
 async function renderStep() {
   return renderInTestApp(
-    <NewAgentFormProvider>
-      <Seed>
-        <NewAgentSkillsPage />
-        <SelectionProbe />
-        <PluginProbe />
-      </Seed>
-    </NewAgentFormProvider>,
+    <QueryClientProvider client={new QueryClient()}>
+      <NewAgentFormProvider>
+        <Seed>
+          <NewAgentSkillsPage />
+          <SelectionProbe />
+          <PluginProbe />
+        </Seed>
+      </NewAgentFormProvider>
+    </QueryClientProvider>,
     { mountedRoutes: { '/customize/agents': agentsRouteRef } },
   );
 }
 
 describe('NewAgentSkillsPage', () => {
+  describe('a private skill repository', () => {
+    beforeEach(() => {
+      mockCatalog.privateRepositories = new Set([
+        'https://github.com/giantswarm/claude-code',
+      ]);
+    });
+
+    it('marks the private repository and its skills', async () => {
+      await renderStep();
+
+      expect(
+        await screen.findByRole('checkbox', { name: 'Skill PR review' }),
+      ).toHaveTextContent('giantswarm/claude-code · private');
+      expect(
+        screen.getByRole('checkbox', { name: 'Skill Incident responder' }),
+      ).not.toHaveTextContent('private');
+    });
+
+    it('names the installation credential once a private skill is picked', async () => {
+      mockAgentManagerInfo = { skillsGitAuthSecretName: 'skills-token' };
+      const user = userEvent.setup();
+      await renderStep();
+
+      await user.click(
+        await screen.findByRole('checkbox', {
+          name: 'Skill Incident responder',
+        }),
+      );
+      expect(screen.queryByText('Private skills')).not.toBeInTheDocument();
+
+      await user.click(
+        screen.getByRole('checkbox', { name: 'Skill PR review' }),
+      );
+      expect(screen.getByText('Private skills')).toBeInTheDocument();
+      expect(
+        screen.getByText(/credential Secret skills-token/),
+      ).toBeInTheDocument();
+    });
+
+    it('warns, and lets the person go on, when the installation has no credential', async () => {
+      mockAgentManagerInfo = {};
+      const user = userEvent.setup();
+      await renderStep();
+
+      await user.click(
+        await screen.findByRole('checkbox', { name: 'Skill PR review' }),
+      );
+
+      expect(
+        screen.getByText('No credential for private skills'),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId('selection')).toHaveTextContent(
+        'plugins/gs-base/skills/pr-review',
+      );
+    });
+  });
+
   it('shows the commit each skill is pinned to, next to its branch', async () => {
     await renderStep();
 
@@ -367,13 +450,13 @@ describe('NewAgentSkillsPage', () => {
         commit: HEAD,
       }));
 
-    it('shows three skills of one repository as a plain grid', async () => {
-      Object.assign(mockCatalog, { skills: skillsIn(REPO_A, 3, 'Alpha') });
+    it('shows two skills of one repository as a plain grid', async () => {
+      Object.assign(mockCatalog, { skills: skillsIn(REPO_A, 2, 'Alpha') });
       await renderStep();
 
       expect(
         await screen.findAllByRole('checkbox', { name: /^Skill Alpha/ }),
-      ).toHaveLength(3);
+      ).toHaveLength(2);
       // No search, no count, no accordion around the only repository, and
       // no paging chrome.
       expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
@@ -493,22 +576,21 @@ describe('NewAgentSkillsPage', () => {
     });
 
     describe('filters, as on Customize → Skills (T49, T64)', () => {
-      it('offers Source and Usage dropdowns over three unused skills of one repository', async () => {
+      it('offers no filters over three unused skills of one repository', async () => {
         Object.assign(mockCatalog, { skills: skillsIn(REPO_A, 3, 'Alpha') });
         await renderStep();
 
         await screen.findAllByRole('checkbox', { name: /^Skill Alpha/ });
-        // Always there, one option each (T64).
-        expect(await filterOptions('source')).toEqual([
-          'giantswarm/agent-skills 3',
-        ]);
-        expect(await filterOptions('usage')).toEqual(['Not used 3']);
+        // One source and one usage for all: nothing to choose.
+        expect(
+          screen.queryByRole('group', { name: 'Filters' }),
+        ).not.toBeInTheDocument();
         expect(
           screen.getAllByRole('checkbox', { name: /^Skill Alpha/ }),
         ).toHaveLength(3);
       });
 
-      it('filters three skills by usage, without a search, and clears', async () => {
+      it('filters three skills by usage, and clears', async () => {
         const user = userEvent.setup();
         const skills = skillsIn(REPO_A, 3, 'Alpha');
         Object.assign(mockCatalog, { skills });
@@ -522,11 +604,10 @@ describe('NewAgentSkillsPage', () => {
           'Used by agents 1',
           'Not used 2',
         ]);
-        // One repository: a Source dropdown of one option.
-        expect(await filterOptions('source')).toEqual([
-          'giantswarm/agent-skills 3',
-        ]);
-        expect(screen.queryByText(/selected$/)).not.toBeInTheDocument();
+        // One repository: no Source dropdown.
+        expect(
+          screen.queryByRole('button', { name: /Filter by source/ }),
+        ).not.toBeInTheDocument();
 
         await user.click(
           screen.getByRole('checkbox', { name: 'Skill Alpha 001' }),
@@ -551,13 +632,34 @@ describe('NewAgentSkillsPage', () => {
         expect(screen.getByTestId('selection')).toHaveTextContent('alpha-1@');
       });
 
-      it('holds the Usage dropdown back while the agents load', async () => {
-        Object.assign(mockAgents, { isLoading: true });
+      it('offers no filters over two skills', async () => {
+        const skills = skillsIn(REPO_A, 2, 'Alpha');
+        Object.assign(mockCatalog, { skills });
+        Object.assign(mockAgents, {
+          rows: [{ skillIds: [canonicalSkillId(skills[0])] }],
+        });
         await renderStep();
 
-        await screen.findByRole('checkbox', { name: 'Skill PR review' });
+        await screen.findAllByRole('checkbox', { name: /^Skill Alpha/ });
+        expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole('group', { name: 'Filters' }),
+        ).not.toBeInTheDocument();
+      });
+
+      it('holds the Usage dropdown back while the agents load', async () => {
+        Object.assign(mockAgents, { isLoading: true });
+        Object.assign(mockCatalog, {
+          skills: [
+            ...skillsIn(REPO_A, 2, 'Alpha'),
+            ...skillsIn(REPO_B, 1, 'Beta'),
+          ],
+        });
+        await renderStep();
+
+        await screen.findByRole('checkbox', { name: 'Skill Beta 001' });
         expect(await filterOptions('source')).toEqual([
-          'giantswarm/agent-skills 1',
+          'giantswarm/agent-skills 2',
           'giantswarm/claude-code 1',
         ]);
         expect(
@@ -657,8 +759,12 @@ describe('NewAgentSkillsPage', () => {
       mockCatalog.plugins = PLUGINS;
     });
 
-    it('picks a Claude Code plugin whole and an Agent Plugins package by its skills', async () => {
-      const user = userEvent.setup();
+    /** The plugins agent-manager would receive. */
+    function pickedPlugins() {
+      return JSON.parse(screen.getByTestId('plugins').textContent!);
+    }
+
+    it('lists Claude Code plugins and Agent Plugins packages apart', async () => {
       await renderStep();
 
       expect(
@@ -666,17 +772,44 @@ describe('NewAgentSkillsPage', () => {
           name: 'Select skills and plugins',
         }),
       ).toBeInTheDocument();
-      const commits = screen.getByRole('checkbox', { name: 'Plugin commits' });
-      expect(commits).toHaveTextContent('master @9f2c1a7');
-      await user.click(commits);
+      const claude = screen.getByRole('list', { name: 'Claude Code plugins' });
+      const packages = screen.getByRole('list', {
+        name: 'Agent Plugins packages',
+      });
+      expect(
+        within(claude).getByRole('checkbox', { name: 'Plugin commits' }),
+      ).toBeInTheDocument();
+      expect(within(claude).getByText(/^master/)).toHaveTextContent(
+        'master @9f2c1a7',
+      );
+      expect(
+        within(packages).getByRole('checkbox', { name: 'Plugin review' }),
+      ).toBeInTheDocument();
+      expect(
+        within(packages).getByText('Agent Plugins · 2 skills'),
+      ).toBeInTheDocument();
+      // A package's skills are folded until its row is opened.
+      expect(
+        screen.queryByRole('group', { name: 'Skills of plugin review' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('picks a Claude Code plugin whole and an Agent Plugins package by its skills', async () => {
+      const user = userEvent.setup();
+      await renderStep();
+
+      await user.click(
+        await screen.findByRole('checkbox', { name: 'Plugin commits' }),
+      );
+      await user.click(screen.getByRole('button', { name: /^review / }));
       const review = screen.getByRole('group', {
         name: 'Skills of plugin review',
       });
       await user.click(
-        within(review).getByRole('checkbox', { name: /go-review/ }),
+        within(review).getByRole('checkbox', { name: 'go-review' }),
       );
 
-      expect(JSON.parse(screen.getByTestId('plugins').textContent!)).toEqual([
+      expect(pickedPlugins()).toEqual([
         {
           path: 'plugins/commits',
           git: {
@@ -693,15 +826,130 @@ describe('NewAgentSkillsPage', () => {
           skills: ['go-review'],
         },
       ]);
+      expect(
+        screen.getByRole('checkbox', { name: 'Plugin review' }),
+      ).toBePartiallyChecked();
+      expect(
+        screen.getByText('Agent Plugins · 1 of 2 skills selected'),
+      ).toBeInTheDocument();
 
       // A package with nothing enabled loads nothing: unpicking its last skill
       // unpicks it.
       await user.click(
-        within(review).getByRole('checkbox', { name: /go-review/ }),
+        within(review).getByRole('checkbox', { name: 'go-review' }),
       );
-      expect(JSON.parse(screen.getByTestId('plugins').textContent!)).toEqual([
+      expect(pickedPlugins()).toEqual([
         expect.objectContaining({ path: 'plugins/commits' }),
       ]);
+    });
+
+    it("picks every skill of a package at this commit with the package's checkbox", async () => {
+      const user = userEvent.setup();
+      await renderStep();
+
+      const review = await screen.findByRole('checkbox', {
+        name: 'Plugin review',
+      });
+      await user.click(review);
+      expect(review).toBeChecked();
+      expect(pickedPlugins()).toEqual([
+        expect.objectContaining({
+          path: 'plugins/review',
+          skills: ['go-review', 'Incident responder'],
+        }),
+      ]);
+      expect(
+        screen.getByText('Agent Plugins · All 2 skills at this commit'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'Skills added to the plugin later are not included until you pick them.',
+        ),
+      ).toBeInTheDocument();
+
+      // Unpicking one skill leaves it mixed; the checkbox picks them all again.
+      await user.click(screen.getByRole('button', { name: /^review / }));
+      await user.click(
+        within(
+          screen.getByRole('group', { name: 'Skills of plugin review' }),
+        ).getByRole('checkbox', { name: 'go-review' }),
+      );
+      expect(review).toBePartiallyChecked();
+      await user.click(review);
+      expect(pickedPlugins()[0].skills).toEqual([
+        'go-review',
+        'Incident responder',
+      ]);
+
+      // Checked, it takes the package off the agent.
+      await user.click(review);
+      expect(pickedPlugins()).toEqual([]);
+    });
+
+    it("shows a Claude Code plugin's skills without checkboxes", async () => {
+      mockCatalog.skills = [
+        ...SKILLS,
+        {
+          name: 'commit-style',
+          description: 'Writes conventional commits.',
+          repoUrl: 'https://github.com/giantswarm/claude-code',
+          path: 'plugins/commits/skills/commit-style',
+          ref: 'master',
+          commit: OTHER,
+        },
+      ];
+      const user = userEvent.setup();
+      await renderStep();
+
+      expect(
+        await screen.findByText(
+          'Claude Code plugin · Loads whole: 1 skill, plus its commands, hooks and subagents',
+        ),
+      ).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /^commits / }));
+      const skills = screen.getByRole('list', {
+        name: 'Skills of plugin commits',
+      });
+      expect(within(skills).getByText('commit-style')).toBeInTheDocument();
+      expect(
+        within(skills).getByText('Writes conventional commits.'),
+      ).toBeInTheDocument();
+      expect(within(skills).queryByRole('checkbox')).not.toBeInTheDocument();
+    });
+
+    it('searches plugins and their skills, opening the plugins with a matching skill', async () => {
+      const user = userEvent.setup();
+      await renderStep();
+
+      await user.type(
+        await screen.findByRole('searchbox', { name: 'Search plugins' }),
+        'go',
+      );
+      const review = screen.getByRole('group', {
+        name: 'Skills of plugin review',
+      });
+      expect(
+        within(review).getByRole('checkbox', { name: 'go-review' }),
+      ).toBeInTheDocument();
+      expect(
+        within(review).queryByRole('checkbox', { name: 'Incident responder' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('checkbox', { name: 'Plugin commits' }),
+      ).not.toBeInTheDocument();
+      // The counts stay the package's own, not the matches'.
+      expect(screen.getByText('Agent Plugins · 2 skills')).toBeInTheDocument();
+
+      await user.clear(
+        screen.getByRole('searchbox', { name: 'Search plugins' }),
+      );
+      await user.type(
+        screen.getByRole('searchbox', { name: 'Search plugins' }),
+        'zzz',
+      );
+      expect(
+        screen.getByText('No plugins or skills match “zzz”.'),
+      ).toBeInTheDocument();
     });
 
     it('warns when a skill name is picked twice', async () => {
@@ -713,6 +961,7 @@ describe('NewAgentSkillsPage', () => {
           name: 'Skill Incident responder',
         }),
       );
+      await user.click(screen.getByRole('button', { name: /^review / }));
       await user.click(
         within(
           screen.getByRole('group', { name: 'Skills of plugin review' }),
@@ -731,6 +980,24 @@ describe('NewAgentSkillsPage', () => {
       ).toBeInTheDocument();
       expect(screen.queryByText('Plugins')).not.toBeInTheDocument();
     });
+  });
+
+  it('says why a repository was skipped', async () => {
+    Object.assign(mockCatalog, {
+      failedRepositories: [
+        'https://github.com/giantswarm/agent-skills-internal',
+      ],
+      failureMessages: {
+        'https://github.com/giantswarm/agent-skills-internal':
+          'skill repository not readable: connect GitHub in muster',
+      },
+    });
+    await renderStep();
+    expect(
+      screen.getByText(
+        /agent-skills-internal: skill repository not readable: connect GitHub in muster/,
+      ),
+    ).toBeInTheDocument();
   });
 
   it('says that skills stay on their pinned commit', async () => {

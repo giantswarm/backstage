@@ -8,12 +8,7 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { modelManagerApiRef } from '../apis';
 import { invalidateResourceReads } from './invalidateResourceReads';
-import {
-  modelManagerBackendsQueryKey,
-  modelManagerJobsQueryKey,
-  modelManagerModelsQueryKey,
-  modelManagerNodesQueryKey,
-} from '../lib/queryKeys';
+import { isModelManagerQueryOf } from '../lib/queryKeys';
 
 /**
  * The per-model operations of the model-manager API, as one union. `backend`
@@ -62,17 +57,10 @@ export function useInvalidateModelManagerReadsFor() {
   return useCallback(
     async (installation: string) => {
       await Promise.all([
+        // Every model-manager read of the installation: the backends, the
+        // inventory, the jobs, the nodes, the presets.
         queryClient.invalidateQueries({
-          queryKey: modelManagerBackendsQueryKey(installation),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: modelManagerModelsQueryKey(installation),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: modelManagerJobsQueryKey(installation),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: modelManagerNodesQueryKey(installation),
+          predicate: isModelManagerQueryOf(installation),
         }),
         // Same key shape `useDeleteModelConfig` invalidates: the
         // kubernetes-react resource cache for the ModelConfig list and gets.

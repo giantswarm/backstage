@@ -1,28 +1,22 @@
-import sha256 from 'crypto-js/sha256';
 import {
   AGENT_PAGE_TABS,
   MODEL_PAGE_TABS,
+  ORGANIZATION_PAGE_TABS,
   WORKSPACE_PAGE_TABS,
 } from '@giantswarm/backstage-plugin-agent-platform';
 import {
-  CONNECTOR_GROUPS,
   CONNECTOR_PAGE_TAB_PATHS,
   toolPageTabs,
   WORKFLOW_PAGE_TABS,
 } from '@giantswarm/backstage-plugin-muster';
 import { CUSTOMIZE_TAB_IDS } from '../modules/agentShell/customizeTabIds';
+import { PLATFORM_TAB_IDS } from '../modules/agentShell/platformTabIds';
 
 /** The `/customize/:tab` tabs, a fixed set safe to report as a view. */
 const CUSTOMIZE_TABS: ReadonlySet<string> = new Set(CUSTOMIZE_TAB_IDS);
 
-/**
- * The Connectors tab's sub-tabs below its own address (muster's
- * `CONNECTOR_GROUPS`, the default at the tab's own address left out), a fixed
- * set too.
- */
-const CONNECTOR_SUBTABS: ReadonlySet<string> = new Set(
-  CONNECTOR_GROUPS.map(group => group.path).filter(Boolean),
-);
+/** The `/platform/:tab` tabs, a fixed set safe to report as a view. */
+const PLATFORM_TABS: ReadonlySet<string> = new Set(PLATFORM_TAB_IDS);
 
 /**
  * A workflow page's tabs below its own address (Overview, the index, left
@@ -52,6 +46,14 @@ function toolTabs(server: string): ReadonlySet<string> {
  */
 const WORKSPACE_TABS: ReadonlySet<string> = new Set(
   WORKSPACE_PAGE_TABS.map(tab => tab.path).filter(Boolean),
+);
+
+/**
+ * An organization page's tabs below its own address (Members, the index,
+ * left out), a fixed set too.
+ */
+const ORGANIZATION_TABS: ReadonlySet<string> = new Set(
+  ORGANIZATION_PAGE_TABS.map(tab => tab.path).filter(Boolean),
 );
 
 /**
@@ -473,7 +475,7 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
 
     // A connector's page, `/customize/connectors/<installation>/<server>`,
     // with its tab as the view: Tools, the index, by name. Two segments, so
-    // the list's sub-tabs (one) never reach it.
+    // the list's retired sub-tabs (one) never reach it.
     case /^\/customize\/connectors\/(?!new\/)[^/]+\/[^/]+(\/.*)?$/.test(
       pathname,
     ): {
@@ -545,6 +547,14 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
       }
       break;
     }
+
+    case /^\/customize\/models\/credentials\/[^/]+\/[^/]+\/[^/]+$/.test(
+      pathname,
+    ):
+      payload = { page: 'Models', view: 'credentials' };
+      route =
+        '/customize/models/credentials/:installation/:namespace/:operation';
+      break;
 
     // Editing one model, `…/models/<installation>/<namespace>/<name>/edit`.
     // One page, the model in no attribute. Above the model page, which
@@ -634,20 +644,13 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
 
     // A Customize tab, with the tab as the view. Only the known tabs: the
     // segment comes from the URL, and an unknown one redirects to the Agents tab.
-    // The Connectors tab's sub-tabs below its own address add a `subview`; the
-    // tab's own address is its default sub-tab, the customer's connectors.
+    // The Connectors tab's retired sub-tabs (`/customize/connectors/<group>`)
+    // only redirect to its list, so they report as `/customize/connectors/*`.
     case pathname.startsWith('/customize/'): {
-      const [, tab, sub, ...deeper] = segments;
+      const [, tab] = segments;
       if (!CUSTOMIZE_TABS.has(tab)) {
         payload = { page: 'Customize' };
         route = '/customize/*';
-      } else if (
-        tab === 'connectors' &&
-        CONNECTOR_SUBTABS.has(sub) &&
-        deeper.length === 0
-      ) {
-        payload = { page: 'Customize', view: tab, subview: sub };
-        route = `/customize/connectors/${sub}`;
       } else {
         payload = { page: 'Customize', view: tab };
         route =
@@ -783,6 +786,62 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
       route = tabRoute('/usage', view, USAGE_PATHS);
       break;
     }
+
+    // The shell's Platform section, where a deployment turned it on: the
+    // bare path redirects to its first tab, Clusters. Any other address
+    // only redirects to it.
+    case pathname === '/platform' || pathname.startsWith('/platform/'): {
+      const tab = segments.slice(1).join('/');
+      payload = {
+        page: 'Platform',
+        view: PLATFORM_TABS.has(tab) ? tab : 'redirect',
+      };
+      route = tabRoute('/platform', tab, PLATFORM_TABS);
+      break;
+    }
+
+    // The shell's Organizations: the list of the person's organizations (the
+    // bare path) and one organization's page
+    // (`/organizations/<installation>/<parent>/<name>`), whose segments name
+    // an organization and stay out of every attribute; its tab goes in
+    // `view`, a closed set, Members, the index, carrying none. Any other
+    // address only redirects to the list.
+    case pathname === '/organizations':
+      payload = { page: 'Organizations' };
+      route = '/organizations';
+      break;
+
+    // The credential form of one organization's request; the request's id
+    // (agent-manager's operation) stays out of every attribute.
+    case /^\/organizations\/[^/]+\/[^/]+\/[^/]+\/credentials\/[^/]+$/.test(
+      pathname,
+    ):
+      payload = { page: 'Organization credential form' };
+      route =
+        '/organizations/:installation/:parent/:name/credentials/:operation';
+      break;
+
+    case /^\/organizations\/[^/]+\/[^/]+\/[^/]+(\/.*)?$/.test(pathname): {
+      const tab = segments.slice(4).join('/');
+      payload =
+        tab === ''
+          ? { page: 'Organization detail' }
+          : {
+              page: 'Organization detail',
+              view: ORGANIZATION_TABS.has(tab) ? tab : 'redirect',
+            };
+      route = tabRoute(
+        '/organizations/:installation/:parent/:name',
+        tab,
+        ORGANIZATION_TABS,
+      );
+      break;
+    }
+
+    case pathname.startsWith('/organizations/'):
+      payload = { page: 'Organizations redirect' };
+      route = '/organizations/*';
+      break;
 
     // The shell's minimal "Profile and settings" page: who is signed in, with
     // sign out — the rail's profile menu links here instead of the classic
@@ -948,15 +1007,4 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
     ...payload,
     path: route,
   };
-}
-
-export function getGuestUserEntityRef(profile: {
-  email?: string;
-  displayName?: string;
-}): string {
-  const userHash = sha256(
-    profile.email ?? profile.displayName ?? '',
-  ).toString();
-
-  return `user:default/guest#${userHash}`;
 }

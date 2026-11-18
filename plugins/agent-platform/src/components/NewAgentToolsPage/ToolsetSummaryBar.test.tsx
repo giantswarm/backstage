@@ -22,14 +22,14 @@ const resolved: ToolsetResolution = {
   status: 'resolved',
 };
 
-function renderBar(onRemove = jest.fn()) {
+function renderBar(onRemove = jest.fn(), problems: string[] = []) {
   render(
     <ToolsetSummaryBar
       selectors={['preset:read-only', 'tool:x_kubernetes_get_pod_logs']}
       onRemove={onRemove}
       resolution={resolved}
       unsigned={[]}
-      problems={[]}
+      problems={problems}
       onShowDetails={jest.fn()}
     />,
   );
@@ -50,6 +50,16 @@ describe('ToolsetSummaryBar', () => {
     expect(
       within(bar).queryByRole('button', { expanded: false }),
     ).not.toBeInTheDocument();
+  });
+
+  it('states a problem in body text, in the danger tone', () => {
+    layout = mockDesktopLayout();
+    renderBar(jest.fn(), ['One selector is not valid.']);
+
+    const bar = screen.getByRole('region', { name: 'Selected so far' });
+    const problem = within(bar).getByText('One selector is not valid.');
+    expect(problem).toHaveAttribute('data-variant', 'body-small');
+    expect(problem).toHaveAttribute('data-color', 'danger');
   });
 
   describe('at phone width', () => {
@@ -84,6 +94,18 @@ describe('ToolsetSummaryBar', () => {
         within(bar).getByRole('button', { name: /^Remove .*pod_logs/ }),
       );
       expect(onRemove).toHaveBeenCalledWith('tool:x_kubernetes_get_pod_logs');
+    });
+
+    it('states a problem in body text, in the danger tone, once opened', async () => {
+      renderBar(jest.fn(), ['One selector is not valid.']);
+
+      const bar = screen.getByRole('region', { name: 'Selected so far' });
+      await userEvent.click(
+        within(bar).getByRole('button', { expanded: false }),
+      );
+      const problem = within(bar).getByText('One selector is not valid.');
+      expect(problem).toHaveAttribute('data-variant', 'body-small');
+      expect(problem).toHaveAttribute('data-color', 'danger');
     });
 
     it('gives the remove buttons a thumb-sized target', () => {

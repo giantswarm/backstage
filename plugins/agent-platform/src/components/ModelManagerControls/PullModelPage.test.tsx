@@ -9,6 +9,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { modelManagerApiRef } from '../../apis';
 import type { ModelManagerApi } from '../../apis/ModelManagerApi';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import { PullModelPage, type PullTarget } from './PullModelPage';
 
@@ -224,6 +225,25 @@ describe('PullModelPage', () => {
     expect(onPulled).not.toHaveBeenCalled();
   });
 
+  it('keeps the words alone when the portal refuses the pull', async () => {
+    pullModel.mockRejectedValue(new PortalSessionEndedError());
+    await render();
+    const page = document.body;
+
+    await userEvent.type(
+      within(page).getByLabelText(/Model reference/),
+      'qwen2.5:0.5b',
+    );
+    await userEvent.click(within(page).getByRole('button', { name: 'Pull' }));
+
+    expect(
+      await within(page).findByText(/^Your portal session ended, for example/),
+    ).toBeInTheDocument();
+    expect(
+      within(page).queryByRole('button', { name: 'Sign in again' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('lets the user pick the installation when several can pull', async () => {
     pullModel.mockResolvedValue({ job, created: true });
     await render([
@@ -288,14 +308,14 @@ describe('PullModelPage · the environment select at scale', () => {
   const openEnvironments = async () =>
     userEvent.click(screen.getByRole('button', { name: /Environment/ }));
 
-  it('offers three environments without a search', async () => {
+  it('offers type-ahead over three environments', async () => {
     await render(['lab', 'gpu', 'edge'].map(name => ({ name, canWire: true })));
 
     await openEnvironments();
     expect(
       await screen.findByRole('option', { name: 'edge' }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox')).toBeInTheDocument();
   });
 
   it('offers type-ahead over 300 environments', async () => {

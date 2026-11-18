@@ -19,6 +19,21 @@ const JSON_HEADERS = {
 const SIGNAL_CHANNEL = 'user-settings';
 
 type Snapshot = StorageValueSnapshot<JsonValue>;
+
+/**
+ * Why a read or write failed, on the "unknown" snapshot of a read and on the
+ * error of a write: `status` is the backend's answer, `network` that it could
+ * not be reached. Neither: the answer could not be used (a body that is not
+ * JSON). A writer tells from it a failure worth trying again (a 5xx, the
+ * network) from one that will not change (`useStoredSetting` in
+ * agent-platform).
+ */
+type Failure = { status?: number; network?: true };
+
+function unknownSnapshot(key: string, why: Failure): Snapshot {
+  return Object.assign({ key, presence: 'unknown' as const }, why);
+}
+
 type Subscriber = ZenObservable.SubscriptionObserver<Snapshot>;
 
 /** What one key of one bucket shares between its subscribers. */
@@ -29,6 +44,8 @@ type KeyState = {
   started: number;
   /** The number of the newest one whose answer was handed out. */
   delivered: number;
+  /** The turn of a read in flight, which a new subscription joins. */
+  reading?: number;
 };
 
 export type RoamingSettingsStorageOptions = {
@@ -54,11 +71,15 @@ export type RoamingSettingsStorageOptions = {
  *   (offline, 5xx) as absent, and a write built on that replaces the stored
  *   value with only the new entry. Here only a 404 for the key is absent; a
  *   failed read is handed out as `presence: 'unknown'`, which a reader keeps
- *   its last value for and a writer refuses to write on.
- * - **Every read goes to the backend.** No answer is cached: a subscription
- *   and every change announced on the signals channel read the key afresh, so
- *   a writer that reads before it writes starts from what is stored now, and
- *   a change announced right after a read is not answered from that read.
+ *   its last value for and a writer refuses to write on. It says why
+ *   (`Failure`), as a failed write's error does.
+ * - **Every read of a value goes to the backend.** A subscription and every
+ *   change announced on the signals channel read the key afresh, so a writer
+ *   that reads before it writes starts from what is stored now, and a change
+ *   announced right after a read is not answered from that read. The one
+ *   thing a new subscription shares is a read of the key still in flight,
+ *   when nothing newer has started: the components of a page that subscribe
+ *   together make one request, and no answer outlives its request.
  *
  * Answers are handed to every subscriber of the key, newest first: one that
  * arrives after a newer read or write has been handed out is dropped.
@@ -113,7 +134,7 @@ export class RoamingSettingsStorage implements StorageApi {
           },
         );
       }
-      this.read(key);
+      this.subscribe(key);
       return () => {
         state.subscribers.delete(subscriber);
         if (state.subscribers.size === 0) {
@@ -131,7 +152,7 @@ export class RoamingSettingsStorage implements StorageApi {
       this.deliver(key, turn, { key, presence: 'present', value: data });
       return;
     }
-    const response = await this.options.fetchApi.fetch(await this.urlOf(key), {
+    const response = await this.send(key, 'store', {
       method: 'PUT',
       headers: JSON_HEADERS,
       body: JSON.stringify({ value: data }),
@@ -150,38 +171,77 @@ export class RoamingSettingsStorage implements StorageApi {
       this.deliver(key, turn, { key, presence: 'absent' });
       return;
     }
-    const response = await this.options.fetchApi.fetch(await this.urlOf(key), {
-      method: 'DELETE',
-    });
+    const response = await this.send(key, 'remove', { method: 'DELETE' });
     if (!response.ok && response.status !== 404) {
       throw await failure(response, 'remove');
     }
     this.deliver(key, turn, { key, presence: 'absent' });
   }
 
+  /** A write's request; the network failing rejects with a `Failure`. */
+  private async send(
+    key: string,
+    action: string,
+    init: RequestInit,
+  ): Promise<Response> {
+    const url = await this.urlOf(key);
+    try {
+      return await this.options.fetchApi.fetch(url, init);
+    } catch (cause) {
+      throw writeError(
+        `Could not ${action} the setting: the settings backend could not be reached.`,
+        { network: true },
+        cause,
+      );
+    }
+  }
+
+  /** Answers a new subscription: from the read in flight, else with a read. */
+  private subscribe(key: string): void {
+    const state = this.stateOf(key);
+    if (state.reading !== undefined && state.reading === state.started) {
+      // The newest turn: its answer, or a later one's, reaches this
+      // subscriber too.
+      return;
+    }
+    this.read(key);
+  }
+
   /** Reads the key from the backend and hands the answer to its subscribers. */
   private async read(key: string): Promise<void> {
+    const state = this.stateOf(key);
     const turn = this.start(key);
-    this.deliver(key, turn, await this.fetchSnapshot(key));
+    state.reading = turn;
+    const snapshot = await this.fetchSnapshot(key);
+    if (state.reading === turn) {
+      state.reading = undefined;
+    }
+    this.deliver(key, turn, snapshot);
   }
 
   private async fetchSnapshot(key: string): Promise<Snapshot> {
+    if (!(await this.isSignedIn())) {
+      return this.fallback.snapshot<JsonValue>(key);
+    }
+    let response: Response;
     try {
-      if (!(await this.isSignedIn())) {
-        return this.fallback.snapshot<JsonValue>(key);
-      }
-      const response = await this.options.fetchApi.fetch(await this.urlOf(key));
-      if (response.status === 404) {
-        return { key, presence: 'absent' };
-      }
-      if (!response.ok) {
-        return { key, presence: 'unknown' };
-      }
+      response = await this.options.fetchApi.fetch(await this.urlOf(key));
+    } catch {
+      // Offline: nothing is known.
+      return unknownSnapshot(key, { network: true });
+    }
+    if (response.status === 404) {
+      return { key, presence: 'absent' };
+    }
+    if (!response.ok) {
+      return unknownSnapshot(key, { status: response.status });
+    }
+    try {
       const { value } = (await response.json()) as { value: JsonValue };
       return { key, presence: 'present', value };
     } catch {
-      // Offline, or an answer that was not JSON: nothing is known.
-      return { key, presence: 'unknown' };
+      // An answer that was not JSON (a proxy's page): nothing is known.
+      return unknownSnapshot(key, {});
     }
   }
 
@@ -231,10 +291,20 @@ export class RoamingSettingsStorage implements StorageApi {
   }
 }
 
-async function failure(response: Response, action: string): Promise<Error> {
-  const error = new Error(
-    `Could not ${action} the setting: the settings backend answered ${response.status}.`,
-  );
+function writeError(
+  message: string,
+  why: Failure,
+  cause?: unknown,
+): Error & Failure {
+  const error = Object.assign(new Error(message, { cause }), why);
   error.name = 'UserSettingsWriteError';
   return error;
+}
+
+/** A write the backend refused, with its `status`. */
+async function failure(response: Response, action: string): Promise<Error> {
+  return writeError(
+    `Could not ${action} the setting: the settings backend answered ${response.status}.`,
+    { status: response.status },
+  );
 }

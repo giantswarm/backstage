@@ -1,5 +1,8 @@
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Toolset fixtures consume Muster's catalogue contract.
 import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 import {
+  connectionOf,
+  shownConnection,
   bindsGateway,
   bucketLabel,
   buildCatalogue,
@@ -12,8 +15,8 @@ import {
   groupWorkflows,
   isDestructive,
   isReadOnly,
+  isToolsetRefusal,
   isUnknownPresetError,
-  MAX_INLINE_SELECTORS,
   normalizeSelection,
   offeredPresets,
   orderPresets,
@@ -25,6 +28,7 @@ import {
   selectorLabel,
   selectorForTool,
   selectorProblem,
+  selectionForTenant,
   serverOfTool,
   ServerInfo,
   toggleSelector,
@@ -70,20 +74,29 @@ describe('selector grammar', () => {
     expect(selectorProblem('preset:none')).toBeUndefined();
   });
 
-  it('caps a toolset at 32 inline selectors and says what to reduce', () => {
-    const fine = Array.from(
-      { length: MAX_INLINE_SELECTORS },
-      (_, i) => `tool:x_srv_t${i}`,
+  it('caps a toolset at 128 inline selectors and says what to reduce', () => {
+    const fine = Array.from({ length: 128 }, (_, i) => `tool:x_srv_t${i}`);
+    expect(toolsetProblems(fine, undefined, 128)).toEqual([]);
+    const problems = toolsetProblems(
+      [...fine, 'tool:x_srv_one_more'],
+      undefined,
+      128,
     );
-    expect(toolsetProblems(fine)).toEqual([]);
-    const problems = toolsetProblems([...fine, 'tool:x_srv_one_more']);
     expect(problems).toEqual([
-      'This toolset needs 33 selectors but may list at most 32, so choose fewer connectors or tools.',
+      'This toolset needs 129 selectors but may list at most 128, so choose fewer connectors or tools.',
     ]);
     // Where the catalogue can say more, the caller words it.
     expect(
-      toolsetProblems([...fine, 'tool:x_srv_one_more'], s => `${s.length}!`),
-    ).toEqual(['33!']);
+      toolsetProblems(
+        [...fine, 'tool:x_srv_one_more'],
+        s => `${s.length}!`,
+        128,
+      ),
+    ).toEqual(['129!']);
+  });
+
+  it('leaves the count to the server when no schema cap is available', () => {
+    expect(toolsetProblems(Array(129).fill('tool:x'))).toEqual([]);
   });
 
   it('splits a rendered header back into selectors', () => {
@@ -493,6 +506,21 @@ describe('connector display names', () => {
 });
 
 describe('buildCatalogue', () => {
+  it('gives a bucket its server’s tags, a family every member’s', () => {
+    const [infra, , registered] = buildCatalogue(
+      [],
+      [
+        { ...SERVERS[0], tags: ['clusters'] },
+        { ...SERVERS[1], tags: ['ops', 'clusters'] },
+        SERVERS[2],
+        { ...SERVERS[3], tags: ['projects'] },
+      ],
+      [],
+    );
+    expect(infra.servers[0].tags).toEqual(['clusters', 'ops']);
+    expect(registered.servers[0].tags).toEqual(['projects']);
+  });
+
   it('groups by the tool-group label, with core tools and workflows set apart', () => {
     const groups = buildCatalogue(
       [
@@ -828,4 +856,173 @@ describe('catalogueInventory', () => {
     expect(countNoun(1, 'tool')).toBe('1 tool');
     expect(countNoun(2, 'tool')).toBe('2 tools');
   });
+});
+
+describe('connectionOf', () => {
+  it('reads a server as the Customize page does', () => {
+    expect(connectionOf([{ state: 'Connected' }], false)).toBeUndefined();
+    expect(connectionOf([{ state: 'Auth Required' }], false)).toBeUndefined();
+    for (const state of [
+      'Disconnected',
+      'Failed',
+      'Stopped',
+      'Starting',
+      'Connecting',
+      undefined,
+    ]) {
+      expect(connectionOf([{ state }], false)).toBe('not-connected');
+    }
+    expect(
+      connectionOf([{ state: 'Disconnected', suspended: true }], false),
+    ).toBe('deactivated');
+  });
+
+  it('reads a family partly connected while some member is', () => {
+    expect(
+      connectionOf([{ state: 'Awaiting Session' }, { state: 'Failed' }], true),
+    ).toBe('partial');
+    expect(
+      connectionOf([{ state: 'Stopped' }, { state: 'Disconnected' }], true),
+    ).toBe('not-connected');
+    expect(
+      connectionOf([{ state: 'Connected' }, { state: 'Running' }], true),
+    ).toBeUndefined();
+  });
+});
+
+describe('shownConnection', () => {
+  const bucket = (
+    extra: { needsSignIn?: boolean; tools?: ToolSummary[] } = {},
+  ) => ({
+    connection: 'not-connected' as const,
+    needsSignIn: false,
+    tools: [],
+    ...extra,
+  });
+
+  it('shows the connection of a connector that lists nothing', () => {
+    expect(shownConnection(bucket())).toBe('not-connected');
+  });
+
+  it('leaves a signing-in or listing connector to its own line', () => {
+    expect(shownConnection(bucket({ needsSignIn: true }))).toBeUndefined();
+    expect(
+      shownConnection(bucket({ tools: [{ name: 'x_jira_search' }] })),
+    ).toBeUndefined();
+  });
+});
+
+describe('buildCatalogue connections', () => {
+  it('carries each connector’s connection and tool-name prefixes', () => {
+    const [infra, , registered] = buildCatalogue(
+      [],
+      [
+        ...SERVERS,
+        {
+          name: 'jira',
+          group: 'registered',
+          toolNamePrefix: 'x_jira',
+          state: 'Disconnected',
+          suspended: true,
+          oauth: false,
+        },
+      ],
+      [],
+    );
+    expect(infra.servers[0]).toMatchObject({
+      connection: 'partial',
+      toolNamePrefixes: ['x_kubernetes'],
+    });
+    const byName = new Map(registered.servers.map(b => [b.name, b]));
+    expect(byName.get('jira')?.connection).toBe('deactivated');
+    expect(byName.get('pro')?.connection).toBeUndefined();
+  });
+});
+
+describe('isToolsetRefusal', () => {
+  it.each([
+    [
+      'unknown preset',
+      new Error('toolset [preset:foo] names unknown preset "foo"'),
+      true,
+    ],
+    [
+      'count',
+      new Error(
+        'toolset [a] has 129 selectors, more than the 128 allowed inline; define a preset',
+      ),
+      true,
+    ],
+    [
+      'bytes',
+      new Error(
+        'toolset encodes to 9000 bytes, more than the 8192 allowed inline; define a preset',
+      ),
+      true,
+    ],
+    ['422', Object.assign(new Error('refused'), { status: 422 }), true],
+    ['400', Object.assign(new Error('refused'), { status: 400 }), true],
+    [
+      '401',
+      Object.assign(new Error('session expired'), { status: 401 }),
+      false,
+    ],
+    ['403', Object.assign(new Error('forbidden'), { status: 403 }), false],
+    ['429', Object.assign(new Error('slow down'), { status: 429 }), false],
+    ['503', Object.assign(new Error('unavailable'), { status: 503 }), false],
+    ['no status', new Error('fetch failed'), false],
+    ['not an error', 'toolset [', false],
+  ])('%s', (_case, error, refused) => {
+    expect(isToolsetRefusal(error)).toBe(refused);
+  });
+});
+
+describe('selectionForTenant', () => {
+  const selection = [
+    'server:github',
+    'server:agents-payments-x7k2q/wiki',
+    'server:agents-risk-p3m9z/wiki',
+    'tool:x_agents-payments-x7k2q_wiki_search',
+    'tool:x_kagent_list_agents',
+    'preset:read-only',
+  ];
+
+  it.each([
+    [
+      'another organization',
+      'agents-payments-x7k2q',
+      'agents-risk-p3m9z',
+      [
+        'server:github',
+        'server:agents-risk-p3m9z/wiki',
+        'tool:x_kagent_list_agents',
+        'preset:read-only',
+      ],
+    ],
+    [
+      // A shared server's tools may start with the platform's namespace.
+      'an organization, from the platform',
+      'kagent',
+      'agents-payments-x7k2q',
+      [
+        'server:github',
+        'server:agents-payments-x7k2q/wiki',
+        'tool:x_agents-payments-x7k2q_wiki_search',
+        'tool:x_kagent_list_agents',
+        'preset:read-only',
+      ],
+    ],
+    [
+      'another installation',
+      'agents-payments-x7k2q',
+      null,
+      ['server:github', 'tool:x_kagent_list_agents', 'preset:read-only'],
+    ],
+    ['no namespace yet', 'agents-payments-x7k2q', undefined, selection],
+  ])(
+    'keeps for %s only what the agent there is offered',
+    (_, leaving, tenant, kept) => {
+      expect(selectionForTenant(selection, leaving, tenant)).toEqual(kept);
+    },
+  );
 });

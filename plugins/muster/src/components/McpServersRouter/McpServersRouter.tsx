@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { useScrollToTopOnNavigation } from '@giantswarm/backstage-plugin-ui-react';
 
 import { NewMcpServerFormProvider } from '../NewMcpServerFormProvider';
+import { QueryClientProvider } from '../QueryClientProvider';
 import { NewMcpServerEditGate } from '../NewMcpServerEditGate';
 import {
   NewConnectorConnectPage,
@@ -77,7 +78,7 @@ function InstallationRoutes({ usedBy }: { usedBy?: ReactElement }) {
 
 /**
  * Routing within the Customize screen's Connectors tab (`/customize/connectors`,
- * whose bare path and sub-tabs are the Customize screen's own): a page per
+ * whose bare path is the Customize screen's own): a page per
  * connector at `<installation>/<server>` (and per tool beneath it), the
  * registration wizard at `new[/auth|/verify]` and a connector's edit, the same
  * wizard prefilled, at `<installation>/<server>/edit[/auth|/verify]`. The
@@ -97,23 +98,27 @@ export const McpServersRouter = ({ usedBy }: { usedBy?: ReactElement }) => {
   // A wizard step, a connector or a tool page opens at its top.
   useScrollToTopOnNavigation();
   return (
-    // The wizard leads with Company login, as the design does.
-    <NewMcpServerFormProvider initialAuthMode="platform-sso">
-      <Routes>
-        <Route
-          path="new/*"
-          element={
-            <MusterSubPage context={CONTEXT}>
-              <Routes>{wizardSteps}</Routes>
-            </MusterSubPage>
-          }
-        />
-        <Route
-          path=":installation/*"
-          element={<InstallationRoutes usedBy={usedBy} />}
-        />
-        <Route path="*" element={listRedirect} />
-      </Routes>
-    </NewMcpServerFormProvider>
+    // The form reads whether muster takes tags, from the client (and cache)
+    // the muster providers below share. The wizard leads with Company login,
+    // as the design does.
+    <QueryClientProvider>
+      <NewMcpServerFormProvider initialAuthMode="platform-sso">
+        <Routes>
+          <Route
+            path="new/*"
+            element={
+              <MusterSubPage context={CONTEXT}>
+                <Routes>{wizardSteps}</Routes>
+              </MusterSubPage>
+            }
+          />
+          <Route
+            path=":installation/*"
+            element={<InstallationRoutes usedBy={usedBy} />}
+          />
+          <Route path="*" element={listRedirect} />
+        </Routes>
+      </NewMcpServerFormProvider>
+    </QueryClientProvider>
   );
 };

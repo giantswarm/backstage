@@ -15,7 +15,6 @@ import {
   agentManagerSessionGate,
   getAgentsRefetchInterval,
   resolveModelConfig,
-  resolveModelLabel,
   sortAgentRows,
   toAgentRow,
   describeKagentSwitchedOff,
@@ -23,6 +22,7 @@ import {
   selectKagentMissing,
   selectUnknownPin,
 } from './helpers';
+import { organizationDirectory } from '../../lib/organizations';
 
 function makeAgent(
   partial: {
@@ -30,6 +30,8 @@ function makeAgent(
     namespace?: string;
     displayName?: string;
     description?: string;
+    /** The `ui.giantswarm.io/tags` annotation as written. */
+    tags?: string;
     modelConfig?: string;
     /** The Harness `spec.harnessRef` names; `null` leaves the ref out. */
     harness?: string | null;
@@ -49,6 +51,7 @@ function makeAgent(
     namespace = 'team-a',
     displayName,
     description,
+    tags,
     modelConfig,
     harness = 'kagent',
     skills = 0,
@@ -67,9 +70,15 @@ function makeAgent(
       namespace,
       generation,
       creationTimestamp,
-      annotations: displayName
-        ? { 'ui.giantswarm.io/display-name': displayName }
-        : undefined,
+      annotations:
+        displayName || tags !== undefined
+          ? {
+              ...(displayName && {
+                'ui.giantswarm.io/display-name': displayName,
+              }),
+              ...(tags !== undefined && { 'ui.giantswarm.io/tags': tags }),
+            }
+          : undefined,
     },
     status: status ? { ...status, observedGeneration } : undefined,
     spec: {
@@ -197,51 +206,6 @@ const readyStatus = (ageMs = 0) =>
     ),
   ]);
 
-describe('resolveModelLabel', () => {
-  it('resolves to the ModelConfig display name when found', () => {
-    const agent = makeAgent({ modelConfig: 'sonnet-4-6', namespace: 'team-a' });
-    const modelConfigs = [
-      makeModelConfig({
-        name: 'sonnet-4-6',
-        namespace: 'team-a',
-        displayName: 'Claude Sonnet 4.6',
-      }),
-    ];
-
-    expect(resolveModelLabel(agent, modelConfigs)).toBe('Claude Sonnet 4.6');
-  });
-
-  it('falls back to the model when the ModelConfig has no display-name annotation', () => {
-    const agent = makeAgent({ modelConfig: 'sonnet-4-6' });
-    const modelConfigs = [makeModelConfig({ name: 'sonnet-4-6' })];
-
-    expect(resolveModelLabel(agent, modelConfigs)).toBe('claude-sonnet-4-6');
-  });
-
-  it('falls back to the raw reference when no ModelConfig matches', () => {
-    const agent = makeAgent({ modelConfig: 'default-model-config' });
-
-    expect(resolveModelLabel(agent, [])).toBe('default-model-config');
-  });
-
-  it('only matches ModelConfigs in the same namespace', () => {
-    const agent = makeAgent({ modelConfig: 'sonnet-4-6', namespace: 'team-a' });
-    const modelConfigs = [
-      makeModelConfig({
-        name: 'sonnet-4-6',
-        namespace: 'team-b',
-        displayName: 'Wrong namespace',
-      }),
-    ];
-
-    expect(resolveModelLabel(agent, modelConfigs)).toBe('sonnet-4-6');
-  });
-
-  it('returns undefined when the agent references no model', () => {
-    expect(resolveModelLabel(makeAgent({}), [])).toBeUndefined();
-  });
-});
-
 describe('toAgentRow', () => {
   it('maps an agent to a plain row', () => {
     const agent = makeAgent({
@@ -249,6 +213,7 @@ describe('toAgentRow', () => {
       namespace: 'sre-team',
       displayName: 'Incident triager',
       description: 'Triages incidents',
+      tags: 'sre, incidents',
       modelConfig: 'sonnet-4-6',
       skills: 3,
     });
@@ -267,6 +232,7 @@ describe('toAgentRow', () => {
       name: 'Incident triager',
       technicalName: 'triager',
       description: 'Triages incidents',
+      tags: ['sre', 'incidents'],
       model: 'Claude Sonnet 4.6',
       // The display label and the model string are deliberately different
       // fields: only `modelName` matches what the gateway calls the model
@@ -294,10 +260,43 @@ describe('toAgentRow', () => {
       'agent-platform.giantswarm.io/created-by': 'ana@acme.example',
     };
 
-    expect(toAgentRow(agent, [])).toMatchObject({
+    // The organization as agent-manager names the namespace.
+    const organizations = organizationDirectory([
+      { namespace: 'org-acme', organization: 'acme', parent: 'org-parent' },
+    ]);
+    expect(
+      toAgentRow(agent, [], undefined, undefined, undefined, organizations),
+    ).toMatchObject({
       tenant: 'acme',
       createdBy: 'ana@acme.example',
     });
+  });
+
+  it('carries the creator’s name where one is recorded', () => {
+    const agent = makeAgent({ name: 'triager', namespace: 'kagent' });
+    agent.jsonData.metadata.annotations = {
+      'agent-platform.giantswarm.io/created-by': 'ana@acme.example',
+      'agent-platform.giantswarm.io/created-by-name': ' Ana Example ',
+    };
+    expect(toAgentRow(agent, [])).toMatchObject({
+      createdBy: 'ana@acme.example',
+      createdByName: 'Ana Example',
+    });
+    expect(toAgentRow(makeAgent({ name: 'plain' }), [])).not.toHaveProperty(
+      'createdByName',
+    );
+  });
+
+  it('carries when the agent was created, for the list’s sort', () => {
+    expect(
+      toAgentRow(
+        makeAgent({ name: 'new', creationTimestamp: '2026-10-30T09:00:00Z' }),
+        [],
+      ).createdAt,
+    ).toBe('2026-10-30T09:00:00Z');
+    expect(toAgentRow(makeAgent({ name: 'plain' }), [])).not.toHaveProperty(
+      'createdAt',
+    );
   });
 
   it('carries the default workspace by its name, for the session pickers', () => {
@@ -782,12 +781,12 @@ describe('toAgentRow model fields', () => {
 
   it('labels the model by spec.model when the ModelConfig has no display name', () => {
     // Without the annotation `getDisplayName()` is the resource name
-    // (`default-model-config`), which says nothing about the model.
+    // (`anthropic-main`), which says nothing about the model.
     const row = toAgentRow(
-      makeAgent({ name: 'chef', modelConfig: 'default-model-config' }),
+      makeAgent({ name: 'chef', modelConfig: 'anthropic-main' }),
       [
         makeModelConfig({
-          name: 'default-model-config',
+          name: 'anthropic-main',
           namespace: 'team-a',
           model: 'claude-sonnet-4-6',
         }),

@@ -34,6 +34,7 @@ function snapshot(
       {
         name: 'notes',
         description: 'How to take notes.',
+        tags: [],
         repoUrl: REPO,
         path: 'notes',
         ref: 'main',

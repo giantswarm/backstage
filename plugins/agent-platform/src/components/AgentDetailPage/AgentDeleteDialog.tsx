@@ -101,7 +101,8 @@ export function AgentDeleteDialog({
   const refused = classifyCommitFailure(failure);
   let releaseOutside:
     { missing: MissingReleaseFile; message: string } | undefined;
-  let connect: { github: boolean; message: string } | undefined;
+  let connect:
+    { github: boolean; message: string; signInRequired?: boolean } | undefined;
   if (refused) {
     if (refused.kind === 'release-outside') {
       releaseOutside = refused;
@@ -166,8 +167,13 @@ export function AgentDeleteDialog({
           <ConnectAgentManagerAlert
             installation={installation}
             message={connect.message}
+            signInRequired={connect.signInRequired}
             action="Agents are deleted"
             needsGitHub={connect.github}
+            // Signed in: the delete's refusal is cleared and the check
+            // re-reads by itself, with every muster query. Never deleted
+            // again by itself: the person confirms once more.
+            onSignedIn={deletion.reset}
           />
         )}
         {isChecking && (

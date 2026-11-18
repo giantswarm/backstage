@@ -1,6 +1,5 @@
 import {
   ACTIVE_MAX_AGE_MS,
-  deriveSessionState,
   describeSessionState,
   isAgentWorking,
   isAwaitingInput,
@@ -15,7 +14,7 @@ import unknownState from './__fixtures__/tasks.unknown-state.json';
 import emptyNoData from './__fixtures__/tasks.empty-no-data.json';
 
 function stateFor(fixture: unknown) {
-  return deriveSessionState(normalizeTaskList(fixture).tasks);
+  return readNewestTaskState(normalizeTaskList(fixture).tasks)?.state;
 }
 
 describe('describeSessionState', () => {
@@ -83,41 +82,6 @@ describe('describeSessionState', () => {
       });
     },
   );
-});
-
-describe('deriveSessionState', () => {
-  it('takes the state of the most recent task', () => {
-    // kagent returns tasks ORDER BY created_at ASC, so the last one is newest.
-    // An earlier turn having completed says nothing about whether the session is
-    // working now.
-    expect(stateFor(kagentPrefixed)).toMatchObject({
-      raw: 'working',
-      isActive: true,
-    });
-  });
-
-  it('keeps an unrecognised newest state rather than falling back to an older one', () => {
-    expect(stateFor(unknownState)).toMatchObject({
-      raw: 'quantum-superposition',
-      label: 'quantum-superposition',
-    });
-  });
-
-  it('skips trailing tasks that report no state at all', () => {
-    const tasks = normalizeTaskList(kagentPrefixed).tasks;
-    const stateless = { ...tasks[tasks.length - 1], status: undefined };
-
-    expect(deriveSessionState([...tasks, stateless])).toMatchObject({
-      raw: 'working',
-    });
-  });
-
-  it('returns undefined for a session with no tasks', () => {
-    // A real condition — created but never run — and distinct from every state
-    // kagent could report, so it must not be flattened into one of them.
-    expect(stateFor(emptyNoData)).toBeUndefined();
-    expect(deriveSessionState([])).toBeUndefined();
-  });
 });
 
 describe('isAgentWorking', () => {
@@ -247,6 +211,79 @@ describe('readTurnProgress', () => {
     });
   });
 
+  it.each(['history', 'artifacts'])(
+    'keeps working while %s advances without a status change',
+    field => {
+      const active = {
+        ...task('working', 12 * 60_000),
+        [field]: [
+          {
+            metadata: {
+              'kagent.dev/a2a/timeline-position': new Date(
+                NOW - 1_000,
+              ).toISOString(),
+            },
+          },
+        ],
+      };
+      expect(progress([active])).toEqual({ kind: 'working' });
+      expect(
+        readTurnProgress(
+          normalizeTaskList({ data: [active] }).tasks,
+          NOW + ACTIVE_MAX_AGE_MS,
+        ),
+      ).toEqual({
+        kind: 'stalled',
+        since: NOW - 1_000,
+      });
+    },
+  );
+
+  it('uses the latest valid output position rather than array order', () => {
+    expect(
+      progress([
+        {
+          ...task('working', 12 * 60_000),
+          history: [
+            {
+              metadata: {
+                'kagent.dev/a2a/timeline-position': new Date(
+                  NOW - 1_000,
+                ).toISOString(),
+              },
+            },
+            {
+              metadata: {
+                'kagent.dev/timeline-position': new Date(
+                  NOW - 10 * 60_000,
+                ).toISOString(),
+              },
+            },
+            { metadata: { 'kagent.dev/a2a/timeline-position': 'invalid' } },
+            null,
+          ],
+        },
+      ]),
+    ).toEqual({ kind: 'working' });
+  });
+
+  it('does not revive a completed turn because its output is recent', () => {
+    expect(
+      progress([
+        {
+          ...task('completed', 12 * 60_000),
+          artifacts: [
+            {
+              metadata: {
+                'kagent.dev/a2a/timeline-position': new Date(NOW).toISOString(),
+              },
+            },
+          ],
+        },
+      ]),
+    ).toBeUndefined();
+  });
+
   it('reports nothing for a terminal turn, whatever its age', () => {
     expect(
       progress([task('completed', ACTIVE_MAX_AGE_MS * 10)]),
@@ -280,6 +317,39 @@ describe('readTurnProgress', () => {
 });
 
 describe('readNewestTaskState', () => {
+  it('takes the state of the most recent task', () => {
+    // kagent returns tasks ORDER BY created_at ASC, so the last one is newest.
+    // An earlier turn having completed says nothing about whether the session is
+    // working now.
+    expect(stateFor(kagentPrefixed)).toMatchObject({
+      raw: 'working',
+      isActive: true,
+    });
+  });
+
+  it('keeps an unrecognised newest state rather than falling back to an older one', () => {
+    expect(stateFor(unknownState)).toMatchObject({
+      raw: 'quantum-superposition',
+      label: 'quantum-superposition',
+    });
+  });
+
+  it('skips trailing tasks that report no state at all', () => {
+    const tasks = normalizeTaskList(kagentPrefixed).tasks;
+    const stateless = { ...tasks[tasks.length - 1], status: undefined };
+
+    expect(readNewestTaskState([...tasks, stateless])?.state).toMatchObject({
+      raw: 'working',
+    });
+  });
+
+  it('returns undefined for a session with no tasks', () => {
+    // A real condition — created but never run — and distinct from every state
+    // kagent could report, so it must not be flattened into one of them.
+    expect(stateFor(emptyNoData)).toBeUndefined();
+    expect(readNewestTaskState([])).toBeUndefined();
+  });
+
   it('takes the state and its timestamp from the same task', () => {
     // A trailing task carrying no state must not lend its timestamp to an
     // earlier task's state.

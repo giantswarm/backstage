@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
 import { Table, TableColumn } from '@backstage/core-components';
-import { Box, Link, Typography } from '@material-ui/core';
+import { Box, Typography } from '@material-ui/core';
 import { Checkbox } from '@backstage/ui';
 import {
+  ExternalLink,
   DateComponent,
   NotAvailable,
   StatusLabel,
@@ -185,14 +186,13 @@ function columnsOf(
       customSort: byText(row => row.title.toLowerCase()),
       render: row => (
         <span title={row.title}>
-          <Link
-            href={row.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={event => event.stopPropagation()}
-          >
-            #{row.number}
-          </Link>{' '}
+          {/* The span keeps the click from the row, which opens the PR's
+              details. */}
+          <span role="presentation" onClick={event => event.stopPropagation()}>
+            <ExternalLink href={row.url} display="inline">
+              #{row.number}
+            </ExternalLink>
+          </span>{' '}
           {row.title}
         </span>
       ),

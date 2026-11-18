@@ -11,6 +11,7 @@ import {
 import { GitClient, readFileFromGit } from './discoverAgentSkillsFromGit';
 import { splitSkillMarkdown } from './frontmatter';
 import { SkillFileList } from './skillFiles';
+import { skillTagsOf } from './skillTags';
 
 /**
  * One skill's SKILL.md at a commit, split the way the add-skill form edits it:
@@ -27,6 +28,8 @@ export interface SkillContent {
   name: string;
   /** Frontmatter `description` ('' when absent). */
   description: string;
+  /** Frontmatter `metadata.tags`, parsed; empty when absent. */
+  tags: string[];
   /** The body under the frontmatter. */
   instructions: string;
 }
@@ -48,6 +51,7 @@ function toSkillContent(
       typeof frontmatter.description === 'string'
         ? frontmatter.description.trim()
         : '',
+    tags: skillTagsOf(frontmatter),
     instructions: body.trim(),
   };
 }

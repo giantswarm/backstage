@@ -2,6 +2,7 @@ import {
   coreServices,
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
+import { metricsServiceRef } from '@backstage/backend-plugin-api/alpha';
 import { mimirServiceRef } from '@giantswarm/backstage-plugin-gs-node';
 import { createRouter } from './router';
 
@@ -35,8 +36,9 @@ export const agentPlatformPlugin = createBackendPlugin({
         config: coreServices.rootConfig,
         lifecycle: coreServices.rootLifecycle,
         mimir: mimirServiceRef,
+        metrics: metricsServiceRef,
       },
-      async init({ httpRouter, logger, config, lifecycle, mimir }) {
+      async init({ httpRouter, logger, config, lifecycle, mimir, metrics }) {
         // Agent avatars are `<img>` loads, which carry no bearer token: this
         // path alone accepts the plugin's user cookie (issued to the browser
         // at `/.backstage/auth/v1/cookie` by the frontend's
@@ -49,6 +51,7 @@ export const agentPlatformPlugin = createBackendPlugin({
             config,
             lifecycle,
             mimir,
+            metrics,
           }),
         );
       },

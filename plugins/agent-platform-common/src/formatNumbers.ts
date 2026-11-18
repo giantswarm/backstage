@@ -1,5 +1,5 @@
 /**
- * Number formatting shared by the Agent Platform's plugins: the agent-platform
+ * Number and duration formatting shared by the Agent Platform's plugins: the agent-platform
  * plugin and muster put counts, latencies and sizes side by side on one page
  * (Usage), so they format them through one implementation. Here rather than in
  * either plugin because muster must not depend on agent-platform; here rather
@@ -25,23 +25,67 @@ export function formatCount(value: number): string {
   return groupedNumberFormat.format(Math.round(value));
 }
 
+const MINUTE = 60;
+const HOUR = 60 * MINUTE;
+
 /**
- * Format a latency in seconds, or `—`. A space before the unit, as every
- * other duration on the platform has ("1.2 s", "420 ms").
+ * Format a duration in seconds, or `—`: the one duration format of the Agent
+ * Platform, for a latency, a run, a step or how long something has been going.
  *
- * `undefined` or `null` is the normal answer for an idle installation, not an
- * error: `histogram_quantile` over a histogram with no observations is `NaN`.
+ * - below a second in whole milliseconds: `420 ms`
+ * - below 10 s with one decimal, none for a whole second: `1.2 s`, `3 s`
+ * - then whole seconds up to a minute: `18 s`
+ * - then minutes and seconds up to an hour: `2 min 30 s`, `12 min`
+ * - then hours and minutes: `1 h 5 min`
+ *
+ * Whole units only from 10 s on: a decimal there is noise. Each tier is picked
+ * after rounding, so 999.6 ms reads `1 s`, 9.96 s `10 s` and 59.6 s `1 min`.
+ * A whole second below 10 s drops its `.0`: the managers' timestamps and
+ * typical figures are whole seconds, and `3.0 s` would claim a tenth they do
+ * not have.
+ * Below an hour the seconds are rounded; above it the leftover seconds are
+ * dropped rather than rounded into a minute. A space before every unit.
+ *
+ * Milliseconds go in through {@link formatMilliseconds}. A negative span (a clock skew) reads as
+ * zero. `undefined`, `null` or `NaN` is the normal answer for an idle
+ * installation, not an error: `histogram_quantile` over a histogram with no
+ * observations is `NaN`.
  */
 export function formatSeconds(value: number | null | undefined): string {
   if (value === undefined || value === null || !Number.isFinite(value)) {
     return '—';
   }
-  // Rounded first, so 999.6 ms reads as the second it rounds to.
-  const ms = Math.round(value * 1000);
+  const seconds = Math.max(0, value);
+  const ms = Math.round(seconds * 1000);
   if (ms < 1000) {
     return `${ms} ms`;
   }
-  return `${value.toFixed(value < 10 ? 1 : 0)} s`;
+  const tenths = Math.round(seconds * 10);
+  if (tenths < 100) {
+    return tenths % 10 === 0
+      ? `${tenths / 10} s`
+      : `${(tenths / 10).toFixed(1)} s`;
+  }
+  const total = Math.round(seconds);
+  if (total < MINUTE) {
+    return `${total} s`;
+  }
+  if (total < HOUR) {
+    const minutes = Math.floor(total / MINUTE);
+    const rest = total % MINUTE;
+    return rest ? `${minutes} min ${rest} s` : `${minutes} min`;
+  }
+  const hours = Math.floor(total / HOUR);
+  const minutes = Math.floor((total % HOUR) / MINUTE);
+  return minutes ? `${hours} h ${minutes} min` : `${hours} h`;
+}
+
+/**
+ * {@link formatSeconds} for a duration in milliseconds, or `—` when there is
+ * none: `null` stays `—` rather than dividing into `0 ms`.
+ */
+export function formatMilliseconds(ms: number | null | undefined): string {
+  return formatSeconds(ms === undefined || ms === null ? ms : ms / 1000);
 }
 
 const BYTE_UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];

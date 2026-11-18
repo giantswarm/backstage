@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { lab } from './lab';
 
 const run = promisify(execFile);
 
@@ -22,9 +23,29 @@ export const PLATFORM_NAMESPACE = 'agent-platform';
 export async function kubectl(args: string[], input?: string) {
   const child = run('kubectl', ['--kubeconfig', KUBECONFIG!, ...args], {
     encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
   });
   if (input !== undefined) {
     child.child.stdin?.end(input);
   }
   return child;
+}
+
+/**
+ * The namespace of the lab's organization ({@link lab.organization}), its
+ * `AgentPlatformOrganization`'s `status.namespace`; undefined on a lab without
+ * organizations, where the wizard offers Platform and reads `kagent`.
+ */
+export async function labOrganizationNamespace(): Promise<string | undefined> {
+  const { stdout } = await kubectl([
+    'get',
+    'agentplatformorganizations.agent-platform.giantswarm.io',
+    '-n',
+    lab.organization.parent,
+    lab.organization.name,
+    '--ignore-not-found',
+    '-o',
+    'jsonpath={.status.namespace}',
+  ]).catch(() => ({ stdout: '' }));
+  return stdout.trim() || undefined;
 }

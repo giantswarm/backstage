@@ -11,12 +11,9 @@ import {
 } from '@backstage/frontend-plugin-api';
 import EmojiNatureIcon from '@material-ui/icons/EmojiNature';
 
-import {
-  plansApiRef,
-  PlansApiClient,
-  plansAuthApiRef,
-  PlansFixtureApi,
-} from './apis';
+import { lazyApi } from '@giantswarm/backstage-plugin-ui-react';
+
+import { plansApiRef, PlansApiClient, plansAuthApiRef } from './apis';
 import { orderHiveTabs } from './lib/hiveTabs';
 import {
   hiveHistoryRouteRef,
@@ -186,7 +183,8 @@ const magazinePage = PageBlueprint.make({
 });
 
 // No `name`: the extension id is plain `api:plans`. `plans.fixtures: true`
-// serves the plans and the magazine from memory, for local development.
+// serves the plans and the magazine from memory, outside production builds
+// only (docs/fixtures.md).
 const plansApi = ApiBlueprint.make({
   disabled: true,
   params: defineParams =>
@@ -198,10 +196,18 @@ const plansApi = ApiBlueprint.make({
         fetchApi: fetchApiRef,
         authApi: plansAuthApiRef,
       },
-      factory: ({ configApi, discoveryApi, fetchApi, authApi }) =>
-        configApi.getOptionalBoolean('plans.fixtures')
-          ? new PlansFixtureApi()
-          : new PlansApiClient({ discoveryApi, fetchApi, authApi }),
+      factory: ({ configApi, discoveryApi, fetchApi, authApi }) => {
+        if (
+          process.env.NODE_ENV !== 'production' &&
+          configApi.getOptionalBoolean('plans.fixtures')
+        ) {
+          return lazyApi(async () => {
+            const { PlansFixtureApi } = await import('./apis/PlansFixtureApi');
+            return new PlansFixtureApi();
+          });
+        }
+        return new PlansApiClient({ discoveryApi, fetchApi, authApi });
+      },
     }),
 });
 

@@ -5,3 +5,4 @@
  * decided in one place.
  */
 export * from './MimirService';
+export * from './MimirUnavailableError';

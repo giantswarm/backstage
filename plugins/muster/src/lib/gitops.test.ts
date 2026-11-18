@@ -89,6 +89,24 @@ describe('workflow definitions (gitops.ts)', () => {
     expect(yaml).toContain('kind: Workflow');
     expect(yaml).toContain('apiVersion: muster.giantswarm.io/v1alpha1');
     expect(yaml).toContain('name: deploy');
+    expect(yaml).not.toContain('annotations');
+  });
+
+  it('carries the tags annotation, and no other', () => {
+    const yaml = toManifestYaml(
+      makeWorkflow({
+        metadata: {
+          annotations: {
+            'ui.giantswarm.io/tags': 'oncall, Alerts',
+            'kustomize.toolkit.fluxcd.io/checksum': 'abc',
+          },
+        },
+      }),
+    );
+    expect(yaml).toContain(
+      '  annotations:\n    ui.giantswarm.io/tags: "oncall,alerts"',
+    );
+    expect(yaml).not.toContain('checksum');
   });
 });
 

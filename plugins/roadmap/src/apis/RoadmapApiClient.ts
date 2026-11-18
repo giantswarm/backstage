@@ -173,7 +173,12 @@ export class RoadmapApiClient implements RoadmapApi {
     });
     if (!response.ok) {
       const errorData = (await response.json().catch(() => ({}))) as {
-        error?: { name?: string; message?: string; authUrl?: string };
+        error?: {
+          name?: string;
+          message?: string;
+          authUrl?: string;
+          kind?: string;
+        };
       };
       const message =
         errorData?.error?.message ??
@@ -188,7 +193,11 @@ export class RoadmapApiClient implements RoadmapApi {
       if (response.status === 401) error.name = 'UnauthorizedError';
       if (response.status === 403) error.name = 'ForbiddenError';
       if (response.status === 404) error.name = 'NotFoundError';
-      if (response.status === 503) error.name = 'ServiceUnavailableError';
+      // A muster rollout interrupted the call (gs-node's MusterToolError
+      // `kind`): another replica answers it, so it stays retryable.
+      if (response.status === 503 && errorData?.error?.kind !== 'interrupted') {
+        error.name = 'ServiceUnavailableError';
+      }
       throw error;
     }
     if (response.status === 204) {

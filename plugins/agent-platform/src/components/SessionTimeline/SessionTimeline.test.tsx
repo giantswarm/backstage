@@ -9,13 +9,18 @@ import {
   TimelineItem,
 } from '../../lib/kagentTimeline';
 import { normalizeTaskList } from '@giantswarm/backstage-plugin-agent-platform-common';
-import { RECENT_TURNS, SessionTimeline } from './SessionTimeline';
+import {
+  RECENT_TURNS,
+  STATUS_ROW_ATTRIBUTE,
+  SessionTimeline,
+} from './SessionTimeline';
 import { applyStreamEvent, createStreamTurn } from '../../lib/kagentStreamTurn';
 import {
   NOTICE_STALE,
   sessionWithNotices,
 } from '../../lib/__fixtures__/workspaceNotice';
 import { TimelineEntry } from './TimelineEntry';
+import { groupIntoTurns } from './helpers';
 
 import {
   attachmentPngV2,
@@ -31,6 +36,10 @@ import {
   mockCollapsibleLayout,
   type MockedCollapsibleLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
+import {
+  DateTimeZoneProvider,
+  formatLocalDateFull,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 function timelineFor(fixture: unknown) {
   return buildTimeline(normalizeTaskList(fixture).tasks);
@@ -420,9 +429,13 @@ describe('SessionTimeline', () => {
       // read, this session rendered as two user messages with nothing under them.
       await render(tasksFailed, 'gpt6');
 
-      expect(screen.getAllByText('This turn failed')).toHaveLength(2);
       expect(
-        screen.getAllByText(/does not exist or you do not have access to it/),
+        screen.getAllByText('Could not get an answer from the model'),
+      ).toHaveLength(2);
+      expect(
+        screen.getAllByText(
+          /Try again, or ask your platform team for help if this continues/,
+        ),
       ).toHaveLength(2);
       expect(screen.getAllByText('gpt6').length).toBeGreaterThan(0);
     });
@@ -436,7 +449,9 @@ describe('SessionTimeline', () => {
         screen.queryByTestId('timeline-work-summary'),
       ).not.toBeInTheDocument();
       expect(
-        screen.queryByRole('button', { name: /This turn failed/ }),
+        screen.queryByRole('button', {
+          name: /Could not get an answer from the model/,
+        }),
       ).not.toBeInTheDocument();
     });
   });
@@ -519,29 +534,41 @@ describe('SessionTimeline', () => {
 
   describe('a stalled turn', () => {
     const since = Date.parse('2026-09-13T13:52:00Z');
-    const clock = new Date(since).toLocaleTimeString(undefined, {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
 
     it('replaces the working row with when progress last came, and a cancel', async () => {
+      // Relative to the real clock, which the row reads: taken as the test
+      // runs, not when the file is collected.
+      const stalledSince = Date.now() - 12 * 60 * 1000;
       const onCancelTurn = jest.fn();
       await renderInTestApp(
-        <SessionTimeline
-          timeline={timelineFor(tasksV099)}
-          agentName="Issue tracker"
-          // The page never passes both; if it did, the stall must win — a
-          // spinner next to "no progress" contradicts itself.
-          isAgentWorking
-          stalledSince={since}
-          onCancelTurn={onCancelTurn}
-        />,
+        <DateTimeZoneProvider timeZone="local">
+          <SessionTimeline
+            timeline={timelineFor(tasksV099)}
+            agentName="Issue tracker"
+            // The page never passes both; if it did, the stall must win — a
+            // spinner next to "no progress" contradicts itself.
+            isAgentWorking
+            stalledSince={stalledSince}
+            onCancelTurn={onCancelTurn}
+          />
+        </DateTimeZoneProvider>,
       );
 
       expect(screen.queryByText('Working…')).not.toBeInTheDocument();
-      expect(
-        screen.getByText(`The agent has not reported progress since ${clock}.`),
-      ).toBeInTheDocument();
+      // Relative, so a stall from yesterday does not read as today; the
+      // date and time on hover.
+      expect(screen.getByText(/last reported progress/)).toHaveTextContent(
+        'The agent last reported progress 12 minutes ago.',
+      );
+      const time = screen.getByText('12 minutes ago');
+      expect(time).toHaveAttribute(
+        'title',
+        formatLocalDateFull(new Date(stalledSince)),
+      );
+      // It ticks every minute: kept out of the status's announcements, so
+      // the stall is announced once.
+      expect(time.closest('[role="status"]')).not.toBeNull();
+      expect(time).toHaveAttribute('aria-live', 'off');
 
       await userEvent.click(
         screen.getByRole('button', { name: 'Stop the turn' }),
@@ -558,7 +585,7 @@ describe('SessionTimeline', () => {
         />,
       );
 
-      expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
+      expect(screen.getByText(/last reported progress/)).toBeInTheDocument();
       expect(
         screen.queryByRole('button', { name: 'Stop the turn' }),
       ).not.toBeInTheDocument();
@@ -576,7 +603,7 @@ describe('SessionTimeline', () => {
         />,
       );
 
-      expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
+      expect(screen.getByText(/last reported progress/)).toBeInTheDocument();
       expect(
         screen.getByRole('button', { name: 'Stop the turn' }),
       ).toBeInTheDocument();
@@ -1002,7 +1029,41 @@ describe('a lost stream', () => {
     );
 
     expect(screen.queryByText(/live view/)).not.toBeInTheDocument();
-    expect(screen.getByText(/has not reported progress/)).toBeInTheDocument();
+    expect(screen.getByText(/last reported progress/)).toBeInTheDocument();
+  });
+});
+
+describe('status rows', () => {
+  // The session page's jump button skips these when it measures where the
+  // conversation ends: a spinner is not something new to read.
+  it.each([
+    ['Working…', { isAgentWorking: true }, 'Working…'],
+    [
+      'a lost stream',
+      { isAgentWorking: true, streamLost: 'reconnecting' as const },
+      /Reconnecting/,
+    ],
+    [
+      'a stall',
+      { stalledSince: Date.parse('2026-09-13T13:52:00Z') },
+      /last reported progress/,
+    ],
+  ])('marks %s as a status row', async (_row, props, text) => {
+    await renderInTestApp(
+      <SessionTimeline
+        timeline={timelineFor(tasksV099)}
+        agentName="Issue tracker"
+        {...props}
+      />,
+    );
+
+    const row = document.querySelector(`[${STATUS_ROW_ATTRIBUTE}]`);
+    expect(row).toContainElement(screen.getByText(text));
+    // Only the row: no content of the conversation is inside it.
+    expect(document.querySelectorAll(`[${STATUS_ROW_ATTRIBUTE}]`)).toHaveLength(
+      1,
+    );
+    expect(row?.querySelector('[data-turn-index]')).toBeNull();
   });
 });
 
@@ -1037,13 +1098,111 @@ describe('SessionTimeline — a turn the runtime failed', () => {
 
   it('leaves the agent’s own failure worded as before', async () => {
     await renderInTestApp(
-      <SessionTimeline timeline={timelineFor(tasksFailed)} agentName="gpt6" />,
+      <TimelineEntry
+        item={{
+          kind: 'turn-failed',
+          id: '0:ended:1',
+          taskIndex: 0,
+          state: 'failed',
+          reason: 'Harness runtime execution failed',
+        }}
+      />,
     );
 
-    expect(screen.getAllByText('This turn failed')).toHaveLength(2);
-    for (const entry of screen.getAllByTestId('timeline-turn-failed')) {
-      expect(entry).not.toHaveAttribute('data-runtime-lost');
-    }
+    expect(screen.getByText('This turn failed')).toBeInTheDocument();
+    expect(
+      screen.getByText('Harness runtime execution failed'),
+    ).toBeInTheDocument();
+    const entry = screen.getByTestId('timeline-turn-failed');
+    expect(entry).not.toHaveAttribute('data-runtime-lost');
+    expect(entry).not.toHaveAttribute('data-model-unavailable');
+  });
+});
+
+describe('SessionTimeline — a turn the model provider failed', () => {
+  const INVALID_KEY =
+    'llm error response (code STREAM_ERROR): "POST \\"http://agentgateway.agent-platform.svc:8081/v1/messages\\": 401 Unauthorized (Request-ID: req_011CgszuDCqiu7fWDhLTw29G) {\\"type\\":\\"error\\",\\"error\\":{\\"type\\":\\"authentication_error\\",\\"message\\":\\"invalid x-api-key\\"},\\"request_id\\":\\"req_011CgszuDCqiu7fWDhLTw29G\\"}"';
+
+  function providerFailedTurn(reason: string): TimelineItem {
+    return {
+      kind: 'turn-failed',
+      id: '0:ended:1',
+      taskIndex: 0,
+      state: 'failed',
+      reason,
+    };
+  }
+
+  it('says the provider refused the credentials, in the portal’s words', async () => {
+    await renderInTestApp(
+      <TimelineEntry item={providerFailedTurn(INVALID_KEY)} />,
+    );
+
+    expect(
+      screen.getByText('Could not get an answer from the model'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The agent could not access its model. Ask your platform team to check the model’s credentials and permissions.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('This turn failed')).not.toBeInTheDocument();
+    expect(screen.getByTestId('timeline-turn-failed')).toHaveAttribute(
+      'data-model-unavailable',
+      'true',
+    );
+  });
+
+  it('keeps kagent’s words folded under Technical details', async () => {
+    await renderInTestApp(
+      <TimelineEntry item={providerFailedTurn(INVALID_KEY)} />,
+    );
+
+    expect(screen.queryByText(/agentgateway\.agent-platform/)).toBeNull();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Technical details' }),
+    );
+
+    expect(screen.getByText(INVALID_KEY)).toBeVisible();
+  });
+
+  it('opens and closes technical details from the keyboard without losing focus', async () => {
+    const user = userEvent.setup();
+    await renderInTestApp(
+      <TimelineEntry item={providerFailedTurn(INVALID_KEY)} />,
+    );
+    const details = screen.getByRole('button', { name: 'Technical details' });
+    await user.tab();
+    expect(details).toHaveFocus();
+    expect(screen.queryByText(INVALID_KEY)).not.toBeInTheDocument();
+    await user.keyboard('{Enter}');
+    expect(details).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText(INVALID_KEY)).toBeVisible();
+    expect(details).toHaveFocus();
+    await user.keyboard(' ');
+    expect(details).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText(INVALID_KEY)).not.toBeInTheDocument();
+    expect(details).toHaveFocus();
+  });
+
+  it('says the provider could not answer when it did not refuse the credentials', async () => {
+    await renderInTestApp(
+      <TimelineEntry
+        item={providerFailedTurn(
+          'llm error response (code STREAM_ERROR): "anthropic API error: 529 overloaded"',
+        )}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        /^Try again, or ask your platform team for help if this continues\./,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/check the model’s credentials and permissions/),
+    ).toBeNull();
   });
 });
 
@@ -1552,6 +1711,66 @@ describe('TimelineEntry — the connector of a tool call (UX review M2)', () => 
     });
     expect(row).toHaveTextContent('via Muster');
   });
+
+  const approval = {
+    kind: 'approval',
+    id: 'a',
+    taskIndex: 0,
+    asks: 'approval',
+    toolName: 'x_agentlab-mcp-kubernetes_delete_pod',
+    via: 'Muster',
+    args: { namespace: 'default', name: 'web-0' },
+  } as TimelineItem;
+
+  it('names the proposed tool and its connector on an approval, with its arguments one fold-out away', async () => {
+    await renderInTestApp(
+      <TimelineEntry item={approval} connectorOf={connectorOf} />,
+    );
+
+    const row = screen.getByRole('button', { name: /Approval requested/ });
+    expect(row).toHaveTextContent('Delete pod');
+    expect(row).toHaveTextContent('kubernetes');
+    expect(row).not.toHaveTextContent('Call tool');
+    await userEvent.click(row);
+    const panel = panelFor(row);
+    expect(panel).toHaveTextContent('x_agentlab-mcp-kubernetes_delete_pod');
+    expect(panel).toHaveTextContent('web-0');
+  });
+
+  it('says an approval goes through muster when no connector matches', async () => {
+    await renderInTestApp(<TimelineEntry item={approval} />);
+
+    const row = screen.getByRole('button', { name: /Approval requested/ });
+    expect(row).toHaveTextContent('via Muster');
+  });
+
+  it('folds out a proxied approval without arguments, to read the exact tool', async () => {
+    const { args: _args, ...argless } = approval as TimelineItem & {
+      args?: unknown;
+    };
+    await renderInTestApp(
+      <TimelineEntry
+        item={argless as TimelineItem}
+        connectorOf={connectorOf}
+      />,
+    );
+
+    const row = screen.getByRole('button', { name: /Approval requested/ });
+    await userEvent.click(row);
+    expect(panelFor(row)).toHaveTextContent(
+      'x_agentlab-mcp-kubernetes_delete_pod',
+    );
+  });
+
+  it('keeps the exact name and the proxy on a technical approval', async () => {
+    await renderInTestApp(
+      <TimelineEntry item={approval} connectorOf={connectorOf} technical />,
+    );
+
+    const row = screen.getByRole('button', { name: /Approval requested/ });
+    expect(row).toHaveTextContent('x_agentlab-mcp-kubernetes_delete_pod');
+    expect(row).toHaveTextContent('via Muster');
+  });
 });
 
 describe('SessionTimeline — a long user message', () => {
@@ -1790,14 +2009,17 @@ describe('egress refusals', () => {
       <SessionTimeline
         timeline={timeline({})}
         agentName="otter-coder"
-        egressRemedy={{
+        egressRemedyFor={() => ({
           kind: 'edit',
           editHref: '/customize/agents/lab/agents/otter-coder/edit',
-        }}
+        })}
       />,
     );
 
     const entry = screen.getByTestId('timeline-egress-refused');
+    await userEvent.click(
+      within(entry).getByRole('button', { name: /Outgoing connection/ }),
+    );
     expect(
       within(entry).getByText(
         'Outgoing connection to proxy.golang.org blocked',
@@ -1835,6 +2057,11 @@ describe('egress refusals', () => {
     expect(
       within(entry).getByText(
         /Raw TCP connections are not available to agents · .* · 1 attempt$/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(entry).getByText(
+        'No egress setting can allow it. If 10.0.0.7 offers HTTPS, have otter-coder use that instead.',
       ),
     ).toBeInTheDocument();
     expect(within(entry).queryByRole('link')).not.toBeInTheDocument();
@@ -1909,5 +2136,49 @@ describe('workspace setup notices', () => {
     expect(
       screen.queryByTestId('timeline-agent-message'),
     ).not.toBeInTheDocument();
+  });
+
+  describe('the turn the person just sent', () => {
+    /** The `messageId` of the person's message in turn `index`. */
+    const sentIn = (index: number) => {
+      const turns = groupIntoTurns(timelineFor(tasksV099).items);
+      const turn = turns[index < 0 ? turns.length + index : index];
+      const message = turn.items.find(item => item.kind === 'user-message');
+      expect(message?.messageId).toBeDefined();
+      return message!.messageId!;
+    };
+    const renderReserved = async (reservedMessageId: string) => {
+      const timeline = timelineFor(tasksV099);
+      await renderInTestApp(
+        <SessionTimeline
+          timeline={timeline}
+          agentName="Issue tracker"
+          isAgentWorking
+          reservedMessageId={reservedMessageId}
+        />,
+      );
+      const turns = document.querySelectorAll<HTMLElement>('[data-turn-index]');
+      return { turns, newest: turns[turns.length - 1] };
+    };
+
+    it('holds the room for its reply, with the Working row inside it', async () => {
+      const { turns, newest } = await renderReserved(sentIn(-1));
+      expect(newest).toHaveAttribute('data-reserved-turn');
+      expect(
+        [...turns].filter(turn => turn.hasAttribute('data-reserved-turn')),
+      ).toHaveLength(1);
+      expect(within(newest).getByText('Working…')).toBeInTheDocument();
+    });
+
+    it('holds no room once a later turn is the newest', async () => {
+      const { turns, newest } = await renderReserved(sentIn(0));
+      expect(turns.length).toBeGreaterThan(1);
+      for (const turn of turns) {
+        expect(turn).not.toHaveAttribute('data-reserved-turn');
+      }
+      // The Working row stays after the conversation, as without a reserve.
+      expect(within(newest).queryByText('Working…')).not.toBeInTheDocument();
+      expect(screen.getByText('Working…')).toBeInTheDocument();
+    });
   });
 });

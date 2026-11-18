@@ -1,4 +1,5 @@
 import { DiscoveryApi, FetchApi } from '@backstage/core-plugin-api';
+import { MimirQueryError } from './MimirQueryError';
 import { MimirApi, MimirQueryResponse, MimirRangeQueryResponse } from './types';
 
 export class MimirClient implements MimirApi {
@@ -13,7 +14,7 @@ export class MimirClient implements MimirApi {
   async query(params: {
     installationName: string;
     query: string;
-    oidcToken: string;
+    oidcToken: string | undefined;
   }): Promise<MimirQueryResponse> {
     const { installationName, query, oidcToken } = params;
 
@@ -30,7 +31,7 @@ export class MimirClient implements MimirApi {
     start: string;
     end: string;
     step: string;
-    oidcToken: string;
+    oidcToken: string | undefined;
   }): Promise<MimirRangeQueryResponse> {
     const { installationName, query, start, end, step, oidcToken } = params;
 
@@ -49,8 +50,13 @@ export class MimirClient implements MimirApi {
   private async get<T>(
     path: 'query' | 'query_range',
     params: Record<string, string>,
-    oidcToken: string,
+    oidcToken: string | undefined,
   ): Promise<T> {
+    if (!oidcToken) {
+      throw new Error(
+        `No OIDC token available for installation "${params.installationName}"`,
+      );
+    }
     const baseUrl = await this.discoveryApi.getBaseUrl('gs');
     const searchParams = new URLSearchParams(params);
 
@@ -68,7 +74,13 @@ export class MimirClient implements MimirApi {
       const message =
         (errorData as any)?.error?.message ??
         `Mimir query failed with status ${response.status}`;
-      const error = new Error(message);
+      const error = new MimirQueryError(message, {
+        status: response.status,
+        reason: (errorData as any)?.error?.reason,
+      });
+      // Mimir refused the query itself (bad PromQL, a range over its limits):
+      // the message carries its words, and asking again gets the same answer.
+      if (response.status === 400) error.name = 'InputError';
       if (response.status === 401) error.name = 'UnauthorizedError';
       if (response.status === 403) error.name = 'ForbiddenError';
       if (response.status === 404) error.name = 'NotFoundError';

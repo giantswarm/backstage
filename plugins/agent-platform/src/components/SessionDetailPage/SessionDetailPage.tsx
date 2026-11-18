@@ -20,6 +20,7 @@ import {
   DateComponent,
   EmptyStateCard,
   LoadingIndicator,
+  SHELL_PAGE_COMPACT_HEADER_HEIGHT_VAR,
   SHELL_PAGE_PADDING_BOTTOM_VAR,
   ShellPage,
   ShellPageBadgeSkeleton,
@@ -30,6 +31,7 @@ import {
   useProvidePageHeaderActions,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+import { useTrackedView } from '@giantswarm/backstage-plugin-analytics-react';
 import { isConflictError, isUnauthorizedError } from '../../apis';
 import { useCancelTask } from '../../hooks/useCancelTask';
 import { useCreateSession } from '../../hooks/useCreateSession';
@@ -59,7 +61,6 @@ import { useAgentIndex } from '../../hooks/useAgentIndex';
 import { usePinnedSessions } from '../../hooks/usePinnedSessions';
 import { useSessionNotificationSettings } from '../../hooks/useSessionNotificationRecord';
 import { useShowToolActivity } from '../../hooks/useShowToolActivity';
-import { useStickToEnd } from '../../hooks/useStickToEnd';
 import { useWorkspaceNames } from '../../hooks/useWorkspaceNames';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { connectorOfTool } from '../../lib/toolset';
@@ -102,6 +103,8 @@ import {
   STALLED_STATE_LABEL,
 } from './helpers';
 import { RuntimeLostNotice } from './RuntimeLostNotice';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 import { AnswerNotTakenNotice } from './AnswerNotTakenNotice';
 import {
   buildContinuationPrompt,
@@ -121,7 +124,14 @@ import {
   SESSION_TITLE_FALLBACK,
   toSessionRow,
 } from '../SessionsDataProvider/helpers';
-import { SessionTimeline, StreamLossPhase } from '../SessionTimeline';
+import {
+  RESERVED_TURN_ATTRIBUTE,
+  SessionTimeline,
+  StreamLossPhase,
+  TURN_RESERVE_VAR,
+} from '../SessionTimeline';
+import { COLUMN_GAP, JumpToBottom } from './JumpToBottom';
+import { END_CHROME_ATTRIBUTE, useJumpToBottom } from './hooks/useJumpToBottom';
 import { SessionCostPopover } from '../SessionCostPopover';
 import { estimateCost } from '../../lib/costEstimate';
 import { describeCostBasis } from '../../lib/costBasis';
@@ -129,6 +139,7 @@ import { TimelineItem } from '../../lib/kagentTimeline';
 import { useTokenRates } from '../../hooks/useTokenRates';
 import { useSessionEgressRefusals } from '../../hooks/useSessionEgressRefusals';
 import { useEgressRemedy } from '../../hooks/useEgressRemedy';
+import { remedyNeedsAgent } from '../../lib/egressRemedy';
 import { withEgressRefusals } from '../../lib/egressRefusals';
 import { AgentAvatar } from '../AgentAvatar';
 
@@ -147,6 +158,15 @@ const AVATAR_SIZE: AvatarSize = 48;
  */
 const CONTINUED_TITLE_PREFIX = 'Continued: ';
 const CONTINUED_TITLE_PATTERN = /^(?:Continued: )+/;
+
+/**
+ * The room the turn just sent holds for its reply, from the view's height:
+ * the view, less the compact header, the dock and the shell's mobile bar
+ * under it, and the gaps between them.
+ */
+function turnReserve(viewHeight: string, gaps: number): string {
+  return `calc(${viewHeight} - var(${SHELL_PAGE_COMPACT_HEADER_HEIGHT_VAR}, 0px) - var(${DOCK_HEIGHT_VAR}, 0px) - var(--agent-shell-mobile-bar-height, 0px) - ${gaps}px)`;
+}
 
 const useStyles = makeStyles(theme => ({
   // bui's Switch has one size, sized for forms. On the meta line it takes the
@@ -194,6 +214,14 @@ const useStyles = makeStyles(theme => ({
     // JSS puts the fallback first, so browsers without dvh keep vh.
     fallbacks: {
       minHeight: `calc(100vh - var(${COLUMN_RESERVE_VAR}, 100vh))`,
+    },
+    // The room the turn just sent holds for its reply (`turnReserve`). A
+    // custom property takes any value, so a `fallbacks` entry would never
+    // apply: where `dvh` is unknown, the `min-height` reading the variable
+    // would be invalid and hold no room. So `vh` unless `dvh` is supported.
+    [TURN_RESERVE_VAR]: turnReserve('100vh', theme.spacing(3)),
+    '@supports (height: 100dvh)': {
+      [TURN_RESERVE_VAR]: turnReserve('100dvh', theme.spacing(3)),
     },
     // A control in the conversation that the browser scrolls into view — a
     // fold-out opened from the keyboard, a tab stop — lands clear of the dock
@@ -332,19 +360,23 @@ function Shell({
  * Why a Stop failed, for the person who pressed it.
  *
  * The backend's message, which names the refusal, plus what to do about it
- * where that is known. A 401 is the observed case: the Backstage pod rolled
- * while the tab stayed open and the tab's token no longer verifies — nothing is
- * wrong with the turn, and reloading signs the tab back in silently, after
- * which Stop works. Left as "Failed user token verification" that is a riddle.
+ * where that is known: a 401 is kagent refusing the installation token, which
+ * a reload mints again. The portal refusing the session token is not said
+ * here: the page shows `PortalSessionEndedAlert` for it.
  */
 function describeStopFailure(error: Error | null): string | undefined {
-  if (!error) {
+  if (!error || error instanceof PortalSessionEndedError) {
     return undefined;
   }
   if (isUnauthorizedError(error)) {
     return `${error.message}. Your sign-in expired — reload the page and stop the turn again.`;
   }
   return error.message;
+}
+
+/** The message of an error the page shows, except a refused portal session's. */
+function shownMessage(error: Error | null | undefined): string | undefined {
+  return error instanceof PortalSessionEndedError ? undefined : error?.message;
 }
 
 /**
@@ -404,6 +436,7 @@ export function SessionDetailPage() {
     tasks,
     taskCount,
     hasConversation,
+    isConversationCurrent,
     isLoading,
     isNotFound,
     error,
@@ -415,6 +448,22 @@ export function SessionDetailPage() {
     justCreated: Boolean(handoff),
   });
   const cancellation = useCancelTask(installation, sessionId);
+
+  // How long the sessions people open are: once per opening, when the
+  // session and a current read of its turns are in hand (not an older cache
+  // the opening read is about to replace), and not again as it polls.
+  const turns = detail && isConversationCurrent ? taskCount : undefined;
+  const viewEvent = useMemo(
+    () =>
+      turns === undefined
+        ? undefined
+        : {
+            name: 'AgentPlatform.sessionViewed' as const,
+            attributes: { turns },
+          },
+    [turns],
+  );
+  useTrackedView(viewEvent, `${installation}/${sessionId}`);
 
   // The same join the list uses, so a session's agent is named identically in both
   // places — and falls back to the same lossy decode when no Agent CR matched.
@@ -629,7 +678,8 @@ export function SessionDetailPage() {
   const {
     rates,
     tier: rateTier,
-    window: rateWindow,
+    windowDays: rateWindowDays,
+    error: rateError,
   } = useTokenRates(installation, {
     namespace: agent?.namespace,
     name: agent?.name,
@@ -858,18 +908,19 @@ export function SessionDetailPage() {
   const shownTimeline = useMemo(
     () => ({
       ...timelineWithLive,
-      items: withEgressRefusals(shownItems, egressRefusals),
+      items: withEgressRefusals(shownItems, egressRefusals, tasks),
     }),
-    [timelineWithLive, shownItems, egressRefusals],
+    [timelineWithLive, shownItems, egressRefusals, tasks],
   );
-  // What a refusal's alert offers for this agent: read once there is one,
-  // since it takes agent-manager's reading of the agent and the person's
-  // access (giantswarm/giantswarm#38814).
-  const egressRemedy = useEgressRemedy({
+  // What a refusal's alert offers for this agent: read once there is one
+  // that needs it, since it takes agent-manager's reading of the agent and
+  // the person's access. Raw TCP's remedy needs none of it
+  // (giantswarm/giantswarm#38814).
+  const egressRemedyFor = useEgressRemedy({
     installation,
     agent,
     row: agentRow,
-    enabled: egressRefusals.length > 0,
+    enabled: egressRefusals.some(refusal => remedyNeedsAgent(refusal.scheme)),
   });
 
   // Owned by the page, unlike the delete dialog's state, because two things open
@@ -945,10 +996,21 @@ export function SessionDetailPage() {
   const [dockElement, setDockElement] = useState<HTMLDivElement | null>(null);
   useDockedComposerLayout(columnElement, dockElement);
 
-  // Stick to the end: the page follows the reply as it streams in while the
-  // reader is at the end, and leaves them alone once they scroll away — up
-  // through the history, mid-stream included — until they come back to it.
-  const { stickToEnd, markReaderChange } = useStickToEnd(columnElement);
+  // The reading position is the reader's: content from the agent never moves
+  // it. What lands below the visible part shows "Jump to bottom" instead; a
+  // session opens at its end, and a message sent is put at the top of the
+  // view with room under it for the reply.
+  const { hasNewBelow, jumpToBottom, openAtEnd, revealTurn, markReaderChange } =
+    useJumpToBottom(columnElement, dockElement, shownTimeline);
+
+  // The message sent from this page's composer, by its `messageId`: its turn
+  // holds the room its reply streams into (SessionTimeline's
+  // `reservedMessageId`) and goes to the top of the view. `revealNextSend`
+  // says the next message that goes out is one; every send has an id of its
+  // own, so a message sent again after a failure is revealed again too.
+  const [reservedMessageId, setReservedMessageId] = useState<string>();
+  const revealNextSend = useRef(false);
+  const revealedMessageId = useRef<string>();
 
   // Adding or removing the work summaries around the place being read must
   // not move it: from the compact header the switch is pressed mid-session.
@@ -957,7 +1019,7 @@ export function SessionDetailPage() {
     (show: boolean) => {
       captureReadingAnchor();
       // The summaries it adds or removes are the reader's change: they keep
-      // their place, and follow the end only if it is still in view.
+      // their place, and do not count as new content below.
       markReaderChange();
       // A failed write puts the switch and the conversation back to the
       // stored choice, so say why rather than let it snap back.
@@ -1250,15 +1312,50 @@ export function SessionDetailPage() {
   // conversation first renders — the column exists only then. Later scrolling
   // is the reader's: "Show earlier activity" adds turns above without coming
   // back here. Before paint, so the top never flashes; layout that lands after
-  // (the dock's measured min-height) is followed by `useStickToEnd`.
+  // (the dock's measured min-height) lands at the end too, while it settles
+  // (`useJumpToBottom`'s `openAtEnd`).
   const openedAtEndFor = useRef<string | undefined>(undefined);
   useLayoutEffect(() => {
-    if (!columnElement || openedAtEndFor.current === sessionId) {
+    if (
+      !columnElement ||
+      !isToolActivityKnown ||
+      openedAtEndFor.current === sessionId
+    ) {
       return;
     }
     openedAtEndFor.current = sessionId;
-    stickToEnd();
-  }, [columnElement, sessionId, stickToEnd]);
+    revealNextSend.current = false;
+    setReservedMessageId(undefined);
+    openAtEnd();
+  }, [columnElement, isToolActivityKnown, sessionId, openAtEnd]);
+
+  // A message sent from the composer: its echo is on screen with the same
+  // render that holds it as pending, so its turn takes the room for its
+  // reply, and then the top of the view. Before paint, so the echo never
+  // shows at the bottom first.
+  const pendingMessageId = send.pending?.messageId;
+  useLayoutEffect(() => {
+    if (pendingMessageId && revealNextSend.current) {
+      revealNextSend.current = false;
+      setReservedMessageId(pendingMessageId);
+    }
+  }, [pendingMessageId]);
+  useLayoutEffect(() => {
+    if (
+      !columnElement ||
+      !reservedMessageId ||
+      revealedMessageId.current === reservedMessageId
+    ) {
+      return;
+    }
+    revealedMessageId.current = reservedMessageId;
+    const turn = columnElement.querySelector<HTMLElement>(
+      `[${RESERVED_TURN_ATTRIBUTE}]`,
+    );
+    if (turn) {
+      revealTurn(turn);
+    }
+  }, [columnElement, reservedMessageId, revealTurn]);
 
   // The loaded page's header from the first paint, with skeletons where the
   // read will fill in: the title and the badge row (T95).
@@ -1303,14 +1400,18 @@ export function SessionDetailPage() {
     return (
       <Shell>
         <Flex direction="column" gap="3">
-          <Alert
-            status="danger"
-            title="Could not load this session"
-            description={
-              error?.message ??
-              'kagent sent an unreadable response. The session may still exist.'
-            }
-          />
+          {error instanceof PortalSessionEndedError ? (
+            <PortalSessionEndedAlert />
+          ) : (
+            <Alert
+              status="danger"
+              title="Could not load this session"
+              description={
+                error?.message ??
+                'kagent sent an unreadable response. The session may still exist.'
+              }
+            />
+          )}
           <BackToSessions>Back to sessions</BackToSessions>
         </Flex>
       </Shell>
@@ -1333,9 +1434,10 @@ export function SessionDetailPage() {
       estimatedCostUsd={estimatedCostUsd}
       costBasis={describeCostBasis({
         tier: rateTier,
+        error: rateError,
         model: row.agentModel,
         installation: row.installation,
-        window: rateWindow,
+        windowDays: rateWindowDays,
         inputTokens: timeline.tokens.prompt,
         outputTokens: timeline.tokens.completion,
         unpricedTokens:
@@ -1483,6 +1585,7 @@ export function SessionDetailPage() {
         ref={setDockElement}
         className={classes.bottomDock}
         data-testid="session-dock"
+        {...{ [END_CHROME_ATTRIBUTE]: '' }}
       >
         <ChatGptConnectDialog
           installation={installation}
@@ -1532,6 +1635,12 @@ export function SessionDetailPage() {
             }
           />
         )}
+        {/* A send, an answer or a Stop the portal refused the session token
+            for: nothing reached kagent, and a sign-in is the way on. Said
+            once, above the box, instead of beside it in the backend's words. */}
+        {[send.error, confirmation.error, cancellation.error].some(
+          failure => failure instanceof PortalSessionEndedError,
+        ) && <PortalSessionEndedAlert />}
         {/* A session that cannot go on takes no more messages, so it shows no
             box: the notice above is the way on. The chip keeps the session's
             totals in reach without one. */}
@@ -1546,7 +1655,7 @@ export function SessionDetailPage() {
                   agentName={row.agentName || undefined}
                   connectorOf={connectorOf}
                   isAnswering={confirmation.isAnswering}
-                  error={confirmation.error?.message}
+                  error={shownMessage(confirmation.error)}
                   restore={confirmation.failed}
                   isUserScoped={isUserScoped}
                   onAnswer={answer => {
@@ -1579,7 +1688,9 @@ export function SessionDetailPage() {
             // A conflict has its own notice above; the composer must not also
             // report it as a generic failure. Nor must a lost runtime: the
             // notice carries the runtime's words as its evidence.
-            error={isConflict || runtimeLoss ? undefined : send.error?.message}
+            error={
+              isConflict || runtimeLoss ? undefined : shownMessage(send.error)
+            }
             // A failed Stop is reported as one, not as a message that was not
             // sent — the turn it aimed at is still running.
             stopError={describeStopFailure(cancellation.error)}
@@ -1600,10 +1711,14 @@ export function SessionDetailPage() {
             onSubmit={(text, images) => {
               // Errors are surfaced through the hook's `error`, which the composer
               // renders beside the text it hands back.
-              send.sendMessage(text, images).catch(() => {});
-              // The optimistic echo appears at the very bottom; go where it is,
-              // and follow the reply from there.
-              stickToEnd();
+              // The optimistic echo's turn goes to the top of the view once
+              // it renders (see `reservedMessageId`); a failed send drops
+              // its room with the echo.
+              revealNextSend.current = true;
+              send.sendMessage(text, images).catch(() => {
+                revealNextSend.current = false;
+                setReservedMessageId(undefined);
+              });
             }}
           />
         )}
@@ -1815,13 +1930,16 @@ export function SessionDetailPage() {
         <Flex
           ref={setColumnElement}
           direction="column"
-          gap="4"
+          gap={COLUMN_GAP}
           className={classes.column}
         >
           {/* A refresh that failed after the page had loaded. Shown rather than
             thrown: the conversation on screen is still real, it has just stopped
             keeping up, and the user needs to know which of the two it is. */}
-          {error && (
+          {error instanceof PortalSessionEndedError && (
+            <PortalSessionEndedAlert />
+          )}
+          {error && !(error instanceof PortalSessionEndedError) && (
             <Alert
               status="warning"
               title="This session may be out of date"
@@ -1841,7 +1959,7 @@ export function SessionDetailPage() {
             <SessionTimeline
               timeline={shownTimeline}
               agentName={row.agentName}
-              egressRemedy={egressRemedy}
+              egressRemedyFor={egressRemedyFor}
               agentAvatarUrl={avatarUrl}
               isAgentWorking={showWorking}
               streamLost={streamLost}
@@ -1859,9 +1977,15 @@ export function SessionDetailPage() {
               isAwaitingPerson={Boolean(
                 state && AWAITING_INPUT_STATES.has(state.key),
               )}
+              reservedMessageId={reservedMessageId}
             />
           )}
 
+          <JumpToBottom
+            isShown={hasNewBelow}
+            onJump={jumpToBottom}
+            dock={dockElement}
+          />
           {bottomControl}
         </Flex>
       </ConnectorSignInLinks>

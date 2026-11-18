@@ -12,6 +12,8 @@ export type ModelUsage = {
   /** The gateway's figures for the model; set only while `state` is ready. */
   slice: ModelUsageSlice | undefined;
   state: ModelUsageState;
+  /** Why `state` is `error`, when a query failed. */
+  error?: Error | null;
 };
 
 /**
@@ -46,5 +48,9 @@ export function useModelUsage(
   }
   // Without a model ID nothing in the gateway's figures can match it: its
   // empty slice would read as every agent spending nothing on it.
-  return { slice: state === 'ready' && model ? slice : undefined, state };
+  return {
+    slice: state === 'ready' && model ? slice : undefined,
+    state,
+    error: gateway.error,
+  };
 }

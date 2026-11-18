@@ -14,10 +14,20 @@ import {
   setInstallationScope,
 } from './installationScopeStore';
 import { useInstallationScopeUrlSync } from './useInstallationScopeUrlSync';
+import { SharedInstallationScope } from './SharedInstallationScope';
 
 let navigate: ReturnType<typeof useNavigate>;
 
+/** The sync below Customize's shared scope, as its selector mounts it. */
 function Probe() {
+  return (
+    <SharedInstallationScope>
+      <SyncProbe />
+    </SharedInstallationScope>
+  );
+}
+
+function SyncProbe() {
   useInstallationScopeUrlSync();
   const { pathname, search, state } = useLocation();
   navigate = useNavigate();
@@ -177,5 +187,33 @@ describe('useInstallationScopeUrlSync', () => {
       scope: 'wombat',
       restored: false,
     });
+  });
+
+  it("syncs Usage's own scope, leaving Customize's alone", () => {
+    setInstallationScope('golem');
+    render(
+      <MemoryRouter initialEntries={['/usage?installation=wombat']}>
+        <SharedInstallationScope id="usage">
+          <SyncProbe />
+        </SharedInstallationScope>
+      </MemoryRouter>,
+    );
+
+    expect(getInstallationScopeSnapshot('usage').scope).toBe('wombat');
+    expect(getInstallationScopeSnapshot().scope).toBe('golem');
+    expect(window.localStorage.getItem(INSTALLATION_SCOPE_STORAGE_KEY)).toBe(
+      'golem',
+    );
+  });
+
+  it('does nothing outside a SharedInstallationScope', () => {
+    render(
+      <MemoryRouter initialEntries={['/sessions?installation=wombat']}>
+        <SyncProbe />
+      </MemoryRouter>,
+    );
+
+    expect(getInstallationScopeSnapshot().scope).toBe(ALL_INSTALLATIONS);
+    expect(url()).toBe('/sessions?installation=wombat');
   });
 });

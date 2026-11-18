@@ -17,14 +17,6 @@ import {
 
 const REPO = 'https://github.com/giantswarm/skills';
 
-let mockRepositories: string[] = [];
-jest.mock('@giantswarm/backstage-plugin-gs-react', () => ({
-  useSignedInConfig: () => ({
-    config: { getOptionalStringArray: () => mockRepositories },
-    isLoading: false,
-  }),
-}));
-
 function skill(name: string) {
   return {
     name,
@@ -57,6 +49,9 @@ const loaded: SkillCatalog = {
   hasRepositories: true,
   failedRepositories: [],
   truncated: false,
+  privateRepositories: new Set(),
+  proposalTargets: [REPO],
+  unproposableRepositories: [],
 };
 
 /**
@@ -86,9 +81,11 @@ function renderPanel(search = '') {
 function listedRows(): HTMLElement[] {
   // The prototype's presentation: a grid of cards, no table.
   expect(screen.queryByRole('grid')).not.toBeInTheDocument();
-  return within(screen.getByRole('list', { name: 'Skills' })).getAllByRole(
-    'listitem',
-  );
+  const list = screen.getByRole('list', { name: 'Skills' });
+  // The cards only, not the items of a card's own tag list.
+  return within(list)
+    .getAllByRole('listitem')
+    .filter(item => item.parentElement === list);
 }
 
 describe('CustomizeSkillsPanel', () => {
@@ -96,7 +93,6 @@ describe('CustomizeSkillsPanel', () => {
     mockAgentsLoading = false;
     mockCatalog = loaded;
     mockAgentSkillIds = [`${REPO}#triage`];
-    mockRepositories = [REPO];
   });
 
   it('lists the most used skills first, with their source and usage', async () => {
@@ -218,7 +214,6 @@ describe('CustomizeSkillsPanel at 3 skills and at 300 (T39)', () => {
 
   beforeEach(() => {
     mockAgentSkillIds = [];
-    mockRepositories = [REPO];
   });
 
   it('shows a short catalog whole, with no paging and no ranking note', async () => {
@@ -283,7 +278,6 @@ describe('CustomizeSkillsPanel at phone width (T22 P3)', () => {
     mockCatalog = loaded;
     mockAgentsLoading = false;
     mockAgentSkillIds = [];
-    mockRepositories = [REPO];
     layout = mockPhoneLayout();
   });
   afterEach(() => layout.restore());
@@ -321,7 +315,6 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
   beforeEach(() => {
     mockCatalog = loaded;
     mockAgentSkillIds = [];
-    mockRepositories = [REPO];
   });
 
   it('links each skill card to its detail page', async () => {
@@ -370,8 +363,12 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
   });
 
   it('offers no Add skill without a configured repository', async () => {
-    mockRepositories = [];
-    mockCatalog = { ...loaded, skills: [], hasRepositories: false };
+    mockCatalog = {
+      ...loaded,
+      skills: [],
+      hasRepositories: false,
+      proposalTargets: [],
+    };
     await renderPanel();
 
     expect(
@@ -380,7 +377,11 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
   });
 
   it('offers no Add skill when no configured repository is on github.com, and says why', async () => {
-    mockRepositories = ['http://gitea.lab.local/lab/skills'];
+    mockCatalog = {
+      ...loaded,
+      proposalTargets: [],
+      unproposableRepositories: ['http://gitea.lab.local/lab/skills'],
+    };
     await renderPanel();
 
     expect(
@@ -393,8 +394,50 @@ describe('CustomizeSkillsPanel links and Add skill', () => {
     ).toBeInTheDocument();
   });
 
+  it('offers no Add skill when skill-manager lists only read-only sources', async () => {
+    mockCatalog = { ...loaded, proposalTargets: [] };
+    await renderPanel();
+
+    expect(
+      screen.getByText('No skill repository takes new skills here.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /Add skill/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        /Adding skills here needs a github\.com skill repository/,
+      ),
+    ).not.toBeInTheDocument();
+  });
+
+  it('names only the read error when the catalog could not be read', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [],
+      error: new Error(
+        'MCP error -32000: dial tcp 10.96.0.12:8080: connect: connection refused',
+      ),
+      proposalTargets: [],
+    };
+    await renderPanel();
+
+    expect(
+      screen.getByText('Could not read the skill repositories'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Try again in a moment.')).toBeInTheDocument();
+    expect(screen.queryByText(/connection refused/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('No skill repository takes new skills here.'),
+    ).not.toBeInTheDocument();
+  });
+
   it('offers Add skill when one configured repository is on github.com', async () => {
-    mockRepositories = ['http://gitea.lab.local/lab/skills', REPO];
+    mockCatalog = {
+      ...loaded,
+      proposalTargets: [REPO],
+      unproposableRepositories: ['http://gitea.lab.local/lab/skills'],
+    };
     await renderPanel();
 
     expect(screen.getByRole('link', { name: /Add skill/ })).toBeInTheDocument();
@@ -438,10 +481,9 @@ const cardNames = () =>
 describe('CustomizeSkillsPanel filters (T49, T64)', () => {
   beforeEach(() => {
     mockAgentsLoading = false;
-    mockRepositories = [REPO];
   });
 
-  it('offers Source and Usage over three skills of one repository nobody uses', async () => {
+  it('offers no filters over three skills of one repository nobody uses', async () => {
     mockCatalog = {
       ...loaded,
       skills: [skill('a'), skill('b'), skill('c')],
@@ -450,10 +492,10 @@ describe('CustomizeSkillsPanel filters (T49, T64)', () => {
     await renderPanel();
 
     expect(listedRows()).toHaveLength(3);
-    // Always there, if only with one option each (T64).
-    expect(filterDropdown('source')).toHaveTextContent('SourceAll');
-    expect(await filterOptions('source')).toEqual(['giantswarm/skills 3']);
-    expect(await filterOptions('usage')).toEqual(['Not used 3']);
+    // One source and one usage for all: nothing to choose.
+    expect(
+      screen.queryByRole('group', { name: 'Filters' }),
+    ).not.toBeInTheDocument();
     // Add skill keeps its place.
     expect(screen.getByRole('link', { name: /Add skill/ })).toBeInTheDocument();
   });
@@ -497,6 +539,56 @@ describe('CustomizeSkillsPanel filters (T49, T64)', () => {
     await pickFilter('source', 'acme/agent-skills 1');
     expect(cardNames().sort()).toEqual(['notes', 'summarise']);
     expect(filterDropdown('source')).toHaveTextContent('Source 2');
+  });
+
+  it('filters by tag, once a skill has one, and searches tags', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [
+        { ...skill('summarise'), tags: ['notes', 'util'] },
+        { ...skill('triage'), tags: ['ops'] },
+        skill('plain'),
+      ],
+    };
+    await renderPanel();
+
+    expect(await filterOptions('tags')).toEqual(['notes 1', 'ops 1', 'util 1']);
+    await pickFilter('tags', 'ops 1');
+    expect(cardNames()).toEqual(['triage']);
+  });
+
+  it('offers no tags filter when no skill has tags', async () => {
+    mockCatalog = loaded;
+    await renderPanel();
+
+    expect(
+      screen.queryByRole('button', { name: /Filter by tags/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the first three tags on a card, then +N', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [{ ...skill('triage'), tags: ['a', 'b', 'c', 'd', 'e'] }],
+    };
+    await renderPanel();
+
+    const tags = within(listedRows()[0]).getByRole('list', { name: 'Tags' });
+    expect(
+      within(tags)
+        .getAllByRole('listitem')
+        .map(i => i.textContent),
+    ).toEqual(['a', 'b', 'c', '+22 more tags']);
+  });
+
+  it('matches a skill by its tag in the search', async () => {
+    mockCatalog = {
+      ...loaded,
+      skills: [{ ...skill('triage'), tags: ['on-call'] }, skill('summarise')],
+    };
+    await renderPanel('on-call');
+
+    expect(cardNames()).toEqual(['triage']);
   });
 
   it('offers no usage filter while the agents are still read', async () => {

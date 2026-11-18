@@ -33,9 +33,11 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
         skills: createRouteRef(),
         models: createRouteRef(),
         profile: createRouteRef(),
+        organizations: createRouteRef(),
       },
     },
     RecentSessions: () => null,
+    useOrganizationsAvailable: () => false,
   };
 });
 
@@ -52,6 +54,8 @@ jest.mock('@giantswarm/backstage-plugin-muster', () => {
 });
 
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
+  gsAuthProvidersApiRef: { id: 'plugin.gs.auth-providers' },
+  useMainSessionEnd: () => undefined,
   ClusterAccessConnector: () => null,
   ClusterAccessStatusSidebarItem: () => (
     <div data-testid="cluster-access-item" />

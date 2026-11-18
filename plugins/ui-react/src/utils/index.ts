@@ -3,6 +3,7 @@ export * from './tableHelpers';
 export { countNoun } from './countNoun';
 export { formatVersion } from './formatVersion';
 export { isTableColumnHidden } from './isTableColumnHidden';
+export { tableRowId } from './tableRowId';
 export { joinNames, groupNames, NAMED_IN_SENTENCE } from './joinNames';
 export type { JoinNamesOptions, NameGroup } from './joinNames';
 export { passwordManagerIgnoreProps } from './passwordManagerProps';
@@ -28,6 +29,9 @@ export { createMarkdownLinkResolver } from './resolveMarkdownLink';
 export { isAwaitingData } from './isAwaitingData';
 export { liveRouterState } from './liveRouterState';
 export { isWebURL, safeWebURL } from './webURL';
+export { isExternalHref } from './isExternalHref';
+export { lazyApi } from './lazyApi';
+export type { AsyncApi } from './lazyApi';
 export {
   PHONE_MAX_WIDTH,
   PHONE_QUERY,
@@ -41,3 +45,14 @@ export {
   usePhoneLayout,
   useTouchInput,
 } from './breakpoints';
+export {
+  causeChain,
+  isPermanentReadError,
+  pollingQueryOptions,
+} from './polling';
+export type {
+  PollingQuery,
+  PollingQueryOptions,
+  PollingRuleOptions,
+  PollInterval,
+} from './polling';

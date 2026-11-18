@@ -2,6 +2,10 @@ import { screen, within } from '@testing-library/react';
 import { renderInTestApp, TestApiProvider } from '@backstage/test-utils';
 import { AuthStatusResponse, MusterApi, musterApiRef } from '../../apis';
 import { ProviderAppConnections } from './ProviderAppConnections';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 function api(response: AuthStatusResponse) {
   return {
@@ -26,6 +30,7 @@ describe('ProviderAppConnections', () => {
               ],
             }),
           ],
+          [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
         ]}
       >
         <ProviderAppConnections installation="lab-a">
@@ -49,7 +54,10 @@ describe('ProviderAppConnections', () => {
   it('renders nothing while muster lists no App', async () => {
     await renderInTestApp(
       <TestApiProvider
-        apis={[[musterApiRef, api({ servers: [], providerApps: [] })]]}
+        apis={[
+          [musterApiRef, api({ servers: [], providerApps: [] })],
+          [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+        ]}
       >
         <ProviderAppConnections installation="lab-b">
           {list => <section aria-label="Wrapper">{list}</section>}
