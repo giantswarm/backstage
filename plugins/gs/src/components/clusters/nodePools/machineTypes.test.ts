@@ -49,7 +49,7 @@ describe('azureMachineTypeCatalog', () => {
     });
   });
 
-  it('counts the available vCPUs of a constrained-vCPU size', () => {
+  it('counts the available CPU of a constrained-CPU size', () => {
     const catalog = azureMachineTypeCatalog({
       'Standard_E4-2s_v3': {
         capabilities: [
@@ -102,7 +102,7 @@ describe('describeMachineType', () => {
         size: { vcpus: 2, memoryBytes: 0.5 * GIB },
         architectures: ['arm64'],
       }),
-    ).toBe('2 vCPUs · 0.5 GiB RAM · arm64');
+    ).toBe('2 CPU · 0.5 GiB RAM · arm64');
   });
 
   it('is undefined for an unknown machine type', () => {

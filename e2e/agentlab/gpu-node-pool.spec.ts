@@ -337,13 +337,13 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
     // The first dry run, with the chart's defaults: every size, priced, every one preselected.
     expect(dryRuns(calls)[0].arguments).not.toHaveProperty('sizes');
     await expect(picker).toContainText(
-      'g6.xlarge — 3 vCPU / 11.9 GiB usable, 1 × 24 GiB GPU — $1.01/h',
+      'g6.xlarge — 3 CPU / 11.9 GiB usable, 1 × 24 GiB GPU — $1.01/h',
     );
     await expect(picker).toContainText(
-      'g6.2xlarge — 6.5 vCPU / 26.9 GiB usable, 1 × 24 GiB GPU — $1.22/h',
+      'g6.2xlarge — 6.5 CPU / 26.9 GiB usable, 1 × 24 GiB GPU — $1.22/h',
     );
     await expect(picker).toContainText(
-      'g6.4xlarge — 14.5 vCPU / 58.4 GiB usable, 1 × 24 GiB GPU — $1.65/h',
+      'g6.4xlarge — 14.5 CPU / 58.4 GiB usable, 1 × 24 GiB GPU — $1.65/h',
     );
     for (const size of [/g6\.xlarge/, /g6\.2xlarge/, /g6\.4xlarge/]) {
       await expect(picker.getByRole('checkbox', { name: size })).toBeChecked();
@@ -419,7 +419,7 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
     });
     const chosen = page.getByTestId('chosen-sizes');
     await expect(chosen).toContainText(
-      'g6.2xlarge — 6.5 vCPU / 26.9 GiB usable, 1 × 24 GiB GPU — $1.22/h',
+      'g6.2xlarge — 6.5 CPU / 26.9 GiB usable, 1 × 24 GiB GPU — $1.22/h',
     );
     await expect(chosen).not.toContainText('g6.xlarge —');
     await expect(chosen).toContainText(
@@ -429,7 +429,7 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
     await expect(fit).toContainText('Qwen3 4B Instruct');
     await expect(fit).toContainText('Qwen/Qwen3-4B-Instruct-2507');
     await expect(fit).toContainText(
-      '4 vCPU / 12Gi, 1 GPU, 9.6 GiB of GPU memory',
+      '4 CPU / 12Gi, 1 GPU, 9.6 GiB of GPU memory',
     );
     await expect(fit.getByText('✔ 2xlarge')).toHaveCount(2);
     await expect(fit.getByText('g6.2xlarge — $1.22/h')).toHaveCount(2);
@@ -594,7 +594,7 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
       page.getByRole('button', { name: /I want to serve/ }),
     ).toBeDisabled();
     await expect(page.getByTestId('sizes-picker')).toContainText(
-      'g6.xlarge — 3 vCPU / 11.9 GiB usable, 1 × 24 GiB GPU — $1.01/h',
+      'g6.xlarge — 3 CPU / 11.9 GiB usable, 1 × 24 GiB GPU — $1.01/h',
     );
     await snapshot(page, 'gpu-pool-form-no-presets');
 

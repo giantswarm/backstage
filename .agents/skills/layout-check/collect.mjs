@@ -174,7 +174,8 @@ export function collectLayout(options) {
    * each one's inner box and how it treats overflow on each axis. Only the
    * containing-block chain counts: an absolutely positioned element escapes
    * an overflow: hidden ancestor that is not its containing block, and a
-   * fixed one escapes them all.
+   * fixed one escapes them all. An inline box is no clipper: overflow does
+   * not apply to it.
    */
   const clipChain = memo(from => {
     const chain = [];
@@ -182,7 +183,11 @@ export function collectLayout(options) {
     for (let e = from; e && e !== doc && e !== body; e = e.parentElement) {
       const s = style(e);
       if (!needsContainer || containsAbsolute(e)) {
-        if (s.overflowX !== 'visible' || s.overflowY !== 'visible') {
+        // Overflow does not apply to an inline box (MUI's `noWrap` text in
+        // a span, say): it cuts nothing, and its zero client size would read
+        // as cutting everything.
+        const clips = s.display !== 'inline' && s.display !== 'contents';
+        if (clips && (s.overflowX !== 'visible' || s.overflowY !== 'visible')) {
           const r = rectOf(e);
           chain.push({
             el: e,

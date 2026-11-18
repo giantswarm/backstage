@@ -53,7 +53,8 @@ export const MAX_NAME_LENGTH = 63;
 /** A generated name and the display name made of the same words. */
 export type FixtureName = { name: string; displayName: string };
 
-function capitalize(word: string): string {
+/** `word` with its first letter in upper case. */
+export function capitalize(word: string): string {
   return word.charAt(0).toUpperCase() + word.slice(1);
 }
 

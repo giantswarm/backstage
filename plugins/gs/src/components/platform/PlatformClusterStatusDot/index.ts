@@ -1,0 +1,1 @@
+export { PlatformClusterStatusDot } from './PlatformClusterStatusDot';

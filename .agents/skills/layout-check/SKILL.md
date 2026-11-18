@@ -27,6 +27,7 @@ the full Chromium renders on the GPU but was measured no faster (#3563).
 | `collect.test.mjs` | Tests of the measurement on small static pages in Playwright's Chromium (what a cell's content takes, text squeezed to no width, tables wider than their box): `node --test .agents/skills/layout-check/collect.test.mjs`. They need the repository's dependencies and Chromium, and skip without them, except with `LAYOUT_CHECK_BROWSER=required`, which makes a missing browser fail them: CI's skill-tests workflow runs them so in a job of their own that installs both. |
 | `specs/agent-platform.mjs` | Every Agent Platform and muster page of the shell, with the states that broke before. |
 | `specs/plans.mjs` | Hive's pages of the plans plugin (Now, History, Plans and a plan's review, Knowledge). Start fixture mode with `--enable page:plans --enable api:plans`, which turns Hive on. |
+| `specs/roadmap.mjs` | The Roadmap pages (Hive's Roadmap tab). Start fixture mode with `--enable page:plans --enable api:plans --enable page:roadmap --enable api:roadmap`. |
 
 Commands run from the repo root; `L=.agents/skills/layout-check`.
 

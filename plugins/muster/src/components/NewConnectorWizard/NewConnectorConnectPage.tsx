@@ -18,6 +18,7 @@ import { useConnectorWizardLinks } from '../NewMcpServerEditGate';
 import { useToolTakesArgument } from '../shared/hooks';
 import { TextAreaField } from '../NewMcpServerPage/TextAreaField';
 import { useTransportDetection } from '../NewMcpServerPage/useTransportDetection';
+import { musterOwnServer } from '../../lib/serverGrouping';
 import { ConnectorWizardFrame } from './ConnectorWizardFrame';
 
 const useStyles = makeStyles({
@@ -178,11 +179,11 @@ export function NewConnectorConnectPage() {
     'displayName',
     { enabled: Boolean(registeredName) },
   );
-  const family = registeredName
-    ? mcpServers
-        .find(server => server.getName() === registeredName)
-        ?.getFamily()
-    : undefined;
+  const family = musterOwnServer(
+    mcpServers,
+    registeredInstallation,
+    registeredName,
+  )?.getFamily();
   // The tags the installation's connectors already use, offered while typing:
   // their own, not the read-only tool-group tag (`connectorTags`).
   const knownTags = useMemo(

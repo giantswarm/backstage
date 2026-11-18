@@ -65,7 +65,14 @@ export {
 } from './lib/toolAnnotations';
 export type { ToolEffect } from './lib/toolAnnotations';
 export { serverPageResolver } from './lib/toolGrouping';
-export { connectorAuthName } from './lib/connectorAccess';
+export {
+  connectorAuthName,
+  connectorToolNamePrefix,
+  isOrganizationServerKey,
+} from './lib/connectorKey';
+export { useMusterKeyedServers } from './hooks/useMusterKeyedServers';
+export { serverListRows } from './lib/serverList';
+export type { ServerListRow } from './lib/serverList';
 export {
   isPermanentMusterReadError,
   musterPollingOptions,

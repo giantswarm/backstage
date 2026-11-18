@@ -1,3 +1,4 @@
+import type { PaletteConnector } from './usePaletteConnectors';
 import type { ReactNode } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
@@ -106,7 +107,7 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
 }));
 
 let mockConnectors: {
-  rows: { page: string; displayName: string; installation: string }[];
+  rows: PaletteConnector[];
   isLoading: boolean;
 };
 jest.mock('./usePaletteConnectors', () => ({
@@ -256,6 +257,7 @@ beforeEach(() => {
   mockConnectors = {
     rows: [
       {
+        key: 'server:confluence',
         page: 'confluence',
         displayName: 'confluence',
         installation: 'gazelle',
@@ -628,6 +630,7 @@ describe('CommandPalette', () => {
     mockConnectors = {
       rows: [
         {
+          key: 'server:mcp-confluence',
           page: 'mcp-confluence',
           displayName: 'Team wiki',
           installation: 'gazelle',
@@ -644,11 +647,47 @@ describe('CommandPalette', () => {
     );
   });
 
+  it('lists a connector with no page of its own without opening it', async () => {
+    mockConnectors = {
+      rows: [
+        {
+          key: 'server:org-gazelle/wiki',
+          displayName: 'Gazelle wiki',
+          installation: 'gazelle',
+        },
+        {
+          key: 'server:org-golem/wiki',
+          displayName: 'Golem wiki',
+          installation: 'gazelle',
+        },
+      ],
+      isLoading: false,
+    };
+    const input = await openPalette();
+    await userEvent.type(input, 'gazelle wiki');
+
+    const option = screen.getByRole('option', { name: /Gazelle wiki/ });
+    expect(option).toHaveAttribute('aria-disabled', 'true');
+    await userEvent.click(screen.getByText('Gazelle wiki'));
+    await userEvent.keyboard('{Enter}');
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
   it('lists a connector once per installation, each opening there', async () => {
     mockConnectors = {
       rows: [
-        { page: 'jira', displayName: 'Jira', installation: 'gazelle' },
-        { page: 'jira', displayName: 'Jira', installation: 'golem' },
+        {
+          key: 'server:jira',
+          page: 'jira',
+          displayName: 'Jira',
+          installation: 'gazelle',
+        },
+        {
+          key: 'server:jira',
+          page: 'jira',
+          displayName: 'Jira',
+          installation: 'golem',
+        },
       ],
       isLoading: false,
     };

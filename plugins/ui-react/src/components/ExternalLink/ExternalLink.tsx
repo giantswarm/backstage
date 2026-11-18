@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Link, type LinkProps } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import classNames from 'classnames';
-import { NewTabHint } from '../NewTabHint';
+import { WithNewTabHint } from '../NewTabHint';
 
 export type ExternalLinkProps = {
   href: string;
@@ -81,8 +81,7 @@ export const ExternalLink = ({
         !variant && classes.inheritFont,
       )}
     >
-      {children}
-      <NewTabHint />
+      <WithNewTabHint>{children}</WithNewTabHint>
     </Link>
   );
 };

@@ -1,5 +1,9 @@
 import { createContext, ReactNode, useContext, useMemo } from 'react';
-import { useClusterFromUrl } from './useClusterFromUrl';
+import {
+  type ClusterAddress,
+  useCluster,
+  useClusterFromUrl,
+} from './useClusterFromUrl';
 import {
   App,
   Cluster,
@@ -45,7 +49,36 @@ export interface AsyncClusterProviderProps {
  */
 export const AsyncClusterProvider = ({
   children,
-}: AsyncClusterProviderProps) => {
+}: AsyncClusterProviderProps) => (
+  <ClusterStateProvider state={useClusterFromUrl()}>
+    {children}
+  </ClusterStateProvider>
+);
+
+/**
+ * Provides the cluster at `address`, read as the classic page reads it, to
+ * `useCurrentCluster` and `useAsyncCluster` below: the shell's cluster page
+ * names its cluster through its own route.
+ */
+export const ClusterProvider = ({
+  address,
+  children,
+}: {
+  address: ClusterAddress;
+  children: ReactNode;
+}) => (
+  <ClusterStateProvider state={useCluster(address)}>
+    {children}
+  </ClusterStateProvider>
+);
+
+function ClusterStateProvider({
+  state,
+  children,
+}: {
+  state: ClusterLoadingStatus;
+  children: ReactNode;
+}) {
   const {
     installationName,
     cluster,
@@ -56,7 +89,7 @@ export const AsyncClusterProvider = ({
     notFound,
     error,
     refreshError,
-  } = useClusterFromUrl();
+  } = state;
 
   const value = useMemo(
     () => ({
@@ -86,7 +119,7 @@ export const AsyncClusterProvider = ({
   return (
     <ClusterContext.Provider value={value}>{children}</ClusterContext.Provider>
   );
-};
+}
 
 /**
  * Grab the current cluster from the context, throws if the cluster has not yet been loaded

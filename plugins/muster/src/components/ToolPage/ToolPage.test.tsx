@@ -44,7 +44,7 @@ jest.mock('../MusterInstanceProvider', () => ({
         {
           apiVersion: 'muster.giantswarm.io/v1alpha1',
           kind: 'MCPServer',
-          metadata: { name: 'aws-root', namespace: 'muster' },
+          metadata: { name: 'aws-root', namespace: 'agent-platform' },
           spec: { type: 'streamable-http' },
           status: { state: 'Connected' },
         } as never,
@@ -54,7 +54,7 @@ jest.mock('../MusterInstanceProvider', () => ({
         {
           apiVersion: 'muster.giantswarm.io/v1alpha1',
           kind: 'MCPServer',
-          metadata: { name: 'jira', namespace: 'muster' },
+          metadata: { name: 'jira', namespace: 'agent-platform' },
           // Each person signs in with their own account: calls run as them.
           spec: { type: 'streamable-http', auth: { type: 'oauth' } },
           status: { state: 'Connected' },

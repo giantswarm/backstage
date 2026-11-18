@@ -111,7 +111,7 @@ export function vsphereMachineSize(
   );
 }
 
-/** E.g. "4 vCPUs · 16 GiB RAM · arm64", for a machine type's tooltip. */
+/** E.g. "4 CPU · 16 GiB RAM · arm64", for a machine type's tooltip. */
 export function describeMachineType(
   info: MachineTypeInfo | undefined,
 ): string | undefined {
@@ -122,7 +122,7 @@ export function describeMachineType(
   const parts: string[] = [];
   if (info.size) {
     const memoryGiB = info.size.memoryBytes / BYTES_PER_GIB;
-    parts.push(`${info.size.vcpus} vCPUs`);
+    parts.push(`${info.size.vcpus} CPU`);
     parts.push(
       `${memoryGiB % 1 === 0 ? memoryGiB : memoryGiB.toFixed(1)} GiB RAM`,
     );

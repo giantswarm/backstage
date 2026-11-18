@@ -19,6 +19,7 @@ import { MusterInstallationInfo } from '../../apis/types';
 import { selectMusterInstallations } from './selectInstallations';
 import { useMusterInstallations } from './useMusterInstallations';
 import { useMusterResources } from './useMusterResources';
+import { useMusterKeyedServers } from '../../hooks/useMusterKeyedServers';
 
 // A light background refetch so the live health reads (per-MC pills, the
 // healthy count) don't drift silently from the CRD between page loads.
@@ -259,7 +260,7 @@ export const MusterInstanceProvider = ({
   const clusters = activeInstallation ? [activeInstallation] : [];
 
   const {
-    resources: mcpServers,
+    resources: mcpServerResources,
     errors: mcpServerErrors,
     isLoading: isLoadingServers,
     retry: retryServers,
@@ -267,6 +268,9 @@ export const MusterInstanceProvider = ({
   } = useMusterResources(clusters, MCPServer, {
     refetchInterval: HEALTH_REFETCH_INTERVAL_MS,
   });
+
+  // Each with muster's key for it, which every lookup and action names it by.
+  const mcpServers = useMusterKeyedServers(mcpServerResources);
 
   const {
     resources: workflows,

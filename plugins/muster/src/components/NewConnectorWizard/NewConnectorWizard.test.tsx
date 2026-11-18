@@ -1453,7 +1453,7 @@ describe('shell connector wizard', () => {
         {
           apiVersion: 'muster.giantswarm.io/v1alpha1',
           kind: 'MCPServer',
-          metadata: { name: 'jira', namespace: 'muster' },
+          metadata: { name: 'jira', namespace: 'agent-platform' },
           spec: {
             type: 'streamable-http',
             url: 'https://jira.example.com/mcp',
@@ -1761,7 +1761,7 @@ describe('shell connector wizard', () => {
           {
             apiVersion: 'muster.giantswarm.io/v1alpha1',
             kind: 'MCPServer',
-            metadata: { name: 'jira', namespace: 'muster' },
+            metadata: { name: 'jira', namespace: 'agent-platform' },
             spec: {
               type: 'streamable-http',
               url: 'https://jira.example.com/mcp',
