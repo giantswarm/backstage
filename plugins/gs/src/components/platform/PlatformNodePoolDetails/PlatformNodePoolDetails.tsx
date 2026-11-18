@@ -1,4 +1,5 @@
 import { Flex } from '@backstage/ui';
+import { makeStyles } from '@material-ui/core';
 import type { KubeObject } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   type Fact,
@@ -11,6 +12,20 @@ import { ASGNodePoolConfiguration } from '../../clusters/cluster-details/Cluster
 import { AzureNodePoolConfiguration } from '../../clusters/cluster-details/ClusterNodePools/AzureNodePoolConfiguration';
 import { NodePoolConfiguration } from '../../clusters/cluster-details/ClusterNodePools/NodePoolConfiguration';
 import type { PlatformNodePool } from '../utils/nodePools';
+
+const useStyles = makeStyles({
+  // The cards on the page's surface with a border, as the design draws
+  // them: on the fold-out's own surface bui's cards take the next shade,
+  // which the chips and bar tracks inside share, so they vanished.
+  cards: {
+    '& .bui-Card': {
+      backgroundColor: 'var(--bui-bg-app)',
+      border: '1px solid var(--bui-border-1)',
+      borderRadius: 12,
+      boxShadow: 'none',
+    },
+  },
+});
 
 /** `<namespace>/<name>` of a resource, in monospace. */
 function resourceFact(
@@ -89,13 +104,16 @@ export function PlatformNodePoolDetails({
   installationName,
   clusterName,
 }: PlatformNodePoolDetailsProps) {
+  const classes = useStyles();
   if (pool.kind === 'karpenter') {
     return (
-      <KarpenterDetails
-        pool={pool}
-        installationName={installationName}
-        clusterName={clusterName}
-      />
+      <div className={classes.cards}>
+        <KarpenterDetails
+          pool={pool}
+          installationName={installationName}
+          clusterName={clusterName}
+        />
+      </div>
     );
   }
   const {
@@ -105,7 +123,7 @@ export function PlatformNodePoolDetails({
     azureMachineTemplate,
   } = pool.resources;
   return (
-    <Flex direction="column" gap="4">
+    <Flex direction="column" gap="4" className={classes.cards}>
       {machinePool && (
         <ASGNodePoolConfiguration
           machinePool={machinePool}

@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { Flex, Grid, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { KarpenterMachinePool } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -43,9 +44,33 @@ const useStyles = makeStyles({
     fontSize: 'var(--bui-font-size-2)',
     lineHeight: 1.5,
     color: 'var(--bui-fg-primary)',
-    overflowWrap: 'anywhere',
+    display: 'block',
+  },
+  // A run between delimiters stays whole: `x-k8s.io` never breaks at its
+  // hyphen.
+  run: {
+    whiteSpace: 'nowrap',
   },
 });
+
+/**
+ * A taint, `key=value:Effect`, that breaks only after a `/`, `=` or `:`, so
+ * a long one wraps between its parts and never inside a word.
+ */
+function BreakAtDelimiters({ text }: { text: string }) {
+  const classes = useStyles();
+  const runs = text.split(/(?<=[/=:])/);
+  return (
+    <>
+      {runs.map((run, index) => (
+        <Fragment key={index}>
+          <span className={classes.run}>{run}</span>
+          {index < runs.length - 1 && <wbr />}
+        </Fragment>
+      ))}
+    </>
+  );
+}
 
 /**
  * `consolidateAfter: Never` disables consolidation whatever the policy says, so
@@ -222,7 +247,9 @@ export const NodePoolConfiguration = ({
         <Flex direction="column" gap="0.5">
           {taints.map((t, i) => (
             <code key={i} className={classes.code}>
-              {`${t.key}${t.value ? `=${t.value}` : ''}:${t.effect}`}
+              <BreakAtDelimiters
+                text={`${t.key}${t.value ? `=${t.value}` : ''}:${t.effect}`}
+              />
             </code>
           ))}
         </Flex>

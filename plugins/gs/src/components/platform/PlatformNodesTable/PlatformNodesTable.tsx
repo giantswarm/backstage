@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react';
-import { makeStyles, useTheme } from '@material-ui/core';
+import { makeStyles } from '@material-ui/core';
 import {
   Cell,
   Column,
@@ -9,7 +9,6 @@ import {
   Text,
 } from '@backstage/ui';
 import {
-  categoricalColors,
   formatLocalDateFull,
   getRelativeDate,
   InfoHint,
@@ -20,8 +19,10 @@ import {
 import type { NodePoolNode } from '../../hooks';
 import {
   formatResourceQuantity,
+  MEASURE_TRACK,
   shortenNodeName,
   shortenZone,
+  useMeasureColors,
 } from '../../clusters/nodePools';
 
 const formatCores = (cores: number) => formatResourceQuantity('cpu', cores);
@@ -120,7 +121,7 @@ const useStyles = makeStyles({
     minWidth: 32,
     height: 6,
     borderRadius: 3,
-    background: 'var(--bui-bg-neutral-2)',
+    background: MEASURE_TRACK,
     overflow: 'hidden',
   },
   fill: {
@@ -243,14 +244,7 @@ export function PlatformNodesTable({
   nodes,
   isLoading,
 }: PlatformNodesTableProps) {
-  const theme = useTheme();
-  const palette = categoricalColors(theme);
-  // The shell's categorical palette: blue for CPU, violet for memory, aqua
-  // for pods, one hue per measure as the design gives each its own.
-  const colors = useMemo(
-    () => ({ cpu: palette[0], memory: palette[6], pods: palette[2] }),
-    [palette],
-  );
+  const colors = useMeasureColors();
   const now = useMemo(() => new Date(), []);
   const sorted = useMemo(
     () => [...nodes].sort((a, b) => a.node.localeCompare(b.node)),
