@@ -78,6 +78,17 @@ describe('McpServersRouter', () => {
     ['/customize/connectors/alpha/jira', 'Connector page', 'alpha'],
     ['/customize/connectors/alpha/jira/used-by', 'Connector page', 'alpha'],
     ['/customize/connectors/alpha/jira/tools/search', 'Tool page', 'alpha'],
+    ['/customize/connectors/alpha/-/org-x/wiki', 'Connector page', 'alpha'],
+    [
+      '/customize/connectors/alpha/-/org-x/wiki/usage',
+      'Connector page',
+      'alpha',
+    ],
+    [
+      '/customize/connectors/alpha/-/org-x/wiki/tools/x_org-x_wiki_search',
+      'Tool page',
+      'alpha',
+    ],
     ['/customize/connectors/alpha/jira/edit', 'Wizard connect', 'alpha'],
     ['/customize/connectors/alpha/jira/edit/auth', 'Wizard sign-in', 'alpha'],
     ['/customize/connectors/alpha/jira/edit/verify', 'Wizard test', 'alpha'],
@@ -98,6 +109,9 @@ describe('McpServersRouter', () => {
     ],
     // An installation alone names no page: the list.
     ['/customize/connectors/alpha', '/customize/connectors'],
+    // An organization's address without its namespace and name: the list.
+    ['/customize/connectors/alpha/-', '/customize/connectors'],
+    ['/customize/connectors/alpha/-/org-x', '/customize/connectors'],
   ])('redirects %s to its nearest valid parent', async (path, target) => {
     await renderAt(path);
     expect(await screen.findByText(`At ${target}`)).toBeInTheDocument();

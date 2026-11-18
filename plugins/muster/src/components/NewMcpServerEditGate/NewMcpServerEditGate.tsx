@@ -19,7 +19,7 @@ import {
 import { isGitOpsManaged } from '../../lib/gitops';
 import {
   connectorDisplayNameOn,
-  findServerRow,
+  organizationServersNamed,
   musterOwnServer,
 } from '../../lib/serverGrouping';
 import { connectorEditBlock } from '../ConnectorPage/connectorEdit';
@@ -126,8 +126,13 @@ export function NewMcpServerEditGate({
   const connectorsHref = useConnectorsListHref();
   // Set on the edit addresses only.
   const { server: editName, installation: editInstallation } = useParams();
-  const { activeInstallation, mcpServers, isLoading, isLoadingInstallations } =
-    useMusterInstance();
+  const {
+    activeInstallation,
+    mcpServers,
+    isLoading,
+    isLoadingInstallations,
+    isLoadingServerKeys,
+  } = useMusterInstance();
   // The address names an installation the section cannot show (muted, or
   // running no muster): the providers, pinned to it, resolved none.
   const elsewhere =
@@ -138,17 +143,19 @@ export function NewMcpServerEditGate({
     useNewMcpServerForm();
 
   // muster's own server of that name (a family member included), which the
-  // wizard edits; else an organization's whose page the name opens, which
-  // muster does not let it change.
-  const pageRow = editName
-    ? findServerRow(
+  // wizard edits; else the one organization's of that name, which muster
+  // does not let it change, once muster's keys tell the two apart.
+  const organizations = editName
+    ? organizationServersNamed(
         mcpServers.filter(s => s.cluster === editInstallation),
         editName,
       )
-    : undefined;
+    : [];
   const server =
     musterOwnServer(mcpServers, editInstallation, editName) ??
-    (pageRow?.kind === 'server' ? pageRow.server : undefined);
+    (!isLoadingServerKeys && organizations.length === 1
+      ? organizations[0]
+      : undefined);
   const gitOpsManaged = server ? isGitOpsManaged(server) : false;
   // What people call the connector; the URL keeps its resource name.
   const shownName = editName
@@ -229,7 +236,13 @@ export function NewMcpServerEditGate({
         actions={backToServers}
       />
     );
-  } else if (editName && !server && !isLoading && !isLoadingInstallations) {
+  } else if (
+    editName &&
+    !server &&
+    !isLoading &&
+    !isLoadingInstallations &&
+    !isLoadingServerKeys
+  ) {
     body = (
       <EmptyStateCard
         title="Connector not found"

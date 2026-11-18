@@ -15,6 +15,7 @@ import { MusterSubPage } from '../MusterSubPage';
 import { RouteRefRedirect } from '../RouteRefRedirect';
 import { mcpServersRouteRef } from '../../routes';
 import { ToolPage } from '../ToolPage';
+import { ORGANIZATION_CONNECTOR_SEGMENT } from '../../lib/connectorAddress';
 
 const CONTEXT =
   'The connectors of an environment are read through its Kubernetes API.';
@@ -66,6 +67,19 @@ function InstallationRoutes({ usedBy }: { usedBy?: ReactElement }) {
   return (
     <MusterSubPage context={CONTEXT} installation={installation}>
       <Routes>
+        {/* An organization's connector (`lib/connectorAddress.ts`). */}
+        <Route
+          path={`${ORGANIZATION_CONNECTOR_SEGMENT}/:namespace/:server/tools/:tool/*`}
+          element={<ToolPage />}
+        />
+        <Route
+          path={`${ORGANIZATION_CONNECTOR_SEGMENT}/:namespace/:server/*`}
+          element={<ConnectorPage usedBy={usedBy} />}
+        />
+        <Route
+          path={`${ORGANIZATION_CONNECTOR_SEGMENT}/*`}
+          element={listRedirect}
+        />
         <Route path=":server/tools/:tool/*" element={<ToolPage />} />
         <Route path=":server/edit/*">{wizardSteps}</Route>
         <Route path=":server/*" element={<ConnectorPage usedBy={usedBy} />} />
@@ -79,7 +93,9 @@ function InstallationRoutes({ usedBy }: { usedBy?: ReactElement }) {
 /**
  * Routing within the Customize screen's Connectors tab (`/customize/connectors`,
  * whose bare path is the Customize screen's own): a page per
- * connector at `<installation>/<server>` (and per tool beneath it), the
+ * connector at `<installation>/<server>`, or
+ * `<installation>/-/<namespace>/<server>` for an organization's (and per tool
+ * beneath it), the
  * registration wizard at `new[/auth|/verify]` and a connector's edit, the same
  * wizard prefilled, at `<installation>/<server>/edit[/auth|/verify]`. The
  * static `new` outranks an installation, so `new` is a reserved word here.

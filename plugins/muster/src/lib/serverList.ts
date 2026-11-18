@@ -1,15 +1,13 @@
 import { ToolSummary } from '../apis';
 import { MCPServer } from './k8s';
-import { isOrganizationServer } from './connectorKey';
 import { rowTags } from './connectorTags';
 import {
-  MUSTER_SERVER_KEY,
   ServerPageRow,
   mcpServerDisplayNames,
   partitionServers,
+  isShadowedServer,
+  serverPageKey,
   serverRowDisplayName,
-  serverRowKey,
-  singularServerPages,
 } from './serverGrouping';
 import {
   serverListKey,
@@ -33,7 +31,11 @@ export interface ServerListRow {
    * servers of one name apart) or `core`.
    */
   key: string;
-  /** The row's server page segment: a family's name, a CR's name or `muster`. */
+  /**
+   * The row's page key (`serverPageKey`, `lib/connectorAddress.ts`): a
+   * family's name, muster's own CR's name, `-/<namespace>/<name>` for an
+   * organization's or `muster`.
+   */
   id: string;
   /**
    * The row's name in the list: its `ui.giantswarm.io/display-name`, else
@@ -50,9 +52,9 @@ export interface ServerListRow {
   /** The row's tools; undefined until the catalogue is read. */
   tools?: NamedTool[];
   /**
-   * A singular server whose page segment a family of the same name (or
-   * muster, for one named `muster`, or another server of that name,
-   * `singularServerPages`) takes: its page cannot be opened.
+   * A server of muster's own whose name a family of the same name (or
+   * muster, for one named `muster`) takes (`isShadowedServer`): its page
+   * cannot be opened.
    */
   shadowed: boolean;
 }
@@ -96,26 +98,19 @@ export function serverListRows(
   );
   const prefixes = serverPrefixInfos(servers);
   const names = mcpServerDisplayNames(servers);
-  const pages = singularServerPages(servers);
   const tools = catalogue ? toolsByServerKey(catalogue, prefixes) : undefined;
 
   return rows.map(row => {
-    const id = serverRowKey(row);
+    const id = serverPageKey(row);
     const key = serverListKey(row);
-    const takenByFamily =
-      row.kind === 'server' && (families.has(id) || id === MUSTER_SERVER_KEY);
     const shadowed =
-      takenByFamily || (row.kind === 'server' && pages.get(id) !== row.server);
+      row.kind === 'server' && isShadowedServer(row.server, families);
     return {
       key,
       id,
       // muster's own server named like a family (or muster) keeps its own
-      // name, so the two read apart; an organization's reads as its display
-      // name or its key, `<namespace>/<name>`.
-      displayName:
-        takenByFamily && !isOrganizationServer(row.server)
-          ? id
-          : serverRowDisplayName(row, names),
+      // name, so the two read apart.
+      displayName: shadowed ? id : serverRowDisplayName(row, names),
       row,
       tags: rowTags(row),
       tools: tools
