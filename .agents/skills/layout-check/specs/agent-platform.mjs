@@ -208,6 +208,47 @@ export default [
     '/instances',
     '/details',
   ]),
+  // An organization's connector, at `<inst>/-/<namespace>/<name>`.
+  ...record(
+    'Organization connector',
+    '/customize/connectors',
+    '/customize/connectors/',
+    ['', '/details'],
+  ).map(p => ({ ...p, setup: openFirstOrganizationConnector(p.name) })),
+  {
+    name: 'Organization connector tool',
+    path: '/customize/connectors',
+    setup: async step => {
+      await openFirstOrganizationConnector('')(step);
+      const { page, skip } = step;
+      if (!(await shows(page.locator('a[href*="/tools/"]'), 10000))) {
+        skip('the connector shows no tools');
+      }
+      const href = await page
+        .locator('a[href*="/tools/"]')
+        .first()
+        .getAttribute('href');
+      await page.goto(new URL(href.split('?')[0], page.url()).href);
+    },
+  },
+  // An organization connector's address of its name alone, where several
+  // organizations have a connector of that name: the list of them.
+  {
+    name: 'Connectors of one name',
+    path: '/customize/connectors',
+    setup: async ({ page, skip }) => {
+      const href = await page.evaluate(() => {
+        const keys = [...document.querySelectorAll('a[href]')]
+          .map(a => a.getAttribute('href').split('?')[0])
+          .map(h => /^\/customize\/connectors\/([^/]+)\/-\/[^/]+\/([^/]+)$/.exec(h))
+          .filter(Boolean)
+          .map(([, inst, name]) => `/customize/connectors/${inst}/${name}`);
+        return keys.find((k, i) => keys.indexOf(k) !== i);
+      });
+      if (!href) skip('no two organizations share a connector name');
+      await page.goto(new URL(href, page.url()).href);
+    },
+  },
   ...['', '/run', '/usage'].map(tab => ({
     name: `Tool${tab ? ` ${tab}` : ''}`,
     path: '/customize/connectors',
@@ -290,6 +331,23 @@ function openFirstModel(name) {
       return;
     }
     await openFirst('/customize/models/', tab)(step);
+  };
+}
+
+/**
+ * The page of the first organization's connector the list links
+ * (`<inst>/-/<namespace>/<name>`), with the tab `name` ends in.
+ */
+function openFirstOrganizationConnector(name) {
+  const tab = /\/\w[\w-]*$/.exec(name)?.[0] ?? '';
+  return async ({ page, skip }) => {
+    const href = await page.evaluate(() =>
+      [...document.querySelectorAll('a[href]')]
+        .map(a => a.getAttribute('href'))
+        .find(h => /^\/customize\/connectors\/[^/]+\/-\//.test(h)),
+    );
+    if (!href) skip("no organization's connector to open");
+    await page.goto(new URL(href.split('?')[0] + tab, page.url()).href);
   };
 }
 
