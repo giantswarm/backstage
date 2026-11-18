@@ -177,8 +177,8 @@ co-author, GitHub's "Update branch", Renovate) leaves the block stale until
 the author or the triage redoes it.
 
 The manual test doesn't replace your own checks: a change to a page is still
-verified in a browser against agentlab and ships with its spec (`AGENTS.md`,
-"Test").
+measured with the [`layout-check`](../layout-check/SKILL.md) skill in fixture
+mode (`AGENTS.md`, "Fixture mode and the layout check").
 
 ## Keeping it current
 

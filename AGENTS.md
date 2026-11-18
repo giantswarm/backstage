@@ -78,12 +78,12 @@ iterating: a plugin-wide run for a one-file change costs minutes for the same
 signal. Save the plugin-wide run for a change to something shared, with call
 sites beyond the file you edited.
 
-A change to a page is verified in a browser against agentlab before the PR
-merges, and ships with the spec that proves it: `docs/development.md`,
-"End-to-end tests in a browser, against agentlab", and `e2e/agentlab/README.md`.
-The lab users are throwaway fixtures, and signing in as them, in the Dex popup
-too, is part of the verification. Only real people's accounts and real
-installations are off-limits.
+A change to a page is proven with the layout check in fixture mode before
+you ask for review: "Fixture mode and the layout check" below. The browser
+suite against agentlab is optional: `docs/development.md`, "End-to-end tests in
+a browser, against agentlab", and `e2e/agentlab/README.md`. Its lab users are
+throwaway fixtures, and signing in as them, in the Dex popup too, is fine. Only
+real people's accounts and real installations are off-limits.
 
 ### Fixture mode and the layout check
 
