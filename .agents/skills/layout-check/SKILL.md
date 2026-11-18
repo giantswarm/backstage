@@ -25,6 +25,7 @@ the full Chromium renders on the GPU but was measured no faster (#3563).
 | `rules.test.mjs` | Their tests: `node --test .agents/skills/layout-check/rules.test.mjs`. CI runs them (`.github/workflows/skill-tests.yaml`). |
 | `layout-check.test.mjs` | Tests of the command that need no browser, run the same way. |
 | `specs/agent-platform.mjs` | Every Agent Platform and muster page of the shell, with the states that broke before. |
+| `specs/roadmap.mjs` | The Roadmap pages (Hive's Roadmap tab), which need Hive turned on in fixture mode (the spec says how). |
 
 Commands run from the repo root; `L=.agents/skills/layout-check`.
 

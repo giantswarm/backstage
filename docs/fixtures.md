@@ -60,8 +60,9 @@ yarn fixtures stop
 The `fixtures` query parameter switches the data set of the Agent Platform's
 fixture APIs (muster, kagent, agent-manager's credentials, model-manager), of
 the fixture Kubernetes API and of the fixture Mimir without restarting the server: load any page
-with `?fixtures=<scenario>`. The Plans and Roadmap fixtures do not take part:
-they serve their own data in every scenario.
+with `?fixtures=<scenario>`. The Roadmap fixture switches its board too (see
+"roadmap"). The Plans fixtures do not take part: they serve their own data in
+every scenario.
 
 | Scenario     | What those fixture APIs serve                                                                                                                                                                                                                                                                                                                                                                                               |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -105,6 +106,8 @@ In `error`:
 - kagent, agent-manager's credential operations and model-manager's
   `tryModel` fail with a 500. model-manager's other calls go through muster
   and fail as muster does.
+- The Roadmap fails every call with roadmap-backend's 503 for a muster it
+  cannot reach (`meadow did not answer: the connection failed`).
 
 The plugins persist their query caches to localStorage and restore them as a
 page loads, before any fixture API answers. Each provider adds the page's
@@ -516,6 +519,29 @@ The queries are evaluated, not matched (`promql.ts`): selectors with
 A metric without fixture series answers no series, as Mimir does; so does a
 query the evaluator cannot read, with a console warning that names what it
 could not read: extend the evaluator, or the series a new page reads.
+
+### roadmap
+
+The fixture `RoadmapApi` (`roadmap.fixtures`, Hive's Roadmap tab) serves a
+board of its own, not the data set: `roadmapBoardFixtures.ts` in
+`plugins/roadmap/src/apis/` builds one per scenario, and the factory wraps
+the API with `withFixtureScenario`. Hive is off in fixture mode: turn it on
+with `--config` (see "Fixture mode"), naming `page:plans`, `api:plans`,
+`page:roadmap` and `api:roadmap` and setting `plans.fixtures` and
+`roadmap.fixtures`.
+
+| Scenario     | The board                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `base`       | Thirty items, most of them Team Bumblebee's, in every status column, with assignees, three to five sub-issues each, and a description; no comments or labels. Titles are public `giantswarm/roadmap` issues; people and figures are made up.                                                                                                                                        |
+| `empty`      | The board's fields and options, and no items: the board and the team activity show "No board items".                                                                                                                                                                                                                                                                                |
+| `many`       | 100 items in each status column of Team Bumblebee, 40 without a status, and 200 of the other teams; 60 people, a third of the items moved in the last week; each item with 100 sub-issues (GitHub's limit per issue), 100 comments and 30 labels; twelve quarters.                                                                                                                  |
+| `long-names` | The base board with every name as long as GitHub allows: titles of sub-issues and items 256 characters in whole words, logins 39, the repository's name 100, labels 50; field options (status, kind, quarter, availability) 63 in whole words, starting with the base option's words so the team activity finds its columns. The teams keep their names, which Hive's header lists. |
+| `loading`    | No call answers.                                                                                                                                                                                                                                                                                                                                                                    |
+| `error`      | Every call fails (see "Scenarios").                                                                                                                                                                                                                                                                                                                                                 |
+
+A status move changes the board until the page reloads; linking or unlinking
+a sub-issue fails. The layout check's spec for the pages is
+`.agents/skills/layout-check/specs/roadmap.mjs`.
 
 ### Objects in the Kubernetes API
 

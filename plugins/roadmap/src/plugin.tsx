@@ -79,9 +79,9 @@ const roadmapApi = ApiBlueprint.make({
           configApi.getOptionalBoolean('roadmap.fixtures')
         ) {
           return lazyApi(async () => {
-            const { RoadmapFixtureApi } =
+            const { roadmapFixtureApi } =
               await import('./apis/RoadmapFixtureApi');
-            return new RoadmapFixtureApi();
+            return roadmapFixtureApi();
           });
         }
         return new RoadmapApiClient({ discoveryApi, fetchApi, authApi });

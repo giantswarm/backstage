@@ -100,7 +100,7 @@ yarn fixtures stop     # when you are done: a frontend and a backend per checkou
 `?fixtures=<scenario>` switches the data set without a restart: `base` (the
 default), `empty`, `many`, `long-names`, `loading` and `error`. What each
 serves, and the pages that keep the base data in every scenario (Plans,
-Roadmap, Customize · Skills): `docs/fixtures.md`, "Scenarios". The tab keeps
+Customize · Skills): `docs/fixtures.md`, "Scenarios". The tab keeps
 the scenario until `?fixtures=base`.
 
 Open the portal in the chrome-devtools MCP only when it runs with `--isolated`

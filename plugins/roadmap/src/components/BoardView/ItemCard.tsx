@@ -65,6 +65,10 @@ const useStyles = makeStyles((theme: Theme) => ({
     fontSize: 12,
     color: theme.palette.text.secondary,
   },
+  // A status longer than the menu wraps rather than being cut.
+  menuItem: {
+    whiteSpace: 'normal',
+  },
   kindChip: {
     height: 20,
     fontSize: 11,
@@ -160,6 +164,7 @@ export function ItemCard(props: {
       >
         {columns.map(column => (
           <MenuItem
+            className={classes.menuItem}
             key={column}
             dense
             selected={column === status}

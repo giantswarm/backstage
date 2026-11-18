@@ -53,6 +53,10 @@ const useStyles = makeStyles((theme: Theme) => ({
     gap: theme.spacing(1),
     marginBottom: theme.spacing(1),
   },
+  // A status longer than the page ends in an ellipsis.
+  countChip: {
+    maxWidth: '100%',
+  },
   statusChip: {
     height: 20,
     fontSize: 11,
@@ -168,9 +172,11 @@ export function TeamActivityView(props: {
         {[...statusCounts.entries()].map(([status, count]) => (
           <Chip
             key={status}
+            className={classes.countChip}
             size="small"
             variant="outlined"
             label={`${status}: ${count}`}
+            title={`${status}: ${count}`}
           />
         ))}
       </Box>

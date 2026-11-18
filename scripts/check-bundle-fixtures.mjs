@@ -27,7 +27,7 @@ const MARKERS = [
     marker: 'Pods, events and logs of a workload cluster from its page',
   },
   {
-    source: 'plugins/roadmap/src/apis/RoadmapFixtureApi.ts',
+    source: 'plugins/roadmap/src/apis/roadmapBoardFixtures.ts',
     marker: 'The change is proven in the lab',
   },
   {

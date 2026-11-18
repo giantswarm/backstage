@@ -81,7 +81,8 @@ export {
   type FixtureCluster,
   type FixtureClusterPool,
 } from './clusterBuilders';
-export { hashOf } from './random';
+export { createNamer } from './names';
+export { createRandom, hashOf, type FixtureRandom } from './random';
 export {
   fixtureDataSet,
   fixtureScenario,
