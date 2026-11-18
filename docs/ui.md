@@ -77,6 +77,29 @@ you see it:
   want them to fail — worth doing on a package you are actively migrating,
   unusable repo-wide until the backlog is gone.
 
+## Text size: 12px at the smallest
+
+The smallest text in the portal is 12px: bui's `body-small`,
+`var(--bui-font-size-2)`. Smaller text is an exception, and the code says why
+in a comment next to the style, for example
+`// 10px: the axis labels of a 60px-high sparkline, which 12px would overlap.`
+
+bui sets these at 10px (`--bui-font-size-1`), and these are what to use
+instead:
+
+| Below 12px                                     | Instead                                                                                                              |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `Text` or `Link` with `variant="body-x-small"` | `variant="body-small"`, with `color="secondary"` for a caption                                                       |
+| `Badge` or `Tag` with `size="small"`           | its text at `var(--bui-font-size-2)`, as muster's `MarkerBadge` does at the small badge's height, or `size="medium"` |
+| `var(--bui-font-size-1)`                       | `var(--bui-font-size-2)`                                                                                             |
+| a px size below 12, or a rem size below 0.75   | `var(--bui-font-size-2)`                                                                                             |
+| an em size or a percentage                     | a token: `0.85em` is 12px only under 14px text, and 10.2px under 12px                                                |
+
+`FactsColumn` (`ui-react`), the facts beside a record page, holds the minimum
+for whatever its values render: it sets `--bui-font-size-1` to 12px inside the
+column. A secondary line under a value is `body-small` there anyway, so the
+code reads as it renders.
+
 ## Commits and resource names
 
 A git commit SHA is shown in 7 characters, as `git log --oneline` prints it,
