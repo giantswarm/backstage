@@ -342,6 +342,11 @@ describe('OrganizationsIndexPage', () => {
     expect(
       await screen.findByRole('row', { name: /payments/ }),
     ).toHaveAttribute('data-href', '/organizations/gazelle/org-acme/payments');
+    // The name is a link a person can see, to the same page.
+    expect(screen.getByRole('link', { name: 'payments' })).toHaveAttribute(
+      'href',
+      '/organizations/gazelle/org-acme/payments',
+    );
   });
 
   it('tells a person in no organization who can add them, in agent-manager’s words', async () => {

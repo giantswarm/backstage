@@ -7,6 +7,7 @@ import {
   PageSection,
   ShellPage,
   ShellPageFactsSkeleton,
+  usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 // eslint-disable-next-line @backstage/no-mixed-plugin-imports -- muster names the connector.
 import { useConnectorLabel } from '@giantswarm/backstage-plugin-muster';
@@ -28,6 +29,28 @@ import {
  */
 const NO_ORGANIZATION_HINT =
   'An admin of an organization adds you, or someone with the agent-platform:organizations-admin role creates one with you as its first admin.';
+
+/**
+ * On a desktop, bui's `truncate`, held to the label's width: the Link is an
+ * inline block, which otherwise grows past it with a long name. As
+ * AgentUsageList's rows.
+ */
+const NAME_ONE_LINE = { maxWidth: '100%' } as const;
+
+/**
+ * At phone width the name wraps to two lines, then an ellipsis: a phone has
+ * no hover to read the rest. As AgentUsageList's rows.
+ */
+const NAME_TWO_LINES = {
+  minWidth: 0,
+  maxWidth: '100%',
+  overflowWrap: 'anywhere',
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+  whiteSpace: 'normal',
+} as const;
 
 /** `text` with its first letter capitalized, as a sentence starts. */
 function sentence(text: string): string {
@@ -53,6 +76,7 @@ export function OrganizationsIndexPage() {
     isLoading,
   } = useOrganizationDirectory();
   const detailRoute = useRouteRef(organizationDetailRouteRef);
+  const isPhone = usePhoneLayout();
   const frame = { documentTitle: 'Organizations' };
 
   // The installations whose check failed sit behind one quiet line, under
@@ -161,7 +185,21 @@ export function OrganizationsIndexPage() {
                         .filter(Boolean)
                         .join(' · ')}
                     >
-                      {label}
+                      {/* The name is a real link, as AgentUsageList's rows
+                          have: it looks like one, and opens in a new tab.
+                          The row's own href still opens it on a press. */}
+                      {href ? (
+                        <Link
+                          href={href}
+                          truncate={isPhone ? undefined : true}
+                          title={isPhone ? undefined : label}
+                          style={isPhone ? NAME_TWO_LINES : NAME_ONE_LINE}
+                        >
+                          {label}
+                        </Link>
+                      ) : (
+                        label
+                      )}
                     </ListRow>
                   );
                 })}
