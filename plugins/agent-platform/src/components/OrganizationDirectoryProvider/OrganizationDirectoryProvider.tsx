@@ -7,6 +7,7 @@ import {
 } from '@tanstack/react-query';
 // eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Muster owns the shared installation query key.
 import {
+  installationErrorLine,
   isMusterAuthFailure,
   musterInstallationsQueryKey,
   musterServerListQueryKey,
@@ -59,6 +60,11 @@ export type OrganizationDirectoryValue = {
    */
   noneChecked: boolean;
   /**
+   * The installations muster lists that the person turned off (Profile and
+   * settings, Environments): asked nothing, and no organization source.
+   */
+  turnedOffInstallations: string[];
+  /**
    * Why it could not be learned whether `installation` serves
    * organizations, if it could not: muster's installations unread, the
    * installation not among them, or its agent-manager unreachable or
@@ -97,8 +103,10 @@ export type AgentManagerSignIn = {
  * Why an installation could not be checked for organizations:
  * - `musterSignIn`: muster refused the person's session there (no token, or
  *   one it did not take): a sign-in to Muster for the installation fixes it.
- * - `connectorSignIn`: muster answered, and its agent-manager connector
- *   wants the person's sign-in.
+ * - `portalSignIn`: the person's portal session is gone, so no token could
+ *   be made for any muster: only signing in to the portal again fixes it.
+ * - `connectorSignIn`: muster asked for the person's sign-in to its
+ *   agent-manager connector.
  * - `unreachable`: the portal knows it cannot reach the installation's
  *   muster; nothing the person does here changes that.
  * - `noAnswer`: its muster did not answer (503); it may later.
@@ -108,6 +116,7 @@ export type AgentManagerSignIn = {
  */
 export type UncheckedReason =
   | 'musterSignIn'
+  | 'portalSignIn'
   | 'connectorSignIn'
   | 'unreachable'
   | 'noAnswer'
@@ -131,6 +140,8 @@ function uncheckedMessage(
   switch (reason) {
     case 'musterSignIn':
       return `You are not signed in to Muster for ${installation}, so the portal could not check whether it serves organizations. Sign in to Muster for ${installation} on the Connectors page, then check again.`;
+    case 'portalSignIn':
+      return `Your sign-in to the portal has expired, so the portal could not check whether ${installation} serves organizations. Sign in to the portal again, then check again.`;
     case 'unreachable':
       return `The portal cannot reach Muster on ${installation}, so it could not check whether ${installation} serves organizations.`;
     case 'noAnswer':
@@ -138,9 +149,10 @@ function uncheckedMessage(
     case 'sharedIdentity':
       return `The portal reaches Muster on ${installation} without a per-user sign-in. Organizations are read as you, so they cannot be read on ${installation}.`;
     default:
-      return detail
-        ? `Could not check whether ${installation} serves organizations: ${detail}`
-        : `Could not check whether ${installation} serves organizations.`;
+      return (
+        detail ??
+        `Could not check whether ${installation} serves organizations.`
+      );
   }
 }
 
@@ -152,10 +164,13 @@ function serverListFailureReason(
   if (probedUnreachable) {
     return 'unreachable';
   }
-  if (
-    isMusterAuthFailure(error) ||
-    (error as { name?: unknown } | undefined)?.name === 'MusterTokenMintError'
-  ) {
+  // No token could be made: the portal session is gone, or the mint failed
+  // for a reason no sign-in to Muster fixes (the token broker unreachable).
+  const mint = error as { name?: unknown; reason?: unknown } | undefined;
+  if (mint?.name === 'MusterTokenMintError') {
+    return mint.reason === 'session-expired' ? 'portalSignIn' : 'failed';
+  }
+  if (isMusterAuthFailure(error)) {
     return 'musterSignIn';
   }
   if ((error as { status?: unknown } | undefined)?.status === 503) {
@@ -170,6 +185,7 @@ const EMPTY: OrganizationDirectoryValue = {
   listingError: undefined,
   uncheckedInstallations: [],
   noneChecked: false,
+  turnedOffInstallations: [],
   discoveryFailureOf: () => undefined,
   signInOf: () => undefined,
   organizationsOf: () => undefined,
@@ -280,7 +296,11 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
       noteUnchecked(
         installation,
         reason,
-        uncheckedMessage(installation, reason, error?.message),
+        uncheckedMessage(
+          installation,
+          reason,
+          installationErrorLine(installation, error),
+        ),
       );
     } else if (presence === 'sharedIdentity') {
       noteUnchecked(installation, 'sharedIdentity');
@@ -300,12 +320,14 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
   available.forEach((installation, index) => {
     const error = infos[index]?.error;
     if (error) {
+      // Only where muster asked for the sign-in: a connector that is down
+      // or not registered answers "not connected" too, which no sign-in fixes.
       noteUnchecked(
         installation,
-        error instanceof AgentManagerNotConnectedError
+        error instanceof AgentManagerNotConnectedError && error.signInRequired
           ? 'connectorSignIn'
           : 'failed',
-        `${installation}: ${error.message}`,
+        installationErrorLine(installation, error),
       );
       noteSignIn(installation, error);
     }
@@ -356,7 +378,9 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
     // so whether it serves organizations there cannot be learned. Without
     // the muster plugin nothing is listed and nothing is held.
     listed: musterInstallations.data ? names : null,
-    turnedOff,
+    turnedOff: (musterInstallations.data?.installations ?? [])
+      .map(installation => installation.name)
+      .filter(installation => turnedOff.includes(installation)),
     installationErrors,
     signIns,
   });
@@ -410,6 +434,7 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
       installations: [...answers.keys()],
       listingError: discovery.listingError ?? undefined,
       uncheckedInstallations: unchecked,
+      turnedOffInstallations: discovery.turnedOff,
       noneChecked:
         unchecked.length > 0 && unchecked.length === discovery.listed?.length,
       discoveryFailureOf: installation => {

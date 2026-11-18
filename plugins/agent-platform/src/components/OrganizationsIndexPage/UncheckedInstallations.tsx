@@ -166,6 +166,8 @@ function reasonText(
   switch (reason) {
     case 'musterSignIn':
       return 'You are not signed in to Muster for this installation.';
+    case 'portalSignIn':
+      return 'Your sign-in to the portal has expired. Sign in to the portal again, then check again.';
     case 'unreachable':
       return 'The portal cannot reach Muster on this installation.';
     case 'noAnswer':

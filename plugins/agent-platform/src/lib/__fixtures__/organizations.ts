@@ -33,6 +33,7 @@ export const TEST_ORGANIZATION_DIRECTORY: OrganizationDirectoryValue = {
   listingError: undefined,
   uncheckedInstallations: [],
   noneChecked: false,
+  turnedOffInstallations: [],
   discoveryFailureOf: () => undefined,
   signInOf: () => undefined,
   organizationsOf: () => undefined,

@@ -157,13 +157,18 @@ describe('OrganizationsIndexPage', () => {
 
   it('puts the installations it could not check behind one closed line, under the organizations', async () => {
     const failing = Array.from({ length: 14 }, (_, i) => `remote-${i + 1}`);
-    await renderList(
+    // remote-1 answers once it is asked again.
+    let remoteOneUp = false;
+    const api = await renderList(
       PAYMENTS,
-      withInstallations(['gazelle', ...failing], installation =>
-        installation === 'gazelle'
-          ? 'agent-manager'
-          : didNotAnswer(installation),
-      ),
+      withInstallations(['gazelle', ...failing], installation => {
+        if (installation === 'gazelle') {
+          return 'agent-manager';
+        }
+        return installation === 'remote-1' && remoteOneUp
+          ? 'none'
+          : didNotAnswer(installation);
+      }),
     );
 
     expect(
@@ -186,9 +191,40 @@ describe('OrganizationsIndexPage', () => {
     expect(
       within(first).getByText('Muster on this installation did not answer.'),
     ).toBeInTheDocument();
-    expect(
+
+    remoteOneUp = true;
+    await userEvent.click(
       within(first).getByRole('button', { name: 'Check remote-1 again' }),
+    );
+
+    expect(
+      await screen.findByRole('button', {
+        name: 'Organizations could not be checked on 13 installations',
+      }),
     ).toBeInTheDocument();
+    expect(within(list).queryByText('remote-1')).not.toBeInTheDocument();
+    expect(api.listServers).toHaveBeenCalledWith('remote-1');
+  });
+
+  it('keeps the answer of a connector that is not connected, which no sign-in fixes', async () => {
+    await renderList({}, api => {
+      jest
+        .spyOn(api, 'callTool')
+        .mockRejectedValue(new Error('server agent-manager not connected'));
+    });
+
+    await userEvent.click(
+      await screen.findByRole('button', {
+        name: 'Organizations could not be checked on 1 installation',
+      }),
+    );
+
+    expect(
+      screen.getByText(/server agent-manager not connected/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/You have not signed in to the/),
+    ).not.toBeInTheDocument();
   });
 
   it('leaves out an installation that answered without organizations', async () => {

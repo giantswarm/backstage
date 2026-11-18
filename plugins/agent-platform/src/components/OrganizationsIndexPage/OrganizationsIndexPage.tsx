@@ -3,11 +3,15 @@ import { Alert, Flex, Link, List, ListRow, Text } from '@backstage/ui';
 import {
   countNoun,
   EmptyStateCard,
+  joinNames,
   PageSection,
   ShellPage,
   ShellPageFactsSkeleton,
 } from '@giantswarm/backstage-plugin-ui-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- muster names the connector.
+import { useConnectorLabel } from '@giantswarm/backstage-plugin-muster';
 
+import { AGENT_MANAGER_SERVER } from '../../lib/agentManager';
 import { organizationDetailRouteRef } from '../../routes';
 import {
   useOrganizationDirectory,
@@ -42,6 +46,7 @@ export function OrganizationsIndexPage() {
     listingError,
     uncheckedInstallations,
     noneChecked,
+    turnedOffInstallations,
     organizationsOf,
     failureOf,
     recheck,
@@ -94,11 +99,19 @@ export function OrganizationsIndexPage() {
         {servesNowhere && !isLoading && !listingError && !noneChecked && (
           <EmptyStateCard
             title="Organizations are not available here"
-            description={
+            description={[
               uncheckedInstallations.length === 0
                 ? "No environment's agent-manager serves organizations to this portal yet."
-                : 'No installation that answered serves organizations to this portal. The ones that could not be checked are listed below.'
-            }
+                : 'No installation that answered serves organizations to this portal. The ones that could not be checked are listed below.',
+              turnedOffInstallations.length > 0 &&
+                `${countNoun(turnedOffInstallations.length, 'environment')} ${
+                  turnedOffInstallations.length === 1 ? 'is' : 'are'
+                } turned off in Profile and settings, Environments, and not checked: ${joinNames(
+                  turnedOffInstallations,
+                )}.`,
+            ]
+              .filter(Boolean)
+              .join(' ')}
           />
         )}
         {belongsNowhere && (
@@ -178,8 +191,13 @@ function NoneCheckedAlert({
     unchecked.length === 1 ? unchecked[0].installation : undefined,
   );
   const musterSignIn = unchecked.some(entry => entry.reason === 'musterSignIn');
-  const connectorSignIn = unchecked.some(
-    entry => entry.reason === 'connectorSignIn',
+  const connectorSignIns = unchecked
+    .filter(entry => entry.reason === 'connectorSignIn')
+    .map(entry => entry.installation);
+  // muster's own name for the connector, as the rows' sign-in says it.
+  const connectorLabel = useConnectorLabel(
+    connectorSignIns[0],
+    AGENT_MANAGER_SERVER,
   );
   const where =
     unchecked.length === 1
@@ -194,12 +212,14 @@ function NoneCheckedAlert({
           <Text variant="body-small">
             The portal could not check {where} for organizations.
             {musterSignIn &&
-              ' Sign in to Muster for the installation you use on the Connectors page, then check it again in the list below.'}
+              ' Sign in to Muster for the installation you use on the Connectors page, then open the list below and check it again.'}
             {!musterSignIn &&
-              connectorSignIn &&
-              ' Sign in to the agent-manager connector of the installation you use in the list below.'}
+              connectorSignIns.length > 0 &&
+              ` Sign in to the ${connectorLabel} connector on the installation you use (${joinNames(
+                connectorSignIns,
+              )}): open the list below.`}
             {!musterSignIn &&
-              !connectorSignIn &&
+              connectorSignIns.length === 0 &&
               ' The list below says why for each one.'}
           </Text>
           {musterSignIn && connectorsHref && (
