@@ -41,7 +41,9 @@ L=.agents/skills/layout-check
 yarn fixtures start
 node $L/layout-check.mjs --page /customize/agents --page /usage/cost
 node $L/layout-check.mjs --spec $L/specs/agent-platform.mjs --only Workspace
-node $L/layout-check.mjs --spec $L/specs/agent-platform.mjs     # every page, about 12 minutes
+node $L/layout-check.mjs --spec $L/specs/agent-platform.mjs     # every page in base, about 9 minutes
+# every page in all six scenarios, about an hour:
+node $L/layout-check.mjs --spec $L/specs/agent-platform.mjs --scenarios base,many,long-names,empty,loading,error
 yarn fixtures stop
 ```
 
