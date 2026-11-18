@@ -319,7 +319,10 @@ from kagent.
   approval or on answers to questions, failed (the model provider's refusal),
   canceled, and failed because kagent lost the session's runtime (reported on
   the session too). The states no v1 recording has are derived from one, with
-  the words of the older recordings of that state.
+  the words of the older recordings of that state. About one agent in three
+  (`reportsCost`, by its name) has a runtime that reports a cost, as the
+  claude harness does: its turns' usage carries `costUsd`, so Usage · Your
+  sessions shows the Reported cost column, with and without a figure.
 - The session states summary (the session lists and the rail) and the
   usage summary (Usage · Your sessions) are computed with the backend's own
   code, shared through agent-platform-common (`kagentSessionRollups.ts`):

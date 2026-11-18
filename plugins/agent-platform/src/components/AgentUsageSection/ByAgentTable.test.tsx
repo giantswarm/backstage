@@ -4,8 +4,15 @@ import {
   mockPhoneLayout,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { estimateCost } from '../../lib/costEstimate';
+import {
+  formatCount,
+  formatMoney,
+  formatTokens,
+  formatUsd,
+} from '../../lib/formatNumbers';
 import { describeActualCostByAgent } from '../../lib/modelCostCopy';
 import { ByAgentTable } from './ByAgentTable';
 import type { ByAgentRow } from './helpers';
@@ -328,15 +335,18 @@ describe('ByAgentTable', () => {
 });
 
 // T22 B11: six or seven columns in 343px clipped every figure.
-describe('ByAgentTable at phone width', () => {
+describe('ByAgentTable at phone width and in narrow cards', () => {
   let layout: MockedLayout;
   afterEach(() => layout.restore());
 
   const headers = () =>
     screen.getAllByRole('columnheader').map(cell => cell.textContent?.trim());
   const RATES = { input: 0.000001, output: 0.000002 };
+  const list = () => screen.getByRole('list', { name: 'By agent' });
+  const itemOf = (name: string) =>
+    within(list()).getByText(name).closest('li') as HTMLElement;
 
-  it('keeps the agent, its sessions and the estimate, and names a reported cost under the agent', () => {
+  it('stacks a row per agent with every figure, the reported cost and its absence too', () => {
     layout = mockPhoneLayout();
     render(
       <ByAgentTable
@@ -346,11 +356,22 @@ describe('ByAgentTable at phone width', () => {
       />,
     );
 
-    expect(headers()).toEqual(['Agent', 'Sessions', 'Est. cost']);
-    expect(screen.getByText('$3.25 reported by its runtime')).toBeVisible();
+    expect(screen.queryByRole('grid')).toBeNull();
+    const spender = itemOf('Big spender');
+    expect(spender).toHaveTextContent('5 sessions');
+    expect(spender).toHaveTextContent('19 turns');
+    expect(spender).toHaveTextContent(
+      `${formatTokens(7_500_000)} input tokens`,
+    );
+    expect(spender).toHaveTextContent(`${formatTokens(28_800)} output tokens`);
+    expect(spender).toHaveTextContent('Est. cost $7.56');
+    expect(spender).toHaveTextContent('$3.25 reported by its runtime');
+    expect(itemOf('Chatty')).toHaveTextContent(
+      'cost not reported by its runtime',
+    );
   });
 
-  it('keeps the actual cost as the third column', () => {
+  it('names the actual cost as the cost', () => {
     layout = mockPhoneLayout();
     render(
       <ByAgentTable
@@ -361,8 +382,8 @@ describe('ByAgentTable at phone width', () => {
       />,
     );
 
-    expect(headers()).toEqual(['Agent', 'Sessions', 'Cost']);
-    expect(screen.getByText('$4.20')).toBeVisible();
+    expect(itemOf('Big spender')).toHaveTextContent('Cost $4.20');
+    expect(screen.queryByText(/reported by its runtime/)).toBeNull();
   });
 
   it('keeps every column, the reported one too, on a desktop', () => {
@@ -387,48 +408,23 @@ describe('ByAgentTable at phone width', () => {
     expect(screen.queryByText(/reported by its runtime/)).toBeNull();
   });
 
-  it('names the turns under the agent in a card too narrow for every column, then takes the compact columns', () => {
-    layout = mockDesktopLayout();
-    const container = mockContainerWidth(900);
-    try {
-      render(<ByAgentTable rows={ROWS} rates={RATES} emptyMessage="none" />);
-      expect(headers()).toContain('Turns');
-      expect(screen.queryByText('19 turns')).toBeNull();
-
-      // Beside the side rail at 1024px: 670px for the table.
-      act(() => container.setWidth(670));
-      expect(headers()).toEqual([
-        'Agent',
-        'Sessions',
-        'Input tokens',
-        'Output tokens',
-        'Est. cost',
-      ]);
-      expect(screen.getByText('19 turns')).toBeVisible();
-      expect(screen.getByText('1 turn')).toBeVisible();
-
-      act(() => container.setWidth(414));
-      expect(headers()).toEqual(['Agent', 'Sessions', 'Est. cost']);
-      expect(screen.queryByText('19 turns')).toBeNull();
-    } finally {
-      container.restore();
-    }
-  });
-
-  it('keeps the token columns at 1024px with the side rail when a runtime reports a cost, naming it under the agent', () => {
+  it('names the turns and the reported cost under the agent in a card too narrow for every column, then stacks the rows', () => {
     layout = mockDesktopLayout();
     const container = mockContainerWidth(1000);
     try {
       render(
         <ByAgentTable
-          rows={[{ ...ROWS[0], costUsd: 3.25 }, ROWS[1]]}
+          rows={[{ ...ROWS[0], costUsd: 3.25 }, ROWS[1], ROWS[2]]}
           rates={RATES}
           emptyMessage="none"
         />,
       );
+      expect(headers()).toContain('Turns');
       expect(headers()).toContain('Reported cost');
+      expect(screen.queryByText(/19 turns/)).toBeNull();
 
-      // Beside the side rail at 1024px: 670px for the table.
+      // Beside the side rail at 1024px: 670px for the table. The token
+      // columns stay, whether or not a runtime reports a cost.
       act(() => container.setWidth(670));
       expect(headers()).toEqual([
         'Agent',
@@ -440,9 +436,78 @@ describe('ByAgentTable at phone width', () => {
       expect(
         screen.getByText('19 turns · $3.25 reported by its runtime'),
       ).toBeVisible();
-      expect(screen.getByText('40 turns')).toBeVisible();
+      expect(
+        screen.getByText('40 turns · cost not reported by its runtime'),
+      ).toBeVisible();
+      expect(
+        screen.getByText('1 turn · cost not reported by its runtime'),
+      ).toBeVisible();
+
+      // Beside the side rail at 768px: 414px.
+      act(() => container.setWidth(414));
+      expect(screen.queryByRole('grid')).toBeNull();
+      expect(itemOf('Big spender')).toHaveTextContent('19 turns');
     } finally {
       container.restore();
     }
+  });
+
+  // Every value the full table shows for a row, as it shows them.
+  const valuesOf = (row: ByAgentRow) => [
+    row.agentName,
+    formatCount(row.sessions),
+    formatCount(row.turns),
+    formatTokens(row.inputTokens),
+    formatTokens(row.outputTokens),
+    formatMoney(estimateCost(row.inputTokens, row.outputTokens, RATES)),
+    row.costUsd === undefined ? /not reported/i : formatUsd(row.costUsd),
+  ];
+  const ALL_ROWS = [{ ...ROWS[0], costUsd: 3.25 }, ROWS[1], ROWS[2]];
+  const expectEveryValue = (renderedOf: (row: ByAgentRow) => HTMLElement) => {
+    for (const row of ALL_ROWS) {
+      const rendered = renderedOf(row);
+      for (const value of valuesOf(row)) {
+        expect(rendered).toHaveTextContent(value, {
+          normalizeWhitespace: true,
+        });
+      }
+    }
+  };
+
+  it.each([
+    ['full', 1000],
+    ['narrow', 670],
+  ])('keeps every value of a row on the row in the %s table', (_, width) => {
+    layout = mockDesktopLayout();
+    const container = mockContainerWidth(width);
+    try {
+      render(
+        <ByAgentTable rows={ALL_ROWS} rates={RATES} emptyMessage="none" />,
+      );
+      expectEveryValue(row =>
+        screen.getByRole('row', { name: new RegExp(row.agentName) }),
+      );
+    } finally {
+      container.restore();
+    }
+  });
+
+  it('keeps every value of a row on its stacked row in a card too narrow for the table', () => {
+    layout = mockDesktopLayout();
+    const container = mockContainerWidth(414);
+    try {
+      render(
+        <ByAgentTable rows={ALL_ROWS} rates={RATES} emptyMessage="none" />,
+      );
+      expectEveryValue(row => itemOf(row.agentName));
+    } finally {
+      container.restore();
+    }
+  });
+
+  it('keeps every value of a row on its stacked row at phone width', () => {
+    layout = mockPhoneLayout();
+    render(<ByAgentTable rows={ALL_ROWS} rates={RATES} emptyMessage="none" />);
+    expectEveryValue(row => itemOf(row.agentName));
   });
 });

@@ -89,9 +89,36 @@ function appNameOf(agent: Agent): string {
 }
 
 /**
+ * Whether an agent's runtime reports a cost, as the claude harness does and
+ * ADK does not: about one agent in three, by its name, so the Usage tables
+ * show the Reported cost column and the agents that don't report one.
+ */
+export function reportsCost(agent: Agent): boolean {
+  return hashOf(`${agent.namespace}/${agent.name}`) % 3 === 0;
+}
+
+/**
+ * A usage bag with the cost the runtime reports, from its tokens at a
+ * claude-like $3 and $15 per million. `numTurns: 1` keeps it one call's, as
+ * the context indicator reads it.
+ */
+function withReportedCost(bag: unknown): unknown {
+  const usage = bag as {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+  };
+  const costUsd =
+    ((usage.promptTokenCount ?? 0) * 3 +
+      (usage.candidatesTokenCount ?? 0) * 15) /
+    1_000_000;
+  return { ...(bag as V1Object), costUsd, numTurns: 1 };
+}
+
+/**
  * A recording recast onto `target`: the session as its context, the task's
- * own id, the agent and the person as its runtime names them, and every time
- * moved so the recording's last one is `endsAt`. Message and artifact ids
+ * own id, the agent and the person as its runtime names them, every time
+ * moved so the recording's last one is `endsAt`, and a reported cost in its
+ * usage where the agent's runtime reports one ({@link reportsCost}). Message and artifact ids
  * take the task's id as a prefix, so two tasks recast from one recording keep
  * them apart.
  */
@@ -100,7 +127,11 @@ export function recast<T>(recording: T, target: Target): T {
   const prefix = target.taskId.slice(0, 8);
   // `walk` builds every object and array afresh, so the recording stays as
   // it was.
+  const reports = reportsCost(target.agent);
   return walk(recording, (key, value) => {
+    if (key === 'adk_usage_metadata' && reports) {
+      return withReportedCost(value);
+    }
     if (typeof value !== 'string') {
       return value;
     }

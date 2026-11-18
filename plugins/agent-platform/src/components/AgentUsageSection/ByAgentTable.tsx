@@ -8,7 +8,8 @@ import {
   ShowMore,
   type FittingTier,
   useFittingColumns,
-  usePhoneColumns,
+  StackedRowList,
+  type StackedRowItem,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { estimateCost, type TokenRates } from '../../lib/costEstimate';
 import { AVERAGE_RATE_CAVEAT } from '../../lib/costBasis';
@@ -22,7 +23,6 @@ import {
 } from '../../lib/formatNumbers';
 import { useMeasureColor } from '../../lib/measures';
 import { useSortOnShownColumn } from '../../hooks/useSortOnShownColumn';
-import { COMPACT_NAME_MIN_WIDTH } from '../../hooks/useUsageTableColumns';
 import { lastDaysNoun } from '../../lib/usageWindow';
 import { NameCell } from '../LlmUsage/NameCell';
 import { USAGE_COLUMN_MIN_WIDTH } from '../LlmUsage/columnWidths';
@@ -76,11 +76,6 @@ const BY_AGENT_COLUMN_MIN_WIDTHS: Readonly<Record<string, number>> = {
  * under the agent.
  */
 const BY_AGENT_COLUMNS_DROPPED_FIRST: readonly string[] = ['turns', 'costUsd'];
-
-/** Compact, the name wraps to two lines, so the kept figures get the width. */
-const BY_AGENT_COMPACT_MIN_WIDTHS: Readonly<Record<string, number>> = {
-  agentName: COMPACT_NAME_MIN_WIDTH,
-};
 
 export type ByAgentTableProps = {
   rows: ByAgentRow[];
@@ -198,14 +193,16 @@ export function ByAgentTable({
         label: 'Agent',
         isRowHeader: true,
         isSortable: true,
-        // Narrow and compact, the Reported cost column is hidden; a runtime's
-        // own figure is named under the agent instead, so it stays on the row.
+        // Narrow and compact, the values of the columns left out are named
+        // under the agent, so every figure stays on the row.
         cell: row => (
           <NameCell
             title={row.agentName}
             href={row.href}
-            compact={tier === 'compact'}
-            description={describeAgent(row, tier)}
+            // Wrapped, not cut: the line names the hidden columns' values,
+            // which no hover may be needed to read.
+            compact={tier !== 'full'}
+            description={describeAgent(row, tier, anyReported)}
           />
         ),
       },
@@ -351,22 +348,41 @@ export function ByAgentTable({
     ],
   );
   // Every column while their minimums fit the card; without Turns and
-  // Reported cost below that; the compact columns below that and at phone
-  // width.
+  // Reported cost below that, named under the agent; a stacked row per
+  // agent below that and at phone width (T22 B11: six or seven columns in
+  // 343px clipped every figure, and three left no room to name the rest).
   const fit = useFittingColumns(columnsFor, {
     minWidths: BY_AGENT_COLUMN_MIN_WIDTHS,
     dropFirst: BY_AGENT_COLUMNS_DROPPED_FIRST,
-    compactMinWidths: BY_AGENT_COMPACT_MIN_WIDTHS,
   });
-
-  // Compact, the agent, its sessions and the estimate (T22 B11): six or
-  // seven columns in 343px clipped every figure. Turns and tokens are in the
-  // totals above and on the agent's own Usage tab, a link away.
-  const shownColumns = usePhoneColumns(
-    fit.columns,
-    ['agentName', 'sessions', 'estCostUsd'],
-    { compact: fit.isCompact },
-  );
+  const costLabel = actualCost || isActualCostLoading ? 'Cost' : 'Est. cost';
+  // Every figure of the row, each whole: the facts wrap as a whole.
+  const stackedRowOf = (row: ByAgentRow): StackedRowItem => {
+    const cost = isCostLoading ? undefined : costOf(row);
+    return {
+      id: row.id,
+      title: row.agentName,
+      ...(row.href ? { href: row.href } : {}),
+      facts: [
+        `${formatCount(row.sessions)} ${row.sessions === 1 ? 'session' : 'sessions'}`,
+        `${formatCount(row.turns)} ${row.turns === 1 ? 'turn' : 'turns'}`,
+        `${formatTokens(row.inputTokens)} input tokens`,
+        `${formatTokens(row.outputTokens)} output tokens`,
+      ],
+      details: (
+        <Text as="div" variant="body-small" color="secondary">
+          {costLabel}{' '}
+          {isCostLoading ? (
+            <Skeleton width={52} height={16} rounded />
+          ) : (
+            formatMoney(cost, currency)
+          )}
+          {reportedCostOf(row, anyReported) &&
+            ` · ${reportedCostOf(row, anyReported)}`}
+        </Text>
+      ),
+    };
+  };
 
   const { tableProps } = useTable<ByAgentRow>({
     mode: 'complete',
@@ -381,8 +397,9 @@ export function ByAgentTable({
     // not reset its offset when the data shrinks.
     paginationOptions: { type: 'none' },
   });
-  // Compact, the tokens are hidden: sort by sessions, the busiest first.
-  useSortOnShownColumn(tableProps.sort, shownColumns, {
+  // Narrow, Turns and Reported cost are hidden: a sort on them goes to
+  // sessions, the busiest first.
+  useSortOnShownColumn(tableProps.sort, fit.columns, {
     column: 'sessions',
     direction: 'descending',
   });
@@ -402,18 +419,32 @@ export function ByAgentTable({
           noun="agent"
           revealAll
         >
-          {visible => (
-            <Table<ByAgentRow>
-              {...tableProps}
-              data={visible}
-              columnConfig={shownColumns}
-              emptyState={
-                <Text variant="body-medium" color="secondary">
-                  {emptyMessage}
-                </Text>
-              }
-            />
-          )}
+          {visible => {
+            if (!fit.isCompact) {
+              return (
+                <Table<ByAgentRow>
+                  {...tableProps}
+                  data={visible}
+                  columnConfig={fit.columns}
+                  emptyState={
+                    <Text variant="body-medium" color="secondary">
+                      {emptyMessage}
+                    </Text>
+                  }
+                />
+              );
+            }
+            return visible.length > 0 ? (
+              <StackedRowList
+                aria-label="By agent"
+                rows={visible.map(stackedRowOf)}
+              />
+            ) : (
+              <Text variant="body-medium" color="secondary">
+                {emptyMessage}
+              </Text>
+            );
+          }}
         </ShowMore>
       </div>
       {/* The note has to match what the column actually shows. It described a
@@ -449,17 +480,36 @@ export function ByAgentTable({
 }
 
 /**
- * The line under an agent's name: the cost its runtime reported, whose column
- * the narrow and the compact layout hide, and while narrow its turns too.
+ * The cost the agent's runtime reported, in words; where no runtime in the
+ * window reports one, nothing, as the table then has no Reported cost column.
  */
-function describeAgent(row: ByAgentRow, tier: FittingTier): string | undefined {
-  const parts = [
-    tier === 'narrow'
-      ? `${formatCount(row.turns)} ${row.turns === 1 ? 'turn' : 'turns'}`
-      : undefined,
-    tier !== 'full' && row.costUsd !== undefined
-      ? `${formatUsd(row.costUsd)} reported by its runtime`
-      : undefined,
-  ].filter(Boolean);
-  return parts.length > 0 ? parts.join(' · ') : undefined;
+function reportedCostOf(
+  row: ByAgentRow,
+  anyReported: boolean,
+): string | undefined {
+  if (row.costUsd !== undefined) {
+    return `${formatUsd(row.costUsd)} reported by its runtime`;
+  }
+  return anyReported ? 'cost not reported by its runtime' : undefined;
+}
+
+/**
+ * The line under an agent's name in the narrow table: the values of the
+ * columns it leaves out, the turns and the reported cost, so the row keeps
+ * every figure the full table shows.
+ */
+export function describeAgent(
+  row: ByAgentRow,
+  tier: FittingTier,
+  anyReported: boolean,
+): string | undefined {
+  if (tier === 'full') {
+    return undefined;
+  }
+  return [
+    `${formatCount(row.turns)} ${row.turns === 1 ? 'turn' : 'turns'}`,
+    reportedCostOf(row, anyReported),
+  ]
+    .filter(Boolean)
+    .join(' · ');
 }
