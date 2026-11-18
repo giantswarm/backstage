@@ -1,6 +1,19 @@
 import { type ReactNode, useId } from 'react';
+import { makeStyles } from '@material-ui/core';
 import { Card, CardBody, Flex, Text } from '@backstage/ui';
 import { SectionHeader } from '@giantswarm/backstage-plugin-ui-react';
+
+const useStyles = makeStyles({
+  // Outlined, as the shell's other fold-outs and the design's panels are:
+  // bui's Card alone is white on the white page.
+  card: {
+    border: '1px solid var(--bui-border-1)',
+    borderRadius: 'var(--bui-radius-4)',
+  },
+  body: {
+    padding: 'var(--bui-space-4)',
+  },
+});
 
 export type PlatformPanelProps = {
   /** The panel's `h2`, which also names its region. */
@@ -23,11 +36,12 @@ export function PlatformPanel({
   footnote,
   children,
 }: PlatformPanelProps) {
+  const classes = useStyles();
   const headingId = useId();
   return (
     <section aria-labelledby={headingId}>
-      <Card>
-        <CardBody>
+      <Card className={classes.card}>
+        <CardBody className={classes.body}>
           <Flex direction="column" gap="3">
             <Flex align="center" gap="2">
               <span

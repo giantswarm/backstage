@@ -607,8 +607,9 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
   GPU clusters among them; the management clusters and every other workload
   cluster are managed through GitOps. gs maps them onto Cluster, AWSCluster,
   AWSClusterRoleIdentity, KubeadmControlPlane, App, MachinePool and
-  AWSMachinePool objects, plus a Flux Kustomization and GitRepository per
-  GitOps repository (`gsKubernetesObjectsOf` in
+  AWSMachinePool objects, plus a Flux Kustomization (applied, with its
+  revision) and GitRepository per GitOps repository and a Release per release
+  the clusters run (`gsKubernetesObjectsOf` in
   `@giantswarm/backstage-plugin-gs/fixtures`), which the Clusters pages and the
   Platform section's list and cluster pages read. The cluster pages' tool
   links are `gs.clusterDetails.resources` of `app-config.fixtures.yaml`, at

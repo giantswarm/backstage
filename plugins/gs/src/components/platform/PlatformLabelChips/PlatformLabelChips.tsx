@@ -5,11 +5,26 @@ import { makeStyles } from '@material-ui/core';
  * `variant`) as one of bui's tints: its key on the tint, its value plain.
  */
 const TINTS: Record<string, { bg: string; fg: string }> = {
-  green: { bg: 'var(--bui-bg-success)', fg: 'var(--bui-fg-success-on-bg)' },
-  blue: { bg: 'var(--bui-bg-info)', fg: 'var(--bui-fg-info-on-bg)' },
-  orange: { bg: 'var(--bui-bg-warning)', fg: 'var(--bui-fg-warning-on-bg)' },
-  yellow: { bg: 'var(--bui-bg-warning)', fg: 'var(--bui-fg-warning-on-bg)' },
-  red: { bg: 'var(--bui-bg-danger)', fg: 'var(--bui-fg-danger-on-bg)' },
+  green: {
+    bg: 'var(--bui-positive-bg-subdued)',
+    fg: 'var(--bui-positive-fg-subdued)',
+  },
+  blue: {
+    bg: 'var(--bui-announcement-bg-subdued)',
+    fg: 'var(--bui-announcement-fg-subdued)',
+  },
+  orange: {
+    bg: 'var(--bui-warning-bg-subdued)',
+    fg: 'var(--bui-warning-fg-subdued)',
+  },
+  yellow: {
+    bg: 'var(--bui-warning-bg-subdued)',
+    fg: 'var(--bui-warning-fg-subdued)',
+  },
+  red: {
+    bg: 'var(--bui-negative-bg-subdued)',
+    fg: 'var(--bui-negative-fg-subdued)',
+  },
 };
 const NEUTRAL = {
   bg: 'var(--bui-bg-neutral-2)',

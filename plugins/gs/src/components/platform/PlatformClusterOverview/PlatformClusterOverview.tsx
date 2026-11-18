@@ -270,16 +270,18 @@ function LastApplied({
   return (
     <AsyncValue isLoading={isLoading} value={kustomization ? true : undefined}>
       {() => (
-        <Flex align="center" gap="1" style={{ flexWrap: 'wrap' }}>
+        <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
           <StatusDot tone={state.tone} label={state.label} />
-          {ready?.lastTransitionTime && (
-            <DateComponent value={ready.lastTransitionTime} relative />
-          )}
-          {revision && (
-            <span>
-              , revision <CommitSha value={revision} />
-            </span>
-          )}
+          <span>
+            {ready?.lastTransitionTime && (
+              <DateComponent value={ready.lastTransitionTime} relative />
+            )}
+            {revision && (
+              <>
+                , revision <CommitSha value={revision} />
+              </>
+            )}
+          </span>
         </Flex>
       )}
     </AsyncValue>

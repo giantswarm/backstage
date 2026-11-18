@@ -194,8 +194,10 @@ const useToolStyles = makeStyles({
     borderBottom: '1px solid var(--bui-border-1)',
   },
   // A tile as wide as the column, its label at the start.
+  // 44px high, the shell's touch target and the design's tile.
   tile: {
     width: '100%',
+    minHeight: 44,
     justifyContent: 'flex-start',
     '& svg:first-child': { fontSize: 18 },
   },
@@ -280,6 +282,7 @@ function ToolLinks({ links }: { links: ClusterToolLink[] }) {
           key={`${index}:${link.label}`}
           href={link.url}
           variant="secondary"
+          size="medium"
           iconStart={<IconResolver iconName={link.icon} />}
           className={classes.tile}
         >

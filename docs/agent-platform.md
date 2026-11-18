@@ -576,27 +576,42 @@ environment, organization and release. The classic `/clusters` and
 A cluster's page, `/platform/clusters/<installation>/<namespace>/<name>`
 (`PlatformClusterPage` from the gs plugin, at the app's
 `platformClusterRouteRef`), reads the cluster as the classic cluster page does
-(`ClusterProvider`): its state beside the name, a sentence on its type,
-organization and environment, View manifest in the ⋯ menu, and a column of
-facts (Environment, linked to the management cluster's page for a workload
-cluster; Organization, Provider, Region, AWS account linked to the AWS
-console, Workers, Created) with the tool links of
-`gs.clusterDetails.resources`. Service priority is among the labels on the
-Overview, as `gs.friendlyLabels` names it (by default it does). Its
-one tab so far, Overview (the bare path; any other tab redirects there),
-shows the release and Kubernetes version with its end of life, the labels and
-annotations `gs.friendlyLabels` and `gs.friendlyAnnotations` name and the
-cluster's description, where its definition lives in Git (for a cluster
-whose App or HelmRelease a Flux Kustomization applies), the `kubectl gs
-login` command (where the installation's base domain is known), and a
-Technical details fold-out with every label and annotation. A cluster being
-deleted says so and follows the deletion. An environment the portal does not
-know, a cluster the environment does not have, an environment the portal
-cannot reach and a failed read (with its cause and Try again) each get their
-own state, with a link back to the list. Where the Cluster resource does not
-exist but its App or HelmRelease does, the page shows the installer's status,
-as the classic page does: being created, failed to install, or being deleted
-with the installer still finalizing.
+(`ClusterProvider`). Its header has the state under the name, a sentence on
+its type, organization and environment, and a ⋯ menu with Copy login command
+(where a command can be built) and View manifest. Beside the content, the tool
+links of `gs.clusterDetails.resources` as tiles, then the facts: Environment
+(linked to the management cluster's page for a workload cluster),
+Organization, Provider with its region, Account (in groups of four, linked to
+the AWS console), Workers and Created.
+
+Its one tab so far, Overview (the bare path; any other tab redirects there),
+is a column of panels:
+
+- Release: the cluster's release, linked to its release notes (the GitHub
+  release of giantswarm/releases tagged `<provider>/v<version>`), the
+  Kubernetes version with its end of life (`gs.kubernetesVersions`), and the
+  newest active release of the cluster's provider where it is newer, read from
+  the installation's Release resources.
+- Labels and annotations: what `gs.friendlyLabels` and `gs.friendlyAnnotations`
+  name, as key and value chips in their configured colours, and the
+  cluster's description. Left out when there is none.
+- GitOps delivery, for a cluster whose App or HelmRelease a Flux Kustomization
+  applies: the Kustomization, its last apply and revision, and the repository
+  and branch it reads.
+- Work with the cluster: the classic access section's `kubectl gs login`
+  command where the installation's base domain is known, and for Giant Swarm
+  staff (`gs.adminGroups`) the `tsh kube login` command with the one-time tsh
+  setup. Left out when there is neither.
+- Technical details, a fold-out: namespace, name, cluster app, API endpoint,
+  control plane, what installs the cluster, and every label and annotation.
+
+A cluster being deleted says so and follows the deletion. An environment the
+portal does not know, a cluster the environment does not have, an environment
+the portal cannot reach and a failed read (with its cause and Try again) each
+get their own state, with a link back to the list. Where the Cluster resource
+does not exist but its App or HelmRelease does, the page shows the installer's
+status, as the classic page does: being created, failed to install, or being
+deleted with the installer still finalizing.
 
 ## Profile and settings
 
