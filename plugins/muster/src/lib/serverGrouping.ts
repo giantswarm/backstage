@@ -315,19 +315,20 @@ export function mcpServerDisplayNames(
 }
 
 /**
- * What people call the connector `name` names on `installation`, by
- * {@link connectorDisplayNames} over that installation's servers; `name`
- * itself when there is no such connector.
+ * What people call the connector whose page `name` opens on `installation`
+ * ({@link findServerRow}), by {@link connectorDisplayNames} over that
+ * installation's servers; `name` itself when there is no such connector.
  */
 export function connectorDisplayNameOn(
   servers: readonly MCPServer[],
   installation: string | undefined,
   name: string,
 ): string {
-  const names = mcpServerDisplayNames(
-    servers.filter(server => server.cluster === installation),
-  );
-  return names.get(name) ?? name;
+  const own = servers.filter(server => server.cluster === installation);
+  const row = findServerRow(own, name);
+  return row && row.kind !== 'core'
+    ? serverRowDisplayName(row, mcpServerDisplayNames(own))
+    : name;
 }
 
 /**
@@ -348,19 +349,52 @@ export function serverRowDisplayName(
 }
 
 /**
- * The singular server whose page the `:server` segment `name` opens: the one
- * of that name in muster's namespace, else an organization's while it is the
- * only one of that name. Two organizations may each own a server of one
- * name, which the segment alone does not tell apart: neither has a page.
+ * The singular server whose page each `:server` segment opens, by segment:
+ * the one of that name in muster's namespace, else an organization's while
+ * it is the only one of that name. Two organizations may each own a server
+ * of one name, which the segment alone does not tell apart: neither has a
+ * page, and the name is not in the map. Built once per server list, for
+ * lookups in loops.
  */
-export function singularServerOfPage(
+export function singularServerPages(
   servers: readonly MCPServer[],
-  name: string,
+): ReadonlyMap<string, MCPServer> {
+  const byName = new Map<string, MCPServer[]>();
+  for (const server of servers) {
+    if (!server.getFamily()) {
+      byName.set(server.getName(), [
+        ...(byName.get(server.getName()) ?? []),
+        server,
+      ]);
+    }
+  }
+  const pages = new Map<string, MCPServer>();
+  for (const [name, named] of byName) {
+    const owner =
+      named.find(server => !isOrganizationServer(server)) ??
+      (named.length === 1 ? named[0] : undefined);
+    if (owner) {
+      pages.set(name, owner);
+    }
+  }
+  return pages;
+}
+
+/**
+ * The server of muster's own namespace named `name` on `installation`: what
+ * the connector wizard registered and edits, as muster writes only its own
+ * namespace's servers.
+ */
+export function musterOwnServer(
+  servers: readonly MCPServer[],
+  installation: string | undefined,
+  name: string | undefined,
 ): MCPServer | undefined {
-  const named = servers.filter(s => !s.getFamily() && s.getName() === name);
-  return (
-    named.find(s => !isOrganizationServer(s)) ??
-    (named.length === 1 ? named[0] : undefined)
+  return servers.find(
+    server =>
+      server.cluster === installation &&
+      server.getName() === name &&
+      !isOrganizationServer(server),
   );
 }
 
@@ -371,7 +405,7 @@ export function singularServerOfPage(
  * points at.
  */
 export function findServerRow(
-  servers: MCPServer[],
+  servers: readonly MCPServer[],
   key: string,
 ): ServerPageRow | undefined {
   if (key === MUSTER_SERVER_KEY) {
@@ -387,7 +421,7 @@ export function findServerRow(
       ),
     };
   }
-  const server = singularServerOfPage(servers, key);
+  const server = singularServerPages(servers).get(key);
   return server ? { kind: 'server', server } : undefined;
 }
 
@@ -398,20 +432,20 @@ export function findServerRow(
  * page of their own; the family's Usage tab lists each one), else its own.
  * A server is left out where no page shows it: one named like a family,
  * muster's own page, which takes that name, or a segment that opens another
- * server ({@link singularServerOfPage}). A name not in the map (muster's own
+ * server ({@link singularServerPages}). A name not in the map (muster's own
  * tools, a server since removed) has no page either.
  */
 export function connectorPageKeys(
   servers: readonly MCPServer[],
 ): Map<string, string> {
   const families = new Set(servers.map(server => server.getFamily()));
+  const pages = singularServerPages(servers);
   const keys = new Map<string, string>();
   for (const server of servers) {
     const key = server.getFamily() ?? server.getName();
     const shadowed =
       key === MUSTER_SERVER_KEY ||
-      (!server.getFamily() &&
-        (families.has(key) || singularServerOfPage(servers, key) !== server));
+      (!server.getFamily() && (families.has(key) || pages.get(key) !== server));
     if (!shadowed) {
       keys.set(connectorAuthName(server), key);
     }

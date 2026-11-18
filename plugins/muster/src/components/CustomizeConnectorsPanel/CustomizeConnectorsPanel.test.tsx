@@ -226,6 +226,7 @@ describe('CustomizeConnectorsPanel', () => {
     mockSessionPending = false;
     mockInstance = {};
     api.filterTools.mockClear();
+    api.filterTools.mockImplementation(defaultFilterTools);
     api.getAuthStatus.mockClear();
     api.getAuthStatus.mockImplementation(async () => defaultAuthStatus());
     api.signInServer.mockClear();
@@ -935,9 +936,6 @@ describe('CustomizeConnectorsPanel', () => {
           { name: 'org-golem/wiki', status: 'connected' },
         ],
       });
-    });
-    afterEach(() => {
-      api.filterTools.mockImplementation(defaultFilterTools);
     });
 
     it('shows a row for each, with its own state, tools and sign-in', async () => {

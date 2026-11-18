@@ -525,14 +525,20 @@ function PaletteDialog({
 
     const connectorCandidates: PaletteCandidate[] = serverRoute
       ? connectors.rows.map(connector => ({
-          id: `connector:${connector.installation}/${connector.page}`,
+          id: `connector:${connector.installation}/${connector.key}`,
           title: connector.displayName,
           meta: connector.installation,
-          href: serverRoute({
-            installation: connector.installation,
-            server: connector.page,
-          }),
-          names: [connector.displayName, connector.page],
+          // A connector whose name another one shares has no page to open,
+          // as on the Connectors list.
+          ...(connector.page
+            ? {
+                href: serverRoute({
+                  installation: connector.installation,
+                  server: connector.page,
+                }),
+              }
+            : {}),
+          names: [connector.displayName, connector.page ?? connector.key],
         }))
       : [];
 
@@ -719,6 +725,9 @@ function PaletteDialog({
 
   const openEntry = useCallback(
     (entry: PaletteEntry) => {
+      if (!entry.href) {
+        return;
+      }
       navigate(entry.href);
       onClose();
     },
@@ -1031,6 +1040,7 @@ function PaletteOption({
       id={id}
       role="option"
       aria-selected={isActive}
+      aria-disabled={entry.href ? undefined : true}
       tabIndex={-1}
       className={classes.option}
       onClick={onOpen}

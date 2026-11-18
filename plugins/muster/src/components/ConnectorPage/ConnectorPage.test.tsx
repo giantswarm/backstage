@@ -77,6 +77,7 @@ const INFRASTRUCTURE = { ...HELM, [TOOL_GROUP_LABEL]: 'infrastructure' };
 
 function makeServer(opts: {
   name: string;
+  namespace?: string;
   family?: string;
   mc?: string;
   state?: string;
@@ -92,7 +93,7 @@ function makeServer(opts: {
       kind: 'MCPServer',
       metadata: {
         name: opts.name,
-        namespace: 'agent-platform',
+        namespace: opts.namespace ?? 'agent-platform',
         annotations: {
           ...(opts.displayName
             ? { 'ui.giantswarm.io/display-name': opts.displayName }
@@ -1097,6 +1098,99 @@ describe('ConnectorPage', () => {
       await screen.findByRole('heading', { name: 'Remove "jira"?' }),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+  });
+
+  describe("an organization's connector", () => {
+    const orgWiki = (spec: Record<string, unknown> = {}, state = 'Connected') =>
+      makeServer({
+        name: 'wiki',
+        namespace: 'org-gazelle',
+        displayName: 'Gazelle wiki',
+        state,
+        spec,
+      });
+
+    it("signs in to it by muster's key for it", async () => {
+      mockServers = [
+        ...makeServers(),
+        orgWiki({ auth: { type: 'oauth' } }, 'Auth Required'),
+      ];
+      const api = {
+        ...makeApi(),
+        signInServer: jest.fn(async () => ({
+          status: 'auth_required' as const,
+          authUrl: 'https://wiki.example.test/authorize',
+        })),
+      };
+      api.getAuthStatus.mockResolvedValue({
+        servers: [
+          {
+            name: 'org-gazelle/wiki',
+            status: 'auth_required',
+            auth_tool: 'core_auth_login',
+          },
+        ],
+      } as never);
+      api.filterTools.mockResolvedValue({
+        total: 0,
+        filtered_count: 0,
+        truncated: false,
+        tools: [],
+      });
+      await renderAt(`${BASE}/wiki`, { api });
+
+      expect(
+        await screen.findByText('Sign in to this connector to see its tools.'),
+      ).toBeInTheDocument();
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Sign in' }),
+      );
+      await waitFor(() =>
+        expect(api.signInServer).toHaveBeenCalledWith(
+          'org-gazelle/wiki',
+          'gazelle',
+        ),
+      );
+    });
+
+    it('reconnects and turns it off by its key, and offers neither Remove nor Edit', async () => {
+      mockServers = [...makeServers(), orgWiki()];
+      const api = makeApi();
+      await renderAt(`${BASE}/wiki`, { api });
+
+      const edit = screen.getByRole('button', { name: 'Edit' });
+      expect(edit).toBeDisabled();
+      expect(edit).toHaveAccessibleDescription(
+        /organization's namespace, where it is changed/,
+      );
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'More actions' }),
+      );
+      expect(
+        screen.queryByRole('menuitem', { name: 'Remove…' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('menuitem', { name: 'Edit as JSON…' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('menuitem', { name: 'Turn off…' }),
+      ).toBeInTheDocument();
+      await userEvent.click(
+        screen.getByRole('menuitem', { name: 'Reconnect…' }),
+      );
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Confirm' }),
+      );
+
+      await waitFor(() =>
+        expect(api.callTool).toHaveBeenCalledWith(
+          'core_service_restart',
+          { name: 'org-gazelle/wiki' },
+          'gazelle',
+        ),
+      );
+    });
   });
 
   it('says so when the installation has no such connector', async () => {

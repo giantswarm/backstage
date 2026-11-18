@@ -8,7 +8,7 @@ import {
 import {
   MUSTER_SERVER_KEY,
   mcpServerDisplayNames,
-  singularServerOfPage,
+  singularServerPages,
   type ServerPageRow,
 } from './serverGrouping';
 
@@ -22,11 +22,8 @@ export interface ServerPrefixInfo {
   prefix: string;
   /** muster's key for the server (`connectorAuthName`). */
   serverName: string;
-  /**
-   * The server's CR name, its page's segment unless a family's; absent where
-   * it is {@link serverName}.
-   */
-  name?: string;
+  /** The server's CR name: its page's segment, unless a family's. */
+  name: string;
   family?: string;
   /**
    * What people call the connector it belongs to, by `connectorDisplayNames`;
@@ -94,7 +91,7 @@ export function serverPrefixInfos(servers: MCPServer[]): ServerPrefixInfo[] {
     // An organization's server joins no family: it has one prefix.
     const own = isOrganizationServer(server)
       ? prefix
-      : `x_${server.getToolPrefix() ?? server.getName()}`;
+      : `x_${server.getToolPrefix() || server.getName()}`;
     return own === prefix
       ? [{ ...info, prefix }]
       : [
@@ -234,6 +231,7 @@ export function serverPageResolver(
 ): (toolName: string) => string | undefined {
   const prefixes = serverPrefixInfos(servers);
   const families = new Set(servers.map(server => server.getFamily()));
+  const pages = singularServerPages(servers);
   return toolName => {
     if (toolName.startsWith('core_') || toolName.startsWith('workflow_')) {
       return 'muster';
@@ -242,11 +240,11 @@ export function serverPageResolver(
     if (!owner) {
       return undefined;
     }
-    const page = owner.family ?? owner.name ?? owner.serverName;
+    const page = owner.family ?? owner.name;
     if (owner.family) {
       return page === MUSTER_SERVER_KEY ? undefined : page;
     }
-    const pageServer = singularServerOfPage(servers, page);
+    const pageServer = pages.get(page);
     const shadowed =
       page === MUSTER_SERVER_KEY ||
       families.has(page) ||

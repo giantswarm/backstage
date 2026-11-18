@@ -1,9 +1,6 @@
 import { useConnectorAccess } from '../../hooks/useConnectorAccess';
-import {
-  familyAccess,
-  instanceAccess,
-  connectorAuthName,
-} from '../../lib/connectorAccess';
+import { familyAccess, instanceAccess } from '../../lib/connectorAccess';
+import { connectorAuthName } from '../../lib/connectorKey';
 import { useServerPageLinks } from '../shared/useServerPageLinks';
 import { FamilySignIn } from '../FamilySignIn';
 import { ReactElement, ReactNode, useMemo, useState } from 'react';
@@ -411,7 +408,11 @@ function ConnectorPageContent({
       menu.push({
         id: 'reconnect',
         label: 'Reconnect…',
-        onAction: () => openAction(reconnect),
+        onAction: () =>
+          openAction({
+            ...reconnect,
+            label: `Reconnect "${displayName}"?`,
+          }),
       });
     }
     if (live.deactivate) {
@@ -440,17 +441,20 @@ function ConnectorPageContent({
           }),
       });
     }
-    menu.push({
-      id: 'remove',
-      label: 'Remove…',
-      danger: true,
-      onAction: () =>
-        openAction({
-          ...live.remove,
-          label: `Remove "${displayName}"?`,
-          confirmLabel: 'Remove',
-        }),
-    });
+    const remove = live.remove;
+    if (remove) {
+      menu.push({
+        id: 'remove',
+        label: 'Remove…',
+        danger: true,
+        onAction: () =>
+          openAction({
+            ...remove,
+            label: `Remove "${displayName}"?`,
+            confirmLabel: 'Remove',
+          }),
+      });
+    }
   }
 
   const readOnlyToolCount = tools.tools?.filter(isReadOnly).length;
@@ -493,7 +497,7 @@ function ConnectorPageContent({
         </Text>
         <ServerAuthActions
           noun="connector"
-          serverName={singular.getName()}
+          serverName={connectorAuthName(singular)}
           displayName={displayName}
           installation={installation}
           oauthConfigured={singular.getAuth()?.type === 'oauth'}

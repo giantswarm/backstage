@@ -4,6 +4,8 @@ import {
   connectorAuthName,
   connectorToolNamePrefix,
   isOrganizationServer,
+  musterNamespaceOf,
+  withMusterKeys,
 } from './connectorKey';
 import { serverListRows } from './serverList';
 import { connectorPageKeys, findServerRow } from './serverGrouping';
@@ -17,6 +19,7 @@ function server(
   name: string,
   namespace: string,
   displayName?: string,
+  spec: Record<string, unknown> = {},
 ): MCPServer {
   return new MCPServer(
     {
@@ -29,7 +32,11 @@ function server(
           ? { annotations: { 'ui.giantswarm.io/display-name': displayName } }
           : {}),
       },
-      spec: { type: 'streamable-http', url: `https://${name}.example.test` },
+      spec: {
+        type: 'streamable-http',
+        url: `https://${name}.example.test`,
+        ...spec,
+      },
     } as never,
     'gazelle',
   );
@@ -127,5 +134,68 @@ describe('connector keys', () => {
     expect(serverPageResolver(servers)('x_org-gazelle_wiki_search')).toBe(
       undefined,
     );
+  });
+
+  it('counts an empty toolPrefix as none, as muster does', () => {
+    expect(
+      connectorToolNamePrefix(
+        server('wiki', 'org-gazelle', undefined, { toolPrefix: '' }),
+      ),
+    ).toBe('x_org-gazelle_wiki');
+  });
+
+  it("names an organization's server named like a family by its own display name", () => {
+    const member = server('gazelle-mcp-wiki', 'agent-platform', 'Wiki', {
+      family: { name: 'wiki' },
+    });
+    const rows = serverListRows([member, gazelleWiki], undefined);
+    expect(
+      rows.filter(row => row.row.kind !== 'core').map(row => row.displayName),
+    ).toEqual(['Wiki', 'Gazelle wiki']);
+  });
+
+  describe("a muster running outside the chart's namespace", () => {
+    const own = server('github', 'muster-system');
+    const ownToo = server('jira', 'muster-system');
+    const org = server('wiki', 'org-gazelle');
+    // muster's `/servers/names`: its own servers by name, the others by key.
+    const names = new Set(['github', 'jira', 'org-gazelle/wiki']);
+
+    it('reads its namespace from the names muster gives its servers', () => {
+      expect(musterNamespaceOf([own, ownToo, org], names)).toBe(
+        'muster-system',
+      );
+    });
+
+    it("keys, prefixes and lists its servers as its own, an organization's as before", () => {
+      const keyed = withMusterKeys([own, ownToo, org], () => names);
+      expect(keyed.map(connectorAuthName)).toEqual([
+        'github',
+        'jira',
+        'org-gazelle/wiki',
+      ]);
+      expect(keyed.map(isOrganizationServer)).toEqual([false, false, true]);
+      expect(connectorToolNamePrefix(keyed[0])).toBe('x_github');
+
+      const rows = serverListRows(keyed, [
+        { name: 'x_github_get_issue' },
+        { name: 'x_org-gazelle_wiki_search' },
+      ] as never);
+      const ownRow = rows.find(row => row.id === 'github')!;
+      expect(ownRow.key).toBe('server:github');
+      expect(ownRow.tools?.map(t => t.tool.name)).toEqual([
+        'x_github_get_issue',
+      ]);
+      expect(ownRow.shadowed).toBe(false);
+      expect(findServerRow(keyed, 'github')).toEqual({
+        kind: 'server',
+        server: keyed[0],
+      });
+    });
+
+    it('keeps the servers of an installation muster has not answered for', () => {
+      const [unkeyed] = withMusterKeys([own], () => undefined);
+      expect(unkeyed).toBe(own);
+    });
   });
 });

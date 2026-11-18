@@ -1,15 +1,6 @@
 import { ReactNode, useEffect, useState } from 'react';
 import { makeStyles, Theme } from '@material-ui/core';
-import {
-  Alert,
-  Box,
-  Flex,
-  Link,
-  SearchField,
-  Tag,
-  TagGroup,
-  Text,
-} from '@backstage/ui';
+import { Box, Flex, SearchField, Text } from '@backstage/ui';
 import { Progress } from '@backstage/core-components';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
@@ -42,28 +33,14 @@ import {
   readProvenance,
   provenanceReleaseId,
 } from '../../lib/gitops';
-import { connectorToolNamePrefix } from '../../lib/connectorKey';
+import { connectorAuthName } from '../../lib/connectorKey';
 import { withoutCrdDefaults } from '../../lib/mcpServerDefinition';
 import { AUTH_MODE_LABELS, serverAuthMode } from '../../lib/serverAuthMode';
-import { TruncatedListNote, useServerPageLinks } from '../shared';
+import { TruncatedListNote } from '../shared';
 
 const useStyles = makeStyles((theme: Theme) => ({
   block: {
     marginBottom: theme.spacing(2),
-  },
-  // A tool tag is already a pill: the underline only crowds the rows.
-  //
-  // The pill is also the hit target the reader sees -- bui highlights it and
-  // shows a pointer on hover -- so the anchor has to fill it. Left as the
-  // anchor's own width, the tag's 8px padding and the rest of its 26px height
-  // look clickable and are not.
-  tagLink: {
-    textDecoration: 'none',
-    display: 'flex',
-    alignItems: 'center',
-    alignSelf: 'stretch',
-    margin: '0 calc(-1 * var(--bui-space-2))',
-    padding: '0 var(--bui-space-2)',
   },
   errorPre: {
     whiteSpace: 'pre-wrap',
@@ -531,90 +508,6 @@ function notConnectedSentence(state: MCPServerState | undefined): string {
 }
 
 /**
- * Tools this server contributes to the aggregated catalogue, discovered lazily
- * via `filter_tools(pattern="<prefix>_*")`. Each tag links to the tool's page
- * beneath its server (the family's page for a family member). `prefixOverride`
- * lets a family-grouped (standard) server filter by `x_<family>_*` instead of
- * the single CR's name-derived prefix.
- */
-export function ServerTools({
-  server,
-  prefixOverride,
-}: {
-  server: MCPServer;
-  prefixOverride?: string;
-}) {
-  const classes = useStyles();
-  const musterApi = useApi(musterApiRef);
-  const links = useServerPageLinks();
-  const installation = server.cluster;
-  const serverKey = server.getFamily() ?? server.getName();
-  const prefix = prefixOverride ?? connectorToolNamePrefix(server);
-  const pattern = `${prefix}_*`;
-
-  const { data, error, isPending, fetchStatus } = useQuery({
-    queryKey: ['muster', 'server-tools', installation, pattern],
-    queryFn: () => musterApi.filterTools({ installation, pattern, limit: 200 }),
-  });
-  const isLoading = isAwaitingData({ isPending, fetchStatus });
-
-  if (isLoading) {
-    return <Progress />;
-  }
-  if (error) {
-    return <Note>Tools unavailable: {(error as Error).message}</Note>;
-  }
-
-  const tools = data?.tools ?? [];
-  if (tools.length === 0) {
-    const empty = noToolsExplanation(server);
-    return empty.tone === 'warning' ? (
-      <Alert status="warning" description={empty.text} />
-    ) : (
-      <Note>{empty.text}</Note>
-    );
-  }
-
-  return (
-    <Flex direction="column" gap="3">
-      <Note>
-        {data?.total ?? tools.length} tool(s) under <Mono>{pattern}</Mono>
-        {data?.truncated ? ' (first page)' : ''} —{' '}
-        <Link href={links.server(serverKey, installation) ?? '#'}>
-          Open the server’s tools
-        </Link>
-      </Note>
-      <TagGroup aria-label={`Tools under ${pattern}`}>
-        {tools.map(tool => (
-          <Tag
-            key={tool.name}
-            id={tool.name}
-            size="small"
-            textValue={tool.name}
-          >
-            {/* The link is the Tag's child rather than its `href`: react-aria
-                renders an `href`-carrying Tag as a pressable grid row, not an
-                anchor, which would cost the tool list middle-click and
-                open-in-new-tab. The title carries the summary on hover. */}
-            {/* `standalone`: a control filling the pill, not a text link. */}
-            <Link
-              standalone
-              className={classes.tagLink}
-              href={links.tool(serverKey, tool.name, installation) ?? '#'}
-              title={tool.summary ?? tool.description ?? tool.name}
-            >
-              {tool.name.startsWith(`${prefix}_`)
-                ? tool.name.slice(prefix.length + 1)
-                : tool.name}
-            </Link>
-          </Tag>
-        ))}
-      </TagGroup>
-    </Flex>
-  );
-}
-
-/**
  * Per-session capability counts for one server, read from the same
  * `core_mcpserver_list` query the connector wizard's test step polls
  * (react-query dedupes it, so this costs no extra request).
@@ -637,7 +530,8 @@ export function useServerCapabilityCounts(
 } {
   const musterApi = useApi(musterApiRef);
   const installation = server?.cluster;
-  const name = server?.getName();
+  // muster's key: two organizations' servers may share the CR name.
+  const key = server ? connectorAuthName(server) : undefined;
 
   const { data, isSuccess } = useQuery({
     queryKey: musterServerListQueryKey(installation),
@@ -645,7 +539,7 @@ export function useServerCapabilityCounts(
     enabled: Boolean(server) && (options.enabled ?? true),
   });
 
-  const runtime = (data?.mcpServers ?? []).find(s => s.name === name);
+  const runtime = (data?.mcpServers ?? []).find(s => (s.key || s.name) === key);
   return {
     resourcesCount: runtime?.resourcesCount,
     promptsCount: runtime?.promptsCount,
@@ -746,7 +640,8 @@ export function ServerResources({
 }) {
   const musterApi = useApi(musterApiRef);
   const installation = server.cluster;
-  const name = server.getName();
+  // muster names a resource's or prompt's server by its key.
+  const name = connectorAuthName(server);
 
   const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['muster', 'server-resources', installation, name],
@@ -815,7 +710,8 @@ export function ServerPrompts({
 }) {
   const musterApi = useApi(musterApiRef);
   const installation = server.cluster;
-  const name = server.getName();
+  // muster names a resource's or prompt's server by its key.
+  const name = connectorAuthName(server);
 
   const { data, error, isPending, fetchStatus } = useQuery({
     queryKey: ['muster', 'server-prompts', installation, name],

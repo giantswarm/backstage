@@ -34,8 +34,6 @@ export type FamilyAccess = {
   waiting: string[];
 };
 
-export { connectorAuthName };
-
 function isHealthy(server: MCPServer): boolean {
   return mcpServerStateSeverity(server.getState()) === 'ok';
 }

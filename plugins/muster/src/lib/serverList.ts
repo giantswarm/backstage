@@ -1,5 +1,6 @@
 import { ToolSummary } from '../apis';
 import { MCPServer } from './k8s';
+import { isOrganizationServer } from './connectorKey';
 import { rowTags } from './connectorTags';
 import {
   MUSTER_SERVER_KEY,
@@ -8,7 +9,7 @@ import {
   partitionServers,
   serverRowDisplayName,
   serverRowKey,
-  singularServerOfPage,
+  singularServerPages,
 } from './serverGrouping';
 import {
   serverListKey,
@@ -51,7 +52,7 @@ export interface ServerListRow {
   /**
    * A singular server whose page segment a family of the same name (or
    * muster, for one named `muster`, or another server of that name,
-   * `singularServerOfPage`) takes: its page cannot be opened.
+   * `singularServerPages`) takes: its page cannot be opened.
    */
   shadowed: boolean;
 }
@@ -95,6 +96,7 @@ export function serverListRows(
   );
   const prefixes = serverPrefixInfos(servers);
   const names = mcpServerDisplayNames(servers);
+  const pages = singularServerPages(servers);
   const tools = catalogue ? toolsByServerKey(catalogue, prefixes) : undefined;
 
   return rows.map(row => {
@@ -103,15 +105,17 @@ export function serverListRows(
     const takenByFamily =
       row.kind === 'server' && (families.has(id) || id === MUSTER_SERVER_KEY);
     const shadowed =
-      takenByFamily ||
-      (row.kind === 'server' &&
-        singularServerOfPage(servers, id) !== row.server);
+      takenByFamily || (row.kind === 'server' && pages.get(id) !== row.server);
     return {
       key,
       id,
-      // A server named like a family (or muster) keeps its own name, so the
-      // two read apart.
-      displayName: takenByFamily ? id : serverRowDisplayName(row, names),
+      // muster's own server named like a family (or muster) keeps its own
+      // name, so the two read apart; an organization's reads as its display
+      // name or its key, `<namespace>/<name>`.
+      displayName:
+        takenByFamily && !isOrganizationServer(row.server)
+          ? id
+          : serverRowDisplayName(row, names),
       row,
       tags: rowTags(row),
       tools: tools
