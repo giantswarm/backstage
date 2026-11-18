@@ -294,6 +294,16 @@ move the default off it (`gitops_owned`). `fennel`'s agent-manager predates
 model credential operations: its `set_organization_model` schema lacks the
 model fields, so the portal refuses every model write there.
 
+Each organization lists four connectors (`list_organization_connectors`), one
+in each state the agent form tells apart: `issue-tracker` and `docs-search`
+ready, `deepwiki` with its credential missing and not accepted by kagent, and
+`helpdesk`, an agent's muster binding (`managedBy: Helm`), which the form does
+not offer. `create_agent`, `update_agent` and `validate_agent` take
+`connectors`, refuse a name the organization lacks or a muster binding as
+agent-manager does, and `get_agent` reads them back. `fennel`'s agent-manager
+also predates `connectors`: its `create_agent` and `update_agent` schemas lack
+them, so the Tools step does not offer the organization's connectors there.
+
 `set_organization_model`, `replace_organization_credential` and
 `start_session` honour their idempotency key (`requestId`): a retry answers
 what the first call answered. This agent-manager writes live only: it reports

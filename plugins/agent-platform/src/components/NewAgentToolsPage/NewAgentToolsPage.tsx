@@ -80,6 +80,7 @@ import {
   withoutCovered,
 } from './connectorChoice';
 import { CopyFromAgent } from './CopyFromAgent';
+import { OrganizationConnectors } from './OrganizationConnectors';
 import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { SelectedRail, type SelectedRailProps } from './SelectedRail';
 import { SignInToolNote } from './SignInToolNote';
@@ -1048,6 +1049,10 @@ export function NewAgentToolsPage() {
             </CardBody>
           </Card>
         )}
+
+        {/* The organization's own connectors: no muster servers, so apart
+            from the selection above and its rail. */}
+        <OrganizationConnectors />
 
         {canContinue && serverProblem && (
           <Flex direction="column" align="start" gap="1" role="status">

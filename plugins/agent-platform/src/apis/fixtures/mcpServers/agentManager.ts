@@ -37,6 +37,28 @@ import { asJson, text } from './jsonTools';
  */
 export const WITHOUT_MODEL_OPERATIONS = 'fennel';
 
+/**
+ * The installation whose agent-manager predates `connectors` (3.2 and
+ * earlier): its `create_agent` and `update_agent` do not take them, so the
+ * Tools step does not offer the organization's connectors there. The same
+ * older agent-manager as {@link WITHOUT_MODEL_OPERATIONS}.
+ */
+export const WITHOUT_CONNECTORS = WITHOUT_MODEL_OPERATIONS;
+
+/** The write tools' arguments as agent-manager 3.3 declares them, in part. */
+const agentWriteSchema = (installation: string) => ({
+  type: 'object',
+  properties: Object.fromEntries(
+    [
+      'namespace',
+      'name',
+      'toolset',
+      'egressPolicyRefs',
+      ...(installation === WITHOUT_CONNECTORS ? [] : ['connectors']),
+    ].map(field => [field, {}]),
+  ),
+});
+
 /** What the fixture agent-manager of an installation composes and can do. */
 const infoOf = (installation: string, managed: string[]): AgentManagerInfo => ({
   version: '1.0.0-fixture',
@@ -195,6 +217,8 @@ export function agentManagerFixtureServer(
     server: AGENT_MANAGER_SERVER,
     tools: asJson(tools),
     inputSchemas: {
+      [AGENT_MANAGER_TOOLS.createAgent]: agentWriteSchema,
+      [AGENT_MANAGER_TOOLS.updateAgent]: agentWriteSchema,
       [AGENT_MANAGER_TOOLS.setOrganizationModel]: installation => ({
         type: 'object',
         properties: Object.fromEntries(

@@ -147,6 +147,19 @@ export type NewAgentFormState = {
    */
   egressPolicyRefs: string[];
   /**
+   * The organization's own connectors the agent binds (`connectors`), names
+   * of `list_organization_connectors`, in the order picked. Empty outside an
+   * organization and on a coding Harness, which takes none.
+   */
+  connectors: string[];
+  /**
+   * agent-manager's refusal of {@link connectors}, in its own words, as the
+   * review step's dry run or write reported it: the Tools step shows it by
+   * its connectors while the selection is the one refused. Not part of the
+   * agent; never kept in a draft.
+   */
+  connectorsRefusal?: ConnectorsRefusal;
+  /**
    * The extra origins and EgressPolicies a move to a coding Harness took out,
    * which reaches its platform list only: what tells the person they are
    * gone, once. Replaced by the next Harness pick; never kept in a draft.
@@ -218,6 +231,13 @@ export type NewAgentFormState = {
   signInToolDeclined?: boolean;
 };
 
+/** agent-manager's refusal of the selected connectors. */
+export type ConnectorsRefusal = {
+  /** The selection it refused. */
+  connectors: string[];
+  messages: string[];
+};
+
 /** What a move to a coding Harness took out of the form, as entered. */
 export type DroppedEgress = {
   origins: string[];
@@ -280,6 +300,13 @@ export type NewAgentFormContextValue = TagsFieldUpdaters & {
   setEgressSetByPlatform: (setByPlatform: boolean) => void;
   /** Replaces the picked EgressPolicies (names, in the order picked). */
   setEgressPolicyRefs: (names: string[]) => void;
+  /** Replaces the organization's connectors picked (names, in order). */
+  setConnectors: (names: string[]) => void;
+  /**
+   * Records agent-manager's refusal of the selected connectors, or clears it
+   * with `undefined`.
+   */
+  setConnectorsRefusal: (refusal: ConnectorsRefusal | undefined) => void;
   /** `''` removes the default workspace. */
   setDefaultWorkspace: (defaultWorkspace: string) => void;
   /** Adds the skill if not selected, removes it if already selected. */
@@ -315,8 +342,8 @@ export type NewAgentFormContextValue = TagsFieldUpdaters & {
    */
   setToolset: (selectors: string[]) => void;
   /**
-   * *Nothing outside the chat*: clears the toolset and turns the step's
-   * selection off (`toolsChatOnly`). Any other toolset change turns it on
+   * *Nothing outside the chat*: clears the toolset and the organization's
+   * connectors, and turns the step's selection off (`toolsChatOnly`). Any other toolset change turns it on
    * again.
    */
   setToolsChatOnly: () => void;
@@ -423,6 +450,7 @@ const initialState: NewAgentFormState = {
   systemMessage: '',
   egressText: '',
   egressPolicyRefs: [],
+  connectors: [],
   defaultWorkspace: '',
   selectedSkills: [],
   keptSkills: [],
@@ -452,7 +480,10 @@ function isValidSlug(slug: string): boolean {
 type NewAgentDraft = {
   state: Omit<
     NewAgentFormState,
-    'tenantChoices' | 'droppedEgress' | 'egressSetByPlatform'
+    | 'tenantChoices'
+    | 'droppedEgress'
+    | 'egressSetByPlatform'
+    | 'connectorsRefusal'
   >;
   slugEdited: boolean;
 };
@@ -476,6 +507,7 @@ function hasCreateInput(state: NewAgentFormState): boolean {
     ].some(text => text.trim() !== '') ||
     state.harness !== undefined ||
     state.egressPolicyRefs.length > 0 ||
+    state.connectors.length > 0 ||
     state.defaultWorkspace !== '' ||
     state.tags.length > 0 ||
     state.selectedSkills.length > 0 ||
@@ -512,7 +544,8 @@ function withOwnTenant(
  * Harness it brought) of another namespace is dropped, and the model picker
  * preselects the tenant's default instead. EgressPolicies are the namespace's
  * own, so the picked ones go too, and so do the connectors of another
- * organization's namespace ({@link selectionForTenant}).
+ * organization's namespace ({@link selectionForTenant}) and the
+ * organization's own connectors picked.
  */
 function withTenant(
   state: NewAgentFormState,
@@ -523,13 +556,14 @@ function withTenant(
   }
   const toolset = selectionForTenant(state.toolset, state.tenant, tenant);
   if (!state.modelConfigNamespace || state.modelConfigNamespace === tenant) {
-    return { ...state, tenant, toolset, egressPolicyRefs: [] };
+    return { ...state, tenant, toolset, egressPolicyRefs: [], connectors: [] };
   }
   return {
     ...state,
     tenant,
     toolset,
     egressPolicyRefs: [],
+    connectors: [],
     modelConfigName: undefined,
     modelConfigNamespace: undefined,
     modelDisplayName: undefined,
@@ -653,6 +687,7 @@ export function NewAgentFormProvider({
       tenantChoicesUnread: _unread,
       droppedEgress: _dropped,
       egressSetByPlatform: _setByPlatform,
+      connectorsRefusal: _refusal,
       ...kept
     } = state;
     return { state: kept, slugEdited };
@@ -853,6 +888,7 @@ export function NewAgentFormProvider({
           tenant: undefined,
           defaultWorkspace: '',
           egressPolicyRefs: [],
+          connectors: [],
           modelConfigName: undefined,
           modelConfigNamespace: undefined,
           modelDisplayName: undefined,
@@ -933,6 +969,7 @@ export function NewAgentFormProvider({
                 modelConfigNamespace: namespace,
                 modelDisplayName: displayName,
                 egressPolicyRefs: [],
+                connectors: [],
                 harness: undefined,
                 droppedHarness: prev.harness?.name ?? prev.droppedHarness,
               };
@@ -948,7 +985,7 @@ export function NewAgentFormProvider({
             droppedEgress: undefined,
           };
           return isCodingRuntime(harness?.runtime)
-            ? withEgressDropped(next)
+            ? withEgressDropped({ ...next, connectors: [] })
             : next;
         }),
       // The same once the runtime is read, for a Harness picked or defaulted
@@ -963,13 +1000,24 @@ export function NewAgentFormProvider({
             ...prev,
             egressSetByPlatform: setByPlatform || undefined,
           };
-          return setByPlatform && !edit ? withEgressDropped(next) : next;
+          return setByPlatform && !edit
+            ? withEgressDropped({ ...next, connectors: [] })
+            : next;
         }),
       setSystemMessage: systemMessage =>
         setState(prev => ({ ...prev, systemMessage })),
       setEgressText: egressText => setState(prev => ({ ...prev, egressText })),
       setEgressPolicyRefs: egressPolicyRefs =>
         setState(prev => ({ ...prev, egressPolicyRefs })),
+      setConnectors: connectors => setState(prev => ({ ...prev, connectors })),
+      setConnectorsRefusal: connectorsRefusal =>
+        setState(prev =>
+          // Compared by content: a review re-renders with a new object.
+          JSON.stringify(prev.connectorsRefusal) ===
+          JSON.stringify(connectorsRefusal)
+            ? prev
+            : { ...prev, connectorsRefusal },
+        ),
       setDefaultWorkspace: defaultWorkspace =>
         setState(prev => ({ ...prev, defaultWorkspace })),
       toggleToolsetSelector: selector =>
@@ -990,6 +1038,8 @@ export function NewAgentFormProvider({
           toolset: [],
           toolsChatOnly: true,
           signInToolDeclined: undefined,
+          // Nothing outside the chat: the organization's connectors too.
+          connectors: [],
         })),
       setToolsetBase: toolsetBase =>
         setState(prev =>
