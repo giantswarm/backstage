@@ -1,6 +1,7 @@
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Flex, List, ListRow } from '@backstage/ui';
+import { Alert, Flex, Link, List, ListRow, Text } from '@backstage/ui';
 import {
+  countNoun,
   EmptyStateCard,
   PageSection,
   ShellPage,
@@ -8,7 +9,14 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { organizationDetailRouteRef } from '../../routes';
-import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
+import {
+  useOrganizationDirectory,
+  type UncheckedInstallation,
+} from '../OrganizationDirectoryProvider';
+import {
+  UncheckedInstallations,
+  useConnectorsHref,
+} from './UncheckedInstallations';
 
 /**
  * Who can add a person to an organization, when agent-manager's answer does
@@ -31,40 +39,28 @@ function sentence(text: string): string {
 export function OrganizationsIndexPage() {
   const {
     installations,
-    discoveryErrors,
+    listingError,
+    uncheckedInstallations,
+    noneChecked,
     organizationsOf,
     failureOf,
+    recheck,
     isLoading,
   } = useOrganizationDirectory();
   const detailRoute = useRouteRef(organizationDetailRouteRef);
   const frame = { documentTitle: 'Organizations' };
 
-  const discoveryAlerts = discoveryErrors.map(message => (
-    <Alert
-      key={message}
-      status="warning"
-      title="Could not check organization availability"
-      description={message}
+  // The installations whose check failed sit behind one quiet line, under
+  // what could be read: an installation the person never uses must not
+  // stack a warning above their organizations.
+  const unchecked = (
+    <UncheckedInstallations
+      unchecked={uncheckedInstallations}
+      recheck={recheck}
     />
-  ));
+  );
 
-  if (installations.length === 0) {
-    return (
-      <ShellPage title="Organizations" {...frame}>
-        <Flex direction="column" gap="5">
-          {discoveryAlerts}
-          {isLoading && <ShellPageFactsSkeleton />}
-          {!isLoading && discoveryErrors.length === 0 && (
-            <EmptyStateCard
-              title="Organizations are not available here"
-              description="No environment's agent-manager serves organizations to this portal yet."
-            />
-          )}
-        </Flex>
-      </ShellPage>
-    );
-  }
-
+  const servesNowhere = installations.length === 0;
   const answered = installations.filter(installation =>
     Boolean(organizationsOf(installation)),
   );
@@ -81,8 +77,30 @@ export function OrganizationsIndexPage() {
 
   return (
     <ShellPage title="Organizations" {...frame}>
+      {/* One tree for every state: the disclosure keeps whether it is open
+          as installations answer. */}
       <Flex direction="column" gap="5">
-        {discoveryAlerts}
+        {listingError && (
+          <Alert
+            status="warning"
+            title="Could not read the installations"
+            description={listingError}
+          />
+        )}
+        {servesNowhere && !listingError && noneChecked && (
+          <NoneCheckedAlert unchecked={uncheckedInstallations} />
+        )}
+        {servesNowhere && isLoading && <ShellPageFactsSkeleton />}
+        {servesNowhere && !isLoading && !listingError && !noneChecked && (
+          <EmptyStateCard
+            title="Organizations are not available here"
+            description={
+              uncheckedInstallations.length === 0
+                ? "No environment's agent-manager serves organizations to this portal yet."
+                : 'No installation that answered serves organizations to this portal. The ones that could not be checked are listed below.'
+            }
+          />
+        )}
         {belongsNowhere && (
           <EmptyStateCard
             title="You belong to no organization"
@@ -141,7 +159,56 @@ export function OrganizationsIndexPage() {
             </PageSection>
           );
         })}
+        {unchecked}
       </Flex>
     </ShellPage>
+  );
+}
+
+/**
+ * Not one installation could be checked, so the page has nothing else to
+ * show: one warning, saying where a sign-in would help when one would.
+ */
+function NoneCheckedAlert({
+  unchecked,
+}: {
+  unchecked: UncheckedInstallation[];
+}) {
+  const connectorsHref = useConnectorsHref(
+    unchecked.length === 1 ? unchecked[0].installation : undefined,
+  );
+  const musterSignIn = unchecked.some(entry => entry.reason === 'musterSignIn');
+  const connectorSignIn = unchecked.some(
+    entry => entry.reason === 'connectorSignIn',
+  );
+  const where =
+    unchecked.length === 1
+      ? unchecked[0].installation
+      : `any of ${countNoun(unchecked.length, 'installation')}`;
+  return (
+    <Alert
+      status="warning"
+      title="Could not check any installation for organizations"
+      description={
+        <Flex direction="column" gap="2">
+          <Text variant="body-small">
+            The portal could not check {where} for organizations.
+            {musterSignIn &&
+              ' Sign in to Muster for the installation you use on the Connectors page, then check it again in the list below.'}
+            {!musterSignIn &&
+              connectorSignIn &&
+              ' Sign in to the agent-manager connector of the installation you use in the list below.'}
+            {!musterSignIn &&
+              !connectorSignIn &&
+              ' The list below says why for each one.'}
+          </Text>
+          {musterSignIn && connectorsHref && (
+            <Link href={connectorsHref} variant="body-small">
+              Open Connectors
+            </Link>
+          )}
+        </Flex>
+      }
+    />
   );
 }

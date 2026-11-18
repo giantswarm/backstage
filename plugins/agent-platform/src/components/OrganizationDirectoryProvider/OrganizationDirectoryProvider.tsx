@@ -7,7 +7,9 @@ import {
 } from '@tanstack/react-query';
 // eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Muster owns the shared installation query key.
 import {
+  isMusterAuthFailure,
   musterInstallationsQueryKey,
+  musterServerListQueryKey,
   useMusterServerAvailability,
 } from '@giantswarm/backstage-plugin-muster';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
@@ -18,6 +20,7 @@ import {
   AgentManagerNotConnectedError,
 } from '../../lib/agentManager';
 import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
+import { useTurnedOffInstallations } from '../../hooks/useTurnedOffInstallations';
 import {
   musterAgentManagerInfoQueryKey,
   musterOrganizationsQueryKey,
@@ -39,8 +42,22 @@ export type OrganizationDirectoryValue = {
    * in the order the portal lists them.
    */
   installations: string[];
-  /** Failures checking whether installations serve organizations. */
-  discoveryErrors: string[];
+  /**
+   * Why muster's installations could not be read, if they could not: then
+   * no installation could be checked at all.
+   */
+  listingError: string | undefined;
+  /**
+   * The installations it could not be learned of whether they serve
+   * organizations, in muster's order, each with why. An installation that
+   * answered without organizations is not one of them.
+   */
+  uncheckedInstallations: UncheckedInstallation[];
+  /**
+   * muster lists installations, none is still being read, and not one of
+   * them could be checked: nothing is known about organizations anywhere.
+   */
+  noneChecked: boolean;
   /**
    * Why it could not be learned whether `installation` serves
    * organizations, if it could not: muster's installations unread, the
@@ -61,7 +78,7 @@ export type OrganizationDirectoryValue = {
   failureOf: (installation: string) => string | undefined;
   /**
    * Reads an installation's organizations again (Check again), and whether
-   * it serves them (after a sign-in).
+   * it serves them (after a sign-in): its muster's server list too.
    */
   recheck: (installation: string) => Promise<void>;
   /** True while an installation's answer is still to come. */
@@ -76,10 +93,83 @@ export type AgentManagerSignIn = {
   signInRequired: boolean;
 };
 
+/**
+ * Why an installation could not be checked for organizations:
+ * - `musterSignIn`: muster refused the person's session there (no token, or
+ *   one it did not take): a sign-in to Muster for the installation fixes it.
+ * - `connectorSignIn`: muster answered, and its agent-manager connector
+ *   wants the person's sign-in.
+ * - `unreachable`: the portal knows it cannot reach the installation's
+ *   muster; nothing the person does here changes that.
+ * - `noAnswer`: its muster did not answer (503); it may later.
+ * - `sharedIdentity`: the portal reaches its muster without a per-user
+ *   sign-in, and organizations are read as the person.
+ * - `failed`: any other failure; `message` quotes it.
+ */
+export type UncheckedReason =
+  | 'musterSignIn'
+  | 'connectorSignIn'
+  | 'unreachable'
+  | 'noAnswer'
+  | 'sharedIdentity'
+  | 'failed';
+
+/** One installation that could not be checked for organizations. */
+export type UncheckedInstallation = {
+  installation: string;
+  reason: UncheckedReason;
+  /** Why, in a sentence that names the installation. */
+  message: string;
+};
+
+/** The sentence that says why `installation` could not be checked. */
+function uncheckedMessage(
+  installation: string,
+  reason: UncheckedReason,
+  detail?: string,
+): string {
+  switch (reason) {
+    case 'musterSignIn':
+      return `You are not signed in to Muster for ${installation}, so the portal could not check whether it serves organizations. Sign in to Muster for ${installation} on the Connectors page, then check again.`;
+    case 'unreachable':
+      return `The portal cannot reach Muster on ${installation}, so it could not check whether ${installation} serves organizations.`;
+    case 'noAnswer':
+      return `Muster on ${installation} did not answer, so the portal could not check whether ${installation} serves organizations. Try again later.`;
+    case 'sharedIdentity':
+      return `The portal reaches Muster on ${installation} without a per-user sign-in. Organizations are read as you, so they cannot be read on ${installation}.`;
+    default:
+      return detail
+        ? `Could not check whether ${installation} serves organizations: ${detail}`
+        : `Could not check whether ${installation} serves organizations.`;
+  }
+}
+
+/** Why the read of an installation's muster server list failed. */
+function serverListFailureReason(
+  error: Error | undefined,
+  probedUnreachable: boolean,
+): UncheckedReason {
+  if (probedUnreachable) {
+    return 'unreachable';
+  }
+  if (
+    isMusterAuthFailure(error) ||
+    (error as { name?: unknown } | undefined)?.name === 'MusterTokenMintError'
+  ) {
+    return 'musterSignIn';
+  }
+  if ((error as { status?: unknown } | undefined)?.status === 503) {
+    return 'noAnswer';
+  }
+  return 'failed';
+}
+
 const EMPTY: OrganizationDirectoryValue = {
   directory: EMPTY_ORGANIZATION_DIRECTORY,
   installations: [],
-  discoveryErrors: [],
+  listingError: undefined,
+  uncheckedInstallations: [],
+  noneChecked: false,
   discoveryFailureOf: () => undefined,
   signInOf: () => undefined,
   organizationsOf: () => undefined,
@@ -133,9 +223,12 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
     staleTime: 5 * 60_000,
     retry: false,
   });
-  const names = (musterInstallations.data?.installations ?? []).map(
-    installation => installation.name,
-  );
+  // An installation the person turned off is asked nothing and is no
+  // organization source: as if muster did not list it.
+  const turnedOff = useTurnedOffInstallations();
+  const names = (musterInstallations.data?.installations ?? [])
+    .map(installation => installation.name)
+    .filter(installation => !turnedOff.includes(installation));
   const availability = useMusterServerAvailability(AGENT_MANAGER_SERVER, names);
   const available = availability.available;
 
@@ -158,16 +251,39 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
   const listingError = musterInstallations.data
     ? undefined
     : musterInstallations.error?.message;
+  // The installations the portal's probe says it cannot reach.
+  const probedUnreachable = new Set(
+    (musterInstallations.data?.installations ?? [])
+      .filter(installation => installation.reachable === false)
+      .map(installation => installation.name),
+  );
   // Each failure belongs to the installation it is about.
-  const installationErrors: Record<string, string> = {};
+  const installationErrors: Record<
+    string,
+    { reason: UncheckedReason; message: string }
+  > = {};
+  const noteUnchecked = (
+    installation: string,
+    reason: UncheckedReason,
+    message = uncheckedMessage(installation, reason),
+  ) => {
+    installationErrors[installation] = { reason, message };
+  };
   for (const installation of names) {
     const presence = availability.presenceOf(installation);
     if (presence === 'unknown' && availability.failedOf(installation)) {
-      installationErrors[installation] =
-        `Could not reach agent-manager on ${installation}. Check your connector sign-in and try again.`;
+      const error = availability.errorOf(installation);
+      const reason = serverListFailureReason(
+        error,
+        probedUnreachable.has(installation),
+      );
+      noteUnchecked(
+        installation,
+        reason,
+        uncheckedMessage(installation, reason, error?.message),
+      );
     } else if (presence === 'sharedIdentity') {
-      installationErrors[installation] =
-        `${installation} needs a per-user connector sign-in to read organizations.`;
+      noteUnchecked(installation, 'sharedIdentity');
     }
   }
   // The installations whose agent-manager wants the person's sign-in, from
@@ -184,7 +300,13 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
   available.forEach((installation, index) => {
     const error = infos[index]?.error;
     if (error) {
-      installationErrors[installation] = `${installation}: ${error.message}`;
+      noteUnchecked(
+        installation,
+        error instanceof AgentManagerNotConnectedError
+          ? 'connectorSignIn'
+          : 'failed',
+        `${installation}: ${error.message}`,
+      );
       noteSignIn(installation, error);
     }
   });
@@ -234,6 +356,7 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
     // so whether it serves organizations there cannot be learned. Without
     // the muster plugin nothing is listed and nothing is held.
     listed: musterInstallations.data ? names : null,
+    turnedOff,
     installationErrors,
     signIns,
   });
@@ -257,9 +380,19 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
     const discovery = JSON.parse(discoverySignature) as {
       listingError: string | null;
       listed: string[] | null;
-      installationErrors: Record<string, string>;
+      turnedOff: string[];
+      installationErrors: Record<
+        string,
+        { reason: UncheckedReason; message: string }
+      >;
       signIns: Record<string, AgentManagerSignIn>;
     };
+    const unchecked = (discovery.listed ?? [])
+      .filter(installation => discovery.installationErrors[installation])
+      .map(installation => ({
+        installation,
+        ...discovery.installationErrors[installation],
+      }));
     const [listing, loading] = JSON.parse(loadingSignature) as [
       boolean,
       string[],
@@ -275,24 +408,31 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
     return {
       directory,
       installations: [...answers.keys()],
-      discoveryErrors: [
-        ...(discovery.listingError ? [discovery.listingError] : []),
-        ...Object.values(discovery.installationErrors),
-      ],
+      listingError: discovery.listingError ?? undefined,
+      uncheckedInstallations: unchecked,
+      noneChecked:
+        unchecked.length > 0 && unchecked.length === discovery.listed?.length,
       discoveryFailureOf: installation => {
         if (discovery.listingError) {
           return discovery.listingError;
         }
+        if (discovery.turnedOff.includes(installation)) {
+          return `${installation} is turned off in your Environments settings, so whether it serves organizations is unknown.`;
+        }
         if (discovery.listed && !discovery.listed.includes(installation)) {
           return `muster does not list ${installation}, so whether it serves organizations is unknown.`;
         }
-        return discovery.installationErrors[installation];
+        return discovery.installationErrors[installation]?.message;
       },
       signInOf: installation => discovery.signIns[installation],
       organizationsOf: installation => answers.get(installation) ?? undefined,
       failureOf: installation => failures.get(installation) ?? undefined,
       recheck: async installation => {
         await Promise.all([
+          // Whether its muster lists agent-manager, when that read failed.
+          queryClient.invalidateQueries({
+            queryKey: musterServerListQueryKey(installation),
+          }),
           queryClient.invalidateQueries({
             queryKey: musterAgentManagerInfoQueryKey(installation),
           }),
