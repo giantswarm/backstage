@@ -3,8 +3,9 @@
 // their box. Run with: node --test .agents/skills/layout-check/collect.test.mjs
 //
 // They need the repository's dependencies and Chromium
-// (`yarn playwright install chromium`), so they skip where those are
-// missing, as in the skill-tests job, which installs nothing.
+// (`yarn playwright install chromium`), and skip where those are missing,
+// unless LAYOUT_CHECK_BROWSER=required: then a missing browser fails them.
+// The skill-tests workflow's browser job runs them so.
 
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -23,6 +24,9 @@ try {
   browser = await chromium.launch();
 } catch (error) {
   missing = `no Playwright Chromium: ${String(error.message).split('\n')[0]}`;
+  if (process.env.LAYOUT_CHECK_BROWSER === 'required') {
+    throw new Error(`LAYOUT_CHECK_BROWSER=required, but ${missing}`);
+  }
 }
 const options = { skip: missing };
 
