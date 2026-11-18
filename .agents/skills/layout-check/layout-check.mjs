@@ -14,6 +14,7 @@
  * reported in a section of their own and never change the exit code.
  */
 
+import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -88,6 +89,28 @@ function pinRailOpen() {
   } catch {
     // Storage blocked: the portal's default, which is open too.
   }
+}
+
+/** How often a run keeps the fixture server it uses from stopping as idle. */
+const TOUCH_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * Keeps this checkout's fixture server from stopping as idle while the run
+ * measures it (`yarn fixtures touch`, which starts none): a full sweep runs
+ * longer than the server's idle time. Returns the function that ends it.
+ */
+function keepFixtureServer() {
+  const touch = () =>
+    execFile(
+      process.execPath,
+      [path.join(root, 'scripts/fixtures-server.mjs'), 'touch'],
+      { cwd: root },
+      () => undefined,
+    );
+  touch();
+  const timer = setInterval(touch, TOUCH_INTERVAL_MS);
+  timer.unref();
+  return () => clearInterval(timer);
 }
 
 function portalUrl(explicit) {
@@ -333,6 +356,7 @@ async function main() {
   }
   const baseUrl = portalUrl(args.url);
   await probe(baseUrl, Boolean(args.url));
+  const release = args.url ? () => undefined : keepFixtureServer();
 
   // Playwright from the repository's own dependencies; its Chromium is
   // installed by `yarn playwright install chromium`.
@@ -387,6 +411,7 @@ async function main() {
   try {
     await Promise.all(Array.from({ length: concurrency }, worker));
   } finally {
+    release();
     await browser.close().catch(() => undefined);
   }
 

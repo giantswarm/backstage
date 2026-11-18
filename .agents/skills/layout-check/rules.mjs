@@ -611,32 +611,35 @@ export function notFoundOf({ errorPage, headings }) {
 
 /**
  * Why the loaded page is the app's error panel instead of the page, or null:
- * an extension that threw shows "Error in <plugin>" with the error's
- * message, and a crashed page has no layout to check. `page` is
- * `{ crash }` as `collectPageKind` reads it.
+ * an extension that threw shows an alert titled "Error in <plugin>" (its
+ * title line reads "Error: Error in app"), the error's message under
+ * "Message", and a crashed page has no layout to check. `page` is
+ * `{ alerts }` as `collectPageKind` reads it: the text of each alert.
  */
-export function crashOf({ crash }) {
-  if (!crash) return null;
-  return `the error panel "${crash.title}"${crash.message ? `: ${crash.message}` : ''}`;
+export function crashOf({ alerts }) {
+  for (const text of alerts ?? []) {
+    const lines = text
+      .split('\n')
+      .map(l => l.trim())
+      .filter(Boolean);
+    const title = lines
+      .map(l => /^(?:Error:\s*)?(Error in \S+)$/.exec(l)?.[1])
+      .find(Boolean);
+    if (!title) continue;
+    const at = lines.indexOf('Message');
+    const message = at >= 0 ? (lines[at + 1] ?? '').slice(0, 160) : '';
+    return `the error panel "${title}"${message ? `: ${message}` : ''}`;
+  }
+  return null;
 }
 
 /** Runs in the page: what `notFoundOf` and `crashOf` read. */
 export function collectPageKind() {
   const error = document.querySelector('[data-testid="error"]');
-  // Backstage's error panel for an extension that threw: an alert titled
-  // "Error in <plugin>", its message under "Message".
-  let crash = null;
-  for (const alert of document.querySelectorAll('[role="alert"]')) {
-    const lines = (alert.innerText || '').split('\n').map(l => l.trim()).filter(Boolean);
-    const title = lines.find(l => /^Error in \S+$/.test(l));
-    if (title) {
-      const at = lines.indexOf('Message');
-      crash = { title, message: at >= 0 ? (lines[at + 1] ?? '').slice(0, 160) : '' };
-      break;
-    }
-  }
   return {
-    crash,
+    alerts: [...document.querySelectorAll('[role="alert"]')].map(a =>
+      (a.innerText || '').slice(0, 2000),
+    ),
     errorPage: error ? error.textContent.trim().slice(0, 200) : null,
     headings: [...document.querySelectorAll('h1, h2, [role="heading"][aria-level="1"], [role="heading"][aria-level="2"]')]
       .map(h => h.textContent.trim())

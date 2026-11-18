@@ -32,7 +32,9 @@ Commands run from the repo root; `L=.agents/skills/layout-check`.
 
 Start fixture mode (`docs/fixtures.md`); the check reads the portal's URL
 from `.fixtures-server.json` and stops with one message when the portal
-does not answer. Stop the server when you are done.
+does not answer. While it runs it keeps that server from stopping as idle
+(`yarn fixtures touch`), so a sweep longer than the server's idle time
+keeps its portal. Stop the server when you are done.
 
 ```bash
 L=.agents/skills/layout-check

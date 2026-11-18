@@ -878,12 +878,13 @@ test('checkLayout: runs table-scroll', () => {
 test('crashOf names the error panel of a page that threw', () => {
   assert.equal(
     crashOf({
-      crash: {
-        title: 'Error in app',
-        message: 'Duplicate key "server:wiki" found in collection.',
-      },
+      alerts: [
+        'Error: Error in app\nError\n\nError\n\nMessage\n\nDuplicate key "server:wiki" found in collection.\n\nStack Trace\n\nError: Duplicate key',
+      ],
     }),
     'the error panel "Error in app": Duplicate key "server:wiki" found in collection.',
   );
-  assert.equal(crashOf({ crash: null }), null);
+  // A page's own alerts are no crash.
+  assert.equal(crashOf({ alerts: ['Could not load the connectors: Error in the request'] }), null);
+  assert.equal(crashOf({ alerts: [] }), null);
 });

@@ -45,10 +45,12 @@ yarn fixtures stop
   counts as the checkout's server only while its command line carries the
   state's token, so `stop` never signals a process that took over a stale
   process id.
-- The server stops on its own once no `start` has asked for it for
-  `FIXTURES_IDLE_MINUTES` (default 60), and at once when `.fixtures-server.json`
-  no longer names it. A start that fails stops what it started. Stop the
-  server when you are done: a frontend and a backend per checkout are heavy.
+- The server stops on its own once no `start` or `yarn fixtures touch` has
+  asked for it for `FIXTURES_IDLE_MINUTES` (default 60), and at once when
+  `.fixtures-server.json` no longer names it. The layout check touches the
+  server it reads from `.fixtures-server.json` while it runs, so a long run
+  keeps it. A start that fails stops what it started. Stop the server when
+  you are done: a frontend and a backend per checkout are heavy.
 - `--config <file>` adds a config on top, for example to turn on Hive and its
   fixtures (`app.extensions` must then repeat `app-config.yaml`'s list, which
   Backstage replaces rather than merges). A relative path is read from the
