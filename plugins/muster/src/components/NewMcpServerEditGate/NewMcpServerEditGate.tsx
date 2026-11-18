@@ -19,7 +19,7 @@ import {
 import { isGitOpsManaged } from '../../lib/gitops';
 import {
   connectorDisplayNameOn,
-  findServerRow,
+  organizationServersNamed,
   musterOwnServer,
 } from '../../lib/serverGrouping';
 import { connectorEditBlock } from '../ConnectorPage/connectorEdit';
@@ -138,17 +138,17 @@ export function NewMcpServerEditGate({
     useNewMcpServerForm();
 
   // muster's own server of that name (a family member included), which the
-  // wizard edits; else an organization's whose page the name opens, which
-  // muster does not let it change.
-  const pageRow = editName
-    ? findServerRow(
+  // wizard edits; else the one organization's of that name, which muster
+  // does not let it change.
+  const organizations = editName
+    ? organizationServersNamed(
         mcpServers.filter(s => s.cluster === editInstallation),
         editName,
       )
-    : undefined;
+    : [];
   const server =
     musterOwnServer(mcpServers, editInstallation, editName) ??
-    (pageRow?.kind === 'server' ? pageRow.server : undefined);
+    (organizations.length === 1 ? organizations[0] : undefined);
   const gitOpsManaged = server ? isGitOpsManaged(server) : false;
   // What people call the connector; the URL keeps its resource name.
   const shownName = editName

@@ -35,6 +35,7 @@ import type { ComposerImage } from '../../lib/messageImages';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useDraggablePosition } from '../../hooks/useDraggablePosition';
 import { useSkillPaths } from '../../hooks/useSkillPaths';
+import { useConnectorPageLinks } from '../../hooks/useConnectorPageLinks';
 import { skillSource, uniqueSkills } from '../../lib/customize';
 import {
   agentDetailRouteRef,
@@ -452,6 +453,7 @@ function PaletteDialog({
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
   const skillPaths = useSkillPaths();
   const serverRoute = useRouteRef(musterServerExternalRouteRef);
+  const connectorLinks = useConnectorPageLinks();
   const customizePaths = useCustomizePaths();
   const { modelDetail: modelDetailRoute } = customizePaths;
   const workflowDetailRoute = useRouteRef(musterWorkflowDetailExternalRouteRef);
@@ -528,14 +530,14 @@ function PaletteDialog({
           id: `connector:${connector.installation}/${connector.key}`,
           title: connector.displayName,
           meta: connector.installation,
-          // A connector whose name another one shares has no page to open,
+          // muster's own connector named like a family has no page to open,
           // as on the Connectors list.
           ...(connector.page
             ? {
-                href: serverRoute({
-                  installation: connector.installation,
-                  server: connector.page,
-                }),
+                href: connectorLinks.server(
+                  connector.installation,
+                  connector.page,
+                ),
               }
             : {}),
           names: [connector.displayName, connector.page ?? connector.key],
@@ -592,6 +594,7 @@ function PaletteDialog({
     agentDetailRoute,
     skillPaths,
     serverRoute,
+    connectorLinks,
     modelDetailRoute,
     workflowDetailRoute,
   ]);

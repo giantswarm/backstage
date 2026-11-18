@@ -66,6 +66,16 @@ function InstallationRoutes({ usedBy }: { usedBy?: ReactElement }) {
   return (
     <MusterSubPage context={CONTEXT} installation={installation}>
       <Routes>
+        {/* An organization's connector (`lib/connectorAddress.ts`). */}
+        <Route
+          path="-/:namespace/:server/tools/:tool/*"
+          element={<ToolPage />}
+        />
+        <Route
+          path="-/:namespace/:server/*"
+          element={<ConnectorPage usedBy={usedBy} />}
+        />
+        <Route path="-/*" element={listRedirect} />
         <Route path=":server/tools/:tool/*" element={<ToolPage />} />
         <Route path=":server/edit/*">{wizardSteps}</Route>
         <Route path=":server/*" element={<ConnectorPage usedBy={usedBy} />} />
@@ -79,7 +89,9 @@ function InstallationRoutes({ usedBy }: { usedBy?: ReactElement }) {
 /**
  * Routing within the Customize screen's Connectors tab (`/customize/connectors`,
  * whose bare path is the Customize screen's own): a page per
- * connector at `<installation>/<server>` (and per tool beneath it), the
+ * connector at `<installation>/<server>`, or
+ * `<installation>/-/<namespace>/<server>` for an organization's (and per tool
+ * beneath it), the
  * registration wizard at `new[/auth|/verify]` and a connector's edit, the same
  * wizard prefilled, at `<installation>/<server>/edit[/auth|/verify]`. The
  * static `new` outranks an installation, so `new` is a reserved word here.

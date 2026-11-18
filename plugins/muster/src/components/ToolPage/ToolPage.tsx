@@ -21,9 +21,15 @@ import {
 import {
   findServerRow,
   mcpServerDisplayNames,
+  serverPageKey,
   serverRowDisplayName,
-  serverRowKey,
 } from '../../lib/serverGrouping';
+import {
+  connectorPageKeyLabel,
+  connectorPageParams,
+  isOrganizationConnectorPageKey,
+} from '../../lib/connectorAddress';
+import { useConnectorPageKey } from '../../hooks/useConnectorPageKey';
 import { toolEffect } from '../../lib/toolAnnotations';
 import {
   serverPageResolver,
@@ -80,14 +86,16 @@ const TOOL_NAME_STYLE = {
  * leaving the page asks first.
  */
 export function ToolPage() {
-  const { installation = '', server = '', tool = '' } = useParams();
+  const { installation = '', tool = '' } = useParams();
+  const server = useConnectorPageKey();
   // Another tool, or the same name elsewhere, starts afresh: its own form,
   // no run in flight and no result.
   return <ToolPageContent key={`${installation}/${server}/${tool}`} />;
 }
 
 function ToolPageContent() {
-  const { server: key = '', tool = '' } = useParams();
+  const { tool = '', '*': subPath = '' } = useParams();
+  const key = useConnectorPageKey();
   const basePath = useSplatBasePath();
   // The address's own query, as it is: the tab links and the redirect keep
   // it. It carries the Tools search and filter the tool was opened from,
@@ -109,10 +117,10 @@ function ToolPageContent() {
   const row = useMemo(() => findServerRow(mcpServers, key), [mcpServers, key]);
   const prefixes = useMemo(() => serverPrefixInfos(mcpServers), [mcpServers]);
   const shortName = shortToolName(tool, prefixes);
-  const serverKey = row ? serverRowKey(row) : key;
+  const serverKey = row ? serverPageKey(row) : key;
   const serverName = row
     ? serverRowDisplayName(row, mcpServerDisplayNames(mcpServers))
-    : key;
+    : connectorPageKeyLabel(key);
   // The server's tools as muster lists them for this session: the tool is
   // shown only when its server offers it on this installation, not merely
   // when its name carries the server's prefix.
@@ -167,12 +175,32 @@ function ToolPageContent() {
     row && activeInstallation
       ? representativeServer(row, activeInstallation)?.server
       : undefined;
+  // An organization's connector's tool at the address it had before the
+  // connector had its own (`<installation>/<name>/tools/<tool>`): the tool's
+  // name says which organization's it is.
+  const movedTo =
+    !row && activeInstallation && !isOrganizationConnectorPageKey(key)
+      ? pageOfTool(tool)
+      : undefined;
+  const movedHref =
+    movedTo &&
+    isOrganizationConnectorPageKey(movedTo) &&
+    connectorPageParams(movedTo).server === key
+      ? links.tool(movedTo, tool, activeInstallation!)
+      : undefined;
   let body: ReactNode;
   // The tab strip while the page can still turn out to be the tool's, and
   // once it is; never on a page that says there is no such tool.
   let withTabs = true;
   if (isLoadingInstallations || isLoading) {
     body = <LoadingIndicator label="Reading the environment's connectors…" />;
+  } else if (movedHref) {
+    return (
+      <Navigate
+        to={`${movedHref}${subPath ? `/${subPath}` : ''}${search}`}
+        replace
+      />
+    );
   } else if (!activeInstallation) {
     withTabs = false;
     body = (
@@ -209,7 +237,7 @@ function ToolPageContent() {
         description={
           row
             ? 'It may have been removed, or run on another environment — pick it in the page header.'
-            : `There is no connector “${key}” on ${activeInstallation}. It may run on another environment — pick it in the page header.`
+            : `There is no connector “${serverName}” on ${activeInstallation}. It may run on another environment — pick it in the page header.`
         }
         actions={
           serverHref ? (

@@ -1,6 +1,10 @@
 import type { ConnectorName } from '@giantswarm/backstage-plugin-gs-common';
 import { MCPServer, TOOL_GROUP_ORDER, ToolGroupKey } from './k8s';
 import { connectorAuthName, isOrganizationServer } from './connectorKey';
+import {
+  connectorPageParams,
+  organizationConnectorPageKey,
+} from './connectorAddress';
 
 /**
  * A server family: the MCPServer CRs sharing one `spec.family.name`, i.e. the
@@ -315,9 +319,10 @@ export function mcpServerDisplayNames(
 }
 
 /**
- * What people call the connector whose page `name` opens on `installation`
- * ({@link findServerRow}), by {@link connectorDisplayNames} over that
- * installation's servers; `name` itself when there is no such connector.
+ * What people call the connector `name` names on `installation` (the page
+ * {@link findServerRow} opens, else the one organization's of that name), by
+ * {@link connectorDisplayNames} over that installation's servers; `name`
+ * itself when there is no such connector.
  */
 export function connectorDisplayNameOn(
   servers: readonly MCPServer[],
@@ -325,7 +330,12 @@ export function connectorDisplayNameOn(
   name: string,
 ): string {
   const own = servers.filter(server => server.cluster === installation);
-  const row = findServerRow(own, name);
+  const organizations = organizationServersNamed(own, name);
+  const row: ServerPageRow | undefined =
+    findServerRow(own, name) ??
+    (organizations.length === 1
+      ? { kind: 'server', server: organizations[0] }
+      : undefined);
   return row && row.kind !== 'core'
     ? serverRowDisplayName(row, mcpServerDisplayNames(own))
     : name;
@@ -349,35 +359,67 @@ export function serverRowDisplayName(
 }
 
 /**
- * The singular server whose page each `:server` segment opens, by segment:
- * the one of that name in muster's namespace, else an organization's while
- * it is the only one of that name. Two organizations may each own a server
- * of one name, which the segment alone does not tell apart: neither has a
- * page, and the name is not in the map. Built once per server list, for
- * lookups in loops.
+ * The page key of the server a singular server row shows
+ * ({@link serverPageKey}): its name for muster's own, `-/<namespace>/<name>`
+ * for an organization's.
  */
-export function singularServerPages(
+export function singularServerPageKey(server: MCPServer): string {
+  return isOrganizationServer(server)
+    ? organizationConnectorPageKey(
+        server.getNamespace() ?? '',
+        server.getName(),
+      )
+    : server.getName();
+}
+
+/**
+ * A row's page key, its address below the installation
+ * (`lib/connectorAddress.ts`): {@link serverRowKey} for a family, muster and
+ * muster's own server; `-/<namespace>/<name>` for an organization's, so two
+ * organizations' servers of one name each have their page.
+ */
+export function serverPageKey(row: ServerPageRow): string {
+  return row.kind === 'server'
+    ? singularServerPageKey(row.server)
+    : serverRowKey(row);
+}
+
+/**
+ * A server of muster's own namespace whose name a family or muster itself
+ * takes (`muster`): the family's (or muster's) page has its address, so it
+ * has none. An organization's server is never shadowed, its address being
+ * its own.
+ */
+export function isShadowedServer(
+  server: MCPServer,
+  families: ReadonlySet<string | undefined>,
+): boolean {
+  return (
+    !server.getFamily() &&
+    !isOrganizationServer(server) &&
+    (server.getName() === MUSTER_SERVER_KEY || families.has(server.getName()))
+  );
+}
+
+/**
+ * The organizations' singular servers named `name`, by namespace: what an
+ * organization connector's address before `-/<namespace>/<name>`
+ * (`<installation>/<name>`) may have meant.
+ */
+export function organizationServersNamed(
   servers: readonly MCPServer[],
-): ReadonlyMap<string, MCPServer> {
-  const byName = new Map<string, MCPServer[]>();
-  for (const server of servers) {
-    if (!server.getFamily()) {
-      byName.set(server.getName(), [
-        ...(byName.get(server.getName()) ?? []),
-        server,
-      ]);
-    }
-  }
-  const pages = new Map<string, MCPServer>();
-  for (const [name, named] of byName) {
-    const owner =
-      named.find(server => !isOrganizationServer(server)) ??
-      (named.length === 1 ? named[0] : undefined);
-    if (owner) {
-      pages.set(name, owner);
-    }
-  }
-  return pages;
+  name: string,
+): MCPServer[] {
+  return servers
+    .filter(
+      server =>
+        !server.getFamily() &&
+        server.getName() === name &&
+        isOrganizationServer(server),
+    )
+    .sort((a, b) =>
+      (a.getNamespace() ?? '').localeCompare(b.getNamespace() ?? ''),
+    );
 }
 
 /**
@@ -399,15 +441,27 @@ export function musterOwnServer(
 }
 
 /**
- * The row a server page's `:server` segment names on this installation, or
- * undefined when the installation has no such server. A family wins over a
- * singular CR of the same name: the family's page is the one every family link
- * points at.
+ * The row a server page's key names on this installation
+ * ({@link serverPageKey}), or undefined when the installation has no such
+ * server. A family wins over muster's own singular CR of the same name: the
+ * family's page is the one every family link points at. A bare name never
+ * opens an organization's server, whose address is `-/<namespace>/<name>`.
  */
 export function findServerRow(
   servers: readonly MCPServer[],
   key: string,
 ): ServerPageRow | undefined {
+  const params = connectorPageParams(key);
+  if (params.namespace !== undefined) {
+    const server = servers.find(
+      s =>
+        !s.getFamily() &&
+        s.getNamespace() === params.namespace &&
+        s.getName() === params.server &&
+        isOrganizationServer(s),
+    );
+    return server ? { kind: 'server', server } : undefined;
+  }
   if (key === MUSTER_SERVER_KEY) {
     return { kind: 'core' };
   }
@@ -421,34 +475,35 @@ export function findServerRow(
       ),
     };
   }
-  const server = singularServerPages(servers).get(key);
+  const server = servers.find(
+    s => !s.getFamily() && s.getName() === key && !isOrganizationServer(s),
+  );
   return server ? { kind: 'server', server } : undefined;
 }
 
 /**
- * The `:server` segment of the page that shows each MCPServer's usage on one
+ * The page key of the page that shows each MCPServer's usage on one
  * installation, by muster's key for it (`connectorAuthName`, what the usage
  * metrics name it by): the family's for a family member (instances have no
- * page of their own; the family's Usage tab lists each one), else its own.
- * A server is left out where no page shows it: one named like a family,
- * muster's own page, which takes that name, or a segment that opens another
- * server ({@link singularServerPages}). A name not in the map (muster's own
- * tools, a server since removed) has no page either.
+ * page of their own; the family's Usage tab lists each one), else its own
+ * ({@link serverPageKey}). A server is left out where no page shows it
+ * ({@link isShadowedServer}). A name not in the map (muster's own tools, a
+ * server since removed) has no page either.
  */
 export function connectorPageKeys(
   servers: readonly MCPServer[],
 ): Map<string, string> {
   const families = new Set(servers.map(server => server.getFamily()));
-  const pages = singularServerPages(servers);
   const keys = new Map<string, string>();
   for (const server of servers) {
-    const key = server.getFamily() ?? server.getName();
-    const shadowed =
-      key === MUSTER_SERVER_KEY ||
-      (!server.getFamily() && (families.has(key) || pages.get(key) !== server));
-    if (!shadowed) {
-      keys.set(connectorAuthName(server), key);
+    const family = server.getFamily();
+    if (family === MUSTER_SERVER_KEY || isShadowedServer(server, families)) {
+      continue;
     }
+    keys.set(
+      connectorAuthName(server),
+      family ?? singularServerPageKey(server),
+    );
   }
   return keys;
 }

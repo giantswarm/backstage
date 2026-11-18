@@ -32,10 +32,14 @@ export const newMcpServerVerifyRouteRef = createSubRouteRef({
 
 // A connector's page and a tool's page beneath it, on the installation that
 // runs them: identity lives in the path, never in the query. `:server` is
-// the family name for a server family, the CR name for a singular server and
-// `muster` for muster's own tools; `:tool` is the full muster tool name. Two
-// segments, so a connector page never reads as the list's retired sub-tabs
-// (`infrastructure`, `internal`, `families`), which are one.
+// the family name for a server family, the CR name for muster's own singular
+// server and `muster` for muster's own tools; `:tool` is the full muster tool
+// name. Two segments, so a connector page never reads as the list's retired
+// sub-tabs (`infrastructure`, `internal`, `families`), which are one.
+//
+// Built and read through one helper, `lib/connectorAddress.ts`
+// (`useServerPageLinks` links with it), never by hand: an organization's
+// connector has the `-/<namespace>/<name>` form below instead.
 export const mcpServerRouteRef = createSubRouteRef({
   path: '/:installation/:server',
   parent: mcpServersRouteRef,
@@ -43,6 +47,21 @@ export const mcpServerRouteRef = createSubRouteRef({
 
 export const mcpServerToolRouteRef = createSubRouteRef({
   path: '/:installation/:server/tools/:tool',
+  parent: mcpServersRouteRef,
+});
+
+// An organization's connector, a singular server outside muster's namespace,
+// and a tool's page beneath it: `-/<namespace>/<name>`, as two organizations
+// may each own a connector of one name. `-` is no Kubernetes name, so it
+// never takes a muster connector's address; the form skill pages use for a
+// git host (`-/<host>/…`).
+export const mcpOrganizationServerRouteRef = createSubRouteRef({
+  path: '/:installation/-/:namespace/:server',
+  parent: mcpServersRouteRef,
+});
+
+export const mcpOrganizationServerToolRouteRef = createSubRouteRef({
+  path: '/:installation/-/:namespace/:server/tools/:tool',
   parent: mcpServersRouteRef,
 });
 

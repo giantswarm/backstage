@@ -456,6 +456,48 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
       break;
     }
 
+    // An organization's connector, `…/<installation>/-/<namespace>/<server>`,
+    // and a tool's page beneath it: the same pages, and page names, as at
+    // `…/<installation>/<server>`, under route templates of their own.
+    case /^\/customize\/connectors\/[^/]+\/-\/[^/]+\/[^/]+\/tools\/[^/]+/.test(
+      pathname,
+    ): {
+      const tab = segments.slice(8).join('/');
+      // The tabs of the page key, `-/<namespace>/<server>`: never muster's.
+      const tabs = toolTabs(segments.slice(3, 6).join('/'));
+      let view = 'redirect';
+      if (tab === '') {
+        view = 'overview';
+      } else if (tabs.has(tab)) {
+        view = tab;
+      }
+      payload = { page: 'Connector tool', view };
+      route = tabRoute(
+        '/customize/connectors/:installation/-/:namespace/:server/tools/:tool',
+        tab,
+        tabs,
+      );
+      break;
+    }
+    case /^\/customize\/connectors\/[^/]+\/-\/[^/]+\/[^/]+(\/.*)?$/.test(
+      pathname,
+    ): {
+      const tab = segments.slice(6).join('/');
+      let view = 'redirect';
+      if (tab === '') {
+        view = 'tools';
+      } else if (CONNECTOR_TABS.has(tab)) {
+        view = tab;
+      }
+      payload = { page: 'Connector', view };
+      route = tabRoute(
+        '/customize/connectors/:installation/-/:namespace/:server',
+        tab,
+        CONNECTOR_TABS,
+      );
+      break;
+    }
+
     // A tool's page beneath its connector, with its tab as the view (never
     // its name). Its tabs are a closed set; any other address under it only
     // redirects to Overview, so that momentary view is a 'redirect'.

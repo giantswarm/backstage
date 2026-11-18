@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router-dom';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -61,6 +61,20 @@ jest.mock('../MusterInstanceProvider', () => ({
         } as never,
         'gazelle',
       ),
+      // Two organizations' connectors of one name.
+      ...['org-gazelle', 'org-golem'].map(
+        namespace =>
+          new MCPServer(
+            {
+              apiVersion: 'muster.giantswarm.io/v1alpha1',
+              kind: 'MCPServer',
+              metadata: { name: 'wiki', namespace },
+              spec: { type: 'streamable-http' },
+              status: { state: 'Connected' },
+            } as never,
+            'gazelle',
+          ),
+      ),
     ],
     workflows: [],
     isLoading: mockLoading,
@@ -83,6 +97,8 @@ function makeApi() {
         { name: 'x_aws-root_list_buckets' },
         { name: 'x_jira_search_issues' },
         { name: 'x_jira_add_comment' },
+        { name: 'x_org-gazelle_wiki_search' },
+        { name: 'x_org-golem_wiki_search' },
       ],
     })),
     describeTool: jest.fn(async (name: string): Promise<ToolDetail> => ({
@@ -123,6 +139,11 @@ function makeApi() {
 
 const BASE = '/customize/connectors';
 
+function LocationProbe() {
+  const { pathname, search } = useLocation();
+  return <p>{`at ${pathname}${search}`}</p>;
+}
+
 async function renderAt(path: string, api = makeApi()) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -133,7 +154,12 @@ async function renderAt(path: string, api = makeApi()) {
         <Routes>
           <Route
             path="/customize/connectors/*"
-            element={<McpServersRouter />}
+            element={
+              <>
+                <LocationProbe />
+                <McpServersRouter />
+              </>
+            }
           />
         </Routes>
       </PageHeaderActionsProvider>
@@ -161,6 +187,36 @@ const pageHeader = () =>
   screen.getByRole('heading', { level: 1 }).parentElement!;
 
 describe('ToolPage', () => {
+  describe("an organization's connector's tool", () => {
+    it.each(['org-gazelle', 'org-golem'])(
+      "opens beneath %s's wiki, at its own address",
+      async namespace => {
+        await renderAt(
+          `${BASE}/gazelle/-/${namespace}/wiki/tools/x_${namespace}_wiki_search`,
+        );
+
+        expect(
+          await screen.findByRole('heading', { level: 1, name: 'search' }),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByRole('link', { name: `${namespace}/wiki` }),
+        ).toHaveAttribute('href', `${BASE}/gazelle/-/${namespace}/wiki`);
+      },
+    );
+
+    it('moves its address before the connector had its own to it, by the tool', async () => {
+      await renderAt(
+        `${BASE}/gazelle/wiki/tools/x_org-golem_wiki_search/run?q=x`,
+      );
+
+      expect(
+        await screen.findByText(
+          `at ${BASE}/gazelle/-/org-golem/wiki/tools/x_org-golem_wiki_search/run?q=x`,
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
   it('opens on Overview: what it is for, its facts and its schema, folded', async () => {
     await renderAt(`${BASE}/gazelle/aws-root/tools/x_aws-root_list_buckets`);
 

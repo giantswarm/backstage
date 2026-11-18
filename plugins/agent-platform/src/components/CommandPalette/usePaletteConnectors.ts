@@ -14,10 +14,11 @@ export type PaletteConnector = {
    */
   key: string;
   /**
-   * The connector page's segment under the Connectors tab: the family name
-   * for a server family, the CR name for a singular server. Absent where the
-   * Connectors list opens no page either: a name another connector there
-   * shares, which the segment alone does not tell apart.
+   * The connector page's key under the Connectors tab (muster's
+   * `connectorPageParams`): the family name for a server family, the CR name
+   * for muster's own singular server, `-/<namespace>/<name>` for an
+   * organization's. Absent where the Connectors list opens no page either:
+   * muster's own server whose name a family takes.
    */
   page?: string;
   /**
