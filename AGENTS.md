@@ -78,12 +78,14 @@ iterating: a plugin-wide run for a one-file change costs minutes for the same
 signal. Save the plugin-wide run for a change to something shared, with call
 sites beyond the file you edited.
 
-A change to a page is proven with the layout check in fixture mode before
-you ask for review: "Fixture mode and the layout check" below. The browser
-suite against agentlab is optional: `docs/development.md`, "End-to-end tests in
-a browser, against agentlab", and `e2e/agentlab/README.md`. Its lab users are
-throwaway fixtures, and signing in as them, in the Dex popup too, is fine. Only
-real people's accounts and real installations are off-limits.
+Check a change to a page in a browser before you ask for review: in fixture
+mode, on a dev server or against agentlab. The layout check is required on top
+of that, as an automated safeguard: "Fixture mode and the layout check" below.
+The browser suite against agentlab is optional: `docs/development.md`,
+"End-to-end tests in a browser, against agentlab", and
+`e2e/agentlab/README.md`. Its lab users are throwaway fixtures, and signing in
+as them, in the Dex popup too, is fine. Only real people's accounts and real
+installations are off-limits.
 
 ### Fixture mode and the layout check
 
@@ -119,8 +121,9 @@ tool the agent-platform or muster pages call, the drift guard
 the test lists it as not served, with a comment saying why. Nothing checks
 bot-prs's calls through muster.
 
-The [`layout-check`](.agents/skills/layout-check/SKILL.md) skill is the
-default proof of a UI change, before you ask for review: the pages the
+The [`layout-check`](.agents/skills/layout-check/SKILL.md) skill is required
+for a UI change, before you ask for review, in addition to looking at it in a
+browser: the pages the
 `ui-impact` skill maps, at the default widths, in `base` and the scenarios the
 change is about. Pass concrete paths, never a route template. For a page with
 parameters, run the spec's entry for it (`--only <page name>`), which opens
@@ -283,10 +286,11 @@ until `ui-tested` has replaced it. This is a convention; no check enforces it.
 Details: the `ui-impact` skill and `docs/development.md`, "Manual UI test
 before merge".
 
-Before asking for review of a pull request that changes a page, run the
-`layout-check` skill on every page it changes, as "Fixture mode and the layout
-check" above says, and fix what it finds or say in the description why a
-finding is right as it is.
+Before asking for review of a pull request that changes a page, look at every
+page it changes in a browser and run the `layout-check` skill on them, as
+"Fixture mode and the layout check" above says. Fix what it finds or say in the
+description why a finding is right as it is. A page fixture mode can't render
+with data can't be layout-checked: say so in the description.
 
 A pull request built from a mockup references the issue that links the mockup
 and carries the "Differences from the mockup" section of the `mockups` skill.

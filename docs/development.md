@@ -317,10 +317,6 @@ browser-level complement of `agentlab backstage-test`, which proves the same
 portal's routes and tokens headlessly and renders no page. The script first
 installs the Chromium its Playwright version needs, a no-op when it is there.
 
-The suite is optional. What a change to a page needs is the layout check in
-fixture mode, with the [`layout-check`](../.agents/skills/layout-check/SKILL.md)
-skill.
-
 ```bash
 yarn test:e2e:agentlab                    # against https://portal.127.0.0.1.nip.io
 yarn test:e2e:agentlab --grep-invert lifecycle   # the pages only, ~1 min
@@ -333,6 +329,11 @@ as them. To test an unreleased build, put its image into the lab
 `agentlab platform`) and run the suite against it. Variables, coverage and the
 lab conditions that look like failures are in
 [`e2e/agentlab/README.md`](../e2e/agentlab/README.md).
+
+The suite is optional. A change to a page is checked in a browser, in
+[fixture mode](fixtures.md#fixture-mode), on a dev server or on agentlab, and
+measured with the [`layout-check`](../.agents/skills/layout-check/SKILL.md)
+skill.
 
 ## Manual UI test before merge
 
