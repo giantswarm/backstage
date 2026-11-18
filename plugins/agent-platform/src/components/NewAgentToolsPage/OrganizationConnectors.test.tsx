@@ -250,13 +250,15 @@ describe('OrganizationConnectors', () => {
     expect(screen.queryByText(/Not in the organization any more/)).toBeNull();
   });
 
-  it("says each connector's state in words, links a missing credential to the organization's Connectors tab, and still lets it be picked", async () => {
+  it("says each connector's state in words, sends a missing credential to the Connectors tab's Replace credential, and still lets it be picked", async () => {
     const user = userEvent.setup();
     await renderSection();
     const deepwiki = await screen.findByRole('checkbox', { name: 'deepwiki' });
 
     expect(deepwiki).toHaveAccessibleDescription(
-      expect.stringContaining('Credential missing'),
+      expect.stringContaining(
+        'An admin of the organization sets it with Replace credential',
+      ),
     );
     expect(deepwiki).toHaveAccessibleDescription(
       expect.stringContaining(
@@ -265,7 +267,7 @@ describe('OrganizationConnectors', () => {
     );
     expect(
       within(section()).getByRole('link', {
-        name: /Set it on the Connectors tab/,
+        name: /Open the Connectors tab/,
       }),
     ).toHaveAttribute(
       'href',
@@ -328,8 +330,11 @@ describe('OrganizationConnectors', () => {
     );
     expect(picked()).toBe('');
     expect(screen.getByRole('checkbox', { name: 'jira' })).toBeDisabled();
+    // The section says which option leads to these connectors alone.
     expect(
-      within(section()).getByText('Pick another option above to add tools.'),
+      within(section()).getByText(
+        /turns these connectors off too\. To give the agent only these connectors, pick Only the tools I choose below/,
+      ),
     ).toBeInTheDocument();
   });
 

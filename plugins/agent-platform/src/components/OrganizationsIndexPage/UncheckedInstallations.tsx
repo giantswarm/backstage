@@ -1,5 +1,9 @@
-import { useState } from 'react';
-import { useRouteRef } from '@backstage/frontend-plugin-api';
+import { useState, type ReactNode } from 'react';
+import {
+  identityApiRef,
+  useApi,
+  useRouteRef,
+} from '@backstage/frontend-plugin-api';
 import {
   Accordion,
   AccordionGroup,
@@ -15,6 +19,7 @@ import { makeStyles } from '@material-ui/core';
 import {
   ServerSignIn,
   useConnectorLabel,
+  useServerSignIn,
   withInstallationQuery,
 } from '@giantswarm/backstage-plugin-muster';
 import {
@@ -128,35 +133,41 @@ function UncheckedInstallationRow({
   // Nothing a person does from the portal changes these two.
   const offersCheckAgain =
     reason !== 'unreachable' && reason !== 'sharedIdentity';
+  const checkAgainButton = offersCheckAgain ? (
+    <Button
+      size="small"
+      variant="secondary"
+      isPending={checking}
+      isDisabled={checking}
+      onPress={checkAgain}
+      aria-label={`Check ${installation} again`}
+    >
+      Check again
+    </Button>
+  ) : null;
   return (
     <Flex direction="column" gap="1">
       <Text variant="body-medium" weight="bold">
         {installation}
       </Text>
       {reason === 'connectorSignIn' ? (
-        <ConnectorSignInReason installation={installation} />
+        <ConnectorSignInReason
+          installation={installation}
+          checkAgain={checkAgainButton}
+        />
       ) : (
-        <Text variant="body-small">{reasonText(reason, message)}</Text>
+        <>
+          <Text variant="body-small">{reasonText(reason, message)}</Text>
+          <Flex gap="3" align="center" style={{ flexWrap: 'wrap' }}>
+            {reason === 'musterSignIn' && connectorsHref && (
+              <Link href={connectorsHref} variant="body-small">
+                Sign in to Muster for {installation}
+              </Link>
+            )}
+            {checkAgainButton}
+          </Flex>
+        </>
       )}
-      <Flex gap="3" align="center" style={{ flexWrap: 'wrap' }}>
-        {reason === 'musterSignIn' && connectorsHref && (
-          <Link href={connectorsHref} variant="body-small">
-            Sign in to Muster for {installation}
-          </Link>
-        )}
-        {offersCheckAgain && (
-          <Button
-            size="small"
-            variant="secondary"
-            isPending={checking}
-            isDisabled={checking}
-            onPress={checkAgain}
-            aria-label={`Check ${installation} again`}
-          >
-            Check again
-          </Button>
-        )}
-      </Flex>
     </Flex>
   );
 }
@@ -182,9 +193,51 @@ function reasonText(
   }
 }
 
-/** agent-manager's connector wants the person's sign-in: muster's own control. */
-function ConnectorSignInReason({ installation }: { installation: string }) {
+/**
+ * agent-manager's connector has no valid sign-in for the person. Where it
+ * signs in with the person's portal sign-in through muster's own session
+ * (SSO), there is no sign-in to it to offer: a new portal sign-in gives
+ * muster a new session, so the row offers the portal's sign-out. Otherwise,
+ * and where muster refused that sign-in (only an administrator fixes that),
+ * muster's own control says what to do.
+ */
+function ConnectorSignInReason({
+  installation,
+  checkAgain,
+}: {
+  installation: string;
+  checkAgain: ReactNode;
+}) {
   const label = useConnectorLabel(installation, AGENT_MANAGER_SERVER);
+  const signIn = useServerSignIn(AGENT_MANAGER_SERVER, installation, {
+    noun: 'connector',
+    displayName: label,
+  });
+  const identityApi = useApi(identityApiRef);
+  if (signIn.isSsoManaged && !signIn.isSsoRefused) {
+    return (
+      <>
+        <Text variant="body-small">
+          The portal&apos;s connection to this installation has no valid sign-in
+          for {label} now. {label} uses your portal sign-in and has no sign-in
+          of its own: sign out of the portal and sign in again, then check
+          again.
+        </Text>
+        <Flex gap="3" align="center" style={{ flexWrap: 'wrap' }}>
+          <Button
+            size="small"
+            variant="secondary"
+            onPress={() => {
+              void identityApi.signOut();
+            }}
+          >
+            Sign out of the portal
+          </Button>
+          {checkAgain}
+        </Flex>
+      </>
+    );
+  }
   return (
     <>
       <Text variant="body-small">
@@ -196,6 +249,9 @@ function ConnectorSignInReason({ installation }: { installation: string }) {
         displayName={label}
         installation={installation}
       />
+      <Flex gap="3" align="center" style={{ flexWrap: 'wrap' }}>
+        {checkAgain}
+      </Flex>
     </>
   );
 }

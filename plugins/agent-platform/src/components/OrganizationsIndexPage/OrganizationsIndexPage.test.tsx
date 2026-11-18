@@ -1,3 +1,4 @@
+import { identityApiRef } from '@backstage/frontend-plugin-api';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -14,7 +15,11 @@ import {
   type MutedInstallationsApi,
 } from '@giantswarm/backstage-plugin-gs';
 /* eslint-enable @backstage/no-mixed-plugin-imports */
-import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ExternalUrlConsentManager,
+  externalUrlConsentApiRef,
+  PageHeaderActionsProvider,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   fakeOrganizationsMuster,
@@ -98,6 +103,7 @@ async function renderList(
   scenario: OrganizationsScenario,
   configure?: (api: MusterApi) => void,
   environments?: MutedInstallationsApi,
+  signOut: () => Promise<void> = jest.fn(async () => {}),
 ) {
   const { api } = fakeOrganizationsMuster(scenario);
   configure?.(api);
@@ -108,6 +114,8 @@ async function renderList(
     <TestApiProvider
       apis={[
         [musterApiRef, api],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+        [identityApiRef, { signOut } as unknown as typeof identityApiRef.T],
         ...(environments
           ? [[mutedInstallationsApiRef, environments] as const]
           : []),
@@ -225,6 +233,85 @@ describe('OrganizationsIndexPage', () => {
     expect(
       screen.queryByText(/You have not signed in to the/),
     ).not.toBeInTheDocument();
+  });
+
+  it('shows an installation whose SSO connector lost its sign-in once, in the list, with the portal sign-out', async () => {
+    const signOut = jest.fn(async () => {});
+    const raw =
+      "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.";
+    await renderList(
+      PAYMENTS,
+      api => {
+        withInstallations(['gazelle', 'graveler'], () => 'agent-manager')(api);
+        const answer = jest.mocked(api.callTool).getMockImplementation()!;
+        jest
+          .mocked(api.callTool)
+          .mockImplementation(async (name, args, installation, options) => {
+            if (
+              installation === 'graveler' &&
+              name === 'x_agent-manager_list_organizations'
+            ) {
+              throw new MusterUnauthorizedError(
+                raw,
+                'server_sign_in_required',
+                'agent-manager',
+                'graveler',
+              );
+            }
+            return answer(name, args, installation, options);
+          });
+        // agent-manager signs in through muster's own session there.
+        Object.assign(api, {
+          getAuthStatus: jest.fn(async () => ({
+            servers: [
+              {
+                name: 'agent-manager',
+                status: 'auth_required',
+                token_exchange_enabled: true,
+              },
+            ],
+          })),
+          listConnectorNames: jest.fn(async () => ({ servers: [] })),
+        });
+      },
+      undefined,
+      signOut,
+    );
+
+    expect(
+      await screen.findByRole('row', { name: /payments/ }),
+    ).toBeInTheDocument();
+    // gazelle answered: no warning, graveler only behind the quiet line.
+    expect(warnings()).toHaveLength(0);
+    expect(
+      screen.queryByRole('heading', { name: 'graveler' }),
+    ).not.toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', {
+        name: 'Organizations could not be checked on 1 installation',
+      }),
+    );
+    const list = screen.getByRole('list', {
+      name: 'Installations not checked',
+    });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+    expect(
+      await within(list).findByText(
+        /has no valid sign-in for agent-manager now\. .* sign out of the portal and sign in again, then check again\./,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(raw)).not.toBeInTheDocument();
+    expect(
+      within(list).queryByText(/nothing to sign in to/),
+    ).not.toBeInTheDocument();
+    expect(
+      within(list).getByRole('button', { name: 'Check graveler again' }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      within(list).getByRole('button', { name: 'Sign out of the portal' }),
+    );
+    expect(signOut).toHaveBeenCalled();
   });
 
   it('leaves out an installation that answered without organizations', async () => {
