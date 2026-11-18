@@ -512,5 +512,6 @@ is a defect; one with it is not a finding. The kept list:
   `agentlab-mobile` (375×812, touch) projects, listed in
   `e2e/agentlab/portalModes.ts`. Use `exact: true` on locators, because
   Playwright matches names by substring.
-- Verify a page change live at desktop width and at 375px before you call it
+- Verify a page change live at desktop width and at 375px, and run the
+  [`layout-check`](../layout-check/SKILL.md) skill on it, before you call it
   done.

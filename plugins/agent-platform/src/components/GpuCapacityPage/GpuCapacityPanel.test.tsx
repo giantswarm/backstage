@@ -1019,7 +1019,7 @@ describe('GpuCapacityPanel in a narrow card', () => {
 
   it('shows every column when the card is wide enough, and switches as it narrows', async () => {
     layout = mockDesktopLayout();
-    container = mockContainerWidth(936);
+    container = mockContainerWidth(1000);
     await renderPanel();
 
     expect(headers()).toEqual([
@@ -1035,5 +1035,23 @@ describe('GpuCapacityPanel in a narrow card', () => {
 
     act(() => container.setWidth(424));
     expect(headers()).toEqual(['Node', 'Free']);
+  });
+
+  it('leaves out Environment, Allocatable and Requested first, folded into other cells', async () => {
+    layout = mockDesktopLayout();
+    container = mockContainerWidth(700);
+    await renderPanel();
+
+    expect(headers()).toEqual(['Node', 'GPU', 'Memory', 'GPUs', 'Free']);
+    const node = screen
+      .getByText('gpu-node-1')
+      .closest('[role="row"]') as HTMLElement;
+    expect(within(node).getByText('inst-1')).toBeVisible();
+    expect(within(node).getByText('1 allocatable')).toBeVisible();
+    expect(screen.getByRole('columnheader', { name: 'Node' })).toHaveAttribute(
+      'aria-sort',
+      'ascending',
+    );
+    expect(within(node).getByText('1 requested')).toBeVisible();
   });
 });
