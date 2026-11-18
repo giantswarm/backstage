@@ -1,4 +1,8 @@
-import { render, screen } from '@testing-library/react';
+import {
+  mockContainerWidth,
+  mockDesktopLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { LlmPersonRow } from '../../../lib/llmUsage';
 import { LlmByPersonTable } from './LlmByPersonTable';
@@ -78,5 +82,53 @@ describe('LlmByPersonTable', () => {
     expect(
       screen.getByText('The gateway named no person on a call in this month.'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('LlmByPersonTable in a card too narrow for every column', () => {
+  const headers = () =>
+    screen.getAllByRole('columnheader').map(cell => cell.textContent?.trim());
+
+  it('keeps the person and their spend, and every column once it is wide enough', () => {
+    const layout = mockDesktopLayout();
+    const container = mockContainerWidth(424);
+    try {
+      const { unmount } = render(
+        <LlmByPersonTable rows={ROWS} emptyMessage="none" />,
+      );
+      expect(headers()).toEqual(['Person', 'Spend']);
+      unmount();
+
+      container.setWidth(936);
+      render(<LlmByPersonTable rows={ROWS} emptyMessage="none" />);
+      expect(headers()).toEqual([
+        'Person',
+        'Tokens',
+        'Spend',
+        'Share of spend',
+      ]);
+    } finally {
+      container.restore();
+      layout.restore();
+    }
+  });
+
+  it('sorts by spend again when the sorted column is hidden', async () => {
+    const layout = mockDesktopLayout();
+    const container = mockContainerWidth(936);
+    try {
+      render(<LlmByPersonTable rows={ROWS} emptyMessage="none" />);
+      await userEvent.click(
+        screen.getByRole('columnheader', { name: 'Tokens' }),
+      );
+
+      act(() => container.setWidth(424));
+      expect(
+        screen.getByRole('columnheader', { name: 'Spend' }),
+      ).toHaveAttribute('aria-sort', 'descending');
+    } finally {
+      container.restore();
+      layout.restore();
+    }
   });
 });

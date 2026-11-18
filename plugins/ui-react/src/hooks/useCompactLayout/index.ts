@@ -5,3 +5,4 @@ export {
   tableMinWidth,
   useCompactLayout,
 } from './useCompactLayout';
+export { useWidthTier } from './useWidthTier';

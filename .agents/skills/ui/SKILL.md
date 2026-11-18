@@ -374,4 +374,5 @@ just `curl` the GitHub raw URL from Bash instead.
 
 - **`tables`** — typical content fits; bui `Table` vs core-components `Table`, columns, filtering, faceted sidebars.
 - **`components`** — component directory structure, named exports, barrel files.
+- **`mockups`** — building or reviewing UI from a design mockup (a canvas, an artboard, a `.dc.html` file).
 - **`upstream-search`** — searching a *local clone* of `backstage/backstage` (needs `BACKSTAGE_UPSTREAM_DIR` set; the Storybook technique above needs no clone).

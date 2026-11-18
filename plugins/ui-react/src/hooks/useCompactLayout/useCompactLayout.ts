@@ -17,13 +17,17 @@ export const COMPACT_LAYOUT_HYSTERESIS = 24;
 
 /**
  * The narrowest a bui table shows all of `columns` at: the sum of the shown
- * columns' minimum widths — {@link TABLE_NAME_COLUMN_MIN_WIDTH} for the row
- * header, {@link TABLE_COLUMN_MIN_WIDTH} for the others, or the column's
- * entry in `minWidths` (an actions column with several buttons, say).
- * Hidden columns count for nothing. Pass it to {@link useCompactLayout}.
+ * columns' minimum widths. A column's minimum is the larger of its entry in
+ * `minWidths` (an actions column with several buttons, say) and its own
+ * numeric `minWidth`, else {@link TABLE_NAME_COLUMN_MIN_WIDTH} for the row
+ * header and {@link TABLE_COLUMN_MIN_WIDTH} for the others. Hidden columns count
+ * for nothing. Pass it to {@link useCompactLayout}.
  *
- * Not bui's `ColumnConfig.minWidth`: setting that engages bui's resizable
- * container, which freezes the table's `fr` columns (see the `tables` skill).
+ * A `minWidth` on a column engages bui's resizable container, which shares
+ * the width out by `fr` but never gives a column less than its minimum: the
+ * way to hold a header and a short value whole (the `tables` skill, "Rule:
+ * typical content fits"). The compact layout then takes over where the sum
+ * no longer fits.
  */
 export function tableMinWidth<T extends TableItem>(
   columns: readonly ColumnConfig<T>[],
@@ -32,14 +36,27 @@ export function tableMinWidth<T extends TableItem>(
   return columns
     .filter(column => !column.isHidden)
     .reduce(
-      (sum, column) =>
-        sum +
-        (minWidths[column.id] ??
-          (column.isRowHeader
-            ? TABLE_NAME_COLUMN_MIN_WIDTH
-            : TABLE_COLUMN_MIN_WIDTH)),
+      (sum, column) => sum + columnMinWidth(column, minWidths[column.id]),
       0,
     );
+}
+
+/**
+ * One column's minimum: the larger of its `minWidths` entry and its own
+ * numeric `minWidth` (bui holds the column to the latter whatever the map
+ * says), else the default for a name or another column.
+ */
+function columnMinWidth<T extends TableItem>(
+  column: ColumnConfig<T>,
+  entry: number | undefined,
+): number {
+  const own = typeof column.minWidth === 'number' ? column.minWidth : undefined;
+  if (entry === undefined && own === undefined) {
+    return column.isRowHeader
+      ? TABLE_NAME_COLUMN_MIN_WIDTH
+      : TABLE_COLUMN_MIN_WIDTH;
+  }
+  return Math.max(entry ?? 0, own ?? 0);
 }
 
 /**

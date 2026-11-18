@@ -423,7 +423,7 @@ function grafanaCloud() {
       kind: 'MCPServer',
       metadata: {
         name: 'grafana-cloud',
-        namespace: 'muster',
+        namespace: 'agent-platform',
         annotations: { 'ui.giantswarm.io/display-name': 'Grafana Cloud' },
       },
       spec: { type: 'streamable-http', auth: { type: 'oauth' } },

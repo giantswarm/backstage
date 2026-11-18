@@ -167,7 +167,7 @@ type Tool = {
   name: string;
   server: string;
   handler: FixtureToolHandler;
-  inputSchema?: JsonSchema;
+  inputSchema?: JsonSchema | ((installation: string) => JsonSchema);
 };
 
 /** `*` matches any run of characters, like muster's `filter_tools` pattern. */
@@ -278,7 +278,12 @@ export class MusterFixtureApi implements MusterApi {
           name: tool.name,
           server: tool.server,
           kind: 'tool' as const,
-          ...(tool.inputSchema && { inputSchema: tool.inputSchema }),
+          ...(tool.inputSchema && {
+            inputSchema:
+              typeof tool.inputSchema === 'function'
+                ? tool.inputSchema(installation)
+                : tool.inputSchema,
+          }),
         })),
         ...workflows
           .filter(workflow => isWorkflowAvailable(workflow, servedTools))

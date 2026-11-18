@@ -36,9 +36,13 @@ export type FixtureMcpServer = {
   /**
    * The input schemas of the tools whose schema a page reads (through
    * `describeTool`), by the tool's own name; the others are described
-   * without one.
+   * without one. A function answers the schema of one installation's tool,
+   * for a server whose installations run different releases.
    */
-  inputSchemas?: Record<string, JsonSchema>;
+  inputSchemas?: Record<
+    string,
+    JsonSchema | ((installation: string) => JsonSchema)
+  >;
 };
 
 /**

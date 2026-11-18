@@ -207,6 +207,11 @@ export const usageConnectorsRouteRef = createSubRouteRef({
 // model's page, the create and edit flows and Model hosting live underneath.
 export const modelsRouteRef = createRouteRef();
 
+export const modelCredentialsRouteRef = createSubRouteRef({
+  path: '/credentials/:installation/:namespace/:operation',
+  parent: modelsRouteRef,
+});
+
 // Connecting a model. `new` and `hosting` are reserved words here: no
 // installation can be named so.
 export const newModelRouteRef = createSubRouteRef({
