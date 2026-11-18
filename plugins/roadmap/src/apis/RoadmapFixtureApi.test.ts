@@ -82,6 +82,104 @@ describe('roadmapFixtureApi in the fixture scenarios', () => {
     expect(subIssues).toHaveLength(100);
   });
 
+  it('counts the overview as roadmap-backend does', async () => {
+    for (const scenario of ['base', 'many', 'long-names'] as const) {
+      setFixtureScenarioForTests(scenario);
+      const api = roadmapFixtureApi();
+      for (const team of [undefined, BUMBLEBEE]) {
+        const { total, byStatus, byRepo } = await api.getOverview(team);
+        const sum = (counts: Record<string, number>) =>
+          Object.values(counts).reduce((a, b) => a + b, 0);
+        expect([scenario, team, sum(byRepo)]).toEqual([scenario, team, total]);
+        expect([scenario, team, sum(byStatus)]).toEqual([
+          scenario,
+          team,
+          total,
+        ]);
+        expect(byStatus).not.toHaveProperty('undefined');
+      }
+    }
+    setFixtureScenarioForTests('many');
+    const { byStatus } = await roadmapFixtureApi().getOverview(BUMBLEBEE);
+    expect(byStatus['No status']).toBe(40);
+  });
+
+  it('reads the updated filters GitHub search reads, and warns on others', async () => {
+    setFixtureScenarioForTests('many');
+    const api = roadmapFixtureApi();
+    const count = async (updated: string) =>
+      (await api.listItems({ team: BUMBLEBEE, updated })).items.length;
+    const all = await count('');
+    const week = await count('>@today-7d');
+    expect(week).toBeGreaterThan(0);
+    expect(week).toBeLessThan(all);
+    expect(await count('>=@today-7d')).toBeGreaterThanOrEqual(week);
+    expect(await count('>@today-30d')).toBeGreaterThan(week);
+    expect(await count('>2000-01-01')).toBe(all);
+
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(await count('<@today-30d')).toBe(all);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('<@today-30d'));
+    warn.mockRestore();
+  });
+
+  it('numbers sub-issues apart from the board and links each to itself', async () => {
+    for (const scenario of ['base', 'many'] as const) {
+      setFixtureScenarioForTests(scenario);
+      const api = roadmapFixtureApi();
+      const { items } = await api.listItems();
+      const numbers = new Set(items.map(item => item.number));
+      for (const item of items.slice(0, 5)) {
+        const { subIssues } = await api.listSubIssues(
+          'giantswarm',
+          'roadmap',
+          item.number!,
+        );
+        for (const subIssue of subIssues) {
+          expect(numbers.has(subIssue.number)).toBe(false);
+          expect(subIssue.htmlUrl).toBe(
+            `https://github.com/giantswarm/roadmap/issues/${subIssue.number}`,
+          );
+        }
+      }
+    }
+  });
+
+  it('writes an item’s comments and sub-issues differently', async () => {
+    setFixtureScenarioForTests('many');
+    const api = roadmapFixtureApi();
+    const [first] = (await api.listItems()).items;
+    const { item } = await api.getItem(first.id);
+    const { subIssues } = await api.listSubIssues(
+      'giantswarm',
+      'roadmap',
+      first.number!,
+    );
+    const firstWords = (text: string) => text.split(' ').slice(0, 2).join(' ');
+    expect(firstWords(item.comments[0].body)).not.toBe(
+      firstWords(subIssues[0].title),
+    );
+  });
+
+  it('names 60 people in many, in whole words', async () => {
+    setFixtureScenarioForTests('many');
+    const api = roadmapFixtureApi();
+    const { items } = await api.listItems();
+    const people = new Set(items.flatMap(item => item.assignees ?? []));
+    expect(people.size).toBe(60);
+    const words = new Set(
+      [
+        'Backlog',
+        ...items.flatMap(item => item.title.toLowerCase().split(' ')),
+      ].map(word => word.toLowerCase()),
+    );
+    for (const person of people) {
+      for (const word of person.split('-')) {
+        expect([person, words.has(word)]).toEqual([person, true]);
+      }
+    }
+  });
+
   it('serves the same many board on every load', async () => {
     setFixtureScenarioForTests('many');
     const first = await roadmapFixtureApi().listItems();

@@ -32,12 +32,31 @@ const FIELD_NAMES = {
   availability: 'Availability',
 };
 
-/** The time an `updated` filter such as `>@today-7d` asks for, if any. */
+const DAY = 86_400_000;
+
+/**
+ * The earliest update time an `updated` filter lets through, as GitHub
+ * search reads `>` or `>=` with a date or `@today-Nd`, in whole UTC days.
+ * Any other filter lets every item through, with a console warning.
+ */
 function updatedSince(updated: string | undefined): number | undefined {
-  const days = updated?.match(/^>@today-(\d+)d$/)?.[1];
-  return days === undefined
-    ? undefined
-    : Date.now() - Number(days) * 86_400_000;
+  if (!updated) {
+    return undefined;
+  }
+  const match = updated.match(
+    /^(>=?)(?:@today(?:-(\d+)d)?|(\d{4}-\d{2}-\d{2}))$/,
+  );
+  if (!match) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `The fixture RoadmapApi cannot read the updated filter ${updated}: it lists every item.`,
+    );
+    return undefined;
+  }
+  const [, operator, days, date] = match;
+  const today = Math.floor(Date.now() / DAY) * DAY;
+  const day = date ? Date.parse(date) : today - Number(days ?? 0) * DAY;
+  return operator === '>' ? day + DAY : day;
 }
 
 function matches(item: RoadmapItem, filters: RoadmapItemFilters): boolean {
@@ -114,13 +133,14 @@ export class RoadmapFixtureApi implements RoadmapApi {
 
   async getOverview(team?: string): Promise<RoadmapOverviewResponse> {
     const items = this.items.filter(item => matches(item, { team }));
+    // As roadmap-backend's `/overview` counts them.
     const byStatus: Record<string, number> = {};
     const byRepo: Record<string, number> = {};
     for (const item of items) {
-      byStatus[item.fields.Status] = (byStatus[item.fields.Status] ?? 0) + 1;
-      if (item.repo) {
-        byRepo[item.repo] = (byRepo[item.repo] ?? 0) + 1;
-      }
+      const status = item.fields.Status ?? 'No status';
+      byStatus[status] = (byStatus[status] ?? 0) + 1;
+      const repo = item.repo ?? 'unknown';
+      byRepo[repo] = (byRepo[repo] ?? 0) + 1;
     }
     return { total: items.length, byStatus, byRepo };
   }

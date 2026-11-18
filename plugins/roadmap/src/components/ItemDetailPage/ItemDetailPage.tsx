@@ -92,12 +92,13 @@ const useStyles = makeStyles((theme: Theme) => ({
     color: theme.palette.text.secondary,
     marginBottom: theme.spacing(0.5),
   },
-  // A field value or label longer than the column ends in an ellipsis.
+  // A field value or label longer than the column ends in an ellipsis, the
+  // margin beside the chip included.
   chip: {
-    maxWidth: '100%',
+    maxWidth: `calc(100% - ${theme.spacing(1)}px)`,
   },
   labelChip: {
-    maxWidth: '100%',
+    maxWidth: `calc(100% - ${theme.spacing(0.5)}px)`,
     marginRight: theme.spacing(0.5),
   },
 }));

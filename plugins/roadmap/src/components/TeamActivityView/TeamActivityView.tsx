@@ -53,15 +53,21 @@ const useStyles = makeStyles((theme: Theme) => ({
     gap: theme.spacing(1),
     marginBottom: theme.spacing(1),
   },
-  // A status longer than the page ends in an ellipsis.
+  // A status or title longer than its line ends in an ellipsis, the theme's
+  // margin beside a chip included.
   countChip: {
-    maxWidth: '100%',
+    maxWidth: `calc(100% - ${theme.spacing(1)}px)`,
   },
   statusChip: {
+    maxWidth: `calc(100% - ${theme.spacing(1)}px)`,
+    minWidth: 0,
     height: 20,
     fontSize: 11,
   },
   itemTitle: {
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
     fontSize: 14,
   },
 }));
@@ -100,13 +106,16 @@ function ItemList(props: { items: RoadmapItem[] }) {
               <ListItemText
                 primary={
                   <Box display="flex" alignItems="center" gridGap={8}>
-                    <span className={classes.itemTitle}>{item.title}</span>
+                    <span className={classes.itemTitle} title={item.title}>
+                      {item.title}
+                    </span>
                     {item.fields[STATUS_FIELD] && (
                       <Chip
                         className={classes.statusChip}
                         size="small"
                         variant="outlined"
                         label={item.fields[STATUS_FIELD]}
+                        title={item.fields[STATUS_FIELD]}
                       />
                     )}
                   </Box>

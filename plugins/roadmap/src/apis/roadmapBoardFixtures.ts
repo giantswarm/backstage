@@ -1,7 +1,10 @@
 import type { FixtureScenario } from '@giantswarm/backstage-plugin-gs-common';
 import {
+  capitalize,
   createNamer,
   createRandom,
+  fitName,
+  hashOf,
   type FixtureRandom,
 } from '@giantswarm/backstage-plugin-gs-common/fixtures';
 
@@ -298,15 +301,20 @@ function subIssues(
   titleOf: (index: number) => string,
   done = number % 3,
 ): RoadmapIssue[] {
-  return Array.from({ length: count }, (_, i) => ({
-    id: number * 1000 + i,
-    number: number + 1 + i,
-    title: titleOf(i),
-    state: i < done ? 'closed' : 'open',
-    htmlUrl: `https://github.com/${owner}/${repo}/issues/${number}`,
-    assignees: [],
-    repo: `${owner}/${repo}`,
-  }));
+  // Numbers above the board's, a hundred per issue: GitHub's limit of
+  // sub-issues.
+  return Array.from({ length: count }, (_, i) => {
+    const subIssue = number * SUB_ISSUES_PER_ISSUE + i;
+    return {
+      id: subIssue,
+      number: subIssue,
+      title: titleOf(i),
+      state: i < done ? 'closed' : 'open',
+      htmlUrl: `https://github.com/${owner}/${repo}/issues/${subIssue}`,
+      assignees: [],
+      repo: `${owner}/${repo}`,
+    };
+  });
 }
 
 function baseBoard(): FixtureBoard {
@@ -329,22 +337,22 @@ function emptyBoard(): FixtureBoard {
   return { ...baseBoard(), items: [] };
 }
 
-function capitalize(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
-
-/** `text` cut to at most `length` characters, at a word's end. */
+/**
+ * `text` cut to at most `length` characters, at a word's end; its first word
+ * whole however long.
+ */
 function wholeWords(text: string, length: number): string {
   if (text.length <= length) {
     return text;
   }
   const cut = text.slice(0, length + 1);
-  return cut.slice(0, cut.lastIndexOf(' '));
+  const end = cut.lastIndexOf(' ');
+  return end > 0 ? cut.slice(0, end) : text.split(' ')[0];
 }
 
 /**
- * Writes made of the fixture words: sentences of whole words, and logins and
- * repository names joined with `-`, each as long as asked and no longer.
+ * Writes made of the fixture words: sentences and names of whole words, and
+ * names cut at a limit, each as long as asked and no longer.
  */
 function writer(random: FixtureRandom) {
   const namer = createNamer(random);
@@ -354,13 +362,14 @@ function writer(random: FixtureRandom) {
     /** A sentence of `least` to `most` characters, ending at a word's end. */
     sentence: (least: number, most = least) =>
       capitalize(words(random.int(least, most))),
-    /** A name joined with `-`, up to `length` characters, about as long. */
-    name: (length: number) =>
-      namer(length)
-        .displayName.toLowerCase()
-        .replace(/ /g, '-')
-        .slice(0, length)
-        .replace(/-+$/, ''),
+    /** Whole words joined with `-`, at most `length` characters. */
+    name: (length: number) => words(length).replace(/ /g, '-'),
+    /** Words joined with `-` and cut at `length`, a limit's length. */
+    longName: (length: number) =>
+      fitName(
+        namer(length).displayName.toLowerCase().replace(/ /g, '-'),
+        length,
+      ),
   };
 }
 
@@ -379,14 +388,29 @@ function longOption(
     : option;
 }
 
-/** Writes the same for the same item on every call: one random per item. */
-const writerOf = (seed: number, number: number) =>
-  writer(createRandom(seed * 100_000 + number));
+/**
+ * Writes the same for the same item on every call: one random per board, item
+ * and list, so an item's comments and sub-issues read differently.
+ */
+const writerOf = (
+  seed: number,
+  number: number,
+  list: 'comments' | 'sub-issues',
+) => writer(createRandom(hashOf(`${seed}/${number}/${list}`)));
+
+/** `count` different names `next` makes. */
+function distinct(count: number, next: () => string): string[] {
+  const names = new Set<string>();
+  while (names.size < count) {
+    names.add(next());
+  }
+  return [...names];
+}
 
 const LONG_NAMES_SEED = 4379;
 
 function longNamesBoard(): FixtureBoard {
-  const write = writerOf(LONG_NAMES_SEED, 0);
+  const write = writer(createRandom(LONG_NAMES_SEED));
   const lengthen = (option: string) => longOption(option, OPTION_LENGTH, write);
   const options: Options = {
     statuses: STATUSES.map(lengthen),
@@ -396,18 +420,16 @@ function longNamesBoard(): FixtureBoard {
     quarters: QUARTERS.map(lengthen),
     availability: AVAILABILITY.map(lengthen),
   };
-  const repository = `${OWNER}/${write.name(REPOSITORY_NAME_LENGTH)}`;
+  const repository = `${OWNER}/${write.longName(REPOSITORY_NAME_LENGTH)}`;
   const people = new Map<string, string>();
   const person = (name: string) => {
     if (!people.has(name)) {
-      people.set(name, write.name(LOGIN_LENGTH));
+      people.set(name, write.longName(LOGIN_LENGTH));
     }
     return people.get(name)!;
   };
   const title = () => write.sentence(TITLE_LENGTH);
-  const labels = [
-    ...new Set(Array.from({ length: 3 }, () => write.name(LABEL_LENGTH))),
-  ];
+  const labels = distinct(3, () => write.longName(LABEL_LENGTH));
   const items = seedItems(options, { title, person, repository });
   const commenter = person('Ada Park');
   return {
@@ -420,15 +442,17 @@ function longNamesBoard(): FixtureBoard {
         {
           author: commenter,
           createdAt: new Date(Date.now() - 2 * DAY).toISOString(),
-          body: writerOf(LONG_NAMES_SEED, item.number ?? 0).sentence(
-            TITLE_LENGTH * 2,
-          ),
+          body: writerOf(
+            LONG_NAMES_SEED,
+            item.number ?? 0,
+            'comments',
+          ).sentence(TITLE_LENGTH * 2),
         },
       ],
       labels,
     }),
     subIssuesOf: (owner, repo, number) => {
-      const own = writerOf(LONG_NAMES_SEED, number);
+      const own = writerOf(LONG_NAMES_SEED, number, 'sub-issues');
       return subIssues(owner, repo, number, 3 + (number % 3), () =>
         own.sentence(TITLE_LENGTH),
       );
@@ -454,16 +478,8 @@ function manyBoard(): FixtureBoard {
       [1, 2, 3, 4].map(quarter => `${year} Q${quarter}`),
     ),
   };
-  const people = [
-    ...new Set(
-      Array.from({ length: MANY_PEOPLE }, () => write.name(random.int(4, 20))),
-    ),
-  ];
-  const labels = [
-    ...new Set(
-      Array.from({ length: MANY_LABELS }, () => write.name(random.int(3, 20))),
-    ),
-  ];
+  const people = distinct(MANY_PEOPLE, () => write.name(random.int(8, 20)));
+  const labels = distinct(MANY_LABELS, () => write.name(random.int(6, 20)));
   const itemOf = (
     index: number,
     team: string,
@@ -519,7 +535,7 @@ function manyBoard(): FixtureBoard {
     schema: schemaOf(options),
     items,
     detailOf: item => {
-      const own = writerOf(MANY_SEED, item.number ?? 0);
+      const own = writerOf(MANY_SEED, item.number ?? 0, 'comments');
       return {
         ...baseDetailOf(item),
         comments: Array.from({ length: MANY_COMMENTS }, (_, i) => ({
@@ -533,7 +549,7 @@ function manyBoard(): FixtureBoard {
       };
     },
     subIssuesOf: (owner, repo, number) => {
-      const own = writerOf(MANY_SEED, number);
+      const own = writerOf(MANY_SEED, number, 'sub-issues');
       return subIssues(
         owner,
         repo,
