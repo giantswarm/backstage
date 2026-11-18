@@ -322,7 +322,7 @@ function nameCell(row: PlatformClusterRow, href: string | undefined) {
  * Each column's least width, in px, measured in fixture mode: the larger of
  * its header (the label plus 44px of sort arrow and padding) and its usual
  * content on one line — a status, a release with its Kubernetes version and
- * EOL mark, the workers' "144 vCPUs · 1152 GiB", "almost 2 years ago". The
+ * EOL mark, the workers' "144 CPU · 1152 GiB", "almost 2 years ago". The
  * default columns add up to 960px, a 1280px window's content width beside
  * the rail; past that the table scrolls sideways. Free text (the name, the
  * organization) gets less and ends in an ellipsis, the whole value on hover.

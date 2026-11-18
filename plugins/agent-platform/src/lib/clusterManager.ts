@@ -1219,9 +1219,9 @@ export function pendingObjects(
   return result.objects.filter(object => object.action === PENDING_ACTION);
 }
 
-/** `3 vCPU / 11.9 GiB usable` — what a predictor may request on a node of this size. */
+/** `3 CPU / 11.9 GiB usable` — what a predictor may request on a node of this size. */
 export function describeUsable(shape: InstanceShape): string {
-  return `${trimNumber(shape.usableVcpu)} vCPU / ${trimNumber(
+  return `${trimNumber(shape.usableVcpu)} CPU / ${trimNumber(
     shape.usableMemoryGiB,
   )} GiB usable`;
 }
@@ -1280,10 +1280,10 @@ export function presetLabel(
   return fit.displayName || fit.preset;
 }
 
-/** `4 vCPU / 12Gi, 1 GPU, 9.6 GiB of GPU memory` — what the preset's predictor asks for. */
+/** `4 CPU / 12Gi, 1 GPU, 9.6 GiB of GPU memory` — what the preset's predictor asks for. */
 export function describePresetNeeds(fit: PresetSizeFit): string {
   const gpus = countNoun(fit.gpus, 'GPU');
-  return `${fit.cpu} vCPU / ${fit.memory}, ${gpus}, ${trimNumber(
+  return `${fit.cpu} CPU / ${fit.memory}, ${gpus}, ${trimNumber(
     fit.gpuMemoryGiB,
   )} GiB of GPU memory`;
 }
@@ -1312,7 +1312,7 @@ export function sizesHosting(
 
 /**
  * The size cluster-manager says would host a preset none of the pool's sizes
- * does — `… — 2xlarge (8 vCPU / 32 GiB) would host it` at the end of a reason
+ * does — `… — 2xlarge (8 CPU / 32 GiB) would host it` at the end of a reason
  * or a warning.
  */
 export function sizeThatWouldHost(
