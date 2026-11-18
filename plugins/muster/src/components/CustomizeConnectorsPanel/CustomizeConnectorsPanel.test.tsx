@@ -2,6 +2,7 @@ import { type ReactNode, useState } from 'react';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { coreApis, type AppHistoryApi } from '@backstage/frontend-plugin-api';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
   type MockedLayout,
@@ -18,12 +19,6 @@ import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
 import { MCPServer, MCPServerState, TOOL_GROUP_LABEL } from '../../lib/k8s';
 import { CustomizeConnectorsPanel } from './CustomizeConnectorsPanel';
 import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
-
-const mockNavigate = jest.fn();
-jest.mock('react-router-dom', () => ({
-  ...jest.requireActual('react-router-dom'),
-  useNavigate: () => mockNavigate,
-}));
 
 jest.mock('../QueryClientProvider', () => ({
   QueryClientProvider: ({ children }: { children: ReactNode }) => children,
@@ -188,13 +183,20 @@ async function renderPanel(search = '') {
   return renderInPanelApp(<CustomizeConnectorsPanel search={search} />);
 }
 
+let appHistory: AppHistoryApi;
+
+/** Where the app is: a press that opens a connector moves it. */
+function currentPath() {
+  return appHistory.getSnapshot().location.pathname;
+}
+
 /** Renders `ui` with the panel's query client, APIs and routes. */
 async function renderInPanelApp(ui: ReactNode) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   queryClient = client;
-  return renderInTestApp(
+  const result = await renderInTestApp(
     <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
     {
       apis: [
@@ -208,6 +210,8 @@ async function renderInPanelApp(ui: ReactNode) {
       },
     },
   );
+  appHistory = result.apis.get(coreApis.appHistory)!;
+  return result;
 }
 
 function rowOf(name: string) {
@@ -227,7 +231,6 @@ describe('CustomizeConnectorsPanel', () => {
     api.signInServer.mockClear();
     api.getServerInfo.mockReset();
     api.getServerInfo.mockImplementation(async () => ({}));
-    mockNavigate.mockClear();
   });
 
   it('offers one sign-in for a family whose members wait for grants', async () => {
@@ -370,15 +373,12 @@ describe('CustomizeConnectorsPanel', () => {
     await waitFor(() =>
       expect(api.signInServer).toHaveBeenCalledWith('github', 'gazelle'),
     );
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(currentPath()).toBe('/');
 
     await user.click(
       within(github).getByText('Repositories and pull requests'),
     );
-    expect(mockNavigate).toHaveBeenCalledWith(
-      '/customize/connectors/gazelle/github',
-      undefined,
-    );
+    expect(currentPath()).toBe('/customize/connectors/gazelle/github');
   });
 
   it('asks no sign-in of an SSO connector muster has not connected yet', async () => {
@@ -423,7 +423,7 @@ describe('CustomizeConnectorsPanel', () => {
       }),
     );
     expect(await screen.findByRole('tooltip')).toHaveTextContent(SSO_REFUSED);
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(currentPath()).toBe('/');
   });
 
   it('says a sign-in serving one session covers the portal only, with the why in a hint', async () => {
@@ -455,7 +455,7 @@ describe('CustomizeConnectorsPanel', () => {
     );
     // The hint keeps its press: the row does not open the connector.
     await user.click(hint);
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(currentPath()).toBe('/');
   });
 
   it('says Connecting while muster still connects an SSO connector, then Connected without a reload', async () => {
@@ -557,7 +557,7 @@ describe('CustomizeConnectorsPanel', () => {
     const tooltip = await screen.findByRole('tooltip');
     expect(tooltip).toHaveTextContent('Waiting for you to finish signing in…');
     expect(tooltip).toHaveTextContent(/Dynamic Client Registration/);
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(currentPath()).toBe('/');
   });
 
   it('offers the sign-in page again when the person did not open it', async () => {
@@ -717,10 +717,7 @@ describe('CustomizeConnectorsPanel', () => {
     await renderPanel();
 
     await user.click(await within(rowOf('kubernetes')).findByText('Connected'));
-    expect(mockNavigate).toHaveBeenCalledWith(
-      '/customize/connectors/gazelle/kubernetes',
-      undefined,
-    );
+    expect(currentPath()).toBe('/customize/connectors/gazelle/kubernetes');
   });
 
   it('withholds the sign-in of a deactivated connector, saying why', async () => {
@@ -1595,7 +1592,7 @@ describe('CustomizeConnectorsPanel', () => {
       await waitFor(() =>
         expect(api.signInServer).toHaveBeenCalledWith('github', 'gazelle'),
       );
-      expect(mockNavigate).not.toHaveBeenCalled();
+      expect(currentPath()).toBe('/');
     });
 
     it('keeps a refused SSO sign-in to its state on line 1, the reason in a hint', async () => {

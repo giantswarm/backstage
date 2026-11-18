@@ -11,7 +11,6 @@ import {
   PageHeaderActionsProvider,
   usePageHeaderActionsSlot,
   usePageHeaderOwned,
-  useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
@@ -21,12 +20,8 @@ import {
  *
  * `PageBlueprint` uses this component to render the header of every page. When
  * a page has sub-pages (`SubPageBlueprint`), it also passes them as `tabs`.
- * Without this override the app falls back to the upstream stub `PageLayout`,
- * which renders tabs as plain relative `<a href="list">` anchors with no active
- * state — so from `/flux/list` clicking "Tree view" navigates to
- * `/flux/list/tree` (append) instead of `/flux/tree`, and no tab is ever
- * highlighted. Turning the relative sub-page paths into absolute hrefs here
- * fixes both.
+ * The tabs' hrefs come in app-absolute (`/flux/list`); the bui header marks
+ * the one the location is under.
  *
  * The layout also hosts a page-header-actions slot (`PageHeaderActionsProvider`
  * + `useProvidePageHeaderActions`), so routed tab content can inject
@@ -87,21 +82,14 @@ function PageLayoutWithHeader(props: PageLayoutProps & { appTitle: string }) {
       ? [...staticActions, dynamicActions]
       : undefined;
 
-  // The page is mounted at a splat route (e.g. `/flux/*`); resolve its base path
-  // so the sub-page tab hrefs below are absolute.
-  const basePath = useSplatBasePath();
-
-  const headerTabs: HeaderTab[] | undefined = tabs?.map(tab => {
-    const cleanPath = tab.href.replace(/^\//, '');
-    return {
-      id: tab.id,
-      label: tab.label,
-      href: cleanPath ? `${basePath}/${cleanPath}` : basePath,
-      // Keep the tab active for nested sub-routes (e.g. muster's
-      // `workflows/:id`); the sub-page paths here never prefix one another.
-      matchStrategy: 'prefix',
-    };
-  });
+  const headerTabs: HeaderTab[] | undefined = tabs?.map(tab => ({
+    id: tab.id,
+    label: tab.label,
+    href: tab.href,
+    // Keep the tab active for nested sub-routes (e.g. muster's
+    // `workflows/:id`); the sub-page paths here never prefix one another.
+    matchStrategy: 'prefix',
+  }));
 
   // The tab the location is under; the longest match, since a tab at the base
   // path prefixes every other.

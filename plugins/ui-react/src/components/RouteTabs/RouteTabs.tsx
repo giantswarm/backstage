@@ -1,7 +1,11 @@
 import { RefObject, useCallback, useEffect, useRef, useState } from 'react';
-import { useHref, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { Tab, TabList, Tabs } from '@backstage/ui';
-import { RouterProvider } from 'react-aria-components';
+import {
+  RoutingProvider,
+  useRoutingIntegration,
+  type RoutingIntegration,
+} from '@backstage/frontend-plugin-api/routing';
 import { makeStyles } from '@material-ui/core';
 import { useSplatBasePath } from '../../hooks/useSplatBasePath';
 import ChevronLeftIcon from '@material-ui/icons/ChevronLeft';
@@ -429,6 +433,35 @@ function renderTabLabel(
 }
 
 /**
+ * The routing integration around the strip, its navigations held for
+ * `onNavigate`. The hook keeps one identity for the strip's lifetime, as
+ * `RoutingProvider` asks, and reads the latest guard and integration.
+ */
+function useGuardedRoutingIntegration(
+  onNavigate: RouteTabsProps['onNavigate'],
+): () => RoutingIntegration {
+  const outer = useRoutingIntegration();
+  const latest = useRef({ outer, onNavigate });
+  latest.current = { outer, onNavigate };
+  const [useGuarded] = useState(() => (): RoutingIntegration => ({
+    createHref: to => latest.current.outer.createHref(to),
+    get pathname() {
+      return latest.current.outer.pathname;
+    },
+    navigate: (to, options) => {
+      const { outer: integration, onNavigate: guard } = latest.current;
+      const go = () => integration.navigate(to, options);
+      if (guard) {
+        guard(to, go);
+      } else {
+        go();
+      }
+    },
+  }));
+  return useGuarded;
+}
+
+/**
  * A page's tab strip whose tabs are routes: navigation links whose active state
  * follows the URL, the content drawn by the page's own `<Routes>`. Mounted
  * inside the page's splat route (`<Route path=":name/*">`), so the links are
@@ -475,18 +508,7 @@ export function RouteTabs({
   const selected = selectedRouteTab(links, pathname);
   const { overflow, scrollByPage } = useStripScroll(stripRef, selected);
   const finePointer = useMediaQueryMatch(FINE_POINTER_QUERY);
-  const routerNavigate = useNavigate();
-  // A tab carries no router options, so this is bui's own navigation for it.
-  const guardedNavigate = useCallback(
-    (href: string) => {
-      if (onNavigate) {
-        onNavigate(href, () => routerNavigate(href));
-      } else {
-        routerNavigate(href);
-      }
-    },
-    [onNavigate, routerNavigate],
-  );
+  const useGuardedRouting = useGuardedRoutingIntegration(onNavigate);
 
   const strip = (
     <Tabs>
@@ -532,11 +554,12 @@ export function RouteTabs({
         data-overflow-end={overflow.end || undefined}
       >
         {onNavigate ? (
-          // The closest router provider wins: this strip's presses go through
-          // the page's guard, the rest of the app keeps bui's.
-          <RouterProvider navigate={guardedNavigate} useHref={useHref}>
+          // bui's tabs navigate through the closest routing integration: this
+          // strip's presses go through the page's guard, the rest of the app
+          // keeps the app's.
+          <RoutingProvider useRoutingIntegration={useGuardedRouting}>
             {strip}
-          </RouterProvider>
+          </RoutingProvider>
         ) : (
           strip
         )}

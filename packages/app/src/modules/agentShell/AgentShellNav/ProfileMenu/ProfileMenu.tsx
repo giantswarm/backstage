@@ -165,22 +165,14 @@ export function ProfileMenu({
     // keeps an explicit "All portal settings" escape hatch to the classic one.
     ...(profileHref
       ? [
-          <MenuItem
-            key="settings"
-            href={profileHref}
-            iconStart={item.icon}
-          >
+          <MenuItem key="settings" href={profileHref} iconStart={item.icon}>
             {item.title}
           </MenuItem>,
         ]
       : []),
     ...inShell.map(({ item: entry, href }) => {
       return (
-        <MenuItem
-          key={entry.id}
-          href={href}
-          iconStart={entry.icon}
-        >
+        <MenuItem key={entry.id} href={href} iconStart={entry.icon}>
           {entry.title}
         </MenuItem>
       );

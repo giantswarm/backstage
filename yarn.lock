@@ -10588,6 +10588,7 @@ __metadata:
     "@backstage/cli": "backstage:^"
     "@backstage/core-components": "backstage:^"
     "@backstage/core-plugin-api": "backstage:^"
+    "@backstage/frontend-plugin-api": "backstage:^"
     "@backstage/plugin-catalog-react": "backstage:^"
     "@backstage/test-utils": "backstage:^"
     "@backstage/ui": "backstage:^"
