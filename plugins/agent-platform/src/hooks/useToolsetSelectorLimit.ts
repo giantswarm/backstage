@@ -4,6 +4,11 @@ import { AGENT_MANAGER_TOOLS, agentManagerToolName } from '../lib/agentManager';
 import { musterToolSchemaQueryKey } from '../lib/queryKeys';
 import { useMusterPluginApi } from './useMusterPluginApi';
 
+/**
+ * `create_agent`'s cap on the toolset's selectors, from its schema. The
+ * query holds the tool's detail, as every read of a tool's schema does
+ * (`useConnectorsSupport` shares it), and selects the cap.
+ */
 export function useToolsetSelectorLimit(
   installation: string | undefined,
 ): number | undefined {
@@ -12,8 +17,8 @@ export function useToolsetSelectorLimit(
   const { data } = useQuery({
     queryKey: musterToolSchemaQueryKey(installation ?? '', createAgent),
     enabled: Boolean(musterApi && installation),
-    queryFn: async () => {
-      const tool = await musterApi!.describeTool(createAgent, installation);
+    queryFn: () => musterApi!.describeTool(createAgent, installation),
+    select: tool => {
       const maximum = tool.inputSchema?.properties?.toolset?.maxItems;
       return typeof maximum === 'number' &&
         Number.isSafeInteger(maximum) &&

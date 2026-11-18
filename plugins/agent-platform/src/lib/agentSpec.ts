@@ -92,6 +92,10 @@ export function agentSpecOf(
   if (state.egressPolicyRefs.length > 0) {
     spec.egressPolicyRefs = [...state.egressPolicyRefs];
   }
+  // Only an agent-manager that takes them is offered them (`takesConnectors`).
+  if (state.connectors.length > 0) {
+    spec.connectors = [...state.connectors];
+  }
   if (state.defaultWorkspace) {
     spec.defaultWorkspace = qualifiedDefaultWorkspace(
       spec.namespace,

@@ -55,6 +55,7 @@ describe('editStateOf', () => {
       plugins: [],
       egressText: '',
       egressPolicyRefs: [],
+      connectors: [],
       defaultWorkspace: '',
     });
     // No runtime: every agent runs on the platform Harness.
@@ -197,6 +198,32 @@ describe('updateOf', () => {
         egressPolicyRefs: ['go-modules', 'github'],
       }),
     ).toEqual([]);
+  });
+
+  it("sends the organization's connectors only when the selection changed, and removes them all with an empty list", () => {
+    const binding = agent({ namespace: 'org-otter', connectors: ['jira'] });
+    expect(editStateOf(binding).connectors).toEqual(['jira']);
+    // Untouched: not sent, so nothing changes.
+    expect(updateOf(binding, editStateOf(binding))).toEqual({
+      namespace: 'org-otter',
+      name: 'pr-reviewer',
+    });
+    expect(
+      updateOf(binding, {
+        ...editStateOf(binding),
+        connectors: ['jira', 'deepwiki'],
+      }),
+    ).toEqual({
+      namespace: 'org-otter',
+      name: 'pr-reviewer',
+      connectors: ['jira', 'deepwiki'],
+    });
+    expect(
+      updateOf(binding, { ...editStateOf(binding), connectors: [] }),
+    ).toEqual({ namespace: 'org-otter', name: 'pr-reviewer', connectors: [] });
+    // An agent-manager without connectors reports none: nothing is sent.
+    const older = agent();
+    expect(updateOf(older, editStateOf(older)).connectors).toBeUndefined();
   });
 
   it('sends nothing but the identity when nothing changed', () => {
@@ -375,7 +402,8 @@ describe('the edit wizard (formStateOfAgent, editStateOfForm)', () => {
   });
 
   it('is no change at all when nothing is touched', () => {
-    const current = agent();
+    // Its organization's connectors among what the wizard is prefilled with.
+    const current = agent({ connectors: ['jira'] });
     const update = updateOf(current, editStateOfForm(current, seed(current)));
 
     expect(hasChanges(update)).toBe(false);

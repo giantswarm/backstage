@@ -412,6 +412,7 @@ const BASE_STATE: NewAgentFormState = {
   systemMessage: '',
   egressText: '',
   egressPolicyRefs: [],
+  connectors: [],
   defaultWorkspace: '',
   selectedSkills: [],
   keptSkills: [],
