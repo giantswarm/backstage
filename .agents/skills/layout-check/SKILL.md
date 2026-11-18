@@ -26,6 +26,7 @@ the full Chromium renders on the GPU but was measured no faster (#3563).
 | `layout-check.test.mjs` | Tests of the command that need no browser, run the same way. |
 | `specs/agent-platform.mjs` | Every Agent Platform and muster page of the shell, with the states that broke before. |
 | `specs/plans.mjs` | Hive's pages of the plans plugin (Now, History, Plans and a plan's review, Knowledge). Start fixture mode with `--enable page:plans --enable api:plans`, which turns Hive on. |
+| `specs/roadmap.mjs` | The Roadmap pages (Hive's Roadmap tab). Start fixture mode with `--enable page:plans --enable api:plans --enable page:roadmap --enable api:roadmap`. |
 
 Commands run from the repo root; `L=.agents/skills/layout-check`.
 

@@ -63,6 +63,12 @@ muster:
 plans:
   fixtures: true
 
+# Hive's Roadmap tab, once Hive and the tab are on: `yarn fixtures start
+# --enable page:plans --enable api:plans --enable page:roadmap
+# --enable api:roadmap`.
+roadmap:
+  fixtures: true
+
 agentPlatform:
   fixtures: true
   # The skill repositories of the data set, served by the fixture

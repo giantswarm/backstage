@@ -92,7 +92,13 @@ const useStyles = makeStyles((theme: Theme) => ({
     color: theme.palette.text.secondary,
     marginBottom: theme.spacing(0.5),
   },
+  // A field value or label longer than the column ends in an ellipsis, the
+  // margin beside the chip included.
+  chip: {
+    maxWidth: `calc(100% - ${theme.spacing(1)}px)`,
+  },
   labelChip: {
+    maxWidth: `calc(100% - ${theme.spacing(0.5)}px)`,
     marginRight: theme.spacing(0.5),
   },
 }));
@@ -173,13 +179,20 @@ export function ItemDetailPage() {
         <Typography variant="h4">{item.title}</Typography>
         <Box className={classes.headerMeta}>
           {fieldValues.get('Status') && (
-            <Chip size="small" label={fieldValues.get('Status')} />
+            <Chip
+              className={classes.chip}
+              size="small"
+              label={fieldValues.get('Status')}
+              title={fieldValues.get('Status')}
+            />
           )}
           {fieldValues.get('Kind') && (
             <Chip
               size="small"
               variant="outlined"
               label={fieldValues.get('Kind')}
+              title={fieldValues.get('Kind')}
+              className={classes.chip}
             />
           )}
           <Typography variant="body2" color="textSecondary">
@@ -262,6 +275,7 @@ export function ItemDetailPage() {
                   <Chip
                     key={label}
                     className={classes.labelChip}
+                    title={label}
                     size="small"
                     variant="outlined"
                     label={label}
