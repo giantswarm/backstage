@@ -19,6 +19,8 @@ const useStyles = makeStyles(theme => ({
     color: theme.palette.type === 'dark' ? '#ddd' : '#333',
     borderRadius: 4,
     fontFamily: '"Roboto Mono", monospace',
+    // 0.85em, 11.9px under 14px text: monospace reads larger than the
+    // text around it at the same size.
     fontSize: '0.85em',
     lineHeight: 1.6,
     whiteSpace: 'pre-wrap',

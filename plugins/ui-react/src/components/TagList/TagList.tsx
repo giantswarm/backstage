@@ -38,8 +38,6 @@ const useStyles = makeStyles({
   badge: {
     maxWidth: TAG_MAX_WIDTH,
     minWidth: 0,
-    // bui's small badge is 10px, too small to read a tag by.
-    fontSize: 'var(--bui-font-size-2)',
   },
   // bui's pressable `Tag`: a deeper tint on hover and its focus ring, on a
   // badge that otherwise reads the same as a plain one.

@@ -84,21 +84,38 @@ The smallest text in the portal is 12px: bui's `body-small`,
 in a comment next to the style, for example
 `// 10px: the axis labels of a 60px-high sparkline, which 12px would overlap.`
 
-bui sets these at 10px (`--bui-font-size-1`), and these are what to use
-instead:
+bui sets `body-x-small`, the small `Badge` and `Tag` and the section headers
+of `Menu`, `Select` and `Combobox` in `--bui-font-size-1`, 10px in bui. The
+app sets that token to `var(--bui-font-size-2)` on `:root` and wherever a
+theme applies (`packages/app/src/bui-overrides.css`, which Storybook loads
+too), so all of them render at 12px, in the classic pages, in the agent shell
+and in Storybook. Still write what you mean:
 
-| Below 12px                                     | Instead                                                                                                              |
-| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `Text` or `Link` with `variant="body-x-small"` | `variant="body-small"`, with `color="secondary"` for a caption                                                       |
-| `Badge` or `Tag` with `size="small"`           | its text at `var(--bui-font-size-2)`, as muster's `MarkerBadge` does at the small badge's height, or `size="medium"` |
-| `var(--bui-font-size-1)`                       | `var(--bui-font-size-2)`                                                                                             |
-| a px size below 12, or a rem size below 0.75   | `var(--bui-font-size-2)`                                                                                             |
-| an em size or a percentage                     | a token: `0.85em` is 12px only under 14px text, and 10.2px under 12px                                                |
+| Below 12px                                     | Instead                                                            |
+| ---------------------------------------------- | ------------------------------------------------------------------ |
+| `Text` or `Link` with `variant="body-x-small"` | `variant="body-small"`, with `color="secondary"` for a caption     |
+| `var(--bui-font-size-1)`                       | `var(--bui-font-size-2)`                                           |
+| a px size below 12, or a rem size below 0.75   | `var(--bui-font-size-2)`                                           |
+| an em size or a percentage                     | a token: `0.85em` is 11.9px under 14px text, and 10.2px under 12px |
 
-`FactsColumn` (`ui-react`), the facts beside a record page, holds the minimum
-for whatever its values render: it sets `--bui-font-size-1` to 12px inside the
-column. A secondary line under a value is `body-small` there anyway, so the
-code reads as it renders.
+The token reaches only what takes its size from it: a px, rem or em size
+written in a component's styles is its own, and so is a size set in a
+`style` attribute.
+
+Where 10px is right, use `var(--gs-font-size-exception)` (10px, defined next
+to the override), only with a comment next to the style saying why, so
+`grep -r gs-font-size-exception` finds every 10px. The sizes below 12px that
+stay, each with its comment:
+
+| Size      | Where                                                                                                                                                                                                                                 |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 10px      | `ActivityHeatmap`'s axis labels; `SlackPromoBanner`'s Slack mock (avatar initials, APP badge); `AboutField`'s label (legacy classic UI, being replaced)                                                                               |
+| 11px      | short uppercase labels and headings above numbers: `Stat` (11.2px inline), `UsageCard`, `McpUsageCard`, `TokensPerDayCard`, `ByAgentTable`, `TopCallsTable`, `WorkflowStatsPanel`, `ActivityHeatmap`'s facts; the usage tables' notes |
+| 11px      | chart axis ticks and legends: `StackedBarChart`, `ActivityHeatmap`                                                                                                                                                                    |
+| 11px      | `UnreadBadge`'s count; the phone navigation bar's labels (`railLayout`)                                                                                                                                                               |
+| 11–11.5px | the rest of `SlackPromoBanner`'s Slack mock                                                                                                                                                                                           |
+| 11.5px    | the ⌘K hint beside Search in the side rail (`AgentShellNav`); the muster workflow canvas's run badges and gate markers (`WorkflowFlowCanvas`)                                                                                         |
+| 11.9px    | `CodeBlock`'s 0.85em                                                                                                                                                                                                                  |
 
 ## Commits and resource names
 
@@ -371,7 +388,11 @@ two.
 
 The [Backstage Storybook](https://backstage.io/storybook/) allows to explore the
 existing UI components in a number of different states. It renders stories from
-the upstream `backstage/backstage` monorepo; we do not run a local storybook.
+the upstream `backstage/backstage` monorepo.
+
+This repository has a Storybook of its own for the components of its plugins,
+published at <https://giantswarm.github.io/backstage/>. Run it locally with
+`yarn storybook` (port 6006; `yarn storybook -p <port>` for another).
 
 To read the source behind a story (to learn a pattern or a component's props),
 use the `index.json` → `importPath` → GitHub raw technique described in the

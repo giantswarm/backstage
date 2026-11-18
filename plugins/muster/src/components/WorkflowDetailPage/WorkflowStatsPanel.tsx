@@ -121,6 +121,7 @@ const useStyles = makeStyles((theme: Theme) => ({
     marginBottom: theme.spacing(1.5),
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
+    // 11px: a short uppercase heading, which caps make read as large as 12px.
     fontSize: 11,
     fontWeight: 500,
     color: theme.palette.text.secondary,

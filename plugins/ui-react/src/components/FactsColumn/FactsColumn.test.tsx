@@ -35,14 +35,4 @@ describe('FactsColumn', () => {
       screen.getByRole('complementary', { name: 'About this connector' }),
     ).toBeInTheDocument();
   });
-
-  it("sets bui's 10px size to 12px for what its values render", () => {
-    render(<FactsColumn facts={[{ label: 'Model', value: 'gpt-4.1-mini' }]} />);
-
-    expect(
-      getComputedStyle(screen.getByRole('complementary')).getPropertyValue(
-        '--bui-font-size-1',
-      ),
-    ).toBe('var(--bui-font-size-2)');
-  });
 });
