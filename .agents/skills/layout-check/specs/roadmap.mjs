@@ -3,11 +3,9 @@
  * the board, the team activity and an item's detail, with the board's filter
  * picker and a card's status menu open.
  *
- * Hive is off in fixture mode by default: start it with a config that turns
- * on `page:plans`, `api:plans`, `page:roadmap` and `api:roadmap` and sets
- * `plans.fixtures` and `roadmap.fixtures` (docs/fixtures.md, "Fixture mode",
- * `--config`). Then:
+ * Hive is off in fixture mode by default: turn it and its Roadmap tab on.
  *
+ *   yarn fixtures start --enable page:plans --enable api:plans --enable page:roadmap --enable api:roadmap
  *   node .agents/skills/layout-check/layout-check.mjs --spec .agents/skills/layout-check/specs/roadmap.mjs
  *
  * A state whose card or picker a scenario lacks (no items in `empty`,
