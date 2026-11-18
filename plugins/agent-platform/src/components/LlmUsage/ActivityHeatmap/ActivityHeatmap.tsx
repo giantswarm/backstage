@@ -80,7 +80,7 @@ const useStyles = makeStyles((theme: Theme) => ({
     display: 'block',
     '& text': {
       // 10px: axis labels beside cells 10px high, which 12px would overlap.
-      fontSize: 10,
+      fontSize: 'var(--gs-font-size-exception)',
       fill: theme.palette.text.secondary,
     },
     '& rect[data-day]': {

@@ -2,112 +2,68 @@
 // eslint-disable-next-line no-restricted-imports
 import { readFileSync } from 'fs';
 // eslint-disable-next-line no-restricted-imports
-import { dirname, join } from 'path';
+import { join } from 'path';
 import { render, screen } from '@testing-library/react';
 import { Badge, Tag, TagGroup, Text } from '@backstage/ui';
+import {
+  applyBuiStylesheets,
+  resolvedFontSize,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
-const REM_PX = 16;
+const overridesCss = readFileSync(join(__dirname, 'bui-overrides.css'), 'utf8');
 
-/**
- * The rules of a stylesheet without their cascade layers: jsdom applies no
- * rule inside one, and bui puts every rule in one. The overrides, unlayered,
- * come last, so the order decides as the layers do in a browser.
- */
-function withoutLayers(css: string): string {
-  let out = css.replace(/@layer[^{;]*;/g, '');
-  for (;;) {
-    const start = out.search(/@layer[^{;]*\{/);
-    if (start < 0) return out;
-    const open = out.indexOf('{', start);
-    let depth = 1;
-    let end = open + 1;
-    for (; depth > 0; end++) {
-      if (out[end] === '{') depth++;
-      if (out[end] === '}') depth--;
-    }
-    out = out.slice(0, start) + out.slice(open + 1, end - 1) + out.slice(end);
-  }
+function renderBuiTenPxPieces() {
+  render(
+    <>
+      <Text variant="body-x-small">Harness</Text>
+      <Badge size="small">Default</Badge>
+      <TagGroup aria-label="Labels">
+        <Tag size="small">team</Tag>
+      </TagGroup>
+      <Text variant="body-small">Caption</Text>
+    </>,
+  );
+  applyBuiStylesheets(overridesCss);
 }
 
-/** A custom property's value where an element is, inherited as in a browser. */
-function customProperty(element: Element, name: string): string {
-  for (let el: Element | null = element; el; el = el.parentElement) {
-    const value = getComputedStyle(el).getPropertyValue(name).trim();
-    if (value) return value;
-  }
-  return '';
-}
-
-/**
- * An element's font size in px. jsdom cascades the declarations but
- * substitutes no `var()` and inherits no custom property, so this does both.
- */
-function fontSizePx(element: Element): number {
-  let value = getComputedStyle(element).getPropertyValue('font-size').trim();
-  for (let ref = value.match(/^var\((--[\w-]+)\)$/); ref;) {
-    value = customProperty(element, ref[1]);
-    ref = value.match(/^var\((--[\w-]+)\)$/);
-  }
-  const size = value.match(/^([\d.]+)(px|rem)$/);
-  if (!size) throw new Error(`cannot resolve the font size "${value}"`);
-  return Number(size[1]) * (size[2] === 'rem' ? REM_PX : 1);
-}
-
-/**
- * bui's stylesheet, its components' styles (injected when they render) and
- * the overrides, in the order the app loads them.
- */
-function applyStylesheets() {
-  const css = [
-    // By the package's path: jest resolves a `.css` import to a stub.
-    readFileSync(
-      join(
-        dirname(require.resolve('@backstage/ui/package.json')),
-        'dist/css/styles.css',
-      ),
-      'utf8',
-    ),
-    ...Array.from(document.head.querySelectorAll('style'), s => s.textContent),
-    readFileSync(join(__dirname, 'bui-overrides.css'), 'utf8'),
-  ]
-    .map(text => withoutLayers(text ?? ''))
-    .join('\n');
-  document.head.querySelectorAll('style').forEach(s => s.remove());
-  const style = document.createElement('style');
-  style.textContent = css;
-  document.head.appendChild(style);
+/** The sizes of the pieces `renderBuiTenPxPieces` renders, in px. */
+function piecesFontSizes() {
+  return [
+    screen.getByText('Harness'),
+    screen.getByText('Default'),
+    screen.getByRole('row', { name: 'team' }),
+    screen.getByText('Caption'),
+  ].map(resolvedFontSize);
 }
 
 describe('bui-overrides.css text size', () => {
-  // bui declares its tokens where a theme applies, the body in the app.
-  beforeEach(() => document.body.setAttribute('data-theme-mode', 'light'));
   afterEach(() => document.body.removeAttribute('data-theme-mode'));
 
-  it("sets bui's 10px pieces at 12px", () => {
-    render(
-      <>
-        <Text variant="body-x-small">Harness</Text>
-        <Badge size="small">Default</Badge>
-        <TagGroup aria-label="Labels">
-          <Tag size="small">team</Tag>
-        </TagGroup>
-        <Text variant="body-small">Caption</Text>
-      </>,
-    );
-    applyStylesheets();
+  it("sets bui's 10px pieces at 12px under a theme", () => {
+    // bui declares its tokens again where a theme applies, the body in the app.
+    document.body.setAttribute('data-theme-mode', 'light');
+    renderBuiTenPxPieces();
 
-    expect(fontSizePx(screen.getByText('Harness'))).toBe(12);
-    expect(fontSizePx(screen.getByText('Default'))).toBe(12);
-    expect(fontSizePx(screen.getByRole('row', { name: 'team' }))).toBe(12);
-    expect(fontSizePx(screen.getByText('Caption'))).toBe(12);
+    expect(piecesFontSizes()).toEqual([12, 12, 12, 12]);
   });
 
-  it('keeps 10px as the named exception', () => {
-    render(<span>Mon</span>);
-    applyStylesheets();
+  it("sets them at 12px before or outside a theme provider, from bui's root tokens", () => {
+    renderBuiTenPxPieces();
 
-    expect(
-      customProperty(screen.getByText('Mon'), '--gs-font-size-exception'),
-    ).toBe('0.625rem');
+    expect(piecesFontSizes()).toEqual([12, 12, 12, 12]);
+  });
+
+  it('is loaded by Storybook after bui, as in the app', () => {
+    const preview = readFileSync(
+      join(__dirname, '../../../.storybook/preview.tsx'),
+      'utf8',
+    );
+    const bui = preview.indexOf("import '@backstage/ui/css/styles.css';");
+    const overrides = preview.indexOf(
+      "import '../packages/app/src/bui-overrides.css';",
+    );
+
+    expect(bui).toBeGreaterThanOrEqual(0);
+    expect(overrides).toBeGreaterThan(bui);
   });
 });

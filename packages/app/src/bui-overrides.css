@@ -43,12 +43,15 @@
  * 12px is the portal's smallest text (docs/ui.md, "Text size: 12px at the
  * smallest"). bui sets `body-x-small`, its small `Badge` and `Tag` and the
  * section headers of `Menu`, `Select` and `Combobox` in this token, 10px; here
- * it is 12px, in the classic pages and in the agent shell alike. bui declares
- * its tokens where a theme applies, so the override goes there too.
+ * it is 12px, in the classic pages, in the agent shell and in Storybook. bui
+ * declares its tokens on `:root` and again where a theme applies, so the
+ * override goes on both: before a theme provider sets the body's theme, and
+ * outside one, the root's value is what inherits.
  *
  * `--gs-font-size-exception` is the 10px left for the few places that need
  * it. Use it only with a comment next to the style saying why.
  */
+:root,
 [data-theme-mode] {
   --bui-font-size-1: var(--bui-font-size-2);
   --gs-font-size-exception: 0.625rem;

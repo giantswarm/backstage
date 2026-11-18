@@ -86,9 +86,10 @@ in a comment next to the style, for example
 
 bui sets `body-x-small`, the small `Badge` and `Tag` and the section headers
 of `Menu`, `Select` and `Combobox` in `--bui-font-size-1`, 10px in bui. The
-app sets that token to `var(--bui-font-size-2)` wherever a theme applies
-(`packages/app/src/bui-overrides.css`), so all of them render at 12px, in the
-classic pages and in the agent shell. Still write what you mean:
+app sets that token to `var(--bui-font-size-2)` on `:root` and wherever a
+theme applies (`packages/app/src/bui-overrides.css`, which Storybook loads
+too), so all of them render at 12px, in the classic pages, in the agent shell
+and in Storybook. Still write what you mean:
 
 | Below 12px                                     | Instead                                                            |
 | ---------------------------------------------- | ------------------------------------------------------------------ |
@@ -102,12 +103,19 @@ written in a component's styles is its own, and so is a size set in a
 `style` attribute.
 
 Where 10px is right, use `var(--gs-font-size-exception)` (10px, defined next
-to the override), only with a comment next to the style saying why. The
-sizes below 12px that stay, each with its comment: the short uppercase labels
-and headings above numbers (`Stat`, the usage cards and tables), chart axis
-ticks and legends, the Slack mock of `SlackPromoBanner`, the unread count
-bubble, the phone navigation bar's labels, `CodeBlock`'s 0.85em and the
-muster workflow canvas.
+to the override), only with a comment next to the style saying why, so
+`grep -r gs-font-size-exception` finds every 10px. The sizes below 12px that
+stay, each with its comment:
+
+| Size      | Where                                                                                                                                                                                                                                 |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 10px      | `ActivityHeatmap`'s axis labels; `SlackPromoBanner`'s Slack mock (avatar initials, APP badge); `AboutField`'s label (legacy classic UI, being replaced)                                                                               |
+| 11px      | short uppercase labels and headings above numbers: `Stat` (11.2px inline), `UsageCard`, `McpUsageCard`, `TokensPerDayCard`, `ByAgentTable`, `TopCallsTable`, `WorkflowStatsPanel`, `ActivityHeatmap`'s facts; the usage tables' notes |
+| 11px      | chart axis ticks and legends: `StackedBarChart`, `ActivityHeatmap`                                                                                                                                                                    |
+| 11px      | `UnreadBadge`'s count; the phone navigation bar's labels (`railLayout`)                                                                                                                                                               |
+| 11–11.5px | the rest of `SlackPromoBanner`'s Slack mock                                                                                                                                                                                           |
+| 11.5px    | the ⌘K hint beside Search in the side rail (`AgentShellNav`); the muster workflow canvas's run badges and gate markers (`WorkflowFlowCanvas`)                                                                                         |
+| 11.9px    | `CodeBlock`'s 0.85em                                                                                                                                                                                                                  |
 
 ## Commits and resource names
 

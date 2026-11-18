@@ -124,7 +124,8 @@ const useStyles = makeStyles({
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 10,
+    // 10px: Slack's avatar initials.
+    fontSize: 'var(--gs-font-size-exception)',
     fontWeight: 500,
   },
   personTile: {
@@ -143,7 +144,8 @@ const useStyles = makeStyles({
     padding: '0 3px',
   },
   appBadge: {
-    fontSize: 10,
+    // 10px: Slack's APP badge.
+    fontSize: 'var(--gs-font-size-exception)',
     padding: '0 4px',
     borderRadius: 3,
     background: 'var(--bui-bg-neutral-2, #f0f4f6)',

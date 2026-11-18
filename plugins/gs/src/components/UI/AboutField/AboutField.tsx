@@ -17,7 +17,8 @@ const useStyles = makeStyles(theme => ({
   label: {
     color: theme.palette.text.secondary,
     textTransform: 'uppercase',
-    fontSize: '10px',
+    // 10px: legacy classic UI, being replaced.
+    fontSize: 'var(--gs-font-size-exception)',
     fontWeight: 'bold',
     letterSpacing: 0.5,
     overflow: 'hidden',
