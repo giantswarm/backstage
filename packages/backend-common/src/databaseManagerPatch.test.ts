@@ -78,6 +78,6 @@ describe('DatabaseManager with the carried getDatabase patch', () => {
     const { version } = JSON.parse(
       readFileSync(resolve(__dirname, '../../../backstage.json'), 'utf8'),
     );
-    expect(version).toBe('1.56.4');
+    expect(version).toBe('1.56.6');
   });
 });
