@@ -1131,10 +1131,10 @@ describe('AddGpuNodePoolPage: node size and price on the form', () => {
       accelerator: 'nvidia-l4',
     });
     expect(picker).toHaveTextContent(
-      'g6.xlarge — 3 vCPU / 11.9 GiB usable, 1 × 24 GiB GPU — $1.01/h',
+      'g6.xlarge — 3 CPU / 11.9 GiB usable, 1 × 24 GiB GPU — $1.01/h',
     );
     expect(picker).toHaveTextContent(
-      'g6.2xlarge — 6.5 vCPU / 26.9 GiB usable, 1 × 24 GiB GPU — $1.22/h',
+      'g6.2xlarge — 6.5 CPU / 26.9 GiB usable, 1 × 24 GiB GPU — $1.22/h',
     );
     expect(sizeBox('g6.xlarge')).toBeChecked();
     expect(sizeBox('g6.2xlarge')).toBeChecked();
@@ -1160,7 +1160,7 @@ describe('AddGpuNodePoolPage: node size and price on the form', () => {
     // Review shows the same choice and Deploy sends it.
     await review(user);
     const chosen = screen.getByTestId('chosen-sizes');
-    expect(chosen).toHaveTextContent('g6.2xlarge — 6.5 vCPU / 26.9 GiB usable');
+    expect(chosen).toHaveTextContent('g6.2xlarge — 6.5 CPU / 26.9 GiB usable');
     expect(chosen).not.toHaveTextContent('g6.xlarge —');
     expect(chosen).toHaveTextContent('from $1.22/h per node (g6.2xlarge)');
     expect(chosen).toHaveTextContent(
@@ -1348,7 +1348,7 @@ describe('AddGpuNodePoolPage: node size and price on the form', () => {
     await fillForm(user);
     const picker = await screen.findByTestId('node-size-picker');
     expect(sizeBox('g6.xlarge')).toHaveAccessibleName(
-      'g6.xlarge — 3 vCPU / 11.9 GiB usable, 1 × 24 GiB GPU',
+      'g6.xlarge — 3 CPU / 11.9 GiB usable, 1 × 24 GiB GPU',
     );
     expect(screen.queryByTestId('price-summary')).not.toBeInTheDocument();
     expect(picker).not.toHaveTextContent('Prices:');

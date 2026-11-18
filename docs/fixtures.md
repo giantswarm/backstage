@@ -664,10 +664,18 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
   named after it, workload clusters of its ready organizations, ready,
   creating (no node pools yet) and deleting, on three releases (the oldest's
   Kubernetes 1.30 past its end of life in `app-config.fixtures.yaml`), and the
-  GPU clusters among them. gs maps them onto Cluster, AWSCluster,
-  AWSClusterRoleIdentity, KubeadmControlPlane, MachinePool and AWSMachinePool
-  objects (`gsKubernetesObjectsOf` in `@giantswarm/backstage-plugin-gs/fixtures`),
-  which the Clusters pages and the Platform section's list read. The
+  GPU clusters among them; the management clusters and every other workload
+  cluster are managed through GitOps. gs maps them onto Cluster, AWSCluster,
+  AWSClusterRoleIdentity, KubeadmControlPlane, App, MachinePool and
+  AWSMachinePool objects, plus a Flux Kustomization (applied, with its
+  revision) and GitRepository per GitOps repository and a Release per release
+  the clusters run (`gsKubernetesObjectsOf` in
+  `@giantswarm/backstage-plugin-gs/fixtures`), which the Clusters pages and the
+  Platform section's list and cluster pages read. The cluster pages' tool
+  links are `gs.clusterDetails.resources` of `app-config.fixtures.yaml`, at
+  made-up addresses; the fixture installations have no base domain, so the
+  login command is not shown. The classic Deployments list shows the
+  clusters' Apps, and the Flux pages the Kustomizations and GitRepositories. The
   person has each role in the ready
   organizations of each installation (admin, editor, user, so the New agent form's "needs the
   editor role" shows), manages the orphaned, pending-erase and deleting ones and is no

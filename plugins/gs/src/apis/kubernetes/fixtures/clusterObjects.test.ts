@@ -75,6 +75,36 @@ describe('gsKubernetesObjectsOf', () => {
     expect(objectsOfKind('AWSMachinePool')).toHaveLength(pools.length);
   });
 
+  it('serves the App that installs each cluster, applied by Flux where the cluster is managed through GitOps', () => {
+    const fixtures = inInstallation(fixtureDataSet().clusters, 'meadow');
+    const apps = objectsOfKind('App');
+    expect(apps).toHaveLength(fixtures.length);
+    const kustomizations = objectsOfKind('Kustomization');
+    const repositories = objectsOfKind('GitRepository');
+    expect(fixtures.some(f => f.gitOpsRepository)).toBe(true);
+    expect(fixtures.some(f => !f.gitOpsRepository)).toBe(true);
+    for (const fixture of fixtures) {
+      const app = apps.find(a => a.metadata.name === fixture.name)!;
+      expect(app.metadata.labels?.['kustomize.toolkit.fluxcd.io/name']).toBe(
+        fixture.gitOpsRepository,
+      );
+    }
+    const repositoriesUsed = new Set(
+      fixtures.flatMap(f => (f.gitOpsRepository ? [f.gitOpsRepository] : [])),
+    );
+    expect(new Set(kustomizations.map(k => k.metadata.name))).toEqual(
+      repositoriesUsed,
+    );
+    expect(new Set(repositories.map(r => r.metadata.name))).toEqual(
+      repositoriesUsed,
+    );
+    for (const kustomization of kustomizations as any[]) {
+      expect(kustomization.spec.sourceRef.name).toBe(
+        kustomization.metadata.name,
+      );
+    }
+  });
+
   it('gives every object its own uid', () => {
     const uids = gsKubernetesObjectsOf('meadow').map(o => o.metadata.uid);
     expect(new Set(uids).size).toBe(uids.length);

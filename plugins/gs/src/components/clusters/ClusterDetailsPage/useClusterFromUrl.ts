@@ -42,6 +42,19 @@ export function clusterRefetchInterval(
 }
 
 /**
+ * Whether a query is one of an installation's resource reads (a get or a
+ * list), the reads a cluster page re-reads: not its API discovery.
+ */
+export function isClusterReadQuery(
+  installationName: string,
+): (query: { queryKey: readonly unknown[] }) => boolean {
+  return ({ queryKey }) =>
+    queryKey[0] === 'cluster' &&
+    queryKey[1] === installationName &&
+    (queryKey[2] === 'get' || queryKey[2] === 'list');
+}
+
+/**
  * While a deletion is followed, re-reads every resource the page shows from
  * its installation, the cluster included. A read still in flight when the next
  * tick comes is left to finish, so a slow apiserver still answers.
@@ -57,10 +70,7 @@ function useRefreshWhileDeleting(installationName: string, follow: boolean) {
       queryClient.invalidateQueries(
         {
           refetchType: 'active',
-          predicate: ({ queryKey }) =>
-            queryKey[0] === 'cluster' &&
-            queryKey[1] === installationName &&
-            (queryKey[2] === 'get' || queryKey[2] === 'list'),
+          predicate: isClusterReadQuery(installationName),
         },
         { cancelRefetch: false },
       );
@@ -69,7 +79,15 @@ function useRefreshWhileDeleting(installationName: string, follow: boolean) {
   }, [queryClient, installationName, follow]);
 }
 
-export const useClusterFromUrl = (): {
+/** Which cluster to read: its installation, namespace and name. */
+export type ClusterAddress = {
+  installationName: string;
+  namespace: string;
+  name: string;
+};
+
+/** What {@link useCluster} reads of a cluster and what installs it. */
+export type ClusterReadState = {
   installationName: string;
   cluster?: Cluster;
   clusterApp?: App;
@@ -79,11 +97,18 @@ export const useClusterFromUrl = (): {
   notFound: boolean;
   error: Error | null;
   refreshError: Error | null;
-} => {
-  const { installationName, namespace, name } = useRouteRefParams(
-    clusterDetailsRouteRef,
-  );
+};
 
+/**
+ * Reads a cluster, the App or Flux HelmRelease that installs it, and follows
+ * its deletion: whether it is still loading, not found in its installation,
+ * or could not be read, and why a re-read of a cluster already shown failed.
+ */
+export const useCluster = ({
+  installationName,
+  namespace,
+  name,
+}: ClusterAddress): ClusterReadState => {
   const {
     resource: lastReadClusterApp,
     isLoading: isLoadingClusterApp,
@@ -185,3 +210,10 @@ export const useClusterFromUrl = (): {
     refreshError,
   };
 };
+
+/**
+ * The cluster the classic cluster page's address names
+ * (`clusterDetailsRouteRef`), as {@link useCluster} reads it.
+ */
+export const useClusterFromUrl = (): ClusterReadState =>
+  useCluster(useRouteRefParams(clusterDetailsRouteRef));
