@@ -1,5 +1,6 @@
 import { DEFAULT_USAGE_WINDOW_DAYS } from '@giantswarm/backstage-plugin-agent-platform-common';
 
+import { connectorAuthName } from '../../../lib/connectorKey';
 import { MCPServer } from '../../../lib/k8s';
 import { ServerPageRow } from '../../../lib/serverGrouping';
 
@@ -22,10 +23,11 @@ export function rowServers(row: ServerPageRow): MCPServer[] {
 }
 
 /**
- * The MCPServer names muster's metrics count a row's calls under, sorted so
+ * The names muster's metrics count a row's calls under (its key for each
+ * MCPServer, `connectorAuthName`), sorted so
  * every page reading them shares one cache entry. None for muster itself,
  * whose own tools are not dispatched to a connector and so never counted.
  */
 export function usageServerNames(row: ServerPageRow): string[] {
-  return [...new Set(rowServers(row).map(server => server.getName()))].sort();
+  return [...new Set(rowServers(row).map(connectorAuthName))].sort();
 }

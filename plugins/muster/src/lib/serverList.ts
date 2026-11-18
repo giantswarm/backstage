@@ -8,6 +8,7 @@ import {
   partitionServers,
   serverRowDisplayName,
   serverRowKey,
+  singularServerOfPage,
 } from './serverGrouping';
 import {
   serverListKey,
@@ -25,9 +26,13 @@ export interface NamedTool {
 
 /** One row of the servers list, before any search. */
 export interface ServerListRow {
-  /** Unique within the list: `family:<name>`, `server:<name>` or `core`. */
+  /**
+   * Unique within the list: `family:<name>`, `server:<key>` by muster's key
+   * for the server (`connectorAuthName`, which tells two organizations'
+   * servers of one name apart) or `core`.
+   */
   key: string;
-  /** The row's server page segment: the name its page, links and muster use. */
+  /** The row's server page segment: a family's name, a CR's name or `muster`. */
   id: string;
   /**
    * The row's name in the list: its `ui.giantswarm.io/display-name`, else
@@ -45,7 +50,8 @@ export interface ServerListRow {
   tools?: NamedTool[];
   /**
    * A singular server whose page segment a family of the same name (or
-   * muster, for one named `muster`) takes: its page cannot be opened.
+   * muster, for one named `muster`, or another server of that name,
+   * `singularServerOfPage`) takes: its page cannot be opened.
    */
   shadowed: boolean;
 }
@@ -94,14 +100,18 @@ export function serverListRows(
   return rows.map(row => {
     const id = serverRowKey(row);
     const key = serverListKey(row);
-    const shadowed =
+    const takenByFamily =
       row.kind === 'server' && (families.has(id) || id === MUSTER_SERVER_KEY);
+    const shadowed =
+      takenByFamily ||
+      (row.kind === 'server' &&
+        singularServerOfPage(servers, id) !== row.server);
     return {
       key,
       id,
-      // A shadowed server's name is its family's (or muster's) page; its row
-      // keeps its own name so the two read apart.
-      displayName: shadowed ? id : serverRowDisplayName(row, names),
+      // A server named like a family (or muster) keeps its own name, so the
+      // two read apart.
+      displayName: takenByFamily ? id : serverRowDisplayName(row, names),
       row,
       tags: rowTags(row),
       tools: tools

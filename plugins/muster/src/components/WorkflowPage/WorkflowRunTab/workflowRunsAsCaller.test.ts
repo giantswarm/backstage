@@ -7,7 +7,7 @@ function server(name: string, auth?: Record<string, unknown>): MCPServer {
     {
       apiVersion: 'muster.giantswarm.io/v1alpha1',
       kind: 'MCPServer',
-      metadata: { name, namespace: 'muster' },
+      metadata: { name, namespace: 'agent-platform' },
       spec: { type: 'streamable-http', ...(auth ? { auth } : {}) },
     } as never,
     'gazelle',

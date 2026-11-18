@@ -302,8 +302,15 @@ function ConnectorPageContent({
   );
 
   const serverNames = useMemo(
-    () => [...new Set([name, ...members.map(server => server.getName())])],
-    [name, members],
+    // muster's key for a singular server, an organization's
+    // `<namespace>/<name>`; a family's name and each instance's.
+    () => [
+      ...new Set([
+        ...(singular ? [] : [name]),
+        ...members.map(connectorAuthName),
+      ]),
+    ],
+    [name, members, singular],
   );
   // One read for the Usage tab and the Details' calls, so the two agree;
   // none for muster itself, whose own tools no connector counts. Only on

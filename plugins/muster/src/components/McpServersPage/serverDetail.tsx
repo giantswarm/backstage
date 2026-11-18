@@ -42,6 +42,7 @@ import {
   readProvenance,
   provenanceReleaseId,
 } from '../../lib/gitops';
+import { connectorToolNamePrefix } from '../../lib/connectorKey';
 import { withoutCrdDefaults } from '../../lib/mcpServerDefinition';
 import { AUTH_MODE_LABELS, serverAuthMode } from '../../lib/serverAuthMode';
 import { TruncatedListNote, useServerPageLinks } from '../shared';
@@ -548,7 +549,7 @@ export function ServerTools({
   const links = useServerPageLinks();
   const installation = server.cluster;
   const serverKey = server.getFamily() ?? server.getName();
-  const prefix = prefixOverride ?? server.getToolNamePrefix();
+  const prefix = prefixOverride ?? connectorToolNamePrefix(server);
   const pattern = `${prefix}_*`;
 
   const { data, error, isPending, fetchStatus } = useQuery({

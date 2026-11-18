@@ -66,6 +66,7 @@ function makeServer(
     family?: string;
     displayName?: string;
     tags?: string;
+    namespace?: string;
   } = {},
 ): MCPServer {
   return new MCPServer(
@@ -74,6 +75,7 @@ function makeServer(
       kind: 'MCPServer',
       metadata: {
         name,
+        ...(options.namespace ? { namespace: options.namespace } : {}),
         annotations: {
           ...(options.displayName
             ? { 'ui.giantswarm.io/display-name': options.displayName }
@@ -893,6 +895,102 @@ describe('CustomizeConnectorsPanel', () => {
       screen.getByRole('link', { name: 'github-org-b' }),
     ).toBeInTheDocument();
     expect(screen.queryByText('GitHub')).not.toBeInTheDocument();
+  });
+
+  describe('two organizations owning a connector of one name', () => {
+    beforeEach(() => {
+      mockServers = [
+        makeServer('github'),
+        makeServer('wiki', {
+          namespace: 'org-gazelle',
+          displayName: 'Gazelle wiki',
+          auth: { type: 'oauth' },
+          state: 'Auth Required',
+        }),
+        makeServer('wiki', {
+          namespace: 'org-golem',
+          displayName: 'Golem wiki',
+        }),
+      ];
+      api.filterTools.mockResolvedValue({
+        total: 3,
+        filtered_count: 3,
+        truncated: false,
+        tools: [
+          { name: 'x_github_get_issue', description: 'Read an issue' },
+          { name: 'x_org-golem_wiki_search', description: 'Search pages' },
+          { name: 'x_org-golem_wiki_read', description: 'Read a page' },
+        ],
+      });
+      api.getAuthStatus.mockResolvedValue({
+        servers: [
+          { name: 'github', status: 'connected' },
+          {
+            name: 'org-gazelle/wiki',
+            status: 'auth_required',
+            auth_tool: 'core_auth_login',
+          },
+          { name: 'org-golem/wiki', status: 'connected' },
+        ],
+      });
+    });
+    afterEach(() => {
+      api.filterTools.mockReset();
+    });
+
+    it('shows a row for each, with its own state, tools and sign-in', async () => {
+      const user = userEvent.setup();
+      await renderPanel();
+
+      const gazelle = rowOf('Gazelle wiki');
+      const golem = rowOf('Golem wiki');
+      expect(await within(gazelle).findByText('Sign in needed')).toBeVisible();
+      expect(await within(golem).findByText('2 tools')).toBeVisible();
+      expect(within(golem).getByText('Connected')).toBeVisible();
+      expect(
+        within(golem).queryByRole('button', { name: 'Sign in' }),
+      ).toBeNull();
+
+      await user.click(
+        within(gazelle).getByRole('button', { name: 'Sign in' }),
+      );
+      await waitFor(() =>
+        expect(api.signInServer).toHaveBeenCalledWith(
+          'org-gazelle/wiki',
+          'gazelle',
+        ),
+      );
+      expect(api.signInServer).toHaveBeenCalledTimes(1);
+    });
+
+    it('opens neither from the list, as their name alone does not tell their pages apart', async () => {
+      await renderPanel();
+
+      for (const name of ['Gazelle wiki', 'Golem wiki']) {
+        const row = rowOf(name);
+        expect(row).not.toHaveAttribute('data-href');
+        expect(within(row).queryByRole('link')).toBeNull();
+      }
+      expect(rowOf('github')).toHaveAttribute(
+        'data-href',
+        '/customize/connectors/gazelle/github',
+      );
+    });
+
+    it('lists both at phone width', async () => {
+      const layout = mockPhoneLayout();
+      try {
+        await renderPanel();
+        const list = () => screen.getByRole('list', { name: 'Connectors' });
+        expect(
+          await within(list()).findByText('Sign in needed'),
+        ).toBeInTheDocument();
+        expect(within(list()).getByText('Gazelle wiki')).toBeVisible();
+        expect(within(list()).getByText('Golem wiki')).toBeVisible();
+      } finally {
+        layout.restore();
+      }
+    });
   });
 
   it('searches connectors by their tools too', async () => {
