@@ -61,10 +61,9 @@ yarn fixtures stop
 
 The `fixtures` query parameter switches the data set of the Agent Platform's
 fixture APIs (muster, kagent, agent-manager's credentials, model-manager), of
-the fixture Kubernetes API, of the fixture Mimir and of the Plans fixtures (Hive,
-see "Plans") without restarting the server: load any page
-with `?fixtures=<scenario>`. The Roadmap fixtures do not take part:
-they serve their own data in every scenario.
+the fixture Kubernetes API, of the fixture Mimir and of the Plans and Roadmap
+fixtures (Hive, see "Plans" and "Roadmap") without restarting the server: load
+any page with `?fixtures=<scenario>`.
 
 | Scenario     | What those fixture APIs serve                                                                                                                                                                                                                                                                                                                                                                                               |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -112,6 +111,8 @@ In `error`:
   muster does not answer: a 503, `ServiceUnavailableError` in the client,
   "meadow did not answer: …". The plans repositories and the magazine's place
   answer: plans-backend reads them from its configuration.
+- The Roadmap fails every call with roadmap-backend's 503 for a muster it
+  cannot reach (`meadow did not answer: the connection failed`).
 
 The plugins persist their query caches to localStorage and restore them as a
 page loads, before any fixture API answers. Each provider adds the page's
@@ -551,6 +552,31 @@ Kubernetes objects. It follows the page's scenario
 | `loading`    | No call ever answers.                                                                                                                                                                                                                                                                                                |
 | `error`      | Every call that reaches GitHub fails (see `error` above).                                                                                                                                                                                                                                                            |
 
+### Roadmap
+
+The fixture `RoadmapApi` (`roadmap.fixtures`, Hive's Roadmap tab) serves a
+board of its own, not the data set: `roadmapBoardFixtures.ts` in
+`plugins/roadmap/src/apis/` builds one per scenario, and the factory wraps
+the API with `withFixtureScenario`. `app-config.fixtures.yaml` sets
+`roadmap.fixtures`; turn Hive and its Roadmap tab on with their extensions:
+
+```bash
+yarn fixtures start --enable page:plans --enable api:plans --enable page:roadmap --enable api:roadmap
+```
+
+| Scenario     | The board                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `base`       | Thirty items, most of them Team Bumblebee's, in every status column, with assignees, three to five sub-issues each, and a description; no comments or labels. Titles are public `giantswarm/roadmap` issues; people and figures are made up.                                                                                                                                        |
+| `empty`      | The board's fields and options, and no items: the board and the team activity show "No board items".                                                                                                                                                                                                                                                                                |
+| `many`       | 100 items in each status column of Team Bumblebee, 40 without a status, and 200 of the other teams; 60 people, a third of the items moved in the last week; each item with 100 sub-issues (GitHub's limit per issue), 100 comments and 30 labels; twelve quarters.                                                                                                                  |
+| `long-names` | The base board with every name as long as GitHub allows: titles of sub-issues and items 256 characters in whole words, logins 39, the repository's name 100, labels 50; field options (status, kind, quarter, availability) 63 in whole words, starting with the base option's words so the team activity finds its columns. The teams keep their names, which Hive's header lists. |
+| `loading`    | No call answers.                                                                                                                                                                                                                                                                                                                                                                    |
+| `error`      | Every call fails (see "Scenarios").                                                                                                                                                                                                                                                                                                                                                 |
+
+A status move changes the board until the page reloads; linking or unlinking
+a sub-issue fails. The layout check's spec for the pages is
+`.agents/skills/layout-check/specs/roadmap.mjs`.
+
 ### Objects in the Kubernetes API
 
 The pages read some objects from the installation's Kubernetes API, not from
@@ -638,10 +664,18 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
   named after it, workload clusters of its ready organizations, ready,
   creating (no node pools yet) and deleting, on three releases (the oldest's
   Kubernetes 1.30 past its end of life in `app-config.fixtures.yaml`), and the
-  GPU clusters among them. gs maps them onto Cluster, AWSCluster,
-  AWSClusterRoleIdentity, KubeadmControlPlane, MachinePool and AWSMachinePool
-  objects (`gsKubernetesObjectsOf` in `@giantswarm/backstage-plugin-gs/fixtures`),
-  which the Clusters pages and the Platform section's list read. The
+  GPU clusters among them; the management clusters and every other workload
+  cluster are managed through GitOps. gs maps them onto Cluster, AWSCluster,
+  AWSClusterRoleIdentity, KubeadmControlPlane, App, MachinePool and
+  AWSMachinePool objects, plus a Flux Kustomization (applied, with its
+  revision) and GitRepository per GitOps repository and a Release per release
+  the clusters run (`gsKubernetesObjectsOf` in
+  `@giantswarm/backstage-plugin-gs/fixtures`), which the Clusters pages and the
+  Platform section's list and cluster pages read. The cluster pages' tool
+  links are `gs.clusterDetails.resources` of `app-config.fixtures.yaml`, at
+  made-up addresses; the fixture installations have no base domain, so the
+  login command is not shown. The classic Deployments list shows the
+  clusters' Apps, and the Flux pages the Kustomizations and GitRepositories. The
   person has each role in the ready
   organizations of each installation (admin, editor, user, so the New agent form's "needs the
   editor role" shows), manages the orphaned, pending-erase and deleting ones and is no

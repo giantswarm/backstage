@@ -2,26 +2,15 @@ import { Box, Grid, Typography } from '@material-ui/core';
 import { CodeBlock, NotAvailable } from '../../../../../UI';
 import { Cluster } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useInstallationsInfo } from '../../../../../hooks';
-import { isManagementCluster } from '../../../../utils';
+import {
+  getKubectlGsLoginCommand,
+  isManagementCluster,
+} from '../../../../utils';
 
 type ClusterAccessProps = {
   cluster: Cluster;
   installationName: string;
 };
-
-function getKubectlGsLoginCommand(
-  baseDomain: string,
-  clusterName: string,
-  isMC: boolean,
-) {
-  const baseCommand = `kubectl gs login api.${baseDomain}`;
-
-  if (isMC) {
-    return baseCommand;
-  }
-
-  return `${baseCommand} \\\n  --workload-cluster ${clusterName} \\\n  --certificate-group system:masters`;
-}
 
 export const ClusterAccessCustomer = ({
   cluster,

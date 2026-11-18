@@ -24,7 +24,7 @@ export type NodePoolCapacityInput = {
 type NodePoolRowBase = NodePoolCapacityInput & {
   id: string;
   desiredReplicas: number | undefined;
-  /** E.g. "4 vCPUs · 16 GiB RAM", for the machine type's tooltip. */
+  /** E.g. "4 CPU · 16 GiB RAM", for the machine type's tooltip. */
   machineTypeDescription: string | undefined;
   phase: string | undefined;
   created: string | undefined;

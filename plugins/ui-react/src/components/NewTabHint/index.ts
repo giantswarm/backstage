@@ -1,1 +1,1 @@
-export { NewTabHint } from './NewTabHint';
+export { NewTabHint, WithNewTabHint } from './NewTabHint';

@@ -552,7 +552,7 @@ describe('ClusterAboutCard', () => {
           workerCapacityField()
             .getByText(/4 nodes/)
             .closest('p')?.textContent,
-        ).toMatch(/^4 nodes\s+·\s+32 vCPUs\s+·\s+128 GiB RAM$/);
+        ).toMatch(/^4 nodes\s+·\s+32 CPU\s+·\s+128 GiB RAM$/);
       });
       expect(
         workerCapacityField().getByText('128 GiB RAM'),
@@ -595,7 +595,7 @@ describe('ClusterAboutCard', () => {
       await renderCard(api);
 
       // The only pool is uncounted: the node count stands alone rather than
-      // beside 0 vCPUs and 0 MiB.
+      // beside 0 CPU and 0 MiB.
       expect(
         await workerCapacityField().findByRole('button', {
           name: 'Why CPU and memory are unknown',
@@ -605,7 +605,9 @@ describe('ClusterAboutCard', () => {
         workerCapacityField().getByText('(CPU and memory unknown)'),
       ).toBeInTheDocument();
       expect(workerCapacityField().getByText('4 nodes')).toBeInTheDocument();
-      expect(workerCapacityField().queryByText(/vCPU/)).not.toBeInTheDocument();
+      expect(
+        workerCapacityField().queryByText(/\d CPU/),
+      ).not.toBeInTheDocument();
       expect(mimirApi.query).not.toHaveBeenCalled();
     });
 
@@ -678,7 +680,7 @@ describe('ClusterAboutCard', () => {
           workerCapacityField()
             .getByText(/3 nodes/)
             .closest('p')?.textContent,
-        ).toMatch(/^3 nodes\s+·\s+12 vCPUs\s+·\s+48 GiB RAM$/);
+        ).toMatch(/^3 nodes\s+·\s+12 CPU\s+·\s+48 GiB RAM$/);
       });
       expect(workerCapacityField().getByText('48 GiB RAM')).toBeInTheDocument();
       expect(mimirApi.query).toHaveBeenCalledWith(

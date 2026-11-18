@@ -12,11 +12,17 @@ import { AsyncValue } from '@giantswarm/backstage-plugin-ui-react';
 import { Account } from '../../../../../UI/Account';
 import type { InfrastructureRef } from '../../../ClusterSwitch';
 
-export const AWSAccountField = ({
-  infrastructureRef,
-}: {
-  infrastructureRef: InfrastructureRef;
-}) => {
+/**
+ * The AWS account of a cluster on AWS: its AWSCluster, then the
+ * AWSClusterRoleIdentity that names the account, with the fetch and
+ * API-version errors of both.
+ */
+export function useAWSAccount(infrastructureRef: InfrastructureRef): {
+  isLoading: boolean;
+  errorMessage?: string;
+  accountId?: string;
+  accountUrl?: string;
+} {
   const { installationName } = useCurrentCluster();
   const isExpectedError = useIsExpectedClusterError();
 
@@ -88,8 +94,21 @@ export const AWSAccountField = ({
   const accountId = awsClusterRoleIdentity?.getAWSAccountId();
   const accountUrl = awsClusterRoleIdentity?.getAWSAccountUrl();
 
-  const isLoading = awsClusterIsLoading || identityIsLoading;
-  const errorMessage = awsClusterErrorMessage ?? identityErrorMessage;
+  return {
+    isLoading: awsClusterIsLoading || identityIsLoading,
+    errorMessage: awsClusterErrorMessage ?? identityErrorMessage,
+    accountId,
+    accountUrl,
+  };
+}
+
+export const AWSAccountField = ({
+  infrastructureRef,
+}: {
+  infrastructureRef: InfrastructureRef;
+}) => {
+  const { isLoading, errorMessage, accountId, accountUrl } =
+    useAWSAccount(infrastructureRef);
 
   return (
     <AsyncValue
