@@ -281,6 +281,16 @@ own account of the attempt (the token's issuer and audiences) under
 **Details**, to copy. muster keeps that flag per person rather than per
 session, so a connector connected in this session ignores it.
 
+A connector's page is `/customize/connectors/<installation>/<connector>`,
+`<connector>` being the family's name for a family and the MCPServer's name
+for one in muster's namespace. An organization's connector, an MCPServer in
+another namespace, is at
+`/customize/connectors/<installation>/-/<namespace>/<name>`, since two
+organizations may each own a connector of one name. Its address before that,
+`…/<installation>/<name>`, redirects to it while no other organization's
+connector on the installation has that name, and otherwise lists the
+connectors of that name, each linking to its page.
+
 A connector's page opens on its Tools tab, a list of the tools it offers that
 each link to the tool's own page,
 `/customize/connectors/<installation>/<connector>/tools/<tool>`.

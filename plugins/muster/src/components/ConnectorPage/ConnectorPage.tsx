@@ -8,6 +8,7 @@ import {
   Navigate,
   Route,
   Routes,
+  useLocation,
   useNavigate,
   useParams,
   useSearchParams,
@@ -70,14 +71,18 @@ import {
 import {
   familyGroups,
   familyToolGroup,
-  findServerRow,
   fleetManagementClusters,
   partitionServers,
   mcpServerDisplayNames,
   ServerPageRow,
+  type ConnectorAddressResolution,
+  serverPageKey,
   serverRowDisplayName,
   serverRowKey,
 } from '../../lib/serverGrouping';
+import { connectorPageKeyLabel } from '../../lib/connectorAddress';
+import { useConnectorAddress } from '../../hooks/useConnectorAddress';
+import { ConnectorNameChoice } from './ConnectorNameChoice';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import {
   noInstanceToolsExplanation,
@@ -266,6 +271,9 @@ function ConnectorPageContent({
     row.kind === 'core' ? activeInstallationInfo?.endpoint : undefined;
   const serversRoute = useRouteRef(mcpServersRouteRef);
   const name = serverRowKey(row);
+  // Its address below the installation, which every link to it and its
+  // tools' pages use: `name`, or `-/<namespace>/<name>` for an organization's.
+  const pageKey = serverPageKey(row);
   const members = useMemo(() => rowServers(row), [row]);
   const representativeInfo = representativeServer(row, installation);
   const representative = representativeInfo?.server;
@@ -464,10 +472,10 @@ function ConnectorPageContent({
       name,
       installation,
       serverNames,
-      ownsTool: toolName => ownerOf(toolName) === name,
+      ownsTool: toolName => ownerOf(toolName) === pageKey,
       readOnlyToolCount,
     };
-  }, [name, installation, serverNames, servers, readOnlyToolCount]);
+  }, [name, pageKey, installation, serverNames, servers, readOnlyToolCount]);
 
   const sessionGate: ReactNode = authenticated ? undefined : (
     <SessionGate
@@ -540,7 +548,9 @@ function ConnectorPageContent({
               status={family.status}
             />
           ) : (
-            <Link href={links.server(name, installation, { tab: 'instances' })}>
+            <Link
+              href={links.server(pageKey, installation, { tab: 'instances' })}
+            >
               View instances
             </Link>
           )
@@ -756,7 +766,7 @@ function ConnectorPageContent({
               index
               element={
                 <ConnectorToolsTab
-                  server={name}
+                  server={pageKey}
                   installation={installation}
                   tools={tools}
                   emptyExplanation={emptyExplanation}
@@ -790,7 +800,7 @@ function ConnectorPageContent({
                 element={
                   <ConnectorUsageTab
                     row={row}
-                    server={name}
+                    server={pageKey}
                     installation={installation}
                     days={usageDays}
                     usage={usage}
@@ -906,15 +916,17 @@ export interface ConnectorPageProps {
  * disabled, saying why.
  */
 export function ConnectorPage({ usedBy }: ConnectorPageProps) {
-  const { server: key = '' } = useParams();
+  const { key, resolution, deciding } = useConnectorAddress();
   const { mcpServers } = useMusterInstance();
-  const row = useMemo(() => findServerRow(mcpServers, key), [mcpServers, key]);
+  const row = resolution.kind === 'row' ? resolution.row : undefined;
   // What people read: the display name once the connector is read (a cached
   // row names it while it is read again), its URL name until then. `key`
   // stays what links, muster and the URL use.
   const shownName = useMemo(
     () =>
-      row ? serverRowDisplayName(row, mcpServerDisplayNames(mcpServers)) : key,
+      row
+        ? serverRowDisplayName(row, mcpServerDisplayNames(mcpServers))
+        : connectorPageKeyLabel(key),
     [row, mcpServers, key],
   );
   // Above every state the page can be in; the form an agent's page uses.
@@ -923,7 +935,8 @@ export function ConnectorPage({ usedBy }: ConnectorPageProps) {
       <ShellDocumentTitle title={[shownName, 'Connectors']} />
       <ConnectorPageBody
         serverKey={key}
-        row={row}
+        resolution={resolution}
+        deciding={deciding}
         shownName={shownName}
         usedBy={usedBy}
       />
@@ -933,21 +946,26 @@ export function ConnectorPage({ usedBy }: ConnectorPageProps) {
 
 function ConnectorPageBody({
   serverKey: key,
-  row,
+  resolution,
+  deciding,
   shownName,
   usedBy,
 }: ConnectorPageProps & {
   serverKey: string;
-  row: ServerPageRow | undefined;
+  resolution: ConnectorAddressResolution;
+  deciding: boolean;
   shownName: string;
 }) {
-  const { mcpServers, activeInstallation, isLoading, isLoadingInstallations } =
-    useMusterInstance();
-  const { installation = '' } = useParams();
+  const { mcpServers, activeInstallation } = useMusterInstance();
+  const { installation = '', '*': tab = '' } = useParams();
+  const { search } = useLocation();
   const paths = useConnectorListPaths();
+  const links = useServerPageLinks();
   const listPath = paths.connectors;
 
-  if (isLoadingInstallations || isLoading) {
+  // Until the address is decided, its loading state: never a redirect or a
+  // "not found" made before muster's keys tell its connectors apart.
+  if (deciding) {
     // The loaded page's frame from the first paint — trail, tile, badge row,
     // tab strip — with skeletons where the read will fill in
     // (T95). Tools is the one tab every connector has; the rest join it.
@@ -992,18 +1010,39 @@ function ConnectorPageBody({
       </ShellPage>
     );
   }
-  if (!row) {
+  // An address the connector no longer has (an organization's before it had
+  // its own, `<installation>/<name>`): its page, once decided; a choice where
+  // several organizations' connectors have that name.
+  if (resolution.kind === 'moved') {
+    const href = links.server(resolution.key, installation);
+    if (href) {
+      return (
+        <Navigate to={`${href}${tab ? `/${tab}` : ''}${search}`} replace />
+      );
+    }
+  }
+  if (resolution.kind === 'choice') {
+    return (
+      <ConnectorNameChoice
+        name={key}
+        installation={activeInstallation}
+        named={resolution.named}
+        servers={mcpServers}
+      />
+    );
+  }
+  if (resolution.kind !== 'row') {
     return (
       <ShellPage
-        title={key}
+        title={shownName}
         breadcrumbs={[
           { label: 'Customize', href: paths.customize },
           { label: 'Connectors', href: listPath },
-          { label: key },
+          { label: shownName },
         ]}
       >
         <EmptyStateCard
-          title={`No connector “${key}” on ${activeInstallation}`}
+          title={`No connector “${shownName}” on ${activeInstallation}`}
           description="It may be on another environment, or removed."
           actions={
             paths.connectors ? (
@@ -1017,7 +1056,7 @@ function ConnectorPageBody({
   return (
     <ConnectorPageContent
       key={`${activeInstallation}/${key}`}
-      row={row}
+      row={resolution.row}
       displayName={shownName}
       servers={mcpServers}
       installation={activeInstallation}

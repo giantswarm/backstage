@@ -8,7 +8,12 @@ import {
   withMusterKeys,
 } from './connectorKey';
 import { serverListRows } from './serverList';
-import { connectorPageKeys, findServerRow } from './serverGrouping';
+import {
+  connectorPageKeys,
+  findServerRow,
+  organizationServersNamed,
+  resolveConnectorAddress,
+} from './serverGrouping';
 import {
   serverPageResolver,
   serverPrefixInfos,
@@ -65,7 +70,9 @@ describe('connector keys', () => {
         { name: 'x_org-golem_wiki_search' },
         { name: 'x_org-golem_wiki_read' },
       ] as never);
-      const wikis = rows.filter(row => row.id === 'wiki');
+      const wikis = rows.filter(
+        row => row.row.kind === 'server' && row.row.server.getName() === 'wiki',
+      );
       expect(wikis.map(row => row.key)).toEqual([
         'server:org-gazelle/wiki',
         'server:org-golem/wiki',
@@ -75,8 +82,12 @@ describe('connector keys', () => {
         'Golem wiki',
       ]);
       expect(wikis.map(row => row.tools?.length)).toEqual([1, 2]);
-      // The `:server` segment `wiki` cannot tell them apart.
-      expect(wikis.map(row => row.shadowed)).toEqual([true, true]);
+      // Each has its own address, `-/<namespace>/<name>`.
+      expect(wikis.map(row => row.id)).toEqual([
+        '-/org-gazelle/wiki',
+        '-/org-golem/wiki',
+      ]);
+      expect(wikis.map(row => row.shadowed)).toEqual([false, false]);
       expect(new Set(rows.map(row => row.key)).size).toBe(rows.length);
     });
 
@@ -93,15 +104,28 @@ describe('connector keys', () => {
       ).toEqual(['x_org-golem_wiki_search']);
     });
 
-    it('opens no page for either by the shared name, nor a page of the other', () => {
+    it('opens each at its own address, never by the shared name', () => {
       expect(findServerRow(servers, 'wiki')).toBeUndefined();
+      expect(findServerRow(servers, '-/org-golem/wiki')).toEqual({
+        kind: 'server',
+        server: golemWiki,
+      });
+      expect(findServerRow(servers, '-/org-gazelle/wiki')).toEqual({
+        kind: 'server',
+        server: gazelleWiki,
+      });
+      expect(findServerRow(servers, '-/org-glean/wiki')).toBeUndefined();
       expect(serverPageResolver(servers)('x_org-golem_wiki_search')).toBe(
-        undefined,
+        '-/org-golem/wiki',
       );
       const pages = connectorPageKeys(servers);
       expect(pages.get('github')).toBe('github');
-      expect(pages.has('org-gazelle/wiki')).toBe(false);
-      expect(pages.has('org-golem/wiki')).toBe(false);
+      expect(pages.get('org-gazelle/wiki')).toBe('-/org-gazelle/wiki');
+      expect(pages.get('org-golem/wiki')).toBe('-/org-golem/wiki');
+      expect(organizationServersNamed(servers, 'wiki')).toEqual([
+        gazelleWiki,
+        golemWiki,
+      ]);
     });
 
     it('reads the usage of each by its own key', () => {
@@ -111,19 +135,26 @@ describe('connector keys', () => {
     });
   });
 
-  it("gives an organization's server the page of its name while it is the only one of that name", () => {
-    const servers = [github, gazelleWiki];
-    expect(findServerRow(servers, 'wiki')).toEqual({
-      kind: 'server',
-      server: gazelleWiki,
+  it('offers the choice where several organizations have a connector of the old address', () => {
+    expect(resolveConnectorAddress([gazelleWiki, golemWiki], 'wiki')).toEqual({
+      kind: 'choice',
+      named: [gazelleWiki, golemWiki],
     });
-    expect(connectorPageKeys(servers).get('org-gazelle/wiki')).toBe('wiki');
+  });
+
+  it("gives an organization's server its own address even where it alone has its name", () => {
+    const servers = [github, gazelleWiki];
+    expect(findServerRow(servers, 'wiki')).toBeUndefined();
+    expect(organizationServersNamed(servers, 'wiki')).toEqual([gazelleWiki]);
+    expect(connectorPageKeys(servers).get('org-gazelle/wiki')).toBe(
+      '-/org-gazelle/wiki',
+    );
     expect(serverPageResolver(servers)('x_org-gazelle_wiki_search')).toBe(
-      'wiki',
+      '-/org-gazelle/wiki',
     );
   });
 
-  it("gives the page of a name to muster's own server over an organization's", () => {
+  it("gives the bare name to muster's own server, an organization's of that name its own address", () => {
     const own = server('wiki', 'agent-platform');
     const servers = [gazelleWiki, own];
     expect(findServerRow(servers, 'wiki')).toEqual({
@@ -132,8 +163,28 @@ describe('connector keys', () => {
     });
     expect(serverPageResolver(servers)('x_wiki_search')).toBe('wiki');
     expect(serverPageResolver(servers)('x_org-gazelle_wiki_search')).toBe(
-      undefined,
+      '-/org-gazelle/wiki',
     );
+  });
+
+  it("opens an organization's server named like a family or muster at its own address", () => {
+    const member = server('gazelle-mcp-wiki', 'agent-platform', 'Wiki', {
+      family: { name: 'wiki' },
+    });
+    const orgMuster = server('muster', 'org-gazelle');
+    const servers = [member, gazelleWiki, orgMuster];
+    const rows = serverListRows(servers, undefined).filter(
+      row => row.row.kind === 'server',
+    );
+    expect(rows.map(row => [row.id, row.shadowed])).toEqual([
+      ['-/org-gazelle/muster', false],
+      ['-/org-gazelle/wiki', false],
+    ]);
+    expect(findServerRow(servers, 'wiki')?.kind).toBe('family');
+    expect(findServerRow(servers, '-/org-gazelle/muster')).toEqual({
+      kind: 'server',
+      server: orgMuster,
+    });
   });
 
   it('counts an empty toolPrefix as none, as muster does', () => {
@@ -160,6 +211,30 @@ describe('connector keys', () => {
     const org = server('wiki', 'org-gazelle');
     // muster's `/servers/names`: its own servers by name, the others by key.
     const names = new Set(['github', 'jira', 'org-gazelle/wiki']);
+
+    it('resolves addresses by its keys: the bare name for its own, -/<namespace>/<name> for an organization', () => {
+      const keyed = withMusterKeys([own, org], () => names);
+      expect(resolveConnectorAddress(keyed, 'github')).toEqual({
+        kind: 'row',
+        row: { kind: 'server', server: keyed[0] },
+      });
+      // An organization's address of muster's own server: its bare name.
+      expect(resolveConnectorAddress(keyed, '-/muster-system/github')).toEqual({
+        kind: 'moved',
+        key: 'github',
+      });
+      expect(resolveConnectorAddress(keyed, 'wiki')).toEqual({
+        kind: 'moved',
+        key: '-/org-gazelle/wiki',
+      });
+      expect(resolveConnectorAddress(keyed, 'nope')).toEqual({ kind: 'none' });
+      // Before the keys, its own server looks like an organization's: what
+      // the pages wait out (`isLoadingServerKeys`) before acting on it.
+      expect(resolveConnectorAddress([own], 'github')).toEqual({
+        kind: 'moved',
+        key: '-/muster-system/github',
+      });
+    });
 
     it('reads its namespace from the names muster gives its servers', () => {
       expect(musterNamespaceOf([own, ownToo, org], names)).toBe(

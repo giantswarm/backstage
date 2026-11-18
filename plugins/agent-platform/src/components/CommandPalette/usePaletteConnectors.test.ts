@@ -78,7 +78,7 @@ describe('usePaletteConnectors', () => {
     ]);
   });
 
-  it("lists two organizations' connectors of one name apart, by their display names, opening no page", () => {
+  it("lists two organizations' connectors of one name apart, by their display names, each at its own address", () => {
     mockResources = [
       server('gazelle', 'wiki', {
         namespace: 'org-gazelle',
@@ -99,17 +99,19 @@ describe('usePaletteConnectors', () => {
     expect(result.current.rows).toEqual([
       {
         key: 'server:org-gazelle/wiki',
+        page: '-/org-gazelle/wiki',
         displayName: 'Gazelle wiki',
         installation: 'gazelle',
       },
       {
         key: 'server:org-golem/notes',
-        page: 'notes',
+        page: '-/org-golem/notes',
         displayName: 'Golem notes',
         installation: 'gazelle',
       },
       {
         key: 'server:org-golem/wiki',
+        page: '-/org-golem/wiki',
         displayName: 'Golem wiki',
         installation: 'gazelle',
       },

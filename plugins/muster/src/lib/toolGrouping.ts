@@ -7,8 +7,9 @@ import {
 } from './connectorKey';
 import {
   MUSTER_SERVER_KEY,
+  isShadowedServer,
   mcpServerDisplayNames,
-  singularServerPages,
+  singularServerPageKey,
   type ServerPageRow,
 } from './serverGrouping';
 
@@ -216,13 +217,15 @@ export function toolsByServerKey(
 }
 
 /**
- * Resolves the server page a tool is found on: the `<server>` segment of
- * `/customize/connectors/<installation>/<server>/tools/<tool>`. muster's own tools
- * (`core_*`, `workflow_*`) are on `muster`; any other on its `ownerOfTool`'s
- * page -- the rule the pages list tools by, so the link opens a page that shows
- * the tool. A resolved tool is undefined when no prefix matches, or when the
- * owner's page belongs to another row: `muster` is always the core row, and a
- * family takes the page of a singular server of the same name.
+ * Resolves the server page a tool is found on: the page key
+ * (`lib/connectorAddress.ts`) of
+ * `/customize/connectors/<installation>/<key>/tools/<tool>`. muster's own
+ * tools (`core_*`, `workflow_*`) are on `muster`; any other on its
+ * `ownerOfTool`'s page -- the rule the pages list tools by, so the link opens
+ * a page that shows the tool. A resolved tool is undefined when no prefix
+ * matches, or when the owner's page belongs to another row: `muster` is
+ * always the core row, and a family takes the page of muster's own singular
+ * server of the same name.
  *
  * Built once per server list; resolving is a prefix lookup per tool.
  */
@@ -231,25 +234,23 @@ export function serverPageResolver(
 ): (toolName: string) => string | undefined {
   const prefixes = serverPrefixInfos(servers);
   const families = new Set(servers.map(server => server.getFamily()));
-  const pages = singularServerPages(servers);
+  const byKey = new Map(
+    servers.map(server => [connectorAuthName(server), server]),
+  );
   return toolName => {
     if (toolName.startsWith('core_') || toolName.startsWith('workflow_')) {
-      return 'muster';
+      return MUSTER_SERVER_KEY;
     }
     const owner = ownerOfTool(toolName, prefixes);
     if (!owner) {
       return undefined;
     }
-    const page = owner.family ?? owner.name;
     if (owner.family) {
-      return page === MUSTER_SERVER_KEY ? undefined : page;
+      return owner.family === MUSTER_SERVER_KEY ? undefined : owner.family;
     }
-    const pageServer = pages.get(page);
-    const shadowed =
-      page === MUSTER_SERVER_KEY ||
-      families.has(page) ||
-      !pageServer ||
-      connectorAuthName(pageServer) !== owner.serverName;
-    return shadowed ? undefined : page;
+    const server = byKey.get(owner.serverName);
+    return server && !isShadowedServer(server, families)
+      ? singularServerPageKey(server)
+      : undefined;
   };
 }

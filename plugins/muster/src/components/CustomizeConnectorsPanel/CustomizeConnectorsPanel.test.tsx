@@ -963,14 +963,17 @@ describe('CustomizeConnectorsPanel', () => {
       expect(api.signInServer).toHaveBeenCalledTimes(1);
     });
 
-    it('opens neither from the list, as their name alone does not tell their pages apart', async () => {
+    it('opens each from the list at its own address', async () => {
       await renderPanel();
 
-      for (const name of ['Gazelle wiki', 'Golem wiki']) {
-        const row = rowOf(name);
-        expect(row).not.toHaveAttribute('data-href');
-        expect(within(row).queryByRole('link')).toBeNull();
-      }
+      expect(rowOf('Gazelle wiki')).toHaveAttribute(
+        'data-href',
+        '/customize/connectors/gazelle/-/org-gazelle/wiki',
+      );
+      expect(rowOf('Golem wiki')).toHaveAttribute(
+        'data-href',
+        '/customize/connectors/gazelle/-/org-golem/wiki',
+      );
       expect(rowOf('github')).toHaveAttribute(
         'data-href',
         '/customize/connectors/gazelle/github',
