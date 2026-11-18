@@ -6,8 +6,7 @@ import {
   columnMax,
   DataBar,
   ShowMore,
-  tableMinWidth,
-  useCompactLayout,
+  useFittingColumns,
   usePhoneColumns,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { estimateCost, type TokenRates } from '../../lib/costEstimate';
@@ -24,6 +23,7 @@ import { useMeasureColor } from '../../lib/measures';
 import { useSortOnShownColumn } from '../../hooks/useSortOnShownColumn';
 import { lastDaysNoun } from '../../lib/usageWindow';
 import { NameCell } from '../LlmUsage/NameCell';
+import { USAGE_COLUMN_MIN_WIDTH } from '../LlmUsage/columnWidths';
 import { sortUsageRows } from './helpers';
 import type { ByAgentRow } from './helpers';
 
@@ -53,6 +53,24 @@ const useStyles = makeStyles((theme: Theme) => ({
  * one click reveals the rest rather than paging through them.
  */
 export const BY_AGENT_ROWS = 15;
+
+/**
+ * Each column's minimum width, px: its header with the sort arrow and the
+ * cell's padding, and its usual value (the `tables` skill, "Rule: typical
+ * content fits").
+ */
+const BY_AGENT_COLUMN_MIN_WIDTHS: Readonly<Record<string, number>> = {
+  agentName: USAGE_COLUMN_MIN_WIDTH.name,
+  sessions: 110,
+  turns: 90,
+  inputTokens: 130,
+  outputTokens: 140,
+  estCostUsd: USAGE_COLUMN_MIN_WIDTH.spend,
+  costUsd: 140,
+};
+
+/** The column a card too narrow for every one leaves out first, under the agent. */
+const BY_AGENT_COLUMNS_DROPPED_FIRST: readonly string[] = ['turns'];
 
 export type ByAgentTableProps = {
   rows: ByAgentRow[];
@@ -160,9 +178,13 @@ export function ByAgentTable({
   );
   const anyReported = rows.some(row => row.costUsd !== undefined);
 
-  // The columns, for the compact layout or the full one: compact, the name
-  // wraps to two lines and carries the runtime's reported cost.
-  const columnsFor = (compact: boolean): ColumnConfig<ByAgentRow>[] => [
+  // The columns, for the full, narrow or compact layout: narrow, the turns go
+  // under the agent's name; compact, the name wraps to two lines and carries
+  // the runtime's reported cost.
+  const columnsFor = (
+    narrow: boolean,
+    compact = false,
+  ): ColumnConfig<ByAgentRow>[] => [
     {
       id: 'agentName',
       label: 'Agent',
@@ -175,11 +197,7 @@ export function ByAgentTable({
           title={row.agentName}
           href={row.href}
           compact={compact}
-          description={
-            compact && row.costUsd !== undefined
-              ? `${formatUsd(row.costUsd)} reported by its runtime`
-              : undefined
-          }
+          description={describeAgent(row, { narrow, compact })}
         />
       ),
     },
@@ -313,19 +331,20 @@ export function ByAgentTable({
         ]
       : []),
   ];
-  const [tableRef, isCompact] = useCompactLayout(
-    tableMinWidth(columnsFor(false)),
-  );
-  const columnConfig = columnsFor(isCompact);
+  // Every column while their minimums fit the card; without Turns below
+  // that; the compact columns below that and at phone width.
+  const fit = useFittingColumns(columnsFor, {
+    minWidths: BY_AGENT_COLUMN_MIN_WIDTHS,
+    dropFirst: BY_AGENT_COLUMNS_DROPPED_FIRST,
+  });
 
-  // At phone width, and beside the side rail at tablet width, the agent, its
-  // sessions and the estimate (T22 B11): six or seven columns in 343px
-  // clipped every figure. Turns and tokens are in the totals above and on the
-  // agent's own Usage tab, a link away.
+  // Compact, the agent, its sessions and the estimate (T22 B11): six or
+  // seven columns in 343px clipped every figure. Turns and tokens are in the
+  // totals above and on the agent's own Usage tab, a link away.
   const shownColumns = usePhoneColumns(
-    columnConfig,
+    fit.isCompact ? columnsFor(true, true) : fit.columns,
     ['agentName', 'sessions', 'estCostUsd'],
-    { compact: isCompact },
+    { compact: fit.isCompact },
   );
 
   const { tableProps } = useTable<ByAgentRow>({
@@ -355,7 +374,7 @@ export function ByAgentTable({
           `rows` instead would silently undo every column sort while the
           header's indicator still moved. The section above renders a spinner
           while loading, so this table only ever mounts with data. */}
-      <div ref={tableRef}>
+      <div ref={fit.ref}>
         <ShowMore
           items={tableProps.data ?? []}
           initial={BY_AGENT_ROWS}
@@ -406,4 +425,23 @@ export function ByAgentTable({
       </div>
     </Paper>
   );
+}
+
+/**
+ * The line under an agent's name: narrow, its turns, which have no column
+ * then; compact, the cost its runtime reported, whose column is hidden.
+ */
+function describeAgent(
+  row: ByAgentRow,
+  { narrow, compact }: { narrow: boolean; compact: boolean },
+): string | undefined {
+  if (compact) {
+    return row.costUsd !== undefined
+      ? `${formatUsd(row.costUsd)} reported by its runtime`
+      : undefined;
+  }
+  if (!narrow) {
+    return undefined;
+  }
+  return `${formatCount(row.turns)} ${row.turns === 1 ? 'turn' : 'turns'}`;
 }

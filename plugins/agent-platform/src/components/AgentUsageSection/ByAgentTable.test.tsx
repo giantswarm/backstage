@@ -1,9 +1,10 @@
 import {
+  mockContainerWidth,
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describeActualCostByAgent } from '../../lib/modelCostCopy';
 import { ByAgentTable } from './ByAgentTable';
@@ -384,5 +385,33 @@ describe('ByAgentTable at phone width', () => {
       'Reported cost',
     ]);
     expect(screen.queryByText(/reported by its runtime/)).toBeNull();
+  });
+
+  it('names the turns under the agent in a card too narrow for every column, then takes the compact columns', () => {
+    layout = mockDesktopLayout();
+    const container = mockContainerWidth(900);
+    try {
+      render(<ByAgentTable rows={ROWS} rates={RATES} emptyMessage="none" />);
+      expect(headers()).toContain('Turns');
+      expect(screen.queryByText('19 turns')).toBeNull();
+
+      // Beside the side rail at 1024px: 670px for the table.
+      act(() => container.setWidth(670));
+      expect(headers()).toEqual([
+        'Agent',
+        'Sessions',
+        'Input tokens',
+        'Output tokens',
+        'Est. cost',
+      ]);
+      expect(screen.getByText('19 turns')).toBeVisible();
+      expect(screen.getByText('1 turn')).toBeVisible();
+
+      act(() => container.setWidth(414));
+      expect(headers()).toEqual(['Agent', 'Sessions', 'Est. cost']);
+      expect(screen.queryByText('19 turns')).toBeNull();
+    } finally {
+      container.restore();
+    }
   });
 });
