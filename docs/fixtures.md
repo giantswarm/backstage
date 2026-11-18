@@ -45,10 +45,12 @@ yarn fixtures stop
   counts as the checkout's server only while its command line carries the
   state's token, so `stop` never signals a process that took over a stale
   process id.
-- The server stops on its own once no `start` has asked for it for
-  `FIXTURES_IDLE_MINUTES` (default 60), and at once when `.fixtures-server.json`
-  no longer names it. A start that fails stops what it started. Stop the
-  server when you are done: a frontend and a backend per checkout are heavy.
+- The server stops on its own once no `start` or `yarn fixtures touch` has
+  asked for it for `FIXTURES_IDLE_MINUTES` (default 60), and at once when
+  `.fixtures-server.json` no longer names it. The layout check touches the
+  server it reads from `.fixtures-server.json` while it runs, so a long run
+  keeps it. A start that fails stops what it started. Stop the server when
+  you are done: a frontend and a backend per checkout are heavy.
 - `--enable <extension>` adds an extension to `app-config.yaml`'s
   `app.extensions`, which the server copies as it starts (Backstage replaces a
   list rather than merging it), for example to turn on Hive:
@@ -162,8 +164,9 @@ Running), the available workflows' `workflow_<name>` tools (an unavailable
 workflow has none, as muster lists no invalid one) and muster's own `core_*`
 tools, each described with its input schema; toolsets resolved within the
 catalogue (`filter_tools` with `toolset`) and the presets, the built-in ones
-and the installation's own; the workflows, their executions with their steps
-and their run statistics; and MCP usage and tool latency over any window,
+and the installation's own; the workflows (with a category, tags and GitOps
+provenance in turn, as `buildWorkflows` gives them), their executions with
+their steps and their run statistics; and MCP usage and tool latency over any window,
 narrowed to some connectors or one tool. A connector's tools are named after
 its tool prefix, or its name without one, and derived from it
 (`connectorToolsOf`), so every read names the same ones. The tools of the
@@ -329,7 +332,10 @@ from kagent.
   approval or on answers to questions, failed (the model provider's refusal),
   canceled, and failed because kagent lost the session's runtime (reported on
   the session too). The states no v1 recording has are derived from one, with
-  the words of the older recordings of that state.
+  the words of the older recordings of that state. About one agent in three
+  (`reportsCost`, by its name) has a runtime that reports a cost, as the
+  claude harness does: its turns' usage carries `costUsd`, so Usage · Your
+  sessions shows the Reported cost column, with and without a figure.
 - The session states summary (the session lists and the rail) and the
   usage summary (Usage · Your sessions) are computed with the backend's own
   code, shared through agent-platform-common (`kagentSessionRollups.ts`):
@@ -729,7 +735,7 @@ mapper in the same pull request, and the base data set gets the state.
 The [`layout-check`](../.agents/skills/layout-check/SKILL.md) skill measures
 pages of the running fixture mode in a headless Chromium of its own, at
 several widths and in the states a spec steps through, and reports overflow,
-overlapping elements, misaligned rows, squeezed or cut-off text, controls that
+tables that scroll sideways or squeeze a column, overlapping elements, misaligned rows, squeezed or cut-off text, controls that
 move or resize between states and content off its control's centre. It reads
 the portal's URL from `.fixtures-server.json`:
 

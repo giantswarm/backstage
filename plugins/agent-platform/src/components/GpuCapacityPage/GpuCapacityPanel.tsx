@@ -23,6 +23,7 @@ import {
   formatLocalDateFull,
   getRelativeDate,
   StatusHint,
+  type FittingTier,
   useFittingColumns,
   usePhoneColumns,
   useVisibleSort,
@@ -810,7 +811,8 @@ export function GpuCapacityPanel({
   // the rest (beside the side rail too, not only at phone width), the
   // compact layout.
   const fittingColumnsFor = useCallback(
-    (isNarrow: boolean) => columnsFor({ isCompact: false, isNarrow }),
+    (tier: FittingTier) =>
+      columnsFor({ isCompact: false, isNarrow: tier !== 'full' }),
     [columnsFor],
   );
   const fit = useFittingColumns(fittingColumnsFor, {

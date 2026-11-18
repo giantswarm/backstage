@@ -106,14 +106,26 @@ export function collectLayout(options) {
     });
   };
 
+  /**
+   * Rendered: not `display: none`, `visibility: hidden` nor, with
+   * `opacity`, transparent. Whatever its size.
+   */
+  const renders = (el, opacity) =>
+    typeof el.checkVisibility !== 'function' ||
+    el.checkVisibility({ opacityProperty: opacity, visibilityProperty: true });
+  const rendered = memo(el => renders(el, true));
   /** Visible as a person sees it: rendered, not transparent, more than a hairline. */
   const visible = memo(el => {
-    if (
-      typeof el.checkVisibility === 'function' &&
-      !el.checkVisibility({ opacityProperty: true, visibilityProperty: true })
-    ) {
-      return false;
-    }
+    if (!rendered(el)) return false;
+    const r = rectOf(el);
+    return r.width > 1 && r.height > 1;
+  });
+  /**
+   * Laid out, taking room, though maybe transparent: row actions shown on
+   * hover or focus keep their place in the cell.
+   */
+  const laidOut = memo(el => {
+    if (!renders(el, false)) return false;
     const r = rectOf(el);
     return r.width > 1 && r.height > 1;
   });
@@ -666,6 +678,47 @@ export function collectLayout(options) {
   };
   const px = v => parseFloat(v) || 0;
   const cells = [];
+  const space = [];
+  const vanished = [];
+  /**
+   * Whether an element in a cell takes room of its own, beside its text: an
+   * icon, a control, a progress bar or meter, a status dot, a badge, a box
+   * drawn with a background or a border.
+   */
+  const takesRoom = e => {
+    if (e.matches('svg, img, [role=img]')) return !e.parentElement?.closest('svg');
+    if (e.closest('svg')) return false;
+    if (e.matches(`${CONTROL}, [role=progressbar], [role=meter], progress, meter, [data-tone]`)) return true;
+    if ([...e.classList].some(c => BADGE_CLASS.test(c))) return true;
+    const st = style(e);
+    const painted = c => c && c !== 'transparent' && !/rgba\([^)]*,\s*0\)$/.test(c);
+    return (
+      painted(st.backgroundColor) ||
+      st.backgroundImage !== 'none' ||
+      ['Top', 'Right', 'Bottom', 'Left'].some(
+        side => px(st[`border${side}Width`]) > 0 && st[`border${side}Style`] !== 'none',
+      )
+    );
+  };
+  /**
+   * Whether text whose box has no width was squeezed there by the table's
+   * layout, rather than hidden on purpose: rendered, a line high, and not
+   * under `aria-hidden`, `data-layout-check="ignore"`, a visually-hidden box
+   * (taken out of the flow, clipped, a pixel each way) or `max-width: 0`.
+   */
+  const squeezedToNothing = (el, cell) => {
+    if (!rendered(el) || ignored(el) || rectOf(el).height <= 1) return false;
+    for (let e = el; e && e !== cell; e = e.parentElement) {
+      if (e.getAttribute('aria-hidden') === 'true') return false;
+      const st = style(e);
+      if (['absolute', 'fixed'].includes(st.position)) return false;
+      if ((st.clip && st.clip !== 'auto') || st.clipPath !== 'none') return false;
+      if (st.maxWidth === '0px') return false;
+      const r = rectOf(e);
+      if (r.width <= 1 && r.height <= 1) return false;
+    }
+    return true;
+  };
   for (const cell of body.querySelectorAll(CELL)) {
     if (ignored(cell) || !visible(cell)) continue;
     const table = tableOf(cell);
@@ -677,14 +730,19 @@ export function collectLayout(options) {
     const innerLeft = cr.left + cell.clientLeft + px(cs.paddingLeft);
     const innerRight = cr.left + cell.clientLeft + cell.clientWidth - px(cs.paddingRight);
     const leaves = new Map();
+    const vanishedNodes = [];
     const tw = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
     for (let node = tw.nextNode(); node; node = tw.nextNode()) {
       const parent = node.parentElement;
       if (!node.nodeValue.trim() || !parent || SKIP_TEXT.has(parent.tagName)) continue;
       // A cell nested in this one is measured on its own.
-      if (parent.closest(CELL) !== cell || !visible(parent)) continue;
+      if (parent.closest(CELL) !== cell) continue;
+      if (!visible(parent)) {
+        if (squeezedToNothing(parent, cell)) vanishedNodes.push(node);
+        continue;
+      }
       const leaf = leafOf(parent, cell);
-      if (!leaves.has(leaf)) leaves.set(leaf, { nodes: [], rects: [] });
+      if (!leaves.has(leaf)) leaves.set(leaf, { nodes: [], rects: [], shown: [] });
       leaves.get(leaf).nodes.push(node);
     }
     const col = columnOf(cell);
@@ -718,6 +776,7 @@ export function collectLayout(options) {
           const right = Math.min(shown ? shown.x + shown.w : r.x, innerRight);
           const w = shown ? Math.max(0, right - left) : 0;
           const h = shown ? shown.h : 0;
+          if (w > 0) entry.shown.push([left, left + w]);
           if (w < r.w - 1) cutX = true;
           // Down: at least half a line hidden, not a descender's pixel or two.
           else if (h < r.h / 2) cutY = true;
@@ -775,6 +834,136 @@ export function collectLayout(options) {
         lines: linesOf(parts.flatMap(p => p.rects)),
         cut: false,
       });
+    }
+    // How much of the cell's width its content takes: its text as painted
+    // (cut where it is cut), and what else it lays out: icons, controls
+    // (shown on hover or not), progress bars, status dots, badges and boxes
+    // with a background or a border. What is left is room the column keeps
+    // to spare in this row.
+    const used = [...leaves.values()].flatMap(entry => entry.shown);
+    const ew = document.createTreeWalker(cell, NodeFilter.SHOW_ELEMENT, {
+      acceptNode: e =>
+        ignored(e) || e.closest(CELL) !== cell
+          ? NodeFilter.FILTER_REJECT
+          : NodeFilter.FILTER_ACCEPT,
+    });
+    for (let e = ew.nextNode(); e; e = ew.nextNode()) {
+      if (!takesRoom(e) || !laidOut(e)) continue;
+      const r = rectOf(e);
+      used.push([Math.max(r.left, innerLeft), Math.min(r.right, innerRight)]);
+    }
+    const spans = used.filter(([l, r]) => r > l);
+    space.push({
+      table: idOf(table),
+      row: idOf(cell.parentElement),
+      col,
+      header,
+      column: headersOf(table).get(col),
+      inner: round(Math.max(0, innerRight - innerLeft)),
+      used: spans.length
+        ? round(Math.max(...spans.map(s => s[1])) - Math.min(...spans.map(s => s[0])))
+        : 0,
+    });
+    // Text squeezed to no width, which `cells` leaves out (it cannot be
+    // seen): only the squeezed-column check reads it.
+    for (const node of vanishedNodes) {
+      range.selectNodeContents(node);
+      const needed = [...range.getClientRects()].reduce((sum, r) => sum + r.width, 0);
+      if (needed <= 1) continue;
+      const el = node.parentElement;
+      vanished.push({
+        ...describe(el),
+        box: box(rectOf(el)),
+        table: idOf(table),
+        row: idOf(cell.parentElement),
+        col,
+        column: headersOf(table).get(col),
+        header,
+        text: norm(node.nodeValue).slice(0, 80),
+        needed: round(needed),
+        shown: 0,
+        fontSize: px(style(el).fontSize) || 14,
+      });
+    }
+  }
+
+  // Tables wider than the box that holds them: one that scrolls sideways or
+  // cuts them off. A table is one with column headers, or with a row of two
+  // or more cells (a tag group or a list of one cell per row is no table).
+  // `data-layout-check="scroll-x"` on the table or an ancestor up to the
+  // scroll container says it scrolls sideways by design (a log view).
+  const ROW = '[role=row], tr';
+  /** The table's name as a person finds it: its label, caption or heading. */
+  const tableNameOf = t => {
+    const by = t.getAttribute('aria-labelledby');
+    if (by) {
+      const text = norm(by.split(/\s+/).map(id => document.getElementById(id)?.textContent ?? '').join(' '));
+      if (text) return text.slice(0, 60);
+    }
+    const caption = t.querySelector(':scope > caption');
+    if (caption && norm(caption.textContent)) return norm(caption.textContent).slice(0, 60);
+    const label = norm(t.getAttribute('aria-label'));
+    // bui's Table calls every table "Data table".
+    if (label && !/^data ?table$/i.test(label)) return label.slice(0, 60);
+    // The last heading before the table, in the nearest ancestor holding one.
+    const HEADING = 'h1, h2, h3, h4, h5, h6, [role=heading]';
+    for (let e = t.parentElement; e && e !== body; e = e.parentElement) {
+      const before = [...e.querySelectorAll(HEADING)].filter(
+        h =>
+          visible(h) &&
+          !t.contains(h) &&
+          h.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+      if (before.length) return norm(before[before.length - 1].textContent).slice(0, 60);
+    }
+    return label || '';
+  };
+  const tableScrolls = [];
+  for (const t of body.querySelectorAll(TABLE)) {
+    if (ignored(t) || !visible(t)) continue;
+    // A table nested in another's cell is measured with the outer table.
+    if (t.parentElement?.closest(TABLE)) continue;
+    const tableLike =
+      tableOf(t.querySelector(CELL) ?? t) === t ||
+      [...t.querySelectorAll(ROW)].some(
+        r => r.closest(TABLE) === t && r.querySelectorAll(CELL).length >= 2,
+      );
+    if (!tableLike) continue;
+    const tr = rectOf(t);
+    let allowed = false;
+    for (let e = t; e && e !== doc && e !== body; e = e.parentElement) {
+      if (e.getAttribute('data-layout-check') === 'scroll-x') allowed = true;
+      const s = style(e);
+      if (s.overflowX === 'visible') continue;
+      if (e.scrollWidth <= e.clientWidth + 1) continue;
+      // This box is wider inside than out: is it the table that makes it?
+      const er = rectOf(e);
+      const innerLeft = er.left + e.clientLeft;
+      const innerRight = innerLeft + e.clientWidth;
+      const wider =
+        tr.width > e.clientWidth + 1 ||
+        tr.right > innerRight + 1 ||
+        tr.left < innerLeft - 1 ||
+        (e === t && t.scrollWidth > t.clientWidth + 1);
+      if (!wider) continue;
+      const width = e === t ? t.scrollWidth : tr.width;
+      tableScrolls.push({
+        role: roleOf(t),
+        name: tableNameOf(t),
+        path: pathOf(t),
+        box: box(tr),
+        columns: [...headersOf(t).values()].filter(Boolean).slice(0, 8),
+        // Named by its path: its text is the whole table's.
+        container: { role: roleOf(e), name: '', path: pathOf(e), box: box({ x: innerLeft, y: er.top, w: e.clientWidth, h: er.height }) },
+        width: round(width),
+        client: e.clientWidth,
+        // What sticks out past each edge of the box, as it is scrolled now.
+        overLeft: round(Math.max(0, innerLeft - tr.left)),
+        overRight: round(Math.max(0, tr.right - innerRight)),
+        cut: hides(s.overflowX),
+        allowed,
+      });
+      break;
     }
   }
 
@@ -838,6 +1027,9 @@ export function collectLayout(options) {
     flexRows,
     truncated,
     cells,
+    space,
+    vanished,
+    tableScrolls,
     sticking,
   };
 }

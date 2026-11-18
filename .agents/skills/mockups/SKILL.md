@@ -136,14 +136,15 @@ check": `--isolated` or a `--userDataDir` of your checkout).
 Do it at the artboard's width and at the
 [`layout-check`](../layout-check/SKILL.md) widths, and run the layout check in
 `base` and the scenarios of the states the mockup shows. Add the artboard's
-width to `--widths` only when it isn't one of the defaults (375, 768, 1280):
+width to `--widths` only when it isn't one of the defaults (375, 768, 1024,
+1160, 1280):
 
 ```bash
 L=.agents/skills/layout-check
-node $L/layout-check.mjs --widths 375,768,1280,1440 \
+node $L/layout-check.mjs --widths 375,768,1024,1160,1280,1440 \
   --scenarios base,empty,loading,error --page /customize/agents
 # a page with parameters: the spec's entry for it
-node $L/layout-check.mjs --widths 375,768,1280,1440 \
+node $L/layout-check.mjs --widths 375,768,1024,1160,1280,1440 \
   --scenarios base,empty,loading,error \
   --spec $L/specs/agent-platform.mjs --only Workspace
 ```
