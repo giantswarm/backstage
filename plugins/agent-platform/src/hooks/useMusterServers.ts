@@ -2,38 +2,30 @@ import { useMemo } from 'react';
 import { useResources } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   connectorAuthName,
+  connectorToolNamePrefix,
+  isOrganizationServerKey,
   MCPServer,
   type ToolSummary,
+  useMusterKeyedServers,
 } from '@giantswarm/backstage-plugin-muster';
 
-import {
-  connectorLabels,
-  isOrganizationServerKey,
-  type ServerInfo,
-} from '../lib/toolset';
+import { connectorLabels, type ServerInfo } from '../lib/toolset';
 
 /**
- * The grouping's view of one MCPServer CR, named as muster names it
- * (`MCPServerKey` in muster's internal/api/mcpserver_namespace.go): a server
- * of muster's own namespace by its name, a server of every other namespace
- * (`org-<name>`, an organization's `agents-<name>-<random>`) as
- * `<namespace>/<name>` -- its tools' `server`, what `server:` selects -- with
- * its tools prefixed `x_<namespace>_<segment>`.
+ * The grouping's view of one MCPServer CR, named as muster names it: by the
+ * muster plugin's `connectorAuthName` (its name in muster's namespace,
+ * `<namespace>/<name>` in an organization's -- its tools' `server`, what
+ * `server:` selects) with its tools' prefix by `connectorToolNamePrefix`.
  */
 export function serverInfoOf(server: MCPServer): ServerInfo {
   const displayName = server.getDisplayNameAnnotation();
   const icon = server.getStatusIcon();
-  const name = connectorAuthName(server);
-  const tenant = isOrganizationServerKey(name) ? server.getNamespace() : '';
-  const prefix = server.getToolNamePrefix();
   const tags = server.getTags();
   return {
-    name,
+    name: connectorAuthName(server),
     family: server.getFamily(),
     group: server.getToolGroupKey(),
-    toolNamePrefix: tenant
-      ? `x_${tenant}_${prefix.slice('x_'.length)}`
-      : prefix,
+    toolNamePrefix: connectorToolNamePrefix(server),
     state: server.getState(),
     ...(server.getSuspended() ? { suspended: true } : {}),
     oauth: server.getAuth()?.type === 'oauth',
@@ -117,12 +109,18 @@ export type MusterServers = {
 export function useMusterServers(
   installation: string | undefined,
 ): MusterServers {
-  const { resources, isLoading, errors } = useResources(
+  const {
+    resources: crs,
+    isLoading,
+    errors,
+  } = useResources(
     installation ? [installation] : [],
     MCPServer,
     {},
     { enabled: Boolean(installation) },
   );
+  // Each with muster's key for it, read from muster.
+  const resources = useMusterKeyedServers(crs);
 
   const servers = useMemo(() => resources.map(serverInfoOf), [resources]);
   const labels = useMemo(() => connectorLabels(servers), [servers]);
@@ -145,12 +143,19 @@ export function useMusterServers(
 export function useMusterServersByInstallation(
   installations: readonly string[],
 ): ReadonlyMap<string, MusterServers> {
-  const { resources, clustersData, errors, isLoading } = useResources(
+  const {
+    resources: crs,
+    clustersData,
+    errors,
+    isLoading,
+  } = useResources(
     [...installations],
     MCPServer,
     {},
     { enabled: installations.length > 0 },
   );
+  // Each with muster's key for it, read from muster.
+  const resources = useMusterKeyedServers(crs);
 
   return useMemo(() => {
     const byInstallation = new Map<string, MusterServers>();

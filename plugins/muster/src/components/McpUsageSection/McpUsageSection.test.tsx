@@ -385,7 +385,7 @@ describe('McpUsageSection connector links', () => {
       {
         apiVersion: 'muster.giantswarm.io/v1alpha1',
         kind: 'MCPServer',
-        metadata: { name, namespace: 'muster' },
+        metadata: { name, namespace: 'agent-platform' },
         spec: family ? { family: { name: family } } : {},
       } as never,
       'gazelle',

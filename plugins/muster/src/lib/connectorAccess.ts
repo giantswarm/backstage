@@ -1,6 +1,6 @@
 import type { AuthStatusResponse, ServerAuthStatus } from '../apis';
 import { MCPServer, mcpServerStateSeverity } from './k8s';
-import { MUSTER_NAMESPACE } from './musterNamespace';
+import { connectorAuthName } from './connectorKey';
 import {
   connectorReach,
   connectorStatus,
@@ -34,13 +34,6 @@ export type FamilyAccess = {
   waiting: string[];
 };
 
-export function connectorAuthName(server: MCPServer): string {
-  const namespace = server.getNamespace();
-  return namespace && namespace !== MUSTER_NAMESPACE
-    ? `${namespace}/${server.getName()}`
-    : server.getName();
-}
-
 function isHealthy(server: MCPServer): boolean {
   return mcpServerStateSeverity(server.getState()) === 'ok';
 }
@@ -59,7 +52,7 @@ export function instanceAccess(
   const auth = data?.servers.find(status => status.name === name);
   const entry: ServerListEntry = {
     key: `server:${name}`,
-    id: name,
+    id: server.getName(),
     displayName: server.getName(),
     row: { kind: 'server', server },
     tags: [],

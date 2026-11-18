@@ -1,3 +1,4 @@
+import { connectorAuthName } from '../../../lib/connectorKey';
 import { useMemo } from 'react';
 import { Link } from '@backstage/ui';
 import type { UsageWindowDays } from '@giantswarm/backstage-plugin-agent-platform-common';
@@ -43,9 +44,7 @@ export function ToolUsageTab({
   });
   const instances = useMemo(
     () =>
-      row.kind === 'family'
-        ? row.servers.map(instance => instance.getName())
-        : undefined,
+      row.kind === 'family' ? row.servers.map(connectorAuthName) : undefined,
     [row],
   );
 
