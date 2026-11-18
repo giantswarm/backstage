@@ -87,6 +87,64 @@ function warnings(): HTMLElement[] {
   return Array.from(document.querySelectorAll<HTMLElement>('.bui-Alert'));
 }
 
+/** agent-manager's answer on graveler when the person's sign-in to it is gone. */
+const SIGN_IN_GONE =
+  "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.";
+
+/**
+ * gazelle answers with payments; graveler serves organizations too, but its
+ * `list_organizations` is refused for a missing sign-in to agent-manager,
+ * which signs in through muster's own session there (SSO), muster
+ * reporting it as `ssoStatus`.
+ */
+function gravelerSignInLost(ssoStatus: Record<string, unknown> = {}) {
+  return (api: MusterApi) => {
+    withInstallations(['gazelle', 'graveler'], () => 'agent-manager')(api);
+    const answer = jest.mocked(api.callTool).getMockImplementation()!;
+    jest
+      .mocked(api.callTool)
+      .mockImplementation(async (name, args, installation, options) => {
+        if (
+          installation === 'graveler' &&
+          name === 'x_agent-manager_list_organizations'
+        ) {
+          throw new MusterUnauthorizedError(
+            SIGN_IN_GONE,
+            'server_sign_in_required',
+            'agent-manager',
+            'graveler',
+          );
+        }
+        return answer(name, args, installation, options);
+      });
+    Object.assign(api, {
+      getAuthStatus: jest.fn(async () => ({
+        servers: [
+          {
+            name: 'agent-manager',
+            status: 'auth_required',
+            token_exchange_enabled: true,
+            ...ssoStatus,
+          },
+        ],
+      })),
+      listConnectorNames: jest.fn(async () => ({ servers: [] })),
+    });
+  };
+}
+
+/** Opens the disclosure of the one installation not checked, and its row. */
+async function openTheOneUnchecked(): Promise<HTMLElement> {
+  await userEvent.click(
+    await screen.findByRole('button', {
+      name: 'Organizations could not be checked on 1 installation',
+    }),
+  );
+  const list = screen.getByRole('list', { name: 'Installations not checked' });
+  expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+  return list;
+}
+
 const PAYMENTS = {
   mine: {
     organizations: [
@@ -237,46 +295,7 @@ describe('OrganizationsIndexPage', () => {
 
   it('shows an installation whose SSO connector lost its sign-in once, in the list, with the portal sign-out', async () => {
     const signOut = jest.fn(async () => {});
-    const raw =
-      "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.";
-    await renderList(
-      PAYMENTS,
-      api => {
-        withInstallations(['gazelle', 'graveler'], () => 'agent-manager')(api);
-        const answer = jest.mocked(api.callTool).getMockImplementation()!;
-        jest
-          .mocked(api.callTool)
-          .mockImplementation(async (name, args, installation, options) => {
-            if (
-              installation === 'graveler' &&
-              name === 'x_agent-manager_list_organizations'
-            ) {
-              throw new MusterUnauthorizedError(
-                raw,
-                'server_sign_in_required',
-                'agent-manager',
-                'graveler',
-              );
-            }
-            return answer(name, args, installation, options);
-          });
-        // agent-manager signs in through muster's own session there.
-        Object.assign(api, {
-          getAuthStatus: jest.fn(async () => ({
-            servers: [
-              {
-                name: 'agent-manager',
-                status: 'auth_required',
-                token_exchange_enabled: true,
-              },
-            ],
-          })),
-          listConnectorNames: jest.fn(async () => ({ servers: [] })),
-        });
-      },
-      undefined,
-      signOut,
-    );
+    await renderList(PAYMENTS, gravelerSignInLost(), undefined, signOut);
 
     expect(
       await screen.findByRole('row', { name: /payments/ }),
@@ -286,21 +305,13 @@ describe('OrganizationsIndexPage', () => {
     expect(
       screen.queryByRole('heading', { name: 'graveler' }),
     ).not.toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole('button', {
-        name: 'Organizations could not be checked on 1 installation',
-      }),
-    );
-    const list = screen.getByRole('list', {
-      name: 'Installations not checked',
-    });
-    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+    const list = await openTheOneUnchecked();
     expect(
       await within(list).findByText(
         /has no valid sign-in for agent-manager now\. .* sign out of the portal and sign in again, then check again\./,
       ),
     ).toBeInTheDocument();
-    expect(screen.queryByText(raw)).not.toBeInTheDocument();
+    expect(screen.queryByText(SIGN_IN_GONE)).not.toBeInTheDocument();
     expect(
       within(list).queryByText(/nothing to sign in to/),
     ).not.toBeInTheDocument();
@@ -312,6 +323,43 @@ describe('OrganizationsIndexPage', () => {
       within(list).getByRole('button', { name: 'Sign out of the portal' }),
     );
     expect(signOut).toHaveBeenCalled();
+  });
+
+  it('lets the explanation of an SSO connector that refused the sign-in stand alone', async () => {
+    await renderList(
+      PAYMENTS,
+      gravelerSignInLost({ sso_attempt_failed: true }),
+    );
+
+    const list = await openTheOneUnchecked();
+    expect(
+      await within(list).findByText(/An administrator needs to add/),
+    ).toBeInTheDocument();
+    expect(
+      within(list).queryByText(/You have not signed in to the/),
+    ).not.toBeInTheDocument();
+    expect(
+      within(list).queryByRole('button', { name: /Sign (in|out)/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not call organizations unavailable where an installation serves them and only their read failed', async () => {
+    await renderList(
+      { mine: { organizations: [] }, mineFailures: 1 },
+      withInstallations(['gazelle', 'ozone'], installation =>
+        installation === 'ozone' ? 'none' : 'agent-manager',
+      ),
+    );
+
+    expect(
+      await screen.findByText('Your organizations could not be read'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Organizations are not available here'),
+    ).not.toBeInTheDocument();
+    expect(warnings()).toHaveLength(0);
+    const list = await openTheOneUnchecked();
+    expect(within(list).getByText('gazelle')).toBeInTheDocument();
   });
 
   it('leaves out an installation that answered without organizations', async () => {

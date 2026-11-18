@@ -104,9 +104,16 @@ const ACME_ONLY: OrganizationConnector = {
   name: 'acme-tracker',
 };
 
+/** A copy of what the platform curates: the Connectors tab offers no Replace. */
+const CURATED_NO_CREDENTIAL: OrganizationConnector = {
+  ...NO_CREDENTIAL,
+  name: 'platform-wiki',
+  curated: true,
+};
+
 const CONNECTORS: Record<string, OrganizationConnector[]> = {
   'org-otter': [READY, NO_CREDENTIAL, UNCHECKED, MUSTER_BINDING],
-  'org-acme': [ACME_ONLY],
+  'org-acme': [ACME_ONLY, CURATED_NO_CREDENTIAL],
 };
 
 /** agent-manager through muster, `create_agent` taking `connectors` or not. */
@@ -283,6 +290,42 @@ describe('OrganizationConnectors', () => {
 
     await user.click(deepwiki);
     expect(picked()).toBe('deepwiki');
+  });
+
+  it('sends a missing credential of a curated connector nowhere: the Connectors tab cannot set it', async () => {
+    await renderSection({ tenant: 'org-acme' });
+    const curated = await screen.findByRole('checkbox', {
+      name: 'platform-wiki',
+    });
+
+    expect(curated).toHaveAccessibleDescription(
+      expect.stringContaining(
+        'The platform curates this connector, so its credential is not set on the organization page.',
+      ),
+    );
+    expect(curated).not.toHaveAccessibleDescription(/Replace credential/);
+    expect(
+      within(section()).queryByRole('link', { name: /Connectors tab/ }),
+    ).toBeNull();
+  });
+
+  it('says who adds a connector to an organization with none, and only links to its connectors', async () => {
+    await renderSection({ tenant: 'org-alpha' });
+
+    expect(
+      await within(section()).findByText(
+        /An admin of the organization adds one by asking an agent/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(section()).getByRole('link', {
+        name: /See the organization's connectors/,
+      }),
+    ).toHaveAttribute(
+      'href',
+      '/organizations/gazelle/org-parent/alpha/connectors',
+    );
+    expect(within(section()).queryByText(/Add one/)).toBeNull();
   });
 
   it.each([

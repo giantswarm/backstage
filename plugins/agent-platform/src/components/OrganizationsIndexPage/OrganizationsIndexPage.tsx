@@ -125,21 +125,37 @@ export function OrganizationsIndexPage() {
           <NoneCheckedAlert unchecked={uncheckedInstallations} />
         )}
         {nothingAnswered && isLoading && <ShellPageFactsSkeleton />}
-        {nothingAnswered && !isLoading && !listingError && !noneChecked && (
-          <EmptyStateCard
-            title="Organizations are not available here"
-            description={[
-              uncheckedInstallations.length === 0
-                ? "No environment's agent-manager serves organizations to this portal yet."
-                : 'No installation that answered serves organizations to this portal. The ones that could not be checked are listed below.',
-              // Named nowhere: only that some are off, and where.
-              turnedOffInstallations.length > 0 &&
-                'The environments you turned off in Profile and settings, Environments, are not checked.',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-          />
-        )}
+        {nothingAnswered &&
+          !isLoading &&
+          !listingError &&
+          !noneChecked &&
+          installations.length > 0 && (
+            // An installation serves organizations, and the read of them
+            // failed: not "not available". Where, and why, is in the list.
+            <EmptyStateCard
+              title="Your organizations could not be read"
+              description="An installation serves organizations, but the portal could not read yours there. The list below says why, and what helps."
+            />
+          )}
+        {nothingAnswered &&
+          !isLoading &&
+          !listingError &&
+          !noneChecked &&
+          installations.length === 0 && (
+            <EmptyStateCard
+              title="Organizations are not available here"
+              description={[
+                uncheckedInstallations.length === 0
+                  ? "No environment's agent-manager serves organizations to this portal yet."
+                  : 'No installation that answered serves organizations to this portal. The ones that could not be checked are listed below.',
+                // Named nowhere: only that some are off, and where.
+                turnedOffInstallations.length > 0 &&
+                  'The environments you turned off in Profile and settings, Environments, are not checked.',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+            />
+          )}
         {belongsNowhere && (
           <EmptyStateCard
             title="You belong to no organization"
