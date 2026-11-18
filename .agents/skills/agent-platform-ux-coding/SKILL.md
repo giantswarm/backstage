@@ -452,9 +452,10 @@ A page built from a mockup or design canvas also follows the
   observers.
 - Form controls are 16px at phone width, set in `agent-shell.css`, to stop
   iOS from zooming on focus. Do not set them smaller.
-- No text below 12px: bui's `body-x-small` and its small `Badge` and `Tag`
-  are 10px. A caption is `body-small` with `color="secondary"`. Smaller is an
-  exception with a comment saying why ("Text size: 12px at the smallest" in
+- No text below 12px. A caption is `body-small` with `color="secondary"`
+  (bui's `body-x-small` renders at 12px too: the app sets bui's 10px token to
+  12px). Smaller is an exception with a comment saying why, 10px in
+  `var(--gs-font-size-exception)` ("Text size: 12px at the smallest" in
   `docs/ui.md`).
 - bui `Alert` has no `onClose`; use `customActions` with a tertiary small
   `ButtonIcon` labelled "Close".

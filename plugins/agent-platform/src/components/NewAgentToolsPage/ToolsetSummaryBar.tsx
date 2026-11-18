@@ -18,6 +18,7 @@ import {
   toolsetShape,
 } from '../../lib/toolset';
 import { changingToolCount } from './catalogueEffect';
+import { ToolsetHint } from './ToolsetHint';
 
 /**
  * Selections the Selected rail lists per group, and the summary bar in all,
@@ -382,12 +383,7 @@ export function ToolsetSummaryBar({
               {chips}
               {signInNote}
               {effect.hint && (
-                <Text
-                  variant={blocked ? 'body-small' : 'body-x-small'}
-                  color={blocked ? 'danger' : 'secondary'}
-                >
-                  {effect.hint}
-                </Text>
+                <ToolsetHint problem={blocked}>{effect.hint}</ToolsetHint>
               )}
               {showDetails}
             </>
@@ -417,12 +413,7 @@ export function ToolsetSummaryBar({
             {effect.line}
           </Text>
           {effect.hint && (
-            <Text
-              variant={blocked ? 'body-small' : 'body-x-small'}
-              color={blocked ? 'danger' : 'secondary'}
-            >
-              {effect.hint}
-            </Text>
+            <ToolsetHint problem={blocked}>{effect.hint}</ToolsetHint>
           )}
           {showDetails}
         </Flex>

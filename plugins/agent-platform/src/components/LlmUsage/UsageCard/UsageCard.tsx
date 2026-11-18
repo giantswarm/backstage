@@ -12,6 +12,7 @@ const useStyles = makeStyles((theme: Theme) => ({
     flexBasis: '100%',
   },
   title: {
+    // 11px: a short uppercase heading, which caps make read as large as 12px.
     fontSize: 11,
     fontWeight: 600,
     textTransform: 'uppercase',
@@ -21,6 +22,7 @@ const useStyles = makeStyles((theme: Theme) => ({
   },
   note: {
     marginTop: theme.spacing(1),
+    // 11px, the heading's size: a footnote, set apart from the figures.
     fontSize: 11,
     color: theme.palette.text.secondary,
   },

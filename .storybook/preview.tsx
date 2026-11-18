@@ -2,6 +2,9 @@ import type { Preview } from '@storybook/react';
 // bui (@backstage/ui) styles — same stylesheet the app loads in index.tsx.
 // Required for bui-based components (InfoCard, CodeBlock) to render correctly.
 import '@backstage/ui/css/styles.css';
+// The app's fixes to bui, after it as in index.tsx: among them 12px for bui's
+// 10px token, so a story renders text at the app's sizes.
+import '../packages/app/src/bui-overrides.css';
 import { withGSProviders } from './decorators';
 
 const preview: Preview = {

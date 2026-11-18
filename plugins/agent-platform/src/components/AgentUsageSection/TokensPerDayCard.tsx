@@ -15,6 +15,7 @@ const useStyles = makeStyles((theme: Theme) => ({
     borderRadius: theme.shape.borderRadius * 2,
   },
   title: {
+    // 11px: a short uppercase heading, which caps make read as large as 12px.
     fontSize: 11,
     fontWeight: 600,
     textTransform: 'uppercase',

@@ -12,6 +12,7 @@ import {
 } from '../../lib/toolset';
 import { railGroups, railToolLabel, type RailGroup } from './connectorChoice';
 import { RAIL_ROWS, toolsetEffect } from './ToolsetSummaryBar';
+import { ToolsetHint } from './ToolsetHint';
 
 const useStyles = makeStyles(theme => ({
   // The artboard's tinted "Selected" rail (CreateAgentTools), docked by the
@@ -158,12 +159,7 @@ export function SelectedRail({
         </Text>
       )}
       {notes && (
-        <Text
-          variant={problems.length > 0 ? 'body-small' : 'body-x-small'}
-          color={problems.length > 0 ? 'danger' : 'secondary'}
-        >
-          {notes}
-        </Text>
+        <ToolsetHint problem={problems.length > 0}>{notes}</ToolsetHint>
       )}
       {groups.map(group => (
         <Flex key={group.key} direction="column" gap="1">
