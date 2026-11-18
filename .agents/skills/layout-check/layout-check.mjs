@@ -25,6 +25,7 @@ import {
   RULES,
   checkLayout,
   collectPageKind,
+  crashOf,
   formatFinding,
   isWarning,
   notFoundOf,
@@ -35,13 +36,20 @@ import {
 
 const root = path.resolve(import.meta.dirname, '../../..');
 
+/**
+ * A phone, a tablet or a narrow window, a small laptop, a laptop window a
+ * little narrower than its screen, a laptop. From 600px the shell's side
+ * rail is pinned open, so the content column is the width less the rail's.
+ */
+const DEFAULT_WIDTHS = [375, 768, 1024, 1160, 1280];
+
 const USAGE = `Usage: layout-check.mjs [--page <path>]... [--spec <file.mjs>]... [options]
 
   --page <path>        a page to check in its initial state (repeatable)
   --spec <file.mjs>    pages with the states to step through (repeatable);
                        see SKILL.md for the format
   --only <text>        only the spec pages whose name or path contains it
-  --widths <list>      viewport widths in px (default 375,768,1280)
+  --widths <list>      viewport widths in px (default ${DEFAULT_WIDTHS.join(',')})
   --scenarios <list>   fixture scenarios, each added as ?fixtures=<name>
                        (default: none added, which is base)
   --rules <list>       rules to apply (default all: ${[...Object.keys(RULES), 'shift'].join(',')})
@@ -65,6 +73,22 @@ const list = value =>
         .filter(Boolean);
 
 const SETTLE_TIMEOUT_MS = 20000;
+
+
+/**
+ * The side rail pinned open, core-components' default, unless a step of the
+ * spec changed it: the narrower content column, which is where tables
+ * squeeze. Set before the portal's code runs, on every page load.
+ */
+function pinRailOpen() {
+  try {
+    if (window.localStorage.getItem('sidebarPinState') === null) {
+      window.localStorage.setItem('sidebarPinState', 'true');
+    }
+  } catch {
+    // Storage blocked: the portal's default, which is open too.
+  }
+}
 
 function portalUrl(explicit) {
   if (explicit) return explicit.replace(/\/$/, '');
@@ -192,6 +216,7 @@ async function checkOne(browser, baseUrl, job, options) {
       viewport: { width, height: width < 600 ? 812 : 900 },
       reducedMotion: 'reduce',
     });
+    await context.addInitScript(pinRailOpen);
     const page = await context.newPage();
     page.setDefaultTimeout(20000);
     const step = {
@@ -205,11 +230,15 @@ async function checkOne(browser, baseUrl, job, options) {
         throw Object.assign(new Error(reason), { skip: true });
       },
     };
-    // A path that names no page or record loads a not-found page, which
-    // has nothing to find: it could not be checked, never a pass.
-    const refuseNotFound = async () => {
-      const notFound = notFoundOf(await page.evaluate(collectPageKind));
+    // A path that names no page or record loads a not-found page, and a
+    // page that threw shows the error panel: neither has the page's layout,
+    // so it could not be checked, never a pass.
+    const refuseNotFound = async ({ crashOnly = false } = {}) => {
+      const kind = await page.evaluate(collectPageKind);
+      const notFound = crashOnly ? null : notFoundOf(kind);
       if (notFound) throw new Error(`not found: ${spec.path} shows ${notFound}`);
+      const crash = crashOf(kind);
+      if (crash) throw new Error(`crashed: ${spec.path} shows ${crash}`);
     };
     await page.goto(withScenario(`${baseUrl}${spec.path}`, scenario));
     await settle(page);
@@ -227,6 +256,7 @@ async function checkOne(browser, baseUrl, job, options) {
       if (s.run) {
         await s.run(step);
         await settle(page);
+        await refuseNotFound({ crashOnly: true });
       }
       const layout = await page.evaluate(collectLayout, {
         ignore: [...ignore, ...(s.ignore ?? [])],
@@ -289,7 +319,7 @@ async function main() {
   const templates = specs.map(s => routeTemplateOf(s.path)).filter(Boolean);
   if (templates.length) fail(templates.join('\n'));
 
-  const widths = (list(args.widths) ?? ['375', '768', '1280']).map(Number);
+  const widths = (list(args.widths) ?? DEFAULT_WIDTHS.map(String)).map(Number);
   if (widths.some(w => !Number.isInteger(w) || w < 200)) {
     fail(`--widths takes widths in px, 200 or more: ${args.widths}`);
   }

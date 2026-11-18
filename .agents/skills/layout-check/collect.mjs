@@ -117,6 +117,21 @@ export function collectLayout(options) {
     const r = rectOf(el);
     return r.width > 1 && r.height > 1;
   });
+  /**
+   * Rendered in a table cell: as `visible`, but squeezed to no width counts.
+   * A cell's text squeezed to nothing beside the columns that kept their
+   * width is the worst cut of all; text hidden for screen readers only (a
+   * box of a pixel each way) is not rendered.
+   */
+  const renderedInCell = memo(el => {
+    if (
+      typeof el.checkVisibility === 'function' &&
+      !el.checkVisibility({ opacityProperty: true, visibilityProperty: true })
+    ) {
+      return false;
+    }
+    return rectOf(el).height > 1;
+  });
 
   const ids = new Map();
   const idOf = el => {
@@ -661,6 +676,7 @@ export function collectLayout(options) {
   };
   const px = v => parseFloat(v) || 0;
   const cells = [];
+  const space = [];
   for (const cell of body.querySelectorAll(CELL)) {
     if (ignored(cell) || !visible(cell)) continue;
     const table = tableOf(cell);
@@ -677,7 +693,7 @@ export function collectLayout(options) {
       const parent = node.parentElement;
       if (!node.nodeValue.trim() || !parent || SKIP_TEXT.has(parent.tagName)) continue;
       // A cell nested in this one is measured on its own.
-      if (parent.closest(CELL) !== cell || !visible(parent)) continue;
+      if (parent.closest(CELL) !== cell || !renderedInCell(parent)) continue;
       const leaf = leafOf(parent, cell);
       if (!leaves.has(leaf)) leaves.set(leaf, { nodes: [], rects: [] });
       leaves.get(leaf).nodes.push(node);
@@ -771,6 +787,116 @@ export function collectLayout(options) {
         cut: false,
       });
     }
+    // How much of the cell's width its content takes: its text as shown and
+    // its icons, controls and badges. What is left is room a column keeps
+    // to spare in this row.
+    const used = [];
+    for (const entry of leaves.values()) {
+      for (const r of entry.rects) {
+        const left = Math.max(r.x, innerLeft);
+        const right = Math.min(r.x + r.w, innerRight);
+        if (right > left) used.push([left, right]);
+      }
+    }
+    for (const e of cell.querySelectorAll(`svg, img, [role=img], ${CONTROL}`)) {
+      if (e.parentElement?.closest('svg') || e.closest(CELL) !== cell) continue;
+      if (!visible(e) || ignored(e)) continue;
+      const r = rectOf(e);
+      used.push([Math.max(r.left, innerLeft), Math.min(r.right, innerRight)]);
+    }
+    for (const e of cell.querySelectorAll('*')) {
+      if (e.closest(CELL) !== cell || !visible(e)) continue;
+      if (![...e.classList].some(c => BADGE_CLASS.test(c))) continue;
+      const r = rectOf(e);
+      used.push([Math.max(r.left, innerLeft), Math.min(r.right, innerRight)]);
+    }
+    const spans = used.filter(([l, r]) => r > l);
+    space.push({
+      table: idOf(table),
+      row: idOf(cell.parentElement),
+      col,
+      header,
+      column: headersOf(table).get(col),
+      inner: round(Math.max(0, innerRight - innerLeft)),
+      used: spans.length
+        ? round(Math.max(...spans.map(s => s[1])) - Math.min(...spans.map(s => s[0])))
+        : 0,
+    });
+  }
+
+  // Tables wider than the box that holds them: one that scrolls sideways or
+  // cuts them off. A table is one with column headers, or with a row of two
+  // or more cells (a tag group or a list of one cell per row is no table).
+  // `data-layout-check="scroll-x"` on the table or an ancestor up to the
+  // scroll container says it scrolls sideways by design (a log view).
+  const ROW = '[role=row], tr';
+  /** The table's name as a person finds it: its label, caption or heading. */
+  const tableNameOf = t => {
+    const by = t.getAttribute('aria-labelledby');
+    if (by) {
+      const text = norm(by.split(/\s+/).map(id => document.getElementById(id)?.textContent ?? '').join(' '));
+      if (text) return text.slice(0, 60);
+    }
+    const caption = t.querySelector(':scope > caption');
+    if (caption && norm(caption.textContent)) return norm(caption.textContent).slice(0, 60);
+    const label = norm(t.getAttribute('aria-label'));
+    // bui's Table calls every table "Data table".
+    if (label && !/^data ?table$/i.test(label)) return label.slice(0, 60);
+    // The last heading before the table, in the nearest ancestor holding one.
+    const HEADING = 'h1, h2, h3, h4, h5, h6, [role=heading]';
+    for (let e = t.parentElement; e && e !== body; e = e.parentElement) {
+      const before = [...e.querySelectorAll(HEADING)].filter(
+        h =>
+          visible(h) &&
+          !t.contains(h) &&
+          h.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+      if (before.length) return norm(before[before.length - 1].textContent).slice(0, 60);
+    }
+    return label || '';
+  };
+  const tableScrolls = [];
+  for (const t of body.querySelectorAll(TABLE)) {
+    if (ignored(t) || !visible(t)) continue;
+    // A table nested in another's cell is measured with the outer table.
+    if (t.parentElement?.closest(TABLE)) continue;
+    const tableLike =
+      tableOf(t.querySelector(CELL) ?? t) === t ||
+      [...t.querySelectorAll(ROW)].some(
+        r => r.closest(TABLE) === t && r.querySelectorAll(CELL).length >= 2,
+      );
+    if (!tableLike) continue;
+    const tr = rectOf(t);
+    let allowed = false;
+    for (let e = t; e && e !== doc && e !== body; e = e.parentElement) {
+      if (e.getAttribute('data-layout-check') === 'scroll-x') allowed = true;
+      const s = style(e);
+      if (s.overflowX === 'visible') continue;
+      if (e.scrollWidth <= e.clientWidth + 1) continue;
+      // This box is wider inside than out: is it the table that makes it?
+      const er = rectOf(e);
+      const innerLeft = er.left + e.clientLeft;
+      const innerRight = innerLeft + e.clientWidth;
+      const wider =
+        tr.width > e.clientWidth + 1 ||
+        tr.right > innerRight + 1 ||
+        tr.left < innerLeft - 1 ||
+        (e === t && t.scrollWidth > t.clientWidth + 1);
+      if (!wider) continue;
+      tableScrolls.push({
+        role: roleOf(t),
+        name: tableNameOf(t),
+        path: pathOf(t),
+        box: box(tr),
+        columns: [...headersOf(t).values()].filter(Boolean).slice(0, 8),
+        container: { ...describe(e), box: box({ x: innerLeft, y: er.top, w: e.clientWidth, h: er.height }) },
+        content: e.scrollWidth,
+        client: e.clientWidth,
+        cut: hides(s.overflowX),
+        allowed,
+      });
+      break;
+    }
   }
 
   // Text cut off by its own box, where it hides its overflow (a scroll
@@ -833,6 +959,8 @@ export function collectLayout(options) {
     flexRows,
     truncated,
     cells,
+    space,
+    tableScrolls,
     sticking,
   };
 }

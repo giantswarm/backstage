@@ -82,8 +82,10 @@ column sorts (it takes its space while hidden) and the 24px padding. The
 Usage tables keep theirs in `LlmUsage/columnWidths.ts`.
 
 The layout check's `table-fit` rule enforces this on the rendered page: a
-cut-off header, and a short value cut off or wrapped, fail the check (the
-`layout-check` skill). Check `long-names` too: a name may end in an
+cut-off header, a short value cut off or wrapped, and a column squeezed
+until it cannot be read while other columns keep room to spare, fail the
+check; its `table-scroll` rule fails a table that scrolls sideways in its
+card (the `layout-check` skill). Check `long-names` too: a name may end in an
 ellipsis there, a date may not.
 
 ## bui Table (`@backstage/ui`)

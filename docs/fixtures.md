@@ -651,7 +651,7 @@ mapper in the same pull request, and the base data set gets the state.
 The [`layout-check`](../.agents/skills/layout-check/SKILL.md) skill measures
 pages of the running fixture mode in a headless Chromium of its own, at
 several widths and in the states a spec steps through, and reports overflow,
-overlapping elements, misaligned rows, squeezed or cut-off text, controls that
+tables that scroll sideways or squeeze a column, overlapping elements, misaligned rows, squeezed or cut-off text, controls that
 move or resize between states and content off its control's centre. It reads
 the portal's URL from `.fixtures-server.json`:
 

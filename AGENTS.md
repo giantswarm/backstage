@@ -126,8 +126,8 @@ change is about. Pass concrete paths, never a route template. For a page with
 parameters, run the spec's entry for it (`--only <page name>`), which opens
 the first record in each scenario: a record's path copied from fixture mode
 exists only in the scenario it came from. A shell-wide change (`/*`) means a
-few real pages. The check refuses a template and a page that shows "not
-found".
+few real pages. The check refuses a template, a page that shows "not
+found" and a page that threw (the error panel).
 
 ```bash
 node .agents/skills/layout-check/layout-check.mjs --scenarios base,long-names \

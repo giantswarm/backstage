@@ -304,6 +304,7 @@ export function isShortValue(text) {
  * column and kind, with the number of other rows it holds for.
  */
 export function tableFitRule(layout) {
+  const squeezed = squeezedColumns(layout);
   const groups = new Map();
   for (const c of layout.cells ?? []) {
     const short = c.header || c.status || isShortValue(c.text);
@@ -324,12 +325,26 @@ export function tableFitRule(layout) {
       else if (!c.fullText) kind = 'no-hover';
     }
     if (!kind) continue;
+    // A column squeezed beside columns with room to spare is reported as that.
+    if (kind === 'squeezed' && squeezed.has(`${c.table}|${c.col}`)) continue;
     const key = `${c.table}|${c.col}|${kind}`;
     const group = groups.get(key);
     if (group) group.rows.add(c.row);
     else groups.set(key, { kind, cell: c, rows: new Set([c.row]) });
   }
-  return [...groups.values()].map(({ kind, cell: c, rows }) => {
+  const columnFindings = [...squeezed.values()].map(({ cell: c, rows, spare }) => {
+    const others = rows.size - 1;
+    const more = others > 0 ? `, and in ${others} more row${others > 1 ? 's' : ''}` : '';
+    const room = spare
+      .map(s => `${s.column ? `"${s.column}"` : `column ${s.col + 1}`} (${Math.round(s.spare)}px)`)
+      .join(', ');
+    return {
+      rule: 'table-fit',
+      message: `column "${c.column ?? c.col + 1}" is squeezed until its text cannot be read ("${c.text}" shows ${Math.round(c.shown)} of ${Math.round(c.needed)}px${more}) while ${spare.length > 1 ? 'columns' : 'column'} ${room} ${spare.length > 1 ? 'keep' : 'keeps'} room to spare`,
+      elements: [element(c, c.box)],
+    };
+  });
+  return [...columnFindings, ...[...groups.values()].map(({ kind, cell: c, rows }) => {
     const column = c.column ? ` in column "${c.column}"` : '';
     const unit = c.axis === 'y' ? 'px high' : 'px';
     const shown = `${Math.round(c.shown)} of ${Math.round(c.needed)}${unit} shown`;
@@ -351,7 +366,84 @@ export function tableFitRule(layout) {
       elements: [element(c, c.box)],
       ...(kind === 'no-hover' && { severity: 'warning' }),
     };
-  });
+  })];
+}
+
+/** Room a column keeps to spare that counts, per column and in all. */
+export const SPARE_MIN = 16;
+export const SPARE_TOTAL_MIN = 56;
+
+/**
+ * Columns squeezed until their text cannot be read while other columns of
+ * the table keep room to spare: in half or more of its rows, a column's text
+ * is cut to less than six em and less than half of it, and the other
+ * columns keep at least `SPARE_TOTAL_MIN` px they leave empty in every row
+ * (`SPARE_MIN` or more each). The space a column keeps is what its widest
+ * content, header included, leaves of the cell. Keyed `table|col`, each
+ * with a cut cell, its rows and the columns with room to spare.
+ */
+export function squeezedColumns(layout) {
+  const result = new Map();
+  const bodyRows = new Map();
+  const spareOf = new Map();
+  for (const s of layout.space ?? []) {
+    const key = `${s.table}|${s.col}`;
+    if (!s.header) {
+      if (!bodyRows.has(key)) bodyRows.set(key, new Set());
+      bodyRows.get(key).add(s.row);
+    }
+    const spare = Math.max(0, s.inner - s.used);
+    const known = spareOf.get(key);
+    if (!known || spare < known.spare) {
+      spareOf.set(key, { table: s.table, col: s.col, column: s.column, spare });
+    }
+  }
+  const tight = new Map();
+  for (const c of layout.cells ?? []) {
+    if (c.kind !== 'leaf' || c.header || !c.cut || c.axis !== 'x') continue;
+    const em = c.fontSize ?? 14;
+    if (!(c.shown < 6 * em && c.shown < 0.5 * c.needed)) continue;
+    const key = `${c.table}|${c.col}`;
+    const entry = tight.get(key);
+    if (entry) entry.rows.add(c.row);
+    else tight.set(key, { cell: c, rows: new Set([c.row]) });
+  }
+  for (const [key, { cell, rows }] of tight) {
+    const total = bodyRows.get(key)?.size ?? rows.size;
+    if (rows.size < total / 2) continue;
+    const spare = [...spareOf.values()]
+      .filter(s => s.table === cell.table && s.col !== cell.col && s.spare >= SPARE_MIN)
+      .sort((a, b) => b.spare - a.spare);
+    if (spare.reduce((sum, s) => sum + s.spare, 0) < SPARE_TOTAL_MIN) continue;
+    result.set(key, { cell, rows, spare });
+  }
+  return result;
+}
+
+/**
+ * A table wider than the box that holds it, at a width where the page itself
+ * does not scroll sideways (the `overflow` rule's): it scrolls sideways
+ * inside its card, or is cut off. Typical content fits a table without
+ * scrolling (the `tables` skill). A table that scrolls sideways by design
+ * says so with `data-layout-check="scroll-x"`.
+ */
+export function tableScrollRule(layout) {
+  if (layout.scrollWidth > layout.viewport.w + TOLERANCE) return [];
+  return (layout.tableScrolls ?? [])
+    .filter(t => !t.allowed && t.content - t.client > TOLERANCE)
+    .map(t => {
+      const hidden = t.content - t.client;
+      const columns = t.columns?.length
+        ? ` (columns ${t.columns.map(c => `"${c}"`).join(', ')})`
+        : '';
+      return {
+        rule: 'table-scroll',
+        message: t.cut
+          ? `${columns ? `${columns.slice(1)} ` : ''}is ${t.content}px wide in a ${t.client}px box that cuts off the ${hidden}px on the right`
+          : `${columns ? `${columns.slice(1)} ` : ''}scrolls sideways: ${t.content}px of table in a ${t.client}px box, ${hidden}px out of view`,
+        elements: [element(t, t.box), element(t.container, t.container.box)],
+      };
+    });
 }
 
 /** A control cut off by an ancestor that hides its overflow. */
@@ -457,6 +549,7 @@ export const RULES = {
   truncation: layout => [...truncationRule(layout), ...clippedRule(layout)],
   centering: centeringRule,
   'table-fit': tableFitRule,
+  'table-scroll': tableScrollRule,
 };
 
 /** Every rule on one measurement; `shift` needs two and runs separately. */
@@ -516,10 +609,34 @@ export function notFoundOf({ errorPage, headings }) {
   return heading ? `the heading "${heading}"` : null;
 }
 
-/** Runs in the page: what `notFoundOf` reads. */
+/**
+ * Why the loaded page is the app's error panel instead of the page, or null:
+ * an extension that threw shows "Error in <plugin>" with the error's
+ * message, and a crashed page has no layout to check. `page` is
+ * `{ crash }` as `collectPageKind` reads it.
+ */
+export function crashOf({ crash }) {
+  if (!crash) return null;
+  return `the error panel "${crash.title}"${crash.message ? `: ${crash.message}` : ''}`;
+}
+
+/** Runs in the page: what `notFoundOf` and `crashOf` read. */
 export function collectPageKind() {
   const error = document.querySelector('[data-testid="error"]');
+  // Backstage's error panel for an extension that threw: an alert titled
+  // "Error in <plugin>", its message under "Message".
+  let crash = null;
+  for (const alert of document.querySelectorAll('[role="alert"]')) {
+    const lines = (alert.innerText || '').split('\n').map(l => l.trim()).filter(Boolean);
+    const title = lines.find(l => /^Error in \S+$/.test(l));
+    if (title) {
+      const at = lines.indexOf('Message');
+      crash = { title, message: at >= 0 ? (lines[at + 1] ?? '').slice(0, 160) : '' };
+      break;
+    }
+  }
   return {
+    crash,
     errorPage: error ? error.textContent.trim().slice(0, 200) : null,
     headings: [...document.querySelectorAll('h1, h2, [role="heading"][aria-level="1"], [role="heading"][aria-level="2"]')]
       .map(h => h.textContent.trim())
