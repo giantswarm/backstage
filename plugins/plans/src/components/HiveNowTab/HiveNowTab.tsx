@@ -75,6 +75,14 @@ const useStyles = makeStyles({
       minWidth: 720,
     },
   },
+  // A title in the side lists wraps: their links are inline-flex (an
+  // external link's icon), which the row's ellipsis cannot shorten.
+  titles: {
+    '& .bui-ListRowLabel > span': {
+      whiteSpace: 'normal',
+      overflowWrap: 'anywhere',
+    },
+  },
   summary: {
     margin: 0,
     paddingLeft: 'var(--bui-space-5)',
@@ -254,6 +262,7 @@ function LaneTable(props: { lane: Lane; query: string }) {
 }
 
 function PlansToReview(props: { plans: PlanCard[] }) {
+  const classes = useStyles();
   const plans = sortPlansByNeed(props.plans).filter(
     plan => plan.state !== 'merged',
   );
@@ -264,7 +273,7 @@ function PlansToReview(props: { plans: PlanCard[] }) {
           No plan waits on the team.
         </Text>
       ) : (
-        <List aria-label="Plans to grill and review">
+        <List aria-label="Plans to grill and review" className={classes.titles}>
           {plans.map(plan => (
             <ListRow
               key={plan.key}
@@ -317,12 +326,13 @@ function Blocked(props: { cards: MagazineCard[] }) {
 }
 
 function OtherTeams(props: { cards: MagazineCard[] }) {
+  const classes = useStyles();
   if (props.cards.length === 0) {
     return null;
   }
   return (
     <InfoCard title="Other teams, coming up">
-      <List aria-label="Other teams, coming up">
+      <List aria-label="Other teams, coming up" className={classes.titles}>
         {props.cards.map(card => (
           <ListRow
             key={card.key}
