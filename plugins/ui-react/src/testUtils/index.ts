@@ -20,3 +20,8 @@ export type {
 export { declaredStyle } from './declaredStyle';
 export { mockContainerWidth } from './mockContainerWidth';
 export type { MockedContainerWidth } from './mockContainerWidth';
+export {
+  applyBuiStylesheets,
+  resolvedFontSize,
+  withoutLayers,
+} from './resolvedFontSize';

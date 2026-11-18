@@ -359,6 +359,9 @@ const useStyles = makeStyles({
   run: {
     flex: 'none',
     marginLeft: 'auto',
+    // 11.5px: the canvas sets its small labels a step below its 12px text,
+    // for density, and FLOW_METRICS.runBadgeRoom reserves this badge's room
+    // in a group head measured at this size.
     fontSize: 11.5,
     whiteSpace: 'nowrap',
     fontVariantNumeric: 'tabular-nums',
@@ -403,6 +406,8 @@ const useStyles = makeStyles({
     border: '1px solid var(--bui-announcement-border)',
     background: 'var(--bui-bg-neutral-1)',
     color: 'var(--bui-announcement-fg-subdued)',
+    // 11.5px: the canvas sets its small labels a step below its 12px text,
+    // for density.
     fontSize: 11.5,
     whiteSpace: 'nowrap',
   },

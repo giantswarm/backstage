@@ -224,11 +224,14 @@ A table that should keep most of its columns on a laptop before it goes
 compact takes `useFittingColumns(columnsFor, { minWidths, dropFirst })`:
 each column gets its minimum as bui's `minWidth` (the header with its sort
 arrow and padding, and the usual value), and as the container narrows the
-table shows every column, then leaves out the `dropFirst` columns
-(`isNarrow`; `columnsFor(true)` folds their values into other cells), then
-takes the compact layout (`isCompact`). Pass its `hiddenIds` to
-`useVisibleSort`, so a sort on a column it hides moves to one it shows. The
-GPU node pools, model cache, capacity and served models tables use it.
+table shows every column (`columnsFor('full')`), then leaves out the
+`dropFirst` columns (`isNarrow`; `columnsFor('narrow')` folds their values
+into other cells), then takes the compact layout (`isCompact`). A table
+that stays a table there (with `usePhoneColumns`) takes `fit.columns`, built
+by `columnsFor('compact')` with the same minimums, each overridden by
+`compactMinWidths`. Pass its `hiddenIds` to `useVisibleSort`, so a sort on a
+column it hides moves to one it shows. The GPU node pools, model cache,
+capacity, served models, Workflows and Your sessions By agent tables use it.
 
 Invariants:
 
@@ -400,8 +403,7 @@ render: row => (
 ```
 
 A subvalue, a cell's second line or a badge in a cell is 12px at the
-smallest, like all text: `body-small`, never `body-x-small` or a small
-`Badge` (10px). See "Text size: 12px at the smallest" in `docs/ui.md`.
+smallest, like all text: `body-small`, never a px size below 12. See "Text size: 12px at the smallest" in `docs/ui.md`.
 
 ### Hidden by Default Columns
 

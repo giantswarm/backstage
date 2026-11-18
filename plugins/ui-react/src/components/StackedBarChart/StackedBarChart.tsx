@@ -195,6 +195,7 @@ export function StackedBarChart<T extends object>({
 
   const axisColor = theme.palette.text.secondary;
   const gridColor = theme.palette.divider;
+  // 11px: axis ticks, which 12px would crowd on a narrow chart.
   const tickStyle = { fill: axisColor, fontSize: 11 };
   const surface = theme.palette.background.paper;
 
@@ -308,6 +309,7 @@ function ChartLegend({
             // swatch beside it already carries the identity, and coloured
             // label text is what pushes a low-contrast hue onto type.
             color: textColor,
+            // 11px, the axis ticks' size: the legend is part of the chart.
             fontSize: 11,
             lineHeight: '16px',
             overflowWrap: 'anywhere',

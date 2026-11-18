@@ -164,8 +164,9 @@ Running), the available workflows' `workflow_<name>` tools (an unavailable
 workflow has none, as muster lists no invalid one) and muster's own `core_*`
 tools, each described with its input schema; toolsets resolved within the
 catalogue (`filter_tools` with `toolset`) and the presets, the built-in ones
-and the installation's own; the workflows, their executions with their steps
-and their run statistics; and MCP usage and tool latency over any window,
+and the installation's own; the workflows (with a category, tags and GitOps
+provenance in turn, as `buildWorkflows` gives them), their executions with
+their steps and their run statistics; and MCP usage and tool latency over any window,
 narrowed to some connectors or one tool. A connector's tools are named after
 its tool prefix, or its name without one, and derived from it
 (`connectorToolsOf`), so every read names the same ones. The tools of the
@@ -321,7 +322,10 @@ from kagent.
   approval or on answers to questions, failed (the model provider's refusal),
   canceled, and failed because kagent lost the session's runtime (reported on
   the session too). The states no v1 recording has are derived from one, with
-  the words of the older recordings of that state.
+  the words of the older recordings of that state. About one agent in three
+  (`reportsCost`, by its name) has a runtime that reports a cost, as the
+  claude harness does: its turns' usage carries `costUsd`, so Usage · Your
+  sessions shows the Reported cost column, with and without a figure.
 - The session states summary (the session lists and the rail) and the
   usage summary (Usage · Your sessions) are computed with the backend's own
   code, shared through agent-platform-common (`kagentSessionRollups.ts`):

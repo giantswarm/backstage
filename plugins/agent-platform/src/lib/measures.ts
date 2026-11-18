@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useTheme } from '@material-ui/core';
 import { categoricalColors } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -62,9 +63,14 @@ export function measureSlot(measure: MeasureKey): number {
   return MEASURE_SLOTS[measure];
 }
 
-/** The hue for each measure, for the active theme. */
+/**
+ * The hue for each measure, for the active theme: the same function until the
+ * theme changes, so memoised columns can depend on it.
+ */
 export function useMeasureColor(): (measure: MeasureKey) => string {
   const theme = useTheme();
-  const palette = categoricalColors(theme);
-  return measure => palette[MEASURE_SLOTS[measure]];
+  return useMemo(() => {
+    const palette = categoricalColors(theme);
+    return measure => palette[MEASURE_SLOTS[measure]];
+  }, [theme]);
 }

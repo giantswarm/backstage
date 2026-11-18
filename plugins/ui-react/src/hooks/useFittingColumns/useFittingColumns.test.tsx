@@ -6,7 +6,7 @@ import {
   type MockedContainerWidth,
   type MockedLayout,
 } from '../../testUtils';
-import { useFittingColumns } from './useFittingColumns';
+import { type FittingTier, useFittingColumns } from './useFittingColumns';
 
 type Row = { id: string; name: string; zone: string; cost: string };
 
@@ -33,17 +33,32 @@ const NARROW = [
 // Name 160 (the default), Zone 150, Cost 120: 430 for all, 280 without Zone.
 const MIN_WIDTHS = { zone: 150, cost: 120 };
 const DROP_FIRST = ['zone'];
-const columnsFor = (isNarrow: boolean) => (isNarrow ? NARROW : COLUMNS);
+const COMPACT = [
+  {
+    ...COLUMNS[0],
+    cell: (row: Row) => <Cell>{`${row.name}, compact`}</Cell>,
+  },
+  COLUMNS[1],
+  COLUMNS[2],
+];
+const COLUMNS_OF: Record<FittingTier, ColumnConfig<Row>[]> = {
+  full: COLUMNS,
+  narrow: NARROW,
+  compact: COMPACT,
+};
+const columnsFor = (tier: FittingTier) => COLUMNS_OF[tier];
+const COMPACT_MIN_WIDTHS = { name: 90 };
 
-function Probe() {
+function Probe({ keepTable = false }: { keepTable?: boolean }) {
   const fit = useFittingColumns(columnsFor, {
     minWidths: MIN_WIDTHS,
     dropFirst: DROP_FIRST,
+    compactMinWidths: COMPACT_MIN_WIDTHS,
   });
   return (
     <div ref={fit.ref}>
       <p>hidden: {fit.hiddenIds.join(',')}</p>
-      {fit.isCompact ? (
+      {fit.isCompact && !keepTable ? (
         <p>compact</p>
       ) : (
         <Table
@@ -91,6 +106,17 @@ describe('useFittingColumns', () => {
 
     expect(screen.getByRole('columnheader', { name: 'Zone' })).toHaveStyle({
       width: '150px',
+    });
+  });
+
+  it('hands a caller that keeps a table the compact columns, with their own minimums', () => {
+    layout = mockDesktopLayout();
+    container = mockContainerWidth(250);
+    render(<Probe keepTable />);
+
+    expect(screen.getByText('a, compact')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Name' })).toHaveStyle({
+      width: '90px',
     });
   });
 });

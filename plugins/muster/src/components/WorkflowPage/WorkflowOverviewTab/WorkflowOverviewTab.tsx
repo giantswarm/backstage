@@ -67,7 +67,7 @@ const useStyles = makeStyles((theme: Theme) => ({
     paddingLeft: theme.spacing(0.75),
     paddingRight: theme.spacing(0.75),
     borderRadius: theme.shape.borderRadius,
-    fontSize: 11,
+    fontSize: 'var(--bui-font-size-2)',
     lineHeight: 1.3,
     backgroundColor: theme.palette.action.selected,
     color: 'var(--bui-fg-secondary)',

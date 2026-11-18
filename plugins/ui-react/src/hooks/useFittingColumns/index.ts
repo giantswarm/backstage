@@ -1,1 +1,5 @@
-export { useFittingColumns, type FittingColumns } from './useFittingColumns';
+export {
+  useFittingColumns,
+  type FittingColumns,
+  type FittingTier,
+} from './useFittingColumns';

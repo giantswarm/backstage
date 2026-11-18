@@ -1,0 +1,5 @@
+{
+  "//": "The tsconfig Vite's transform finds for the files of this directory, which the root tsconfig.json does not include. Without it, rolldown's tsconfig lookup fails to resolve the root's `extends` for them, and the dev server serves no preview.",
+  "extends": "../tsconfig.storybook.json",
+  "include": ["*.ts", "*.tsx"]
+}
