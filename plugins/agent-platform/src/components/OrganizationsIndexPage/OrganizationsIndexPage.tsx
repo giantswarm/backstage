@@ -103,12 +103,9 @@ export function OrganizationsIndexPage() {
               uncheckedInstallations.length === 0
                 ? "No environment's agent-manager serves organizations to this portal yet."
                 : 'No installation that answered serves organizations to this portal. The ones that could not be checked are listed below.',
+              // Named nowhere: only that some are off, and where.
               turnedOffInstallations.length > 0 &&
-                `${countNoun(turnedOffInstallations.length, 'environment')} ${
-                  turnedOffInstallations.length === 1 ? 'is' : 'are'
-                } turned off in Profile and settings, Environments, and not checked: ${joinNames(
-                  turnedOffInstallations,
-                )}.`,
+                'The environments you turned off in Profile and settings, Environments, are not checked.',
             ]
               .filter(Boolean)
               .join(' ')}

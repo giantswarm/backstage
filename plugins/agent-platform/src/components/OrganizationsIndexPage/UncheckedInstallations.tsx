@@ -85,10 +85,13 @@ export function UncheckedInstallations({
       onExpandedChange={next => setExpanded(new Set(next as Set<string>))}
     >
       <Accordion id={id}>
-        <AccordionTrigger
-          level={2}
-          title={uncheckedSummary(unchecked.length)}
-        />
+        {/* Body text, not a title: a line under the organizations, not a
+            section of its own. */}
+        <AccordionTrigger level={2}>
+          <Text variant="body-medium" color="secondary">
+            {uncheckedSummary(unchecked.length)}
+          </Text>
+        </AccordionTrigger>
         <AccordionPanel>
           {expanded.has(id) ? (
             <ul className={classes.list} aria-label="Installations not checked">
