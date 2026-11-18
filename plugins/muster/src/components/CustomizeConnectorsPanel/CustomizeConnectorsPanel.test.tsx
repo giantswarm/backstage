@@ -112,17 +112,19 @@ const servers = () => [
   makeServer('web-search'),
 ];
 
+const defaultFilterTools = async () => ({
+  total: 3,
+  filtered_count: 3,
+  truncated: false,
+  tools: [
+    { name: 'x_github_list_pulls', description: 'List pull requests' },
+    { name: 'x_github_get_issue', description: 'Read an issue' },
+    { name: 'x_kubernetes_get_pods', description: 'List pods' },
+  ],
+});
+
 const api = {
-  filterTools: jest.fn(async () => ({
-    total: 3,
-    filtered_count: 3,
-    truncated: false,
-    tools: [
-      { name: 'x_github_list_pulls', description: 'List pull requests' },
-      { name: 'x_github_get_issue', description: 'Read an issue' },
-      { name: 'x_kubernetes_get_pods', description: 'List pods' },
-    ],
-  })),
+  filterTools: jest.fn(defaultFilterTools),
   signInServer: jest.fn(async () => ({
     status: 'auth_required' as const,
     authUrl: 'https://github.example.test/login/oauth/authorize',
@@ -935,7 +937,7 @@ describe('CustomizeConnectorsPanel', () => {
       });
     });
     afterEach(() => {
-      api.filterTools.mockReset();
+      api.filterTools.mockImplementation(defaultFilterTools);
     });
 
     it('shows a row for each, with its own state, tools and sign-in', async () => {
