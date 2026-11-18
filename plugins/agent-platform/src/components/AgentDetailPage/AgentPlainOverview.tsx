@@ -633,7 +633,7 @@ function ModelFact({
       )}
       {underlyingModel && (
         <Text
-          variant="body-x-small"
+          variant="body-small"
           color="secondary"
           style={{ fontFamily: 'monospace', overflowWrap: 'anywhere' }}
         >
@@ -717,7 +717,7 @@ function RuntimeFact({
         </Text>
       )}
       {note && (
-        <Text variant="body-x-small" color="secondary">
+        <Text variant="body-small" color="secondary">
           {note}
         </Text>
       )}
@@ -812,7 +812,7 @@ export function agentFacts({
           <Flex direction="column" gap="1">
             <Text variant="body-small">{creator}</Text>
             <Text
-              variant="body-x-small"
+              variant="body-small"
               color="secondary"
               style={{ overflowWrap: 'anywhere' }}
             >

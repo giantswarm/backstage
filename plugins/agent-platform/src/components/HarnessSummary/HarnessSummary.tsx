@@ -14,8 +14,9 @@ export type HarnessSummaryProps = {
   /** Beside the title, such as an `InfoHint` on it. */
   titleAddon?: ReactNode;
   /**
-   * The title at a fact list's value size rather than a card's bold one, for
-   * a fact beside a page's content.
+   * The title at a fact list's value size rather than a card's bold one, and
+   * the Harness's name and image at 12px rather than a card's 10px, for a
+   * fact beside a page's content.
    */
   compact?: boolean;
 };
@@ -63,7 +64,7 @@ export function HarnessSummary({
         </Text>
       )}
       <Text
-        variant="body-x-small"
+        variant={compact ? 'body-small' : 'body-x-small'}
         color="secondary"
         style={{ overflowWrap: 'anywhere' }}
       >
