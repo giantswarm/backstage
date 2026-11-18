@@ -215,8 +215,8 @@ Ignoring is **per-issue, per-project**. A recurring noise *pattern* (e.g. each n
 When a Sentry issue needs a code change you won't make inline, file a tracking issue for the owning team — usually in `giantswarm/giantswarm`. Follow these conventions:
 
 1. **Link the Sentry issue.** Put at least one Sentry issue URL in the body so the GitHub issue is traceable back to its source. When one root cause spans several projects, link a representative issue (or all affected ones).
-2. **Set the `ui/backstage` label** — always — alongside the owning team label (e.g. `team/bumblebee`). This is what marks it as Backstage work and routes it.
-3. **No pseudo-labels in the title.** Don't prefix the title with `[backstage]` or similar bracketed tags — that's the `ui/backstage` label's job. Use a plain, descriptive title.
+2. **Set the `ui/portal` label** — always — alongside the owning team label (e.g. `team/bumblebee`). This is what marks it as Backstage work and routes it.
+3. **No pseudo-labels in the title.** Don't prefix the title with `[backstage]` or similar bracketed tags — that's the `ui/portal` label's job. Use a plain, descriptive title.
 4. **Assess the impact on users.** Give the body an **Impact** section built from data — see "Assessing user impact" below.
 
 Keep the body customer-agnostic where possible (file paths, root cause, fix options) rather than naming customers — `giantswarm/giantswarm` issues are widely visible.
