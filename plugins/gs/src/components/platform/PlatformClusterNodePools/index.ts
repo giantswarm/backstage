@@ -1,4 +1,1 @@
-export {
-  PlatformClusterNodePools,
-  usePlatformNodePoolCount,
-} from './PlatformClusterNodePools';
+export { PlatformClusterNodePools } from './PlatformClusterNodePools';

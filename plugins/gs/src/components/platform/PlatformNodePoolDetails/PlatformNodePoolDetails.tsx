@@ -10,7 +10,7 @@ import { useKarpenterNodePoolStatus } from '../../hooks';
 import { ASGNodePoolConfiguration } from '../../clusters/cluster-details/ClusterNodePools/ASGNodePoolConfiguration';
 import { AzureNodePoolConfiguration } from '../../clusters/cluster-details/ClusterNodePools/AzureNodePoolConfiguration';
 import { NodePoolConfiguration } from '../../clusters/cluster-details/ClusterNodePools/NodePoolConfiguration';
-import type { PlatformNodePool } from '../PlatformClusterNodePools/nodePools';
+import type { PlatformNodePool } from '../utils/nodePools';
 
 /** `<namespace>/<name>` of a resource, in monospace. */
 function resourceFact(

@@ -1,8 +1,5 @@
-import { useMemo } from 'react';
 import { Alert, Flex, Text } from '@backstage/ui';
 import {
-  AWSCluster,
-  AzureCluster,
   AzureASOManagedCluster,
   VCDCluster,
   VSphereCluster,
@@ -13,27 +10,15 @@ import {
   SectionHeader,
   TechnicalDetailsFoldOut,
 } from '@giantswarm/backstage-plugin-ui-react';
-import {
-  useMachineTypeCatalog,
-  useMimirNodePoolNodes,
-  useNodePoolsForAWSCluster,
-  useNodePoolsForAzureCluster,
-} from '../../hooks';
-import {
-  buildNodePoolRows,
-  describeAzureVmSize,
-  AWS_MANAGED_CLUSTER_KIND,
-} from '../../clusters/nodePools';
+import { useMimirNodePoolNodes } from '../../hooks';
+import { AWS_MANAGED_CLUSTER_KIND } from '../../clusters/nodePools';
 import { useCurrentCluster } from '../../clusters/ClusterDetailsPage/useCurrentCluster';
 import { useSelectedNodePool } from '../../clusters/cluster-details/ClusterNodePools/useSelectedNodePool';
 import { PlatformNodePoolDetails } from '../PlatformNodePoolDetails';
 import { PlatformNodePoolsTable } from '../PlatformNodePoolsTable';
 import { PlatformNodesTable } from '../PlatformNodesTable';
-import {
-  awsNodePools,
-  azureNodePools,
-  type PlatformNodePool,
-} from './nodePools';
+import type { PlatformNodePools } from '../hooks';
+import type { PlatformNodePool } from '../utils/nodePools';
 
 /** What the empty state calls the clusters of an infrastructure kind. */
 const PROVIDER_NAMES: Record<string, string> = {
@@ -42,83 +27,6 @@ const PROVIDER_NAMES: Record<string, string> = {
   [VSphereCluster.kind]: 'vSphere',
   [VCDCluster.kind]: 'Cloud Director',
 };
-
-export type PlatformNodePools = {
-  /** False for an infrastructure kind the tab does not show yet. */
-  isShown: boolean;
-  pools: PlatformNodePool[];
-  isLoading: boolean;
-  /** The messages of the reads that failed. */
-  errors: string[];
-};
-
-/** A failed read of `useResources`, as the classic hooks return them. */
-type ReadError = ReturnType<typeof useNodePoolsForAWSCluster>['errors'][number];
-
-function messagesOf(errors: ReadError[]): string[] {
-  return errors.map(info =>
-    info.type === 'incompatibility'
-      ? `${info.cluster} serves an API version the portal cannot read.`
-      : info.error.message,
-  );
-}
-
-/**
- * The node pools of the current cluster, read as the classic cluster page
- * reads them: an AWS cluster's MachinePools with their AWSMachinePools and
- * KarpenterMachinePools, an Azure cluster's MachineDeployments with their
- * AzureMachineTemplates. Each read runs only for its kind of cluster.
- */
-export function usePlatformNodePools(): PlatformNodePools {
-  const { cluster } = useCurrentCluster();
-  const kind = cluster.getInfrastructureRef()?.kind;
-  const aws = useNodePoolsForAWSCluster(cluster);
-  const azure = useNodePoolsForAzureCluster(cluster);
-  const { catalog: awsCatalog } = useMachineTypeCatalog('aws', {
-    enabled: kind === AWSCluster.kind,
-  });
-  const { catalog: azureCatalog } = useMachineTypeCatalog('azure', {
-    enabled: kind === AzureCluster.kind,
-  });
-
-  return useMemo(() => {
-    if (kind === AWSCluster.kind) {
-      return {
-        isShown: true,
-        pools: awsNodePools(
-          aws.machinePools,
-          aws.awsMachinePools,
-          aws.karpenterMachinePools,
-          awsCatalog,
-        ),
-        isLoading: aws.isLoading,
-        errors: messagesOf(aws.errors),
-      };
-    }
-    if (kind === AzureCluster.kind) {
-      return {
-        isShown: true,
-        pools: azureNodePools(
-          buildNodePoolRows(
-            azure.machineDeployments,
-            azure.azureMachineTemplates,
-            describeAzureVmSize(azureCatalog),
-          ),
-          azure.machineDeployments,
-        ),
-        isLoading: azure.isLoading,
-        errors: messagesOf(azure.errors),
-      };
-    }
-    return { isShown: false, pools: [], isLoading: false, errors: [] };
-  }, [kind, aws, azure, awsCatalog, azureCatalog]);
-}
-
-/** The node pools tab's count: undefined until the pools are read. */
-export function usePlatformNodePoolCount(): number | undefined {
-  const { isShown, pools, isLoading } = usePlatformNodePools();
-  return isShown && !isLoading ? pools.length : undefined;
-}
 
 /** "Nodes in <pool>": the pool's nodes, from Mimir. */
 function PoolNodes({
@@ -172,12 +80,17 @@ function PoolNodes({
  * The Node pools tab of a Platform cluster page: the cluster's pools, one
  * of which a person selects (`?name=<pool>`, as on the classic page, so a
  * reload or a shared link shows the same pool); then that pool's nodes, for
- * a machine pool, and its technical details. A Karpenter pool has no fixed
- * nodes to list: its details say what runs.
+ * a machine pool, and its technical details. A Karpenter pool has no node
+ * table, as the design draws it: its details say what runs.
  */
-export function PlatformClusterNodePools() {
+export function PlatformClusterNodePools({
+  nodePools,
+}: {
+  /** The cluster's pools, which the page reads once (`usePlatformNodePools`). */
+  nodePools: PlatformNodePools;
+}) {
   const { cluster, installationName } = useCurrentCluster();
-  const { isShown, pools, isLoading, errors } = usePlatformNodePools();
+  const { isShown, pools, isLoading, errors } = nodePools;
   const { selectedNodePool, setSelectedNodePool } = useSelectedNodePool();
   const kind = cluster.getInfrastructureRef()?.kind;
 

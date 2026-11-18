@@ -14,7 +14,8 @@ import {
   isShortOfNodes,
   kindLabel,
   type PlatformNodePool,
-} from '../PlatformClusterNodePools/nodePools';
+  zonesTitle,
+} from '../utils/nodePools';
 
 const useStyles = makeStyles({
   // The selected pool's row, tinted as the design has it. The row has no
@@ -137,10 +138,6 @@ function TwoLines({
   );
 }
 
-function zonesTitle(pool: PlatformNodePool): string | undefined {
-  return Array.isArray(pool.zones) ? pool.zones.join(', ') : undefined;
-}
-
 function createdText(created: string | undefined, now: Date) {
   return created ? getRelativeDate(created, now) : undefined;
 }
@@ -235,7 +232,7 @@ export function PlatformNodePoolsTable({
           <Cell>
             <Text
               variant="body-medium"
-              title={zonesTitle(pool)}
+              title={zonesTitle(pool.zones)}
               style={NO_WRAP}
             >
               {formatZones(pool.zones) ?? '—'}

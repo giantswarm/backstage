@@ -18,34 +18,17 @@ import {
   useFittingColumns,
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { NodePoolNode } from '../../hooks';
-import { zoneLetter } from '../PlatformClusterNodePools/nodePools';
+import {
+  formatResourceQuantity,
+  shortenNodeName,
+  shortenZone,
+} from '../../clusters/nodePools';
 
-const GIB = 1024 ** 3;
-
-/** Cores as the node table says them: "2.3", "450m". */
-export function formatCores(cores: number): string {
-  return cores < 1 ? `${Math.round(cores * 1000)}m` : cores.toFixed(1);
-}
-
-/** Bytes as the node table says them: "9.1 GiB", "512 MiB". */
-export function formatGiB(bytes: number): string {
-  return bytes >= GIB
-    ? `${(bytes / GIB).toFixed(1)} GiB`
-    : `${Math.round(bytes / 1024 ** 2)} MiB`;
-}
-
-/** "3.92": allocatable CPU to two places, as the hover text gives it. */
-function formatAllocatableCores(cores: number): string {
-  return String(Number(cores.toFixed(2)));
-}
+const formatCores = (cores: number) => formatResourceQuantity('cpu', cores);
+const formatBytes = (bytes: number) => formatResourceQuantity('memory', bytes);
 
 function percent(used: number, total: number): number {
   return total > 0 ? Math.round((used / total) * 100) : 0;
-}
-
-/** `ip-10-0-41-12.eu-central-1.compute.internal` → `ip-10-0-41-12`. */
-export function shortNodeName(name: string): string {
-  return name.split('.')[0];
 }
 
 const COLUMN_HINTS = {
@@ -66,7 +49,7 @@ export function cpuMeasure(node: NodePoolNode): Measure | undefined {
   return {
     value: formatCores(node.cpuRequests),
     ratio: share / 100,
-    title: `Requests: ${formatCores(node.cpuRequests)} of ${formatAllocatableCores(node.cpuAllocatable)} CPU allocatable (${share}%)`,
+    title: `Requests: ${formatCores(node.cpuRequests)} of ${formatCores(node.cpuAllocatable)} CPU allocatable (${share}%)`,
   };
 }
 
@@ -79,9 +62,9 @@ export function memoryMeasure(node: NodePoolNode): Measure | undefined {
   }
   const share = percent(node.memoryRequests, node.memoryAllocatable);
   return {
-    value: formatGiB(node.memoryRequests),
+    value: formatBytes(node.memoryRequests),
     ratio: share / 100,
-    title: `Requests: ${formatGiB(node.memoryRequests)} of ${formatGiB(node.memoryAllocatable)} allocatable (${share}%)`,
+    title: `Requests: ${formatBytes(node.memoryRequests)} of ${formatBytes(node.memoryAllocatable)} allocatable (${share}%)`,
   };
 }
 
@@ -289,13 +272,13 @@ export function PlatformNodesTable({
                 title={node.node}
                 style={{ fontFamily: '"Roboto Mono", monospace' }}
               >
-                {shortNodeName(node.node)}
+                {shortenNodeName(node.node)}
               </Text>
               {isNarrow && (
                 <Text variant="body-small" color="secondary">
                   {[
                     node.instanceType,
-                    node.zone ? `zone ${zoneLetter(node.zone)}` : undefined,
+                    node.zone ? `zone ${shortenZone(node.zone)}` : undefined,
                     node.created
                       ? `created ${getRelativeDate(node.created.toISOString(), now)}`
                       : undefined,
@@ -337,7 +320,7 @@ export function PlatformNodesTable({
         cell: node => (
           <Cell>
             <Text variant="body-medium" title={node.zone} style={NO_WRAP}>
-              {node.zone ? zoneLetter(node.zone) : '—'}
+              {node.zone ? shortenZone(node.zone) : '—'}
             </Text>
           </Cell>
         ),
@@ -424,11 +407,11 @@ export function PlatformNodesTable({
             const pods = podsMeasure(node);
             return {
               id: node.id,
-              title: shortNodeName(node.node),
+              title: shortenNodeName(node.node),
               status: <ReadyStatus node={node} />,
               facts: [
                 node.instanceType,
-                node.zone ? `zone ${zoneLetter(node.zone)}` : undefined,
+                node.zone ? `zone ${shortenZone(node.zone)}` : undefined,
               ],
               details: (
                 <Flex direction="column" gap="1">

@@ -46,6 +46,15 @@ const PARSED_LIMIT = 500;
 export class MimirFixtureApi implements MimirApi {
   private readonly parsed = new Map<string, PromqlNode>();
 
+  /**
+   * Each installation's series, built once per data set, so the evaluator's
+   * index by metric name (`promql.ts`) is built once too.
+   */
+  private readonly series = new WeakMap<
+    FixtureDataSet,
+    Map<string, FixtureCounterSeries[]>
+  >();
+
   constructor(
     private readonly data: () => FixtureDataSet = fixtureDataSet,
     /**
@@ -155,10 +164,20 @@ export class MimirFixtureApi implements MimirApi {
       throw error;
     }
     const data = this.data();
-    return [
-      ...gatewaySeries(data, installation),
-      ...clusterNodeSeries(data, installation),
-    ];
+    let byInstallation = this.series.get(data);
+    if (!byInstallation) {
+      byInstallation = new Map();
+      this.series.set(data, byInstallation);
+    }
+    let series = byInstallation.get(installation);
+    if (!series) {
+      series = [
+        ...gatewaySeries(data, installation),
+        ...clusterNodeSeries(data, installation),
+      ];
+      byInstallation.set(installation, series);
+    }
+    return series;
   }
 }
 

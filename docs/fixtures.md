@@ -487,7 +487,9 @@ the rates of Your sessions) reads, and the series of its clusters' nodes
 (`clusterNodeSeries` in gs-common): kube-state-metrics' and the kubelet's per
 node, with the `nodepool` label on `kube_node_labels`, and Karpenter's per
 node and per pool, which the cluster pages' Node pools tab and worker figures
-read. Those are gauges, one point each from the time the node or pool started. The series are derived from the data set
+read. Those are gauges, one point each from the time the node or pool started.
+Each installation's series are built once per data set, and a selector with a
+metric name looks only at that metric's series. The series are derived from the data set
 (`gatewayUsage.ts` in gs-common): the ready agents of ready organizations,
 the ones with sessions, call the organization's default model
 (`FIXTURE_AGENT_MODEL`, the default ModelConfig's model) at its list price;
@@ -676,7 +678,8 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
   of three nodes or more has a node that is not ready. Every other AWS
   workload cluster has a Karpenter pool besides its Auto Scaling group pools,
   spot and on-demand, about half of them with a zone requirement; the Azure
-  cluster has two pools. In `many`, each installation's first workload
+  cluster has two pools. Node names are unique in a cluster, cluster names in
+  an installation. In `many`, each installation's first ready workload
   cluster has 30 pools of 40 nodes (`busiestCluster`). gs maps them onto
   Cluster, AWSCluster, AWSClusterRoleIdentity (or AzureCluster),
   KubeadmControlPlane, App, MachinePool with AWSMachinePool or

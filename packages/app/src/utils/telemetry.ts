@@ -11,6 +11,7 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 import { CUSTOMIZE_TAB_IDS } from '../modules/agentShell/customizeTabIds';
 import { PLATFORM_TAB_IDS } from '../modules/agentShell/platformTabIds';
+import { PLATFORM_CLUSTER_PAGE_TABS } from '@giantswarm/backstage-plugin-gs';
 
 /** The `/customize/:tab` tabs, a fixed set safe to report as a view. */
 const CUSTOMIZE_TABS: ReadonlySet<string> = new Set(CUSTOMIZE_TAB_IDS);
@@ -20,10 +21,12 @@ const PLATFORM_TABS: ReadonlySet<string> = new Set(PLATFORM_TAB_IDS);
 
 /**
  * A Platform cluster page's tabs below its own address (Overview, the index,
- * left out). The node pool a person selects is in the query, which no view
- * reports.
+ * left out), from the page's own list. The node pool a person selects is in
+ * the query, which no view reports.
  */
-const PLATFORM_CLUSTER_TABS: ReadonlySet<string> = new Set(['node-pools']);
+const PLATFORM_CLUSTER_TABS: ReadonlySet<string> = new Set(
+  PLATFORM_CLUSTER_PAGE_TABS.map(tab => tab.path).filter(Boolean),
+);
 
 /**
  * A workflow page's tabs below its own address (Overview, the index, left

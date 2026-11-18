@@ -616,8 +616,12 @@ table has a row per pool: the name, a button that selects the pool, with its
 kind; nodes ready ("6 of 6", or "6 ready" for Karpenter); the machines (the
 instance type or VM size with its CPU and memory, or "Mixed" with the
 capacity types Karpenter may pick); the zones (a Karpenter pool's zone
-requirement, else "Any"); scaling ("Between 3 and 10 nodes", or "As needed, up
-to 48 CPU · 192 GiB" from the Karpenter limits); and its age. Narrower, Zones
+requirement, "Any except C" for a `NotIn` one, else "Any"); scaling ("Between
+3 and 10 nodes" from an Auto Scaling group or the cluster-autoscaler's
+annotations on an Azure MachineDeployment, "3 nodes" for a fixed size, or "As
+needed, up to 48 CPU · 192 GiB" from the Karpenter limits); and its age. A
+pool short of nodes has an amber dot. The tab's count shows once the pools
+are read, and not where a read failed. Narrower, Zones
 and Created move under the machines and the kind; at phone width the rows
 stack.
 

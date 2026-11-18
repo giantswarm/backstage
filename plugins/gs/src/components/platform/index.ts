@@ -3,6 +3,9 @@ export {
   PlatformClustersProvider,
   usePlatformClustersCount,
 } from './PlatformClustersProvider';
-export { PlatformClusterRoute } from './PlatformClusterPage';
+export {
+  PLATFORM_CLUSTER_PAGE_TABS,
+  PlatformClusterRoute,
+} from './PlatformClusterPage';
 export { PlatformLinksProvider } from './PlatformLinks';
 export type { PlatformLinks } from './PlatformLinks';

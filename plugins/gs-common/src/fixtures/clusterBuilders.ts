@@ -118,9 +118,9 @@ export type FixtureCluster = {
 
 export type FixtureClusterSettings = {
   /**
-   * The node pools of each installation's first workload cluster, which is
-   * ready: `count` Auto Scaling group pools besides its Karpenter pool, of
-   * `nodes` nodes each. Off by default, where it has one pool.
+   * The node pools of each installation's first ready workload cluster:
+   * `pools` Auto Scaling group pools besides its Karpenter pool, of `nodes`
+   * nodes each. Off by default.
    */
   busiestCluster?: { pools: number; nodes: number };
   /** Workload clusters per installation, besides the GPU clusters. */
@@ -222,6 +222,8 @@ type NodeSpec = {
   since: number;
   /** The node's name; by default an EC2 private DNS name in the region. */
   nameOf?: (random: FixtureRandom, index: number) => string;
+  /** The names the cluster's other nodes took: node names are unique in a cluster. */
+  taken: Set<string>;
 };
 
 /**
@@ -245,10 +247,15 @@ function nodesOf(
       1,
       Math.min(random.int(1, 30), Math.floor((context.now - spec.since) / DAY)),
     );
-    return {
-      name: spec.nameOf
+    let name: string;
+    do {
+      name = spec.nameOf
         ? spec.nameOf(random, index)
-        : `ip-10-0-${random.int(32, 63)}-${random.int(2, 250)}.${region}.compute.internal`,
+        : `ip-10-0-${random.int(32, 63)}-${random.int(2, 250)}.${region}.compute.internal`;
+    } while (spec.taken.has(name));
+    spec.taken.add(name);
+    return {
+      name,
       instanceType,
       zone: spec.zones[index % spec.zones.length],
       capacityType: spec.capacityTypes[index % spec.capacityTypes.length],
@@ -281,7 +288,7 @@ function zonesOf(region: string): string[] {
 function machinePool(
   context: BuilderContext,
   random: FixtureRandom,
-  where: { region: string; since: number },
+  where: { region: string; since: number; taken: Set<string> },
   name: string,
   instanceType: string,
   replicas: number,
@@ -297,6 +304,7 @@ function machinePool(
     capacityTypes: ['on-demand'],
     maxPods: azure ? AZURE_MAX_PODS : ASG_MAX_PODS,
     since: where.since,
+    taken: where.taken,
     ...(azure && {
       // A CAPZ machine's VM, named after its MachineDeployment.
       nameOf: (r: FixtureRandom) =>
@@ -324,7 +332,7 @@ function machinePool(
 function karpenterPool(
   context: BuilderContext,
   random: FixtureRandom,
-  where: { region: string; since: number },
+  where: { region: string; since: number; taken: Set<string> },
   name: string,
 ): FixtureClusterPool {
   const replicas = random.int(3, 8);
@@ -338,6 +346,7 @@ function karpenterPool(
     capacityTypes: ['on-demand', 'spot'],
     maxPods: KARPENTER_MAX_PODS,
     since: where.since,
+    taken: where.taken,
   });
   const cpu = nodes.reduce((sum, node) => sum + node.cpuCapacity, 0);
   const cpuLimit = cpu <= 48 ? 48 : 96;
@@ -380,6 +389,7 @@ function pools(
   const where = {
     region: cluster.region,
     since: Date.parse(cluster.createdAt),
+    taken: new Set<string>(),
   };
   const randomOf = (pool: string) =>
     createRandom(hashOf(`${cluster.installation}/${pool}`));
@@ -483,6 +493,16 @@ export function buildClusters(
           gitOpsRepository: `${installation.name}-management-clusters`,
         }));
 
+  // Each installation's first ready workload cluster is its busiest.
+  const busiest = new Set<string>();
+  const isBusiest = (installation: string, state: ClusterState) => {
+    if (state !== 'ready' || busiest.has(installation)) {
+      return false;
+    }
+    busiest.add(installation);
+    return true;
+  };
+
   const turns = new Map<string, number>();
   const organizationOf = (installation: string): string => {
     const ready = organizations.filter(
@@ -535,7 +555,7 @@ export function buildClusters(
           {
             // Every other workload cluster has a Karpenter pool too.
             karpenter: index % 2 === 1,
-            ...(index === 0 &&
+            ...(isBusiest(installation.name, state) &&
               settings.busiestCluster && {
                 extra: settings.busiestCluster.pools - 1,
                 nodes: settings.busiestCluster.nodes,
@@ -585,14 +605,27 @@ export function buildClusters(
       : installations.map((installation): FixtureCluster => {
           const random = createRandom(hashOf(`${installation.name}/azure`));
           const azureName = createNamer(random);
-          const cluster = azureName(settings.clusters?.nameLength);
+          // Unique in its installation, as cluster names are.
+          const taken = new Set(
+            [...management, ...workload, ...gpu]
+              .filter(c => c.installation === installation.name)
+              .map(c => c.name),
+          );
+          let cluster = azureName(settings.clusters?.nameLength);
+          while (taken.has(cluster.name)) {
+            cluster = azureName(settings.clusters?.nameLength);
+          }
           const release = RELEASES[2];
           const organization =
             organizations.find(
               o => o.installation === installation.name && o.state === 'ready',
             )?.name ?? MANAGEMENT_ORGANIZATION;
           const createdAt = isoAgo(context, random.int(60, 400) * DAY);
-          const where = { region: 'westeurope', since: Date.parse(createdAt) };
+          const where = {
+            region: 'westeurope',
+            since: Date.parse(createdAt),
+            taken: new Set<string>(),
+          };
           const poolNames = ['def00', 'big00'];
           return {
             installation: installation.name,

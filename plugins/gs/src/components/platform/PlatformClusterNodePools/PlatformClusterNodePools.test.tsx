@@ -9,6 +9,7 @@ import {
   MachinePool,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import type { NodePoolNode } from '../../hooks';
+import { usePlatformNodePools } from '../hooks';
 import { PlatformClusterNodePools } from './PlatformClusterNodePools';
 
 const NAMESPACE = 'org-fern';
@@ -135,10 +136,15 @@ function Search() {
   );
 }
 
+/** The tab with the pools the page reads for it. */
+function Tab() {
+  return <PlatformClusterNodePools nodePools={usePlatformNodePools()} />;
+}
+
 function renderTab(search = '') {
   return renderInTestApp(
     <>
-      <PlatformClusterNodePools />
+      <Tab />
       <Search />
     </>,
     { initialRouteEntries: [`/node-pools${search}`] },
@@ -183,12 +189,10 @@ describe('PlatformClusterNodePools', () => {
     );
     // The bar's value beside it, the whole figure as hover text.
     expect(
-      within(nodes).getByTitle('Requests: 2.3 of 3.92 CPU allocatable (59%)'),
+      within(nodes).getByTitle('Requests: 2.3 of 3.9 CPU allocatable (59%)'),
     ).toHaveTextContent('2.3');
     expect(
-      within(nodes).getByTitle(
-        'Requests: 9.1 GiB of 14.8 GiB allocatable (61%)',
-      ),
+      within(nodes).getByTitle('Requests: 9.1 GiB of 15 GiB allocatable (61%)'),
     ).toBeInTheDocument();
     expect(
       within(nodes).getByTitle('Running: 31 of 58 allocatable (53%)'),

@@ -42,7 +42,12 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useDisabledInstallations } from '../../hooks/useDisabledInstallations';
 import IconResolver from '../../UI/IconResolver/IconResolver';
-import { useClusterLoginCommands } from '../hooks';
+import {
+  nodePoolCount,
+  type PlatformNodePools,
+  useClusterLoginCommands,
+  usePlatformNodePools,
+} from '../hooks';
 import { PlatformToolTile } from '../PlatformToolTile';
 import {
   getClusterKey,
@@ -80,10 +85,7 @@ import {
   isManagementCluster,
   LIVE_CLUSTER_REFRESH_MS,
 } from '../../clusters/utils';
-import {
-  PlatformClusterNodePools,
-  usePlatformNodePoolCount,
-} from '../PlatformClusterNodePools';
+import { PlatformClusterNodePools } from '../PlatformClusterNodePools';
 import { PlatformClusterOverview } from '../PlatformClusterOverview';
 import { PlatformClusterStatusDot } from '../PlatformClusterStatusDot';
 import {
@@ -95,23 +97,26 @@ import { usePlatformLinks } from '../PlatformLinks';
 /**
  * The cluster page's routed tabs, in strip order; Overview is the page's own
  * address. Gateways and Access come later (giantswarm/giantswarm#39295).
+ * The app's telemetry reads the tabs' paths from here.
  */
-const CLUSTER_PAGE_TABS = [
+export const PLATFORM_CLUSTER_PAGE_TABS = [
   { id: 'overview', path: '', title: 'Overview' },
   { id: 'node-pools', path: 'node-pools', title: 'Node pools' },
-];
+] as const;
+
+const CLUSTER_PAGE_TABS = [...PLATFORM_CLUSTER_PAGE_TABS];
 
 /** The tabs with the number of node pools on theirs, once it is known. */
-function useClusterPageTabs() {
-  const nodePools = usePlatformNodePoolCount();
+function useClusterPageTabs(nodePools: PlatformNodePools) {
+  const count = nodePoolCount(nodePools);
   return useMemo(
     () =>
       CLUSTER_PAGE_TABS.map(tab =>
-        tab.id === 'node-pools' && nodePools !== undefined
-          ? { ...tab, count: nodePools }
+        tab.id === 'node-pools' && count !== undefined
+          ? { ...tab, count }
           : tab,
       ),
-    [nodePools],
+    [count],
   );
 }
 
@@ -445,7 +450,9 @@ function ClusterPage() {
   const { frame } = useFrame(name);
   const basePath = useSplatBasePath();
   const { pathname, search } = useLocation();
-  const tabs = useClusterPageTabs();
+  // Read once here: the tab's count and the tab itself show the same pools.
+  const nodePools = usePlatformNodePools();
+  const tabs = useClusterPageTabs(nodePools);
   // The facts column belongs to Overview; the other tabs take the width.
   const isOverview =
     pathname.replace(/\/+$/, '') === basePath.replace(/\/+$/, '');
@@ -519,7 +526,10 @@ function ClusterPage() {
         )}
         <Routes>
           <Route index element={<PlatformClusterOverview />} />
-          <Route path="node-pools" element={<PlatformClusterNodePools />} />
+          <Route
+            path="node-pools"
+            element={<PlatformClusterNodePools nodePools={nodePools} />}
+          />
           {/* A tab the page does not have lands on Overview. */}
           <Route
             path="*"
