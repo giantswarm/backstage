@@ -121,7 +121,7 @@ const useStyles = makeStyles((theme: Theme) => ({
     marginBottom: theme.spacing(1.5),
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
-    fontSize: 11,
+    fontSize: 'var(--bui-font-size-2)',
     fontWeight: 500,
     color: theme.palette.text.secondary,
   },

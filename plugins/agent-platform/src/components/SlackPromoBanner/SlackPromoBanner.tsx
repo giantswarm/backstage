@@ -68,6 +68,8 @@ const useStyles = makeStyles({
   },
   // The illustration: a Slack thread in miniature. Decorative only — the copy
   // beside it says everything it shows.
+  //
+  // Its text sizes, down to 10px, are Slack's own: the mock imitates Slack.
   thread: {
     flex: '1 1 260px',
     minWidth: 0,

@@ -107,6 +107,7 @@ const useStyles = makeStyles({
   // The ⌘K hint beside the Search item, like the prototype's.
   shortcutHint: {
     marginLeft: 'auto',
+    // 11.5px: a keycap, smaller than the item's title it hints at.
     fontSize: 11.5,
     lineHeight: '16px',
     border: '1px solid var(--bui-border-1)',

@@ -17,6 +17,7 @@ const useStyles = makeStyles({
     color: 'var(--agent-shell-unread-badge-fg, #fff)',
     // A ring in the rail's colour keeps it apart from the icon under it.
     boxShadow: '0 0 0 2px var(--agent-shell-rail-bg, var(--bui-bg-neutral-1))',
+    // 11px bold: a count in an 18px bubble, which 12px would widen.
     fontSize: 11,
     lineHeight: '18px',
     fontWeight: 700,

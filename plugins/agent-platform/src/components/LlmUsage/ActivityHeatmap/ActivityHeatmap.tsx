@@ -79,6 +79,7 @@ const useStyles = makeStyles((theme: Theme) => ({
   svg: {
     display: 'block',
     '& text': {
+      // 10px: axis labels beside cells 10px high, which 12px would overlap.
       fontSize: 10,
       fill: theme.palette.text.secondary,
     },
@@ -115,6 +116,7 @@ const useStyles = makeStyles((theme: Theme) => ({
     display: 'flex',
     alignItems: 'center',
     gap: 3,
+    // 11px: the chart's own legend, under its axis labels.
     fontSize: 11,
     color: theme.palette.text.secondary,
     paddingLeft: LEFT,
@@ -135,6 +137,8 @@ const useStyles = makeStyles((theme: Theme) => ({
     minWidth: 140,
   },
   factLabel: {
+    // 11px: a short uppercase label above a number, which caps make read as
+    // large as 12px.
     fontSize: 11,
     fontWeight: 600,
     textTransform: 'uppercase',

@@ -238,11 +238,13 @@ skill.
 
 The smallest text in the portal is 12px (`body-small`,
 `var(--bui-font-size-2)`). Smaller text is an exception that needs a comment
-next to the style saying why 12px does not work there. bui's 10px pieces are
-the usual way in: `Text`/`Link` `variant="body-x-small"`, `Badge`/`Tag`
-`size="small"`, `var(--bui-font-size-1)`; and px below 12, rem below 0.75, and
-em sizes that land below 12 from their parent. What to use instead: "Text
-size: 12px at the smallest" in `docs/ui.md`.
+next to the style saying why 12px does not work there; 10px is
+`var(--gs-font-size-exception)`. bui's 10px token, `--bui-font-size-1`, is
+12px in the app (`bui-overrides.css`), so `body-x-small` and the small `Badge`
+and `Tag` render at 12px; write `body-small` anyway. The way in is a size of
+its own: px below 12, rem below 0.75, and em sizes that land below 12 from
+their parent. What to use instead: "Text size: 12px at the smallest" in
+`docs/ui.md`.
 
 ### Overriding bui component sizes
 

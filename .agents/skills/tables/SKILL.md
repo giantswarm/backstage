@@ -398,8 +398,7 @@ render: row => (
 ```
 
 A subvalue, a cell's second line or a badge in a cell is 12px at the
-smallest, like all text: `body-small`, never `body-x-small` or a small
-`Badge` (10px). See "Text size: 12px at the smallest" in `docs/ui.md`.
+smallest, like all text: `body-small`, never a px size below 12. See "Text size: 12px at the smallest" in `docs/ui.md`.
 
 ### Hidden by Default Columns
 
