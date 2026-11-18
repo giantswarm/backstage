@@ -1444,10 +1444,15 @@ describe('ServedModelsTable in a narrow card', () => {
     const grids = screen.getAllByRole('grid').length;
     expect(list()).toBeNull();
 
-    act(() => container.setWidth(424));
+    act(() => container.setWidth(600));
     expect(list()).toBeInTheDocument();
     // The group whose few columns still fit keeps its table.
     expect(screen.getAllByRole('grid')).toHaveLength(grids - 1);
+
+    // Its Status column needs 150px for a status and its reason: at 424px
+    // it stacks too.
+    act(() => container.setWidth(424));
+    expect(screen.queryAllByRole('grid')).toHaveLength(0);
   });
 });
 

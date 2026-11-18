@@ -78,11 +78,10 @@ iterating: a plugin-wide run for a one-file change costs minutes for the same
 signal. Save the plugin-wide run for a change to something shared, with call
 sites beyond the file you edited.
 
-A change to a page is verified in a browser against agentlab before the PR
-merges, and ships with the spec that proves it: `docs/development.md`,
-"End-to-end tests in a browser, against agentlab", and `e2e/agentlab/README.md`.
-The lab users are throwaway fixtures, and signing in as them, in the Dex popup
-too, is part of the verification. Only real people's accounts and real
+How a change to a page is checked: "Fixture mode and the layout check" below.
+The browser suite against agentlab is optional: `docs/development.md`,
+"End-to-end tests in a browser, against agentlab". Its lab users are throwaway
+fixtures, and signing in as them is fine; real people's accounts and real
 installations are off-limits.
 
 ### Fixture mode and the layout check
@@ -97,11 +96,8 @@ yarn fixtures status
 yarn fixtures stop     # when you are done: a frontend and a backend per checkout are heavy
 ```
 
-`?fixtures=<scenario>` switches the data set without a restart: `base` (the
-default), `empty`, `many`, `long-names`, `loading` and `error`. What each
-serves, and the pages that keep the base data in every scenario (Plans,
-Customize · Skills): `docs/fixtures.md`, "Scenarios". The tab keeps
-the scenario until `?fixtures=base`.
+`?fixtures=<scenario>` switches the data set without a restart:
+`docs/fixtures.md`, "Scenarios".
 
 Open the portal in the chrome-devtools MCP only when it runs with `--isolated`
 or a `--userDataDir` of your checkout (`claude mcp get chrome-devtools` shows
@@ -111,44 +107,20 @@ When it runs without either, don't use it for checks: use the layout check or
 the repo's Playwright, and tell the person once. Don't change the MCP's
 config.
 
-The fixtures move with the pages. A pull request that reads a new field, adds
-a state or calls a new tool extends the fixtures in the same pull request
-(`docs/fixtures.md`, "The data set" and "Tool calls through muster"). For a
-tool the agent-platform or muster pages call, the drift guard
-(`fixtureToolCoverage.test.ts` in each) fails until the tool has a handler or
-the test lists it as not served, with a comment saying why. Nothing checks
-bot-prs's calls through muster.
+The fixtures move with the pages, so that every page can be checked in each
+state that matters. A pull request that changes a page fixture mode can't
+show, reads a new field, adds a state or calls a new tool adds the fixtures in
+the same pull request (`docs/fixtures.md`, "The data set" and "Tool calls
+through muster"). For a tool the agent-platform or muster pages call, the
+drift guard (`fixtureToolCoverage.test.ts` in each) fails until the tool has a
+handler or the test lists it as not served, with a comment saying why. Nothing
+checks bot-prs's calls through muster.
 
-The [`layout-check`](.agents/skills/layout-check/SKILL.md) skill is the
-default proof of a UI change, before you ask for review: the pages the
-`ui-impact` skill maps, at the default widths, in `base` and the scenarios the
-change is about. Pass concrete paths, never a route template. For a page with
-parameters, run the spec's entry for it (`--only <page name>`), which opens
-the first record in each scenario: a record's path copied from fixture mode
-exists only in the scenario it came from. A shell-wide change (`/*`) means a
-few real pages. The check refuses a template and a page that shows "not
-found".
-
-```bash
-node .agents/skills/layout-check/layout-check.mjs --scenarios base,long-names \
-  --page /customize/agents --page /sessions
-node .agents/skills/layout-check/layout-check.mjs --scenarios base,long-names \
-  --spec .agents/skills/layout-check/specs/agent-platform.mjs --only Workspace
-```
-
-Read its exit code and its plain output: 0 is clean, 1 lists findings, 2 means
-pages could not be checked (each named with the reason), which is no pass. The
-warnings come after the findings, don't change the exit code and can run into
-the thousands: read their heading, the count per scenario, not every warning.
-
-The whole spec in all six scenarios is for an occasional sweep, not for every
-pull request:
-
-```bash
-node .agents/skills/layout-check/layout-check.mjs \
-  --spec .agents/skills/layout-check/specs/agent-platform.mjs \
-  --scenarios base,many,long-names,empty,loading,error
-```
+Before you ask for review of a change to a page, look at it in a browser, and
+run the [`layout-check`](.agents/skills/layout-check/SKILL.md) skill on it as
+an automated safeguard: the pages the `ui-impact` skill maps, at the default
+widths, in `base` and the scenarios the change is about. Fix what it finds or
+say in the description why a finding is right as it is.
 
 ### Lint, format, type-check
 
@@ -282,11 +254,6 @@ score 6, add the `ui-test-needed` label, and don't merge or ask for a merge
 until `ui-tested` has replaced it. This is a convention; no check enforces it.
 Details: the `ui-impact` skill and `docs/development.md`, "Manual UI test
 before merge".
-
-Before asking for review of a pull request that changes a page, run the
-`layout-check` skill on every page it changes, as "Fixture mode and the layout
-check" above says, and fix what it finds or say in the description why a
-finding is right as it is.
 
 A pull request built from a mockup references the issue that links the mockup
 and carries the "Differences from the mockup" section of the `mockups` skill.

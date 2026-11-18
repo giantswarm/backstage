@@ -49,7 +49,8 @@ yarn fixtures stop
   any page that shows the portal's 404 page or a "… not found" heading,
   as could not check. For a page of one record, run the spec's entry for
   it (`--only`), which opens the first record in each scenario: a record's
-  path exists only in the scenario it was copied from.
+  path exists only in the scenario it was copied from. A shell-wide change
+  (`/*`) means a few real pages.
 - `--widths 375,768,1280` (the default): a phone, a tablet or narrow window
   with the side rail, a laptop. Add the width where your layout changes
   (a breakpoint, a dialog's maximum).
@@ -61,6 +62,10 @@ yarn fixtures stop
   out on every page, `--json` prints the findings as JSON, `--url` checks
   another portal (a dev server signed in as the guest), `--concurrency`
   sets how many pages load at once (3).
+
+Exit 2 is no pass: each page that could not be checked is named with the
+reason. The whole spec in all six scenarios is for an occasional sweep, not
+for every pull request.
 
 Warnings come after the findings, in a section of their own headed by
 their count per scenario, and don't fail the check: a long name ending in
