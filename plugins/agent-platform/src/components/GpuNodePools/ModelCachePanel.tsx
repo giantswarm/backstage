@@ -24,6 +24,7 @@ import {
   MENU_WIDTH,
   ShowMore,
   StackedRowList,
+  type FittingTier,
   useFittingColumns,
   useVisibleSort,
   type StackedRowItem,
@@ -429,9 +430,9 @@ export function ModelCachePanel({
 }: ModelCachePanelProps) {
   const showInstallation = !hideColumns?.includes('installation');
   const columnsFor = useCallback(
-    (isNarrow: boolean) =>
+    (tier: FittingTier) =>
       getColumnConfig(removable, onRemove, {
-        isNarrow,
+        isNarrow: tier !== 'full',
         showInstallation,
       }).filter(column => !hideColumns?.includes(column.id as 'installation')),
     [removable, onRemove, hideColumns, showInstallation],

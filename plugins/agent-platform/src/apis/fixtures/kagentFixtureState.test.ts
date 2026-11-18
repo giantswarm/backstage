@@ -189,6 +189,17 @@ describe('KagentFixtureState: the seeded sessions', () => {
     );
   });
 
+  it('has agents whose runtime reports a cost and agents whose runtime does not', () => {
+    const { state } = setup();
+    const { byAgent } = state.getSessionUsage(INSTALLATION);
+    const reported = byAgent.filter(agent => agent.costUsd !== undefined);
+    expect(reported.length).toBeGreaterThan(0);
+    expect(reported.length).toBeLessThan(byAgent.length);
+    for (const agent of reported) {
+      expect(agent.costUsd).toBeGreaterThan(0);
+    }
+  });
+
   it('starts no conversation before its session was created', () => {
     const { data } = setup();
     for (const session of data.sessions) {

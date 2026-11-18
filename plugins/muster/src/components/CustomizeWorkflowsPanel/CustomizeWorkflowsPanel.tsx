@@ -1,7 +1,15 @@
-import { ReactNode, useMemo } from 'react';
+import { ReactNode, useCallback, useMemo } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useApi } from '@backstage/frontend-plugin-api';
-import { Cell, CellText, ColumnConfig, Flex, Table } from '@backstage/ui';
+import {
+  Cell,
+  CellText,
+  ColumnConfig,
+  Flex,
+  Link,
+  Table,
+  Text,
+} from '@backstage/ui';
 import {
   type CatalogFacet,
   CatalogFilterBar,
@@ -14,11 +22,13 @@ import {
   type StackedRowItem,
   StackedRowList,
   ROW_TAGS_MAX,
+  type FittingTier,
+  TABLE_NAME_COLUMN_MIN_WIDTH,
   TagList,
   TAGS_COLUMN_MIN_WIDTH,
   tagsFacet,
   useCatalogFilters,
-  usePhoneLayout,
+  useFittingColumns,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import type {
@@ -89,6 +99,74 @@ const SOURCE_LABELS = {
 } as const;
 
 /**
+ * Each column's minimum width, px: its header and its usual value at 14px,
+ * plus the cell's 24px padding, measured. All seven sum to 959px, so they fit
+ * the Customize content column (984px at most) with room for the 24px the
+ * layout needs above its minimum to come back after a narrower window.
+ */
+const WORKFLOW_COLUMN_MIN_WIDTHS: Readonly<Record<string, number>> = {
+  name: TABLE_NAME_COLUMN_MIN_WIDTH,
+  // "maintenance".
+  category: 105,
+  tags: TAGS_COLUMN_MIN_WIDTH,
+  // "12 steps"; a grouped shape ("4 tool steps in 1 loop") ends in an
+  // ellipsis, with the rest on hover and on the workflow's page.
+  steps: 78,
+  // The "Changes things" badge.
+  effect: 123,
+  // "123 runs · 59 minutes ago" on one line.
+  runs: 186,
+  // "Manually added".
+  source: 123,
+};
+
+/**
+ * The columns a card too narrow for every one leaves out first: their
+ * values go under the name.
+ */
+const WORKFLOW_COLUMNS_DROPPED_FIRST: readonly string[] = [
+  'category',
+  'tags',
+  'source',
+];
+
+/**
+ * The name cell of the narrow table: the name (the row's link), then the
+ * category, source and description on one line, then the tags, so what the
+ * hidden columns held, and what a filter matched, stays on the row.
+ */
+function NarrowNameCell({ row, href }: { row: Row; href?: string }) {
+  const description = [row.category, row.source, row.description]
+    .filter(Boolean)
+    .join(' · ');
+  return (
+    <Cell>
+      <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
+        {href ? (
+          <Link href={href} variant="body-medium" truncate title={row.name}>
+            {row.name}
+          </Link>
+        ) : (
+          <Text as="p" variant="body-medium" truncate title={row.name}>
+            {row.name}
+          </Text>
+        )}
+        <Text
+          as="p"
+          variant="body-medium"
+          color="secondary"
+          truncate
+          title={description}
+        >
+          {description}
+        </Text>
+        {row.tags.length > 0 && <TagList tags={row.tags} max={ROW_TAGS_MAX} />}
+      </Flex>
+    </Cell>
+  );
+}
+
+/**
  * One rendered page of the table. The run queries live here, not above the
  * ShowMore, so only the workflows on screen ask muster for their latest run:
  * 300 workflows used to mean 300 `listExecutions` requests on open and again
@@ -101,16 +179,24 @@ function WorkflowRows({
   installation,
   hasSession,
   tools,
+  hasCategory,
+  hasTags,
 }: {
   workflows: MusterWorkflow[];
   installation: string;
   hasSession: boolean;
   tools: ToolSummary[] | undefined;
+  /** Whether any workflow listed has a category; else the column takes no room. */
+  hasCategory: boolean;
+  /** Whether any workflow listed has tags; else the column takes no room. */
+  hasTags: boolean;
 }) {
   const musterApi = useApi(musterApiRef);
   const workflowLinks = useWorkflowPageLinks();
-  const isPhone = usePhoneLayout();
-  const hrefOf = (row: Row) => workflowLinks.workflow(row.name, installation);
+  const hrefOf = useCallback(
+    (row: Row) => workflowLinks.workflow(row.name, installation),
+    [workflowLinks, installation],
+  );
 
   // muster lists executions newest first, so one per workflow gives the
   // latest run, and `total` counts them all.
@@ -147,84 +233,93 @@ function WorkflowRows({
     };
   });
 
-  const columns: ColumnConfig<Row>[] = [
-    {
-      id: 'name',
-      label: 'Workflow',
-      isRowHeader: true,
-      defaultWidth: '3fr',
-      // The name is the row's link (M21): reachable by keyboard and opens in
-      // a new tab on cmd/middle-click; the whole row stays clickable too.
-      cell: row => (
-        <CellText
-          title={row.name}
-          description={row.description}
-          href={hrefOf(row)}
-        />
-      ),
-    },
-    {
-      id: 'category',
-      label: 'Category',
-      defaultWidth: '1fr',
-      // Its header whole.
-      minWidth: 100,
-      cell: row => <CellText title={row.category ?? ''} />,
-    },
-    {
-      id: 'tags',
-      label: 'Tags',
-      defaultWidth: '1.4fr',
-      minWidth: TAGS_COLUMN_MIN_WIDTH,
-      cell: row => (
-        <Cell>
-          <TagList tags={row.tags} max={ROW_TAGS_MAX} />
-        </Cell>
-      ),
-    },
-    {
-      id: 'steps',
-      label: 'Steps',
-      // Room for a nested workflow's "8 tool steps in 2 nested loops".
-      defaultWidth: '1.4fr',
-      cell: row => <CellText title={row.steps} />,
-    },
-    {
-      id: 'effect',
-      label: 'Access',
-      defaultWidth: '1.2fr',
-      // Always the same outer element: react-aria's table collection caches
-      // the rendered cells, and a cell whose element type changes when the
-      // catalogue resolves suspends the whole update. A row without a known
-      // hint stays empty, claiming nothing.
-      cell: row => (
-        <Cell>
-          {row.effect ? <WorkflowEffectBadge effect={row.effect} /> : null}
-        </Cell>
-      ),
-    },
-    {
-      id: 'runs',
-      label: 'Runs',
-      defaultWidth: '1.5fr',
-      // "123 runs · 59 minutes ago" on one line.
-      minWidth: 210,
-      cell: row => <CellText title={row.runs ?? ''} />,
-    },
-    {
-      id: 'source',
-      label: 'Source',
-      defaultWidth: '1.2fr',
-      cell: row => <CellText title={row.source} />,
-    },
-  ];
+  const columnsFor = useCallback(
+    (tier: FittingTier): ColumnConfig<Row>[] => [
+      {
+        id: 'name',
+        label: 'Workflow',
+        isRowHeader: true,
+        defaultWidth: '3fr',
+        // The name is the row's link (M21): reachable by keyboard and opens
+        // in a new tab on cmd/middle-click; the whole row stays clickable too.
+        // Narrow, the category, source and tags go under it.
+        cell: row =>
+          tier === 'narrow' ? (
+            <NarrowNameCell row={row} href={hrefOf(row)} />
+          ) : (
+            <CellText
+              title={row.name}
+              description={row.description}
+              href={hrefOf(row)}
+            />
+          ),
+      },
+      {
+        id: 'category',
+        label: 'Category',
+        defaultWidth: '1fr',
+        isHidden: !hasCategory,
+        cell: row => <CellText title={row.category ?? ''} />,
+      },
+      {
+        id: 'tags',
+        label: 'Tags',
+        defaultWidth: '1.4fr',
+        isHidden: !hasTags,
+        cell: row => (
+          <Cell>
+            <TagList tags={row.tags} max={ROW_TAGS_MAX} />
+          </Cell>
+        ),
+      },
+      {
+        id: 'steps',
+        label: 'Steps',
+        defaultWidth: '1.4fr',
+        cell: row => <CellText title={row.steps} />,
+      },
+      {
+        id: 'effect',
+        label: 'Access',
+        defaultWidth: '1.2fr',
+        // Always the same outer element: react-aria's table collection caches
+        // the rendered cells, and a cell whose element type changes when the
+        // catalogue resolves suspends the whole update. A row without a known
+        // hint stays empty, claiming nothing.
+        cell: row => (
+          <Cell>
+            {row.effect ? <WorkflowEffectBadge effect={row.effect} /> : null}
+          </Cell>
+        ),
+      },
+      {
+        id: 'runs',
+        label: 'Runs',
+        defaultWidth: '1.5fr',
+        cell: row => <CellText title={row.runs ?? ''} />,
+      },
+      {
+        id: 'source',
+        label: 'Source',
+        defaultWidth: '1.2fr',
+        cell: row => <CellText title={row.source} />,
+      },
+    ],
+    [hasCategory, hasTags, hrefOf],
+  );
+  // Every column while their minimums fit the card; without category, tags
+  // and source below that; stacked rows below that and at phone width.
+  const fit = useFittingColumns(columnsFor, {
+    minWidths: WORKFLOW_COLUMN_MIN_WIDTHS,
+    dropFirst: WORKFLOW_COLUMNS_DROPPED_FIRST,
+  });
 
-  if (isPhone) {
-    // The phone layout (T22 B9): six columns in 343px froze the five
-    // secondary ones at bui's 75px minimum and left the name ~51px of text,
-    // with its access badge clipped. A stacked row per workflow instead:
-    // the name (the row's link) and its access badge, then category · tags · steps ·
-    // runs · source, then two lines of what it does.
+  let list;
+  if (fit.isCompact) {
+    // The compact layout, at phone width and in a card too narrow for the
+    // narrow columns (T22 B9): a stacked row per workflow, the name (the
+    // row's link) and its access badge, then category · tags · steps · runs ·
+    // source, then two lines of what it does.
     const items = rows.map<StackedRowItem>(row => {
       const href = hrefOf(row);
       return {
@@ -246,23 +341,20 @@ function WorkflowRows({
         ...(row.description ? { description: row.description } : {}),
       };
     });
-    return <StackedRowList rows={items} aria-label="Workflows" />;
-  }
-
-  return (
-    // Wider than a tablet's content column, the table keeps its column grid
-    // and scrolls sideways inside this wrapper instead of breaking the page.
-    <div style={{ overflowX: 'auto' }}>
+    list = <StackedRowList rows={items} aria-label="Workflows" />;
+  } else {
+    list = (
       <Table<Row>
-        columnConfig={columns}
+        columnConfig={fit.columns}
         data={rows}
         // Never bui's page mode: it draws its pagination footer even at three
         // rows. ShowMore above windows the sorted list instead.
         pagination={{ type: 'none' }}
         rowConfig={{ getHref: hrefOf }}
       />
-    </div>
-  );
+    );
+  }
+  return <div ref={fit.ref}>{list}</div>;
 }
 
 function WorkflowsTable({
@@ -335,6 +427,10 @@ function WorkflowsTable({
   );
   const filters = useCatalogFilters({ items: sorted, searched, facets });
   const visible = filters.filtered;
+  // From every workflow listed, not the page shown: Show more must not add a
+  // column and move the table to another layout.
+  const hasCategory = visible.some(workflow => workflow.getCategory());
+  const hasTags = visible.some(workflow => workflow.getTags().length > 0);
 
   const assist = createAssist?.(installation);
   if (workflows.length === 0) {
@@ -371,6 +467,8 @@ function WorkflowsTable({
             installation={installation}
             hasSession={hasSession}
             tools={catalogue.data?.tools ?? undefined}
+            hasCategory={hasCategory}
+            hasTags={hasTags}
           />
         )}
       </ShowMore>

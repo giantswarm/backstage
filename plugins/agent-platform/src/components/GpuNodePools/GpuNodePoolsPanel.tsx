@@ -29,6 +29,7 @@ import {
   ShowMore,
   SimpleAccordion,
   StackedRowList,
+  type FittingTier,
   useFittingColumns,
   useVisibleSort,
   type StackedRowItem,
@@ -467,9 +468,9 @@ export function GpuNodePoolsPanel({
 }: GpuNodePoolsPanelProps) {
   const showInstallation = !hideColumns?.includes('installation');
   const columnsFor = useCallback(
-    (isNarrow: boolean) =>
+    (tier: FittingTier) =>
       getColumnConfig(onRemove, opened?.id, onToggleLifecycle, prices, {
-        isNarrow,
+        isNarrow: tier !== 'full',
         showInstallation,
       }).filter(column => !hideColumns?.includes(column.id as 'installation')),
     [
