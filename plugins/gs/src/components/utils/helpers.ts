@@ -113,3 +113,23 @@ export function formatAppCatalogName(name: string) {
 export function formatSource(sourceKind?: string, sourceName?: string) {
   return sourceKind && sourceName ? `${sourceKind} ${sourceName}` : 'n/a';
 }
+
+/** Where Giant Swarm publishes the release notes of its cluster releases. */
+const CLUSTER_RELEASES_REPOSITORY = 'https://github.com/giantswarm/releases';
+
+/**
+ * The release notes of a cluster release: the GitHub release of
+ * giantswarm/releases tagged `<provider>/v<version>`, the provider being the
+ * cluster app's name without `cluster-` (`cluster-aws` → `aws/v31.1.0`).
+ * Undefined for a cluster app outside that naming.
+ */
+export function getClusterReleaseNotesURL(
+  clusterAppName: string | undefined,
+  version: string,
+): string | undefined {
+  const provider = clusterAppName?.match(/^cluster-([a-z][a-z-]*)$/)?.[1];
+  if (!provider) {
+    return undefined;
+  }
+  return `${CLUSTER_RELEASES_REPOSITORY}/releases/tag/${provider}/v${version.replace(/^v/, '')}`;
+}

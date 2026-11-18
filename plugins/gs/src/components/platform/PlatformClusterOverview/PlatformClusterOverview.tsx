@@ -1,47 +1,59 @@
 import { Flex, Text } from '@backstage/ui';
+import CodeOutlinedIcon from '@material-ui/icons/CodeOutlined';
+import LocalOfferOutlinedIcon from '@material-ui/icons/LocalOfferOutlined';
+import NewReleasesOutlinedIcon from '@material-ui/icons/NewReleasesOutlined';
 import {
+  FluxIcon,
   isManagedByFlux,
   useGitOpsSource,
 } from '@giantswarm/backstage-plugin-flux-react';
 import {
   App,
+  GitRepository,
   HelmRelease,
+  Kustomization,
+  useResource,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   AsyncValue,
   CodeBlock,
+  CommitSha,
+  DateComponent,
   ExternalLink,
   type Fact,
   FactList,
   formatLocalDay,
   Mono,
   namespacedNameFacts,
-  PageSection,
+  SimpleAccordion,
+  StatusDot,
+  type StatusDotTone,
   TechnicalDetailsFoldOut,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useCurrentCluster } from '../../clusters/ClusterDetailsPage/useCurrentCluster';
-import { useClusterKubernetesVersion } from '../../clusters/ClusterDetailsPage/useClusterKubernetesVersion';
+import { useClusterControlPlane } from '../../clusters/ClusterDetailsPage/useClusterControlPlane';
+import { useNewerRelease } from '../../clusters/ClusterDetailsPage/useNewerRelease';
 import {
   getClusterAppName,
   getClusterAppVersion,
   getClusterDescription,
-  getClusterK8sAPIUrl,
   getClusterReleaseVersion,
-  getKubectlGsLoginCommand,
-  isManagementCluster,
 } from '../../clusters/utils';
 import {
   defaultFriendlyLabelsConfiguration,
   useFriendlyItemsConfiguration,
   useHelmChartNameForDeployment,
-  useInstallationsInfo,
 } from '../../hooks';
 import { useK8sVersionEOLDate } from '../../hooks/useK8sVersionEOLDate';
 import { useLabelsWithDisplayInfo } from '../../LabelsCard/Labels/useLabelsWithDisplayInfo';
 import { getKubernetesReleaseEOLStatus } from '../../utils/getKubernetesReleaseEOLStatus';
-import { formatVersion } from '../../utils/helpers';
+import { formatVersion, getClusterReleaseNotesURL } from '../../utils/helpers';
+import { useClusterLoginCommands } from '../hooks';
+import { PlatformLabelChips } from '../PlatformLabelChips';
+import { PlatformPanel } from '../PlatformPanel';
+import { PlatformRawChips } from '../PlatformRawChips';
 
-/** The label column's width in this tab's fact lists, as on the mockup. */
+/** The label column's width in this tab's fact lists, as the design has it. */
 const LABEL_WIDTH = 170;
 
 /** "No release" and the like: a value the cluster does not have. */
@@ -51,6 +63,17 @@ function Absent({ children }: { children: string }) {
       {children}
     </Text>
   );
+}
+
+/**
+ * An end-of-life date of `gs.kubernetesVersions` (`2027-03-28`), a calendar
+ * day: read as that day wherever the person is, never shifted by a timezone.
+ */
+function eolDay(date: string): string {
+  const [year, month, day] = date.split('-').map(Number);
+  return year && month && day
+    ? formatLocalDay(new Date(year, month - 1, day), 0)
+    : date;
 }
 
 /**
@@ -67,8 +90,8 @@ function KubernetesValue({ version }: { version: string }) {
   }
   const day = eolDay(eolDate);
   return (
-    <Flex align="center" gap="1" style={{ flexWrap: 'wrap' }}>
-      <span>{formatted} ·</span>
+    <span>
+      {formatted} ·{' '}
       {eol.isEol ? (
         <Text variant="body-medium" color="warning" title={eol.message}>
           end of life since {day}
@@ -76,38 +99,48 @@ function KubernetesValue({ version }: { version: string }) {
       ) : (
         <span title={eol.message}>supported until {day}</span>
       )}
-    </Flex>
+    </span>
   );
 }
 
 /**
- * An end-of-life date of `gs.kubernetesVersions` (`2027-03-28`), a calendar
- * day: read as that day wherever the person is, never shifted by a timezone.
+ * The release the cluster runs with its notes, its Kubernetes version, and a
+ * newer release of its provider where there is one.
  */
-function eolDay(date: string): string {
-  const [year, month, day] = date.split('-').map(Number);
-  return year && month && day
-    ? formatLocalDay(new Date(year, month - 1, day), 0)
-    : date;
-}
-
-/** The release the cluster runs and its Kubernetes version. */
-function ReleaseSection() {
+function ReleasePanel() {
   const { cluster } = useCurrentCluster();
-  const kubernetes = useClusterKubernetesVersion();
+  const controlPlane = useClusterControlPlane();
+  const newer = useNewerRelease();
   const release = getClusterReleaseVersion(cluster);
+  const notes = release
+    ? getClusterReleaseNotesURL(getClusterAppName(cluster), release)
+    : undefined;
   const facts: Fact[] = [
     {
       label: 'Release',
-      value: release ? formatVersion(release) : <Absent>No release</Absent>,
+      value: release ? (
+        <span>
+          {formatVersion(release)}
+          {notes && (
+            <>
+              {' · '}
+              <ExternalLink href={notes} display="inline">
+                Release notes
+              </ExternalLink>
+            </>
+          )}
+        </span>
+      ) : (
+        <Absent>No release</Absent>
+      ),
     },
     {
       label: 'Kubernetes',
       value: (
         <AsyncValue
-          isLoading={kubernetes.isLoading}
-          value={kubernetes.version}
-          errorMessage={kubernetes.errorMessage}
+          isLoading={controlPlane.isLoading}
+          value={controlPlane.version}
+          errorMessage={controlPlane.errorMessage}
           renderNotAvailable={<Absent>Not known yet</Absent>}
         >
           {version => <KubernetesValue version={version} />}
@@ -115,19 +148,31 @@ function ReleaseSection() {
       ),
     },
   ];
+  if (newer) {
+    facts.push({
+      label: 'Newer release',
+      value: newer.date
+        ? `${newer.version}, released ${formatLocalDay(newer.date)}`
+        : newer.version,
+    });
+  }
   return (
-    <PageSection title="Release">
+    <PlatformPanel
+      title="Release"
+      icon={<NewReleasesOutlinedIcon fontSize="inherit" />}
+    >
       <FactList facts={facts} labelWidth={LABEL_WIDTH} size="medium" />
-    </PageSection>
+    </PlatformPanel>
   );
 }
 
 /**
  * The labels and annotations `gs.friendlyLabels` and `gs.friendlyAnnotations`
- * name, in their friendly form, and the cluster's description. Left out when
- * there is none of them; every label and annotation is in Technical details.
+ * name, as chips in their configured colours, and the cluster's description.
+ * Left out when there is none of them; every label and annotation is in
+ * Technical details.
  */
-function LabelsSection() {
+function LabelsPanel() {
   const { cluster } = useCurrentCluster();
   const labelsConfig =
     useFriendlyItemsConfiguration('gs.friendlyLabels') ??
@@ -145,74 +190,32 @@ function LabelsSection() {
     annotationsConfig,
   );
   const description = getClusterDescription(cluster);
-  const facts: Fact[] = [
-    ...(description ? [{ label: 'Description', value: description }] : []),
-    ...[...labels, ...annotations].map(item => ({
-      label: item.formattedKey,
-      value: item.formattedValue,
-    })),
-  ];
-  if (facts.length === 0) {
+  const chips = [...labels, ...annotations].map(item => ({
+    key: item.formattedKey,
+    value: item.formattedValue ?? '',
+    variant: item.variant,
+  }));
+  if (chips.length === 0 && !description) {
     return null;
   }
   return (
-    <PageSection title="Labels and annotations">
-      <FactList facts={facts} labelWidth={LABEL_WIDTH} size="medium" />
-    </PageSection>
-  );
-}
-
-/**
- * Where the cluster's definition lives in Git, for a cluster whose installer
- * a Flux Kustomization applies; left out otherwise, as the classic page's
- * GitOps card is.
- */
-function GitOpsSection({
-  installer,
-  installationName,
-}: {
-  installer: App | HelmRelease;
-  installationName: string;
-}) {
-  const source = useGitOpsSource(installer, installationName);
-  if (!source.inGit) {
-    return null;
-  }
-  const facts: Fact[] = [];
-  if (source.kustomization) {
-    facts.push({
-      label: 'Managed by',
-      value: `Flux · Kustomization ${source.kustomization.name}`,
-    });
-  }
-  facts.push({
-    label: 'Source',
-    value: (
-      <AsyncValue
-        isLoading={source.isLoading}
-        value={source.url}
-        errorMessage={source.errorMessage}
-      >
-        {url => <ExternalLink href={url}>{repositoryOf(url)}</ExternalLink>}
-      </AsyncValue>
-    ),
-  });
-  return (
-    <PageSection
-      title="GitOps delivery"
-      description="Changes to this cluster go through its Git repository."
+    <PlatformPanel
+      title="Labels and annotations"
+      icon={<LocalOfferOutlinedIcon fontSize="inherit" />}
     >
-      <FactList facts={facts} labelWidth={LABEL_WIDTH} size="medium" />
-    </PageSection>
+      {chips.length > 0 && (
+        <PlatformLabelChips items={chips} aria-label="Labels and annotations" />
+      )}
+      {description && (
+        <FactList
+          facts={[{ label: 'Cluster description', value: description }]}
+          labelWidth={LABEL_WIDTH}
+          size="medium"
+        />
+      )}
+    </PlatformPanel>
   );
 }
-
-/**
- * Where a part of a source link starts that is no longer the repository: a
- * GitLab `/-/…`, a GitHub or Gitea `/tree/…` or `/blob/…`, a Bitbucket
- * `/src/…`.
- */
-const BROWSE_SEGMENT = /\/(?:-|tree|blob|src)\//;
 
 /**
  * The repository a source link points into, as its host's path names it:
@@ -227,7 +230,9 @@ export function repositoryOf(url: string): string {
   } catch {
     return url;
   }
-  const browse = path.search(BROWSE_SEGMENT);
+  // Where the path stops naming the repository: a GitLab `/-/…`, a GitHub
+  // or Gitea `/tree/…` or `/blob/…`, a Bitbucket `/src/…`.
+  const browse = path.search(/\/(?:-|tree|blob|src)\//);
   const repository = (browse >= 0 ? path.slice(0, browse) : path)
     .replace(/\/_git\//, '/')
     .replace(/\.git$/, '')
@@ -235,33 +240,201 @@ export function repositoryOf(url: string): string {
   return repository || url;
 }
 
+const APPLIED_STATES: Record<string, { tone: StatusDotTone; label: string }> = {
+  True: { tone: 'success', label: 'Applied' },
+  False: { tone: 'danger', label: 'Failed' },
+};
+const APPLYING = { tone: 'info' as StatusDotTone, label: 'Applying' };
+
 /**
- * The `kubectl gs login` command, where the installation's base domain is
- * known; left out where it is not.
+ * The Kustomization's last apply: its Ready state, since when, and the
+ * revision it applied. The Kustomization is the one `useGitOpsSource` read.
  */
-function LoginSection() {
-  const { cluster, installationName } = useCurrentCluster();
-  const { installationsInfo } = useInstallationsInfo();
-  const baseDomain = installationsInfo.find(
-    info => info.name === installationName,
-  )?.baseDomain;
-  if (!baseDomain) {
+function LastApplied({
+  installationName,
+  name,
+  namespace,
+}: {
+  installationName: string;
+  name: string;
+  namespace?: string;
+}) {
+  const { resource: kustomization, isLoading } = useResource(
+    installationName,
+    Kustomization,
+    { name, namespace },
+  );
+  const ready = kustomization?.findReadyCondition();
+  const revision = kustomization?.getLastAppliedRevision();
+  const state = (ready?.status && APPLIED_STATES[ready.status]) || APPLYING;
+  return (
+    <AsyncValue isLoading={isLoading} value={kustomization ? true : undefined}>
+      {() => (
+        <Flex align="center" gap="1" style={{ flexWrap: 'wrap' }}>
+          <StatusDot tone={state.tone} label={state.label} />
+          {ready?.lastTransitionTime && (
+            <DateComponent value={ready.lastTransitionTime} relative />
+          )}
+          {revision && (
+            <span>
+              , revision <CommitSha value={revision} />
+            </span>
+          )}
+        </Flex>
+      )}
+    </AsyncValue>
+  );
+}
+
+/** The repository a Kustomization reads, and the branch it follows. */
+function SourceValue({
+  installationName,
+  url,
+  sourceRef,
+}: {
+  installationName: string;
+  url: string;
+  sourceRef?: { name: string; namespace?: string };
+}) {
+  const { resource: repository } = useResource(
+    installationName,
+    GitRepository,
+    { name: sourceRef?.name ?? '', namespace: sourceRef?.namespace },
+    { enabled: Boolean(sourceRef) },
+  );
+  const branch = repository?.getReference()?.branch;
+  return (
+    <span>
+      <ExternalLink href={url} display="inline">
+        {repositoryOf(url)}
+      </ExternalLink>
+      {branch && `, branch ${branch}`}
+    </span>
+  );
+}
+
+/**
+ * Where the cluster's definition lives in Git, for a cluster whose installer
+ * a Flux Kustomization applies; left out otherwise, as the classic page's
+ * GitOps card is.
+ */
+function GitOpsPanel({
+  installer,
+  installationName,
+}: {
+  installer: App | HelmRelease;
+  installationName: string;
+}) {
+  const source = useGitOpsSource(installer, installationName);
+  const { resource: kustomization } = useResource(
+    installationName,
+    Kustomization,
+    {
+      name: source.kustomization?.name ?? '',
+      namespace: source.kustomization?.namespace,
+    },
+    { enabled: Boolean(source.kustomization) },
+  );
+  if (!source.inGit) {
+    return null;
+  }
+  const sourceRef = kustomization?.getSourceRef();
+  const facts: Fact[] = [];
+  if (source.kustomization) {
+    facts.push(
+      {
+        label: 'Managed by',
+        value: `Flux · Kustomization ${source.kustomization.name}`,
+      },
+      {
+        label: 'Last applied',
+        value: (
+          <LastApplied
+            installationName={installationName}
+            name={source.kustomization.name}
+            namespace={source.kustomization.namespace}
+          />
+        ),
+      },
+    );
+  }
+  facts.push({
+    label: 'Source',
+    value: (
+      <AsyncValue
+        isLoading={source.isLoading}
+        value={source.url}
+        errorMessage={source.errorMessage}
+      >
+        {url => (
+          <SourceValue
+            installationName={installationName}
+            url={url}
+            sourceRef={
+              sourceRef?.kind === GitRepository.kind ? sourceRef : undefined
+            }
+          />
+        )}
+      </AsyncValue>
+    ),
+  });
+  return (
+    <PlatformPanel
+      title="GitOps delivery"
+      icon={<FluxIcon fontSize="inherit" />}
+      footnote="Changes to this cluster go through this repository."
+    >
+      <FactList facts={facts} labelWidth={LABEL_WIDTH} size="medium" />
+    </PlatformPanel>
+  );
+}
+
+/**
+ * The login commands of the cluster's access section: `kubectl gs login`
+ * where the installation's base domain is known, and for Giant Swarm staff
+ * the Teleport command with its one-time setup. Left out when there is none.
+ */
+function LoginPanel() {
+  const { kubectlGs, staff } = useClusterLoginCommands();
+  if (!kubectlGs && !staff) {
     return null;
   }
   return (
-    <PageSection
+    <PlatformPanel
       title="Work with the cluster"
-      description="Log in with kubectl gs to set up your kubectl context for this cluster."
+      icon={<CodeOutlinedIcon fontSize="inherit" />}
     >
-      <CodeBlock
-        text={getKubectlGsLoginCommand(
-          baseDomain,
-          cluster.getName(),
-          isManagementCluster(cluster),
-        )}
-        language="bash"
-      />
-    </PageSection>
+      {staff && (
+        <Flex direction="column" gap="2">
+          <Text as="p" variant="body-small" color="secondary">
+            Giant Swarm staff, through Teleport
+          </Text>
+          <CodeBlock text={staff.command} language="bash" />
+          <SimpleAccordion title="How to set up tsh">
+            <Flex direction="column" gap="2">
+              <Text as="p" variant="body-small">
+                First{' '}
+                <ExternalLink href={staff.installDocsUrl} display="inline">
+                  install tsh
+                </ExternalLink>
+                . Then run this command once:
+              </Text>
+              <CodeBlock text={staff.setup} language="bash" />
+            </Flex>
+          </SimpleAccordion>
+        </Flex>
+      )}
+      {kubectlGs && (
+        <Flex direction="column" gap="2">
+          {staff && (
+            <Text as="p" variant="body-small" color="secondary">
+              Customer access, with kubectl gs
+            </Text>
+          )}
+          <CodeBlock text={kubectlGs} language="bash" />
+        </Flex>
+      )}
+    </PlatformPanel>
   );
 }
 
@@ -283,34 +456,56 @@ function HelmReleaseChart({ release }: { release: HelmRelease }) {
   );
 }
 
-/** Each `key=value` on a line of its own. */
-function KeyValues({ entries }: { entries: Record<string, string> }) {
-  const lines = Object.entries(entries).map(([key, value]) =>
-    value ? `${key}=${value}` : key,
-  );
-  if (lines.length === 0) {
-    return <Absent>None</Absent>;
-  }
+/** "3 replicas, initialized": the control plane's machines and its state. */
+function ControlPlaneValue() {
+  const { cluster } = useCurrentCluster();
+  const { isLoading, replicas, errorMessage } = useClusterControlPlane();
+  const initialized =
+    cluster.findControlPlaneInitializedCondition()?.status === 'True';
+  const state = initialized ? 'initialized' : 'not initialized yet';
   return (
-    <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
-      {lines.map(line => (
-        <span key={line} style={{ overflowWrap: 'anywhere' }}>
-          <Mono>{line}</Mono>
-        </span>
-      ))}
+    <AsyncValue isLoading={isLoading} errorMessage={errorMessage} value={state}>
+      {value =>
+        replicas === undefined
+          ? `${value[0].toUpperCase()}${value.slice(1)}`
+          : `${replicas} ${replicas === 1 ? 'replica' : 'replicas'}, ${value}`
+      }
+    </AsyncValue>
+  );
+}
+
+/** A caption over a row of raw chips, as Technical details draws them. */
+function RawEntries({
+  title,
+  entries,
+}: {
+  title: string;
+  entries: Record<string, string>;
+}) {
+  return (
+    <Flex direction="column" gap="2">
+      <Text as="p" variant="body-small" color="secondary">
+        {title}
+      </Text>
+      {Object.keys(entries).length > 0 ? (
+        <PlatformRawChips entries={entries} aria-label={title} />
+      ) : (
+        <Absent>None</Absent>
+      )}
     </Flex>
   );
 }
 
 /**
  * The cluster's resource as Kubernetes has it: its namespace and name, the
- * chart that installs it, its API endpoint, and every label and annotation.
+ * chart that installs it, its API endpoint and control plane, what installs
+ * it, then every label and annotation.
  */
 function TechnicalDetails() {
   const { cluster, clusterApp, clusterRelease } = useCurrentCluster();
   const appName = getClusterAppName(cluster);
   const appVersion = getClusterAppVersion(cluster);
-  const apiUrl = getClusterK8sAPIUrl(cluster);
+  const apiHost = cluster.getControlPlaneEndpoint()?.host;
 
   let clusterAppValue;
   if (clusterRelease && !clusterApp) {
@@ -330,6 +525,11 @@ function TechnicalDetails() {
       name: cluster.getName(),
     }),
     { label: 'Cluster app', value: clusterAppValue },
+    {
+      label: 'API endpoint',
+      value: apiHost ? <Mono>{apiHost}</Mono> : <Absent>Not known yet</Absent>,
+    },
+    { label: 'Control plane', value: <ControlPlaneValue /> },
     ...(installer
       ? [
           {
@@ -340,42 +540,39 @@ function TechnicalDetails() {
           },
         ]
       : []),
-    {
-      label: 'API endpoint',
-      value: apiUrl ? <Mono>{apiUrl}</Mono> : <Absent>Not known yet</Absent>,
-    },
-    {
-      label: 'Labels',
-      value: <KeyValues entries={cluster.getLabels() ?? {}} />,
-    },
-    {
-      label: 'Annotations',
-      value: <KeyValues entries={cluster.getAnnotations() ?? {}} />,
-    },
   ];
-  return <FactList facts={facts} labelWidth={LABEL_WIDTH} size="medium" />;
+  return (
+    <Flex direction="column" gap="4">
+      <FactList facts={facts} labelWidth={LABEL_WIDTH} size="medium" />
+      <RawEntries title="Labels" entries={cluster.getLabels() ?? {}} />
+      <RawEntries
+        title="Annotations"
+        entries={cluster.getAnnotations() ?? {}}
+      />
+    </Flex>
+  );
 }
 
 /**
- * The cluster page's Overview tab: its release, its friendly labels and
- * annotations, where its definition lives in Git, how to log in, and the
- * technical details in a fold-out. Inside a `ClusterProvider` whose cluster
- * has been read.
+ * The cluster page's Overview tab, as the design draws it: panels for its
+ * release, its friendly labels and annotations, where its definition lives
+ * in Git, and how to log in, then the technical details in a fold-out.
+ * Inside a `ClusterProvider` whose cluster has been read.
  */
 export function PlatformClusterOverview() {
   const { clusterApp, clusterRelease, installationName } = useCurrentCluster();
   const installer = clusterApp ?? clusterRelease;
   return (
-    <Flex direction="column" gap="6">
-      <ReleaseSection />
-      <LabelsSection />
+    <Flex direction="column" gap="4">
+      <ReleasePanel />
+      <LabelsPanel />
       {installer && isManagedByFlux(installer) && (
-        <GitOpsSection
+        <GitOpsPanel
           installer={installer}
           installationName={installationName}
         />
       )}
-      <LoginSection />
+      <LoginPanel />
       <TechnicalDetailsFoldOut defaultExpanded={false}>
         <TechnicalDetails />
       </TechnicalDetailsFoldOut>

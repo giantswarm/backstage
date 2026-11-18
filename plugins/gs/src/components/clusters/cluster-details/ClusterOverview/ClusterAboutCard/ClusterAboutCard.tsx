@@ -27,7 +27,7 @@ import {
 } from '../../../../UI';
 import { formatVersion } from '../../../../utils/helpers';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
-import { useClusterKubernetesVersion } from '../../../ClusterDetailsPage/useClusterKubernetesVersion';
+import { useClusterControlPlane } from '../../../ClusterDetailsPage/useClusterControlPlane';
 import { ProviderClusterLocation } from './ProviderClusterLocation';
 import { AWSAccountField } from './AWSAccountField';
 import { ClusterSwitch } from '../../ClusterSwitch';
@@ -108,7 +108,7 @@ export function ClusterAboutCard() {
     isLoading: controlPlaneIsLoading,
     version: k8sVersion,
     errorMessage: controlPlaneErrorMessage,
-  } = useClusterKubernetesVersion();
+  } = useClusterControlPlane();
 
   const clusters = useMemo(() => [cluster], [cluster]);
   const { capacities } = useWorkerCapacity(clusters);

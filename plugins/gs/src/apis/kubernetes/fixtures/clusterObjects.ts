@@ -21,6 +21,42 @@ const SOURCE = 'source.toolkit.fluxcd.io';
 /** Where the fixture GitOps repositories live, a made-up owner. */
 const GIT_OWNER = 'https://github.com/example';
 
+/** The commit the fixture GitOps repositories are at. */
+const REVISION = '3f9a2c1d8e0b6a4f1c2d3e4f5a6b7c8d9e0f1a2b';
+
+/**
+ * The cluster releases an installation offers (`release.giantswarm.io`),
+ * active, each with the day it came out: what the cluster page's "Newer
+ * release" reads. Their versions are the fixture clusters' releases.
+ */
+const RELEASE_DATES: Record<string, string> = {
+  '30.1.2': '2025-03-04T00:00:00Z',
+  '31.1.0': '2025-09-18T00:00:00Z',
+  '32.0.0': '2026-09-18T00:00:00Z',
+};
+
+function releasesOf(
+  installation: string,
+  clusters: readonly FixtureCluster[],
+): KubeObjectInterface[] {
+  const versions = new Set(clusters.map(cluster => cluster.releaseVersion));
+  return [...versions].map(version => ({
+    apiVersion: 'release.giantswarm.io/v1alpha1',
+    kind: 'Release',
+    metadata: {
+      name: `aws-${version}`,
+      uid: `${installation}-Release-aws-${version}`,
+      creationTimestamp: RELEASE_DATES[version] ?? clusters[0].createdAt,
+    },
+    spec: {
+      apps: [],
+      components: [{ name: 'cluster-aws', version: '0.0.0' }],
+      date: RELEASE_DATES[version] ?? clusters[0].createdAt,
+      state: 'active',
+    },
+  }));
+}
+
 /** The namespace of the Flux objects that apply the clusters. */
 const FLUX_NAMESPACE = 'flux-giantswarm';
 
@@ -127,7 +163,10 @@ function objectsOf(cluster: FixtureCluster): KubeObjectInterface[] {
       metadata: metadata('KubeadmControlPlane', cluster.name, {
         labels: clusterLabels,
       }),
-      spec: { version: `v${cluster.kubernetesVersion}` },
+      spec: {
+        version: `v${cluster.kubernetesVersion}`,
+        replicas: cluster.kind === 'management' ? 3 : 1,
+      },
     },
   ];
 
@@ -178,6 +217,18 @@ function objectsOf(cluster: FixtureCluster): KubeObjectInterface[] {
           prune: true,
           sourceRef: { kind: 'GitRepository', name: kustomization },
         },
+        status: {
+          lastAppliedRevision: `main@sha1:${REVISION}`,
+          conditions: [
+            {
+              type: 'Ready',
+              status: 'True',
+              reason: 'ReconciliationSucceeded',
+              message: `Applied revision: main@sha1:${REVISION}`,
+              lastTransitionTime: cluster.createdAt,
+            },
+          ],
+        },
       },
       {
         apiVersion: `${SOURCE}/v1`,
@@ -190,7 +241,7 @@ function objectsOf(cluster: FixtureCluster): KubeObjectInterface[] {
         },
         status: {
           artifact: {
-            revision: 'main@sha1:3f9a2c1d8e0b6a4f1c2d3e4f5a6b7c8d9e0f1a2b',
+            revision: `main@sha1:${REVISION}`,
           },
         },
       },
@@ -258,7 +309,8 @@ const cache = new WeakMap<FixtureDataSet, Map<string, KubeObjectInterface[]>>();
  * the data set, its Cluster, AWSCluster, AWSClusterRoleIdentity,
  * KubeadmControlPlane, the App that installs it (with the Flux Kustomization
  * and GitRepository that apply it, where it is managed through GitOps), and a
- * MachinePool and AWSMachinePool per node pool,
+ * MachinePool and AWSMachinePool per node pool, plus the Release of each
+ * release the clusters run,
  * as the Clusters pages and the Platform section's list read them. The same
  * array while the data set stays the same.
  */
@@ -273,9 +325,11 @@ export function gsKubernetesObjectsOf(
   }
   let objects = byInstallation.get(installation);
   if (!objects) {
-    objects = withoutDuplicates(
-      inInstallation(data.clusters, installation).flatMap(objectsOf),
-    );
+    const clusters = inInstallation(data.clusters, installation);
+    objects = [
+      ...withoutDuplicates(clusters.flatMap(objectsOf)),
+      ...releasesOf(installation, clusters),
+    ];
     byInstallation.set(installation, objects);
   }
   return objects;

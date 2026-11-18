@@ -11,14 +11,16 @@ import { useCurrentCluster } from './useCurrentCluster';
 import { useIsExpectedClusterError } from './useIsExpectedClusterError';
 
 /**
- * The current cluster's Kubernetes version, from its control plane, with the
- * control plane's fetch and API-version errors. `version` stays undefined for
- * a cluster without a control plane reference yet (one still being created,
- * or an imported one) and for a control plane kind the portal cannot read.
+ * The current cluster's control plane: its Kubernetes version and, for a
+ * KubeadmControlPlane, how many machines it asks for, with the control
+ * plane's fetch and API-version errors. Both stay undefined for a cluster
+ * without a control plane reference yet (one still being created, or an
+ * imported one) and for a control plane kind the portal cannot read.
  */
-export function useClusterKubernetesVersion(): {
+export function useClusterControlPlane(): {
   isLoading: boolean;
   version?: string;
+  replicas?: number;
   errorMessage?: string;
 } {
   const { cluster, installationName } = useCurrentCluster();
@@ -76,6 +78,10 @@ export function useClusterKubernetesVersion(): {
   return {
     isLoading,
     version: controlPlane ? controlPlane.getK8sVersion() : undefined,
+    replicas:
+      controlPlane instanceof ControlPlane
+        ? controlPlane.getReplicas()
+        : undefined,
     errorMessage,
   };
 }

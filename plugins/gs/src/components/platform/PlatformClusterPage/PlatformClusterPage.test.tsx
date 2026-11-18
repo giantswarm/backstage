@@ -18,11 +18,57 @@ let mockDisabled: string[];
 let mockState: ClusterReadState;
 let mockBaseDomain: string | undefined;
 let mockInGit: boolean;
+let mockStaff: boolean | undefined;
+let mockNewer: { version: string; date?: string } | undefined;
 
-jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
-  ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
-  useClustersInfo: () => ({ ...mockInstallations, retry: jest.fn() }),
-}));
+jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => {
+  const actual = jest.requireActual(
+    '@giantswarm/backstage-plugin-kubernetes-react',
+  );
+  return {
+    ...actual,
+    useClustersInfo: () => ({ ...mockInstallations, retry: jest.fn() }),
+    // The GitOps panel's Kustomization and GitRepository.
+    useResource: (_installation: string, model: { kind: string }) => {
+      const resource =
+        model.kind === 'Kustomization'
+          ? new actual.Kustomization(
+              {
+                apiVersion: 'kustomize.toolkit.fluxcd.io/v1',
+                kind: 'Kustomization',
+                metadata: { name: 'fern-gitops', namespace: 'flux-giantswarm' },
+                spec: {
+                  sourceRef: { kind: 'GitRepository', name: 'fern-gitops' },
+                },
+                status: {
+                  lastAppliedRevision: 'main@sha1:3f9a2c1d8e0b6a4f1c2d3e4f',
+                  conditions: [
+                    {
+                      type: 'Ready',
+                      status: 'True',
+                      lastTransitionTime: '2026-11-17T08:00:00Z',
+                    },
+                  ],
+                },
+              },
+              'meadow',
+            )
+          : new actual.GitRepository(
+              {
+                apiVersion: 'source.toolkit.fluxcd.io/v1',
+                kind: 'GitRepository',
+                metadata: { name: 'fern-gitops', namespace: 'flux-giantswarm' },
+                spec: {
+                  url: 'https://github.com/example/fern-gitops',
+                  ref: { branch: 'main' },
+                },
+              },
+              'meadow',
+            );
+      return { resource, isLoading: false, errors: [], incompatibilities: [] };
+    },
+  };
+});
 jest.mock('../../hooks/useDisabledInstallations', () => ({
   useDisabledInstallations: () => ({
     disabledInstallations: mockDisabled,
@@ -32,15 +78,16 @@ jest.mock('../../hooks/useDisabledInstallations', () => ({
 jest.mock('../../clusters/ClusterDetailsPage/useClusterFromUrl', () => ({
   useCluster: () => mockState,
 }));
-jest.mock(
-  '../../clusters/ClusterDetailsPage/useClusterKubernetesVersion',
-  () => ({
-    useClusterKubernetesVersion: () => ({
-      isLoading: false,
-      version: 'v1.31.7',
-    }),
+jest.mock('../../clusters/ClusterDetailsPage/useClusterControlPlane', () => ({
+  useClusterControlPlane: () => ({
+    isLoading: false,
+    version: 'v1.31.7',
+    replicas: 3,
   }),
-);
+}));
+jest.mock('../../clusters/ClusterDetailsPage/useNewerRelease', () => ({
+  useNewerRelease: () => mockNewer,
+}));
 jest.mock(
   '../../clusters/cluster-details/ClusterOverview/ClusterAboutCard/AWSAccountField',
   () => ({
@@ -99,6 +146,7 @@ jest.mock('../../hooks/useWorkerCapacity', () => ({
 }));
 jest.mock('../../hooks', () => ({
   ...jest.requireActual('../../hooks'),
+  useCurrentUser: () => ({ isLoading: false, isGSUser: mockStaff }),
   useFriendlyItemsConfiguration: () => undefined,
   useInstallationsInfo: () => ({
     installationsInfo: [{ name: 'meadow', baseDomain: mockBaseDomain }],
@@ -249,6 +297,8 @@ describe('PlatformClusterPage', () => {
     mockDisabled = [];
     mockBaseDomain = 'meadow.example.com';
     mockInGit = true;
+    mockStaff = false;
+    mockNewer = { version: '31.2.0', date: '2026-09-18T00:00:00Z' };
     mockState = stateOf({
       cluster: workload,
       clusterApp: appOf('alder-birch', 'org-fern'),
@@ -279,22 +329,34 @@ describe('PlatformClusterPage', () => {
       '/platform/clusters/meadow/org-giantswarm/meadow',
     );
     expect(facts.textContent).toContain('fern');
-    expect(facts.textContent).toContain('eu-central-1');
+    // The provider and its region in one fact.
+    expect(facts.textContent).toContain('AWS · eu-central-1');
+    // The account in groups of four, linked to the AWS console.
     expect(
-      within(facts).getByRole('link', { name: /123456789012/ }),
+      within(facts).getByRole('link', { name: /1234 5678 9012/ }),
     ).toHaveAttribute(
       'href',
       'https://console.aws.amazon.com/?account=123456789012',
     );
+    expect(facts.textContent).toContain('12 Jan 2024');
+    // The tools as tiles, above the facts.
+    const tools = screen.getByRole('group', { name: 'Tools' });
     expect(
-      within(facts).getByRole('link', { name: /Cluster overview dashboard/ }),
+      within(tools).getByRole('link', { name: /Cluster overview dashboard/ }),
     ).toHaveAttribute('href', 'https://grafana.example.com/d/cluster');
 
     const release = screen.getByRole('region', { name: 'Release' });
     expect(release.textContent).toContain('31.1.0');
-    expect(release.textContent).toContain(
-      '1.31.7 ·supported until 28 Mar 2027',
+    expect(
+      within(release).getByRole('link', { name: /Release notes/ }),
+    ).toHaveAttribute(
+      'href',
+      'https://github.com/giantswarm/releases/releases/tag/aws/v31.1.0',
     );
+    expect(release.textContent).toContain(
+      '1.31.7 · supported until 28 Mar 2027',
+    );
+    expect(release.textContent).toContain('31.2.0, released 18 Sep');
 
     const labels = screen.getByRole('region', {
       name: 'Labels and annotations',
@@ -304,19 +366,55 @@ describe('PlatformClusterPage', () => {
 
     const gitOps = screen.getByRole('region', { name: 'GitOps delivery' });
     expect(gitOps.textContent).toContain('Kustomization fern-gitops');
+    expect(gitOps.textContent).toContain('Applied');
+    expect(gitOps.textContent).toContain('3f9a2c1');
     expect(
       within(gitOps).getByRole('link', { name: /example\/fern-gitops/ }),
     ).toBeInTheDocument();
+    expect(gitOps.textContent).toContain(', branch main');
+    expect(gitOps.textContent).toContain(
+      'Changes to this cluster go through this repository.',
+    );
 
     const login = screen.getByRole('region', { name: 'Work with the cluster' });
     expect(login.textContent).toContain(
       'kubectl gs login api.meadow.example.com',
     );
     expect(login.textContent).toContain('--workload-cluster alder-birch');
+    // Not staff: no Teleport command.
+    expect(login.textContent).not.toContain('tsh kube login');
 
-    expect(
+    await userEvent.click(
       screen.getByRole('button', { name: /Technical details/ }),
+    );
+    expect(screen.getByText('3 replicas, initialized')).toBeInTheDocument();
+    expect(
+      screen.getByText('api.alder-birch.meadow.example.com'),
     ).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Labels' })).toBeInTheDocument();
+  });
+
+  it('shows Giant Swarm staff the Teleport command too', async () => {
+    mockStaff = true;
+    await renderPage();
+
+    const login = screen.getByRole('region', { name: 'Work with the cluster' });
+    expect(login.textContent).toContain('tsh kube login meadow-alder-birch');
+    expect(login.textContent).toContain('kubectl gs login');
+  });
+
+  it('copies the login command from the menu', async () => {
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.assign(window.navigator, { clipboard: { writeText } });
+    await renderPage();
+
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await userEvent.click(
+      screen.getByRole('menuitem', { name: 'Copy login command' }),
+    );
+    expect(writeText).toHaveBeenCalledWith(
+      expect.stringContaining('kubectl gs login api.meadow.example.com'),
+    );
   });
 
   it('describes a management cluster and leaves its environment unlinked', async () => {

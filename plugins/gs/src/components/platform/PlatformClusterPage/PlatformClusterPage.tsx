@@ -7,7 +7,9 @@ import {
   useParams,
 } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import { makeStyles } from '@material-ui/core';
 import { Alert, Button, Flex, Link } from '@backstage/ui';
+import { toastApiRef, useApi } from '@backstage/frontend-plugin-api';
 import { Constants } from '@giantswarm/backstage-plugin-gs-common';
 import {
   App,
@@ -24,9 +26,12 @@ import {
   type BreadcrumbItem,
   DateComponent,
   EmptyStateCard,
+  ExternalButtonLink,
   ExternalLink,
   type Fact,
   FactsColumn,
+  formatLocalDateFull,
+  formatLocalDay,
   ManifestDialog,
   Mono,
   MoreActionsMenu,
@@ -37,6 +42,8 @@ import {
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useDisabledInstallations } from '../../hooks/useDisabledInstallations';
+import IconResolver from '../../UI/IconResolver/IconResolver';
+import { useClusterLoginCommands } from '../hooks';
 import {
   getClusterKey,
   useWorkerCapacity,
@@ -176,6 +183,24 @@ function ReadFailed({
   );
 }
 
+const useToolStyles = makeStyles({
+  // The tools above the facts, ruled off from them.
+  tools: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 'var(--bui-space-2)',
+    paddingBottom: 'var(--bui-space-3)',
+    marginBottom: 'var(--bui-space-1)',
+    borderBottom: '1px solid var(--bui-border-1)',
+  },
+  // A tile as wide as the column, its label at the start.
+  tile: {
+    width: '100%',
+    justifyContent: 'flex-start',
+    '& svg:first-child': { fontSize: 18 },
+  },
+});
+
 /** The infrastructure cluster kinds whose cluster has a region. */
 const LOCATED_KINDS = new Set<string>([
   AWSCluster.kind,
@@ -200,10 +225,10 @@ function AWSAccountValue({
         // To the AWS console, as the classic page's account links.
         accountUrl ? (
           <ExternalLink href={accountUrl}>
-            <Mono>{value}</Mono>
+            <Mono>{groupAccountId(value)}</Mono>
           </ExternalLink>
         ) : (
-          <Mono>{value}</Mono>
+          <Mono>{groupAccountId(value)}</Mono>
         )
       }
     </AsyncValue>
@@ -243,27 +268,41 @@ function WorkersValue() {
 
 /** The tools of `gs.clusterDetails.resources`, each opening in a new tab. */
 function ToolLinks({ links }: { links: ClusterToolLink[] }) {
+  const classes = useToolStyles();
   if (links.length === 0) {
     return null;
   }
   return (
-    <nav aria-label="Tools">
-      <Flex direction="column" gap="2" mt="4">
-        {links.map((link, index) => (
-          // Two configured links can fill in to the same URL.
-          <ExternalLink key={`${index}:${link.label}`} href={link.url}>
-            {link.label.replace(/\s*(\\n|\n)\s*/g, ' ')}
-          </ExternalLink>
-        ))}
-      </Flex>
-    </nav>
+    <div role="group" aria-label="Tools" className={classes.tools}>
+      {links.map((link, index) => (
+        // Two configured links can fill in to the same URL.
+        <ExternalButtonLink
+          key={`${index}:${link.label}`}
+          href={link.url}
+          variant="secondary"
+          iconStart={<IconResolver iconName={link.icon} />}
+          className={classes.tile}
+        >
+          {link.label.replace(/\s*(\\n|\n)\s*/g, ' ')}
+        </ExternalButtonLink>
+      ))}
+    </div>
   );
 }
 
 /**
- * The facts beside the Overview: where the cluster runs, whose it is, its
- * workers and age, and the tools to watch it with. Its service priority is
- * among the friendly labels on the Overview.
+ * An AWS account ID in groups of four digits, as the AWS console prints it:
+ * `1234 5678 9012`.
+ */
+export function groupAccountId(id: string): string {
+  return /^\d{12}$/.test(id) ? id.replace(/(\d{4})(?=\d)/g, '$1 ') : id;
+}
+
+/**
+ * The column beside the Overview: the tools to watch the cluster with, as
+ * tiles, then the facts: where it runs, whose it is, its account, workers
+ * and age. Its service priority is among the friendly labels on the
+ * Overview.
  */
 function ClusterFacts() {
   const { cluster, installationName } = useCurrentCluster();
@@ -298,14 +337,23 @@ function ClusterFacts() {
     facts.push({ label: 'Organization', value: organization });
   }
   if (provider) {
-    facts.push({ label: 'Provider', value: formatClusterProvider(provider) });
-  }
-  if (infrastructureRef && LOCATED_KINDS.has(infrastructureRef.kind)) {
-    facts.push({ label: 'Region', value: <ProviderClusterLocation /> });
+    // "AWS · eu-central-1": the provider and, where it has one, the region.
+    const located =
+      infrastructureRef && LOCATED_KINDS.has(infrastructureRef.kind);
+    facts.push({
+      label: 'Provider',
+      value: located ? (
+        <span>
+          {formatClusterProvider(provider)} · <ProviderClusterLocation />
+        </span>
+      ) : (
+        formatClusterProvider(provider)
+      ),
+    });
   }
   if (infrastructureRef?.kind === AWSCluster.kind) {
     facts.push({
-      label: 'AWS account',
+      label: 'Account',
       value: <AWSAccountValue infrastructureRef={infrastructureRef} />,
     });
   }
@@ -313,14 +361,20 @@ function ClusterFacts() {
   if (created) {
     facts.push({
       label: 'Created',
-      value: <DateComponent value={created} relative />,
+      value: (
+        <span title={formatLocalDateFull(created)}>
+          {formatLocalDay(created, 0)}
+        </span>
+      ),
     });
   }
 
+  // The tools first, as tiles, then the facts.
   return (
-    <FactsColumn facts={facts}>
+    <Flex direction="column" gap="0">
       {!tools.isLoading && <ToolLinks links={tools.links} />}
-    </FactsColumn>
+      <FactsColumn facts={facts} />
+    </Flex>
   );
 }
 
@@ -376,6 +430,26 @@ function ClusterPage() {
   const { search } = useLocation();
   const [isManifestOpen, setManifestOpen] = useState(false);
   const manifest = useMemo(() => toKubectlYaml(cluster), [cluster]);
+  const toastApi = useApi(toastApiRef);
+  const { kubectlGs, staff } = useClusterLoginCommands();
+  // The command the Overview shows first: kubectl gs, else Teleport's.
+  const loginCommand = kubectlGs ?? staff?.command;
+  const copyLoginCommand = async (command: string) => {
+    try {
+      await window.navigator.clipboard.writeText(command);
+      toastApi.post({
+        title: 'Login command copied',
+        status: 'success',
+        timeout: 4000,
+      });
+    } catch (error) {
+      toastApi.post({
+        title: 'Could not copy the login command',
+        description: (error as Error).message,
+        status: 'danger',
+      });
+    }
+  };
 
   return (
     <ShellPage
@@ -388,6 +462,17 @@ function ClusterPage() {
       menu={
         <MoreActionsMenu
           items={[
+            // Left out where no command can be built: a menu item cannot
+            // say why it is missing.
+            ...(loginCommand
+              ? [
+                  {
+                    id: 'copy-login',
+                    label: 'Copy login command',
+                    onAction: () => void copyLoginCommand(loginCommand),
+                  },
+                ]
+              : []),
             {
               id: 'manifest',
               label: 'View manifest',
