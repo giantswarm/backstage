@@ -506,7 +506,7 @@ test.describe('models: Add GPU node pool — node size, price and preset on the 
       'Deploy is blocked: Qwen3 4B Instruct fits no size of this pool',
     );
     await expect(blocked).toContainText(
-      '2xlarge (8 CPU / 32 GiB) would host it',
+      '2xlarge (8 vCPU / 32 GiB) would host it',
     );
     // The other L4 preset is marked in the list, not in an alert.
     await page.getByRole('button', { name: /I want to serve/ }).click();

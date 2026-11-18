@@ -44,6 +44,11 @@ export type GitOpsSource = {
   errors: ReturnType<typeof useResource>['errors'];
   kustomization?: { name: string; namespace?: string; path?: string };
   /**
+   * The Kustomization and GitRepository the lookup read, once read: their
+   * status (the last apply, the branch) without reading them again.
+   */
+  resources: { kustomization?: Kustomization; gitRepository?: GitRepository };
+  /**
    * The HelmRelease the Kustomization was found through, when the resource is
    * chart-rendered — the outermost one, if a chart rendered that release too.
    * Its desired state is then chart values in Git, not a manifest of the
@@ -261,6 +266,10 @@ export function useGitOpsSource(
       : undefined,
     errorMessage,
     errors,
+    resources: {
+      kustomization: kustomizationName ? kustomization : undefined,
+      gitRepository: gitRepositoryEnabled ? gitRepository : undefined,
+    },
     kustomization: kustomizationName
       ? {
           name: kustomizationName,

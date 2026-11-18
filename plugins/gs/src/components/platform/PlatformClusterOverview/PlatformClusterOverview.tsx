@@ -1,18 +1,13 @@
 import { Flex, Text } from '@backstage/ui';
-import CodeOutlinedIcon from '@material-ui/icons/CodeOutlined';
 import LocalOfferOutlinedIcon from '@material-ui/icons/LocalOfferOutlined';
-import NewReleasesOutlinedIcon from '@material-ui/icons/NewReleasesOutlined';
 import {
-  FluxIcon,
   isManagedByFlux,
   useGitOpsSource,
 } from '@giantswarm/backstage-plugin-flux-react';
 import {
   App,
-  GitRepository,
   HelmRelease,
-  Kustomization,
-  useResource,
+  type Kustomization,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   AsyncValue,
@@ -23,6 +18,7 @@ import {
   type Fact,
   FactList,
   formatLocalDay,
+  GitOpsIcon,
   Mono,
   namespacedNameFacts,
   SimpleAccordion,
@@ -30,12 +26,17 @@ import {
   type StatusDotTone,
   TechnicalDetailsFoldOut,
 } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  ReleasePackageIcon,
+  TerminalIcon,
+} from '../../../assets/icons/CustomIcons';
 import { useCurrentCluster } from '../../clusters/ClusterDetailsPage/useCurrentCluster';
 import { useClusterControlPlane } from '../../clusters/ClusterDetailsPage/useClusterControlPlane';
 import { useNewerRelease } from '../../clusters/ClusterDetailsPage/useNewerRelease';
 import {
   getClusterAppName,
   getClusterAppVersion,
+  getClusterReleaseProvider,
   getClusterDescription,
   getClusterReleaseVersion,
 } from '../../clusters/utils';
@@ -66,11 +67,13 @@ function Absent({ children }: { children: string }) {
 }
 
 /**
- * An end-of-life date of `gs.kubernetesVersions` (`2027-03-28`), a calendar
- * day: read as that day wherever the person is, never shifted by a timezone.
+ * A day the data names as a calendar day, an end-of-life date of
+ * `gs.kubernetesVersions` (`2027-03-28`) or a release's date (UTC midnight):
+ * read as that day wherever the person is, never shifted by a timezone.
  */
-function eolDay(date: string): string {
-  const [year, month, day] = date.split('-').map(Number);
+function calendarDay(date: string): string {
+  // The date part only: `2026-09-18T00:00:00Z` is the 18th everywhere.
+  const [year, month, day] = date.slice(0, 10).split('-').map(Number);
   return year && month && day
     ? formatLocalDay(new Date(year, month - 1, day), 0)
     : date;
@@ -88,7 +91,7 @@ function KubernetesValue({ version }: { version: string }) {
   if (!eolDate || !eol) {
     return <>{formatted}</>;
   }
-  const day = eolDay(eolDate);
+  const day = calendarDay(eolDate);
   return (
     <span>
       {formatted} ·{' '}
@@ -112,9 +115,11 @@ function ReleasePanel() {
   const controlPlane = useClusterControlPlane();
   const newer = useNewerRelease();
   const release = getClusterReleaseVersion(cluster);
-  const notes = release
-    ? getClusterReleaseNotesURL(getClusterAppName(cluster), release)
-    : undefined;
+  const provider = getClusterReleaseProvider(cluster);
+  const notes =
+    release && provider
+      ? getClusterReleaseNotesURL(provider, release)
+      : undefined;
   const facts: Fact[] = [
     {
       label: 'Release',
@@ -152,14 +157,14 @@ function ReleasePanel() {
     facts.push({
       label: 'Newer release',
       value: newer.date
-        ? `${newer.version}, released ${formatLocalDay(newer.date)}`
+        ? `${newer.version}, released ${calendarDay(newer.date)}`
         : newer.version,
     });
   }
   return (
     <PlatformPanel
       title="Release"
-      icon={<NewReleasesOutlinedIcon fontSize="inherit" />}
+      icon={<ReleasePackageIcon fontSize="inherit" />}
     >
       <FactList facts={facts} labelWidth={LABEL_WIDTH} size="medium" />
     </PlatformPanel>
@@ -248,70 +253,26 @@ const APPLYING = { tone: 'info' as StatusDotTone, label: 'Applying' };
 
 /**
  * The Kustomization's last apply: its Ready state, since when, and the
- * revision it applied. The Kustomization is the one `useGitOpsSource` read.
+ * revision it applied.
  */
-function LastApplied({
-  installationName,
-  name,
-  namespace,
-}: {
-  installationName: string;
-  name: string;
-  namespace?: string;
-}) {
-  const { resource: kustomization, isLoading } = useResource(
-    installationName,
-    Kustomization,
-    { name, namespace },
-  );
-  const ready = kustomization?.findReadyCondition();
-  const revision = kustomization?.getLastAppliedRevision();
+function LastApplied({ kustomization }: { kustomization: Kustomization }) {
+  const ready = kustomization.findReadyCondition();
+  const revision = kustomization.getLastAppliedRevision();
   const state = (ready?.status && APPLIED_STATES[ready.status]) || APPLYING;
   return (
-    <AsyncValue isLoading={isLoading} value={kustomization ? true : undefined}>
-      {() => (
-        <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
-          <StatusDot tone={state.tone} label={state.label} />
-          <span>
-            {ready?.lastTransitionTime && (
-              <DateComponent value={ready.lastTransitionTime} relative />
-            )}
-            {revision && (
-              <>
-                , revision <CommitSha value={revision} />
-              </>
-            )}
-          </span>
-        </Flex>
-      )}
-    </AsyncValue>
-  );
-}
-
-/** The repository a Kustomization reads, and the branch it follows. */
-function SourceValue({
-  installationName,
-  url,
-  sourceRef,
-}: {
-  installationName: string;
-  url: string;
-  sourceRef?: { name: string; namespace?: string };
-}) {
-  const { resource: repository } = useResource(
-    installationName,
-    GitRepository,
-    { name: sourceRef?.name ?? '', namespace: sourceRef?.namespace },
-    { enabled: Boolean(sourceRef) },
-  );
-  const branch = repository?.getReference()?.branch;
-  return (
-    <span>
-      <ExternalLink href={url} display="inline">
-        {repositoryOf(url)}
-      </ExternalLink>
-      {branch && `, branch ${branch}`}
-    </span>
+    <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
+      <StatusDot tone={state.tone} label={state.label} />
+      <span>
+        {ready?.lastTransitionTime && (
+          <DateComponent value={ready.lastTransitionTime} relative />
+        )}
+        {revision && (
+          <>
+            , revision <CommitSha value={revision} />
+          </>
+        )}
+      </span>
+    </Flex>
   );
 }
 
@@ -328,37 +289,24 @@ function GitOpsPanel({
   installationName: string;
 }) {
   const source = useGitOpsSource(installer, installationName);
-  const { resource: kustomization } = useResource(
-    installationName,
-    Kustomization,
-    {
-      name: source.kustomization?.name ?? '',
-      namespace: source.kustomization?.namespace,
-    },
-    { enabled: Boolean(source.kustomization) },
-  );
   if (!source.inGit) {
     return null;
   }
-  const sourceRef = kustomization?.getSourceRef();
+  // What the lookup already read: no second read of either.
+  const { kustomization, gitRepository } = source.resources;
+  const branch = gitRepository?.getReference()?.branch;
   const facts: Fact[] = [];
   if (source.kustomization) {
-    facts.push(
-      {
-        label: 'Managed by',
-        value: `Flux · Kustomization ${source.kustomization.name}`,
-      },
-      {
-        label: 'Last applied',
-        value: (
-          <LastApplied
-            installationName={installationName}
-            name={source.kustomization.name}
-            namespace={source.kustomization.namespace}
-          />
-        ),
-      },
-    );
+    facts.push({
+      label: 'Managed by',
+      value: `Flux · Kustomization ${source.kustomization.name}`,
+    });
+  }
+  if (kustomization) {
+    facts.push({
+      label: 'Last applied',
+      value: <LastApplied kustomization={kustomization} />,
+    });
   }
   facts.push({
     label: 'Source',
@@ -369,13 +317,12 @@ function GitOpsPanel({
         errorMessage={source.errorMessage}
       >
         {url => (
-          <SourceValue
-            installationName={installationName}
-            url={url}
-            sourceRef={
-              sourceRef?.kind === GitRepository.kind ? sourceRef : undefined
-            }
-          />
+          <span>
+            <ExternalLink href={url} display="inline">
+              {repositoryOf(url)}
+            </ExternalLink>
+            {branch && `, branch ${branch}`}
+          </span>
         )}
       </AsyncValue>
     ),
@@ -383,7 +330,7 @@ function GitOpsPanel({
   return (
     <PlatformPanel
       title="GitOps delivery"
-      icon={<FluxIcon fontSize="inherit" />}
+      icon={<GitOpsIcon fontSize="inherit" />}
       footnote="Changes to this cluster go through this repository."
     >
       <FactList facts={facts} labelWidth={LABEL_WIDTH} size="medium" />
@@ -404,12 +351,23 @@ function LoginPanel() {
   return (
     <PlatformPanel
       title="Work with the cluster"
-      icon={<CodeOutlinedIcon fontSize="inherit" />}
+      icon={<TerminalIcon fontSize="inherit" />}
     >
+      {/* kubectl gs first, as the design has it and the menu copies it. */}
+      {kubectlGs && (
+        <Flex direction="column" gap="2">
+          {staff && (
+            <Text as="p" variant="body-small" color="secondary">
+              kubectl gs
+            </Text>
+          )}
+          <CodeBlock text={kubectlGs} language="bash" />
+        </Flex>
+      )}
       {staff && (
         <Flex direction="column" gap="2">
           <Text as="p" variant="body-small" color="secondary">
-            Giant Swarm staff, through Teleport
+            Teleport, for Giant Swarm staff
           </Text>
           <CodeBlock text={staff.command} language="bash" />
           <SimpleAccordion title="How to set up tsh">
@@ -424,16 +382,6 @@ function LoginPanel() {
               <CodeBlock text={staff.setup} language="bash" />
             </Flex>
           </SimpleAccordion>
-        </Flex>
-      )}
-      {kubectlGs && (
-        <Flex direction="column" gap="2">
-          {staff && (
-            <Text as="p" variant="body-small" color="secondary">
-              Customer access, with kubectl gs
-            </Text>
-          )}
-          <CodeBlock text={kubectlGs} language="bash" />
         </Flex>
       )}
     </PlatformPanel>

@@ -1312,7 +1312,7 @@ export function sizesHosting(
 
 /**
  * The size cluster-manager says would host a preset none of the pool's sizes
- * does — `… — 2xlarge (8 CPU / 32 GiB) would host it` at the end of a reason
+ * does — `… — 2xlarge (8 vCPU / 32 GiB) would host it` at the end of a reason
  * or a warning.
  */
 export function sizeThatWouldHost(

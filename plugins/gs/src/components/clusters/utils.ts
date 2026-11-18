@@ -240,3 +240,23 @@ export function getKubectlGsLoginCommand(
 
   return `${baseCommand} \\\n  --workload-cluster ${clusterName} \\\n  --certificate-group system:masters`;
 }
+
+/**
+ * The provider a cluster's releases are named and tagged by: its cluster
+ * app's name without `cluster-` (`cluster-aws` → `aws`, `cluster-aks` →
+ * `aks`). The Release resources are `<provider>-<version>` and the release
+ * notes are tagged `<provider>/v<version>` in giantswarm/releases. Undefined
+ * for a cluster app outside that naming.
+ */
+export function getClusterReleaseProvider(
+  cluster: Cluster,
+): string | undefined {
+  return releaseProviderOfApp(getClusterAppName(cluster));
+}
+
+/** {@link getClusterReleaseProvider} from the cluster app's name. */
+export function releaseProviderOfApp(
+  clusterAppName: string | undefined,
+): string | undefined {
+  return clusterAppName?.match(/^cluster-([a-z][a-z0-9-]*)$/)?.[1];
+}

@@ -79,11 +79,12 @@ export function PlatformLabelChips({
   const classes = useStyles();
   return (
     <ul className={classes.list} aria-label={ariaLabel}>
-      {items.map(item => {
+      {items.map((item, index) => {
         const tint = (item.variant && TINTS[item.variant]) || NEUTRAL;
         return (
           <li
-            key={`${item.key}=${item.value}`}
+            // A label and an annotation can format alike.
+            key={`${index}:${item.key}=${item.value}`}
             className={classes.pair}
             style={{ borderColor: tint.bg }}
           >

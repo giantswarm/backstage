@@ -409,10 +409,10 @@ function fit(shapes: Shape[], preset: Preset) {
   }
   const tight = shapes[shapes.length - 1];
   const would = SHAPES.find(hosts);
-  const reason = `requests ${preset.cpu} CPU / ${preset.memory}; ${tight.size} leaves a predictor ${tight.usableVcpu} CPU / ${tight.usableMemoryGiB} GiB after the node's kubelet reservations and daemonsets`;
+  const reason = `requests ${preset.cpu} vCPU / ${preset.memory}; ${tight.size} leaves a predictor ${tight.usableVcpu} vCPU / ${tight.usableMemoryGiB} GiB after the node's kubelet reservations and daemonsets`;
   return would
     ? {
-        reason: `${reason} — ${would.size} (${would.vcpu} CPU / ${would.memoryGiB} GiB) would host it`,
+        reason: `${reason} — ${would.size} (${would.vcpu} vCPU / ${would.memoryGiB} GiB) would host it`,
         hostable: true,
       }
     : { reason, hostable: false };

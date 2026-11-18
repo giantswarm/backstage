@@ -74,7 +74,8 @@ import { type PlatformLinks, usePlatformLinks } from '../PlatformLinks';
 const useStyles = makeStyles({
   // The whole row opens its cluster for the mouse (see `openRowOnClick`).
   rows: {
-    '& tbody [role=row]': {
+    // Only a row with a cluster's link opens on a click.
+    '& tbody [role=row]:has(a[href])': {
       cursor: 'pointer',
     },
   },
@@ -283,6 +284,7 @@ function nameCell(row: PlatformClusterRow, href: string | undefined) {
           {href ? (
             <Link
               href={href}
+              data-cluster-id={row.id}
               variant="body-medium"
               truncate
               title={row.name}
@@ -488,9 +490,9 @@ function ClusterStackedList({
         id: row.id,
         href: clusterHref(links, row),
         title: (
-          <>
+          <span data-cluster-id={row.id}>
             {row.name} {managementMark(row)}
-          </>
+          </span>
         ),
         status: <PlatformClusterStatusDot status={row.status} />,
         facts: [row.installationName, row.organization, row.releaseVersion],
@@ -636,14 +638,14 @@ export function PlatformClustersPanel() {
       : undefined;
 
   /** The row a click went to: its key, and its cluster's page. */
+  // By the row's id on its name, not by the rendered href, which carries
+  // the app's base path where it has one.
   const rowOf = (target: EventTarget) => {
-    const href = (target as Element)
+    const id = (target as Element)
       .closest('tbody [role=row], li')
-      ?.querySelector('a[href]')
-      ?.getAttribute('href');
-    const row = href
-      ? sorted.find(candidate => clusterHref(links, candidate) === href)
-      : undefined;
+      ?.querySelector<HTMLElement>('[data-cluster-id]')?.dataset.clusterId;
+    const row = id ? sorted.find(candidate => candidate.id === id) : undefined;
+    const href = row ? clusterHref(links, row) : undefined;
     return row && href ? { row, href } : undefined;
   };
 

@@ -316,7 +316,7 @@ const BIG_PRESET: PresetSizeFit = {
   gpuMemoryGiB: 96,
 };
 const TOO_SMALL =
-  "requests 4 CPU / 12Gi; xlarge leaves a predictor 3 CPU / 11.9 GiB after the node's kubelet reservations and daemonsets — 2xlarge (8 CPU / 32 GiB) would host it";
+  "requests 4 vCPU / 12Gi; xlarge leaves a predictor 3 vCPU / 11.9 GiB after the node's kubelet reservations and daemonsets — 2xlarge (8 vCPU / 32 GiB) would host it";
 const GPU_MEMORY =
   'needs 96 GiB of GPU memory across 1 GPU(s); a g6 GPU has 24 GiB';
 const CHART_SOURCE =

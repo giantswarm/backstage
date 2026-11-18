@@ -120,16 +120,11 @@ const CLUSTER_RELEASES_REPOSITORY = 'https://github.com/giantswarm/releases';
 /**
  * The release notes of a cluster release: the GitHub release of
  * giantswarm/releases tagged `<provider>/v<version>`, the provider being the
- * cluster app's name without `cluster-` (`cluster-aws` → `aws/v31.1.0`).
- * Undefined for a cluster app outside that naming.
+ * one `getClusterReleaseProvider` reads off the cluster (`aws/v31.1.0`).
  */
 export function getClusterReleaseNotesURL(
-  clusterAppName: string | undefined,
+  provider: string,
   version: string,
-): string | undefined {
-  const provider = clusterAppName?.match(/^cluster-([a-z][a-z-]*)$/)?.[1];
-  if (!provider) {
-    return undefined;
-  }
+): string {
   return `${CLUSTER_RELEASES_REPOSITORY}/releases/tag/${provider}/v${version.replace(/^v/, '')}`;
 }

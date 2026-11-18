@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Navigate,
   Route,
@@ -26,7 +26,6 @@ import {
   type BreadcrumbItem,
   DateComponent,
   EmptyStateCard,
-  ExternalButtonLink,
   ExternalLink,
   type Fact,
   FactsColumn,
@@ -44,11 +43,15 @@ import {
 import { useDisabledInstallations } from '../../hooks/useDisabledInstallations';
 import IconResolver from '../../UI/IconResolver/IconResolver';
 import { useClusterLoginCommands } from '../hooks';
+import { PlatformToolTile } from '../PlatformToolTile';
 import {
   getClusterKey,
   useWorkerCapacity,
 } from '../../hooks/useWorkerCapacity';
-import type { ClusterAddress } from '../../clusters/ClusterDetailsPage/useClusterFromUrl';
+import {
+  type ClusterAddress,
+  isClusterReadQuery,
+} from '../../clusters/ClusterDetailsPage/useClusterFromUrl';
 import {
   ClusterProvider,
   useAsyncCluster,
@@ -70,10 +73,12 @@ import {
 import {
   calculateClusterProvider,
   calculateClusterStatus,
+  DELETING_CLUSTER_REFRESH_MS,
   formatClusterProvider,
   getClusterCreationTimestamp,
   getClusterOrganization,
   isManagementCluster,
+  LIVE_CLUSTER_REFRESH_MS,
 } from '../../clusters/utils';
 import { PlatformClusterOverview } from '../PlatformClusterOverview';
 import { PlatformClusterStatusDot } from '../PlatformClusterStatusDot';
@@ -193,14 +198,6 @@ const useToolStyles = makeStyles({
     marginBottom: 'var(--bui-space-1)',
     borderBottom: '1px solid var(--bui-border-1)',
   },
-  // A tile as wide as the column, its label at the start.
-  // 44px high, the shell's touch target and the design's tile.
-  tile: {
-    width: '100%',
-    minHeight: 44,
-    justifyContent: 'flex-start',
-    '& svg:first-child': { fontSize: 18 },
-  },
 });
 
 /** The infrastructure cluster kinds whose cluster has a region. */
@@ -278,16 +275,13 @@ function ToolLinks({ links }: { links: ClusterToolLink[] }) {
     <div role="group" aria-label="Tools" className={classes.tools}>
       {links.map((link, index) => (
         // Two configured links can fill in to the same URL.
-        <ExternalButtonLink
+        <PlatformToolTile
           key={`${index}:${link.label}`}
           href={link.url}
-          variant="secondary"
-          size="medium"
-          iconStart={<IconResolver iconName={link.icon} />}
-          className={classes.tile}
+          icon={<IconResolver iconName={link.icon} />}
         >
           {link.label.replace(/\s*(\\n|\n)\s*/g, ' ')}
-        </ExternalButtonLink>
+        </PlatformToolTile>
       ))}
     </div>
   );
@@ -489,6 +483,7 @@ function ClusterPage() {
       aside={<ClusterFacts />}
     >
       <Flex direction="column" gap="5">
+        <UnreachableNotice />
         {isDeleting && <DeletingNotice refreshError={refreshError} />}
         {!isDeleting && refreshError && (
           <Alert
@@ -531,9 +526,30 @@ function useRereadCluster(installationName: string): () => void {
   const queryClient = useQueryClient();
   return () =>
     void queryClient.invalidateQueries({
-      predicate: ({ queryKey }) =>
-        queryKey[0] === 'cluster' && queryKey[1] === installationName,
+      predicate: isClusterReadQuery(installationName),
     });
+}
+
+/**
+ * Re-reads the cluster and what installs it every `intervalMs` while the
+ * page shows only the installer, so the page moves on by itself once the
+ * Cluster appears or the installer goes. A read still in flight is left to
+ * finish, as the classic page's deletion refresh does.
+ */
+function useFollowInstaller(installationName: string, intervalMs: number) {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    const timer = setInterval(() => {
+      queryClient.invalidateQueries(
+        {
+          refetchType: 'active',
+          predicate: isClusterReadQuery(installationName),
+        },
+        { cancelRefetch: false },
+      );
+    }, intervalMs);
+    return () => clearInterval(timer);
+  }, [queryClient, installationName, intervalMs]);
 }
 
 const INSTALLER_TITLES = {
@@ -567,7 +583,15 @@ function InstallerOnly({
   onRetry: () => void;
 }) {
   const { clustersHref, frame } = useFrame(name);
+  const { installationName } = useAsyncCluster();
   const outcome = installerOutcome(installer);
+  // Creating and deleting move on soon; a failed install is watched slowly.
+  useFollowInstaller(
+    installationName,
+    outcome === 'failed'
+      ? LIVE_CLUSTER_REFRESH_MS
+      : DELETING_CLUSTER_REFRESH_MS,
+  );
   return (
     <ShellPage title={name} {...frame}>
       <Flex direction="column" gap="4" align="start">
@@ -661,6 +685,13 @@ function EnvironmentGate({
   const installations = useClustersInfo();
   const disabled = useDisabledInstallations();
   const queryClient = useQueryClient();
+  // Once the page is past the gate it stays: a later failed readiness probe
+  // shows as a warning on the page (`UnreachableNotice`), not as a screen
+  // that unmounts what the person has open.
+  const passed = useRef(false);
+  if (passed.current) {
+    return <>{children}</>;
+  }
   // The readiness check of the environments' backends, asked again.
   const recheck = () =>
     void queryClient.invalidateQueries({
@@ -699,7 +730,28 @@ function EnvironmentGate({
       />
     );
   }
+  passed.current = true;
   return <>{children}</>;
+}
+
+/**
+ * The readiness check failing for the environment of a cluster already on
+ * the page: the page keeps what it read and says so.
+ */
+function UnreachableNotice() {
+  const { installationName } = useCurrentCluster();
+  const { disabledInstallations } = useDisabledInstallations();
+  if (!disabledInstallations.includes(installationName)) {
+    return null;
+  }
+  return (
+    <Alert
+      status="warning"
+      icon
+      title={`Could not reach ${installationName} just now`}
+      description="The page shows the cluster as last read and keeps trying."
+    />
+  );
 }
 
 /** The classic pages' error boxes are not drawn: each value says its own. */

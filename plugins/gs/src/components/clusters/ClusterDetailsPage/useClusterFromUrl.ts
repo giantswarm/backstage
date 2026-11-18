@@ -42,6 +42,19 @@ export function clusterRefetchInterval(
 }
 
 /**
+ * Whether a query is one of an installation's resource reads (a get or a
+ * list), the reads a cluster page re-reads: not its API discovery.
+ */
+export function isClusterReadQuery(
+  installationName: string,
+): (query: { queryKey: readonly unknown[] }) => boolean {
+  return ({ queryKey }) =>
+    queryKey[0] === 'cluster' &&
+    queryKey[1] === installationName &&
+    (queryKey[2] === 'get' || queryKey[2] === 'list');
+}
+
+/**
  * While a deletion is followed, re-reads every resource the page shows from
  * its installation, the cluster included. A read still in flight when the next
  * tick comes is left to finish, so a slow apiserver still answers.
@@ -57,10 +70,7 @@ function useRefreshWhileDeleting(installationName: string, follow: boolean) {
       queryClient.invalidateQueries(
         {
           refetchType: 'active',
-          predicate: ({ queryKey }) =>
-            queryKey[0] === 'cluster' &&
-            queryKey[1] === installationName &&
-            (queryKey[2] === 'get' || queryKey[2] === 'list'),
+          predicate: isClusterReadQuery(installationName),
         },
         { cancelRefetch: false },
       );

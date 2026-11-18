@@ -1,6 +1,6 @@
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { App, Cluster } from '@giantswarm/backstage-plugin-kubernetes-react';
@@ -21,61 +21,30 @@ let mockInGit: boolean;
 let mockStaff: boolean | undefined;
 let mockNewer: { version: string; date?: string } | undefined;
 
-jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => {
-  const actual = jest.requireActual(
-    '@giantswarm/backstage-plugin-kubernetes-react',
-  );
-  return {
-    ...actual,
-    useClustersInfo: () => ({ ...mockInstallations, retry: jest.fn() }),
-    // The GitOps panel's Kustomization and GitRepository.
-    useResource: (_installation: string, model: { kind: string }) => {
-      const resource =
-        model.kind === 'Kustomization'
-          ? new actual.Kustomization(
-              {
-                apiVersion: 'kustomize.toolkit.fluxcd.io/v1',
-                kind: 'Kustomization',
-                metadata: { name: 'fern-gitops', namespace: 'flux-giantswarm' },
-                spec: {
-                  sourceRef: { kind: 'GitRepository', name: 'fern-gitops' },
-                },
-                status: {
-                  lastAppliedRevision: 'main@sha1:3f9a2c1d8e0b6a4f1c2d3e4f',
-                  conditions: [
-                    {
-                      type: 'Ready',
-                      status: 'True',
-                      lastTransitionTime: '2026-11-17T08:00:00Z',
-                    },
-                  ],
-                },
-              },
-              'meadow',
-            )
-          : new actual.GitRepository(
-              {
-                apiVersion: 'source.toolkit.fluxcd.io/v1',
-                kind: 'GitRepository',
-                metadata: { name: 'fern-gitops', namespace: 'flux-giantswarm' },
-                spec: {
-                  url: 'https://github.com/example/fern-gitops',
-                  ref: { branch: 'main' },
-                },
-              },
-              'meadow',
-            );
-      return { resource, isLoading: false, errors: [], incompatibilities: [] };
-    },
-  };
-});
+jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-kubernetes-react'),
+  useClustersInfo: () => ({ ...mockInstallations, retry: jest.fn() }),
+}));
+const mockDisabledListeners = new Set<() => void>();
+/** Changes what the readiness check reports, re-rendering its readers. */
+function setMockDisabled(installations: string[]) {
+  mockDisabled = installations;
+  mockDisabledListeners.forEach(listener => listener());
+}
 jest.mock('../../hooks/useDisabledInstallations', () => ({
   useDisabledInstallations: () => ({
-    disabledInstallations: mockDisabled,
+    disabledInstallations: jest.requireActual('react').useSyncExternalStore(
+      (listener: () => void) => {
+        mockDisabledListeners.add(listener);
+        return () => mockDisabledListeners.delete(listener);
+      },
+      () => mockDisabled,
+    ),
     isLoading: false,
   }),
 }));
 jest.mock('../../clusters/ClusterDetailsPage/useClusterFromUrl', () => ({
+  ...jest.requireActual('../../clusters/ClusterDetailsPage/useClusterFromUrl'),
   useCluster: () => mockState,
 }));
 jest.mock('../../clusters/ClusterDetailsPage/useClusterControlPlane', () => ({
@@ -156,16 +125,55 @@ jest.mock('../../hooks', () => ({
 jest.mock('../../hooks/useK8sVersionEOLDate', () => ({
   useK8sVersionEOLDate: () => '2027-03-28',
 }));
-jest.mock('@giantswarm/backstage-plugin-flux-react', () => ({
-  ...jest.requireActual('@giantswarm/backstage-plugin-flux-react'),
-  useGitOpsSource: () => ({
-    inGit: mockInGit,
-    isLoading: false,
-    url: 'https://github.com/example/fern-gitops/tree/main/clusters',
-    kustomization: { name: 'fern-gitops', namespace: 'flux-giantswarm' },
-    errors: [],
-  }),
-}));
+jest.mock('@giantswarm/backstage-plugin-flux-react', () => {
+  const k8s = jest.requireActual(
+    '@giantswarm/backstage-plugin-kubernetes-react',
+  );
+  return {
+    ...jest.requireActual('@giantswarm/backstage-plugin-flux-react'),
+    useGitOpsSource: () => ({
+      inGit: mockInGit,
+      isLoading: false,
+      url: 'https://github.com/example/fern-gitops/tree/main/clusters',
+      kustomization: { name: 'fern-gitops', namespace: 'flux-giantswarm' },
+      errors: [],
+      // What the lookup read: the last apply and the branch come from these.
+      resources: {
+        kustomization: new k8s.Kustomization(
+          {
+            apiVersion: 'kustomize.toolkit.fluxcd.io/v1',
+            kind: 'Kustomization',
+            metadata: { name: 'fern-gitops', namespace: 'flux-giantswarm' },
+            spec: { sourceRef: { kind: 'GitRepository', name: 'fern-gitops' } },
+            status: {
+              lastAppliedRevision: 'main@sha1:3f9a2c1d8e0b6a4f1c2d3e4f',
+              conditions: [
+                {
+                  type: 'Ready',
+                  status: 'True',
+                  lastTransitionTime: '2026-11-17T08:00:00Z',
+                },
+              ],
+            },
+          },
+          'meadow',
+        ),
+        gitRepository: new k8s.GitRepository(
+          {
+            apiVersion: 'source.toolkit.fluxcd.io/v1',
+            kind: 'GitRepository',
+            metadata: { name: 'fern-gitops', namespace: 'flux-giantswarm' },
+            spec: {
+              url: 'https://github.com/example/fern-gitops',
+              ref: { branch: 'main' },
+            },
+          },
+          'meadow',
+        ),
+      },
+    }),
+  };
+});
 
 const LINKS: PlatformLinks = {
   platform: '/platform',
@@ -394,13 +402,62 @@ describe('PlatformClusterPage', () => {
     expect(screen.getByRole('list', { name: 'Labels' })).toBeInTheDocument();
   });
 
-  it('shows Giant Swarm staff the Teleport command too', async () => {
+  it('shows Giant Swarm staff the Teleport command after kubectl gs', async () => {
     mockStaff = true;
     await renderPage();
 
     const login = screen.getByRole('region', { name: 'Work with the cluster' });
-    expect(login.textContent).toContain('tsh kube login meadow-alder-birch');
-    expect(login.textContent).toContain('kubectl gs login');
+    const text = login.textContent ?? '';
+    expect(text).toContain('Teleport, for Giant Swarm staff');
+    expect(text.indexOf('kubectl gs login')).toBeLessThan(
+      text.indexOf('tsh kube login meadow-alder-birch'),
+    );
+  });
+
+  it('keeps a cluster on the page when its environment stops answering', async () => {
+    await renderPage();
+    await userEvent.click(
+      screen.getByRole('button', { name: /Technical details/ }),
+    );
+
+    act(() => setMockDisabled(['meadow']));
+
+    // Still the page, its fold-out still open, with a warning.
+    expect(screen.getByText('3 replicas, initialized')).toBeInTheDocument();
+    expect(
+      screen.getByText('Could not reach meadow just now'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Could not reach meadow'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('re-reads by itself while only the installer is there', async () => {
+    jest.useFakeTimers();
+    try {
+      mockState = stateOf({
+        clusterApp: appOf('alder-birch', 'org-fern', {
+          release: { status: 'pending-install' },
+        }),
+        error: Object.assign(new Error('not found'), { name: 'NotFoundError' }),
+      });
+      const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
+      await renderPage();
+      expect(
+        screen.getByText('alder-birch is being created'),
+      ).toBeInTheDocument();
+      invalidate.mockClear();
+
+      jest.advanceTimersByTime(10_000);
+      expect(invalidate).toHaveBeenCalledTimes(1);
+      const [{ predicate }] = invalidate.mock.calls[0] as any;
+      expect(predicate({ queryKey: ['cluster', 'meadow', 'get'] })).toBe(true);
+      expect(
+        predicate({ queryKey: ['cluster', 'meadow', 'api-discovery'] }),
+      ).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('copies the login command from the menu', async () => {

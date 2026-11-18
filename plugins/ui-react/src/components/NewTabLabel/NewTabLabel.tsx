@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { NewTabHint } from '../NewTabHint';
+import { WithNewTabHint } from '../NewTabHint';
 
 /**
  * A button's label followed by `NewTabHint`, in one box: bui's buttons lay
@@ -9,7 +9,6 @@ import { NewTabHint } from '../NewTabHint';
  */
 export const NewTabLabel = ({ children }: { children: ReactNode }) => (
   <span>
-    {children}
-    <NewTabHint />
+    <WithNewTabHint>{children}</WithNewTabHint>
   </span>
 );
