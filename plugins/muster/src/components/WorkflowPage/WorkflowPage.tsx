@@ -33,6 +33,7 @@ import {
   toYaml,
 } from '../../lib/gitops';
 import { toolEffect } from '../../lib/toolAnnotations';
+import { connectorAuthName } from '../../lib/connectorKey';
 import { serverPrefixInfos } from '../../lib/toolGrouping';
 import {
   findReferencedBy,
@@ -162,7 +163,7 @@ function WorkflowPageContent({
   const connectorLabels = useMemo(() => {
     const labels = mcpServerDisplayNames(mcpServers);
     const familyOf = new Map(
-      mcpServers.map(server => [server.getName(), server.getFamily()]),
+      mcpServers.map(server => [connectorAuthName(server), server.getFamily()]),
     );
     return new Map(
       connectors.map(server => {

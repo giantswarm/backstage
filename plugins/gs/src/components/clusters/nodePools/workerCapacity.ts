@@ -90,7 +90,7 @@ export function formatWorkerNodes(nodes: number): string {
 }
 
 export function formatWorkerCpu(vcpus: number): string {
-  return pluralize(Number(vcpus.toFixed(1)), 'vCPU', 'vCPUs');
+  return `${Number(vcpus.toFixed(1))} CPU`;
 }
 
 export function formatWorkerMemory(memoryBytes: number): string {

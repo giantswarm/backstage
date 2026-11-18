@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { render, screen } from '@testing-library/react';
+import { type ReactNode, useEffect, useState } from 'react';
+import { act, render, screen } from '@testing-library/react';
 import type { UnlistedInstallation } from '../../clusters/ClustersDataProvider';
 import {
   PlatformClustersProvider,
@@ -66,8 +66,14 @@ jest.mock('../../clusters/ClustersDataProvider', () => ({
   }),
 }));
 
-function Probe() {
-  const { status, visibleColumns } = usePlatformClustersState();
+/** As the list does, starts the reads as it mounts. */
+function Probe({ start: starts = true }: { start?: boolean }) {
+  const { status, visibleColumns, start } = usePlatformClustersState();
+  useEffect(() => {
+    if (starts) {
+      start();
+    }
+  }, [starts, start]);
   const count = usePlatformClustersCount();
   return <p>{`${status} · ${String(count)} · ${visibleColumns.join(',')}`}</p>;
 }
@@ -102,7 +108,7 @@ describe('PlatformClustersProvider', () => {
     mockDisabled = { disabledInstallations: ['fennel'], isLoading: false };
     mockMuted = ['tarragon'];
     renderProvider();
-    expect(providerProps[0].installations).toEqual(['meadow']);
+    expect(providerProps.at(-1)?.installations).toEqual(['meadow']);
   });
 
   it('is loading, never empty, before the installations have been read', () => {
@@ -174,5 +180,50 @@ describe('PlatformClustersProvider', () => {
     renderProvider();
     expect(screen.getByText(/· status,region$/)).toBeInTheDocument();
     expect(providerProps[0].columns).toEqual(['location']);
+  });
+
+  it('reads no cluster until the list has been shown', () => {
+    mockAnswered = ['meadow', 'fennel', 'tarragon'];
+    render(
+      <PlatformClustersProvider>
+        <Probe start={false} />
+      </PlatformClustersProvider>,
+    );
+    expect(
+      providerProps.every(props => props.installations?.length === 0),
+    ).toBe(true);
+    expect(screen.getByText(/^loading · loading/)).toBeInTheDocument();
+  });
+
+  it('keeps the list’s view while the list is not shown', () => {
+    let setShown: (shown: boolean) => void = () => {};
+    function ViewProbe() {
+      const { view, updateView } = usePlatformClustersState();
+      return (
+        <button
+          onClick={() =>
+            updateView({ search: 'alder', selection: { status: ['ready'] } })
+          }
+        >
+          {`search “${view.search}” · ${view.selection.status ?? 'all'}`}
+        </button>
+      );
+    }
+    function Switch() {
+      const [shown, set] = useState(true);
+      setShown = set;
+      return shown ? <ViewProbe /> : <p>a cluster’s page</p>;
+    }
+    render(
+      <PlatformClustersProvider>
+        <Switch />
+      </PlatformClustersProvider>,
+    );
+    act(() => screen.getByRole('button').click());
+    act(() => setShown(false));
+    act(() => setShown(true));
+    expect(screen.getByRole('button')).toHaveTextContent(
+      'search “alder” · ready',
+    );
   });
 });

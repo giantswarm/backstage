@@ -1,7 +1,12 @@
 # Runs the tests of the agent skills' scripts (.agents/skills/*/*.test.mjs,
 # for ui-impact's scorer, ui-sitemap's layout and layout-check's rules). They
-# use Node's built-in test runner and no dependencies, so the job needs no
+# use Node's built-in test runner and no dependencies, so that job needs no
 # install and takes seconds. Neither Jest nor the workspaces pick them up.
+#
+# layout-check's collect.test.mjs measures pages in Playwright's Chromium, so
+# the browser job installs the dependencies and Chromium (cached by
+# Playwright's version) and runs it with LAYOUT_CHECK_BROWSER=required: a
+# missing browser fails it there, where elsewhere it would skip.
 #
 # Hand-authored (not devctl-generated), so it is safe to edit here.
 name: Skill tests
@@ -11,6 +16,8 @@ on:
     paths:
       - '.agents/skills/**'
       - '.github/workflows/skill-tests.yaml'
+      - 'package.json'
+      - 'yarn.lock'
   merge_group:
   push:
     branches:
@@ -18,6 +25,8 @@ on:
     paths:
       - '.agents/skills/**'
       - '.github/workflows/skill-tests.yaml'
+      - 'package.json'
+      - 'yarn.lock'
   workflow_dispatch:
 
 permissions:
@@ -38,4 +47,34 @@ jobs:
         with:
           node-version-file: .nvmrc
       - name: Run the skill tests
-        run: node --test .agents/skills/*/*.test.mjs
+        # Those that need a browser run in the browser job.
+        run: node --test $(ls .agents/skills/*/*.test.mjs | grep -v '^.agents/skills/layout-check/collect.test.mjs$')
+
+  browser-test:
+    name: layout-check measurement (Chromium)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --immutable
+      - name: Read Playwright's version
+        id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright's Chromium
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      - name: Install Chromium and its system libraries
+        # Downloads the browser only when the cache missed it.
+        run: yarn playwright install --with-deps chromium
+      - name: Run the layout check's measurement tests
+        env:
+          LAYOUT_CHECK_BROWSER: required
+        run: node --test .agents/skills/layout-check/collect.test.mjs

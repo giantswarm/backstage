@@ -55,6 +55,23 @@ describe('createFixtureDataSet', () => {
     ]);
   });
 
+  it('gives workflows with and without a category, tags and GitOps in the base data set', () => {
+    const { workflows } = createFixtureDataSet({ now });
+    const kinds = new Set(
+      workflows.map(
+        w => `${Boolean(w.category)}/${w.tags.length > 0}/${w.gitops}`,
+      ),
+    );
+    expect(kinds).toEqual(
+      new Set([
+        'true/true/true',
+        'false/true/false',
+        'true/false/true',
+        'false/false/false',
+      ]),
+    );
+  });
+
   it('has every state of every list in the base data set', () => {
     const data = createFixtureDataSet({ now });
     expect(statesOf(data.installations)).toEqual(

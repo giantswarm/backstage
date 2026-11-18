@@ -19,6 +19,12 @@ import {
   getAggregatedStatus,
 } from '../../utils/getAggregatedStatus';
 
+/**
+ * A two-word header on one line: the column is at least as wide as its
+ * header (the tables skill, "Rule: typical content fits").
+ */
+const ONE_LINE_HEADER = { whiteSpace: 'nowrap' } as const;
+
 export const FluxResourceColumns = {
   name: 'name',
   kind: 'kind',
@@ -136,10 +142,12 @@ export const getInitialColumns = ({
     },
     {
       title: 'Source Cluster',
+      headerStyle: ONE_LINE_HEADER,
       field: FluxResourceColumns.cluster,
     },
     {
       title: 'Target Cluster',
+      headerStyle: ONE_LINE_HEADER,
       field: FluxResourceColumns.targetCluster,
     },
     {
@@ -173,6 +181,7 @@ export const getInitialColumns = ({
     },
     {
       title: 'Status Details',
+      headerStyle: ONE_LINE_HEADER,
       field: FluxResourceColumns.statusDetails,
       render: row => {
         if (!row.status) {

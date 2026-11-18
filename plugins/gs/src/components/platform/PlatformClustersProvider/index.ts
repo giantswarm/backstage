@@ -4,4 +4,7 @@ export {
   usePlatformClustersCount,
   usePlatformClustersState,
 } from './PlatformClustersProvider';
-export type { PlatformClustersStatus } from './PlatformClustersProvider';
+export type {
+  PlatformClustersStatus,
+  PlatformClustersView,
+} from './PlatformClustersProvider';

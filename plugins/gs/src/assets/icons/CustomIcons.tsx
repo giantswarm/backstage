@@ -116,3 +116,34 @@ export const AzureProviderIcon = (props: SvgIconProps) => (
     <path d="M739.7,634.1L539.7,34.1c-3.5-10.3-10.2-19.3-19.3-25.4S500.6-.5,489.7,0h-237c-10.5,0-20.7,3.2-29.2,9.3-8.5,6.1-14.9,14.7-18.3,24.7L2.7,634.1c-2.6,7.7-3.3,16-2,24.1,1.3,8.1,4.6,15.7,9.5,22.2,4.9,6.5,11.4,11.7,18.8,15.2,7.4,3.4,15.6,5,23.7,4.6h146.5c10.4,0,20.5-3.4,28.9-9.5,8.4-6.1,14.7-14.7,18.1-24.5l30.5-89,150,113.5c8.7,6.3,19.2,9.6,30,9.5h234c8.1.3,16.1-1.4,23.4-4.9,7.3-3.5,13.6-8.7,18.4-15.2,4.8-6.5,8-14,9.2-22,1.3-8,.6-16.1-2-23.8ZM458.7,667.1c-3.6,0-7.2-1.2-10-3.5l-282.5-209.5-4.5-3.5h150l4-10.5,50-126.5,112,331.5c.9,2.8,1.1,5.7.5,8.6-.6,2.9-1.9,5.5-3.8,7.7-1.9,2.2-4.4,3.9-7.1,4.9-2.7,1-5.7,1.3-8.6.8h0ZM692.2,667.1h-186c3.7-10.7,3.7-22.3,0-33L303.7,34.1h186c3.5,0,7,1.1,9.8,3.2,2.9,2.1,5,5,6.2,8.3l202.5,600c.7,2.5.8,5.1.3,7.6-.5,2.5-1.5,4.9-3.1,7-1.5,2.1-3.5,3.8-5.8,4.9-2.3,1.2-4.8,1.8-7.4,1.9h0Z" />
   </SvgIcon>
 );
+
+/** A stroked outline icon: the shape in `currentColor`, unfilled. */
+const outline = {
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 2,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+} as const;
+
+/** A cluster release: a package, as the Platform cluster page's design draws it. */
+export const ReleasePackageIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props} viewBox="0 0 24 24">
+    <g {...outline}>
+      <path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z" />
+      <path d="M12 22V12" />
+      <path d="m3.3 7 8.7 5 8.7-5" />
+      <path d="m7.5 4.27 9 5.15" />
+    </g>
+  </SvgIcon>
+);
+
+/** A terminal, for logging in to a cluster, as the Platform cluster page's design draws it. */
+export const TerminalIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props} viewBox="0 0 24 24">
+    <g {...outline}>
+      <rect x="2.5" y="4" width="19" height="16" rx="2" />
+      <path d="m7 9 3 3-3 3M12.5 15H17" />
+    </g>
+  </SvgIcon>
+);

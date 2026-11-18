@@ -14,6 +14,7 @@
  * reported in a section of their own and never change the exit code.
  */
 
+import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -25,6 +26,8 @@ import {
   RULES,
   checkLayout,
   collectPageKind,
+  crashMessageOf,
+  crashOf,
   formatFinding,
   isWarning,
   notFoundOf,
@@ -35,13 +38,20 @@ import {
 
 const root = path.resolve(import.meta.dirname, '../../..');
 
+/**
+ * A phone, a tablet or a narrow window, a small laptop, a laptop window a
+ * little narrower than its screen, a laptop. From 600px the shell's side
+ * rail is pinned open, so the content column is the width less the rail's.
+ */
+const DEFAULT_WIDTHS = [375, 768, 1024, 1160, 1280];
+
 const USAGE = `Usage: layout-check.mjs [--page <path>]... [--spec <file.mjs>]... [options]
 
   --page <path>        a page to check in its initial state (repeatable)
   --spec <file.mjs>    pages with the states to step through (repeatable);
                        see SKILL.md for the format
   --only <text>        only the spec pages whose name or path contains it
-  --widths <list>      viewport widths in px (default 375,768,1280)
+  --widths <list>      viewport widths in px (default ${DEFAULT_WIDTHS.join(',')})
   --scenarios <list>   fixture scenarios, each added as ?fixtures=<name>
                        (default: none added, which is base)
   --rules <list>       rules to apply (default all: ${[...Object.keys(RULES), 'shift'].join(',')})
@@ -66,8 +76,40 @@ const list = value =>
 
 const SETTLE_TIMEOUT_MS = 20000;
 
+
+/**
+ * Keeps this checkout's fixture server from stopping as idle while the run
+ * measures it (`yarn fixtures touch`, which starts none): a full sweep runs
+ * longer than the server's idle time. Touches three times per idle time
+ * (`idleMinutes` in its state), and at once through `check()`, which
+ * resolves to why the server is gone, or null while it runs; `onGone` gets
+ * that reason from the periodic touches. `stop()` ends them.
+ */
+function keepFixtureServer(idleMinutes, onGone) {
+  const check = () =>
+    new Promise(resolve =>
+      execFile(
+        process.execPath,
+        [path.join(root, 'scripts/fixtures-server.mjs'), 'touch'],
+        { cwd: root },
+        (error, stdout, stderr) =>
+          resolve(
+            error
+              ? String(stdout || stderr || error.message).trim().split('\n')[0]
+              : null,
+          ),
+      ),
+    );
+  const touch = () => check().then(reason => reason && onGone(reason));
+  touch();
+  const timer = setInterval(touch, (Math.max(idleMinutes, 0.5) * 60_000) / 3);
+  timer.unref();
+  return { check, stop: () => clearInterval(timer) };
+}
+
+/** The portal's URL, and the fixture server's idle time when it is one. */
 function portalUrl(explicit) {
-  if (explicit) return explicit.replace(/\/$/, '');
+  if (explicit) return { url: explicit.replace(/\/$/, '') };
   const stateFile = path.join(root, '.fixtures-server.json');
   let state;
   try {
@@ -78,7 +120,7 @@ function portalUrl(explicit) {
     );
   }
   if (!state.url) fail(`${stateFile} names no url.`);
-  return state.url.replace(/\/$/, '');
+  return { url: state.url.replace(/\/$/, ''), idleMinutes: Number(state.idleMinutes) || 60 };
 }
 
 /** Fails with one clear message when the portal does not answer. */
@@ -193,6 +235,18 @@ async function checkOne(browser, baseUrl, job, options) {
       reducedMotion: 'reduce',
     });
     const page = await context.newPage();
+    // What a crash leaves besides the error panel: an uncaught error, an
+    // error boundary's report, an extension that threw and renders nothing.
+    const thrown = [];
+    page.on('pageerror', error => {
+      const crash = crashMessageOf({ type: 'pageerror', text: error.message });
+      if (crash) thrown.push(crash);
+    });
+    page.on('console', message => {
+      if (message.type() !== 'error') return;
+      const crash = crashMessageOf({ type: 'console', text: message.text() });
+      if (crash) thrown.push(crash);
+    });
     page.setDefaultTimeout(20000);
     const step = {
       page,
@@ -205,11 +259,16 @@ async function checkOne(browser, baseUrl, job, options) {
         throw Object.assign(new Error(reason), { skip: true });
       },
     };
-    // A path that names no page or record loads a not-found page, which
-    // has nothing to find: it could not be checked, never a pass.
-    const refuseNotFound = async () => {
-      const notFound = notFoundOf(await page.evaluate(collectPageKind));
+    // A path that names no page or record loads a not-found page, and a
+    // page that threw shows the error panel: neither has the page's layout,
+    // so it could not be checked, never a pass.
+    const refuseNotFound = async ({ crashOnly = false } = {}) => {
+      const kind = await page.evaluate(collectPageKind);
+      const notFound = crashOnly ? null : notFoundOf(kind);
       if (notFound) throw new Error(`not found: ${spec.path} shows ${notFound}`);
+      const crash = crashOf(kind);
+      if (crash) throw new Error(`crashed: ${spec.path} shows ${crash}`);
+      if (thrown.length) throw new Error(`crashed: ${spec.path}: ${thrown[0]}`);
     };
     await page.goto(withScenario(`${baseUrl}${spec.path}`, scenario));
     await settle(page);
@@ -227,6 +286,7 @@ async function checkOne(browser, baseUrl, job, options) {
       if (s.run) {
         await s.run(step);
         await settle(page);
+        await refuseNotFound({ crashOnly: true });
       }
       const layout = await page.evaluate(collectLayout, {
         ignore: [...ignore, ...(s.ignore ?? [])],
@@ -289,7 +349,7 @@ async function main() {
   const templates = specs.map(s => routeTemplateOf(s.path)).filter(Boolean);
   if (templates.length) fail(templates.join('\n'));
 
-  const widths = (list(args.widths) ?? ['375', '768', '1280']).map(Number);
+  const widths = (list(args.widths) ?? DEFAULT_WIDTHS.map(String)).map(Number);
   if (widths.some(w => !Number.isInteger(w) || w < 200)) {
     fail(`--widths takes widths in px, 200 or more: ${args.widths}`);
   }
@@ -301,8 +361,17 @@ async function main() {
   if (!Number.isInteger(concurrency) || concurrency < 1) {
     fail(`--concurrency takes a whole number, 1 or more: ${args.concurrency}`);
   }
-  const baseUrl = portalUrl(args.url);
+  const portal = portalUrl(args.url);
+  const baseUrl = portal.url;
   await probe(baseUrl, Boolean(args.url));
+  // Set when the fixture server is gone: the run stops taking jobs.
+  let gone;
+  const keeper = args.url
+    ? undefined
+    : keepFixtureServer(portal.idleMinutes, reason => {
+        gone ??= reason;
+      });
+  let done = 0;
 
   // Playwright from the repository's own dependencies; its Chromium is
   // installed by `yarn playwright install chromium`.
@@ -328,7 +397,7 @@ async function main() {
   const skipped = [];
   let next = 0;
   const worker = async () => {
-    while (next < jobs.length) {
+    while (!gone && next < jobs.length) {
       const job = jobs[next++];
       const result = await checkOne(browser, baseUrl, job, options).catch(
         error => ({
@@ -344,6 +413,14 @@ async function main() {
           ],
         }),
       );
+      // A page that failed may have failed because the server is gone:
+      // then it and the rest are not run, rather than each failing.
+      if (result.errors?.length && keeper && !gone) {
+        const reason = await keeper.check();
+        if (reason) gone ??= reason;
+      }
+      if (gone) break;
+      done++;
       findings.push(...result.findings);
       errors.push(...result.errors);
       skipped.push(...(result.skipped ?? []));
@@ -357,6 +434,7 @@ async function main() {
   try {
     await Promise.all(Array.from({ length: concurrency }, worker));
   } finally {
+    keeper?.stop();
     await browser.close().catch(() => undefined);
   }
 
@@ -398,6 +476,12 @@ async function main() {
     process.stdout.write(
       `${failing.length} findings, ${warnings.length} warnings, ${errors.length} could not be checked, ${skipped.length} skipped, of ${jobs.length} page checks\n`,
     );
+  }
+  if (gone) {
+    process.stderr.write(
+      `The fixture server stopped during the run (${gone}): ${jobs.length - done} of ${jobs.length} page checks were not run or did not finish. Start it with \`yarn fixtures start\` and run the check again.\n`,
+    );
+    return 2;
   }
   if (errors.length) return 2;
   return failing.length ? 1 : 0;
