@@ -119,6 +119,8 @@ function laneColumns(lane: Lane): ColumnConfig<LaneRow>[] {
       id: 'status',
       label: 'Status',
       width: '14%',
+      // The longest board status, "In Progress", on one line.
+      minWidth: 136,
       cell: card => (
         <Cell>
           <StatusLabel
@@ -190,6 +192,8 @@ function laneColumns(lane: Lane): ColumnConfig<LaneRow>[] {
       id: 'updatedAt',
       label: 'Moved',
       width: '12%',
+      // "about 11 hours ago" on one line.
+      minWidth: 152,
       cell: card => (
         <Cell>
           <DateComponent value={card.updatedAt} relative />
