@@ -109,7 +109,7 @@ async function renderSidebar({
     <SidebarPinStateProvider
       value={{ isPinned: true, toggleSidebarPinState: () => {}, isMobile }}
     >
-      <Content navItems={items} items={[]} />
+      <Content navItems={items} />
     </SidebarPinStateProvider>,
     {
       initialRouteEntries: [path],
@@ -147,7 +147,7 @@ describe('SidebarContent', () => {
           isMobile: false,
         }}
       >
-        <Content navItems={withPages} items={[]} />
+        <Content navItems={withPages} />
       </SidebarPinStateProvider>,
       {
         initialRouteEntries: ['/clusters'],
