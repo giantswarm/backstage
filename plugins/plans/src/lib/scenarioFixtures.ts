@@ -42,6 +42,7 @@ const WORDS = [
   'thyme',
   'vetch',
   'willow',
+  'woodruff',
   'yarrow',
 ] as const;
 
@@ -91,34 +92,34 @@ export function lengthenTitle(text: string, length = LONG_TITLE): string {
 
 /**
  * `slug`, made exactly `length` characters long with hyphenated plant
- * words, without a hyphen at its end: a folder, file or branch name.
+ * words: a folder, file or branch name. Where the cut falls on a hyphen, the
+ * name ends in the next word's first letter instead.
  */
 export function lengthenSlug(slug: string, length: number): string {
   let result = slug;
   let i = slug.length;
-  while (result.length < length) {
+  while (result.length <= length) {
     result = `${result}-${word(i)}`;
     i += 3;
   }
-  return result.slice(0, length).replace(/-+$/, '');
+  const cut = result.slice(0, length);
+  return cut.endsWith('-') ? `${cut.slice(0, -1)}${result[length]}` : cut;
 }
 
-/** A made-up person: "Hazel Thistle", or longer in whole words. */
-export function personName(i: number, length = 0): string {
-  const name = words(i, 2).map(capitalize).join(' ');
-  return length ? lengthenTitle(name, length) : name;
+/** A made-up person: "Hazel Thistle". */
+export function personName(i: number): string {
+  return words(i, 2).map(capitalize).join(' ');
 }
 
-/** A made-up GitHub login: `hazel-thistle`, or up to `length`. */
+/** A made-up GitHub login: `hazel-thistle`, or exactly `length` long. */
 export function login(i: number, length = 0): string {
   const name = words(i, 2).join('-');
   return length ? lengthenSlug(name, length) : name;
 }
 
 /** A made-up customer, as the board names them: "Customer Hazel". */
-export function customerName(i: number, length = 0): string {
-  const name = `Customer ${capitalize(word(i))}`;
-  return length ? lengthenTitle(name, length) : name;
+export function customerName(i: number): string {
+  return `Customer ${capitalize(word(i))}`;
 }
 
 /** A title of a few plant words: "Hazel thistle for the sorrel rollout". */

@@ -1,9 +1,9 @@
 /*
  * Hive's pages of the plans plugin (Now, History, Plans with a plan's
  * review, Knowledge), in any of fixture mode's scenarios. Hive is off in
- * plain fixture mode: start it with the plans config next to this spec.
+ * plain fixture mode: turn it on as fixture mode starts.
  *
- *   yarn fixtures start --config .agents/skills/layout-check/specs/plans.app-config.yaml
+ *   yarn fixtures start --enable page:plans --enable api:plans
  *   node .agents/skills/layout-check/layout-check.mjs --spec .agents/skills/layout-check/specs/plans.mjs
  *
  * A page whose record or control a scenario lacks (nothing to open in
@@ -44,16 +44,19 @@ const mergedTab = [
     },
   },
   {
-    name: 'first plan open',
+    // The first plan is selected as the tab opens: open the second.
+    name: 'another plan open',
     run: async ({ page, skip }) => {
-      const plan = page.getByRole('tabpanel').getByRole('link').first();
-      const button = page.getByRole('tabpanel').getByRole('button').first();
-      if (await shows(plan, 2000)) {
-        await plan.click();
-      } else if (await shows(button, 2000)) {
-        await button.click();
-      } else {
-        skip('no merged plan to open');
+      const plans = page
+        .getByRole('grid', { name: 'Merged plans' })
+        .getByRole('row');
+      if (!(await shows(plans)) || (await plans.count()) < 2) {
+        skip('fewer than two merged plans');
+      }
+      const plan = plans.nth(1);
+      await plan.click({ position: { x: 8, y: 8 } });
+      if ((await plan.getAttribute('aria-selected')) !== 'true') {
+        throw new Error('the second merged plan did not open');
       }
     },
   },

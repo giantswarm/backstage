@@ -23,6 +23,10 @@ const MARKERS = [
     marker: 'example/team-magazine',
   },
   {
+    source: 'plugins/plans/src/lib/scenarioFixtures.ts',
+    marker: 'woodruff',
+  },
+  {
     source: 'plugins/plans/src/lib/hiveFixtures.ts',
     marker: 'Pods, events and logs of a workload cluster from its page',
   },

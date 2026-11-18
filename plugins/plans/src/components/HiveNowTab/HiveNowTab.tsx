@@ -75,13 +75,13 @@ const useStyles = makeStyles({
       minWidth: 720,
     },
   },
-  // A title in the side lists wraps: their links are inline-flex (an
-  // external link's icon), which the row's ellipsis cannot shorten.
-  titles: {
-    '& .bui-ListRowLabel > span': {
-      whiteSpace: 'normal',
-      overflowWrap: 'anywhere',
-    },
+  // A title in the side lists wraps inside the row's label, which cuts its
+  // text with an ellipsis that an inline-flex link (an external link's icon)
+  // escapes. Its description keeps the row's ellipsis.
+  title: {
+    display: 'block',
+    whiteSpace: 'normal',
+    overflowWrap: 'anywhere',
   },
   summary: {
     margin: 0,
@@ -273,7 +273,7 @@ function PlansToReview(props: { plans: PlanCard[] }) {
           No plan waits on the team.
         </Text>
       ) : (
-        <List aria-label="Plans to grill and review" className={classes.titles}>
+        <List aria-label="Plans to grill and review">
           {plans.map(plan => (
             <ListRow
               key={plan.key}
@@ -284,7 +284,9 @@ function PlansToReview(props: { plans: PlanCard[] }) {
                 <Badge size="small">{PLAN_STATE_LABELS[plan.state]}</Badge>
               }
             >
-              <HiveLink href={plan.url}>{plan.title}</HiveLink>
+              <span className={classes.title}>
+                <HiveLink href={plan.url}>{plan.title}</HiveLink>
+              </span>
             </ListRow>
           ))}
         </List>
@@ -332,7 +334,7 @@ function OtherTeams(props: { cards: MagazineCard[] }) {
   }
   return (
     <InfoCard title="Other teams, coming up">
-      <List aria-label="Other teams, coming up" className={classes.titles}>
+      <List aria-label="Other teams, coming up">
         {props.cards.map(card => (
           <ListRow
             key={card.key}
@@ -343,7 +345,9 @@ function OtherTeams(props: { cards: MagazineCard[] }) {
               <Avatar src="" name={teamName(card.team ?? '')} size="small" />
             }
           >
-            <HiveLink href={card.url}>{card.title}</HiveLink>
+            <span className={classes.title}>
+              <HiveLink href={card.url}>{card.title}</HiveLink>
+            </span>
           </ListRow>
         ))}
       </List>

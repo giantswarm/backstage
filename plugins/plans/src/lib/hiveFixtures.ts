@@ -11,6 +11,7 @@
 
 import type { FixtureScenario } from '@giantswarm/backstage-plugin-gs-common';
 
+import { DEFAULT_TEAM, HIVE_TEAMS, sameTeam, teamName } from './hive';
 import {
   customerName,
   fixtureTitle,
@@ -36,7 +37,12 @@ import {
 } from './magazine';
 
 /** The team the fixture magazine follows; its items carry no `team`. */
-const MAGAZINE_TEAM = 'Bumblebee';
+const MAGAZINE_TEAM = teamName(DEFAULT_TEAM);
+
+/** The other teams' names, as the magazine writes an item's `team`. */
+const OTHER_TEAMS = HIVE_TEAMS.filter(
+  team => !sameTeam(team, MAGAZINE_TEAM),
+).map(teamName);
 const ROADMAP = 'https://github.com/giantswarm/roadmap/issues';
 
 /** The fixture board's item detail (the roadmap plugin's fixture board). */
@@ -444,33 +450,31 @@ function plans(): PlanCard[] {
   }));
 }
 
+/** Each lane's title and summary, in every scenario. */
+const LANE_TITLES: Record<MagazineClass, [string, string]> = {
+  customer: [
+    'Customers',
+    'What customers asked for, most recent movement first.',
+  ],
+  'top-epic': ['Top epics', 'The epics the team leads with this quarter.'],
+  setup: ['Setup', 'Making new installations and the lab cheaper to run.'],
+  chore: ['Chores', 'Bugs and small fixes that keep the portal tidy.'],
+};
+
+/** The lanes of Now in priority order, each with its cards. */
+function makeLanes(cards: (lane: MagazineClass) => CardSeed[]): Lane[] {
+  return CLASS_ORDER.map(id => makeLane(id, ...LANE_TITLES[id], cards(id)));
+}
+
+const BASE_LANES: Record<MagazineClass, CardSeed[]> = {
+  customer: CUSTOMERS,
+  'top-epic': TOP_EPICS,
+  setup: SETUP,
+  chore: CHORES,
+};
+
 export function fixtureNow(): Now {
-  const lanes = [
-    makeLane(
-      'customer',
-      'Customers',
-      'What customers asked for, most recent movement first.',
-      CUSTOMERS,
-    ),
-    makeLane(
-      'top-epic',
-      'Top epics',
-      'The epics the team leads with this quarter.',
-      TOP_EPICS,
-    ),
-    makeLane(
-      'setup',
-      'Setup',
-      'Making new installations and the lab cheaper to run.',
-      SETUP,
-    ),
-    makeLane(
-      'chore',
-      'Chores',
-      'Bugs and small fixes that keep the portal tidy.',
-      CHORES,
-    ),
-  ];
+  const lanes = makeLanes(lane => BASE_LANES[lane]);
   const cards = lanes.flatMap(l => l.cards);
   return {
     generatedAt: ago(12 * 60_000),
@@ -716,7 +720,7 @@ export function fixtureTeamSets(): TeamSets {
     teams: [
       {
         name: MAGAZINE_TEAM,
-        boardTeam: 'Bumblebee🐝',
+        boardTeam: DEFAULT_TEAM,
         slug: 'bumblebee',
         path: 'magazine/teams/bumblebee',
       },
@@ -828,32 +832,11 @@ export interface HiveFixtureMagazine {
   knowledge: Record<string, string>;
 }
 
-const LANE_TITLES: Record<MagazineClass, [string, string]> = {
-  customer: [
-    'Customers',
-    'What customers asked for, most recent movement first.',
-  ],
-  'top-epic': ['Top epics', 'The epics the team leads with this quarter.'],
-  setup: ['Setup', 'Making new installations and the lab cheaper to run.'],
-  chore: ['Chores', 'Bugs and small fixes that keep the portal tidy.'],
-};
-
 const STATUSES = [
   'In Progress ⛏️',
   'Validation ☑️',
   'Up Next ➡️',
   'Backlog 📦',
-];
-
-/** The other teams' names, as the magazine writes an item's `team`. */
-const OTHER_TEAMS = [
-  'Atlas',
-  'Cabbage',
-  'Honey Badger',
-  'Phoenix',
-  'Planeteers',
-  'Shield',
-  'Up',
 ];
 
 /** The base magazine: the one every scenario but these three serves. */
@@ -878,7 +861,7 @@ function emptyMagazine(): HiveFixtureMagazine {
     now: {
       generatedAt: base.now.generatedAt,
       summary: [],
-      lanes: CLASS_ORDER.map(id => makeLane(id, ...LANE_TITLES[id], [])),
+      lanes: makeLanes(() => []),
       reviews: [],
       blocked: [],
       upcoming: [],
@@ -925,12 +908,8 @@ function manyCardSeed(lane: MagazineClass, i: number): CardSeed {
 /** `many`: hundreds of cards, plans, groups and documents. */
 function manyMagazine(): HiveFixtureMagazine {
   const base = baseMagazine();
-  const lanes = CLASS_ORDER.map(id =>
-    makeLane(
-      id,
-      ...LANE_TITLES[id],
-      Array.from({ length: 75 }, (_, i) => manyCardSeed(id, i)),
-    ),
+  const lanes = makeLanes(lane =>
+    Array.from({ length: 75 }, (_, i) => manyCardSeed(lane, i)),
   );
   const cards = lanes.flatMap(lane => lane.cards);
   const states: PlanCard['state'][] = ['review', 'grilling', 'draft'];

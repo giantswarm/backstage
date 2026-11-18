@@ -7,7 +7,7 @@ import {
   withFixtureScenario,
 } from '@giantswarm/backstage-plugin-gs-common/fixtures';
 
-import { HIVE_TEAMS, teamName } from '../lib/hive';
+import { DEFAULT_TEAM, HIVE_TEAMS, plansRepositoryName } from '../lib/hive';
 import { hiveFixtureMagazine, HiveFixtureMagazine } from '../lib/hiveFixtures';
 import {
   fixtureTitle,
@@ -53,7 +53,7 @@ import {
 // The fixture magazine's team's plans repository (`<team>-plans`), which
 // Hive's default team, Bumblebee, reads.
 const PLANS_OWNER = 'example';
-const PLANS_REPO = `${PLANS_OWNER}/bumblebee-plans`;
+const PLANS_REPO = `${PLANS_OWNER}/${plansRepositoryName(DEFAULT_TEAM)}`;
 const MAGAZINE_REPO = 'example/team-magazine';
 const DAY = 86_400_000;
 
@@ -162,8 +162,10 @@ export interface PlansFixtureData {
   docs: Record<string, string>;
   /** The merged plans: folder → the epic its README names. */
   merged: Record<string, number>;
-  comments: PlanComment[];
-  reviewComments: PlanReviewComment[];
+  /** A pull request's discussion comments. */
+  comments: (pull: FixturePull) => PlanComment[];
+  /** A pull request's review comments, on its own files. */
+  reviewComments: (pull: FixturePull) => PlanReviewComment[];
   magazine: HiveFixtureMagazine;
 }
 
@@ -173,7 +175,7 @@ function baseData(scenario: FixtureScenario): PlansFixtureData {
     pulls: BASE_PULLS,
     docs: BASE_DOCS,
     merged: BASE_MERGED,
-    comments: [
+    comments: () => [
       {
         id: 1,
         author: 'Mira Okafor',
@@ -181,7 +183,7 @@ function baseData(scenario: FixtureScenario): PlansFixtureData {
         createdAt: ago(0.5),
       },
     ],
-    reviewComments: [],
+    reviewComments: () => [],
     magazine: hiveFixtureMagazine(scenario),
   };
 }
@@ -239,27 +241,29 @@ function manyData(): PlansFixtureData {
   }
   return {
     repositories: HIVE_TEAMS.map(
-      team =>
-        `${PLANS_OWNER}/${teamName(team).toLowerCase().replace(/\s+/g, '')}-plans`,
+      team => `${PLANS_OWNER}/${plansRepositoryName(team)}`,
     ),
     pulls,
     docs,
     merged,
-    comments: Array.from({ length: 200 }, (_, i) => ({
-      id: i + 1,
-      author: login(i),
-      body: `What does the ${word(i)} step need from ${word(i + 4)}?`,
-      createdAt: ago((200 - i) / 24),
-    })),
-    reviewComments: Array.from({ length: 120 }, (_, i) => ({
-      id: 1000 + i,
-      author: login(i + 2),
-      body: `Is the ${word(i)} step in the right place?`,
-      path: pulls[0].files[0],
-      line: 1 + (i % 30),
-      side: 'RIGHT',
-      createdAt: ago((120 - i) / 24),
-    })),
+    comments: pull =>
+      Array.from({ length: 200 }, (_, i) => ({
+        id: i + 1,
+        author: login(pull.number + i),
+        body: `What does the ${word(i)} step need from ${word(i + 4)}?`,
+        createdAt: ago((200 - i) / 24),
+      })),
+    reviewComments: pull =>
+      Array.from({ length: 120 }, (_, i) => ({
+        id: 1000 + i,
+        author: login(pull.number + i + 2),
+        body: `Is the ${word(i)} step in the right place?`,
+        // On the README's steps: lines 7 to 36 of `planDoc`.
+        path: pull.files[0],
+        line: 7 + (i % 30),
+        side: 'RIGHT',
+        createdAt: ago((120 - i) / 24),
+      })),
     magazine: hiveFixtureMagazine('many'),
   };
 }
@@ -284,7 +288,7 @@ function longNamesData(): PlansFixtureData {
   return {
     ...base,
     repositories: [
-      `${lengthenSlug(PLANS_OWNER, LONG_LOGIN)}/${PLANS_REPO.split('/')[1]}`,
+      `${lengthenSlug(PLANS_OWNER, LONG_LOGIN)}/${plansRepositoryName(DEFAULT_TEAM)}`,
     ],
     pulls: base.pulls.map((pull, i) => ({
       ...pull,
@@ -308,10 +312,11 @@ function longNamesData(): PlansFixtureData {
         epic,
       ]),
     ),
-    comments: base.comments.map((comment, i) => ({
-      ...comment,
-      author: login(i + 3, LONG_LOGIN),
-    })),
+    comments: pull =>
+      base.comments(pull).map((comment, i) => ({
+        ...comment,
+        author: login(i + 3, LONG_LOGIN),
+      })),
   };
 }
 
@@ -324,8 +329,8 @@ export function plansFixtureData(scenario: FixtureScenario): PlansFixtureData {
         pulls: [],
         docs: {},
         merged: {},
-        comments: [],
-        reviewComments: [],
+        comments: () => [],
+        reviewComments: () => [],
         magazine: hiveFixtureMagazine('empty'),
       };
     case 'many':
@@ -337,29 +342,26 @@ export function plansFixtureData(scenario: FixtureScenario): PlansFixtureData {
   }
 }
 
-function magazineContent(
-  magazine: HiveFixtureMagazine,
-  path: string,
-): string | undefined {
-  if (path === MAGAZINE_TEAMS_FILE) {
-    return JSON.stringify(magazine.teamSets);
-  }
-  // The default team's set, under `magazine/` and in its own folder.
+/**
+ * The magazine's files by path, serialized once: `teams.json`, and the
+ * default team's set under `magazine/` and in its own folder.
+ */
+function magazineFiles(magazine: HiveFixtureMagazine): Map<string, string> {
+  const now = JSON.stringify(magazine.now);
+  const meta = JSON.stringify(magazine.meta);
+  const history = JSON.stringify(magazine.history);
+  const files = new Map([
+    [MAGAZINE_TEAMS_FILE, JSON.stringify(magazine.teamSets)],
+  ]);
   for (const folder of [
     undefined,
     ...magazine.teamSets.teams.map(set => set.path),
   ]) {
-    if (path === magazineFile('now', folder)) {
-      return JSON.stringify(magazine.now);
-    }
-    if (path === magazineFile('meta', folder)) {
-      return JSON.stringify(magazine.meta);
-    }
-    if (path === magazineFile(HIVE_HISTORY_WINDOW, folder)) {
-      return JSON.stringify(magazine.history);
-    }
+    files.set(magazineFile('now', folder), now);
+    files.set(magazineFile('meta', folder), meta);
+    files.set(magazineFile(HIVE_HISTORY_WINDOW, folder), history);
   }
-  return magazine.knowledge[path];
+  return files;
 }
 
 function notFound(path: string): Error {
@@ -370,13 +372,33 @@ function notFound(path: string): Error {
 
 export class PlansFixtureApi implements PlansApi {
   private readonly data: PlansFixtureData;
-  private comments: PlanComment[];
-  private reviewComments: PlanReviewComment[];
+  private readonly magazine: Map<string, string>;
+  /** Each pull request's comments, from its first read on. */
+  private readonly comments = new Map<number, PlanComment[]>();
+  private readonly reviewComments = new Map<number, PlanReviewComment[]>();
 
   constructor(scenario: FixtureScenario = fixtureScenario()) {
     this.data = plansFixtureData(scenario);
-    this.comments = this.data.comments;
-    this.reviewComments = this.data.reviewComments;
+    this.magazine = magazineFiles(this.data.magazine);
+  }
+
+  private pullComments(pullNumber: number): PlanComment[] {
+    const pull = this.data.pulls.find(p => p.number === pullNumber);
+    if (!this.comments.has(pullNumber)) {
+      this.comments.set(pullNumber, pull ? this.data.comments(pull) : []);
+    }
+    return this.comments.get(pullNumber)!;
+  }
+
+  private pullReviewComments(pullNumber: number): PlanReviewComment[] {
+    const pull = this.data.pulls.find(p => p.number === pullNumber);
+    if (!this.reviewComments.has(pullNumber)) {
+      this.reviewComments.set(
+        pullNumber,
+        pull ? this.data.reviewComments(pull) : [],
+      );
+    }
+    return this.reviewComments.get(pullNumber)!;
   }
 
   async getConnection(): Promise<PlansConnectionResponse> {
@@ -455,7 +477,7 @@ export class PlansFixtureApi implements PlansApi {
   ): Promise<PlansContentResponse> {
     const content =
       repo === MAGAZINE_REPO
-        ? magazineContent(this.data.magazine, path)
+        ? (this.magazine.get(path) ?? this.data.magazine.knowledge[path])
         : this.data.docs[path];
     if (content === undefined) {
       throw notFound(path);
@@ -463,31 +485,38 @@ export class PlansFixtureApi implements PlansApi {
     return { path, ref, content };
   }
 
-  async listPullComments(): Promise<PlansCommentsResponse> {
-    return { comments: this.comments };
+  async listPullComments(pullNumber: number): Promise<PlansCommentsResponse> {
+    return { comments: this.pullComments(pullNumber) };
   }
 
-  async createPullComment(_pull: number, body: string): Promise<PlanComment> {
+  async createPullComment(
+    pullNumber: number,
+    body: string,
+  ): Promise<PlanComment> {
+    const comments = this.pullComments(pullNumber);
     const comment = {
-      id: this.comments.length + 1,
+      id: comments.length + 1,
       author: 'You',
       body,
       createdAt: new Date().toISOString(),
     };
-    this.comments = [...this.comments, comment];
+    this.comments.set(pullNumber, [...comments, comment]);
     return comment;
   }
 
-  async listReviewComments(): Promise<PlansReviewCommentsResponse> {
-    return { comments: this.reviewComments };
+  async listReviewComments(
+    pullNumber: number,
+  ): Promise<PlansReviewCommentsResponse> {
+    return { comments: this.pullReviewComments(pullNumber) };
   }
 
   async createReviewComment(
-    _pull: number,
+    pullNumber: number,
     comment: NewReviewComment,
   ): Promise<PlanReviewComment> {
+    const comments = this.pullReviewComments(pullNumber);
     const created = {
-      id: 1000 + this.reviewComments.length,
+      id: 1000 + comments.length,
       author: 'You',
       body: comment.body,
       path: comment.path,
@@ -496,7 +525,7 @@ export class PlansFixtureApi implements PlansApi {
       inReplyTo: comment.inReplyTo,
       createdAt: new Date().toISOString(),
     };
-    this.reviewComments = [...this.reviewComments, created];
+    this.reviewComments.set(pullNumber, [...comments, created]);
     return created;
   }
 }

@@ -61,15 +61,19 @@ describe('the fixture PlansApi in each scenario', () => {
     const { pulls } = await api.listPulls();
     expect(pulls.length).toBeGreaterThanOrEqual(200);
     expect((await api.getTree()).tree.length).toBeGreaterThanOrEqual(200);
-    const pull = pulls[0].number;
-    expect(
-      (await api.listPullComments(pull)).comments.length,
-    ).toBeGreaterThanOrEqual(100);
-    const [file] = (await api.listPullFiles(pull)).files;
-    await expect(api.getContent(file.filename)).resolves.toBeDefined();
-    expect(
-      (await api.listReviewComments(pull)).comments.length,
-    ).toBeGreaterThanOrEqual(100);
+    // Every plan has its comments, and its review comments on its own files.
+    for (const pull of [pulls[0].number, pulls[pulls.length - 1].number]) {
+      expect(
+        (await api.listPullComments(pull)).comments.length,
+      ).toBeGreaterThanOrEqual(100);
+      const files = (await api.listPullFiles(pull)).files.map(f => f.filename);
+      await expect(api.getContent(files[0])).resolves.toBeDefined();
+      const { comments } = await api.listReviewComments(pull);
+      expect(comments.length).toBeGreaterThanOrEqual(100);
+      for (const comment of comments) {
+        expect(files).toContain(comment.path);
+      }
+    }
 
     const { now, history, knowledge } = await magazine(api);
     for (const lane of now.lanes) {
@@ -111,6 +115,15 @@ describe('the fixture PlansApi in each scenario', () => {
     for (const { path } of knowledge) {
       expect(path!.split('/').pop()).toHaveLength(LONG_SEGMENT);
     }
+  });
+
+  it('keeps a new comment on its own plan', async () => {
+    setFixtureScenarioForTests('base');
+    const api = plansFixtureApi();
+
+    await api.createPullComment(41, 'Looks good');
+    expect((await api.listPullComments(41)).comments).toHaveLength(2);
+    expect((await api.listPullComments(39)).comments).toHaveLength(1);
   });
 
   it('never answers in loading', async () => {

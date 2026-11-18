@@ -5,13 +5,13 @@ so its pages render made-up data without their backends: for local
 development, design reviews and layout checks. Fixture code never ships in a
 production build.
 
-| Flag                           | Plugin                                                                                                        | Fixture implementation                                                                 |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `plans.fixtures: true`         | plans (Hive, the plan list)                                                                                   | `plugins/plans/src/apis/PlansFixtureApi.ts`, `plugins/plans/src/lib/hiveFixtures.ts`   |
-| `roadmap.fixtures: true`       | roadmap (Hive's Roadmap tab)                                                                                  | `plugins/roadmap/src/apis/RoadmapFixtureApi.ts`                                        |
-| `muster.fixtures: true`        | muster (`MusterApi`), and every tool call through it                                                          | `plugins/muster/src/apis/fixtures/`, plus the fixture MCP servers of other plugins     |
-| `agentPlatform.fixtures: true` | agent-platform (`KagentApi`, `ModelManagerApi`, `AgentManagerCredentialsApi`)                                 | `plugins/agent-platform/src/apis/fixtures/`                                            |
-| `gs.fixtures: true`            | the Kubernetes API of the installations (`kubernetesApiRef`), their cluster access, and Mimir (`mimirApiRef`) | `packages/app/src/modules/kubernetes/fixtures/`, `plugins/gs/src/apis/mimir/fixtures/` |
+| Flag                           | Plugin                                                                                                        | Fixture implementation                                                                                                            |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `plans.fixtures: true`         | plans (Hive, the plan list)                                                                                   | `plugins/plans/src/apis/PlansFixtureApi.ts`, `plugins/plans/src/lib/hiveFixtures.ts`, `plugins/plans/src/lib/scenarioFixtures.ts` |
+| `roadmap.fixtures: true`       | roadmap (Hive's Roadmap tab)                                                                                  | `plugins/roadmap/src/apis/RoadmapFixtureApi.ts`                                                                                   |
+| `muster.fixtures: true`        | muster (`MusterApi`), and every tool call through it                                                          | `plugins/muster/src/apis/fixtures/`, plus the fixture MCP servers of other plugins                                                |
+| `agentPlatform.fixtures: true` | agent-platform (`KagentApi`, `ModelManagerApi`, `AgentManagerCredentialsApi`)                                 | `plugins/agent-platform/src/apis/fixtures/`                                                                                       |
+| `gs.fixtures: true`            | the Kubernetes API of the installations (`kubernetesApiRef`), their cluster access, and Mimir (`mimirApiRef`) | `packages/app/src/modules/kubernetes/fixtures/`, `plugins/gs/src/apis/mimir/fixtures/`                                            |
 
 Set the flags in `app-config.local.yaml` and run `yarn start`. In a production
 build (`NODE_ENV=production`, what `backstage-cli package build` and the image
@@ -49,9 +49,11 @@ yarn fixtures stop
   `FIXTURES_IDLE_MINUTES` (default 60), and at once when `.fixtures-server.json`
   no longer names it. A start that fails stops what it started. Stop the
   server when you are done: a frontend and a backend per checkout are heavy.
-- `--config <file>` adds a config on top, for example to turn on Hive and its
-  fixtures (`app.extensions` must then repeat `app-config.yaml`'s list, which
-  Backstage replaces rather than merges). A relative path is read from the
+- `--enable <extension>` adds an extension to `app-config.yaml`'s
+  `app.extensions`, which the server copies as it starts (Backstage replaces a
+  list rather than merging it), for example to turn on Hive:
+  `yarn fixtures start --enable page:plans --enable api:plans`.
+- `--config <file>` adds a config on top. A relative path is read from the
   directory you run the command in; from a workspace directory, run
   `yarn run -T fixtures …`.
 
@@ -525,12 +527,15 @@ could not read: extend the evaluator, or the series a new page reads.
 ### Plans
 
 The fixture `PlansApi` (`plugins/plans/src/apis/PlansFixtureApi.ts`, the
-magazine and the knowledge documents in `plugins/plans/src/lib/hiveFixtures.ts`)
-serves Hive's Now, History, Plans and Knowledge tabs and a plan's review. Hive
-is off in plain fixture mode; turn it on with the layout check's config for it:
+magazine and the knowledge documents in `plugins/plans/src/lib/hiveFixtures.ts`,
+the names and the length limits of `many` and `long-names` in
+`plugins/plans/src/lib/scenarioFixtures.ts`) serves Hive's Now, History, Plans
+and Knowledge tabs and a plan's review. `app-config.fixtures.yaml` sets
+`plans.fixtures`, but Hive is off in plain fixture mode; turn it on with its
+extensions:
 
 ```bash
-yarn fixtures start --config .agents/skills/layout-check/specs/plans.app-config.yaml
+yarn fixtures start --enable page:plans --enable api:plans
 ```
 
 Its data is its own, not the data set's: plans and magazine cards, not
