@@ -1,8 +1,6 @@
 import type { AuthStatusResponse } from '../../../apis';
-import {
-  instanceAccess,
-  connectorAuthName,
-} from '../../../lib/connectorAccess';
+import { instanceAccess } from '../../../lib/connectorAccess';
+import { connectorAuthName } from '../../../lib/connectorKey';
 import { useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Link } from '@backstage/core-components';

@@ -1,3 +1,4 @@
+import { connectorAuthName } from '../../../lib/connectorKey';
 import { ReactNode, useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import { Link } from '@backstage/ui';
@@ -163,9 +164,7 @@ export function ConnectorUsageTab({
   );
   const instances = useMemo(
     () =>
-      row.kind === 'family'
-        ? row.servers.map(instance => instance.getName())
-        : undefined,
+      row.kind === 'family' ? row.servers.map(connectorAuthName) : undefined,
     [row],
   );
   const toolColumns = useUsageColumns(toolRows, {

@@ -17,8 +17,12 @@ import {
   newMcpServerVerifyRouteRef,
 } from '../../routes';
 import { isGitOpsManaged } from '../../lib/gitops';
-import { wizardEditBlocker } from '../../lib/mcpServerDefinition';
-import { connectorDisplayNameOn } from '../../lib/serverGrouping';
+import {
+  connectorDisplayNameOn,
+  findServerRow,
+  musterOwnServer,
+} from '../../lib/serverGrouping';
+import { connectorEditBlock } from '../ConnectorPage/connectorEdit';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { useConnectorListPaths } from '../shared/hooks';
@@ -133,11 +137,18 @@ export function NewMcpServerEditGate({
   const { registeredName, registeredInstallation, lastSave, startEdit, reset } =
     useNewMcpServerForm();
 
-  const server = editName
-    ? mcpServers.find(
-        s => s.getName() === editName && s.cluster === editInstallation,
+  // muster's own server of that name (a family member included), which the
+  // wizard edits; else an organization's whose page the name opens, which
+  // muster does not let it change.
+  const pageRow = editName
+    ? findServerRow(
+        mcpServers.filter(s => s.cluster === editInstallation),
+        editName,
       )
     : undefined;
+  const server =
+    musterOwnServer(mcpServers, editInstallation, editName) ??
+    (pageRow?.kind === 'server' ? pageRow.server : undefined);
   const gitOpsManaged = server ? isGitOpsManaged(server) : false;
   // What people call the connector; the URL keeps its resource name.
   const shownName = editName
@@ -150,7 +161,9 @@ export function NewMcpServerEditGate({
         registeredInstallation === editInstallation
       : !registeredName);
   const blocker =
-    server && !gitOpsManaged ? wizardEditBlocker(server) : undefined;
+    server && !gitOpsManaged
+      ? connectorEditBlock({ kind: 'server', server }, true)?.reason
+      : undefined;
   // Saved by this run and the param lost (Back from verify after a create).
   const resumeSaved = !editName && Boolean(registeredName && lastSave);
 
