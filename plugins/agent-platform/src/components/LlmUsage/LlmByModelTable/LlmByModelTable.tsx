@@ -1,14 +1,11 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Cell, Table, Text, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
 import {
   columnMax,
   DataBar,
   ShowMore,
-  tableMinWidth,
   tableRowId,
-  useCompactLayout,
-  usePhoneColumns,
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmModelRow } from '../../../lib/llmUsage';
 import {
@@ -22,8 +19,9 @@ import {
 import { sortUsageRows } from '../../AgentUsageSection/helpers';
 import { UsageCard } from '../UsageCard';
 import { NameCell } from '../NameCell';
+import { USAGE_COLUMN_MIN_WIDTH } from '../columnWidths';
 import { useMeasureColor } from '../../../lib/measures';
-import { useVisibleSort } from '../../../hooks/useVisibleSort';
+import { useUsageTableColumns } from '../../../hooks/useUsageTableColumns';
 
 /**
  * How many models the table shows before *Show all N models*. The models in
@@ -85,107 +83,106 @@ export function LlmByModelTable({
 
   // The columns, for the compact layout or the full one: compact, the model
   // id wraps to two lines.
-  const columnsFor = (compact: boolean): ColumnConfig<LlmModelRow>[] => [
-    {
-      id: 'model',
-      label: 'Model',
-      isRowHeader: true,
-      isSortable: true,
-      // Two lines at phone width: a model id cut to one line read as "a…".
-      cell: row => <NameCell title={row.model} compact={compact} />,
-    },
-    {
-      id: 'calls',
-      label: 'Model calls',
-      isSortable: true,
-      cell: row => (
-        <Cell>
-          <DataBar
-            label={formatCount(row.calls)}
-            value={row.calls}
-            max={max.calls}
-            color={colorFor('calls')}
-          />
-        </Cell>
-      ),
-    },
-    {
-      id: 'tokens',
-      label: 'Tokens',
-      isSortable: true,
-      cell: row => (
-        <Cell>
-          <DataBar
-            label={formatTokens(row.tokens)}
-            value={row.tokens}
-            max={max.tokens}
-            color={colorFor('tokens')}
-          />
-        </Cell>
-      ),
-    },
-    {
-      id: 'costUsd',
-      label: 'Spend',
-      isSortable: true,
-      cell: row => (
-        <Cell>
-          <DataBar
-            label={formatMoney(row.costUsd, currency)}
-            value={row.costUsd}
-            max={max.cost}
-            color={colorFor('cost')}
-          />
-        </Cell>
-      ),
-    },
-    {
-      id: 'usdPerMillion',
-      label: isConvertedCurrency(currency) ? 'Cost/1M tokens' : '$/1M tokens',
-      isSortable: true,
-      cell: row => (
-        <Cell>
-          <DataBar
-            label={formatMoney(row.usdPerMillion, currency)}
-            value={row.usdPerMillion}
-            max={max.ratio}
-            color={colorFor('ratio')}
-          />
-        </Cell>
-      ),
-    },
-    {
-      id: 'avgTokensPerCall',
-      label: 'Avg tokens/call',
-      isSortable: true,
-      cell: row => (
-        <Cell>
-          <DataBar
-            label={
-              row.avgTokensPerCall === undefined
-                ? '—'
-                : formatTokens(row.avgTokensPerCall)
-            }
-            value={row.avgTokensPerCall}
-            max={max.avgTokensPerCall}
-            color={colorFor('avgTokensPerCall')}
-          />
-        </Cell>
-      ),
-    },
-  ];
-  const [tableRef, isCompact] = useCompactLayout(
-    tableMinWidth(columnsFor(false)),
-  );
-  const columnConfig = columnsFor(isCompact);
-  // At phone width, and beside the side rail at tablet width, the model, what
-  // it cost and its context creep (T22 B10): six columns in 343px clipped
-  // every figure. The volume is in the tab's KPI tiles and the cost-per-day
-  // chart; the blended rate is cost ÷ tokens.
-  const shownColumns = usePhoneColumns(
-    columnConfig,
-    ['model', 'costUsd', 'avgTokensPerCall'],
-    { compact: isCompact },
+  const columnsFor = useCallback(
+    (compact: boolean): ColumnConfig<LlmModelRow>[] => [
+      {
+        id: 'model',
+        label: 'Model',
+        minWidth: USAGE_COLUMN_MIN_WIDTH.name,
+        isRowHeader: true,
+        isSortable: true,
+        // Two lines at phone width: a model id cut to one line read as "a…".
+        cell: row => <NameCell title={row.model} compact={compact} />,
+      },
+      {
+        id: 'calls',
+        label: 'Model calls',
+        minWidth: USAGE_COLUMN_MIN_WIDTH.calls,
+        isSortable: true,
+        cell: row => (
+          <Cell>
+            <DataBar
+              label={formatCount(row.calls)}
+              value={row.calls}
+              max={max.calls}
+              color={colorFor('calls')}
+            />
+          </Cell>
+        ),
+      },
+      {
+        id: 'tokens',
+        label: 'Tokens',
+        minWidth: USAGE_COLUMN_MIN_WIDTH.tokens,
+        isSortable: true,
+        cell: row => (
+          <Cell>
+            <DataBar
+              label={formatTokens(row.tokens)}
+              value={row.tokens}
+              max={max.tokens}
+              color={colorFor('tokens')}
+            />
+          </Cell>
+        ),
+      },
+      {
+        id: 'costUsd',
+        label: 'Spend',
+        minWidth: USAGE_COLUMN_MIN_WIDTH.spend,
+        isSortable: true,
+        cell: row => (
+          <Cell>
+            <DataBar
+              label={formatMoney(row.costUsd, currency)}
+              value={row.costUsd}
+              max={max.cost}
+              color={colorFor('cost')}
+            />
+          </Cell>
+        ),
+      },
+      {
+        id: 'usdPerMillion',
+        label: isConvertedCurrency(currency) ? 'Cost/1M tokens' : '$/1M tokens',
+        minWidth: isConvertedCurrency(currency)
+          ? USAGE_COLUMN_MIN_WIDTH.convertedRate
+          : USAGE_COLUMN_MIN_WIDTH.rate,
+        isSortable: true,
+        cell: row => (
+          <Cell>
+            <DataBar
+              label={formatMoney(row.usdPerMillion, currency)}
+              value={row.usdPerMillion}
+              max={max.ratio}
+              color={colorFor('ratio')}
+            />
+          </Cell>
+        ),
+      },
+      {
+        id: 'avgTokensPerCall',
+        // The average is implied; "Avg tokens/call" did not fit a phone.
+        label: 'Tokens/call',
+        minWidth: USAGE_COLUMN_MIN_WIDTH.tokensPerCall,
+        isSortable: true,
+        cell: row => (
+          <Cell>
+            <DataBar
+              label={
+                row.avgTokensPerCall === undefined
+                  ? '—'
+                  : formatTokens(row.avgTokensPerCall)
+              }
+              value={row.avgTokensPerCall}
+              max={max.avgTokensPerCall}
+              color={colorFor('avgTokensPerCall')}
+            />
+          </Cell>
+        ),
+      },
+    ],
+    [max, colorFor, currency],
   );
 
   const { tableProps } = useTable<LlmModelRow>({
@@ -197,11 +194,16 @@ export function LlmByModelTable({
     // not reset its offset when the data shrinks.
     paginationOptions: { type: 'none' },
   });
-  // The default sort is on Spend, which the compact layout keeps.
-  useVisibleSort(tableProps.sort, shownColumns, {
-    column: 'costUsd',
-    direction: 'descending',
-  });
+  // At phone width, and wherever the card is narrower than the columns'
+  // minimums, the model, what it cost and its context creep (T22 B10): six
+  // columns in 343px clipped every figure. The volume is in the tab's KPI
+  // tiles and the cost-per-day chart; the blended rate is cost ÷ tokens.
+  // It keeps Spend, the default sort.
+  const { ref: tableRef, columns: shownColumns } = useUsageTableColumns(
+    columnsFor,
+    ['model', 'costUsd', 'avgTokensPerCall'],
+    tableProps.sort,
+  );
 
   return (
     <UsageCard title="By model" note={note} wide>

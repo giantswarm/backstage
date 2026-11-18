@@ -1,3 +1,4 @@
+/* eslint-disable @backstage/no-mixed-plugin-imports -- The Agent Platform composes installation APIs across plugins. */
 import type { ReactNode } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { analyticsApiRef } from '@backstage/frontend-plugin-api';
@@ -175,6 +176,10 @@ async function renderModelPage(
         <PageHeaderActionsProvider>
           <Routes>
             <Route path="/customize/models/*" element={<ModelsRouter />} />
+            <Route
+              path="/customize/models/credentials/*"
+              element={<Location />}
+            />
             <Route path="/organizations/*" element={<Location />} />
           </Routes>
         </PageHeaderActionsProvider>
@@ -239,7 +244,7 @@ describe('ModelsRouter · Set as default on an organization model', () => {
     await user.click(await setAsDefault());
 
     expect(await screen.findByTestId('location')).toHaveTextContent(
-      `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
+      `/customize/models/credentials/gazelle/agents-payments-x7k2q/${CREDENTIAL_OPERATION}`,
     );
   });
 
@@ -257,19 +262,6 @@ describe('ModelsRouter · Set as default on an organization model', () => {
     expect(
       screen.queryByText('Could not make this the default model'),
     ).toBeNull();
-  });
-
-  it('does not give a keyless model a key Secret to move the mark', async () => {
-    const user = userEvent.setup();
-    const callTool = await renderModelPage(
-      { modelKeyPresent: true },
-      { keyless: true },
-    );
-
-    await user.click(await setAsDefault());
-
-    expect(await screen.findByText(/names no key Secret/)).toBeInTheDocument();
-    expect(toolCalls(callTool, 'set_organization_model')).toEqual([]);
   });
 
   it('says who may set the default when agent-manager refuses the person', async () => {

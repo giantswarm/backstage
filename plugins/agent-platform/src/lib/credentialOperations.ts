@@ -13,6 +13,8 @@ export type CredentialReferenceKind =
 
 /** An object of the organization that reads a credential Secret. */
 export type CredentialReference = {
+  projectID?: string;
+  location?: string;
   kind: CredentialReferenceKind;
   name: string;
   /** The key of the Secret the object reads. */
@@ -30,6 +32,7 @@ export type CredentialReference = {
 export type CredentialState = 'present' | 'committed' | 'missing' | 'replace';
 
 export type CredentialPair = {
+  inputFormat?: 'text' | 'google-service-account-json';
   secret: string;
   key: string;
   state: CredentialState;
@@ -43,6 +46,10 @@ export type CredentialCommit = {
   branch?: string;
   pullRequest?: string;
   number?: number;
+  /** The GitHub login the pull request is opened as. */
+  author?: string;
+  /** Who reviews it. */
+  review?: string;
 };
 
 /**
@@ -58,6 +65,7 @@ export type CredentialResourceResult = {
   kind?: CredentialResourceKind;
   name?: string;
   created?: boolean;
+  deleted?: boolean;
   /** Models only: the organization's default model after the write. */
   defaultModel?: string;
   note?: string;
@@ -88,7 +96,12 @@ export type CredentialOperation = {
   expiresAt?: string;
   state: CredentialOperationState;
   mode: 'apply' | 'commit';
-  organization: { namespace?: string; parent?: string; organization?: string };
+  organization: {
+    scope?: 'platform';
+    namespace?: string;
+    parent?: string;
+    organization?: string;
+  };
   changes?: CredentialChange[];
   gitTarget?: { repository?: string; base?: string; directory?: string };
   references?: CredentialReference[];
@@ -127,6 +140,24 @@ export function preparedCredentialOperation(
     );
   }
   return operation;
+}
+
+/**
+ * The portal's credential form for a prepared operation: `formLink` is the
+ * form's route as `useRouteRef` gives it, `undefined` where this portal does
+ * not bind the route. Without one the person cannot enter the value, and the
+ * write is refused with `unavailable`, the caller's words for it.
+ */
+export function credentialFormOf<Params>(
+  formLink: ((params: Params) => string) | undefined,
+  params: Params,
+  unavailable: string,
+): string {
+  const form = formLink?.(params);
+  if (!form) {
+    throw new Error(unavailable);
+  }
+  return form;
 }
 
 /**

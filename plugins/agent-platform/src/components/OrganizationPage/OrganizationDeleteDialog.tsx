@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Alert, Flex, Text, TextField } from '@backstage/ui';
 import {
   ConfirmDialog,
-  ExternalButtonLink,
   LoadingIndicator,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -13,11 +12,11 @@ import {
   useOrganizationErasure,
 } from '../../hooks/useOrganization';
 import type {
-  OrganizationCommit,
   OrganizationDeleteMode,
   OrganizationErasure,
 } from '../../lib/organizations';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
+import { PullRequestOutcome } from '../PullRequestOutcome';
 
 export type OrganizationDeleteDialogProps = {
   installation: string;
@@ -107,47 +106,6 @@ function RunningSessions({ erasure }: { erasure: OrganizationErasure }) {
         ))}
       </ul>
     </Flex>
-  );
-}
-
-function PullRequestOutcome({ commit }: { commit: OrganizationCommit }) {
-  if (!commit.pullRequest) {
-    return (
-      <Alert
-        status="info"
-        title="Nothing to commit"
-        description="git already says the organization is deleted."
-      />
-    );
-  }
-  return (
-    <Alert
-      status="success"
-      data-testid="organization-delete-pull-request"
-      title={`Pull request${commit.number ? ` #${commit.number}` : ''} opened${
-        commit.author ? ` as ${commit.author}` : ''
-      }`}
-      description={
-        <Flex direction="column" gap="2">
-          <Text variant="body-small" style={{ overflowWrap: 'anywhere' }}>
-            {commit.repository} on {commit.base}. Once it is merged, the
-            organization shows Pending erase, and Erase now erases it.
-          </Text>
-          {commit.review && (
-            <Text variant="body-small">Review: {commit.review}.</Text>
-          )}
-          <div>
-            <ExternalButtonLink
-              href={commit.pullRequest}
-              variant="secondary"
-              size="small"
-            >
-              Review pull request
-            </ExternalButtonLink>
-          </div>
-        </Flex>
-      }
-    />
   );
 }
 
@@ -300,7 +258,14 @@ export function OrganizationDeleteDialog({
             onSignedIn={deletion.reset}
           />
         )}
-        {pullRequest && <PullRequestOutcome commit={pullRequest} />}
+        {pullRequest && (
+          <PullRequestOutcome
+            commit={pullRequest}
+            next="Once it is merged, the organization shows Pending erase, and Erase now erases it."
+            unchanged="git already says the organization is deleted."
+            testId="organization-delete-pull-request"
+          />
+        )}
         {unchanged && (
           <Alert
             status="info"

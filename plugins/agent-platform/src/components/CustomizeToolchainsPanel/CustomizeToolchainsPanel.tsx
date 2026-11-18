@@ -84,9 +84,33 @@ function ToolsCell({
   );
 }
 
-/** "0.2.0, 0.1.0": the published versions, newest first. */
-export function versionsLabel(toolchain: Toolchain): string {
-  return toolchain.versions.map(imageTag).join(', ');
+/**
+ * "0.6.1 · 4 older": the newest version and how many came before it, short
+ * enough for its column whatever the count. Without a list of versions, the
+ * newest the toolchain names.
+ */
+export function shortVersionsLabel(toolchain: Toolchain): string {
+  const [newest, ...older] = (toolchain.versions ?? []).map(imageTag);
+  if (newest === undefined) {
+    return toolchain.version ? imageTag(toolchain.version) : '—';
+  }
+  return older.length > 0 ? `${newest} · ${older.length} older` : newest;
+}
+
+/** A toolchain's versions, newest first, and how long ago the newest came. */
+function VersionsCell({ toolchain }: { toolchain: Toolchain }) {
+  return (
+    <CellText
+      title={shortVersionsLabel(toolchain)}
+      description={
+        toolchain.publishedAt
+          ? `Latest ${getRelativeDate(toolchain.publishedAt, new Date(), {
+              strict: true,
+            })}`
+          : undefined
+      }
+    />
+  );
 }
 
 /** The toolchains matching a search, by name, source or repository. */
@@ -139,16 +163,9 @@ function ToolchainsTable({
       id: 'versions',
       label: 'Versions',
       defaultWidth: '1fr',
-      cell: row => (
-        <CellText
-          title={versionsLabel(row)}
-          description={
-            row.publishedAt
-              ? `Latest ${getRelativeDate(row.publishedAt, new Date())}`
-              : undefined
-          }
-        />
-      ),
+      // "0.6.1 · 12 older", and "Latest 59 minutes ago" under it.
+      minWidth: 170,
+      cell: row => <VersionsCell toolchain={row} />,
     },
     {
       id: 'tools',
@@ -208,6 +225,8 @@ function SourcesSection({ installation }: { installation: string }) {
       id: 'state',
       label: 'State',
       defaultWidth: '1fr',
+      // "Waiting for approval" with its dot.
+      minWidth: 170,
       cell: row => <SourceStateCell source={row} />,
     },
     {

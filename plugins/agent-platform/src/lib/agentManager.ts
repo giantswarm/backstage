@@ -76,6 +76,7 @@ export const AGENT_MANAGER_TOOLS = {
   removeOrganizationMember: 'remove_organization_member',
   listOrganizationConnectors: 'list_organization_connectors',
   setOrganizationModel: 'set_organization_model',
+  deleteOrganizationObject: 'delete_organization_object',
   replaceOrganizationCredential: 'replace_organization_credential',
 } as const;
 
@@ -766,6 +767,16 @@ export type AgentManagerModelConfig = {
    * reads this field and never the annotation, whose key agent-manager owns.
    */
   default?: boolean;
+  /**
+   * The model's settings, which agent-manager 3.1.0 and later report: the
+   * name people see, the token limit of an answer (absent: the provider's
+   * default), and prompt caching (absent for a provider without it), with
+   * its cache time while it is on.
+   */
+  displayName?: string;
+  maxTokens?: number;
+  promptCaching?: boolean;
+  cacheTTL?: string;
 };
 
 /**
@@ -786,12 +797,15 @@ export const EGRESS_POLICIES_CAPABILITY = 'egressPolicies';
 
 /**
  * One origin of an EgressPolicy. `credentialHeader` names the request header
- * the egress gateway fills from the policy's credential; the Secret behind it
- * is never reported.
+ * the egress gateway fills from the policy's credential. `credentialSecret`
+ * and `credentialKey` name the Secret and key it reads, never the value; an
+ * agent-manager older than giantswarm/agent-manager#371 leaves them out.
  */
 export type EgressDestination = {
   origin: string;
   credentialHeader?: string;
+  credentialSecret?: string;
+  credentialKey?: string;
 };
 
 /** `list_egress_policies`: an EgressPolicy an agent of its namespace may pick. */

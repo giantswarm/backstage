@@ -14,6 +14,7 @@ import {
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
+  CONTENT_PULL_REQUEST,
   CREDENTIAL_OPERATION,
   fakeOrganizationAccess,
   fakeOrganizationsMuster,
@@ -21,7 +22,7 @@ import {
   type OrganizationsScenario,
 } from '../../lib/__fixtures__/agentManagerOrganizations';
 import { musterOrganizationsQueryKey } from '../../lib/queryKeys';
-import { organizationsRouteRef } from '../../routes';
+import { modelsRouteRef, organizationsRouteRef } from '../../routes';
 import { OrganizationPage } from './OrganizationPage';
 
 const PAYMENTS = {
@@ -95,6 +96,8 @@ const SCENARIO: OrganizationsScenario = {
         {
           origin: 'https://api.stripe.com:443',
           credentialHeader: 'Authorization',
+          credentialSecret: 'tenant-credential-stripe',
+          credentialKey: 'token',
         },
       ],
     },
@@ -134,6 +137,10 @@ async function renderPage(tab: string, scenario: OrganizationsScenario) {
               element={<LocationProbe />}
             />
             <Route
+              path="/customize/models/credentials/:installation/:namespace/:operation"
+              element={<LocationProbe />}
+            />
+            <Route
               path="/organizations/:installation/:parent/:name/*"
               element={
                 <OrganizationPage
@@ -149,7 +156,10 @@ async function renderPage(tab: string, scenario: OrganizationsScenario) {
     </TestApiProvider>,
     {
       initialRouteEntries: [`/organizations/gazelle/org-acme/payments${tab}`],
-      mountedRoutes: { '/organizations': organizationsRouteRef },
+      mountedRoutes: {
+        '/organizations': organizationsRouteRef,
+        '/customize/models': modelsRouteRef,
+      },
     },
   );
   return { callTool, queryClient };
@@ -465,12 +475,18 @@ describe('OrganizationPage', () => {
           name: 'Replace the credential of jira',
         }),
       ],
+      '/egress': async () => [
+        await screen.findByRole('button', {
+          name: 'Replace the credential of payments-api',
+        }),
+      ],
     };
 
     it.each([
       ['Members', ''],
       ['Models', '/models'],
       ['Connectors', '/connectors'],
+      ['Egress', '/egress'],
     ])('turns every change on %s off and says why', async (_tab, path) => {
       await renderPage(path, PENDING_ERASE);
 
@@ -488,6 +504,7 @@ describe('OrganizationPage', () => {
       ['Members', ''],
       ['Models', '/models'],
       ['Connectors', '/connectors'],
+      ['Egress', '/egress'],
     ])(
       'turns every change on %s off while it is Erasing and says why',
       async (_tab, path) => {
@@ -511,6 +528,8 @@ describe('OrganizationPage', () => {
       ['Members', '', 'Missing from git', MISSING_FROM_GIT],
       ['Models', '/models', 'Missing from git', MISSING_FROM_GIT],
       ['Connectors', '/connectors', 'Missing from git', MISSING_FROM_GIT],
+      ['Egress', '/egress', 'in git', IN_GIT],
+      ['Egress', '/egress', 'Missing from git', MISSING_FROM_GIT],
     ])(
       'offers every change on %s while it is %s',
       async (_tab, path, _state, scenario) => {
@@ -544,6 +563,18 @@ describe('OrganizationPage', () => {
         /^Replace the credential of jira$/,
         'Erasing',
       ],
+      [
+        'Replace credential',
+        '/egress',
+        /^Replace the credential of payments-api$/,
+        'Pending erase',
+      ],
+      [
+        'Replace credential',
+        '/egress',
+        /^Replace the credential of payments-api$/,
+        'Erasing',
+      ],
     ])(
       'closes an open %s dialog once the organization turns %s',
       async (_dialog, path, opener, state) => {
@@ -572,16 +603,6 @@ describe('OrganizationPage', () => {
         );
       },
     );
-
-    it('lists the egress policies on Pending erase, a tab with nothing to change', async () => {
-      await renderPage('/egress', PENDING_ERASE);
-
-      expect(await screen.findByText('payments-api')).toBeInTheDocument();
-      expect(screen.getByText(WHY)).toBeInTheDocument();
-      expect(
-        screen.queryByRole('button', { name: /^(Add|Remove|Replace|Edit)/ }),
-      ).not.toBeInTheDocument();
-    });
   });
 
   it('shows the members agent-manager lists, each with its role, from the organization namespace it names', async () => {
@@ -751,6 +772,11 @@ describe('OrganizationPage', () => {
       .getByRole('rowheader', { name: /^gpt/ })
       .closest('[role="row"]') as HTMLElement;
     expect(within(gpt).queryByText('Default')).toBeNull();
+    // Each name opens the model's page, where it is edited or deleted.
+    expect(within(gpt).getByRole('link', { name: /gpt/ })).toHaveAttribute(
+      'href',
+      `/customize/models/gazelle/${PAYMENTS.namespace}/gpt`,
+    );
   });
 
   it('lists a model named like one of its columns', async () => {
@@ -772,22 +798,135 @@ describe('OrganizationPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('hides key replacement for managed models', async () => {
+  it('offers Replace key on a model whatever tool manages it', async () => {
     await renderPage('/models', {
       ...SCENARIO,
       models: {
         [PAYMENTS.namespace]: SCENARIO.models![PAYMENTS.namespace].map(
-          model => ({
-            ...model,
-            managedBy: 'platform',
-          }),
+          model => ({ ...model, managedBy: 'Flux' }),
         ),
       },
     });
-    await screen.findByRole('rowheader', { name: /claude-sonnet/ });
+
+    // A model from git takes a new key too: by pull request, as the
+    // organization is applied.
     expect(
-      screen.queryByRole('button', { name: /Replace the key/ }),
-    ).toBeNull();
+      await screen.findByRole('button', { name: 'Replace the key of gpt' }),
+    ).toBeEnabled();
+  });
+
+  describe('the model settings', () => {
+    const WITH_SETTINGS: OrganizationsScenario = {
+      ...SCENARIO,
+      modelSettings: true,
+      models: {
+        [PAYMENTS.namespace]: [
+          {
+            name: 'claude-sonnet',
+            namespace: PAYMENTS.namespace,
+            displayName: 'Claude Sonnet',
+            provider: 'Anthropic',
+            model: 'claude-sonnet-4-6',
+            accepted: true,
+            default: true,
+            promptCaching: true,
+            cacheTTL: '1h',
+            maxTokens: 8192,
+          },
+          {
+            name: 'gpt',
+            namespace: PAYMENTS.namespace,
+            provider: 'OpenAI',
+            model: 'gpt-5',
+            accepted: true,
+          },
+        ],
+      },
+    };
+
+    it("shows each model's stored settings", async () => {
+      await renderPage('/models', WITH_SETTINGS);
+
+      const sonnet = await screen.findByRole('row', { name: /Claude Sonnet/ });
+      expect(sonnet).toHaveTextContent('claude-sonnet');
+      expect(sonnet).toHaveTextContent('Token limit 8,192');
+      expect(sonnet).toHaveTextContent('Prompt caching, 1 hour');
+      const gpt = screen.getByRole('row', { name: /^gpt/ });
+      expect(gpt).toHaveTextContent('Provider’s token limit');
+      expect(gpt).not.toHaveTextContent('caching');
+    });
+
+    it('adds a model with its settings, an Anthropic one caching for 5 minutes by default', async () => {
+      const user = userEvent.setup();
+      const { callTool } = await renderPage('/models', WITH_SETTINGS);
+      await user.click(
+        await screen.findByRole('button', { name: 'Add model' }),
+      );
+      const dialog = await screen.findByRole('dialog');
+      expect(
+        within(dialog).getByRole('switch', { name: 'Prompt caching' }),
+      ).toBeChecked();
+      await user.type(
+        within(dialog).getByRole('textbox', { name: /^Name/ }),
+        'Claude Opus',
+      );
+      await user.type(
+        within(dialog).getByRole('textbox', { name: /^Model/ }),
+        'claude-opus-4-1',
+      );
+      await user.type(
+        within(dialog).getByRole('textbox', { name: /Token limit/ }),
+        '4096',
+      );
+      await user.tab();
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Continue to the key' }),
+      );
+
+      await waitFor(() =>
+        expect(toolCalls(callTool, 'set_organization_model')).toEqual([
+          expect.objectContaining({
+            maxTokens: 4096,
+            promptCaching: true,
+            cacheTTL: '5m',
+          }),
+        ]),
+      );
+    });
+
+    it('offers and sends no setting where agent-manager does not take them', async () => {
+      const user = userEvent.setup();
+      const { callTool } = await renderPage('/models', {
+        ...WITH_SETTINGS,
+        modelSettings: false,
+      });
+      const sonnet = await screen.findByRole('row', { name: /Claude Sonnet/ });
+      expect(sonnet).not.toHaveTextContent('Token limit');
+      await user.click(screen.getByRole('button', { name: 'Add model' }));
+      const dialog = await screen.findByRole('dialog');
+      expect(
+        within(dialog).queryByRole('switch', { name: 'Prompt caching' }),
+      ).toBeNull();
+      await user.type(
+        within(dialog).getByRole('textbox', { name: /^Name/ }),
+        'Claude Opus',
+      );
+      await user.type(
+        within(dialog).getByRole('textbox', { name: /^Model/ }),
+        'claude-opus-4-1',
+      );
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Continue to the key' }),
+      );
+
+      await waitFor(() =>
+        expect(toolCalls(callTool, 'set_organization_model')).toHaveLength(1),
+      );
+      const [args] = toolCalls(callTool, 'set_organization_model');
+      for (const setting of ['maxTokens', 'promptCaching', 'cacheTTL']) {
+        expect(args).not.toHaveProperty(setting);
+      }
+    });
   });
 
   it('closes the model dialog and refreshes after an immediate write', async () => {
@@ -834,7 +973,7 @@ describe('OrganizationPage', () => {
     const dialog = await screen.findByRole('dialog');
     await user.type(
       within(dialog).getByRole('textbox', { name: /Name/ }),
-      'claude',
+      'Claude Sonnet',
     );
     await user.type(
       within(dialog).getByRole('textbox', { name: /Model/ }),
@@ -848,7 +987,8 @@ describe('OrganizationPage', () => {
       expect(toolCalls(callTool, 'set_organization_model')).toEqual([
         expect.objectContaining({
           namespace: PAYMENTS.namespace,
-          name: 'claude',
+          name: 'claude-sonnet',
+          displayName: 'Claude Sonnet',
           provider: 'Anthropic',
           model: 'claude-sonnet-4-6',
           requestId: expect.any(String),
@@ -856,7 +996,7 @@ describe('OrganizationPage', () => {
       ]),
     );
     expect(await screen.findByTestId('location')).toHaveTextContent(
-      `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
+      `/customize/models/credentials/gazelle/${PAYMENTS.namespace}/${CREDENTIAL_OPERATION}`,
     );
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
@@ -928,6 +1068,33 @@ describe('OrganizationPage', () => {
     expect(toolCalls(callTool, 'set_organization_model')).toEqual([]);
   });
 
+  it('asks for a name the technical name can be made from', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderPage('/models', {
+      ...SCENARIO,
+      models: {},
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Add model' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(within(dialog).getByLabelText(/^Name/), '日本語');
+    await user.type(
+      within(dialog).getByLabelText(/^Model/),
+      'claude-sonnet-4-6',
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Continue to the key' }),
+    );
+
+    expect(
+      await within(dialog).findByText(
+        'Use at least one letter a–z or digit in the name: the model’s technical name is made from them.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText('Enter a technical name.')).toBeNull();
+    expect(toolCalls(callTool, 'set_organization_model')).toEqual([]);
+  });
+
   it('says so when agent-manager answers a credential request without its id', async () => {
     const user = userEvent.setup();
     await renderPage('/models', { ...SCENARIO, withoutOperation: true });
@@ -972,7 +1139,7 @@ describe('OrganizationPage', () => {
     );
     expect(toolCalls(callTool, 'set_organization_model')).toEqual([]);
     expect(await screen.findByTestId('location')).toHaveTextContent(
-      `/credentials/${CREDENTIAL_OPERATION}`,
+      `/customize/models/credentials/gazelle/${PAYMENTS.namespace}/${CREDENTIAL_OPERATION}`,
     );
   });
 
@@ -1026,7 +1193,7 @@ describe('OrganizationPage', () => {
       ]),
     );
     expect(await screen.findByTestId('location')).toHaveTextContent(
-      `/credentials/${CREDENTIAL_OPERATION}`,
+      `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
     );
   });
 
@@ -1081,6 +1248,151 @@ describe('OrganizationPage', () => {
     expect(
       screen.getByText('https://api.stripe.com:443 (adds Authorization)'),
     ).toBeInTheDocument();
+  });
+
+  it('asks for a new egress credential on the credential form', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderPage('/egress', SCENARIO);
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Replace the credential of payments-api',
+      }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByText('Replace the credential of payments-api?'),
+    ).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Continue' }));
+
+    // Only the Secret and key: the policy and its destinations are not
+    // sent, so they cannot change.
+    await waitFor(() =>
+      expect(toolCalls(callTool, 'replace_organization_credential')).toEqual([
+        {
+          namespace: PAYMENTS.namespace,
+          secret: 'tenant-credential-stripe',
+          key: 'token',
+          requestId: expect.any(String),
+        },
+      ]),
+    );
+    expect(await screen.findByTestId('location')).toHaveTextContent(
+      `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
+    );
+  });
+
+  it('offers one Replace per Secret and key of an egress policy', async () => {
+    await renderPage('/egress', {
+      ...SCENARIO,
+      egressPolicies: [
+        {
+          name: 'payments-api',
+          namespace: PAYMENTS.namespace,
+          destinations: [
+            {
+              origin: 'https://api.stripe.com:443',
+              credentialHeader: 'Authorization',
+              credentialSecret: 'tenant-credential-stripe',
+              credentialKey: 'token',
+            },
+            {
+              origin: 'https://files.stripe.com:443',
+              credentialHeader: 'Authorization',
+              credentialSecret: 'tenant-credential-stripe',
+              credentialKey: 'token',
+            },
+          ],
+        },
+        {
+          name: 'search',
+          namespace: PAYMENTS.namespace,
+          destinations: [
+            {
+              origin: 'https://search.example.com:443',
+              credentialHeader: 'Authorization',
+              credentialSecret: 'tenant-credential-search',
+              credentialKey: 'token',
+            },
+            {
+              origin: 'https://index.example.com:443',
+              credentialHeader: 'Authorization',
+              credentialSecret: 'tenant-credential-index',
+              credentialKey: 'token',
+            },
+          ],
+        },
+      ],
+    });
+
+    // Two destinations that read the same Secret and key: one Replace.
+    expect(
+      await screen.findAllByRole('button', {
+        name: /^Replace the credential of payments-api/,
+      }),
+    ).toHaveLength(1);
+    expect(
+      screen.getByRole('button', {
+        name: 'Replace the credential of payments-api',
+      }),
+    ).toHaveTextContent('Replace credential');
+    // Two Secrets behind the same header: told apart by their origins.
+    expect(
+      screen.getByRole('button', {
+        name: 'Replace the credential of search (https://search.example.com:443)',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', {
+        name: 'Replace the credential of search (https://index.example.com:443)',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('offers Replace on an egress policy whatever tool manages it', async () => {
+    await renderPage('/egress', {
+      ...SCENARIO,
+      egressPolicies: [{ ...SCENARIO.egressPolicies![0], managedBy: 'Helm' }],
+    });
+
+    // app.kubernetes.io/managed-by does not say the platform owns it.
+    expect(
+      await screen.findByRole('button', {
+        name: 'Replace the credential of payments-api',
+      }),
+    ).toBeEnabled();
+  });
+
+  it('offers no Replace for an egress destination that names no Secret and key', async () => {
+    await renderPage('/egress', {
+      ...SCENARIO,
+      egressPolicies: [
+        {
+          name: 'payments-api',
+          namespace: PAYMENTS.namespace,
+          destinations: [
+            // An agent-manager older than giantswarm/agent-manager#371 names
+            // the header only.
+            {
+              origin: 'https://api.stripe.com:443',
+              credentialHeader: 'Authorization',
+            },
+            { origin: 'https://status.stripe.com:443' },
+          ],
+        },
+      ],
+    });
+
+    expect(
+      await screen.findByText(
+        'https://api.stripe.com:443 (adds Authorization), https://status.stripe.com:443',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^Replace/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('columnheader')).toHaveLength(2);
   });
 
   describe('deleting the organization', () => {
@@ -1500,6 +1812,16 @@ describe('OrganizationPage', () => {
       ).not.toBeInTheDocument();
     });
 
+    it('shows a member the egress policies as before, with no credential change', async () => {
+      await renderPage('/egress', MEMBER_ONLY);
+
+      expect(await screen.findByText('payments-api')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /^Replace/ }),
+      ).not.toBeInTheDocument();
+      expect(screen.getAllByRole('columnheader')).toHaveLength(2);
+    });
+
     it('offers an organization admin who does not manage the organization its changes', async () => {
       const { callTool } = await renderPage('/models', SCENARIO);
 
@@ -1743,5 +2065,266 @@ describe('OrganizationPage', () => {
     expect(
       await screen.findByText('You are not a member of payments'),
     ).toBeInTheDocument();
+  });
+
+  describe('content writes follow how the organization is applied', () => {
+    /** The operator's condition on an organization Flux applies from git. */
+    const IN_GIT = {
+      orphaned: { status: 'False', reason: 'InInventory' },
+    } satisfies OrganizationsScenario['memberStatus'];
+    const FROM_GIT: OrganizationsScenario = {
+      ...SCENARIO,
+      commitMode: true,
+      memberStatus: IN_GIT,
+    };
+
+    async function addGroup(scenario: OrganizationsScenario) {
+      const user = userEvent.setup();
+      const page = await renderPage('', scenario);
+      await user.type(
+        await screen.findByRole('textbox', { name: /Group/ }),
+        'sre',
+      );
+      await user.click(screen.getByRole('button', { name: 'Add group' }));
+      await waitFor(() =>
+        expect(
+          toolCalls(page.callTool, 'add_organization_member'),
+        ).toHaveLength(1),
+      );
+      return toolCalls(page.callTool, 'add_organization_member')[0];
+    }
+
+    /** Opens a dialog's button and confirms it with `confirm`. */
+    async function confirmIn(
+      tab: string,
+      scenario: OrganizationsScenario,
+      button: string,
+      confirm: string,
+      tool: string,
+      fill?: (dialog: HTMLElement) => Promise<void>,
+    ) {
+      const user = userEvent.setup();
+      const { callTool } = await renderPage(tab, scenario);
+      await user.click(await screen.findByRole('button', { name: button }));
+      const dialog = await screen.findByRole('dialog');
+      await fill?.(dialog);
+      await user.click(within(dialog).getByRole('button', { name: confirm }));
+      await waitFor(() => expect(toolCalls(callTool, tool)).toHaveLength(1));
+      return toolCalls(callTool, tool)[0];
+    }
+
+    /** Each write of the organization's content, by what it does. */
+    const WRITES: Record<
+      string,
+      (scenario: OrganizationsScenario) => Promise<Record<string, unknown>>
+    > = {
+      'adds a member': addGroup,
+      'removes a member': scenario =>
+        confirmIn(
+          '',
+          scenario,
+          'Remove jane@example.com as user',
+          'Remove',
+          'remove_organization_member',
+        ),
+      'adds a model': scenario =>
+        confirmIn(
+          '/models',
+          scenario,
+          'Add model',
+          'Continue to the key',
+          'set_organization_model',
+          async dialog => {
+            await userEvent.type(
+              within(dialog).getByRole('textbox', { name: /Name/ }),
+              'claude',
+            );
+            await userEvent.type(
+              within(dialog).getByRole('textbox', { name: /Model/ }),
+              'claude-sonnet-4-6',
+            );
+          },
+        ),
+      "replaces a model's key": scenario =>
+        confirmIn(
+          '/models',
+          scenario,
+          'Replace the key of gpt',
+          'Continue',
+          'replace_organization_credential',
+        ),
+      "replaces a connector's credential": scenario =>
+        confirmIn(
+          '/connectors',
+          scenario,
+          'Replace the credential of jira',
+          'Continue',
+          'replace_organization_credential',
+        ),
+      "replaces an egress policy's credential": scenario =>
+        confirmIn(
+          '/egress',
+          scenario,
+          'Replace the credential of payments-api',
+          'Continue',
+          'replace_organization_credential',
+        ),
+    };
+
+    /** The three cases of the issue, each with the mode its writes take. */
+    const CASES: [string, OrganizationsScenario, 'commit' | undefined][] = [
+      ['from git, with commit mode', FROM_GIT, 'commit'],
+      [
+        'created live, with commit mode',
+        { ...SCENARIO, commitMode: true },
+        undefined,
+      ],
+      [
+        'from git, without commit mode',
+        { ...SCENARIO, memberStatus: IN_GIT },
+        undefined,
+      ],
+    ];
+
+    it.each(
+      Object.keys(WRITES).flatMap(write =>
+        CASES.map(
+          ([name, scenario, mode]) => [write, name, scenario, mode] as const,
+        ),
+      ),
+    )(
+      '%s of an organization %s in that mode',
+      async (write, _, scenario, mode) => {
+        const args = await WRITES[write](scenario);
+        // A live write sends no mode at all: the call it was before.
+        expect('mode' in args ? args.mode : 'absent').toBe(mode ?? 'absent');
+      },
+    );
+
+    it('takes the key of a model added by pull request on the form', async () => {
+      await WRITES['adds a model'](FROM_GIT);
+      // The form reads the operation's mode from agent-manager: a pull request.
+      expect(await screen.findByTestId('location')).toHaveTextContent(
+        CREDENTIAL_OPERATION,
+      );
+    });
+
+    it('shows the pull request a write opened, and lists nothing new', async () => {
+      await addGroup(FROM_GIT);
+
+      const outcome = await screen.findByTestId(
+        'organization-member-pull-request',
+      );
+      expect(outcome).toHaveTextContent('Pull request #7 opened');
+      expect(outcome).toHaveTextContent(
+        'The change applies once the pull request is merged.',
+      );
+      expect(
+        within(outcome).getByRole('link', { name: /Review pull request/ }),
+      ).toHaveAttribute('href', CONTENT_PULL_REQUEST.pullRequest);
+      expect(screen.queryByRole('rowheader', { name: /sre/ })).toBeNull();
+    });
+
+    it('reads gitops for an organization the person manages', async () => {
+      const args = await addGroup({
+        ...SCENARIO,
+        commitMode: true,
+        organization: {
+          name: 'payments',
+          parent: 'org-acme',
+          namespace: PAYMENTS.namespace,
+          harnesses: ['kagent'],
+          workerReplicas: 3,
+          gitops: 'flux-giantswarm/agent-platform-organizations',
+        },
+      });
+      expect(args).toEqual(expect.objectContaining({ mode: 'commit' }));
+    });
+
+    it('keeps the model dialog open with the pull request when no key is asked', async () => {
+      const user = userEvent.setup();
+      await renderPage('/models', { ...FROM_GIT, modelKeyPresent: true });
+      await user.click(
+        await screen.findByRole('button', { name: 'Add model' }),
+      );
+      const dialog = await screen.findByRole('dialog');
+      await user.type(
+        within(dialog).getByRole('textbox', { name: /Name/ }),
+        'claude',
+      );
+      await user.type(
+        within(dialog).getByRole('textbox', { name: /Model/ }),
+        'claude-sonnet-4-6',
+      );
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Continue to the key' }),
+      );
+
+      expect(
+        await within(dialog).findByTestId('organization-content-pull-request'),
+      ).toHaveTextContent('Pull request #7 opened');
+      expect(
+        within(dialog).queryByRole('button', { name: 'Continue to the key' }),
+      ).toBeNull();
+      expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+    });
+
+    it('keeps the removal dialog open with the pull request', async () => {
+      const user = userEvent.setup();
+      const { callTool } = await renderPage('', FROM_GIT);
+      await user.click(
+        await screen.findByRole('button', {
+          name: 'Remove jane@example.com as user',
+        }),
+      );
+      const dialog = await screen.findByRole('dialog');
+      await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
+
+      expect(
+        await within(dialog).findByTestId('organization-member-pull-request'),
+      ).toHaveTextContent('Pull request #7 opened');
+      expect(toolCalls(callTool, 'remove_organization_member')).toEqual([
+        expect.objectContaining({ mode: 'commit' }),
+      ]);
+    });
+
+    it("shows agent-manager's refusal of a pull request for a live object, and keeps the action", async () => {
+      const sentence =
+        "ModelConfig agents-payments-x7k2q/gpt was written live, not applied from git, so no file in the organization's content path defines it: change it with mode apply";
+      const user = userEvent.setup();
+      await renderPage('/models', {
+        ...FROM_GIT,
+        replaceError: `conflict: ${sentence}`,
+      });
+      await user.click(
+        await screen.findByRole('button', { name: 'Replace the key of gpt' }),
+      );
+      const dialog = await screen.findByRole('dialog');
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Continue' }),
+      );
+
+      expect(
+        await within(dialog).findByText(new RegExp(`answered: ${sentence}`)),
+      ).toBeInTheDocument();
+      expect(
+        within(dialog).getByRole('button', { name: 'Continue' }),
+      ).toBeEnabled();
+    });
+
+    it("shows agent-manager's refusal of a live write of an object from git, and keeps the action", async () => {
+      const sentence =
+        'RoleBinding agents-payments-x7k2q/organization-users is applied from git by the Flux Kustomization flux-giantswarm/payments, which would revert a live change: use mode commit to change it with a pull request';
+      await addGroup({
+        ...SCENARIO,
+        commitMode: true,
+        addError: `gitops_owned: ${sentence}`,
+      });
+
+      const alert = await screen.findByText(sentence);
+      expect(alert).toBeInTheDocument();
+      expect(screen.getByText('Could not add the group')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Add group' })).toBeEnabled();
+    });
   });
 });

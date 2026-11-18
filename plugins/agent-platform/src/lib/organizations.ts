@@ -163,6 +163,70 @@ export function organizationDeleteMode(
 }
 
 /**
+ * Whether Flux applies the organization from the installation's git
+ * repository. A person who manages it reads `gitops`; a member reads only
+ * its status, where the operator's `orphaned` condition says the same: the
+ * operator sets it, in any state, on an organization of the installation's
+ * Kustomization only.
+ */
+export function isAppliedFromGit(
+  organization: Pick<ListedOrganization, 'orphaned' | 'organization'>,
+): boolean {
+  return (
+    Boolean(organization.organization?.gitops) ||
+    organization.orphaned !== undefined
+  );
+}
+
+/**
+ * How the portal writes an organization's content (its models, connectors,
+ * egress policies, members and credentials): by pull request for an
+ * organization applied from git on an installation whose agent-manager opens
+ * pull requests, live otherwise. The person gets no choice: the portal keeps
+ * an organization's content where the organization itself is. agent-manager
+ * still decides for an object that exists by how that object is applied, and
+ * refuses the other mode (`gitops_owned`, `conflict`).
+ */
+export function organizationContentMode(
+  organization:
+    Pick<ListedOrganization, 'orphaned' | 'organization'> | undefined,
+  commitMode: boolean,
+): OrganizationWriteMode {
+  return commitMode && organization && isAppliedFromGit(organization)
+    ? 'commit'
+    : 'apply';
+}
+
+/**
+ * Why a content write in `namespace` is refused on an installation with
+ * commit mode: `list_organizations` does not name its organization, so
+ * whether it is applied from git is not known.
+ */
+export function organizationModeUnknown(namespace: string): string {
+  return `Could not tell whether the organization of ${namespace} is applied from git, so nothing was written. Read the page again, then try again.`;
+}
+
+/** What a content write's pull request does once merged. */
+export const CONTENT_PULL_REQUEST_NEXT =
+  'The change applies once the pull request is merged.';
+
+/** Why a content write in mode commit opened no pull request. */
+export const CONTENT_PULL_REQUEST_UNCHANGED = 'git already holds this change.';
+
+/** How a write of an organization's content goes: live or by pull request. */
+export type OrganizationWriteMode = 'apply' | 'commit';
+
+/**
+ * The `mode` argument of a content write: only `commit` is sent, so a live
+ * write stays the call it was.
+ */
+export function modeArgument(mode: OrganizationWriteMode | undefined): {
+  mode?: 'commit';
+} {
+  return mode === 'commit' ? { mode } : {};
+}
+
+/**
  * What the person may do with a listed organization, as the API server
  * answers agent-manager's access reviews with the person's token.
  */
@@ -327,6 +391,8 @@ export type OrganizationMembers = {
 export type MemberRequest = {
   namespace: string;
   role?: MemberRole;
+  /** A pull request instead of a live write ({@link organizationContentMode}). */
+  mode?: 'commit';
 } & ({ group: string; user?: never } | { user: string; group?: never });
 
 /** `add_organization_member` and `remove_organization_member`. */
@@ -335,6 +401,8 @@ export type MemberResult = {
   member: OrganizationMember;
   changed: boolean;
   bindings?: string[];
+  /** The pull request of a change in mode commit. */
+  commit?: OrganizationCommit;
 };
 
 /** One Secret-backed header of a connector. */
@@ -389,14 +457,32 @@ export function memberKindLabel(kind: string): string {
  * a new key for an existing model is `replace_organization_credential`.
  */
 export type OrganizationModelRequest = {
+  projectID?: string;
+  location?: string;
+  endpoint?: string;
+  displayName?: string;
+  insecureSkipTLSVerify?: boolean;
+  noCredential?: boolean;
+  create?: boolean;
   namespace: string;
   name: string;
   provider?: string;
   model?: string;
   /** Moves the organization's default mark to this model. */
   default?: boolean;
+  /**
+   * The token limit of an answer; `0` removes it. Sent only where the tool
+   * takes it (`takesModelSettings`), as are the two below.
+   */
+  maxTokens?: number;
+  /** Prompt caching (Anthropic); a new Anthropic model has it on. */
+  promptCaching?: boolean;
+  /** How long a cached prompt stays: `5m` or `1h`. */
+  cacheTTL?: string;
   /** Idempotency key: one per intended change. */
   requestId: string;
+  /** A pull request instead of a live write ({@link organizationContentMode}). */
+  mode?: 'commit';
 };
 
 /**
@@ -412,4 +498,51 @@ export type OrganizationCredentialReplacement = {
   key: string;
   /** Idempotency key: one per intended change. */
   requestId: string;
+  /** A pull request instead of a live write ({@link organizationContentMode}). */
+  mode?: 'commit';
 };
+
+/**
+ * The `set_organization_model` arguments the portal's model forms send; an
+ * agent-manager whose tool lacks one of them predates model credential
+ * operations.
+ */
+export const MODEL_OPERATION_FIELDS = [
+  'projectID',
+  'location',
+  'endpoint',
+  'displayName',
+  'noCredential',
+] as const;
+
+/** Whether a `set_organization_model` input schema takes every model field. */
+export function hasModelOperations(
+  inputSchema: { properties?: Record<string, unknown> } | undefined,
+): boolean {
+  const properties = inputSchema?.properties ?? {};
+  return MODEL_OPERATION_FIELDS.every(field =>
+    Object.hasOwn(properties, field),
+  );
+}
+
+export const MODEL_OPERATIONS_MISSING =
+  'This installation needs an agent-manager release with model credential operations. No model was written.';
+
+/**
+ * Whether a `set_organization_model` input schema takes `create`: refuse a
+ * model of that name, live or in git, with `already_exists` instead of
+ * changing it. agent-manager 2.24.0 and older lack it and refuse the unknown
+ * argument with `invalid_request`. Every release that passes
+ * {@link hasModelOperations} (3.1.0 and later) has it; it is still sent only
+ * where the tool lists it, so no schema ever gets an argument it lacks.
+ */
+export function takesCreateOnly(
+  inputSchema: { properties?: Record<string, unknown> } | undefined,
+): boolean {
+  return Object.hasOwn(inputSchema?.properties ?? {}, 'create');
+}
+
+/** A new model's name that a model of the namespace has already. */
+export function modelNameTakenMessage(namespace: string, name: string): string {
+  return `The namespace ${namespace} already has a model named ${name}. Choose another name, or edit that model.`;
+}

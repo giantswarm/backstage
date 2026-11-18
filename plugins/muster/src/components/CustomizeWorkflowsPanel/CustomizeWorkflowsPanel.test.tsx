@@ -741,4 +741,19 @@ describe('runsLabel', () => {
       }),
     ).toBe('1 run');
   });
+
+  // The age is a short value: it must fit its column in full, so no
+  // "less than a minute" or "about 2 hours".
+  it('gives the age of the last run without approximations', () => {
+    const halfMinuteAgo = new Date(Date.now() - 30_000).toISOString();
+    expect(
+      runsLabel({
+        executions: [{ ...run('w', 'completed'), started_at: halfMinuteAgo }],
+        total: 123,
+        limit: 1,
+        offset: 0,
+        has_more: true,
+      } as Parameters<typeof runsLabel>[0]),
+    ).toBe('123 runs · 30 seconds ago');
+  });
 });

@@ -307,6 +307,7 @@ export function OrganizationPage({
               <EgressTab
                 installation={installation}
                 organization={organization}
+                changesDisabledBy={changesDisabledBy}
               />
             }
           />

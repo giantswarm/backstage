@@ -1,3 +1,4 @@
+/* eslint-disable @backstage/no-mixed-plugin-imports -- The Agent Platform composes installation APIs across plugins. */
 import type { ReactNode } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
@@ -118,6 +119,10 @@ async function renderNewModel(scenario: OrganizationsScenario) {
       <PageHeaderActionsProvider>
         <Routes>
           <Route path="/customize/models/*" element={<ModelsRouter />} />
+          <Route
+            path="/customize/models/credentials/*"
+            element={<CurrentPath />}
+          />
           <Route path="*" element={<CurrentPath />} />
         </Routes>
       </PageHeaderActionsProvider>
@@ -159,17 +164,17 @@ describe('Connect a model, under the Models tab: the owner', () => {
 
     // An Organization's model: its key goes on the credential form.
     expect(
-      await screen.findByText(/You enter the key on the next page/),
+      await screen.findByText(/You enter the credential on the next page/),
     ).toBeInTheDocument();
     await user.type(screen.getByLabelText(/^Name/), 'sonnet');
     await user.type(screen.getByRole('textbox', { name: /^Model/ }), 'claude');
     await user.click(
-      screen.getByRole('button', { name: 'Continue to the key' }),
+      screen.getByRole('button', { name: 'Continue to credential' }),
     );
 
     await waitFor(() =>
       expect(screen.getByTestId('path')).toHaveTextContent(
-        `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
+        `/customize/models/credentials/gazelle/agents-payments-x7k2q/${CREDENTIAL_OPERATION}`,
       ),
     );
     expect(toolCalls(callTool, 'set_organization_model')).toEqual([
@@ -190,7 +195,7 @@ describe('Connect a model, under the Models tab: the owner', () => {
 
     // Connect model is held, saying why, until the owners are known.
     const connect = await screen.findByRole('button', {
-      name: 'Connect model',
+      name: 'Continue to credential',
     });
     expect(connect).toBeDisabled();
     expect(connect).toHaveAccessibleDescription(
@@ -205,7 +210,7 @@ describe('Connect a model, under the Models tab: the owner', () => {
     await Promise.all(proxy.mock.results.map(result => result.value));
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'Connect model' }),
+        screen.getByRole('button', { name: 'Continue to credential' }),
       ).toBeEnabled(),
     );
     expect(toolCalls(callTool, 'list_organizations')).toHaveLength(1);

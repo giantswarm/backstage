@@ -107,6 +107,9 @@ export type StatusLabelProps = {
  *
  * The label itself stays in the default text colour: colour is carried by the
  * icon, so the text keeps full contrast against the background.
+ *
+ * `data-status-label` marks it for the layout check, which holds a status
+ * label to the rule for short values: in a table it must fit in full.
  */
 export const StatusLabel = ({
   label,
@@ -132,6 +135,7 @@ export const StatusLabel = ({
     return (
       <span
         title={title}
+        data-status-label=""
         style={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -148,7 +152,7 @@ export const StatusLabel = ({
   }
 
   return (
-    <Flex align="center" gap="2" title={title}>
+    <Flex align="center" gap="2" title={title} data-status-label="">
       {glyph}
       <Text variant="body-medium">{label}</Text>
     </Flex>

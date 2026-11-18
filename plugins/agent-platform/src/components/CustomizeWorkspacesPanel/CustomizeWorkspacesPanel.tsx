@@ -31,8 +31,11 @@ import {
   MENU_WIDTH,
   ShowMore,
   StatusDot,
+  StackedRowList,
   StatusHint,
-  usePhoneColumns,
+  countNoun,
+  tableMinWidth,
+  useCompactLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useWorkspaceActions } from '../../hooks/useWorkspaceActions';
@@ -56,6 +59,20 @@ import { SharedIdentityNote } from '../SharedIdentityNote';
 import { WorkspaceDeleteDialog } from '../WorkspaceDeleteDialog';
 import { WorkspaceManagerSignIn } from '../WorkspaceManagerSignIn';
 import { useWorkspacesData } from '../WorkspacesDataProvider';
+
+/**
+ * Each column's minimum width, px: its header, and its usual value ("1023.9
+ * MiB of 100Gi ↑", "Not synchronized yet" with its dot); the actions
+ * column as wide as bui lays it out (react-aria's 75px minimum).
+ */
+const WORKSPACE_COLUMN_MIN_WIDTHS = {
+  name: 180,
+  repositories: 120,
+  stored: 168,
+  lastSync: 180,
+  sessions: 100,
+  actions: 75,
+};
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
@@ -90,36 +107,52 @@ function StoredCell({ row }: { row: WorkspaceRow }) {
  * and behind the info hint when it happened and the manager's words. The
  * workspace's page and its Synchronize button say the same (`syncState`).
  */
-function LastSyncCell({ row }: { row: WorkspaceRow }) {
+function SyncStatus({ row }: { row: WorkspaceRow }) {
   const state = syncState(row, row.awaitedSync);
   return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 'var(--bui-space-1)',
+      }}
+    >
+      <StatusDot tone={state.tone} label={state.label} />
+      <StatusHint
+        subject={row.name}
+        explanation={[
+          ...(state.when
+            ? [
+                `${state.when.verb} ${getRelativeDate(state.when.at, new Date())}.`,
+              ]
+            : []),
+          ...(state.detail ? [state.detail] : []),
+        ]}
+      />
+    </span>
+  );
+}
+
+/** The sync's state as the table's cell. */
+function LastSyncCell({ row }: { row: WorkspaceRow }) {
+  return (
     <Cell>
-      <span
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 'var(--bui-space-1)',
-        }}
-      >
-        <StatusDot tone={state.tone} label={state.label} />
-        <StatusHint
-          subject={row.name}
-          explanation={[
-            ...(state.when
-              ? [
-                  `${state.when.verb} ${getRelativeDate(state.when.at, new Date())}.`,
-                ]
-              : []),
-            ...(state.detail ? [state.detail] : []),
-          ]}
-        />
-      </span>
+      <SyncStatus row={row} />
     </Cell>
   );
 }
 
 /** Edit, Synchronize and Delete for one workspace; its name opens it. */
 function RowActions({ row }: { row: WorkspaceRow }) {
+  return (
+    <Cell>
+      <RowActionsMenu row={row} />
+    </Cell>
+  );
+}
+
+/** The ⋯ menu of {@link RowActions}, for the table's cell or a stacked row. */
+function RowActionsMenu({ row }: { row: WorkspaceRow }) {
   const toastApi = useApi(toastApiRef);
   const { sync, remove } = useWorkspaceActions(row.installation, row.name);
   const editRoute = useRouteRef(workspaceEditRouteRef);
@@ -166,7 +199,7 @@ function RowActions({ row }: { row: WorkspaceRow }) {
     });
 
   return (
-    <Cell>
+    <>
       <MenuTrigger>
         <ButtonIcon
           icon={<MoreVertIcon />}
@@ -210,7 +243,7 @@ function RowActions({ row }: { row: WorkspaceRow }) {
         error={remove.error?.message}
         onConfirm={confirmDelete}
       />
-    </Cell>
+    </>
   );
 }
 
@@ -315,7 +348,7 @@ export function CustomizeWorkspacesPanel({
       label: 'Workspace',
       isRowHeader: true,
       defaultWidth: '3fr',
-      minWidth: 200,
+      minWidth: WORKSPACE_COLUMN_MIN_WIDTHS.name,
       cell: row => (
         <CellText
           title={row.name}
@@ -333,7 +366,7 @@ export function CustomizeWorkspacesPanel({
       label: 'Repositories',
       defaultWidth: '1fr',
       // Fits its header without cutting it.
-      minWidth: 120,
+      minWidth: WORKSPACE_COLUMN_MIN_WIDTHS.repositories,
       cell: row => (
         <CellText title={row.lastSync ? String(row.repositories) : '—'} />
       ),
@@ -343,20 +376,22 @@ export function CustomizeWorkspacesPanel({
       label: 'Stored',
       defaultWidth: '1fr',
       // Fits "1023.9 MiB of 100Gi ↑" without cutting it.
-      minWidth: 168,
+      minWidth: WORKSPACE_COLUMN_MIN_WIDTHS.stored,
       cell: row => <StoredCell row={row} />,
     },
     {
       id: 'lastSync',
       label: 'Last synchronization',
       defaultWidth: '2fr',
-      minWidth: 152,
+      // Fits its header, and "Not synchronized yet" with its dot.
+      minWidth: WORKSPACE_COLUMN_MIN_WIDTHS.lastSync,
       cell: row => <LastSyncCell row={row} />,
     },
     {
       id: 'sessions',
       label: 'Sessions',
       defaultWidth: '1fr',
+      minWidth: WORKSPACE_COLUMN_MIN_WIDTHS.sessions,
       cell: row => <CellText title={String(row.sessions)} />,
     },
     {
@@ -366,11 +401,13 @@ export function CustomizeWorkspacesPanel({
       cell: row => <RowActions row={row} />,
     },
   ];
-  const shownColumns = usePhoneColumns(columns, [
-    'name',
-    'lastSync',
-    'actions',
-  ]);
+  // Each workspace is a stacked row (the tables skill) at phone width, and
+  // wherever the content column is narrower than the columns' minimums
+  // (beside the side rail): a table there scrolled sideways and cut
+  // Repositories.
+  const [containerRef, isPhone] = useCompactLayout(
+    tableMinWidth(columns, WORKSPACE_COLUMN_MIN_WIDTHS),
+  );
 
   // A read muster refused for want of the person's sign-in to
   // workspace-manager (the 401's reason, `signIns`) offers that sign-in, not
@@ -425,20 +462,57 @@ export function CustomizeWorkspacesPanel({
     body = <CatalogNoMatch plural="workspaces" search={search} />;
   } else {
     body = (
-      <ShowMore
-        key={search.trim()}
-        items={rows}
-        initial={INITIAL_ROWS}
-        noun="workspace"
-      >
-        {page => (
-          <Table<WorkspaceRow>
-            columnConfig={shownColumns}
-            data={page}
-            pagination={{ type: 'none' }}
-          />
-        )}
-      </ShowMore>
+      <div ref={containerRef}>
+        <ShowMore
+          key={search.trim()}
+          items={rows}
+          initial={INITIAL_ROWS}
+          noun="workspace"
+        >
+          {page =>
+            isPhone ? (
+              <StackedRowList
+                aria-label="Workspaces"
+                rows={page.map(row => ({
+                  id: row.id,
+                  title: row.name,
+                  href: detailRoute?.({
+                    installation: row.installation,
+                    organization: row.organization,
+                    name: row.name,
+                  }),
+                  status: <SyncStatus row={row} />,
+                  facts: [
+                    row.lastSync
+                      ? countNoun(
+                          row.repositories,
+                          'repository',
+                          'repositories',
+                        )
+                      : '',
+                    row.storedBytes === undefined
+                      ? ''
+                      : storedLabel(
+                          row.storedBytes,
+                          row.volumeSize,
+                          row.grewFrom,
+                        ),
+                    countNoun(row.sessions, 'session'),
+                    showInstallation ? row.installation : '',
+                  ],
+                  actions: <RowActionsMenu row={row} />,
+                }))}
+              />
+            ) : (
+              <Table<WorkspaceRow>
+                columnConfig={columns}
+                data={page}
+                pagination={{ type: 'none' }}
+              />
+            )
+          }
+        </ShowMore>
+      </div>
     );
   }
 
