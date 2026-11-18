@@ -3,9 +3,11 @@
  * app-config.fixtures.yaml, signed in as the guest, on two free ports of this
  * checkout's own, so several checkouts run it at the same time.
  *
- *   yarn fixtures start [--config <file>]...
+ *   yarn fixtures start [--enable <extension>]... [--config <file>]...
  *                          start, or reuse the one running in this checkout;
  *                          prints the portal's URL once it answers. Each
+ *                          --enable adds an extension to app-config.yaml's
+ *                          `app.extensions` (such as `page:plans`), each
  *                          --config adds a config file on top of fixture
  *                          mode's (a running server keeps its own)
  *   yarn fixtures status   the running server's state, as JSON
@@ -37,6 +39,7 @@ const root = path.resolve(import.meta.dirname, '..');
 const stateFile = path.join(root, '.fixtures-server.json');
 const workDir = path.join(root, '.fixtures-server');
 const portsConfig = path.join(workDir, 'app-config.ports.yaml');
+const extensionsConfig = path.join(workDir, 'app-config.extensions.yaml');
 const logFile = path.join(workDir, 'server.log');
 const lockFile = path.join(workDir, 'lock');
 
@@ -206,6 +209,36 @@ backend:
 `;
 }
 
+/**
+ * A config whose `app.extensions` is app-config.yaml's list with `enable`
+ * added. Backstage replaces a list rather than merging it, so the list is
+ * copied as it stands when the server starts, entry by entry as written.
+ */
+function extensionsYaml(appConfig, enable) {
+  const lines = appConfig.split('\n');
+  const app = lines.indexOf('app:');
+  const start = lines.indexOf('  extensions:', app);
+  const nextTopLevel = lines.findIndex(
+    (line, i) => i > app && /^\S/.test(line),
+  );
+  if (app < 0 || start < 0 || (nextTopLevel >= 0 && start > nextTopLevel)) {
+    throw new Error('app-config.yaml has no app.extensions list to add to.');
+  }
+  // The list ends at the next key of `app` or at the next top-level key.
+  let end = start + 1;
+  while (end < lines.length && !/^ {0,2}\S/.test(lines[end])) {
+    end += 1;
+  }
+  return [
+    "# Written by scripts/fixtures-server.mjs: app-config.yaml's app.extensions",
+    '# with the extensions of `yarn fixtures start --enable`.',
+    'app:',
+    ...lines.slice(start, end),
+    ...enable.map(extension => `    - ${extension}`),
+    '',
+  ].join('\n');
+}
+
 /** The running server of this checkout, or undefined; clears a stale state. */
 function running() {
   const state = readState();
@@ -251,15 +284,26 @@ async function waitUntilAnswering(state) {
   );
 }
 
-/** The `--config <file>` arguments of `start`, as absolute paths. */
-function extraConfigs(args) {
+/**
+ * The arguments of `start`: the `--config <file>` ones as absolute paths, and
+ * the `--enable <extension>` ones.
+ */
+function startArguments(args) {
   // Yarn runs the script from the checkout's root; a relative path means the
   // directory the person ran `yarn fixtures` in.
   const base = process.env.INIT_CWD ?? process.cwd();
   const configs = [];
+  const enable = [];
   for (let i = 0; i < args.length; i += 1) {
+    if (args[i] === '--enable' && args[i + 1]) {
+      enable.push(args[i + 1]);
+      i += 1;
+      continue;
+    }
     if (args[i] !== '--config' || !args[i + 1]) {
-      throw new Error(`Unknown argument ${args[i]}: only --config <file>.`);
+      throw new Error(
+        `Unknown argument ${args[i]}: only --enable <extension> and --config <file>.`,
+      );
     }
     const file = path.resolve(base, args[i + 1]);
     if (!fs.existsSync(file)) {
@@ -268,17 +312,26 @@ function extraConfigs(args) {
     configs.push(file);
     i += 1;
   }
-  return configs;
+  return { configs, enable };
 }
 
 /** Spawns the supervisor and waits for it to write the state; under the lock. */
-async function spawnServer(configs) {
+async function spawnServer({ configs, enable }) {
   const appPort = await choosePort('FIXTURES_APP_PORT', new Set());
   const backendPort = await choosePort(
     'FIXTURES_BACKEND_PORT',
     new Set([appPort]),
   );
   fs.writeFileSync(portsConfig, portsYaml(appPort, backendPort));
+  if (enable.length > 0) {
+    fs.writeFileSync(
+      extensionsConfig,
+      extensionsYaml(
+        fs.readFileSync(path.join(root, 'app-config.yaml'), 'utf8'),
+        enable,
+      ),
+    );
+  }
   fs.writeFileSync(logFile, '');
 
   const token = randomBytes(12).toString('hex');
@@ -289,7 +342,8 @@ async function spawnServer(configs) {
     backendPort,
     log: path.relative(root, logFile),
     idleMinutes: idleMinutes(),
-    configs,
+    enable,
+    configs: enable.length > 0 ? [extensionsConfig, ...configs] : configs,
   };
   const log = fs.openSync(logFile, 'a');
   const supervisor = spawn(
@@ -321,7 +375,7 @@ async function spawnServer(configs) {
 }
 
 async function start() {
-  const configs = extraConfigs(process.argv.slice(3));
+  const args = startArguments(process.argv.slice(3));
   const { state, fresh } = await withLock(async () => {
     const existing = running();
     if (existing) {
@@ -329,7 +383,7 @@ async function start() {
       writeState(touched);
       return { state: touched, fresh: false };
     }
-    return { state: await spawnServer(configs), fresh: true };
+    return { state: await spawnServer(args), fresh: true };
   });
   if (fresh) {
     console.error(`Starting the fixture server (log: ${state.log}) …`);
