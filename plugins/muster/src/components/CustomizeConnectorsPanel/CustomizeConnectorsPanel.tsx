@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useMemo } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo } from 'react';
 import {
   Alert,
   Button,
@@ -29,8 +29,9 @@ import {
   TAGS_COLUMN_MIN_WIDTH,
   tagsFacet,
   stopRowPress,
+  TABLE_NAME_COLUMN_MIN_WIDTH,
   useCatalogFilters,
-  usePhoneLayout,
+  useCompactLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useConnectorAccess } from '../../hooks/useConnectorAccess';
 import { familyAccess, instanceAccess } from '../../lib/connectorAccess';
@@ -215,12 +216,22 @@ function ConnectorName({
               {row.entry.displayName}
             </Link>
           ) : (
-            <Text variant="body-medium" weight="bold" truncate>
+            <Text
+              variant="body-medium"
+              weight="bold"
+              truncate
+              title={row.entry.displayName}
+            >
               {row.entry.displayName}
             </Text>
           )}
           {row.description && (
-            <Text variant="body-small" color="secondary" truncate>
+            <Text
+              variant="body-small"
+              color="secondary"
+              truncate
+              title={row.description}
+            >
               {row.description}
             </Text>
           )}
@@ -332,6 +343,37 @@ function SignInActionsCell({
     </Cell>
   );
 }
+
+/** The table's columns, in order. */
+const CONNECTOR_COLUMNS = [
+  'name',
+  'tags',
+  'auth',
+  'tools',
+  'status',
+  'signIn',
+] as const;
+
+/**
+ * Each column's minimum width, px: its header with the sort arrow and the
+ * padding, and its usual value.
+ */
+const CONNECTOR_COLUMN_MIN_WIDTHS = {
+  // A name's minimum beside its 36px logo and the 12px gap.
+  name: TABLE_NAME_COLUMN_MIN_WIDTH + 48,
+  tags: TAGS_COLUMN_MIN_WIDTH,
+  // "Shared AWS identity", the longest way to sign in.
+  auth: 160,
+  // "3 of 42 tools match" while a search matches tools.
+  tools: 170,
+  // The longest word of a state ("Disconnected") with its dot and hint.
+  status: 168,
+  // "Sign in" on one line.
+  signIn: 96,
+};
+
+/** The columns a card too narrow for every one leaves out first. */
+const CONNECTOR_COLUMNS_DROPPED_FIRST: readonly string[] = ['tags', 'auth'];
 
 /**
  * A column whose header is read to a screen reader only, from the column's
@@ -662,7 +704,39 @@ function ConnectorsTable({
     // Every connector at once: no pages, no "Show more".
     paginationOptions: { type: 'none' },
   });
-  const isPhone = usePhoneLayout();
+  // Every column while their minimums fit the card; without Tags and
+  // Sign-in, which the connector's page shows, below that; and the stacked
+  // rows below that and at phone width. The name never squeezes: beside the
+  // side rail at ~1160px it had been cut to its icon.
+  const offersAction = filters.filtered.some(
+    row => row.signInButton || familyAction(row),
+  );
+  const shownMinWidths = (dropped: readonly string[]) =>
+    CONNECTOR_COLUMNS.filter(
+      id => !dropped.includes(id) && (id !== 'signIn' || offersAction),
+    ).reduce((sum, id) => sum + CONNECTOR_COLUMN_MIN_WIDTHS[id], 0);
+  const [fullRef, isNarrow] = useCompactLayout(shownMinWidths([]));
+  const [narrowRef, isPhone] = useCompactLayout(
+    shownMinWidths(CONNECTOR_COLUMNS_DROPPED_FIRST),
+  );
+  const tableRef = useCallback(
+    (node: Element | null) => {
+      fullRef(node);
+      narrowRef(node);
+    },
+    [fullRef, narrowRef],
+  );
+  // A sort on a column the narrow table leaves out goes back to the name.
+  const sortedColumn = tableProps.sort?.descriptor?.column;
+  const onSortChange = tableProps.sort?.onSortChange;
+  useEffect(() => {
+    if (
+      isNarrow &&
+      CONNECTOR_COLUMNS_DROPPED_FIRST.includes(String(sortedColumn))
+    ) {
+      onSortChange?.(CONNECTORS_DEFAULT_SORT);
+    }
+  }, [isNarrow, sortedColumn, onSortChange]);
   // The phone's stacked rows have no headers to show or change a sort with:
   // they stay by name whatever the table was sorted by.
   const stackedRows = useMemo(
@@ -687,6 +761,7 @@ function ConnectorsTable({
       isRowHeader: true,
       isSortable: true,
       defaultWidth: '3fr',
+      minWidth: CONNECTOR_COLUMN_MIN_WIDTHS.name,
       cell: row => (
         <ConnectorName
           row={row}
@@ -701,6 +776,7 @@ function ConnectorsTable({
       label: 'Tags',
       defaultWidth: '1.4fr',
       minWidth: TAGS_COLUMN_MIN_WIDTH,
+      isHidden: isNarrow,
       cell: row => (
         <Cell>
           <TagList tags={row.tags} max={ROW_TAGS_MAX} />
@@ -712,6 +788,8 @@ function ConnectorsTable({
       label: 'Sign-in',
       isSortable: true,
       defaultWidth: '1.2fr',
+      minWidth: CONNECTOR_COLUMN_MIN_WIDTHS.auth,
+      isHidden: isNarrow,
       cell: row => <CellText title={row.auth} />,
     },
     {
@@ -719,6 +797,7 @@ function ConnectorsTable({
       label: 'Tools',
       isSortable: true,
       defaultWidth: '1fr',
+      minWidth: CONNECTOR_COLUMN_MIN_WIDTHS.tools,
       cell: row => (
         <CellText
           title={
@@ -734,9 +813,7 @@ function ConnectorsTable({
       label: 'Status',
       isSortable: true,
       defaultWidth: '1.3fr',
-      // The longest word of a state ("Disconnected") with its dot and hint;
-      // the state wraps between its words below its share.
-      minWidth: 168,
+      minWidth: CONNECTOR_COLUMN_MIN_WIDTHS.status,
       cell: row => (
         <ConnectorStatusCell row={row} installation={installation} />
       ),
@@ -745,10 +822,9 @@ function ConnectorsTable({
       id: 'signIn',
       label: 'Actions',
       defaultWidth: '1.2fr',
-      // "Sign in" on one line; a longer label wraps.
-      minWidth: 96,
+      minWidth: CONNECTOR_COLUMN_MIN_WIDTHS.signIn,
       // No room taken where no connector offers a sign-in.
-      isHidden: !rows.some(row => row.signInButton || familyAction(row)),
+      isHidden: !offersAction,
       cell: row =>
         familyAction(row) ? (
           <Cell>
@@ -811,6 +887,7 @@ function ConnectorsTable({
       />
     );
   }
+  list = <div ref={tableRef}>{list}</div>;
 
   return (
     <Flex direction="column" gap="4">

@@ -60,7 +60,14 @@ export class ToolchainManagerClient {
       TOOLCHAIN_MANAGER_TOOLS.listToolchains,
       {},
     );
-    return { ...result, toolchains: result.toolchains ?? [] };
+    // A manager may leave out an empty `versions` (Go's `omitempty`).
+    return {
+      ...result,
+      toolchains: (result.toolchains ?? []).map(toolchain => ({
+        ...toolchain,
+        versions: toolchain.versions ?? [],
+      })),
+    };
   }
 
   /** One version of a toolchain (the newest without one), as its image declares it. */
