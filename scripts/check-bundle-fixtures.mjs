@@ -20,7 +20,7 @@ import path from 'node:path';
 const MARKERS = [
   {
     source: 'plugins/plans/src/apis/PlansFixtureApi.ts',
-    marker: 'example/bumblebee-plans',
+    marker: 'example/team-magazine',
   },
   {
     source: 'plugins/plans/src/lib/hiveFixtures.ts',
