@@ -58,6 +58,11 @@ gs:
 muster:
   fixtures: true
 
+# Hive's plans, magazine and knowledge documents, once Hive is on:
+# `yarn fixtures start --enable page:plans --enable api:plans`.
+plans:
+  fixtures: true
+
 agentPlatform:
   fixtures: true
   # The skill repositories of the data set, served by the fixture
