@@ -78,13 +78,10 @@ iterating: a plugin-wide run for a one-file change costs minutes for the same
 signal. Save the plugin-wide run for a change to something shared, with call
 sites beyond the file you edited.
 
-Check a change to a page in a browser before you ask for review: in fixture
-mode, on a dev server or against agentlab. The layout check is required on top
-of that, as an automated safeguard: "Fixture mode and the layout check" below.
+How a change to a page is checked: "Fixture mode and the layout check" below.
 The browser suite against agentlab is optional: `docs/development.md`,
-"End-to-end tests in a browser, against agentlab", and
-`e2e/agentlab/README.md`. Its lab users are throwaway fixtures, and signing in
-as them, in the Dex popup too, is fine. Only real people's accounts and real
+"End-to-end tests in a browser, against agentlab". Its lab users are throwaway
+fixtures, and signing in as them is fine; real people's accounts and real
 installations are off-limits.
 
 ### Fixture mode and the layout check
@@ -113,19 +110,21 @@ When it runs without either, don't use it for checks: use the layout check or
 the repo's Playwright, and tell the person once. Don't change the MCP's
 config.
 
-The fixtures move with the pages. A pull request that reads a new field, adds
-a state or calls a new tool extends the fixtures in the same pull request
-(`docs/fixtures.md`, "The data set" and "Tool calls through muster"). For a
+The fixtures move with the pages, so that every page can be checked in each
+state that matters. A pull request that changes a page fixture mode can't
+show, reads a new field, adds a state or calls a new tool adds the fixtures in
+the same pull request (`docs/fixtures.md`, "The data set" and "Tool calls
+through muster"). For a
 tool the agent-platform or muster pages call, the drift guard
 (`fixtureToolCoverage.test.ts` in each) fails until the tool has a handler or
 the test lists it as not served, with a comment saying why. Nothing checks
 bot-prs's calls through muster.
 
-The [`layout-check`](.agents/skills/layout-check/SKILL.md) skill is required
-for a UI change, before you ask for review, in addition to looking at it in a
-browser: the pages the
-`ui-impact` skill maps, at the default widths, in `base` and the scenarios the
-change is about. Pass concrete paths, never a route template. For a page with
+Before you ask for review of a change to a page, look at it in a browser, and
+run the [`layout-check`](.agents/skills/layout-check/SKILL.md) skill on it as
+an automated safeguard: the pages the `ui-impact` skill maps, at the default
+widths, in `base` and the scenarios the change is about. Fix what it finds or
+say in the description why a finding is right as it is. Pass concrete paths, never a route template. For a page with
 parameters, run the spec's entry for it (`--only <page name>`), which opens
 the first record in each scenario: a record's path copied from fixture mode
 exists only in the scenario it came from. A shell-wide change (`/*`) means a
@@ -285,12 +284,6 @@ score 6, add the `ui-test-needed` label, and don't merge or ask for a merge
 until `ui-tested` has replaced it. This is a convention; no check enforces it.
 Details: the `ui-impact` skill and `docs/development.md`, "Manual UI test
 before merge".
-
-Before asking for review of a pull request that changes a page, look at every
-page it changes in a browser and run the `layout-check` skill on them, as
-"Fixture mode and the layout check" above says. Fix what it finds or say in the
-description why a finding is right as it is. A page fixture mode can't render
-with data can't be layout-checked: say so in the description.
 
 A pull request built from a mockup references the issue that links the mockup
 and carries the "Differences from the mockup" section of the `mockups` skill.

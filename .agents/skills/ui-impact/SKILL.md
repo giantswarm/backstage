@@ -176,10 +176,8 @@ block's `sha` is the head. A push by someone other than the author (a
 co-author, GitHub's "Update branch", Renovate) leaves the block stale until
 the author or the triage redoes it.
 
-The manual test doesn't replace your own checks: look at a change to a page
-in a browser, and measure it with the [`layout-check`](../layout-check/SKILL.md)
-skill in fixture mode (`AGENTS.md`, "Test" and "Fixture mode and the layout
-check").
+The manual test doesn't replace your own checks (`AGENTS.md`, "Fixture mode
+and the layout check").
 
 ## Keeping it current
 

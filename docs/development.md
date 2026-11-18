@@ -330,10 +330,8 @@ as them. To test an unreleased build, put its image into the lab
 lab conditions that look like failures are in
 [`e2e/agentlab/README.md`](../e2e/agentlab/README.md).
 
-The suite is optional. A change to a page is checked in a browser, in
-[fixture mode](fixtures.md#fixture-mode), on a dev server or on agentlab, and
-measured with the [`layout-check`](../.agents/skills/layout-check/SKILL.md)
-skill.
+The suite is optional. How a change to a page is checked:
+[`AGENTS.md`, "Fixture mode and the layout check"](../AGENTS.md#fixture-mode-and-the-layout-check).
 
 ## Manual UI test before merge
 
