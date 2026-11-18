@@ -19,6 +19,12 @@ const CUSTOMIZE_TABS: ReadonlySet<string> = new Set(CUSTOMIZE_TAB_IDS);
 const PLATFORM_TABS: ReadonlySet<string> = new Set(PLATFORM_TAB_IDS);
 
 /**
+ * A Platform cluster page's tabs below its own address (Overview, the index,
+ * left out): none yet.
+ */
+const PLATFORM_CLUSTER_TABS: ReadonlySet<string> = new Set();
+
+/**
  * A workflow page's tabs below its own address (Overview, the index, left
  * out), a fixed set too.
  */
@@ -784,6 +790,27 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
       }
       payload = { page: 'Usage', view: usageView };
       route = tabRoute('/usage', view, USAGE_PATHS);
+      break;
+    }
+
+    // A cluster's page in the Platform section
+    // (`/platform/clusters/<installation>/<namespace>/<name>`), its segments
+    // in no attribute: its tab goes in `view`, a closed set; Overview, the
+    // index, carries none.
+    case /^\/platform\/clusters\/[^/]+\/[^/]+\/[^/]+(\/.*)?$/.test(pathname): {
+      const tab = segments.slice(5).join('/');
+      payload =
+        tab === ''
+          ? { page: 'Platform cluster' }
+          : {
+              page: 'Platform cluster',
+              view: PLATFORM_CLUSTER_TABS.has(tab) ? tab : 'redirect',
+            };
+      route = tabRoute(
+        '/platform/clusters/:installation/:namespace/:name',
+        tab,
+        PLATFORM_CLUSTER_TABS,
+      );
       break;
     }
 

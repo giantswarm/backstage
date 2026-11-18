@@ -65,7 +65,14 @@ const useStyles = makeStyles((theme: Theme) => ({
     fontSize: 12,
     color: theme.palette.text.secondary,
   },
+  // A status longer than the menu wraps rather than being cut.
+  menuItem: {
+    whiteSpace: 'normal',
+  },
+  // A kind longer than the card ends in an ellipsis, the theme's margin
+  // beside it included: the card hides what runs over.
   kindChip: {
+    maxWidth: `calc(100% - ${theme.spacing(1)}px)`,
     height: 20,
     fontSize: 11,
   },
@@ -140,6 +147,7 @@ export function ItemCard(props: {
               size="small"
               variant="outlined"
               label={kind}
+              title={kind}
             />
           )}
           <span className={classes.metaText}>{reference}</span>
@@ -160,6 +168,7 @@ export function ItemCard(props: {
       >
         {columns.map(column => (
           <MenuItem
+            className={classes.menuItem}
             key={column}
             dense
             selected={column === status}

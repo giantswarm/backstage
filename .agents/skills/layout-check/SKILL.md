@@ -1,6 +1,6 @@
 ---
 name: layout-check
-description: Measure portal pages for layout bugs in a headless browser of your own, against fixture mode — overflow and sideways scrolling, overlapping elements, misaligned rows, text squeezed or cut off, controls that move or resize between states, and content off its control's centre — at several widths, in the fixture scenarios and the states a spec steps through. Use on every page your pull request changes, before asking for review, and to check a layout fix.
+description: Measure portal pages for layout bugs in a headless browser of your own, against fixture mode — overflow and sideways scrolling, tables that scroll sideways in their card or squeeze a column beside columns with room to spare, overlapping elements, misaligned rows, text squeezed or cut off, controls that move or resize between states, and content off its control's centre — at several widths, in the fixture scenarios and the states a spec steps through. Use on every page your pull request changes, before asking for review, and to check a layout fix.
 ---
 
 # Layout check
@@ -19,13 +19,15 @@ the full Chromium renders on the GPU but was measured no faster (#3563).
 
 | File | What it is |
 |---|---|
-| `layout-check.mjs` | The command. Exits 0 without findings, 1 with findings, 2 when it could not check (the portal does not answer, a step failed, a page kept changing, a path is a route template or shows a not-found page). Warnings never change the exit code. |
+| `layout-check.mjs` | The command. Exits 0 without findings, 1 with findings, 2 when it could not check (the portal does not answer, a step failed, a page kept changing, a path is a route template or shows a not-found page, a page threw and shows the error panel). Warnings never change the exit code. |
 | `collect.mjs` | The measurement, run inside the page. |
 | `rules.mjs` | The rules, pure functions over the measurement. |
 | `rules.test.mjs` | Their tests: `node --test .agents/skills/layout-check/rules.test.mjs`. CI runs them (`.github/workflows/skill-tests.yaml`). |
 | `layout-check.test.mjs` | Tests of the command that need no browser, run the same way. |
+| `collect.test.mjs` | Tests of the measurement on small static pages in Playwright's Chromium (what a cell's content takes, text squeezed to no width, tables wider than their box): `node --test .agents/skills/layout-check/collect.test.mjs`. They need the repository's dependencies and Chromium, and skip without them, except with `LAYOUT_CHECK_BROWSER=required`, which makes a missing browser fail them: CI's skill-tests workflow runs them so in a job of their own that installs both. |
 | `specs/agent-platform.mjs` | Every Agent Platform and muster page of the shell, with the states that broke before. |
 | `specs/plans.mjs` | Hive's pages of the plans plugin (Now, History, Plans and a plan's review, Knowledge). Start fixture mode with `--enable page:plans --enable api:plans`, which turns Hive on. |
+| `specs/roadmap.mjs` | The Roadmap pages (Hive's Roadmap tab). Start fixture mode with `--enable page:plans --enable api:plans --enable page:roadmap --enable api:roadmap`. |
 
 Commands run from the repo root; `L=.agents/skills/layout-check`.
 
@@ -33,27 +35,47 @@ Commands run from the repo root; `L=.agents/skills/layout-check`.
 
 Start fixture mode (`docs/fixtures.md`); the check reads the portal's URL
 from `.fixtures-server.json` and stops with one message when the portal
-does not answer. Stop the server when you are done.
+does not answer. While it runs it keeps that server from stopping as idle
+(`yarn fixtures touch`, three times per idle time), so a sweep longer than
+the server's idle time keeps its portal; when a touch fails, the server is
+gone, and the run stops with that message and exit 2 instead of failing
+every page left. Stop the server when you are done.
 
 ```bash
 L=.agents/skills/layout-check
 yarn fixtures start
 node $L/layout-check.mjs --page /customize/agents --page /usage/cost
 node $L/layout-check.mjs --spec $L/specs/agent-platform.mjs --only Workspace
-node $L/layout-check.mjs --spec $L/specs/agent-platform.mjs     # every page, about 7 minutes
+node $L/layout-check.mjs --spec $L/specs/agent-platform.mjs     # every page in base, about 9 minutes
+# every page in all six scenarios, about an hour:
+node $L/layout-check.mjs --spec $L/specs/agent-platform.mjs --scenarios base,many,long-names,empty,loading,error
 yarn fixtures stop
 ```
 
 - `--page` takes a concrete path, never a route template
   (`/sessions/:installation/:sessionId`, `/*`): the check refuses one, and
   any page that shows the portal's 404 page or a "… not found" heading,
-  as could not check. For a page of one record, run the spec's entry for
-  it (`--only`), which opens the first record in each scenario: a record's
-  path exists only in the scenario it was copied from. A shell-wide change
-  (`/*`) means a few real pages.
-- `--widths 375,768,1280` (the default): a phone, a tablet or narrow window
-  with the side rail, a laptop. Add the width where your layout changes
-  (a breakpoint, a dialog's maximum).
+  as could not check, and so is a page that crashed, after loading or after
+  any state: it shows the portal's error panel ("Error in app", "Error in
+  extension '<id>'"), throws an uncaught error, or logs that an error
+  boundary caught an error or that an extension threw (an extension that
+  throws renders nothing, so its page would otherwise pass without it). For a
+  page of one record, run the spec's entry for it (`--only`), which opens
+  the first record in each scenario: a record's path exists only in the
+  scenario it was copied from. A shell-wide change (`/*`) means a few real
+  pages.
+- `--widths 375,768,1024,1160,1280` (the default): a phone; a tablet or
+  narrow window; a small laptop; a laptop window a little narrower than its
+  screen; a laptop. Tables squeeze between the tablet and 1280: a column
+  given less than its content while the others keep their minimums. Add the
+  width where your layout changes (a breakpoint, a dialog's maximum).
+- The check relies on the side rail's default: in a fresh browser context
+  (every page check gets one) the rail is pinned open at 224px from 600px
+  up, so the content column is the width less the rail's (about 800px at
+  1024), the narrower case, where tables squeeze. Measured at 768, 1024,
+  1160 and 1280: `nav[aria-label=Main]` 224px wide, offering "Collapse
+  sidebar". Below 600px the rail is the bottom bar. A spec step that
+  collapses it changes this for the states after it.
 - `--scenarios base,many,long-names,empty,loading,error`: the fixture
   scenarios, each added to the URL as `?fixtures=<name>`. Without it the
   page loads with no parameter, which is `base`. What each scenario serves:
@@ -125,7 +147,8 @@ finding is right as it is.
   Failing: a column header cut off (with an ellipsis or not, with a tooltip
   or not) or wrapped onto a second line; a short value cut off or wrapped.
   Cut off means cut by the cell or something in it, or spilling out of the
-  cell over the next column; a table that scrolls sideways cuts nothing. A
+  cell over the next column; a table that scrolls sideways cuts nothing
+  (the scrolling is `table-scroll`'s). A
   short value is a status label (in a badge or chip by its class,
   `role=status`, `data-status-label` as on ui-react's `StatusLabel`, or
   beside a `StatusDot`), or text of one of these shapes,
@@ -138,7 +161,30 @@ finding is right as it is.
   squeezed fails, an ellipsis with nothing on hover is a warning. A value
   laid out as several flex items in a row (`144 vCPUs`, `·`, `1152 GiB`) is
   measured as one when it wraps. One finding per table, column and kind,
-  with the number of other rows it holds for.
+  with the number of other rows it holds for. A column **squeezed** beside
+  columns with room to spare fails too: in half or more of its rows its
+  text is cut to less than six em and less than half of it, while the
+  other columns leave at least 56px empty in every row, header included
+  (16px or more each). The finding names the columns and the room each
+  keeps. Only this check counts text squeezed to no width at all, as cut
+  to 0px, unless it is hidden on purpose (under `aria-hidden`,
+  `data-layout-check="ignore"`, a visually-hidden box, `max-width: 0`). A
+  cell's content is its text as painted (cut where it is cut) and the boxes
+  it lays out: icons, controls (also those shown on hover only), progress
+  bars, status dots, badges, boxes with a background or a border.
+- **table-scroll**: a table wider than the box that holds it, at a width
+  where the page itself does not scroll sideways (that is `overflow`'s): it
+  scrolls sideways inside its card, or is cut off by a box that hides its
+  overflow. Typical content fits a table without scrolling (the `tables`
+  skill). A table here has column headers, or a row of two or more cells.
+  The finding names the table by its `aria-labelledby`, caption,
+  `aria-label` (not bui's "Data table") or the last heading before it, its
+  column headers, its own width and how much of it is out of view (or cut
+  off on which side). A table that scrolls
+  sideways by design (a log view, a wide matrix to pan) says so with
+  `data-layout-check="scroll-x"` on the table or an ancestor up to its scroll
+  container; nothing else is left out. A code block or any other box that
+  scrolls is not a table and not this rule's.
 - **centering**: in a button, tab, select trigger, menu item, switch or link
   styled as a button (`role=button`, or bui's or MUI's button classes), the
   text and icons sit more than 2px off the centre of the
@@ -185,4 +231,6 @@ and finite animations are done, then measures. A page still changing after
 state it was in (`load`, `setup` or the state's name), and the run exits 2. Find
 records through the page (its first link or row), not by fixed ids, so a
 spec runs in every scenario. `data-layout-check="ignore"` on an element
-leaves its subtree out too, for a widget whose layout is not the portal's.
+leaves its subtree out too, for a widget whose layout is not the portal's;
+`data-layout-check="scroll-x"` only says a table scrolls sideways by design
+(`table-scroll`).

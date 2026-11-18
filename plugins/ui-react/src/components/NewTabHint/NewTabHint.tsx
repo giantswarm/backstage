@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { VisuallyHidden } from '@backstage/ui';
 import { styled } from '@material-ui/core';
 import LaunchOutlinedIcon from '@material-ui/icons/LaunchOutlined';
@@ -23,3 +24,35 @@ export const NewTabHint = () => (
     <VisuallyHidden> (opens in a new tab)</VisuallyHidden>
   </>
 );
+
+/** Holds the last word and the launch icon on one line. */
+const NO_WRAP = { whiteSpace: 'nowrap' } as const;
+
+/**
+ * A link's or button's text followed by `NewTabHint`, the icon held to the
+ * text's last word so a line never breaks between them and leaves the icon
+ * on a line of its own. Text that is not a plain string is followed by the
+ * hint as it is.
+ */
+export const WithNewTabHint = ({ children }: { children: ReactNode }) => {
+  if (typeof children === 'string') {
+    const match = children.match(/^([\s\S]*\s)?(\S+)\s*$/);
+    if (match) {
+      return (
+        <>
+          {match[1]}
+          <span style={NO_WRAP}>
+            {match[2]}
+            <NewTabHint />
+          </span>
+        </>
+      );
+    }
+  }
+  return (
+    <>
+      {children}
+      <NewTabHint />
+    </>
+  );
+};

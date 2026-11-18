@@ -4,12 +4,15 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useState,
 } from 'react';
+import type { SortDescriptor } from '@backstage/ui';
 import {
   ErrorsProvider,
   useClustersInfo,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  type CatalogFilterSelection,
   type RouteTabCount,
   useTableColumns,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -24,6 +27,7 @@ import { QueryClientProvider } from '../../QueryClientProvider';
 import {
   dataColumnsOf,
   type PlatformClusterColumn,
+  PLATFORM_CLUSTERS_DEFAULT_SORT,
   visibleColumnsOf,
 } from '../PlatformClustersPanel/platformClusterColumns';
 
@@ -49,6 +53,19 @@ export type PlatformClustersStatus =
   | 'empty'
   | 'ready';
 
+/**
+ * How the person left the list: what they searched, picked and sorted by, and
+ * the cluster they opened, so coming back from its page shows the list as it
+ * was, scrolled to that row's page of results.
+ */
+export type PlatformClustersView = {
+  search: string;
+  selection: CatalogFilterSelection;
+  sort: SortDescriptor;
+  /** The row key (`getClusterKey`) of the cluster last opened from the list. */
+  opened?: string;
+};
+
 type PlatformClustersState = {
   status: PlatformClustersStatus;
   /** Why the list of environments could not be read, in `installations-failed`. */
@@ -57,6 +74,20 @@ type PlatformClustersState = {
   retryInstallations: () => void;
   visibleColumns: PlatformClusterColumn[];
   setVisibleColumns: (columns: string[]) => void;
+  view: PlatformClustersView;
+  /** Keeps a change of the view: what is passed replaces its part. */
+  updateView: (change: Partial<PlatformClustersView>) => void;
+  /**
+   * Starts reading the clusters, once: the list calls it as it mounts, so a
+   * cluster's page opened directly reads only its own cluster.
+   */
+  start: () => void;
+};
+
+const INITIAL_VIEW: PlatformClustersView = {
+  search: '',
+  selection: {},
+  sort: PLATFORM_CLUSTERS_DEFAULT_SORT,
 };
 
 const PlatformClustersContext = createContext<
@@ -109,13 +140,23 @@ function PlatformClustersStatusProvider({
   scope,
   visibleColumns,
   setVisibleColumns,
+  started,
+  start,
   children,
 }: {
   scope: Scope;
   visibleColumns: PlatformClusterColumn[];
   setVisibleColumns: (columns: string[]) => void;
+  started: boolean;
+  start: () => void;
   children: ReactNode;
 }) {
+  const [view, setView] = useState<PlatformClustersView>(INITIAL_VIEW);
+  const updateView = useCallback(
+    (change: Partial<PlatformClustersView>) =>
+      setView(current => ({ ...current, ...change })),
+    [],
+  );
   const {
     data,
     isReadingClusters,
@@ -131,7 +172,7 @@ function PlatformClustersStatusProvider({
     status = 'session-ended';
   } else if (scope.error) {
     status = 'installations-failed';
-  } else if (scope.isResolving) {
+  } else if (scope.isResolving || !started) {
     status = 'loading';
   } else if (scope.installations.length === 0) {
     status = 'no-installations';
@@ -153,8 +194,20 @@ function PlatformClustersStatusProvider({
       retryInstallations: scope.retry,
       visibleColumns,
       setVisibleColumns,
+      view,
+      updateView,
+      start,
     }),
-    [status, scope.error, scope.retry, visibleColumns, setVisibleColumns],
+    [
+      status,
+      scope.error,
+      scope.retry,
+      visibleColumns,
+      setVisibleColumns,
+      view,
+      updateView,
+      start,
+    ],
   );
 
   return (
@@ -166,6 +219,8 @@ function PlatformClustersStatusProvider({
 
 function PlatformClustersScope({ children }: { children: ReactNode }) {
   const scope = useInstallationScope();
+  const [started, setStarted] = useState(false);
+  const start = useCallback(() => setStarted(true), []);
   const { visibleColumns: saved, saveVisibleColumns } = useTableColumns(
     PLATFORM_CLUSTERS_TABLE_ID,
   );
@@ -184,13 +239,15 @@ function PlatformClustersScope({ children }: { children: ReactNode }) {
     // them from its first render: an effect would leave one commit with no
     // installation and nothing loading, which read as "no clusters".
     <ClustersDataProvider
-      installations={scope.isResolving ? [] : scope.installations}
+      installations={scope.isResolving || !started ? [] : scope.installations}
       columns={dataColumns}
     >
       <PlatformClustersStatusProvider
         scope={scope}
         visibleColumns={visibleColumns}
         setVisibleColumns={setVisibleColumns}
+        started={started}
+        start={start}
       >
         {children}
       </PlatformClustersStatusProvider>
@@ -200,8 +257,11 @@ function PlatformClustersScope({ children }: { children: ReactNode }) {
 
 /**
  * The data of the shell's clusters list, for the Platform page to mount above
- * its tabs, so the Clusters tab's count and its list read once: the classic
- * list's provider (`ClustersDataProvider`) over every reachable installation.
+ * its routes, so the Clusters tab's count and its list read once and outlive a
+ * visit to a cluster's page, with the list's view: the classic list's
+ * provider (`ClustersDataProvider`) over every reachable installation, read
+ * from the list's first showing on (`start`). Its query client is the one the
+ * pages under it read through.
  * The list names its failed reads itself (`unlistedInstallations`,
  * `relatedReadFailures`), so the classic error boxes are not drawn.
  */

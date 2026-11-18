@@ -4,4 +4,8 @@ export {
   useOrganizationsAvailable,
   useOrganizationDirectory,
 } from './OrganizationDirectoryProvider';
-export type { OrganizationDirectoryValue } from './OrganizationDirectoryProvider';
+export type {
+  OrganizationDirectoryValue,
+  UncheckedInstallation,
+  UncheckedReason,
+} from './OrganizationDirectoryProvider';

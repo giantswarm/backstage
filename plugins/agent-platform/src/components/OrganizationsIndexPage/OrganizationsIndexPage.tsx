@@ -1,14 +1,27 @@
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Flex, List, ListRow } from '@backstage/ui';
+import { Alert, Flex, Link, List, ListRow, Text } from '@backstage/ui';
 import {
+  countNoun,
   EmptyStateCard,
+  joinNames,
   PageSection,
   ShellPage,
   ShellPageFactsSkeleton,
+  usePhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- muster names the connector.
+import { useConnectorLabel } from '@giantswarm/backstage-plugin-muster';
 
+import { AGENT_MANAGER_SERVER } from '../../lib/agentManager';
 import { organizationDetailRouteRef } from '../../routes';
-import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
+import {
+  useOrganizationDirectory,
+  type UncheckedInstallation,
+} from '../OrganizationDirectoryProvider';
+import {
+  UncheckedInstallations,
+  useConnectorsHref,
+} from './UncheckedInstallations';
 
 /**
  * Who can add a person to an organization, when agent-manager's answer does
@@ -16,6 +29,28 @@ import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
  */
 const NO_ORGANIZATION_HINT =
   'An admin of an organization adds you, or someone with the agent-platform:organizations-admin role creates one with you as its first admin.';
+
+/**
+ * On a desktop, bui's `truncate`, held to the label's width: the Link is an
+ * inline block, which otherwise grows past it with a long name. As
+ * AgentUsageList's rows.
+ */
+const NAME_ONE_LINE = { maxWidth: '100%' } as const;
+
+/**
+ * At phone width the name wraps to two lines, then an ellipsis: a phone has
+ * no hover to read the rest. As AgentUsageList's rows.
+ */
+const NAME_TWO_LINES = {
+  minWidth: 0,
+  maxWidth: '100%',
+  overflowWrap: 'anywhere',
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+  whiteSpace: 'normal',
+} as const;
 
 /** `text` with its first letter capitalized, as a sentence starts. */
 function sentence(text: string): string {
@@ -31,40 +66,30 @@ function sentence(text: string): string {
 export function OrganizationsIndexPage() {
   const {
     installations,
-    discoveryErrors,
+    listingError,
+    uncheckedInstallations,
+    noneChecked,
+    turnedOffInstallations,
     organizationsOf,
     failureOf,
+    recheck,
     isLoading,
   } = useOrganizationDirectory();
   const detailRoute = useRouteRef(organizationDetailRouteRef);
+  const isPhone = usePhoneLayout();
   const frame = { documentTitle: 'Organizations' };
 
-  const discoveryAlerts = discoveryErrors.map(message => (
-    <Alert
-      key={message}
-      status="warning"
-      title="Could not check organization availability"
-      description={message}
+  // The installations whose check failed sit behind one quiet line, under
+  // what could be read: an installation the person never uses must not
+  // stack a warning above their organizations.
+  const unchecked = (
+    <UncheckedInstallations
+      unchecked={uncheckedInstallations}
+      recheck={recheck}
     />
-  ));
+  );
 
-  if (installations.length === 0) {
-    return (
-      <ShellPage title="Organizations" {...frame}>
-        <Flex direction="column" gap="5">
-          {discoveryAlerts}
-          {isLoading && <ShellPageFactsSkeleton />}
-          {!isLoading && discoveryErrors.length === 0 && (
-            <EmptyStateCard
-              title="Organizations are not available here"
-              description="No environment's agent-manager serves organizations to this portal yet."
-            />
-          )}
-        </Flex>
-      </ShellPage>
-    );
-  }
-
+  const servesNowhere = installations.length === 0;
   const answered = installations.filter(installation =>
     Boolean(organizationsOf(installation)),
   );
@@ -81,8 +106,35 @@ export function OrganizationsIndexPage() {
 
   return (
     <ShellPage title="Organizations" {...frame}>
+      {/* One tree for every state: the disclosure keeps whether it is open
+          as installations answer. */}
       <Flex direction="column" gap="5">
-        {discoveryAlerts}
+        {listingError && (
+          <Alert
+            status="warning"
+            title="Could not read the installations"
+            description={listingError}
+          />
+        )}
+        {servesNowhere && !listingError && noneChecked && (
+          <NoneCheckedAlert unchecked={uncheckedInstallations} />
+        )}
+        {servesNowhere && isLoading && <ShellPageFactsSkeleton />}
+        {servesNowhere && !isLoading && !listingError && !noneChecked && (
+          <EmptyStateCard
+            title="Organizations are not available here"
+            description={[
+              uncheckedInstallations.length === 0
+                ? "No environment's agent-manager serves organizations to this portal yet."
+                : 'No installation that answered serves organizations to this portal. The ones that could not be checked are listed below.',
+              // Named nowhere: only that some are off, and where.
+              turnedOffInstallations.length > 0 &&
+                'The environments you turned off in Profile and settings, Environments, are not checked.',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          />
+        )}
         {belongsNowhere && (
           <EmptyStateCard
             title="You belong to no organization"
@@ -133,7 +185,21 @@ export function OrganizationsIndexPage() {
                         .filter(Boolean)
                         .join(' · ')}
                     >
-                      {label}
+                      {/* The name is a real link, as AgentUsageList's rows
+                          have: it looks like one, and opens in a new tab.
+                          The row's own href still opens it on a press. */}
+                      {href ? (
+                        <Link
+                          href={href}
+                          truncate={isPhone ? undefined : true}
+                          title={isPhone ? undefined : label}
+                          style={isPhone ? NAME_TWO_LINES : NAME_ONE_LINE}
+                        >
+                          {label}
+                        </Link>
+                      ) : (
+                        label
+                      )}
                     </ListRow>
                   );
                 })}
@@ -141,7 +207,63 @@ export function OrganizationsIndexPage() {
             </PageSection>
           );
         })}
+        {unchecked}
       </Flex>
     </ShellPage>
+  );
+}
+
+/**
+ * Not one installation could be checked, so the page has nothing else to
+ * show: one warning, saying where a sign-in would help when one would.
+ */
+function NoneCheckedAlert({
+  unchecked,
+}: {
+  unchecked: UncheckedInstallation[];
+}) {
+  const connectorsHref = useConnectorsHref(
+    unchecked.length === 1 ? unchecked[0].installation : undefined,
+  );
+  const musterSignIn = unchecked.some(entry => entry.reason === 'musterSignIn');
+  const connectorSignIns = unchecked
+    .filter(entry => entry.reason === 'connectorSignIn')
+    .map(entry => entry.installation);
+  // muster's own name for the connector, as the rows' sign-in says it.
+  const connectorLabel = useConnectorLabel(
+    connectorSignIns[0],
+    AGENT_MANAGER_SERVER,
+  );
+  const where =
+    unchecked.length === 1
+      ? unchecked[0].installation
+      : `any of ${countNoun(unchecked.length, 'installation')}`;
+  return (
+    <Alert
+      status="warning"
+      title="Could not check any installation for organizations"
+      description={
+        <Flex direction="column" gap="2">
+          <Text variant="body-small">
+            The portal could not check {where} for organizations.
+            {musterSignIn &&
+              ' Sign in to Muster for the installation you use on the Connectors page, then open the list below and check it again.'}
+            {!musterSignIn &&
+              connectorSignIns.length > 0 &&
+              ` Sign in to the ${connectorLabel} connector on the installation you use (${joinNames(
+                connectorSignIns,
+              )}): open the list below.`}
+            {!musterSignIn &&
+              connectorSignIns.length === 0 &&
+              ' The list below says why for each one.'}
+          </Text>
+          {musterSignIn && connectorsHref && (
+            <Link href={connectorsHref} variant="body-small">
+              Open Connectors
+            </Link>
+          )}
+        </Flex>
+      }
+    />
   );
 }

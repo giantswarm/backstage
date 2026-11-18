@@ -7,7 +7,8 @@ import { expect, open, test } from './fixtures';
  * `gs.features.platformSection.enabled`: without it, the rail has no Platform
  * item and `/platform` is no page, as before the section existed. With it,
  * the rail's Platform item opens the Clusters tab, whose list, column picker
- * and sortable headers the person can use; rows open nothing yet.
+ * and sortable headers the person can use, and whose rows open a cluster's
+ * page with its Overview tab.
  */
 
 const rail = (page: Page) =>
@@ -69,8 +70,11 @@ test('the Platform item opens the clusters list', async ({ admin }) => {
       table.getByRole('columnheader', { name, exact: true }),
     ).toBeVisible();
   }
-  // Rows open nothing yet.
-  await expect(table.getByRole('link')).toHaveCount(0);
+  // Each name links to its cluster's page.
+  await expect(table.getByRole('link').first()).toHaveAttribute(
+    'href',
+    /^\/platform\/clusters\/[^/]+\/[^/]+\/[^/]+$/,
+  );
 
   // The column picker adds a column, keeps it on Escape, and takes it away
   // again.
@@ -99,4 +103,40 @@ test('the Platform item opens the clusters list', async ({ admin }) => {
   });
   await status.click();
   await expect(status).toHaveAttribute('aria-sort', 'ascending');
+});
+
+test('a row opens its cluster’s page', async ({ admin }) => {
+  const item = await platformItem(admin);
+  test.skip(
+    (await item.count()) === 0,
+    'the lab does not set gs.features.platformSection.enabled',
+  );
+  await open(admin, '/platform/clusters');
+  // A table row's name, or on a phone a stacked row's title.
+  const name = admin.locator('a[href^="/platform/clusters/"]').first();
+  const empty = admin.getByText('No clusters yet', { exact: true });
+  await expect(name.or(empty)).toBeVisible({ timeout: 60_000 });
+  test.skip(await empty.isVisible(), 'the lab has no clusters');
+
+  const cluster = (await name.textContent())?.trim() ?? '';
+  await name.click();
+
+  await expect(admin).toHaveURL(/\/platform\/clusters\/[^/]+\/[^/]+\/[^/]+$/);
+  await expect(
+    admin.getByRole('heading', { level: 1, name: cluster, exact: true }),
+  ).toBeVisible({ timeout: 60_000 });
+  await expect(admin.getByRole('tab', { name: 'Overview' })).toBeVisible();
+  await expect(
+    admin.getByRole('region', { name: 'Release', exact: true }),
+  ).toBeVisible();
+  await expect(
+    admin.getByRole('button', { name: 'Ask Platform Agent' }),
+  ).toHaveCount(0);
+
+  // The breadcrumb leads back to the list.
+  await admin
+    .getByRole('navigation', { name: /breadcrumb/i })
+    .getByRole('link', { name: 'Clusters', exact: true })
+    .click();
+  await expect(admin).toHaveURL(/\/platform\/clusters$/);
 });

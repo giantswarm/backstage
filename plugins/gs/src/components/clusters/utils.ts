@@ -221,3 +221,42 @@ export function getClusterK8sAPIUrl(cluster: Cluster) {
 
   return url.startsWith('https://') ? url : `https://${url}`;
 }
+
+/**
+ * The `kubectl gs login` command for a cluster, with the installation's base
+ * domain: the management cluster's API alone, a workload cluster's with the
+ * client certificate flags.
+ */
+export function getKubectlGsLoginCommand(
+  baseDomain: string,
+  clusterName: string,
+  isMC: boolean,
+) {
+  const baseCommand = `kubectl gs login api.${baseDomain}`;
+
+  if (isMC) {
+    return baseCommand;
+  }
+
+  return `${baseCommand} \\\n  --workload-cluster ${clusterName} \\\n  --certificate-group system:masters`;
+}
+
+/**
+ * The provider a cluster's releases are named and tagged by: its cluster
+ * app's name without `cluster-` (`cluster-aws` → `aws`, `cluster-aks` →
+ * `aks`). The Release resources are `<provider>-<version>` and the release
+ * notes are tagged `<provider>/v<version>` in giantswarm/releases. Undefined
+ * for a cluster app outside that naming.
+ */
+export function getClusterReleaseProvider(
+  cluster: Cluster,
+): string | undefined {
+  return releaseProviderOfApp(getClusterAppName(cluster));
+}
+
+/** {@link getClusterReleaseProvider} from the cluster app's name. */
+export function releaseProviderOfApp(
+  clusterAppName: string | undefined,
+): string | undefined {
+  return clusterAppName?.match(/^cluster-([a-z][a-z0-9-]*)$/)?.[1];
+}

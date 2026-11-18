@@ -249,7 +249,7 @@ function PlaceholderRows({ rows }: { rows: number }) {
 }
 
 /**
- * `g6.xlarge — 3 vCPU / 11.9 GiB usable, 1 × 24 GiB GPU — $1.01/h`; the
+ * `g6.xlarge — 3 CPU / 11.9 GiB usable, 1 × 24 GiB GPU — $1.01/h`; the
  * price note where no price is listed, nothing after the GPUs from an older
  * cluster-manager that prices nothing.
  */

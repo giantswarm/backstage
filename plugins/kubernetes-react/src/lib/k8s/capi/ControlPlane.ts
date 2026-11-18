@@ -28,4 +28,9 @@ export class ControlPlane extends KubeObject<ControlPlaneInterface> {
   getK8sVersion() {
     return this.jsonData.spec?.version;
   }
+
+  /** How many control plane machines the spec asks for. */
+  getReplicas(): number | undefined {
+    return this.jsonData.spec?.replicas;
+  }
 }

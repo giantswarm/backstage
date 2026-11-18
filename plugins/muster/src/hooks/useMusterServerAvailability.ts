@@ -62,7 +62,8 @@ function presenceIn(
 }
 
 /**
- * The name muster's own session holds the server under: its CR name. The
+ * The name muster's own session holds the server under: its key, the CR name
+ * in muster's namespace and `<namespace>/<name>` in an organization's. The
  * exposed name addresses a tool, `core_auth_login` and `auth://status` name
  * the registered server, and the two differ under a `toolPrefix`, so a
  * sign-in sent under the exposed name is refused ("Server 'marge' not
@@ -72,8 +73,10 @@ function registeredIn(
   servers: McpServerRuntime[] | null | undefined,
   serverName: string,
 ): string | undefined {
-  return (servers ?? []).find(server => exposedNameOf(server) === serverName)
-    ?.name;
+  const server = (servers ?? []).find(
+    entry => exposedNameOf(entry) === serverName,
+  );
+  return server && (server.key || server.name);
 }
 
 /** The first read again after a 503, doubling with every further one. */
