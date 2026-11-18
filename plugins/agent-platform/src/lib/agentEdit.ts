@@ -392,8 +392,12 @@ export function formStateOfAgent(
     // needs it, and not once none does.
     toolset: withoutSignInTool(baseline.toolset),
     // An agent declaring no tools is *Nothing outside the chat* on the Tools
-    // step; one declaring no toolset at all (implicit full access) is not.
-    toolsChatOnly: agent.toolset !== undefined && baseline.toolset.length === 0,
+    // step; one declaring no toolset at all (implicit full access) is not,
+    // nor one that binds connectors of its organization.
+    toolsChatOnly:
+      agent.toolset !== undefined &&
+      baseline.toolset.length === 0 &&
+      baseline.connectors.length === 0,
   };
 }
 

@@ -241,6 +241,15 @@ describe('OrganizationConnectors', () => {
     expect(picked()).toBe('');
   });
 
+  it("keeps an edited agent's connector that Helm renders as picked, not as gone", async () => {
+    await renderSection({ connectors: ['reviewer'] });
+
+    expect(
+      await screen.findByRole('checkbox', { name: 'reviewer' }),
+    ).toBeChecked();
+    expect(screen.queryByText(/Not in the organization any more/)).toBeNull();
+  });
+
   it("says each connector's state in words, links a missing credential to the organization's Connectors tab, and still lets it be picked", async () => {
     const user = userEvent.setup();
     await renderSection();

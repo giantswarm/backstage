@@ -129,9 +129,9 @@ export function OrganizationConnectors() {
 
   const picked = state.connectors;
   // Nothing outside the chat holds these off too, as it does the muster
-  // servers above; an agent saved with some keeps them in reach.
-  const chatOnly = Boolean(state.toolsChatOnly) && picked.length === 0;
-  const listed = offerableConnectors(read.data ?? []);
+  // servers above (and picking it drops them).
+  const chatOnly = Boolean(state.toolsChatOnly);
+  const listed = offerableConnectors(read.data ?? [], picked);
   const unlisted =
     read.isLoading || read.failure
       ? []

@@ -581,6 +581,23 @@ describe('the edit wizard (formStateOfAgent, editStateOfForm)', () => {
       hasChanges(updateOf(chatOnly, editStateOfForm(chatOnly, state))),
     ).toBe(false);
 
+    // …one that binds connectors of its organization reaches outside the
+    // chat, so it does not…
+    const withConnectors = agent({
+      toolset: ['preset:none'],
+      connectors: ['jira'],
+    });
+    const connectorsState = seed(withConnectors);
+    expect(connectorsState.toolsChatOnly).toBe(false);
+    expect(
+      hasChanges(
+        updateOf(
+          withConnectors,
+          editStateOfForm(withConnectors, connectorsState),
+        ),
+      ),
+    ).toBe(false);
+
     // …one declaring no toolset at all does not, and stays untouched…
     const implicit = agent({ toolset: undefined, implicitFullAccess: true });
     const implicitState = seed(implicit);

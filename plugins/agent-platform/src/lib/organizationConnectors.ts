@@ -33,16 +33,25 @@ export function takesConnectors(
  * What Helm writes in `app.kubernetes.io/managed-by`: the agent chart renders
  * each agent's muster binding as a RemoteMCPServer of the agent's namespace,
  * which the list returns too. agent-manager refuses it as a connector, so it
- * is not offered.
+ * is not offered. The list does not say which chart rendered an object, so a
+ * connector another Helm chart renders is not offered either, until
+ * agent-manager marks the muster bindings itself.
  */
 const AGENT_CHART_MANAGED_BY = 'Helm';
 
-/** The connectors an agent of the organization may be given. */
+/**
+ * The connectors an agent of the organization may be given, and the ones it
+ * has (`picked`) whatever renders them: an agent's own connector is never
+ * hidden from the person who edits it.
+ */
 export function offerableConnectors(
   connectors: readonly OrganizationConnector[],
+  picked: readonly string[] = [],
 ): OrganizationConnector[] {
   return connectors.filter(
-    connector => connector.managedBy !== AGENT_CHART_MANAGED_BY,
+    connector =>
+      connector.managedBy !== AGENT_CHART_MANAGED_BY ||
+      picked.includes(connector.name),
   );
 }
 
