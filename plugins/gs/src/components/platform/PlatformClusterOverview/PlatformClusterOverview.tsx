@@ -357,7 +357,7 @@ function LoginPanel() {
       {kubectlGs && (
         <Flex direction="column" gap="2">
           {staff && (
-            <Text as="p" variant="body-small" color="secondary">
+            <Text as="p" variant="body-medium" color="secondary">
               kubectl gs
             </Text>
           )}
@@ -366,7 +366,7 @@ function LoginPanel() {
       )}
       {staff && (
         <Flex direction="column" gap="2">
-          <Text as="p" variant="body-small" color="secondary">
+          <Text as="p" variant="body-medium" color="secondary">
             Teleport, for Giant Swarm staff
           </Text>
           <CodeBlock text={staff.command} language="bash" />
@@ -434,7 +434,8 @@ function RawEntries({
 }) {
   return (
     <Flex direction="column" gap="2">
-      <Text as="p" variant="body-small" color="secondary">
+      {/* The size and colour of the fact labels above it. */}
+      <Text as="p" variant="body-medium">
         {title}
       </Text>
       {Object.keys(entries).length > 0 ? (

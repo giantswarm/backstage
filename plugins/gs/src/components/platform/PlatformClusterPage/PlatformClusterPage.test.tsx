@@ -400,6 +400,13 @@ describe('PlatformClusterPage', () => {
       screen.getByText('api.alder-birch.meadow.example.com'),
     ).toBeInTheDocument();
     expect(screen.getByRole('list', { name: 'Labels' })).toBeInTheDocument();
+    // Its headings at the fact labels' size, 14px.
+    for (const heading of ['Labels', 'Annotations']) {
+      expect(screen.getByText(heading, { selector: 'p' })).toHaveAttribute(
+        'data-variant',
+        'body-medium',
+      );
+    }
   });
 
   it('shows Giant Swarm staff the Teleport command after kubectl gs', async () => {
@@ -409,6 +416,13 @@ describe('PlatformClusterPage', () => {
     const login = screen.getByRole('region', { name: 'Work with the cluster' });
     const text = login.textContent ?? '';
     expect(text).toContain('Teleport, for Giant Swarm staff');
+    // The captions at the body size, 14px.
+    for (const caption of ['kubectl gs', 'Teleport, for Giant Swarm staff']) {
+      expect(within(login).getByText(caption)).toHaveAttribute(
+        'data-variant',
+        'body-medium',
+      );
+    }
     expect(text.indexOf('kubectl gs login')).toBeLessThan(
       text.indexOf('tsh kube login meadow-alder-birch'),
     );

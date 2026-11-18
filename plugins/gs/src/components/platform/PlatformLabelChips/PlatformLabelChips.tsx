@@ -2,34 +2,18 @@ import { makeStyles } from '@material-ui/core';
 
 /**
  * A friendly label's colour (`gs.friendlyLabels` / `gs.friendlyAnnotations`
- * `variant`) as one of bui's tints: its key on the tint, its value plain.
+ * `variant`) as one of bui's tints, behind the key. The key's text is the
+ * primary text colour on every tint, which holds at least 10.7:1 in the
+ * light theme and 8.1:1 in the dark one.
  */
-const TINTS: Record<string, { bg: string; fg: string }> = {
-  green: {
-    bg: 'var(--bui-positive-bg-subdued)',
-    fg: 'var(--bui-positive-fg-subdued)',
-  },
-  blue: {
-    bg: 'var(--bui-announcement-bg-subdued)',
-    fg: 'var(--bui-announcement-fg-subdued)',
-  },
-  orange: {
-    bg: 'var(--bui-warning-bg-subdued)',
-    fg: 'var(--bui-warning-fg-subdued)',
-  },
-  yellow: {
-    bg: 'var(--bui-warning-bg-subdued)',
-    fg: 'var(--bui-warning-fg-subdued)',
-  },
-  red: {
-    bg: 'var(--bui-negative-bg-subdued)',
-    fg: 'var(--bui-negative-fg-subdued)',
-  },
+const TINTS: Record<string, string> = {
+  green: 'var(--bui-positive-bg-subdued)',
+  blue: 'var(--bui-announcement-bg-subdued)',
+  orange: 'var(--bui-warning-bg-subdued)',
+  yellow: 'var(--bui-warning-bg-subdued)',
+  red: 'var(--bui-negative-bg-subdued)',
 };
-const NEUTRAL = {
-  bg: 'var(--bui-bg-neutral-2)',
-  fg: 'var(--bui-fg-secondary)',
-};
+const NEUTRAL = 'var(--bui-bg-neutral-2)';
 
 const useStyles = makeStyles({
   list: {
@@ -43,11 +27,12 @@ const useStyles = makeStyles({
   pair: {
     display: 'inline-flex',
     alignItems: 'stretch',
-    minHeight: 26,
+    minHeight: 28,
     maxWidth: '100%',
     borderRadius: 'var(--bui-radius-3)',
     overflow: 'hidden',
-    fontSize: 'var(--bui-font-size-2)',
+    fontSize: 'var(--bui-font-size-3)',
+    color: 'var(--bui-fg-primary)',
     border: '1px solid',
   },
   part: {
@@ -86,12 +71,9 @@ export function PlatformLabelChips({
             // A label and an annotation can format alike.
             key={`${index}:${item.key}=${item.value}`}
             className={classes.pair}
-            style={{ borderColor: tint.bg }}
+            style={{ borderColor: tint }}
           >
-            <span
-              className={classes.part}
-              style={{ background: tint.bg, color: tint.fg }}
-            >
+            <span className={classes.part} style={{ background: tint }}>
               {item.key}
             </span>
             <span className={classes.part}>{item.value}</span>
