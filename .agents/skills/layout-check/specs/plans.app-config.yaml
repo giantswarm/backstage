@@ -1,0 +1,64 @@
+# Fixture mode with Hive's Plans pages (plugins/plans) on, for the layout
+# check's plans spec (specs/plans.mjs):
+#
+#   yarn fixtures start --config .agents/skills/layout-check/specs/plans.app-config.yaml
+#
+# Backstage replaces `app.extensions` rather than merging it, so this list
+# repeats app-config.yaml's and adds Hive and its fixture API.
+plans:
+  fixtures: true
+
+app:
+  extensions:
+    - api:home/visits
+    - app-root-element:home/visit-listener
+    - page:gs/clusters
+    - page:gs/deployments
+    - page:gs/installations
+    - page:flux
+    - page:agent-platform
+    - page:ai-chat
+    - api:ai-chat/service
+    - api:ai-chat/drawer
+    - app-root-element:ai-chat/drawer
+
+    # PagerDuty plugin is disabled — only the api:pagerduty extension is left
+    # registered (via pagerDutyPlugin in App.tsx) so our custom WhoIsOnCallEntityCard
+    # can still use pagerDutyApiRef.
+    - entity-card:pagerduty/EntityPagerDutyCard: false
+    - entity-card:pagerduty/EntityPagerDutySmallCard: false
+    - page:pagerduty: false
+
+    # Entity overview card order: app-deployment, then who-is-on-call, then about.
+    - entity-card:gs/app-deployment
+    - entity-card:catalog/who-is-on-call
+    - entity-card:catalog/about
+
+    - entity-card:catalog/depends-on-components: false
+    - entity-card:catalog/depends-on-resources: false
+    - entity-card:catalog/has-subcomponents: false
+    - entity-card:catalog/labels: false
+    - entity-card:catalog-graph/relations: false
+    - entity-card:api-docs/provided-apis: false
+    - entity-card:api-docs/consumed-apis: false
+    - entity-card:api-docs/consuming-components: false
+    - entity-card:api-docs/providing-components: false
+    - entity-card:github-actions/recent-workflow-runs: false
+
+    - entity-content:techdocs: false
+    - entity-content:kubernetes/kubernetes: false
+    - entity-content:api-docs/definition: false
+    - entity-content:api-docs/apis: false
+
+    - entity-context-menu-item:catalog/unregister-entity: false
+
+    - page:scaffolder:
+        config:
+          title: Create things
+    - sub-page:scaffolder/actions: false
+    - sub-page:scaffolder/editor: false
+    - sub-page:scaffolder/templating-extensions: false
+
+    # Hive, its Plans tab and the plans fixtures.
+    - page:plans
+    - api:plans

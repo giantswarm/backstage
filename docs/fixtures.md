@@ -59,8 +59,9 @@ yarn fixtures stop
 
 The `fixtures` query parameter switches the data set of the Agent Platform's
 fixture APIs (muster, kagent, agent-manager's credentials, model-manager), of
-the fixture Kubernetes API and of the fixture Mimir without restarting the server: load any page
-with `?fixtures=<scenario>`. The Plans and Roadmap fixtures do not take part:
+the fixture Kubernetes API, of the fixture Mimir and of the Plans fixtures (Hive,
+see "Plans") without restarting the server: load any page
+with `?fixtures=<scenario>`. The Roadmap fixtures do not take part:
 they serve their own data in every scenario.
 
 | Scenario     | What those fixture APIs serve                                                                                                                                                                                                                                                                                                                                                                                               |
@@ -105,6 +106,10 @@ In `error`:
 - kagent, agent-manager's credential operations and model-manager's
   `tryModel` fail with a 500. model-manager's other calls go through muster
   and fail as muster does.
+- Plans fails every call that reaches GitHub as plans-backend does when
+  muster does not answer: a 503, `ServiceUnavailableError` in the client,
+  "meadow did not answer: …". The plans repositories and the magazine's place
+  answer: plans-backend reads them from its configuration.
 
 The plugins persist their query caches to localStorage and restore them as a
 page loads, before any fixture API answers. Each provider adds the page's
@@ -516,6 +521,30 @@ The queries are evaluated, not matched (`promql.ts`): selectors with
 A metric without fixture series answers no series, as Mimir does; so does a
 query the evaluator cannot read, with a console warning that names what it
 could not read: extend the evaluator, or the series a new page reads.
+
+### Plans
+
+The fixture `PlansApi` (`plugins/plans/src/apis/PlansFixtureApi.ts`, the
+magazine and the knowledge documents in `plugins/plans/src/lib/hiveFixtures.ts`)
+serves Hive's Now, History, Plans and Knowledge tabs and a plan's review. Hive
+is off in plain fixture mode; turn it on with the layout check's config for it:
+
+```bash
+yarn fixtures start --config .agents/skills/layout-check/specs/plans.app-config.yaml
+```
+
+Its data is its own, not the data set's: plans and magazine cards, not
+Kubernetes objects. It follows the page's scenario
+(`plansFixtureData` and `hiveFixtureMagazine`):
+
+| Scenario     | What the Plans fixtures serve                                                                                                                                                                                                                                                                                        |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `base`       | One plans repository, `example/bumblebee-plans` (Hive's default team's), with three open plans and two merged ones; the magazine's Now (four lanes, plans to review, blockers, other teams' work), three weeks of History and six knowledge documents. Names are made up, epic titles are public roadmap issues.     |
+| `empty`      | The same repository and the team's data set, with nothing in them: no open or merged plans, lanes without cards, no plans to review, nothing moved and no knowledge documents.                                                                                                                                       |
+| `many`       | A plans repository for each of Hive's teams (a picker in the header for all teams), 300 open and 300 merged plans, 200 comments and 120 review comments on each plan, 75 cards in each lane of Now, 120 plans to review, 100 other teams' cards, 150 groups in History and 100 knowledge documents in each category. |
+| `long-names` | The base data with every title as long as GitHub allows (256 characters, in whole words), every login as long (39), every plan folder, branch and knowledge document's file name as long as git allows a path segment (255), and people and customers named in 80 characters of whole words.                         |
+| `loading`    | No call ever answers.                                                                                                                                                                                                                                                                                                |
+| `error`      | Every call that reaches GitHub fails (see `error` above).                                                                                                                                                                                                                                                            |
 
 ### Objects in the Kubernetes API
 
