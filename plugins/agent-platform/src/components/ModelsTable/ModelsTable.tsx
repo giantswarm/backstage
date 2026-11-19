@@ -86,6 +86,7 @@ export type ModelRow = {
   model: string;
   /** The configured base URL/host; empty = the provider's default endpoint. */
   endpoint: string;
+  apiKeySecret?: string;
   readiness: ModelConfigReadiness;
   /** The controller's own explanation, for the status tooltip. */
   readinessMessage?: string;
@@ -120,6 +121,7 @@ export function toModelRow(
     provider: modelConfig.getProvider() ?? '',
     model: modelConfig.getModel() ?? '',
     endpoint: modelConfig.getEndpoint() ?? '',
+    apiKeySecret: modelConfig.getApiKeySecret(),
     readiness: modelConfig.getReadiness(),
     readinessMessage: modelConfig.getReadinessMessage(),
     ...(failedCondition ? { failedCondition } : {}),

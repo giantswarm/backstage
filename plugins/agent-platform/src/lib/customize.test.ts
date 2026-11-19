@@ -142,17 +142,33 @@ describe('modelStatus', () => {
     });
   });
 
-  it('reads in the Running models words, Ready when nothing here serves it', () => {
+  it('reports accepted configuration without claiming provider access', () => {
     expect(modelStatus(model())).toEqual({
-      label: 'Ready',
+      label: 'Configured',
       tone: 'success',
+      detail: 'Settings accepted. Provider access has not been tested.',
     });
+    expect(modelStatus(model({ apiKeySecret: 'provider-key' }))).toEqual({
+      label: 'Configured',
+      tone: 'success',
+      detail:
+        'Settings accepted and the key Secret was found. The key itself has not been tested.',
+    });
+  });
+
+  it('preserves the serving verdict when it is available', () => {
     const servedBy = {
       installation: 'golem',
       backend: 'kserve' as const,
       name: 'qwen',
       message: '',
     };
+    expect(
+      modelStatus(model({ servedBy: { ...servedBy, readiness: 'ready' } })),
+    ).toEqual({
+      label: 'Ready',
+      tone: 'success',
+    });
     expect(
       modelStatus(
         model({ servedBy: { ...servedBy, readiness: 'notServing' } }),

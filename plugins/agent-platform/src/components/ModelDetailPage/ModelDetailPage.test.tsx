@@ -365,7 +365,13 @@ describe('ModelDetailPage', () => {
     expect(
       screen.getByRole('heading', { level: 1, name: 'Sonnet 4.5' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('Ready')).toBeInTheDocument();
+    expect(screen.getByText('Configured')).toBeInTheDocument();
+    expect(
+      screen.getByTitle(
+        'Settings accepted and the key Secret was found. The key itself has not been tested.',
+      ),
+    ).toHaveTextContent('Configured');
+    expect(screen.queryByText('Ready')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
     // Used by counts the agents on the model, as on the skill page.
     expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual([

@@ -8,6 +8,10 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { ModelConfigReadiness } from '@giantswarm/backstage-plugin-kubernetes-react';
 import type { ModelRow } from './ModelsTable';
+import {
+  MODEL_CONFIGURED_LABEL,
+  modelConfiguredDetail,
+} from '../../lib/modelConfigStatus';
 
 /**
  * How each readiness state presents. A ModelConfig has no workload, so there
@@ -20,22 +24,35 @@ export const MODEL_READINESS_PRESENTATION: Record<
   ModelConfigReadiness,
   { label: string; intent: StatusLabelIntent; icon: typeof CheckCircleIcon }
 > = {
-  accepted: { label: 'Accepted', intent: 'positive', icon: CheckCircleIcon },
+  accepted: {
+    label: MODEL_CONFIGURED_LABEL,
+    intent: 'positive',
+    icon: CheckCircleIcon,
+  },
   notAccepted: { label: 'Not accepted', intent: 'negative', icon: ErrorIcon },
   pending: { label: 'Pending', intent: 'neutral', icon: HourglassEmptyIcon },
 };
 
-/** A ModelConfig's readiness as a label, the controller's message on hover. */
+/** A ModelConfig's configuration verdict and explanation. */
 export function ModelReadinessLabel({
   readiness,
   message,
+  apiKeySecret,
 }: {
   readiness: ModelConfigReadiness;
   message?: string;
+  apiKeySecret?: string;
 }) {
   const { label, intent, icon } = MODEL_READINESS_PRESENTATION[readiness];
   return (
-    <StatusLabel label={label} intent={intent} icon={icon} title={message} />
+    <StatusLabel
+      label={label}
+      intent={intent}
+      icon={icon}
+      title={
+        readiness === 'accepted' ? modelConfiguredDetail(apiKeySecret) : message
+      }
+    />
   );
 }
 
@@ -45,6 +62,7 @@ export function ModelReadinessCell({ row }: { row: ModelRow }) {
       <ModelReadinessLabel
         readiness={row.readiness}
         message={row.readinessMessage}
+        apiKeySecret={row.apiKeySecret}
       />
     </Cell>
   );
