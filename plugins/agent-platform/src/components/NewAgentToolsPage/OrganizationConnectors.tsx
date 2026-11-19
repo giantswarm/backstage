@@ -13,7 +13,6 @@ import { useOrganizationConnectors } from '../../hooks/useOrganization';
 import { runtimeLabel } from '../../lib/harnesses';
 import {
   connectorReadiness,
-  offerableConnectors,
   ORGANIZATION_CONNECTORS_LABEL,
   sameNames,
 } from '../../lib/organizationConnectors';
@@ -129,9 +128,11 @@ export function OrganizationConnectors() {
   const { isCoding, onPlatformHarness, harness } = useFormHarnessRuntime();
   const runtimeKnown = isCoding !== undefined || onPlatformHarness;
   const offered = support === 'supported' && runtimeKnown && !isCoding;
+  const picked = state.connectors;
   const read = useOrganizationConnectors(
     installation ?? '',
     offered && organization ? organization.namespace : undefined,
+    picked,
   );
   const organizationRoute = useRouteRef(organizationDetailRouteRef);
 
@@ -145,11 +146,10 @@ export function OrganizationConnectors() {
   });
   const connectorsTab = organizationHref && `${organizationHref}/connectors`;
 
-  const picked = state.connectors;
   // Nothing outside the chat holds these off too, as it does the muster
   // servers above (and picking it drops them).
   const chatOnly = Boolean(state.toolsChatOnly);
-  const listed = offerableConnectors(read.data ?? [], picked);
+  const listed = read.data ?? [];
   const unlisted =
     read.isLoading || read.failure
       ? []

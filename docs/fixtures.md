@@ -297,15 +297,19 @@ uses and whose key Secret is missing, so kagent reports it Incomplete. `fennel`'
 model credential operations: its `set_organization_model` schema lacks the
 model fields, so the portal refuses every model write there.
 
-Each organization lists four connectors (`list_organization_connectors`), one
+Each organization lists five connectors (`list_organization_connectors`), one
 in each state the agent form tells apart: `issue-tracker` and `docs-search`
-ready, `deepwiki` with its credential missing and not accepted by kagent, and
-`helpdesk`, an agent's muster binding (`managedBy: Helm`), which the form does
-not offer. `create_agent`, `update_agent` and `validate_agent` take
-`connectors`, refuse a name the organization lacks or a muster binding as
-agent-manager does, and `get_agent` reads them back. `fennel`'s agent-manager
-also predates `connectors`: its `create_agent` and `update_agent` schemas lack
-them, so the Tools step does not offer the organization's connectors there.
+ready, `deepwiki` with its credential missing and not accepted by kagent,
+`status-page`, which another Helm chart renders (`managedBy: Helm`), and
+`helpdesk`, an agent's muster binding (`musterBindingOf`), which neither the
+form nor the Connectors tab shows. `create_agent`, `update_agent` and
+`validate_agent` take `connectors`, refuse a name the organization lacks or a
+muster binding as agent-manager does, and `get_agent` reads them back. The
+agent-manager reports version 3.3.4. `fennel`'s reports 3.2.0: it sends no
+`musterBindingOf`, so the portal hides every Helm-rendered connector there
+(`status-page` too), and its `create_agent` and `update_agent` schemas lack
+`connectors`, so the Tools step does not offer the organization's connectors
+there.
 
 `set_organization_model`, `replace_organization_credential` and
 `start_session` honour their idempotency key (`requestId`): a retry answers

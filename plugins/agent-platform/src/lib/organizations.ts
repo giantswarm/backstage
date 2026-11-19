@@ -430,6 +430,13 @@ export type OrganizationConnector = {
   curated?: boolean;
   managedBy?: string;
   /**
+   * The agent whose muster binding this RemoteMCPServer is (the agent chart
+   * renders one for each agent): no connector. Absent on every other one,
+   * for a caller who may not list the namespace's Agents, and from an
+   * agent-manager older than 3.3.4 (`organizationOwnConnectors`).
+   */
+  musterBindingOf?: string;
+  /**
    * kagent's `Accepted` condition of the current generation (its tool
    * discovery), with its reason and message; `null` while unreported.
    * Absent from an agent-manager older than 3.3.

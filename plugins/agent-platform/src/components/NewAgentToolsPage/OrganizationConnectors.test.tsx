@@ -42,10 +42,14 @@ jest.mock('../../hooks/useHarnessChoices', () => ({
     isLoading: false,
   }),
 }));
+/** `get_info`'s version; none, as from a `get_info` that failed, by default. */
+let mockAgentManagerVersion: string | undefined;
 jest.mock('../../hooks/useAgentManager', () => ({
   ...jest.requireActual('../../hooks/useAgentManager'),
   useAgentManagerInfo: () => ({
-    info: undefined,
+    info: mockAgentManagerVersion
+      ? { version: mockAgentManagerVersion }
+      : undefined,
     isLoading: false,
     error: null,
   }),
@@ -99,6 +103,13 @@ const MUSTER_BINDING: OrganizationConnector = {
   accepted: true,
   managedBy: 'Helm',
 };
+/** A connector of the organization that another chart's release renders. */
+const OTHER_CHART: OrganizationConnector = {
+  ...READY,
+  name: 'status-page',
+  url: 'https://status.example.com/mcp',
+  managedBy: 'Helm',
+};
 const ACME_ONLY: OrganizationConnector = {
   ...READY,
   name: 'acme-tracker',
@@ -111,8 +122,9 @@ const CURATED_NO_CREDENTIAL: OrganizationConnector = {
   curated: true,
 };
 
+const OTTER_CONNECTORS = [READY, NO_CREDENTIAL, UNCHECKED, MUSTER_BINDING];
 const CONNECTORS: Record<string, OrganizationConnector[]> = {
-  'org-otter': [READY, NO_CREDENTIAL, UNCHECKED, MUSTER_BINDING],
+  'org-otter': OTTER_CONNECTORS,
   'org-acme': [ACME_ONLY, CURATED_NO_CREDENTIAL],
 };
 
@@ -220,6 +232,40 @@ const section = () => screen.getByRole('region', { name: SECTION });
 const picked = () => screen.getByTestId('connectors').textContent;
 
 describe('OrganizationConnectors', () => {
+  afterEach(() => {
+    mockAgentManagerVersion = undefined;
+    CONNECTORS['org-otter'] = OTTER_CONNECTORS;
+  });
+
+  it.each([
+    {
+      agentManager: '3.3.4, which marks the muster bindings',
+      version: '3.3.4',
+      binding: { ...MUSTER_BINDING, musterBindingOf: 'reviewer' },
+      offered: ['jira', 'status-page'],
+    },
+    {
+      agentManager: 'older, which does not mark them',
+      version: '3.3.3',
+      binding: MUSTER_BINDING,
+      offered: ['jira'],
+    },
+  ])(
+    "offers a connector another chart renders, never an agent's muster binding, with agent-manager $agentManager",
+    async ({ version, binding, offered }) => {
+      mockAgentManagerVersion = version;
+      CONNECTORS['org-otter'] = [READY, binding, OTHER_CHART];
+      await renderSection();
+
+      await screen.findByRole('checkbox', { name: 'jira' });
+      for (const name of ['jira', 'status-page', 'reviewer']) {
+        expect(screen.queryByRole('checkbox', { name }) !== null).toBe(
+          offered.includes(name),
+        );
+      }
+    },
+  );
+
   it("offers the chosen organization's own connectors, not another organization's, and sends the picked ones by name", async () => {
     const user = userEvent.setup();
     const { callTool } = await renderSection();
