@@ -96,7 +96,7 @@ and in Storybook. Still write what you mean:
 | `Text` or `Link` with `variant="body-x-small"` | `variant="body-small"`, with `color="secondary"` for a caption     |
 | `var(--bui-font-size-1)`                       | `var(--bui-font-size-2)`                                           |
 | a px size below 12, or a rem size below 0.75   | `var(--bui-font-size-2)`                                           |
-| an em size or a percentage                     | a token, or `max(<em>, 12px)` as `CodeBlock`'s `max(0.85em, 12px)` |
+| an em size or a percentage                     | a token: `0.85em` is 11.9px under 14px text, and 10.2px under 12px |
 
 The token reaches only what takes its size from it: a px, rem or em size
 written in a component's styles is its own, and so is a size set in a
@@ -115,6 +115,7 @@ stay, each with its comment:
 | 11px      | `UnreadBadge`'s count; the phone navigation bar's labels (`railLayout`)                                                                                                                                                               |
 | 11–11.5px | the rest of `SlackPromoBanner`'s Slack mock                                                                                                                                                                                           |
 | 11.5px    | the ⌘K hint beside Search in the side rail (`AgentShellNav`); the muster workflow canvas's run badges and gate markers (`WorkflowFlowCanvas`)                                                                                         |
+| 11.9px    | `CodeBlock`'s 0.85em                                                                                                                                                                                                                  |
 
 ## Commits and resource names
 
