@@ -1,6 +1,7 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { Gateway, HttpRoute } from '../../../utils/gatewayTopology';
+import { mockPhoneLayout } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { ClusterGatewaysContent } from './ClusterGateways';
 
 const parent = {
@@ -386,6 +387,44 @@ describe('<ClusterGatewaysContent />', () => {
       expect(
         screen.queryByText(/newer Gateway API bundle/),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  describe('at phone width', () => {
+    let layout: { restore: () => void };
+    beforeEach(() => {
+      layout = mockPhoneLayout();
+    });
+    afterEach(() => layout.restore());
+
+    it('stacks the routes with their failing condition and their facts', async () => {
+      await render([
+        healthy,
+        {
+          ...broken,
+          backends: {
+            status: 'available',
+            backends: [
+              { kind: 'Service', namespace: 'team-z', name: 'app', port: '80' },
+            ],
+            mayHaveMore: false,
+          },
+        },
+      ]);
+      // The Gateways and policies tables stay tables; only the routes stack.
+      expect(screen.queryByText('Parent / listener')).not.toBeInTheDocument();
+      const list = screen.getByRole('list', { name: 'HTTPRoutes' });
+      const brokenRow = within(list)
+        .getAllByRole('listitem')
+        .find(item => within(item).queryByText('broken'))!;
+      expect(
+        within(brokenRow).getByText('RefNotPermitted'),
+      ).toBeInTheDocument();
+      expect(brokenRow).toHaveTextContent('broken.example.com');
+      expect(brokenRow).toHaveTextContent('to app:80');
+      expect(brokenRow).toHaveTextContent(
+        'giantswarm-default · Gateway · envoy-gateway-system · https',
+      );
     });
   });
 });

@@ -1,1 +1,1 @@
-export { BackendList } from './BackendList';
+export { BackendList, backendLabel } from './BackendList';

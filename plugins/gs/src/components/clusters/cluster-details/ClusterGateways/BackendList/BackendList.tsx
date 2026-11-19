@@ -20,6 +20,14 @@ export function backendLabel(
   return backend.kind === 'Service' ? address : `${backend.kind} ${address}`;
 }
 
+/** One backend per line, cut with an ellipsis, the whole line on hover. */
+const line = {
+  display: 'block',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+} as const;
+
 /** The backends of one route, one per line, with the weight of a split. */
 export const BackendList = ({
   backends,
@@ -50,12 +58,15 @@ export const BackendList = ({
     );
   }
   return (
-    <Flex direction="column" gap="1">
+    <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
       {backends.backends.map(backend => {
         const label = backendLabel(backend, routeNamespace);
+        const text = backend.weight
+          ? `${label} · weight ${backend.weight}`
+          : label;
         return (
-          <Text key={label} variant="body-medium">
-            {backend.weight ? `${label} · weight ${backend.weight}` : label}
+          <Text key={label} variant="body-medium" style={line} title={text}>
+            {text}
           </Text>
         );
       })}

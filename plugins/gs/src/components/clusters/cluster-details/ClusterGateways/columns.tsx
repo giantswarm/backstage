@@ -1,4 +1,5 @@
 import { Cell, CellText, ColumnConfig, Flex, Text } from '@backstage/ui';
+import type { FittingTier } from '@giantswarm/backstage-plugin-ui-react';
 import {
   ConditionState,
   Gateway,
@@ -82,64 +83,102 @@ export const gatewayColumns: ColumnConfig<GatewayRow>[] = [
   },
 ];
 
-export const routeColumns: ColumnConfig<RouteParentRow>[] = [
-  {
-    id: 'route',
-    label: 'HTTPRoute',
-    isRowHeader: true,
-    cell: row => (
-      <CellText title={row.route.name} description={row.route.namespace} />
-    ),
-  },
-  {
-    id: 'hostnames',
-    label: 'Hostnames',
-    cell: row => (
-      <Cell>
-        <HostnameList hostnames={row.route.hostnames} />
-      </Cell>
-    ),
-  },
-  {
-    id: 'backends',
-    label: 'Backends',
-    cell: row => (
-      <Cell>
-        <BackendList
-          backends={row.route.backends}
-          routeNamespace={row.route.namespace}
-        />
-      </Cell>
-    ),
-  },
-  {
-    id: 'parent',
-    label: 'Parent / listener',
-    cell: row =>
-      row.parent ? (
+/** `giantswarm-default · Gateway · envoy-gateway-system · https`, for a parent. */
+export function parentLabel(parent: HttpRouteParent): string {
+  return [
+    parent.name,
+    parent.kind,
+    parent.namespace,
+    parent.sectionName || 'all listeners',
+    parent.port ? `port ${parent.port}` : undefined,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/**
+ * The minimum width of each column: a header and the usual value whole
+ * ("Not reported" with its icon), the names as wide as the column allows.
+ */
+export const ROUTE_MIN_WIDTHS: Readonly<Record<string, number>> = {
+  route: 160,
+  hostnames: 180,
+  backends: 180,
+  parent: 160,
+  accepted: 140,
+  resolvedRefs: 140,
+};
+
+/** Narrower, the parent leaves the table for the route's description. */
+export const ROUTE_DROP_FIRST: readonly string[] = ['parent'];
+
+/** The HTTPRoutes table's columns, for `useFittingColumns`. */
+export function routeColumnsFor(
+  tier: FittingTier,
+): ColumnConfig<RouteParentRow>[] {
+  const parentInRoute = tier !== 'full';
+  return [
+    {
+      id: 'route',
+      label: 'HTTPRoute',
+      isRowHeader: true,
+      cell: row => (
         <CellText
-          title={row.parent.name}
-          description={[
-            row.parent.kind,
-            row.parent.namespace,
-            row.parent.sectionName || 'all listeners',
-            row.parent.port ? `port ${row.parent.port}` : undefined,
-          ]
-            .filter(Boolean)
-            .join(' · ')}
+          title={row.route.name}
+          description={
+            parentInRoute && row.parent
+              ? `${row.route.namespace} · ${parentLabel(row.parent)}`
+              : row.route.namespace
+          }
         />
-      ) : (
-        <CellText title="No Gateway or ListenerSet parent" />
       ),
-  },
-  {
-    id: 'accepted',
-    label: 'Accepted',
-    cell: row => conditionCell(row.parent?.accepted),
-  },
-  {
-    id: 'resolvedRefs',
-    label: 'ResolvedRefs',
-    cell: row => conditionCell(row.parent?.resolvedRefs),
-  },
-];
+    },
+    {
+      id: 'hostnames',
+      label: 'Hostnames',
+      cell: row => (
+        <Cell>
+          <HostnameList hostnames={row.route.hostnames} />
+        </Cell>
+      ),
+    },
+    {
+      id: 'backends',
+      label: 'Backends',
+      cell: row => (
+        <Cell>
+          <BackendList
+            backends={row.route.backends}
+            routeNamespace={row.route.namespace}
+          />
+        </Cell>
+      ),
+    },
+    {
+      id: 'parent',
+      label: 'Parent / listener',
+      cell: row =>
+        row.parent ? (
+          <CellText
+            title={row.parent.name}
+            description={parentLabel(row.parent)
+              .split(' · ')
+              .slice(1)
+              .join(' · ')}
+          />
+        ) : (
+          <CellText title="No Gateway or ListenerSet parent" />
+        ),
+    },
+    {
+      id: 'accepted',
+      label: 'Accepted',
+      cell: row => conditionCell(row.parent?.accepted),
+    },
+    {
+      id: 'resolvedRefs',
+      label: 'ResolvedRefs',
+      cell: row => conditionCell(row.parent?.resolvedRefs),
+    },
+  ];
+}
