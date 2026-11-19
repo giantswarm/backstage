@@ -24,10 +24,11 @@ import {
   ROUTE_MIN_WIDTHS,
   RouteParentRow,
   gatewayColumns,
-  parentLabel,
+  parentShortLabel,
   routeColumnsFor,
 } from './columns';
 import { ConditionStatus } from './ConditionStatus';
+import { ConditionState } from '../../../utils/gatewayTopology';
 import { backendLabel } from './BackendList';
 
 function toGatewayRows(gateways: Gateway[]): GatewayRow[] {
@@ -114,30 +115,89 @@ const backendsUnavailableNotice = {
   'not-exported': 'Backends need a newer Gateway API bundle on this cluster.',
 };
 
-/** The condition a stacked route row shows: a failing one first. */
-function rowCondition(row: RouteParentRow) {
+type NamedCondition = { name: string; condition: ConditionState };
+
+/**
+ * The condition a stacked route row shows next to its name: a failing one
+ * first, then one not reported, else Accepted.
+ */
+function rowCondition(row: RouteParentRow): NamedCondition | undefined {
   const { parent } = row;
   if (!parent) return undefined;
-  if (parent.accepted.status === 'false') return parent.accepted;
-  if (parent.resolvedRefs.status === 'false') return parent.resolvedRefs;
-  if (parent.accepted.status === 'not-reported') return parent.accepted;
-  return parent.resolvedRefs.status === 'true'
-    ? parent.accepted
-    : parent.resolvedRefs;
+  const accepted = { name: 'Accepted', condition: parent.accepted };
+  const resolvedRefs = { name: 'ResolvedRefs', condition: parent.resolvedRefs };
+  for (const status of ['false', 'not-reported'] as const) {
+    if (parent.accepted.status === status) return accepted;
+    if (parent.resolvedRefs.status === status) return resolvedRefs;
+  }
+  return accepted;
+}
+
+/** `Accepted: False · RefNotPermitted`, as a table cell would show it. */
+function conditionText({ name, condition }: NamedCondition): string {
+  switch (condition.status) {
+    case 'true':
+      return `${name}: True`;
+    case 'false':
+      return condition.reason
+        ? `${name}: False · ${condition.reason}`
+        : `${name}: False`;
+    case 'not-reported':
+      return `${name}: Not reported`;
+    default:
+      return `${name}: Not available`;
+  }
+}
+
+/**
+ * Under a stacked route row: both conditions, which the table shows as
+ * columns, and why one is not reported, which the table shows on hover.
+ */
+function rowDetails(row: RouteParentRow): string | undefined {
+  const { parent } = row;
+  if (!parent) return undefined;
+  const conditions = [
+    { name: 'Accepted', condition: parent.accepted },
+    { name: 'ResolvedRefs', condition: parent.resolvedRefs },
+  ];
+  const notReported = conditions.some(
+    ({ condition }) => condition.status === 'not-reported',
+  );
+  return [
+    conditions.map(conditionText).join(', '),
+    notReported ? 'No controller has reported a condition yet.' : '',
+  ]
+    .filter(Boolean)
+    .join('. ');
+}
+
+/** The backends of a stacked route row, as the Backends column reads. */
+function backendsFact(route: HttpRoute): string {
+  const { backends } = route;
+  if (backends.status === 'not-available') return 'backends not available';
+  if (backends.status === 'not-reported') return 'backends not reported';
+  if (!backends.backends.length) return 'no backends';
+  const labels = backends.backends.map(backend => {
+    const label = backendLabel(backend, route.namespace);
+    return backend.weight ? `${label} (weight ${backend.weight})` : label;
+  });
+  return `to ${labels.join(', ')}${backends.mayHaveMore ? ', maybe more' : ''}`;
 }
 
 /** The second line of a stacked route row. */
 function rowFacts(row: RouteParentRow): string[] {
   const { route, parent } = row;
-  const backends =
-    route.backends.status === 'available'
-      ? route.backends.backends.map(b => backendLabel(b, route.namespace))
-      : [];
+  let hostnames = 'hostnames not available';
+  if (route.hostnames) {
+    hostnames = route.hostnames.length
+      ? route.hostnames.join(', ')
+      : 'any hostname';
+  }
   return [
     route.namespace,
-    parent ? parentLabel(parent) : 'No Gateway or ListenerSet parent',
-    (route.hostnames ?? []).join(', '),
-    backends.length ? `to ${backends.join(', ')}` : '',
+    parent ? parentShortLabel(parent) : 'No Gateway or ListenerSet parent',
+    hostnames,
+    backendsFact(route),
   ];
 }
 
@@ -258,14 +318,18 @@ export const ClusterGatewaysContent = ({
                 <StackedRowList
                   aria-label="HTTPRoutes"
                   rows={(routeTableProps.data ?? []).map(row => {
-                    const condition = rowCondition(row);
+                    const shown = rowCondition(row);
                     return {
                       id: row.id,
                       title: row.route.name,
-                      status: condition ? (
-                        <ConditionStatus condition={condition} />
+                      status: shown ? (
+                        <ConditionStatus
+                          condition={shown.condition}
+                          name={shown.name}
+                        />
                       ) : undefined,
                       facts: rowFacts(row),
+                      details: rowDetails(row),
                     };
                   })}
                   emptyState={routesEmptyState}

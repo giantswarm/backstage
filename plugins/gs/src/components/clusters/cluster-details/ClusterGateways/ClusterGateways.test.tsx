@@ -418,12 +418,19 @@ describe('<ClusterGatewaysContent />', () => {
         .getAllByRole('listitem')
         .find(item => within(item).queryByText('broken'))!;
       expect(
-        within(brokenRow).getByText('RefNotPermitted'),
+        within(brokenRow).getByText('ResolvedRefs: False · RefNotPermitted'),
       ).toBeInTheDocument();
       expect(brokenRow).toHaveTextContent('broken.example.com');
       expect(brokenRow).toHaveTextContent('to app:80');
-      expect(brokenRow).toHaveTextContent(
-        'giantswarm-default · Gateway · envoy-gateway-system · https',
+      expect(brokenRow).toHaveTextContent('Gateway giantswarm-default/https');
+      const healthyRow = within(list)
+        .getAllByRole('listitem')
+        .find(item => within(item).queryByText('healthy'))!;
+      expect(
+        within(healthyRow).getByText('Accepted: True'),
+      ).toBeInTheDocument();
+      expect(healthyRow).toHaveTextContent(
+        'Accepted: True, ResolvedRefs: True',
       );
     });
   });

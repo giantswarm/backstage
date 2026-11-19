@@ -250,12 +250,13 @@ function longNamedRoutes(
 /**
  * The Gateway API and Envoy Gateway series of one installation's clusters,
  * as the kube-state-metrics of observability-bundle and the Gateway API
- * bundle export them: each workload cluster has the bundle's Gateway with its
- * listeners, the routes of {@link routesOf} and a few policies. Every third
+ * bundle export them: each ready workload cluster has the bundle's Gateway
+ * with its listeners, the routes of {@link routesOf} and a few policies; in
+ * `many`, the first one has {@link MANY_ROUTES} routes. Every third ready
  * workload cluster runs older bundles: the routes' conditions, the policies'
  * targets and status, and the rules' backends are missing there, as the
  * metrics are, so the tab shows that they are not available. The management
- * cluster has no Gateway. Info series and gauges, each a single point from
+ * cluster, and a cluster being created or deleted, has no Gateway. Info series and gauges, each a single point from
  * the time the cluster was created.
  */
 export function gatewayApiSeriesOf(
@@ -263,9 +264,13 @@ export function gatewayApiSeriesOf(
   installation: string,
 ): FixtureCounterSeries[] {
   const series: FixtureCounterSeries[] = [];
+  // A cluster still being created has no Gateway yet, one being deleted no
+  // longer serves: only the ready clusters export the series.
   const workloadClusters = data.clusters.filter(
     cluster =>
-      cluster.installation === installation && cluster.kind === 'workload',
+      cluster.installation === installation &&
+      cluster.kind === 'workload' &&
+      cluster.state === 'ready',
   );
   const many = workloadClusters.length >= MANY_CLUSTERS;
 
@@ -391,6 +396,10 @@ function policySeries(
   olderBundles: boolean,
 ) {
   const created = since / 1000;
+  // A name with a suffix, cut so the whole stays a Kubernetes name: the route
+  // names are 63 long in long-names.
+  const named = (base: string, suffix: string) =>
+    `${fitName(base, MAX_NAME_LENGTH - suffix.length - 1)}-${suffix}`;
   const shop = routes[0];
   const admin = routes.find(route => !route.accepted) ?? routes[0];
   const ancestor = {
@@ -405,7 +414,7 @@ function policySeries(
       target: EnvoyGatewayBackendTrafficPolicyTargetInfo.name,
       accepted: EnvoyGatewayBackendTrafficPolicyStatusAncestorAccepted.name,
       namespace: shop.namespace,
-      name: `${shop.name}-timeouts`,
+      name: named(shop.name, 'timeouts'),
       targetKind: 'HTTPRoute',
       targetName: shop.name,
       status: ok('Accepted'),
@@ -415,7 +424,7 @@ function policySeries(
       target: EnvoyGatewaySecurityPolicyTargetInfo.name,
       accepted: EnvoyGatewaySecurityPolicyStatusAncestorAccepted.name,
       namespace: admin.namespace,
-      name: `${admin.name}-basic-auth`,
+      name: named(admin.name, 'basic-auth'),
       targetKind: 'HTTPRoute',
       targetName: admin.name,
       status: failed('Invalid'),
@@ -425,7 +434,7 @@ function policySeries(
       target: EnvoyGatewayClientTrafficPolicyTargetInfo.name,
       accepted: EnvoyGatewayClientTrafficPolicyStatusAncestorAccepted.name,
       namespace: GATEWAY.namespace,
-      name: `${GATEWAY.name}-client`,
+      name: named(GATEWAY.name, 'client'),
       targetKind: 'Gateway',
       targetName: GATEWAY.name,
       status: ok('Accepted'),
@@ -435,9 +444,9 @@ function policySeries(
       target: EnvoyGatewaySecurityPolicyTargetInfo.name,
       accepted: undefined,
       namespace: shop.namespace,
-      name: `${shop.name}-retired-oidc`,
+      name: named(shop.name, 'retired-oidc'),
       targetKind: 'HTTPRoute',
-      targetName: `${shop.name}-retired`,
+      targetName: named(shop.name, 'retired'),
       status: undefined,
     },
   ];

@@ -109,6 +109,20 @@ export const ROUTE_MIN_WIDTHS: Readonly<Record<string, number>> = {
   resolvedRefs: 140,
 };
 
+/**
+ * A parent in a few words: `Gateway giantswarm-default/https`, the listener
+ * after the slash, `all listeners` when the route names none.
+ */
+export function parentShortLabel(parent: HttpRouteParent): string {
+  const listener = parent.sectionName
+    ? `/${parent.sectionName}`
+    : ' (all listeners)';
+  const port = parent.port ? `:${parent.port}` : '';
+  return `${parent.kind} ${parent.name}${listener}${port}`;
+}
+
+const NO_PARENT = 'No Gateway or ListenerSet parent';
+
 /** Narrower, the parent leaves the table for the route's description. */
 export const ROUTE_DROP_FIRST: readonly string[] = ['parent'];
 
@@ -117,22 +131,40 @@ export function routeColumnsFor(
   tier: FittingTier,
 ): ColumnConfig<RouteParentRow>[] {
   const parentInRoute = tier !== 'full';
-  return [
+  const route: ColumnConfig<RouteParentRow> = {
+    id: 'route',
+    label: 'HTTPRoute',
+    isRowHeader: true,
+    cell: row => (
+      <CellText
+        title={row.route.name}
+        description={
+          parentInRoute
+            ? `${row.route.namespace} · ${
+                row.parent ? parentShortLabel(row.parent) : NO_PARENT
+              }`
+            : row.route.namespace
+        }
+      />
+    ),
+  };
+  const conditions: ColumnConfig<RouteParentRow>[] = [
     {
-      id: 'route',
-      label: 'HTTPRoute',
-      isRowHeader: true,
-      cell: row => (
-        <CellText
-          title={row.route.name}
-          description={
-            parentInRoute && row.parent
-              ? `${row.route.namespace} · ${parentLabel(row.parent)}`
-              : row.route.namespace
-          }
-        />
-      ),
+      id: 'accepted',
+      label: 'Accepted',
+      cell: row => conditionCell(row.parent?.accepted),
     },
+    {
+      id: 'resolvedRefs',
+      label: 'ResolvedRefs',
+      cell: row => conditionCell(row.parent?.resolvedRefs),
+    },
+  ];
+  // Compact, the rows stack; only the loading table uses these, so it does
+  // not show six columns squeezed into a phone.
+  if (tier === 'compact') return [route, ...conditions];
+  return [
+    route,
     {
       id: 'hostnames',
       label: 'Hostnames',
@@ -167,18 +199,9 @@ export function routeColumnsFor(
               .join(' · ')}
           />
         ) : (
-          <CellText title="No Gateway or ListenerSet parent" />
+          <CellText title={NO_PARENT} />
         ),
     },
-    {
-      id: 'accepted',
-      label: 'Accepted',
-      cell: row => conditionCell(row.parent?.accepted),
-    },
-    {
-      id: 'resolvedRefs',
-      label: 'ResolvedRefs',
-      cell: row => conditionCell(row.parent?.resolvedRefs),
-    },
+    ...conditions,
   ];
 }

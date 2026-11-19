@@ -15,18 +15,23 @@ const wrap = { overflowWrap: 'anywhere' } as const;
  * shows its reason, which is what someone fixing it needs. `not-reported`
  * gets a warning, since nothing serving is the likely cause, and
  * `not-available` no status at all, so neither can be mistaken for healthy.
+ * With a `name`, where no column header names the condition, the text does:
+ * `Accepted: True`, `Accepted: False · RefNotPermitted`.
  */
 export const ConditionStatus = ({
   condition,
+  name,
 }: {
   condition: ConditionState;
+  name?: string;
 }) => {
+  const named = (text: string) => (name ? `${name}: ${text}` : text);
   switch (condition.status) {
     case 'true':
       return (
         <Flex align="center" gap="1">
           <StatusOK />
-          <Text variant="body-medium">True</Text>
+          <Text variant="body-medium">{named('True')}</Text>
         </Flex>
       );
     case 'false':
@@ -34,7 +39,11 @@ export const ConditionStatus = ({
         <Flex align="center" gap="1">
           <StatusError />
           <Text variant="body-medium" style={wrap}>
-            {condition.reason ?? 'False'}
+            {name
+              ? named(
+                  condition.reason ? `False · ${condition.reason}` : 'False',
+                )
+              : (condition.reason ?? 'False')}
           </Text>
         </Flex>
       );
@@ -46,14 +55,14 @@ export const ConditionStatus = ({
             variant="body-medium"
             title="No controller has reported this condition yet."
           >
-            Not reported
+            {named('Not reported')}
           </Text>
         </Flex>
       );
     default:
       return (
         <Text variant="body-medium" color="secondary">
-          Not available
+          {named('Not available')}
         </Text>
       );
   }

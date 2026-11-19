@@ -28,7 +28,10 @@ const mimir = new MimirFixtureApi(
 );
 const installation = FIXTURE_INSTALLATIONS[0];
 const workload = data.clusters.filter(
-  c => c.installation === installation && c.kind === 'workload',
+  c =>
+    c.installation === installation &&
+    c.kind === 'workload' &&
+    c.state === 'ready',
 );
 
 /** The samples of one metric on a cluster, queried as the Gateways tab does. */

@@ -40,16 +40,22 @@ describe('gatewayApiSeries', () => {
   const data = baseDataSet();
   const series = gatewayApiSeriesOf(data, installation);
   const workload = data.clusters.filter(
-    c => c.installation === installation && c.kind === 'workload',
+    c =>
+      c.installation === installation &&
+      c.kind === 'workload' &&
+      c.state === 'ready',
   );
 
-  it('gives every workload cluster a Gateway, and the management cluster none', () => {
+  it('gives every ready workload cluster a Gateway, the others none', () => {
     const withGateway = clustersWith(series, GatewayApiGatewayInfo.name);
     expect([...withGateway].sort()).toEqual(workload.map(c => c.name).sort());
-    const management = data.clusters.filter(
-      c => c.installation === installation && c.kind === 'management',
+    const others = data.clusters.filter(
+      c =>
+        c.installation === installation &&
+        (c.kind === 'management' || c.state !== 'ready'),
     );
-    expect(management.filter(c => withGateway.has(c.name))).toEqual([]);
+    expect(others.length).toBeGreaterThan(0);
+    expect(others.filter(c => withGateway.has(c.name))).toEqual([]);
   });
 
   it('leaves the conditions and backends out on every third workload cluster', () => {
@@ -83,20 +89,36 @@ describe('gatewayApiSeries', () => {
   it('gives the first cluster hundreds of routes in the many scenario', () => {
     const many = scenarioDataSet('many');
     const first = many.clusters.find(
-      c => c.installation === installation && c.kind === 'workload',
+      c =>
+        c.installation === installation &&
+        c.kind === 'workload' &&
+        c.state === 'ready',
     )!;
     const routes = routesOn(gatewayApiSeriesOf(many, installation), first.name);
     expect(routes.length).toBeGreaterThanOrEqual(150);
     expect(new Set(routes).size).toBe(routes.length);
   });
 
-  it('names routes as long as a Kubernetes name may be in the long-names scenario', () => {
-    const long = scenarioDataSet('long-names');
-    const first = long.clusters.find(
-      c => c.installation === installation && c.kind === 'workload',
-    )!;
-    const routes = routesOn(gatewayApiSeriesOf(long, installation), first.name);
-    expect(routes.some(name => name.length === MAX_NAME_LENGTH)).toBe(true);
-    expect(routes.every(name => name.length <= MAX_NAME_LENGTH)).toBe(true);
+  it('names objects as long as a Kubernetes name may be in the long-names scenario', () => {
+    const long = gatewayApiSeriesOf(
+      scenarioDataSet('long-names'),
+      installation,
+    );
+    const names = long.flatMap(s =>
+      Object.entries(s.labels)
+        .filter(
+          ([key]) =>
+            key === 'name' ||
+            key === 'namespace' ||
+            key.endsWith('_name') ||
+            key.endsWith('_namespace'),
+        )
+        .filter(
+          ([key]) => key !== 'listener_name' && key !== 'gatewayclass_name',
+        )
+        .map(([, value]) => value),
+    );
+    expect(names.some(name => name.length === MAX_NAME_LENGTH)).toBe(true);
+    expect(names.filter(name => name.length > MAX_NAME_LENGTH)).toEqual([]);
   });
 });
