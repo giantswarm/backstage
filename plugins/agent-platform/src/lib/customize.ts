@@ -14,6 +14,10 @@ import type { ModelRow } from '../components/ModelsTable';
 import { READINESS_PRESENTATION } from '../components/AgentsTable/readinessStatus';
 import { matches } from './search';
 import { providerName } from './modelConfigs';
+import {
+  MODEL_CONFIGURED_LABEL,
+  modelConfiguredDetail,
+} from './modelConfigStatus';
 import { SERVED_MODEL_READINESS } from './serving';
 import {
   canonicalSkillId,
@@ -27,7 +31,7 @@ import {
 export type CustomizeStatus = {
   label: string;
   tone: StatusDotTone;
-  /** Why it is in that state, in the controller's words, for a hint beside it. */
+  /** Explanation of the state, for a hint beside it. */
   detail?: string;
 };
 
@@ -83,10 +87,8 @@ export const STALE_MODEL_DETAIL =
 /**
  * A model's state: the controller's verdict on the ModelConfig first, then
  * what the serving layer says about the model behind it — in the Running
- * models table's words, so one served model reads the same everywhere (UX
- * review M14). A model nothing here serves (a provider's) is Ready once
- * accepted. A verdict short of accepted carries the controller's message
- * (which Secret is missing, say) as its detail.
+ * models table's words. An accepted configuration without serving evidence
+ * is Configured: the controller does not test provider access.
  *
  * A failure is named by the condition that failed: "Not accepted" when kagent
  * rejects the settings (`Accepted`), "Incomplete" when it accepts them but
@@ -114,7 +116,11 @@ export function modelStatus(row: ModelRow): CustomizeStatus {
   }
   const readiness = row.servedBy?.readiness;
   if (readiness === undefined) {
-    return { label: SERVED_MODEL_READINESS.ready.label, tone: 'success' };
+    return {
+      label: MODEL_CONFIGURED_LABEL,
+      tone: 'success',
+      detail: modelConfiguredDetail(row.apiKeySecret),
+    };
   }
   const { label, intent } = SERVED_MODEL_READINESS[readiness];
   return { label, tone: toneOfIntent(intent) };

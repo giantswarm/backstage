@@ -825,8 +825,23 @@ combines the `Accepted` and `ResolvedRefs` conditions, named by the one that
 failed: Not accepted (`Accepted` is False: kagent rejects the settings),
 Incomplete (`ResolvedRefs` is False: it accepts them but cannot find what they
 refer to, such as the key Secret) or Pending; a ModelConfig has no workload,
-so there is no `Ready`. The controller's message sits in a hint beside the
-status.
+so accepted settings with resolved references read as Configured. Both the
+Models table and Customize use that label. The status hint for a model with
+a key Secret says: "Settings accepted and the key Secret was found. The key
+itself has not been tested." Models without a key Secret instead say:
+"Settings accepted. Provider access has not been tested." A linked served
+model keeps its own serving readiness, including Ready.
+
+[kagent v1.0.0](https://github.com/kagent-dev/kagent/blob/v1.0.0/go/core/internal/translator/modelconfig.go#L88)
+checks whether the Secret and its named key entry exist. It does not check
+whether the value is non-empty, valid or authorized by the provider. A future
+access check for static keys would make a real provider request and could
+not verify credentials supplied per session.
+
+Installations on kagent 0.10.4 do not report `ResolvedRefs`. Missing-reference
+diagnostics, including Incomplete and the model picker's not-ready warning
+for a missing key, require the kagent upgrade; changing the label does not
+add that diagnostic capability.
 
 One model's page (`ModelDetailPage`) is at
 `/customize/models/<installation>/<namespace>/<name>`, routed by the Models

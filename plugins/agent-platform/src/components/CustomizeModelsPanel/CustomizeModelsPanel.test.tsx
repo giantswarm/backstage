@@ -178,7 +178,7 @@ describe('CustomizeModelsPanel', () => {
         /^Qwen 2\.5qwen2\.5:32bsupportOllamagolem–No agent uses this modelNot serving$/,
       ),
       expect.stringMatching(
-        /^Sonnet 4\.5claude-sonnet-4-5supportAnthropicgolem2 agentsReady$/,
+        /^Sonnet 4\.5claude-sonnet-4-5supportAnthropicgolem2 agentsConfigured$/,
       ),
     ]);
   });
@@ -463,11 +463,28 @@ describe('CustomizeModelsPanel', () => {
       expect(screen.getByTestId('path')).toHaveTextContent(path ?? '');
     });
 
-    it('gives an accepted model no hint', async () => {
-      await renderPanel();
+    it('explains that a configured model has not had provider access tested', async () => {
+      await renderInTestApp(
+        <ShellScopeProvider>
+          <CustomizeModelsPanel search="" />
+        </ShellScopeProvider>,
+        {
+          mountedRoutes: {
+            '/customize/models': modelsRouteRef,
+            '/customize': customizeExternalRouteRef,
+          },
+        },
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'About the state of Sonnet 4.5' }),
+      );
       expect(
-        screen.queryByRole('button', { name: /^About the state of/ }),
-      ).toBeNull();
+        await screen.findByRole('dialog', {
+          name: 'About the state of Sonnet 4.5',
+        }),
+      ).toHaveTextContent(
+        'Settings accepted. Provider access has not been tested.',
+      );
     });
   });
 
@@ -584,7 +601,7 @@ describe('CustomizeModelsPanel at phone width', () => {
       within(sonnetItem).getByRole('link', { name: 'Sonnet 4.5' }),
     ).toHaveAttribute('href', '/customize/models/golem/support/sonnet');
     expect(within(sonnetItem).getByText('Default')).toBeInTheDocument();
-    expect(within(sonnetItem).getByText('Ready')).toBeInTheDocument();
+    expect(within(sonnetItem).getByText('Configured')).toBeInTheDocument();
     expect(sonnetItem).toHaveTextContent(
       'claude-sonnet-4-5·support·golem·Used by 2 agents',
     );
@@ -662,7 +679,10 @@ describe('CustomizeModelsPanel filters', () => {
 
     expect(await optionsOf('owner')).toEqual(['support 2', 'Lab 1']);
     expect(await optionsOf('provider')).toEqual(['Anthropic 2', 'Ollama 1']);
-    expect(await optionsOf('status')).toEqual(['Ready 2', 'Not serving 1']);
+    expect(await optionsOf('status')).toEqual([
+      'Configured 2',
+      'Not serving 1',
+    ]);
     expect(await optionsOf('used by')).toEqual(['In use 1', 'Not used 2']);
 
     await pick('used by', 'Not used 2');

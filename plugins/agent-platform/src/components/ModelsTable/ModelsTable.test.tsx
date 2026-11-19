@@ -12,6 +12,7 @@ import {
   ModelConfigInterface,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { modelManagerApiRef } from '../../apis';
+import { modelStatus } from '../../lib/customize';
 import type { ModelManagerApi } from '../../apis/ModelManagerApi';
 import {
   NO_SERVING_CAPABILITIES,
@@ -134,7 +135,7 @@ describe('ModelsTable', () => {
     expect(screen.getByText('Qwen 3 (lab vLLM)')).toBeInTheDocument();
     // The technical name shows beneath a differing display name.
     expect(screen.getByText('qwen3')).toBeInTheDocument();
-    expect(screen.getByText('Accepted')).toBeInTheDocument();
+    expect(screen.getByText('Configured')).toBeInTheDocument();
     expect(screen.getByText('Not accepted')).toBeInTheDocument();
     expect(
       screen.getByText('https://vllm.example.test/v1'),
@@ -142,6 +143,26 @@ describe('ModelsTable', () => {
     // Empty endpoint reads as the provider's default, not as "unknown".
     expect(screen.getByText('Provider default')).toBeInTheDocument();
   });
+
+  it.each([
+    [
+      'provider-key',
+      'Settings accepted and the key Secret was found. The key itself has not been tested.',
+    ],
+    [undefined, 'Settings accepted. Provider access has not been tested.'],
+  ])(
+    'keeps the configuration label and tooltip in sync with Customize for Secret %s',
+    async (apiKeySecret, detail) => {
+      const row = { ...rows[0], apiKeySecret };
+      await renderTable(<ModelsTable rows={[row]} />);
+
+      expect(modelStatus(row)).toMatchObject({ label: 'Configured', detail });
+      expect(screen.getByText(modelStatus(row).label)).toBeInTheDocument();
+      expect(screen.getByTitle(detail)).toHaveTextContent('Configured');
+      expect(screen.queryByText('Ready')).not.toBeInTheDocument();
+      expect(screen.queryByText('Accepted')).not.toBeInTheDocument();
+    },
+  );
 
   it('links the name to the model detail page', async () => {
     await renderTable(<ModelsTable rows={rows} />);
@@ -519,6 +540,88 @@ describe('toModelServedBy / isModelRowMuted', () => {
 });
 
 describe('toModelRow', () => {
+  it.each([
+    {
+      controller: 'upstream kagent v1.0.0',
+      conditions: [
+        {
+          type: 'Accepted',
+          status: 'True',
+          reason: 'Accepted',
+          message: 'ModelConfig configuration accepted',
+        },
+        {
+          type: 'ResolvedRefs',
+          status: 'True',
+          reason: 'Resolved',
+          message: 'All referenced secrets and config maps resolved',
+        },
+      ],
+    },
+    {
+      controller: 'the deployed Giant Swarm fork',
+      conditions: [
+        {
+          type: 'ResolvedRefs',
+          status: 'True',
+          reason: 'Resolved',
+          message: 'All referenced secrets and config maps resolved',
+        },
+        {
+          type: 'Accepted',
+          status: 'True',
+          reason: 'Accepted',
+          message: 'ModelConfig configuration accepted',
+        },
+      ],
+    },
+  ])(
+    'renders $controller configuration as Configured in both lists',
+    async ({ conditions }) => {
+      const row = toModelRow(
+        new ModelConfig(
+          {
+            apiVersion: 'api.kagent.dev/v1alpha3',
+            kind: 'ModelConfig',
+            metadata: {
+              name: 'invalid-key',
+              namespace: 'kagent',
+              generation: 1,
+            },
+            spec: {
+              provider: 'Anthropic',
+              model: 'claude-sonnet-4-6',
+              apiKeySecret: 'invalid-key',
+              apiKeySecretKey: 'ANTHROPIC_API_KEY',
+            },
+            status: {
+              observedGeneration: 1,
+              conditions: conditions.map(condition => ({
+                ...condition,
+                observedGeneration: 1,
+                lastTransitionTime: '2026-11-19T20:22:05Z',
+              })),
+            },
+          } as ModelConfigInterface,
+          'inst-1',
+        ),
+      );
+
+      await renderTable(<ModelsTable rows={[row]} />);
+
+      expect(modelStatus(row)).toMatchObject({
+        label: 'Configured',
+        detail:
+          'Settings accepted and the key Secret was found. The key itself has not been tested.',
+      });
+      expect(screen.getByTitle(modelStatus(row).detail!)).toHaveTextContent(
+        'Configured',
+      );
+      expect(screen.queryByText('Ready')).not.toBeInTheDocument();
+      expect(screen.queryByText('Accepted')).not.toBeInTheDocument();
+    },
+  );
+
   it('derives display data including the readiness tooltip message', () => {
     const row = toModelRow(
       new ModelConfig(

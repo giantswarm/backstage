@@ -656,7 +656,9 @@ function ModelDetailPageContent() {
       title={modelConfig.getDisplayName()}
       badges={
         <>
-          <StatusDot tone={status.tone} label={status.label} />
+          <span title={status.detail}>
+            <StatusDot tone={status.tone} label={status.label} />
+          </span>
           {defaultState?.isDefault && <Badge size="small">Default</Badge>}
           <InstallationChip installation={installation} />
         </>
