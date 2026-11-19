@@ -34,6 +34,7 @@ change needs something the rules do not settle, it needs a decision first.
 /customize/connectors/<inst>/<server>[/resources|/prompts|/usage|/used-by|/instances|/details]
 /customize/connectors/<inst>/<server>/tools/<tool>[/run|/usage]
 /customize/connectors/<inst>/<server>/edit[/auth|/verify]
+/customize/connectors/<inst>/-/<ns>/<server>[/<tab>|/tools/<tool>[/run|/usage]]   an organization's
 /customize/models[/new]
 /customize/models/<inst>/<ns>/<name>[/usage|/used-by]
 /customize/models/<inst>/<ns>/<name>/edit
@@ -111,6 +112,7 @@ The shapes:
 |---|---|
 | agents, models | `<inst>/<ns>/<name>` |
 | connectors, tools, workflows (muster resources) | `<inst>/<name>` |
+| an organization's connector (outside muster's namespace) | `<inst>/-/<ns>/<name>` |
 | clusters (Platform) | `<inst>/<ns>/<name>` |
 | sessions | `<inst>/<id>` |
 | skills | the `<owner>/<repo>[/<dir…>]` splat, or `-/<host>/<repo path>[/-/<dir…>]` |
@@ -162,6 +164,17 @@ against two).
   other plugin can bind and link to it.
 - Splat paths (skills) are built through one helper (`useSkillPaths` on
   `skillDetailPath`), never by concatenation at the call site.
+- A connector page's address is built and read through one helper,
+  muster's `lib/connectorAddress.ts` (a page key, `<name>` or
+  `-/<ns>/<name>` with `-` its `ORGANIZATION_CONNECTOR_SEGMENT`, and
+  `connectorPageHref` / `connectorToolPageHref`): `useServerPageLinks` in
+  muster, `useConnectorPageLinks` in agent-platform, both
+  `(server, installation)`. Routes, the router, telemetry's
+  `CONNECTOR_ADDRESSES` and the layout-check spec take the segment from it. An organization's connector
+  never links by its name alone, which two organizations may share; its old
+  address, `<inst>/<name>`, redirects to its own where the name is unique and
+  lists the connectors of that name where it is not, deciding only once
+  muster's keys are read (`useConnectorAddress`).
 - The ESLint rule `giantswarm/no-restricted-syntax` fails CI on a literal
   that starts with a shell root in `plugins/*/src` and
   `packages/app/src/modules`. A route definition, `AGENT_AREA_PREFIXES` and

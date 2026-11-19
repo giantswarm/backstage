@@ -84,7 +84,7 @@ describe('OrganizationDirectoryProvider', () => {
     expect(await screen.findByText('gazelle: decided')).toBeInTheDocument();
     expect(
       screen.getByText(
-        'golem: golem needs a per-user connector sign-in to read organizations.',
+        'golem: The portal reaches Muster on golem without a per-user sign-in. Organizations are read as you, so they cannot be read on golem.',
       ),
     ).toBeInTheDocument();
     // golem's failure says nothing about ozone, known to run no agent-manager.

@@ -8,6 +8,10 @@ import {
 import { MCP_SERVER_UPDATED } from '../../lib/connectorToolEvents';
 import { MCPServer } from '../../lib/k8s';
 import { toMcpServerDefinition } from '../../lib/gitops';
+import {
+  connectorAuthName,
+  isOrganizationServer,
+} from '../../lib/connectorKey';
 import { parseJsonDefinition } from '../../lib/definitionParsers';
 import { mutationErrorMessage } from '../../lib/authError';
 import { DefinitionEditorDialog } from '../shared';
@@ -104,7 +108,7 @@ export function ConfirmActionDialog({
           <>
             {action?.description ? `${action.description} ` : ''}
             Runs <code>{action?.tool}</code> against{' '}
-            <code>{server.getName()}</code> on installation{' '}
+            <code>{connectorAuthName(server)}</code> on installation{' '}
             <code>{server.cluster}</code>.
           </>
         )}
@@ -183,9 +187,12 @@ export function serverLiveActions(server: MCPServer): {
   deactivate?: LiveAction;
   reconnect?: LiveAction;
   reconnectGate?: string;
-  remove: LiveAction;
+  /** None for an organization's server, which muster does not delete. */
+  remove?: LiveAction;
 } {
-  const name = server.getName();
+  // muster's key: the `core_service_*` tools take an organization's server
+  // as `<namespace>/<name>`.
+  const name = connectorAuthName(server);
   // muster refuses a reconnect (core_service_restart) for an OAuth server in
   // `Auth Required`: authentication is session-scoped, so only the sign-in
   // flow (core_auth_login) can connect it. The gate is deliberately
@@ -193,12 +200,14 @@ export function serverLiveActions(server: MCPServer): {
   // OAuth server is a valid retry.
   const oauthSignInGated =
     server.getAuth()?.type === 'oauth' && server.getState() === 'Auth Required';
-  const remove: LiveAction = {
-    label: `Delete ${name}`,
-    tool: 'core_mcpserver_delete',
-    args: { name },
-    destructive: true,
-  };
+  const remove: LiveAction | undefined = isOrganizationServer(server)
+    ? undefined
+    : {
+        label: `Delete ${name}`,
+        tool: 'core_mcpserver_delete',
+        args: { name },
+        destructive: true,
+      };
   if (server.getSuspended()) {
     return {
       activate: {

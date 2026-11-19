@@ -21,3 +21,8 @@ export { declaredStyle } from './declaredStyle';
 export { mockContainerWidth } from './mockContainerWidth';
 export type { MockedContainerWidth } from './mockContainerWidth';
 export { BUIRouterProvider } from './BUIRouterProvider';
+export {
+  applyBuiStylesheets,
+  resolvedFontSize,
+  withoutLayers,
+} from './resolvedFontSize';

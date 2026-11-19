@@ -1,6 +1,13 @@
+// This test reads the app's stylesheet from disk; nothing of it is bundled.
+// eslint-disable-next-line no-restricted-imports
+import { readFileSync } from 'fs';
+// eslint-disable-next-line no-restricted-imports
+import { join } from 'path';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
+  applyBuiStylesheets,
+  resolvedFontSize,
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
@@ -318,5 +325,26 @@ describe('ActivityHeatmap · selecting a day', () => {
     // Back on a desktop the cells are 12px again.
     act(() => layout!.setWidth(1280));
     expect(cells(container)[0]).toHaveAttribute('width', '12');
+  });
+});
+
+describe('ActivityHeatmap text size', () => {
+  it("sets its axis labels in the app's 10px exception token", () => {
+    const { container } = render(
+      <ActivityHeatmap title="Model calls per day" days={THREE_DAYS} />,
+    );
+    // The app's overrides, where `--gs-font-size-exception` is defined.
+    applyBuiStylesheets(
+      readFileSync(
+        join(__dirname, '../../../../../../packages/app/src/bui-overrides.css'),
+        'utf8',
+      ),
+    );
+
+    const labels = [...container.querySelectorAll('svg text')];
+    expect(labels.length).toBeGreaterThan(0);
+    for (const label of labels) {
+      expect(resolvedFontSize(label)).toBe(10);
+    }
   });
 });

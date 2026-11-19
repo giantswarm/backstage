@@ -1,3 +1,4 @@
+import { connectorAuthName } from '../../lib/connectorKey';
 import { useMemo } from 'react';
 import { useInstallationInventory } from '@giantswarm/backstage-plugin-gs';
 import {
@@ -48,7 +49,7 @@ function ConnectorTags({ onTags }: TagSourceProps) {
   const items = useMemo(() => {
     const connectors = new Map<string, Set<string>>();
     for (const server of resources) {
-      const key = `${server.cluster}/${server.getFamily() ?? server.getName()}`;
+      const key = `${server.cluster}/${server.getFamily() ?? connectorAuthName(server)}`;
       const tags = connectors.get(key) ?? new Set<string>();
       server.getTags().forEach(tag => tags.add(tag));
       connectors.set(key, tags);

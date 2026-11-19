@@ -405,11 +405,19 @@ export type MemberResult = {
   commit?: OrganizationCommit;
 };
 
+/**
+ * Whether a credential's Secret exists, as agent-manager 3.3 and later ask it
+ * as the caller: `unknown` when the caller may not ask (an editor of the
+ * organization). Absent from an older agent-manager.
+ */
+export type ConnectorCredentialState = 'present' | 'missing' | 'unknown';
+
 /** One Secret-backed header of a connector. */
 export type ConnectorCredential = {
   header: string;
   secret: string;
   key: string;
+  state?: ConnectorCredentialState;
 };
 
 /** An organization's connector, a RemoteMCPServer. */
@@ -421,6 +429,14 @@ export type OrganizationConnector = {
   /** A read-only copy of what the platform curates. */
   curated?: boolean;
   managedBy?: string;
+  /**
+   * kagent's `Accepted` condition of the current generation (its tool
+   * discovery), with its reason and message; `null` while unreported.
+   * Absent from an agent-manager older than 3.3.
+   */
+  accepted?: boolean | null;
+  reason?: string;
+  message?: string;
 };
 
 /**

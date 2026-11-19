@@ -238,6 +238,13 @@ function membersOf(organization: FixtureOrganization): OrganizationMember[] {
   ];
 }
 
+/**
+ * The RemoteMCPServer the agent chart renders for an agent of the data set:
+ * `list_organization_connectors` lists it too, and agent-manager refuses it
+ * as a connector.
+ */
+const MUSTER_BINDING = 'helpdesk';
+
 /** The chart values an agent's release carries. */
 function valuesOf(agent: FixtureAgentRecord): Record<string, unknown> {
   return {
@@ -259,6 +266,11 @@ function valuesOf(agent: FixtureAgentRecord): Record<string, unknown> {
         defaultWorkspace: agent.defaultWorkspace,
       }),
     },
+    ...(agent.connectors?.length && {
+      extraTools: agent.connectors.map(name => ({
+        mcp: { server: { kind: 'RemoteMCPServer', name } },
+      })),
+    }),
   };
 }
 
@@ -1592,6 +1604,26 @@ export class AgentManagerFixtureState {
         );
       }
     }
+    // As agent-manager words its refusals (`requireConnectors`).
+    const connectors = agent.connectors ?? [];
+    const known = connectorsOf().map(connector => connector.name);
+    const missing = connectors.filter(name => !known.includes(name));
+    if (missing.length > 0) {
+      errors.push(
+        `connectors: RemoteMCPServer ${missing
+          .map(name => `"${name}"`)
+          .join(
+            ', ',
+          )} does not exist in namespace ${agent.namespace} (list_organization_connectors lists the organization's connectors)`,
+      );
+    }
+    for (const name of connectors) {
+      if (name === agent.name || name === MUSTER_BINDING) {
+        errors.push(
+          `connectors: RemoteMCPServer "${name}" is rendered by HelmRelease ${name}: it is an agent's muster binding, no connector (list_organization_connectors)`,
+        );
+      }
+    }
     return errors;
   }
 
@@ -1618,6 +1650,7 @@ export class AgentManagerFixtureState {
       toolset: spec.toolset ?? [],
       egress: spec.egress ?? [],
       egressPolicyRefs: spec.egressPolicyRefs ?? [],
+      connectors: spec.connectors ?? [],
       defaultWorkspace: spec.defaultWorkspace,
       generation: 1,
     };
@@ -1703,6 +1736,7 @@ export class AgentManagerFixtureState {
       toolset: update.toolset ?? agent.toolset,
       egress: update.egress ?? agent.egress,
       egressPolicyRefs: update.egressPolicyRefs ?? agent.egressPolicyRefs,
+      connectors: update.connectors ?? agent.connectors,
       defaultWorkspace: updated(
         agent.defaultWorkspace,
         update.defaultWorkspace,
@@ -1983,7 +2017,11 @@ function serviceAccountKeyProject(raw: string): string | undefined {
   }
 }
 
-/** The connectors (RemoteMCPServers) every organization has. */
+/**
+ * The connectors (RemoteMCPServers) every organization has, one in each state
+ * the agent form tells apart: ready, its credential missing, not accepted by
+ * kagent, and an agent's muster binding.
+ */
 function connectorsOf(): OrganizationConnector[] {
   return [
     {
@@ -1995,8 +2033,12 @@ function connectorsOf(): OrganizationConnector[] {
           header: 'Authorization',
           secret: 'issue-tracker-token',
           key: 'token',
+          state: 'present',
         },
       ],
+      accepted: true,
+      reason: 'DiscoverySucceeded',
+      managedBy: 'agent-manager',
     },
     {
       name: 'docs-search',
@@ -2005,6 +2047,32 @@ function connectorsOf(): OrganizationConnector[] {
       credentials: [],
       curated: true,
       managedBy: 'agent-platform',
+      accepted: true,
+      reason: 'DiscoverySucceeded',
+    },
+    {
+      name: 'deepwiki',
+      url: 'https://mcp.deepwiki.com/mcp',
+      description: 'Answers questions about public repositories.',
+      credentials: [
+        {
+          header: 'Authorization',
+          secret: 'tenant-credential-deepwiki',
+          key: 'token',
+          state: 'missing',
+        },
+      ],
+      accepted: false,
+      reason: 'DiscoveryFailed',
+      message: 'secret tenant-credential-deepwiki not found',
+      managedBy: 'agent-manager',
+    },
+    {
+      name: MUSTER_BINDING,
+      url: 'https://muster.example.com/mcp',
+      credentials: [],
+      accepted: true,
+      managedBy: 'Helm',
     },
   ];
 }

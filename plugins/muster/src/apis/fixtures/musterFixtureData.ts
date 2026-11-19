@@ -1,4 +1,7 @@
-import type { ConnectorName } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  type ConnectorName,
+  TAGS_ANNOTATION,
+} from '@giantswarm/backstage-plugin-gs-common';
 import type {
   ConnectorState,
   FixtureConnector,
@@ -13,9 +16,10 @@ import type {
   MCPServerCondition,
   MCPServerState,
 } from '../../lib/k8s/MCPServer';
-import type {
-  MusterWorkflow,
-  WorkflowArgDefinition,
+import {
+  type MusterWorkflow,
+  type WorkflowArgDefinition,
+  WORKFLOW_CATEGORY_LABEL,
 } from '../../lib/k8s/MusterWorkflow';
 import type {
   JsonSchema,
@@ -654,6 +658,15 @@ export function musterWorkflowObjectOf(
     metadata: {
       name: workflow.name,
       namespace: FIXTURE_MUSTER_NAMESPACE,
+      labels: {
+        ...(workflow.category && {
+          [WORKFLOW_CATEGORY_LABEL]: workflow.category,
+        }),
+        ...(workflow.gitops && { 'app.kubernetes.io/managed-by': 'Helm' }),
+      },
+      ...(workflow.tags.length > 0 && {
+        annotations: { [TAGS_ANNOTATION]: workflow.tags.join(',') },
+      }),
     },
     spec: {
       description: workflow.description,

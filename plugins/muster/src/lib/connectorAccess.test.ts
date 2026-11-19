@@ -1,9 +1,6 @@
 import { MCPServer } from './k8s';
-import {
-  connectorAuthName,
-  familyAccess,
-  instanceAccess,
-} from './connectorAccess';
+import { familyAccess, instanceAccess } from './connectorAccess';
+import { connectorAuthName } from './connectorKey';
 
 const server = (
   name: string,

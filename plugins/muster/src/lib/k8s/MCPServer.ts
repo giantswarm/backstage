@@ -269,6 +269,24 @@ export class MCPServer extends KubeObject<MCPServerInterface> {
   static readonly kind = 'MCPServer' as const;
   static readonly plural = 'mcpservers';
 
+  /**
+   * muster's key for the server, from muster's own answer
+   * (`core_mcpserver_list`), set by {@link MCPServer.withMusterKey}; read it
+   * through `connectorAuthName`.
+   */
+  private musterKey?: string;
+
+  getMusterKey(): string | undefined {
+    return this.musterKey;
+  }
+
+  /** The same server, with muster's key for it. */
+  withMusterKey(key: string): MCPServer {
+    const keyed = new MCPServer(this.jsonData, this.cluster);
+    keyed.musterKey = key;
+    return keyed;
+  }
+
   getState() {
     return this.jsonData.status?.state;
   }
@@ -455,8 +473,8 @@ export class MCPServer extends KubeObject<MCPServerInterface> {
    */
   getToolNamePrefix() {
     const segment =
-      this.jsonData.spec?.family?.name ??
-      this.jsonData.spec?.toolPrefix ??
+      this.jsonData.spec?.family?.name ||
+      this.jsonData.spec?.toolPrefix ||
       this.getName();
     return `x_${segment}`;
   }
@@ -471,7 +489,7 @@ export class MCPServer extends KubeObject<MCPServerInterface> {
    * also set a toolPrefix.
    */
   getPromptNamePrefix() {
-    return `x_${this.jsonData.spec?.toolPrefix ?? this.getName()}`;
+    return `x_${this.jsonData.spec?.toolPrefix || this.getName()}`;
   }
 
   getLastConnected() {
