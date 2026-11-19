@@ -1,6 +1,7 @@
 export { musterPlugin as default } from './plugin';
 export { ConnectorTagSource, WorkflowTagSource } from './components/TagSources';
 export {
+  fixtureMcpServersDataRef,
   isMusterAuthFailure,
   isSessionExpiredError,
   musterApiRef,
@@ -14,6 +15,10 @@ export {
   toolErrorDetails,
 } from './apis';
 export type {
+  FixtureMcpServer,
+  FixtureMcpServersLoader,
+  FixtureToolCallContext,
+  FixtureToolHandler,
   ConnectorName,
   ConnectorNamesResponse,
   MusterApi,
@@ -60,6 +65,21 @@ export {
 } from './lib/toolAnnotations';
 export type { ToolEffect } from './lib/toolAnnotations';
 export { serverPageResolver } from './lib/toolGrouping';
+export {
+  ORGANIZATION_CONNECTOR_SEGMENT,
+  connectorPageHref,
+  connectorToolPageHref,
+  type ConnectorPageRoutes,
+  type ConnectorToolPageRoutes,
+} from './lib/connectorAddress';
+export {
+  connectorAuthName,
+  connectorToolNamePrefix,
+  isOrganizationServerKey,
+} from './lib/connectorKey';
+export { useMusterKeyedServers } from './hooks/useMusterKeyedServers';
+export { serverListRows } from './lib/serverList';
+export type { ServerListRow } from './lib/serverList';
 export {
   isPermanentMusterReadError,
   musterPollingOptions,
@@ -113,6 +133,7 @@ export {
   useServerNeedsSignIn,
   toneColors,
   severityTone,
+  SEVERITY_DOT_TONE,
   VIOLET,
 } from './components/shared';
 export type {
@@ -138,7 +159,10 @@ export {
   useMusterCustomizeCounts,
 } from './components/CustomizeMusterProvider';
 export type { MusterCustomizeCounts } from './components/CustomizeMusterProvider';
-export { CustomizeConnectorsPanel } from './components/CustomizeConnectorsPanel';
+export {
+  CONNECTOR_REACH_LABELS,
+  CustomizeConnectorsPanel,
+} from './components/CustomizeConnectorsPanel';
 export { ConnectorLogo } from './components/ConnectorLogo';
 export type { ConnectorLogoProps } from './components/ConnectorLogo';
 export { ConnectorLogoStack } from './components/ConnectorLogoStack';
@@ -146,7 +170,10 @@ export type {
   ConnectorLogoStackItem,
   ConnectorLogoStackProps,
 } from './components/ConnectorLogoStack';
-export type { CustomizeConnectorsPanelProps } from './components/CustomizeConnectorsPanel';
+export type {
+  ConnectorReach,
+  CustomizeConnectorsPanelProps,
+} from './components/CustomizeConnectorsPanel';
 export { CustomizeWorkflowsPanel } from './components/CustomizeWorkflowsPanel';
 export type { CustomizeWorkflowsPanelProps } from './components/CustomizeWorkflowsPanel';
 export {

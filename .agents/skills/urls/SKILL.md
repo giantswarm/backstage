@@ -34,6 +34,7 @@ change needs something the rules do not settle, it needs a decision first.
 /customize/connectors/<inst>/<server>[/resources|/prompts|/usage|/used-by|/instances|/details]
 /customize/connectors/<inst>/<server>/tools/<tool>[/run|/usage]
 /customize/connectors/<inst>/<server>/edit[/auth|/verify]
+/customize/connectors/<inst>/-/<ns>/<server>[/<tab>|/tools/<tool>[/run|/usage]]   an organization's
 /customize/models[/new]
 /customize/models/<inst>/<ns>/<name>[/usage|/used-by]
 /customize/models/<inst>/<ns>/<name>/edit
@@ -44,6 +45,9 @@ change needs something the rules do not settle, it needs a decision first.
 /customize/workspaces[/new]
 /customize/workspaces/<inst>/<org>/<name>[/sessions|/details]
 /customize/workspaces/<inst>/<org>/<name>/edit
+/platform                                               → /platform/clusters
+/platform/clusters                                      gs.features.platformSection only
+/platform/clusters/<inst>/<ns>/<name>[/node-pools]      bare = Overview
 /agent-platform/**  →  one-hop redirects until the end of 2026
 ```
 
@@ -58,11 +62,29 @@ How it is mounted:
   `attachTo: { id: 'page:app/agent-shell-customize', input: 'pages' }`.
 - `/sessions`, `/usage` and `/profile` are agent-platform's own
   `PageBlueprint`s.
+- `/platform` is the app's page (`page:app/agent-shell-platform`,
+  `packages/app/src/modules/agentShell/platformPageExtension.tsx`), a tab per
+  area (`platformTabIds.ts`), the bare path redirecting to the first,
+  Clusters. Only where `gs.features.platformSection.enabled` is on: its `if`
+  reads the `platform-section` flag `PortalFeatureFlags` reports from that
+  key, and `isAgentArea` counts `/platform` in the shell only then
+  (`useIsAgentArea`). A cluster's page is
+  `/platform/clusters/<inst>/<ns>/<name>` (`platformClusterRouteRef`, a sub
+  route of `platformRouteRef`; the page is gs's `PlatformClusterRoute`, which
+  links through the `PlatformLinks` the app's page provides). Its Node pools
+  tab selects a pool with `?name=<pool>`, as the classic cluster page does:
+  a selection within the tab, not a page of its own, so it stays in the query
+  (rule 3 is about which resource a page shows). Items 1 to 3 of
+  giantswarm/giantswarm#39295; the planned tree adds
+  `/platform/clusters/<inst>/<ns>/<name>[/gateways|/access]`,
+  `/platform/environments` and `/platform/environments/<inst>`.
 - `/agent-platform` (`page:agent-platform`) and `/agents` are the app's
   catch-alls (`legacyPagesModule.tsx`), which call
   `legacyAgentPlatformTarget` (`legacyPaths.ts`).
 
-Every page is enabled by default and gated by `AGENT_SHELL_ON`. Deployments
+Every page is enabled by default and gated by `AGENT_SHELL_ON`; the Platform
+section's page also by its configuration key, which only adds the page where
+it is set. Deployments
 replace `app.extensions` wholesale, so an opt-in extension silently drops out
 there; attach in code, never through config.
 
@@ -70,10 +92,13 @@ there; attach in code, never through config.
 
 ### 1. The URL tree follows the rail
 
-The only roots are `/`, `/sessions`, `/usage`, `/profile` and `/customize`.
-A new root needs a decision, a check that no classic route uses it, and an
-entry in `AGENT_AREA_PREFIXES` (`agentArea.ts`), which decides where the
-shell renders. The rail lights an item on its own path and every path below
+The only roots are `/`, `/sessions`, `/usage`, `/profile`, `/customize`,
+`/organizations` and, where the deployment turns it on, `/platform`
+(giantswarm/giantswarm#39295; no classic route uses it). A new root needs a
+decision, a check that no classic route uses it, and an entry in
+`AGENT_AREA_PREFIXES` (`agentArea.ts`), which decides where the shell renders;
+a root behind configuration is added in `isAgentArea` under its setting
+instead, as `/platform` is. The rail lights an item on its own path and every path below
 it, so a page under the right root needs no rail configuration.
 
 ### 2. A resource's pages sit under its list
@@ -90,6 +115,8 @@ The shapes:
 |---|---|
 | agents, models | `<inst>/<ns>/<name>` |
 | connectors, tools, workflows (muster resources) | `<inst>/<name>` |
+| an organization's connector (outside muster's namespace) | `<inst>/-/<ns>/<name>` |
+| clusters (Platform) | `<inst>/<ns>/<name>` |
 | sessions | `<inst>/<id>` |
 | skills | the `<owner>/<repo>[/<dir…>]` splat, or `-/<host>/<repo path>[/-/<dir…>]` |
 
@@ -134,11 +161,23 @@ against two).
   in `packages/app/src/App.tsx`, or a helper built on one. Helpers:
   `useCustomizePaths`, `useSkillPaths`, `useNewSessionHref`
   (agent-platform); `useServerPageLinks`, `useWorkflowPageLinks`,
-  `useConnectorListPaths`, `useConnectorWizardLinks` (muster).
+  `useConnectorListPaths`, `useConnectorWizardLinks` (muster);
+  `usePlatformLinks` (gs, from the app's Platform page).
 - Every route ref is exported in its plugin's `routes`, so the app and the
   other plugin can bind and link to it.
 - Splat paths (skills) are built through one helper (`useSkillPaths` on
   `skillDetailPath`), never by concatenation at the call site.
+- A connector page's address is built and read through one helper,
+  muster's `lib/connectorAddress.ts` (a page key, `<name>` or
+  `-/<ns>/<name>` with `-` its `ORGANIZATION_CONNECTOR_SEGMENT`, and
+  `connectorPageHref` / `connectorToolPageHref`): `useServerPageLinks` in
+  muster, `useConnectorPageLinks` in agent-platform, both
+  `(server, installation)`. Routes, the router, telemetry's
+  `CONNECTOR_ADDRESSES` and the layout-check spec take the segment from it. An organization's connector
+  never links by its name alone, which two organizations may share; its old
+  address, `<inst>/<name>`, redirects to its own where the name is unique and
+  lists the connectors of that name where it is not, deciding only once
+  muster's keys are read (`useConnectorAddress`).
 - The ESLint rule `giantswarm/no-restricted-syntax` fails CI on a literal
   that starts with a shell root in `plugins/*/src` and
   `packages/app/src/modules`. A route definition, `AGENT_AREA_PREFIXES` and
@@ -162,7 +201,8 @@ against two).
 - a telemetry case, and an entry in `knownTopLevelPaths`
   (`packages/app/src/utils/telemetry.test.ts`);
 - the area prefix, if it is a new root (rule 1);
-- an `e2e/agentlab` test.
+- a check in a browser and a run of the [`layout-check`](../layout-check/SKILL.md)
+  skill on it.
 
 ## Review checklist
 
@@ -177,5 +217,5 @@ A reviewer of a change that adds or moves a route checks:
 5. The route ref is exported.
 6. A moved address redirects in one hop through the mapping, with a test
    row, and keeps its telemetry names.
-7. A new page has its telemetry case and `knownTopLevelPaths` entry, and an
-   agentlab test; `e2e/agentlab` and `docs/` follow a move.
+7. A new page has its telemetry case and `knownTopLevelPaths` entry, and the
+   layout check ran on it; `e2e/agentlab` and `docs/` follow a move.

@@ -18,7 +18,10 @@ import { musterApiRef } from '../../apis';
 import { musterPollingOptions } from '../../lib/musterPolling';
 import type { McpServerListResponse, ToolSummary } from '../../apis/types';
 import { mcpServerStateSeverity, type MCPServerState } from '../../lib/k8s';
-import { connectorDisplayNameOn } from '../../lib/serverGrouping';
+import {
+  connectorDisplayNameOn,
+  musterOwnServer,
+} from '../../lib/serverGrouping';
 import { toolEffect } from '../../lib/toolAnnotations';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
@@ -138,9 +141,9 @@ export function NewConnectorTestPage() {
 
   const cr = useMemo(
     () =>
-      mcpServers.find(
-        s => s.getName() === serverName && s.cluster === installation,
-      ),
+      // The wizard registers in muster's own namespace, never an
+      // organization's server of the same name.
+      musterOwnServer(mcpServers, installation, serverName),
     [mcpServers, serverName, installation],
   );
 

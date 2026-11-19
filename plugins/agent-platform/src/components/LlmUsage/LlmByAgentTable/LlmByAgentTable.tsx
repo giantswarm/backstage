@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Badge, Cell, Flex, Table, Text, useTable } from '@backstage/ui';
 import type { ColumnConfig } from '@backstage/ui';
 import {
@@ -7,7 +7,6 @@ import {
   InfoHint,
   INITIAL_ROWS,
   ShowMore,
-  usePhoneColumns,
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { LlmAgentRow } from '../../../lib/llmUsage';
 import {
@@ -21,6 +20,8 @@ import {
 import { sortUsageRows } from '../../AgentUsageSection/helpers';
 import { UsageCard } from '../UsageCard';
 import { NameCell } from '../NameCell';
+import { USAGE_COLUMN_MIN_WIDTH } from '../columnWidths';
+import { useUsageTableColumns } from '../../../hooks/useUsageTableColumns';
 import { useMeasureColor } from '../../../lib/measures';
 
 export type LlmByAgentTableProps = {
@@ -47,12 +48,12 @@ const REMOVED_EXPLANATION =
  * opens from the hint beside it — on a press too, so a phone reaches it
  * (T22 C23; a `title=` never shows on touch).
  */
-function AgentCell({ row }: { row: LlmAgentRow }) {
+function AgentCell({ row, compact }: { row: LlmAgentRow; compact: boolean }) {
   if (row.kind !== 'removed') {
-    return <NameCell title={row.label} href={row.href} />;
+    return <NameCell title={row.label} href={row.href} compact={compact} />;
   }
   return (
-    <NameCell title={row.label}>
+    <NameCell title={row.label} compact={compact}>
       <Flex align="center" gap="1">
         <Badge size="small">{REMOVED_MARK}</Badge>
         <InfoHint label={`What ${REMOVED_MARK} means`}>
@@ -98,79 +99,83 @@ export function LlmByAgentTable({
     [rows],
   );
 
-  const columnConfig: ColumnConfig<LlmAgentRow>[] = [
-    {
-      id: 'label',
-      label: 'Agent',
-      isRowHeader: true,
-      isSortable: true,
-      cell: row => <AgentCell row={row} />,
-    },
-    {
-      id: 'calls',
-      label: 'Model calls',
-      isSortable: true,
-      cell: row => (
-        <Cell>
-          <DataBar
-            label={formatCount(row.calls)}
-            value={row.calls}
-            max={max.calls}
-            color={colorFor('calls')}
-          />
-        </Cell>
-      ),
-    },
-    {
-      id: 'tokens',
-      label: 'Tokens',
-      isSortable: true,
-      cell: row => (
-        <Cell>
-          <DataBar
-            label={formatTokens(row.tokens)}
-            value={row.tokens}
-            max={max.tokens}
-            color={colorFor('tokens')}
-          />
-        </Cell>
-      ),
-    },
-    {
-      id: 'costUsd',
-      label: 'Spend',
-      isSortable: true,
-      cell: row => (
-        <Cell>
-          <DataBar
-            label={formatMoney(row.costUsd, currency)}
-            value={row.costUsd}
-            max={max.cost}
-            color={colorFor('cost')}
-          />
-        </Cell>
-      ),
-    },
-    {
-      id: 'sharePct',
-      label: 'Share of spend',
-      isSortable: true,
-      cell: row => (
-        <Cell>
-          <DataBar
-            label={formatPercent(row.sharePct)}
-            value={row.sharePct}
-            max={max.ratio}
-            color={colorFor('ratio')}
-          />
-        </Cell>
-      ),
-    },
-  ];
-  // At phone width the agent and what it cost (T22 B10): five columns in
-  // 343px squashed every figure to a clipped sliver. A known agent's calls
-  // and tokens are on its own Usage tab, a link away.
-  const shownColumns = usePhoneColumns(columnConfig, ['label', 'costUsd']);
+  const columnsFor = useCallback(
+    (compact: boolean): ColumnConfig<LlmAgentRow>[] => [
+      {
+        id: 'label',
+        label: 'Agent',
+        isRowHeader: true,
+        isSortable: true,
+        minWidth: USAGE_COLUMN_MIN_WIDTH.name,
+        cell: row => <AgentCell row={row} compact={compact} />,
+      },
+      {
+        id: 'calls',
+        label: 'Model calls',
+        isSortable: true,
+        minWidth: USAGE_COLUMN_MIN_WIDTH.calls,
+        cell: row => (
+          <Cell>
+            <DataBar
+              label={formatCount(row.calls)}
+              value={row.calls}
+              max={max.calls}
+              color={colorFor('calls')}
+            />
+          </Cell>
+        ),
+      },
+      {
+        id: 'tokens',
+        label: 'Tokens',
+        isSortable: true,
+        minWidth: USAGE_COLUMN_MIN_WIDTH.tokens,
+        cell: row => (
+          <Cell>
+            <DataBar
+              label={formatTokens(row.tokens)}
+              value={row.tokens}
+              max={max.tokens}
+              color={colorFor('tokens')}
+            />
+          </Cell>
+        ),
+      },
+      {
+        id: 'costUsd',
+        label: 'Spend',
+        isSortable: true,
+        minWidth: USAGE_COLUMN_MIN_WIDTH.spend,
+        cell: row => (
+          <Cell>
+            <DataBar
+              label={formatMoney(row.costUsd, currency)}
+              value={row.costUsd}
+              max={max.cost}
+              color={colorFor('cost')}
+            />
+          </Cell>
+        ),
+      },
+      {
+        id: 'sharePct',
+        label: 'Share of spend',
+        isSortable: true,
+        minWidth: USAGE_COLUMN_MIN_WIDTH.share,
+        cell: row => (
+          <Cell>
+            <DataBar
+              label={formatPercent(row.sharePct)}
+              value={row.sharePct}
+              max={max.ratio}
+              color={colorFor('ratio')}
+            />
+          </Cell>
+        ),
+      },
+    ],
+    [max, colorFor, currency],
+  );
 
   const { tableProps } = useTable<LlmAgentRow>({
     mode: 'complete',
@@ -183,6 +188,16 @@ export function LlmByAgentTable({
     // not reset its offset when the data shrinks.
     paginationOptions: { type: 'none' },
   });
+  // At phone width, and wherever the card is narrower than the columns'
+  // minimums, the agent and what it cost (T22 B10): five columns in 343px
+  // squashed every figure to a clipped sliver. A known agent's calls
+  // and tokens are on its own Usage tab, a link away.
+  // It keeps Spend, the default sort.
+  const { ref: tableRef, columns: shownColumns } = useUsageTableColumns(
+    columnsFor,
+    ['label', 'costUsd'],
+    tableProps.sort,
+  );
 
   return (
     <UsageCard title="By agent" note={note} wide>
@@ -190,24 +205,26 @@ export function LlmByAgentTable({
           `ShowMore` hands the table its first page of them. Passing the raw
           `rows` instead would silently undo every column sort while the
           header's indicator still moved. */}
-      <ShowMore
-        items={tableProps.data ?? []}
-        initial={INITIAL_ROWS}
-        noun="agent"
-      >
-        {visible => (
-          <Table<LlmAgentRow>
-            {...tableProps}
-            data={visible}
-            columnConfig={shownColumns}
-            emptyState={
-              <Text variant="body-medium" color="secondary">
-                {emptyMessage}
-              </Text>
-            }
-          />
-        )}
-      </ShowMore>
+      <div ref={tableRef}>
+        <ShowMore
+          items={tableProps.data ?? []}
+          initial={INITIAL_ROWS}
+          noun="agent"
+        >
+          {visible => (
+            <Table<LlmAgentRow>
+              {...tableProps}
+              data={visible}
+              columnConfig={shownColumns}
+              emptyState={
+                <Text variant="body-medium" color="secondary">
+                  {emptyMessage}
+                </Text>
+              }
+            />
+          )}
+        </ShowMore>
+      </div>
     </UsageCard>
   );
 }

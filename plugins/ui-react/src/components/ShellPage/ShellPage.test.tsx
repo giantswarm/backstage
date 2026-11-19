@@ -22,6 +22,7 @@ import {
   ShellPageFactsSkeleton,
   ShellPageTitleSkeleton,
 } from './ShellPage';
+import { BUIRouterProvider } from '../../testUtils';
 
 function RegistersAction({ label }: { label: string }) {
   const actions = useMemo(() => <button>{label}</button>, [label]);
@@ -32,11 +33,13 @@ function RegistersAction({ label }: { label: string }) {
 function renderAt(url: string, element: JSX.Element) {
   return render(
     <MemoryRouter initialEntries={[url]}>
-      <PageHeaderActionsProvider>
-        <Routes>
-          <Route path="/connectors/:name/*" element={element} />
-        </Routes>
-      </PageHeaderActionsProvider>
+      <BUIRouterProvider>
+        <PageHeaderActionsProvider>
+          <Routes>
+            <Route path="/connectors/:name/*" element={element} />
+          </Routes>
+        </PageHeaderActionsProvider>
+      </BUIRouterProvider>
     </MemoryRouter>,
   );
 }
@@ -102,6 +105,19 @@ describe('ShellPage', () => {
       'Test connection',
       'More actions',
     ]);
+  });
+
+  // A select holding a long value truncates it inside the header, rather
+  // than widen the page past a phone's screen.
+  it('keeps its actions within the header’s width', () => {
+    renderAt(
+      '/connectors/jira',
+      <ShellPage title="Jira" actions={<button>Edit</button>} />,
+    );
+
+    const actions = screen.getByRole('button', { name: 'Edit' })
+      .parentElement as HTMLElement;
+    expect(actions).toHaveStyle({ maxWidth: '100%', minWidth: '0' });
   });
 
   it('draws routed tabs below the page, keeping the query string', () => {

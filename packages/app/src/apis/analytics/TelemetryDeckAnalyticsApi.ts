@@ -1,10 +1,7 @@
 import { ConfigApi, IdentityApi } from '@backstage/core-plugin-api';
 import { AnalyticsApi, AnalyticsEvent } from '@backstage/frontend-plugin-api';
 import TelemetryDeck from '@telemetrydeck/sdk';
-import {
-  getGuestUserEntityRef,
-  getTelemetryPageViewPayload,
-} from '../../utils/telemetry';
+import { getTelemetryPageViewPayload } from '../../utils/telemetry';
 import { ErrorReporterApi } from '@giantswarm/backstage-plugin-error-reporter-react';
 import {
   isPortalEventShaped,
@@ -106,12 +103,6 @@ export class TelemetryDeckAnalyticsApi implements AnalyticsApi {
   private async resolveClientUser(): Promise<string> {
     try {
       const identity = await this.identityApi.getBackstageIdentity();
-
-      if (identity.userEntityRef === 'user:default/guest') {
-        const profile = await this.identityApi.getProfileInfo();
-        return getGuestUserEntityRef(profile);
-      }
-
       return identity.userEntityRef;
     } catch {
       return 'anonymous';

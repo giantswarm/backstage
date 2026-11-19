@@ -1,22 +1,16 @@
 import { screen, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import {
-  renderInTestApp,
-  TestApiProvider,
-} from '@backstage/frontend-test-utils';
+import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
   DateTimeZoneProvider,
   formatLocalDateFull,
 } from '@giantswarm/backstage-plugin-ui-react';
-import { musterApiRef } from '../../apis';
-import { mcpServersRouteRef } from '../../routes';
 import { MCPServer, MCPServerState } from '../../lib/k8s';
 import {
   AuthChain,
   hasHealthDetails,
   HealthDetails,
   ServerConfig,
-  ServerTools,
+  noToolsExplanation,
 } from './serverDetail';
 
 function makeServer(
@@ -45,19 +39,6 @@ function makeServer(
     'gazelle',
   );
 }
-
-const EXCHANGE_SPEC = {
-  type: 'streamable-http',
-  url: 'https://mcp-kubernetes.remote.example.test/mcp',
-  auth: {
-    type: 'oauth',
-    tokenExchange: {
-      enabled: true,
-      dexTokenEndpoint: 'https://dex.remote.example.test/token',
-      connectorId: 'remote-oidc',
-    },
-  },
-};
 
 const OAUTH_SPEC = { type: 'streamable-http', auth: { type: 'oauth' } };
 const HELM_MANAGED = { 'app.kubernetes.io/managed-by': 'Helm' };
@@ -254,144 +235,20 @@ describe('AuthChain', () => {
   });
 });
 
-/** Renders the tool list over a stubbed `filter_tools` result. */
-async function renderTools(
-  server: MCPServer,
-  result: Record<string, unknown> = { tools: [] },
-) {
-  const musterApi = { filterTools: jest.fn().mockResolvedValue(result) };
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  return renderInTestApp(
-    <TestApiProvider apis={[[musterApiRef, musterApi]]}>
-      <QueryClientProvider client={queryClient}>
-        <ServerTools server={server} />
-      </QueryClientProvider>
-    </TestApiProvider>,
-    // ServerTools links each tool to its page, so the route the link resolves
-    // against has to be mounted.
-    { mountedRoutes: { '/customize/connectors': mcpServersRouteRef } },
-  );
-}
-
-describe('ServerTools', () => {
-  it('links each tool to its page beneath this server', async () => {
-    // The tags are the way from a server to its tools; each opens the tool
-    // under the server offering it, on the same installation.
-    await renderTools(makeServer(OAUTH_SPEC, 'Connected'), {
-      total: 1,
-      tools: [{ name: 'x_aws-root_list_buckets', summary: 'List buckets' }],
+describe('noToolsExplanation', () => {
+  it('names a failed or connecting connector’s state, not a guess', async () => {
+    expect(noToolsExplanation(makeServer(SIGV4_SPEC, 'Failed'))).toEqual({
+      text: 'This connector failed to connect, so its tools cannot be shown.',
+      tone: 'warning',
     });
-
-    const link = await screen.findByRole('link', { name: 'list_buckets' });
-    expect(link).toHaveAttribute(
-      'href',
-      '/customize/connectors/gazelle/aws-root/tools/x_aws-root_list_buckets',
-    );
-    expect(
-      screen.getByRole('link', { name: 'Open the server’s tools' }),
-    ).toHaveAttribute('href', '/customize/connectors/gazelle/aws-root');
-  });
-
-  it('marks a tool pill’s link as a control, and the text link as text', async () => {
-    // The agent shell underlines every bui link that is not `standalone`; a
-    // link filling a pill is a control, not a text link.
-    await renderTools(makeServer(OAUTH_SPEC, 'Connected'), {
-      total: 1,
-      tools: [{ name: 'x_aws-root_list_buckets', summary: 'List buckets' }],
+    expect(noToolsExplanation(makeServer(SIGV4_SPEC, 'Connecting'))).toEqual({
+      text: 'This connector is still connecting, so its tools cannot be shown.',
+      tone: 'neutral',
     });
-
-    expect(
-      await screen.findByRole('link', { name: 'list_buckets' }),
-    ).toHaveAttribute('data-standalone', 'true');
-    expect(
-      screen.getByRole('link', { name: 'Open the server’s tools' }),
-    ).not.toHaveAttribute('data-standalone', 'true');
-  });
-});
-
-describe('ServerTools with no tools to show', () => {
-  it('does not send a sigv4 server’s user to a sign-in that cannot exist', async () => {
-    // muster keeps a rejected sigv4 credential in `Failed`, but the CR status
-    // is one read behind the aggregator — so the guard is the auth type, not
-    // the hope that `Auth Required` never appears here.
-    await renderTools(
-      makeServer(
-        {
-          ...SIGV4_SPEC,
-          auth: { type: 'sigv4', sigv4: { region: 'eu-central-1' } },
-        },
-        'Auth Required',
-      ),
-    );
-
-    expect(
-      await screen.findByText(/the connector may be down or unreachable/),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText(/Use “Sign in” in its actions/),
-    ).not.toBeInTheDocument();
-  });
-
-  it('still points an OAuth server’s user at the sign-in', async () => {
-    await renderTools(makeServer(OAUTH_SPEC, 'Auth Required'));
-
-    expect(
-      await screen.findByText(/Use “Sign in” in its actions/),
-    ).toBeInTheDocument();
-  });
-
-  it('says a per-session server connects with the person’s own identity, not a sign-in', async () => {
-    // Awaiting Session: muster holds no connection of its own, the tools
-    // appear once this session has connected the server. Neither "down" nor
-    // "Sign in" is true here.
-    await renderTools(makeServer(EXCHANGE_SPEC, 'Awaiting Session'));
-
-    expect(
-      await screen.findByText(
-        /connects per session with your identity; its tools appear once Muster has connected it for you/,
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/Use “Sign in”/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/down or unreachable/)).not.toBeInTheDocument();
-  });
-
-  it('explains a Failed token exchange with muster’s own sentence', async () => {
-    // The Ready condition tells a broken exchange from an endpoint that does
-    // not answer; the generic "may be down" would hide the Secret to fix.
-    await renderTools(
-      makeServer(EXCHANGE_SPEC, 'Failed', undefined, {
-        status: 'False',
-        reason: 'TokenExchangeCredentials',
-        message:
-          'token exchange credentials from Secret agent-platform/remote-token-exchange-credentials: secrets "remote-token-exchange-credentials" not found',
-      }),
-    );
-
-    expect(
-      await screen.findByText(
-        /No tools exposed — token exchange credentials from Secret agent-platform\/remote-token-exchange-credentials/,
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/down or unreachable/)).not.toBeInTheDocument();
-  });
-
-  it('says a deactivated server is deactivated, not down and not unauthenticated', async () => {
-    // Deactivated wins over both other explanations: muster keeps the server
-    // disconnected on purpose, so neither reachability nor a sign-in is the
-    // remedy -- even while the CR still reads `Auth Required`.
-    await renderTools(
-      makeServer({ ...OAUTH_SPEC, suspended: true }, 'Auth Required'),
-    );
-
-    expect(
-      await screen.findByText(
-        'No tools exposed — this connector is deactivated. Use “Turn on” in the connector’s menu.',
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/down or unreachable/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Use “Sign in”/)).not.toBeInTheDocument();
+    expect(noToolsExplanation(makeServer(SIGV4_SPEC, 'Connected'))).toEqual({
+      text: 'No tools exposed (the connector may be down or unreachable).',
+      tone: 'neutral',
+    });
   });
 });
 

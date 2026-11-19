@@ -1,3 +1,4 @@
+/* eslint-disable @backstage/no-mixed-plugin-imports -- The Agent Platform composes installation APIs across plugins. */
 import type { ReactNode } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
@@ -21,7 +22,7 @@ import { ModelsRouter } from './ModelsRouter';
 
 // The page as the Customize screen mounts it: ModelsRouter alone, with no
 // query client or directory above it, and the real organization directory,
-// `useModelNamespaces` and Connect a model below. The directory's reads go to
+// `useModelNamespaces` and Add a model below. The directory's reads go to
 // a fake muster (agent-manager's `get_info` and `list_organizations`), the
 // access reviews to a fake Kubernetes proxy. The plugin's query client is
 // the one thing swapped, for a fresh one per test without the persister: a
@@ -38,7 +39,7 @@ jest.mock('../QueryClientProvider', () => {
   };
 });
 
-// One environment, gazelle, which Connect a model picks by itself.
+// One environment, gazelle, which Add a model picks by itself.
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-gs'),
   useInstallations: () => ({
@@ -118,6 +119,10 @@ async function renderNewModel(scenario: OrganizationsScenario) {
       <PageHeaderActionsProvider>
         <Routes>
           <Route path="/customize/models/*" element={<ModelsRouter />} />
+          <Route
+            path="/customize/models/credentials/*"
+            element={<CurrentPath />}
+          />
           <Route path="*" element={<CurrentPath />} />
         </Routes>
       </PageHeaderActionsProvider>
@@ -140,7 +145,7 @@ beforeEach(() => {
   });
 });
 
-describe('Connect a model, under the Models tab: the owner', () => {
+describe('Add a model, under the Models tab: the owner', () => {
   it('offers an Organization the person may create ModelConfigs in, and saves its model through agent-manager', async () => {
     const user = userEvent.setup();
     // An admin of the Organization: the cluster lets them create its
@@ -159,17 +164,17 @@ describe('Connect a model, under the Models tab: the owner', () => {
 
     // An Organization's model: its key goes on the credential form.
     expect(
-      await screen.findByText(/You enter the key on the next page/),
+      await screen.findByText(/You enter the credential on the next page/),
     ).toBeInTheDocument();
     await user.type(screen.getByLabelText(/^Name/), 'sonnet');
     await user.type(screen.getByRole('textbox', { name: /^Model/ }), 'claude');
     await user.click(
-      screen.getByRole('button', { name: 'Continue to the key' }),
+      screen.getByRole('button', { name: 'Continue to credential' }),
     );
 
     await waitFor(() =>
       expect(screen.getByTestId('path')).toHaveTextContent(
-        `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
+        `/customize/models/credentials/gazelle/agents-payments-x7k2q/${CREDENTIAL_OPERATION}`,
       ),
     );
     expect(toolCalls(callTool, 'set_organization_model')).toEqual([
@@ -188,9 +193,9 @@ describe('Connect a model, under the Models tab: the owner', () => {
       namespaceAccess: { [PAYMENTS.namespace]: { modelconfigs: false } },
     });
 
-    // Connect model is held, saying why, until the owners are known.
+    // Add model is held, saying why, until the owners are known.
     const connect = await screen.findByRole('button', {
-      name: 'Connect model',
+      name: 'Continue to credential',
     });
     expect(connect).toBeDisabled();
     expect(connect).toHaveAccessibleDescription(
@@ -205,7 +210,7 @@ describe('Connect a model, under the Models tab: the owner', () => {
     await Promise.all(proxy.mock.results.map(result => result.value));
     await waitFor(() =>
       expect(
-        screen.getByRole('button', { name: 'Connect model' }),
+        screen.getByRole('button', { name: 'Continue to credential' }),
       ).toBeEnabled(),
     );
     expect(toolCalls(callTool, 'list_organizations')).toHaveLength(1);

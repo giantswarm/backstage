@@ -69,7 +69,7 @@ export const WELL_KNOWN_REQUIREMENT_KEYS: Record<string, WellKnownKey> = {
     group: 'compute',
     order: 140,
   },
-  [INSTANCE_CPU_KEY]: { label: 'vCPUs', group: 'compute', order: 150 },
+  [INSTANCE_CPU_KEY]: { label: 'CPU', group: 'compute', order: 150 },
   [INSTANCE_MEMORY_KEY]: {
     label: 'Memory',
     group: 'compute',

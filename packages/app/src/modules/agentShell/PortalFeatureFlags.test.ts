@@ -5,7 +5,11 @@ import {
   ORGANIZATIONS_FLAG,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { AGENT_SHELL_FLAG } from './predicates';
-import { PortalFeatureFlags } from './PortalFeatureFlags';
+import { PLATFORM_SECTION_FLAG } from './platformSection';
+import {
+  FIXTURE_ORGANIZATIONS_STARTED,
+  PortalFeatureFlags,
+} from './PortalFeatureFlags';
 
 function flagsFor(
   portals: { platformPortal?: boolean; agentPlatform?: boolean } | undefined,
@@ -135,5 +139,75 @@ describe('PortalFeatureFlags', () => {
 
     flags.save({ states: { 'other-flag': FeatureFlagState.None } });
     expect(flags.isActive('other-flag')).toBe(false);
+  });
+
+  describe('in fixture mode', () => {
+    const fixtureFlags = (states: Record<string, FeatureFlagState> = {}) => {
+      const inner = mockApis.featureFlags({ initialStates: states });
+      inner.registerFlag({
+        name: ORGANIZATIONS_FLAG,
+        pluginId: 'agent-platform',
+      });
+      return {
+        inner,
+        flags: new PortalFeatureFlags(
+          mockApis.config({ data: { agentPlatform: { fixtures: true } } }),
+          inner,
+        ),
+      };
+    };
+
+    afterEach(() => window.localStorage.clear());
+
+    it('starts with Organizations on and keeps its toggle', () => {
+      const { flags } = fixtureFlags();
+      expect(flags.isActive(ORGANIZATIONS_FLAG)).toBe(true);
+      expect(flags.getRegisteredFlags().map(flag => flag.name)).toContain(
+        ORGANIZATIONS_FLAG,
+      );
+    });
+
+    it('keeps Organizations off once the person turned it off', () => {
+      fixtureFlags();
+      expect(window.localStorage.getItem(FIXTURE_ORGANIZATIONS_STARTED)).toBe(
+        'true',
+      );
+      const { flags } = fixtureFlags({
+        [ORGANIZATIONS_FLAG]: FeatureFlagState.None,
+      });
+      expect(flags.isActive(ORGANIZATIONS_FLAG)).toBe(false);
+    });
+
+    it('leaves Organizations off outside fixture mode', () => {
+      expect(flagsFor(undefined).isActive(ORGANIZATIONS_FLAG)).toBe(false);
+    });
+  });
+
+  describe('the Platform section flag', () => {
+    function flagsWith(data: object) {
+      return new PortalFeatureFlags(
+        mockApis.config({ data }),
+        mockApis.featureFlags({
+          initialStates: { [PLATFORM_SECTION_FLAG]: FeatureFlagState.Active },
+        }),
+      );
+    }
+
+    it('is off by default, whatever the browser holds', () => {
+      expect(flagsWith({}).isActive(PLATFORM_SECTION_FLAG)).toBe(false);
+    });
+
+    it('follows gs.features.platformSection.enabled', () => {
+      expect(
+        flagsWith({
+          gs: { features: { platformSection: { enabled: true } } },
+        }).isActive(PLATFORM_SECTION_FLAG),
+      ).toBe(true);
+      expect(
+        flagsWith({
+          gs: { features: { platformSection: { enabled: false } } },
+        }).isActive(PLATFORM_SECTION_FLAG),
+      ).toBe(false);
+    });
   });
 });

@@ -2,6 +2,11 @@ import {
   describeSessionState,
   SessionState,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
+import {
+  formatLocalDay,
+  formatLocalTime,
+  TABLE_NAME_COLUMN_MIN_WIDTH,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { FleetSessionStatesView } from '../../hooks/useFleetSessionStates';
 import {
   byLastActive,
@@ -164,15 +169,60 @@ export function formatSessionTime(
   currentYear: number,
 ): string {
   const date = new Date(at);
-  if (group === 'today' || group === 'yesterday') {
-    return date.toLocaleTimeString(undefined, {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+  return group === 'today' || group === 'yesterday'
+    ? formatLocalTime(date)
+    : formatLocalDay(date, currentYear);
+}
+
+/** How wide the session's badges are beside its title, px, with their gap. */
+const RUNTIME_LOST_BADGE_WIDTH = 80;
+const EARLIER_REVISION_BADGE_WIDTH = 90;
+
+/** The least of a title beside its badges, px, with the cell's padding. */
+const TITLE_BESIDE_BADGES_MIN_WIDTH = 24 + 64;
+
+/**
+ * The least the Session column (the one without a width) reads at: a
+ * name's minimum, or, beside the badges a listed session carries (which do
+ * not shrink), their width and room for a few words of its title.
+ */
+export function sessionColumnMinWidth(
+  rows: ReadonlyArray<{ runtimeLost?: boolean; earlierRevision?: boolean }>,
+): number {
+  const badges = (row: (typeof rows)[number]) =>
+    (row.runtimeLost ? RUNTIME_LOST_BADGE_WIDTH : 0) +
+    (row.earlierRevision ? EARLIER_REVISION_BADGE_WIDTH : 0);
+  const widest = rows.reduce((most, row) => Math.max(most, badges(row)), 0);
+  return Math.max(
+    TABLE_NAME_COLUMN_MIN_WIDTH,
+    TITLE_BESIDE_BADGES_MIN_WIDTH + widest,
+  );
+}
+
+/**
+ * The narrowest container that shows `columns` with every header and value
+ * whole: the pixel columns, the session's column at `sessionMinWidth`, and
+ * the columns given a share of the table at their `minWidth`. Shares of
+ * 100% or more leave nothing for the session: no width fits, Infinity.
+ */
+export function shellColumnsMinWidth(
+  columns: ReadonlyArray<{ width?: string; minWidth?: number }>,
+  sessionMinWidth: number = TABLE_NAME_COLUMN_MIN_WIDTH,
+): number {
+  let fixed = sessionMinWidth;
+  let share = 0;
+  let floor = 0;
+  for (const { width, minWidth = 0 } of columns) {
+    if (width?.endsWith('px')) {
+      fixed += parseFloat(width);
+    } else if (width?.endsWith('%')) {
+      const fraction = parseFloat(width) / 100;
+      share += fraction;
+      floor = Math.max(floor, minWidth / fraction);
+    }
   }
-  return date.toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    ...(date.getFullYear() === currentYear ? {} : { year: 'numeric' }),
-  });
+  if (share >= 1) {
+    return Infinity;
+  }
+  return Math.ceil(Math.max(fixed / (1 - share), floor));
 }

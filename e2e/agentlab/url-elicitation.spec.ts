@@ -141,3 +141,26 @@ test('a declined sign-in opens nothing and the run shows why it did not run', as
   await expect(result(admin)).toBeHidden();
   expect(opened).toBe(false);
 });
+
+test('a run waiting on a sign-in the person did not finish stops on Cancel, without an error', async ({
+  admin,
+}) => {
+  test.setTimeout(300_000);
+  const run = await runWithSignInLost(admin);
+
+  const dex = await openThroughConsent(admin, run);
+  await dex.close();
+
+  const main = admin.getByRole('main');
+  const cancel = main.getByRole('button', { name: 'Cancel', exact: true });
+  await expect(
+    cancel,
+    'the retry waits on the sign-in, so the run is still pending',
+  ).toBeVisible({ timeout: 60_000 });
+  await cancel.click();
+
+  await expect(cancel).toBeHidden();
+  await expect(run).toBeEnabled();
+  await expect(main).not.toContainText(/aborted|answered (decline|cancel)/);
+  await expect(result(admin)).toBeHidden();
+});

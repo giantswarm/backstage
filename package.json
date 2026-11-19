@@ -7,6 +7,7 @@
   },
   "scripts": {
     "start": "yarn env-cmd yarn backstage-cli repo start",
+    "fixtures": "node scripts/fixtures-server.mjs",
     "build:backend": "yarn workspace backend build",
     "build:backend-headless-service": "yarn workspace backend-headless-service build",
     "build:all": "backstage-cli repo build --all",
@@ -30,6 +31,7 @@
     "ci:patches": "yarn patch-package --error-on-fail",
     "ci:workspace-links": "node scripts/check-workspace-links.mjs",
     "ci:verify": "scripts/ci-verify.sh",
+    "ci:bundle-fixtures": "node scripts/check-bundle-fixtures.mjs",
     "ci:build": "yarn run ci:patches && yarn run ci:workspace-links && touch github-app-credentials.yaml && NODE_ENV=production yarn run build:backend --config ../../app-config.yaml --config ../../app-config.production.yaml && NODE_ENV=production yarn run build:backend-headless-service --config ../../app-config.yaml --config ../../app-config.production.yaml",
     "new": "backstage-cli new",
     "storybook": "storybook dev -p 6006",
@@ -97,7 +99,7 @@
     "codemirror-json-schema": "0.8.1",
     "vm2": "3.12.2",
     "sha.js": "2.4.12",
-    "basic-ftp": "6.2.3",
+    "basic-ftp": "6.2.4",
     "jsonpath-plus": "10.4.0",
     "protobufjs": "8.8.1",
     "@protobufjs/inquire": "1.1.2",
@@ -151,7 +153,7 @@
     "@yarnpkg/core@npm:^4.9.1": "4.9.2",
     "@yarnpkg/core/got": "^11.7.0",
     "@yarnpkg/cli@npm:^4.7.0": "4.18.1",
-    "@backstage/backend-defaults@backstage:^": "patch:@backstage/backend-defaults@npm%3A0.18.1#~/.yarn/patches/@backstage-backend-defaults-npm-0.18.1-924a47c398.patch"
+    "@backstage/backend-defaults@backstage:^": "patch:@backstage/backend-defaults@npm%3A0.19.0#~/.yarn/patches/@backstage-backend-defaults-npm-0.19.0.patch"
   },
   "jest": {
     "cacheDirectory": "<rootDir>/../../../node_modules/.cache/jest",

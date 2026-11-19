@@ -6,7 +6,6 @@ import {
   useState,
 } from 'react';
 import { Button, Flex, Tag, TagGroup, Text, TextField } from '@backstage/ui';
-import { makeStyles } from '@material-ui/core/styles';
 
 import { fieldErrorProps } from '../FieldValidation';
 import {
@@ -27,11 +26,6 @@ const MAX_SUGGESTIONS = 8;
 
 const NO_COUNTS: ReadonlyMap<string, number> = new Map();
 const NO_TAGS: readonly string[] = [];
-
-const useStyles = makeStyles({
-  // As `TagList`'s: bui's small tag is 10px, too small to read a tag by.
-  tag: { fontSize: 'var(--bui-font-size-2)' },
-});
 
 export type TagsFieldProps = {
   tags: readonly string[];
@@ -76,7 +70,6 @@ export function TagsField({
   onAdd,
   onRemove,
 }: TagsFieldProps) {
-  const classes = useStyles();
   const counts = useTagVocabulary() ?? ownCounts;
   // The draft's problem shows at once after a failed add, else only once the
   // form reveals its errors.
@@ -194,13 +187,7 @@ export function TagsField({
         {suggestions.length > 0 && (
           <TagGroup aria-label="Suggested tags">
             {suggestions.map(tag => (
-              <Tag
-                key={tag}
-                id={tag}
-                size="small"
-                className={classes.tag}
-                onAction={() => pick(tag)}
-              >
+              <Tag key={tag} id={tag} size="small" onAction={() => pick(tag)}>
                 {tag}
               </Tag>
             ))}
@@ -235,7 +222,7 @@ export function TagsField({
           }
         >
           {tags.map(tag => (
-            <Tag key={tag} id={tag} size="small" className={classes.tag}>
+            <Tag key={tag} id={tag} size="small">
               {tag}
             </Tag>
           ))}

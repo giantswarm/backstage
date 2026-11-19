@@ -236,14 +236,20 @@ function PlaceholderRows({ rows }: { rows: number }) {
   return (
     <Flex direction="column" gap="2" aria-hidden="true">
       {Array.from({ length: rows }, (_, index) => (
-        <Skeleton key={index} width={420} height={20} rounded />
+        <Skeleton
+          key={index}
+          width={420}
+          height={20}
+          rounded
+          style={{ maxWidth: '100%' }}
+        />
       ))}
     </Flex>
   );
 }
 
 /**
- * `g6.xlarge — 3 vCPU / 11.9 GiB usable, 1 × 24 GiB GPU — $1.01/h`; the
+ * `g6.xlarge — 3 CPU / 11.9 GiB usable, 1 × 24 GiB GPU — $1.01/h`; the
  * price note where no price is listed, nothing after the GPUs from an older
  * cluster-manager that prices nothing.
  */

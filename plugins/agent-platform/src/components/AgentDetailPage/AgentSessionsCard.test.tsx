@@ -77,6 +77,7 @@ const sessions: AgentSessionsView = {
   isLoading: false,
   isNotUserScoped: false,
   isUnavailable: false,
+  sessionEnded: false,
   retry: () => {},
   isRetrying: false,
 };
@@ -161,6 +162,42 @@ describe('AgentSessionsCard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it('says the portal session ended, with Sign in again, when the portal refuses the session token', async () => {
+    await renderInTestApp(
+      <AgentSessionsCard
+        agentName="Swarmgeist"
+        sessions={{
+          ...sessions,
+          rows: [],
+          isUnavailable: true,
+          sessionEnded: true,
+        }}
+      />,
+      { mountedRoutes: { '/sessions': sessionsRouteRef } },
+    );
+
+    expect(screen.getByText('Your portal session ended')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Sign in again' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Sessions could not be read from this environment.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps the rows read before under the alert when the portal refuses a refetch', async () => {
+    await renderInTestApp(
+      <AgentSessionsCard
+        agentName="Swarmgeist"
+        sessions={{ ...sessions, sessionEnded: true }}
+      />,
+      { mountedRoutes: { '/sessions': sessionsRouteRef } },
+    );
+
+    expect(screen.getByText('Your portal session ended')).toBeInTheDocument();
+    expect(screen.getByText('Check the clusters')).toBeInTheDocument();
   });
 
   it('keeps a quiet line, without a retry, when kagent is not deployed there', async () => {

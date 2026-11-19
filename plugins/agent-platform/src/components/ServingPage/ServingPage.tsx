@@ -24,10 +24,12 @@ import {
   EmptyStateCard,
   LoadingIndicator,
   useProvidePageHeaderActions,
+  UnreachableInstallationsAlert,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { installationErrorLine } from '@giantswarm/backstage-plugin-muster';
 
 import { useDownloadRows, withDownloadRows } from '../../hooks/useDownloadRows';
+import { usePortalSessionEnded } from '../../hooks/usePortalSessionEnded';
 import {
   useHostingFlowOutcome,
   useOpenHostingFlow,
@@ -63,7 +65,7 @@ import {
 import { useServedModelRows } from '../ServedModelRowsProvider';
 import { useServing } from '../ServingProvider';
 import { ModelManagerSignInAlerts } from '../ModelManagerSignInAlerts';
-import { UnreachableInstallationsAlert } from '../UnreachableInstallationsAlert';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import {
   hasServedModelTimeline,
   isOpenedServedModel,
@@ -115,7 +117,7 @@ const TOAST_TIMEOUT_MS = 6000;
  * inside a ServingProvider, a ModelConfigsProvider, a ServedModelRowsProvider
  * (the rows) and the plugin's QueryClientProvider (the writes are react-query
  * mutations). The primary actions — Serve, Import, Pull — are surfaced in the
- * shared page header, like "Connect a model" on the Model configs view, and
+ * shared page header, like "Add a model" on the Model configs view, and
  * each opens its flow's own page (`ServeModelPage`, `ImportModelPage`,
  * `PullModelPage`; an older release's `?serve=1` link is forwarded to Serve
  * model's).
@@ -145,6 +147,9 @@ const TOAST_TIMEOUT_MS = 6000;
  */
 export function ServingPage() {
   const serving = useServing();
+  // The portal refused the session token: the reads of every source fail
+  // the same way until a sign-in, which is the one thing to say.
+  const sessionEnded = usePortalSessionEnded();
   const sharedIdentity = useModelHostingSharedIdentity();
   const { servedModels, installations } = serving;
   const { rows: servedRows } = useServedModelRows();
@@ -602,6 +607,10 @@ export function ServingPage() {
         replace
       />
     );
+  }
+
+  if (sessionEnded) {
+    return <PortalSessionEndedAlert />;
   }
 
   return (

@@ -1,3 +1,4 @@
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Mimir sample types are owned by the GS plugin.
 import type {
   MimirMatrixSample,
   MimirMetricSample,
@@ -97,55 +98,21 @@ describe('reduceByAgent', () => {
     expect(rows[0].tokens).toBe(950_000);
   });
 
-  it('adds the cache types to input from a gateway that leaves them out of it', () => {
-    // Before agentgateway v1.5.0 `input` was fresh input alone, so cache reads
-    // well above it are their own tokens.
+  it('excludes cache types from totals even when they exceed input', () => {
     const labels = { agent_namespace: 'kagent', agent: 'sre-agent' };
     const rows = reduceByAgent({
       ...byAgentOptions,
       cost: undefined,
       tokens: [
-        sample({ ...labels, gen_ai_token_type: 'input' }, '100000'),
-        sample({ ...labels, gen_ai_token_type: 'input_cache_read' }, '900000'),
-        sample({ ...labels, gen_ai_token_type: 'input_cache_write' }, '50000'),
-        sample({ ...labels, gen_ai_token_type: 'output' }, '50000'),
+        sample({ ...labels, gen_ai_token_type: 'input' }, '1000'),
+        sample({ ...labels, gen_ai_token_type: 'input_cache_read' }, '900'),
+        sample({ ...labels, gen_ai_token_type: 'input_cache_write' }, '200'),
+        sample({ ...labels, gen_ai_token_type: 'output' }, '20'),
       ],
       calls: undefined,
     });
 
-    expect(rows[0].tokens).toBe(1_100_000);
-  });
-
-  it('decides the convention per model before adding an agent row up', () => {
-    // One model's series in each convention: the row is the sum of each
-    // counted once, not a reading of the agent's totals.
-    const labels = { agent_namespace: 'kagent', agent: 'sre-agent' };
-    const series = (model: string, values: Record<string, string>) =>
-      Object.entries(values).map(([type, value]) =>
-        sample(
-          { ...labels, gen_ai_response_model: model, gen_ai_token_type: type },
-          value,
-        ),
-      );
-    const rows = reduceByAgent({
-      ...byAgentOptions,
-      cost: undefined,
-      tokens: [
-        ...series('new', {
-          input: '1000',
-          input_cache_read: '900',
-          output: '10',
-        }),
-        ...series('old', {
-          input: '100',
-          input_cache_read: '900',
-          output: '10',
-        }),
-      ],
-      calls: undefined,
-    });
-
-    expect(rows[0].tokens).toBe(1010 + 1010);
+    expect(rows[0].tokens).toBe(1020);
   });
 
   it('renders a pair that matches no agent as a removed agent, unlinked, its spend kept', () => {
@@ -335,16 +302,16 @@ describe('reduceTokenTypes and cacheReadShare', () => {
     expect(share).toBeCloseTo(75);
   });
 
-  it('adds the cache types to input from a gateway that leaves them out of it', () => {
+  it('uses input as the denominator even when the cache types exceed it', () => {
     const share = cacheReadShare({
-      input: 100,
-      output: 10_000,
-      inputCacheRead: 300,
-      inputCacheWrite: 100,
+      input: 1000,
+      output: 20,
+      inputCacheRead: 900,
+      inputCacheWrite: 200,
       other: 0,
     });
 
-    expect(share).toBeCloseTo(60);
+    expect(share).toBeCloseTo(90);
   });
 
   it('has no share when there is no input traffic', () => {
@@ -1207,18 +1174,25 @@ describe('withFreshInput', () => {
     ]);
   });
 
-  it('keeps input as fresh input on a day from a gateway that leaves the cache types out', () => {
+  it('clamps fresh input to zero when cache totals exceed input', () => {
     const daily = withFreshInput({
       rows: [
-        { day: '2026-11-02', input: 100, input_cache_read: 800, output: 20 },
+        {
+          day: '2026-11-02',
+          input: 1000,
+          input_cache_read: 900,
+          input_cache_write: 200,
+          output: 20,
+        },
       ],
-      series: ['input_cache_read', 'input', 'output'],
+      series: ['input', 'input_cache_read', 'input_cache_write', 'output'],
     });
 
     expect(daily.rows[0]).toEqual({
       day: '2026-11-02',
-      fresh_input: 100,
-      input_cache_read: 800,
+      fresh_input: 0,
+      input_cache_read: 900,
+      input_cache_write: 200,
       output: 20,
     });
   });

@@ -1,3 +1,4 @@
+/* eslint-disable @backstage/no-mixed-plugin-imports -- The Agent Platform composes installation APIs across plugins. */
 import type { KubernetesApi } from '@backstage/plugin-kubernetes-react';
 import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 
@@ -27,19 +28,36 @@ export type OrganizationsScenario = {
   mine?: { organizations: OrganizationNamespace[]; none?: string };
   /** The status `list_organizations` gives a member with each of `mine`. */
   memberStatus?: Pick<ListedOrganization, 'orphaned' | 'deleting'>;
+  /**
+   * `permissions.createAgents` of each of `mine`, by organization namespace;
+   * left out of the listing for a namespace not named, as an agent-manager
+   * older than the field answers.
+   */
+  createAgents?: Record<string, boolean>;
   /** How many `list_organizations` calls fail first, as a timeout would. */
   mineFailures?: number;
   /** `list_organization_members`. */
   members?: OrganizationMember[];
   /** `list_model_configs`, per namespace. */
   models?: Record<string, AgentManagerModelConfig[]>;
+  /**
+   * Whether `set_organization_model` takes the model settings (`maxTokens`,
+   * `promptCaching`, `cacheTTL`), as agent-manager 3.1.0 and later do.
+   */
+  modelSettings?: boolean;
   /** `list_organization_connectors`. */
   connectors?: OrganizationConnector[];
   /** `list_egress_policies`' policies. */
   egressPolicies?: {
     name: string;
     namespace: string;
-    destinations: { origin: string; credentialHeader?: string }[];
+    destinations: {
+      origin: string;
+      credentialHeader?: string;
+      credentialSecret?: string;
+      credentialKey?: string;
+    }[];
+    managedBy?: string;
   }[];
   /**
    * `get_organization`'s organization, as an organizations-admin reads it;
@@ -95,7 +113,29 @@ export type OrganizationsScenario = {
   modelKeyPresent?: boolean;
   /** What `set_organization_model` fails with. */
   modelError?: string;
+  /** What `add_organization_member` fails with. */
+  addError?: string;
+  /**
+   * `get_info` reports the `commit` capability: agent-manager opens pull
+   * requests on this installation.
+   */
+  commitMode?: boolean;
 };
+
+/** The pull request a content write in mode commit opens. */
+export const CONTENT_PULL_REQUEST = {
+  repository: 'giantswarm/gazelle-configs',
+  base: 'main',
+  branch: 'agent-manager/set-payments-x_a1b2',
+  pullRequest: 'https://github.com/giantswarm/gazelle-configs/pull/7',
+  number: 7,
+  review: 'the platform team reviews it',
+};
+
+/** `commit` for a write called with `mode: commit`. */
+function commitOf(args: Record<string, unknown>) {
+  return args.mode === 'commit' ? { commit: CONTENT_PULL_REQUEST } : {};
+}
 
 /**
  * `list_organizations` for a scenario: the organizations the person belongs
@@ -116,6 +156,7 @@ export function listedOrganizations(
         organization.organization,
       );
       const manage = readable && manages;
+      const createAgents = scenario.createAgents?.[organization.namespace];
       return {
         name: organization.organization,
         parent: organization.parent,
@@ -128,7 +169,11 @@ export function listedOrganizations(
               organization: managed,
             }
           : scenario.memberStatus),
-        permissions: { manage, member: true },
+        permissions: {
+          manage,
+          member: true,
+          ...(createAgents === undefined ? {} : { createAgents }),
+        },
       };
     },
   );
@@ -242,7 +287,11 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
         case 'x_agent-manager_get_info':
           return {
             namespaces: { default: 'kagent', managed: scenario.managed ?? [] },
-            capabilities: { organizations: true, egressPolicies: true },
+            capabilities: {
+              organizations: true,
+              egressPolicies: true,
+              ...(scenario.commitMode ? { commit: true } : {}),
+            },
           };
         case 'x_agent-manager_list_organizations':
           if (mineFailures > 0) {
@@ -307,6 +356,12 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
           ) {
             throw new Error(scenario.removeError);
           }
+          if (
+            name === 'x_agent-manager_add_organization_member' &&
+            scenario.addError
+          ) {
+            throw new Error(scenario.addError);
+          }
           const result: MemberResult = {
             namespace: String(args.namespace),
             member: {
@@ -316,6 +371,7 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
               binding: `organization-${String(args.role ?? 'user')}s`,
             },
             changed: true,
+            ...commitOf(args),
           };
           return result;
         }
@@ -339,6 +395,7 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
               kind: 'model',
               name: args.name,
               ...(args.default ? { defaultModel: args.name } : {}),
+              ...commitOf(args),
               credentials: [
                 {
                   secret: `tenant-credential-${String(args.name)}`,
@@ -396,6 +453,22 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
     },
   );
   const api = {
+    describeTool: jest.fn(async () => ({
+      inputSchema: {
+        properties: Object.fromEntries(
+          [
+            'projectID',
+            'location',
+            'endpoint',
+            'displayName',
+            'noCredential',
+            ...(scenario.modelSettings
+              ? ['maxTokens', 'promptCaching', 'cacheTTL']
+              : []),
+          ].map(key => [key, {}]),
+        ),
+      },
+    })),
     callTool,
     listInstallations: jest.fn(async () => ({
       installations: [{ name: 'gazelle', requiresAuth: true }],

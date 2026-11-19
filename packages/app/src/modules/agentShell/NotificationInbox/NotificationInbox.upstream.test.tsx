@@ -108,6 +108,8 @@ async function renderShell({
       <Location />
     </ShellDocumentTitleProvider>,
     {
+      // The shell's rail is app-wide, like the sidebar it replaces.
+      renderAs: 'chrome',
       initialRouteEntries: [path],
       apis: [
         [toastApiRef, { post }],

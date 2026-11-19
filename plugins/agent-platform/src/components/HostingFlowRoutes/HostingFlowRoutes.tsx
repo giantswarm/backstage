@@ -14,6 +14,7 @@ import {
 import { useCloseHref } from '../../hooks/useCloseHref';
 import { useClusterManagerAvailability } from '../../hooks/useClusterManager';
 import { useHostingFlowReturn } from '../../hooks/useHostingFlow';
+import { usePortalSessionEnded } from '../../hooks/usePortalSessionEnded';
 import { useServeIntents } from '../../hooks/useServeIntents';
 import type { NodePoolWriteResult } from '../../lib/clusterManager';
 import type { ModelManagerLoadAnswer } from '../../lib/modelManager';
@@ -47,6 +48,7 @@ import {
 } from '../ModelHostingSharedIdentity';
 import { sharedIdentityReason } from '../../lib/sharedIdentity';
 import { OPENED_SERVED_MODEL_KEY, useServingTargets } from '../ServingPage';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
@@ -61,6 +63,7 @@ function HostingFlowGate({
   closeHref,
   isLoading,
   unavailable,
+  sessionEnded = false,
   children,
 }: {
   title: string;
@@ -68,10 +71,23 @@ function HostingFlowGate({
   isLoading: boolean;
   /** Why nothing offers the flow, once nothing does. */
   unavailable: string | undefined;
+  /**
+   * The portal refused the session token on a read: nothing offers the flow
+   * until a sign-in, which is the reason to give.
+   */
+  sessionEnded?: boolean;
   children: ReactNode;
 }) {
   if (!isLoading && !unavailable) {
     return <>{children}</>;
+  }
+  let step: ReactNode;
+  if (isLoading || !unavailable) {
+    step = <LoadingIndicator label="Reading the environments…" />;
+  } else if (sessionEnded) {
+    step = <PortalSessionEndedAlert />;
+  } else {
+    step = <Alert status="info" description={unavailable} />;
   }
   return (
     <WizardFrame
@@ -80,11 +96,7 @@ function HostingFlowGate({
       closeHref={closeHref}
       width="medium"
     >
-      {unavailable && !isLoading ? (
-        <Alert status="info" description={unavailable} />
-      ) : (
-        <LoadingIndicator label="Reading the environments…" />
-      )}
+      {step}
     </WizardFrame>
   );
 }
@@ -113,6 +125,7 @@ function useServingHref(): string {
  */
 export function ServeModelRoute() {
   const serving = useServing();
+  const sessionEnded = usePortalSessionEnded();
   const { loadTargets } = useServingTargets();
   const shared = useModelHostingSharedIdentity();
   const [searchParams] = useSearchParams();
@@ -163,6 +176,7 @@ export function ServeModelRoute() {
       title="Serve model"
       closeHref={closeHref}
       isLoading={serving.isLoading && loadTargets.length === 0}
+      sessionEnded={sessionEnded}
       unavailable={
         loadTargets.length === 0
           ? servingUnavailable(
@@ -222,6 +236,7 @@ export function ImportModelRoute() {
 /** Pull model's route (`/customize/models/hosting/pull`). */
 export function PullModelRoute() {
   const serving = useServing();
+  const sessionEnded = usePortalSessionEnded();
   const { pullTargets } = useServingTargets();
   const shared = useModelHostingSharedIdentity();
   const servingHref = useServingHref();
@@ -237,6 +252,7 @@ export function PullModelRoute() {
       title="Pull model"
       closeHref={closeHref}
       isLoading={serving.isLoading && pullTargets.length === 0}
+      sessionEnded={sessionEnded}
       unavailable={
         pullTargets.length === 0
           ? servingUnavailable(

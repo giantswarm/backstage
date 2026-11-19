@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
   Alert,
   Button,
@@ -17,6 +18,7 @@ import {
   ConfirmDialog,
   EmptyStateCard,
   PageSection,
+  tableRowId,
   useFieldValidation,
 } from '@giantswarm/backstage-plugin-ui-react';
 
@@ -36,16 +38,65 @@ import type {
 import {
   LISTENER_PROVIDERS,
   MODEL_PROVIDER_OPTIONS,
+  modelNameError,
 } from '../../lib/modelConfigs';
+import { slugify } from '../../lib/slugify';
 import {
+  INITIAL_MODEL_SETTINGS,
+  modelSettingsSummary,
+  type ModelSettingsValues,
+  refusedSettingErrors,
+} from '../../lib/modelSettings';
+import { useModelSettingsSupport } from '../../hooks/useModelSettingsSupport';
+import { ModelSettingsFields } from '../ModelConfigForm';
+import {
+  CONTENT_PULL_REQUEST_NEXT,
+  CONTENT_PULL_REQUEST_UNCHANGED,
   type OrganizationConnector,
   type OrganizationNamespace,
 } from '../../lib/organizations';
+import { PullRequestOutcome } from '../PullRequestOutcome';
+import { WrappingCellText } from './WrappingCellText';
+import { modelDetailRouteRef } from '../../routes';
+
+/**
+ * The pull request a dialog's write opened, in mode commit: the dialog stays
+ * open with it, and nothing is listed until it is merged.
+ */
+function DialogPullRequest({
+  request,
+}: {
+  request: ReturnType<typeof useOrganizationCredentialRequest>;
+}) {
+  const commit = request.data?.form ? undefined : request.data?.commit;
+  return commit ? (
+    <PullRequestOutcome
+      commit={commit}
+      next={CONTENT_PULL_REQUEST_NEXT}
+      unchanged={CONTENT_PULL_REQUEST_UNCHANGED}
+      testId="organization-content-pull-request"
+    />
+  ) : null;
+}
+
+/** Whether a dialog's write ended in a pull request, which it shows. */
+function openedPullRequest(
+  request: ReturnType<typeof useOrganizationCredentialRequest>,
+): boolean {
+  return Boolean(request.data?.commit && !request.data.form);
+}
 
 type TabProps = {
   installation: string;
   organization: OrganizationNamespace;
 };
+
+/**
+ * A tab that writes: with `changesDisabledBy` (the id of the line that says
+ * why, on Pending erase and while Erasing) its rows stay listed and every
+ * change is off.
+ */
+type WritingTabProps = TabProps & { changesDisabledBy?: string };
 
 /** A read's state before its rows: reading, or why it could not be read. */
 function ReadState({
@@ -74,11 +125,11 @@ function ReadState({
 
 type ModelRow = AgentManagerModelConfig & { id: string };
 
-/** A Kubernetes object name, as a ModelConfig takes it. */
-const NAME_PATTERN = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
-
 /**
- * A new model of the organization: its name, provider and model id. The key
+ * A new model of the organization: its name, provider and model id, and,
+ * where the installation's agent-manager takes them, its settings (a new
+ * Anthropic model caches its prompts). The
+ * technical name is filled in from the name. The key
  * is not asked here: agent-manager prepares a credential request for it and
  * the next page, the credential form, takes it.
  */
@@ -86,33 +137,48 @@ function AddModelDialog({
   isOpen,
   onOpenChange,
   request,
+  settings,
 }: {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   request: ReturnType<typeof useOrganizationCredentialRequest>;
+  /** Whether to offer the model's settings. */
+  settings: boolean;
 }) {
   const [name, setName] = useState('');
+  const [settingsValues, setSettingsValues] = useState<ModelSettingsValues>(
+    INITIAL_MODEL_SETTINGS,
+  );
   const [provider, setProvider] = useState<string>(LISTENER_PROVIDERS[0]);
   const [model, setModel] = useState('');
   const scope = useRef<HTMLDivElement>(null);
   const validation = useFieldValidation(scope, { isOpen });
-  const trimmedName = name.trim();
+  const displayName = name.trim();
+  const technicalName = slugify(displayName);
   const trimmedModel = model.trim();
+  // The dialog has no technical name field: a name it cannot be made from is
+  // refused in terms of the name.
   let nameError: string | undefined;
-  if (!trimmedName) {
+  if (!displayName) {
     nameError = 'Enter a name for the model.';
-  } else if (!NAME_PATTERN.test(trimmedName)) {
+  } else if (!technicalName) {
     nameError =
-      'Lower-case letters, digits and dashes, starting and ending with a letter or a digit.';
+      'Use at least one letter a–z or digit in the name: the model’s technical name is made from them.';
+  } else {
+    nameError = modelNameError(technicalName);
   }
   const modelError = trimmedModel
     ? undefined
     : "Enter the provider's model id.";
+  // A refused setting shows under it, and leaves once it changes.
+  const settingErrors = refusedSettingErrors(request.error);
+  const hasSettingError = Object.keys(settingErrors).length > 0;
   const close = (open: boolean) => {
     if (!open) {
       setName('');
       setModel('');
       setProvider(LISTENER_PROVIDERS[0]);
+      setSettingsValues(INITIAL_MODEL_SETTINGS);
     }
     onOpenChange(open);
   };
@@ -124,24 +190,38 @@ function AddModelDialog({
       confirmLabel="Continue to the key"
       busyLabel="Preparing…"
       isBusy={request.isPending}
-      error={request.error?.message}
+      isDone={openedPullRequest(request)}
+      error={hasSettingError ? undefined : request.error?.message}
       onConfirm={() => {
         if (nameError || modelError) {
           validation.reveal();
           return;
         }
-        request.mutate({
-          kind: 'model',
-          name: trimmedName,
-          provider,
-          model: trimmedModel,
-        });
+        request.mutate(
+          {
+            kind: 'model',
+            name: technicalName,
+            displayName,
+            provider,
+            model: trimmedModel,
+            ...(settings ? { settings: settingsValues } : {}),
+          },
+          {
+            onSuccess: ({ form, commit }) => {
+              if (!form && !commit) close(false);
+            },
+          },
+        );
       }}
     >
       <Flex direction="column" gap="3" ref={scope}>
         <TextField
           label="Name"
-          description="The model's name in the organization, e.g. claude-sonnet."
+          description={
+            technicalName
+              ? `People creating agents see the model under this name. Its technical name is ${technicalName}; it cannot be changed once the model exists.`
+              : 'People creating agents see the model under this name, e.g. Claude Sonnet.'
+          }
           isRequired
           value={name}
           onChange={setName}
@@ -166,10 +246,25 @@ function AddModelDialog({
           onChange={setModel}
           {...validation.textFieldProps('model', modelError)}
         />
+        {settings && (
+          <ModelSettingsFields
+            provider={provider}
+            values={settingsValues}
+            onChange={patch => {
+              if (Object.keys(patch).some(field => field in settingErrors)) {
+                request.reset();
+              }
+              setSettingsValues(previous => ({ ...previous, ...patch }));
+            }}
+            framed={false}
+            errors={settingErrors}
+          />
+        )}
         <Text color="secondary">
           You enter the organization's key for it on the next page. It is never
           shown back.
         </Text>
+        <DialogPullRequest request={request} />
       </Flex>
     </ConfirmDialog>
   );
@@ -196,16 +291,27 @@ function ReplaceCredentialDialog({
       confirmLabel="Continue"
       busyLabel="Preparing…"
       isBusy={request.isPending}
+      isDone={openedPullRequest(request)}
       error={
         request.error ? credentialRequestErrorMessage(request.error) : undefined
       }
-      onConfirm={() => target && request.mutate(target.request)}
+      onConfirm={() =>
+        target &&
+        request.mutate(target.request, {
+          onSuccess: ({ form, commit }) => {
+            if (!form && !commit) onClose();
+          },
+        })
+      }
     >
-      <Text>
-        You enter the new value on the next page, which lists every object that
-        uses this credential and where each sends it. The current value stays in
-        use until you save the new one there.
-      </Text>
+      <Flex direction="column" gap="3">
+        <Text>
+          You enter the new value on the next page, which lists every object
+          that uses this credential and where each sends it. The current value
+          stays in use until you save the new one there.
+        </Text>
+        <DialogPullRequest request={request} />
+      </Flex>
     </ConfirmDialog>
   );
 }
@@ -217,30 +323,42 @@ function ReplaceCredentialDialog({
  * the model, which prepares a credential request, and the person enters the
  * key on the Dev Portal's credential form, where it is never shown back.
  */
-export function ModelsTab({ installation, organization }: TabProps) {
+export function ModelsTab({
+  installation,
+  organization,
+  changesDisabledBy,
+}: WritingTabProps) {
+  const off = changesDisabledBy !== undefined;
   const models = useAgentManagerModelConfigs(
     installation,
     organization.namespace,
   );
   const request = useOrganizationCredentialRequest(installation, organization);
   const access = useOrganizationAccess(installation, organization.namespace);
+  // The settings show where the installation's agent-manager takes and
+  // reports them; an older one reports none.
+  const settings = useModelSettingsSupport(installation) === true;
+  // Each model's page, where it is edited, made the default or deleted.
+  const modelDetailLink = useRouteRef(modelDetailRouteRef);
   const [adding, setAdding] = useState(false);
   const [replacing, setReplacing] = useState<{
     label: string;
     request: CredentialRequest;
   }>();
+  // A dialog open when the changes turn off closes: its confirm would write.
   const dialogs = (
     <>
       <AddModelDialog
-        isOpen={adding}
+        isOpen={adding && !off}
         onOpenChange={open => {
           setAdding(open);
           request.reset();
         }}
         request={request}
+        settings={settings}
       />
       <ReplaceCredentialDialog
-        target={replacing}
+        target={off ? undefined : replacing}
         onClose={() => {
           setReplacing(undefined);
           request.reset();
@@ -250,7 +368,12 @@ export function ModelsTab({ installation, organization }: TabProps) {
     </>
   );
   const addModel = access.models ? (
-    <Button variant="secondary" onPress={() => setAdding(true)}>
+    <Button
+      variant="secondary"
+      isDisabled={off}
+      aria-describedby={changesDisabledBy}
+      onPress={() => setAdding(true)}
+    >
       Add model
     </Button>
   ) : undefined;
@@ -265,15 +388,19 @@ export function ModelsTab({ installation, organization }: TabProps) {
     );
   }
   if (models.modelConfigs.length === 0) {
+    // With the changes off no model is added any more; the status alert
+    // above says why.
+    let emptyDescription: string | undefined;
+    if (!off) {
+      emptyDescription = access.models
+        ? 'Add a model with your own key to run agents. The key is entered once and never shown back.'
+        : 'An admin of the organization adds a model with its own key to run agents.';
+    }
     return (
       <>
         <EmptyStateCard
           title="This organization has no model yet"
-          description={
-            access.models
-              ? 'Add a model with your own key to run agents. The key is entered once and never shown back.'
-              : 'An admin of the organization adds a model with its own key to run agents.'
-          }
+          description={emptyDescription}
           actions={addModel}
         />
         {dialogs}
@@ -287,7 +414,17 @@ export function ModelsTab({ installation, organization }: TabProps) {
       label: 'Name',
       isRowHeader: true,
       defaultWidth: '2fr',
-      cell: row => <CellText title={row.name} />,
+      cell: row => (
+        <CellText
+          title={row.displayName || row.name}
+          description={row.displayName ? row.name : undefined}
+          href={modelDetailLink?.({
+            installation,
+            namespace: organization.namespace,
+            name: row.name,
+          })}
+        />
+      ),
     },
     {
       id: 'model',
@@ -300,6 +437,26 @@ export function ModelsTab({ installation, organization }: TabProps) {
         />
       ),
     },
+    ...(settings
+      ? [
+          {
+            id: 'settings',
+            label: 'Settings',
+            defaultWidth: '2fr',
+            // "Token limit 128,000" and "Prompt caching, 5 minutes" whole.
+            minWidth: 200,
+            cell: (row: ModelRow) => {
+              const summary = modelSettingsSummary(row);
+              return (
+                <CellText
+                  title={summary?.tokens ?? summary?.caching ?? '—'}
+                  description={summary?.tokens ? summary.caching : undefined}
+                />
+              );
+            },
+          } satisfies ColumnConfig<ModelRow>,
+        ]
+      : []),
     {
       id: 'default',
       label: 'Default',
@@ -318,6 +475,8 @@ export function ModelsTab({ installation, organization }: TabProps) {
       id: 'accepted',
       label: 'Accepted',
       defaultWidth: '2fr',
+      // The header whole beside the Settings column.
+      minWidth: 110,
       cell: row => {
         let title = 'Unknown';
         if (row.accepted === true) {
@@ -332,6 +491,8 @@ export function ModelsTab({ installation, organization }: TabProps) {
       id: 'key',
       label: 'Key',
       defaultWidth: '1fr',
+      // "Replace key" whole.
+      minWidth: 110,
       cell: row => (
         <Cell>
           {access.credentials ? (
@@ -339,6 +500,8 @@ export function ModelsTab({ installation, organization }: TabProps) {
               variant="tertiary"
               size="small"
               aria-label={`Replace the key of ${row.name}`}
+              isDisabled={off}
+              aria-describedby={changesDisabledBy}
               onPress={() =>
                 setReplacing({
                   label: row.name,
@@ -373,7 +536,7 @@ export function ModelsTab({ installation, organization }: TabProps) {
           columnConfig={columns}
           data={models.modelConfigs.map(model => ({
             ...model,
-            id: model.name,
+            id: tableRowId('model', model.name),
           }))}
           pagination={{ type: 'none' }}
         />
@@ -410,7 +573,11 @@ function credentialPairsOf(
 }
 
 /** An organization's connectors, its RemoteMCPServers. */
-export function ConnectorsTab({ installation, organization }: TabProps) {
+export function ConnectorsTab({
+  installation,
+  organization,
+  changesDisabledBy,
+}: WritingTabProps) {
   const connectors = useOrganizationConnectors(
     installation,
     organization.namespace,
@@ -454,8 +621,11 @@ export function ConnectorsTab({ installation, organization }: TabProps) {
       id: 'credentials',
       label: 'Credentials',
       defaultWidth: '2fr',
+      // The header whole beside Replace credential.
+      minWidth: 130,
+      // Every header and Secret, read whole: the lines wrap.
       cell: row => (
-        <CellText
+        <WrappingCellText
           title={
             row.credentials.length === 0
               ? 'None'
@@ -472,6 +642,8 @@ export function ConnectorsTab({ installation, organization }: TabProps) {
       id: 'replace',
       label: '',
       defaultWidth: '1fr',
+      // The button's whole label, on a phone too, as on the Egress tab.
+      minWidth: 160,
       cell: row => {
         if (!access.credentials || row.curated) {
           return <Cell />;
@@ -493,6 +665,8 @@ export function ConnectorsTab({ installation, organization }: TabProps) {
                     variant="tertiary"
                     size="small"
                     aria-label={`Replace the credential of ${what}`}
+                    isDisabled={changesDisabledBy !== undefined}
+                    aria-describedby={changesDisabledBy}
                     onPress={() =>
                       setReplacing({
                         label: what,
@@ -528,12 +702,16 @@ export function ConnectorsTab({ installation, organization }: TabProps) {
       ) : (
         <Table<ConnectorRow>
           columnConfig={columns}
-          data={rows.map(row => ({ ...row, id: row.name }))}
+          data={rows.map(row => ({
+            ...row,
+            id: tableRowId('connector', row.name),
+          }))}
           pagination={{ type: 'none' }}
         />
       )}
       <ReplaceCredentialDialog
-        target={replacing}
+        // Closed when the changes turn off: its confirm would write.
+        target={changesDisabledBy === undefined ? replacing : undefined}
         onClose={() => {
           setReplacing(undefined);
           request.reset();
@@ -546,21 +724,85 @@ export function ConnectorsTab({ installation, organization }: TabProps) {
 
 type EgressRow = AgentManagerEgressPolicy & { id: string };
 
+/**
+ * An egress policy's credential Secrets and keys, once each, with the
+ * headers and origins that send each: several destinations may read the same
+ * pair. A destination that names no Secret and key (none, or an
+ * agent-manager older than giantswarm/agent-manager#371) gives none.
+ */
+function egressCredentialPairsOf(
+  policy: AgentManagerEgressPolicy,
+): { secret: string; key: string; headers: string[]; origins: string[] }[] {
+  const pairs = new Map<
+    string,
+    { secret: string; key: string; headers: string[]; origins: string[] }
+  >();
+  for (const destination of policy.destinations) {
+    const { credentialSecret: secret, credentialKey: key } = destination;
+    if (!secret || !key) {
+      continue;
+    }
+    const id = `${secret}/${key}`;
+    const pair = pairs.get(id) ?? { secret, key, headers: [], origins: [] };
+    if (
+      destination.credentialHeader &&
+      !pair.headers.includes(destination.credentialHeader)
+    ) {
+      pair.headers.push(destination.credentialHeader);
+    }
+    pair.origins.push(destination.origin);
+    pairs.set(id, pair);
+  }
+  return [...pairs.values()];
+}
+
+/**
+ * What tells a policy's pairs apart: their headers, as on the Connectors
+ * tab, or their origins when two pairs have the same headers.
+ */
+function egressPairNames(
+  pairs: ReturnType<typeof egressCredentialPairsOf>,
+): string[] {
+  const byHeaders = pairs.map(pair => pair.headers.join(', '));
+  return byHeaders.every(
+    (name, index) => name && byHeaders.indexOf(name) === index,
+  )
+    ? byHeaders
+    : pairs.map(pair => pair.origins.join(', '));
+}
+
 /** An organization's egress policies: the origins its agents may reach. */
-export function EgressTab({ installation, organization }: TabProps) {
+export function EgressTab({
+  installation,
+  organization,
+  changesDisabledBy,
+}: WritingTabProps) {
   const policies = useAgentManagerEgressPolicies(
     installation,
     organization.namespace,
   );
-  if (policies.isLoading || policies.failure) {
+  const request = useOrganizationCredentialRequest(installation, organization);
+  const access = useOrganizationAccess(installation, organization.namespace);
+  const [replacing, setReplacing] = useState<{
+    label: string;
+    request: CredentialRequest;
+  }>();
+  if (policies.isLoading || access.isLoading || policies.failure) {
     return (
       <ReadState
-        isLoading={policies.isLoading}
+        isLoading={policies.isLoading || access.isLoading}
         failure={policies.failure}
         noun="egress policies"
       />
     );
   }
+  // One Replace per Secret and key: a rotation writes that Secret only, for
+  // every object that reads it; the policy and its destinations are not
+  // sent. `managedBy` (app.kubernetes.io/managed-by, Helm for one) does not
+  // say the platform owns the policy: agent-manager refuses a copy the
+  // platform curates, and the dialog says why.
+  const replaceable = (row: AgentManagerEgressPolicy) =>
+    access.credentials ? egressCredentialPairsOf(row) : [];
   const columns: ColumnConfig<EgressRow>[] = [
     {
       id: 'name',
@@ -586,6 +828,57 @@ export function EgressTab({ installation, organization }: TabProps) {
       ),
     },
   ];
+  // Without a credential to replace, the tab stays as it was: no empty
+  // column.
+  if (policies.egressPolicies.some(row => replaceable(row).length > 0)) {
+    columns.push({
+      id: 'replace',
+      label: '',
+      defaultWidth: '1fr',
+      // The button's whole label, on a phone too.
+      minWidth: 160,
+      cell: row => {
+        const pairs = replaceable(row);
+        const names = egressPairNames(pairs);
+        return (
+          <Cell>
+            <Flex gap="1" style={{ flexWrap: 'wrap' }}>
+              {pairs.map((pair, index) => {
+                const what =
+                  pairs.length === 1
+                    ? row.name
+                    : `${row.name} (${names[index]})`;
+                return (
+                  <Button
+                    key={`${pair.secret}/${pair.key}`}
+                    variant="tertiary"
+                    size="small"
+                    aria-label={`Replace the credential of ${what}`}
+                    isDisabled={changesDisabledBy !== undefined}
+                    aria-describedby={changesDisabledBy}
+                    onPress={() =>
+                      setReplacing({
+                        label: what,
+                        request: {
+                          kind: 'credential',
+                          secret: pair.secret,
+                          key: pair.key,
+                        },
+                      })
+                    }
+                  >
+                    {pairs.length === 1
+                      ? 'Replace credential'
+                      : `Replace ${names[index]}`}
+                  </Button>
+                );
+              })}
+            </Flex>
+          </Cell>
+        );
+      },
+    });
+  }
   return (
     <PageSection
       title="Egress"
@@ -598,11 +891,20 @@ export function EgressTab({ installation, organization }: TabProps) {
           columnConfig={columns}
           data={policies.egressPolicies.map(policy => ({
             ...policy,
-            id: policy.name,
+            id: tableRowId('egress-policy', policy.name),
           }))}
           pagination={{ type: 'none' }}
         />
       )}
+      <ReplaceCredentialDialog
+        // Closed when the changes turn off: its confirm would write.
+        target={changesDisabledBy === undefined ? replacing : undefined}
+        onClose={() => {
+          setReplacing(undefined);
+          request.reset();
+        }}
+        request={request}
+      />
     </PageSection>
   );
 }

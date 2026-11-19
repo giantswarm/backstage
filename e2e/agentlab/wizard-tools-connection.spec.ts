@@ -1,0 +1,146 @@
+import type { Page } from '@playwright/test';
+import { connectorRow } from './connectors';
+import {
+  connectToMuster,
+  expect,
+  expectWizardStep,
+  fillAgentDetails,
+  open,
+  test,
+} from './fixtures';
+import {
+  KUBECONFIG,
+  kubectl,
+  NEEDS_KUBECONFIG,
+  PLATFORM_NAMESPACE,
+} from './kubectl';
+import { lab } from './lab';
+
+/**
+ * The New agent wizard's Tools step names a connector muster does not reach
+ * by its connection, in the Customize page's terms, instead of "0 tools": a
+ * deactivated one reads Deactivated, one that never connected Not connected.
+ * Both fixtures point at an address that never answers: one deactivated, one
+ * without `autoStart`, which muster leaves unconnected.
+ */
+
+const DEACTIVATED = 'e2e-tools-deactivated';
+const NOT_CONNECTED = 'e2e-tools-not-connected';
+
+function fixture(name: string, displayName: string, extra: string): string {
+  return `
+apiVersion: muster.giantswarm.io/v1alpha1
+kind: MCPServer
+metadata:
+  name: ${name}
+  namespace: ${PLATFORM_NAMESPACE}
+  annotations:
+    ui.giantswarm.io/display-name: ${displayName}
+spec:
+  type: streamable-http
+  url: http://${name}.invalid/mcp
+  description: A connector of the Tools step's connection spec
+${extra}`;
+}
+
+const FIXTURES = [
+  fixture(DEACTIVATED, 'E2E Tools Deactivated', '  suspended: true\n'),
+  fixture(NOT_CONNECTED, 'E2E Tools Not Connected', '  autoStart: false\n'),
+].join('---');
+
+async function reachTools(page: Page) {
+  await open(page, '/customize/agents/new');
+  await fillAgentDetails(page, {
+    name: 'E2E Tools Connection',
+    description: 'Connection check of the Playwright suite; never created.',
+    instructions: 'You are a test agent.',
+  });
+  await page.getByRole('button', { name: 'Continue' }).first().click();
+  await expectWizardStep(page, 'Skills');
+  await page.getByRole('button', { name: 'Continue' }).first().click();
+  await expectWizardStep(page, 'Tools');
+}
+
+/** A connector's card, found through the search where the grid offers one. */
+async function connectorCard(page: Page, label: string) {
+  const search = page.getByLabel('Search connectors');
+  if (await search.isVisible()) {
+    await search.fill(label);
+  }
+  return page.getByRole('group', { name: `Connector ${label}` });
+}
+
+test.describe('the Tools step and a connector muster does not reach', () => {
+  test.skip(!KUBECONFIG, NEEDS_KUBECONFIG);
+
+  test.beforeAll(async () => {
+    await kubectl(['apply', '-f', '-'], FIXTURES);
+  });
+
+  test.afterAll(async () => {
+    await kubectl([
+      '-n',
+      PLATFORM_NAMESPACE,
+      'delete',
+      'mcpserver',
+      DEACTIVATED,
+      NOT_CONNECTED,
+      '--ignore-not-found',
+    ]).catch(() => undefined);
+  });
+
+  test('names its connection instead of 0 tools', async ({ admin }) => {
+    await reachTools(admin);
+
+    const deactivated = await connectorCard(admin, 'E2E Tools Deactivated');
+    await expect(deactivated).toContainText('Deactivated: no tools listed', {
+      timeout: 60_000,
+    });
+
+    const notConnected = await connectorCard(admin, 'E2E Tools Not Connected');
+    await expect(notConnected).toContainText('Not connected: no tools listed', {
+      timeout: 60_000,
+    });
+    await expect(notConnected).not.toContainText('0 tools');
+
+    // The catalogue's group counts them by the same words. The individual
+    // tools open only under Only the tools I choose below: a preset or
+    // chat-only keeps the selection off.
+    await admin
+      .getByRole('radiogroup', { name: 'What it may do' })
+      .getByRole('radio', { name: /Only the tools I choose below/ })
+      .check();
+    await admin
+      .getByRole('button', { name: 'Choose individual tools instead' })
+      .click();
+    await expect(
+      admin.getByRole('button', { name: /^Registered connectors — / }),
+    ).toHaveAccessibleName(/\d+ not connected.*\d+ deactivated/);
+  });
+
+  test('counts no tools for them on the Connectors list and page', async ({
+    admin,
+  }) => {
+    await open(admin, `/customize/connectors?installation=${lab.installation}`);
+    await connectToMuster(admin, admin.getByRole('grid'));
+    for (const name of ['E2E Tools Deactivated', 'E2E Tools Not Connected']) {
+      const row = connectorRow(admin, name);
+      await expect(row).toBeVisible({ timeout: 60_000 });
+      // The Tools cell holds the table's sign for no value, not "0 tools".
+      await expect(row.getByRole('gridcell', { name: '—' })).toBeVisible();
+      await expect(row).not.toContainText('0 tools');
+    }
+
+    await open(
+      admin,
+      `/customize/connectors/${lab.installation}/${NOT_CONNECTED}`,
+    );
+    await expect(
+      admin.getByText(/^This connector .+, so its tools cannot be shown\.$/),
+    ).toBeVisible({ timeout: 60_000 });
+    // Nothing to count: the tab carries no "(0)".
+    await expect(
+      admin.getByRole('tab', { name: 'Tools', exact: true }),
+    ).toBeVisible();
+  });
+});

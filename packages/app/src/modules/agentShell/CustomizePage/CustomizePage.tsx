@@ -11,7 +11,11 @@ import {
   SubRouteRef,
   useRouteRef,
 } from '@backstage/frontend-plugin-api';
-import type { PlatformComponent } from '@giantswarm/backstage-plugin-gs';
+import {
+  SharedInstallationScope,
+  type PlatformComponent,
+  useMainSessionEnd,
+} from '@giantswarm/backstage-plugin-gs';
 import { ButtonLink, Flex, SearchField } from '@backstage/ui';
 import AddIcon from '@material-ui/icons/Add';
 import {
@@ -36,6 +40,7 @@ import {
   CustomizeWorkspacesPanel,
   CreateWorkspaceButton,
   EnvironmentSelect,
+  ModelHostingEntry,
   useCanAddSkill,
   useCustomizeData,
   useTrackCustomizeView,
@@ -103,7 +108,7 @@ export const CUSTOMIZE_TABS: CustomizeTab[] = [
     searchLabel: 'Search models',
     component: 'kagent',
     create: {
-      label: 'Connect a model',
+      label: 'Add a model',
       routeRef: agentPlatformPlugin.routes.newModel,
     },
   },
@@ -261,11 +266,16 @@ function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
     () => new URLSearchParams(location.search).get('q') ?? '',
   );
 
-  const tabCounts: Partial<Record<CustomizeTabId, RouteTabCount>> = {
-    ...counts,
-    connectors: musterCounts.connectors,
-    workflows: musterCounts.workflows,
-  };
+  const sessionEnd = useMainSessionEnd();
+  // Without the portal session nothing can be read, and a count of 0 would
+  // claim there is nothing: the counts are left out.
+  const tabCounts: Partial<Record<CustomizeTabId, RouteTabCount>> = sessionEnd
+    ? {}
+    : {
+        ...counts,
+        connectors: musterCounts.connectors,
+        workflows: musterCounts.workflows,
+      };
   const tabs = CUSTOMIZE_TABS.filter(
     candidate =>
       candidate.id === tab.id ||
@@ -299,33 +309,39 @@ function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
     >
       <Flex direction="column" gap="5">
         {tab.id === 'workspaces' && <CustomizeWorkspacesIntro />}
-        <Flex
-          align="center"
-          justify="between"
-          gap="4"
-          style={{ flexWrap: 'wrap' }}
-        >
-          {/* The search's 360px is wider than a phone's 343px content, so
-              there the create action always wrapped under it, left-aligned
-              (T22 P1). On a phone both take the full width, one per line. */}
-          <div
-            style={{
-              flex: isPhone ? '1 1 100%' : '0 1 360px',
-              minWidth: 0,
-            }}
+        {/* Models: the way into Model hosting (or the line saying what
+            turns it on) sits above the search, 16px from it, in view however
+            long the list. */}
+        <Flex direction="column" gap="4">
+          {tab.id === 'models' && <ModelHostingEntry />}
+          <Flex
+            align="center"
+            justify="between"
+            gap="4"
+            style={{ flexWrap: 'wrap' }}
           >
-            <SearchField
-              aria-label={tab.searchLabel}
-              placeholder={tab.searchLabel}
-              value={search}
-              onChange={setSearch}
-            />
-          </div>
-          {tab.id === 'workspaces' ? (
-            <CreateWorkspaceButton fullWidth={isPhone} />
-          ) : (
-            create && <CreateAction create={create} fullWidth={isPhone} />
-          )}
+            {/* The search's 360px is wider than a phone's 343px content, so
+                there the create action always wrapped under it, left-aligned
+                (T22 P1). On a phone both take the full width, one per line. */}
+            <div
+              style={{
+                flex: isPhone ? '1 1 100%' : '0 1 360px',
+                minWidth: 0,
+              }}
+            >
+              <SearchField
+                aria-label={tab.searchLabel}
+                placeholder={tab.searchLabel}
+                value={search}
+                onChange={setSearch}
+              />
+            </div>
+            {tab.id === 'workspaces' ? (
+              <CreateWorkspaceButton fullWidth={isPhone} />
+            ) : (
+              create && <CreateAction create={create} fullWidth={isPhone} />
+            )}
+          </Flex>
         </Flex>
         <TabPanel tab={tab.id} search={search} />
       </Flex>
@@ -479,43 +495,49 @@ export type CustomizeSubPage = {
  * would otherwise sit above it. Both share one query client, so the list's
  * reads are cache hits on the page. Rendered without the app's page layout,
  * so it mounts the header-actions slot its pages render.
+ *
+ * Every tab and page under it reads the Environment selector's shared scope
+ * (`SharedInstallationScope`); pages outside Customize read every
+ * environment, whatever was chosen here.
  */
 export function CustomizePage({ pages = [] }: { pages?: CustomizeSubPage[] }) {
   return (
-    <PageHeaderActionsProvider>
-      {/* Until a tab's page names itself. */}
-      <ShellDocumentTitle title="Customize" />
-      <Routes>
-        <Route index element={<DefaultTabRedirect />} />
-        {CUSTOMIZE_TABS.map(tab => (
-          <Route
-            key={tab.id}
-            path={tab.id}
-            element={<CustomizeScreen tab={tab} />}
-          />
-        ))}
-        {/* The retired sub-tabs (Infrastructure, Families, Internal) name
-            the tag that replaced each, until the end of 2026. */}
-        {Object.entries(RETIRED_CONNECTOR_GROUP_TAGS).map(([path, tag]) => (
-          <Route
-            key={path}
-            path={`connectors/${path}`}
-            element={<RetiredConnectorGroupRedirect tag={tag} />}
-          />
-        ))}
-        {pages
-          .filter(page =>
-            CUSTOMIZE_TABS.some(candidate => candidate.id === page.path),
-          )
-          .map(page => (
+    <SharedInstallationScope>
+      <PageHeaderActionsProvider>
+        {/* Until a tab's page names itself. */}
+        <ShellDocumentTitle title="Customize" />
+        <Routes>
+          <Route index element={<DefaultTabRedirect />} />
+          {CUSTOMIZE_TABS.map(tab => (
             <Route
-              key={page.path}
-              path={`${page.path}/*`}
-              element={page.element}
+              key={tab.id}
+              path={tab.id}
+              element={<CustomizeScreen tab={tab} />}
             />
           ))}
-        <Route path="*" element={<NearestTabRedirect />} />
-      </Routes>
-    </PageHeaderActionsProvider>
+          {/* The retired sub-tabs (Infrastructure, Families, Internal) name
+            the tag that replaced each, until the end of 2026. */}
+          {Object.entries(RETIRED_CONNECTOR_GROUP_TAGS).map(([path, tag]) => (
+            <Route
+              key={path}
+              path={`connectors/${path}`}
+              element={<RetiredConnectorGroupRedirect tag={tag} />}
+            />
+          ))}
+          {pages
+            .filter(page =>
+              CUSTOMIZE_TABS.some(candidate => candidate.id === page.path),
+            )
+            .map(page => (
+              <Route
+                key={page.path}
+                path={`${page.path}/*`}
+                element={page.element}
+              />
+            ))}
+          <Route path="*" element={<NearestTabRedirect />} />
+        </Routes>
+      </PageHeaderActionsProvider>
+    </SharedInstallationScope>
   );
 }

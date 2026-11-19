@@ -2,12 +2,16 @@ import { type ReactNode, useState } from 'react';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { coreApis, type AppHistoryApi } from '@backstage/frontend-plugin-api';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
   type MockedLayout,
+  mockContainerWidth,
   mockDesktopLayout,
   mockPhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- The portal session is the gs plugin's main sign-in.
+import { gsAuthProvidersApiRef } from '@giantswarm/backstage-plugin-gs';
 import { musterApiRef } from '../../apis';
 import { stubImageLoad } from '../ConnectorLogo/stubImageLoad';
 import type { AuthStatusResponse } from '../../apis/types';
@@ -15,12 +19,6 @@ import { customizeExternalRouteRef, mcpServersRouteRef } from '../../routes';
 import { MCPServer, MCPServerState, TOOL_GROUP_LABEL } from '../../lib/k8s';
 import { CustomizeConnectorsPanel } from './CustomizeConnectorsPanel';
 import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
-
-const mockNavigate = jest.fn();
-jest.mock('react-router-dom', () => ({
-  ...jest.requireActual('react-router-dom'),
-  useNavigate: () => mockNavigate,
-}));
 
 jest.mock('../QueryClientProvider', () => ({
   QueryClientProvider: ({ children }: { children: ReactNode }) => children,
@@ -63,6 +61,7 @@ function makeServer(
     family?: string;
     displayName?: string;
     tags?: string;
+    namespace?: string;
   } = {},
 ): MCPServer {
   return new MCPServer(
@@ -71,6 +70,7 @@ function makeServer(
       kind: 'MCPServer',
       metadata: {
         name,
+        ...(options.namespace ? { namespace: options.namespace } : {}),
         annotations: {
           ...(options.displayName
             ? { 'ui.giantswarm.io/display-name': options.displayName }
@@ -107,17 +107,19 @@ const servers = () => [
   makeServer('web-search'),
 ];
 
+const defaultFilterTools = async () => ({
+  total: 3,
+  filtered_count: 3,
+  truncated: false,
+  tools: [
+    { name: 'x_github_list_pulls', description: 'List pull requests' },
+    { name: 'x_github_get_issue', description: 'Read an issue' },
+    { name: 'x_kubernetes_get_pods', description: 'List pods' },
+  ],
+});
+
 const api = {
-  filterTools: jest.fn(async () => ({
-    total: 3,
-    filtered_count: 3,
-    truncated: false,
-    tools: [
-      { name: 'x_github_list_pulls', description: 'List pull requests' },
-      { name: 'x_github_get_issue', description: 'Read an issue' },
-      { name: 'x_kubernetes_get_pods', description: 'List pods' },
-    ],
-  })),
+  filterTools: jest.fn(defaultFilterTools),
   signInServer: jest.fn(async () => ({
     status: 'auth_required' as const,
     authUrl: 'https://github.example.test/login/oauth/authorize',
@@ -176,8 +178,20 @@ let queryClient: QueryClient;
 /** The person's answer in the external URL consent dialog. */
 const consentOpen = jest.fn();
 
+const mainSessionEnd = {
+  reason: jest.fn((): 'signed-in-elsewhere' | undefined => undefined),
+  subscribe: () => () => {},
+};
+
 async function renderPanel(search = '') {
   return renderInPanelApp(<CustomizeConnectorsPanel search={search} />);
+}
+
+let appHistory: AppHistoryApi;
+
+/** Where the app is: a press that opens a connector moves it. */
+function currentPath() {
+  return appHistory.getSnapshot().location.pathname;
 }
 
 /** Renders `ui` with the panel's query client, APIs and routes. */
@@ -186,12 +200,13 @@ async function renderInPanelApp(ui: ReactNode) {
     defaultOptions: { queries: { retry: false } },
   });
   queryClient = client;
-  return renderInTestApp(
+  const result = await renderInTestApp(
     <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
     {
       apis: [
         [musterApiRef, api],
         [externalUrlConsentApiRef, { open: consentOpen }],
+        [gsAuthProvidersApiRef, { getMainSessionEnd: () => mainSessionEnd }],
       ],
       mountedRoutes: {
         '/customize/connectors': mcpServersRouteRef,
@@ -199,6 +214,8 @@ async function renderInPanelApp(ui: ReactNode) {
       },
     },
   );
+  appHistory = result.apis.get(coreApis.appHistory)!;
+  return result;
 }
 
 function rowOf(name: string) {
@@ -213,12 +230,69 @@ describe('CustomizeConnectorsPanel', () => {
     mockSessionPending = false;
     mockInstance = {};
     api.filterTools.mockClear();
+    api.filterTools.mockImplementation(defaultFilterTools);
     api.getAuthStatus.mockClear();
     api.getAuthStatus.mockImplementation(async () => defaultAuthStatus());
     api.signInServer.mockClear();
     api.getServerInfo.mockReset();
     api.getServerInfo.mockImplementation(async () => ({}));
-    mockNavigate.mockClear();
+  });
+
+  it('offers one sign-in for a family whose members wait for grants', async () => {
+    mockServers = ['a', 'b'].map(name =>
+      makeServer(name, { family: 'kubernetes', auth: { type: 'oauth' } }),
+    );
+    api.getAuthStatus.mockResolvedValue({
+      servers: [
+        { name: 'a', status: 'auth_required', kind: 'grant' },
+        { name: 'b', status: 'reauth_required', kind: 'grant' },
+      ],
+    });
+    api.filterTools.mockResolvedValueOnce({
+      total: 0,
+      filtered_count: 0,
+      truncated: false,
+      tools: [],
+    });
+    await renderPanel();
+    const row = rowOf('kubernetes');
+    expect(await within(row).findByText('Sign in needed')).toBeVisible();
+    expect(within(row).queryByText('Connected')).not.toBeInTheDocument();
+    expect(within(row).queryByText('0 tools')).not.toBeInTheDocument();
+    expect(
+      within(row).queryByRole('link', { name: 'View instances' }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Sign in' }));
+    const dialog = await screen.findByRole('dialog');
+    const listed = await within(dialog).findByRole('list', {
+      name: 'Connectors',
+    });
+    expect(within(listed).getAllByRole('listitem')).toHaveLength(2);
+  });
+
+  it('sends a family failing for other reasons to its instances', async () => {
+    mockServers = ['a', 'b'].map(name =>
+      makeServer(name, { family: 'kubernetes', auth: { type: 'oauth' } }),
+    );
+    api.getAuthStatus.mockResolvedValue({
+      servers: [
+        { name: 'a', status: 'failed', kind: 'grant' },
+        { name: 'b', status: 'failed', kind: 'grant' },
+      ],
+    });
+    await renderPanel();
+    const row = rowOf('kubernetes');
+    expect(await within(row).findByText('Cannot connect')).toBeVisible();
+    expect(
+      within(row).getByRole('link', { name: 'View instances' }),
+    ).toHaveAttribute(
+      'href',
+      '/customize/connectors/gazelle/kubernetes/instances',
+    );
+    expect(
+      within(row).queryByRole('button', { name: 'Sign in' }),
+    ).not.toBeInTheDocument();
   });
 
   it('shows a row per connector with its sign-in, tools and state', async () => {
@@ -226,9 +300,10 @@ describe('CustomizeConnectorsPanel', () => {
 
     expect(await screen.findByText('2 tools')).toBeInTheDocument();
     const github = rowOf('github');
+    // The description may end in an ellipsis: the whole of it on hover.
     expect(
       within(github).getByText('Repositories and pull requests'),
-    ).toBeInTheDocument();
+    ).toHaveAttribute('title', 'Repositories and pull requests');
     expect(within(github).getByText('Your own account')).toBeInTheDocument();
     expect(
       await within(github).findByText('Sign in needed'),
@@ -252,6 +327,45 @@ describe('CustomizeConnectorsPanel', () => {
     expect(rowOf('Muster')).toBeInTheDocument();
   });
 
+  it('puts the sign-in in a column of its own, beside the state', async () => {
+    await renderPanel();
+
+    const github = rowOf('github');
+    const state = (await within(github).findByText('Sign in needed')).closest(
+      '[role="gridcell"], [role="cell"], td',
+    );
+    const button = within(github).getByRole('button', { name: 'Sign in' });
+    const buttonCell = button.closest('[role="gridcell"], [role="cell"], td');
+    expect(state).not.toBeNull();
+    expect(buttonCell).not.toBeNull();
+    expect(buttonCell).not.toBe(state);
+    expect(state?.nextElementSibling).toBe(buttonCell);
+    // Its header names it for a screen reader only.
+    expect(
+      screen.getByRole('columnheader', { name: 'Actions' }),
+    ).toBeInTheDocument();
+  });
+
+  it('leaves the sign-in column out where no connector asks for a sign-in', async () => {
+    mockAuthenticated = false;
+    await renderPanel();
+
+    expect(
+      await screen.findByRole('columnheader', { name: /^Status/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
+  });
+
+  it('leaves the sign-in column out where a sign-in has no button: a refused SSO one', async () => {
+    api.getAuthStatus.mockImplementation(async () => ssoFailedAuthStatus());
+    await renderPanel();
+
+    expect(
+      await within(rowOf('kubernetes')).findByText('Cannot connect'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
+  });
+
   it('signs in from the row without opening the connector', async () => {
     const user = userEvent.setup();
     await renderPanel();
@@ -264,15 +378,12 @@ describe('CustomizeConnectorsPanel', () => {
     await waitFor(() =>
       expect(api.signInServer).toHaveBeenCalledWith('github', 'gazelle'),
     );
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(currentPath()).toBe('/');
 
     await user.click(
       within(github).getByText('Repositories and pull requests'),
     );
-    expect(mockNavigate).toHaveBeenCalledWith(
-      '/customize/connectors/gazelle/github',
-      undefined,
-    );
+    expect(currentPath()).toBe('/customize/connectors/gazelle/github');
   });
 
   it('asks no sign-in of an SSO connector muster has not connected yet', async () => {
@@ -282,12 +393,10 @@ describe('CustomizeConnectorsPanel', () => {
     await renderPanel();
 
     const kubernetes = rowOf('kubernetes');
-    // Its own state: nothing waits on this person.
     expect(
-      await within(kubernetes).findByText('Connected'),
+      await within(kubernetes).findByText('Cannot connect'),
     ).toBeInTheDocument();
     expect(within(kubernetes).queryByText('Sign in needed')).toBeNull();
-    expect(within(kubernetes).queryByText('Cannot connect')).toBeNull();
     expect(
       within(kubernetes).queryByRole('button', { name: 'Sign in' }),
     ).not.toBeInTheDocument();
@@ -319,7 +428,7 @@ describe('CustomizeConnectorsPanel', () => {
       }),
     );
     expect(await screen.findByRole('tooltip')).toHaveTextContent(SSO_REFUSED);
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(currentPath()).toBe('/');
   });
 
   it('says a sign-in serving one session covers the portal only, with the why in a hint', async () => {
@@ -351,7 +460,7 @@ describe('CustomizeConnectorsPanel', () => {
     );
     // The hint keeps its press: the row does not open the connector.
     await user.click(hint);
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(currentPath()).toBe('/');
   });
 
   it('says Connecting while muster still connects an SSO connector, then Connected without a reload', async () => {
@@ -453,7 +562,7 @@ describe('CustomizeConnectorsPanel', () => {
     const tooltip = await screen.findByRole('tooltip');
     expect(tooltip).toHaveTextContent('Waiting for you to finish signing in…');
     expect(tooltip).toHaveTextContent(/Dynamic Client Registration/);
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(currentPath()).toBe('/');
   });
 
   it('offers the sign-in page again when the person did not open it', async () => {
@@ -613,10 +722,7 @@ describe('CustomizeConnectorsPanel', () => {
     await renderPanel();
 
     await user.click(await within(rowOf('kubernetes')).findByText('Connected'));
-    expect(mockNavigate).toHaveBeenCalledWith(
-      '/customize/connectors/gazelle/kubernetes',
-      undefined,
-    );
+    expect(currentPath()).toBe('/customize/connectors/gazelle/kubernetes');
   });
 
   it('withholds the sign-in of a deactivated connector, saying why', async () => {
@@ -791,6 +897,102 @@ describe('CustomizeConnectorsPanel', () => {
     expect(screen.queryByText('GitHub')).not.toBeInTheDocument();
   });
 
+  describe('two organizations owning a connector of one name', () => {
+    beforeEach(() => {
+      mockServers = [
+        makeServer('github'),
+        makeServer('wiki', {
+          namespace: 'org-gazelle',
+          displayName: 'Gazelle wiki',
+          auth: { type: 'oauth' },
+          state: 'Auth Required',
+        }),
+        makeServer('wiki', {
+          namespace: 'org-golem',
+          displayName: 'Golem wiki',
+        }),
+      ];
+      api.filterTools.mockResolvedValue({
+        total: 3,
+        filtered_count: 3,
+        truncated: false,
+        tools: [
+          { name: 'x_github_get_issue', description: 'Read an issue' },
+          { name: 'x_org-golem_wiki_search', description: 'Search pages' },
+          { name: 'x_org-golem_wiki_read', description: 'Read a page' },
+        ],
+      });
+      api.getAuthStatus.mockResolvedValue({
+        servers: [
+          { name: 'github', status: 'connected' },
+          {
+            name: 'org-gazelle/wiki',
+            status: 'auth_required',
+            auth_tool: 'core_auth_login',
+          },
+          { name: 'org-golem/wiki', status: 'connected' },
+        ],
+      });
+    });
+
+    it('shows a row for each, with its own state, tools and sign-in', async () => {
+      const user = userEvent.setup();
+      await renderPanel();
+
+      const gazelle = rowOf('Gazelle wiki');
+      const golem = rowOf('Golem wiki');
+      expect(await within(gazelle).findByText('Sign in needed')).toBeVisible();
+      expect(await within(golem).findByText('2 tools')).toBeVisible();
+      expect(within(golem).getByText('Connected')).toBeVisible();
+      expect(
+        within(golem).queryByRole('button', { name: 'Sign in' }),
+      ).toBeNull();
+
+      await user.click(
+        within(gazelle).getByRole('button', { name: 'Sign in' }),
+      );
+      await waitFor(() =>
+        expect(api.signInServer).toHaveBeenCalledWith(
+          'org-gazelle/wiki',
+          'gazelle',
+        ),
+      );
+      expect(api.signInServer).toHaveBeenCalledTimes(1);
+    });
+
+    it('opens each from the list at its own address', async () => {
+      await renderPanel();
+
+      expect(rowOf('Gazelle wiki')).toHaveAttribute(
+        'data-href',
+        '/customize/connectors/gazelle/-/org-gazelle/wiki',
+      );
+      expect(rowOf('Golem wiki')).toHaveAttribute(
+        'data-href',
+        '/customize/connectors/gazelle/-/org-golem/wiki',
+      );
+      expect(rowOf('github')).toHaveAttribute(
+        'data-href',
+        '/customize/connectors/gazelle/github',
+      );
+    });
+
+    it('lists both at phone width', async () => {
+      const layout = mockPhoneLayout();
+      try {
+        await renderPanel();
+        const list = () => screen.getByRole('list', { name: 'Connectors' });
+        expect(
+          await within(list()).findByText('Sign in needed'),
+        ).toBeInTheDocument();
+        expect(within(list()).getByText('Gazelle wiki')).toBeVisible();
+        expect(within(list()).getByText('Golem wiki')).toBeVisible();
+      } finally {
+        layout.restore();
+      }
+    });
+  });
+
   it('searches connectors by their tools too', async () => {
     await renderPanel('pods');
 
@@ -814,6 +1016,11 @@ describe('CustomizeConnectorsPanel', () => {
   });
 
   it('names the connectors whose tools a search that found nothing could not see', async () => {
+    api.getAuthStatus.mockResolvedValue({
+      servers: defaultAuthStatus().servers.map(status =>
+        status.name === 'web-search' ? { ...status, status: 'failed' } : status,
+      ),
+    });
     mockServers = [
       ...servers().filter(server => server.getName() !== 'web-search'),
       makeServer('web-search', { state: 'Failed' }),
@@ -893,7 +1100,7 @@ describe('CustomizeConnectorsPanel', () => {
 
     expect(
       await screen.findByText(
-        'The tools of 2 connectors (github, web-search) were not searched: Muster listed none of them.',
+        'The tools of 2 connectors (github, web-search) were not searched: they could not be read.',
       ),
     ).toBeInTheDocument();
   });
@@ -940,6 +1147,26 @@ describe('CustomizeConnectorsPanel', () => {
     await renderPanel();
 
     expect(screen.getByText('No connectors here')).toBeInTheDocument();
+  });
+
+  it('does not claim no muster runs once the portal session ended', async () => {
+    mockInstance = { activeInstallation: undefined };
+    mainSessionEnd.reason.mockReturnValue('signed-in-elsewhere');
+    try {
+      await renderPanel();
+
+      expect(
+        screen.getByText('Could not read your connectors'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'Your session in this browser ended. Sign in again to see them.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('No connectors here')).not.toBeInTheDocument();
+    } finally {
+      mainSessionEnd.reason.mockReturnValue(undefined);
+    }
   });
 
   describe('at list scale', () => {
@@ -1164,6 +1391,12 @@ describe('CustomizeConnectorsPanel', () => {
 
     it('offers no connection filter over connectors that all answer', async () => {
       mockServers = ['a', 'b', 'c'].map(name => makeServer(name));
+      api.getAuthStatus.mockResolvedValue({
+        servers: mockServers.map(server => ({
+          name: server.getName(),
+          status: 'connected',
+        })),
+      });
       await renderPanel();
 
       await waitFor(() => expect(api.getAuthStatus).toHaveBeenCalled());
@@ -1289,6 +1522,13 @@ describe('CustomizeConnectorsPanel', () => {
           ...(i % 5 === 0 ? { state: 'Failed' as MCPServerState } : {}),
         }),
       );
+      api.getAuthStatus.mockResolvedValue({
+        servers: mockServers.map(server => ({
+          name: server.getName(),
+          status: server.getState() === 'Failed' ? 'failed' : 'connected',
+          kind: 'none',
+        })),
+      });
       await renderPanel();
 
       await screen.findByRole('button', { name: /Filter by connection/ });
@@ -1328,6 +1568,43 @@ describe('CustomizeConnectorsPanel', () => {
     }, 20_000);
   });
 
+  // Beside the side rail at ~1160px the name had been squeezed to its icon
+  // while the other columns kept their minimums.
+  describe('in a content column too narrow for every column', () => {
+    const headers = () =>
+      screen
+        .getAllByRole('columnheader')
+        .map(cell => cell.textContent?.trim())
+        .filter(Boolean);
+
+    it('leaves out Tags and Sign-in first, then stacks the rows', async () => {
+      const layout = mockDesktopLayout();
+      const container = mockContainerWidth(1200);
+      try {
+        await renderPanel();
+        expect(await screen.findByText('2 tools')).toBeInTheDocument();
+        expect(headers()).toEqual(
+          expect.arrayContaining(['Connector', 'Tags', 'Sign-in', 'Tools']),
+        );
+
+        act(() => container.setWidth(840));
+        expect(headers()).not.toContain('Tags');
+        expect(headers()).not.toContain('Sign-in');
+        expect(headers()).toEqual(
+          expect.arrayContaining(['Connector', 'Tools', 'Status']),
+        );
+
+        act(() => container.setWidth(500));
+        expect(
+          screen.getByRole('list', { name: 'Connectors' }),
+        ).toBeInTheDocument();
+      } finally {
+        container.restore();
+        layout.restore();
+      }
+    });
+  });
+
   describe('at phone width (T22 B8)', () => {
     let layout: MockedLayout;
     beforeEach(() => {
@@ -1343,6 +1620,31 @@ describe('CustomizeConnectorsPanel', () => {
         .filter(item => item.parentElement === list());
     const itemOf = (name: string) =>
       within(list()).getByRole('link', { name }).closest('li') as HTMLElement;
+
+    it('offers the single waiting member sign-in on a family at phone width', async () => {
+      mockServers = [
+        makeServer('member', { family: 'kubernetes', auth: { type: 'oauth' } }),
+      ];
+      api.getAuthStatus.mockResolvedValue({
+        servers: [
+          {
+            name: 'member',
+            status: 'auth_required',
+            kind: 'grant',
+            auth_tool: 'core_auth_login',
+          },
+        ],
+      });
+      await renderPanel();
+      const item = itemOf('kubernetes');
+      expect(await within(item).findByText('Sign in needed')).toBeVisible();
+      expect(
+        within(item).getByRole('button', { name: 'Sign in' }),
+      ).toBeVisible();
+      expect(
+        within(item).queryByRole('link', { name: 'View instances' }),
+      ).not.toBeInTheDocument();
+    });
 
     it('stacks a row per connector: name and state, then sign-in and tools', async () => {
       await renderPanel();
@@ -1391,7 +1693,7 @@ describe('CustomizeConnectorsPanel', () => {
       await waitFor(() =>
         expect(api.signInServer).toHaveBeenCalledWith('github', 'gazelle'),
       );
-      expect(mockNavigate).not.toHaveBeenCalled();
+      expect(currentPath()).toBe('/');
     });
 
     it('keeps a refused SSO sign-in to its state on line 1, the reason in a hint', async () => {
@@ -1436,7 +1738,7 @@ describe('CustomizeConnectorsPanel', () => {
       ).toBeInTheDocument();
     });
 
-    it('gives an outstanding sign-in a line of its own, so the name keeps its width', async () => {
+    it("keeps an outstanding sign-in's button in the row's actions, where Sign in was", async () => {
       await renderPanel();
 
       await screen.findByText('Sign in needed');
@@ -1449,11 +1751,11 @@ describe('CustomizeConnectorsPanel', () => {
         name: 'Reopen sign-in page',
       });
       expect(within(github).getByText('Signing in…')).toBeInTheDocument();
-      // Under the description, not in the actions at the end of line 1.
+      // At the end of line 1, not under the description.
       expect(
         within(github).getByText('Repositories and pull requests')
           .parentElement,
-      ).toContainElement(reopen);
+      ).not.toContainElement(reopen);
     });
 
     it('keeps the table on a wide viewport', async () => {

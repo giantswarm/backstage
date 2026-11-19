@@ -6,6 +6,7 @@ import {
   connectorReach,
   connectorStatus,
   toolsLabel,
+  toolsUnavailable,
   unsearchedToolsNotes,
 } from './connectorRows';
 
@@ -411,5 +412,21 @@ describe('unsearchedToolsNotes', () => {
     expect(
       unsearchedToolsNotes('loaded', [row('web-search', 'connected', 3)], true),
     ).toEqual([]);
+  });
+});
+
+describe('toolsUnavailable', () => {
+  it('holds for a connector not reached that lists no tools', () => {
+    for (const reach of ['not-connected', 'deactivated', 'sign-in'] as const) {
+      expect(toolsUnavailable({ toolCount: 0 }, reach)).toBe(true);
+      expect(toolsUnavailable({}, reach)).toBe(true);
+    }
+  });
+
+  it('leaves a count to a connected connector, or one that lists tools', () => {
+    expect(toolsUnavailable({ toolCount: 0 }, 'connected')).toBe(false);
+    expect(toolsUnavailable({ toolCount: 0 }, 'portal-only')).toBe(false);
+    expect(toolsUnavailable({ toolCount: 3 }, 'not-connected')).toBe(false);
+    expect(toolsUnavailable({ toolCount: 0 }, undefined)).toBe(false);
   });
 });

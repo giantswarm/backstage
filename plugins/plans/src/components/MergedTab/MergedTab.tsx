@@ -31,7 +31,9 @@ import { PlansErrorAlert } from '../PlansErrorAlert';
 const useStyles = makeStyles((theme: Theme) => ({
   layout: {
     display: 'grid',
-    gridTemplateColumns: '1fr',
+    // `minmax(0, …)`: a long plan folder name ellipsizes instead of widening
+    // the page.
+    gridTemplateColumns: 'minmax(0, 1fr)',
     gap: theme.spacing(2),
     alignItems: 'start',
     [theme.breakpoints.up('md')]: {
@@ -178,7 +180,7 @@ export function MergedTab({ repo }: { repo: string }) {
               ) : undefined
             }
           >
-            {group.name}
+            <span title={group.name}>{group.name}</span>
           </ListRow>
         ))}
       </List>

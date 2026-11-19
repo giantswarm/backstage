@@ -193,6 +193,41 @@ export function musterToolsetIncludesQueryKey(
   ] as const;
 }
 
+/**
+ * One tool's input schema on an installation (muster's `describe_tool`), read
+ * as the signed-in person; under the `muster` prefix for the same reasons as
+ * the reads above.
+ */
+export function musterToolSchemaQueryKey(installation: string, tool: string) {
+  return [
+    'muster',
+    'agent-platform',
+    'tool-schema',
+    installation,
+    tool,
+  ] as const;
+}
+
+/**
+ * Whether the signed-in person may delete one model: agent-manager's dry run
+ * of `delete_organization_object` as that person. Under the `muster` prefix:
+ * never persisted, and read again after the muster sign-in.
+ */
+export function musterModelDeleteCheckQueryKey(
+  installation: string,
+  namespace: string,
+  name: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'model-delete-check',
+    installation,
+    namespace,
+    name,
+  ] as const;
+}
+
 export function musterToolsetResolutionQueryKey(
   installation: string,
   selectors: string[],

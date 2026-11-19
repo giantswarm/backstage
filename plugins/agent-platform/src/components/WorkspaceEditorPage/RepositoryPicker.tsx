@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -15,6 +15,7 @@ import {
   EDITOR_PAGE_SIZE,
   useRepositoriesPage,
 } from '../../hooks/useWorkspaceEditor';
+import { isPortalSessionRefusal } from '../../lib/portalSession';
 import type { SourceDraft } from '../../lib/workspaceDraft';
 import { shortAge } from '../../lib/shortAge';
 import {
@@ -29,6 +30,7 @@ import {
   sameName,
   uniqueNames,
 } from '../../lib/workspaceSelection';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { repositoryNoun } from './repositoryNoun';
 import {
   countSummary,
@@ -84,9 +86,27 @@ export function filterInput(
   };
 }
 
-function toggle(list: string[], value: string, on: boolean): string[] {
-  const without = list.filter(item => item !== value);
-  return on ? [...without, value] : without;
+function withMembership(
+  source: SourceDraft,
+  name: string,
+  on: boolean,
+  byFilter: boolean,
+): SourceDraft {
+  let repositories = withoutName(source.repositories, name);
+  if (on) {
+    repositories =
+      byFilter || includesName(source.repositories, name)
+        ? source.repositories
+        : [...source.repositories, name];
+  }
+  return {
+    ...source,
+    exclude:
+      !on && byFilter
+        ? [...withoutName(source.exclude, name), name]
+        : withoutName(source.exclude, name),
+    repositories,
+  };
 }
 
 /** How a repository is in the workspace, or why not. */
@@ -124,6 +144,13 @@ export type RepositoryPickerProps = {
   /** How many repositories the source selects, exclusions applied. */
   count: SourceCount;
   providerKind: string | undefined;
+  /** Opens on "selected only", the picks and exclusions, instead of the listing. */
+  startsOnPicks?: boolean;
+  /**
+   * The page says the portal session ended already: a listing the portal
+   * refused says nothing more here.
+   */
+  sessionEndedShown?: boolean;
 };
 
 /**
@@ -143,7 +170,10 @@ export function RepositoryPicker({
   filterMatches,
   count,
   providerKind,
+  startsOnPicks = false,
+  sessionEndedShown = false,
 }: RepositoryPickerProps) {
+  const pickerRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState('');
   // The page, back to the first whenever the filters change.
   const filterKey = JSON.stringify(filterInput(source));
@@ -153,10 +183,12 @@ export function RepositoryPicker({
     (next: number) => setPaging({ filterKey, page: next }),
     [filterKey],
   );
-  const [selectedOnly, setSelectedOnly] = useState(false);
+  const [selectedOnly, setSelectedOnly] = useState(startsOnPicks);
   const [selectAll, setSelectAll] = useState<{
     busy: boolean;
     error?: string;
+    /** The portal refused the session token on one of its reads. */
+    sessionEnded?: boolean;
   }>({ busy: false });
 
   const owner = source.owner.trim();
@@ -215,26 +247,14 @@ export function RepositoryPicker({
   // a pick drops the pick.
   const onTick = useCallback(
     (repository: ProviderRepository, on: boolean) => {
-      const name = repository.name;
-      const byFilter = matchesFilters(source, repository);
-      if (on) {
-        onChange({
-          ...source,
-          exclude: withoutName(source.exclude, name),
-          repositories:
-            byFilter || includesName(source.repositories, name)
-              ? source.repositories
-              : [...source.repositories, name],
-        });
-      } else {
-        onChange({
-          ...source,
-          exclude: byFilter
-            ? [...withoutName(source.exclude, name), name]
-            : source.exclude,
-          repositories: withoutName(source.repositories, name),
-        });
-      }
+      onChange(
+        withMembership(
+          source,
+          repository.name,
+          on,
+          matchesFilters(source, repository),
+        ),
+      );
     },
     [onChange, source],
   );
@@ -264,10 +284,14 @@ export function RepositoryPicker({
       });
       setSelectAll({ busy: false });
     } catch (cause) {
-      setSelectAll({
-        busy: false,
-        error: classifyWorkspaceManagerError(cause).message,
-      });
+      setSelectAll(
+        isPortalSessionRefusal(cause)
+          ? { busy: false, sessionEnded: true }
+          : {
+              busy: false,
+              error: classifyWorkspaceManagerError(cause).message,
+            },
+      );
     }
   }, [browse, data, client, onChange, source]);
 
@@ -283,7 +307,12 @@ export function RepositoryPicker({
   const listed = keptPicks(source).length + source.exclude.length;
 
   return (
-    <Flex direction="column" gap="2" data-testid="repository-picker">
+    <Flex
+      ref={pickerRef}
+      direction="column"
+      gap="2"
+      data-testid="repository-picker"
+    >
       <Flex
         justify="between"
         align="center"
@@ -325,7 +354,15 @@ export function RepositoryPicker({
       )}
 
       {selectedOnly ? (
-        <SelectedOnly source={source} onChange={onChange} />
+        <SelectedOnly
+          source={source}
+          onChange={onChange}
+          onEmptied={() =>
+            pickerRef.current
+              ?.querySelector<HTMLElement>('[role="switch"]')
+              ?.focus()
+          }
+        />
       ) : (
         <>
           {!owner && (
@@ -334,7 +371,10 @@ export function RepositoryPicker({
             </Text>
           )}
           {listing.isLoading && <Skeleton width="100%" height={120} />}
-          {listing.error && (
+          {isPortalSessionRefusal(listing.error) && !sessionEndedShown && (
+            <PortalSessionEndedAlert />
+          )}
+          {listing.error && !isPortalSessionRefusal(listing.error) && (
             <Alert
               status="warning"
               title={`Could not list the ${repositoryNoun(providerKind, 2)}`}
@@ -359,6 +399,11 @@ export function RepositoryPicker({
                       : `Select all ${data.total} matches`}
                   </Button>
                 </Flex>
+              )}
+              {/* Read outside the query cache: the page cannot know of
+                  this refusal, so the picker says it. */}
+              {selectAll.sessionEnded && !sessionEndedShown && (
+                <PortalSessionEndedAlert />
               )}
               {selectAll.error && (
                 <Text variant="body-small" color="danger">
@@ -518,10 +563,37 @@ function RepositoryRow({
 function SelectedOnly({
   source,
   onChange,
+  onEmptied,
 }: {
   source: SourceDraft;
   onChange: (source: SourceDraft) => void;
+  onEmptied: () => void;
 }) {
+  const tableRef = useRef<HTMLTableElement>(null);
+  const focusAt = useRef<{ name: string; index: number }>();
+  const names = uniqueNames([...keptPicks(source), ...source.exclude]);
+  useEffect(() => {
+    const pending = focusAt.current;
+    if (!pending) {
+      return;
+    }
+    focusAt.current = undefined;
+    const checkboxes = tableRef.current?.querySelectorAll<HTMLInputElement>(
+      'input[type="checkbox"]',
+    );
+    const remaining = names.findIndex(name => sameName(name, pending.name));
+    const target =
+      checkboxes?.[
+        remaining >= 0
+          ? remaining
+          : Math.min(pending.index, checkboxes.length - 1)
+      ];
+    if (target) {
+      target.focus();
+    } else {
+      onEmptied();
+    }
+  }, [names, onEmptied]);
   if (source.repositories.length === 0 && source.exclude.length === 0) {
     return (
       <Text variant="body-small" color="secondary">
@@ -531,55 +603,66 @@ function SelectedOnly({
   }
   return (
     <table
+      ref={tableRef}
       aria-label="Selected repositories"
       style={{ width: '100%', borderCollapse: 'collapse' }}
     >
+      <thead>
+        <tr>
+          {['Repository', 'Selection'].map(column => (
+            <th
+              key={column}
+              scope="col"
+              style={{
+                ...CELL,
+                textAlign: column === 'Selection' ? 'right' : 'left',
+              }}
+            >
+              <Text variant="body-small" color="secondary" weight="bold">
+                {column}
+              </Text>
+            </th>
+          ))}
+        </tr>
+      </thead>
       <tbody>
-        {keptPicks(source).map(name => (
-          <tr key={`pick-${name}`}>
-            <td style={CELL}>
-              <Checkbox
-                isSelected
-                onChange={on =>
-                  onChange({
-                    ...source,
-                    repositories: toggle(source.repositories, name, on),
-                  })
-                }
-              >
-                {name}
-              </Checkbox>
-            </td>
-            <td style={{ ...CELL, textAlign: 'right' }}>
-              <Text variant="body-small" weight="bold">
-                by name
-              </Text>
-            </td>
-          </tr>
-        ))}
-        {source.exclude.map(name => (
-          <tr key={`exclude-${name}`}>
-            <td style={CELL}>
-              <Checkbox
-                isSelected={false}
-                aria-label={`Include ${name}`}
-                onChange={on =>
-                  onChange({
-                    ...source,
-                    exclude: toggle(source.exclude, name, !on),
-                  })
-                }
-              >
-                {name}
-              </Checkbox>
-            </td>
-            <td style={{ ...CELL, textAlign: 'right' }}>
-              <Text variant="body-small" color="secondary">
-                excluded
-              </Text>
-            </td>
-          </tr>
-        ))}
+        {names.map((name, index) => {
+          const excluded = includesName(source.exclude, name);
+          return (
+            <tr key={name.toLowerCase()}>
+              <td style={CELL}>
+                <Checkbox
+                  isSelected={!excluded}
+                  aria-label={excluded ? `Include ${name}` : name}
+                  onChange={on => {
+                    focusAt.current = { name, index };
+                    // Without repository metadata, an exclusion prevents a filter
+                    // from retaining a removed pick; inclusion pins the name.
+                    onChange(
+                      withMembership(
+                        source,
+                        name,
+                        on,
+                        !on && hasFilters(source),
+                      ),
+                    );
+                  }}
+                >
+                  {name}
+                </Checkbox>
+              </td>
+              <td style={{ ...CELL, textAlign: 'right' }}>
+                <Text
+                  variant="body-small"
+                  color={excluded ? 'secondary' : 'primary'}
+                  weight={excluded ? undefined : 'bold'}
+                >
+                  {excluded ? 'excluded' : 'by name'}
+                </Text>
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );

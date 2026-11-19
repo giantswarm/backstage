@@ -4,6 +4,25 @@
   "license": "Apache-2.0",
   "main": "src/index.ts",
   "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./fixtures": "./src/apis/fixtures/index.ts",
+    "./testUtils": "./src/__testUtils__/index.ts",
+    "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "fixtures": [
+        "src/apis/fixtures/index.ts"
+      ],
+      "testUtils": [
+        "src/__testUtils__/index.ts"
+      ],
+      "package.json": [
+        "package.json"
+      ]
+    }
+  },
   "publishConfig": {
     "access": "public",
     "main": "dist/index.esm.js",
@@ -67,7 +86,8 @@
     "@testing-library/user-event": "^14.0.0",
     "@types/react-helmet": "^6.1.0",
     "ajv": "^8.17.1",
-    "react": "^16.13.1 || ^17.0.0 || ^18.0.0"
+    "react": "^16.13.1 || ^17.0.0 || ^18.0.0",
+    "typescript": "~6.0.0"
   },
   "files": [
     "dist",

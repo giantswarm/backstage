@@ -53,7 +53,6 @@ export function RailLink({
   const barClasses = useBarItemStyles();
   const { pathname } = useLocation();
   const isActive = isActivePath(pathname, href);
-  const Icon = item.icon;
 
   if (layout === 'bar') {
     // The phone's bottom bar: the icon over a short visible label — a phone
@@ -67,7 +66,7 @@ export function RailLink({
           className={barClasses.item}
           aria-current={isActive ? 'page' : undefined}
         >
-          <Icon fontSize="small" />
+          {item.icon}
           <span className={barClasses.label}>
             {item.barTitle ?? item.title}
           </span>
@@ -89,7 +88,7 @@ export function RailLink({
         title={compact ? item.title : undefined}
       >
         <Flex align="center" gap="2">
-          <Icon fontSize="small" />
+          {item.icon}
           {!compact && <Text variant="body-medium">{item.title}</Text>}
         </Flex>
       </Link>

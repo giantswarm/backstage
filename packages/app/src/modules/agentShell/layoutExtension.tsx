@@ -23,6 +23,7 @@ import {
 import { useAgentShellArea } from './agentArea';
 import { RailWidthProvider } from './RailWidthProvider';
 import { ShellMain } from './ShellMain';
+import { SignedInElsewhereAlert } from './SignedInElsewhereAlert';
 
 /**
  * Every kind of resource with tags. The shell mounts the one vocabulary over
@@ -70,6 +71,7 @@ function AgentShellLayout({
               {nav}
               {shellActive ? (
                 <ShellMain>
+                  <SignedInElsewhereAlert />
                   <TagVocabularyProvider sources={TAG_SOURCES}>
                     {content}
                   </TagVocabularyProvider>

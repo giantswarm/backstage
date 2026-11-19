@@ -13,7 +13,7 @@ import {
 export function getOptionalMainAuthApi(
   gsAuthProvidersApi: typeof gsAuthProvidersApiRef.T,
   caller: LoginRequestCaller,
-) {
+): ReturnType<(typeof gsAuthProvidersApiRef.T)['getMainAuthApi']> | undefined {
   try {
     return asLoginRequestCallerApi(caller, gsAuthProvidersApi.getMainAuthApi());
   } catch {

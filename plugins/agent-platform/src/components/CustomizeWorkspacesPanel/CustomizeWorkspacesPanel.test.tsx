@@ -1,6 +1,12 @@
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import {
+  mockContainerWidth,
+  mockDesktopLayout,
+  mockPhoneLayout,
+  type MockedLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { WorkspaceRow } from '../../lib/workspaceList';
 import type { WorkspacesData } from '../WorkspacesDataProvider';
 import { workspacesRouteRef } from '../../routes';
@@ -103,6 +109,7 @@ function data(overrides: Partial<WorkspacesData> = {}): WorkspacesData {
     totalCount: 2,
     failures: {},
     signIns: [],
+    sessionEnded: false,
     retry: jest.fn(),
     ...overrides,
   };
@@ -294,6 +301,24 @@ describe('CustomizeWorkspacesPanel', () => {
     expect(mockData.retry).toHaveBeenCalled();
   });
 
+  it('says the portal session ended, with Sign in again, when the portal refuses the session token', async () => {
+    mockData = data({
+      rows: [],
+      totalCount: undefined,
+      failures: { gazelle: 'Your portal session ended …' },
+      sessionEnded: true,
+    });
+    await renderPanel();
+
+    expect(screen.getByText('Your portal session ended')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Sign in again' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText('Your workspaces could not be read'),
+    ).not.toBeInTheDocument();
+  });
+
   it('offers the sign-in to workspace-manager, not muster’s refusal, where the person has not signed in to it', async () => {
     mockData = data({
       rows: [],
@@ -458,5 +483,53 @@ describe('CustomizeWorkspacesPanel', () => {
       within(dialog).getByRole('button', { name: 'Delete workspace' }),
     );
     expect(mockRemove.mutate).toHaveBeenCalled();
+  });
+});
+
+// The tables skill: a list a person scans to open one item stacks its rows
+// at phone width; a table there cut a name to "platform-t…".
+describe('CustomizeWorkspacesPanel at phone width', () => {
+  let layout: MockedLayout;
+  beforeEach(() => {
+    mockData = data();
+    jest.clearAllMocks();
+  });
+  afterEach(() => layout.restore());
+
+  it('lists each workspace as a stacked row: its name, sync state, facts and actions', async () => {
+    layout = mockPhoneLayout();
+    await renderPanel();
+
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+    const list = screen.getByRole('list', { name: 'Workspaces' });
+    const row = within(list)
+      .getAllByRole('listitem')
+      .find(item => within(item).queryByRole('link', { name: 'docs' }));
+    expect(row).toBeDefined();
+    expect(within(row!).getByText('Synchronized')).toBeInTheDocument();
+    expect(within(row!).getByText(/12 repositories/)).toBeInTheDocument();
+    expect(within(row!).getByText(/2 sessions/)).toBeInTheDocument();
+    expect(
+      within(row!).getByRole('button', { name: 'Actions for docs' }),
+    ).toBeInTheDocument();
+  });
+
+  // Beside the side rail the content column is narrower than the viewport:
+  // the layout follows the column, not the window.
+  it('stacks the rows on a desktop when the content column is too narrow, and shows the table when it is wide enough', async () => {
+    layout = mockDesktopLayout();
+    const container = mockContainerWidth(700);
+    try {
+      await renderPanel();
+      expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('list', { name: 'Workspaces' }),
+      ).toBeInTheDocument();
+
+      act(() => container.setWidth(900));
+      expect(screen.getByRole('grid')).toBeInTheDocument();
+    } finally {
+      container.restore();
+    }
   });
 });

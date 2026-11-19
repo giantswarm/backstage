@@ -62,7 +62,8 @@ function presenceIn(
 }
 
 /**
- * The name muster's own session holds the server under: its CR name. The
+ * The name muster's own session holds the server under: its key, the CR name
+ * in muster's namespace and `<namespace>/<name>` in an organization's. The
  * exposed name addresses a tool, `core_auth_login` and `auth://status` name
  * the registered server, and the two differ under a `toolPrefix`, so a
  * sign-in sent under the exposed name is refused ("Server 'marge' not
@@ -72,8 +73,10 @@ function registeredIn(
   servers: McpServerRuntime[] | null | undefined,
   serverName: string,
 ): string | undefined {
-  return (servers ?? []).find(server => exposedNameOf(server) === serverName)
-    ?.name;
+  const server = (servers ?? []).find(
+    entry => exposedNameOf(entry) === serverName,
+  );
+  return server && (server.key || server.name);
 }
 
 /** The first read again after a 503, doubling with every further one. */
@@ -149,6 +152,13 @@ export type MusterServerAvailability = {
    * flight or has answered.
    */
   failedOf: (installation: string) => boolean;
+  /**
+   * Why the installation's presence could not be read, when a read failed:
+   * its server list's error, else that of `/installations`. What a page shows
+   * for a {@link failedOf} installation, and how it tells a sign-in from an
+   * outage.
+   */
+  errorOf: (installation: string) => Error | undefined;
   /**
    * The name this installation's muster registers the server under, for the
    * calls that name a server rather than a tool. `undefined` until that
@@ -308,6 +318,12 @@ export function useMusterServerAvailability(
       installationsError,
       presenceOf: of,
       failedOf: (installation: string) => failed.has(installation),
+      errorOf: (installation: string) =>
+        (failed.has(installation) &&
+          ((queryClient.getQueryState(musterServerListQueryKey(installation))
+            ?.error ?? undefined) as Error | undefined)) ||
+        installationsError ||
+        undefined,
       registeredNameOf: (installation: string) => registered.get(installation),
       isLoading: Boolean(musterApi) && isLoading,
       isUnavailable: !musterApi,

@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo } from 'react';
+import { type ReactNode, useCallback, useMemo } from 'react';
 import {
   Alert,
   Button,
@@ -17,13 +17,15 @@ import {
 import DeleteOutlineIcon from '@material-ui/icons/DeleteOutline';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import {
+  DateComponent,
   InfoCard,
   INITIAL_ROWS,
   LoadingIndicator,
   MENU_WIDTH,
   ShowMore,
   StackedRowList,
-  usePhoneLayout,
+  type FittingTier,
+  useFittingColumns,
   useVisibleSort,
   type StackedRowItem,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -34,6 +36,7 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import type { ModelCacheRow } from '../../hooks/useClusterManager';
+import { describeWhereItRuns } from '../../lib/whereItRuns';
 import {
   cacheKeptByCluster,
   describeClaimSize,
@@ -66,17 +69,6 @@ export type ModelCachePanelProps = {
 /** The empty state: no claim stands, nothing is billed. */
 export const NO_MODEL_CACHE =
   'No cluster keeps a model cache, so nothing is billed for cached weights.';
-
-/** `18 Sept 2026` — since when a claim stands. */
-export function describeSince(created: string | undefined): string {
-  return created
-    ? new Date(created).toLocaleDateString(undefined, {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      })
-    : '—';
-}
 
 /** Where a claim stands: its zone once Bound, else its phase. */
 export function describeWhere(row: ModelCacheRow): string {
@@ -138,7 +130,7 @@ export function sortModelCacheRowsBy(
         return `${row.installation} ${row.cluster.name} ${row.claim.name}`;
       case 'cluster':
         return `${row.cluster.name} ${row.claim.name}`;
-      case 'since':
+      case 'created':
         return row.claim.created ?? '';
       default:
         return `${row.claim.name} ${row.installation} ${row.cluster.name}`;
@@ -159,7 +151,8 @@ export const CACHE_READ_ONLY_REASON =
  *
  * - Line 1: the claim, its size, and a ⋯ menu holding Remove cache
  *   (destructive, so in the menu).
- * - Line 2: cluster · zone · environment · what it costs a month · since when.
+ * - Line 2: cluster · zone · environment · what it costs a month · when it
+ *   was created.
  * - Under them: what uses it, the volume, the size's tier, and — where the
  *   claim cannot be removed here — why, in words.
  */
@@ -193,7 +186,11 @@ export function modelCacheStackedRow(
       describeWhere(row),
       showInstallation ? row.installation : undefined,
       price ?? 'no price',
-      claim.created ? `since ${describeSince(claim.created)}` : undefined,
+      claim.created ? (
+        <>
+          created <DateComponent value={claim.created} relative />
+        </>
+      ) : undefined,
     ],
     details: (
       <Flex direction="column" gap="1">
@@ -244,9 +241,35 @@ export function modelCacheStackedRow(
   };
 }
 
+/** The actions column's width, px: Remove cache. */
+const ACTIONS_COLUMN_WIDTH = 148;
+
+/**
+ * Each column's minimum width, px: its header with the sort arrow and the
+ * padding, and its usual value ("$19.04/month", "about 2 months ago").
+ */
+const CACHE_COLUMN_MIN_WIDTHS: Record<string, number> = {
+  claim: 140,
+  installation: 130,
+  cluster: 110,
+  where: 100,
+  size: 110,
+  price: 130,
+  created: 160,
+  use: 120,
+  actions: ACTIONS_COLUMN_WIDTH,
+};
+
+/** The columns a card too narrow for every one leaves out, under the claim's name. */
+const CACHE_COLUMNS_DROPPED_FIRST = ['installation', 'cluster'];
+
 function getColumnConfig(
   removable: string[],
   onRemove: (row: ModelCacheRow) => void,
+  {
+    isNarrow,
+    showInstallation,
+  }: { isNarrow: boolean; showInstallation: boolean },
 ): ColumnConfig<ModelCacheRow>[] {
   return [
     {
@@ -255,7 +278,19 @@ function getColumnConfig(
       isRowHeader: true,
       isSortable: true,
       cell: row => (
-        <CellText title={row.claim.name} description={row.claim.namespace} />
+        <CellText
+          title={row.claim.name}
+          description={
+            isNarrow
+              ? [
+                  row.claim.namespace,
+                  describeWhereItRuns(row, showInstallation),
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
+              : row.claim.namespace
+          }
+        />
       ),
     },
     {
@@ -310,6 +345,7 @@ function getColumnConfig(
             variant="body-medium"
             title={describePriceSource(row.claim)}
             data-testid="cache-price"
+            style={{ whiteSpace: 'nowrap' }}
           >
             {describeMonthlyPrice(row.claim.price) ?? 'no price'}
           </Text>
@@ -322,10 +358,19 @@ function getColumnConfig(
       ),
     },
     {
-      id: 'since',
-      label: 'Since',
+      id: 'created',
+      label: 'Created',
       isSortable: true,
-      cell: row => <CellText title={describeSince(row.claim.created)} />,
+      cell: row =>
+        row.claim.created ? (
+          <Cell>
+            <Text variant="body-medium" style={{ whiteSpace: 'nowrap' }}>
+              <DateComponent value={row.claim.created} relative />
+            </Text>
+          </Cell>
+        ) : (
+          <CellText title="—" />
+        ),
     },
     {
       id: 'use',
@@ -337,7 +382,7 @@ function getColumnConfig(
       label: '',
       // Room for Remove cache: shared out equally with the other columns,
       // the cell was narrower than the button.
-      width: 148,
+      width: ACTIONS_COLUMN_WIDTH,
       cell: row => (
         <Cell>
           <Flex justify="end">
@@ -371,7 +416,7 @@ function getColumnConfig(
  * (giantswarm/backstage#2493): a claim is a gp3 volume that outlives every
  * pool and the serving slice by design and is billed every month it exists,
  * filled or not — so the card names each with its size, tier and monthly
- * list price as cluster-manager reads them, since when it stands, and what
+ * list price as cluster-manager reads them, when it was created, and what
  * uses it. **Remove cache** opens the confirm; an installation whose
  * cluster-manager predates the tool shows its claims read-only.
  */
@@ -383,18 +428,33 @@ export function ModelCachePanel({
   hideColumns,
   signIns = [],
 }: ModelCachePanelProps) {
-  const isPhone = usePhoneLayout();
-  const columnConfig = useMemo(
-    () =>
-      getColumnConfig(removable, onRemove).filter(
-        column => !hideColumns?.includes(column.id as 'installation'),
-      ),
-    [removable, onRemove, hideColumns],
+  const showInstallation = !hideColumns?.includes('installation');
+  const columnsFor = useCallback(
+    (tier: FittingTier) =>
+      getColumnConfig(removable, onRemove, {
+        isNarrow: tier !== 'full',
+        showInstallation,
+      }).filter(column => !hideColumns?.includes(column.id as 'installation')),
+    [removable, onRemove, hideColumns, showInstallation],
+  );
+  // Too narrow for every column, the table names where a claim is under its
+  // name instead of in Environment and Cluster; too narrow for the rest, and
+  // at phone width, each claim is a stacked row.
+  const fit = useFittingColumns(columnsFor, {
+    minWidths: CACHE_COLUMN_MIN_WIDTHS,
+    dropFirst: CACHE_COLUMNS_DROPPED_FIRST,
+  });
+  const columnConfig = fit.columns;
+  // The default sort, on Environment, moves to the claim while the narrow
+  // layout hides it, as does a sort on any column it hides.
+  const hiddenColumns = useMemo(
+    () => [...(hideColumns ?? []), ...fit.hiddenIds],
+    [hideColumns, fit.hiddenIds],
   );
   const { sort, onSortChange } = useVisibleSort(
     BY_INSTALLATION,
     BY_CLAIM,
-    hideColumns,
+    hiddenColumns,
   );
   const { tableProps } = useTable<ModelCacheRow>({
     mode: 'complete',
@@ -418,32 +478,34 @@ export function ModelCachePanel({
     // A page of the sorted claims at a time (list scale). At phone width
     // each claim is a stacked row, in the table's order.
     body = (
-      <ShowMore
-        items={tableProps.data ?? []}
-        initial={INITIAL_ROWS}
-        noun="cache claim"
-      >
-        {visible =>
-          isPhone ? (
-            <StackedRowList
-              aria-label="Model cache claims"
-              rows={visible.map(row =>
-                modelCacheStackedRow(row, {
-                  removable: removable.includes(row.installation),
-                  onRemove,
-                  showInstallation: !hideColumns?.includes('installation'),
-                }),
-              )}
-            />
-          ) : (
-            <Table<ModelCacheRow>
-              {...tableProps}
-              data={visible}
-              columnConfig={columnConfig}
-            />
-          )
-        }
-      </ShowMore>
+      <div ref={fit.ref}>
+        <ShowMore
+          items={tableProps.data ?? []}
+          initial={INITIAL_ROWS}
+          noun="cache claim"
+        >
+          {visible =>
+            fit.isCompact ? (
+              <StackedRowList
+                aria-label="Model cache claims"
+                rows={visible.map(row =>
+                  modelCacheStackedRow(row, {
+                    removable: removable.includes(row.installation),
+                    onRemove,
+                    showInstallation,
+                  }),
+                )}
+              />
+            ) : (
+              <Table<ModelCacheRow>
+                {...tableProps}
+                data={visible}
+                columnConfig={columnConfig}
+              />
+            )
+          }
+        </ShowMore>
+      </div>
     );
   } else if (isLoading) {
     body = <LoadingIndicator label="Reading model caches…" />;

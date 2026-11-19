@@ -193,6 +193,10 @@ type Scenario = {
   harness?: HarnessChoice;
   /** The toolset picked on the Tools step; `preset:read-only` by default. */
   toolset?: string[];
+  /** The agent's namespace; the platform's (`kagent`) by default. */
+  tenant?: string;
+  /** The organization's own connectors picked on the Tools step. */
+  connectors?: string[];
 };
 
 function makeMusterApi(scenario: Scenario = {}) {
@@ -268,12 +272,16 @@ function Seed({
   harness,
   egressText,
   toolset = ['preset:read-only'],
+  tenant = 'kagent',
+  connectors = [],
 }: {
   children: ReactNode;
   withSkill?: boolean;
   harness?: HarnessChoice;
   egressText?: string;
   toolset?: string[];
+  tenant?: string;
+  connectors?: string[];
 }) {
   const {
     setName,
@@ -287,6 +295,7 @@ function Seed({
     selectHarness,
     toggleSkill,
     setToolset,
+    setConnectors,
     isComplete,
   } = useNewAgentForm();
   useEffect(() => {
@@ -298,13 +307,14 @@ function Seed({
       setEgressText(egressText);
     }
     setInstallation('gazelle');
-    setTenantChoices(['kagent']);
-    selectModelConfig('opus-4-7', 'kagent');
+    setTenantChoices([tenant]);
+    selectModelConfig('opus-4-7', tenant);
     selectHarness(harness);
     if (withSkill) {
       toggleSkill(SKILL);
     }
     setToolset(toolset);
+    setConnectors(connectors);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return isComplete ? <>{children}</> : null;
@@ -339,8 +349,11 @@ async function renderReview(
               harness={scenario.harness}
               egressText={scenario.egressText}
               toolset={scenario.toolset}
+              tenant={scenario.tenant}
+              connectors={scenario.connectors}
             >
               <NewAgentReviewPage />
+              <ConnectorsRefusalProbe />
             </Seed>
           </NewAgentFormProvider>
         </PageHeaderActionsProvider>
@@ -349,6 +362,16 @@ async function renderReview(
     { mountedRoutes: { '/customize/agents': agentsRouteRef } },
   );
   return { callTool };
+}
+
+/** agent-manager's refusal of the connectors, as the Tools step reads it. */
+function ConnectorsRefusalProbe() {
+  const { state } = useNewAgentForm();
+  return (
+    <output data-testid="connectors-refusal">
+      {state.connectorsRefusal?.messages.join(' | ') ?? ''}
+    </output>
+  );
 }
 
 /** The drafts kept in the tab (its other entries are not the form's). */
@@ -392,7 +415,7 @@ function grafanaCloud() {
       kind: 'MCPServer',
       metadata: {
         name: 'grafana-cloud',
-        namespace: 'muster',
+        namespace: 'agent-platform',
         annotations: { 'ui.giantswarm.io/display-name': 'Grafana Cloud' },
       },
       spec: { type: 'streamable-http', auth: { type: 'oauth' } },
@@ -533,6 +556,89 @@ describe('NewAgentReviewPage', () => {
       'tool:x_docs_search',
       'tool:core_auth_login',
     ]);
+  });
+
+  it("creates an organization's agent with its own connector by muster's key, able to sign in to it", async () => {
+    // A server of the organization's namespace, which muster keys
+    // `<namespace>/<name>`, and which signs each person in.
+    mockServerCrs = [
+      new MCPServer(
+        {
+          apiVersion: 'muster.giantswarm.io/v1alpha1',
+          kind: 'MCPServer',
+          metadata: { name: 'wiki', namespace: 'agents-payments-x7k2q' },
+          spec: { type: 'streamable-http', auth: { type: 'oauth' } },
+        } as never,
+        'gazelle',
+      ),
+    ];
+    const user = userEvent.setup();
+    const { callTool } = await renderReview({
+      tenant: 'agents-payments-x7k2q',
+      toolset: ['server:agents-payments-x7k2q/wiki'],
+    });
+
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    await user.click(deployButton());
+    await waitFor(() =>
+      expect(callTool).toHaveBeenCalledWith(
+        'x_agent-manager_create_agent',
+        expect.anything(),
+        'gazelle',
+      ),
+    );
+    const spec = specSentTo(callTool, 'x_agent-manager_create_agent');
+    expect(spec.namespace).toBe('agents-payments-x7k2q');
+    expect(spec.toolset).toEqual([
+      'server:agents-payments-x7k2q/wiki',
+      'tool:core_auth_login',
+    ]);
+  });
+
+  it("creates an organization's agent with the organization's own connectors picked", async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderReview({
+      tenant: 'agents-payments-x7k2q',
+      connectors: ['jira'],
+    });
+
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    expect(
+      specSentTo(callTool, 'x_agent-manager_validate_agent').connectors,
+    ).toEqual(['jira']);
+    expect(plainRow('Connectors from the organization page')).toHaveTextContent(
+      'jira',
+    );
+    await user.click(deployButton());
+    await waitFor(() =>
+      expect(callTool).toHaveBeenCalledWith(
+        'x_agent-manager_create_agent',
+        expect.anything(),
+        'gazelle',
+      ),
+    );
+    expect(
+      specSentTo(callTool, 'x_agent-manager_create_agent').connectors,
+    ).toEqual(['jira']);
+  });
+
+  it("hands agent-manager's refusal of the connectors to the Tools step in its own words", async () => {
+    const refused =
+      'connectors: RemoteMCPServer "jira" does not exist in namespace agents-payments-x7k2q (list_organization_connectors lists the organization\'s connectors)';
+    await renderReview({
+      tenant: 'agents-payments-x7k2q',
+      connectors: ['jira'],
+      violations: [refused, 'agent.displayName: is required'],
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('connectors-refusal')).toHaveTextContent(
+        refused,
+      ),
+    );
+    expect(screen.getByTestId('connectors-refusal')).not.toHaveTextContent(
+      'displayName',
+    );
   });
 
   it('holds Create while it is still read whether a connector needs the sign-in tool', async () => {

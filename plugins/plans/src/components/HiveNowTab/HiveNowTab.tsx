@@ -75,6 +75,14 @@ const useStyles = makeStyles({
       minWidth: 720,
     },
   },
+  // A title in the side lists wraps inside the row's label, which cuts its
+  // text with an ellipsis that an inline-flex link (an external link's icon)
+  // escapes. Its description keeps the row's ellipsis.
+  title: {
+    display: 'block',
+    whiteSpace: 'normal',
+    overflowWrap: 'anywhere',
+  },
   summary: {
     margin: 0,
     paddingLeft: 'var(--bui-space-5)',
@@ -111,6 +119,8 @@ function laneColumns(lane: Lane): ColumnConfig<LaneRow>[] {
       id: 'status',
       label: 'Status',
       width: '14%',
+      // The longest board status, "In Progress", on one line.
+      minWidth: 136,
       cell: card => (
         <Cell>
           <StatusLabel
@@ -182,6 +192,8 @@ function laneColumns(lane: Lane): ColumnConfig<LaneRow>[] {
       id: 'updatedAt',
       label: 'Moved',
       width: '12%',
+      // "about 11 hours ago" on one line.
+      minWidth: 152,
       cell: card => (
         <Cell>
           <DateComponent value={card.updatedAt} relative />
@@ -254,6 +266,7 @@ function LaneTable(props: { lane: Lane; query: string }) {
 }
 
 function PlansToReview(props: { plans: PlanCard[] }) {
+  const classes = useStyles();
   const plans = sortPlansByNeed(props.plans).filter(
     plan => plan.state !== 'merged',
   );
@@ -275,7 +288,9 @@ function PlansToReview(props: { plans: PlanCard[] }) {
                 <Badge size="small">{PLAN_STATE_LABELS[plan.state]}</Badge>
               }
             >
-              <HiveLink href={plan.url}>{plan.title}</HiveLink>
+              <span className={classes.title}>
+                <HiveLink href={plan.url}>{plan.title}</HiveLink>
+              </span>
             </ListRow>
           ))}
         </List>
@@ -317,6 +332,7 @@ function Blocked(props: { cards: MagazineCard[] }) {
 }
 
 function OtherTeams(props: { cards: MagazineCard[] }) {
+  const classes = useStyles();
   if (props.cards.length === 0) {
     return null;
   }
@@ -333,7 +349,9 @@ function OtherTeams(props: { cards: MagazineCard[] }) {
               <Avatar src="" name={teamName(card.team ?? '')} size="small" />
             }
           >
-            <HiveLink href={card.url}>{card.title}</HiveLink>
+            <span className={classes.title}>
+              <HiveLink href={card.url}>{card.title}</HiveLink>
+            </span>
           </ListRow>
         ))}
       </List>

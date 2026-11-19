@@ -54,6 +54,10 @@ let mockAgentManagerInfo: {
 } = { isLoading: false };
 // alpha is offered; beta's muster could not be read, so the card says so and
 // links to signing in there.
+jest.mock('../../hooks/useToolsetSelectorLimit', () => ({
+  useToolsetSelectorLimit: () => 128,
+}));
+
 jest.mock('../../hooks/useAgentManager', () => ({
   useAgentManagerAvailability: () => ({
     available: ['alpha'],
@@ -294,6 +298,18 @@ describe('the new-agent draft', () => {
     expect(
       await screen.findByText('tools step for "Support triage" in team-b'),
     ).toBeInTheDocument();
+  });
+
+  it('does not let a restored tenant through while where the person may create could not be read', async () => {
+    // agent-manager does not answer (the default here): team-a may be one
+    // the person may no longer create in, so the form is not complete and
+    // the step sends them back to Details.
+    keepCompleteDraft();
+    mockToolsRedirects = true;
+    await renderFlow('/customize/agents/new/tools');
+
+    expect(await nameField()).toHaveValue('Support triage');
+    expect(screen.queryByText(/^tools step/)).not.toBeInTheDocument();
   });
 
   it('reads the places on a later step for a draft without a tenant, rather than sending the person back', async () => {

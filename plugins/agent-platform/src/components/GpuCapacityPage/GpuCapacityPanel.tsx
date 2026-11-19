@@ -1,4 +1,4 @@
-import { useMemo, type ReactElement, type ReactNode } from 'react';
+import { useCallback, useMemo, type ReactElement, type ReactNode } from 'react';
 import {
   Alert,
   Badge,
@@ -23,8 +23,9 @@ import {
   formatLocalDateFull,
   getRelativeDate,
   StatusHint,
+  type FittingTier,
+  useFittingColumns,
   usePhoneColumns,
-  usePhoneLayout,
   useVisibleSort,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { formatBytes } from '../../lib/formatNumbers';
@@ -305,21 +306,23 @@ export function phoneNodeFacts(
  * serving target is dimmed (not one model-image presets still serve on), its
  * few words keep to the cell, and the serving layer's reason is the
  * {@link StatusHint} beside them: a tooltip on hover, a popover on a press,
- * which is how a phone or a touch screen reads it (T22 B15). At phone width
- * the name wraps rather than truncates, and `phoneFacts` follow it.
+ * which is how a phone or a touch screen reads it (T22 B15). In the compact
+ * layout (a phone, or a card too narrow for every column) the name wraps
+ * rather than truncates, and `phoneFacts` follow it.
  */
 function NodeCell({
   node,
-  isPhone,
+  isCompact,
   phoneFacts,
 }: {
   node: GpuNode;
-  isPhone: boolean;
+  isCompact: boolean;
+  /** The lines under the name: what the hidden columns showed. */
   phoneFacts: string[];
 }) {
   const description = describeNode(node);
   const ineligible = node.eligible === false;
-  const wrap = isPhone ? { overflowWrap: 'anywhere' as const } : undefined;
+  const wrap = isCompact ? { overflowWrap: 'anywhere' as const } : undefined;
   return (
     <Cell>
       <Text
@@ -328,7 +331,7 @@ function NodeCell({
         color={
           ineligible && !servesModelImagesOnly(node) ? 'secondary' : undefined
         }
-        truncate={isPhone ? undefined : true}
+        truncate={isCompact ? undefined : true}
         title={node.name}
         style={wrap}
       >
@@ -346,7 +349,7 @@ function NodeCell({
           <Text
             variant="body-medium"
             color="secondary"
-            truncate={isPhone ? undefined : true}
+            truncate={isCompact ? undefined : true}
             title={description}
             style={{ ...wrap, minWidth: 0 }}
           >
@@ -358,18 +361,17 @@ function NodeCell({
           />
         </span>
       )}
-      {isPhone &&
-        phoneFacts.map(fact => (
-          <Text
-            key={fact}
-            as="p"
-            variant="body-small"
-            color="secondary"
-            style={wrap}
-          >
-            {fact}
-          </Text>
-        ))}
+      {phoneFacts.map(fact => (
+        <Text
+          key={fact}
+          as="p"
+          variant="body-small"
+          color="secondary"
+          style={wrap}
+        >
+          {fact}
+        </Text>
+      ))}
     </Cell>
   );
 }
@@ -508,15 +510,22 @@ function gpuFigure(
     );
 }
 
-/** How the panel is being read: at phone width, and whether anything hovers. */
+/** How the panel is being read: compact (a phone, or a narrow card), and whether it names the environment. */
 type CapacityLayout = {
-  isPhone: boolean;
+  isCompact: boolean;
+  /**
+   * Too narrow for every column, not yet compact: Environment, Allocatable
+   * and Requested are left out, the environment under the node's name,
+   * what is allocatable under the GPU count and what is requested under
+   * the free count.
+   */
+  isNarrow?: boolean;
   /** The page drops the Environment column; a phone row names it otherwise. */
   showInstallation: boolean;
 };
 
 const DESKTOP_LAYOUT: CapacityLayout = {
-  isPhone: false,
+  isCompact: false,
   showInstallation: true,
 };
 
@@ -526,6 +535,20 @@ function getColumnConfig(
   noCacheHints: ReadonlySet<string> = new Set(),
   layout: CapacityLayout = DESKTOP_LAYOUT,
 ): ColumnConfig<GpuNode>[] {
+  // The lines under the node's name: every hidden figure when compact, the
+  // environment when only the narrow columns show.
+  const nodeFacts = (node: GpuNode): string[] => {
+    if (layout.isCompact) {
+      return phoneNodeFacts(node, {
+        columns,
+        noCacheHint: noCacheHints.has(node.id),
+        showInstallation: layout.showInstallation,
+      });
+    }
+    return layout.isNarrow && layout.showInstallation
+      ? [node.installation]
+      : [];
+  };
   const config: ColumnConfig<GpuNode>[] = [
     {
       id: 'name',
@@ -535,16 +558,8 @@ function getColumnConfig(
       cell: node => (
         <NodeCell
           node={node}
-          isPhone={layout.isPhone}
-          phoneFacts={
-            layout.isPhone
-              ? phoneNodeFacts(node, {
-                  columns,
-                  noCacheHint: noCacheHints.has(node.id),
-                  showInstallation: layout.showInstallation,
-                })
-              : []
-          }
+          isCompact={layout.isCompact}
+          phoneFacts={nodeFacts(node)}
         />
       ),
     },
@@ -582,7 +597,15 @@ function getColumnConfig(
           return total === undefined ? (
             <UnknownCell reason="Neither the device plugin nor gpu-feature-discovery reports a GPU count for this node." />
           ) : (
-            <CellText title={String(total)} />
+            <CellText
+              title={String(total)}
+              // Allocatable is hidden in the narrow layout; GPUs is not.
+              description={
+                layout.isNarrow && node.allocatable !== undefined
+                  ? `${node.allocatable} allocatable`
+                  : undefined
+              }
+            />
           );
         }),
       },
@@ -617,19 +640,17 @@ function getColumnConfig(
         cell: gpuFigure(node => {
           const free = gpuFree(node);
           if (free !== undefined) {
-            // At phone width the GPUs column is hidden; the total rides
+            // In the compact layout the GPUs column is hidden; the total rides
             // under the free count.
             const total = gpuTotal(node);
-            return (
-              <CellText
-                title={String(free)}
-                description={
-                  layout.isPhone && total !== undefined
-                    ? `of ${total}`
-                    : undefined
-                }
-              />
-            );
+            let description: string | undefined;
+            if (layout.isCompact && total !== undefined) {
+              description = `of ${total}`;
+            } else if (layout.isNarrow && node.requested !== undefined) {
+              // Allocatable and Requested are hidden; GPUs is not.
+              description = `${node.requested} requested`;
+            }
+            return <CellText title={String(free)} description={description} />;
           }
           return (
             <UnknownCell
@@ -733,6 +754,32 @@ export function phoneCapacityColumns(columns: GpuCapacityColumns): string[] {
   return columns.budget ? ['name', 'budget'] : ['name'];
 }
 
+/**
+ * Each column's minimum width, px: its header with the sort arrow and the
+ * padding, and its usual value ("21.6 GiB free", "3 models · 33.0 GiB").
+ */
+const CAPACITY_COLUMN_MIN_WIDTHS: Record<string, number> = {
+  name: 160,
+  installation: 130,
+  product: 120,
+  memory: 90,
+  // "6 allocatable" under the count, in the narrow layout.
+  total: 110,
+  allocatable: 110,
+  requested: 110,
+  // "12 requested" under the count, in the narrow layout.
+  free: 110,
+  budget: 160,
+  cache: 170,
+};
+
+/** The columns a card too narrow for every one leaves out first. */
+const CAPACITY_COLUMNS_DROPPED_FIRST = [
+  'installation',
+  'allocatable',
+  'requested',
+];
+
 export function GpuCapacityPanel({
   nodes,
   installations,
@@ -740,7 +787,6 @@ export function GpuCapacityPanel({
   isLoading,
   hideColumns,
 }: GpuCapacityPanelProps) {
-  const isPhone = usePhoneLayout();
   const columns = useMemo(() => columnsForNodes(nodes), [nodes]);
   const noCacheHints = useMemo(
     () =>
@@ -751,27 +797,62 @@ export function GpuCapacityPanel({
       ),
     [nodes],
   );
-  const columnConfig = useMemo(
-    () =>
+  const showInstallation = !hideColumns?.includes('installation');
+  const columnsFor = useCallback(
+    (layout: Omit<CapacityLayout, 'showInstallation'>) =>
       getColumnConfig(columns, noCacheHints, {
-        isPhone,
-        showInstallation: !hideColumns?.includes('installation'),
+        ...layout,
+        showInstallation,
       }).filter(column => !hideColumns?.includes(column.id as 'installation')),
-    [columns, noCacheHints, hideColumns, isPhone],
+    [columns, noCacheHints, hideColumns, showInstallation],
   );
-  const shownColumns = usePhoneColumns(
-    columnConfig,
-    phoneCapacityColumns(columns),
+  // Every column, each holding its header and value whole; too narrow for
+  // that, without Environment, Allocatable and Requested; too narrow for
+  // the rest (beside the side rail too, not only at phone width), the
+  // compact layout.
+  const fittingColumnsFor = useCallback(
+    (tier: FittingTier) =>
+      columnsFor({ isCompact: false, isNarrow: tier !== 'full' }),
+    [columnsFor],
   );
+  const fit = useFittingColumns(fittingColumnsFor, {
+    minWidths: CAPACITY_COLUMN_MIN_WIDTHS,
+    dropFirst: CAPACITY_COLUMNS_DROPPED_FIRST,
+  });
+  const isCompact = fit.isCompact;
+  const phoneColumns = useMemo(
+    () => columnsFor({ isCompact: true }),
+    [columnsFor],
+  );
+  const keptColumns = useMemo(() => phoneCapacityColumns(columns), [columns]);
+  const compactColumns = usePhoneColumns(phoneColumns, keptColumns, {
+    compact: isCompact,
+  });
+  const shownColumns = isCompact ? compactColumns : fit.columns;
+  const containerRef = fit.ref;
   const hasHost = useMemo(() => nodes.some(isHostMemoryNode), [nodes]);
   const hasIneligible = useMemo(
     () => nodes.some(node => node.eligible === false),
     [nodes],
   );
+  // The default sort, on Environment, moves to the node's name while the
+  // narrow or the compact layout hides it, as does a sort on any column
+  // they hide.
+  const hiddenColumns = useMemo(
+    () => [
+      ...(hideColumns ?? []),
+      ...(isCompact
+        ? phoneColumns
+            .map(column => column.id)
+            .filter(id => !keptColumns.includes(id))
+        : fit.hiddenIds),
+    ],
+    [hideColumns, isCompact, phoneColumns, keptColumns, fit.hiddenIds],
+  );
   const { sort, onSortChange } = useVisibleSort(
     BY_INSTALLATION,
     BY_NAME,
-    hideColumns,
+    hiddenColumns,
   );
   const { tableProps } = useTable<GpuNode>({
     mode: 'complete',
@@ -828,7 +909,7 @@ export function GpuCapacityPanel({
 
   return (
     <InfoCard title="GPU capacity">
-      <Flex direction="column" gap="3">
+      <Flex ref={containerRef} direction="column" gap="3">
         <Text as="p" variant="body-small" color="secondary">
           {columns.gpu &&
             'Product and memory come from gpu-feature-discovery labels, allocatable from the device plugin, and free is allocatable minus the GPUs that pods request.'}

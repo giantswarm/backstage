@@ -86,6 +86,8 @@ function getColumnConfig(
       label: 'Status',
       isSortable: true,
       width: '10%',
+      // The header with its sort icon.
+      minWidth: 96,
       cell: row => (
         <Cell>{row.draft ? <Badge size="small">Draft</Badge> : null}</Cell>
       ),
@@ -95,6 +97,8 @@ function getColumnConfig(
       label: 'Last updated',
       isSortable: true,
       width: '14%',
+      // The header with its sort icon.
+      minWidth: 152,
       cell: row => (
         <Cell>
           {row.updatedAt ? (

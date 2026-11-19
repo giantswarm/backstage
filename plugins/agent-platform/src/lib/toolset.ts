@@ -20,14 +20,19 @@ import type {
   RemoteMCPServer,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  CONNECTOR_REACH_LABELS,
   connectorDisplayNames,
+  isOrganizationServerKey,
+  mcpServerStateSeverity,
   TOOL_GROUPS,
+  type MCPServerState,
   type FilterToolsResponse,
   type ToolGroupKey,
   type ToolSummary,
   type ToolsetPreset,
 } from '@giantswarm/backstage-plugin-muster';
 import { countNoun, INITIAL_ROWS } from '@giantswarm/backstage-plugin-ui-react';
+import { PLATFORM_TENANT_NAMESPACE } from './tenants';
 
 /** The request header the Generic chart renders a toolset into. */
 export const TOOLSET_HEADER = 'X-Muster-Toolset';
@@ -40,12 +45,6 @@ export const TOOLSET_HEADER = 'X-Muster-Toolset';
  * gateway wherever they like.
  */
 export const MUSTER_MCP_SERVER_NAME = 'muster';
-
-/**
- * Inline selectors are capped platform-wide (muster, the agent chart and
- * agent-manager each refuse more); this mirrors that cap, it does not set it.
- */
-export const MAX_INLINE_SELECTORS = 32;
 
 export const SELECTOR_KINDS = ['preset', 'server', 'workflow', 'tool'] as const;
 export type SelectorKind = (typeof SELECTOR_KINDS)[number];
@@ -123,22 +122,23 @@ export function selectorProblem(raw: string): string | undefined {
 }
 
 /**
- * Everything wrong with a whole toolset, for the step to block Continue on.
- * Empty when the toolset is acceptable. An empty list is not reported here:
+ * Selector grammar and advertised count problems for immediate feedback.
+ * An empty list is not reported here:
  * the step reads "nothing chosen yet" as its own state. `describeCap` words
  * the cap problem where the catalogue can say what to reduce.
  */
 export function toolsetProblems(
   selectors: string[],
   describeCap?: (selectors: string[]) => string,
+  maxSelectors?: number,
 ): string[] {
   const problems = selectors
     .map(selectorProblem)
     .filter((problem): problem is string => problem !== undefined);
-  if (selectors.length > MAX_INLINE_SELECTORS) {
+  if (maxSelectors !== undefined && selectors.length > maxSelectors) {
     problems.push(
       describeCap?.(selectors) ??
-        `This toolset needs ${selectors.length} selectors but may list at most ${MAX_INLINE_SELECTORS}, so choose fewer connectors or tools.`,
+        `This toolset needs ${selectors.length} selectors but may list at most ${maxSelectors}, so choose fewer connectors or tools.`,
     );
   }
   return problems;
@@ -283,6 +283,47 @@ export function toggleSelector(current: string[], selector: string): string[] {
  */
 export function normalizeSelection(selectors: string[]): string[] {
   return selectors.filter(selector => selector !== PRESET_NONE);
+}
+
+/**
+ * The selection an agent keeps when its namespace changes from `leaving` to
+ * `tenant`: without the servers of another namespace than `tenant`
+ * (`server:<namespace>/<name>`), which its agents alone are offered, nor the
+ * tools picked one by one from the servers of the organization it leaves
+ * (`tool:x_<leaving>_…`; muster refuses a shared server whose exposed names
+ * start like that), except the platform's namespace, whose name a shared
+ * server's tools may start with. `tenant` `null` is no namespace of this
+ * installation, for an agent moved to another one: every organization's
+ * servers go. The selection as it is while no namespace is chosen
+ * (`undefined`), when every server is offered.
+ */
+export function selectionForTenant(
+  selectors: string[],
+  leaving: string | undefined,
+  tenant: string | null | undefined,
+): string[] {
+  if (tenant === undefined || leaving === tenant) {
+    return selectors;
+  }
+  const leftTools =
+    leaving && leaving !== PLATFORM_TENANT_NAMESPACE
+      ? `x_${leaving}_`
+      : undefined;
+  const kept = selectors.filter(selector => {
+    const parsed = parseSelector(selector);
+    if (parsed?.kind === 'server') {
+      return (
+        !isOrganizationServerKey(parsed.name) ||
+        (tenant !== null && parsed.name.startsWith(`${tenant}/`))
+      );
+    }
+    return !(
+      parsed?.kind === 'tool' &&
+      leftTools &&
+      parsed.name.startsWith(leftTools)
+    );
+  });
+  return kept.length === selectors.length ? selectors : kept;
 }
 
 /**
@@ -493,8 +534,8 @@ export function describeToolset(toolset: DeclaredToolset | undefined): {
 export interface ServerInfo {
   /**
    * muster's key for the server — the CR name, `<namespace>/<name>` for a
-   * server of an organization's namespace: what `server:<name>` selects for a
-   * single server.
+   * server outside muster's namespace (an organization's): what
+   * `server:<name>` selects for a single server.
    */
   name: string;
   /**
@@ -508,6 +549,8 @@ export interface ServerInfo {
   toolNamePrefix: string;
   /** The CR's `.status.state`, e.g. `Auth Required`. */
   state?: string;
+  /** Whether the CR is deactivated (`spec.suspended`). */
+  suspended?: boolean;
   /** Whether the server declares per-user OAuth (`spec.auth.type: oauth`). */
   oauth: boolean;
   /**
@@ -694,10 +737,23 @@ export interface ServerBucket {
   canSignIn: boolean;
   /** `.status.state` of the CR (the worst one, for a family). */
   state?: string;
+  /**
+   * Whether muster can reach it, as the Customize page's Connection says
+   * ({@link connectionOf}); absent while it is connected, and for a server no
+   * CR describes.
+   */
+  connection?: ConnectorConnection;
+  /** The `x_<segment>` prefixes of its tools, every member's for a family. */
+  toolNamePrefixes?: string[];
   /** Present when muster listed tools for a server no CR describes. */
   unknownServer: boolean;
   /** The CRs' tags, every member's for a family; none when absent. */
   tags?: string[];
+  /**
+   * A server of an organization's own namespace (muster keys it
+   * `<namespace>/<name>`), not one of muster's shared servers.
+   */
+  organizationOwn?: boolean;
 }
 
 /** A bucket's name as people read it: its display name, else its name. */
@@ -705,6 +761,56 @@ export function bucketLabel(
   bucket: Pick<ServerBucket, 'name' | 'displayName'>,
 ) {
   return bucket.displayName ?? bucket.name;
+}
+
+/** A connector muster does not reach in full: the Customize page's terms. */
+export type ConnectorConnection = 'not-connected' | 'partial' | 'deactivated';
+
+/** How a connector's connection reads, as the Customize page's Connection. */
+export function connectionLabel(connection: ConnectorConnection): string {
+  return CONNECTOR_REACH_LABELS[connection];
+}
+
+/**
+ * How muster reaches a connector's CRs, by the rule of the Customize page's
+ * `connectorReach`: a single server is deactivated when suspended, else not
+ * connected unless its state's severity is `ok`; a family is partly connected
+ * while some members are `ok`, not connected while none is. Undefined when
+ * it is connected.
+ */
+export function connectionOf(
+  members: readonly Pick<ServerInfo, 'state' | 'suspended'>[],
+  isFamily: boolean,
+): ConnectorConnection | undefined {
+  const healthy = members.filter(
+    member =>
+      mcpServerStateSeverity(member.state as MCPServerState | undefined) ===
+      'ok',
+  ).length;
+  if (isFamily) {
+    if (healthy === members.length) {
+      return undefined;
+    }
+    return healthy > 0 ? 'partial' : 'not-connected';
+  }
+  if (members.some(member => member.suspended)) {
+    return 'deactivated';
+  }
+  return healthy === members.length ? undefined : 'not-connected';
+}
+
+/**
+ * The connection a connector shows in place of its tool count: it is not
+ * connected (in full) and lists none of its tools, so "0 tools" would read as
+ * a connector without tools. Undefined otherwise, including while it awaits
+ * a sign-in, which has its own wording.
+ */
+export function shownConnection(
+  bucket: Pick<ServerBucket, 'needsSignIn' | 'tools' | 'connection'>,
+): ConnectorConnection | undefined {
+  return bucket.needsSignIn || bucket.tools.length > 0
+    ? undefined
+    : bucket.connection;
 }
 
 export interface CatalogueGroup {
@@ -777,7 +883,12 @@ export function buildCatalogue(
     servers.map(server => [server.name, surfaceName(server)] as const),
   );
   const labels = connectorLabels(servers);
+  const members = new Map<string, ServerInfo[]>();
   for (const server of servers) {
+    members.set(surfaceName(server), [
+      ...(members.get(surfaceName(server)) ?? []),
+      server,
+    ]);
     const name = surfaceName(server);
     const existing = buckets.get(name);
     const needsSignIn =
@@ -789,6 +900,12 @@ export function buildCatalogue(
       existing.needsSignIn = existing.needsSignIn || needsSignIn;
       existing.canSignIn = existing.canSignIn || server.oauth;
       existing.state = worstState(existing.state, server.state);
+      existing.toolNamePrefixes = [
+        ...new Set([
+          ...(existing.toolNamePrefixes ?? []),
+          server.toolNamePrefix,
+        ]),
+      ];
       if (server.tags?.length) {
         existing.tags = [
           ...new Set([...(existing.tags ?? []), ...server.tags]),
@@ -805,8 +922,10 @@ export function buildCatalogue(
       needsSignIn,
       canSignIn: server.oauth || needsSignIn,
       state: server.state,
+      toolNamePrefixes: [server.toolNamePrefix],
       unknownServer: false,
       ...(server.tags?.length ? { tags: [...server.tags] } : {}),
+      ...(isOrganizationServerKey(name) ? { organizationOwn: true } : {}),
       group: server.group,
     });
   }
@@ -830,6 +949,7 @@ export function buildCatalogue(
         needsSignIn: needsAuth.has(surface),
         canSignIn: needsAuth.has(surface),
         unknownServer: true,
+        ...(isOrganizationServerKey(surface) ? { organizationOwn: true } : {}),
         group: 'registered',
       };
       buckets.set(surface, bucket);
@@ -848,6 +968,7 @@ export function buildCatalogue(
         needsSignIn: true,
         canSignIn: true,
         unknownServer: true,
+        ...(isOrganizationServerKey(name) ? { organizationOwn: true } : {}),
         group: 'registered',
       });
     }
@@ -858,7 +979,13 @@ export function buildCatalogue(
     // Tools listed means the session sees the server: the CR-level state is
     // then stale for this caller, and the sign-in offer would be misleading.
     const needsSignIn = rest.tools.length === 0 && rest.needsSignIn;
-    group(key).servers.push({ ...rest, needsSignIn });
+    const crs = members.get(rest.name);
+    const connection = crs ? connectionOf(crs, rest.isFamily) : undefined;
+    group(key).servers.push({
+      ...rest,
+      needsSignIn,
+      ...(connection ? { connection } : {}),
+    });
   }
 
   for (const entry of groups.values()) {
@@ -921,6 +1048,32 @@ export function toolsetWasEvaluated(
 /** Whether muster refused the toolset for naming a preset it does not know (D12). */
 export function isUnknownPresetError(message: string): boolean {
   return /unknown preset/i.test(message);
+}
+
+/**
+ * Statuses that say nothing about the toolset itself: the caller's session,
+ * its permission, or the request's timing.
+ */
+const NOT_A_TOOLSET_REFUSAL = new Set([401, 403, 408, 429]);
+
+/**
+ * Whether muster refused the toolset itself (a selector, the count, the size,
+ * an unknown preset), as opposed to failing to answer. Muster's toolset
+ * refusals start with `toolset [` or `toolset encodes to`; the backend may
+ * answer them without a 4xx status, so the text decides when the status does
+ * not.
+ */
+export function isToolsetRefusal(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (isUnknownPresetError(error.message)) return true;
+  if (/\btoolset (\[|encodes to )/i.test(error.message)) return true;
+  const status = (error as Error & { status?: unknown }).status;
+  return (
+    typeof status === 'number' &&
+    status >= 400 &&
+    status < 500 &&
+    !NOT_A_TOOLSET_REFUSAL.has(status)
+  );
 }
 
 /** The `server:` selectors of a toolset whose server the caller cannot see. */

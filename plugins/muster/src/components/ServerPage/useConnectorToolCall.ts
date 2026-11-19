@@ -5,8 +5,15 @@ import { connectorToolEvent } from '../../lib/connectorToolEvents';
 import { useMusterMutationRefresh } from '../MusterInstanceProvider';
 
 /** One call of a muster connector tool, with its arguments. */
+/** muster's tools that act on a connector from its page. */
+export type ConnectorActionTool =
+  | 'core_mcpserver_delete'
+  | 'core_service_start'
+  | 'core_service_stop'
+  | 'core_service_restart';
+
 export type ConnectorToolCall = {
-  tool: string;
+  tool: ConnectorActionTool;
   args: Record<string, unknown>;
 };
 

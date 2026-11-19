@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+/* eslint-disable @backstage/no-mixed-plugin-imports -- The Agent Platform composes installation APIs across plugins. */
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   toastApiRef,
@@ -53,15 +54,17 @@ import { isMarkedDefault, markedIn } from '../../lib/defaultModel';
 import { slugify } from '../../lib/slugify';
 import { OWNER_LABEL, ownerOf, tenantInSentence } from '../../lib/tenants';
 import { useModelNamespaces } from '../../hooks/useModelNamespaces';
-import { useSaveModelConfig } from '../../hooks/useSaveModelConfig';
 import { useSaveOrganizationModel } from '../../hooks/useSaveOrganizationModel';
-import {
-  AgentManagerError,
-  AgentManagerNotConnectedError,
-} from '../../lib/agentManager';
+import { useModelSettingsSupport } from '../../hooks/useModelSettingsSupport';
+import { refusedSettingErrors } from '../../lib/modelSettings';
 import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
-import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
-import { PortalSessionEndedError } from '../../lib/portalSession';
+import { OrganizationWriteError } from '../OrganizationWriteError';
+import { PullRequestOutcome } from '../PullRequestOutcome';
+import type { CredentialCommit } from '../../lib/credentialOperations';
+import {
+  CONTENT_PULL_REQUEST_NEXT,
+  CONTENT_PULL_REQUEST_UNCHANGED,
+} from '../../lib/organizations';
 import { ModelConfigFormFields } from '../ModelConfigForm';
 import { useModelConfigs } from '../ModelConfigsProvider';
 import { DefaultModelChoice } from './DefaultModelChoice';
@@ -70,10 +73,39 @@ import {
   useOrganizationDirectory,
 } from '../OrganizationDirectoryProvider';
 
+/**
+ * Why the primary button stays off after a save opened a pull request: the
+ * pull request holds the change, and the next edit comes after its merge.
+ */
+function PullRequestHeld({
+  id,
+  commit,
+}: {
+  id: string;
+  commit: CredentialCommit;
+}) {
+  if (!commit.pullRequest) {
+    return (
+      <Text id={id} variant="body-small" color="secondary">
+        Git already holds this change.
+      </Text>
+    );
+  }
+  return (
+    <Text id={id} variant="body-small" color="secondary">
+      {commit.number ? 'Pull request ' : 'A '}
+      <Link href={commit.pullRequest} variant="body-small">
+        {commit.number ? `#${commit.number}` : 'pull request'}
+      </Link>{' '}
+      holds this change. Edit the model again after it is merged.
+    </Text>
+  );
+}
+
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
 
-/** Why Connect model waits while the Owner choices are read. */
+/** Why Add model waits while the Owner choices are read. */
 const CHOOSING_OWNER_REASON =
   'Checking which Organizations you may add a model for…';
 
@@ -88,10 +120,15 @@ export type ModelEdit = {
   modelConfig: ModelConfig;
   /** The model's own page: where Close, Cancel and a save lead. */
   detailHref: string;
+  /**
+   * A save opens a pull request (the organization's content is written in
+   * mode commit) rather than changing the model live.
+   */
+  byPullRequest?: boolean;
 };
 
 /**
- * Connect a model (`/customize/models/new`): one step that writes a
+ * Add a model (`/customize/models/new`): one step that writes a
  * kagent ModelConfig and its key Secret. Plain fields first — display name,
  * provider and model, the optional API key — and the technical name (filled
  * in from the display name) and TLS verification under More options, the
@@ -158,7 +195,6 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   // defaults fit most models.
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
 
-  const platformSave = useSaveModelConfig();
   const organizationSave = useSaveOrganizationModel(installation);
   const organizationDirectory = useOrganizationDirectory();
   const { directory } = organizationDirectory;
@@ -204,9 +240,21 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   // An organization's model is saved through agent-manager, never with a
   // Secret written from here; the platform's with the person's own writes.
   const organization = directory.get(namespace);
-  const { isSaving, error } = organization ? organizationSave : platformSave;
-  const { save: savePlatform, reset: resetPlatform } = platformSave;
+  // An organization's model has its settings (token limit, prompt caching)
+  // where the installation's agent-manager takes them; elsewhere they stay
+  // hidden and are never sent.
+  const settingsSupported = useModelSettingsSupport(
+    organization ? installation : undefined,
+  );
+  const showSettings = Boolean(organization) && settingsSupported === true;
+  const { isSaving, error } = organizationSave;
+  // agent-manager's refusal of a setting the form shows goes under it (the
+  // `forms` skill), and leaves once that setting changes.
+  const settingErrors = refusedSettingErrors(error);
   const { save: saveOrganization, reset: resetOrganization } = organizationSave;
+  // The pull request a save opened, in mode commit: the page stays with it,
+  // and nothing more is saved from it.
+  const [pullRequest, setPullRequest] = useState<CredentialCommit>();
   const providers = useMemo<readonly ModelProvider[]>(() => {
     const offered = providersFor(namespace, directory);
     return offered.includes(initialValues.provider) || !edit
@@ -226,11 +274,6 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         insecureSkipTlsVerify: false,
       }));
     }
-    // An organization's key is entered on the credential form only: one
-    // typed before the owner changed is not kept.
-    if (routed && values.apiKey) {
-      setValues(prev => ({ ...prev, apiKey: '' }));
-    }
   }, [
     providers,
     values.provider,
@@ -238,7 +281,6 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     routed,
     values.endpoint,
     values.insecureSkipTlsVerify,
-    values.apiKey,
   ]);
 
   // The namespace's default marks as listed, for the default choice. The save
@@ -285,8 +327,14 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
       if (patch.name !== undefined) {
         setNameEdited(true);
       }
+      if (Object.keys(patch).some(field => field in settingErrors)) {
+        resetOrganization();
+      }
       setValues(prev => {
         const next = { ...prev, ...patch };
+        if (patch.provider !== undefined) {
+          next.noCredential = patch.provider === 'Ollama';
+        }
         if (
           !edit &&
           patch.displayName !== undefined &&
@@ -298,7 +346,9 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         return next;
       });
     },
-    [edit, nameEdited],
+    // settingErrors is derived fresh each render; key on its fields.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [edit, nameEdited, resetOrganization, Object.keys(settingErrors).join()],
   );
 
   const installationError =
@@ -321,16 +371,17 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   );
   // A problem with a field behind More options opens it, so the field that
   // says what is wrong is never out of sight (nor out of the focus's reach).
-  const hasHiddenProblem = !routed && Boolean(fieldErrors.name);
+  const hasHiddenProblem = Boolean(fieldErrors.name);
   // An edit with nothing changed has nothing to save — not a field's fault,
   // so the button waits instead of pointing at one.
   const isChanged =
-    !edit ||
-    modelConfigFormChanged(values, initialValues) ||
-    (routed && replaceKey);
+    !edit || modelConfigFormChanged(values, initialValues) || replaceKey;
   // An organization's model that goes on to the credential form: a new one,
   // or one whose key is replaced.
-  const continuesToKey = routed && (!edit || replaceKey);
+  const continuesToKey =
+    values.provider !== 'Ollama' &&
+    !values.noCredential &&
+    (!edit || replaceKey);
 
   // Where Close and Cancel leave to: the model itself when editing; else the
   // shell's Customize screen's Models tab, or, where the app binds none, the
@@ -348,31 +399,40 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     if (!isChanged) {
       return;
     }
-    resetPlatform();
     resetOrganization();
-    let saved: { isDefault: boolean; form?: string };
+    let saved: { isDefault: boolean; form?: string; commit?: CredentialCommit };
     try {
-      saved = organization
-        ? await saveOrganization({
-            organization,
-            values,
-            original: edit?.modelConfig,
-            makeDefault,
-            replaceKey: Boolean(edit) && continuesToKey,
-          })
-        : await savePlatform({
-            installation: installation!,
-            values,
-            original: edit?.modelConfig,
-            ...(edit ? {} : { namespace, makeDefault, expectedMarks: marks }),
-          });
+      saved = await saveOrganization({
+        organization,
+        namespace,
+        values,
+        original: edit?.modelConfig,
+        makeDefault,
+        replaceKey: Boolean(edit) && replaceKey,
+      });
     } catch {
       // Left on the page: the mutation error renders in the alert below.
       return;
     }
     if (saved.form) {
+      // The change opened its own pull request before the key's: the form
+      // shows only the key's, so this one stays in a toast until closed.
+      if (saved.commit?.pullRequest) {
+        toastApi.post({
+          title: `Pull request${saved.commit.number ? ` #${saved.commit.number}` : ''} opened`,
+          description: `The model change is in it. ${CONTENT_PULL_REQUEST_NEXT} The new key goes in a pull request of its own.`,
+          status: 'success',
+          links: [
+            { label: 'Review pull request', href: saved.commit.pullRequest },
+          ],
+        });
+      }
       // The model is written once its key is saved there.
       navigate(saved.form);
+      return;
+    }
+    if (saved.commit) {
+      setPullRequest(saved.commit);
       return;
     }
     const label = values.displayName.trim() || values.name;
@@ -401,15 +461,11 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     }
   }, [
     edit,
-    installation,
     values,
     namespace,
     organization,
-    continuesToKey,
+    replaceKey,
     makeDefault,
-    marks,
-    savePlatform,
-    resetPlatform,
     saveOrganization,
     resetOrganization,
     toastApi,
@@ -432,25 +488,38 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
   // Memoized so the frame's footer slot only updates when the handlers change,
   // not on every keystroke (see useProvidePageHeaderActions). Cancel belongs
   // to the frame's footer, so only the primary lives here.
+  // After a save opened a pull request the page saves nothing more: the
+  // line beside the button says why, and links the pull request.
+  const pullRequestHeldId = useId();
   const actions = useMemo(() => {
     let label: string;
     if (continuesToKey) {
-      label = isSaving ? 'Preparing…' : 'Continue to the key';
+      label = isSaving ? 'Preparing…' : 'Continue to credential';
     } else if (edit) {
       label = isSaving ? 'Saving…' : 'Save changes';
     } else {
-      label = isSaving ? 'Connecting…' : 'Connect model';
+      label = isSaving ? 'Adding…' : 'Add model';
     }
     const primary = (describedBy?: string) => (
       <Button
         variant="primary"
         onPress={onSubmit}
-        isDisabled={Boolean(heldReason) || isSaving || !isChanged}
+        isDisabled={
+          Boolean(heldReason) || isSaving || !isChanged || Boolean(pullRequest)
+        }
         aria-describedby={describedBy}
       >
         {label}
       </Button>
     );
+    if (pullRequest) {
+      return (
+        <Flex align="center" gap="3" style={{ flexWrap: 'wrap' }}>
+          <PullRequestHeld id={pullRequestHeldId} commit={pullRequest} />
+          {primary(pullRequestHeldId)}
+        </Flex>
+      );
+    }
     // Until the owners are known, a model sent now would go to the platform
     // although an Organization the person administers is still to be
     // offered: the button waits and says why.
@@ -458,12 +527,21 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
       return <DisabledAction reason={heldReason}>{primary}</DisabledAction>;
     }
     return primary();
-  }, [edit, onSubmit, isSaving, isChanged, continuesToKey, heldReason]);
+  }, [
+    edit,
+    onSubmit,
+    isSaving,
+    isChanged,
+    continuesToKey,
+    heldReason,
+    pullRequest,
+    pullRequestHeldId,
+  ]);
   useProvidePageHeaderActions(actions);
 
   return (
     <WizardFrame
-      title={edit ? 'Edit model' : 'Connect a model'}
+      title={edit ? 'Edit model' : 'Add a model'}
       documentTitle={
         edit
           ? [`Edit ${edit.modelConfig.getDisplayName()}`, 'Models']
@@ -479,16 +557,19 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     >
       {edit ? (
         <WizardStepHeading title="Change the model">
-          Agents on it pick up the change when you save.
+          {edit.byPullRequest
+            ? 'Saving opens a pull request. Agents on the model pick up the change after it is merged.'
+            : 'Agents on it pick up the change when you save.'}
         </WizardStepHeading>
       ) : (
         <WizardStepHeading title="Describe the model">
-          Agents run on the models you connect here.
+          Agents run on the models you add here: a provider's model, reached
+          with your key and billed by the provider per token.
           {hostingHref ? (
             <>
               {' '}
-              To run a model on your own GPUs instead, use{' '}
-              <Link href={hostingHref}>Model hosting</Link>.
+              To run a model on your own cluster nodes instead, billed by
+              capacity, use <Link href={hostingHref}>Model hosting</Link>.
             </>
           ) : null}
         </WizardStepHeading>
@@ -583,10 +664,10 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         validation={validation}
         moreOptionsOpen={moreOptionsOpen}
         onMoreOptionsOpenChange={setMoreOptionsOpen}
-        originalProvider={edit?.modelConfig.getProvider()}
-        originalProjectID={edit ? initialValues.projectID : undefined}
         replaceKey={replaceKey}
         onReplaceKeyChange={setReplaceKey}
+        settings={showSettings}
+        settingErrors={settingErrors}
       />
 
       {!edit && installation && (
@@ -605,72 +686,28 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         />
       )}
 
-      {error && (
-        <SaveError
+      {error && Object.keys(settingErrors).length === 0 && (
+        <OrganizationWriteError
           error={error}
           installation={installation ?? ''}
-          isEdit={Boolean(edit)}
           organization={organization?.organization}
+          signInAction="An organization's models are saved"
+          adminAction="adds or changes its models"
+          title={
+            edit ? 'Could not save the model' : 'Could not connect the model'
+          }
           onSignedIn={resetOrganization}
         />
       )}
-    </WizardFrame>
-  );
-}
 
-/**
- * Why the save failed, in words that say what to do: agent-manager's refusal
- * of a person who may not change the organization's models names that
- * right, and a muster session without agent-manager offers the sign-in.
- */
-function SaveError({
-  error,
-  installation,
-  isEdit,
-  organization,
-  onSignedIn,
-}: {
-  error: Error;
-  installation: string;
-  isEdit: boolean;
-  /** The organization the model is in, when it is one's. */
-  organization?: string;
-  onSignedIn: () => void;
-}) {
-  if (error instanceof PortalSessionEndedError) {
-    return <PortalSessionEndedAlert />;
-  }
-  if (error instanceof AgentManagerNotConnectedError) {
-    return (
-      <ConnectAgentManagerAlert
-        installation={installation}
-        message={error.message}
-        action="An organization's models are saved"
-        signInRequired={error.signInRequired}
-        onSignedIn={onSignedIn}
-      />
-    );
-  }
-  if (
-    organization &&
-    error instanceof AgentManagerError &&
-    error.code === 'forbidden'
-  ) {
-    return (
-      <Alert
-        status="danger"
-        title="Not permitted"
-        description={`Only an admin of the organization ${organization} adds or changes its models. Ask one of its admins to make the change, or to make you an admin. agent-manager answered: ${error.message}`}
-      />
-    );
-  }
-  return (
-    <Alert
-      status="danger"
-      title={
-        isEdit ? 'Could not save the model' : 'Could not connect the model'
-      }
-      description={error.message}
-    />
+      {pullRequest && (
+        <PullRequestOutcome
+          commit={pullRequest}
+          next={CONTENT_PULL_REQUEST_NEXT}
+          unchanged={CONTENT_PULL_REQUEST_UNCHANGED}
+          testId="model-pull-request"
+        />
+      )}
+    </WizardFrame>
   );
 }

@@ -60,6 +60,8 @@ export const useBarItemStyles = makeStyles({
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
+    // 11px: a one-word label under an icon in a 75px slot, as phone tab
+    // bars set them.
     fontSize: 11,
     lineHeight: '14px',
     fontWeight: 500,

@@ -13,6 +13,7 @@ import {
   searchModels,
   searchSkills,
   sortAgents,
+  usedByCell,
   usedByLabel,
 } from './customize';
 import type { DiscoveredSkill } from './skills';
@@ -208,6 +209,15 @@ describe('usage', () => {
     expect(usedByLabel(0)).toBe('Not used yet');
     expect(usedByLabel(1)).toBe('Used by 1 agent');
     expect(usedByLabel(3)).toBe('Used by 3 agents');
+  });
+
+  it('counts the agents under a Used by header, a dash for none', () => {
+    expect(usedByCell(0, 'model')).toEqual({
+      label: '–',
+      title: 'No agent uses this model',
+    });
+    expect(usedByCell(1, 'model')).toEqual({ label: '1 agent' });
+    expect(usedByCell(3, 'skill')).toEqual({ label: '3 agents' });
   });
 });
 

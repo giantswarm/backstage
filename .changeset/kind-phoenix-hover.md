@@ -1,0 +1,8 @@
+---
+'@giantswarm/backstage-plugin-gs': patch
+'@giantswarm/backstage-plugin-muster': patch
+'@giantswarm/backstage-plugin-agent-platform': patch
+'app': patch
+---
+
+When a sign-in elsewhere ends the portal session in this browser (Dex refuses the refresh with "already been claimed by another client"), the Agent Platform shows "You signed in somewhere else" with a "Sign in again" button. Meanwhile the Customize tabs leave their counts out, the Connectors and Workflows tabs say they could not read the list instead of "None of your environments runs muster", and the sessions rail asks for a sign-in instead of "No sessions yet". After a reload, the sign-in page (shell-style and classic) shows the same notice above the sign-in options. The gs plugin adds `useMainSessionEnd` and `GSAuthProvidersApi.getMainSessionEnd`.

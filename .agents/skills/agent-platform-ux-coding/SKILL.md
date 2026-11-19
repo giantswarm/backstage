@@ -6,9 +6,10 @@ description: Rules for building UI in the agent-platform shell — patterns to r
 # Agent Platform UI: UX and coding rules
 
 Load this skill before you touch anything that renders in the agent-platform
-shell: `/`, `/sessions/**`, `/usage/**`, `/profile` and `/customize/**`, built
-from `plugins/agent-platform`, `plugins/muster`, the shell components in
-`plugins/ui-react` and `packages/app/src/modules/agentShell`. The old
+shell: `/`, `/sessions/**`, `/usage/**`, `/profile`, `/customize/**` and,
+where configured, `/platform/**`, built from `plugins/agent-platform`,
+`plugins/muster`, the shell components in `plugins/ui-react`,
+`plugins/gs/src/components/platform` and `packages/app/src/modules/agentShell`. The old
 `/agent-platform/**` addresses only redirect. Where a page lives, how it is
 addressed and linked, and what adding or moving one takes are the
 [`urls`](../urls/SKILL.md) skill's rules.
@@ -62,6 +63,8 @@ none fits, in your report or PR. A new variant is allowed only when nothing in
 the catalogue below can serve. Visual tokens live in
 `packages/app/src/modules/agentShell/agent-shell.css` and `theme.ts`; extend
 them and never invent a palette.
+A page built from a mockup or design canvas also follows the
+[`mockups`](../mockups/SKILL.md) skill: its values map to these tokens.
 
 ### Page frame and navigation
 
@@ -100,6 +103,10 @@ them and never invent a palette.
   a search or filter is in force so it can be cleared. Selects use
   `searchableIf(options)` for type-ahead.
 - A list that matches nothing shows `CatalogNoMatch` with "Clear filters".
+- A list whose columns a person chooses puts `ColumnPicker` (`ui-react`) at
+  the end of its filter bar, keeps the choice with `useTableColumns`, and
+  leaves it out at phone width, where the list stacks. The Platform section's
+  clusters list is the precedent.
 - Card and row grids follow the existing presentation: avatar or tile plus
   bold name where the resource has an identity mark, stock `CellText`
   otherwise.
@@ -125,8 +132,21 @@ them and never invent a palette.
 
 ### States
 
+- Connector status describes the person's access, including for families.
+  A family's connected CRs do not prove personal access; a server that is not
+  running shows its own state, since no sign-in changes it. A family with
+  members waiting for a sign-in offers one Sign in (`FamilySignIn`: the
+  member's own sign-in, or `McpAuthDialog` with the waiting members) on its
+  row and its Tools tab; Instances is for diagnosis, linked only when members
+  fail for other reasons. Offer Sign in only where muster reports an
+  interactive sign-in, regardless of connector type. Authentication-method
+  labels describe configuration separately from access state.
+
 - Empty lists and not-found pages use `EmptyStateCard`; a not-found page adds a
-  back link. A failed read of a whole page is a danger `Alert` with a back link.
+  back link. A list read across environments names the ones that failed in
+  `UnreachableInstallationsAlert` (`ui-react`), with Try again, once every
+  environment answered; with nothing to show the failure is the list's answer
+  (`everything`), never an empty state. A failed read of a whole page is a danger `Alert` with a back link.
 - Loading a region uses `LoadingIndicator` with a "Reading …" label. Detail
   pages render their loading frame in the final geometry with
   `ShellPageTitleSkeleton`, `ShellPageBadgeSkeleton` and
@@ -264,7 +284,10 @@ them and never invent a palette.
 - Counts: `countNoun(n, noun)`. Name lists: `joinNames` and `groupNames`.
 - Numbers, durations and bytes: `formatCount`, `formatSeconds` and
   `formatBytes` in `agent-platform-common/src/formatNumbers.ts`. Relative dates:
-  `getRelativeDate` (`ui-react`). `formatSeconds` is the one duration
+  `getRelativeDate` (`ui-react`). Absolute local dates, all in `ui-react`:
+  `DateComponent`, `formatLocalDate` and `formatLocalDateFull`; in a compact
+  list cell, `formatLocalTime` (`14:05`) and `formatLocalDay` (`16 Oct`, with
+  the year when it is not this one). `formatSeconds` is the one duration
   format — "420 ms", "1.2 s", "3 s", "18 s", "2 min 30 s", "1 h 5 min";
   milliseconds go through `formatMilliseconds`. Never print raw milliseconds or floor to
   minutes by hand.
@@ -374,9 +397,12 @@ them and never invent a palette.
   flips the radio to "Only the tools I choose below"
   (`NewAgentToolsPage/connectorChoice.ts`).
 - Full gateway keeps the grid off, and own picks from it start empty.
-- The 32-selector cap (`MAX_INLINE_SELECTORS`) mirrors a platform-wide limit
-  in muster, the agent chart and agent-manager. Keep its error; do not lift
-  it in Backstage alone.
+- Read the selector cap from `create_agent`'s input schema through Muster's
+  `describe_tool`; when it is absent, leave validation to the server.
+  Show Muster's resolution failures beside Continue and wait for the check;
+  keep the byte budget in Muster and the chart, not in the browser. Send the
+  selector list in the filter request body so UTF-8 URL expansion does not
+  exceed the HTTP request-header budget.
 
 ### Skills
 
@@ -419,11 +445,18 @@ them and never invent a palette.
   `agent-shell.css` fallback scrolls tables with four or more columns at 7rem
   each; it is a safety net, not a design.
 - The tab underline is measured in screen coordinates. Never scroll bui's
-  `TabList` yourself; `RouteTabs` owns the phone tab strip.
+  `TabList` yourself; `RouteTabs` owns the tab strip's scrolling at every
+  width where its tabs don't fit (phone and narrow windows), with scroll
+  buttons for a mouse.
 - react-aria draws tab strips one commit late, which matters for tests and
   observers.
 - Form controls are 16px at phone width, set in `agent-shell.css`, to stop
   iOS from zooming on focus. Do not set them smaller.
+- No text below 12px. A caption is `body-small` with `color="secondary"`
+  (bui's `body-x-small` renders at 12px too: the app sets bui's 10px token to
+  12px). Smaller is an exception with a comment saying why, 10px in
+  `var(--gs-font-size-exception)` ("Text size: 12px at the smallest" in
+  `docs/ui.md`).
 - bui `Alert` has no `onClose`; use `customActions` with a tertiary small
   `ButtonIcon` labelled "Close".
 - bui's single `Select` logs an "uncontrolled to controlled" warning under
@@ -484,5 +517,6 @@ is a defect; one with it is not a finding. The kept list:
   `agentlab-mobile` (375×812, touch) projects, listed in
   `e2e/agentlab/portalModes.ts`. Use `exact: true` on locators, because
   Playwright matches names by substring.
-- Verify a page change live at desktop width and at 375px before you call it
+- Verify a page change live at desktop width and at 375px, and run the
+  [`layout-check`](../layout-check/SKILL.md) skill on it, before you call it
   done.

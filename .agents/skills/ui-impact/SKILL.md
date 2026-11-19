@@ -31,6 +31,9 @@ Commands run from the repo root; `S=.claude/skills/ui-impact`.
 - **Again after every push.** The block names the commit it was made at
   (`sha`); see "Keeping it current".
 
+The pages you map here are the pages to measure with the
+[`layout-check`](../layout-check/SKILL.md) skill before you ask for review.
+
 ## 1. Read your own diff
 
 ```bash
@@ -173,9 +176,8 @@ block's `sha` is the head. A push by someone other than the author (a
 co-author, GitHub's "Update branch", Renovate) leaves the block stale until
 the author or the triage redoes it.
 
-The manual test doesn't replace your own checks: a change to a page is still
-verified in a browser against agentlab and ships with its spec (`AGENTS.md`,
-"Test").
+The manual test doesn't replace your own checks (`AGENTS.md`, "Fixture mode
+and the layout check").
 
 ## Keeping it current
 

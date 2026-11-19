@@ -110,10 +110,16 @@ export function createWorkspaceManagerFake({
   managerSignIn = 'connected',
   grants = {},
   appGrants = {},
+  owners,
 }: {
   providers: WorkspaceProvider[];
   repositories: FakeRepository[];
   workspaces?: Workspace[];
+  /**
+   * `list_owners`' answer, by provider instance; absent, the tool is refused
+   * as by a manager without it, and the owner stays a text field.
+   */
+  owners?: Record<string, string[]>;
   /** workspace-manager in the person's muster session (`auth://status`). */
   managerSignIn?: 'connected' | 'auth_required';
   /**
@@ -142,6 +148,16 @@ export function createWorkspaceManagerFake({
   const tools: Record<string, (args: any) => unknown> = {
     // A copy per answer, as over the wire: a test changes `providers` between reads.
     list_providers: () => ({ providers: providers.map(p => ({ ...p })) }),
+    ...(owners
+      ? {
+          list_owners: (args: { provider: string }) => ({
+            owners: (owners[args.provider] ?? []).map(name => ({
+              name,
+              kind: 'organization',
+            })),
+          }),
+        }
+      : {}),
     list_repositories: args => {
       const search = (args.search ?? '').toLowerCase();
       const ofOwner = repositories.filter(

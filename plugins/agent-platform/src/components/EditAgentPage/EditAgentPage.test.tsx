@@ -5,6 +5,7 @@ import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Agent editing uses the shared Muster API and authentication types.
 import {
   MCPServer,
   musterApiRef,
@@ -90,6 +91,8 @@ function modelConfig(name: string, namespace: string, displayName: string) {
     getName: () => name,
     getNamespace: () => namespace,
     getDisplayName: () => displayName,
+    getDisplayNameAnnotation: () => displayName,
+    isPersonalChatGptLogin: () => false,
     getModel: () => `${name}-model`,
     getProvider: () => 'Anthropic',
   };
@@ -108,17 +111,25 @@ jest.mock('../ModelConfigsProvider', () => ({
 }));
 
 // The Tools step has its own suite; here it only hands over to Review, through
-// the wizard's own links.
+// the wizard's own links, and unpicks the organization's connectors as its
+// section does.
 jest.mock('../NewAgentToolsPage', () => ({
   NewAgentToolsPage: function MockToolsStep() {
     const { useNavigate } = jest.requireActual('react-router-dom');
     const { useAgentWizardLinks } = jest.requireActual('../AgentWizardFrame');
+    const { useNewAgentForm } = jest.requireActual('../NewAgentFormProvider');
     const navigate = useNavigate();
     const { review } = useAgentWizardLinks();
+    const { setConnectors } = useNewAgentForm();
     return (
-      <button type="button" onClick={() => review && navigate(review())}>
-        To review
-      </button>
+      <>
+        <button type="button" onClick={() => setConnectors([])}>
+          Unpick the organization's connectors
+        </button>
+        <button type="button" onClick={() => review && navigate(review())}>
+          To review
+        </button>
+      </>
     );
   },
 }));
@@ -420,7 +431,7 @@ function grafanaCloud() {
       kind: 'MCPServer',
       metadata: {
         name: 'grafana-cloud',
-        namespace: 'muster',
+        namespace: 'agent-platform',
         annotations: { 'ui.giantswarm.io/display-name': 'Grafana Cloud' },
       },
       spec: { type: 'streamable-http', auth: { type: 'oauth' } },
@@ -457,17 +468,15 @@ describe('EditAgentPage', () => {
     // More options: the agent's model preselected, only its namespace's
     // models offered; its technical name and runtime fixed.
     expect(screen.getByText(/Runs on Claude Opus/)).toBeInTheDocument();
-    // The line keeps the ModelConfig's name; the model it runs is behind an
-    // info button beside it (PO decision L6), and on the picked card.
     const modelHint = screen.getByRole('button', {
-      name: 'Which model Claude Opus runs',
+      name: 'Model details for Claude Opus',
     });
     // A bui tooltip opens on keyboard focus: a key press sets the modality.
     await userEvent.keyboard('{Shift}');
     act(() => modelHint.focus());
-    expect(
-      await screen.findByText('Underlying model: opus-4-7-model · Anthropic'),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      'opus-4-7-model · Anthropic',
+    );
     expect(
       screen.getByRole('radio', { name: 'Select model Claude Opus' }),
     ).toHaveAttribute('aria-checked', 'true');
@@ -631,6 +640,53 @@ describe('EditAgentPage', () => {
       namespace: 'kagent',
       name: 'pr-reviewer',
       description: 'Reviews every pull request.',
+    } satisfies AgentUpdate);
+  });
+
+  it("sends the organization's connectors only when they changed, and [] once all are unpicked", async () => {
+    const agent = { ...AGENT, connectors: ['jira'] };
+    const user = userEvent.setup();
+    const untouched = await renderEdit(BASE, { agent });
+
+    await changeDescriptionAndReview(user);
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Save changes' }),
+      ).toBeEnabled(),
+    );
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await screen.findByText('agent detail after updated');
+    expect(
+      callsOf(untouched.callTool, 'x_agent-manager_update_agent')[0][1],
+    ).not.toHaveProperty('connectors');
+
+    // Edit again: unpick them on the Tools step.
+    await user.click(screen.getByRole('link', { name: 'Edit again' }));
+    await user.click(await screen.findByRole('button', { name: 'Continue' }));
+    await screen.findByRole('checkbox', { name: 'Skill PR review' });
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(
+      await screen.findByRole('button', {
+        name: "Unpick the organization's connectors",
+      }),
+    );
+    await user.click(screen.getByRole('button', { name: 'To review' }));
+    const changes = await screen.findByRole('list', { name: 'Changed fields' });
+    expect(
+      within(changes).getByText('Connectors from the organization page'),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Save changes' }),
+      ).toBeEnabled(),
+    );
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await screen.findByText('agent detail after updated');
+    const writes = callsOf(untouched.callTool, 'x_agent-manager_update_agent');
+    expect(writes[writes.length - 1][1]).toEqual({
+      namespace: 'kagent',
+      name: 'pr-reviewer',
+      connectors: [],
     } satisfies AgentUpdate);
   });
 

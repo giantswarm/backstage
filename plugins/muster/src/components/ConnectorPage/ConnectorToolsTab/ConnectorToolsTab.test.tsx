@@ -10,6 +10,7 @@ import {
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import type { ToolSummary } from '../../../apis';
 import { mcpServersRouteRef } from '../../../routes';
+import type { NoToolsExplanation } from '../../McpServersPage/serverDetail';
 import { ConnectorToolsTab } from './ConnectorToolsTab';
 
 /** Every third tool reads; the rest change things. */
@@ -27,7 +28,11 @@ function LocationProbe() {
   return <output aria-label="Location">{search}</output>;
 }
 
-function renderTab(tools: ToolSummary[], path = '/connector') {
+function renderTab(
+  tools: ToolSummary[],
+  path = '/connector',
+  tone: NoToolsExplanation['tone'] = 'neutral',
+) {
   return renderInTestApp(
     <>
       <ConnectorToolsTab
@@ -39,7 +44,7 @@ function renderTab(tools: ToolSummary[], path = '/connector') {
           isLoading: false,
           shortName: name => name.replace(/^x_jira_/, ''),
         }}
-        emptyExplanation="No tools."
+        emptyExplanation={{ text: 'No tools.', tone }}
       />
       <LocationProbe />
     </>,
@@ -82,7 +87,7 @@ function renderRoundTrip(tools: ToolSummary[]) {
               isLoading: false,
               shortName: name => name.replace(/^x_jira_/, ''),
             }}
-            emptyExplanation="No tools."
+            emptyExplanation={{ text: 'No tools.', tone: 'neutral' }}
           />
         }
       />
@@ -101,6 +106,20 @@ function renderRoundTrip(tools: ToolSummary[]) {
 const toolRows = () => screen.getAllByRole('link', { name: /^tool_\d+/ });
 
 describe('ConnectorToolsTab', () => {
+  it('shows why a failed connector lists no tools as a warning', async () => {
+    await renderTab([], '/connector', 'warning');
+
+    expect(
+      screen.getByText('No tools.').closest('[data-status]'),
+    ).toHaveAttribute('data-status', 'warning');
+  });
+
+  it('says plainly why a connector that did not fail lists no tools', async () => {
+    await renderTab([]);
+
+    expect(screen.getByText('No tools.').closest('[data-status]')).toBeNull();
+  });
+
   it('links each tool to its page, with its description and what it does', async () => {
     await renderTab(makeTools(3));
 

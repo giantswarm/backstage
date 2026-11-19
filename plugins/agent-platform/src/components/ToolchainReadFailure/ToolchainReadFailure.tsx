@@ -1,7 +1,9 @@
 import { Alert } from '@backstage/ui';
 import { musterSignInRequiredOf } from '@giantswarm/backstage-plugin-muster';
 
+import { PortalSessionEndedError } from '../../lib/portalSession';
 import { TOOLCHAIN_MANAGER_SERVER } from '../../lib/toolchainManager';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { ServerSignInCard } from '../ServerSignInCard';
 
 export type ToolchainReadFailureProps = {
@@ -16,7 +18,9 @@ export type ToolchainReadFailureProps = {
 /**
  * A failed read of the toolchain-manager. One muster refused because the
  * person has not signed in to the toolchain-manager yet offers that sign-in,
- * not the refusal's text; any other failure says what could not be read.
+ * not the refusal's text; one the portal refused the session token for
+ * offers the sign-in to the portal; any other failure says what could not be
+ * read.
  */
 export function ToolchainReadFailure({
   installation,
@@ -24,6 +28,9 @@ export function ToolchainReadFailure({
   title,
   onRetry,
 }: ToolchainReadFailureProps) {
+  if (error instanceof PortalSessionEndedError) {
+    return <PortalSessionEndedAlert />;
+  }
   if (musterSignInRequiredOf(error)) {
     return (
       <ServerSignInCard

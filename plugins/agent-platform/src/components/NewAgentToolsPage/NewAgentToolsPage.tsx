@@ -38,7 +38,6 @@ import {
   buildCatalogue,
   catalogueInventory,
   countNoun,
-  MAX_INLINE_SELECTORS,
   presetNameOf,
   presetSelector,
   PRESET_FULL,
@@ -75,9 +74,14 @@ import {
   materialize,
   needsIndividualTools,
   presetBaseOf,
+  toggleCatalogueSelector,
+  unlistedPicks,
   withConnectorChoice,
+  withoutCovered,
 } from './connectorChoice';
 import { CopyFromAgent } from './CopyFromAgent';
+import { OrganizationConnectors } from './OrganizationConnectors';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { SelectedRail, type SelectedRailProps } from './SelectedRail';
 import { SignInToolNote } from './SignInToolNote';
 import { ToolCatalogue } from './ToolCatalogue';
@@ -168,6 +172,26 @@ function connectorsHint({
 }
 
 /**
+ * The line by Continue while the toolset blocks it: what is wrong, in one
+ * sentence, and where it is fixed.
+ */
+function blockedLine(
+  toolset: readonly string[],
+  problems: readonly string[],
+  maxSelectors: number | undefined,
+): string {
+  if (maxSelectors !== undefined && toolset.length > maxSelectors) {
+    return `This toolset lists ${toolset.length} selectors but an agent may list at most ${maxSelectors}, so remove ${
+      toolset.length - maxSelectors
+    } or more under Selected, or choose All for a connector instead of single tools.`;
+  }
+  const invalid = Math.max(problems.length, 1);
+  return invalid === 1
+    ? 'One selector in this toolset is not valid, so remove it under Selected.'
+    : `${invalid} selectors in this toolset are not valid, so remove them under Selected.`;
+}
+
+/**
  * The summary bar where the frame has no room for the rail: below the
  * two-column tier, or in a frame too narrow for it beside the step.
  */
@@ -222,6 +246,7 @@ export function NewAgentToolsPage() {
     isComplete,
     isToolsetValid,
     toolsetProblems,
+    maxInlineSelectors,
   } = useNewAgentForm();
   // Cached by now; only decides where "Back" goes and what the step is numbered.
   const { hasRepositories } = useSkillCatalog(state.installation);
@@ -235,9 +260,24 @@ export function NewAgentToolsPage() {
   // The connectors follow the agent's organization: another one's servers
   // are not offered. Editing, the agent's own namespace.
   const tenant = edit ? edit.agent.namespace : state.tenant;
-  const { servers, tools: catalogueTools } = useMemo(
-    () => connectorsForTenant(installationServers, catalogue.tools, tenant),
-    [installationServers, catalogue.tools, tenant],
+  const {
+    servers,
+    tools: catalogueTools,
+    serversRequiringAuth,
+  } = useMemo(
+    () =>
+      connectorsForTenant(
+        installationServers,
+        catalogue.tools,
+        tenant,
+        catalogue.serversRequiringAuth,
+      ),
+    [
+      installationServers,
+      catalogue.tools,
+      tenant,
+      catalogue.serversRequiringAuth,
+    ],
   );
   // A connector muster signs in to per session or per person needs muster's
   // sign-in tool in the toolset, or the agent cannot start that sign-in
@@ -276,9 +316,8 @@ export function NewAgentToolsPage() {
   const isCatalogueLoading =
     Boolean(musterApi) && (catalogue.isLoading || isLoadingServers);
   const groups = useMemo(
-    () =>
-      buildCatalogue(catalogueTools, servers, catalogue.serversRequiringAuth),
-    [catalogueTools, servers, catalogue.serversRequiringAuth],
+    () => buildCatalogue(catalogueTools, servers, serversRequiringAuth),
+    [catalogueTools, servers, serversRequiringAuth],
   );
   const connectors = useMemo(() => connectorsOf(groups), [groups]);
   const inventory = useMemo(() => catalogueInventory(groups), [groups]);
@@ -374,7 +413,7 @@ export function NewAgentToolsPage() {
       }
       setToolset(
         compactSelection(
-          next,
+          withoutCovered(next, groups),
           presetResolved && presetBase
             ? { preset: presetBase, resolved: presetResolution.tools }
             : undefined,
@@ -396,16 +435,26 @@ export function NewAgentToolsPage() {
     () =>
       toolsetProblems.length === 0
         ? toolsetProblems
-        : problemsOf(state.toolset, selectors =>
-            inlineCapProblem(selectors, groups),
+        : problemsOf(
+            state.toolset,
+            maxInlineSelectors === undefined
+              ? undefined
+              : selectors =>
+                  inlineCapProblem(selectors, groups, maxInlineSelectors),
+            maxInlineSelectors,
           ),
-    [toolsetProblems, state.toolset, groups],
+    [toolsetProblems, state.toolset, groups, maxInlineSelectors],
   );
   // Over the cap, muster refuses the toolset with its whole selector list
   // (QA R2-1); the cap problem already says what to reduce, so that refusal is
   // not shown beside it. Any other resolution error still is.
   const overCap =
-    problems.length > 0 && state.toolset.length > MAX_INLINE_SELECTORS;
+    maxInlineSelectors !== undefined &&
+    problems.length > 0 &&
+    state.toolset.length > maxInlineSelectors;
+  const serverProblem = overCap ? undefined : resolution.error;
+  const serverRefused = serverProblem !== undefined && resolution.refused;
+  const canContinue = isToolsetValid && !resolution.isLoading && !serverRefused;
   // A preset that cannot be shown per connector cannot be changed from there
   // either: its selection stays off until the author picks Only the tools I
   // choose below.
@@ -568,8 +617,15 @@ export function NewAgentToolsPage() {
   // choose below.
   const chooseConnector = useCallback(
     (bucket: ServerBucket, choice: Exclude<ConnectorChoice, 'partial'>) =>
-      commit(withConnectorChoice(base, bucket, choice)),
-    [commit, base],
+      commit(
+        withConnectorChoice(
+          base,
+          bucket,
+          choice,
+          unlistedPicks(bucket, base, connectors),
+        ),
+      ),
+    [commit, base, connectors],
   );
   const toggleSelected = useCallback(
     (selector: string) => {
@@ -580,9 +636,16 @@ export function NewAgentToolsPage() {
       if (base.includes(selector)) {
         declineSignInTool([selector]);
       }
-      commit(toggleSelector(base, selector));
+      commit(toggleCatalogueSelector(base, selector, groups));
     },
-    [commit, base, isSignInToolAdded, setSignInToolDeclined, declineSignInTool],
+    [
+      commit,
+      base,
+      groups,
+      isSignInToolAdded,
+      setSignInToolDeclined,
+      declineSignInTool,
+    ],
   );
   // The rail and the bar list the toolset's own selectors (the preset among
   // them) beside the preset's part: removing one of its own takes just that
@@ -614,9 +677,9 @@ export function NewAgentToolsPage() {
   const copyToolset = useCallback(
     (toolset: string[]) => {
       setKeptBase(undefined);
-      setToolset(toolset);
+      setToolset(withoutCovered(toolset, groups));
     },
-    [setToolset, setKeptBase],
+    [setToolset, setKeptBase, groups],
   );
 
   // The rail stays in view; the full resolved list is in the individual tools.
@@ -642,8 +705,21 @@ export function NewAgentToolsPage() {
   // each pick, since a pick is complete when made (the `forms` skill).
   const blockedNote = useRef<HTMLDivElement>(null);
   const problemsAlert = useRef<HTMLDivElement>(null);
+  // The problems alert sits in the individual tools, mounted only once they
+  // are open: the focus moves after the render that opens them.
+  const [problemFocusRequest, setProblemFocusRequest] = useState(0);
+  useEffect(() => {
+    if (problemFocusRequest > 0) {
+      problemsAlert.current?.scrollIntoView?.({ block: 'center' });
+      problemsAlert.current?.focus();
+    }
+  }, [problemFocusRequest]);
+  const showProblems = useCallback(() => {
+    setShowIndividual(true);
+    setProblemFocusRequest(count => count + 1);
+  }, []);
   const onContinue = useCallback(() => {
-    if (!isToolsetValid) {
+    if (!canContinue) {
       const target = problemsAlert.current ?? blockedNote.current;
       target?.scrollIntoView?.({ block: 'center' });
       target?.focus();
@@ -652,7 +728,7 @@ export function NewAgentToolsPage() {
     if (reviewLink) {
       navigate(reviewLink());
     }
-  }, [isToolsetValid, reviewLink, navigate]);
+  }, [canContinue, reviewLink, navigate]);
 
   // The frame's footer carries Cancel and Back; only the primary lives here.
   const actions = useMemo(
@@ -738,7 +814,9 @@ export function NewAgentToolsPage() {
           ) : (
             presets.source === 'built-in' &&
             musterApi &&
-            installation && (
+            installation &&
+            // The connectors below say the portal session ended, once.
+            !catalogue.sessionEnded && (
               <Alert
                 status="info"
                 title="Only the built-in presets are known"
@@ -777,7 +855,8 @@ export function NewAgentToolsPage() {
                 Connectors cannot be listed in this portal.
               </Text>
             )}
-            {musterApi && catalogue.error && (
+            {musterApi && catalogue.sessionEnded && <PortalSessionEndedAlert />}
+            {musterApi && catalogue.error && !catalogue.sessionEnded && (
               <Alert
                 status="warning"
                 title="Could not read the gateway's catalogue"
@@ -789,6 +868,7 @@ export function NewAgentToolsPage() {
             )}
             {connectors.length > 0 && (
               <ConnectorGrid
+                maxSelectors={maxInlineSelectors}
                 connectors={connectors}
                 selected={selected}
                 disabled={gridOff}
@@ -949,10 +1029,19 @@ export function NewAgentToolsPage() {
                       />
                     )}
                     {!(overCap && resolution.status === 'error') && (
-                      <ToolsetResolutionList
-                        resolution={resolution}
-                        servers={servers}
-                      />
+                      <div
+                        ref={
+                          problems.length === 0 && serverProblem
+                            ? problemsAlert
+                            : undefined
+                        }
+                        tabIndex={serverProblem ? -1 : undefined}
+                      >
+                        <ToolsetResolutionList
+                          resolution={resolution}
+                          servers={servers}
+                        />
+                      </div>
                     )}
                   </Flex>
                 </section>
@@ -961,13 +1050,67 @@ export function NewAgentToolsPage() {
           </Card>
         )}
 
-        {/* The rail says why too; this sits by Continue, where it is blocked. */}
-        {!isToolsetValid && (
-          <div ref={blockedNote} tabIndex={-1}>
-            <Text as="p" color="danger">
-              Fix the toolset to continue.
+        {/* The organization's own connectors: no muster servers, so apart
+            from the selection above and its rail. */}
+        <OrganizationConnectors />
+
+        {canContinue && serverProblem && (
+          <Flex direction="column" align="start" gap="1" role="status">
+            <Text as="p" color="warning">
+              The selected tools could not be checked:{' '}
+              {serverProblem.replace(/\.$/, '')}. You can continue; the toolset
+              is checked again when the agent is saved.
             </Text>
-          </div>
+            {resolution.refetch && (
+              <Button
+                variant="tertiary"
+                size="small"
+                onPress={() => {
+                  void resolution.refetch?.();
+                }}
+              >
+                Check again
+              </Button>
+            )}
+          </Flex>
+        )}
+
+        {/* The rail says why too; this sits by Continue, where it is blocked. */}
+        {!canContinue && (
+          <Flex
+            ref={blockedNote}
+            tabIndex={-1}
+            direction="column"
+            align="start"
+            gap="1"
+          >
+            <Text as="p" color="danger">
+              {(serverRefused ? serverProblem : undefined) ??
+                (resolution.isLoading
+                  ? 'Checking the selected tools…'
+                  : blockedLine(
+                      state.toolset,
+                      toolsetProblems,
+                      maxInlineSelectors,
+                    ))}
+            </Text>
+            {serverRefused && resolution.refetch && (
+              <Button
+                variant="tertiary"
+                size="small"
+                onPress={() => {
+                  void resolution.refetch?.();
+                }}
+              >
+                Check again
+              </Button>
+            )}
+            {!selectionOff && (
+              <Button variant="tertiary" size="small" onPress={showProblems}>
+                Show the problem
+              </Button>
+            )}
+          </Flex>
         )}
       </Flex>
     </AgentWizardFrame>

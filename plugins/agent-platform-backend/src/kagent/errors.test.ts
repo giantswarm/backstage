@@ -28,7 +28,11 @@ describe('mapConnectError', () => {
       ],
     ])('401 %s', (reason, message) => {
       const error = map(new ConnectError(reason, Code.Unauthenticated));
-      expect(error).toMatchObject({ name: 'AuthenticationError', message });
+      expect(error).toMatchObject({
+        name: 'InstallationAuthenticationError',
+        statusCode: 401,
+        message,
+      });
     });
 
     it('403', () => {

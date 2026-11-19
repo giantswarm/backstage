@@ -8,6 +8,8 @@ import {
 
 import { newModelRouteRef } from '../../routes';
 import { useAgentManagerModelConfigs } from '../../hooks/useAgentManagerModelConfigs';
+import { modelLabel } from '../../lib/modelLabel';
+import { underlyingModelLine } from '../../hooks/useUnderlyingModel';
 import { tenantInSentence } from '../../lib/tenants';
 import { useNewAgentForm } from '../NewAgentFormProvider';
 import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
@@ -70,6 +72,11 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
   const modelConfigs = edit
     ? listed.filter(mc => (mc.getNamespace() ?? '') === edit.agent.namespace)
     : tenantModelConfigs(listed, state.tenant);
+  const labelCounts = new Map<string, number>();
+  for (const modelConfig of modelConfigs) {
+    const choiceLabel = modelLabel(modelConfig) ?? modelConfig.getName();
+    labelCounts.set(choiceLabel, (labelCounts.get(choiceLabel) ?? 0) + 1);
+  }
   // Which model is the namespace default, and whether each resolves, as
   // agent-manager answers it: the portal does not resolve the default itself.
   const { modelConfigs: reported, isLoading: isReadingDefault } =
@@ -101,7 +108,7 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
       selectModelConfig(
         preselected.getName(),
         preselected.getNamespace() ?? '',
-        preselected.getDisplayName(),
+        modelLabel(preselected),
       );
     }
   }, [preselected, state.modelConfigName, selectModelConfig]);
@@ -201,8 +208,7 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
 
       {!edit && showsPreselection && preselected && (
         <Text variant="body-small" color="secondary">
-          Preselected: {preselected.getDisplayName()}, the default model for{' '}
-          {where}.
+          Preselected: {modelLabel(preselected)}, the default model for {where}.
         </Text>
       )}
 
@@ -216,7 +222,7 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
       {picked && pickedProblem && (
         <Alert
           status="warning"
-          title={`${picked.getDisplayName()} is not ready`}
+          title={`${modelLabel(picked)} is not ready`}
           description={`Agents on this model fail until an admin fixes it${
             pickedProblem.message ? `: ${pickedProblem.message}` : '.'
           } You can still create the agent, or choose another model.`}
@@ -242,7 +248,9 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
                 {(pinned ? [...page, pinned] : page).map(mc => {
                   const name = mc.getName();
                   const modelNamespace = mc.getNamespace() ?? '';
-                  const provider = mc.getProvider();
+                  const choiceLabel = modelLabel(mc) ?? name;
+                  const details = underlyingModelLine(mc, choiceLabel);
+                  const ambiguous = (labelCounts.get(choiceLabel) ?? 0) > 1;
                   const isDefault = isReportedDefault(mc, reported);
                   const problem = unresolvedReason(mc, reported);
 
@@ -251,27 +259,28 @@ export function ModelConfigPicker({ error }: ModelConfigPickerProps = {}) {
                       key={`${modelNamespace}/${name}`}
                       role="radio"
                       selected={isPicked(mc)}
-                      ariaLabel={`Select model ${mc.getDisplayName()}${
+                      ariaLabel={`Select model ${choiceLabel}${ambiguous ? `, ${name}` : ''}${
                         isDefault ? ', default' : ''
                       }${problem ? ', not accepted' : ''}`}
                       onSelect={() =>
-                        selectModelConfig(
-                          name,
-                          modelNamespace,
-                          mc.getDisplayName(),
-                        )
+                        selectModelConfig(name, modelNamespace, choiceLabel)
                       }
                     >
-                      <Text weight="bold">{mc.getDisplayName()}</Text>
+                      <Text weight="bold">{choiceLabel}</Text>
                       {isDefault && (
                         <Text variant="body-small" color="secondary">
                           Default
                         </Text>
                       )}
                       <Text variant="body-x-small" color="secondary">
-                        <span className={classes.code}>{mc.getModel()}</span>
-                        {provider ? ` · ${provider}` : ''}
+                        {details}
                       </Text>
+                      {ambiguous && (
+                        <Text variant="body-x-small" color="secondary">
+                          Configuration:{' '}
+                          <span className={classes.code}>{name}</span>
+                        </Text>
+                      )}
                       {problem && (
                         <ModelReadinessLabel
                           readiness="notAccepted"

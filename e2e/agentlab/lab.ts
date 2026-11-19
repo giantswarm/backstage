@@ -120,6 +120,9 @@ export const lab = {
    * organization namespace.
    */
   defaultModel: process.env.AGENTLAB_DEFAULT_MODEL ?? 'anthropic',
+  /** The default ModelConfig's display name, or its model ID without one. */
+  defaultModelLabel:
+    process.env.AGENTLAB_DEFAULT_MODEL_LABEL ?? 'claude-sonnet-4-6',
   /**
    * The MCPServer the lab registers for its own cluster: the `kubernetes`
    * family member `<cluster>-mcp-kubernetes`, the way every management

@@ -8,11 +8,7 @@ import {
   type UseResourcesQueryOptions,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
-/**
- * muster's namespace: where its MCPServers and Workflows live, and where the
- * agent-platform chart lets every signed-in person list the MCPServers.
- */
-export const MUSTER_NAMESPACE = 'agent-platform';
+import { MUSTER_NAMESPACE } from '../../lib/musterNamespace';
 
 type ResourceClass<R extends KubeObject<any>> = (new (
   json: any,

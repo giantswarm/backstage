@@ -1,16 +1,10 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import {
-  ALL_INSTALLATIONS,
-  getInstallationScopeSnapshot,
-  INSTALLATION_SCOPE_SEARCH_PARAM,
-  setInstallationScope,
-  subscribeInstallationScope,
-} from './installationScopeStore';
-import { useWriteScopeParam } from './useWriteScopeParam';
+import { useEffect, useRef } from 'react';
+import { ALL_INSTALLATIONS } from './installationScopeStore';
+import { useSharedInstallationScope } from './SharedInstallationScope';
 
 /**
- * Keeps the installation scope and the URL's `?installation=` in step.
+ * Keeps the installation scope and the URL's `?installation=` in step, for
+ * the `SharedInstallationScope` above; does nothing outside one.
  *
  * Mount it once per page (the section's selector does), inside the router.
  * `useInstallationScope` already reads the URL first and `setScope` writes it;
@@ -33,23 +27,24 @@ import { useWriteScopeParam } from './useWriteScopeParam';
  * the same commit the selector first renders.
  */
 export function useInstallationScopeUrlSync(): void {
-  const [searchParams] = useSearchParams();
-  const writeScopeParam = useWriteScopeParam();
-  const { scope, restored } = useSyncExternalStore(
-    subscribeInstallationScope,
-    getInstallationScopeSnapshot,
-    getInstallationScopeSnapshot,
-  );
-  const url = searchParams.get(INSTALLATION_SCOPE_SEARCH_PARAM);
+  const shared = useSharedInstallationScope();
+  const url = shared?.urlScope ?? null;
+  const scope = shared?.state.scope ?? ALL_INSTALLATIONS;
+  const restored = shared?.state.restored ?? false;
+  const setStored = shared?.setStored;
+  const writeScopeParam = shared?.writeScopeParam;
   // `undefined` until the first run, so a parameter present at mount counts as
   // a change and is adopted.
   const lastUrl = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
+    if (!setStored || !writeScopeParam) {
+      return;
+    }
     if (url !== lastUrl.current) {
       lastUrl.current = url;
       if (url !== null && url !== scope) {
-        setInstallationScope(url);
+        setStored(url);
         return;
       }
     }
@@ -64,5 +59,5 @@ export function useInstallationScopeUrlSync(): void {
       lastUrl.current = wanted;
       writeScopeParam(scope);
     }
-  }, [url, scope, restored, writeScopeParam]);
+  }, [url, scope, restored, setStored, writeScopeParam]);
 }

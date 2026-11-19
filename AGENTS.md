@@ -78,12 +78,49 @@ iterating: a plugin-wide run for a one-file change costs minutes for the same
 signal. Save the plugin-wide run for a change to something shared, with call
 sites beyond the file you edited.
 
-A change to a page is verified in a browser against agentlab before the PR
-merges, and ships with the spec that proves it: `docs/development.md`,
-"End-to-end tests in a browser, against agentlab", and `e2e/agentlab/README.md`.
-The lab users are throwaway fixtures, and signing in as them, in the Dex popup
-too, is part of the verification. Only real people's accounts and real
+How a change to a page is checked: "Fixture mode and the layout check" below.
+The browser suite against agentlab is optional: `docs/development.md`,
+"End-to-end tests in a browser, against agentlab". Its lab users are throwaway
+fixtures, and signing in as them is fine; real people's accounts and real
 installations are off-limits.
+
+### Fixture mode and the layout check
+
+Fixture mode runs the portal on made-up data, signed in as the guest, without
+a cluster, on ports of its own, so every checkout can run one:
+`docs/fixtures.md`.
+
+```bash
+yarn fixtures start    # prints the URL, which is also "url" in .fixtures-server.json
+yarn fixtures status
+yarn fixtures stop     # when you are done: a frontend and a backend per checkout are heavy
+```
+
+`?fixtures=<scenario>` switches the data set without a restart:
+`docs/fixtures.md`, "Scenarios".
+
+Open the portal in the chrome-devtools MCP only when it runs with `--isolated`
+or a `--userDataDir` of your checkout (`claude mcp get chrome-devtools` shows
+its arguments): its default profile is shared, so a second session's Chrome
+does not start, and two portals on `127.0.0.1` overwrite each other's cookies.
+When it runs without either, don't use it for checks: use the layout check or
+the repo's Playwright, and tell the person once. Don't change the MCP's
+config.
+
+The fixtures move with the pages, so that every page can be checked in each
+state that matters. A pull request that changes a page fixture mode can't
+show, reads a new field, adds a state or calls a new tool adds the fixtures in
+the same pull request (`docs/fixtures.md`, "The data set" and "Tool calls
+through muster"). For a tool the agent-platform or muster pages call, the
+drift guard (`fixtureToolCoverage.test.ts` in each) fails until the tool has a
+handler or the test lists it as not served, with a comment saying why. Nothing
+checks bot-prs's calls through muster.
+
+Before you ask for review of a change to a page, look at it in a browser, and
+run the [`layout-check`](.agents/skills/layout-check/SKILL.md) skill on it as
+an automated safeguard: the pages the `ui-impact` skill maps, at the default
+widths, in `base` and the scenarios the change is about. Fix what it finds or
+say in the description why a finding is right as it is.
 
 ### Lint, format, type-check
 
@@ -168,6 +205,14 @@ package role:
   the swap table and the allowed legacy pieces: `docs/ui.md` and the `ui`
   skill. Pages of the Agent Platform shell: the `agent-platform-ux-coding`
   skill.
+- Text size: 12px is the smallest text in the portal (bui's `body-small`).
+  Smaller is an exception with a comment next to the style saying why, in
+  `var(--gs-font-size-exception)` for 10px. The app sets bui's 10px token to
+  12px: `docs/ui.md`, "Text size: 12px at the smallest".
+- UI from a mockup: building or changing UI from a mockup or a design canvas
+  (an artboard, a `.dc.html` file) follows the `mockups` skill: read the
+  relevant artboards and everything they import in full, styles included, and
+  write the inventory before any code.
 - Components: one directory per component, an `index.ts` with a named export,
   no default exports: the `components` skill.
 - Tables: the `tables` skill (the bui Table for simple tables; the
@@ -213,6 +258,9 @@ score 6, add the `ui-test-needed` label, and don't merge or ask for a merge
 until `ui-tested` has replaced it. This is a convention; no check enforces it.
 Details: the `ui-impact` skill and `docs/development.md`, "Manual UI test
 before merge".
+
+A pull request built from a mockup references the issue that links the mockup
+and carries the "Differences from the mockup" section of the `mockups` skill.
 
 ## Configuration and secrets
 

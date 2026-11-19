@@ -9,6 +9,7 @@ import {
 } from '@backstage/plugin-kubernetes-react';
 
 import { ResponseError } from '@backstage/errors';
+import { AGENT_MANAGER_AUTH_HEADER } from '@giantswarm/backstage-plugin-agent-platform-common';
 
 import { portalSessionError } from '../lib/portalSession';
 
@@ -20,10 +21,6 @@ import type {
   CredentialValue,
 } from '../lib/credentialOperations';
 
-/** Header carrying the person's installation token. Must match AGENT_MANAGER_AUTH_HEADER in plugins/agent-platform-backend. */
-export const AGENT_MANAGER_AUTH_HEADER =
-  'backstage-agent-manager-authorization';
-
 const PATH = '/organizations/credential-operations';
 
 /**
@@ -32,7 +29,9 @@ const PATH = '/organizations/credential-operations';
  * confirmation changed), `conflict` and `gitops_owned` (what it writes
  * changed), `auth_required` (no GitHub grant for a commit), `not_found`
  * (gone, expired, or someone else's), `outcome_unknown` (a save that did not
- * answer in time and may still complete).
+ * answer in time and may still complete), `credential_operation_other_login`
+ * (the person who started it, signed in with another login; the answer
+ * carries nothing of the operation).
  */
 export function credentialOperationErrorCode(
   error: unknown,

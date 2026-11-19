@@ -14,14 +14,12 @@ function TabContent() {
   return <div>content</div>;
 }
 
+// PageBlueprint hands the layout app-absolute tab hrefs.
 const tabs = [
-  { id: 'list', label: 'List view', href: 'list' },
-  { id: 'tree', label: 'Tree view', href: 'tree' },
+  { id: 'list', label: 'List view', href: '/flux/list' },
+  { id: 'tree', label: 'Tree view', href: '/flux/tree' },
 ];
 
-// PageBlueprint mounts the page at a splat route (`/flux/*`); `mountPath` makes
-// renderInTestApp do the same, so GSPageLayout can derive the base path from
-// the splat remainder just like it does in the real app.
 function renderAt(pathname: string) {
   return renderInTestApp(
     <GSPageLayout title="Flux" tabs={tabs}>
@@ -32,11 +30,9 @@ function renderAt(pathname: string) {
 }
 
 describe('GSPageLayout', () => {
-  it('renders sub-page tabs with absolute hrefs, not relative ones', async () => {
+  it('links each tab to the sub-page path it is given', async () => {
     await renderAt('/flux/list');
 
-    // Relative hrefs (`list`/`tree`) would append to the URL and break tab
-    // navigation; they must resolve to absolute paths under the page base.
     expect(screen.getByRole('tab', { name: 'List view' })).toHaveAttribute(
       'href',
       '/flux/list',
@@ -47,18 +43,34 @@ describe('GSPageLayout', () => {
     );
   });
 
-  it('resolves absolute hrefs when the sub-route contains encoded characters', async () => {
-    // `location.pathname` stays percent-encoded while the splat param is
-    // decoded; the base path must still resolve to `/flux`, not the deep path.
+  it('marks and titles an index sub-page, whose href ends in a slash', async () => {
+    await renderInTestApp(
+      <GSPageLayout
+        title="Flux"
+        tabs={[
+          { id: '', label: 'Overview', href: '/flux/' },
+          { id: 'tree', label: 'Tree view', href: '/flux/tree' },
+        ]}
+      >
+        <div>content</div>
+      </GSPageLayout>,
+      { mountPath: '/flux', initialRouteEntries: ['/flux'] },
+    );
+
+    const overview = screen.getByRole('tab', { name: 'Overview' });
+    expect(overview).toHaveAttribute('href', '/flux');
+    expect(overview).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() =>
+      expect(document.title).toBe('Overview · Flux | Backstage'),
+    );
+  });
+
+  it('keeps the tab of a nested sub-route active, encoded characters too', async () => {
     await renderAt('/flux/tree/some%20nested%20id');
 
-    expect(screen.getByRole('tab', { name: 'List view' })).toHaveAttribute(
-      'href',
-      '/flux/list',
-    );
     expect(screen.getByRole('tab', { name: 'Tree view' })).toHaveAttribute(
-      'href',
-      '/flux/tree',
+      'aria-selected',
+      'true',
     );
   });
 

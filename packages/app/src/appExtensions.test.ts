@@ -2,15 +2,9 @@
 // file and never bundled into the app.
 // eslint-disable-next-line no-restricted-imports
 import { resolve } from 'path';
+import { ConfigReader } from '@backstage/config';
 import { ConfigSources, FileConfigSource } from '@backstage/config-loader';
-import { createSpecializedApp } from '@backstage/frontend-app-api';
-import {
-  ApiHolder,
-  ApiRef,
-  configApiRef,
-  identityApiRef,
-} from '@backstage/frontend-plugin-api';
-import { mockApis } from '@backstage/frontend-test-utils';
+import { prepareSpecializedApp } from '@backstage/frontend-app-api';
 import appPlugin from '@backstage/plugin-app';
 import { appFeatures, bindAppRoutes } from './appFeatures';
 
@@ -49,11 +43,6 @@ async function loadAppConfig(file: string) {
   return ConfigSources.toConfig(source);
 }
 
-function apiHolder(...pairs: [ApiRef<unknown>, unknown][]): ApiHolder {
-  const byId = new Map(pairs.map(([ref, impl]) => [ref.id, impl]));
-  return { get: <T>(ref: ApiRef<T>) => byId.get(ref.id) as T | undefined };
-}
-
 describe('app.extensions in app-config.yaml', () => {
   it('names only extensions the app installs, with config their schemas accept', async () => {
     const config = await loadAppConfig('app-config.yaml');
@@ -62,30 +51,32 @@ describe('app.extensions in app-config.yaml', () => {
     // does not have); the reports this test checks come back in `errors`.
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
     try {
-      // `createSpecializedApp` is deprecated in favour of
-      // `prepareSpecializedApp`, which `createApp` uses. It is still the only
-      // public way to finalize the app without its sign-in page: APIs handed
-      // in up front (`advanced.apis`) stand in for a signed-in session. The
-      // replacement takes a `sessionState`, which only a finalized app hands
-      // out. When the deprecated function goes, finalize a throwaway app
-      // without a sign-in page with `prepareSpecializedApp` and pass its
-      // `sessionState` here.
+      // The app has a sign-in page, so its `finalize()` refuses to run before
+      // someone signs in. The session of an app without one stands in for a
+      // signed-in session: an app handed a `sessionState` skips its sign-in
+      // page and takes its APIs, the config API among them, from the session.
+      // The extension config still comes from `config`.
       //
       // `createApp` also discovers features (`app.packages`) and resolves
       // feature loaders before it prepares the app. This app does neither, so
       // `[appPlugin, ...appFeatures]` is the whole list; with discovery on,
       // the discovered plugins would have to be added here too.
-      const app = createSpecializedApp({
+      const { sessionState } = prepareSpecializedApp({
+        features: [appPlugin],
+        config: ConfigReader.fromConfigs([
+          { context: 'app-config.yaml', data: config.get() },
+          {
+            context: 'no-sign-in',
+            data: { app: { extensions: [{ 'sign-in-page:app': false }] } },
+          },
+        ]),
+      }).finalize();
+      const app = prepareSpecializedApp({
         features: [appPlugin, ...appFeatures],
         config,
         bindRoutes: bindAppRoutes,
-        advanced: {
-          apis: apiHolder(
-            [configApiRef, config],
-            [identityApiRef, mockApis.identity()],
-          ),
-        },
-      });
+        advanced: { sessionState },
+      }).finalize();
 
       const reports = (app.errors ?? [])
         .filter(error => STARTUP_CODES.includes(error.code))

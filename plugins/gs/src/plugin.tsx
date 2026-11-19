@@ -57,14 +57,22 @@ import {
   mutedInstallationsApiRef,
   MutedInstallationsStore,
 } from './apis/mutedInstallations';
+import { isFixtureInstallation } from '@giantswarm/backstage-plugin-gs-common';
 import { DiscoveryApiClient } from './apis/discovery/DiscoveryApiClient';
+import {
+  getInstallationsConfigSnapshot,
+  subscribeInstallationsConfig,
+} from './apis/installations';
 import {
   ContainerRegistryClient,
   containerRegistryApiRef,
 } from './apis/containerRegistry';
 import { GitHubClient, gitHubApiRef } from './apis/github';
 import { MimirClient, mimirApiRef } from './apis/mimir';
-import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  externalUrlConsentApiRef,
+  lazyApi,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 // Pages
 // The Clusters pages take actions other plugins contribute, by node id
@@ -144,8 +152,29 @@ const clusterAccessStatusApi = ApiBlueprint.make({
   params: defineParams =>
     defineParams({
       api: clusterAccessStatusApiRef,
-      deps: {},
-      factory: () => ClusterAccessStatusStore.create(),
+      deps: { configApi: configApiRef },
+      factory: ({ configApi }) => {
+        const store = ClusterAccessStatusStore.create();
+        // `gs.fixtures: true`: the fixture Kubernetes API serves the fixture
+        // installations without a sign-in, so their access is healthy once
+        // the config names them. Any other installation keeps its own access
+        // state. Outside production builds only (docs/fixtures.md).
+        if (
+          process.env.NODE_ENV !== 'production' &&
+          configApi.getOptionalBoolean('gs.fixtures')
+        ) {
+          const recordHealthy = () => {
+            for (const { name } of getInstallationsConfigSnapshot() ?? []) {
+              if (isFixtureInstallation(name)) {
+                store.recordHealthy(name);
+              }
+            }
+          };
+          recordHealthy();
+          subscribeInstallationsConfig(recordHealthy);
+        }
+        return store;
+      },
     }),
 });
 
@@ -255,11 +284,26 @@ const mimirApi = ApiBlueprint.make({
     defineParams({
       api: mimirApiRef,
       deps: {
+        configApi: configApiRef,
         discoveryApi: discoveryApiRef,
         fetchApi: fetchApiRef,
       },
-      factory: ({ discoveryApi, fetchApi }) =>
-        new MimirClient({ discoveryApi, fetchApi }),
+      factory: ({ configApi, discoveryApi, fetchApi }) => {
+        // `gs.fixtures: true`: the fixture installations' gateway metrics
+        // from the fixture data set. Outside production builds only
+        // (docs/fixtures.md).
+        if (
+          process.env.NODE_ENV !== 'production' &&
+          configApi.getOptionalBoolean('gs.fixtures')
+        ) {
+          return lazyApi(async () => {
+            const { mimirFixtureApi } =
+              await import('./apis/mimir/fixtures/MimirFixtureApi');
+            return mimirFixtureApi();
+          });
+        }
+        return new MimirClient({ discoveryApi, fetchApi });
+      },
     }),
 });
 

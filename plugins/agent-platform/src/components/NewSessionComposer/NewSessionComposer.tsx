@@ -22,6 +22,7 @@ import {
   ComposerFrame,
   matchesQuery,
   searchableIf,
+  useCompactLayout,
   useTouchInput,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { useAgentAvatarUrl } from '../../hooks/useAgentAvatarUrl';
@@ -75,6 +76,14 @@ const OPTION_AVATAR_SIZE: AvatarSize = 48;
 
 /** Id of the picker's last option, an action rather than an agent. */
 const FOOTER_ACTION_ID = 'action:picker-footer';
+
+/**
+ * The composer's width, in px, below which its controls row is compact: the
+ * agent, the workspace, the toolchains button with its caret and the start
+ * button no longer fit at their natural widths, and the toolchains button
+ * leaves out its caret.
+ */
+const CONTROLS_MIN_WIDTH = 460;
 
 const useStyles = makeStyles(theme => ({
   // bui sets a leading icon flush against the label, which suits a line icon but
@@ -328,6 +337,21 @@ export type NewSessionComposerProps = {
    */
   collapsible?: boolean;
   autoFocus?: boolean;
+  /**
+   * Focuses the prompt field with the caret after its text, once, as soon as
+   * it takes input (on an agent-first surface: once an agent is selected).
+   * Not while the focus is on anything else, such as the open picker. For a
+   * prompt a link brought, which the person goes on writing; the caller turns
+   * it off once the person has done anything on the page.
+   */
+  focusPromptAtEnd?: boolean;
+  /**
+   * The `defaultAgent` is adopted when it arrives even after the person has
+   * typed, until they pick an agent: a link named it, so it is the agent the
+   * person came for, and typing while it loads must not leave another one
+   * selected.
+   */
+  defaultOverridesTyping?: boolean;
   isStarting: boolean;
   /**
    * Why the last start failed. An `AgentManagerNotConnectedError` (sessions
@@ -507,6 +531,8 @@ export function NewSessionComposer({
   defaultAgent,
   collapsible = false,
   autoFocus = false,
+  focusPromptAtEnd = false,
+  defaultOverridesTyping = false,
   isStarting,
   error,
   acceptsImages = false,
@@ -515,6 +541,7 @@ export function NewSessionComposer({
 }: NewSessionComposerProps) {
   const classes = useStyles();
   const touch = useTouchInput();
+  const [formRef, isCompact] = useCompactLayout(CONTROLS_MIN_WIDTH);
   const buildAvatarUrl = useAgentAvatarUrl();
   const [ownPrompt, setOwnPrompt] = useState(initialPrompt ?? '');
   const prompt = controlledPrompt ?? ownPrompt;
@@ -588,7 +615,7 @@ export function NewSessionComposer({
   if (
     !touched.current &&
     // Typing keeps the agent shown; an empty picker still takes one.
-    (!typed.current || selectedId === undefined) &&
+    (!typed.current || selectedId === undefined || defaultOverridesTyping) &&
     effectiveDefault &&
     adopted.current !== effectiveDefault.id
   ) {
@@ -853,10 +880,13 @@ export function NewSessionComposer({
       : selectedId;
   }, [options, pickedOptionId, selectedId]);
 
+  // Every pick counts, the agent already selected included, so the caller
+  // hears that the person chose it.
+  const [pickCount, setPickCount] = useState(0);
   // `touched` is set before the pick's state update, so it is current here.
   useEffect(() => {
     onSelectedAgentChange?.(selectedAgent, { byPerson: touched.current });
-  }, [onSelectedAgentChange, selectedAgent]);
+  }, [onSelectedAgentChange, selectedAgent, pickCount]);
 
   const selectAgent = useCallback((agent: AgentRow) => {
     if (!isStartableAgent(agent)) {
@@ -865,11 +895,31 @@ export function NewSessionComposer({
     touched.current = true;
     setSelectedId(agent.id);
     setPickedOptionId(undefined);
+    setPickCount(count => count + 1);
   }, []);
 
   // Agent-first and nothing chosen yet: the prompt field and Start wait,
   // visibly, for the picker.
   const awaitingAgent = agentFirst && !selectedAgent;
+
+  const promptFocusSettled = useRef(false);
+  useEffect(() => {
+    if (!focusPromptAtEnd || awaitingAgent || promptFocusSettled.current) {
+      return;
+    }
+    const textarea = fieldRef.current?.querySelector('textarea');
+    if (!textarea || textarea.disabled) {
+      return;
+    }
+    promptFocusSettled.current = true;
+    const active = document.activeElement;
+    if (active && active !== document.body && active !== textarea) {
+      return;
+    }
+    textarea.focus();
+    const end = textarea.value.length;
+    textarea.setSelectionRange(end, end);
+  }, [focusPromptAtEnd, awaitingAgent]);
 
   // Read for the agent chosen, so one that cannot take images says so the
   // moment an image meets it — or the moment it is chosen with images already
@@ -1052,6 +1102,7 @@ export function NewSessionComposer({
             touched.current = true;
             setSelectedId(id && agentIdOfOption(id));
             setPickedOptionId(id);
+            setPickCount(count => count + 1);
           }}
           onOpenChange={isOpen => {
             setOpenedWith(
@@ -1100,6 +1151,7 @@ export function NewSessionComposer({
             setToolchainChoice({ agentId: selectedAgent.id, picks })
           }
           isDisabled={isStarting}
+          isCompact={isCompact}
         />
       )}
       {renderPickerAccessory?.(selectedAgent)}
@@ -1127,7 +1179,7 @@ export function NewSessionComposer({
     Boolean(startedIn) && error instanceof WorkspaceManagerError;
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form ref={formRef} onSubmit={handleSubmit}>
       <Flex direction="column" gap="2">
         {workspaceNotice}
         {error instanceof AgentManagerNotConnectedError && selectedAgent

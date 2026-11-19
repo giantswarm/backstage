@@ -95,6 +95,7 @@ describe('useMusterServerAvailability', () => {
     expect(result.current.presenceOf('gamma')).toBe('unknown');
     expect(result.current.available).toEqual([]);
     expect(result.current.failedOf('gamma')).toBe(true);
+    expect(result.current.errorOf('gamma')?.message).toBe('backend down');
   });
 
   it('says a server list failed only once its read has failed', async () => {
@@ -113,10 +114,12 @@ describe('useMusterServerAvailability', () => {
     await waitFor(() => expect(listServers).toHaveBeenCalled());
     expect(result.current.presenceOf('alpha')).toBe('unknown');
     expect(result.current.failedOf('alpha')).toBe(false);
+    expect(result.current.errorOf('alpha')).toBeUndefined();
 
     fail(new Error('muster down'));
     await waitFor(() => expect(result.current.failedOf('alpha')).toBe(true));
     expect(result.current.presenceOf('alpha')).toBe('unknown');
+    expect(result.current.errorOf('alpha')?.message).toBe('muster down');
   });
 
   it('says nothing failed for an installation muster answered', async () => {

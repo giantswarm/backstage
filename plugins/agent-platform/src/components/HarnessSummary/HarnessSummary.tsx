@@ -63,7 +63,7 @@ export function HarnessSummary({
         </Text>
       )}
       <Text
-        variant="body-x-small"
+        variant="body-small"
         color="secondary"
         style={{ overflowWrap: 'anywhere' }}
       >

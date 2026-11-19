@@ -12,7 +12,7 @@ function server(
       kind: 'MCPServer',
       metadata: {
         name,
-        namespace: 'muster',
+        namespace: 'agent-platform',
         ...(displayName
           ? { annotations: { 'ui.giantswarm.io/display-name': displayName } }
           : {}),

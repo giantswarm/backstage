@@ -54,15 +54,31 @@ need an icon name but don't know it (e.g. `grep -i wallet` finds
   `grep -l '"@backstage/ui"' plugins/*/package.json`).
 - The global stylesheet is imported once in `packages/app/src/index.tsx`:
   `import '@backstage/ui/css/styles.css';`. Don't re-import it per component.
-- `BUIProvider` **is** mounted — `@backstage/plugin-app`'s `AppRoot` wraps the
-  app in it (verified in `plugin-app` 0.5.1,
-  `dist/extensions/AppRoot.esm.js`), so react-aria's `RouterProvider` is active
-  and bui `href`s (`Link`, `ButtonLink`, `Tab`, `ListRow`, table `getHref`) are
-  client-side routed through react-router. You don't need to add a provider, and
-  you don't need `onClick` + `useNavigate` to avoid a full page reload. Some
-  older comments in `plugins/agent-platform` still claim the opposite — they are
-  stale. Keep such hrefs **absolute**: a relative bui href inside a splat route
-  appends to the current path (the reason react-router stays pinned to v6).
+- `BUIProvider` **is** mounted: `@backstage/plugin-app`'s `AppRoot` wraps the
+  app in it and hands it the framework's routing integration
+  (`useRoutingIntegration` from `@backstage/frontend-plugin-api/routing`). Since
+  bui 0.20 (Backstage 1.57) each bui component (`Link`, `ButtonLink`, `Tab`,
+  `ListRow`, `Menu`, table `getHref`) wraps itself in a router of its own from
+  that integration, so bui `href`s navigate client-side, through the app
+  history, without `onClick` + `useNavigate`.
+- An `href` outside a bui component does **not** route by itself anymore: a
+  react-aria `Link`, `MenuItem` or `GridListItem` used directly does a full
+  page load. Give it a react-aria `RouterProvider` on `useRoutingIntegration`,
+  as `RowLink` in
+  `packages/app/src/modules/agentShell/NotificationInbox/NotificationRow/NotificationRow.tsx`
+  does, or use bui's component instead. An outer `RouterProvider` around bui
+  components is ignored for the same reason: to change how a subtree's bui
+  controls navigate (a leave guard), override the integration with
+  `RoutingProvider`, as `RouteTabs`' `GuardedStrip` in `plugins/ui-react` does.
+- Keep hrefs **absolute** (`/customize/agents`). The framework's navigation
+  rejects a path-relative target; only a page that renders a routing adapter
+  (`@backstage/frontend-adapter-react-router-v6`) resolves one, against its
+  matched route.
+- In a unit test that renders bui outside a test app (a `MemoryRouter`), wrap
+  the tree in `BUIRouterProvider` from
+  `@giantswarm/backstage-plugin-ui-react/testUtils`; without it bui's tabs never
+  select and its links don't navigate. In `renderInTestApp`, assert where a bui
+  press went with `apis.get(coreApis.appHistory)`, not a mocked `useNavigate`.
 
 ## What bui gives you (0.17.0)
 
@@ -234,6 +250,18 @@ icon-only link) passes `standalone` to opt out. See "Links in the Agent
 Platform shell" in `docs/ui.md` and "Links" in the `agent-platform-ux-coding`
 skill.
 
+### Text size: 12px at the smallest
+
+The smallest text in the portal is 12px (`body-small`,
+`var(--bui-font-size-2)`). Smaller text is an exception that needs a comment
+next to the style saying why 12px does not work there; 10px is
+`var(--gs-font-size-exception)`. bui's 10px token, `--bui-font-size-1`, is
+12px in the app (`bui-overrides.css`), so `body-x-small` and the small `Badge`
+and `Tag` render at 12px; write `body-small` anyway. The way in is a size of
+its own: px below 12, rem below 0.75, and em sizes that land below 12 from
+their parent. What to use instead: "Text size: 12px at the smallest" in
+`docs/ui.md`.
+
 ### Overriding bui component sizes
 
 bui components size themselves via **data-attribute selectors** (e.g.
@@ -278,7 +306,10 @@ The bui `Table` (data-driven `columnConfig` + `data`, cells must return
 `Cell`/`CellText`) and the feature-rich core-components `Table` are both
 documented in depth in the **`tables`** skill, including the choice matrix and
 gotchas (loading skeleton needs `data={undefined}`). Read that skill for anything
-table-related; don't duplicate it here.
+table-related; don't duplicate it here. Its first rule: typical content fits.
+Headers and short values (dates, counts, sizes, versions, status labels)
+neither wrap nor end in an ellipsis; only free text (names, descriptions)
+may, with the full value on hover.
 
 ## Our shared library: the `ui-react` Storybook
 
@@ -369,6 +400,7 @@ just `curl` the GitHub raw URL from Bash instead.
 
 ## Related skills
 
-- **`tables`** — bui `Table` vs core-components `Table`, columns, filtering, faceted sidebars.
+- **`tables`** — typical content fits; bui `Table` vs core-components `Table`, columns, filtering, faceted sidebars.
 - **`components`** — component directory structure, named exports, barrel files.
+- **`mockups`** — building or reviewing UI from a design mockup (a canvas, an artboard, a `.dc.html` file).
 - **`upstream-search`** — searching a *local clone* of `backstage/backstage` (needs `BACKSTAGE_UPSTREAM_DIR` set; the Storybook technique above needs no clone).

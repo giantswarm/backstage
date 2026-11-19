@@ -3,13 +3,9 @@ import { Badge } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
 
 const useStyles = makeStyles({
-  // bui's small badge sets its text in `--bui-font-size-1` (10px), too small
-  // to read at a glance. The text size of bui's medium badge and tag
-  // instead, at the small badge's height, so a marker still sits beside a
-  // tool's name without growing its row. One line always: two lines of 12px
-  // text do not fit the badge's fixed height.
+  // One line always: two lines of the small badge's 12px text do not fit its
+  // fixed height.
   root: {
-    fontSize: 'var(--bui-font-size-2)',
     whiteSpace: 'nowrap',
   },
   // A fill one neutral step above the surface, and an edge. bui steps a

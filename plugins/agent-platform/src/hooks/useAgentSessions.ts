@@ -19,6 +19,7 @@ import {
   toAgentIdentifier,
   toSessionRow,
 } from '../components/SessionsDataProvider/helpers';
+import { PortalSessionEndedError } from '../lib/portalSession';
 import { useKagentCapabilities } from './useKagentCapabilities';
 
 export type AgentSessionsView = {
@@ -49,6 +50,12 @@ export type AgentSessionsView = {
    * which no retry changes.
    */
   failure?: ReadFailure;
+  /**
+   * The portal refused the person's session token on the read
+   * (`PortalSessionEndedError`), also a refetch over rows read before: a
+   * sign-in to the portal is the way on, not a retry.
+   */
+  sessionEnded: boolean;
   /** Read the sessions again, once, after a {@link failure}. */
   retry: () => void;
   /** A {@link retry} is under way. */
@@ -124,7 +131,9 @@ export function useAgentSessions(
   // triggers a background refetch whose failure would otherwise hide sessions
   // that were already read and are still correct.
   const isUnavailable = isError && !sessions;
-  const isRetryable = isUnavailable && !isKagentNotDeployed(error);
+  const sessionEnded = error instanceof PortalSessionEndedError;
+  const isRetryable =
+    isUnavailable && !isKagentNotDeployed(error) && !sessionEnded;
   const retry = useCallback(() => {
     void readSessionsOnce(queryClient, kagentApi, installation);
   }, [queryClient, kagentApi, installation]);
@@ -136,6 +145,7 @@ export function useAgentSessions(
     isNotUserScoped: capabilities.isUserScoped === false,
     isUnavailable,
     failure: isRetryable ? describeReadFailure(error) : undefined,
+    sessionEnded,
     retry,
     isRetrying: isRetryable && fetchStatus === 'fetching',
   };

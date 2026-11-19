@@ -32,6 +32,62 @@ CSV export, or the faceted `FiltersLayout` sidebar pattern.
 > (not `[]`) while loading, or the empty state flashes instead of the skeleton;
 > and column `id`s must match the row field names your `sortFn` reads.
 
+## Rule: typical content fits
+
+In a table, a column header and the values a column usually holds fit their
+column: no ellipsis, no second line. A person scans a column to compare its
+values; "144 vCPUs · 11…" or a date broken over two lines can't be compared,
+and a header cut to "Provi…" leaves the column unnamed. A tooltip doesn't
+help: nobody hovers every row to read a number.
+
+- **Headers are never cut off and stay on one line.** A column is at least
+  as wide as its header. Shorten the header ("Priority", not "Service
+  priority") before you widen the column.
+- **Short values don't wrap or truncate**: dates and times, durations and
+  ages, numbers with or without a unit (counts, sizes, percentages, costs),
+  versions, combinations of them ("144 vCPUs · 1152 GiB"), and status
+  labels. Render them `nowrap` without an ellipsis, and make the column at
+  least as wide as its usual value. bui's `CellText` truncates, so the width
+  is what keeps it whole. Show a status as a badge, a `StatusLabel` or a
+  `StatusDot` with its label: that is how the layout check tells a label
+  from a name.
+- **Only free text may end in an ellipsis**: names, titles, descriptions,
+  IDs, URLs. Then its full value is there on hover or focus (`CellText`
+  sets `title`; a custom cell sets it, or a tooltip), and one column (the
+  name) takes the width left over.
+- **Too many columns for the width**: pick a layout, don't squeeze.
+  - The table's compact layout (stacked rows or hidden columns, see "Phone
+    width" below) when a person scans it for one record. Its trigger counts
+    the content: pass each column's real minimum to
+    `tableMinWidth(columnConfig, { created: 150, capacity: 160 })`, so
+    `useCompactLayout` switches before a value is cut, not after.
+  - Sideways scroll inside the table when every column is needed side by
+    side (a person turned on every column, data of unknown shape). Once the
+    table scrolls anyway, each column gets its content's width: `minWidth`
+    from the header and the usual value, never a value that cuts them.
+    Never page-level sideways scroll.
+
+How to size a column: take the widest usual value (a date in the portal's
+format, a capacity of three-digit numbers, the longest status label) and the
+header at the table's font size (14px for bui, about 7.5px a character for
+digits and lower case), plus the cell's padding (24px in bui). In the
+core-components `Table`, `cellStyle: { whiteSpace: 'nowrap' }` and
+`headerStyle: { whiteSpace: 'nowrap' }` on the column keep the value and the
+header on one line, and `width` (or a `minWidth` in `cellStyle`) holds them.
+In the bui `Table`, a column's `minWidth` holds them: bui then shares the
+width out by `fr` but never gives a column less than its minimum, and
+`tableMinWidth` sums the minimums, so the compact layout takes over where
+they no longer fit. A header needs its text, the sort arrow's 20px when the
+column sorts (it takes its space while hidden) and the 24px padding. The
+Usage tables keep theirs in `LlmUsage/columnWidths.ts`.
+
+The layout check's `table-fit` rule enforces this on the rendered page: a
+cut-off header, a short value cut off or wrapped, and a column squeezed
+until it cannot be read while other columns keep room to spare, fail the
+check; its `table-scroll` rule fails a table that scrolls sideways in its
+card (the `layout-check` skill). Check `long-names` too: a name may end in an
+ellipsis there, a date may not.
+
 ## bui Table (`@backstage/ui`)
 
 Data-driven: pass `columnConfig` + `data` (each row must have an `id: string |
@@ -110,9 +166,10 @@ bui's `Table` is `table-layout: fixed; width: 100%` with `overflow: hidden`
 cells. At phone width (343px of content at 375) it crams every column in:
 five columns leave the name a ~30px ellipsis and **clip the action buttons**.
 Its own scroll container (`ResizableTableContainer`) engages only when a column
-declares `width`/`minWidth`/`maxWidth`/`defaultWidth`, and then react-aria's
-75px column minimum freezes `fr` columns. An `overflowX: auto` wrapper around
-the table does nothing. So every bui table on an agent-shell page picks one
+declares `width`/`minWidth`/`maxWidth`/`defaultWidth`, and then every column
+keeps at least its minimum (react-aria's 75px for a column without one), so
+the table scrolls inside its card once they no longer fit. An `overflowX:
+auto` wrapper around the table does nothing. So every bui table on an agent-shell page picks one
 phone pattern (helpers in `@giantswarm/backstage-plugin-ui-react`):
 
 | Kind of table                                                                                     | Phone pattern                                                                                                                                                                                                              |
@@ -146,6 +203,36 @@ isPhone ? (
 );
 ```
 
+A table of many columns gets as squeezed above phone width: beside the side
+rail at 768px a card is about 424px wide. There, measure the container instead
+of the viewport: `useCompactLayout(tableMinWidth(columnConfig))` returns a ref
+and whether to take the compact layout, true at phone width and while the
+element the ref is on is narrower than the shown columns need (160px for the
+name column, 80px for each other one, or a column's own minimum passed to
+`tableMinWidth`). Put the ref on a wrapper whose width comes from its parent,
+branch on the answer instead of `usePhoneLayout()`, and pass it to
+`usePhoneColumns(columnConfig, keep, { compact })`. It measures before the
+first paint and re-renders only when the answer flips. The Hosting · Capacity
+and Model hosting tables do this; it is meant for the other wide tables too.
+`mockContainerWidth` (`ui-react/testUtils`) drives the width in a test.
+A table with more steps than full and compact (drop a column, then
+another, then stack) measures once with `useWidthTier([full, …])`, which
+returns how many of the widths the container is narrower than; the
+sessions list does this.
+
+A table that should keep most of its columns on a laptop before it goes
+compact takes `useFittingColumns(columnsFor, { minWidths, dropFirst })`:
+each column gets its minimum as bui's `minWidth` (the header with its sort
+arrow and padding, and the usual value), and as the container narrows the
+table shows every column (`columnsFor('full')`), then leaves out the
+`dropFirst` columns (`isNarrow`; `columnsFor('narrow')` folds their values
+into other cells), then takes the compact layout (`isCompact`). A table
+that stays a table there (with `usePhoneColumns`) takes `fit.columns`, built
+by `columnsFor('compact')` with the same minimums, each overridden by
+`compactMinWidths`. Pass its `hiddenIds` to `useVisibleSort`, so a sort on a
+column it hides moves to one it shows. The GPU node pools, model cache,
+capacity, served models, Workflows and Your sessions By agent tables use it.
+
 Invariants:
 
 - An **actions column never disappears** at phone width: it becomes the row's
@@ -155,7 +242,8 @@ Invariants:
   cell's description, or the item's own page. Text that lived only in a
   `title=` tooltip goes inline (`StackedRowItem.details`); a phone never shows
   `title=`.
-- core-components tables keep the shell's `overflow-x: auto` and scroll.
+- No shell page renders a core-components table, and the shell has no rule
+  that makes one scroll: one added at phone width widens the page.
 
 Test the phone branch in jsdom with `mockPhoneLayout()` (and
 `mockDesktopLayout()` for the other branch), imported from
@@ -313,6 +401,9 @@ render: row => (
   <SubvalueCell value={<MainContent />} subvalue={row.description} />
 ),
 ```
+
+A subvalue, a cell's second line or a badge in a cell is 12px at the
+smallest, like all text: `body-small`, never a px size below 12. See "Text size: 12px at the smallest" in `docs/ui.md`.
 
 ### Hidden by Default Columns
 

@@ -37,6 +37,7 @@ import {
   readNewestTaskState,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { buildContinuationPrompt } from '../../lib/continuationPrompt';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 import { SessionDetailPage } from './SessionDetailPage';
 import {
   mockCollapsibleLayout,
@@ -831,6 +832,64 @@ describe('SessionDetailPage', () => {
 
     expect(screen.getByText('Could not load this session')).toBeInTheDocument();
     expect(screen.getByText(/status 500/)).toBeInTheDocument();
+  });
+
+  describe('when the portal refuses the session token', () => {
+    it('says the session ended, with Sign in again, instead of a read failure', async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        detail: undefined,
+        timeline: emptyTimeline,
+        error: new PortalSessionEndedError(),
+      });
+
+      await render();
+
+      expect(screen.getByText('Your portal session ended')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Sign in again' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('Could not load this session'),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText('Back to sessions')).toBeInTheDocument();
+    });
+
+    it('keeps the conversation and says the session ended on a refresh', async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        error: new PortalSessionEndedError(),
+      });
+
+      await render();
+
+      expect(screen.getByText('Your portal session ended')).toBeInTheDocument();
+      expect(
+        screen.queryByText('This session may be out of date'),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText('Which GitHub issues...')).toBeInTheDocument();
+    });
+
+    it('says the session ended on a send, not "Message not sent"', async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+      });
+      mockUseSendMessage.mockReturnValue(
+        idleSend({ error: new PortalSessionEndedError() }),
+      );
+
+      await render();
+
+      expect(
+        await screen.findByText('Your portal session ended'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Sign in again' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();
+      expect(screen.queryByText(/token verification/)).not.toBeInTheDocument();
+    });
   });
 
   it('keeps the session on screen when a refresh fails', async () => {
@@ -1936,10 +1995,11 @@ describe('SessionDetailPage', () => {
         expect(composer()).toHaveValue('');
       });
 
-      it('tells a Stop refused with a 401 to reload the page', async () => {
-        // The Backstage pod rolled while the tab stayed open and the tab's
-        // token no longer verifies; a reload signs it back in silently.
-        const unauthorized = new Error('Failed user token verification');
+      it('tells a Stop kagent refused with a 401 to reload the page', async () => {
+        // kagent refused the installation token, which a reload mints again.
+        const unauthorized = new Error(
+          "Not authenticated against the kagent API for installation 'gazelle': token expired",
+        );
         unauthorized.name = 'UnauthorizedError';
         mockUseSessionDetail.mockReturnValue(staleView);
         mockUseCancelTask.mockReturnValue(idleCancel({ error: unauthorized }));
@@ -1948,10 +2008,28 @@ describe('SessionDetailPage', () => {
         expect(screen.getByText('Could not stop the turn')).toBeInTheDocument();
         expect(
           screen.getByText(
-            /Failed user token verification\. Your sign-in expired — reload the page and stop the turn again\./,
+            /token expired\. Your sign-in expired — reload the page and stop the turn again\./,
           ),
         ).toBeInTheDocument();
         expect(screen.queryByText('Message not sent')).not.toBeInTheDocument();
+      });
+
+      it('says the portal session ended when the portal refuses a Stop', async () => {
+        mockUseSessionDetail.mockReturnValue(staleView);
+        mockUseCancelTask.mockReturnValue(
+          idleCancel({ error: new PortalSessionEndedError() }),
+        );
+        await render();
+
+        expect(
+          screen.getByText('Your portal session ended'),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByRole('button', { name: 'Sign in again' }),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByText('Could not stop the turn'),
+        ).not.toBeInTheDocument();
       });
     });
 

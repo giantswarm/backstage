@@ -17,6 +17,7 @@ import {
   parseToolErrorCode,
   AGENT_MANAGER_SERVER,
 } from '@giantswarm/backstage-plugin-gs-common';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Agent-manager calls share Muster's connection and sign-in contract.
 import {
   type MusterServerPresence,
   musterSignInRequiredOf,
@@ -75,6 +76,7 @@ export const AGENT_MANAGER_TOOLS = {
   removeOrganizationMember: 'remove_organization_member',
   listOrganizationConnectors: 'list_organization_connectors',
   setOrganizationModel: 'set_organization_model',
+  deleteOrganizationObject: 'delete_organization_object',
   replaceOrganizationCredential: 'replace_organization_credential',
 } as const;
 
@@ -155,6 +157,13 @@ export type AgentSpec = {
    * too (`Agent.spec.egressPolicyRefs`). Never on a coding Harness.
    */
   egressPolicyRefs?: string[];
+  /**
+   * Names of the organization's own connectors (kagent RemoteMCPServers of
+   * `namespace`, `list_organization_connectors`) the agent binds beside
+   * muster. Only an agent-manager whose `create_agent` schema has
+   * `connectors` takes it (`takesConnectors`); never on a coding Harness.
+   */
+  connectors?: string[];
   /**
    * The workspace, `<namespace>/<name>` in the agent's namespace, its
    * Sessions start in unless the person picks another or none
@@ -285,6 +294,7 @@ export type AgentStatus = {
   namespace: string;
   verdict: AgentStatusVerdict;
   summary: string;
+  releaseWithheld?: string;
   agent?: AgentObjectStatus;
   helmRelease?: {
     exists: boolean;
@@ -665,9 +675,11 @@ export function helmInstallCommand(
  * desired state lives in git and a live write is refused; `platform` — the
  * platform's own agent (labelled `agent-platform.giantswarm.io/managed-by:
  * agent-platform`), refused in every mode, a pull request too; `none` — a bare
- * `Agent` object with no release behind it, refused as well.
+ * `Agent` object with no release behind it, refused as well; `unknown` means
+ * Flux details are withheld, with the reason in `releaseWithheld`.
  */
-export type AgentManagedBy = 'helmrelease' | 'gitops' | 'platform' | 'none';
+export type AgentManagedBy =
+  'helmrelease' | 'gitops' | 'platform' | 'none' | 'unknown';
 
 /** What `get_agent` says about the release that owns the agent. */
 export type AgentHelmReleaseRef = {
@@ -713,6 +725,11 @@ export type AgentManagerAgent = {
   egress?: string[];
   /** The EgressPolicies of its namespace it picks (`spec.egressPolicyRefs`). */
   egressPolicyRefs?: string[];
+  /**
+   * The organization's own connectors it binds; absent from an
+   * agent-manager that does not take them.
+   */
+  connectors?: string[];
   /** The agent's default workspace, `<namespace>/<name>`; absent, none. */
   defaultWorkspace?: string;
   status?: AgentObjectStatus;
@@ -720,6 +737,7 @@ export type AgentManagerAgent = {
   /** The installation's default agent (`get_info`'s `defaultAgent`). */
   default?: boolean;
   helmRelease?: AgentHelmReleaseRef;
+  releaseWithheld?: string;
   /** The HelmRelease's inline values, when a release owns the agent. */
   values?: Record<string, unknown>;
 };
@@ -761,6 +779,16 @@ export type AgentManagerModelConfig = {
    * reads this field and never the annotation, whose key agent-manager owns.
    */
   default?: boolean;
+  /**
+   * The model's settings, which agent-manager 3.1.0 and later report: the
+   * name people see, the token limit of an answer (absent: the provider's
+   * default), and prompt caching (absent for a provider without it), with
+   * its cache time while it is on.
+   */
+  displayName?: string;
+  maxTokens?: number;
+  promptCaching?: boolean;
+  cacheTTL?: string;
 };
 
 /**
@@ -781,12 +809,15 @@ export const EGRESS_POLICIES_CAPABILITY = 'egressPolicies';
 
 /**
  * One origin of an EgressPolicy. `credentialHeader` names the request header
- * the egress gateway fills from the policy's credential; the Secret behind it
- * is never reported.
+ * the egress gateway fills from the policy's credential. `credentialSecret`
+ * and `credentialKey` name the Secret and key it reads, never the value; an
+ * agent-manager older than giantswarm/agent-manager#371 leaves them out.
  */
 export type EgressDestination = {
   origin: string;
   credentialHeader?: string;
+  credentialSecret?: string;
+  credentialKey?: string;
 };
 
 /** `list_egress_policies`: an EgressPolicy an agent of its namespace may pick. */
@@ -822,6 +853,8 @@ export type AgentUpdate = {
   egress?: string[];
   /** Replaces the whole list; an empty list clears it. */
   egressPolicyRefs?: string[];
+  /** Replaces the whole list; an empty list removes every connector. */
+  connectors?: string[];
   /** `<namespace>/<name>`; `""` removes the default. */
   defaultWorkspace?: string;
   refreshSkills?: boolean;

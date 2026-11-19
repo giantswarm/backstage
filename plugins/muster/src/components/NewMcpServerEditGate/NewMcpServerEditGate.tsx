@@ -17,8 +17,12 @@ import {
   newMcpServerVerifyRouteRef,
 } from '../../routes';
 import { isGitOpsManaged } from '../../lib/gitops';
-import { wizardEditBlocker } from '../../lib/mcpServerDefinition';
-import { connectorDisplayNameOn } from '../../lib/serverGrouping';
+import {
+  connectorDisplayNameOn,
+  organizationServersNamed,
+  musterOwnServer,
+} from '../../lib/serverGrouping';
+import { connectorEditBlock } from '../ConnectorPage/connectorEdit';
 import { useMusterInstance } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
 import { useConnectorListPaths } from '../shared/hooks';
@@ -122,8 +126,13 @@ export function NewMcpServerEditGate({
   const connectorsHref = useConnectorsListHref();
   // Set on the edit addresses only.
   const { server: editName, installation: editInstallation } = useParams();
-  const { activeInstallation, mcpServers, isLoading, isLoadingInstallations } =
-    useMusterInstance();
+  const {
+    activeInstallation,
+    mcpServers,
+    isLoading,
+    isLoadingInstallations,
+    isLoadingServerKeys,
+  } = useMusterInstance();
   // The address names an installation the section cannot show (muted, or
   // running no muster): the providers, pinned to it, resolved none.
   const elsewhere =
@@ -133,11 +142,20 @@ export function NewMcpServerEditGate({
   const { registeredName, registeredInstallation, lastSave, startEdit, reset } =
     useNewMcpServerForm();
 
-  const server = editName
-    ? mcpServers.find(
-        s => s.getName() === editName && s.cluster === editInstallation,
+  // muster's own server of that name (a family member included), which the
+  // wizard edits; else the one organization's of that name, which muster
+  // does not let it change, once muster's keys tell the two apart.
+  const organizations = editName
+    ? organizationServersNamed(
+        mcpServers.filter(s => s.cluster === editInstallation),
+        editName,
       )
-    : undefined;
+    : [];
+  const server =
+    musterOwnServer(mcpServers, editInstallation, editName) ??
+    (!isLoadingServerKeys && organizations.length === 1
+      ? organizations[0]
+      : undefined);
   const gitOpsManaged = server ? isGitOpsManaged(server) : false;
   // What people call the connector; the URL keeps its resource name.
   const shownName = editName
@@ -150,7 +168,9 @@ export function NewMcpServerEditGate({
         registeredInstallation === editInstallation
       : !registeredName);
   const blocker =
-    server && !gitOpsManaged ? wizardEditBlocker(server) : undefined;
+    server && !gitOpsManaged
+      ? connectorEditBlock({ kind: 'server', server }, true)?.reason
+      : undefined;
   // Saved by this run and the param lost (Back from verify after a create).
   const resumeSaved = !editName && Boolean(registeredName && lastSave);
 
@@ -216,7 +236,13 @@ export function NewMcpServerEditGate({
         actions={backToServers}
       />
     );
-  } else if (editName && !server && !isLoading && !isLoadingInstallations) {
+  } else if (
+    editName &&
+    !server &&
+    !isLoading &&
+    !isLoadingInstallations &&
+    !isLoadingServerKeys
+  ) {
     body = (
       <EmptyStateCard
         title="Connector not found"

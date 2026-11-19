@@ -1,0 +1,96 @@
+# Fixture mode: the portal with fixture data instead of its backends, signed in
+# as the guest, without a cluster or a person (docs/fixtures.md). Started on
+# top of app-config.yaml by `yarn fixtures start`, which adds the ports in a
+# generated config of its own. Not for a deployed portal: a production build
+# ignores the fixture flags.
+app:
+  portals:
+    platformPortal: true
+    agentPlatform: true
+  errorReporter: null
+  telemetrydeck: null
+
+backend:
+  errorReporter: null
+
+auth:
+  environment: development
+  # The guest provider, which the backend adds with ENABLE_GUEST_AUTH. With
+  # no `gs.authProvider` the sign-in page signs the guest in on its own.
+  providers:
+    guest: {}
+
+gs:
+  fixtures: true
+  # The shell's Platform section, so its clusters list can be checked.
+  features:
+    platformSection:
+      enabled: true
+  # A cluster page's tool links, at made-up addresses: the installations have
+  # no base domain here, so the default dashboard link has nothing to go to.
+  clusterDetails:
+    resources:
+      - label: Dashboards
+        icon: GrafanaIcon
+        url: 'https://grafana.example.com/d/cluster-overview?var-cluster=${{CLUSTER_NAME}}'
+      - label: Alerts
+        icon: GrafanaIcon
+        url: 'https://grafana.example.com/alerting/list?search=cluster%3D${{CLUSTER_NAME}}'
+  # Kubernetes end-of-life dates for the fixture clusters' versions: 1.30,
+  # the oldest release's, is past its end of life.
+  kubernetesVersions:
+    '1.30':
+      minorVersion: '1.30'
+      eolDate: '2025-06-28'
+    '1.31':
+      minorVersion: '1.31'
+      eolDate: '2027-03-28'
+    '1.32':
+      minorVersion: '1.32'
+      eolDate: '2027-08-28'
+  # Made-up installations, served by the fixture Kubernetes API
+  # (FIXTURE_INSTALLATIONS in gs-common). Their Mimir is the fixture one,
+  # which answers the agent gateway's metrics from the data set.
+  installations:
+    meadow:
+      pipeline: testing
+      authProvider: serviceAccount
+      mimirEnabled: true
+    fennel:
+      pipeline: testing
+      authProvider: serviceAccount
+      mimirEnabled: true
+    tarragon:
+      pipeline: testing
+      authProvider: serviceAccount
+      mimirEnabled: true
+
+muster:
+  fixtures: true
+
+# Hive's plans, magazine and knowledge documents, once Hive is on:
+# `yarn fixtures start --enable page:plans --enable api:plans`.
+plans:
+  fixtures: true
+
+# Hive's Roadmap tab, once Hive and the tab are on: `yarn fixtures start
+# --enable page:plans --enable api:plans --enable page:roadmap
+# --enable api:roadmap`.
+roadmap:
+  fixtures: true
+
+agentPlatform:
+  fixtures: true
+  # The skill repositories of the data set, served by the fixture
+  # SkillDiscoveryApi rather than read from GitHub (`portalSkillRepositories`
+  # in the agent-platform plugin's fixtures; a test checks the list).
+  skills:
+    repositories:
+      - https://github.com/example/hazel-bramble
+      - https://github.com/example/hazel-fern
+      - url: https://git.example.com/example/sedge-aster
+        path: skills
+        readOnly: true
+      - https://github.com/example/ivy-sedge
+      - https://github.com/example/vetch-sage
+      - https://github.com/example/nettle-heather

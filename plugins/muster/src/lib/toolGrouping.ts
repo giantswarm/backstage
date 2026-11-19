@@ -1,6 +1,17 @@
 import { ToolSummary } from '../apis';
 import type { MCPServer } from './k8s';
-import { mcpServerDisplayNames, type ServerPageRow } from './serverGrouping';
+import {
+  connectorAuthName,
+  connectorToolNamePrefix,
+  isOrganizationServer,
+} from './connectorKey';
+import {
+  MUSTER_SERVER_KEY,
+  isShadowedServer,
+  mcpServerDisplayNames,
+  singularServerPageKey,
+  type ServerPageRow,
+} from './serverGrouping';
 
 /**
  * One tool-name prefix an aggregated MCP server's tools are exposed under,
@@ -10,7 +21,10 @@ import { mcpServerDisplayNames, type ServerPageRow } from './serverGrouping';
 export interface ServerPrefixInfo {
   /** The `x_<segment>` prefix muster gives this server's tools. */
   prefix: string;
+  /** muster's key for the server (`connectorAuthName`). */
   serverName: string;
+  /** The server's CR name: its page's segment, unless a family's. */
+  name: string;
   family?: string;
   /**
    * What people call the connector it belongs to, by `connectorDisplayNames`;
@@ -58,7 +72,7 @@ export function serverPrefixInfos(servers: MCPServer[]): ServerPrefixInfo[] {
   const labels = mcpServerDisplayNames(servers);
   const families = new Set(servers.map(server => server.getFamily()));
   const displayNameOf = (server: MCPServer): string | undefined => {
-    const surface = server.getFamily() ?? server.getName();
+    const surface = server.getFamily() ?? connectorAuthName(server);
     // A singular server named like a family is named by itself, not by it.
     if (!server.getFamily() && families.has(surface)) {
       return undefined;
@@ -69,12 +83,16 @@ export function serverPrefixInfos(servers: MCPServer[]): ServerPrefixInfo[] {
   return servers.flatMap(server => {
     const displayName = displayNameOf(server);
     const info = {
-      serverName: server.getName(),
+      serverName: connectorAuthName(server),
+      name: server.getName(),
       family: server.getFamily(),
       ...(displayName ? { displayName } : {}),
     };
-    const own = `x_${server.getToolPrefix() ?? server.getName()}`;
-    const prefix = server.getToolNamePrefix();
+    const prefix = connectorToolNamePrefix(server);
+    // An organization's server joins no family: it has one prefix.
+    const own = isOrganizationServer(server)
+      ? prefix
+      : `x_${server.getToolPrefix() || server.getName()}`;
     return own === prefix
       ? [{ ...info, prefix }]
       : [
@@ -102,7 +120,7 @@ export function toolsForRow(
   const owns = (owner: ServerPrefixInfo | undefined) =>
     row.kind === 'family'
       ? owner?.family === row.family
-      : !owner?.family && owner?.serverName === row.server.getName();
+      : !owner?.family && owner?.serverName === connectorAuthName(row.server);
   return tools.filter(
     t => t.name.startsWith('x_') && owns(ownerOfTool(t.name, servers)),
   );
@@ -142,9 +160,9 @@ export function shortToolName(
 }
 
 /**
- * The list key of the row a tool belongs to: `family:<name>`, `server:<name>`
- * or `core` -- kind-qualified, because a family and a singular server may
- * share a name.
+ * The list key of the row a tool belongs to: `family:<name>`, `server:<key>`
+ * (muster's key for the server, `connectorAuthName`) or `core` --
+ * kind-qualified, because a family and a singular server may share a name.
  */
 export type ServerListKey = string;
 
@@ -154,7 +172,7 @@ export function serverListKey(row: ServerPageRow): ServerListKey {
     case 'family':
       return `family:${row.family}`;
     case 'server':
-      return `server:${row.server.getName()}`;
+      return `server:${connectorAuthName(row.server)}`;
     default:
       return 'core';
   }
@@ -199,13 +217,15 @@ export function toolsByServerKey(
 }
 
 /**
- * Resolves the server page a tool is found on: the `<server>` segment of
- * `/customize/connectors/<installation>/<server>/tools/<tool>`. muster's own tools
- * (`core_*`, `workflow_*`) are on `muster`; any other on its `ownerOfTool`'s
- * page -- the rule the pages list tools by, so the link opens a page that shows
- * the tool. A resolved tool is undefined when no prefix matches, or when the
- * owner's page belongs to another row: `muster` is always the core row, and a
- * family takes the page of a singular server of the same name.
+ * Resolves the server page a tool is found on: the page key
+ * (`lib/connectorAddress.ts`) of
+ * `/customize/connectors/<installation>/<key>/tools/<tool>`. muster's own
+ * tools (`core_*`, `workflow_*`) are on `muster`; any other on its
+ * `ownerOfTool`'s page -- the rule the pages list tools by, so the link opens
+ * a page that shows the tool. A resolved tool is undefined when no prefix
+ * matches, or when the owner's page belongs to another row: `muster` is
+ * always the core row, and a family takes the page of muster's own singular
+ * server of the same name.
  *
  * Built once per server list; resolving is a prefix lookup per tool.
  */
@@ -214,16 +234,23 @@ export function serverPageResolver(
 ): (toolName: string) => string | undefined {
   const prefixes = serverPrefixInfos(servers);
   const families = new Set(servers.map(server => server.getFamily()));
+  const byKey = new Map(
+    servers.map(server => [connectorAuthName(server), server]),
+  );
   return toolName => {
     if (toolName.startsWith('core_') || toolName.startsWith('workflow_')) {
-      return 'muster';
+      return MUSTER_SERVER_KEY;
     }
     const owner = ownerOfTool(toolName, prefixes);
     if (!owner) {
       return undefined;
     }
-    const page = owner.family ?? owner.serverName;
-    const shadowed = page === 'muster' || (!owner.family && families.has(page));
-    return shadowed ? undefined : page;
+    if (owner.family) {
+      return owner.family === MUSTER_SERVER_KEY ? undefined : owner.family;
+    }
+    const server = byKey.get(owner.serverName);
+    return server && !isShadowedServer(server, families)
+      ? singularServerPageKey(server)
+      : undefined;
   };
 }

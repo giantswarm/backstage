@@ -253,8 +253,9 @@ A `giantswarm-ad` sign-in is looked up in the catalog by email, and a
 graveler. Their sign-ins are looked up as if made through the connector the
 person used on that Dex, which the federated `user_id` names, so a person who
 signs in there with GitHub and a personal email still finds their catalog
-user. A sign-in through a Giant Swarm connector that matches no catalog user
-signs in as `user:default/guest`.
+user. A sign-in through a Giant Swarm connector that matches no catalog user,
+or whose token carries neither a username nor a verified email to look up, is
+refused, and the sign-in dialog shows why.
 
 A person who signs in through any other Dex connector, or through an issuer
 without `federated_claims`, resolves to `user:oidc/<name>`, where the name is
@@ -288,7 +289,7 @@ login fails with `invalid_scope` on the base set as well.
 
 The cluster details page allows you to configure resource links that will be displayed in place of the default links.
 
-The default links are the Grafana cluster overview dashboard and the Web UI. There is no default Alerts link: Grafana's alerting page is only enabled in the Giant Swarm organization (`orgId=2`), which customers can't access, so only a Giant Swarm staff instance configures one.
+The default link is the Grafana cluster overview dashboard. There is no default Alerts link: Grafana's alerting page is only enabled in the Giant Swarm organization (`orgId=2`), which customers can't access, so only a Giant Swarm staff instance configures one.
 
 ### Configuration example
 
@@ -301,14 +302,9 @@ gs:
       - label: 'Alerts'
         icon: 'NotificationsNone'
         url: 'https://grafana.${{BASE_DOMAIN}}/alerting?orgId=2'
-      - label: 'Web UI'
-        icon: 'Public'
-        url: 'https://happa.${{BASE_DOMAIN}}/organizations/${{ORG_NAME}}/clusters/${{CLUSTER_NAME}}'
-        clusterType: 'workload'
-      - label: 'Web UI'
-        icon: 'Public'
-        url: 'https://happa.${{BASE_DOMAIN}}'
-        clusterType: 'management'
+      - label: "Cluster overview \n dashboard"
+        icon: 'GrafanaIcon'
+        url: 'https://grafana.${{BASE_DOMAIN}}/d/gs_cluster-overview/cluster-overview?orgId=1&from=now-6h&to=now&timezone=browser&var-datasource=default&var-cluster=${{CLUSTER_NAME}}'
 ```
 
 ### Cluster type specific links
@@ -316,6 +312,18 @@ gs:
 If the `clusterType` configuration option is not set, the link will be displayed for both management and workload clusters.
 If the `clusterType` is set to `management`, the link will be displayed only for management clusters.
 If the `clusterType` is set to `workload`, the link will be displayed only for workload clusters.
+
+For example, a link shown on management clusters only:
+
+```yaml
+gs:
+  clusterDetails:
+    resources:
+      - label: 'Teleport'
+        icon: 'Public'
+        url: 'https://teleport.${{BASE_DOMAIN}}'
+        clusterType: 'management'
+```
 
 ### URL Templating
 
@@ -327,7 +335,7 @@ The `url` parameter supports templating with the following placeholders:
 - `ORG_NAME` - name of the organization.
 - `BASE_DOMAIN` - base domain of the management cluster.
 
-For example, the URL `https://happa.${{BASE_DOMAIN}}/organizations/${{ORG_NAME}}/clusters/${{CLUSTER_NAME}}` will be dynamically populated with the appropriate values.
+For example, the URL `https://grafana.${{BASE_DOMAIN}}/d/gs_cluster-overview/cluster-overview?orgId=1&var-cluster=${{CLUSTER_NAME}}` will be dynamically populated with the appropriate values.
 
 ### Icon Configuration
 
@@ -421,21 +429,23 @@ Two constraints:
 
 ## Optional features
 
-Some optional features can be enabled and disabled via the app configuration. For example, the configuration snippet below will enable the `installationsPage` feature:
+The classic Clusters, Deployments and Installations pages, Flux and AI Chat
+are page extensions listed under `app.extensions` in `app-config.yaml`
+(`page:gs/clusters`, `page:gs/deployments`, `page:gs/installations`, …); a
+deployment's `app.extensions` replaces that list, so it repeats what it keeps.
+
+`gs.features` holds what is off unless a deployment turns it on:
 
 ```yaml
 gs:
   features:
-    installationsPage:
+    platformSection:
       enabled: true
 ```
 
-The following optional features are available:
-
-- `clustersPage`: Enable the Clusters page, which lists all clusters -- both management and workload clusters -- in the installations the user has access to via the Backstage instance.
-- `deploymentsPage`: Enable the Deployments page, which lists all the deployments -- `HelmRelease` and `App CR` resources -- in the installations the user has access to via the Backstage instance.
-- `installationsPage`: Enable the Installations page, which lists all Resource entities of type _instalation_ in the catalog.
-- `scaffolder`: Enables the scaffolder that lists available templates.
+- `platformSection`: the Platform section of the Agent Platform shell
+  (`/platform`, the clusters list) with its rail item. See
+  [Agent Platform configuration](agent-platform-configuration.md#the-platform-section-gsfeaturesplatformsection).
 
 ## Egress through an HTTP proxy
 

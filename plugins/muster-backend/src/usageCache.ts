@@ -11,7 +11,9 @@ const USAGE_CACHE_MAX_ENTRIES = 500;
  * answers without muster seeing the request, so it may only answer someone
  * muster already answered. The forwarded muster token cannot stand in for
  * them: the frontend gets a new ID token on every full load, and
- * `readCallOptions` checks its presence and expiry, not who it names.
+ * `readCallOptions` checks its presence and expiry, not who it names. A
+ * person whose access muster withdraws keeps the cached answer for up to
+ * {@link USAGE_CACHE_TTL_MS}, as their browser keeps its own for as long.
  */
 export function usageCacheKey(parts: {
   route: string;
@@ -35,13 +37,24 @@ export function usageCacheKey(parts: {
  * Usage answers by key, reused for {@link USAGE_CACHE_TTL_MS}, and one load
  * per key at a time: requests for a key whose load is running wait for it.
  * Only answers `keep` accepts are stored; a failed load is not, and every
- * waiter sees its error.
+ * waiter sees its error. Without a key nothing is shared: `load` runs.
+ *
+ * Not `coreServices.cache`: that stores serialised values with no way to
+ * share a load in flight, which is most of what this saves when a page asks
+ * for the same window twice; the answers are per process and short-lived.
  */
 export class UsageCache<T> {
   private readonly entries = new Map<string, { value: T; expires: number }>();
   private readonly inFlight = new Map<string, Promise<T>>();
 
-  read(key: string, load: () => Promise<T>, keep: (value: T) => boolean) {
+  read(
+    key: string | undefined,
+    load: () => Promise<T>,
+    keep: (value: T) => boolean,
+  ): Promise<T> {
+    if (key === undefined) {
+      return load();
+    }
     const entry = this.entries.get(key);
     if (entry && entry.expires > Date.now()) {
       return Promise.resolve(entry.value);
@@ -62,6 +75,13 @@ export class UsageCache<T> {
       });
     this.inFlight.set(key, loading);
     return loading;
+  }
+
+  /** Drops the answer stored under `key`, if any. */
+  forget(key: string | undefined) {
+    if (key !== undefined) {
+      this.entries.delete(key);
+    }
   }
 
   private store(key: string, value: T) {

@@ -33,6 +33,7 @@ export const SHELL_SPECS = [
   'first-agent.spec.ts',
   'form-validation.spec.ts',
   'gpu-node-pool.spec.ts',
+  'hosting-narrow-window.spec.ts',
   'harness-codex-card.spec.ts',
   'harness-codex-turn.spec.ts',
   'harness-omp-turn.spec.ts',
@@ -47,7 +48,10 @@ export const SHELL_SPECS = [
   'mcp-sign-in-row.spec.ts',
   'notification-inbox.spec.ts',
   'organization-credentials.spec.ts',
+  'vertex-credentials.spec.ts',
   'organizations.spec.ts',
+  'platform-clusters.spec.ts',
+  'profile-environments.spec.ts',
   'provider-connect.spec.ts',
   'muster-namespaced.spec.ts',
   'new-agent-draft.spec.ts',
@@ -69,6 +73,7 @@ export const SHELL_SPECS = [
   'session-export.spec.ts',
   'session-images.spec.ts',
   'session-jump-to-bottom.spec.ts',
+  'session-model-failure.spec.ts',
   'session-runtime-lost.spec.ts',
   'session-stream-resubscribe.spec.ts',
   'session-state-column.spec.ts',
@@ -79,12 +84,15 @@ export const SHELL_SPECS = [
   'skills-catalog-skill-manager.spec.ts',
   'telemetry.spec.ts',
   'toolchains.spec.ts',
+  'toolchains-unchecked.spec.ts',
   'url-elicitation.spec.ts',
   'url-elicitation-background.spec.ts',
   'usage-cost.spec.ts',
   'usage-older-data-unavailable.spec.ts',
   'usage-time-window.spec.ts',
+  'wizard-tools-connection.spec.ts',
   'wizard-tools-layout.spec.ts',
+  'wizard-models-namespaced.spec.ts',
   'workflows.spec.ts',
   'workspace-detail.spec.ts',
   'workspace-flows.spec.ts',
@@ -99,6 +107,8 @@ export const SHELL_SPECS = [
  * {@link SHELL_SPECS}, they need a lab in `shell` mode.
  */
 export const MOBILE_SPECS = [
+  'organization-credentials.spec.ts',
+  'vertex-credentials.spec.ts',
   'mobile-hosting.spec.ts',
   'mobile-model-page.spec.ts',
   'mobile-navigation.spec.ts',
@@ -106,7 +116,9 @@ export const MOBILE_SPECS = [
   'mobile-sessions.spec.ts',
   'mobile-tool-page.spec.ts',
   'mobile-wizard.spec.ts',
+  'wizard-models-namespaced.spec.ts',
   'mobile-workflow.spec.ts',
+  'session-model-failure.spec.ts',
 ] as const;
 
 const globs = (specs: readonly string[]) => specs.map(spec => `**/${spec}`);

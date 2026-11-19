@@ -11,6 +11,7 @@ import { kagentApiRef } from '../../apis';
 import { KagentApi, KagentInstallation } from '../../apis/types';
 import { KagentSession } from '@giantswarm/backstage-plugin-agent-platform-common';
 import { SessionsDataProvider, useSessions } from './SessionsDataProvider';
+import { PortalSessionEndedError } from '../../lib/portalSession';
 
 // Mock the fleet plumbing so the test drives the fan-out, classification and
 // loading logic directly. `mock`-prefixed names are the only out-of-scope
@@ -457,6 +458,41 @@ describe('SessionsDataProvider', () => {
       await waitFor(() => expect(result.current.rows).toHaveLength(1));
       expect(result.current.isLoading).toBe(false);
     });
+  });
+
+  it('says the portal session ended when the portal refused the session token', async () => {
+    listSessions.mockImplementation((installation: string) =>
+      installation === 'gazelle'
+        ? Promise.reject(new PortalSessionEndedError())
+        : Promise.reject(namedError('NotFoundError')),
+    );
+
+    const { result } = renderProvider();
+
+    await waitFor(() => expect(result.current.sessionEnded).toBe(true));
+    expect(result.current.unreachableInstallations).toEqual(['gazelle']);
+  });
+
+  it('says the portal session ended on a refetch refused over rows read before', async () => {
+    listSessions.mockImplementation((installation: string) =>
+      installation === 'gazelle'
+        ? Promise.resolve([session()])
+        : Promise.reject(namedError('NotFoundError')),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const { result } = renderProvider(queryClient);
+    await waitFor(() => expect(result.current.rows).toHaveLength(1));
+
+    listSessions.mockImplementation(() =>
+      Promise.reject(new PortalSessionEndedError()),
+    );
+    await act(() => queryClient.refetchQueries());
+
+    await waitFor(() => expect(result.current.sessionEnded).toBe(true));
+    // The rows read before stay on screen, under the alert.
+    expect(result.current.rows).toHaveLength(1);
   });
 
   describe('a failed read the person can retry', () => {

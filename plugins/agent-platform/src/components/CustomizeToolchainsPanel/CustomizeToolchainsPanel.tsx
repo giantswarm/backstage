@@ -30,6 +30,7 @@ import {
   useToolchainSources,
   useToolchains,
 } from '../../hooks/useToolchainManager';
+import { usePortalSessionEnded } from '../../hooks/usePortalSessionEnded';
 import { toolchainDetailRouteRef } from '../../routes';
 import {
   sharedIdentityReason,
@@ -45,9 +46,11 @@ import {
   type ToolchainSource,
 } from '../../lib/toolchainManager';
 import { AddToolchainSourceButton } from '../AddToolchainSourceDialog';
+import { PortalSessionEndedAlert } from '../PortalSessionEndedAlert';
 import { SharedIdentityNote } from '../SharedIdentityNote';
 import { ToolchainGrantPrompt } from '../ToolchainGrantPrompt';
 import { ToolchainReadFailure } from '../ToolchainReadFailure';
+import { ToolchainsUnchecked } from '../ToolchainsUnchecked';
 
 export type CustomizeToolchainsPanelProps = {
   search: string;
@@ -81,9 +84,33 @@ function ToolsCell({
   );
 }
 
-/** "0.2.0, 0.1.0": the published versions, newest first. */
-export function versionsLabel(toolchain: Toolchain): string {
-  return toolchain.versions.map(imageTag).join(', ');
+/**
+ * "0.6.1 · 4 older": the newest version and how many came before it, short
+ * enough for its column whatever the count. Without a list of versions, the
+ * newest the toolchain names.
+ */
+export function shortVersionsLabel(toolchain: Toolchain): string {
+  const [newest, ...older] = (toolchain.versions ?? []).map(imageTag);
+  if (newest === undefined) {
+    return toolchain.version ? imageTag(toolchain.version) : '—';
+  }
+  return older.length > 0 ? `${newest} · ${older.length} older` : newest;
+}
+
+/** A toolchain's versions, newest first, and how long ago the newest came. */
+function VersionsCell({ toolchain }: { toolchain: Toolchain }) {
+  return (
+    <CellText
+      title={shortVersionsLabel(toolchain)}
+      description={
+        toolchain.publishedAt
+          ? `Latest ${getRelativeDate(toolchain.publishedAt, new Date(), {
+              strict: true,
+            })}`
+          : undefined
+      }
+    />
+  );
 }
 
 /** The toolchains matching a search, by name, source or repository. */
@@ -136,16 +163,9 @@ function ToolchainsTable({
       id: 'versions',
       label: 'Versions',
       defaultWidth: '1fr',
-      cell: row => (
-        <CellText
-          title={versionsLabel(row)}
-          description={
-            row.publishedAt
-              ? `Latest ${getRelativeDate(row.publishedAt, new Date())}`
-              : undefined
-          }
-        />
-      ),
+      // "0.6.1 · 12 older", and "Latest 59 minutes ago" under it.
+      minWidth: 170,
+      cell: row => <VersionsCell toolchain={row} />,
     },
     {
       id: 'tools',
@@ -205,6 +225,8 @@ function SourcesSection({ installation }: { installation: string }) {
       id: 'state',
       label: 'State',
       defaultWidth: '1fr',
+      // "Waiting for approval" with its dot.
+      minWidth: 170,
       cell: row => <SourceStateCell source={row} />,
     },
     {
@@ -338,8 +360,15 @@ function InstallationToolchains({
 export function CustomizeToolchainsPanel({
   search,
 }: CustomizeToolchainsPanelProps) {
-  const { installations, sharedIdentity, hasToolchains } =
+  const { installations, sharedIdentity, hasToolchains, unchecked, recheck } =
     useScopedToolchainInstallations();
+  // The portal refused the session token: the reads of every installation's
+  // toolchains, sources and tools fail the same way until a sign-in, which
+  // is the one thing to say.
+  const sessionEnded = usePortalSessionEnded();
+  if (sessionEnded) {
+    return <PortalSessionEndedAlert />;
+  }
 
   if (hasToolchains === false) {
     return sharedIdentity.length > 0 ? (
@@ -353,6 +382,9 @@ export function CustomizeToolchainsPanel({
         description="No environment in scope runs the toolchain-manager. Pick another environment, or ask your platform team to turn toolchains on."
       />
     );
+  }
+  if (hasToolchains === 'unchecked') {
+    return <ToolchainsUnchecked unchecked={unchecked} onRetry={recheck} />;
   }
   if (hasToolchains === undefined) {
     return <LoadingIndicator label="Reading the toolchains…" />;

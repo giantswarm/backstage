@@ -1,7 +1,8 @@
 # Agent Platform
 
 The **Agent Platform shell** is the portal's UI for working with agents. It
-serves `/`, `/sessions`, `/usage`, `/profile` and `/customize/**` and is built
+serves `/`, `/sessions`, `/usage`, `/profile` and `/customize/**`, and
+`/platform/**` where the deployment turns the Platform section on, and is built
 from the
 `agent-platform` plugin (`@giantswarm/backstage-plugin-agent-platform`), the
 `muster` plugin and the app's `agentShell` module
@@ -280,6 +281,16 @@ own account of the attempt (the token's issuer and audiences) under
 **Details**, to copy. muster keeps that flag per person rather than per
 session, so a connector connected in this session ignores it.
 
+A connector's page is `/customize/connectors/<installation>/<connector>`,
+`<connector>` being the family's name for a family and the MCPServer's name
+for one in muster's namespace. An organization's connector, an MCPServer in
+another namespace, is at
+`/customize/connectors/<installation>/-/<namespace>/<name>`, since two
+organizations may each own a connector of one name. Its address before that,
+`…/<installation>/<name>`, redirects to it while no other organization's
+connector on the installation has that name, and otherwise lists the
+connectors of that name, each linking to its page.
+
 A connector's page opens on its Tools tab, a list of the tools it offers that
 each link to the tool's own page,
 `/customize/connectors/<installation>/<connector>/tools/<tool>`.
@@ -341,10 +352,15 @@ Instances tab. muster's own page has no Details tab.
 
 ### Models
 
-Models are kagent ModelConfigs. **Connect a model** supports OpenAI-compatible
-endpoints, Anthropic, Gemini and Ollama; the API key is optional and
-write-only. Where the installation runs model-manager, **Model hosting** adds
-running models, GPU capacity and the model cache.
+Models are kagent ModelConfigs. Customize › Models lists every one in scope,
+by model: its owner (the platform, an organization, or a namespace that is no
+organization), its provider as the form names it, its environment, how many
+agents use it and its state, the defaults marked **Default**. It filters by
+owner, provider, status and use (In use, Not used). **Add a model** supports
+OpenAI-compatible endpoints, Anthropic, Gemini and Ollama; the API key is
+optional and write-only. Where the installation runs model-manager, the
+**Model hosting** row above the search leads to running models, GPU capacity
+and the model cache.
 
 ### Toolchains
 
@@ -541,10 +557,129 @@ when calls were recorded and how many of the range's days that covers;
 otherwise they say nothing. Cost shows the change against the previous range
 only when the records reach back before it.
 
+## Platform
+
+`/platform` (`PlatformPage` in the app's `agentShell` module) lists what the
+portal reads of the platform, behind `gs.features.platformSection.enabled`
+(off by default; see [Agent Platform configuration](agent-platform-configuration.md#the-platform-section-gsfeaturesplatformsection)).
+Without it there is no route and no rail item. Its one tab so far, Clusters
+(`/platform/clusters`, the bare path redirects there), is
+`PlatformClustersPanel` from the gs plugin: every Cluster API cluster of every
+environment the person can read and has not switched off, read by the classic
+list's `ClustersDataProvider`. Search, then Environment, Organization, Status
+and Release dropdowns, a column picker at the end of the filter bar (Name
+always; Status, Environment, Organization, Release, Workers and Created by
+default; Provider, Region, Account, Service priority and Cluster app on
+request, kept per browser), and headers that sort. Release carries the
+Kubernetes minor version, marked EOL past its end of life
+(`gs.kubernetesVersions`). Environments whose clusters could not be read are named in the
+shared `UnreachableInstallationsAlert` once every environment has answered,
+with Try again, and Sign in again where a sign-in expired. With no cluster to
+show, a failure is the list's answer (a danger card with Try again), as are a
+failed read of the environments themselves and an ended session: the page
+says "No clusters yet" only once every environment answered without a
+failure. A column whose related read failed on an environment (control
+planes, provider clusters, identities) shows a dash that names the failure on
+hover and focus. Each row opens
+its cluster's page: its name is the link (one tab stop per row), and a click
+anywhere else on the row opens it too. Back from a cluster's page, by the
+browser or a link, the list is as it was left (search, filters, sort, and
+paged to the row opened) without reading the clusters again. At phone width the list stacks: name and state, then
+environment, organization and release. The classic `/clusters` and
+`/installations` pages are unchanged.
+
+A cluster's page, `/platform/clusters/<installation>/<namespace>/<name>`
+(`PlatformClusterPage` from the gs plugin, at the app's
+`platformClusterRouteRef`), reads the cluster as the classic cluster page does
+(`ClusterProvider`). Its header has the state under the name, a sentence on
+its type, organization and environment, and a ⋯ menu with Copy login command
+(where a command can be built) and View manifest. Beside the content, the tool
+links of `gs.clusterDetails.resources` as tiles, then the facts: Environment
+(linked to the management cluster's page for a workload cluster),
+Organization, Provider with its region, Account (in groups of four, linked to
+the AWS console), Workers and Created. The facts column belongs to Overview;
+the other tabs take the page's width.
+
+It has two tabs so far, Overview and Node pools; any other tab redirects to
+Overview. Overview (the bare path) is a column of panels:
+
+- Release: the cluster's release, linked to its release notes (the GitHub
+  release of giantswarm/releases tagged `<provider>/v<version>`), the
+  Kubernetes version with its end of life (`gs.kubernetesVersions`), and the
+  newest active release of the cluster's provider where it is newer, read from
+  the installation's Release resources.
+- Labels and annotations: what `gs.friendlyLabels` and `gs.friendlyAnnotations`
+  name, as key and value chips in their configured colours, and the
+  cluster's description. Left out when there is none.
+- GitOps delivery, for a cluster whose App or HelmRelease a Flux Kustomization
+  applies: the Kustomization, its last apply and revision, and the repository
+  and branch it reads.
+- Work with the cluster: the classic access section's `kubectl gs login`
+  command where the installation's base domain is known, and for Giant Swarm
+  staff (`gs.adminGroups`) the `tsh kube login` command with the one-time tsh
+  setup. Left out when there is neither.
+- Technical details, a fold-out: namespace, name, cluster app, API endpoint,
+  control plane, what installs the cluster, and every label and annotation.
+
+Node pools (`/node-pools`, its count on the tab) reads the pools as the
+classic cluster page does: an AWS cluster's MachinePools with the
+AWSMachinePool (an Auto Scaling group, "Machine pool") or
+KarpenterMachinePool ("Karpenter") each points at, and an Azure cluster's
+MachineDeployments with their AzureMachineTemplates ("Machine pool"). Other
+providers get "Node pools of <provider> clusters aren't shown here yet." The
+table has a row per pool: the name, a button that selects the pool, with its
+kind; nodes ready ("6 of 6", or "6 ready" for Karpenter); the machines (the
+instance type or VM size with its CPU and memory, or "Mixed" with the
+capacity types Karpenter may pick); the zones (a Karpenter pool's zone
+requirement, "Any except C" for a `NotIn` one, else "Any"); scaling ("Between
+3 and 10 nodes" from an Auto Scaling group or the cluster-autoscaler's
+annotations on an Azure MachineDeployment, "3 nodes" for a fixed size, or "As
+needed, up to 48 CPU · 192 GiB" from the Karpenter limits); and its age. A
+pool short of nodes has an amber dot. The tab's count shows once the pools
+are read, and not where a read failed. Narrower, Zones
+and Created move under the machines and the kind; at phone width the rows
+stack.
+
+The selected pool is `?name=<pool>`, as on the classic page, so a reload or a
+shared link shows the same pool; an unknown name selects none. Without a
+selection, the table and a hint. With one, for a machine pool, "Nodes in
+<pool>": its nodes from Mimir (`useMimirNodePoolNodes`), each with ready
+(the conditions as hover text where it is not), machine, zone, CPU and memory
+requests and running pods as bars with their values (the figures against
+allocatable as hover text), and age. A Karpenter pool has no node table.
+Then "Technical details of <pool>", open: for a machine pool its instance
+shape, scaling and resources; for a Karpenter pool what runs now, the
+provisioning envelope, lifecycle and disruption, and the node template (the
+classic page's cards, with Karpenter's metrics from Mimir).
+
+A cluster being deleted says so and follows the deletion. An environment the
+portal does not know, a cluster the environment does not have, an environment
+the portal cannot reach and a failed read (with its cause and Try again) each
+get their own state, with a link back to the list. Where the Cluster resource
+does not exist but its App or HelmRelease does, the page shows the installer's
+status, as the classic page does: being created, failed to install, or being
+deleted with the installer still finalizing.
+
 ## Profile and settings
 
 `/profile` shows who is signed in and the environments the portal
 talks to. Other settings stay in the classic settings.
+
+Its Environments section lists every configured installation as a toggle
+chip, all at once, named with its pipeline in the chip's accessible name and
+tooltip. A chip that is off switches the environment off app-wide: the access
+probe skips it and no page reads from it. **All on** and **All off** set every
+chip, and the notice after **All off** offers **Undo** until an environment is
+turned on again, here or elsewhere. The dot on a chip that is on shows the
+access probe's state, with the same labels and colours as the classic
+sidebar's Cluster access widget: Healthy, Degraded, Session expired (with
+**Sign in again**) or Connecting…, plus Not checked for an installation without
+the token broker that the person is not signed in to. Degraded and expired
+environments are listed under the chips with the probe's reason. A chip that
+is off shows a grey dot, since it is not checked, and the summary counts
+states among the chips that are on. The section shares its state with the
+classic widget: the switched-off set in the browser's `localStorage`
+(`gs-muted-installations`) and the probe's results, so both always agree.
 
 ---
 
@@ -645,6 +780,13 @@ because it signs as muster.
 
 ### Model selection
 
+The wizard and agent overview name a model by its display name when set,
+otherwise by its model ID, falling back to the resource name. A person's own
+ChatGPT login keeps the label "ChatGPT (your subscription)". Provider
+information remains in the model details even when the model ID is already
+the label. Picker choices with duplicate labels also show their
+configuration names.
+
 `ModelConfigPicker` lists the selected installation's kagent `ModelConfig`s.
 The preselection is the only model, else the installation's default, else the
 first. `useEnvironmentField` offers only installations known to have at least
@@ -700,104 +842,26 @@ condition names and the controller's messages stay in Technical details,
 which open on arrival; the alert's Show conditions reopens them and scrolls
 them into view.
 
-The form (`NewModelPage`, `ModelConfigFormFields`; edit through
-`EditModelPage` at `/customize/models/<installation>/<namespace>/<name>/edit`)
-supports **OpenAI** (every OpenAI-compatible endpoint: vLLM, llama.cpp,
-OpenRouter), **Anthropic**, **Gemini** and **Ollama**, with a per-provider
-endpoint (`spec.openAI.baseUrl`, `spec.anthropic.baseUrl`, `spec.ollama.host`)
-and `spec.tls.disableVerify` for self-signed endpoints. CRs using the CRD's
-other providers (AzureOpenAI, Bedrock, the VertexAI variants, SAPAICore) are
-read-only, and the detail page says why.
+The model form (`NewModelPage`, `ModelConfigFormFields`, `EditModelPage`) collects only model metadata. OpenAI, Anthropic, Gemini, Ollama and the native AnthropicVertexAI and GeminiVertexAI providers are editable. Vertex models take a Google project and location; LLM gateway metering, rate limits and spend reporting are unavailable for their direct Google calls. Other unsupported providers remain read-only.
 
-**Key Secrets follow the agentlab contract** (`platform.extraModels`,
-giantswarm/agentlab#44): the Secret is `kagent-<model name>` in the
-ModelConfig's namespace, with one key named after the provider's canonical
-env var (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`). The name is
-fixed because the kagent controller injects it as that env var and the ADK
-runtime reads exactly those names. A model connected without a key still gets
-a placeholder Secret, because an agent pod without the env var crashloops.
-Ollama is the one keyless provider (no Secret).
+**An organization's model has its settings.** New model, an organization's Add model and Edit model show a Settings section for an organization's model: the token limit of an answer (providers whose ModelConfig block has `maxTokens`: Anthropic, AnthropicVertexAI, AzureOpenAI, Mistral, OpenAI) and prompt caching with its cache time, 5 minutes or 1 hour (Anthropic, Bedrock), as agent-manager's `internal/agents/model_settings.go` lists them. A new Anthropic model starts with caching on for 5 minutes, agent-manager's default. A create sends the settings of its provider; an edit sends only the settings and the display name that changed, so an omitted one keeps its stored value, and a cleared token limit or display name is sent as `0` or `""`, which removes it. The portal shows and sends them only where the `set_organization_model` schema lists `maxTokens`, `promptCaching` and `cacheTTL` (agent-manager 3.1.0 and later); elsewhere the fields stay hidden and no argument is added. A refusal that names a setting (`invalid_request`, from the API server's strict dry run) shows under that setting, or, for a setting the provider lacks, in the page's alert. The organization's Models tab shows each model's display name and, with the same schema check, a Settings column from `list_model_configs`.
 
-**The API key is write-only.** The edit form's empty key field leaves the
-Secret alone; a value replaces its contents (`data: null` plus `stringData` in
-one merge patch). Changing the provider always rewrites the Secret, with the
-key or the placeholder, because the old Secret holds the old env-var name. The
-portal writes only Secrets named by its own convention: a CR referencing a
-hand-provisioned Secret keeps that reference, and such a Secret is never
-deleted with the model.
+**Every model write goes through agent-manager.** Installation and organization models use `set_organization_model`, `replace_organization_credential` and `delete_organization_object` as the person. The portal checks the manager tool schema and refuses an incompatible version. It never creates, patches or deletes model credential Secrets through its Kubernetes client. A new model's write (New model, and an organization's Add model) sends `create: true`, so a model of that name made since the form's list read is refused with `already_exists` instead of changed; the page then says the name is taken. Every agent-manager release with the model fields the schema check requires (3.1.0 and later) takes `create`; the portal still sends it only where the tool schema lists it, so a release without it is never sent an argument it would refuse. Installation writes require cluster-admin authorization; organization writes require the organization admin role. Helm and Flux ownership guards still apply. Deleting a model retains its credential Secret.
 
-**Writes go through the Kubernetes proxy** (`createResource`, `patchResource`,
-`deleteResource`) with the caller's own OIDC token, so nothing in between holds
-the key and apiserver errors (`ConflictError` on a taken name) show inline. The
-`SelfSubjectAccessReview` gates decide only what is shown.
+**Credentials belong to the shared credential form.** A new model, or Replace key and Replace credential on an organization's Models, Connectors and Egress tabs, opens the manager operation. Organization operations use `/organizations/<installation>/<parent>/<name>/credentials/<operation>`; installation operations use `/customize/models/credentials/<installation>/<namespace>/<operation>`. The operation declares its target, consumers and input format. `google-service-account-json` presents the JSON uploader, while `text` or an omitted format presents the ordinary value field. JSON and API keys never enter the model form, MCP arguments, browser storage or analytics. The manager validates a Google service-account key and its project before saving; the browser displays only its project and email. The old inline key form and direct Kubernetes write hook are removed.
 
-**Ownership guards.** Edit and delete are withheld for CRs rendered by Helm,
-applied by a Flux Kustomization, or labelled `app.kubernetes.io/managed-by` by
-anything but the portal; the model page names the owner in a "Managed by"
-fact. A CR without markers (applied with kubectl) is editable. The portal
-labels what it creates `app.kubernetes.io/managed-by: giantswarm-backstage`.
+A replacement writes only the referenced Secret, after confirming every consumer and destination. `credential_consumers_changed` refuses a stale request without writing; prepare another with a fresh `requestId`. `already_exists` at a save means the object the request creates exists by then: the form says the name is taken, takes no value, and cancels the request when it is still pending. Reads and saves recheck the current identity and authorization. Strong ETags, expiry, recovery and GitOps ownership checks apply to both scopes. Commit mode requires an explicit installation model directory; it never constructs an organization for the installation.
 
-**An organization's model is saved through agent-manager.** In an
-organization namespace (one agent-manager's `list_organizations` names), New
-model and Edit model call `set_organization_model` as the person
-(`useSaveOrganizationModel`) and write no Secret: an organization admin has no
-`patch` on Secrets, and its key is never typed into the model form. The form
-asks for the model's name (agent-manager keeps no display name), the provider
-and the model id. A new model continues to the credential form
-(`/organizations/<installation>/<parent>/<name>/credentials/<operation>`),
-which takes the key and finishes the write, then has the model and connector
-views read again; an edit of the model id is finished when the call answers.
-An edit keeps the provider: the stored key is the provider's, and
-agent-manager writes a new provider and its new key in two steps, with the
-wrong key in between. A new key, from Edit model or from Replace key and
-Replace credential on the organization's Models and Connectors tabs, is
-`replace_organization_credential` on the Secret and key the object reads (a
-model's from its ModelConfig, read as the person): the request writes that
-Secret only, for every object that reads it, and the form lists them and where
-each sends the value. With an edit of the model id, the edit is written
-first. The portal never sends `replaceCredential`. A refusal (another object
-reads another key of the Secret, an object applied from git, the objects
-changed since the request was prepared) says what to do. The last is
-agent-manager's save answer `409` with code `credential_consumers_changed`
-(agent-manager v2.24.0-rc.7 and later; rc.6 answers `conflict`, shown as Not
-saved): nothing was written, the form takes no value for that request any
-more, and the person starts the replacement again from the tab. Every request carries a fresh
-`requestId`, since agent-manager answers the same `requestId` with the old,
-stale operation.
-`set_organization_model` changes a model that exists, so a create first reads
-the organization's models (`list_model_configs`) and refuses a name it already
-has. A model agent-manager wrote there stays editable, since the edit goes
-through agent-manager. `useSaveModelConfig`
-refuses an organization namespace, and any namespace but `kagent` while the
-portal cannot tell whether it is an organization's (agent-manager not
-reachable or its organizations not read); Edit is withheld then too.
+The provider is fixed during editing. Changing the model ID preserves its credential; replacing the key opens the shared form. Keyless OpenAI-compatible endpoints and Ollama do not receive placeholder Secrets. Set as default uses the same manager tool in either scope and preserves keyless models. The Models routes read the organization directory to resolve ownership and target the correct scope. Calls that can prepare credentials use `urlElicitation: false`, then open the returned operation in the current tab.
 
-The Models routes (`ModelsRouter`) read the organization directory
-(`OrganizationDirectoryProvider`) for all of this: without it every
-organization's model reads as the platform's, and Edit is withheld for a model
-agent-manager wrote. A call that may prepare a credential request
-(`set_organization_model`, `replace_organization_credential`) declares no URL
-elicitation (`callTool` with `urlElicitation: false`, the body's
-`urlElicitation: false` at muster-backend's `/call`): agent-manager then answers
-the request's id, and the portal opens its own credential form in the same
-tab. Declared, agent-manager asks the caller to open the form's page, which the
-portal puts to the person as an external page in a new tab. Such a call also
-gets no sign-in prompt: a missing sign-in to agent-manager fails it with
-muster's answer.
-
-**Set as default on an organization's model** (`useSetDefaultModelConfig`) is
-`set_organization_model` with the model's name and `default: true`, as the
-person: agent-manager puts the mark on it and takes it off every other model of
-the organization, two marks included. The portal patches no ModelConfig there,
-and the call sends only the namespace, the name, `default` and a request id, no
-key (agent-manager 2.24.0 takes all four). Only a model whose key Secret is
-missing answers a credential request; the page then opens the credential form,
-whose save finishes the move. A model that names no key Secret is refused before
-the call, since agent-manager would give it one. A model agent-manager wrote
-offers Set as default, and its Default model fact no longer sends the person to
-agent-manager's configuration. A person agent-manager refuses sees "Not
-permitted" with who can make the change, and a session without agent-manager
-gets the sign-in.
+Each credential request has its own form state. Check again clears entered
+values and blocks Save and Cancel until the confirmation loads. A save or
+cancellation keeps its local result when a later read fails; success does not
+start another confirmation read. Pending and uncertain apply operations take
+values; saving and uncertain commit operations finish without values. An
+unreadable POST success or an error without the manager code is
+`outcome_unknown`. Only the credential route accepts JSON bodies up to 2 MiB;
+other routes retain their existing limits.
 
 **A refused portal session** (`PortalSessionEndedError`, `lib/portalSession.ts`).
 The portal's backend refuses a session token it cannot verify, for example
@@ -811,11 +875,21 @@ credential form, New and Edit model and the model page show it with a Sign in
 again button (`PortalSessionEndedAlert`); the organization page's dialogs say
 it in words only (giantswarm/backstage#3492). The credential form drops a typed
 value, and its request stays open: a reload of the same address opens it
-again. Agent Platform reads that go neither through `AgentManagerClient` nor
-the credential form's client (the kagent routes, muster's own reads) still
-show the backend's text (giantswarm/backstage#3506).
-The status and the error's name decide, never the text; the credential route's
-own `AuthenticationError` (no installation token) is cured by the same sign-in.
+again. The kagent routes (`KagentApiClient`), the model-manager,
+cluster-manager, toolchain-manager and workspace-manager clients, the served
+model try and the tool catalogue reads through muster do the same
+(giantswarm/backstage#3506). The Sessions page and rail, the session chat (a
+read, a send, an answer, a Stop), the agent's sessions, toolchains, workspaces,
+served models, GPU node pools, the Tools step, Serve model and Pull model, the
+workspace editor and the Toolchains tab show `PortalSessionEndedAlert`; a page
+that gathers reads of many sources asks the query cache whether one of them was
+refused that way (`usePortalSessionEnded`) and shows the alert one time (the
+workspace editor above its form, which it keeps). Such a read is not retried.
+A refused load or pull says it in words only (giantswarm/backstage#3565). The
+agent-platform backend never answers Backstage's `AuthenticationError` itself:
+an installation's refusal of the person's token (kagent, its gateway, Mimir)
+and a missing installation token, on the kagent, try and credential routes,
+are `InstallationAuthenticationError`, a 401 that keeps its own message. The status and the error's name decide, never the text.
 
 For a Helm-rendered model, Technical details name the release from the
 CR's `helm.toolkit.fluxcd.io/*` labels and `meta.helm.sh/*` annotations. Where
@@ -1295,12 +1369,29 @@ templates; `agent-deployment` no longer exists in
 
 ## The installation scope
 
-Sessions, Agents, Models, Connectors, Workflows and Usage share **one
-installation scope**: `'all'` (the default) or one pinned installation. It is a
-module store in the `gs` plugin (`useInstallationScope`,
-`plugins/gs/src/apis/installationScope/`) read through `useSyncExternalStore`,
-not a React context, because the muster tabs are a different plugin with their
-own providers.
+Each view with an Environment selector has an **installation scope**:
+`'all'` (the default) or one pinned installation. There are two, siblings that
+never read each other's choice: **Customize** (`customize`: every tab and page
+under `/customize`, Models included) and **Usage** (`usage`). Each is a module
+store in the `gs` plugin (`useInstallationScope`,
+`plugins/gs/src/apis/installationScope/`) rather than a React context of one
+plugin, because the muster views are a different plugin with their own
+providers.
+
+- **Opt-in.** A view reads a pin only below a `SharedInstallationScope`,
+  which `CustomizePage`, `ModelsRouter` and the legacy-address redirect mount
+  for `customize`, and `UsageRouter` for `usage` (a nested mount of the same
+  scope shares the outer one). It holds the `?installation=` value, the store
+  snapshot and the URL writer. Everywhere
+  else `useInstallationScope` answers `'all'`, reads neither the URL nor the
+  store (so a pin or a query-string change does not re-render it), and its
+  `setScope` does nothing: the shell rail's recent sessions, the notification
+  inbox and the command palette (`AgentPlatformProviders`), the Sessions page,
+  the start screen and the Bot PRs page read every environment, whatever was
+  chosen on Customize or Usage. A new page follows the pin only when it mounts a
+  selector and opts in. The cost: with a pin set, the rail still reads agents,
+  model configs and sessions from every kagent environment, a token per
+  environment, as it does with no pin.
 
 The scope is set by `EnvironmentSelect` (and `UsageScopeBar` on Usage), shown
 only with more than one environment. It offers every
@@ -1309,12 +1400,16 @@ its state; a portal with one installation renders no selector. "Not reachable
 from this portal" comes from the kagent backend's probe on kagent-backed lists
 and from the muster backend's probe on Connectors and Workflows.
 
-- **Sources, in order.** `?installation=` wins while present. Otherwise the
-  store, mirrored to localStorage as `muster-installation` (the muster picker's
-  old key). A stored value naming the _home_ installation reads as `'all'`,
+- **Sources, in order** (below `SharedInstallationScope`). `?installation=`
+  wins while present: the same parameter on both scopes' pages, each read
+  only by its own. Otherwise the scope's store, mirrored to localStorage as
+  `muster-installation` for Customize (the muster picker's old key) and
+  `usage-installation` for Usage. A stored value naming the _home_ installation reads as `'all'`,
   because the old picker wrote its default there for everyone.
   `useInstallationScopeUrlSync` reconciles URL and store; `setScope` writes
-  store, localStorage and URL at once.
+  store, localStorage and URL at once. A stale restored pin, and a pin on an
+  environment switched off in Cluster access, are forgotten where the shared
+  scope is read, the first time a view with a selector renders.
 - **Usage reads one installation, never the fleet.** Under `'all'` it reports
   on the home installation and says so; see
   [One installation at a time](#one-installation-at-a-time).
@@ -1332,6 +1427,8 @@ and from the muster backend's probe on Connectors and Workflows.
   scope and writes no default back.
 - **Naming.** Detail pages carry an `InstallationChip`; the new-session picker
   names installations once agents span more than one (`agentOptionLabel`).
+- **Sessions narrow on their own.** The Sessions page has its own
+  Environment filter instead (see [The Sessions tab](#the-sessions-tab)).
 
 The tabs share one react-query client, so the inventory is read once per page
 load.
@@ -1341,6 +1438,14 @@ load.
 `/sessions` lists the person's kagent sessions across the fleet
 (`SessionsTable`); a session starts on the shell's start screen (see "Starting
 a session"). Renaming and deleting are described below.
+
+The list reads every environment, whatever a Customize page pinned (see
+[The installation scope](#the-installation-scope)). Its filter bar
+(`sessionFacets`, `SessionsTable/filters.ts`) narrows it by State, Environment,
+Organization, Agent and Pinned; Environment is offered once the sessions come
+from more than one environment, and stays while it has a pick, so a pick can
+be undone after the list drops its Environment column. Like the other filters
+it starts at all and is not stored or written to the URL.
 
 ### The first-run state
 
@@ -1463,7 +1568,7 @@ Failures are classified as **absent** or **unwell**:
 - **Silent** — `404`, which the backend returns for every "no kagent here":
   kagent's own 404, an unknown-installation `400`, and connection failures (DNS,
   TLS, refused).
-- **Reported** in `UnreachableInstallationsAlert` — everything else: kagent
+- **Reported** in `UnreachableInstallationsAlert` (`ui-react`) — everything else: kagent
   `5xx` or `429`, timeouts, unreadable bodies. Otherwise a degraded
   installation's sessions would vanish silently.
 
@@ -3080,11 +3185,24 @@ ahead of the installation's default agent (agent-manager's `get_info`
 `defaultAgent`; listed first in the picker, marked Default), which goes ahead
 of the last agent used. A default that arrives after the person typed or
 picked does not replace the agent shown. `?agent=` takes an agent id
-(`<installation>/<namespace>/<name>`) or `<namespace>/<name>`. `#prompt=` (in
-the fragment, so the brief never reaches a server) prefills the prompt
-(trimmed, at most 2000 characters, never sent by itself, marked "From a
-link"), wins over a stored draft with a Restore offer, and is removed from the
-address once read; Sentry breadcrumbs and event URLs filter it. The link
+(`<installation>/<namespace>/<name>`) or `<namespace>/<name>`. A
+`<namespace>/<name>`, or an id whose installation is none of the portal's
+configured installations (the name agent-manager's `get_info` reports may
+differ), matches by namespace and name among the agents in scope
+when exactly one agent has them; when several do, none is selected. A linked
+agent that is not selected is said in a warning above the composer, by cause
+(not found, several matches, cannot start, its environment unreachable,
+switched off in Cluster access or outside the selected environment), once every
+environment has answered, until the person picks another agent or closes it.
+The warning repeats the `?agent=` value only when it reads as an agent
+reference, cut to 80 characters. A linked agent that arrives late replaces the
+agent shown even after the person typed, unless they picked one. `#prompt=` (in the
+fragment, so the brief never reaches a server) prefills the prompt (trimmed, at
+most 2000 characters, never sent by itself, marked "From a link"), puts the
+focus in the field with the caret after the text once the linked agent is
+settled, unless the person has pressed a key or a pointer on the page by then,
+wins over a stored draft with a Restore offer, and is removed
+from the address once read; Sentry breadcrumbs and event URLs filter it. The link
 format: `/?agent=<id>#prompt=<url-encoded brief>`. In agent replies, such a
 link opens in the same tab; other portal links open in a new tab. The images, the workspace and the toolchains are
 not kept. The draft is removed once the session is created; a failed start
@@ -3585,7 +3703,8 @@ labels its figures as one person's own (see [the Usage tab](#the-usage-tab)).
 `/usage` has routed tabs, Overview at the bare path; an unknown view redirects
 to Overview, and the old `/agent-platform/usage/…` addresses (`overview`, `mcp`,
 `technical`) redirect to their view. `UsageScopeBar` sets the
-environment and the window: the last 7, 30 or 90 days, or a calendar month
+environment (Usage's own choice, independent of Customize's; see
+[The installation scope](#the-installation-scope)) and the window: the last 7, 30 or 90 days, or a calendar month
 (`?window=7d`, `?window=2026-10`; `lib/usageWindow.ts`). The window control is
 `UsageWindowSelect`: a select labelled "Time range" with "Last 7 days", "Last
 30 days" and "Last 90 days", then this month so far and the two before it, the
@@ -3718,13 +3837,15 @@ Summing them counted cached input twice and halved the rate: on `gazelle`,
 claude-sonnet-5-5 read $0.30/1M where $0.59/1M was right
 (giantswarm/giantswarm#38457).
 
-An older gateway leaves the cache types out of `input`, and subtracting them
-there would inflate the rate about tenfold. The totals tell the two apart:
-inside `input`, the cache types cannot exceed it (on `gazelle` they sit at
-99.8–99.998% of it per agent and model), while outside it a cache-heavy mix
-has them at many times `input`. So `deriveTokenRates` subtracts them only when
-they are at most 1% above `input`. A 7-day window that straddles the upgrade
-holds both conventions and can be off either way until it rolls past.
+Usage requires agentgateway v1.5.0 or later with cache-inclusive token
+semantics, including for the retained metrics in the selected window. Cache
+reads and writes are always excluded from token totals, the cache-read share
+is reads divided by `input`, and fresh input is `input` minus both cache
+types, clamped to zero. Each series is extrapolated independently, so cache
+totals can exceed `input` without changing how the tokens are counted. There
+is no convention detection or tolerance. Metrics from an older gateway that
+excludes cache tokens from `input` produce understated token totals and
+inflated rate estimates.
 
 Even counted once, the blend is the window's token mix, not the session's.
 Over a week most input is cache reads, which Claude models price at a tenth of

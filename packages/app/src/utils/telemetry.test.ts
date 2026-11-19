@@ -485,6 +485,34 @@ describe('getTelemetryPageViewPayload', () => {
       { page: 'Connector tool', view: 'run' },
       '/customize/connectors/:installation/:server/tools/:tool/run',
     ],
+    // An organization's connector, at `-/<namespace>/<server>`.
+    [
+      '/customize/connectors/acme-prod/-/org-acme/wiki',
+      { page: 'Connector', view: 'tools' },
+      '/customize/connectors/:installation/-/:namespace/:server',
+    ],
+    [
+      '/customize/connectors/acme-prod/-/org-acme/wiki/usage',
+      { page: 'Connector', view: 'usage' },
+      '/customize/connectors/:installation/-/:namespace/:server/usage',
+    ],
+    [
+      '/customize/connectors/acme-prod/-/org-acme/wiki/edit',
+      { page: 'Connector', view: 'redirect' },
+      '/customize/connectors/:installation/-/:namespace/:server/*',
+    ],
+    [
+      '/customize/connectors/acme-prod/-/org-acme/wiki/tools/x_org-acme_wiki_search',
+      { page: 'Connector tool', view: 'overview' },
+      '/customize/connectors/:installation/-/:namespace/:server/tools/:tool',
+    ],
+    // An organization's connector named `muster` is not muster: its tools
+    // have Usage.
+    [
+      '/customize/connectors/acme-prod/-/org-acme/muster/tools/x_org-acme_muster_x/usage',
+      { page: 'Connector tool', view: 'usage' },
+      '/customize/connectors/:installation/-/:namespace/:server/tools/:tool/usage',
+    ],
     [
       '/customize/workflows/acme-prod/rotate-payments-keys',
       { page: 'Workflow', view: 'overview' },
@@ -524,6 +552,26 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/workspaces/gazelle/acme/platform-mcp/x',
       { page: 'Workspace detail', view: 'redirect' },
       '/customize/workspaces/:installation/:organization/:name/*',
+    ],
+    [
+      '/platform/clusters/meadow/org-fern/alder-birch',
+      { page: 'Platform cluster' },
+      '/platform/clusters/:installation/:namespace/:name',
+    ],
+    [
+      '/platform/clusters/meadow/org-fern/alder-birch/node-pools',
+      { page: 'Platform cluster', view: 'node-pools' },
+      '/platform/clusters/:installation/:namespace/:name/node-pools',
+    ],
+    [
+      '/platform/clusters/meadow/org-fern/alder-birch/apps',
+      { page: 'Platform cluster', view: 'redirect' },
+      '/platform/clusters/:installation/:namespace/:name/*',
+    ],
+    [
+      '/platform/clusters/meadow',
+      { page: 'Platform', view: 'redirect' },
+      '/platform/*',
     ],
     [
       '/customize/toolchains/new',
@@ -847,6 +895,10 @@ describe('getTelemetryPageViewPayload', () => {
       '/settings',
       '/settings/general',
       '/customize',
+      '/platform',
+      '/platform/clusters',
+      '/platform/clusters/meadow/org-fern/alder-birch',
+      '/platform/clusters/meadow/org-fern/alder-birch/node-pools',
       '/customize/agents',
       '/customize/skills',
       '/customize/connectors',
@@ -854,6 +906,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/connectors/families',
       '/customize/connectors/internal',
       '/customize/models',
+      '/customize/models/credentials/gazelle/kagent/operation',
       '/customize/models/gazelle/agent-platform/gpt-4o',
       '/customize/models/gazelle/agent-platform/gpt-4o/usage',
       '/customize/models/gazelle/agent-platform/gpt-4o/used-by',
@@ -894,6 +947,10 @@ describe('getTelemetryPageViewPayload', () => {
       '/customize/connectors/gazelle/kubernetes/tools/x_kubernetes_get_pods',
       '/customize/connectors/gazelle/kubernetes/tools/x_kubernetes_get_pods/run',
       '/customize/connectors/gazelle/kubernetes/tools/x_kubernetes_get_pods/usage',
+      '/customize/connectors/gazelle/-/org-gazelle/wiki',
+      '/customize/connectors/gazelle/-/org-gazelle/wiki/usage',
+      '/customize/connectors/gazelle/-/org-gazelle/wiki/tools/x_org-gazelle_wiki_search',
+      '/customize/connectors/gazelle/-/org-gazelle/wiki/tools/x_org-gazelle_wiki_search/run',
       '/customize/connectors/gazelle/jira/edit',
       '/customize/connectors/gazelle/jira/edit/auth',
       '/customize/connectors/gazelle/jira/edit/verify',

@@ -15,6 +15,7 @@ import {
   searchableIf,
   ShowMore,
   useSelectFieldError,
+  UnreachableInstallationsAlert,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
   useHomeInstallation,
@@ -28,7 +29,6 @@ import { musterServersExternalRouteRef } from '../../../routes';
 import { useNewAgentForm } from '../../NewAgentFormProvider';
 import { SharedIdentityNote } from '../../SharedIdentityNote';
 import { useModelConfigs } from '../../ModelConfigsProvider';
-import { UnreachableInstallationsAlert } from '../../UnreachableInstallationsAlert';
 import { LabelledField } from '../../LabelledField';
 
 const LABEL = 'Environment';

@@ -3,6 +3,7 @@ export * from './tableHelpers';
 export { countNoun } from './countNoun';
 export { formatVersion } from './formatVersion';
 export { isTableColumnHidden } from './isTableColumnHidden';
+export { tableRowId } from './tableRowId';
 export { joinNames, groupNames, NAMED_IN_SENTENCE } from './joinNames';
 export type { JoinNamesOptions, NameGroup } from './joinNames';
 export { passwordManagerIgnoreProps } from './passwordManagerProps';
@@ -29,6 +30,8 @@ export { isAwaitingData } from './isAwaitingData';
 export { liveRouterState } from './liveRouterState';
 export { isWebURL, safeWebURL } from './webURL';
 export { isExternalHref } from './isExternalHref';
+export { lazyApi } from './lazyApi';
+export type { AsyncApi } from './lazyApi';
 export {
   PHONE_MAX_WIDTH,
   PHONE_QUERY,

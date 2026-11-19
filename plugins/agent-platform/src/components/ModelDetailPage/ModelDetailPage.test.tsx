@@ -1,6 +1,7 @@
 import { Link as RouterLink, Route, Routes } from 'react-router-dom';
-import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, within } from '@testing-library/react';
+import { toastApiRef } from '@backstage/frontend-plugin-api';
+import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   ModelConfig,
@@ -65,10 +66,36 @@ jest.mock('../InstallationChip', () => ({
   InstallationChip: () => null,
 }));
 
+let mockDeleteCheckError: Error | null = null;
+const mockRecheckDeletable = jest.fn();
+// How the organization's content is written: live, as without commit mode,
+// unless a case says otherwise.
+let mockContentMode: 'apply' | 'commit' = 'apply';
+jest.mock('../../hooks/useOrganizationContentMode', () => ({
+  useOrganizationContentModeOf: () => mockContentMode,
+}));
+
+// The organizations agent-manager names, where a case needs them (`org-acme`
+// is one); otherwise the provider's own answer.
+let mockDirectory: unknown;
+jest.mock('../OrganizationDirectoryProvider', () => {
+  const actual = jest.requireActual('../OrganizationDirectoryProvider');
+  return {
+    ...actual,
+    useOrganizationDirectory: () =>
+      mockDirectory ?? actual.useOrganizationDirectory(),
+  };
+});
+
 jest.mock('../../hooks/useDeleteModelConfig', () => ({
+  AgentManagerUnavailableError: jest.requireActual(
+    '../../hooks/useDeleteModelConfig',
+  ).AgentManagerUnavailableError,
   useDeleteModelConfig: () => ({
     isDeletable: false,
     isCheckingDeletable: false,
+    checkError: mockDeleteCheckError,
+    recheckDeletable: mockRecheckDeletable,
     deleteModelConfig: jest.fn(),
     isDeleting: false,
     error: null,
@@ -86,11 +113,14 @@ jest.mock('../ModelConfigsProvider', () => ({
 
 const mockSetDefault = jest.fn();
 let mockSetDefaultError: Error | null = null;
+let mockSetDefaultPullRequest:
+  { pullRequest: string; number: number } | undefined;
 jest.mock('../../hooks/useSetDefaultModelConfig', () => ({
   useSetDefaultModelConfig: () => ({
     setDefault: mockSetDefault,
     isSetting: false,
     error: mockSetDefaultError,
+    pullRequest: mockSetDefaultPullRequest,
     reset: jest.fn(),
   }),
 }));
@@ -220,7 +250,15 @@ const agent = (name: string, technicalName: string, modelConfigId?: string) =>
     ...(modelConfigId ? { modelConfigId } : {}),
   }) as AgentRow;
 
+/** The toasts the page posted: test apps collect them without showing them. */
+let toasts = mockApis.toast();
+
+function toastTitles() {
+  return toasts.getToasts().map(toast => toast.title);
+}
+
 function renderPage(path = '/customize/models/inst-1/kagent/sonnet') {
+  toasts = mockApis.toast();
   return renderInTestApp(
     // The shell's clock, as its layout mounts it around its pages.
     <DateTimeZoneProvider timeZone="local">
@@ -242,6 +280,7 @@ function renderPage(path = '/customize/models/inst-1/kagent/sonnet') {
       </PageHeaderActionsProvider>
     </DateTimeZoneProvider>,
     {
+      apis: [[toastApiRef, toasts]],
       initialRouteEntries: [path],
       mountedRoutes: {
         '/customize/models': modelsRouteRef,
@@ -290,10 +329,13 @@ function namedModel(name: string, marked: boolean) {
 
 describe('ModelDetailPage', () => {
   beforeEach(() => {
+    mockContentMode = 'apply';
+    mockDirectory = undefined;
     mockListedModels = [];
     mockSetDefault.mockReset();
     mockSetDefault.mockResolvedValue({});
     mockSetDefaultError = null;
+    mockSetDefaultPullRequest = undefined;
     mockLlmUsageInstallations = [];
     mockMayUpdate = true;
     mockContextWindows = undefined;
@@ -497,6 +539,48 @@ describe('ModelDetailPage', () => {
     ).toHaveAttribute('role', 'note');
     // The form speaks Vertex AI: no "not editable here".
     expect(screen.queryByText(/is not editable here/)).toBeNull();
+  });
+
+  it('says why Delete is not offered when its check failed, and checks again', async () => {
+    mockDeleteCheckError = new Error('muster: request timed out');
+    try {
+      await renderPage();
+
+      expect(
+        await screen.findByText(
+          'Could not check whether you can delete this model',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/request timed out/)).toBeInTheDocument();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Check again' }),
+      );
+      expect(mockRecheckDeletable).toHaveBeenCalled();
+    } finally {
+      mockDeleteCheckError = null;
+    }
+  });
+
+  it('says why Delete is not offered when the portal cannot reach agent-manager', async () => {
+    const { AgentManagerUnavailableError } = jest.requireActual(
+      '../../hooks/useDeleteModelConfig',
+    );
+    mockDeleteCheckError = new AgentManagerUnavailableError('gazelle');
+    try {
+      await renderPage();
+
+      expect(
+        await screen.findByText('Delete is not offered here'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'The portal cannot reach agent-manager on gazelle, which deletes models, so Delete is not offered.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
+    } finally {
+      mockDeleteCheckError = null;
+    }
   });
 
   it('says nothing about metering for a model the gateway meters', async () => {
@@ -962,6 +1046,40 @@ describe('ModelDetailPage', () => {
     expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
   });
 
+  it.each([
+    [
+      'by pull request',
+      'commit',
+      'Edits made here open a pull request, which Flux applies once it is merged.',
+    ],
+    [
+      'live',
+      'apply',
+      'Flux would revert edits made here, so change the model where Flux is configured.',
+    ],
+  ] as const)(
+    "says how edits of an organization's model from git go when its content is written %s",
+    async (_case, mode, sentence) => {
+      mockContentMode = mode;
+      mockDirectory = jest.requireActual(
+        '../../lib/__fixtures__/organizations',
+      ).TEST_ORGANIZATION_DIRECTORY;
+      mockUseResource.mockReturnValue({
+        resource: sonnet({
+          namespace: 'org-acme',
+          labels: { 'kustomize.toolkit.fluxcd.io/name': 'org-acme' },
+        }),
+        isLoading: false,
+        errors: [],
+      });
+      await renderPage('/customize/models/inst-1/org-acme/sonnet');
+
+      const facts = screen.getByRole('region', { name: 'Model details' });
+      expect(within(facts).getByText('Flux')).toBeInTheDocument();
+      expect(within(facts).getByText(sentence)).toBeInTheDocument();
+    },
+  );
+
   it('offers no Edit on a provider the form does not speak, and says so', async () => {
     mockUseResource.mockReturnValue({
       resource: new ModelConfig(
@@ -1042,11 +1160,34 @@ describe('ModelDetailPage', () => {
 
       expect(mockSetDefault).toHaveBeenCalledWith({
         modelConfig: expect.objectContaining({ cluster: 'inst-1' }),
-        expected: ['haiku'],
       });
+      await waitFor(() =>
+        expect(toastTitles()).toEqual(['Sonnet 4.5 is now the default model']),
+      );
+    });
+
+    it('shows the pull request a move by pull request opened, and claims no default', async () => {
+      const commit = {
+        pullRequest: 'https://github.com/giantswarm/gazelle-configs/pull/7',
+        number: 7,
+      };
+      mockListedModels = [namedModel('haiku', true)];
+      mockSetDefault.mockResolvedValue({ commit });
+      // The hook reports the pull request of its last move.
+      mockSetDefaultPullRequest = commit;
+      await renderPage();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Set as default' }),
+      );
+      expect(mockSetDefault).toHaveBeenCalled();
+
+      const outcome = await screen.findByTestId('model-default-pull-request');
+      expect(outcome).toHaveTextContent('Pull request #7 opened');
       expect(
-        await screen.findByText('Sonnet 4.5 is now the default model'),
-      ).toBeInTheDocument();
+        within(outcome).getByRole('link', { name: /Review pull request/ }),
+      ).toHaveAttribute('href', commit.pullRequest);
+      expect(toastTitles()).toEqual([]);
     });
 
     it('says why there is no default when several models are marked', async () => {

@@ -1,6 +1,15 @@
-import { Text } from '@backstage/ui';
+import { Flex, Text } from '@backstage/ui';
 import { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { ConfirmDialog } from '@giantswarm/backstage-plugin-ui-react';
+
+import {
+  CONTENT_PULL_REQUEST_NEXT,
+  CONTENT_PULL_REQUEST_UNCHANGED,
+} from '../../lib/organizations';
+import {
+  PullRequestOutcome,
+  type PullRequestCommit,
+} from '../PullRequestOutcome';
 
 export type ModelDeleteDialogProps = {
   modelConfig: ModelConfig;
@@ -9,6 +18,11 @@ export type ModelDeleteDialogProps = {
   isDeleting: boolean;
   error?: string;
   onConfirm: () => void;
+  /**
+   * The pull request the delete opened, in mode commit: the dialog stays
+   * with it, and the model stays until it is merged.
+   */
+  pullRequest?: PullRequestCommit;
 };
 
 /**
@@ -27,6 +41,7 @@ export function ModelDeleteDialog({
   isDeleting,
   error,
   onConfirm,
+  pullRequest,
 }: ModelDeleteDialogProps) {
   return (
     <ConfirmDialog
@@ -37,13 +52,24 @@ export function ModelDeleteDialog({
       confirmLabel="Delete model"
       busyLabel="Deleting…"
       isBusy={isDeleting}
+      isDone={Boolean(pullRequest)}
       error={error}
       onConfirm={onConfirm}
     >
-      <Text variant="body-medium">
-        It leaves the picker, so no new agents can use it. Its stored API key is
-        removed too.
-      </Text>
+      <Flex direction="column" gap="3">
+        <Text variant="body-medium">
+          It leaves the picker, so no new agents can use it. Its stored
+          credential stays, since another model or connector may use it.
+        </Text>
+        {pullRequest && (
+          <PullRequestOutcome
+            commit={pullRequest}
+            next={CONTENT_PULL_REQUEST_NEXT}
+            unchanged={CONTENT_PULL_REQUEST_UNCHANGED}
+            testId="model-delete-pull-request"
+          />
+        )}
+      </Flex>
     </ConfirmDialog>
   );
 }

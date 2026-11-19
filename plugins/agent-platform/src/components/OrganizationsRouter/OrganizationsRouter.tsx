@@ -34,6 +34,7 @@ function CredentialFormRoute() {
   }
   return (
     <CredentialFormPage
+      key={`${installation}/${parent}/${name}/${operation}`}
       installation={installation}
       parent={parent}
       name={name}

@@ -4,6 +4,7 @@ import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Cluster-manager calls and sign-in errors use the Muster API.
 import {
   musterApiRef,
   MusterUnauthorizedError,
@@ -583,6 +584,7 @@ async function renderPage(
  */
 beforeEach(() => {
   jest.useFakeTimers();
+  jest.setSystemTime(new Date('2026-11-10T12:00:00Z'));
 });
 
 afterEach(() => {
@@ -1129,10 +1131,10 @@ describe('AddGpuNodePoolPage: node size and price on the form', () => {
       accelerator: 'nvidia-l4',
     });
     expect(picker).toHaveTextContent(
-      'g6.xlarge — 3 vCPU / 11.9 GiB usable, 1 × 24 GiB GPU — $1.01/h',
+      'g6.xlarge — 3 CPU / 11.9 GiB usable, 1 × 24 GiB GPU — $1.01/h',
     );
     expect(picker).toHaveTextContent(
-      'g6.2xlarge — 6.5 vCPU / 26.9 GiB usable, 1 × 24 GiB GPU — $1.22/h',
+      'g6.2xlarge — 6.5 CPU / 26.9 GiB usable, 1 × 24 GiB GPU — $1.22/h',
     );
     expect(sizeBox('g6.xlarge')).toBeChecked();
     expect(sizeBox('g6.2xlarge')).toBeChecked();
@@ -1158,7 +1160,7 @@ describe('AddGpuNodePoolPage: node size and price on the form', () => {
     // Review shows the same choice and Deploy sends it.
     await review(user);
     const chosen = screen.getByTestId('chosen-sizes');
-    expect(chosen).toHaveTextContent('g6.2xlarge — 6.5 vCPU / 26.9 GiB usable');
+    expect(chosen).toHaveTextContent('g6.2xlarge — 6.5 CPU / 26.9 GiB usable');
     expect(chosen).not.toHaveTextContent('g6.xlarge —');
     expect(chosen).toHaveTextContent('from $1.22/h per node (g6.2xlarge)');
     expect(chosen).toHaveTextContent(
@@ -1346,7 +1348,7 @@ describe('AddGpuNodePoolPage: node size and price on the form', () => {
     await fillForm(user);
     const picker = await screen.findByTestId('node-size-picker');
     expect(sizeBox('g6.xlarge')).toHaveAccessibleName(
-      'g6.xlarge — 3 vCPU / 11.9 GiB usable, 1 × 24 GiB GPU',
+      'g6.xlarge — 3 CPU / 11.9 GiB usable, 1 × 24 GiB GPU',
     );
     expect(screen.queryByTestId('price-summary')).not.toBeInTheDocument();
     expect(picker).not.toHaveTextContent('Prices:');
@@ -1443,7 +1445,7 @@ describe('AddGpuNodePoolPage — the model cache’s standing cost (giantswarm/b
       'This cluster keeps a model cache: every pool of the cluster serves from it, so a pool cannot switch it off. To serve without one, remove the cache under Model cache.',
     );
     expect(kept).toHaveTextContent(
-      'The cache: hf-cache — 100 GiB gp3 at 500 MiB/s · $27.37/month · since',
+      'The cache: hf-cache — 100 GiB gp3 at 500 MiB/s · $27.37/month · Bound in eu-central-1b · created about 2 months ago.',
     );
     expect(kept).toHaveTextContent('Bound in eu-central-1b');
     expect(screen.queryByTestId('cache-consequence')).not.toBeInTheDocument();

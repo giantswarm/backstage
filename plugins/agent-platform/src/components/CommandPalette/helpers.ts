@@ -48,8 +48,11 @@ export type PaletteEntry = {
   description?: string;
   /** Right-aligned metadata (installation, source repo, date). */
   meta?: string;
-  /** Where Enter (or a click) goes. */
-  href: string;
+  /**
+   * Where Enter (or a click) goes. Absent for an entry with no page to open,
+   * which is listed but not opened.
+   */
+  href?: string;
   /**
    * Set on agent entries: ⌘↵ / Ctrl+Enter starts a new session with this
    * agent instead of opening its page.

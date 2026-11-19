@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { makeStyles } from '@material-ui/core';
 import {
   Alert,
   Button,
@@ -25,6 +26,8 @@ import {
 } from '../../hooks/useOrganization';
 import { useOrganizationAccess } from '../../hooks/useOrganizationAccess';
 import {
+  CONTENT_PULL_REQUEST_NEXT,
+  CONTENT_PULL_REQUEST_UNCHANGED,
   FIRST_ADMINS_BINDING,
   MEMBER_ROLE_DESCRIPTIONS,
   MEMBER_ROLES,
@@ -33,6 +36,8 @@ import {
   type MemberRole,
   type OrganizationMember,
 } from '../../lib/organizations';
+import { PullRequestOutcome } from '../PullRequestOutcome';
+import { WrappingCellText } from './WrappingCellText';
 
 /** A group comes first: membership then changes in the identity provider. */
 type MemberKind = 'group' | 'person';
@@ -50,14 +55,40 @@ function memberRequest(
     : { namespace, user: name, ...(role ? { role } : {}) };
 }
 
+const useStyles = makeStyles({
+  // bui marks a disabled field box with `data-disabled` and only fades it,
+  // and the agent shell paints every field box white with an edge: a
+  // disabled one then looks like an active one next to the greyed radios
+  // and button. It takes the look of a disabled bui secondary button (the
+  // Remove buttons) instead: a raised neutral fill, no edge, the disabled
+  // text colour.
+  form: {
+    '& .bui-Input[data-disabled], & .bui-SelectTrigger[data-disabled]': {
+      opacity: 1,
+      backgroundColor: 'var(--bui-bg-neutral-2)',
+      boxShadow: 'none',
+      color: 'var(--bui-fg-disabled)',
+      cursor: 'not-allowed',
+    },
+    // The selector's value sets its own text colour.
+    '& .bui-SelectTrigger[data-disabled] .bui-SelectValue': {
+      color: 'var(--bui-fg-disabled)',
+    },
+  },
+});
+
 /** The form that binds a group (first) or a person to a role. */
 function AddMember({
   installation,
   namespace,
+  changesDisabledBy,
 }: {
   installation: string;
   namespace: string;
+  changesDisabledBy?: string;
 }) {
+  const classes = useStyles();
+  const off = changesDisabledBy !== undefined;
   const { add } = useOrganizationMemberWrites(installation, namespace);
   const [kind, setKind] = useState<MemberKind>('group');
   const [name, setName] = useState('');
@@ -71,10 +102,12 @@ function AddMember({
     : `Enter the ${noun === 'group' ? "group's name" : "person's user name"}.`;
 
   return (
-    <Flex direction="column" gap="3" ref={scope}>
+    <Flex direction="column" gap="3" ref={scope} className={classes.form}>
       <RadioGroup
         label="Add"
         orientation="horizontal"
+        isDisabled={off}
+        aria-describedby={changesDisabledBy}
         value={kind}
         onChange={value => {
           setKind(value as MemberKind);
@@ -93,12 +126,16 @@ function AddMember({
               : 'Their user name, as the cluster sees it.'
           }
           isRequired
+          isDisabled={off}
+          aria-describedby={changesDisabledBy}
           value={name}
           onChange={setName}
           {...validation.textFieldProps('name', nameError)}
         />
         <Select
           label="Role"
+          isDisabled={off}
+          aria-describedby={changesDisabledBy}
           selectedKey={role}
           options={MEMBER_ROLES.map(id => ({
             id,
@@ -112,7 +149,8 @@ function AddMember({
         />
         <Button
           variant="primary"
-          isDisabled={add.isPending}
+          isDisabled={off || add.isPending}
+          aria-describedby={changesDisabledBy}
           onPress={() => {
             if (nameError) {
               validation.reveal();
@@ -133,6 +171,14 @@ function AddMember({
           description={add.error.message}
         />
       )}
+      {add.data?.commit && (
+        <PullRequestOutcome
+          commit={add.data.commit}
+          next={CONTENT_PULL_REQUEST_NEXT}
+          unchanged={CONTENT_PULL_REQUEST_UNCHANGED}
+          testId="organization-member-pull-request"
+        />
+      )}
     </Flex>
   );
 }
@@ -142,14 +188,18 @@ function AddMember({
  * agent-manager reads its RoleBindings (`list_organization_members`), groups
  * first. Adding offers a group first and a person second; a removal agent-
  * manager refuses, such as the last admin of `organization-admins`, which
- * admission keeps, is shown with its reason.
+ * admission keeps, is shown with its reason. With `changesDisabledBy` (the
+ * id of the line that says why, on Pending erase and while Erasing) the
+ * members stay listed and every change is off.
  */
 export function MembersTab({
   installation,
   namespace,
+  changesDisabledBy,
 }: {
   installation: string;
   namespace: string;
+  changesDisabledBy?: string;
 }) {
   const members = useOrganizationMembers(installation, namespace);
   const { remove } = useOrganizationMemberWrites(installation, namespace);
@@ -180,8 +230,11 @@ export function MembersTab({
       id: 'binding',
       label: 'Binding',
       defaultWidth: '2fr',
+      // The note is read whole, so both lines wrap, at whole words: on a
+      // phone the table scrolls inside its card rather than squeeze it.
+      minWidth: 160,
       cell: row => (
-        <CellText
+        <WrappingCellText
           title={row.binding}
           description={
             row.binding === FIRST_ADMINS_BINDING
@@ -195,6 +248,8 @@ export function MembersTab({
       id: 'actions',
       label: '',
       defaultWidth: '1fr',
+      // "Remove" whole, on a phone too.
+      minWidth: 100,
       // Only a group or a person is added or removed here; another
       // subject (a ServiceAccount) is changed where it was bound.
       cell: row =>
@@ -204,6 +259,8 @@ export function MembersTab({
               size="small"
               variant="secondary"
               aria-label={`Remove ${row.name} as ${row.role}`}
+              isDisabled={changesDisabledBy !== undefined}
+              aria-describedby={changesDisabledBy}
               onPress={() => {
                 remove.reset();
                 setRemoving(row);
@@ -253,7 +310,8 @@ export function MembersTab({
         {body}
       </PageSection>
       <ConfirmDialog
-        isOpen={removing !== undefined}
+        // Closed when the changes turn off: its confirm would write.
+        isOpen={removing !== undefined && changesDisabledBy === undefined}
         onOpenChange={open => {
           if (!open) {
             setRemoving(undefined);
@@ -268,6 +326,7 @@ export function MembersTab({
         busyLabel="Removing…"
         destructive
         isBusy={remove.isPending}
+        isDone={Boolean(remove.data?.commit)}
         error={
           remove.error && removing ? (
             <>
@@ -287,19 +346,39 @@ export function MembersTab({
               removing.name,
               removing.role,
             ),
-            { onSuccess: () => setRemoving(undefined) },
+            {
+              // In mode commit the dialog stays with the pull request.
+              onSuccess: result => {
+                if (!result.commit) setRemoving(undefined);
+              },
+            },
           );
         }}
       >
         {removing && (
-          <Text>
-            {removing.name} loses the {removing.role} role in this organization.
-          </Text>
+          <Flex direction="column" gap="3">
+            <Text>
+              {removing.name} loses the {removing.role} role in this
+              organization.
+            </Text>
+            {remove.data?.commit && (
+              <PullRequestOutcome
+                commit={remove.data.commit}
+                next={CONTENT_PULL_REQUEST_NEXT}
+                unchanged={CONTENT_PULL_REQUEST_UNCHANGED}
+                testId="organization-member-pull-request"
+              />
+            )}
+          </Flex>
         )}
       </ConfirmDialog>
       {access.members && (
         <PageSection title="Add a member">
-          <AddMember installation={installation} namespace={namespace} />
+          <AddMember
+            installation={installation}
+            namespace={namespace}
+            changesDisabledBy={changesDisabledBy}
+          />
         </PageSection>
       )}
     </Flex>

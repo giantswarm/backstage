@@ -21,6 +21,7 @@ import {
   type WriteMode,
 } from '../../lib/agentManager';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
+import { useToolsetSelectorLimit } from '../../hooks/useToolsetSelectorLimit';
 import {
   changedFields,
   editStateOf,
@@ -30,6 +31,7 @@ import {
 import { slugify } from '../../lib/slugify';
 import {
   defaultTenant,
+  ownerOf,
   tenantGroups,
   tenantKindOf,
   type TenantKind,
@@ -48,10 +50,13 @@ import {
 import { withoutSignInTool } from '../../lib/signInTool';
 import {
   normalizeSelection,
+  selectionForTenant,
   toggleSelector,
   toolsetProblems,
 } from '../../lib/toolset';
 import {
+  createAgentsRefusedIn,
+  createAgentsRefusedOn,
   ORGANIZATIONS_CAPABILITY,
   type OrganizationDirectory,
 } from '../../lib/organizations';
@@ -80,6 +85,13 @@ export type NewAgentFormState = {
    * namespace). `undefined` until it has answered.
    */
   tenantChoices?: string[];
+  /**
+   * Creating only: the organization namespaces the person belongs to but may
+   * not create agents in (`list_organizations`' `createAgents` false), which
+   * the Organization field shows disabled with the reason. Never part of
+   * {@link tenantChoices}. Set with them; not kept in the draft.
+   */
+  tenantChoicesBlocked?: string[];
   /**
    * Creating only: why there are no {@link tenantChoices} to pick from:
    * agent-manager's `get_info` could not be read on the installation
@@ -134,6 +146,19 @@ export type NewAgentFormState = {
    * coding Harness, which reaches its platform list only.
    */
   egressPolicyRefs: string[];
+  /**
+   * The organization's own connectors the agent binds (`connectors`), names
+   * of `list_organization_connectors`, in the order picked. Empty outside an
+   * organization and on a coding Harness, which takes none.
+   */
+  connectors: string[];
+  /**
+   * agent-manager's refusal of {@link connectors}, in its own words, as the
+   * review step's dry run or write reported it: the Tools step shows it by
+   * its connectors while the selection is the one refused. Not part of the
+   * agent; never kept in a draft.
+   */
+  connectorsRefusal?: ConnectorsRefusal;
   /**
    * The extra origins and EgressPolicies a move to a coding Harness took out,
    * which reaches its platform list only: what tells the person they are
@@ -206,6 +231,13 @@ export type NewAgentFormState = {
   signInToolDeclined?: boolean;
 };
 
+/** agent-manager's refusal of the selected connectors. */
+export type ConnectorsRefusal = {
+  /** The selection it refused. */
+  connectors: string[];
+  messages: string[];
+};
+
 /** What a move to a coding Harness took out of the form, as entered. */
 export type DroppedEgress = {
   origins: string[];
@@ -238,9 +270,12 @@ export type NewAgentFormContextValue = TagsFieldUpdaters & {
    * Sets {@link NewAgentFormState.tenantChoices}. The tenant held stays when
    * it is still a choice; else the person's own last pick, when it is one
    * (it survives an environment change); else the platform, or the first
-   * choice offered where the platform is none.
+   * choice offered where the platform is none. `blocked` sets
+   * {@link NewAgentFormState.tenantChoicesBlocked}; a held tenant that is
+   * blocked stays held, so the form refuses it with the reason instead of
+   * moving the agent to another organization unseen.
    */
-  setTenantChoices: (choices: string[]) => void;
+  setTenantChoices: (choices: string[], blocked?: string[]) => void;
   /** Sets {@link NewAgentFormState.tenantChoicesUnread}. */
   setTenantChoicesUnread: (unread: TenantChoicesUnread | undefined) => void;
   /** Picks the tenant; a model of another namespace is dropped. */
@@ -265,6 +300,13 @@ export type NewAgentFormContextValue = TagsFieldUpdaters & {
   setEgressSetByPlatform: (setByPlatform: boolean) => void;
   /** Replaces the picked EgressPolicies (names, in the order picked). */
   setEgressPolicyRefs: (names: string[]) => void;
+  /** Replaces the organization's connectors picked (names, in order). */
+  setConnectors: (names: string[]) => void;
+  /**
+   * Records agent-manager's refusal of the selected connectors, or clears it
+   * with `undefined`.
+   */
+  setConnectorsRefusal: (refusal: ConnectorsRefusal | undefined) => void;
   /** `''` removes the default workspace. */
   setDefaultWorkspace: (defaultWorkspace: string) => void;
   /** Adds the skill if not selected, removes it if already selected. */
@@ -300,8 +342,8 @@ export type NewAgentFormContextValue = TagsFieldUpdaters & {
    */
   setToolset: (selectors: string[]) => void;
   /**
-   * *Nothing outside the chat*: clears the toolset and turns the step's
-   * selection off (`toolsChatOnly`). Any other toolset change turns it on
+   * *Nothing outside the chat*: clears the toolset and the organization's
+   * connectors, and turns the step's selection off (`toolsChatOnly`). Any other toolset change turns it on
    * again.
    */
   setToolsChatOnly: () => void;
@@ -310,13 +352,14 @@ export type NewAgentFormContextValue = TagsFieldUpdaters & {
   /** Sets {@link NewAgentFormState.signInToolDeclined}. */
   setSignInToolDeclined: (declined: boolean) => void;
   /**
-   * True when the toolset can be applied: none of the selectors malformed and
-   * no more than the inline cap. The empty selection is valid — it is no tools.
-   * What the Tools step's Continue and the review page's deploy gate on.
+   * Whether selectors satisfy the grammar and the advertised count. The empty
+   * selection represents no tools. Server validation checks the remaining
+   * constraints.
    */
   isToolsetValid: boolean;
   /** Why the toolset cannot be applied, empty when it can. */
   toolsetProblems: string[];
+  maxInlineSelectors?: number;
   reset: () => void;
   /**
    * The kept draft has been looked for (see `persistDraft`): until then the
@@ -403,11 +446,11 @@ const initialState: NewAgentFormState = {
   modelDisplayName: undefined,
   harness: undefined,
   droppedHarness: undefined,
-  // Empty means "use the chart default": the spec sent to agent-manager omits
-  // it (agentSpecOf), and agent-manager keeps the chart's default prompt.
+  // An empty prompt is omitted from the spec so the chart supplies its default.
   systemMessage: '',
   egressText: '',
   egressPolicyRefs: [],
+  connectors: [],
   defaultWorkspace: '',
   selectedSkills: [],
   keptSkills: [],
@@ -437,7 +480,10 @@ function isValidSlug(slug: string): boolean {
 type NewAgentDraft = {
   state: Omit<
     NewAgentFormState,
-    'tenantChoices' | 'droppedEgress' | 'egressSetByPlatform'
+    | 'tenantChoices'
+    | 'droppedEgress'
+    | 'egressSetByPlatform'
+    | 'connectorsRefusal'
   >;
   slugEdited: boolean;
 };
@@ -461,6 +507,7 @@ function hasCreateInput(state: NewAgentFormState): boolean {
     ].some(text => text.trim() !== '') ||
     state.harness !== undefined ||
     state.egressPolicyRefs.length > 0 ||
+    state.connectors.length > 0 ||
     state.defaultWorkspace !== '' ||
     state.tags.length > 0 ||
     state.selectedSkills.length > 0 ||
@@ -496,7 +543,9 @@ function withOwnTenant(
  * The state with `tenant` picked: the agent's namespace, so a model (and the
  * Harness it brought) of another namespace is dropped, and the model picker
  * preselects the tenant's default instead. EgressPolicies are the namespace's
- * own, so the picked ones go too.
+ * own, so the picked ones go too, and so do the connectors of another
+ * organization's namespace ({@link selectionForTenant}) and the
+ * organization's own connectors picked.
  */
 function withTenant(
   state: NewAgentFormState,
@@ -505,13 +554,16 @@ function withTenant(
   if (state.tenant === tenant) {
     return state;
   }
+  const toolset = selectionForTenant(state.toolset, state.tenant, tenant);
   if (!state.modelConfigNamespace || state.modelConfigNamespace === tenant) {
-    return { ...state, tenant, egressPolicyRefs: [] };
+    return { ...state, tenant, toolset, egressPolicyRefs: [], connectors: [] };
   }
   return {
     ...state,
     tenant,
+    toolset,
     egressPolicyRefs: [],
+    connectors: [],
     modelConfigName: undefined,
     modelConfigNamespace: undefined,
     modelDisplayName: undefined,
@@ -613,6 +665,7 @@ export function NewAgentFormProvider({
   const [draftNoticeStep, setDraftNoticeStep] = useState<string>();
 
   const { info: agentManagerInfo } = useAgentManagerInfo(state.installation);
+  const maxInlineSelectors = useToolsetSelectorLimit(state.installation);
   const { directory } = useOrganizationDirectory();
   // Where agent-manager serves the organization tools, the choices are the
   // organizations the person belongs to.
@@ -630,15 +683,22 @@ export function NewAgentFormProvider({
     // egress is read again, like the tenant choices.
     const {
       tenantChoices: _choices,
+      tenantChoicesBlocked: _blocked,
       tenantChoicesUnread: _unread,
       droppedEgress: _dropped,
       egressSetByPlatform: _setByPlatform,
+      connectorsRefusal: _refusal,
       ...kept
     } = state;
     return { state: kept, slugEdited };
   }, [state, slugEdited]);
   const onRestore = useCallback((draft: NewAgentDraft) => {
-    setState({ ...initialState, ...draft.state, tenantChoices: undefined });
+    setState({
+      ...initialState,
+      ...draft.state,
+      tenantChoices: undefined,
+      tenantChoicesBlocked: undefined,
+    });
     setSlugEdited(draft.slugEdited);
   }, []);
   const draft = useSessionDraft<NewAgentDraft>({
@@ -704,10 +764,42 @@ export function NewAgentFormProvider({
     if (
       !edit &&
       state.installation &&
+      state.tenant &&
+      state.tenantChoicesBlocked?.includes(state.tenant)
+    ) {
+      // Held, as a draft brought it back, but the person may not create
+      // agents there: never submitted. Where they may create in none of
+      // their organizations, there is no other one to choose.
+      fieldErrors.tenant =
+        state.tenantChoices?.length === 0
+          ? createAgentsRefusedOn(state.installation)
+          : createAgentsRefusedIn(ownerOf(state.tenant, directory));
+    } else if (
+      !edit &&
+      state.installation &&
+      state.tenant &&
+      state.tenantChoices === undefined &&
+      state.tenantChoicesUnread !== 'unlisted'
+    ) {
+      // Held, as a draft brought it back, before agent-manager said where
+      // the person may create (or where it could not say): not submitted
+      // until it is known to be one of theirs.
+      fieldErrors.tenant =
+        state.tenantChoicesUnread === 'failed'
+          ? 'Could not read where you may create agents.'
+          : 'Still reading where you may create agents.';
+    } else if (
+      !edit &&
+      state.installation &&
       !state.tenant &&
       state.tenantChoicesUnread !== 'unlisted'
     ) {
-      if (state.tenantChoices?.length === 0) {
+      if (
+        state.tenantChoices?.length === 0 &&
+        state.tenantChoicesBlocked?.length
+      ) {
+        fieldErrors.tenant = createAgentsRefusedOn(state.installation);
+      } else if (state.tenantChoices?.length === 0) {
         fieldErrors.tenant = byOrganization
           ? `You belong to no organization on ${state.installation}. Choose another environment, or ask to be added to an organization.`
           : `You may not create agents on ${state.installation}. Choose another environment, or ask your platform team for the agent-platform:editor role.`;
@@ -745,7 +837,11 @@ export function NewAgentFormProvider({
     // steps may render at all (a deep link without them goes back to step 1),
     // while the toolset is step 3's own output and gates only the way forward —
     // and only when it cannot be applied; nothing selected is no tools.
-    const problems = toolsetProblems(state.toolset);
+    const problems = toolsetProblems(
+      state.toolset,
+      undefined,
+      maxInlineSelectors,
+    );
     const isToolsetValid = problems.length === 0;
 
     const isDirty = edit
@@ -777,34 +873,49 @@ export function NewAgentFormProvider({
       ...tagUpdaters,
       // Changing the installation clears the model and Harness selections:
       // both are scoped to an installation, so the previous pick may not exist
-      // here.
+      // here; so are an organization's connectors.
       setInstallation: installation =>
         setState(prev => ({
           ...prev,
           installation,
+          toolset:
+            prev.installation === installation
+              ? prev.toolset
+              : selectionForTenant(prev.toolset, prev.tenant, null),
           tenantChoices: undefined,
+          tenantChoicesBlocked: undefined,
           tenantChoicesUnread: undefined,
           tenant: undefined,
           defaultWorkspace: '',
           egressPolicyRefs: [],
+          connectors: [],
           modelConfigName: undefined,
           modelConfigNamespace: undefined,
           modelDisplayName: undefined,
           harness: undefined,
           droppedHarness: prev.harness?.name ?? prev.droppedHarness,
         })),
-      setTenantChoices: choices =>
+      setTenantChoices: (choices, blocked = []) =>
         setState(prev => {
+          const sameBlocked =
+            (prev.tenantChoicesBlocked ?? []).join(',') === blocked.join(',');
           if (
             prev.tenantChoices?.join(',') === choices.join(',') &&
+            sameBlocked &&
             (prev.tenant === undefined
               ? choices.length === 0
-              : choices.includes(prev.tenant))
+              : choices.includes(prev.tenant) || blocked.includes(prev.tenant))
           ) {
             return prev;
           }
           let tenant = prev.tenant;
-          if (!tenant || !choices.includes(tenant)) {
+          // A held tenant the person may not create agents in stays held:
+          // the form refuses it with the reason, rather than moving the
+          // agent to another organization without a word.
+          if (
+            !tenant ||
+            !(choices.includes(tenant) || blocked.includes(tenant))
+          ) {
             const own = prev.ownTenant;
             tenant =
               own && choices.includes(own)
@@ -812,7 +923,12 @@ export function NewAgentFormProvider({
                 : defaultTenant(choices, directory);
           }
           return withTenant(
-            { ...prev, tenantChoices: choices, tenantChoicesUnread: undefined },
+            {
+              ...prev,
+              tenantChoices: choices,
+              tenantChoicesBlocked: blocked.length > 0 ? blocked : undefined,
+              tenantChoicesUnread: undefined,
+            },
             tenant,
           );
         }),
@@ -853,6 +969,7 @@ export function NewAgentFormProvider({
                 modelConfigNamespace: namespace,
                 modelDisplayName: displayName,
                 egressPolicyRefs: [],
+                connectors: [],
                 harness: undefined,
                 droppedHarness: prev.harness?.name ?? prev.droppedHarness,
               };
@@ -868,7 +985,7 @@ export function NewAgentFormProvider({
             droppedEgress: undefined,
           };
           return isCodingRuntime(harness?.runtime)
-            ? withEgressDropped(next)
+            ? withEgressDropped({ ...next, connectors: [] })
             : next;
         }),
       // The same once the runtime is read, for a Harness picked or defaulted
@@ -883,13 +1000,24 @@ export function NewAgentFormProvider({
             ...prev,
             egressSetByPlatform: setByPlatform || undefined,
           };
-          return setByPlatform && !edit ? withEgressDropped(next) : next;
+          return setByPlatform && !edit
+            ? withEgressDropped({ ...next, connectors: [] })
+            : next;
         }),
       setSystemMessage: systemMessage =>
         setState(prev => ({ ...prev, systemMessage })),
       setEgressText: egressText => setState(prev => ({ ...prev, egressText })),
       setEgressPolicyRefs: egressPolicyRefs =>
         setState(prev => ({ ...prev, egressPolicyRefs })),
+      setConnectors: connectors => setState(prev => ({ ...prev, connectors })),
+      setConnectorsRefusal: connectorsRefusal =>
+        setState(prev =>
+          // Compared by content: a review re-renders with a new object.
+          JSON.stringify(prev.connectorsRefusal) ===
+          JSON.stringify(connectorsRefusal)
+            ? prev
+            : { ...prev, connectorsRefusal },
+        ),
       setDefaultWorkspace: defaultWorkspace =>
         setState(prev => ({ ...prev, defaultWorkspace })),
       toggleToolsetSelector: selector =>
@@ -910,6 +1038,8 @@ export function NewAgentFormProvider({
           toolset: [],
           toolsChatOnly: true,
           signInToolDeclined: undefined,
+          // Nothing outside the chat: the organization's connectors too.
+          connectors: [],
         })),
       setToolsetBase: toolsetBase =>
         setState(prev =>
@@ -923,6 +1053,7 @@ export function NewAgentFormProvider({
         ),
       isToolsetValid,
       toolsetProblems: problems,
+      maxInlineSelectors,
       toggleSkill: skill =>
         setState(prev => {
           const id = skillId(skill);
@@ -1038,6 +1169,7 @@ export function NewAgentFormProvider({
     storedTags,
     directory,
     byOrganization,
+    maxInlineSelectors,
   ]);
 
   return (

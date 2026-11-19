@@ -23,7 +23,7 @@ import { modelManagerUnavailable } from './model-manager.fixture';
  * table has a row to show), and Model hosting's tabs under it.
  */
 
-test('Customize · Models lists the lab default ModelConfig and offers Connect a model', async ({
+test('Customize · Models lists the lab default ModelConfig and offers Add a model', async ({
   admin,
 }) => {
   // Read first: it loads a page of its own to read the portal's tokens.
@@ -35,7 +35,7 @@ test('Customize · Models lists the lab default ModelConfig and offers Connect a
     admin.getByRole('main').getByRole('tab', { name: /^Models/ }),
   ).toHaveAttribute('aria-selected', 'true');
   await expect(
-    admin.getByRole('link', { name: 'Connect a model' }),
+    admin.getByRole('link', { name: 'Add a model' }),
   ).toHaveAttribute('href', '/customize/models/new');
   await expect(
     platformDefaultModelRow(admin),
@@ -55,13 +55,13 @@ test('Customize · Models lists the lab default ModelConfig and offers Connect a
 });
 
 /**
- * Connect a model holds its button until the owners are known
+ * Add a model holds its button until the owners are known
  * (giantswarm/giantswarm#39199): the lab's admin administers the lab's
  * organization, so the Owner field offers it beside Platform, and until the
  * person's organizations are read a model sent would go to the platform.
  * `list_organizations` is held back here, so the wait is seen.
  */
-test('Connect a model waits for the Owner choices, then offers the lab organization', async ({
+test('Add a model waits for the Owner choices, then offers the lab organization', async ({
   admin,
 }) => {
   let release: () => void = () => {};
@@ -85,7 +85,7 @@ test('Connect a model waits for the Owner choices, then offers the lab organizat
           "the page reads the person's organizations (agent-manager's list_organizations)",
       })
       .toBe(true);
-    const connect = admin.getByRole('button', { name: 'Connect model' });
+    const connect = admin.getByRole('button', { name: 'Add model' });
     await expect(connect).toBeDisabled();
     await expect(connect).toHaveAccessibleDescription(
       'Checking which Organizations you may add a model for…',
@@ -103,7 +103,7 @@ test('Connect a model waits for the Owner choices, then offers the lab organizat
     // An organization's model: its key goes on the credential form, so the
     // page asks for none. Not sent: that would create the model.
     await expect(
-      admin.getByRole('button', { name: 'Continue to the key' }),
+      admin.getByRole('button', { name: 'Continue to credential' }),
     ).toBeVisible();
     await expect(admin.getByLabel(/^API key/)).toHaveCount(0);
   } finally {
@@ -298,7 +298,7 @@ async function chooseProvider(page: Page, provider: VertexModel['provider']) {
   }).toPass({ timeout: 30_000 });
 }
 
-/** Fills Connect a model for a Vertex AI model, up to the submit. */
+/** Fills Add a model for a Vertex AI model, up to the submit. */
 async function fillVertexModel(page: Page, model: VertexModel) {
   await open(page, '/customize/models/new');
   await chooseProvider(page, model.provider);
@@ -334,7 +334,7 @@ async function chooseKeyFile(page: Page, key: VertexModel['key']) {
  */
 async function connectVertexModel(page: Page, model: VertexModel) {
   await fillVertexModel(page, model);
-  await page.getByRole('button', { name: 'Connect model' }).click();
+  await page.getByRole('button', { name: 'Add model' }).click();
   await expect(page).toHaveURL(/\/customize\/models$/, { timeout: 60_000 });
   await page
     .getByRole('rowheader', { name: new RegExp(`^${model.displayName}`) })

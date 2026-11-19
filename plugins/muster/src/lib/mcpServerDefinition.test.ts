@@ -1502,12 +1502,18 @@ describe('editing a registered server in the wizard', () => {
     });
   });
 
-  it('keeps the server’s autoStart, reading a missing one as off', () => {
+  it('keeps the server’s autoStart on or off, reading a missing one as off', () => {
     // muster's update always overwrites autoStart (omitted = false), and the
     // wizard's `true` is only a registration default: an edit must not turn
     // it on.
     const edited = composeMcpServerDefinition(state({ slug: 'weather-mcp' }));
 
+    expect(
+      mergeOntoExisting(
+        toMcpServerDefinition(registered({ autoStart: true })),
+        edited,
+      ).autoStart,
+    ).toBe(true);
     expect(
       mergeOntoExisting(
         toMcpServerDefinition(registered({ autoStart: false })),

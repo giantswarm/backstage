@@ -42,6 +42,12 @@ export const TOUCH_QUERY = '(hover: none) and (pointer: coarse)';
 /** Touch input as a JSS/CSS media rule key. */
 export const TOUCH_MEDIA = `@media ${TOUCH_QUERY}`;
 
+/**
+ * A mouse or trackpad: hover, a fine pointer. What it can't do without a
+ * control for it — scroll a row sideways with a vertical wheel — gets one.
+ */
+export const FINE_POINTER_QUERY = '(hover: hover) and (pointer: fine)';
+
 function canMatchMedia(): boolean {
   return (
     typeof window !== 'undefined' && typeof window.matchMedia === 'function'

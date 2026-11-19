@@ -14,6 +14,9 @@
  * `no-restricted-bui-syntax` is that core rule once more, for the bui
  * restrictions: ESLint keeps one set of options per rule id, so selectors for
  * every file cannot share an id with selectors for some files.
+ *
+ * `no-fixture-imports` is `no-restricted-imports` once more, for the static
+ * imports of fixture modules (docs/fixtures.md), for the same reason.
  */
 const { builtinRules } = require('eslint/use-at-your-own-risk');
 
@@ -22,5 +25,6 @@ module.exports = {
     'no-restricted-imports': builtinRules.get('no-restricted-imports'),
     'no-restricted-syntax': builtinRules.get('no-restricted-syntax'),
     'no-restricted-bui-syntax': builtinRules.get('no-restricted-syntax'),
+    'no-fixture-imports': builtinRules.get('no-restricted-imports'),
   },
 };

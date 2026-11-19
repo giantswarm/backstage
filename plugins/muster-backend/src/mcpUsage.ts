@@ -76,15 +76,14 @@ export interface McpUsageResponse {
   servers: McpUsageServerRow[];
 }
 
-/** Usage answers with a secondary rollup left empty because its query failed. */
-const partialAnswers = new WeakSet<McpUsageResponse>();
-
 /**
- * Whether a secondary rollup of `usage` degraded to empty: a later read may
- * fill it, so the answer is not one to reuse.
+ * A usage answer, and whether every rollup in it was read: `complete` is
+ * false when a secondary rollup degraded to empty because its query failed,
+ * which a later read may fill, so the answer is not one to reuse.
  */
-export function isPartialUsage(usage: McpUsageResponse): boolean {
-  return partialAnswers.has(usage);
+export interface McpUsageRead {
+  usage: McpUsageResponse;
+  complete: boolean;
 }
 
 export interface McpToolLatencyResponse {
@@ -499,6 +498,7 @@ async function openUsageQueries(
       start: new Date((fromSeconds + stepSeconds) * 1000).toISOString(),
       end: new Date(toSeconds * 1000).toISOString(),
       step,
+      unlimited: 'true',
     }).then(series => withinWindow(series, fromSeconds, toSeconds));
   const rangeQuery = (query: string): Promise<PromSeries[]> =>
     rangeQueryBetween(query, startSeconds, endSeconds);
@@ -526,7 +526,7 @@ function queryFailure(promServer: string, error: unknown): string {
 
 /**
  * p95 latency per tool over the last `hours` on one installation, narrowed to
- * `servers` as {@link getMcpUsage} is. Read apart from it because
+ * `servers` as {@link readMcpUsage} is. Read apart from it because
  * `sum by (tool, le)` is the largest and slowest of the usage queries, so the
  * figures do not wait for it.
  */
@@ -590,14 +590,14 @@ export async function getMcpToolLatency(
  * either way: it says where muster's records start, and a quiet connector's
  * first call is not that.
  */
-export async function getMcpUsage(
+export async function readMcpUsage(
   client: MusterMcpClient,
   installation: MusterInstallationConfig,
   callOptions: { authToken?: string },
   hours: number,
   servers: readonly string[] = [],
   onlyTool?: string,
-): Promise<McpUsageResponse> {
+): Promise<McpUsageRead> {
   const queries = await openUsageQueries(
     client,
     installation,
@@ -605,7 +605,10 @@ export async function getMcpUsage(
     hours,
   );
   if ('reason' in queries) {
-    return unavailable(queries.rangeHours, queries.reason);
+    return {
+      usage: unavailable(queries.rangeHours, queries.reason),
+      complete: true,
+    };
   }
   const {
     promServer,
@@ -643,19 +646,65 @@ export async function getMcpUsage(
   const calls = `${METRIC_CALLS}${selector}`;
   const duration = `${METRIC_DURATION}${selector}`;
 
-  let coverage: PromSeries[];
+  let coverage: PromSeries[] = [];
   let beforeWindow: PromSeries[] | undefined;
-  let byOutcomeOverTime: PromSeries[];
-  let byToolOutcome: PromSeries[];
-  let byServerOutcome: PromSeries[];
+  let byOutcomeOverTime: PromSeries[] = [];
+  let byToolOutcome: PromSeries[] = [];
+  let byServerOutcome: PromSeries[] = [];
   let latencyBuckets: PromSeries[];
   let latencyBucketsByServer: PromSeries[];
-  try {
-    // Every call muster recorded in the window, and apart in the week before
-    // it, which says whether muster recorded anything there (`data_start`)
-    // and is never counted. Never narrowed to `servers`, so a connector's
-    // page says where the installation's records start. Without `servers`
-    // the window's is also the outcome rollup: one query does both.
+  const readCounts = async () => {
+    try {
+      const allCounts = await rangeQueryBetween(
+        `sum by (mcpserver_name, tool, outcome) (increase(${calls}[${step}]))`,
+        filtered ? startSeconds : lookbackStart,
+        endSeconds,
+      );
+      const windowCounts = withinWindow(
+        allCounts,
+        startSeconds,
+        endSeconds,
+      ).filter(series => series.points.length > 0);
+      byOutcomeOverTime = windowCounts;
+      byToolOutcome = toolRollups
+        ? windowCounts.toSorted(
+            (left, right) =>
+              (left.labels.outcome ?? '').localeCompare(
+                right.labels.outcome ?? '',
+              ) ||
+              (left.labels.tool ?? '').localeCompare(right.labels.tool ?? ''),
+          )
+        : [];
+      byServerOutcome = serverOutcomes
+        ? windowCounts.toSorted(
+            (left, right) =>
+              (left.labels.mcpserver_name ?? '').localeCompare(
+                right.labels.mcpserver_name ?? '',
+              ) ||
+              (left.labels.outcome ?? '').localeCompare(
+                right.labels.outcome ?? '',
+              ),
+          )
+        : [];
+      if (filtered) {
+        const expression = `sum by (outcome) (increase(${METRIC_CALLS}[${step}]))`;
+        coverage = await rangeQuery(expression);
+        beforeWindow = await rangeQueryBetween(
+          expression,
+          lookbackStart,
+          startSeconds,
+        ).catch(() => {
+          partial = true;
+          return undefined;
+        });
+      } else {
+        coverage = byOutcomeOverTime;
+        beforeWindow = withinWindow(allCounts, lookbackStart, startSeconds);
+      }
+      return;
+    } catch {
+      // Independent outcome reads can survive a failed high-cardinality rollup.
+    }
     const coverageExpr = `sum by (outcome) (increase(${METRIC_CALLS}[${step}]))`;
     const coverageQuery = rangeQuery(coverageExpr);
     const byOutcomeQuery = filtered
@@ -667,8 +716,6 @@ export async function getMcpUsage(
       byOutcomeOverTime,
       byToolOutcome,
       byServerOutcome,
-      latencyBuckets,
-      latencyBucketsByServer,
     ] = await Promise.all([
       coverageQuery,
       // Unread, it says nothing either way: no `data_start`.
@@ -689,6 +736,11 @@ export async function getMcpUsage(
             ),
           )
         : none,
+    ]);
+  };
+  try {
+    [, latencyBuckets, latencyBucketsByServer] = await Promise.all([
+      readCounts(),
       optional(rangeQuery(`sum by (le) (increase(${duration}[${step}]))`)),
       serverLatency
         ? optional(
@@ -699,7 +751,10 @@ export async function getMcpUsage(
         : none,
     ]);
   } catch (error) {
-    return unavailable(rangeHours, queryFailure(promServer, error));
+    return {
+      usage: unavailable(rangeHours, queryFailure(promServer, error)),
+      complete: true,
+    };
   }
 
   const recordedBeforeWindow = beforeWindow?.some(
@@ -856,8 +911,5 @@ export async function getMcpUsage(
     top_tools: filtered ? tools : tools.slice(0, TOP_TOOLS_LIMIT),
     servers: [...serverRows.values()].sort((a, b) => b.calls - a.calls),
   };
-  if (partial) {
-    partialAnswers.add(usage);
-  }
-  return usage;
+  return { usage, complete: !partial };
 }

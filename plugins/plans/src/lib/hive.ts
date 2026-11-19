@@ -139,9 +139,16 @@ export function historyForTeam(
 }
 
 /**
- * A team's plans repositories: each team keeps its plans in `<team>-plans`,
- * its name in lower case without spaces ("Apple Orchard 🍎" →
- * `appleorchard-plans`). All teams: every repository.
+ * The name of a team's plans repository: `<team>-plans`, its name in lower
+ * case without spaces ("Apple Orchard 🍎" → `appleorchard-plans`).
+ */
+export function plansRepositoryName(team: string): string {
+  return `${teamName(team).toLowerCase().replace(/\s+/g, '')}-plans`;
+}
+
+/**
+ * A team's plans repositories ({@link plansRepositoryName}, whatever the
+ * owner). All teams: every repository.
  */
 export function plansRepositoriesForTeam(
   repositories: string[],
@@ -150,7 +157,7 @@ export function plansRepositoriesForTeam(
   if (team === ALL_TEAMS) {
     return repositories;
   }
-  const name = `${teamName(team).toLowerCase().replace(/\s+/g, '')}-plans`;
+  const name = plansRepositoryName(team);
   return repositories.filter(
     repository => repository.split('/')[1]?.toLowerCase() === name,
   );

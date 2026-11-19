@@ -3,8 +3,8 @@ import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
 import { mockServices } from '@backstage/backend-test-utils';
 import express from 'express';
 import request from 'supertest';
+import { AGENT_MANAGER_AUTH_HEADER } from '@giantswarm/backstage-plugin-agent-platform-common';
 import {
-  AGENT_MANAGER_AUTH_HEADER,
   agentManagerBaseUrl,
   createCredentialOperationsRouter,
 } from './credentialOperationsRouter';
@@ -201,6 +201,18 @@ describe('the credential operations', () => {
   });
 
   it.each([
+    ['a non-JSON success', async () => new Response('<html>ok</html>'), 502],
+    [
+      'an uncoded 400',
+      async () => new Response('bad request', { status: 400 }),
+      400,
+    ],
+    [
+      'an uncoded JSON 500',
+      async () => json(500, { error: { message: 'failed' } }),
+      500,
+    ],
+    ['an uncoded redirect', async () => new Response('', { status: 302 }), 502],
     [
       'a dropped connection',
       () => Promise.reject(new TypeError('fetch failed')),
@@ -256,6 +268,21 @@ describe('the credential operations', () => {
     });
   });
 
+  it.each(['get', 'delete'] as const)(
+    'keeps an uncoded %s error as backend_error',
+    async method => {
+      const fetchFn = mockFetch(
+        () => new Response('unreadable', { status: 500 }),
+      );
+      const response = await request(app(fetchFn as unknown as typeof fetch))
+        [method](path)
+        .set(AGENT_MANAGER_AUTH_HEADER, 'id-token')
+        .set('If-Match', '"7"');
+      expect(response.status).toBe(500);
+      expect(response.body.error.code).toBe('backend_error');
+    },
+  );
+
   it('answers its own refusals of a request no-store too', async () => {
     const fetchFn = mockFetch(() => json(200, {}));
     const res = await request(app(fetchFn as unknown as typeof fetch))
@@ -308,6 +335,18 @@ describe('the credential operations', () => {
     expect(res.status).toBe(204);
     expect(fetchFn.mock.calls[0][1].method).toBe('DELETE');
     expect(fetchFn.mock.calls[0][1].headers['If-Match']).toBe('"7"');
+  });
+
+  // Not Backstage's AuthenticationError, which the form reads as the portal
+  // refusing the session token.
+  it("names a save without the installation token as the installation's refusal", async () => {
+    const fetchFn = mockFetch(() => json(200, {}));
+    const res = await request(app(fetchFn as unknown as typeof fetch))
+      .post(path)
+      .set('If-Match', '"7"')
+      .send({ values: [{ secret: 's', key: 'k', value: SECRET_VALUE }] });
+    expect(res.status).toBe(401);
+    expect(res.body.error.name).toBe('InstallationAuthenticationError');
   });
 
   it.each([

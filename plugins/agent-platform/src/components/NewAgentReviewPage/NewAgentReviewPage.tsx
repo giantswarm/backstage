@@ -26,11 +26,13 @@ import { useSignInTool } from '../../hooks/useSignInTool';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useToolsetResolution } from '../../hooks/useToolsetResolution';
 import { useValidateAgent } from '../../hooks/useValidateAgent';
+import { useConnectorsRefusal } from '../../hooks/useConnectorsRefusal';
 import {
   helmInstallCommand,
   type CommitAgentResult,
 } from '../../lib/agentManager';
 import { agentSpecOf } from '../../lib/agentSpec';
+import { ORGANIZATION_CONNECTORS_LABEL } from '../../lib/organizationConnectors';
 import { PrivateSkillsNote } from '../PrivateSkillsNote';
 import {
   harnessTitle,
@@ -182,6 +184,11 @@ function CreateAgentReview() {
     violations.length === 0 &&
     !validation.failure;
   const isBusy = creation.isDeploying || creation.isCommitting;
+  // A refusal of the connectors shows next to them on the Tools step too.
+  useConnectorsRefusal(
+    [...violations, validation.failure?.message, creation.failure?.message],
+    Boolean(dryRun),
+  );
   // The button shows only when agent-manager reports the capability that lands
   // the manifests as a pull request (giantswarm/agent-manager#24).
   const canCommit = info?.capabilities?.commit === true;
@@ -382,6 +389,12 @@ function CreateAgentReview() {
               <SignInToolChange change="added" signIn={signIn} />
             )}
           </PlainRow>
+          {/* Beside the muster servers above, which "Tools" sums up. */}
+          {state.connectors.length > 0 && (
+            <PlainRow label={ORGANIZATION_CONNECTORS_LABEL}>
+              {state.connectors.join(', ')}
+            </PlainRow>
+          )}
         </dl>
 
         {shape === 'full' && (

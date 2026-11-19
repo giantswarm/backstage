@@ -40,6 +40,7 @@ export function ModelActionsMenu({
     deleteModelConfig,
     isDeleting,
     error,
+    pullRequest,
     reset,
   } = deletion;
 
@@ -58,11 +59,17 @@ export function ModelActionsMenu({
   };
 
   const confirmDelete = async () => {
+    let deleted: { commit?: unknown };
     try {
-      await deleteModelConfig();
+      deleted = await deleteModelConfig();
     } catch {
       // Left to the dialog, which stays open and renders the hook's `error` —
       // including the refusal when agents still reference the model.
+      return;
+    }
+    // A pull request removes the model once merged: the dialog shows it, and
+    // the page stays on the model, which is still there.
+    if (deleted.commit) {
       return;
     }
 
@@ -106,6 +113,7 @@ export function ModelActionsMenu({
         isDeleting={isDeleting}
         error={error?.message}
         onConfirm={confirmDelete}
+        pullRequest={pullRequest}
       />
     </>
   );

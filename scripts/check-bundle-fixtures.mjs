@@ -1,0 +1,199 @@
+/*
+ * Fails when the production build of the app contains fixture code.
+ *
+ * The fixture modes (docs/fixtures.md) load their code only outside
+ * production builds. Each marker below is a string that only its fixture
+ * module contains; finding one in a built file means a fixture module reached
+ * the production bundle. A new fixture module adds a marker here. A marker
+ * its source no longer contains fails the check too, so a reworded fixture
+ * cannot turn the check off unnoticed.
+ *
+ * The node-build job runs this (`.circleci/custom.yml`) after its Build step
+ * (`ci:build`), whose backend build also builds the app.
+ *
+ * Usage: node scripts/check-bundle-fixtures.mjs [app dist, default packages/app/dist]
+ */
+
+import fs from 'node:fs';
+import path from 'node:path';
+
+const MARKERS = [
+  {
+    source: 'plugins/plans/src/apis/PlansFixtureApi.ts',
+    marker: 'example/team-magazine',
+  },
+  {
+    source: 'plugins/plans/src/lib/scenarioFixtures.ts',
+    marker: 'woodruff',
+  },
+  {
+    source: 'plugins/plans/src/lib/hiveFixtures.ts',
+    marker: 'Pods, events and logs of a workload cluster from its page',
+  },
+  {
+    source: 'plugins/roadmap/src/apis/roadmapBoardFixtures.ts',
+    marker: 'The change is proven in the lab',
+  },
+  {
+    source: 'plugins/muster/src/apis/fixtures/MusterFixtureApi.ts',
+    marker: 'Fixture mode has no handler for the tool',
+  },
+  {
+    source: 'plugins/agent-platform/src/apis/fixtures/notInFixtures.ts',
+    marker: 'Fixture mode does not answer',
+  },
+  {
+    source: 'plugins/agent-platform/src/apis/fixtures/kagentConversations.ts',
+    marker: 'Fixture mode replays this reply from a recorded kagent stream',
+  },
+  {
+    source: 'plugins/agent-platform/src/apis/fixtures/kagentFixtureState.ts',
+    marker: 'Fixture mode replays the rest of this turn',
+  },
+  {
+    source:
+      'plugins/agent-platform-common/src/kagent/__fixtures__/stream.kagent-4a91c273.json',
+    marker: 'Reply with exactly the word pong.',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/ModelManagerFixtureApi.ts',
+    marker: 'no healthy upstream for',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/modelHostingFixtureState.ts',
+    marker: 'InsufficientInstanceCapacity',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/mcpServers/clusterManager.ts',
+    marker: 'picks the EC2 instance family',
+  },
+  {
+    source: 'plugins/gs-common/src/fixtures/hostingBuilders.ts',
+    marker: 'ollamaUnhealthy',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/AgentManagerCredentialsFixtureApi.ts',
+    marker: 'fixture:credential-operations',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/agentManagerFixtureState.ts',
+    marker: 'The credential request does not exist, expired, or is',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/mcpServers/agentManager.ts',
+    marker: 'oci://registry.example.com/charts/agent',
+  },
+  {
+    source: 'plugins/gs-common/src/fixtures/builders.ts',
+    marker: 'A builder needs at least one state.',
+  },
+  {
+    source: 'plugins/gs-common/src/fixtures/managerBuilders.ts',
+    marker:
+      'with your sign-in: it is not installed there, or you have no access',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/workspaceManagerFixtureState.ts',
+    marker: 'the volume is provisioned at the first sync',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/toolchainManagerFixtureState.ts',
+    marker: 'A command line YAML processor',
+  },
+  {
+    source: 'plugins/agent-platform/src/apis/fixtures/skillFixtureFiles.ts',
+    marker: '1. Read the request and what it refers to.',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/SkillDiscoveryFixtureApi.ts',
+    marker: 'returned 503: Service Unavailable',
+  },
+  {
+    source: 'plugins/muster/src/apis/fixtures/musterFixtureData.ts',
+    marker: 'The server did not answer within the timeout.',
+  },
+  {
+    source:
+      'plugins/agent-platform/src/apis/fixtures/agentPlatformFixtureData.ts',
+    marker: 'The worker running the session stopped answering.',
+  },
+  {
+    source:
+      'packages/app/src/modules/kubernetes/fixtures/KubernetesFixtureApi.ts',
+    marker: 'Fixture mode does not answer the Kubernetes request',
+  },
+  {
+    source: 'plugins/gs/src/apis/mimir/fixtures/MimirFixtureApi.ts',
+    marker: 'Fixture Mimir answers no series',
+  },
+  {
+    source: 'plugins/gs/src/apis/kubernetes/fixtures/clusterObjects.ts',
+    marker: '-capa-controller',
+  },
+  {
+    source: 'plugins/gs-common/src/fixtures/clusterBuilders.ts',
+    marker: 'GPU nodes for model hosting',
+  },
+  {
+    source: 'plugins/gs-common/src/fixtures/gatewayUsage.ts',
+    marker: 'sorrel@example.com',
+  },
+  {
+    source: 'plugins/gs-common/src/fixtures/scenarios.ts',
+    marker: 'the error fixture scenario fails every call',
+  },
+];
+
+const root = path.resolve(import.meta.dirname, '..');
+const stale = MARKERS.filter(({ source, marker }) => {
+  const file = path.join(root, source);
+  return (
+    !fs.existsSync(file) || !fs.readFileSync(file, 'utf8').includes(marker)
+  );
+});
+if (stale.length > 0) {
+  console.error(
+    'Markers their fixture source no longer contains: update MARKERS in scripts/check-bundle-fixtures.mjs:\n' +
+      stale.map(({ source, marker }) => `  ${source}: ${marker}`).join('\n'),
+  );
+  process.exit(1);
+}
+
+const dist = path.resolve(process.argv[2] ?? 'packages/app/dist');
+const files = fs
+  .globSync('**/*.{js,html}', { cwd: dist })
+  .map(file => path.join(dist, file));
+
+if (files.length === 0) {
+  console.error(`No built files in ${dist}: build the app first.`);
+  process.exit(1);
+}
+
+const found = files.flatMap(file => {
+  const content = fs.readFileSync(file, 'utf8');
+  return MARKERS.filter(({ marker }) => content.includes(marker)).map(
+    ({ source, marker }) =>
+      `${path.relative(dist, file)}: ${marker} (from ${source})`,
+  );
+});
+
+if (found.length > 0) {
+  console.error(
+    'Fixture code in the production bundle (docs/fixtures.md):\n' +
+      found.map(line => `  ${line}`).join('\n'),
+  );
+  process.exit(1);
+}
+
+console.log(
+  `No fixture code in ${files.length} built files of ${path.relative(process.cwd(), dist) || dist}.`,
+);

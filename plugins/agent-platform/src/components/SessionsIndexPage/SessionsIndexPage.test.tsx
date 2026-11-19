@@ -55,12 +55,6 @@ jest.mock('../../hooks/useFleetSessionStates', () => ({
   }),
 }));
 
-// The scope note reads the section scope from gs; none of the page's branches
-// depend on it, so it renders nothing here.
-jest.mock('../InstallationScopeNote', () => ({
-  InstallationScopeNote: () => null,
-}));
-
 // The inventory gate reads the installation inventory and the section scope
 // from gs (kubernetes proxy, cluster-access status); it is covered by its own
 // tests there and renders nothing in this page's state branches.
@@ -91,6 +85,7 @@ const loadedSessions: SessionsContextValue = {
   unreachableInstallations: [],
   readFailures: {},
   nothingRead: false,
+  sessionEnded: false,
   retry: () => {},
   isRetrying: false,
   notUserScopedInstallations: [],
@@ -279,6 +274,29 @@ describe('SessionsIndexPage', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
       expect(retry).toHaveBeenCalledTimes(1);
+    });
+
+    it('says the portal session ended, with Sign in again, when the portal refuses the session token', async () => {
+      mockUseSessions.mockReturnValue({
+        ...loadedSessions,
+        unreachableInstallations: ['gazelle'],
+        readFailures: { gazelle: { reason: 'request failed' } },
+        nothingRead: true,
+        sessionEnded: true,
+      });
+
+      await render();
+
+      expect(screen.getByText('Your portal session ended')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'Sign in again' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('Could not read your sessions'),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Try again' }),
+      ).not.toBeInTheDocument();
     });
 
     it('shows a retry under way', async () => {
@@ -502,7 +520,6 @@ describe('SessionsIndexPage with one installation to list from', () => {
   };
 
   it.each([
-    ['pinned in the header', { scope: 'gazelle', installations: ['gazelle'] }],
     [
       'the only one running kagent',
       { scope: 'all', installations: ['gazelle'] },

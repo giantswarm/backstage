@@ -12,6 +12,7 @@ import {
   ModelConfig,
   RemoteMCPServer,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- GS owns the shared installation inventory.
 import {
   ALL_INSTALLATIONS,
   classifyInventoryFailure,
@@ -24,6 +25,7 @@ import {
   type InventoryFailure,
 } from '@giantswarm/backstage-plugin-gs';
 import { joinNames } from '@giantswarm/backstage-plugin-ui-react';
+import { modelLabel } from '../../lib/modelLabel';
 import {
   summarizeClientServing,
   type ClientServingState,
@@ -235,6 +237,12 @@ export type AgentRow = {
    * a model row carries. `undefined` when the agent references no model.
    */
   modelConfigId?: string;
+  /**
+   * The same-namespace `AgentTemplate` the agent runs (`spec.templateRef`),
+   * when its template is not inline: its model is named there, so a missing
+   * {@link modelConfigId} does not mean the agent has none.
+   */
+  templateRef?: string;
   /** Readiness derived from the Agent's conditions. */
   readiness: AgentReadiness;
   /**
@@ -371,25 +379,6 @@ export type ResolveModelServing = (
 ) => ClientServingState | undefined;
 
 /**
- * What a reader calls the model: "ChatGPT (your subscription)" for a person's
- * own ChatGPT login, else the ModelConfig's display name, else the model it
- * configures, else its resource name.
- */
-function modelLabel(modelConfig: ModelConfig | undefined): string | undefined {
-  if (!modelConfig) {
-    return undefined;
-  }
-  if (modelConfig.isPersonalChatGptLogin()) {
-    return modelConfig.getDisplayName();
-  }
-  return (
-    modelConfig.getDisplayNameAnnotation() ??
-    modelConfig.getModel() ??
-    modelConfig.getName()
-  );
-}
-
-/**
  * Flatten an `Agent` into a plain {@link AgentRow}. With a
  * `resolveServing`, the row also carries the serving state of the model behind
  * the agent's ModelConfig; without one (no serving layer in view) it does not.
@@ -485,6 +474,7 @@ export function toAgentRow(
     ...(modelConfigName
       ? { modelConfigId: `${installation}/${namespace}/${modelConfigName}` }
       : {}),
+    ...(agent.getTemplateRef() ? { templateRef: agent.getTemplateRef() } : {}),
     readiness: agent.getReadiness(),
     readinessMessage: agent.getReadinessMessage(),
     tenant: ownerOf(namespace, organizations),

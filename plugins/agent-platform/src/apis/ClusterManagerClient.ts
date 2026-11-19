@@ -1,4 +1,8 @@
 import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
+import {
+  portalSessionError,
+  PortalSessionEndedError,
+} from '../lib/portalSession';
 
 import {
   CLUSTER_MANAGER_TOOLS,
@@ -26,6 +30,12 @@ import {
 export type WriteOptions = {
   dryRun?: boolean;
   mode?: WriteMode;
+};
+
+/** `list_clusters`' answer, as the client reads it. */
+export type ListClustersAnswer = {
+  clusters?: ManagedCluster[] | null;
+  clusterApi?: ClusterApiStatus;
 };
 
 /**
@@ -56,7 +66,12 @@ export class ClusterManagerClient {
         this.installation,
       );
     } catch (error) {
-      throw classifyClusterManagerError(error);
+      // The portal refusing the session token is said as that, never in its
+      // words: nothing reached muster (`lib/portalSession.ts`).
+      const ended = portalSessionError(error);
+      throw ended instanceof PortalSessionEndedError
+        ? ended
+        : classifyClusterManagerError(error);
     }
     if (typeof result === 'string') {
       try {
@@ -80,10 +95,10 @@ export class ClusterManagerClient {
    * the Cluster API is served at all (none listed where it is not).
    */
   async listClusters(): Promise<ManagedClustersResult> {
-    const result = await this.call<{
-      clusters?: ManagedCluster[] | null;
-      clusterApi?: ClusterApiStatus;
-    }>(CLUSTER_MANAGER_TOOLS.listClusters, {});
+    const result = await this.call<ListClustersAnswer>(
+      CLUSTER_MANAGER_TOOLS.listClusters,
+      {},
+    );
     return { clusters: result.clusters ?? [], clusterApi: result.clusterApi };
   }
 

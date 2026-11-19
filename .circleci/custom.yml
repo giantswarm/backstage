@@ -12,6 +12,8 @@
 # bring it back).
 #
 # What this file carries beyond the golden pipeline:
+#   - the node-build job's size, its Postgres service and a last step that
+#     checks the production app bundle for fixture code.
 #   - push-to-control-plane-app-catalog: backstage ships the single `backstage`
 #     chart to TWO catalogs. The generated push-chart-release publishes to the
 #     operations-platform catalog (gen.ci.appCatalog); this carries the second
@@ -23,10 +25,10 @@
 version: 2.1
 
 jobs:
-  # Override just the resource_class of the generated `node-build` job. The
-  # dynamic-config deep-merge (yq `*+`) merges this map into the generated
-  # jobs.node-build; scalars from custom.yml win, so `docker`/`steps` stay as
-  # generated and only the executor size changes. Bumped from large (4 vCPU /
+  # Extend the generated `node-build` job. The dynamic-config deep-merge (yq
+  # `*+`) merges this map into the generated jobs.node-build: scalars from
+  # custom.yml win, and lists append, so the `docker` and `steps` below come
+  # after the generated ones. resource_class is bumped from large (4 vCPU /
   # 8 GB) to xlarge (8 vCPU / 16 GB) to speed up install/verify/build.
   #
   # The `docker` list appends to the generated one, so the Postgres 18
@@ -89,6 +91,13 @@ jobs:
       BACKSTAGE_CLI_CONCURRENCY: "4"
       JEST_MAX_WORKERS: "6"
       BACKSTAGE_TEST_DATABASE_POSTGRES18_CONNECTION_STRING: postgresql://postgres:postgres@localhost:5432
+    # Appended after the generated steps, so it runs on container 0 only (the
+    # others halt in Verify), after Build has built the app. It fails when
+    # fixture code reached the production bundle (docs/fixtures.md).
+    steps:
+    - run:
+        name: Check the app bundle for fixture code
+        command: yarn run ci:bundle-fixtures
 
 workflows:
   build:

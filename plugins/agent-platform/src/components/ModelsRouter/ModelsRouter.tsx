@@ -6,12 +6,15 @@ import {
   useLocation,
   useParams,
 } from 'react-router-dom';
-import { Flex } from '@backstage/ui';
+import { ButtonLink, Flex } from '@backstage/ui';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- The installation scope is shared across Giant Swarm plugins.
 import {
   ALL_INSTALLATIONS,
+  SharedInstallationScope,
   useInstallationScope,
 } from '@giantswarm/backstage-plugin-gs';
 import {
+  EmptyStateCard,
   ShellPage,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -22,6 +25,7 @@ import { ModelConfigsProvider } from '../ModelConfigsProvider';
 import { ServingProvider, useServing } from '../ServingProvider';
 import { ServedModelRowsProvider } from '../ServedModelRowsProvider';
 import { NewModelPage } from '../NewModelPage';
+import { CredentialFormPage } from '../CredentialFormPage';
 import { EditModelPage } from '../EditModelPage';
 import { ServingPage } from '../ServingPage';
 import { GpuCapacityPage } from '../GpuCapacityPage';
@@ -238,16 +242,15 @@ const ShellModelHosting = () => {
  * element type, which React keeps across a switch): the served-model rows
  * (with the auto-wiring that completes a serve) keep running whichever view
  * is open — a model served from Running models still gets its ModelConfig
- * while the user waits for it on the list.
+ * while the user waits for it on the list. The query client is the router's
+ * (`ModelsRouter`).
  */
 const ModelsProviders = ({ children }: { children: ReactNode }) => (
-  <QueryClientProvider>
-    <ModelConfigsProvider>
-      <ServingProvider>
-        <ServedModelRowsProvider>{children}</ServedModelRowsProvider>
-      </ServingProvider>
-    </ModelConfigsProvider>
-  </QueryClientProvider>
+  <ModelConfigsProvider>
+    <ServingProvider>
+      <ServedModelRowsProvider>{children}</ServedModelRowsProvider>
+    </ServingProvider>
+  </ModelConfigsProvider>
 );
 
 /** A view under the tab's providers. */
@@ -265,7 +268,7 @@ const HOSTING_VIEW_ROUTES = {
  * `new` and `hosting` are reserved words here: an address that starts with
  * one is never a model on an installation named so, however deep it goes
  * (react-router ranks three dynamic segments above `new` and `hosting/*`).
- * Such an address lands on its nearest valid parent: Connect a model, or the
+ * Such an address lands on its nearest valid parent: Add a model, or the
  * Model hosting view it names (Running models for any other).
  */
 function ModelRoute({ children }: { children: ReactNode }) {
@@ -273,6 +276,9 @@ function ModelRoute({ children }: { children: ReactNode }) {
   const reserved = installation.toLowerCase();
   if (reserved === 'new') {
     return <RouteRefRedirect routeRef={newModelRouteRef} />;
+  }
+  if (reserved === 'credentials') {
+    return <IncompleteCredentialLink />;
   }
   if (reserved === 'hosting') {
     const view = namespace.toLowerCase();
@@ -289,14 +295,56 @@ function ModelRoute({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * A credential link without its installation, namespace or request: agent-manager
+ * always sends all three, so one missing is a broken link, said as such
+ * rather than redirected away from.
+ */
+function IncompleteCredentialLink() {
+  const { customize, models } = useCustomizePaths();
+  return (
+    <ShellPage
+      title="Enter a credential"
+      breadcrumbs={[
+        { label: 'Customize', href: customize },
+        { label: 'Models', href: models },
+        { label: 'Enter a credential' },
+      ]}
+    >
+      <EmptyStateCard
+        title="This credential link is incomplete"
+        description="A model's credential link names the installation, the namespace and the request. This one lacks a part, so it cannot open a request. Open the link agent-manager gave again, or start again from the model on the Models tab."
+        actions={<ButtonLink href={models}>Go to Models</ButtonLink>}
+      />
+    </ShellPage>
+  );
+}
+
 /** An unknown step of a model's edit: the edit itself, its nearest parent. */
 const EditRedirect = () => <Navigate to="." replace />;
 
 /** The Models tab's routes, inside the router's providers. */
+function InstallationModelCredentials() {
+  const { installation = '', namespace = '', operation = '' } = useParams();
+  return (
+    <CredentialFormPage
+      key={`${installation}/${namespace}/${operation}`}
+      installation={installation}
+      namespace={namespace}
+      operation={operation}
+    />
+  );
+}
+
 const ModelsRoutes = () => {
   return (
     <Routes>
       <Route path="new" element={withProviders(<NewModelPage />)} />
+      <Route
+        path="credentials/:installation/:namespace/:operation"
+        element={withProviders(<InstallationModelCredentials />)}
+      />
+      <Route path="credentials/*" element={<IncompleteCredentialLink />} />
       <Route
         path="hosting/serve"
         element={withProviders(<ServeModelRoute />)}
@@ -367,13 +415,18 @@ const ModelsRoutes = () => {
  * an organization's model is saved through agent-manager, and that the model
  * page and Edit model edit a model agent-manager wrote there. Without it, the
  * directory is empty and every organization's model reads as the platform's.
+ *
+ * Reads the Environment selector's shared scope (`SharedInstallationScope`),
+ * as the Customize page around it does.
  */
 export const ModelsRouter = () => {
   return (
-    <QueryClientProvider>
-      <OrganizationDirectoryProvider>
-        <ModelsRoutes />
-      </OrganizationDirectoryProvider>
-    </QueryClientProvider>
+    <SharedInstallationScope>
+      <QueryClientProvider>
+        <OrganizationDirectoryProvider>
+          <ModelsRoutes />
+        </OrganizationDirectoryProvider>
+      </QueryClientProvider>
+    </SharedInstallationScope>
   );
 };

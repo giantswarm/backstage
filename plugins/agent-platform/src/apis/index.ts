@@ -32,7 +32,6 @@ export {
   SERVED_MODEL_TRY_PATH,
 } from './ModelManagerApiClient';
 export {
-  AGENT_MANAGER_AUTH_HEADER,
   AgentManagerCredentialsClient,
   agentManagerCredentialsApiRef,
   credentialOperationErrorCode,
@@ -40,3 +39,10 @@ export {
   credentialOperationErrorStatus,
   type AgentManagerCredentialsApi,
 } from './AgentManagerCredentialsApi';
+export {
+  SkillDiscoveryClient,
+  skillDiscoveryApiRef,
+  type SkillContent,
+  type SkillDiscoveryApi,
+  type SkillRepositoryDiscovery,
+} from './SkillDiscoveryApi';

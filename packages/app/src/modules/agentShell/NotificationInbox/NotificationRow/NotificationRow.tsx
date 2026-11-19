@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import {
   Button,
   ButtonIcon,
@@ -7,7 +8,8 @@ import {
   Text,
   VisuallyHidden,
 } from '@backstage/ui';
-import { Link as AriaLink } from 'react-aria-components';
+import { useRoutingIntegration } from '@backstage/frontend-plugin-api/routing';
+import { Link as AriaLink, RouterProvider } from 'react-aria-components';
 import { makeStyles } from '@material-ui/core/styles';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import NotificationsNoneIcon from '@material-ui/icons/NotificationsNone';
@@ -127,6 +129,46 @@ const ICONS = {
 };
 
 /**
+ * The row as a React Aria link, which bui's styles of focus build on. It
+ * navigates in the app through the app's routing, as bui's own links do, not
+ * with a page load.
+ */
+function RowLink({
+  href,
+  external,
+  onOpen,
+  className,
+  ariaLabel,
+  children,
+}: {
+  href?: string;
+  external?: boolean;
+  onOpen: () => void;
+  className: string;
+  ariaLabel?: string;
+  children: ReactNode;
+}) {
+  const routing = useRoutingIntegration();
+  return (
+    <RouterProvider
+      navigate={(to, options) => routing.navigate(to, options)}
+      useHref={to => routing.createHref(to)}
+    >
+      <AriaLink
+        href={href}
+        target={external ? '_blank' : undefined}
+        rel={external ? 'noopener noreferrer' : undefined}
+        onPress={onOpen}
+        className={className}
+        aria-label={ariaLabel}
+      >
+        {children}
+      </AriaLink>
+    </RouterProvider>
+  );
+}
+
+/**
  * One row of the Notification inbox: the agent's Avatar, what happened, the
  * session's name, how long ago and a state chip, with its own ⋯ menu; a
  * plain row from another portal feature has its title, description and age.
@@ -236,16 +278,15 @@ export function NotificationRow({
           </Button>
         </>
       ) : (
-        <AriaLink
+        <RowLink
           href={row.href}
-          target={row.external ? '_blank' : undefined}
-          rel={row.external ? 'noopener noreferrer' : undefined}
-          onPress={onOpen}
+          external={row.external}
+          onOpen={onOpen}
           className={`${classes.content} ${classes.link}`}
-          aria-label={row.unread ? `Unread: ${row.title}` : undefined}
+          ariaLabel={row.unread ? `Unread: ${row.title}` : undefined}
         >
           {content}
-        </AriaLink>
+        </RowLink>
       )}
       {row.actions && row.actions.length > 0 && (
         <span className={classes.menu}>
