@@ -45,6 +45,19 @@ const qwen: ModelRow = {
 let mockModelRows: ModelRow[];
 let mockModelsLoading = false;
 let mockUnreachableInstallations: string[] = [];
+/** How far the agents are read: still loading, and where they could not be. */
+let mockAgentsRead: {
+  isLoading: boolean;
+  isLoadingMore: boolean;
+  unreachableInstallations: string[];
+  noAccessInstallations: string[];
+};
+const AGENTS_READ = {
+  isLoading: false,
+  isLoadingMore: false,
+  unreachableInstallations: [],
+  noAccessInstallations: [],
+};
 const agents = [
   { id: 'a', modelConfigId: 'golem/support/sonnet' },
   { id: 'b', modelConfigId: 'golem/support/sonnet' },
@@ -74,7 +87,7 @@ jest.mock('../OrganizationDirectoryProvider', () => ({
   useOrganizationDirectory: () => ({ directory: mockDirectory }),
 }));
 jest.mock('../AgentsDataProvider', () => ({
-  useAgents: () => ({ rows: agents, isLoading: false }),
+  useAgents: () => ({ rows: agents, ...mockAgentsRead }),
 }));
 function renderPanel(search = '') {
   return renderInTestApp(<CustomizeModelsPanel search={search} />, {
@@ -137,6 +150,10 @@ const labDirectory = () =>
     ],
   ]);
 
+beforeEach(() => {
+  mockAgentsRead = { ...AGENTS_READ };
+});
+
 describe('CustomizeModelsPanel', () => {
   beforeEach(() => {
     mockModelRows = [sonnet, qwen];
@@ -158,7 +175,7 @@ describe('CustomizeModelsPanel', () => {
     ]);
     expect(bodyRows().map(row => row.textContent)).toEqual([
       expect.stringMatching(
-        /^Qwen 2\.5qwen2\.5:32bsupportOllamagolem–Not serving$/,
+        /^Qwen 2\.5qwen2\.5:32bsupportOllamagolem–No agent uses this modelNot serving$/,
       ),
       expect.stringMatching(
         /^Sonnet 4\.5claude-sonnet-4-5supportAnthropicgolem2 agentsReady$/,
@@ -235,10 +252,47 @@ describe('CustomizeModelsPanel', () => {
 
     const [qwenRow, sonnetRow] = bodyRows();
     expect(within(sonnetRow).getByText('2 agents')).toBeInTheDocument();
-    expect(within(qwenRow).getByText('–')).toHaveAttribute(
-      'title',
-      'No agent uses this model',
+    const usedBy = cellsOf(qwenRow)[3];
+    expect(within(usedBy).getByText('–')).toHaveAttribute('aria-hidden');
+    // Named in words for assistive technology, and on hover.
+    expect(usedBy).toHaveTextContent('No agent uses this model');
+    expect(
+      within(usedBy).getByTitle('No agent uses this model'),
+    ).toBeInTheDocument();
+  });
+
+  it('counts nothing while some environment’s agents are still read', async () => {
+    mockAgentsRead.isLoadingMore = true;
+    await renderPanel();
+
+    for (const row of bodyRows()) {
+      const usedBy = cellsOf(row)[3];
+      expect(usedBy).not.toHaveTextContent(/\d agents?|–/);
+      expect(usedBy).toHaveTextContent('The agents are still being read.');
+    }
+    // Neither in use nor unused as far as the list knows: no Used by filter.
+    expect(
+      screen.queryByRole('button', { name: /Filter by used by/, hidden: true }),
+    ).toBeNull();
+  });
+
+  it('counts nothing for models on an environment whose agents could not be read', async () => {
+    const elsewhere: ModelRow = {
+      ...qwen,
+      id: 'gerbil/support/qwen',
+      installation: 'gerbil',
+    };
+    mockModelRows = [sonnet, qwen, elsewhere];
+    mockAgentsRead.unreachableInstallations = ['gerbil'];
+    await renderPanel();
+
+    const gerbilRow = bodyRows().find(
+      row => cellsOf(row)[2].textContent === 'gerbil',
+    )!;
+    expect(cellsOf(gerbilRow)[3]).toHaveTextContent(
+      'The agents on gerbil could not be read.',
     );
+    expect(cellsOf(gerbilRow)[3]).not.toHaveTextContent('–');
   });
 
   it('sorts by model, then owner and environment, and by a header clicked', async () => {
@@ -290,9 +344,62 @@ describe('CustomizeModelsPanel', () => {
     await renderPanel();
 
     const [qwenRow, first, second] = bodyRows();
-    expect(first).toHaveTextContent('claude-sonnet-4-5 · sonnet');
-    expect(second).toHaveTextContent('claude-sonnet-4-5 · sonnet-2');
-    expect(qwenRow).not.toHaveTextContent('·');
+    expect(first).toHaveTextContent('claude-sonnet-4-5 (sonnet)');
+    expect(second).toHaveTextContent('claude-sonnet-4-5 (sonnet-2)');
+    expect(qwenRow).not.toHaveTextContent('(');
+  });
+
+  it('tells apart owners that read alike by their namespace, in the cell, the filter and the sort', async () => {
+    const other = 'agents-lab-9q2zz';
+    mockDirectory = new Map([
+      ...labDirectory(),
+      [
+        other,
+        {
+          namespace: other,
+          organization: 'lab',
+          parent: 'org-other',
+          displayName: 'Lab',
+        },
+      ],
+    ]);
+    mockModelRows = [
+      {
+        ...sonnet,
+        id: `golem/${other}/default`,
+        name: 'default',
+        namespace: other,
+      },
+      {
+        ...sonnet,
+        id: `golem/${LAB_NAMESPACE}/default`,
+        name: 'default',
+        namespace: LAB_NAMESPACE,
+      },
+      qwen,
+    ];
+    await renderPanel();
+
+    const [, first, second] = bodyRows();
+    // Sorted by owner, then by namespace; each names its namespace.
+    expect(cellsOf(first)[0]).toHaveTextContent(`Lab${other}`);
+    expect(cellsOf(second)[0]).toHaveTextContent(`Lab${LAB_NAMESPACE}`);
+    // No resource name: the two models are in different namespaces.
+    expect(first).not.toHaveTextContent('(default)');
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Filter by owner/, hidden: true }),
+    );
+    const options = within(await screen.findByRole('listbox'))
+      .getAllByRole('option')
+      .map(option => option.textContent);
+    expect(options).toEqual(
+      expect.arrayContaining([
+        `Lab (${LAB_NAMESPACE}) 1`,
+        `Lab (${other}) 1`,
+        'support 1',
+      ]),
+    );
   });
 
   it('makes each name a link to the model (M21)', async () => {

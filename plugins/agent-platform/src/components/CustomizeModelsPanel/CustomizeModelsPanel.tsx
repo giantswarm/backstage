@@ -8,6 +8,7 @@ import {
   Table,
   Text,
   useTable,
+  VisuallyHidden,
 } from '@backstage/ui';
 import {
   CatalogFilterBar,
@@ -35,14 +36,18 @@ import { useSortOnShownColumn } from '../../hooks/useSortOnShownColumn';
 import { useAgents } from '../AgentsDataProvider';
 import { useCustomizeData } from '../CustomizeDataProvider';
 import { useModelConfigs } from '../ModelConfigsProvider';
+import type { ModelRow } from '../ModelsTable';
 import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 import {
-  MODEL_FACETS,
+  distinguishModelRows,
+  modelFacets,
+  modelLabel,
   MODELS_DEFAULT_SORT,
   type ModelListRow,
+  type ModelUse,
+  ownerLabel,
   sortModelRows,
   toModelListRow,
-  withResourceNames,
 } from './modelListRows';
 
 export type CustomizeModelsPanelProps = {
@@ -71,13 +76,25 @@ const MODEL_COLUMNS_DROPPED_FIRST = ['owner', 'installation'] as const;
 
 const NOWRAP: CSSProperties = { whiteSpace: 'nowrap' };
 
-/** What the line under a model's name says, besides the model id. */
+/**
+ * What the line under a model's name says: the model id (with the resource
+ * name where that tells the row apart), and the owner and environment where
+ * their columns are left out.
+ */
 function factsOf(row: Row, withOwner: boolean): string[] {
   return [
-    row.model,
-    ...(row.resourceName ? [row.resourceName] : []),
-    ...(withOwner ? [row.owner, row.installation] : []),
+    modelLabel(row),
+    ...(withOwner ? [ownerLabel(row), row.installation] : []),
   ].filter(Boolean);
+}
+
+/** Why a model's use is not known, in words. */
+function unknownUse(row: Row): string | undefined {
+  if (row.use === 'loading') return 'The agents are still being read.';
+  if (row.use === 'unreadable') {
+    return `The agents on ${row.installation} could not be read.`;
+  }
+  return undefined;
 }
 
 /** "The default model of Platform on fennel: new agents there start with it." */
@@ -137,44 +154,76 @@ function ModelCell({
 
 /**
  * The owner: an organization or the platform as it reads, a namespace that
- * is no organization by its name, stepped back, and saying so on hover.
+ * is no organization by its name, stepped back, and saying so on hover. An
+ * owner that reads like another one shows its namespace under it.
  */
 function OwnerCell({ row }: { row: Row }) {
   return (
     <Cell>
-      <Text
-        as="p"
-        variant="body-medium"
-        color={row.ownerIsNamespace ? 'secondary' : 'primary'}
-        truncate
-        title={
-          row.ownerIsNamespace
-            ? `Namespace ${row.owner}, no organization`
-            : row.owner
-        }
-      >
-        {row.owner}
-      </Text>
+      <Flex direction="column" gap="0.5" style={{ minWidth: 0 }}>
+        <Text
+          as="p"
+          variant="body-medium"
+          color={row.ownerIsNamespace ? 'secondary' : 'primary'}
+          truncate
+          title={
+            row.ownerIsNamespace
+              ? `Namespace ${row.owner}, no organization`
+              : row.owner
+          }
+        >
+          {row.owner}
+        </Text>
+        {row.ownerIsAmbiguous && !row.ownerIsNamespace && (
+          <Text
+            as="p"
+            variant="body-medium"
+            color="secondary"
+            truncate
+            title={`Namespace ${row.namespace}`}
+          >
+            {row.namespace}
+          </Text>
+        )}
+      </Flex>
     </Cell>
   );
 }
 
-/** "3 agents", or a dash for none; nothing while the agents are read. */
+/**
+ * "3 agents", or a dash for none, named for assistive technology too.
+ * Where the agents are still read or could not be, the cell is empty and
+ * says why on hover and to assistive technology.
+ */
 function UsedByCell({ row }: { row: Row }) {
+  const unknown = unknownUse(row);
   if (row.usedCount === undefined) {
-    return <Cell />;
+    return (
+      <Cell>
+        <div title={unknown} style={{ minHeight: '1lh' }}>
+          <VisuallyHidden>{unknown}</VisuallyHidden>
+        </div>
+      </Cell>
+    );
   }
   const { label, title } = usedByCell(row.usedCount, 'model');
   return (
     <Cell>
       <Text
-        as="p"
+        as="div"
         variant="body-medium"
         color={title ? 'secondary' : 'primary'}
         title={title}
         style={NOWRAP}
       >
-        {label}
+        {title ? (
+          <>
+            <span aria-hidden>{label}</span>
+            <VisuallyHidden>{title}</VisuallyHidden>
+          </>
+        ) : (
+          label
+        )}
       </Text>
     </Cell>
   );
@@ -218,24 +267,36 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
   const { modelRows } = useCustomizeData();
   const { isLoading, hasInstallations, unreachableInstallations } =
     useModelConfigs();
-  const { rows: agents, isLoading: agentsLoading } = useAgents();
+  const {
+    rows: agents,
+    isLoading: agentsLoading,
+    isLoadingMore: agentsLoadingMore,
+    unreachableInstallations: agentsUnreachable,
+    noAccessInstallations: agentsNoAccess,
+  } = useAgents();
   const { modelDetail: modelDetailRoute } = useCustomizePaths();
   const { directory } = useOrganizationDirectory();
 
   const usage = useMemo(() => agentsByModel(agents), [agents]);
-  const listRows = useMemo<Row[]>(
-    () =>
-      withResourceNames(
-        modelRows.map(row =>
-          toModelListRow(
-            row,
-            directory,
-            agentsLoading ? undefined : (usage.get(row.id) ?? 0),
-          ),
-        ),
-      ),
-    [modelRows, directory, usage, agentsLoading],
-  );
+  // A count is known once every environment's agents are read: until then
+  // (`isLoadingMore` is fleet-wide), and on an environment whose agents
+  // could not be listed, a model may be in use for all the list knows.
+  const agentsRead = !agentsLoading && !agentsLoadingMore;
+  const unreadKey = [...(agentsUnreachable ?? []), ...(agentsNoAccess ?? [])]
+    .sort()
+    .join(',');
+  const listRows = useMemo<Row[]>(() => {
+    const unread = new Set(unreadKey ? unreadKey.split(',') : []);
+    const modelUseOf = (row: ModelRow): ModelUse => {
+      if (!agentsRead) return 'loading';
+      if (unread.has(row.installation)) return 'unreadable';
+      return usage.get(row.id) ?? 0;
+    };
+    return distinguishModelRows(
+      modelRows.map(row => toModelListRow(row, directory, modelUseOf(row))),
+    );
+  }, [modelRows, directory, usage, agentsRead, unreadKey]);
+  const facets = useMemo(() => modelFacets(listRows), [listRows]);
   const searched = useMemo(
     () => searchModels(listRows, search),
     [listRows, search],
@@ -243,7 +304,7 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
   const filters = useCatalogFilters({
     items: listRows,
     searched,
-    facets: MODEL_FACETS,
+    facets,
   });
 
   const { tableProps } = useTable<Row>({
@@ -351,8 +412,10 @@ export function CustomizeModelsPanel({ search }: CustomizeModelsPanelProps) {
   useSortOnShownColumn(tableProps.sort, fit.columns, MODELS_DEFAULT_SORT);
 
   // The stacked rows have no headers to show or change a sort with: they
-  // stay in the default order. Provider is left out of their facts (four at
-  // most): it is on the model's page, and the Provider filter finds it.
+  // stay in the default order. Four facts: the model id (with the resource
+  // name where it tells the row apart, in the same fact), the owner, the
+  // environment and the use. Provider is left out: it is on the model's
+  // page, and the Provider filter finds it.
   const stackedRows = useMemo<StackedRowItem[]>(
     () =>
       fit.isCompact

@@ -14,6 +14,15 @@ let mockClusterManager: { available: string[]; isLoading: boolean };
 jest.mock('../../hooks/useClusterManager', () => ({
   useClusterManagerAvailability: () => mockClusterManager,
 }));
+// The entry shows the hint's text, never the hint with its own reads: mounted
+// anew each time the reads settle, those would start the reads over, and in
+// an environment whose reads fail the page loops (`?fixtures=error`).
+jest.mock('../ModelHostingHint', () => ({
+  ...jest.requireActual('../ModelHostingHint'),
+  ModelHostingHint: () => {
+    throw new Error('ModelHostingEntry must not mount ModelHostingHint');
+  },
+}));
 jest.mock('../ServingProvider', () => ({
   hasServingLayer: (serving: { installations: string[] }) =>
     serving.installations.length > 0,
@@ -88,10 +97,13 @@ describe('ModelHostingEntry', () => {
     expect(screen.getByRole('link', { name: HINT_LINK })).toBeInTheDocument();
   });
 
-  it('says nothing while that is still read', async () => {
+  it('holds the row’s place while that is still read, saying nothing', async () => {
     mockServing.isLoading = true;
     await renderEntry();
     expect(screen.queryByRole('link', { name: 'Model hosting' })).toBeNull();
     expect(screen.queryByRole('link', { name: HINT_LINK })).toBeNull();
+    expect(screen.getByTestId('model-hosting-placeholder')).toHaveAttribute(
+      'aria-hidden',
+    );
   });
 });
