@@ -71,7 +71,6 @@ export function OrganizationsIndexPage() {
     noneChecked,
     turnedOffInstallations,
     organizationsOf,
-    failureOf,
     recheck,
     isLoading,
   } = useOrganizationDirectory();
@@ -89,13 +88,19 @@ export function OrganizationsIndexPage() {
     />
   );
 
-  const servesNowhere = installations.length === 0;
-  const answered = installations.filter(installation =>
-    Boolean(organizationsOf(installation)),
+  // An installation whose check failed is shown once, in the disclosure:
+  // never also as a section of its own, a stale answer included.
+  const failed = new Set(
+    uncheckedInstallations.map(entry => entry.installation),
   );
+  const answered = installations.filter(
+    installation =>
+      !failed.has(installation) && Boolean(organizationsOf(installation)),
+  );
+  const nothingAnswered = answered.length === 0;
   const belongsNowhere =
     !isLoading &&
-    answered.length > 0 &&
+    !nothingAnswered &&
     answered.every(
       installation =>
         (organizationsOf(installation)?.organizations.length ?? 0) === 0,
@@ -116,45 +121,49 @@ export function OrganizationsIndexPage() {
             description={listingError}
           />
         )}
-        {servesNowhere && !listingError && noneChecked && (
+        {!listingError && noneChecked && (
           <NoneCheckedAlert unchecked={uncheckedInstallations} />
         )}
-        {servesNowhere && isLoading && <ShellPageFactsSkeleton />}
-        {servesNowhere && !isLoading && !listingError && !noneChecked && (
-          <EmptyStateCard
-            title="Organizations are not available here"
-            description={[
-              uncheckedInstallations.length === 0
-                ? "No environment's agent-manager serves organizations to this portal yet."
-                : 'No installation that answered serves organizations to this portal. The ones that could not be checked are listed below.',
-              // Named nowhere: only that some are off, and where.
-              turnedOffInstallations.length > 0 &&
-                'The environments you turned off in Profile and settings, Environments, are not checked.',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-          />
-        )}
+        {nothingAnswered && isLoading && <ShellPageFactsSkeleton />}
+        {nothingAnswered &&
+          !isLoading &&
+          !listingError &&
+          !noneChecked &&
+          installations.length > 0 && (
+            // An installation serves organizations, and the read of them
+            // failed: not "not available". Where, and why, is in the list.
+            <EmptyStateCard
+              title="Your organizations could not be read"
+              description="An installation serves organizations, but the portal could not read yours there. The list below says why, and what helps."
+            />
+          )}
+        {nothingAnswered &&
+          !isLoading &&
+          !listingError &&
+          !noneChecked &&
+          installations.length === 0 && (
+            <EmptyStateCard
+              title="Organizations are not available here"
+              description={[
+                uncheckedInstallations.length === 0
+                  ? "No environment's agent-manager serves organizations to this portal yet."
+                  : 'No installation that answered serves organizations to this portal. The ones that could not be checked are listed below.',
+                // Named nowhere: only that some are off, and where.
+                turnedOffInstallations.length > 0 &&
+                  'The environments you turned off in Profile and settings, Environments, are not checked.',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+            />
+          )}
         {belongsNowhere && (
           <EmptyStateCard
             title="You belong to no organization"
             description={sentence(none ?? NO_ORGANIZATION_HINT)}
           />
         )}
-        {installations.map(installation => {
+        {answered.map(installation => {
           const answer = organizationsOf(installation);
-          const failure = failureOf(installation);
-          if (failure) {
-            return (
-              <PageSection key={installation} title={installation}>
-                <Alert
-                  status="warning"
-                  title={`Could not read your organizations on ${installation}`}
-                  description={failure}
-                />
-              </PageSection>
-            );
-          }
           if (!answer || answer.organizations.length === 0) {
             return null;
           }
@@ -250,9 +259,12 @@ function NoneCheckedAlert({
               ' Sign in to Muster for the installation you use on the Connectors page, then open the list below and check it again.'}
             {!musterSignIn &&
               connectorSignIns.length > 0 &&
-              ` Sign in to the ${connectorLabel} connector on the installation you use (${joinNames(
+              // Whether a sign-in to the connector helps, or a new sign-in
+              // to the portal, is the row's to say: it knows how the
+              // connector signs in.
+              ` The portal has no valid sign-in to the ${connectorLabel} connector on ${joinNames(
                 connectorSignIns,
-              )}): open the list below.`}
+              )}: open the list below to see what helps.`}
             {!musterSignIn &&
               connectorSignIns.length === 0 &&
               ' The list below says why for each one.'}

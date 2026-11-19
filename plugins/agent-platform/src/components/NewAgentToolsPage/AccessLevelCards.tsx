@@ -66,7 +66,13 @@ export function AccessLevelCards({
   onPick: (level: AccessLevel) => void;
 }) {
   const options: Option[] = [
-    { level: ACCESS_CHAT_ONLY, title: 'Nothing outside the chat' },
+    {
+      level: ACCESS_CHAT_ONLY,
+      title: 'Nothing outside the chat',
+      // It turns the organization's connectors below off too (T81).
+      description:
+        "No connector and no tool, an organization's own connectors included.",
+    },
     ...presets.map(presetOption),
     { level: ACCESS_OWN_PICKS, title: 'Only the tools I choose below' },
   ];

@@ -246,4 +246,51 @@ describe('NodePoolConfiguration', () => {
     expect(await screen.findByText('Consolidation')).toBeInTheDocument();
     expect(screen.getByText(/after 5m/)).toBeInTheDocument();
   });
+
+  it('breaks a taint only after a slash, equals sign or colon, and gives the root volume in GiB', async () => {
+    const { container } = await renderInTestApp(
+      <NodePoolConfiguration
+        pool={createPool({
+          nodePool: {
+            template: {
+              spec: {
+                requirements: [],
+                startupTaints: [
+                  {
+                    key: 'node.cluster.x-k8s.io/uninitialized',
+                    value: 'true',
+                    effect: 'NoSchedule',
+                  },
+                ],
+              },
+            },
+          },
+          ec2NodeClass: {
+            amiSelectorTerms: [],
+            securityGroupSelectorTerms: [],
+            subnetSelectorTerms: [],
+            blockDeviceMappings: [
+              {
+                rootVolume: true,
+                ebs: { volumeSize: '15Gi', volumeType: 'gp3' },
+              },
+            ],
+          },
+        })}
+        nodePoolName="my-pool"
+        status={undefined}
+      />,
+    );
+
+    const taint = container.querySelector('code')!;
+    expect(taint).toHaveTextContent(
+      'node.cluster.x-k8s.io/uninitialized=true:NoSchedule',
+    );
+    // Whole runs between the delimiters, with a break opportunity after each.
+    expect([...taint.querySelectorAll('span')].map(s => s.textContent)).toEqual(
+      ['node.cluster.x-k8s.io/', 'uninitialized=', 'true:', 'NoSchedule'],
+    );
+    expect(taint.querySelectorAll('wbr')).toHaveLength(3);
+    expect(screen.getByText('15 GiB, gp3')).toBeInTheDocument();
+  });
 });

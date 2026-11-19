@@ -464,6 +464,35 @@ type Context = {
   selected: Map<PromqlNode, FixtureCounterSeries[]>;
 };
 
+const indexes = new WeakMap<
+  readonly FixtureCounterSeries[],
+  Map<string, FixtureCounterSeries[]>
+>();
+
+/**
+ * The series by metric name, built once per array: a selector with a name
+ * looks at its metric's series only, not every series the fixtures hold.
+ */
+function byName(
+  series: readonly FixtureCounterSeries[],
+): Map<string, FixtureCounterSeries[]> {
+  let index = indexes.get(series);
+  if (!index) {
+    index = new Map();
+    for (const s of series) {
+      const name = s.labels.__name__ ?? '';
+      const named = index.get(name);
+      if (named) {
+        named.push(s);
+      } else {
+        index.set(name, [s]);
+      }
+    }
+    indexes.set(series, index);
+  }
+  return index;
+}
+
 /** The series a selector names, and the time its range ends at, in ms. */
 function select(
   node: Extract<PromqlNode, { kind: 'selector' }>,
@@ -471,7 +500,10 @@ function select(
 ): { series: FixtureCounterSeries[]; end: number } {
   let series = context.selected.get(node);
   if (!series) {
-    series = context.series.filter(s =>
+    const candidates = node.name
+      ? (byName(context.series).get(node.name) ?? [])
+      : context.series;
+    series = candidates.filter(s =>
       node.matchers.every(m => m.test(s.labels[m.label] ?? '')),
     );
     context.selected.set(node, series);

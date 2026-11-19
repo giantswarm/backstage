@@ -104,9 +104,16 @@ const ACME_ONLY: OrganizationConnector = {
   name: 'acme-tracker',
 };
 
+/** A copy of what the platform curates: the Connectors tab offers no Replace. */
+const CURATED_NO_CREDENTIAL: OrganizationConnector = {
+  ...NO_CREDENTIAL,
+  name: 'platform-wiki',
+  curated: true,
+};
+
 const CONNECTORS: Record<string, OrganizationConnector[]> = {
   'org-otter': [READY, NO_CREDENTIAL, UNCHECKED, MUSTER_BINDING],
-  'org-acme': [ACME_ONLY],
+  'org-acme': [ACME_ONLY, CURATED_NO_CREDENTIAL],
 };
 
 /** agent-manager through muster, `create_agent` taking `connectors` or not. */
@@ -250,13 +257,15 @@ describe('OrganizationConnectors', () => {
     expect(screen.queryByText(/Not in the organization any more/)).toBeNull();
   });
 
-  it("says each connector's state in words, links a missing credential to the organization's Connectors tab, and still lets it be picked", async () => {
+  it("says each connector's state in words, sends a missing credential to the Connectors tab's Replace credential, and still lets it be picked", async () => {
     const user = userEvent.setup();
     await renderSection();
     const deepwiki = await screen.findByRole('checkbox', { name: 'deepwiki' });
 
     expect(deepwiki).toHaveAccessibleDescription(
-      expect.stringContaining('Credential missing'),
+      expect.stringContaining(
+        'An admin of the organization sets it with Replace credential',
+      ),
     );
     expect(deepwiki).toHaveAccessibleDescription(
       expect.stringContaining(
@@ -265,7 +274,7 @@ describe('OrganizationConnectors', () => {
     );
     expect(
       within(section()).getByRole('link', {
-        name: /Set it on the Connectors tab/,
+        name: /Open the Connectors tab/,
       }),
     ).toHaveAttribute(
       'href',
@@ -281,6 +290,42 @@ describe('OrganizationConnectors', () => {
 
     await user.click(deepwiki);
     expect(picked()).toBe('deepwiki');
+  });
+
+  it('sends a missing credential of a curated connector nowhere: the Connectors tab cannot set it', async () => {
+    await renderSection({ tenant: 'org-acme' });
+    const curated = await screen.findByRole('checkbox', {
+      name: 'platform-wiki',
+    });
+
+    expect(curated).toHaveAccessibleDescription(
+      expect.stringContaining(
+        'The platform curates this connector, so its credential is not set on the organization page.',
+      ),
+    );
+    expect(curated).not.toHaveAccessibleDescription(/Replace credential/);
+    expect(
+      within(section()).queryByRole('link', { name: /Connectors tab/ }),
+    ).toBeNull();
+  });
+
+  it('says who adds a connector to an organization with none, and only links to its connectors', async () => {
+    await renderSection({ tenant: 'org-alpha' });
+
+    expect(
+      await within(section()).findByText(
+        /An admin of the organization adds one by asking an agent/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(section()).getByRole('link', {
+        name: /See the organization's connectors/,
+      }),
+    ).toHaveAttribute(
+      'href',
+      '/organizations/gazelle/org-parent/alpha/connectors',
+    );
+    expect(within(section()).queryByText(/Add one/)).toBeNull();
   });
 
   it.each([
@@ -328,8 +373,11 @@ describe('OrganizationConnectors', () => {
     );
     expect(picked()).toBe('');
     expect(screen.getByRole('checkbox', { name: 'jira' })).toBeDisabled();
+    // The section says which option leads to these connectors alone.
     expect(
-      within(section()).getByText('Pick another option above to add tools.'),
+      within(section()).getByText(
+        /turns these connectors off too\. To give the agent only these connectors, pick Only the tools I choose below/,
+      ),
     ).toBeInTheDocument();
   });
 
