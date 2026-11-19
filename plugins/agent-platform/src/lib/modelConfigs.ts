@@ -56,43 +56,76 @@ export type VertexAIProvider = Extract<
 
 export const MODEL_PROVIDER_OPTIONS: {
   id: ModelProvider;
+  /** How the form offers it. */
   label: string;
+  /** How a list names it, in a column or a filter: short, no qualifier. */
+  name: string;
   description: string;
 }[] = [
   {
     id: 'OpenAI',
     label: 'OpenAI (or compatible)',
+    name: 'OpenAI',
     description:
       'OpenAI itself, or any OpenAI-compatible endpoint: vLLM, llama.cpp, OpenRouter, …',
   },
   {
     id: 'Anthropic',
     label: 'Anthropic',
+    name: 'Anthropic',
     description: 'Claude models via the Anthropic API.',
   },
   {
     id: 'Gemini',
     label: 'Gemini',
+    name: 'Gemini',
     description: 'Gemini models via the Google AI API.',
   },
   {
     id: 'AnthropicVertexAI',
     label: 'Claude on Vertex AI',
+    name: 'Claude on Vertex AI',
     description:
       'Claude models in your Google Cloud project, with a service account key.',
   },
   {
     id: 'GeminiVertexAI',
     label: 'Gemini on Vertex AI',
+    name: 'Gemini on Vertex AI',
     description:
       'Gemini models in your Google Cloud project, with a service account key.',
   },
   {
     id: 'Ollama',
     label: 'Ollama',
+    name: 'Ollama',
     description: 'Models served by an Ollama host. No API key involved.',
   },
 ];
+
+/**
+ * The names of the providers the CRD knows and the form does not speak, for
+ * the lists that show their models.
+ */
+const OTHER_PROVIDER_NAMES: Readonly<Record<string, string>> = {
+  AzureOpenAI: 'Azure OpenAI',
+  Bedrock: 'Amazon Bedrock',
+  SAPAICore: 'SAP AI Core',
+  Foundry: 'Microsoft Foundry',
+  Mistral: 'Mistral',
+};
+
+/**
+ * A ModelConfig's provider as a list names it ("Gemini on Vertex AI" for
+ * `GeminiVertexAI`); a value none of the names cover reads as it is.
+ */
+export function providerName(provider: string): string {
+  return (
+    MODEL_PROVIDER_OPTIONS.find(option => option.id === provider)?.name ??
+    OTHER_PROVIDER_NAMES[provider] ??
+    provider
+  );
+}
 
 /**
  * The providers the form offers for an Organization's model: the ones the

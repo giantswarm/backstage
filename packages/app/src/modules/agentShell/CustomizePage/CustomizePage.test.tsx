@@ -96,6 +96,9 @@ jest.mock('@giantswarm/backstage-plugin-agent-platform', () => {
     CustomizeAgentsPanel: mockPanel('Agents'),
     CustomizeSkillsPanel: mockPanel('Skills'),
     CustomizeModelsPanel: mockPanel('Models'),
+    ModelHostingEntry: function MockModelHostingEntry() {
+      return <p>Model hosting entry</p>;
+    },
     CustomizeWorkspacesPanel: mockPanel('Workspaces'),
     CustomizeToolchainsPanel: mockPanel('Toolchains'),
     WorkspaceOrganizationSelect: () => <p>Organization scope</p>,
@@ -337,7 +340,7 @@ describe('CustomizePage', () => {
       'Add connector',
       '/customize/connectors/new',
     ],
-    ['models', 'Models', 'kagent', 'Connect a model', '/customize/models/new'],
+    ['models', 'Models', 'kagent', 'Add a model', '/customize/models/new'],
   ])(
     'shows the %s panel with its environment and create action',
     async (tab, panel, component, action, href) => {
@@ -411,9 +414,24 @@ describe('CustomizePage', () => {
       expect(
         screen.getByRole('searchbox', { name: 'Search models' }),
       ).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Add a model' })).toHaveAttribute(
+        'href',
+        '/customize/models/new',
+      );
+    });
+
+    it('puts the way into Model hosting above the models tab’s search, and only there', async () => {
+      const { unmount } = await renderCustomize('/customize/models');
+      const entry = screen.getByText('Model hosting entry');
+      const search = screen.getByRole('searchbox', { name: 'Search models' });
       expect(
-        screen.getByRole('link', { name: 'Connect a model' }),
-      ).toHaveAttribute('href', '/customize/models/new');
+        entry.compareDocumentPosition(search) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      unmount();
+
+      await renderCustomize('/customize/agents');
+      expect(screen.queryByText('Model hosting entry')).not.toBeInTheDocument();
     });
 
     it('offers the search over a short tab without a create action', async () => {
@@ -576,7 +594,7 @@ describe('CustomizePage', () => {
         screen.getByRole('searchbox', { name: 'Search models' }),
       ).toHaveValue('');
       expect(
-        screen.getByRole('link', { name: 'Connect a model' }),
+        screen.getByRole('link', { name: 'Add a model' }),
       ).toBeInTheDocument();
     });
   });

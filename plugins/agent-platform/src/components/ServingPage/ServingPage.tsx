@@ -117,7 +117,7 @@ const TOAST_TIMEOUT_MS = 6000;
  * inside a ServingProvider, a ModelConfigsProvider, a ServedModelRowsProvider
  * (the rows) and the plugin's QueryClientProvider (the writes are react-query
  * mutations). The primary actions — Serve, Import, Pull — are surfaced in the
- * shared page header, like "Connect a model" on the Model configs view, and
+ * shared page header, like "Add a model" on the Model configs view, and
  * each opens its flow's own page (`ServeModelPage`, `ImportModelPage`,
  * `PullModelPage`; an older release's `?serve=1` link is forwarded to Serve
  * model's).

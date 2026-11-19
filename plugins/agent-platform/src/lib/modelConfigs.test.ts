@@ -12,6 +12,7 @@ import {
   modelConfigFormValues,
   modelConfigOwner,
   ModelConfigFormValues,
+  providerName,
   providersFor,
   serviceAccountKeyError,
   serviceAccountKeySummary,
@@ -471,5 +472,18 @@ describe('Vertex AI', () => {
     expect(
       modelConfigFormChanged({ ...initial, projectID: 'new-project' }, initial),
     ).toBe(true);
+  });
+});
+
+describe('providerName', () => {
+  it('names a provider as the form does, without its qualifier', () => {
+    expect(providerName('OpenAI')).toBe('OpenAI');
+    expect(providerName('GeminiVertexAI')).toBe('Gemini on Vertex AI');
+  });
+
+  it('names the providers the form does not speak, and leaves others as they are', () => {
+    expect(providerName('Bedrock')).toBe('Amazon Bedrock');
+    expect(providerName('SAPAICore')).toBe('SAP AI Core');
+    expect(providerName('vLLM')).toBe('vLLM');
   });
 });

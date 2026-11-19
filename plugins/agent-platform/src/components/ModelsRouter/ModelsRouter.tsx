@@ -268,7 +268,7 @@ const HOSTING_VIEW_ROUTES = {
  * `new` and `hosting` are reserved words here: an address that starts with
  * one is never a model on an installation named so, however deep it goes
  * (react-router ranks three dynamic segments above `new` and `hosting/*`).
- * Such an address lands on its nearest valid parent: Connect a model, or the
+ * Such an address lands on its nearest valid parent: Add a model, or the
  * Model hosting view it names (Running models for any other).
  */
 function ModelRoute({ children }: { children: ReactNode }) {

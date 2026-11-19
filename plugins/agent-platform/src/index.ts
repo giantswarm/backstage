@@ -58,6 +58,7 @@ export {
 } from './components/CustomizeSkillsPanel';
 export type { CustomizeSkillsPanelProps } from './components/CustomizeSkillsPanel';
 export { CustomizeModelsPanel } from './components/CustomizeModelsPanel';
+export { ModelHostingEntry } from './components/ModelHostingEntry';
 export { CreateWorkspaceButton } from './components/CreateWorkspaceButton';
 export {
   CustomizeWorkspacesIntro,
