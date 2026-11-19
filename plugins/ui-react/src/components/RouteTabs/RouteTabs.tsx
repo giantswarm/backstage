@@ -1,4 +1,16 @@
-import { RefObject, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  createContext,
+  MutableRefObject,
+  ReactNode,
+  RefObject,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useLocation } from 'react-router-dom';
 import { Tab, TabList, Tabs } from '@backstage/ui';
 import {
@@ -433,32 +445,65 @@ function renderTabLabel(
 }
 
 /**
- * The routing integration around the strip, its navigations held for
- * `onNavigate`. The hook keeps one identity for the strip's lifetime, as
- * `RoutingProvider` asks, and reads the latest guard and integration.
+ * The strip's routing: the integration around it, read in the same render as
+ * the tab that reads it, and the page's guard as last committed.
  */
-function useGuardedRoutingIntegration(
-  onNavigate: RouteTabsProps['onNavigate'],
-): () => RoutingIntegration {
-  const outer = useRoutingIntegration();
-  const latest = useRef({ outer, onNavigate });
-  latest.current = { outer, onNavigate };
-  const [useGuarded] = useState(() => (): RoutingIntegration => ({
-    createHref: to => latest.current.outer.createHref(to),
-    get pathname() {
-      return latest.current.outer.pathname;
-    },
+const GuardedStripContext = createContext<
+  | {
+      outer: RoutingIntegration;
+      guard: MutableRefObject<RouteTabsProps['onNavigate']>;
+    }
+  | undefined
+>(undefined);
+
+/**
+ * The routing integration of the strip's tabs: the one around the strip, its
+ * navigations held for the page's guard. One identity for good, as
+ * `RoutingProvider` asks.
+ */
+function useGuardedRouting(): RoutingIntegration {
+  const strip = useContext(GuardedStripContext);
+  if (!strip) {
+    throw new Error('useGuardedRouting is used outside a guarded strip');
+  }
+  const { outer, guard } = strip;
+  return {
+    createHref: to => outer.createHref(to),
+    pathname: outer.pathname,
     navigate: (to, options) => {
-      const { outer: integration, onNavigate: guard } = latest.current;
-      const go = () => integration.navigate(to, options);
-      if (guard) {
-        guard(to, go);
+      const go = () => outer.navigate(to, options);
+      if (guard.current) {
+        guard.current(to, go);
       } else {
         go();
       }
     },
-  }));
-  return useGuarded;
+  };
+}
+
+/** Holds the strip's tab presses for `onNavigate`. */
+function GuardedStrip({
+  onNavigate,
+  children,
+}: {
+  onNavigate: RouteTabsProps['onNavigate'];
+  children: ReactNode;
+}) {
+  const outer = useRoutingIntegration();
+  const guard = useRef(onNavigate);
+  // After commit: a press is held against what is on screen, never against a
+  // render React threw away.
+  useLayoutEffect(() => {
+    guard.current = onNavigate;
+  });
+  const value = useMemo(() => ({ outer, guard }), [outer]);
+  return (
+    <GuardedStripContext.Provider value={value}>
+      <RoutingProvider useRoutingIntegration={useGuardedRouting}>
+        {children}
+      </RoutingProvider>
+    </GuardedStripContext.Provider>
+  );
 }
 
 /**
@@ -508,8 +553,6 @@ export function RouteTabs({
   const selected = selectedRouteTab(links, pathname);
   const { overflow, scrollByPage } = useStripScroll(stripRef, selected);
   const finePointer = useMediaQueryMatch(FINE_POINTER_QUERY);
-  const useGuardedRouting = useGuardedRoutingIntegration(onNavigate);
-
   const strip = (
     <Tabs>
       <TabList>
@@ -557,9 +600,7 @@ export function RouteTabs({
           // bui's tabs navigate through the closest routing integration: this
           // strip's presses go through the page's guard, the rest of the app
           // keeps the app's.
-          <RoutingProvider useRoutingIntegration={useGuardedRouting}>
-            {strip}
-          </RoutingProvider>
+          <GuardedStrip onNavigate={onNavigate}>{strip}</GuardedStrip>
         ) : (
           strip
         )}

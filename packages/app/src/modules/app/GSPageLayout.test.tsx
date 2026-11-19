@@ -43,6 +43,28 @@ describe('GSPageLayout', () => {
     );
   });
 
+  it('marks and titles an index sub-page, whose href ends in a slash', async () => {
+    await renderInTestApp(
+      <GSPageLayout
+        title="Flux"
+        tabs={[
+          { id: '', label: 'Overview', href: '/flux/' },
+          { id: 'tree', label: 'Tree view', href: '/flux/tree' },
+        ]}
+      >
+        <div>content</div>
+      </GSPageLayout>,
+      { mountPath: '/flux', initialRouteEntries: ['/flux'] },
+    );
+
+    const overview = screen.getByRole('tab', { name: 'Overview' });
+    expect(overview).toHaveAttribute('href', '/flux');
+    expect(overview).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() =>
+      expect(document.title).toBe('Overview · Flux | Backstage'),
+    );
+  });
+
   it('keeps the tab of a nested sub-route active, encoded characters too', async () => {
     await renderAt('/flux/tree/some%20nested%20id');
 

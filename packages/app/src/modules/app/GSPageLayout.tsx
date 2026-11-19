@@ -85,7 +85,9 @@ function PageLayoutWithHeader(props: PageLayoutProps & { appTitle: string }) {
   const headerTabs: HeaderTab[] | undefined = tabs?.map(tab => ({
     id: tab.id,
     label: tab.label,
-    href: tab.href,
+    // An index sub-page (path '') comes as the base path with a trailing
+    // slash (`/flux/`), which no location is under.
+    href: tab.href.length > 1 ? tab.href.replace(/\/+$/, '') : tab.href,
     // Keep the tab active for nested sub-routes (e.g. muster's
     // `workflows/:id`); the sub-page paths here never prefix one another.
     matchStrategy: 'prefix',
