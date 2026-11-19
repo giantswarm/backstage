@@ -15,6 +15,7 @@ import {
   OrganizationDirectoryProvider,
   organizationsUndecided,
   useOrganizationDirectory,
+  useOrganizationsAvailable,
 } from './OrganizationDirectoryProvider';
 
 const INSTALLATIONS = ['gazelle', 'golem', 'ozone', 'kestrel'];
@@ -63,6 +64,50 @@ async function renderProbe(api: MusterApi, client = newQueryClient()) {
 const STILL_READING = 'The organizations are still being read.';
 
 describe('OrganizationDirectoryProvider', () => {
+  // The profile menu's Organizations entry: hidden only where no
+  // installation serves organizations, kept where a check failed, so the
+  // page that explains the failure stays reachable.
+  it.each([
+    ['serves none', 'none' as const, 'hidden'],
+    ['could not be checked', 'fails' as const, 'shown'],
+  ])(
+    'decides the Organizations entry when the installation %s',
+    async (_case, servers, entry) => {
+      const { api } = fakeOrganizationsMuster({});
+      Object.assign(api, {
+        listServers: jest.fn(async () => {
+          if (servers === 'fails') {
+            throw Object.assign(new Error('gazelle did not answer'), {
+              status: 503,
+            });
+          }
+          return { mcpServers: [] };
+        }),
+      });
+      function Entry() {
+        const { isLoading } = useOrganizationDirectory();
+        const available = useOrganizationsAvailable();
+        if (isLoading) {
+          return null;
+        }
+        return <p>{`Organizations entry ${available ? 'shown' : 'hidden'}`}</p>;
+      }
+      await renderInTestApp(
+        <TestApiProvider apis={[[musterApiRef, api]]}>
+          <QueryClientProvider client={newQueryClient()}>
+            <OrganizationDirectoryProvider>
+              <Entry />
+            </OrganizationDirectoryProvider>
+          </QueryClientProvider>
+        </TestApiProvider>,
+      );
+
+      expect(
+        await screen.findByText(`Organizations entry ${entry}`),
+      ).toBeInTheDocument();
+    },
+  );
+
   it("keeps each installation's discovery failure to that installation", async () => {
     // gazelle serves organizations, golem's muster has no per-user sign-in,
     // and ozone runs no agent-manager.
