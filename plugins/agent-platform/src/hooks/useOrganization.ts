@@ -3,6 +3,7 @@ import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AgentManagerError } from '../lib/agentManager';
+import { organizationOwnConnectors } from '../lib/organizationConnectors';
 import {
   ORGANIZATIONS_CAPABILITY,
   modeArgument,
@@ -162,12 +163,20 @@ export function useOrganizationMembers(
   return readOf(enabled, query);
 }
 
-/** `list_organization_connectors`: the organization's RemoteMCPServers. */
+/**
+ * `list_organization_connectors`: the organization's own connectors
+ * (`organizationOwnConnectors`, which leaves out the agents' muster bindings
+ * by what this installation's agent-manager can say), with the ones in
+ * `picked` whatever they are. Waits for `get_info`, whose version decides
+ * the rule; a `get_info` that fails leaves the older rule.
+ */
 export function useOrganizationConnectors(
   installation: string,
   namespace: string | undefined,
+  picked: readonly string[] = [],
 ): OrganizationRead<OrganizationConnector[]> {
   const client = useAgentManagerClient(installation);
+  const infoRead = useAgentManagerInfo(installation);
   const enabled = Boolean(client) && Boolean(namespace);
   const query = useQuery({
     queryKey: musterOrganizationConnectorsQueryKey(
@@ -179,7 +188,16 @@ export function useOrganizationConnectors(
     staleTime: 60_000,
     retry: false,
   });
-  return readOf(enabled, query);
+  const read = readOf(enabled, query);
+  const infoPending = !infoRead.info && infoRead.isLoading;
+  return {
+    ...read,
+    data:
+      read.data && !infoPending
+        ? organizationOwnConnectors(read.data, infoRead.info?.version, picked)
+        : undefined,
+    isLoading: read.isLoading || (enabled && infoPending),
+  };
 }
 
 /** A member's kind as the events report it. */

@@ -30,28 +30,80 @@ export function takesConnectors(
 }
 
 /**
- * What Helm writes in `app.kubernetes.io/managed-by`: the agent chart renders
- * each agent's muster binding as a RemoteMCPServer of the agent's namespace,
- * which the list returns too. agent-manager refuses it as a connector, so it
- * is not offered. The list does not say which chart rendered an object, so a
- * connector another Helm chart renders is not offered either, until
- * agent-manager marks the muster bindings itself.
+ * The first agent-manager whose `list_organization_connectors` marks an
+ * agent's muster binding (`musterBindingOf`): the RemoteMCPServer the agent
+ * chart renders for each agent, which the list returns beside the
+ * organization's connectors and which agent-manager refuses as a connector.
  */
-const AGENT_CHART_MANAGED_BY = 'Helm';
+const MUSTER_BINDING_MARK_VERSION = '3.3.4';
 
 /**
- * The connectors an agent of the organization may be given, and the ones it
- * has (`picked`) whatever renders them: an agent's own connector is never
- * hidden from the person who edits it.
+ * What Helm writes in `app.kubernetes.io/managed-by`. Before
+ * {@link MUSTER_BINDING_MARK_VERSION} the list says nothing else about who
+ * rendered an object, so there every Helm-rendered RemoteMCPServer counts as
+ * a muster binding: a connector another chart renders too.
  */
-export function offerableConnectors(
+const HELM_MANAGED_BY = 'Helm';
+
+/** `major.minor.patch` and a pre-release, with or without a leading `v`. */
+const VERSION_PATTERN = /^v?(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?(\+.*)?$/;
+
+/**
+ * Whether `version` is `minimum` or later, by semver precedence: a
+ * pre-release comes before its release (`3.3.4-rc.1` before `3.3.4`). A
+ * version that is no release version (`dev`, missing) is not.
+ */
+function versionAtLeast(version: string | undefined, minimum: string): boolean {
+  const have = VERSION_PATTERN.exec(version ?? '');
+  const want = VERSION_PATTERN.exec(minimum);
+  if (!have || !want) return false;
+  for (const part of [1, 2, 3]) {
+    const difference = Number(have[part]) - Number(want[part]);
+    if (difference !== 0) return difference > 0;
+  }
+  return !have[4];
+}
+
+/**
+ * Whether the list marks the muster bindings: it comes from an agent-manager
+ * of {@link MUSTER_BINDING_MARK_VERSION} or later (`get_info`'s `version`,
+ * which a release build stamps), or a connector of it carries the mark. An
+ * absent mark then means "no binding"; otherwise it means nothing.
+ */
+function marksMusterBindings(
   connectors: readonly OrganizationConnector[],
+  agentManagerVersion: string | undefined,
+): boolean {
+  return (
+    versionAtLeast(agentManagerVersion, MUSTER_BINDING_MARK_VERSION) ||
+    connectors.some(connector => connector.musterBindingOf !== undefined)
+  );
+}
+
+/**
+ * The organization's own connectors among what `list_organization_connectors`
+ * returns: not an agent's muster binding. The Connectors tab lists these and
+ * the Tools step offers them, with the ones an agent has (`picked`) whatever
+ * they are: an agent's own connector is never hidden from the person who
+ * edits it. Where the list cannot mark the bindings (an agent-manager older
+ * than {@link MUSTER_BINDING_MARK_VERSION}, or one whose version is no
+ * release), every Helm-rendered one is left out, so a binding never shows as
+ * a connector. A caller who may not list the namespace's Agents gets no mark
+ * from agent-manager: the bindings then show, and agent-manager still
+ * refuses one in `connectors`.
+ */
+export function organizationOwnConnectors(
+  connectors: readonly OrganizationConnector[],
+  agentManagerVersion: string | undefined,
   picked: readonly string[] = [],
 ): OrganizationConnector[] {
+  const marked = marksMusterBindings(connectors, agentManagerVersion);
   return connectors.filter(
     connector =>
-      connector.managedBy !== AGENT_CHART_MANAGED_BY ||
-      picked.includes(connector.name),
+      picked.includes(connector.name) ||
+      (marked
+        ? !connector.musterBindingOf
+        : connector.managedBy !== HELM_MANAGED_BY),
   );
 }
 
