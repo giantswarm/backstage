@@ -18,6 +18,7 @@ import {
   WizardFrame,
 } from './WizardFrame';
 import { WizardStepHeading } from './WizardStepHeading';
+import { BUIRouterProvider } from '../../testUtils';
 
 const steps = [
   { id: 'basics', label: 'Basics', href: '/agents/new' },
@@ -49,28 +50,30 @@ function renderFrame(
 ) {
   return render(
     <MemoryRouter initialEntries={['/agents/new/tools']}>
-      <PageHeaderActionsProvider>
-        <Routes>
-          <Route
-            path="/agents/new/tools"
-            element={
-              <WizardFrame
-                title="New agent"
-                context="Customize / Agents"
-                steps={steps}
-                currentStep="tools"
-                closeHref="/customize/agents"
-                {...props}
-              >
-                <WizardStepHeading title="Choose individual tools" />
-                <ContinueAction />
-              </WizardFrame>
-            }
-          />
-          <Route path="/customize/agents" element={<p>Customize page</p>} />
-          <Route path="/agents/new/skills" element={<p>Skills step</p>} />
-        </Routes>
-      </PageHeaderActionsProvider>
+      <BUIRouterProvider>
+        <PageHeaderActionsProvider>
+          <Routes>
+            <Route
+              path="/agents/new/tools"
+              element={
+                <WizardFrame
+                  title="New agent"
+                  context="Customize / Agents"
+                  steps={steps}
+                  currentStep="tools"
+                  closeHref="/customize/agents"
+                  {...props}
+                >
+                  <WizardStepHeading title="Choose individual tools" />
+                  <ContinueAction />
+                </WizardFrame>
+              }
+            />
+            <Route path="/customize/agents" element={<p>Customize page</p>} />
+            <Route path="/agents/new/skills" element={<p>Skills step</p>} />
+          </Routes>
+        </PageHeaderActionsProvider>
+      </BUIRouterProvider>
     </MemoryRouter>,
   );
 }
@@ -267,11 +270,13 @@ describe('WizardFrame', () => {
   it('renders a step’s non-memoized actions without looping', () => {
     render(
       <MemoryRouter>
-        <PageHeaderActionsProvider>
-          <WizardFrame title="New agent" closeHref="/customize/agents">
-            <UnstableAction />
-          </WizardFrame>
-        </PageHeaderActionsProvider>
+        <BUIRouterProvider>
+          <PageHeaderActionsProvider>
+            <WizardFrame title="New agent" closeHref="/customize/agents">
+              <UnstableAction />
+            </WizardFrame>
+          </PageHeaderActionsProvider>
+        </BUIRouterProvider>
       </MemoryRouter>,
     );
 
@@ -492,11 +497,13 @@ describe('WizardFrame', () => {
     it('is docked outside a measured frame, and reserves nothing while inactive', () => {
       const { container } = render(
         <MemoryRouter>
-          <PageHeaderActionsProvider>
-            <WizardFrame title="New agent" closeHref="/customize/agents">
-              <Aside width={420} active={false} />
-            </WizardFrame>
-          </PageHeaderActionsProvider>
+          <BUIRouterProvider>
+            <PageHeaderActionsProvider>
+              <WizardFrame title="New agent" closeHref="/customize/agents">
+                <Aside width={420} active={false} />
+              </WizardFrame>
+            </PageHeaderActionsProvider>
+          </BUIRouterProvider>
         </MemoryRouter>,
       );
 
@@ -510,11 +517,13 @@ describe('WizardFrame', () => {
     it('reserves its width on the frame while active, and releases it', () => {
       const { container, rerender } = render(
         <MemoryRouter>
-          <PageHeaderActionsProvider>
-            <WizardFrame title="New agent" closeHref="/customize/agents">
-              <Aside width={420} active />
-            </WizardFrame>
-          </PageHeaderActionsProvider>
+          <BUIRouterProvider>
+            <PageHeaderActionsProvider>
+              <WizardFrame title="New agent" closeHref="/customize/agents">
+                <Aside width={420} active />
+              </WizardFrame>
+            </PageHeaderActionsProvider>
+          </BUIRouterProvider>
         </MemoryRouter>,
       );
       const frame = container.querySelector(
@@ -524,11 +533,13 @@ describe('WizardFrame', () => {
 
       rerender(
         <MemoryRouter>
-          <PageHeaderActionsProvider>
-            <WizardFrame title="New agent" closeHref="/customize/agents">
-              <Aside width={420} active={false} />
-            </WizardFrame>
-          </PageHeaderActionsProvider>
+          <BUIRouterProvider>
+            <PageHeaderActionsProvider>
+              <WizardFrame title="New agent" closeHref="/customize/agents">
+                <Aside width={420} active={false} />
+              </WizardFrame>
+            </PageHeaderActionsProvider>
+          </BUIRouterProvider>
         </MemoryRouter>,
       );
       expect(frame.style.paddingRight).toBe('');
@@ -544,15 +555,17 @@ describe('WizardFrame', () => {
     function renderWithRail() {
       return render(
         <MemoryRouter>
-          <PageHeaderActionsProvider>
-            <WizardFrame
-              title="New agent"
-              closeHref="/customize/agents"
-              rail={<aside aria-label="Selected">3 tools</aside>}
-            >
-              <Step />
-            </WizardFrame>
-          </PageHeaderActionsProvider>
+          <BUIRouterProvider>
+            <PageHeaderActionsProvider>
+              <WizardFrame
+                title="New agent"
+                closeHref="/customize/agents"
+                rail={<aside aria-label="Selected">3 tools</aside>}
+              >
+                <Step />
+              </WizardFrame>
+            </PageHeaderActionsProvider>
+          </BUIRouterProvider>
         </MemoryRouter>,
       );
     }

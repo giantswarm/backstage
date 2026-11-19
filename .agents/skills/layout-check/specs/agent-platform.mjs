@@ -162,6 +162,65 @@ const openCluster = kind => async ({ page, skip }) => {
   await page.goto(new URL(href, page.url()).href);
 };
 
+/**
+ * Opens the Node pools tab of a ready workload cluster with a pool of the
+ * kind wanted, and selects that pool: the clusters on the list, in turn, until
+ * one has such a pool (for `azure`, a pool of an Azure VM size). Up to twelve
+ * clusters, then the scenario is skipped.
+ */
+const openNodePool = want => async ({ page, skip }) => {
+  const rows = page.locator('tbody [role=row], li:has(a[href^="/platform/clusters/"])');
+  if (!(await shows(rows))) skip('no clusters listed');
+  // The Azure cluster can sort past the first page: the search finds it by
+  // its description.
+  const search = page.getByRole('searchbox', { name: 'Search clusters' });
+  if (want === 'azure' && (await shows(search, 2000))) {
+    await search.fill('Azure');
+  }
+  await page.waitForTimeout(1500);
+  const hrefs = await page.evaluate(() => {
+    const found = [];
+    for (const row of document.querySelectorAll('tbody [role=row], li')) {
+      const href = row
+        .querySelector('a[href^="/platform/clusters/"]')
+        ?.getAttribute('href');
+      const text = row.textContent ?? '';
+      if (
+        href &&
+        !href.includes('/org-giantswarm/') &&
+        text.includes('Ready')
+      ) {
+        found.push(href);
+      }
+    }
+    return [...new Set(found)];
+  });
+  const label = {
+    machinePool: 'Machine pool',
+    karpenter: 'Karpenter',
+    azure: 'Standard_',
+  }[want];
+  for (const href of hrefs.slice(0, 12)) {
+    await page.goto(new URL(`${href}/node-pools`, page.url()).href);
+    const pools = page.getByRole('main').locator('button[aria-pressed]');
+    if (!(await shows(pools, 10000))) continue;
+    // The pool's row, or on a phone its stacked item, names its kind.
+    const pool = page
+      .getByRole('main')
+      .locator('tr, li')
+      .filter({ hasText: label })
+      .locator('button[aria-pressed]')
+      .first();
+    if (!(await shows(pool, 1000))) continue;
+    await pool.click();
+    await page
+      .getByRole('button', { name: /^Technical details of / })
+      .waitFor({ timeout: 10000 });
+    return;
+  }
+  skip(`no cluster with a ${label} pool`);
+};
+
 export default [
   { name: 'Home', path: '/' },
   { name: 'Sessions', path: '/sessions' },
@@ -336,6 +395,55 @@ export default [
     name: 'Platform cluster · deleting',
     path: '/platform/clusters',
     setup: openCluster('deleting'),
+  },
+  {
+    name: 'Platform node pools',
+    path: '/platform/clusters',
+    setup: async step => {
+      const { page, scenario } = step;
+      // In `loading` and `error` no cluster is listed, and a cluster's page
+      // shows its own state: the tab's address of a base cluster, read in
+      // the scenario, measures that state there.
+      if (scenario === 'loading' || scenario === 'error') {
+        await page.goto(
+          new URL('/platform/clusters?fixtures=base', page.url()).href,
+        );
+        await openCluster('workload')({
+          ...step,
+          page: {
+            ...page,
+            locator: page.locator.bind(page),
+            getByRole: page.getByRole.bind(page),
+            waitForFunction: page.waitForFunction.bind(page),
+            url: page.url.bind(page),
+            goto: async url => {
+              const target = new URL(url);
+              target.pathname = `${target.pathname}/node-pools`;
+              target.searchParams.set('fixtures', scenario);
+              await page.goto(target.href);
+            },
+          },
+        });
+        return;
+      }
+      await openCluster('workload')(step);
+      await page.getByRole('tab', { name: /^Node pools/ }).click();
+    },
+  },
+  {
+    name: 'Platform node pools · machine pool',
+    path: '/platform/clusters',
+    setup: openNodePool('machinePool'),
+  },
+  {
+    name: 'Platform node pools · Karpenter',
+    path: '/platform/clusters',
+    setup: openNodePool('karpenter'),
+  },
+  {
+    name: 'Platform node pools · Azure',
+    path: '/platform/clusters',
+    setup: openNodePool('azure'),
   },
 ];
 

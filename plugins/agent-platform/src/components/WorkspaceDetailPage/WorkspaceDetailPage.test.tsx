@@ -1,7 +1,8 @@
 import { Route, Routes } from 'react-router-dom';
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { toastApiRef } from '@backstage/frontend-plugin-api';
+import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -142,7 +143,15 @@ function docs(overrides: Partial<WorkspaceDetail['workspace']> = {}) {
   return detail;
 }
 
+/** The toasts the page posted: test apps collect them without showing them. */
+let toasts = mockApis.toast();
+
+function toastTitles() {
+  return toasts.getToasts().map(toast => toast.title);
+}
+
 function renderPage(path = '/customize/workspaces/gazelle/lab/ws-docs') {
+  toasts = mockApis.toast();
   return renderInTestApp(
     <PageHeaderActionsProvider>
       <Routes>
@@ -153,6 +162,7 @@ function renderPage(path = '/customize/workspaces/gazelle/lab/ws-docs') {
       </Routes>
     </PageHeaderActionsProvider>,
     {
+      apis: [[toastApiRef, toasts]],
       initialRouteEntries: [path],
       mountedRoutes: {
         '/customize/workspaces': workspacesRouteRef,
@@ -428,9 +438,7 @@ describe('WorkspaceDetailPage', () => {
     expect(
       screen.getByRole('button', { name: 'Synchronizing…' }),
     ).toBeDisabled();
-    expect(
-      screen.queryByText('Workspace synchronization successful'),
-    ).toBeNull();
+    expect(toastTitles()).toEqual([]);
   });
 
   it('says Synchronizing on the badge and in Details for a new workspace the manager has not taken up yet, and leaves Synchronize to the person', async () => {
@@ -512,12 +520,14 @@ describe('WorkspaceDetailPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Synchronize' }));
 
     expect(mockSync.mutate).toHaveBeenCalled();
-    expect(
-      await screen.findByText('Workspace synchronization successful'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('Nothing had changed, so nothing was fetched.'),
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(toasts.getToasts()).toEqual([
+        expect.objectContaining({
+          title: 'Workspace synchronization successful',
+          description: 'Nothing had changed, so nothing was fetched.',
+        }),
+      ]),
+    );
     expect(screen.getByRole('button', { name: 'Synchronize' })).toBeEnabled();
   });
 

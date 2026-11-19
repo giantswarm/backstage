@@ -5,6 +5,7 @@ import {
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Route, Routes } from 'react-router-dom';
 import { PlansApi, plansApiRef } from '../../apis';
 import { rootRouteRef } from '../../routes';
 import { PullReviewPage } from './PullReviewPage';
@@ -69,12 +70,13 @@ async function renderPage() {
   const result = await renderInTestApp(
     <QueryClientProvider client={queryClient}>
       <TestApiProvider apis={[[plansApiRef, plansApi]]}>
-        <PullReviewPage />
+        <Routes>
+          <Route path="/plans/pr/:number" element={<PullReviewPage />} />
+        </Routes>
       </TestApiProvider>
     </QueryClientProvider>,
     {
       mountedRoutes: { '/plans': rootRouteRef },
-      mountPath: '/plans/pr/:number',
       initialRouteEntries: [
         `/plans/pr/${PULL_NUMBER}?repo=${encodeURIComponent(
           REPO,

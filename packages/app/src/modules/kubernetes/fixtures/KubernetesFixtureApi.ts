@@ -279,8 +279,13 @@ export class KubernetesFixtureApi implements KubernetesApi {
     if (method !== 'GET') {
       return unhandled(method, options.path);
     }
+    const query = new URLSearchParams(options.path.split('?')[1] ?? '');
     return (
-      this.read(options.clusterName, path) ?? unhandled(method, options.path)
+      this.read(
+        options.clusterName,
+        path,
+        parseLabelSelector(query.get('labelSelector')),
+      ) ?? unhandled(method, options.path)
     );
   }
 
@@ -350,7 +355,11 @@ export class KubernetesFixtureApi implements KubernetesApi {
   }
 
   /** A GET the fixtures answer, or undefined. */
-  private read(installation: string, path: string): Response | undefined {
+  private read(
+    installation: string,
+    path: string,
+    selector: LabelRequirement[] = [],
+  ): Response | undefined {
     const segments = path.split('/').filter(Boolean);
     if (path === '/version') {
       return json({
@@ -424,9 +433,70 @@ export class KubernetesFixtureApi implements KubernetesApi {
       apiVersion: group ? `${group}/${version}` : version,
       kind: 'List',
       metadata: { resourceVersion: '1' },
-      items: objects,
+      items: objects.filter(object =>
+        matchesLabels(object.metadata.labels, selector),
+      ),
     });
   }
+}
+
+/** One requirement of a label selector: `key=value`, `key!=value` or `key`. */
+type LabelRequirement = {
+  key: string;
+  operator: '=' | '!=' | 'exists';
+  value?: string;
+};
+
+/**
+ * A list's `labelSelector`, in the equality forms the portal sends
+ * (`key=value`, `key==value`, `key!=value`) and bare keys.
+ */
+export function parseLabelSelector(
+  selector: string | null,
+): LabelRequirement[] {
+  if (!selector) {
+    return [];
+  }
+  return selector
+    .split(',')
+    .map(part => part.trim())
+    .filter(Boolean)
+    .map((part): LabelRequirement => {
+      const notEqual = part.indexOf('!=');
+      if (notEqual > 0) {
+        return {
+          key: part.slice(0, notEqual),
+          operator: '!=',
+          value: part.slice(notEqual + 2),
+        };
+      }
+      const equal = part.indexOf('=');
+      if (equal > 0) {
+        return {
+          key: part.slice(0, equal),
+          operator: '=',
+          value: part.slice(equal + 1).replace(/^=/, ''),
+        };
+      }
+      return { key: part, operator: 'exists' };
+    });
+}
+
+function matchesLabels(
+  labels: Record<string, string> | undefined,
+  selector: LabelRequirement[],
+): boolean {
+  return selector.every(({ key, operator, value }) => {
+    const label = labels?.[key];
+    switch (operator) {
+      case '=':
+        return label === value;
+      case '!=':
+        return label !== value;
+      default:
+        return label !== undefined;
+    }
+  });
 }
 
 /**

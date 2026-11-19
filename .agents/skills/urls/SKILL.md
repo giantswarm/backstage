@@ -47,7 +47,7 @@ change needs something the rules do not settle, it needs a decision first.
 /customize/workspaces/<inst>/<org>/<name>/edit
 /platform                                               → /platform/clusters
 /platform/clusters                                      gs.features.platformSection only
-/platform/clusters/<inst>/<ns>/<name>                   bare = Overview, the only tab yet
+/platform/clusters/<inst>/<ns>/<name>[/node-pools]      bare = Overview
 /agent-platform/**  →  one-hop redirects until the end of 2026
 ```
 
@@ -71,9 +71,12 @@ How it is mounted:
   (`useIsAgentArea`). A cluster's page is
   `/platform/clusters/<inst>/<ns>/<name>` (`platformClusterRouteRef`, a sub
   route of `platformRouteRef`; the page is gs's `PlatformClusterRoute`, which
-  links through the `PlatformLinks` the app's page provides). Items 1 and 2 of
+  links through the `PlatformLinks` the app's page provides). Its Node pools
+  tab selects a pool with `?name=<pool>`, as the classic cluster page does:
+  a selection within the tab, not a page of its own, so it stays in the query
+  (rule 3 is about which resource a page shows). Items 1 to 3 of
   giantswarm/giantswarm#39295; the planned tree adds
-  `/platform/clusters/<inst>/<ns>/<name>[/node-pools|/gateways|/access]`,
+  `/platform/clusters/<inst>/<ns>/<name>[/gateways|/access]`,
   `/platform/environments` and `/platform/environments/<inst>`.
 - `/agent-platform` (`page:agent-platform`) and `/agents` are the app's
   catch-alls (`legacyPagesModule.tsx`), which call

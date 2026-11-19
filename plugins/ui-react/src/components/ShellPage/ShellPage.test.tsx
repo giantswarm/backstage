@@ -22,6 +22,7 @@ import {
   ShellPageFactsSkeleton,
   ShellPageTitleSkeleton,
 } from './ShellPage';
+import { BUIRouterProvider } from '../../testUtils';
 
 function RegistersAction({ label }: { label: string }) {
   const actions = useMemo(() => <button>{label}</button>, [label]);
@@ -32,11 +33,13 @@ function RegistersAction({ label }: { label: string }) {
 function renderAt(url: string, element: JSX.Element) {
   return render(
     <MemoryRouter initialEntries={[url]}>
-      <PageHeaderActionsProvider>
-        <Routes>
-          <Route path="/connectors/:name/*" element={element} />
-        </Routes>
-      </PageHeaderActionsProvider>
+      <BUIRouterProvider>
+        <PageHeaderActionsProvider>
+          <Routes>
+            <Route path="/connectors/:name/*" element={element} />
+          </Routes>
+        </PageHeaderActionsProvider>
+      </BUIRouterProvider>
     </MemoryRouter>,
   );
 }

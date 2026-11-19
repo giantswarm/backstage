@@ -7,7 +7,7 @@ import { ConfigReader } from '@backstage/config';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-// The carried patch .yarn/patches/@backstage-backend-defaults-npm-0.18.1-*.patch
+// The carried patch .yarn/patches/@backstage-backend-defaults-npm-0.19.0.patch
 // handles the rejection of the keepalive promise in getDatabase and drops a
 // failed client from the manager's cache (upstream
 // packages/backend-defaults/src/entrypoints/database/DatabaseManager.ts).
@@ -72,12 +72,12 @@ describe('DatabaseManager with the carried getDatabase patch', () => {
   });
 
   it('is regenerated or dropped with the next Backstage release', () => {
-    // A Backstage bump moves @backstage/backend-defaults past 0.18.1, which the
+    // A Backstage bump moves @backstage/backend-defaults past 0.19.0, which the
     // patch's resolution pins: drop the patch once upstream carries the fix,
     // regenerate it (yarn patch) otherwise.
     const { version } = JSON.parse(
       readFileSync(resolve(__dirname, '../../../backstage.json'), 'utf8'),
     );
-    expect(version).toBe('1.56.6');
+    expect(version).toBe('1.57.0');
   });
 });

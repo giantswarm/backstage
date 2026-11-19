@@ -49,6 +49,25 @@ describe('KubernetesFixtureApi', () => {
     );
   });
 
+  it('lists only the objects a label selector matches', async () => {
+    const cluster = inInstallation(baseDataSet().clusters, 'meadow').find(
+      c => c.provider === 'aws' && c.pools.length > 0,
+    )!;
+    const namespace =
+      cluster.kind === 'management'
+        ? 'org-giantswarm'
+        : `org-${cluster.organization}`;
+    const response = await get(
+      `/apis/cluster.x-k8s.io/v1beta2/namespaces/${namespace}/machinepools?labelSelector=${encodeURIComponent(
+        `cluster.x-k8s.io/cluster-name=${cluster.name}`,
+      )}`,
+    );
+    const names = (await response.json()).items.map(
+      (item: { metadata: { name: string } }) => item.metadata.name,
+    );
+    expect(names.sort()).toEqual(cluster.pools.map(p => p.name).sort());
+  });
+
   it('discovers the versions and resources the resource classes read', async () => {
     const group = await (await get('/apis/muster.giantswarm.io')).json();
     expect(group.versions).toEqual([
