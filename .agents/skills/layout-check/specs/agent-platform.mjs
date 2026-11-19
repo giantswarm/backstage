@@ -163,6 +163,38 @@ const openCluster = kind => async ({ page, skip }) => {
 };
 
 /**
+ * Opens a tab of a ready workload cluster's page, by its tab. In `loading`
+ * and `error` no cluster is listed, and a cluster's page shows its own state:
+ * the tab's address of a base cluster, read in the scenario, measures that
+ * state there.
+ */
+const openClusterTab = (path, tab) => async step => {
+  const { page, scenario } = step;
+  if (scenario === 'loading' || scenario === 'error') {
+    await page.goto(new URL('/platform/clusters?fixtures=base', page.url()).href);
+    await openCluster('workload')({
+      ...step,
+      page: {
+        ...page,
+        locator: page.locator.bind(page),
+        getByRole: page.getByRole.bind(page),
+        waitForFunction: page.waitForFunction.bind(page),
+        url: page.url.bind(page),
+        goto: async url => {
+          const target = new URL(url);
+          target.pathname = `${target.pathname}/${path}`;
+          target.searchParams.set('fixtures', scenario);
+          await page.goto(target.href);
+        },
+      },
+    });
+    return;
+  }
+  await openCluster('workload')(step);
+  await page.getByRole('tab', { name: tab }).click();
+};
+
+/**
  * Opens the Node pools tab of a ready workload cluster with a pool of the
  * kind wanted, and selects that pool: the clusters on the list, in turn, until
  * one has such a pool (for `azure`, a pool of an Azure VM size). Up to twelve
@@ -399,36 +431,12 @@ export default [
   {
     name: 'Platform node pools',
     path: '/platform/clusters',
-    setup: async step => {
-      const { page, scenario } = step;
-      // In `loading` and `error` no cluster is listed, and a cluster's page
-      // shows its own state: the tab's address of a base cluster, read in
-      // the scenario, measures that state there.
-      if (scenario === 'loading' || scenario === 'error') {
-        await page.goto(
-          new URL('/platform/clusters?fixtures=base', page.url()).href,
-        );
-        await openCluster('workload')({
-          ...step,
-          page: {
-            ...page,
-            locator: page.locator.bind(page),
-            getByRole: page.getByRole.bind(page),
-            waitForFunction: page.waitForFunction.bind(page),
-            url: page.url.bind(page),
-            goto: async url => {
-              const target = new URL(url);
-              target.pathname = `${target.pathname}/node-pools`;
-              target.searchParams.set('fixtures', scenario);
-              await page.goto(target.href);
-            },
-          },
-        });
-        return;
-      }
-      await openCluster('workload')(step);
-      await page.getByRole('tab', { name: /^Node pools/ }).click();
-    },
+    setup: openClusterTab('node-pools', /^Node pools/),
+  },
+  {
+    name: 'Platform SSH access',
+    path: '/platform/clusters',
+    setup: openClusterTab('ssh-access', 'SSH access'),
   },
   {
     name: 'Platform node pools · machine pool',

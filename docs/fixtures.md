@@ -148,6 +148,13 @@ create its models (`ModelConfig`), so Add a model offers an organization
 as owner only to them. Their cluster access is healthy from the start. Any
 other request, a write among them, fails with a 501 and a console error.
 Their Mimir is the fixture one (`mimirEnabled: true`, see "Mimir").
+The guest's token for each (`KubernetesAuthProvidersFixtureApi`, next to the
+fixture Kubernetes API) is an unsigned JWT in the group
+`fixture-giantswarm-staff`, which `gs.adminGroups` in
+`app-config.fixtures.yaml` lists: the guest is Giant Swarm staff in every
+scenario, so the pages show what only staff see, such as the Teleport
+commands and a cluster page's SSH access tab. What anyone else sees, the
+pages' unit tests check.
 
 If the backend fails with "Invalid app bundle schema", a production build of
 the app in `packages/app/dist` predates a config schema change: delete the

@@ -14,6 +14,7 @@ import {
 import { isSessionExpiredError } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   GSKubernetesAuthProviders,
+  KubernetesAuthProvidersOverride,
   KubernetesClientOverride,
 } from './KubernetesApiOverrides';
 
@@ -186,5 +187,47 @@ describe('api:kubernetes', () => {
 
   it('reads the clusters without gs.fixtures', () => {
     expect(createKubernetesApi(false)).toBeInstanceOf(KubernetesClient);
+  });
+});
+
+describe('api:kubernetes-auth-providers', () => {
+  const nodeEnv = process.env.NODE_ENV;
+  afterEach(() => {
+    process.env.NODE_ENV = nodeEnv;
+  });
+
+  function createAuthProvidersApi(fixtures: boolean) {
+    const { factory } = createExtensionTester(
+      KubernetesAuthProvidersOverride,
+    ).get(ApiBlueprint.dataRefs.factory);
+    return factory({
+      configApi: mockApis.config({ data: { gs: { fixtures } } }),
+      microsoftAuthApi: {},
+      googleAuthApi: {},
+      gsAuthProvidersApi: {},
+    }) as KubernetesAuthProvidersApi;
+  }
+
+  it('gives the guest a staff token with gs.fixtures outside production', async () => {
+    const api = createAuthProvidersApi(true);
+
+    expect(api).not.toBeInstanceOf(GSKubernetesAuthProviders);
+    const { token } = await api.getCredentials('serviceAccount');
+    const payload = JSON.parse(atob(token!.split('.')[1]));
+    expect(payload.groups).toEqual(['fixture-giantswarm-staff']);
+  });
+
+  it('ignores gs.fixtures in production', () => {
+    process.env.NODE_ENV = 'production';
+
+    expect(createAuthProvidersApi(true)).toBeInstanceOf(
+      GSKubernetesAuthProviders,
+    );
+  });
+
+  it('resolves the providers without gs.fixtures', () => {
+    expect(createAuthProvidersApi(false)).toBeInstanceOf(
+      GSKubernetesAuthProviders,
+    );
   });
 });
