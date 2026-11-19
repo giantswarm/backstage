@@ -352,10 +352,15 @@ Instances tab. muster's own page has no Details tab.
 
 ### Models
 
-Models are kagent ModelConfigs. **Connect a model** supports OpenAI-compatible
-endpoints, Anthropic, Gemini and Ollama; the API key is optional and
-write-only. Where the installation runs model-manager, **Model hosting** adds
-running models, GPU capacity and the model cache.
+Models are kagent ModelConfigs. Customize › Models lists every one in scope,
+by model: its owner (the platform, an organization, or a namespace that is no
+organization), its provider as the form names it, its environment, how many
+agents use it and its state, the defaults marked **Default**. It filters by
+owner, provider, status and use (In use, Not used). **Add a model** supports
+OpenAI-compatible endpoints, Anthropic, Gemini and Ollama; the API key is
+optional and write-only. Where the installation runs model-manager, the
+**Model hosting** row above the search leads to running models, GPU capacity
+and the model cache.
 
 ### Toolchains
 
@@ -592,10 +597,11 @@ its type, organization and environment, and a ⋯ menu with Copy login command
 links of `gs.clusterDetails.resources` as tiles, then the facts: Environment
 (linked to the management cluster's page for a workload cluster),
 Organization, Provider with its region, Account (in groups of four, linked to
-the AWS console), Workers and Created.
+the AWS console), Workers and Created. The facts column belongs to Overview;
+the other tabs take the page's width.
 
-Its one tab so far, Overview (the bare path; any other tab redirects there),
-is a column of panels:
+It has two tabs so far, Overview and Node pools; any other tab redirects to
+Overview. Overview (the bare path) is a column of panels:
 
 - Release: the cluster's release, linked to its release notes (the GitHub
   release of giantswarm/releases tagged `<provider>/v<version>`), the
@@ -614,6 +620,37 @@ is a column of panels:
   setup. Left out when there is neither.
 - Technical details, a fold-out: namespace, name, cluster app, API endpoint,
   control plane, what installs the cluster, and every label and annotation.
+
+Node pools (`/node-pools`, its count on the tab) reads the pools as the
+classic cluster page does: an AWS cluster's MachinePools with the
+AWSMachinePool (an Auto Scaling group, "Machine pool") or
+KarpenterMachinePool ("Karpenter") each points at, and an Azure cluster's
+MachineDeployments with their AzureMachineTemplates ("Machine pool"). Other
+providers get "Node pools of <provider> clusters aren't shown here yet." The
+table has a row per pool: the name, a button that selects the pool, with its
+kind; nodes ready ("6 of 6", or "6 ready" for Karpenter); the machines (the
+instance type or VM size with its CPU and memory, or "Mixed" with the
+capacity types Karpenter may pick); the zones (a Karpenter pool's zone
+requirement, "Any except C" for a `NotIn` one, else "Any"); scaling ("Between
+3 and 10 nodes" from an Auto Scaling group or the cluster-autoscaler's
+annotations on an Azure MachineDeployment, "3 nodes" for a fixed size, or "As
+needed, up to 48 CPU · 192 GiB" from the Karpenter limits); and its age. A
+pool short of nodes has an amber dot. The tab's count shows once the pools
+are read, and not where a read failed. Narrower, Zones
+and Created move under the machines and the kind; at phone width the rows
+stack.
+
+The selected pool is `?name=<pool>`, as on the classic page, so a reload or a
+shared link shows the same pool; an unknown name selects none. Without a
+selection, the table and a hint. With one, for a machine pool, "Nodes in
+<pool>": its nodes from Mimir (`useMimirNodePoolNodes`), each with ready
+(the conditions as hover text where it is not), machine, zone, CPU and memory
+requests and running pods as bars with their values (the figures against
+allocatable as hover text), and age. A Karpenter pool has no node table.
+Then "Technical details of <pool>", open: for a machine pool its instance
+shape, scaling and resources; for a Karpenter pool what runs now, the
+provisioning envelope, lifecycle and disruption, and the node template (the
+classic page's cards, with Karpenter's metrics from Mimir).
 
 A cluster being deleted says so and follows the deletion. An environment the
 portal does not know, a cluster the environment does not have, an environment

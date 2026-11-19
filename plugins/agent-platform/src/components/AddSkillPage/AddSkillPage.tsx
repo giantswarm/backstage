@@ -103,7 +103,7 @@ function SkillPullRequestOutcome({
  * `metaAgents.skillCreation` role resolves, `SkillCreationAssist` says so and
  * hands complex, nested skills over to the skill creator agent in a session.
  *
- * The same single-step in-content wizard frame as Connect a model, so the Customize
+ * The same single-step in-content wizard frame as Add a model, so the Customize
  * screen's create flows all read the same. A person without a GitHub grant in
  * muster is bounced through muster's connect once (the `githubAuthApiRef` the
  * mutation mints its token from does that) and comes back to this page.

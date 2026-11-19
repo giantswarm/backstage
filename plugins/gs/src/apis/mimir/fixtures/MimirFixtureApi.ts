@@ -3,6 +3,7 @@ import {
   isFixtureInstallation,
 } from '@giantswarm/backstage-plugin-gs-common';
 import {
+  clusterNodeSeries,
   fixtureDataSet,
   gatewaySeries,
   labelKey,
@@ -34,7 +35,8 @@ const PARSED_LIMIT = 500;
 
 /**
  * Mimir in fixture mode (`gs.fixtures: true`): each fixture installation's
- * agent gateway series (`gatewaySeries` in gs-common), built from the data
+ * agent gateway series (`gatewaySeries` in gs-common) and the series of its
+ * clusters' nodes and Karpenter pools (`clusterNodeSeries`), built from the data
  * set of the page's scenario, which the other fixture APIs read, so the usage pages count the agents,
  * people and model the rest of the portal shows. The queries are evaluated
  * (`promql.ts`), and need no token. A metric the data set has no series of
@@ -43,6 +45,15 @@ const PARSED_LIMIT = 500;
  */
 export class MimirFixtureApi implements MimirApi {
   private readonly parsed = new Map<string, PromqlNode>();
+
+  /**
+   * Each installation's series, built once per data set, so the evaluator's
+   * index by metric name (`promql.ts`) is built once too.
+   */
+  private readonly series = new WeakMap<
+    FixtureDataSet,
+    Map<string, FixtureCounterSeries[]>
+  >();
 
   constructor(
     private readonly data: () => FixtureDataSet = fixtureDataSet,
@@ -152,7 +163,21 @@ export class MimirFixtureApi implements MimirApi {
       error.name = 'NotFoundError';
       throw error;
     }
-    return gatewaySeries(this.data(), installation);
+    const data = this.data();
+    let byInstallation = this.series.get(data);
+    if (!byInstallation) {
+      byInstallation = new Map();
+      this.series.set(data, byInstallation);
+    }
+    let series = byInstallation.get(installation);
+    if (!series) {
+      series = [
+        ...gatewaySeries(data, installation),
+        ...clusterNodeSeries(data, installation),
+      ];
+      byInstallation.set(installation, series);
+    }
+    return series;
   }
 }
 

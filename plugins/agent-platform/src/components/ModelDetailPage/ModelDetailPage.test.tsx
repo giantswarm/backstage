@@ -1,6 +1,7 @@
 import { Link as RouterLink, Route, Routes } from 'react-router-dom';
-import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, within } from '@testing-library/react';
+import { toastApiRef } from '@backstage/frontend-plugin-api';
+import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   ModelConfig,
@@ -249,7 +250,15 @@ const agent = (name: string, technicalName: string, modelConfigId?: string) =>
     ...(modelConfigId ? { modelConfigId } : {}),
   }) as AgentRow;
 
+/** The toasts the page posted: test apps collect them without showing them. */
+let toasts = mockApis.toast();
+
+function toastTitles() {
+  return toasts.getToasts().map(toast => toast.title);
+}
+
 function renderPage(path = '/customize/models/inst-1/kagent/sonnet') {
+  toasts = mockApis.toast();
   return renderInTestApp(
     // The shell's clock, as its layout mounts it around its pages.
     <DateTimeZoneProvider timeZone="local">
@@ -271,6 +280,7 @@ function renderPage(path = '/customize/models/inst-1/kagent/sonnet') {
       </PageHeaderActionsProvider>
     </DateTimeZoneProvider>,
     {
+      apis: [[toastApiRef, toasts]],
       initialRouteEntries: [path],
       mountedRoutes: {
         '/customize/models': modelsRouteRef,
@@ -1151,9 +1161,9 @@ describe('ModelDetailPage', () => {
       expect(mockSetDefault).toHaveBeenCalledWith({
         modelConfig: expect.objectContaining({ cluster: 'inst-1' }),
       });
-      expect(
-        await screen.findByText('Sonnet 4.5 is now the default model'),
-      ).toBeInTheDocument();
+      await waitFor(() =>
+        expect(toastTitles()).toEqual(['Sonnet 4.5 is now the default model']),
+      );
     });
 
     it('shows the pull request a move by pull request opened, and claims no default', async () => {
@@ -1177,9 +1187,7 @@ describe('ModelDetailPage', () => {
       expect(
         within(outcome).getByRole('link', { name: /Review pull request/ }),
       ).toHaveAttribute('href', commit.pullRequest);
-      expect(
-        screen.queryByText('Sonnet 4.5 is now the default model'),
-      ).toBeNull();
+      expect(toastTitles()).toEqual([]);
     });
 
     it('says why there is no default when several models are marked', async () => {

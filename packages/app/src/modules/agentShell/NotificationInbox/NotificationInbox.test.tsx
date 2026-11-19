@@ -101,6 +101,8 @@ async function renderShell({ path = '/' }: { path?: string } = {}) {
       </div>
     </ShellDocumentTitleProvider>,
     {
+      // The shell's rail is app-wide, like the sidebar it replaces.
+      renderAs: 'chrome',
       initialRouteEntries: [path],
       apis: [
         [toastApiRef, { post }],

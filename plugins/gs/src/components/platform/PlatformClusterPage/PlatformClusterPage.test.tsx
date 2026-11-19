@@ -115,6 +115,20 @@ jest.mock('../../hooks/useWorkerCapacity', () => ({
 }));
 jest.mock('../../hooks', () => ({
   ...jest.requireActual('../../hooks'),
+  useNodePoolsForAWSCluster: () => ({
+    machinePools: [],
+    awsMachinePools: [],
+    karpenterMachinePools: [],
+    isLoading: false,
+    errors: [],
+  }),
+  useNodePoolsForAzureCluster: () => ({
+    machineDeployments: [],
+    azureMachineTemplates: [],
+    isLoading: false,
+    errors: [],
+  }),
+  useMachineTypeCatalog: () => ({ catalog: undefined, isLoading: false }),
   useCurrentUser: () => ({ isLoading: false, isGSUser: mockStaff }),
   useFriendlyItemsConfiguration: () => undefined,
   useInstallationsInfo: () => ({
@@ -328,7 +342,10 @@ describe('PlatformClusterPage', () => {
       '/platform/clusters',
     );
     expect(screen.getByRole('tab', { name: 'Overview' })).toBeInTheDocument();
-    expect(screen.getAllByRole('tab')).toHaveLength(1);
+    expect(screen.getAllByRole('tab').map(tab => tab.dataset.key)).toEqual([
+      'overview',
+      'node-pools',
+    ]);
 
     const facts = screen.getByRole('complementary', { name: 'Details' });
     // A workload cluster's environment leads to its management cluster.

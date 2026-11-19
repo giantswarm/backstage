@@ -14,6 +14,24 @@ export const MODEL_HOSTING_DOCS_URL =
   'https://github.com/giantswarm/backstage/blob/main/docs/agent-platform-configuration.md#agent-creation-models-connectors-and-workflows-muster';
 
 /**
+ * The line itself, with no reads of its own: for a caller that already knows
+ * Model hosting is not offered (`ModelHostingEntry`). A caller that swaps it
+ * in and out as the reads settle must not mount `ModelHostingHint` instead,
+ * whose own reads would then start over with each mount.
+ */
+export function ModelHostingHintText() {
+  return (
+    <Text as="p" variant="body-small" color="secondary">
+      Model hosting — running models on your own cluster nodes — appears here
+      once an environment runs model-manager, registered with its muster.{' '}
+      <ExternalLink href={MODEL_HOSTING_DOCS_URL} display="inline">
+        How to turn it on
+      </ExternalLink>
+    </Text>
+  );
+}
+
+/**
  * The counterpart of the Model hosting entry on Customize → Models: where
  * Model hosting is not offered (`useModelHosting`: no environment in scope
  * has a serving layer or cluster-manager), one quiet line says what turns it
@@ -27,13 +45,5 @@ export function ModelHostingHint() {
   if (!servingRoute || hosting.isLoading || hosting.available) {
     return null;
   }
-  return (
-    <Text as="p" variant="body-small" color="secondary">
-      Model hosting — running models on your own GPUs — appears here once an
-      environment runs model-manager, registered with its muster.{' '}
-      <ExternalLink href={MODEL_HOSTING_DOCS_URL} display="inline">
-        How to turn it on
-      </ExternalLink>
-    </Text>
-  );
+  return <ModelHostingHintText />;
 }

@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ShellScopeProvider } from '@giantswarm/backstage-plugin-ui-react';
+import { coreApis } from '@backstage/frontend-plugin-api';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
   mockPhoneLayout,
@@ -405,7 +406,9 @@ describe('SkillDetailPage', () => {
       agent('triage-bot', [`${REPO}#ticket-triage`]),
       agent('other-bot', []),
     ];
-    await renderPage('giantswarm/skills/ticket-triage/used-by');
+    const { apis } = await renderPage(
+      'giantswarm/skills/ticket-triage/used-by',
+    );
 
     expect(screen.getByRole('tab', { selected: true })).toHaveTextContent(
       'Used by (1)',
@@ -423,11 +426,6 @@ describe('SkillDetailPage', () => {
       'href',
       '/customize/agents/gazelle/kagent/triage-bot',
     );
-    await userEvent.click(within(list).getByText('gazelle'));
-    expect(mockNavigate).toHaveBeenCalledWith(
-      '/customize/agents/gazelle/kagent/triage-bot',
-      undefined,
-    );
     expect(screen.queryByText('other-bot')).not.toBeInTheDocument();
     // Nobody behind: a quiet line, and no Update agents action.
     expect(
@@ -440,6 +438,12 @@ describe('SkillDetailPage', () => {
     expect(
       screen.queryByRole('link', { name: /ticket-triage\/SKILL\.md/ }),
     ).not.toBeInTheDocument();
+
+    // Last: opening the agent leaves the page.
+    await userEvent.click(within(list).getByText('gazelle'));
+    expect(apis.get(coreApis.appHistory)!.getSnapshot().location.pathname).toBe(
+      '/customize/agents/gazelle/kagent/triage-bot',
+    );
   }, 30_000);
 
   it('offers Update agents when some agents pin an older commit, and hands the dialog exactly those', async () => {

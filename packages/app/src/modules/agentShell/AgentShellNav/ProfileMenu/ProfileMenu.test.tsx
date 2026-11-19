@@ -10,7 +10,7 @@ import { ProfileMenu } from './ProfileMenu';
 const item: AgentShellNavItem = {
   id: 'profile',
   title: 'Profile and settings',
-  icon: SettingsIcon,
+  icon: <SettingsIcon fontSize="small" />,
   menu: 'profile',
   position: 'bottom',
 };

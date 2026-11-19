@@ -20,6 +20,7 @@ import {
   mockPhoneLayout,
 } from '../../testUtils/mockPhoneLayout';
 import { RouteTabs, RouteTabSpec } from './RouteTabs';
+import { BUIRouterProvider } from '../../testUtils';
 
 const TABS: RouteTabSpec[] = [
   { id: 'overview', path: '', title: 'Overview' },
@@ -36,17 +37,19 @@ function CapturesNavigate() {
 function renderAt(url: string, tabs: RouteTabSpec[] = TABS) {
   const tree = (current: RouteTabSpec[]) => (
     <MemoryRouter initialEntries={[url]}>
-      <Routes>
-        <Route
-          path="/workflows/:name/*"
-          element={
-            <>
-              <CapturesNavigate />
-              <RouteTabs tabs={current} search="?installation=gazelle" />
-            </>
-          }
-        />
-      </Routes>
+      <BUIRouterProvider>
+        <Routes>
+          <Route
+            path="/workflows/:name/*"
+            element={
+              <>
+                <CapturesNavigate />
+                <RouteTabs tabs={current} search="?installation=gazelle" />
+              </>
+            }
+          />
+        </Routes>
+      </BUIRouterProvider>
     </MemoryRouter>
   );
   const result = render(tree(tabs));
@@ -98,17 +101,19 @@ describe('RouteTabs', () => {
     const onNavigate = jest.fn();
     render(
       <MemoryRouter initialEntries={['/workflows/deploy/run']}>
-        <Routes>
-          <Route
-            path="/workflows/:name/*"
-            element={
-              <>
-                <Location />
-                <RouteTabs tabs={TABS} onNavigate={onNavigate} />
-              </>
-            }
-          />
-        </Routes>
+        <BUIRouterProvider>
+          <Routes>
+            <Route
+              path="/workflows/:name/*"
+              element={
+                <>
+                  <Location />
+                  <RouteTabs tabs={TABS} onNavigate={onNavigate} />
+                </>
+              }
+            />
+          </Routes>
+        </BUIRouterProvider>
       </MemoryRouter>,
     );
 
@@ -149,17 +154,19 @@ describe('RouteTabs', () => {
   it('builds the hrefs from an explicit base path when the page is part of the splat', () => {
     render(
       <MemoryRouter initialEntries={['/skills/acme/skills/nested/dir/run']}>
-        <Routes>
-          <Route
-            path="/skills/*"
-            element={
-              <RouteTabs
-                tabs={TABS}
-                basePath="/skills/acme/skills/nested/dir"
-              />
-            }
-          />
-        </Routes>
+        <BUIRouterProvider>
+          <Routes>
+            <Route
+              path="/skills/*"
+              element={
+                <RouteTabs
+                  tabs={TABS}
+                  basePath="/skills/acme/skills/nested/dir"
+                />
+              }
+            />
+          </Routes>
+        </BUIRouterProvider>
       </MemoryRouter>,
     );
 

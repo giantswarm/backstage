@@ -50,7 +50,7 @@ model-edit	model-overview	page	Edit model	/customize/models/:installation/:names
 model-edit-helm	model-edit	state	Managed by Helm	/customize/models/:installation/:namespace/:name/edit	open the edit address of a model managed by Helm	what Edit shows instead of the form
 model-usage	model	tab	Usage	/customize/models/:installation/:namespace/:name/usage
 model-used-by	model	tab	Used by	/customize/models/:installation/:namespace/:name/used-by
-new-model	customize-models	page	Connect a model	/customize/models/new	open /customize/models > click "Connect a model"	never save
+new-model	customize-models	page	Add a model	/customize/models/new	open /customize/models > click "Add a model"	never save
 hosting	customize-models	tabs	Model hosting	/customize/models/hosting	open /customize/models > click "Model hosting"
 hosting-running	hosting	tab	Running models	/customize/models/hosting
 hosting-serve	hosting-running	page	Serve model	/customize/models/hosting/serve		never submit

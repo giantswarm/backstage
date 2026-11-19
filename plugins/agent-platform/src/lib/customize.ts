@@ -13,6 +13,7 @@ import {
 import type { ModelRow } from '../components/ModelsTable';
 import { READINESS_PRESENTATION } from '../components/AgentsTable/readinessStatus';
 import { matches } from './search';
+import { providerName } from './modelConfigs';
 import { SERVED_MODEL_READINESS } from './serving';
 import {
   canonicalSkillId,
@@ -119,9 +120,29 @@ export function modelStatus(row: ModelRow): CustomizeStatus {
   return { label, tone: toneOfIntent(intent) };
 }
 
-/** "Used by 2 agents", or "Not used yet". */
+/** How many agents use something: "1 agent", "3 agents"; none for 0. */
+export function agentCount(count: number): string | undefined {
+  return count === 0 ? undefined : countNoun(count, 'agent');
+}
+
+/**
+ * A count of agents under a "Used by" header: "3 agents", or a dash for none,
+ * with a title that says so in words.
+ */
+export function usedByCell(
+  count: number,
+  noun: string,
+): { label: string; title?: string } {
+  const label = agentCount(count);
+  return label === undefined
+    ? { label: '–', title: `No agent uses this ${noun}` }
+    : { label };
+}
+
+/** "Used by 2 agents", or "Not used yet": where no "Used by" header says it. */
 export function usedByLabel(count: number): string {
-  return count === 0 ? 'Not used yet' : `Used by ${countNoun(count, 'agent')}`;
+  const label = agentCount(count);
+  return label === undefined ? 'Not used yet' : `Used by ${label}`;
 }
 
 /** How many of the agents run on each model, by model row id. */
@@ -200,11 +221,25 @@ export function sortAgents(
   });
 }
 
-export function searchModels(rows: ModelRow[], search: string): ModelRow[] {
+/**
+ * The models a search finds: by name, model id and provider, as the spec
+ * names it and as the list does, and by owner, as the list names it.
+ */
+export function searchModels<T extends ModelRow & { owner?: string }>(
+  rows: T[],
+  search: string,
+): T[] {
   const needle = search.trim().toLowerCase();
   return needle
     ? rows.filter(row =>
-        matches(needle, [row.displayName, row.name, row.provider, row.model]),
+        matches(needle, [
+          row.displayName,
+          row.name,
+          row.provider,
+          providerName(row.provider),
+          row.model,
+          row.owner,
+        ]),
       )
     : rows;
 }

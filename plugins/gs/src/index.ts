@@ -153,6 +153,7 @@ export { ResourcesCard as GSHomePageResources } from './components/home/Resource
 export { ProviderSettings as GSProviderSettings } from './components/ProviderSettings';
 export { useDisabledInstallations } from './components/hooks/useDisabledInstallations';
 export {
+  PLATFORM_CLUSTER_PAGE_TABS,
   PlatformClusterRoute,
   PlatformClustersPanel,
   PlatformClustersProvider,

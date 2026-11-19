@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router-dom';
-import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { toastApiRef } from '@backstage/frontend-plugin-api';
+import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
@@ -158,7 +159,11 @@ jest.mock('../ServingProvider', () => ({
       : undefined,
 }));
 
+/** The toasts the page posted: test apps collect them without showing them. */
+let toasts = mockApis.toast();
+
 function renderPage(edit?: ModelEdit) {
+  toasts = mockApis.toast();
   return renderInTestApp(
     <PageHeaderActionsProvider>
       <Routes>
@@ -174,6 +179,7 @@ function renderPage(edit?: ModelEdit) {
       </Routes>
     </PageHeaderActionsProvider>,
     {
+      apis: [[toastApiRef, toasts]],
       mountedRoutes: {
         '/customize/models': modelsRouteRef,
         '/organizations': organizationsRouteRef,
@@ -206,11 +212,11 @@ beforeEach(() => {
 });
 
 describe('NewModelPage', () => {
-  it('says "Connect a model" in its title and on its button', async () => {
+  it('says "Add a model" in its title and on its button', async () => {
     await renderPage();
 
     expect(
-      screen.getByRole('heading', { level: 1, name: 'Connect a model' }),
+      screen.getByRole('heading', { level: 1, name: 'Add a model' }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Continue to credential' }),
@@ -315,7 +321,7 @@ describe('NewModelPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('holds Connect model, saying why, until the Owner choices are known', async () => {
+  it('holds Add model, saying why, until the Owner choices are known', async () => {
     // Only the platform's so far: an Organization may still join the choices.
     mockNamespacesLoading = true;
     await renderPage();
@@ -346,7 +352,7 @@ describe('NewModelPage', () => {
     ).not.toHaveAccessibleDescription();
   });
 
-  it('holds Connect model and offers the sign-in while agent-manager there wants it', async () => {
+  it('holds Add model and offers the sign-in while agent-manager there wants it', async () => {
     const message =
       "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.";
     mockSignIn = { message, signInRequired: true };
@@ -475,7 +481,7 @@ describe('NewModelPage', () => {
   it('introduces itself plainly, pointing at model hosting only where it exists', async () => {
     const { unmount } = await renderPage();
     expect(
-      screen.getByText(/^Agents run on the models you connect here\./),
+      screen.getByText(/^Agents run on the models you add here:/),
     ).toBeInTheDocument();
     expect(screen.queryByText(/ModelConfig/)).not.toBeInTheDocument();
     expect(
@@ -640,15 +646,17 @@ describe("NewModelPage · editing an organization's model", () => {
     );
 
     expect(await screen.findByText('The credential form')).toBeInTheDocument();
-    expect(
-      await screen.findByText('Pull request #7 opened'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('link', { name: 'Review pull request' }),
-    ).toHaveAttribute(
-      'href',
-      'https://github.com/giantswarm/golem-configs/pull/7',
-    );
+    expect(toasts.getToasts()).toEqual([
+      expect.objectContaining({
+        title: 'Pull request #7 opened',
+        links: [
+          {
+            label: 'Review pull request',
+            href: 'https://github.com/giantswarm/golem-configs/pull/7',
+          },
+        ],
+      }),
+    ]);
   });
 
   it("keeps the provider: its key is the provider's, and a new provider and its key cannot be saved in one step", async () => {

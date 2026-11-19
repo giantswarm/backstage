@@ -75,6 +75,7 @@ const MANY: FixtureDataSetSettings = {
   cacheClaims: { count: 30 },
   hostedModels: { count: 100 },
   clusters: { count: 100 },
+  busiestCluster: { pools: 30, nodes: 40 },
 };
 
 /** Every name as long as a Kubernetes name may be. */

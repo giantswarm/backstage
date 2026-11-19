@@ -22,7 +22,7 @@ import { ModelsRouter } from './ModelsRouter';
 
 // The page as the Customize screen mounts it: ModelsRouter alone, with no
 // query client or directory above it, and the real organization directory,
-// `useModelNamespaces` and Connect a model below. The directory's reads go to
+// `useModelNamespaces` and Add a model below. The directory's reads go to
 // a fake muster (agent-manager's `get_info` and `list_organizations`), the
 // access reviews to a fake Kubernetes proxy. The plugin's query client is
 // the one thing swapped, for a fresh one per test without the persister: a
@@ -39,7 +39,7 @@ jest.mock('../QueryClientProvider', () => {
   };
 });
 
-// One environment, gazelle, which Connect a model picks by itself.
+// One environment, gazelle, which Add a model picks by itself.
 jest.mock('@giantswarm/backstage-plugin-gs', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-gs'),
   useInstallations: () => ({
@@ -145,7 +145,7 @@ beforeEach(() => {
   });
 });
 
-describe('Connect a model, under the Models tab: the owner', () => {
+describe('Add a model, under the Models tab: the owner', () => {
   it('offers an Organization the person may create ModelConfigs in, and saves its model through agent-manager', async () => {
     const user = userEvent.setup();
     // An admin of the Organization: the cluster lets them create its
@@ -193,7 +193,7 @@ describe('Connect a model, under the Models tab: the owner', () => {
       namespaceAccess: { [PAYMENTS.namespace]: { modelconfigs: false } },
     });
 
-    // Connect model is held, saying why, until the owners are known.
+    // Add model is held, saying why, until the owners are known.
     const connect = await screen.findByRole('button', {
       name: 'Continue to credential',
     });

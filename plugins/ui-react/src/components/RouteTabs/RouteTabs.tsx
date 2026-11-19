@@ -1,7 +1,23 @@
-import { RefObject, useCallback, useEffect, useRef, useState } from 'react';
-import { useHref, useLocation, useNavigate } from 'react-router-dom';
+import {
+  createContext,
+  MutableRefObject,
+  ReactNode,
+  RefObject,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { useLocation } from 'react-router-dom';
 import { Tab, TabList, Tabs } from '@backstage/ui';
-import { RouterProvider } from 'react-aria-components';
+import {
+  RoutingProvider,
+  useRoutingIntegration,
+  type RoutingIntegration,
+} from '@backstage/frontend-plugin-api/routing';
 import { makeStyles } from '@material-ui/core';
 import { useSplatBasePath } from '../../hooks/useSplatBasePath';
 import ChevronLeftIcon from '@material-ui/icons/ChevronLeft';
@@ -429,6 +445,68 @@ function renderTabLabel(
 }
 
 /**
+ * The strip's routing: the integration around it, read in the same render as
+ * the tab that reads it, and the page's guard as last committed.
+ */
+const GuardedStripContext = createContext<
+  | {
+      outer: RoutingIntegration;
+      guard: MutableRefObject<RouteTabsProps['onNavigate']>;
+    }
+  | undefined
+>(undefined);
+
+/**
+ * The routing integration of the strip's tabs: the one around the strip, its
+ * navigations held for the page's guard. One identity for good, as
+ * `RoutingProvider` asks.
+ */
+function useGuardedRouting(): RoutingIntegration {
+  const strip = useContext(GuardedStripContext);
+  if (!strip) {
+    throw new Error('useGuardedRouting is used outside a guarded strip');
+  }
+  const { outer, guard } = strip;
+  return {
+    createHref: to => outer.createHref(to),
+    pathname: outer.pathname,
+    navigate: (to, options) => {
+      const go = () => outer.navigate(to, options);
+      if (guard.current) {
+        guard.current(to, go);
+      } else {
+        go();
+      }
+    },
+  };
+}
+
+/** Holds the strip's tab presses for `onNavigate`. */
+function GuardedStrip({
+  onNavigate,
+  children,
+}: {
+  onNavigate: RouteTabsProps['onNavigate'];
+  children: ReactNode;
+}) {
+  const outer = useRoutingIntegration();
+  const guard = useRef(onNavigate);
+  // After commit: a press is held against what is on screen, never against a
+  // render React threw away.
+  useLayoutEffect(() => {
+    guard.current = onNavigate;
+  });
+  const value = useMemo(() => ({ outer, guard }), [outer]);
+  return (
+    <GuardedStripContext.Provider value={value}>
+      <RoutingProvider useRoutingIntegration={useGuardedRouting}>
+        {children}
+      </RoutingProvider>
+    </GuardedStripContext.Provider>
+  );
+}
+
+/**
  * A page's tab strip whose tabs are routes: navigation links whose active state
  * follows the URL, the content drawn by the page's own `<Routes>`. Mounted
  * inside the page's splat route (`<Route path=":name/*">`), so the links are
@@ -475,19 +553,6 @@ export function RouteTabs({
   const selected = selectedRouteTab(links, pathname);
   const { overflow, scrollByPage } = useStripScroll(stripRef, selected);
   const finePointer = useMediaQueryMatch(FINE_POINTER_QUERY);
-  const routerNavigate = useNavigate();
-  // A tab carries no router options, so this is bui's own navigation for it.
-  const guardedNavigate = useCallback(
-    (href: string) => {
-      if (onNavigate) {
-        onNavigate(href, () => routerNavigate(href));
-      } else {
-        routerNavigate(href);
-      }
-    },
-    [onNavigate, routerNavigate],
-  );
-
   const strip = (
     <Tabs>
       <TabList>
@@ -532,11 +597,10 @@ export function RouteTabs({
         data-overflow-end={overflow.end || undefined}
       >
         {onNavigate ? (
-          // The closest router provider wins: this strip's presses go through
-          // the page's guard, the rest of the app keeps bui's.
-          <RouterProvider navigate={guardedNavigate} useHref={useHref}>
-            {strip}
-          </RouterProvider>
+          // bui's tabs navigate through the closest routing integration: this
+          // strip's presses go through the page's guard, the rest of the app
+          // keeps the app's.
+          <GuardedStrip onNavigate={onNavigate}>{strip}</GuardedStrip>
         ) : (
           strip
         )}

@@ -141,9 +141,10 @@ Cluster API's among them; model hosting's is left out, so that component reads
 as absent in the installation inventory), discovery answers
 the versions the classes support (the newest preferred), a list or a read of
 one object answers the objects the plugins' fixtures hold (see "Objects in the
-Kubernetes API"), every other list is empty and any other object not found,
+Kubernetes API"), a list narrowed by its `labelSelector` (`key=value`,
+`key!=value` and bare keys), every other list is empty and any other object not found,
 and access reviews are allowed, except that only an organization's admins may
-create its models (`ModelConfig`), so Connect a model offers an organization
+create its models (`ModelConfig`), so Add a model offers an organization
 as owner only to them. Their cluster access is healthy from the start. Any
 other request, a write among them, fails with a 501 and a console error.
 Their Mimir is the fixture one (`mimirEnabled: true`, see "Mimir").
@@ -244,7 +245,7 @@ objects, each with its carrier `RemoteMCPServer` (the toolset), beside each
 organization namespace's models (`ModelConfig`) and platform `Harness`.
 `get_info` reports as `managed` the platform's namespace (`kagent`) and the
 namespaces of the organizations whose role lets the person create agents
-there, except one being erased: Connect a model reads its owners from them
+there, except one being erased: Add a model reads its owners from them
 (narrowed by the access reviews above), and the agent lists read agents from
 them. The New agent form takes its owners from `list_organizations` instead.
 Each namespace's default model carries the
@@ -290,7 +291,9 @@ Each organization has two models: `default`, which its agents use, and
 `gemini-vertex` on Vertex AI, which none uses, so its deletion completes.
 Each installation's `kagent` namespace has `platform-default`, its default,
 which a Helm release renders: agent-manager refuses to change it, delete it or
-move the default off it (`gitops_owned`). `fennel`'s agent-manager predates
+move the default off it (`gitops_owned`). On `tarragon`, whose namespaces are no
+organization, the first namespace also has `claude-direct`, which no agent
+uses and whose key Secret is missing, so kagent reports it Incomplete. `fennel`'s agent-manager predates
 model credential operations: its `set_organization_model` schema lacks the
 model fields, so the portal refuses every model write there.
 
@@ -498,7 +501,13 @@ managers (see "Mimir").
 
 The fixture `MimirApi` (`plugins/gs/src/apis/mimir/fixtures/`) answers each
 fixture installation's agent gateway metrics, which Usage (Overview, Cost and
-the rates of Your sessions) reads. The series are derived from the data set
+the rates of Your sessions) reads, and the series of its clusters' nodes
+(`clusterNodeSeries` in gs-common): kube-state-metrics' and the kubelet's per
+node, with the `nodepool` label on `kube_node_labels`, and Karpenter's per
+node and per pool, which the cluster pages' Node pools tab and worker figures
+read. Those are gauges, one point each from the time the node or pool started.
+Each installation's series are built once per data set, and a selector with a
+metric name looks only at that metric's series. The series are derived from the data set
 (`gatewayUsage.ts` in gs-common): the ready agents of ready organizations,
 the ones with sessions, call the organization's default model
 (`FIXTURE_AGENT_MODEL`, the default ModelConfig's model) at its list price;
@@ -680,10 +689,20 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
   named after it, workload clusters of its ready organizations, ready,
   creating (no node pools yet) and deleting, on three releases (the oldest's
   Kubernetes 1.30 past its end of life in `app-config.fixtures.yaml`), and the
-  GPU clusters among them; the management clusters and every other workload
-  cluster are managed through GitOps. gs maps them onto Cluster, AWSCluster,
-  AWSClusterRoleIdentity, KubeadmControlPlane, App, MachinePool and
-  AWSMachinePool objects, plus a Flux Kustomization (applied, with its
+  GPU clusters among them, and one Azure (CAPZ) workload cluster, drawn from
+  its own seed; the management clusters and every other workload cluster are
+  managed through GitOps. Each pool has its nodes (instance type, zone, ready,
+  the CPU and memory its pods request, running pods); about one pool in four
+  of three nodes or more has a node that is not ready. Every other AWS
+  workload cluster has a Karpenter pool besides its Auto Scaling group pools,
+  spot and on-demand, about half of them with a zone requirement; the Azure
+  cluster has two pools. Node names are unique in a cluster, cluster names in
+  an installation. In `many`, each installation's first ready workload
+  cluster has 30 pools of 40 nodes (`busiestCluster`). gs maps them onto
+  Cluster, AWSCluster, AWSClusterRoleIdentity (or AzureCluster),
+  KubeadmControlPlane, App, MachinePool with AWSMachinePool or
+  KarpenterMachinePool (MachineDeployment with AzureMachineTemplate on Azure)
+  objects, plus a Flux Kustomization (applied, with its
   revision) and GitRepository per GitOps repository and a Release per release
   the clusters run (`gsKubernetesObjectsOf` in
   `@giantswarm/backstage-plugin-gs/fixtures`), which the Clusters pages and the
