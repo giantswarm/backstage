@@ -26,6 +26,16 @@ gs:
   features:
     platformSection:
       enabled: true
+  # A cluster page's tool links, at made-up addresses: the installations have
+  # no base domain here, so the default dashboard link has nothing to go to.
+  clusterDetails:
+    resources:
+      - label: Dashboards
+        icon: GrafanaIcon
+        url: 'https://grafana.example.com/d/cluster-overview?var-cluster=${{CLUSTER_NAME}}'
+      - label: Alerts
+        icon: GrafanaIcon
+        url: 'https://grafana.example.com/alerting/list?search=cluster%3D${{CLUSTER_NAME}}'
   # Kubernetes end-of-life dates for the fixture clusters' versions: 1.30,
   # the oldest release's, is past its end of life.
   kubernetesVersions:
@@ -56,6 +66,17 @@ gs:
       mimirEnabled: true
 
 muster:
+  fixtures: true
+
+# Hive's plans, magazine and knowledge documents, once Hive is on:
+# `yarn fixtures start --enable page:plans --enable api:plans`.
+plans:
+  fixtures: true
+
+# Hive's Roadmap tab, once Hive and the tab are on: `yarn fixtures start
+# --enable page:plans --enable api:plans --enable page:roadmap
+# --enable api:roadmap`.
+roadmap:
   fixtures: true
 
 agentPlatform:

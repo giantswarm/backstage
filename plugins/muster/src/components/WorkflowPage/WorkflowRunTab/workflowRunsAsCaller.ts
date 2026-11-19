@@ -1,3 +1,4 @@
+import { connectorAuthName } from '../../../lib/connectorKey';
 import { MCPServer, MusterWorkflow } from '../../../lib/k8s';
 import { matchServers, ServerPrefixInfo } from '../../../lib/toolGrouping';
 import { WORKFLOW_TOOL_PREFIX } from '../../../lib/workflowReferences';
@@ -37,7 +38,7 @@ export function workflowRunsAsCaller(
         matches.every(({ serverName }) => {
           const server = servers.find(
             s =>
-              s.getName() === serverName &&
+              connectorAuthName(s) === serverName &&
               (!installation || s.cluster === installation),
           );
           return server ? runsAsCaller(server) : false;

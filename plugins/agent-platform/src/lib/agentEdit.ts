@@ -14,6 +14,7 @@ import {
   qualifiedDefaultWorkspace,
 } from './defaultWorkspace';
 import { canonicalSkillId, type DiscoveredSkill } from './skills';
+import { ORGANIZATION_CONNECTORS_LABEL } from './organizationConnectors';
 import {
   pluginEntryKey,
   pluginEntryOf,
@@ -51,6 +52,8 @@ export type AgentEditState = {
   egressText: string;
   /** The EgressPolicies of its namespace it picks, in order. */
   egressPolicyRefs: string[];
+  /** The organization's own connectors it binds, in order. */
+  connectors: string[];
   /** The default workspace's name; `''` for none. */
   defaultWorkspace: string;
   /**
@@ -73,6 +76,7 @@ export const AGENT_EDIT_FIELDS = [
   'plugins',
   'egress',
   'egressPolicyRefs',
+  'connectors',
   'defaultWorkspace',
 ] as const;
 
@@ -92,6 +96,7 @@ export function editStateOf(agent: AgentManagerAgent): AgentEditState {
     plugins: [...(agent.plugins ?? [])],
     egressText: egressTextOf(agent.egress),
     egressPolicyRefs: [...(agent.egressPolicyRefs ?? [])],
+    connectors: [...(agent.connectors ?? [])],
     defaultWorkspace: defaultWorkspaceName(agent.defaultWorkspace),
   };
 }
@@ -201,6 +206,10 @@ export function changedFields(
   ) {
     changed.push('egressPolicyRefs');
   }
+  // The set matters, not the order picked.
+  if (!sameList([...edit.connectors].sort(), [...baseline.connectors].sort())) {
+    changed.push('connectors');
+  }
   if (edit.defaultWorkspace !== baseline.defaultWorkspace) {
     changed.push('defaultWorkspace');
   }
@@ -212,8 +221,9 @@ export function changedFields(
  *
  * A string field the person emptied is sent as `""`, which agent-manager reads
  * as "back to the chart's default" (an omitted field would mean "unchanged").
- * `tags`, `toolset`, `skills`, `egress` and `egressPolicyRefs` replace their
- * whole list (an empty `tags`, `egress` or `egressPolicyRefs` clears it); an
+ * `tags`, `toolset`, `skills`, `egress`, `egressPolicyRefs` and `connectors`
+ * replace their whole list (an empty one clears it, and an unchanged
+ * `connectors` is left out, which changes nothing); an
  * emptied default workspace is sent as `""`, which removes it; the empty
  * selection is sent
  * as `preset:none`, never as an empty list (agent-manager refuses that).
@@ -252,6 +262,9 @@ export function updateOf(
       case 'egressPolicyRefs':
         update.egressPolicyRefs = edit.egressPolicyRefs;
         break;
+      case 'connectors':
+        update.connectors = edit.connectors;
+        break;
       case 'defaultWorkspace':
         update.defaultWorkspace = qualifiedDefaultWorkspace(
           agent.namespace,
@@ -282,6 +295,7 @@ export const EDIT_FIELD_LABELS: Record<AgentEditField, string> = {
   plugins: 'Plugins',
   egress: 'Extra egress origins',
   egressPolicyRefs: 'EgressPolicies',
+  connectors: ORGANIZATION_CONNECTORS_LABEL,
   defaultWorkspace: 'Default workspace',
 };
 
@@ -368,6 +382,7 @@ export function formStateOfAgent(
     systemMessage: baseline.systemMessage,
     egressText: baseline.egressText,
     egressPolicyRefs: baseline.egressPolicyRefs,
+    connectors: baseline.connectors,
     defaultWorkspace: baseline.defaultWorkspace,
     selectedSkills,
     keptSkills,
@@ -377,8 +392,12 @@ export function formStateOfAgent(
     // needs it, and not once none does.
     toolset: withoutSignInTool(baseline.toolset),
     // An agent declaring no tools is *Nothing outside the chat* on the Tools
-    // step; one declaring no toolset at all (implicit full access) is not.
-    toolsChatOnly: agent.toolset !== undefined && baseline.toolset.length === 0,
+    // step; one declaring no toolset at all (implicit full access) is not,
+    // nor one that binds connectors of its organization.
+    toolsChatOnly:
+      agent.toolset !== undefined &&
+      baseline.toolset.length === 0 &&
+      baseline.connectors.length === 0,
   };
 }
 
@@ -485,6 +504,7 @@ export function editStateOfForm(
     plugins: pluginEntriesOfForm(agent, form),
     egressText: form.egressText,
     egressPolicyRefs: form.egressPolicyRefs,
+    connectors: form.connectors,
     defaultWorkspace: form.defaultWorkspace,
     chatOnly: Boolean(form.toolsChatOnly),
   };

@@ -31,10 +31,8 @@ import {
   toolsetShape,
   unsignedServerSelectors,
 } from '../../lib/toolset';
-import {
-  musterServerToolExternalRouteRef,
-  musterServersExternalRouteRef,
-} from '../../routes';
+import { musterServersExternalRouteRef } from '../../routes';
+import { useConnectorPageLinks } from '../../hooks/useConnectorPageLinks';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
 
 const useStyles = makeStyles(theme => ({
@@ -234,7 +232,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
   // the servers list, searched for its name. No links until the servers are
   // read, so none change under the pointer.
   const serversRoute = useRouteRef(musterServersExternalRouteRef);
-  const toolRoute = useRouteRef(musterServerToolExternalRouteRef);
+  const connectorLinks = useConnectorPageLinks();
   const toolHref = useMemo(() => {
     if (isLoadingServers) {
       return undefined;
@@ -242,8 +240,11 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
     const pageOfTool = serverPageResolver(serverResources);
     return (name: string): string | undefined => {
       const server = pageOfTool(name);
-      if (server && toolRoute && installation) {
-        return toolRoute({ installation, server, tool: name });
+      const href = server
+        ? connectorLinks.tool(server, name, installation)
+        : undefined;
+      if (href) {
+        return href;
       }
       return serversRoute
         ? withInstallationQuery(serversRoute(), installation, { q: name })
@@ -253,7 +254,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
     isLoadingServers,
     serverResources,
     installation,
-    toolRoute,
+    connectorLinks,
     serversRoute,
   ]);
 

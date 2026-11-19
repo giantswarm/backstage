@@ -1,5 +1,14 @@
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useState,
+} from 'react';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useLocation } from 'react-router-dom';
+import { getClusterKey } from '../../hooks/useWorkerCapacity';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
   type MockedLayout,
@@ -11,7 +20,11 @@ import type {
   RelatedReadFailures,
   UnlistedInstallation,
 } from '../../clusters/ClustersDataProvider';
-import type { PlatformClustersStatus } from '../PlatformClustersProvider';
+import type {
+  PlatformClustersStatus,
+  PlatformClustersView,
+} from '../PlatformClustersProvider';
+import { type PlatformLinks, PlatformLinksProvider } from '../PlatformLinks';
 import { PlatformClustersPanel } from './PlatformClustersPanel';
 import {
   DEFAULT_PLATFORM_CLUSTER_COLUMNS,
@@ -56,6 +69,13 @@ jest.mock('../../clusters/ClustersDataProvider', () => ({
     retry: mockRetry,
   }),
 }));
+const mockStart = jest.fn();
+let mockInitialView: PlatformClustersView;
+/** The provider's view, held in React state as the provider holds it. */
+const mockViewContext = createContext<{
+  view: PlatformClustersView;
+  updateView: (change: Partial<PlatformClustersView>) => void;
+}>({ view: {} as PlatformClustersView, updateView: () => {} });
 jest.mock('../PlatformClustersProvider', () => ({
   usePlatformClustersState: () => ({
     status: mockStatus,
@@ -63,8 +83,46 @@ jest.mock('../PlatformClustersProvider', () => ({
     retryInstallations: mockRetryInstallations,
     visibleColumns: mockVisible,
     setVisibleColumns: mockSetVisible,
+    start: mockStart,
+    ...useContext(mockViewContext),
   }),
 }));
+
+function ViewState({ children }: { children: ReactNode }) {
+  const [view, setView] = useState(mockInitialView);
+  const updateView = useCallback(
+    (change: Partial<PlatformClustersView>) =>
+      setView(current => ({ ...current, ...change })),
+    [],
+  );
+  return (
+    <mockViewContext.Provider value={{ view, updateView }}>
+      {children}
+    </mockViewContext.Provider>
+  );
+}
+
+const LINKS: PlatformLinks = {
+  platform: '/platform',
+  clusters: '/platform/clusters',
+  cluster: ({ installationName, namespace, name }) =>
+    `/platform/clusters/${installationName}/${namespace}/${name}`,
+};
+
+/** The panel under the view state, with the section's links or without. */
+function panel({ links = true }: { links?: boolean } = {}) {
+  return (
+    <ViewState>
+      {links ? (
+        <PlatformLinksProvider links={LINKS}>
+          <PlatformClustersPanel />
+        </PlatformLinksProvider>
+      ) : (
+        <PlatformClustersPanel />
+      )}
+    </ViewState>
+  );
+}
 jest.mock('../../../apis/clusterAccessStatus', () => ({
   useClusterAccessStatus: () => mockAccess,
   useSignInAgain: () => mockSignInAgain,
@@ -112,13 +170,18 @@ describe('PlatformClustersPanel', () => {
     mockStatus = 'ready';
     mockVisible = [...DEFAULT_PLATFORM_CLUSTER_COLUMNS];
     mockAccess = [];
+    mockInitialView = {
+      search: '',
+      selection: {},
+      sort: { column: 'name', direction: 'ascending' },
+    };
     jest.clearAllMocks();
   });
 
   afterEach(() => layout.restore());
 
   it('lists every cluster by name with the default columns', async () => {
-    await renderInTestApp(<PlatformClustersPanel />);
+    await renderInTestApp(panel());
     expect(headers()).toEqual([
       'Name',
       'Status',
@@ -139,14 +202,76 @@ describe('PlatformClustersPanel', () => {
     ).toBeInTheDocument();
   });
 
-  it('does not make rows links yet', async () => {
-    await renderInTestApp(<PlatformClustersPanel />);
+  it('links each name to its cluster’s page', async () => {
+    await renderInTestApp(panel());
+    const table = screen.getByRole('grid');
+    expect(
+      within(table).getByRole('link', { name: 'alder-birch' }),
+    ).toHaveAttribute('href', '/platform/clusters/fennel/org-fern/alder-birch');
+    expect(within(table).getByRole('link', { name: 'meadow' })).toHaveAttribute(
+      'href',
+      '/platform/clusters/meadow/org-giantswarm/meadow',
+    );
+  });
+
+  it('is one tab stop per row: the name is the row’s only link', async () => {
+    await renderInTestApp(panel());
+    const table = screen.getByRole('grid');
+    expect(within(table).getAllByRole('link')).toHaveLength(clusters.length);
+    for (const row of within(table).getAllByRole('row').slice(1)) {
+      expect(row).not.toHaveAttribute('href');
+      expect(row).not.toHaveAttribute('data-href');
+    }
+  });
+
+  it('opens a row’s cluster on a click beside its name, for the mouse', async () => {
+    function Path() {
+      return <output aria-label="path">{useLocation().pathname}</output>;
+    }
+    await renderInTestApp(
+      <>
+        {panel()}
+        <Path />
+      </>,
+    );
+    await userEvent.click(
+      within(screen.getByRole('grid')).getByText('Creating'),
+    );
+    expect(screen.getByRole('status', { name: 'path' })).toHaveTextContent(
+      '/platform/clusters/meadow/org-fern/cedar-elm',
+    );
+  });
+
+  it('starts reading the clusters as it mounts', async () => {
+    await renderInTestApp(panel());
+    expect(mockStart).toHaveBeenCalled();
+  });
+
+  it('shows the list as it was left: its search, and paged to the cluster opened', async () => {
+    mockData = Array.from({ length: 45 }, (_, index) =>
+      cluster(`alder-${String(index).padStart(2, '0')}`),
+    );
+    const opened = mockData[33];
+    mockInitialView = {
+      ...mockInitialView,
+      search: 'alder',
+      opened: getClusterKey(opened),
+    };
+    await renderInTestApp(panel());
+    expect(
+      screen.getByRole('searchbox', { name: 'Search clusters' }),
+    ).toHaveValue('alder');
+    expect(screen.getByRole('link', { name: opened.name })).toBeInTheDocument();
+  });
+
+  it('draws no link without the Platform section’s links', async () => {
+    await renderInTestApp(panel({ links: false }));
     const table = screen.getByRole('grid');
     expect(within(table).queryAllByRole('link')).toHaveLength(0);
   });
 
   it('marks a Kubernetes version past its end of life from the version a control plane reports', async () => {
-    await renderInTestApp(<PlatformClustersPanel />);
+    await renderInTestApp(panel());
     const row = screen.getByRole('row', { name: /cedar-elm/ });
     expect(within(row).getByText('Creating')).toBeInTheDocument();
     expect(within(row).getByText('30.1.2')).toBeInTheDocument();
@@ -157,7 +282,7 @@ describe('PlatformClustersPanel', () => {
   });
 
   it('sorts by a header and reverses on a second press', async () => {
-    await renderInTestApp(<PlatformClustersPanel />);
+    await renderInTestApp(panel());
     await userEvent.click(
       screen.getByRole('columnheader', { name: /Environment/ }),
     );
@@ -169,7 +294,7 @@ describe('PlatformClustersPanel', () => {
   });
 
   it('offers the filters and the search once the list is long enough', async () => {
-    await renderInTestApp(<PlatformClustersPanel />);
+    await renderInTestApp(panel());
     expect(
       screen.getByRole('searchbox', { name: 'Search clusters' }),
     ).toBeInTheDocument();
@@ -181,7 +306,7 @@ describe('PlatformClustersPanel', () => {
   });
 
   it('searches by the start of words, as the shell’s other lists do', async () => {
-    await renderInTestApp(<PlatformClustersPanel />);
+    await renderInTestApp(panel());
     const search = screen.getByRole('searchbox', { name: 'Search clusters' });
     await userEvent.type(search, 'bir');
     expect(names()).toEqual([expect.stringContaining('alder-birch')]);
@@ -192,7 +317,7 @@ describe('PlatformClustersPanel', () => {
 
   it('shows the columns a person chose and saves a change from the picker', async () => {
     mockVisible = ['status', 'region'];
-    await renderInTestApp(<PlatformClustersPanel />);
+    await renderInTestApp(panel());
     expect(headers()).toEqual(['Name', 'Status', 'Region']);
 
     await userEvent.click(screen.getByRole('button', { name: 'Columns' }));
@@ -214,7 +339,7 @@ describe('PlatformClustersPanel', () => {
 
   it('closes the picker on Escape and keeps the columns chosen', async () => {
     mockVisible = ['status', 'region'];
-    await renderInTestApp(<PlatformClustersPanel />);
+    await renderInTestApp(panel());
     await userEvent.click(screen.getByRole('button', { name: 'Columns' }));
     await screen.findByRole('group', { name: 'Columns' });
     await userEvent.keyboard('{Escape}');
@@ -239,7 +364,7 @@ describe('PlatformClustersPanel', () => {
         providerClusters: 'API unreachable (timeout)',
       },
     };
-    await renderInTestApp(<PlatformClustersPanel />);
+    await renderInTestApp(panel());
     const row = screen.getByRole('row', { name: /alder-birch/ });
     expect(
       within(row).getByLabelText(
@@ -258,7 +383,7 @@ describe('PlatformClustersPanel', () => {
   it('reads while the list has no answer', async () => {
     mockData = [];
     mockStatus = 'loading';
-    await renderInTestApp(<PlatformClustersPanel />);
+    await renderInTestApp(panel());
     expect(screen.queryByRole('grid')).not.toBeInTheDocument();
     expect(screen.queryByText('No clusters yet')).not.toBeInTheDocument();
   });
@@ -266,7 +391,7 @@ describe('PlatformClustersPanel', () => {
   it('says when there are no clusters', async () => {
     mockData = [];
     mockStatus = 'empty';
-    await renderInTestApp(<PlatformClustersPanel />);
+    await renderInTestApp(panel());
     expect(screen.getByText('No clusters yet')).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Columns' }),
@@ -279,7 +404,7 @@ describe('PlatformClustersPanel', () => {
     mockUnlisted = [
       { installation: 'meadow', reason: 'the sign-in was declined' },
     ];
-    await renderInTestApp(<PlatformClustersPanel />);
+    await renderInTestApp(panel());
     expect(screen.queryByText('No clusters yet')).not.toBeInTheDocument();
     expect(
       screen.getByText('Could not read your clusters'),
@@ -296,7 +421,7 @@ describe('PlatformClustersPanel', () => {
   it('shows an error with Try again when the environments could not be listed', async () => {
     mockData = [];
     mockStatus = 'installations-failed';
-    await renderInTestApp(<PlatformClustersPanel />);
+    await renderInTestApp(panel());
     expect(screen.queryByText('No clusters yet')).not.toBeInTheDocument();
     expect(
       screen.getByText('Could not read your environments'),
@@ -308,7 +433,7 @@ describe('PlatformClustersPanel', () => {
   it('says the session ended instead of claiming there are no clusters', async () => {
     mockData = [];
     mockStatus = 'session-ended';
-    await renderInTestApp(<PlatformClustersPanel />);
+    await renderInTestApp(panel());
     expect(screen.queryByText('No clusters yet')).not.toBeInTheDocument();
     expect(
       screen.getByText(
@@ -323,7 +448,7 @@ describe('PlatformClustersPanel', () => {
       { installation: 'tarragon', reason: 'Access forbidden' },
     ];
     mockAccess = [{ installation: 'tarragon', state: 'session-expired' }];
-    await renderInTestApp(<PlatformClustersPanel />);
+    await renderInTestApp(panel());
     expect(
       screen.getByText('Could not read 2 environments'),
     ).toBeInTheDocument();
@@ -340,20 +465,23 @@ describe('PlatformClustersPanel', () => {
       { installation: 'fennel', reason: 'API unreachable (timeout)' },
     ];
     mockReading = true;
-    await renderInTestApp(<PlatformClustersPanel />);
+    await renderInTestApp(panel());
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('stacks the clusters at phone width, without the column picker', async () => {
     layout.restore();
     layout = mockPhoneLayout();
-    await renderInTestApp(<PlatformClustersPanel />);
+    await renderInTestApp(panel());
     const list = screen.getByRole('list', { name: 'Clusters' });
     const items = within(list).getAllByRole('listitem');
     expect(items).toHaveLength(4);
     expect(items[1].textContent).toContain('cedar-elm');
     expect(items[1].textContent).toContain('Creating');
     expect(items[1].textContent).toMatch(/meadow.*fern.*30\.1\.2/);
+    expect(
+      within(items[1]).getByRole('link', { name: /cedar-elm/ }),
+    ).toHaveAttribute('href', '/platform/clusters/meadow/org-fern/cedar-elm');
     expect(
       screen.queryByRole('button', { name: 'Columns' }),
     ).not.toBeInTheDocument();

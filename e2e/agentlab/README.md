@@ -3,7 +3,7 @@
 Playwright drives the portal as a person does, from the Dex sign-in popup to a
 chat turn, against a running [agentlab](https://github.com/giantswarm/agentlab).
 It complements `agentlab backstage-test`, which checks the same routes and
-tokens headlessly. A change to a page ships with the spec that proves it.
+tokens headlessly.
 
 ## Run
 

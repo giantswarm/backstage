@@ -79,7 +79,7 @@ export const FIXTURE_POOL_ACCELERATORS = [
   'nvidia-l40s',
 ] as const;
 
-/** EC2 sizes per family: vCPUs, memory, GPUs, the hourly list price in Frankfurt. */
+/** EC2 sizes per family: CPU, memory, GPUs, the hourly list price in Frankfurt. */
 const INSTANCE_SIZES: Record<
   string,
   Record<string, [vcpu: number, memoryGiB: number, gpus: number, usd: number]>

@@ -1,7 +1,8 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
+  mockContainerWidth,
   mockDesktopLayout,
   mockPhoneLayout,
   type MockedLayout,
@@ -274,6 +275,53 @@ describe('GpuNodePoolsPanel at phone width', () => {
         hideColumns={hideColumns}
       />,
     );
+
+  // Each column holds its header and value whole; a card too narrow for
+  // all of them leaves out where the pool runs and the control plane's
+  // version, folded into other cells, before it stacks the rows.
+  it('steps from every column to fewer to stacked rows as the card narrows', async () => {
+    layout = mockDesktopLayout();
+    const container = mockContainerWidth(1300);
+    try {
+      await renderPools();
+      const headers = () =>
+        screen
+          .getAllByRole('columnheader')
+          .map(cell => cell.textContent?.trim())
+          .filter(Boolean);
+      expect(headers()).toEqual([
+        'Pool',
+        'Environment',
+        'Cluster',
+        'Accelerator',
+        'Status',
+        'Pool Kubernetes',
+        'Control plane Kubernetes',
+      ]);
+
+      act(() => container.setWidth(900));
+      expect(headers()).toEqual([
+        'Pool',
+        'Accelerator',
+        'Status',
+        'Pool Kubernetes',
+      ]);
+      expect(screen.getByText('l4 · wc1 · org-a · inst-1')).toBeInTheDocument();
+      expect(screen.getByText('control plane 1.33.5')).toBeInTheDocument();
+      // The default sort, on Environment, moves to a column still shown.
+      expect(
+        screen.getByRole('columnheader', { name: 'Pool' }),
+      ).toHaveAttribute('aria-sort', 'ascending');
+
+      act(() => container.setWidth(600));
+      expect(screen.queryByRole('grid')).toBeNull();
+      expect(
+        screen.getByRole('list', { name: 'GPU node pools' }),
+      ).toBeInTheDocument();
+    } finally {
+      container.restore();
+    }
+  });
 
   it('lists each pool as a stacked row, Remove pool in its menu and the chevron beside it', async () => {
     layout = mockPhoneLayout();

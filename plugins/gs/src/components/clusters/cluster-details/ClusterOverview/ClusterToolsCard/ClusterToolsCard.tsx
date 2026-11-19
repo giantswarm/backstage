@@ -1,69 +1,20 @@
 import { InfoCard } from '@giantswarm/backstage-plugin-ui-react';
 import { useCurrentCluster } from '../../../ClusterDetailsPage/useCurrentCluster';
-import { type Tool, Toolkit } from '../../../../UI';
-import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
-import { formatTemplateString } from '../../../../utils/formatTemplateString';
-import { useClusterDetailsTemplateData } from '../../../../hooks';
-import { isManagementCluster } from '../../../utils';
-
-const defaultLinks = [
-  {
-    label: 'Cluster overview \n dashboard',
-    icon: 'GrafanaIcon',
-    url: 'https://grafana.${{BASE_DOMAIN}}/d/gs_cluster-overview/cluster-overview?orgId=1&from=now-6h&to=now&timezone=browser&var-datasource=default&var-cluster=${{CLUSTER_NAME}}',
-  },
-];
+import { Toolkit } from '../../../../UI';
+import { useClusterToolLinks } from './useClusterToolLinks';
 
 export function ClusterToolsCard() {
-  const { config, isLoading } = useSignedInConfig();
   const { cluster, installationName } = useCurrentCluster();
+  const { isLoading, links } = useClusterToolLinks(installationName, cluster);
 
-  const clusterDetailsTemplateData = useClusterDetailsTemplateData(
-    installationName,
-    cluster,
-  );
-
-  if (isLoading) {
+  if (isLoading || links.length === 0) {
     // Show the configured links or the defaults, never one after the other.
-    return null;
-  }
-
-  const linksConfig = config?.getOptionalConfigArray(
-    'gs.clusterDetails.resources',
-  );
-
-  const clusterType = isManagementCluster(cluster) ? 'management' : 'workload';
-  const links = linksConfig
-    ? linksConfig
-        .map(link => ({
-          url: link.getString('url'),
-          label: link.getString('label'),
-          icon: link.getString('icon'),
-          clusterType: link.getOptionalString('clusterType'),
-        }))
-        .filter(
-          link =>
-            typeof link.clusterType === 'undefined' ||
-            link.clusterType === clusterType,
-        )
-    : defaultLinks;
-
-  const tools = links.map(link => ({
-    url: formatTemplateString(link.url, {
-      data: clusterDetailsTemplateData,
-    }),
-    label: link.label,
-    icon: link.icon,
-  }));
-
-  const filteredTools = tools.filter(tool => Boolean(tool.url)) as Tool[];
-  if (filteredTools.length === 0) {
     return null;
   }
 
   return (
     <InfoCard>
-      <Toolkit tools={filteredTools} />
+      <Toolkit tools={links} />
     </InfoCard>
   );
 }

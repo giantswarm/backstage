@@ -143,8 +143,8 @@ describe('formatting', () => {
   it('uses singular and plural forms', () => {
     expect(formatWorkerNodes(1)).toBe('1 node');
     expect(formatWorkerNodes(12)).toBe('12 nodes');
-    expect(formatWorkerCpu(1)).toBe('1 vCPU');
-    expect(formatWorkerCpu(48)).toBe('48 vCPUs');
+    expect(formatWorkerCpu(1)).toBe('1 CPU');
+    expect(formatWorkerCpu(48)).toBe('48 CPU');
   });
 
   it('formats memory in GiB', () => {

@@ -281,6 +281,16 @@ own account of the attempt (the token's issuer and audiences) under
 **Details**, to copy. muster keeps that flag per person rather than per
 session, so a connector connected in this session ignores it.
 
+A connector's page is `/customize/connectors/<installation>/<connector>`,
+`<connector>` being the family's name for a family and the MCPServer's name
+for one in muster's namespace. An organization's connector, an MCPServer in
+another namespace, is at
+`/customize/connectors/<installation>/-/<namespace>/<name>`, since two
+organizations may each own a connector of one name. Its address before that,
+`…/<installation>/<name>`, redirects to it while no other organization's
+connector on the installation has that name, and otherwise lists the
+connectors of that name, each linking to its page.
+
 A connector's page opens on its Tools tab, a list of the tools it offers that
 each link to the tool's own page,
 `/customize/connectors/<installation>/<connector>/tools/<tool>`.
@@ -565,10 +575,53 @@ failed read of the environments themselves and an ended session: the page
 says "No clusters yet" only once every environment answered without a
 failure. A column whose related read failed on an environment (control
 planes, provider clusters, identities) shows a dash that names the failure on
-hover and focus. Rows do not
-open a cluster yet. At phone width the list stacks: name and state, then
+hover and focus. Each row opens
+its cluster's page: its name is the link (one tab stop per row), and a click
+anywhere else on the row opens it too. Back from a cluster's page, by the
+browser or a link, the list is as it was left (search, filters, sort, and
+paged to the row opened) without reading the clusters again. At phone width the list stacks: name and state, then
 environment, organization and release. The classic `/clusters` and
 `/installations` pages are unchanged.
+
+A cluster's page, `/platform/clusters/<installation>/<namespace>/<name>`
+(`PlatformClusterPage` from the gs plugin, at the app's
+`platformClusterRouteRef`), reads the cluster as the classic cluster page does
+(`ClusterProvider`). Its header has the state under the name, a sentence on
+its type, organization and environment, and a ⋯ menu with Copy login command
+(where a command can be built) and View manifest. Beside the content, the tool
+links of `gs.clusterDetails.resources` as tiles, then the facts: Environment
+(linked to the management cluster's page for a workload cluster),
+Organization, Provider with its region, Account (in groups of four, linked to
+the AWS console), Workers and Created.
+
+Its one tab so far, Overview (the bare path; any other tab redirects there),
+is a column of panels:
+
+- Release: the cluster's release, linked to its release notes (the GitHub
+  release of giantswarm/releases tagged `<provider>/v<version>`), the
+  Kubernetes version with its end of life (`gs.kubernetesVersions`), and the
+  newest active release of the cluster's provider where it is newer, read from
+  the installation's Release resources.
+- Labels and annotations: what `gs.friendlyLabels` and `gs.friendlyAnnotations`
+  name, as key and value chips in their configured colours, and the
+  cluster's description. Left out when there is none.
+- GitOps delivery, for a cluster whose App or HelmRelease a Flux Kustomization
+  applies: the Kustomization, its last apply and revision, and the repository
+  and branch it reads.
+- Work with the cluster: the classic access section's `kubectl gs login`
+  command where the installation's base domain is known, and for Giant Swarm
+  staff (`gs.adminGroups`) the `tsh kube login` command with the one-time tsh
+  setup. Left out when there is neither.
+- Technical details, a fold-out: namespace, name, cluster app, API endpoint,
+  control plane, what installs the cluster, and every label and annotation.
+
+A cluster being deleted says so and follows the deletion. An environment the
+portal does not know, a cluster the environment does not have, an environment
+the portal cannot reach and a failed read (with its cause and Try again) each
+get their own state, with a link back to the list. Where the Cluster resource
+does not exist but its App or HelmRelease does, the page shows the installer's
+status, as the classic page does: being created, failed to install, or being
+deleted with the installer still finalizing.
 
 ## Profile and settings
 

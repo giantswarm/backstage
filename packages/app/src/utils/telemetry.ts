@@ -6,6 +6,7 @@ import {
 } from '@giantswarm/backstage-plugin-agent-platform';
 import {
   CONNECTOR_PAGE_TAB_PATHS,
+  ORGANIZATION_CONNECTOR_SEGMENT,
   toolPageTabs,
   WORKFLOW_PAGE_TABS,
 } from '@giantswarm/backstage-plugin-muster';
@@ -19,12 +20,65 @@ const CUSTOMIZE_TABS: ReadonlySet<string> = new Set(CUSTOMIZE_TAB_IDS);
 const PLATFORM_TABS: ReadonlySet<string> = new Set(PLATFORM_TAB_IDS);
 
 /**
+ * A Platform cluster page's tabs below its own address (Overview, the index,
+ * left out): none yet.
+ */
+const PLATFORM_CLUSTER_TABS: ReadonlySet<string> = new Set();
+
+/**
  * A workflow page's tabs below its own address (Overview, the index, left
  * out), a fixed set too.
  */
 const WORKFLOW_TABS: ReadonlySet<string> = new Set(
   WORKFLOW_PAGE_TABS.map(tab => tab.path).filter(Boolean),
 );
+
+/**
+ * The forms of a connector's address below
+ * `/customize/connectors/:installation/` (muster's `lib/connectorAddress.ts`),
+ * each with the route template it reports as and how many segments it
+ * takes: an organization's connector's, `-/<namespace>/<server>`, then any
+ * other's, `<server>`. The connector and tool page cases read them through
+ * {@link connectorAddressOf}, so a change to either form is made here once.
+ */
+const CONNECTOR_ADDRESSES: ReadonlyArray<{
+  template: string;
+  matches: (segments: readonly string[]) => boolean;
+  length: number;
+}> = [
+  {
+    template: `:installation/${ORGANIZATION_CONNECTOR_SEGMENT}/:namespace/:server`,
+    matches: segments =>
+      segments[0] === ORGANIZATION_CONNECTOR_SEGMENT && segments.length >= 3,
+    length: 3,
+  },
+  { template: ':installation/:server', matches: () => true, length: 1 },
+];
+
+/**
+ * The connector a path under `/customize/connectors/<installation>/` names:
+ * its route template (`base`), its page key and the segments after it. None
+ * for the list, an installation alone or the registration wizard (`new`).
+ */
+function connectorAddressOf(
+  segments: readonly string[],
+): { base: string; key: string; rest: string[] } | undefined {
+  if (
+    segments[0] !== 'customize' ||
+    segments[1] !== 'connectors' ||
+    segments[2] === 'new' ||
+    segments.length < 4
+  ) {
+    return undefined;
+  }
+  const below = segments.slice(3);
+  const form = CONNECTOR_ADDRESSES.find(f => f.matches(below))!;
+  return {
+    base: `/customize/connectors/${form.template}`,
+    key: below.slice(0, form.length).join('/'),
+    rest: below.slice(form.length),
+  };
+}
 
 /**
  * A connector tool's page tabs below its own address (Overview, the index,
@@ -242,6 +296,7 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
   // A trailing slash is the same page, as the router has it.
   const pathname = rawPathname.replace(/\/+$/, '') || '/';
   const segments = segmentsOf(pathname);
+  const connector = connectorAddressOf(segments);
   let payload = {};
   let route = UNKNOWN_ROUTE;
 
@@ -450,14 +505,13 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
       break;
     }
 
-    // A tool's page beneath its connector, with its tab as the view (never
-    // its name). Its tabs are a closed set; any other address under it only
-    // redirects to Overview, so that momentary view is a 'redirect'.
-    case /^\/customize\/connectors\/[^/]+\/[^/]+\/tools\/[^/]+/.test(
-      pathname,
-    ): {
-      const tab = segments.slice(6).join('/');
-      const tabs = toolTabs(segments[3]);
+    // A tool's page beneath its connector, in either address form
+    // (`CONNECTOR_ADDRESSES`), with its tab as the view (never its name). Its
+    // tabs are a closed set; any other address under it only redirects to
+    // Overview, so that momentary view is a 'redirect'.
+    case connector?.rest[0] === 'tools' && connector.rest.length >= 2: {
+      const tab = connector!.rest.slice(2).join('/');
+      const tabs = toolTabs(connector!.key);
       let view = 'redirect';
       if (tab === '') {
         view = 'overview';
@@ -465,21 +519,15 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
         view = tab;
       }
       payload = { page: 'Connector tool', view };
-      route = tabRoute(
-        '/customize/connectors/:installation/:server/tools/:tool',
-        tab,
-        tabs,
-      );
+      route = tabRoute(`${connector!.base}/tools/:tool`, tab, tabs);
       break;
     }
 
-    // A connector's page, `/customize/connectors/<installation>/<server>`,
-    // with its tab as the view: Tools, the index, by name. Two segments, so
-    // the list's retired sub-tabs (one) never reach it.
-    case /^\/customize\/connectors\/(?!new\/)[^/]+\/[^/]+(\/.*)?$/.test(
-      pathname,
-    ): {
-      const tab = segments.slice(4).join('/');
+    // A connector's page, in either address form (`CONNECTOR_ADDRESSES`),
+    // with its tab as the view: Tools, the index, by name. Two segments at
+    // least, so the list's retired sub-tabs (one) never reach it.
+    case connector !== undefined: {
+      const tab = connector!.rest.join('/');
       let view = 'redirect';
       if (tab === '') {
         view = 'tools';
@@ -487,11 +535,7 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
         view = tab;
       }
       payload = { page: 'Connector', view };
-      route = tabRoute(
-        '/customize/connectors/:installation/:server',
-        tab,
-        CONNECTOR_TABS,
-      );
+      route = tabRoute(connector!.base, tab, CONNECTOR_TABS);
       break;
     }
 
@@ -784,6 +828,27 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
       }
       payload = { page: 'Usage', view: usageView };
       route = tabRoute('/usage', view, USAGE_PATHS);
+      break;
+    }
+
+    // A cluster's page in the Platform section
+    // (`/platform/clusters/<installation>/<namespace>/<name>`), its segments
+    // in no attribute: its tab goes in `view`, a closed set; Overview, the
+    // index, carries none.
+    case /^\/platform\/clusters\/[^/]+\/[^/]+\/[^/]+(\/.*)?$/.test(pathname): {
+      const tab = segments.slice(5).join('/');
+      payload =
+        tab === ''
+          ? { page: 'Platform cluster' }
+          : {
+              page: 'Platform cluster',
+              view: PLATFORM_CLUSTER_TABS.has(tab) ? tab : 'redirect',
+            };
+      route = tabRoute(
+        '/platform/clusters/:installation/:namespace/:name',
+        tab,
+        PLATFORM_CLUSTER_TABS,
+      );
       break;
     }
 

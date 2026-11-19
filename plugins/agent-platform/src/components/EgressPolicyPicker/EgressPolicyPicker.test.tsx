@@ -82,6 +82,7 @@ const STATE: NewAgentFormState = {
   systemMessage: '',
   egressText: '',
   egressPolicyRefs: [],
+  connectors: [],
   defaultWorkspace: '',
   selectedSkills: [],
   keptSkills: [],

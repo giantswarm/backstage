@@ -183,8 +183,8 @@ const magazinePage = PageBlueprint.make({
 });
 
 // No `name`: the extension id is plain `api:plans`. `plans.fixtures: true`
-// serves the plans and the magazine from memory, outside production builds
-// only (docs/fixtures.md).
+// serves the plans and the magazine from memory, in the page's fixture
+// scenario, outside production builds only (docs/fixtures.md).
 const plansApi = ApiBlueprint.make({
   disabled: true,
   params: defineParams =>
@@ -202,8 +202,8 @@ const plansApi = ApiBlueprint.make({
           configApi.getOptionalBoolean('plans.fixtures')
         ) {
           return lazyApi(async () => {
-            const { PlansFixtureApi } = await import('./apis/PlansFixtureApi');
-            return new PlansFixtureApi();
+            const { plansFixtureApi } = await import('./apis/PlansFixtureApi');
+            return plansFixtureApi();
           });
         }
         return new PlansApiClient({ discoveryApi, fetchApi, authApi });

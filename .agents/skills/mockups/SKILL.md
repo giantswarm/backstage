@@ -119,6 +119,10 @@ into your final reply or the pull request description.
   the page can reach it.
 - Where a repo rule conflicts with the mockup, follow the rule and add the
   conflict to the differences (step 5).
+- Text the mockup sets below 12px is 12px on the page (`body-small`): the
+  portal's smallest text, "Text size: 12px at the smallest" in `docs/ui.md`.
+  A mockup's 10px or 11px caption is a difference to list, not a reason for
+  `body-x-small` or a small `Badge`.
 
 ## 4. Check
 
@@ -132,14 +136,15 @@ check": `--isolated` or a `--userDataDir` of your checkout).
 Do it at the artboard's width and at the
 [`layout-check`](../layout-check/SKILL.md) widths, and run the layout check in
 `base` and the scenarios of the states the mockup shows. Add the artboard's
-width to `--widths` only when it isn't one of the defaults (375, 768, 1280):
+width to `--widths` only when it isn't one of the defaults (375, 768, 1024,
+1160, 1280):
 
 ```bash
 L=.agents/skills/layout-check
-node $L/layout-check.mjs --widths 375,768,1280,1440 \
+node $L/layout-check.mjs --widths 375,768,1024,1160,1280,1440 \
   --scenarios base,empty,loading,error --page /customize/agents
 # a page with parameters: the spec's entry for it
-node $L/layout-check.mjs --widths 375,768,1280,1440 \
+node $L/layout-check.mjs --widths 375,768,1024,1160,1280,1440 \
   --scenarios base,empty,loading,error \
   --spec $L/specs/agent-platform.mjs --only Workspace
 ```
@@ -163,6 +168,7 @@ Mockup: linked from #1234, artboards `Agents.dc.html`, `Rail.dc.html`.
 |---|---|---|
 | "Cost this month" column | Not shown | No data source yet |
 | Title 24px | 20px `ShellPage` title | Shell rule: every page uses `ShellPage` |
+| Step captions 10px | 12px (`body-small`) | 12px is the smallest text (`docs/ui.md`) |
 | Bulk delete | Not built | Out of scope, follow-up issue |
 ```
 

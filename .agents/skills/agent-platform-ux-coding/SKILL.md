@@ -452,6 +452,11 @@ A page built from a mockup or design canvas also follows the
   observers.
 - Form controls are 16px at phone width, set in `agent-shell.css`, to stop
   iOS from zooming on focus. Do not set them smaller.
+- No text below 12px. A caption is `body-small` with `color="secondary"`
+  (bui's `body-x-small` renders at 12px too: the app sets bui's 10px token to
+  12px). Smaller is an exception with a comment saying why, 10px in
+  `var(--gs-font-size-exception)` ("Text size: 12px at the smallest" in
+  `docs/ui.md`).
 - bui `Alert` has no `onClose`; use `customActions` with a tertiary small
   `ButtonIcon` labelled "Close".
 - bui's single `Select` logs an "uncontrolled to controlled" warning under
@@ -512,5 +517,6 @@ is a defect; one with it is not a finding. The kept list:
   `agentlab-mobile` (375×812, touch) projects, listed in
   `e2e/agentlab/portalModes.ts`. Use `exact: true` on locators, because
   Playwright matches names by substring.
-- Verify a page change live at desktop width and at 375px before you call it
+- Verify a page change live at desktop width and at 375px, and run the
+  [`layout-check`](../layout-check/SKILL.md) skill on it, before you call it
   done.

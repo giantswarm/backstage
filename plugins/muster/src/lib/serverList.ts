@@ -2,12 +2,12 @@ import { ToolSummary } from '../apis';
 import { MCPServer } from './k8s';
 import { rowTags } from './connectorTags';
 import {
-  MUSTER_SERVER_KEY,
   ServerPageRow,
   mcpServerDisplayNames,
   partitionServers,
+  isShadowedServer,
+  serverPageKey,
   serverRowDisplayName,
-  serverRowKey,
 } from './serverGrouping';
 import {
   serverListKey,
@@ -25,9 +25,17 @@ export interface NamedTool {
 
 /** One row of the servers list, before any search. */
 export interface ServerListRow {
-  /** Unique within the list: `family:<name>`, `server:<name>` or `core`. */
+  /**
+   * Unique within the list: `family:<name>`, `server:<key>` by muster's key
+   * for the server (`connectorAuthName`, which tells two organizations'
+   * servers of one name apart) or `core`.
+   */
   key: string;
-  /** The row's server page segment: the name its page, links and muster use. */
+  /**
+   * The row's page key (`serverPageKey`, `lib/connectorAddress.ts`): a
+   * family's name, muster's own CR's name, `-/<namespace>/<name>` for an
+   * organization's or `muster`.
+   */
   id: string;
   /**
    * The row's name in the list: its `ui.giantswarm.io/display-name`, else
@@ -44,8 +52,9 @@ export interface ServerListRow {
   /** The row's tools; undefined until the catalogue is read. */
   tools?: NamedTool[];
   /**
-   * A singular server whose page segment a family of the same name (or
-   * muster, for one named `muster`) takes: its page cannot be opened.
+   * A server of muster's own whose name a family of the same name (or
+   * muster, for one named `muster`) takes (`isShadowedServer`): its page
+   * cannot be opened.
    */
   shadowed: boolean;
 }
@@ -92,15 +101,15 @@ export function serverListRows(
   const tools = catalogue ? toolsByServerKey(catalogue, prefixes) : undefined;
 
   return rows.map(row => {
-    const id = serverRowKey(row);
+    const id = serverPageKey(row);
     const key = serverListKey(row);
     const shadowed =
-      row.kind === 'server' && (families.has(id) || id === MUSTER_SERVER_KEY);
+      row.kind === 'server' && isShadowedServer(row.server, families);
     return {
       key,
       id,
-      // A shadowed server's name is its family's (or muster's) page; its row
-      // keeps its own name so the two read apart.
+      // muster's own server named like a family (or muster) keeps its own
+      // name, so the two read apart.
       displayName: shadowed ? id : serverRowDisplayName(row, names),
       row,
       tags: rowTags(row),

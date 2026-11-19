@@ -9,7 +9,21 @@
  * timestamp is invented relative to now.
  */
 
+import type { FixtureScenario } from '@giantswarm/backstage-plugin-gs-common';
+
+import { DEFAULT_TEAM, HIVE_TEAMS, sameTeam, teamName } from './hive';
 import {
+  customerName,
+  fixtureTitle,
+  lengthenSlug,
+  lengthenTitle,
+  LONG_PERSON,
+  LONG_SEGMENT,
+  personName,
+  word,
+} from './scenarioFixtures';
+import {
+  CLASS_ORDER,
   Entry,
   Group,
   History,
@@ -23,7 +37,12 @@ import {
 } from './magazine';
 
 /** The team the fixture magazine follows; its items carry no `team`. */
-const MAGAZINE_TEAM = 'Bumblebee';
+const MAGAZINE_TEAM = teamName(DEFAULT_TEAM);
+
+/** The other teams' names, as the magazine writes an item's `team`. */
+const OTHER_TEAMS = HIVE_TEAMS.filter(
+  team => !sameTeam(team, MAGAZINE_TEAM),
+).map(teamName);
 const ROADMAP = 'https://github.com/giantswarm/roadmap/issues';
 
 /** The fixture board's item detail (the roadmap plugin's fixture board). */
@@ -431,33 +450,31 @@ function plans(): PlanCard[] {
   }));
 }
 
+/** Each lane's title and summary, in every scenario. */
+const LANE_TITLES: Record<MagazineClass, [string, string]> = {
+  customer: [
+    'Customers',
+    'What customers asked for, most recent movement first.',
+  ],
+  'top-epic': ['Top epics', 'The epics the team leads with this quarter.'],
+  setup: ['Setup', 'Making new installations and the lab cheaper to run.'],
+  chore: ['Chores', 'Bugs and small fixes that keep the portal tidy.'],
+};
+
+/** The lanes of Now in priority order, each with its cards. */
+function makeLanes(cards: (lane: MagazineClass) => CardSeed[]): Lane[] {
+  return CLASS_ORDER.map(id => makeLane(id, ...LANE_TITLES[id], cards(id)));
+}
+
+const BASE_LANES: Record<MagazineClass, CardSeed[]> = {
+  customer: CUSTOMERS,
+  'top-epic': TOP_EPICS,
+  setup: SETUP,
+  chore: CHORES,
+};
+
 export function fixtureNow(): Now {
-  const lanes = [
-    makeLane(
-      'customer',
-      'Customers',
-      'What customers asked for, most recent movement first.',
-      CUSTOMERS,
-    ),
-    makeLane(
-      'top-epic',
-      'Top epics',
-      'The epics the team leads with this quarter.',
-      TOP_EPICS,
-    ),
-    makeLane(
-      'setup',
-      'Setup',
-      'Making new installations and the lab cheaper to run.',
-      SETUP,
-    ),
-    makeLane(
-      'chore',
-      'Chores',
-      'Bugs and small fixes that keep the portal tidy.',
-      CHORES,
-    ),
-  ];
+  const lanes = makeLanes(lane => BASE_LANES[lane]);
   const cards = lanes.flatMap(l => l.cards);
   return {
     generatedAt: ago(12 * 60_000),
@@ -703,7 +720,7 @@ export function fixtureTeamSets(): TeamSets {
     teams: [
       {
         name: MAGAZINE_TEAM,
-        boardTeam: 'Bumblebee🐝',
+        boardTeam: DEFAULT_TEAM,
         slug: 'bumblebee',
         path: 'magazine/teams/bumblebee',
       },
@@ -803,14 +820,276 @@ Each team owns its sweep policy and schedule; one engine serves them all.
 `,
 };
 
-export function fixtureKnowledgeTree(): { path: string; type: string }[] {
-  return Object.keys(KNOWLEDGE).map(path => ({ path, type: 'blob' }));
+// --- Scenarios --------------------------------------------------------------
+
+/** The magazine and the knowledge documents of one fixture scenario. */
+export interface HiveFixtureMagazine {
+  teamSets: TeamSets;
+  meta: Meta;
+  now: Now;
+  history: History;
+  /** The knowledge documents by path. */
+  knowledge: Record<string, string>;
 }
 
-export function fixtureKnowledgeDoc(path: string): string {
-  const doc = KNOWLEDGE[path];
-  if (doc === undefined) {
-    throw new Error(`No knowledge document at ${path}`);
+const STATUSES = [
+  'In Progress ⛏️',
+  'Validation ☑️',
+  'Up Next ➡️',
+  'Backlog 📦',
+];
+
+/** The base magazine: the one every scenario but these three serves. */
+function baseMagazine(): HiveFixtureMagazine {
+  return {
+    teamSets: fixtureTeamSets(),
+    meta: fixtureMeta(),
+    now: fixtureNow(),
+    history: fixtureHistory(),
+    knowledge: KNOWLEDGE,
+  };
+}
+
+/**
+ * `empty`: the team's data set is there, with nothing in it: the lanes
+ * without cards, no plans, nothing moved, no knowledge documents.
+ */
+function emptyMagazine(): HiveFixtureMagazine {
+  const base = baseMagazine();
+  return {
+    ...base,
+    now: {
+      generatedAt: base.now.generatedAt,
+      summary: [],
+      lanes: makeLanes(() => []),
+      reviews: [],
+      blocked: [],
+      upcoming: [],
+    },
+    history: {
+      ...base.history,
+      summary: [],
+      stats: { merged: 0, closed: 0, released: 0, epicsMoved: 0 },
+      groups: [],
+      highlights: { customers: [], outsideTeam: [] },
+      chores: { count: 0, repos: 0, sample: [] },
+    },
+    knowledge: {},
+  };
+}
+
+/** A generated card of a lane, the `i`-th. */
+function manyCardSeed(lane: MagazineClass, i: number): CardSeed {
+  const number = 5000 + CLASS_ORDER.indexOf(lane) * 1000 + i;
+  return {
+    number,
+    title: fixtureTitle(i, lane === 'chore' ? 'fix' : 'rollout'),
+    status: STATUSES[i % STATUSES.length],
+    kind: lane === 'chore' ? 'bug' : 'epic',
+    teaser: `Moves the ${word(i)} work along, one step at a time.`,
+    customers:
+      lane === 'customer'
+        ? Array.from({ length: 1 + (i % 3) }, (_, k) => customerName(i + k))
+        : [],
+    assignees: Array.from({ length: i % 4 }, (_, k) => personName(i + k)),
+    progress: i % 3 === 0 ? undefined : [i % 5, 5 + (i % 4)],
+    updated: (i + 1) * HOUR,
+    blocker:
+      i % 7 === 3
+        ? {
+            reason: `Waits on the ${word(i + 2)} release`,
+            since: ago((i + 2) * HOUR),
+            owner: personName(i + 1),
+          }
+        : undefined,
+  };
+}
+
+/** `many`: hundreds of cards, plans, groups and documents. */
+function manyMagazine(): HiveFixtureMagazine {
+  const base = baseMagazine();
+  const lanes = makeLanes(lane =>
+    Array.from({ length: 75 }, (_, i) => manyCardSeed(lane, i)),
+  );
+  const cards = lanes.flatMap(lane => lane.cards);
+  const states: PlanCard['state'][] = ['review', 'grilling', 'draft'];
+  const reviews: PlanCard[] = Array.from({ length: 120 }, (_, i) => ({
+    key: `plan-${i + 1}`,
+    title: fixtureTitle(i, 'plan'),
+    url: `${ROADMAP}/${7000 + i}`,
+    state: states[i % states.length],
+    epic: {
+      key: `giantswarm/roadmap#${7000 + i}`,
+      title: fixtureTitle(i + 5, 'epic'),
+      url: `${ROADMAP}/${7000 + i}`,
+    },
+    updatedAt: ago((i + 1) * HOUR),
+    openQuestion:
+      i % 4 === 1 ? `Does the ${word(i)} step need a person?` : undefined,
+  }));
+  const upcoming = Array.from({ length: 100 }, (_, i) =>
+    card('top-epic', {
+      ...manyCardSeed('top-epic', 200 + i),
+      team: OTHER_TEAMS[i % OTHER_TEAMS.length],
+    }),
+  );
+  const groups: Group[] = Array.from({ length: 150 }, (_, i) => {
+    const lane = CLASS_ORDER[i % CLASS_ORDER.length];
+    return {
+      key: `giantswarm/roadmap#${8000 + i}`,
+      title: fixtureTitle(i, 'epic'),
+      url: boardPath(8000 + i),
+      kind: 'epic',
+      teaser: `The ${word(i)} work moved on.`,
+      class: lane,
+      customers: lane === 'customer' ? [customerName(i)] : [],
+      progress: {
+        from: { done: i % 3, total: 6 },
+        to: { done: 3 + (i % 4), total: 6 },
+      },
+      entries: entries(
+        lane,
+        Array.from({ length: 4 }, (_entry, k) => ({
+          ...issue(
+            9000 + i * 4 + k,
+            fixtureTitle(i * 4 + k, 'step'),
+            (i + k + 1) * HOUR,
+            personName(i + k),
+          ),
+          team: k === 3 ? OTHER_TEAMS[i % OTHER_TEAMS.length] : undefined,
+        })),
+      ),
+    };
+  });
+  const knowledge: Record<string, string> = {};
+  for (let i = 0; i < 100; i++) {
+    const slug = `${word(i)}-${word(i + 7)}-${i + 1}`;
+    const day = String((i % 28) + 1).padStart(2, '0');
+    knowledge[`knowledge/product/${slug}.md`] = `# ${slug}\n\nAbout ${slug}.\n`;
+    knowledge[`knowledge/architecture/${slug}.md`] =
+      `# ${slug}\n\nHow ${slug} works.\n`;
+    knowledge[`knowledge/decisions/2026-09-${day}-0900-adr-${slug}.md`] =
+      `# ADR: ${slug}\n\n**Status:** accepted\n`;
   }
-  return doc;
+  return {
+    ...base,
+    now: {
+      ...base.now,
+      lanes,
+      reviews,
+      blocked: cards.filter(c => c.blocker),
+      upcoming,
+    },
+    history: {
+      ...base.history,
+      stats: { merged: 1240, closed: 410, released: 96, epicsMoved: 150 },
+      groups,
+      highlights: {
+        customers: Array.from({ length: 30 }, (_, i) => ({
+          name: customerName(i),
+          keys: [groups[i].entries[0].key],
+        })),
+        outsideTeam: OTHER_TEAMS.map((team, i) => ({
+          team,
+          keys: [groups[i].entries[3].key],
+        })),
+      },
+      chores: { count: 640, repos: 120, sample: [] },
+    },
+    knowledge,
+  };
+}
+
+/** A card with every name and title as long as the real data allows. */
+function longCard(item: MagazineCard): MagazineCard {
+  return {
+    ...item,
+    title: lengthenTitle(item.title),
+    customers: item.customers.map(name => lengthenTitle(name, LONG_PERSON)),
+    assignees: item.assignees.map(name => lengthenTitle(name, LONG_PERSON)),
+    blocker: item.blocker && {
+      ...item.blocker,
+      owner:
+        item.blocker.owner && lengthenTitle(item.blocker.owner, LONG_PERSON),
+    },
+  };
+}
+
+/** A knowledge document's path with its file name as long as git allows. */
+function longDocPath(path: string): string {
+  const slash = path.lastIndexOf('/');
+  const name = path.slice(slash + 1).replace(/\.md$/, '');
+  return `${path.slice(0, slash + 1)}${lengthenSlug(name, LONG_SEGMENT - 3)}.md`;
+}
+
+/**
+ * `long-names`: the base magazine with every title as long as GitHub
+ * allows (in whole words), every person and customer named at length and
+ * every document's file name as long as git allows.
+ */
+function longNamesMagazine(): HiveFixtureMagazine {
+  const base = baseMagazine();
+  const now: Now = {
+    ...base.now,
+    lanes: base.now.lanes.map(lane => ({
+      ...lane,
+      cards: lane.cards.map(longCard),
+    })),
+    reviews: base.now.reviews.map(plan => ({
+      ...plan,
+      title: lengthenTitle(plan.title),
+      epic: plan.epic && {
+        ...plan.epic,
+        title: lengthenTitle(plan.epic.title),
+      },
+    })),
+    blocked: base.now.blocked.map(longCard),
+    upcoming: base.now.upcoming.map(longCard),
+  };
+  const history: History = {
+    ...base.history,
+    groups: base.history.groups.map(group => ({
+      ...group,
+      title: lengthenTitle(group.title),
+      customers: group.customers.map(name => lengthenTitle(name, LONG_PERSON)),
+      entries: group.entries.map(entry => ({
+        ...entry,
+        title: lengthenTitle(entry.title),
+        author: entry.author && lengthenTitle(entry.author, LONG_PERSON),
+      })),
+    })),
+    highlights: {
+      ...base.history.highlights,
+      customers: base.history.highlights.customers.map(highlight => ({
+        ...highlight,
+        name: lengthenTitle(highlight.name, LONG_PERSON),
+      })),
+    },
+  };
+  const knowledge = Object.fromEntries(
+    Object.entries(base.knowledge).map(([path, doc]) => [
+      longDocPath(path),
+      doc.replace(
+        /^# (.*)$/m,
+        (_, title: string) => `# ${lengthenTitle(title)}`,
+      ),
+    ]),
+  );
+  return { ...base, now, history, knowledge };
+}
+
+/** The magazine and knowledge documents a fixture scenario serves. */
+export function hiveFixtureMagazine(
+  scenario: FixtureScenario,
+): HiveFixtureMagazine {
+  switch (scenario) {
+    case 'empty':
+      return emptyMagazine();
+    case 'many':
+      return manyMagazine();
+    case 'long-names':
+      return longNamesMagazine();
+    default:
+      return baseMagazine();
+  }
 }

@@ -22,6 +22,7 @@ import type {
 import {
   CONNECTOR_REACH_LABELS,
   connectorDisplayNames,
+  isOrganizationServerKey,
   mcpServerStateSeverity,
   TOOL_GROUPS,
   type MCPServerState,
@@ -753,14 +754,6 @@ export interface ServerBucket {
    * `<namespace>/<name>`), not one of muster's shared servers.
    */
   organizationOwn?: boolean;
-}
-
-/**
- * Whether muster's key names a server outside its own namespace, keyed
- * `<namespace>/<name>`: a server of an organization's namespace.
- */
-export function isOrganizationServerKey(name: string): boolean {
-  return name.includes('/');
 }
 
 /** A bucket's name as people read it: its display name, else its name. */

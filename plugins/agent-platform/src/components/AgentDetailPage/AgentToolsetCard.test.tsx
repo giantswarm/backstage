@@ -488,14 +488,14 @@ describe('AgentToolsetCard', () => {
       await screen.findByText("Sign in to see these connectors' tools"),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
-    // By the MCPServer's label, as the rest of the card names it: no second
-    // source to disagree with it.
+    // By the MCPServer's label, as the rest of the card names it, not by
+    // the display name muster answers ("Pro Search"), whose names the card
+    // reads only for muster's key of each server.
     expect(
       screen.getByText(
         'pro — in the toolset, but you are not signed in to them: their tools are missing below, and the agent cannot reach them through you.',
       ),
     ).toBeInTheDocument();
-    expect(api.listConnectorNames).not.toHaveBeenCalled();
   });
 
   // A viewer who cannot read the MCPServer: muster-backend names it.

@@ -23,6 +23,7 @@ import {
   type AgentWriteFailure,
   useUpdateAgent,
 } from '../../hooks/useUpdateAgent';
+import { useConnectorsRefusal } from '../../hooks/useConnectorsRefusal';
 import { useValidateAgentUpdate } from '../../hooks/useValidateAgentUpdate';
 import {
   changedFields,
@@ -202,6 +203,11 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   const resolution = useToolsetResolution(installation, declared);
 
   const updating = useUpdateAgent(installation);
+  // A refusal of the connectors shows next to them on the Tools step too.
+  useConnectorsRefusal(
+    [...violations, dryRun.failure?.message, updating.failure?.message],
+    Boolean(dryRun.result),
+  );
   // The change a commit answered for. Its pull request stays the one for that
   // change: the button is locked until the wizard says something else, so a
   // second press never opens a second pull request.

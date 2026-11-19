@@ -153,10 +153,13 @@ export { ResourcesCard as GSHomePageResources } from './components/home/Resource
 export { ProviderSettings as GSProviderSettings } from './components/ProviderSettings';
 export { useDisabledInstallations } from './components/hooks/useDisabledInstallations';
 export {
+  PlatformClusterRoute,
   PlatformClustersPanel,
   PlatformClustersProvider,
+  PlatformLinksProvider,
   usePlatformClustersCount,
 } from './components/platform';
+export type { PlatformLinks } from './components/platform';
 // Helm chart OCI resolution (tags + default values from the values-schema
 // annotation), reused by the agent-platform create flow.
 export { useHelmChartTags } from './components/hooks/useHelmChartTags';

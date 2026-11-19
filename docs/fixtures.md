@@ -5,13 +5,13 @@ so its pages render made-up data without their backends: for local
 development, design reviews and layout checks. Fixture code never ships in a
 production build.
 
-| Flag                           | Plugin                                                                                                        | Fixture implementation                                                                 |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `plans.fixtures: true`         | plans (Hive, the plan list)                                                                                   | `plugins/plans/src/apis/PlansFixtureApi.ts`, `plugins/plans/src/lib/hiveFixtures.ts`   |
-| `roadmap.fixtures: true`       | roadmap (Hive's Roadmap tab)                                                                                  | `plugins/roadmap/src/apis/RoadmapFixtureApi.ts`                                        |
-| `muster.fixtures: true`        | muster (`MusterApi`), and every tool call through it                                                          | `plugins/muster/src/apis/fixtures/`, plus the fixture MCP servers of other plugins     |
-| `agentPlatform.fixtures: true` | agent-platform (`KagentApi`, `ModelManagerApi`, `AgentManagerCredentialsApi`)                                 | `plugins/agent-platform/src/apis/fixtures/`                                            |
-| `gs.fixtures: true`            | the Kubernetes API of the installations (`kubernetesApiRef`), their cluster access, and Mimir (`mimirApiRef`) | `packages/app/src/modules/kubernetes/fixtures/`, `plugins/gs/src/apis/mimir/fixtures/` |
+| Flag                           | Plugin                                                                                                        | Fixture implementation                                                                                                            |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `plans.fixtures: true`         | plans (Hive, the plan list)                                                                                   | `plugins/plans/src/apis/PlansFixtureApi.ts`, `plugins/plans/src/lib/hiveFixtures.ts`, `plugins/plans/src/lib/scenarioFixtures.ts` |
+| `roadmap.fixtures: true`       | roadmap (Hive's Roadmap tab)                                                                                  | `plugins/roadmap/src/apis/RoadmapFixtureApi.ts`                                                                                   |
+| `muster.fixtures: true`        | muster (`MusterApi`), and every tool call through it                                                          | `plugins/muster/src/apis/fixtures/`, plus the fixture MCP servers of other plugins                                                |
+| `agentPlatform.fixtures: true` | agent-platform (`KagentApi`, `ModelManagerApi`, `AgentManagerCredentialsApi`)                                 | `plugins/agent-platform/src/apis/fixtures/`                                                                                       |
+| `gs.fixtures: true`            | the Kubernetes API of the installations (`kubernetesApiRef`), their cluster access, and Mimir (`mimirApiRef`) | `packages/app/src/modules/kubernetes/fixtures/`, `plugins/gs/src/apis/mimir/fixtures/`                                            |
 
 Set the flags in `app-config.local.yaml` and run `yarn start`. In a production
 build (`NODE_ENV=production`, what `backstage-cli package build` and the image
@@ -45,13 +45,17 @@ yarn fixtures stop
   counts as the checkout's server only while its command line carries the
   state's token, so `stop` never signals a process that took over a stale
   process id.
-- The server stops on its own once no `start` has asked for it for
-  `FIXTURES_IDLE_MINUTES` (default 60), and at once when `.fixtures-server.json`
-  no longer names it. A start that fails stops what it started. Stop the
-  server when you are done: a frontend and a backend per checkout are heavy.
-- `--config <file>` adds a config on top, for example to turn on Hive and its
-  fixtures (`app.extensions` must then repeat `app-config.yaml`'s list, which
-  Backstage replaces rather than merges). A relative path is read from the
+- The server stops on its own once no `start` or `yarn fixtures touch` has
+  asked for it for `FIXTURES_IDLE_MINUTES` (default 60), and at once when
+  `.fixtures-server.json` no longer names it. The layout check touches the
+  server it reads from `.fixtures-server.json` while it runs, so a long run
+  keeps it. A start that fails stops what it started. Stop the server when
+  you are done: a frontend and a backend per checkout are heavy.
+- `--enable <extension>` adds an extension to `app-config.yaml`'s
+  `app.extensions`, which the server copies as it starts (Backstage replaces a
+  list rather than merging it), for example to turn on Hive:
+  `yarn fixtures start --enable page:plans --enable api:plans`.
+- `--config <file>` adds a config on top. A relative path is read from the
   directory you run the command in; from a workspace directory, run
   `yarn run -T fixtures …`.
 
@@ -59,9 +63,9 @@ yarn fixtures stop
 
 The `fixtures` query parameter switches the data set of the Agent Platform's
 fixture APIs (muster, kagent, agent-manager's credentials, model-manager), of
-the fixture Kubernetes API and of the fixture Mimir without restarting the server: load any page
-with `?fixtures=<scenario>`. The Plans and Roadmap fixtures do not take part:
-they serve their own data in every scenario.
+the fixture Kubernetes API, of the fixture Mimir and of the Plans and Roadmap
+fixtures (Hive, see "Plans" and "Roadmap") without restarting the server: load
+any page with `?fixtures=<scenario>`.
 
 | Scenario     | What those fixture APIs serve                                                                                                                                                                                                                                                                                                                                                                                               |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -105,6 +109,12 @@ In `error`:
 - kagent, agent-manager's credential operations and model-manager's
   `tryModel` fail with a 500. model-manager's other calls go through muster
   and fail as muster does.
+- Plans fails every call that reaches GitHub as plans-backend does when
+  muster does not answer: a 503, `ServiceUnavailableError` in the client,
+  "meadow did not answer: …". The plans repositories and the magazine's place
+  answer: plans-backend reads them from its configuration.
+- The Roadmap fails every call with roadmap-backend's 503 for a muster it
+  cannot reach (`meadow did not answer: the connection failed`).
 
 The plugins persist their query caches to localStorage and restore them as a
 page loads, before any fixture API answers. Each provider adds the page's
@@ -154,8 +164,9 @@ Running), the available workflows' `workflow_<name>` tools (an unavailable
 workflow has none, as muster lists no invalid one) and muster's own `core_*`
 tools, each described with its input schema; toolsets resolved within the
 catalogue (`filter_tools` with `toolset`) and the presets, the built-in ones
-and the installation's own; the workflows, their executions with their steps
-and their run statistics; and MCP usage and tool latency over any window,
+and the installation's own; the workflows (with a category, tags and GitOps
+provenance in turn, as `buildWorkflows` gives them), their executions with
+their steps and their run statistics; and MCP usage and tool latency over any window,
 narrowed to some connectors or one tool. A connector's tools are named after
 its tool prefix, or its name without one, and derived from it
 (`connectorToolsOf`), so every read names the same ones. The tools of the
@@ -283,6 +294,16 @@ move the default off it (`gitops_owned`). `fennel`'s agent-manager predates
 model credential operations: its `set_organization_model` schema lacks the
 model fields, so the portal refuses every model write there.
 
+Each organization lists four connectors (`list_organization_connectors`), one
+in each state the agent form tells apart: `issue-tracker` and `docs-search`
+ready, `deepwiki` with its credential missing and not accepted by kagent, and
+`helpdesk`, an agent's muster binding (`managedBy: Helm`), which the form does
+not offer. `create_agent`, `update_agent` and `validate_agent` take
+`connectors`, refuse a name the organization lacks or a muster binding as
+agent-manager does, and `get_agent` reads them back. `fennel`'s agent-manager
+also predates `connectors`: its `create_agent` and `update_agent` schemas lack
+them, so the Tools step does not offer the organization's connectors there.
+
 `set_organization_model`, `replace_organization_credential` and
 `start_session` honour their idempotency key (`requestId`): a retry answers
 what the first call answered. This agent-manager writes live only: it reports
@@ -311,7 +332,10 @@ from kagent.
   approval or on answers to questions, failed (the model provider's refusal),
   canceled, and failed because kagent lost the session's runtime (reported on
   the session too). The states no v1 recording has are derived from one, with
-  the words of the older recordings of that state.
+  the words of the older recordings of that state. About one agent in three
+  (`reportsCost`, by its name) has a runtime that reports a cost, as the
+  claude harness does: its turns' usage carries `costUsd`, so Usage · Your
+  sessions shows the Reported cost column, with and without a figure.
 - The session states summary (the session lists and the rail) and the
   usage summary (Usage · Your sessions) are computed with the backend's own
   code, shared through agent-platform-common (`kagentSessionRollups.ts`):
@@ -517,6 +541,58 @@ A metric without fixture series answers no series, as Mimir does; so does a
 query the evaluator cannot read, with a console warning that names what it
 could not read: extend the evaluator, or the series a new page reads.
 
+### Plans
+
+The fixture `PlansApi` (`plugins/plans/src/apis/PlansFixtureApi.ts`, the
+magazine and the knowledge documents in `plugins/plans/src/lib/hiveFixtures.ts`,
+the names and the length limits of `many` and `long-names` in
+`plugins/plans/src/lib/scenarioFixtures.ts`) serves Hive's Now, History, Plans
+and Knowledge tabs and a plan's review. `app-config.fixtures.yaml` sets
+`plans.fixtures`, but Hive is off in plain fixture mode; turn it on with its
+extensions:
+
+```bash
+yarn fixtures start --enable page:plans --enable api:plans
+```
+
+Its data is its own, not the data set's: plans and magazine cards, not
+Kubernetes objects. It follows the page's scenario
+(`plansFixtureData` and `hiveFixtureMagazine`):
+
+| Scenario     | What the Plans fixtures serve                                                                                                                                                                                                                                                                                        |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `base`       | One plans repository, `example/bumblebee-plans` (Hive's default team's), with three open plans and two merged ones; the magazine's Now (four lanes, plans to review, blockers, other teams' work), three weeks of History and six knowledge documents. Names are made up, epic titles are public roadmap issues.     |
+| `empty`      | The same repository and the team's data set, with nothing in them: no open or merged plans, lanes without cards, no plans to review, nothing moved and no knowledge documents.                                                                                                                                       |
+| `many`       | A plans repository for each of Hive's teams (a picker in the header for all teams), 300 open and 300 merged plans, 200 comments and 120 review comments on each plan, 75 cards in each lane of Now, 120 plans to review, 100 other teams' cards, 150 groups in History and 100 knowledge documents in each category. |
+| `long-names` | The base data with every title as long as GitHub allows (256 characters, in whole words), every login as long (39), every plan folder, branch and knowledge document's file name as long as git allows a path segment (255), and people and customers named in 80 characters of whole words.                         |
+| `loading`    | No call ever answers.                                                                                                                                                                                                                                                                                                |
+| `error`      | Every call that reaches GitHub fails (see `error` above).                                                                                                                                                                                                                                                            |
+
+### Roadmap
+
+The fixture `RoadmapApi` (`roadmap.fixtures`, Hive's Roadmap tab) serves a
+board of its own, not the data set: `roadmapBoardFixtures.ts` in
+`plugins/roadmap/src/apis/` builds one per scenario, and the factory wraps
+the API with `withFixtureScenario`. `app-config.fixtures.yaml` sets
+`roadmap.fixtures`; turn Hive and its Roadmap tab on with their extensions:
+
+```bash
+yarn fixtures start --enable page:plans --enable api:plans --enable page:roadmap --enable api:roadmap
+```
+
+| Scenario     | The board                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `base`       | Thirty items, most of them Team Bumblebee's, in every status column, with assignees, three to five sub-issues each, and a description; no comments or labels. Titles are public `giantswarm/roadmap` issues; people and figures are made up.                                                                                                                                        |
+| `empty`      | The board's fields and options, and no items: the board and the team activity show "No board items".                                                                                                                                                                                                                                                                                |
+| `many`       | 100 items in each status column of Team Bumblebee, 40 without a status, and 200 of the other teams; 60 people, a third of the items moved in the last week; each item with 100 sub-issues (GitHub's limit per issue), 100 comments and 30 labels; twelve quarters.                                                                                                                  |
+| `long-names` | The base board with every name as long as GitHub allows: titles of sub-issues and items 256 characters in whole words, logins 39, the repository's name 100, labels 50; field options (status, kind, quarter, availability) 63 in whole words, starting with the base option's words so the team activity finds its columns. The teams keep their names, which Hive's header lists. |
+| `loading`    | No call answers.                                                                                                                                                                                                                                                                                                                                                                    |
+| `error`      | Every call fails (see "Scenarios").                                                                                                                                                                                                                                                                                                                                                 |
+
+A status move changes the board until the page reloads; linking or unlinking
+a sub-issue fails. The layout check's spec for the pages is
+`.agents/skills/layout-check/specs/roadmap.mjs`.
+
 ### Objects in the Kubernetes API
 
 The pages read some objects from the installation's Kubernetes API, not from
@@ -604,10 +680,18 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
   named after it, workload clusters of its ready organizations, ready,
   creating (no node pools yet) and deleting, on three releases (the oldest's
   Kubernetes 1.30 past its end of life in `app-config.fixtures.yaml`), and the
-  GPU clusters among them. gs maps them onto Cluster, AWSCluster,
-  AWSClusterRoleIdentity, KubeadmControlPlane, MachinePool and AWSMachinePool
-  objects (`gsKubernetesObjectsOf` in `@giantswarm/backstage-plugin-gs/fixtures`),
-  which the Clusters pages and the Platform section's list read. The
+  GPU clusters among them; the management clusters and every other workload
+  cluster are managed through GitOps. gs maps them onto Cluster, AWSCluster,
+  AWSClusterRoleIdentity, KubeadmControlPlane, App, MachinePool and
+  AWSMachinePool objects, plus a Flux Kustomization (applied, with its
+  revision) and GitRepository per GitOps repository and a Release per release
+  the clusters run (`gsKubernetesObjectsOf` in
+  `@giantswarm/backstage-plugin-gs/fixtures`), which the Clusters pages and the
+  Platform section's list and cluster pages read. The cluster pages' tool
+  links are `gs.clusterDetails.resources` of `app-config.fixtures.yaml`, at
+  made-up addresses; the fixture installations have no base domain, so the
+  login command is not shown. The classic Deployments list shows the
+  clusters' Apps, and the Flux pages the Kustomizations and GitRepositories. The
   person has each role in the ready
   organizations of each installation (admin, editor, user, so the New agent form's "needs the
   editor role" shows), manages the orphaned, pending-erase and deleting ones and is no
@@ -651,7 +735,7 @@ mapper in the same pull request, and the base data set gets the state.
 The [`layout-check`](../.agents/skills/layout-check/SKILL.md) skill measures
 pages of the running fixture mode in a headless Chromium of its own, at
 several widths and in the states a spec steps through, and reports overflow,
-overlapping elements, misaligned rows, squeezed or cut-off text, controls that
+tables that scroll sideways or squeeze a column, overlapping elements, misaligned rows, squeezed or cut-off text, controls that
 move or resize between states and content off its control's centre. It reads
 the portal's URL from `.fixtures-server.json`:
 
