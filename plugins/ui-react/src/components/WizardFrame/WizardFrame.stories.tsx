@@ -86,7 +86,7 @@ export const FirstStep: Story = {
 export const WithoutSteps: Story = {
   args: {
     steps: undefined,
-    title: 'Connect a model',
+    title: 'Add a model',
     context: 'Customize / Models',
     width: 'medium',
   },

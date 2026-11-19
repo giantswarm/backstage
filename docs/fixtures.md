@@ -143,7 +143,7 @@ the versions the classes support (the newest preferred), a list or a read of
 one object answers the objects the plugins' fixtures hold (see "Objects in the
 Kubernetes API"), every other list is empty and any other object not found,
 and access reviews are allowed, except that only an organization's admins may
-create its models (`ModelConfig`), so Connect a model offers an organization
+create its models (`ModelConfig`), so Add a model offers an organization
 as owner only to them. Their cluster access is healthy from the start. Any
 other request, a write among them, fails with a 501 and a console error.
 Their Mimir is the fixture one (`mimirEnabled: true`, see "Mimir").
@@ -244,7 +244,7 @@ objects, each with its carrier `RemoteMCPServer` (the toolset), beside each
 organization namespace's models (`ModelConfig`) and platform `Harness`.
 `get_info` reports as `managed` the platform's namespace (`kagent`) and the
 namespaces of the organizations whose role lets the person create agents
-there, except one being erased: Connect a model reads its owners from them
+there, except one being erased: Add a model reads its owners from them
 (narrowed by the access reviews above), and the agent lists read agents from
 them. The New agent form takes its owners from `list_organizations` instead.
 Each namespace's default model carries the
@@ -290,7 +290,9 @@ Each organization has two models: `default`, which its agents use, and
 `gemini-vertex` on Vertex AI, which none uses, so its deletion completes.
 Each installation's `kagent` namespace has `platform-default`, its default,
 which a Helm release renders: agent-manager refuses to change it, delete it or
-move the default off it (`gitops_owned`). `fennel`'s agent-manager predates
+move the default off it (`gitops_owned`). On `tarragon`, whose namespaces are no
+organization, the first namespace also has `claude-direct`, which no agent
+uses and whose key Secret is missing, so kagent reports it Incomplete. `fennel`'s agent-manager predates
 model credential operations: its `set_organization_model` schema lacks the
 model fields, so the portal refuses every model write there.
 

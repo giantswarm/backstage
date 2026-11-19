@@ -6,6 +6,7 @@ import { useLocation } from 'react-router-dom';
 import { ShellScopeProvider } from '@giantswarm/backstage-plugin-ui-react';
 import {
   type MockedLayout,
+  mockContainerWidth,
   mockDesktopLayout,
   mockPhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
@@ -44,7 +45,6 @@ const qwen: ModelRow = {
 let mockModelRows: ModelRow[];
 let mockModelsLoading = false;
 let mockUnreachableInstallations: string[] = [];
-let mockServingInstallations: string[] = [];
 const agents = [
   { id: 'a', modelConfigId: 'golem/support/sonnet' },
   { id: 'b', modelConfigId: 'golem/support/sonnet' },
@@ -76,23 +76,6 @@ jest.mock('../OrganizationDirectoryProvider', () => ({
 jest.mock('../AgentsDataProvider', () => ({
   useAgents: () => ({ rows: agents, isLoading: false }),
 }));
-// The installations whose muster offers cluster-manager as the person.
-let mockClusterManager: string[] = [];
-jest.mock('../../hooks/useClusterManager', () => ({
-  useClusterManagerAvailability: () => ({
-    available: mockClusterManager,
-    isLoading: false,
-  }),
-}));
-jest.mock('../ServingProvider', () => ({
-  hasServingLayer: (serving: { installations: string[] }) =>
-    serving.installations.length > 0,
-  useServing: () => ({
-    installations: mockServingInstallations,
-    unreachableInstallations: [],
-  }),
-}));
-
 function renderPanel(search = '') {
   return renderInTestApp(<CustomizeModelsPanel search={search} />, {
     mountedRoutes: {
@@ -121,106 +104,204 @@ function renderRerenderablePanel() {
   });
 }
 
+const headers = () =>
+  screen.getAllByRole('columnheader').map(header => header.textContent);
+const bodyRows = () => screen.getAllByRole('row').slice(1);
+/** A row's cells after the model's, by column: Owner, Provider, Environment… */
+const cellsOf = (row: HTMLElement) =>
+  [...row.querySelectorAll<HTMLElement>('[data-column-index]')].slice(1);
+
+function manyModels(count: number): ModelRow[] {
+  return Array.from({ length: count }, (_, i) => {
+    const name = `model-${String(i).padStart(3, '0')}`;
+    return {
+      ...sonnet,
+      id: `golem/support/${name}`,
+      name,
+      displayName: `Model ${String(i).padStart(3, '0')}`,
+    };
+  });
+}
+
+const LAB_NAMESPACE = 'agents-lab-x7k2q';
+const labDirectory = () =>
+  new Map([
+    [
+      LAB_NAMESPACE,
+      {
+        namespace: LAB_NAMESPACE,
+        organization: 'default',
+        parent: 'org-gs',
+        displayName: 'Lab',
+      },
+    ],
+  ]);
+
 describe('CustomizeModelsPanel', () => {
   beforeEach(() => {
     mockModelRows = [sonnet, qwen];
     mockModelsLoading = false;
     mockUnreachableInstallations = [];
-    mockServingInstallations = [];
-    mockClusterManager = [];
-  });
-
-  it('lists the models with their usage and state', async () => {
-    await renderPanel();
-
-    const rows = screen.getAllByRole('row').slice(1);
-    expect(rows.map(r => r.textContent)).toEqual([
-      expect.stringMatching(/Sonnet 4\.5.*Anthropic.*Used by 2 agents.*Ready/),
-      expect.stringMatching(/Qwen 2\.5.*Ollama.*Not used yet.*Not serving/),
-    ]);
-  });
-
-  it('says which model is its namespace default', async () => {
-    mockModelRows = [{ ...sonnet, isDefault: true }, qwen];
-    await renderPanel();
-
-    const rows = screen.getAllByRole('row').slice(1);
-    expect(rows[0]).toHaveTextContent(/Default · Anthropic/);
-    expect(rows[1]).not.toHaveTextContent('Default');
-  });
-
-  it('names the namespace of models that share a name, and only theirs', async () => {
-    const otherSonnet = {
-      ...sonnet,
-      id: 'golem/engineering/sonnet',
-      namespace: 'engineering',
-    };
-    mockModelRows = [sonnet, otherSonnet, qwen];
-    await renderPanel();
-
-    const rows = screen.getAllByRole('row').slice(1);
-    expect(rows[0]).toHaveTextContent(/namespace support · support/);
-    expect(rows[1]).toHaveTextContent(/namespace engineering · engineering/);
-    expect(rows[2]).not.toHaveTextContent(/namespace support · support/);
-  });
-
-  it('names each model’s owner once the list spans more than one', async () => {
-    const orgNamespace = 'agents-default-x7k2q';
-    mockDirectory = new Map([
-      [
-        orgNamespace,
-        {
-          namespace: orgNamespace,
-          organization: 'default',
-          parent: 'org-gs',
-          displayName: 'Lab',
-        },
-      ],
-    ]);
-    const platform = {
-      ...sonnet,
-      id: 'golem/kagent/anthropic',
-      name: 'anthropic',
-      namespace: 'kagent',
-      isDefault: true,
-    };
-    const organization = {
-      ...platform,
-      id: `golem/${orgNamespace}/anthropic`,
-      namespace: orgNamespace,
-    };
-    mockModelRows = [platform, organization];
-    await renderPanel();
-
-    const rows = screen.getAllByRole('row').slice(1);
-    expect(rows[0]).toHaveTextContent(
-      'Default · Anthropic · claude-sonnet-4-5 · Owner: Platform',
-    );
-    expect(rows[1]).toHaveTextContent(
-      'Default · Anthropic · claude-sonnet-4-5 · Owner: Lab',
-    );
     mockDirectory = new Map();
   });
 
-  it('names no owner while every model has the same one', async () => {
+  it('shows each model with its owner, provider, environment, use and state', async () => {
     await renderPanel();
 
-    expect(screen.queryByText(/Owner:/)).not.toBeInTheDocument();
+    expect(headers()).toEqual([
+      'Model',
+      'Owner',
+      'Provider',
+      'Environment',
+      'Used by',
+      'Status',
+    ]);
+    expect(bodyRows().map(row => row.textContent)).toEqual([
+      expect.stringMatching(
+        /^Qwen 2\.5qwen2\.5:32bsupportOllamagolem–Not serving$/,
+      ),
+      expect.stringMatching(
+        /^Sonnet 4\.5claude-sonnet-4-5supportAnthropicgolem2 agentsReady$/,
+      ),
+    ]);
+  });
+
+  it('marks the default models, the platform’s too, with a badge', async () => {
+    mockDirectory = labDirectory();
+    const platform: ModelRow = {
+      ...sonnet,
+      id: 'golem/kagent/platform-default',
+      name: 'platform-default',
+      displayName: 'platform-default',
+      namespace: 'kagent',
+      isDefault: true,
+    };
+    mockModelRows = [
+      platform,
+      { ...sonnet, namespace: LAB_NAMESPACE, isDefault: true },
+      qwen,
+    ];
+    await renderPanel();
+
+    const [platformRow, qwenRow, labRow] = bodyRows();
+    expect(within(platformRow).getByText('Default')).toBeInTheDocument();
+    expect(
+      within(platformRow).getByTitle(
+        'The default model of Platform on golem: new agents there start with it.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(labRow).getByText('Default')).toBeInTheDocument();
+    expect(within(qwenRow).queryByText('Default')).toBeNull();
+  });
+
+  it('names the owner: the platform, an organization by its display name, a namespace muted', async () => {
+    mockDirectory = labDirectory();
+    mockModelRows = [
+      { ...sonnet, id: 'golem/kagent/a', namespace: 'kagent' },
+      { ...sonnet, id: `golem/${LAB_NAMESPACE}/a`, namespace: LAB_NAMESPACE },
+      sonnet,
+    ];
+    await renderPanel();
+
+    const owners = bodyRows().map(row => cellsOf(row)[0]);
+    expect(owners.map(cell => cell.textContent)).toEqual([
+      'Lab',
+      'Platform',
+      'support',
+    ]);
+    expect(within(owners[2]).getByText('support')).toHaveAttribute(
+      'title',
+      'Namespace support, no organization',
+    );
+  });
+
+  it('names the provider as the add-model form does, and an unknown one as it is', async () => {
+    mockModelRows = [
+      { ...sonnet, id: 'a', displayName: 'A', provider: 'GeminiVertexAI' },
+      { ...sonnet, id: 'b', displayName: 'B', provider: 'Bedrock' },
+      { ...sonnet, id: 'c', displayName: 'C', provider: 'Acme' },
+    ];
+    await renderPanel();
+
+    expect(bodyRows().map(row => cellsOf(row)[1].textContent)).toEqual([
+      'Gemini on Vertex AI',
+      'Amazon Bedrock',
+      'Acme',
+    ]);
+  });
+
+  it('counts the agents on each model, a dash saying none in words', async () => {
+    await renderPanel();
+
+    const [qwenRow, sonnetRow] = bodyRows();
+    expect(within(sonnetRow).getByText('2 agents')).toBeInTheDocument();
+    expect(within(qwenRow).getByText('–')).toHaveAttribute(
+      'title',
+      'No agent uses this model',
+    );
+  });
+
+  it('sorts by model, then owner and environment, and by a header clicked', async () => {
+    mockDirectory = labDirectory();
+    mockModelRows = [
+      { ...sonnet, id: 'z/support/s', installation: 'zeta' },
+      sonnet,
+      { ...sonnet, id: `golem/${LAB_NAMESPACE}/s`, namespace: LAB_NAMESPACE },
+      qwen,
+    ];
+    await renderPanel();
+
+    const model = screen.getByRole('columnheader', { name: /Model/ });
+    expect(model).toHaveAttribute('aria-sort', 'ascending');
+    expect(
+      bodyRows().map(row => {
+        const [owner, , environment] = cellsOf(row);
+        return `${within(row).getByRole('rowheader').textContent?.slice(0, 8)} ${owner.textContent} ${environment.textContent}`;
+      }),
+    ).toEqual([
+      'Qwen 2.5 support golem',
+      'Sonnet 4 Lab golem',
+      'Sonnet 4 support golem',
+      'Sonnet 4 support zeta',
+    ]);
+
+    await userEvent.click(
+      screen.getByRole('columnheader', { name: /Used by/ }),
+    );
+    expect(
+      screen.getByRole('columnheader', { name: /Used by/ }),
+    ).toHaveAttribute('aria-sort', 'ascending');
+    expect(bodyRows()[0]).toHaveTextContent('Qwen 2.5');
+    expect(bodyRows()[3]).toHaveTextContent('2 agents');
+  });
+
+  it('lists every model, with no paging', async () => {
+    mockModelRows = manyModels(300);
+    await renderPanel();
+
+    expect(bodyRows()).toHaveLength(300);
+    expect(screen.queryByRole('button', { name: /^Show / })).toBeNull();
+    expect(screen.queryByText(/shown/)).toBeNull();
+  });
+
+  it('names the resource of models alike in name, owner and environment, and only theirs', async () => {
+    const twin = { ...sonnet, id: 'golem/support/sonnet-2', name: 'sonnet-2' };
+    mockModelRows = [sonnet, twin, qwen];
+    await renderPanel();
+
+    const [qwenRow, first, second] = bodyRows();
+    expect(first).toHaveTextContent('claude-sonnet-4-5 · sonnet');
+    expect(second).toHaveTextContent('claude-sonnet-4-5 · sonnet-2');
+    expect(qwenRow).not.toHaveTextContent('·');
   });
 
   it('makes each name a link to the model (M21)', async () => {
     await renderPanel();
 
-    const row = screen.getAllByRole('row')[1];
-    expect(
-      within(row).getByRole('link', { name: 'Sonnet 4.5' }),
-    ).toHaveAttribute('href', row.getAttribute('data-href'));
-  });
-
-  it('links each model to its page beside Customize › Models', async () => {
-    await renderPanel();
-
-    expect(screen.getByRole('link', { name: 'Sonnet 4.5' })).toHaveAttribute(
+    const row = bodyRows()[1];
+    const link = within(row).getByRole('link', { name: 'Sonnet 4.5' });
+    expect(link).toHaveAttribute('href', row.getAttribute('data-href'));
+    expect(link).toHaveAttribute(
       'href',
       '/customize/models/golem/support/sonnet',
     );
@@ -256,7 +337,7 @@ describe('CustomizeModelsPanel', () => {
       );
       const path = screen.getByTestId('path').textContent;
 
-      const row = screen.getAllByRole('row')[1];
+      const row = bodyRows()[0];
       expect(within(row).getByText('Not accepted')).toBeInTheDocument();
       expect(
         within(row).queryByText('Secret support/mistral-key not found'),
@@ -283,168 +364,25 @@ describe('CustomizeModelsPanel', () => {
     });
   });
 
-  it('narrows to the search', async () => {
-    await renderPanel('qwen');
+  it('narrows to the search, by name, owner and provider as they read', async () => {
+    mockModelRows = [sonnet, { ...qwen, provider: 'GeminiVertexAI' }];
+    const { unmount } = await renderPanel('qwen');
     expect(screen.getByText('Qwen 2.5')).toBeInTheDocument();
     expect(screen.queryByText('Sonnet 4.5')).not.toBeInTheDocument();
-  });
-
-  it('offers model hosting only where a serving layer runs', async () => {
-    const { unmount } = await renderPanel();
-    expect(
-      screen.queryByRole('link', { name: 'Model hosting' }),
-    ).not.toBeInTheDocument();
-    // Without one: the hint at what turns it on.
-    expect(
-      screen.getByRole('link', {
-        name: 'How to turn it on (opens in a new tab)',
-      }),
-    ).toBeInTheDocument();
     unmount();
 
-    mockServingInstallations = ['golem'];
-    await renderPanel();
-    expect(screen.getByRole('link', { name: 'Model hosting' })).toHaveAttribute(
-      'href',
-      '/customize/models/hosting',
-    );
-    expect(
-      screen.queryByRole('link', {
-        name: 'How to turn it on (opens in a new tab)',
-      }),
-    ).not.toBeInTheDocument();
+    await renderPanel('on vertex');
+    expect(bodyRows()).toHaveLength(1);
+    expect(screen.getByText('Qwen 2.5')).toBeInTheDocument();
   });
 
-  it('offers model hosting where cluster-manager runs without a serving layer', async () => {
-    mockClusterManager = ['golem'];
-    await renderPanel();
-    // GPU pools and the model cache are managed there.
-    expect(screen.getByRole('link', { name: 'Model hosting' })).toHaveAttribute(
-      'href',
-      '/customize/models/hosting',
-    );
-    expect(
-      screen.queryByRole('link', {
-        name: 'How to turn it on (opens in a new tab)',
-      }),
-    ).not.toBeInTheDocument();
-  });
-
-  describe('the Model hosting row', () => {
-    function PathProbe() {
-      return <div data-testid="path">{useLocation().pathname}</div>;
-    }
-
-    async function renderAtModels() {
-      mockServingInstallations = ['golem'];
-      await renderInTestApp(
-        <>
-          <PathProbe />
-          <CustomizeModelsPanel search="" />
-        </>,
-        {
-          initialRouteEntries: ['/customize/models'],
-          mountedRoutes: {
-            '/customize/models': modelsRouteRef,
-            '/customize': customizeExternalRouteRef,
-          },
-        },
-      );
-      expect(screen.getByTestId('path')).toHaveTextContent(
-        /^\/customize\/models$/,
-      );
-    }
-
-    it('opens Model hosting from its link', async () => {
-      await renderAtModels();
-
-      await userEvent.click(
-        screen.getByRole('link', { name: 'Model hosting' }),
-      );
-
-      expect(screen.getByTestId('path')).toHaveTextContent(
-        /^\/customize\/models\/hosting$/,
-      );
-    });
-
-    it('opens Model hosting from anywhere on the card, its text included', async () => {
-      await renderAtModels();
-
-      // The card's link is visually hidden; bui forwards a click on the card's
-      // surface to it.
-      await userEvent.click(
-        screen.getByText(
-          'Admins can run models on their own GPUs and manage what is served.',
-        ),
-      );
-
-      expect(screen.getByTestId('path')).toHaveTextContent(
-        /^\/customize\/models\/hosting$/,
-      );
-    });
-  });
-
-  describe('at list scale', () => {
-    function manyModels(count: number): ModelRow[] {
-      return Array.from({ length: count }, (_, i) => {
-        const name = `model-${String(i).padStart(3, '0')}`;
-        return {
-          ...sonnet,
-          id: `golem/support/${name}`,
-          name,
-          displayName: `Model ${String(i).padStart(3, '0')}`,
-        };
-      });
-    }
-    const bodyRows = () => screen.getAllByRole('row').slice(1);
-
-    it('draws three models with no paging chrome', async () => {
-      mockModelRows = manyModels(3);
-      await renderPanel();
-
-      expect(bodyRows()).toHaveLength(3);
-      expect(
-        screen.queryByRole('button', { name: /^Show \d+ more/ }),
-      ).not.toBeInTheDocument();
-      expect(screen.queryByText(/shown/)).not.toBeInTheDocument();
-      // bui's page-mode footer.
-      expect(screen.queryByText(/of 3/)).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole('button', { name: /next/i }),
-      ).not.toBeInTheDocument();
-    });
-
-    it('draws the first 20 of 300 models and pages in the rest', async () => {
-      mockModelRows = manyModels(300);
-      await renderPanel();
-
-      expect(bodyRows()).toHaveLength(20);
-      expect(screen.getByText('20 models shown, 280 more')).toBeInTheDocument();
-
-      await userEvent.click(
-        screen.getByRole('button', { name: 'Show 20 more models' }),
-      );
-
-      expect(bodyRows()).toHaveLength(40);
-      expect(
-        screen.getByRole('button', { name: 'Show fewer' }),
-      ).toBeInTheDocument();
-    });
-
-    it('pages a search of 300 models too', async () => {
-      mockModelRows = manyModels(300);
-      await renderPanel('model-1');
-
-      // model-100 .. model-199
-      expect(bodyRows()).toHaveLength(20);
-      expect(screen.getByText('20 models shown, 80 more')).toBeInTheDocument();
-    });
-  });
-
-  it('shows the empty state once nothing is found', async () => {
+  it('says how to add a model when there is none', async () => {
     mockModelRows = [];
     await renderPanel();
     expect(screen.getByText('No models yet')).toBeInTheDocument();
+    expect(
+      screen.getByText('Add a model for agents to run on.'),
+    ).toBeInTheDocument();
   });
 
   it('holds the read warning until the read settles', async () => {
@@ -466,106 +404,122 @@ describe('CustomizeModelsPanel', () => {
   });
 });
 
-describe('CustomizeModelsPanel at phone width (T22 C7)', () => {
+describe('CustomizeModelsPanel as its card narrows', () => {
   let layout: MockedLayout;
-  const headers = () =>
-    screen.getAllByRole('columnheader').map(header => header.textContent);
-  const bodyRows = () => screen.getAllByRole('row').slice(1);
-  function manyModels(count: number): ModelRow[] {
-    return Array.from({ length: count }, (_, i) => {
-      const name = `model-${String(i).padStart(3, '0')}`;
-      return {
-        ...sonnet,
-        id: `golem/support/${name}`,
-        name,
-        displayName: `Model ${String(i).padStart(3, '0')}`,
-      };
-    });
-  }
 
   beforeEach(() => {
     mockModelRows = [sonnet, qwen];
     mockModelsLoading = false;
-    mockServingInstallations = [];
+    mockDirectory = new Map();
+    layout = mockDesktopLayout();
+  });
+  afterEach(() => layout.restore());
+
+  it('names the owner and environment under the model id, then stacks the rows', async () => {
+    const container = mockContainerWidth(1000);
+    try {
+      await renderPanel();
+      expect(headers()).toHaveLength(6);
+
+      // Beside the side rail at 1024px.
+      act(() => container.setWidth(700));
+      expect(headers()).toEqual(['Model', 'Provider', 'Used by', 'Status']);
+      expect(
+        within(bodyRows()[1]).getByText('claude-sonnet-4-5 · support · golem'),
+      ).toBeInTheDocument();
+
+      // Beside the side rail at 768px.
+      act(() => container.setWidth(424));
+      expect(screen.queryByRole('table')).toBeNull();
+      expect(screen.getByRole('list', { name: 'Models' })).toBeInTheDocument();
+    } finally {
+      container.restore();
+    }
+  });
+
+  it('moves a sort on a column it leaves out back to the model', async () => {
+    const container = mockContainerWidth(1000);
+    try {
+      await renderPanel();
+      await userEvent.click(
+        screen.getByRole('columnheader', { name: /Environment/ }),
+      );
+      act(() => container.setWidth(700));
+      expect(
+        screen.getByRole('columnheader', { name: /Model/ }),
+      ).toHaveAttribute('aria-sort', 'ascending');
+    } finally {
+      container.restore();
+    }
+  });
+});
+
+describe('CustomizeModelsPanel at phone width', () => {
+  let layout: MockedLayout;
+
+  beforeEach(() => {
+    mockModelRows = [sonnet, qwen];
+    mockModelsLoading = false;
+    mockDirectory = new Map();
     layout = mockPhoneLayout();
   });
   afterEach(() => layout.restore());
 
-  it("keeps the model and its status, the usage joining the name's line", async () => {
+  it('stacks a row per model: its name, badge and state, then its facts', async () => {
+    mockModelRows = [{ ...sonnet, isDefault: true }, qwen];
     await renderPanel();
 
-    expect(headers()).toEqual(['Model', 'Status']);
-    const [sonnetRow, qwenRow] = bodyRows();
+    expect(screen.queryByRole('table')).toBeNull();
+    const [qwenItem, sonnetItem] = within(
+      screen.getByRole('list', { name: 'Models' }),
+    ).getAllByRole('listitem');
     expect(
-      within(sonnetRow).getByText(
-        'Anthropic · claude-sonnet-4-5 · Used by 2 agents',
-      ),
-    ).toBeInTheDocument();
-    expect(within(sonnetRow).getByText('Ready')).toBeInTheDocument();
-    expect(
-      within(qwenRow).getByText('Ollama · qwen2.5:32b · Not used yet'),
-    ).toBeInTheDocument();
-    expect(within(qwenRow).getByText('Not serving')).toBeInTheDocument();
+      within(sonnetItem).getByRole('link', { name: 'Sonnet 4.5' }),
+    ).toHaveAttribute('href', '/customize/models/golem/support/sonnet');
+    expect(within(sonnetItem).getByText('Default')).toBeInTheDocument();
+    expect(within(sonnetItem).getByText('Ready')).toBeInTheDocument();
+    expect(sonnetItem).toHaveTextContent(
+      'claude-sonnet-4-5·support·golem·Used by 2 agents',
+    );
+    expect(qwenItem).toHaveTextContent('Not used yet');
   });
 
-  it('brings the Used by column back on a wide viewport', async () => {
-    layout.restore();
-    layout = mockDesktopLayout();
-    await renderPanel();
-
-    expect(headers()).toEqual(['Model', 'Used by', 'Status']);
-    const [sonnetRow] = bodyRows();
-    expect(
-      within(sonnetRow).getByText('Anthropic · claude-sonnet-4-5'),
-    ).toBeInTheDocument();
-    expect(within(sonnetRow).getByText('Used by 2 agents')).toBeInTheDocument();
-  });
-
-  it('draws three models with no paging chrome', async () => {
-    mockModelRows = manyModels(3);
-    await renderPanel();
-
-    expect(bodyRows()).toHaveLength(3);
-    expect(screen.queryByRole('button', { name: /more|fewer/i })).toBeNull();
-    expect(screen.queryByText(/shown/)).toBeNull();
-  });
-
-  it('windows 300 models and keeps the provider filter', async () => {
+  it('lists every model and keeps the filters', async () => {
     mockModelRows = manyModels(300).map((each, i) =>
       i % 2 ? { ...each, provider: 'Ollama' } : each,
     );
     await renderPanel();
 
-    expect(headers()).toEqual(['Model', 'Status']);
-    expect(bodyRows()).toHaveLength(20);
-    expect(screen.getByText('20 models shown, 280 more')).toBeInTheDocument();
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Show 20 more models' }),
-    );
-    expect(bodyRows()).toHaveLength(40);
+    expect(
+      within(screen.getByRole('list', { name: 'Models' })).getAllByRole(
+        'listitem',
+      ),
+    ).toHaveLength(300);
     expect(
       screen.getByRole('button', { name: /Filter by provider/, hidden: true }),
     ).toBeInTheDocument();
   });
 });
 
-describe('CustomizeModelsPanel provider filter (T49, T64)', () => {
-  const bodyRows = () => screen.getAllByRole('row').slice(1);
-  /** The provider dropdown; `hidden` keeps it readable while it is open. */
-  const providerDropdown = () =>
-    screen.getByRole('button', { name: /Filter by provider/, hidden: true });
-  /** The provider dropdown's options, as "label count", read and closed. */
-  const providerOptions = async () => {
-    await userEvent.click(providerDropdown());
+describe('CustomizeModelsPanel filters', () => {
+  /** A dropdown; `hidden` keeps it readable while it is open. */
+  const dropdown = (field: string) =>
+    screen.getByRole('button', {
+      name: new RegExp(`Filter by ${field}`),
+      hidden: true,
+    });
+  /** A dropdown's options, as "label count", read and closed. */
+  const optionsOf = async (field: string) => {
+    await userEvent.click(dropdown(field));
     const options = within(await screen.findByRole('listbox'))
       .getAllByRole('option')
       .map(option => option.textContent);
     await userEvent.keyboard('{Escape}');
     return options;
   };
-  /** Toggles one provider. */
-  const pickProvider = async (option: string) => {
-    await userEvent.click(providerDropdown());
+  /** Toggles one option. */
+  const pick = async (field: string, option: string) => {
+    await userEvent.click(dropdown(field));
     await userEvent.click(await screen.findByRole('option', { name: option }));
     await userEvent.keyboard('{Escape}');
   };
@@ -579,76 +533,36 @@ describe('CustomizeModelsPanel provider filter (T49, T64)', () => {
 
   beforeEach(() => {
     mockModelsLoading = false;
-    mockServingInstallations = [];
-    mockClusterManager = [];
+    mockDirectory = new Map();
   });
 
-  it('offers no provider dropdown over three models of one provider', async () => {
+  it('offers no dropdown that could not narrow the list', async () => {
     mockModelRows = [0, 1, 2].map(index => model(index, 'Anthropic'));
     await renderPanel();
 
     expect(bodyRows()).toHaveLength(3);
-    expect(
-      screen.queryByRole('button', {
-        name: /Filter by provider/,
-        hidden: true,
-      }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Filters' })).toBeNull();
   });
 
-  it('filters three models by provider, together with the search', async () => {
-    mockModelRows = [sonnet, qwen, model(3, 'Anthropic')];
+  it('filters by owner, provider, status and use, alone and together with the search', async () => {
+    mockDirectory = labDirectory();
+    mockModelRows = [
+      sonnet,
+      qwen,
+      { ...model(3, 'Anthropic'), namespace: LAB_NAMESPACE, id: 'lab/m-3' },
+    ];
     await renderPanel();
 
-    expect(await providerOptions()).toEqual(['Anthropic 2', 'Ollama 1']);
-    await pickProvider('Ollama 1');
+    expect(await optionsOf('owner')).toEqual(['support 2', 'Lab 1']);
+    expect(await optionsOf('provider')).toEqual(['Anthropic 2', 'Ollama 1']);
+    expect(await optionsOf('status')).toEqual(['Ready 2', 'Not serving 1']);
+    expect(await optionsOf('used by')).toEqual(['In use 1', 'Not used 2']);
+
+    await pick('used by', 'Not used 2');
+    expect(bodyRows()).toHaveLength(2);
+    await pick('owner', 'support 1');
     expect(bodyRows()).toHaveLength(1);
     expect(screen.getByText('Qwen 2.5')).toBeInTheDocument();
-    await pickProvider('Anthropic 2');
-    expect(bodyRows()).toHaveLength(3);
-  });
-
-  it('says when a provider and the search leave nothing, and clears the filter', async () => {
-    mockModelRows = [sonnet, qwen];
-    await renderPanel('sonnet');
-
-    expect(await providerOptions()).toEqual(['Anthropic 1', 'Ollama 0']);
-    await pickProvider('Ollama 0');
-    expect(
-      screen.getByText('No models match “sonnet” with these filters.'),
-    ).toBeInTheDocument();
-    // The empty state's way back (the bar offers the same).
-    const [, emptyStateClear] = screen.getAllByRole('button', {
-      name: 'Clear filters',
-    });
-    await userEvent.click(emptyStateClear);
-    expect(bodyRows()).toHaveLength(1);
-  });
-
-  it('filters 300 models from four providers, paging from the first page', async () => {
-    const providers = ['Anthropic', 'OpenAI', 'Ollama', 'vLLM'];
-    mockModelRows = Array.from({ length: 300 }, (_, index) =>
-      model(index, providers[index % 4]),
-    );
-    await renderPanel();
-
-    expect(await providerOptions()).toEqual([
-      'Anthropic 75',
-      'Ollama 75',
-      'OpenAI 75',
-      'vLLM 75',
-    ]);
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Show 20 more models' }),
-    );
-    expect(bodyRows()).toHaveLength(40);
-
-    await pickProvider('vLLM 75');
-    expect(bodyRows()).toHaveLength(20);
-    expect(screen.getByText('20 models shown, 55 more')).toBeInTheDocument();
-
-    await pickProvider('Ollama 75');
-    expect(screen.getByText('20 models shown, 130 more')).toBeInTheDocument();
 
     await userEvent.click(
       within(screen.getByRole('group', { name: 'Filters' })).getByRole(
@@ -656,6 +570,20 @@ describe('CustomizeModelsPanel provider filter (T49, T64)', () => {
         { name: 'Clear filters' },
       ),
     );
-    expect(screen.getByText('20 models shown, 280 more')).toBeInTheDocument();
+    expect(bodyRows()).toHaveLength(3);
+  });
+
+  it('says when the filters and the search leave nothing, with one way back', async () => {
+    mockModelRows = [sonnet, qwen];
+    await renderPanel('sonnet');
+
+    await pick('provider', 'Ollama 0');
+    expect(
+      screen.getByText('No models match “sonnet” with these filters.'),
+    ).toBeInTheDocument();
+    const clear = screen.getAllByRole('button', { name: 'Clear filters' });
+    expect(clear).toHaveLength(1);
+    await userEvent.click(clear[0]);
+    expect(bodyRows()).toHaveLength(1);
   });
 });

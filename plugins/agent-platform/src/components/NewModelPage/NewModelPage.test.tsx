@@ -206,11 +206,11 @@ beforeEach(() => {
 });
 
 describe('NewModelPage', () => {
-  it('says "Connect a model" in its title and on its button', async () => {
+  it('says "Add a model" in its title and on its button', async () => {
     await renderPage();
 
     expect(
-      screen.getByRole('heading', { level: 1, name: 'Connect a model' }),
+      screen.getByRole('heading', { level: 1, name: 'Add a model' }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Continue to credential' }),
@@ -315,7 +315,7 @@ describe('NewModelPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('holds Connect model, saying why, until the Owner choices are known', async () => {
+  it('holds Add model, saying why, until the Owner choices are known', async () => {
     // Only the platform's so far: an Organization may still join the choices.
     mockNamespacesLoading = true;
     await renderPage();
@@ -346,7 +346,7 @@ describe('NewModelPage', () => {
     ).not.toHaveAccessibleDescription();
   });
 
-  it('holds Connect model and offers the sign-in while agent-manager there wants it', async () => {
+  it('holds Add model and offers the sign-in while agent-manager there wants it', async () => {
     const message =
       "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.";
     mockSignIn = { message, signInRequired: true };
@@ -475,7 +475,7 @@ describe('NewModelPage', () => {
   it('introduces itself plainly, pointing at model hosting only where it exists', async () => {
     const { unmount } = await renderPage();
     expect(
-      screen.getByText(/^Agents run on the models you connect here\./),
+      screen.getByText(/^Agents run on the models you add here:/),
     ).toBeInTheDocument();
     expect(screen.queryByText(/ModelConfig/)).not.toBeInTheDocument();
     expect(

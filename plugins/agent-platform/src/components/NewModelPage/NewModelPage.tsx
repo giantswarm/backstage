@@ -105,7 +105,7 @@ function PullRequestHeld({
 /** Long enough to read two lines, short enough not to follow you to the next page. */
 const TOAST_TIMEOUT_MS = 6000;
 
-/** Why Connect model waits while the Owner choices are read. */
+/** Why Add model waits while the Owner choices are read. */
 const CHOOSING_OWNER_REASON =
   'Checking which Organizations you may add a model for…';
 
@@ -128,7 +128,7 @@ export type ModelEdit = {
 };
 
 /**
- * Connect a model (`/customize/models/new`): one step that writes a
+ * Add a model (`/customize/models/new`): one step that writes a
  * kagent ModelConfig and its key Secret. Plain fields first — display name,
  * provider and model, the optional API key — and the technical name (filled
  * in from the display name) and TLS verification under More options, the
@@ -498,7 +498,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
     } else if (edit) {
       label = isSaving ? 'Saving…' : 'Save changes';
     } else {
-      label = isSaving ? 'Connecting…' : 'Connect model';
+      label = isSaving ? 'Adding…' : 'Add model';
     }
     const primary = (describedBy?: string) => (
       <Button
@@ -541,7 +541,7 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
 
   return (
     <WizardFrame
-      title={edit ? 'Edit model' : 'Connect a model'}
+      title={edit ? 'Edit model' : 'Add a model'}
       documentTitle={
         edit
           ? [`Edit ${edit.modelConfig.getDisplayName()}`, 'Models']
@@ -563,12 +563,13 @@ export function NewModelPage({ edit }: { edit?: ModelEdit } = {}) {
         </WizardStepHeading>
       ) : (
         <WizardStepHeading title="Describe the model">
-          Agents run on the models you connect here.
+          Agents run on the models you add here: a provider's model, reached
+          with your key and billed by the provider per token.
           {hostingHref ? (
             <>
               {' '}
-              To run a model on your own GPUs instead, use{' '}
-              <Link href={hostingHref}>Model hosting</Link>.
+              To run a model on your own cluster nodes instead, billed by
+              capacity, use <Link href={hostingHref}>Model hosting</Link>.
             </>
           ) : null}
         </WizardStepHeading>

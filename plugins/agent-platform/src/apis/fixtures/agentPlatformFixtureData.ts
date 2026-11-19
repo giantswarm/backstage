@@ -482,6 +482,11 @@ export type FixtureModel = {
   /** Anthropic: prompt caching and its cache time. */
   promptCaching?: boolean;
   cacheTTL?: string;
+  /**
+   * Its key Secret is missing: kagent accepts the settings and cannot
+   * resolve the Secret, so the model reads as Incomplete.
+   */
+  keyMissing?: boolean;
 };
 
 /** The block of a ModelConfig's spec that holds a provider's settings. */
@@ -527,8 +532,9 @@ export function providerBlockOf(
 }
 
 /**
- * A model as the `ModelConfig` object the pages list, accepted and resolved,
- * the namespace's default annotated as agent-manager marks it.
+ * A model as the `ModelConfig` object the pages list, accepted and resolved
+ * (but for a missing key Secret, `keyMissing`), the namespace's default
+ * annotated as agent-manager marks it.
  */
 export function modelConfigObjectOf(
   model: FixtureModel,
@@ -567,13 +573,18 @@ export function modelConfigObjectOf(
     },
     status: {
       observedGeneration: 1,
-      conditions: ['Accepted', 'ResolvedRefs'].map(type => ({
-        type,
-        status: 'True',
-        reason: type,
-        message: '',
-        lastTransitionTime: at,
-      })),
+      conditions: ['Accepted', 'ResolvedRefs'].map(type => {
+        const unresolved = model.keyMissing && type === 'ResolvedRefs';
+        return {
+          type,
+          status: unresolved ? 'False' : 'True',
+          reason: unresolved ? 'SecretNotFound' : type,
+          message: unresolved
+            ? `Secret ${model.namespace}/${model.secret} not found`
+            : '',
+          lastTransitionTime: at,
+        };
+      }),
     },
   } as ModelConfigInterface;
 }

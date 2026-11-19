@@ -352,10 +352,15 @@ Instances tab. muster's own page has no Details tab.
 
 ### Models
 
-Models are kagent ModelConfigs. **Connect a model** supports OpenAI-compatible
-endpoints, Anthropic, Gemini and Ollama; the API key is optional and
-write-only. Where the installation runs model-manager, **Model hosting** adds
-running models, GPU capacity and the model cache.
+Models are kagent ModelConfigs. Customize › Models lists every one in scope,
+by model: its owner (the platform, an organization, or a namespace that is no
+organization), its provider as the form names it, its environment, how many
+agents use it and its state, the defaults marked **Default**. It filters by
+owner, provider, status and use (In use, Not used). **Add a model** supports
+OpenAI-compatible endpoints, Anthropic, Gemini and Ollama; the API key is
+optional and write-only. Where the installation runs model-manager, the
+**Model hosting** row above the search leads to running models, GPU capacity
+and the model cache.
 
 ### Toolchains
 

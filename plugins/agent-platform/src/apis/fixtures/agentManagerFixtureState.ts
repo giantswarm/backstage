@@ -109,6 +109,15 @@ export const UNUSED_VERTEX_MODEL = 'gemini-vertex';
 /** The installation's default model, which its Helm release renders. */
 export const HELM_PLATFORM_MODEL = 'platform-default';
 
+/**
+ * Where the one model whose key Secret is missing lives: in the first
+ * namespace of this installation, which no organization is, so
+ * Customize › Models shows an Incomplete model, unused, owned by a bare
+ * namespace.
+ */
+export const INCOMPLETE_MODEL_INSTALLATION = 'tarragon';
+export const INCOMPLETE_MODEL = 'claude-direct';
+
 /** The Secrets agent-manager owns, and writes, in the installation namespace. */
 const PLATFORM_CREDENTIAL_PREFIX = 'tenant-credential-';
 
@@ -434,6 +443,22 @@ export class AgentManagerFixtureState {
           location: 'europe-west1',
         });
         members.set(organization.namespace, membersOf(organization));
+      }
+      const firstNamespace = organizations.find(
+        organization => organization.namespace,
+      )?.namespace;
+      if (installation === INCOMPLETE_MODEL_INSTALLATION && firstNamespace) {
+        models.set(keyOf(firstNamespace, INCOMPLETE_MODEL), {
+          namespace: firstNamespace,
+          name: INCOMPLETE_MODEL,
+          displayName: 'Claude Sonnet',
+          provider: 'Anthropic',
+          model: 'claude-sonnet-4-5',
+          default: false,
+          secret: `${INCOMPLETE_MODEL}-model-key`,
+          key: keyNameOf('Anthropic'),
+          keyMissing: true,
+        });
       }
       models.set(keyOf(MODEL_CONFIG_NAMESPACE, HELM_PLATFORM_MODEL), {
         namespace: MODEL_CONFIG_NAMESPACE,

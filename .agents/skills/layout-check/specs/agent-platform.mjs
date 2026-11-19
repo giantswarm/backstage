@@ -285,7 +285,7 @@ export default [
     '/used-by',
     '/edit',
   ]).map(p => ({ ...p, setup: openFirstModel(p.name) })),
-  { name: 'Connect a model', path: '/customize/models/new' },
+  { name: 'Add a model', path: '/customize/models/new' },
   { name: 'Model hosting', path: '/customize/models/hosting' },
   { name: 'Hosting capacity', path: '/customize/models/hosting/capacity' },
   { name: 'Hosting cache', path: '/customize/models/hosting/cache' },
