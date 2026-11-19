@@ -121,6 +121,33 @@ describe('fixture scenarios', () => {
     }
   });
 
+  it.each(['base', 'many', 'long-names'] as const)(
+    'names clusters uniquely in an installation, and nodes and pools in a cluster, in %s',
+    scenario => {
+      const data =
+        scenario === 'base' ? baseDataSet() : scenarioDataSet(scenario);
+      const clusters = data.clusters.map(c => `${c.installation}/${c.name}`);
+      expect(new Set(clusters).size).toBe(clusters.length);
+      for (const cluster of data.clusters) {
+        const pools = cluster.pools.map(p => p.name);
+        expect(new Set(pools).size).toBe(pools.length);
+        const nodes = cluster.pools.flatMap(p => p.nodes.map(n => n.name));
+        expect(new Set(nodes).size).toBe(nodes.length);
+      }
+    },
+  );
+
+  it('gives one cluster of each installation 30 pools of 40 nodes in many', () => {
+    const data = scenarioDataSet('many');
+    for (const installation of FIXTURE_INSTALLATIONS) {
+      const busiest = data.clusters.filter(
+        c => c.installation === installation && c.pools.length >= 30,
+      );
+      expect(busiest).toHaveLength(1);
+      expect(busiest[0].pools.some(p => p.kind === 'karpenter')).toBe(true);
+    }
+  });
+
   it('gives cache claims long names in long-names', () => {
     const data = scenarioDataSet('long-names');
     // The mounted claim keeps the name the serving slice gives it.

@@ -1,5 +1,6 @@
 import { Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
+import { MEASURE_TRACK, useMeasureColors } from '../../../nodePools';
 import { type KarpenterNodePoolStatus } from '../../../../hooks';
 import { formatResourceQuantity } from '../../../nodePools';
 
@@ -32,15 +33,16 @@ const useStyles = makeStyles({
     flexDirection: 'column',
     gap: 4,
   },
+  // A track that shows on the card's surface, as the nodes tables' bars.
   track: {
-    height: 4,
-    borderRadius: 2,
-    background: 'var(--bui-bg-neutral-2)',
+    height: 6,
+    borderRadius: 3,
+    background: MEASURE_TRACK,
     overflow: 'hidden',
   },
   fill: {
     height: '100%',
-    background: 'var(--bui-fg-secondary)',
+    borderRadius: 3,
   },
 });
 
@@ -61,11 +63,14 @@ function Meter({
   used,
   total,
   resource,
+  color,
 }: {
   label: string;
   used: number | undefined;
   total: number;
   resource: string;
+  /** The measure's hue, the same as in the nodes table. */
+  color: string;
 }) {
   const classes = useStyles();
   const percent =
@@ -88,7 +93,10 @@ function Meter({
         )}
       </Flex>
       <div className={classes.track}>
-        <div className={classes.fill} style={{ width: `${percent ?? 0}%` }} />
+        <div
+          className={classes.fill}
+          style={{ width: `${percent ?? 0}%`, background: color }}
+        />
       </div>
     </div>
   );
@@ -109,6 +117,7 @@ export const RunningSummary = ({
   fallbackNodeCount,
 }: RunningSummaryProps) => {
   const classes = useStyles();
+  const colors = useMeasureColors();
 
   const nodes = status?.totalNodes ?? fallbackNodeCount;
   const cpuLimit = status?.limits?.cpu;
@@ -123,6 +132,7 @@ export const RunningSummary = ({
         <Meter
           label="CPU"
           resource="cpu"
+          color={colors.cpu}
           used={status?.usage?.cpu}
           total={cpuLimit}
         />
@@ -131,6 +141,7 @@ export const RunningSummary = ({
         <Meter
           label="Memory"
           resource="memory"
+          color={colors.memory}
           used={status?.usage?.memory}
           total={memoryLimit}
         />
