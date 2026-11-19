@@ -342,9 +342,25 @@ function ReadOrganizationDirectory({ children }: { children: ReactNode }) {
       retry: false,
     })),
   });
-  supported.forEach((installation, index) =>
-    noteSignIn(installation, mine[index]?.error),
-  );
+  supported.forEach((installation, index) => {
+    const error = mine[index]?.error;
+    if (!error) {
+      return;
+    }
+    // A failed read of the organizations is a check that failed too: the
+    // page shows the installation once, in the disclosure, never also as a
+    // warning of its own. A failed `get_info` above keeps its own reason.
+    if (!installationErrors[installation]) {
+      noteUnchecked(
+        installation,
+        error instanceof AgentManagerNotConnectedError && error.signInRequired
+          ? 'connectorSignIn'
+          : 'failed',
+        installationErrorLine(installation, error),
+      );
+    }
+    noteSignIn(installation, error);
+  });
 
   const isListing = Boolean(musterApi) && isAwaitingData(musterInstallations);
   // Each installation whose own reads are still out: its server list, its
@@ -483,9 +499,21 @@ export function useOrganizationDirectory(): OrganizationDirectoryValue {
   return useContext(OrganizationDirectoryContext);
 }
 
-/** Whether any installation reports support for Agent Platform organizations. */
+/**
+ * Whether the Organizations page has something to show: an installation
+ * reports support for Agent Platform organizations, or a check failed, so
+ * the page that explains the failure stays reachable. An installation that
+ * answered without organizations is decided and counts for nothing; one the
+ * portal reaches without a per-user sign-in can never be read as the person.
+ */
 export function useOrganizationsAvailable(): boolean {
-  return useOrganizationDirectory().installations.length > 0;
+  const { installations, uncheckedInstallations, listingError } =
+    useOrganizationDirectory();
+  return (
+    installations.length > 0 ||
+    Boolean(listingError) ||
+    uncheckedInstallations.some(entry => entry.reason !== 'sharedIdentity')
+  );
 }
 
 /**

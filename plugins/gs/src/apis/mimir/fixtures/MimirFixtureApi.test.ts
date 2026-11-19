@@ -48,9 +48,23 @@ describe('MimirFixtureApi', () => {
 
   it('answers no series, without a warning, for a metric it has none of', async () => {
     const answer = await query(
-      'max by (cluster_id, node, resource) (kube_node_status_capacity{cluster_id=~"fennel"}) * on (cluster_id, node) group_left (nodepool) (max by (cluster_id, node, nodepool) (kube_node_labels{cluster_id=~"fennel"}))',
+      'max by (namespace, deployment) (kube_deployment_spec_replicas{namespace="fennel"})',
     );
     expect(answer.data.result).toEqual([]);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("answers a node pool's nodes as the node table queries them", async () => {
+    const cluster = data.clusters.find(
+      c => c.installation === 'fennel' && c.pools.length > 0,
+    )!;
+    const pool = cluster.pools[0];
+    const answer = await query(
+      `max by (node, cluster_id, resource) (kube_node_status_allocatable{cluster_id="${cluster.name}", resource=~"cpu|memory|pods"}) * on(node, cluster_id) group_left(nodepool, label_node_kubernetes_io_instance_type, zone) max by (node, cluster_id, nodepool, label_node_kubernetes_io_instance_type, zone) (kube_node_labels{cluster_id="${cluster.name}", nodepool="${pool.name}"})`,
+    );
+    const nodes = new Set(answer.data.result.map(r => r.metric.node));
+    expect(nodes).toEqual(new Set(pool.nodes.map(n => n.name)));
+    expect(answer.data.result).toHaveLength(pool.nodes.length * 3);
     expect(warn).not.toHaveBeenCalled();
   });
 

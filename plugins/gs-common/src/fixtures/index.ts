@@ -78,9 +78,12 @@ export {
   CLUSTER_STATES,
   MANAGEMENT_ORGANIZATION,
   type ClusterState,
+  KARPENTER_MAX_PODS,
   type FixtureCluster,
+  type FixtureClusterNode,
   type FixtureClusterPool,
 } from './clusterBuilders';
+export { clusterNodeSeries, clusterNodeSeriesOf } from './clusterNodeSeries';
 export { capitalize, createNamer, fitName } from './names';
 export { createRandom, hashOf, type FixtureRandom } from './random';
 export {

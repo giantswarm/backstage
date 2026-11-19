@@ -10,28 +10,16 @@ import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 import { sortAndFilterOptions } from '@giantswarm/backstage-plugin-ui-react';
 import { NodePoolNode } from '../../../../hooks';
 import { DateComponent, NotAvailable } from '../../../../UI';
-import { MachineTypeCatalog, describeMachineType } from '../../../nodePools';
+import {
+  MachineTypeCatalog,
+  describeMachineType,
+  formatResourceQuantity,
+  shortenNodeName,
+  shortenZone,
+} from '../../../nodePools';
 
-function shortenNodeName(name: string): string {
-  return name.split('.')[0];
-}
-
-function shortenAZ(zone: string): string {
-  const suffix = zone.slice(-1);
-  return suffix.toUpperCase();
-}
-
-function formatMemory(bytes: number): string {
-  const gi = bytes / (1024 * 1024 * 1024);
-  if (gi >= 1) return `${gi.toFixed(1)} Gi`;
-  const mi = bytes / (1024 * 1024);
-  return `${mi.toFixed(0)} Mi`;
-}
-
-function formatCpu(cores: number): string {
-  if (cores < 1) return `${Math.round(cores * 1000)}m`;
-  return cores.toFixed(1);
-}
+const formatMemory = (bytes: number) => formatResourceQuantity('memory', bytes);
+const formatCpu = (cores: number) => formatResourceQuantity('cpu', cores);
 
 function ColumnHeader({ label, tooltip }: { label: string; tooltip: string }) {
   return (
@@ -168,7 +156,7 @@ export function getColumns(
       render: row =>
         row.zone ? (
           <Tooltip title={row.zone} arrow>
-            <span>{shortenAZ(row.zone)}</span>
+            <span>{shortenZone(row.zone)}</span>
           </Tooltip>
         ) : (
           <NotAvailable />

@@ -23,7 +23,9 @@ const useStyles = makeStyles({
   exclude: {
     background: 'transparent',
     color: 'var(--bui-fg-secondary)',
-    border: '1px dashed var(--bui-border-2)',
+    // Strong enough to read as a chip on the card's surface, in both themes.
+    border:
+      '1px dashed color-mix(in srgb, var(--bui-fg-secondary) 55%, transparent)',
   },
 });
 

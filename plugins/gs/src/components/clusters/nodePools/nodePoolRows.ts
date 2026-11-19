@@ -34,6 +34,10 @@ export type AWSNodePoolType = 'ASG' | 'Karpenter';
 
 export type AWSNodePoolRow = NodePoolRowBase & {
   type: AWSNodePoolType;
+  /** The pool and the infrastructure CR it points at, where it was read. */
+  machinePool: MachinePool;
+  awsMachinePool: AWSMachinePool | undefined;
+  karpenterMachinePool: KarpenterMachinePool | undefined;
   instanceType: string | undefined;
   availabilityZones: string[] | undefined;
   minSize: number | undefined;
@@ -42,6 +46,8 @@ export type AWSNodePoolRow = NodePoolRowBase & {
 };
 
 export type NodePoolRow<T extends KubeObject> = NodePoolRowBase & {
+  /** The MachineDeployment or MachinePool. */
+  pool: MachineDeployment | MachinePool;
   /** The CR the pool's infrastructureRef points at. */
   infrastructure: T | undefined;
   machineType: string | undefined;
@@ -108,6 +114,9 @@ export function buildAWSNodePoolRows(
       id: pool.getName(),
       name: pool.getName(),
       type,
+      machinePool: pool,
+      awsMachinePool,
+      karpenterMachinePool,
       desiredReplicas: pool.getDesiredReplicas(),
       readyReplicas: pool.getReadyReplicas(),
       instanceType,
@@ -152,6 +161,7 @@ export function buildNodePoolRows<T extends KubeObject>(
     return {
       id: pool.getName(),
       name: pool.getName(),
+      pool,
       desiredReplicas: pool.getDesiredReplicas(),
       readyReplicas: pool.getReadyReplicas(),
       infrastructure,

@@ -27,6 +27,14 @@ import { useOrganizationDirectory } from '../OrganizationDirectoryProvider';
 export const SHARED_CREDENTIAL_LINE =
   'An agent uses each of these connectors with the credential the organization stored for it, the same for everybody who uses the agent.';
 
+/**
+ * What the section says while *Nothing outside the chat* is picked: that
+ * option turns these connectors off too, and which option gives the agent
+ * these connectors alone.
+ */
+export const CHAT_ONLY_CONNECTORS_LINE =
+  'Nothing outside the chat, picked above, turns these connectors off too. To give the agent only these connectors, pick Only the tools I choose below and choose no other tool.';
+
 const useStyles = makeStyles(theme => ({
   heading: {
     marginBottom: theme.spacing(1),
@@ -70,10 +78,20 @@ function ConnectorLines({
         <Text variant="body-small" color="warning">
           Credential missing: the agent cannot use this connector until the
           organization stores its credential.{' '}
-          {connectorsTab && (
-            <ExternalLink href={connectorsTab} display="inline">
-              Set it on the Connectors tab
-            </ExternalLink>
+          {/* The Connectors tab offers Replace credential to an admin of the
+              organization, never for a connector the platform curates. */}
+          {connector.curated ? (
+            'The platform curates this connector, so its credential is not set on the organization page.'
+          ) : (
+            <>
+              An admin of the organization sets it with Replace credential on
+              the organization&apos;s Connectors tab.{' '}
+              {connectorsTab && (
+                <ExternalLink href={connectorsTab} display="inline">
+                  Open the Connectors tab
+                </ExternalLink>
+              )}
+            </>
           )}
         </Text>
       )}
@@ -171,11 +189,15 @@ export function OrganizationConnectors() {
     body = <LoadingIndicator label="Reading the organization's connectors…" />;
   } else if (listed.length === 0 && picked.length === 0 && !read.failure) {
     body = (
+      // A connector is not added on the organization page: an admin of the
+      // organization has an agent add it (`set_organization_connector`).
       <Text variant="body-small" color="secondary">
-        The organization has no connector of its own yet.{' '}
+        The organization has no connector of its own yet. An admin of the
+        organization adds one by asking an agent with the Agent Manager tools to
+        add it, with the connector&apos;s address and credential.{' '}
         {connectorsTab && (
           <ExternalLink href={connectorsTab} display="inline">
-            Add one on its Connectors tab
+            See the organization&apos;s connectors
           </ExternalLink>
         )}
       </Text>
@@ -185,7 +207,7 @@ export function OrganizationConnectors() {
       <Flex direction="column" gap="2">
         {chatOnly && (
           <Text variant="body-small" color="secondary">
-            Pick another option above to add tools.
+            {CHAT_ONLY_CONNECTORS_LINE}
           </Text>
         )}
         {read.failure && (

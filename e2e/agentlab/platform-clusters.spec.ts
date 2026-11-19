@@ -8,7 +8,8 @@ import { expect, open, test } from './fixtures';
  * item and `/platform` is no page, as before the section existed. With it,
  * the rail's Platform item opens the Clusters tab, whose list, column picker
  * and sortable headers the person can use, and whose rows open a cluster's
- * page with its Overview tab.
+ * page with its Overview and Node pools tabs; a selected node pool is in the
+ * URL (`?name=<pool>`), so a reload or a shared link shows it again.
  */
 
 const rail = (page: Page) =>
@@ -139,4 +140,54 @@ test('a row opens its cluster’s page', async ({ admin }) => {
     .getByRole('link', { name: 'Clusters', exact: true })
     .click();
   await expect(admin).toHaveURL(/\/platform\/clusters$/);
+});
+
+test('the Node pools tab keeps the selected pool in the URL', async ({
+  admin,
+}) => {
+  const item = await platformItem(admin);
+  test.skip(
+    (await item.count()) === 0,
+    'the lab does not set gs.features.platformSection.enabled',
+  );
+  await open(admin, '/platform/clusters');
+  const name = admin.locator('a[href^="/platform/clusters/"]').first();
+  const empty = admin.getByText('No clusters yet', { exact: true });
+  await expect(name.or(empty)).toBeVisible({ timeout: 60_000 });
+  test.skip(await empty.isVisible(), 'the lab has no clusters');
+  await name.click();
+
+  await admin.getByRole('tab', { name: /^Node pools/ }).click();
+  await expect(admin).toHaveURL(/\/node-pools$/);
+  // A pool's name is the button that selects it.
+  const firstPool = admin
+    .getByRole('main')
+    .locator('button[aria-pressed]')
+    .first();
+  const none = admin.getByText(/No node pools yet|aren.t shown here yet/);
+  await expect(firstPool.or(none)).toBeVisible({ timeout: 60_000 });
+  test.skip(await none.isVisible(), 'the cluster has no node pools to show');
+
+  const poolName = (await firstPool.textContent())?.trim() ?? '';
+  await firstPool.click();
+  await expect(admin).toHaveURL(new RegExp(`/node-pools\\?name=${poolName}$`));
+  const details = admin.getByRole('button', {
+    name: `Technical details of ${poolName}`,
+  });
+  await expect(details).toBeVisible();
+
+  // A reload shows the same pool.
+  await admin.reload();
+  await expect(
+    admin.getByRole('button', { name: poolName, pressed: true }),
+  ).toBeVisible({ timeout: 60_000 });
+  await expect(details).toBeVisible();
+
+  // So does the link, opened afresh.
+  const link = admin.url();
+  await open(admin, '/platform/clusters');
+  await admin.goto(link);
+  await expect(
+    admin.getByRole('button', { name: poolName, pressed: true }),
+  ).toBeVisible({ timeout: 60_000 });
 });
