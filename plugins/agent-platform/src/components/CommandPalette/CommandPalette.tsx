@@ -35,10 +35,10 @@ import type { ComposerImage } from '../../lib/messageImages';
 import { useCustomizePaths } from '../../hooks/useCustomizePaths';
 import { useDraggablePosition } from '../../hooks/useDraggablePosition';
 import { useSkillPaths } from '../../hooks/useSkillPaths';
+import { useConnectorPageLinks } from '../../hooks/useConnectorPageLinks';
 import { skillSource, uniqueSkills } from '../../lib/customize';
 import {
   agentDetailRouteRef,
-  musterServerExternalRouteRef,
   musterWorkflowDetailExternalRouteRef,
   sessionDetailRouteRef,
   sessionsRouteRef,
@@ -451,7 +451,7 @@ function PaletteDialog({
   const sessionDetailRoute = useRouteRef(sessionDetailRouteRef);
   const agentDetailRoute = useRouteRef(agentDetailRouteRef);
   const skillPaths = useSkillPaths();
-  const serverRoute = useRouteRef(musterServerExternalRouteRef);
+  const connectorLinks = useConnectorPageLinks();
   const customizePaths = useCustomizePaths();
   const { modelDetail: modelDetailRoute } = customizePaths;
   const workflowDetailRoute = useRouteRef(musterWorkflowDetailExternalRouteRef);
@@ -523,16 +523,24 @@ function PaletteDialog({
       ];
     });
 
-    const connectorCandidates: PaletteCandidate[] = serverRoute
+    // Each entry's link and whether connectors are listed at all come from
+    // one source, `useConnectorPageLinks`.
+    const connectorCandidates: PaletteCandidate[] = connectorLinks.routed
       ? connectors.rows.map(connector => ({
-          id: `connector:${connector.installation}/${connector.page}`,
+          id: `connector:${connector.installation}/${connector.key}`,
           title: connector.displayName,
           meta: connector.installation,
-          href: serverRoute({
-            installation: connector.installation,
-            server: connector.page,
-          }),
-          names: [connector.displayName, connector.page],
+          // muster's own connector named like a family has no page to open,
+          // as on the Connectors list.
+          ...(connector.page
+            ? {
+                href: connectorLinks.server(
+                  connector.page,
+                  connector.installation,
+                ),
+              }
+            : {}),
+          names: [connector.displayName, connector.page ?? connector.key],
         }))
       : [];
 
@@ -571,7 +579,7 @@ function PaletteDialog({
       sessions: sessionDetailRoute ? sessionCandidates : undefined,
       agents: agentDetailRoute ? agentCandidates : undefined,
       skills: skillCandidates,
-      connectors: serverRoute ? connectorCandidates : undefined,
+      connectors: connectorLinks.routed ? connectorCandidates : undefined,
       models: modelDetailRoute ? modelCandidates : undefined,
       workflows: workflowDetailRoute ? workflowCandidates : undefined,
     };
@@ -585,7 +593,7 @@ function PaletteDialog({
     sessionDetailRoute,
     agentDetailRoute,
     skillPaths,
-    serverRoute,
+    connectorLinks,
     modelDetailRoute,
     workflowDetailRoute,
   ]);
@@ -719,6 +727,9 @@ function PaletteDialog({
 
   const openEntry = useCallback(
     (entry: PaletteEntry) => {
+      if (!entry.href) {
+        return;
+      }
       navigate(entry.href);
       onClose();
     },
@@ -1031,6 +1042,7 @@ function PaletteOption({
       id={id}
       role="option"
       aria-selected={isActive}
+      aria-disabled={entry.href ? undefined : true}
       tabIndex={-1}
       className={classes.option}
       onClick={onOpen}

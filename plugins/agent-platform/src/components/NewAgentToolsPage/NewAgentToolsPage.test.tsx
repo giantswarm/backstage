@@ -412,6 +412,7 @@ const BASE_STATE: NewAgentFormState = {
   systemMessage: '',
   egressText: '',
   egressPolicyRefs: [],
+  connectors: [],
   defaultWorkspace: '',
   selectedSkills: [],
   keptSkills: [],
@@ -679,6 +680,12 @@ describe('NewAgentToolsPage', () => {
         ]),
       );
       expect(level('Nothing outside the chat')).toBeChecked();
+      // It says that it turns an organization's connectors off too.
+      expect(
+        within(levels()).getByText(
+          "No connector and no tool, an organization's own connectors included.",
+        ),
+      ).toBeInTheDocument();
       expect(within(levels()).getByText(/recommended/)).toBeInTheDocument();
       expect(within(levels()).getByText(/Full gateway/)).toBeInTheDocument();
       // muster's description of an environment preset.

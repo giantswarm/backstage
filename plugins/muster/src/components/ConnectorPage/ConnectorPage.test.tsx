@@ -1,6 +1,6 @@
 import { ReactElement } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
-import { cleanup, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
@@ -42,9 +42,39 @@ jest.mock('@giantswarm/backstage-plugin-flux-react', () => ({
 let mockServers: MCPServer[] = [];
 let mockAuthenticated = true;
 let mockLoading = false;
+let mockLoadingKeys = false;
 const mockRefresh = jest.fn();
+// What a slow read of muster's keys changes, as the provider would: the
+// mocked instance re-renders its readers when a test calls mockUpdate().
+const mockListeners = new Set<() => void>();
+let mockVersion = 0;
+function mockUpdate(change: () => void) {
+  change();
+  mockVersion += 1;
+  mockListeners.forEach(listener => listener());
+}
 jest.mock('../MusterInstanceProvider', () => ({
-  useMusterInstance: () => ({
+  useMusterInstance: () => {
+    jest.requireActual('react').useSyncExternalStore(
+      (listener: () => void) => {
+        mockListeners.add(listener);
+        return () => mockListeners.delete(listener);
+      },
+      () => mockVersion,
+    );
+    return mockInstance();
+  },
+  useMusterSession: () => ({
+    authenticated: mockAuthenticated,
+    pending: false,
+    connecting: false,
+    connect: jest.fn(),
+  }),
+  useMusterMutationRefresh: () => mockRefresh,
+}));
+
+function mockInstance() {
+  return {
     installations: ['gazelle'],
     isLoadingInstallations: false,
     activeInstallation: 'gazelle',
@@ -59,17 +89,11 @@ jest.mock('../MusterInstanceProvider', () => ({
     mcpServers: mockServers,
     workflows: [],
     isLoading: mockLoading,
+    isLoadingServerKeys: mockLoadingKeys,
     retry: jest.fn(),
     refreshInventory: jest.fn(),
-  }),
-  useMusterSession: () => ({
-    authenticated: mockAuthenticated,
-    pending: false,
-    connecting: false,
-    connect: jest.fn(),
-  }),
-  useMusterMutationRefresh: () => mockRefresh,
-}));
+  };
+}
 
 const HELM = { 'app.kubernetes.io/managed-by': 'Helm' };
 /** The platform's charts label their infrastructure servers. */
@@ -77,6 +101,7 @@ const INFRASTRUCTURE = { ...HELM, [TOOL_GROUP_LABEL]: 'infrastructure' };
 
 function makeServer(opts: {
   name: string;
+  namespace?: string;
   family?: string;
   mc?: string;
   state?: string;
@@ -92,7 +117,7 @@ function makeServer(opts: {
       kind: 'MCPServer',
       metadata: {
         name: opts.name,
-        namespace: 'agent-platform',
+        namespace: opts.namespace ?? 'agent-platform',
         annotations: {
           ...(opts.displayName
             ? { 'ui.giantswarm.io/display-name': opts.displayName }
@@ -293,8 +318,22 @@ async function renderAt(
                 element={<LocationProbe />}
               />
               <Route
+                path="/customize/connectors/:installation/-/:namespace/:server/*"
+                element={
+                  <>
+                    <LocationProbe />
+                    <ConnectorPage usedBy={usedBy} />
+                  </>
+                }
+              />
+              <Route
                 path="/customize/connectors/:installation/:server/*"
-                element={<ConnectorPage usedBy={usedBy} />}
+                element={
+                  <>
+                    <LocationProbe />
+                    <ConnectorPage usedBy={usedBy} />
+                  </>
+                }
               />
             </Routes>
           </PageHeaderActionsProvider>
@@ -323,6 +362,7 @@ beforeEach(() => {
   mockServers = makeServers();
   mockAuthenticated = true;
   mockLoading = false;
+  mockLoadingKeys = false;
   mockRefresh.mockClear();
 });
 
@@ -1097,6 +1137,242 @@ describe('ConnectorPage', () => {
       await screen.findByRole('heading', { name: 'Remove "jira"?' }),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+  });
+
+  describe("an organization's connector", () => {
+    const orgWiki = (spec: Record<string, unknown> = {}, state = 'Connected') =>
+      makeServer({
+        name: 'wiki',
+        namespace: 'org-gazelle',
+        displayName: 'Gazelle wiki',
+        state,
+        spec,
+      });
+
+    const golemWiki = () =>
+      makeServer({
+        name: 'wiki',
+        namespace: 'org-golem',
+        displayName: 'Golem wiki',
+        spec: { auth: { type: 'oauth' } },
+        state: 'Auth Required',
+      });
+
+    it.each([
+      ['org-gazelle', 'Gazelle wiki'],
+      ['org-golem', 'Golem wiki'],
+    ])(
+      "opens %s's wiki at its own address, beside another organization's",
+      async (namespace, heading) => {
+        mockServers = [...makeServers(), orgWiki(), golemWiki()];
+        await renderAt(`${BASE}/-/${namespace}/wiki/details`);
+
+        expect(
+          screen.getByRole('heading', { level: 1, name: heading }),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByText(`at ${BASE}/-/${namespace}/wiki/details`),
+        ).toBeInTheDocument();
+        await userEvent.click(screen.getByRole('tab', { name: /^Tools/ }));
+        expect(
+          await screen.findByText(`at ${BASE}/-/${namespace}/wiki`),
+        ).toBeInTheDocument();
+      },
+    );
+
+    it('moves its address before it had its own to it, keeping the tab and query', async () => {
+      mockServers = [...makeServers(), orgWiki()];
+      await renderAt(`${BASE}/wiki/usage?window=7`);
+
+      expect(
+        await screen.findByText(`at ${BASE}/-/org-gazelle/wiki/usage?window=7`),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { level: 1, name: 'Gazelle wiki' }),
+      ).toBeInTheDocument();
+    });
+
+    it('lists the connectors of that name at that address where several organizations have one', async () => {
+      mockServers = [...makeServers(), orgWiki(), golemWiki()];
+      await renderAt(`${BASE}/wiki`);
+
+      expect(
+        screen.getByRole('heading', { level: 1, name: 'wiki' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          '2 organizations on gazelle each have a connector named “wiki”. Open the one you are looking for:',
+        ),
+      ).toBeInTheDocument();
+      const list = screen.getByRole('list', { name: 'Connectors named wiki' });
+      expect(
+        within(list)
+          .getAllByRole('link')
+          .map(link => [link.textContent, link.getAttribute('href')]),
+      ).toEqual([
+        ['Gazelle wiki', `${BASE}/-/org-gazelle/wiki`],
+        ['Golem wiki', `${BASE}/-/org-golem/wiki`],
+      ]);
+      expect(within(list).getByText('Namespace org-golem')).toBeInTheDocument();
+    });
+
+    describe("with muster outside the chart's namespace, its keys read slowly", () => {
+      // muster runs in `muster-system`: until its keys are read, its own
+      // `github` there looks like an organization's.
+      const ownGithub = () =>
+        makeServer({ name: 'github', namespace: 'muster-system' });
+
+      it('waits for the keys before deciding an old address, then opens the page in place', async () => {
+        mockLoadingKeys = true;
+        mockServers = [ownGithub()];
+        await renderAt(`${BASE}/github/details`);
+
+        // The page's loading frame: its skeletons, no tab content.
+        expect(document.querySelector('.bui-Skeleton')).not.toBeNull();
+        expect(
+          screen.getByText(`at ${BASE}/github/details`),
+        ).toBeInTheDocument();
+        expect(screen.queryByText(/No connector/)).toBeNull();
+
+        act(() =>
+          mockUpdate(() => {
+            mockLoadingKeys = false;
+            mockServers = [ownGithub().withMusterKey('github')];
+          }),
+        );
+
+        // Its own page, read: the tab strip past Tools.
+        expect(
+          await screen.findByRole('tab', { name: 'Details' }),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByText(`at ${BASE}/github/details`),
+        ).toBeInTheDocument();
+      });
+
+      it("moves an organization's address of muster's own server to its own", async () => {
+        mockServers = [ownGithub().withMusterKey('github')];
+        await renderAt(`${BASE}/-/muster-system/github`);
+
+        expect(
+          await screen.findByText(`at ${BASE}/github`),
+        ).toBeInTheDocument();
+      });
+
+      it('redirects to an organization connector only once the keys say it is one', async () => {
+        mockLoadingKeys = true;
+        mockServers = [orgWiki()];
+        await renderAt(`${BASE}/wiki`);
+        expect(screen.getByText(`at ${BASE}/wiki`)).toBeInTheDocument();
+
+        act(() =>
+          mockUpdate(() => {
+            mockLoadingKeys = false;
+            mockServers = [orgWiki().withMusterKey('org-gazelle/wiki')];
+          }),
+        );
+        expect(
+          await screen.findByText(`at ${BASE}/-/org-gazelle/wiki`),
+        ).toBeInTheDocument();
+      });
+    });
+
+    it("says there is none at an organization's address it does not have", async () => {
+      mockServers = [...makeServers(), orgWiki()];
+      await renderAt(`${BASE}/-/org-golem/wiki`);
+
+      expect(
+        screen.getByText('No connector “org-golem/wiki” on gazelle'),
+      ).toBeInTheDocument();
+    });
+
+    it("signs in to it by muster's key for it", async () => {
+      mockServers = [
+        ...makeServers(),
+        orgWiki({ auth: { type: 'oauth' } }, 'Auth Required'),
+        golemWiki(),
+      ];
+      const api = {
+        ...makeApi(),
+        signInServer: jest.fn(async () => ({
+          status: 'auth_required' as const,
+          authUrl: 'https://wiki.example.test/authorize',
+        })),
+      };
+      api.getAuthStatus.mockResolvedValue({
+        servers: [
+          {
+            name: 'org-gazelle/wiki',
+            status: 'auth_required',
+            auth_tool: 'core_auth_login',
+          },
+          {
+            name: 'org-golem/wiki',
+            status: 'auth_required',
+            auth_tool: 'core_auth_login',
+          },
+        ],
+      } as never);
+      api.filterTools.mockResolvedValue({
+        total: 0,
+        filtered_count: 0,
+        truncated: false,
+        tools: [],
+      });
+      await renderAt(`${BASE}/-/org-gazelle/wiki`, { api });
+
+      expect(
+        await screen.findByText('Sign in to this connector to see its tools.'),
+      ).toBeInTheDocument();
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Sign in' }),
+      );
+      await waitFor(() =>
+        expect(api.signInServer).toHaveBeenCalledWith(
+          'org-gazelle/wiki',
+          'gazelle',
+        ),
+      );
+    });
+
+    it('reconnects and turns it off by its key, and offers neither Remove nor Edit', async () => {
+      mockServers = [...makeServers(), golemWiki(), orgWiki()];
+      const api = makeApi();
+      await renderAt(`${BASE}/-/org-gazelle/wiki`, { api });
+
+      const edit = screen.getByRole('button', { name: 'Edit' });
+      expect(edit).toBeDisabled();
+      expect(edit).toHaveAccessibleDescription(
+        /organization's namespace, where it is changed/,
+      );
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'More actions' }),
+      );
+      expect(
+        screen.queryByRole('menuitem', { name: 'Remove…' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('menuitem', { name: 'Edit as JSON…' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('menuitem', { name: 'Turn off…' }),
+      ).toBeInTheDocument();
+      await userEvent.click(
+        screen.getByRole('menuitem', { name: 'Reconnect…' }),
+      );
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Confirm' }),
+      );
+
+      await waitFor(() =>
+        expect(api.callTool).toHaveBeenCalledWith(
+          'core_service_restart',
+          { name: 'org-gazelle/wiki' },
+          'gazelle',
+        ),
+      );
+    });
   });
 
   it('says so when the installation has no such connector', async () => {

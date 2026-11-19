@@ -12,9 +12,10 @@ const PREFIXES: ServerPrefixInfo[] = [
   {
     prefix: 'x_kubernetes',
     serverName: 'gazelle-mcp-kubernetes',
+    name: 'gazelle-mcp-kubernetes',
     family: 'kubernetes',
   },
-  { prefix: 'x_jira', serverName: 'jira' },
+  { prefix: 'x_jira', serverName: 'jira', name: 'jira' },
 ];
 
 describe('toolDisplay', () => {
@@ -34,7 +35,12 @@ describe('toolDisplay', () => {
   it('names the connector by its display name where it has one', () => {
     expect(
       toolDisplay('x_jira_search_issues', [
-        { prefix: 'x_jira', serverName: 'jira', displayName: 'Acme Jira' },
+        {
+          prefix: 'x_jira',
+          serverName: 'jira',
+          name: 'jira',
+          displayName: 'Acme Jira',
+        },
       ]),
     ).toEqual({
       kind: 'connector',

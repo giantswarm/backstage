@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
   type MockedLayout,
+  mockContainerWidth,
   mockDesktopLayout,
   mockPhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
@@ -547,6 +548,132 @@ describe('CustomizeWorkflowsPanel at phone width (T22 B9)', () => {
 
     expect(items()).toHaveLength(1);
     expect(itemOf('ticket-report')).toBeInTheDocument();
+  });
+});
+
+describe('CustomizeWorkflowsPanel in a card narrower than its columns', () => {
+  let layout: MockedLayout;
+  const headers = () =>
+    screen.getAllByRole('columnheader').map(cell => cell.textContent?.trim());
+
+  beforeEach(() => {
+    mockAuthenticated = true;
+    mockWorkflows = [
+      makeWorkflow('ticket-report', 4, {
+        description: 'Summarises the week’s tickets',
+        category: 'support',
+        gitops: true,
+        tags: 'tickets',
+      }),
+      makeWorkflow('upgrade-check', 1),
+    ];
+    mockLastRuns = { executions: [], has_more: false };
+    layout = mockDesktopLayout();
+  });
+  afterEach(() => layout.restore());
+
+  it('names the category, source and tags under the workflow, then stacks the rows', async () => {
+    const container = mockContainerWidth(1100);
+    try {
+      await renderPanel();
+      expect(headers()).toEqual([
+        'Workflow',
+        'Category',
+        'Tags',
+        'Steps',
+        'Access',
+        'Runs',
+        'Source',
+      ]);
+
+      // Beside the side rail at 1024px: 704px for the table.
+      act(() => container.setWidth(704));
+      expect(headers()).toEqual(['Workflow', 'Steps', 'Access', 'Runs']);
+      const report = screen.getByRole('row', { name: /ticket-report/ });
+      expect(
+        within(report).getByText(
+          'support · GitOps · Summarises the week’s tickets',
+        ),
+      ).toBeInTheDocument();
+      // The tags stay on the row: a Tags filter's match shows why.
+      expect(within(report).getByText('tickets')).toBeInTheDocument();
+      expect(
+        within(screen.getByRole('row', { name: /upgrade-check/ })).getByText(
+          'Manually added',
+        ),
+      ).toBeInTheDocument();
+
+      // Beside the side rail at 768px: 448px.
+      act(() => container.setWidth(448));
+      expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('list', { name: 'Workflows' }),
+      ).toBeInTheDocument();
+    } finally {
+      container.restore();
+    }
+  });
+
+  it('shows every column in the widest Customize column, and again after a narrower window', async () => {
+    const container = mockContainerWidth(984);
+    try {
+      await renderPanel();
+      const full = [
+        'Workflow',
+        'Category',
+        'Tags',
+        'Steps',
+        'Access',
+        'Runs',
+        'Source',
+      ];
+      expect(headers()).toEqual(full);
+
+      act(() => container.setWidth(704));
+      expect(headers()).toEqual(['Workflow', 'Steps', 'Access', 'Runs']);
+
+      act(() => container.setWidth(984));
+      expect(headers()).toEqual(full);
+    } finally {
+      container.restore();
+    }
+  });
+
+  it('keeps the Category and Tags columns when a workflow past the first page has them', async () => {
+    mockWorkflows = [
+      ...Array.from({ length: 25 }, (_, i) =>
+        makeWorkflow(`a-${String(i).padStart(2, '0')}`, 1),
+      ),
+      makeWorkflow('z-tagged', 1, { category: 'support', tags: 'tickets' }),
+    ];
+    const container = mockContainerWidth(1100);
+    try {
+      await renderPanel();
+      expect(
+        screen.queryByRole('row', { name: /z-tagged/ }),
+      ).not.toBeInTheDocument();
+      expect(headers()).toContain('Category');
+      expect(headers()).toContain('Tags');
+    } finally {
+      container.restore();
+    }
+  });
+
+  it('takes no room for a category or tags none of the workflows has', async () => {
+    mockWorkflows = [makeWorkflow('upgrade-check', 1)];
+    const container = mockContainerWidth(1100);
+    try {
+      await renderPanel();
+      expect(headers()).toEqual([
+        'Workflow',
+        'Steps',
+        'Access',
+        'Runs',
+        'Source',
+      ]);
+    } finally {
+      container.restore();
+    }
   });
 });
 

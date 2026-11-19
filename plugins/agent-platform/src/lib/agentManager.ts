@@ -158,6 +158,13 @@ export type AgentSpec = {
    */
   egressPolicyRefs?: string[];
   /**
+   * Names of the organization's own connectors (kagent RemoteMCPServers of
+   * `namespace`, `list_organization_connectors`) the agent binds beside
+   * muster. Only an agent-manager whose `create_agent` schema has
+   * `connectors` takes it (`takesConnectors`); never on a coding Harness.
+   */
+  connectors?: string[];
+  /**
    * The workspace, `<namespace>/<name>` in the agent's namespace, its
    * Sessions start in unless the person picks another or none
    * (`agent-platform.giantswarm.io/default-workspace`). Omitted, no default.
@@ -718,6 +725,11 @@ export type AgentManagerAgent = {
   egress?: string[];
   /** The EgressPolicies of its namespace it picks (`spec.egressPolicyRefs`). */
   egressPolicyRefs?: string[];
+  /**
+   * The organization's own connectors it binds; absent from an
+   * agent-manager that does not take them.
+   */
+  connectors?: string[];
   /** The agent's default workspace, `<namespace>/<name>`; absent, none. */
   defaultWorkspace?: string;
   status?: AgentObjectStatus;
@@ -841,6 +853,8 @@ export type AgentUpdate = {
   egress?: string[];
   /** Replaces the whole list; an empty list clears it. */
   egressPolicyRefs?: string[];
+  /** Replaces the whole list; an empty list removes every connector. */
+  connectors?: string[];
   /** `<namespace>/<name>`; `""` removes the default. */
   defaultWorkspace?: string;
   refreshSkills?: boolean;

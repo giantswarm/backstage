@@ -178,6 +178,12 @@ export type FixtureWorkflow = {
   name: string;
   description: string;
   state: WorkflowState;
+  /** The category label's value, if it has one. */
+  category?: string;
+  /** Its tags, in the tags annotation; none for some. */
+  tags: string[];
+  /** Applied by GitOps (Helm) rather than added through muster. */
+  gitops: boolean;
 };
 
 export type FixtureExecution = {
@@ -572,13 +578,52 @@ export function buildWorkflows(
     installations,
     settings,
     { count: 3, states: WORKFLOW_STATES },
-    (installation, state, nameLength) => ({
+    (installation, state, nameLength, index) => ({
       installation: installation.name,
       name: name(nameLength).name,
       description: fixtureSentence(context.random),
       state,
+      ...workflowGrouping(index, nameLength),
     }),
   );
+}
+
+const WORKFLOW_CATEGORIES = ['operations', 'reporting', 'maintenance'];
+const WORKFLOW_TAGS = ['reports', 'rollouts', 'cleanup', 'audit', 'on-call'];
+/** As long as a label value may be, for the long-names scenario. */
+const LONG_WORKFLOW_CATEGORY =
+  'scheduled-maintenance-and-reporting-across-every-organization';
+const LONG_WORKFLOW_TAGS = ['quarterly-capacity-review-reports', 'rollouts'];
+
+/**
+ * A workflow's category, tags and source, from its place in the list: one in
+ * four has all three, one only a tag, one a category from GitOps, one none.
+ * Drawing no numbers, they leave the rest of the data set as it was.
+ */
+function workflowGrouping(
+  index: number,
+  nameLength: number,
+): Pick<FixtureWorkflow, 'category' | 'tags' | 'gitops'> {
+  const long = nameLength > 30;
+  const category = long
+    ? LONG_WORKFLOW_CATEGORY
+    : WORKFLOW_CATEGORIES[Math.floor(index / 4) % WORKFLOW_CATEGORIES.length];
+  const tag = (offset: number) =>
+    WORKFLOW_TAGS[(index + offset) % WORKFLOW_TAGS.length];
+  switch (index % 4) {
+    case 0:
+      return {
+        category,
+        tags: long ? LONG_WORKFLOW_TAGS : [tag(0), tag(1)],
+        gitops: true,
+      };
+    case 1:
+      return { tags: [long ? LONG_WORKFLOW_TAGS[0] : tag(0)], gitops: false };
+    case 2:
+      return { category, tags: [], gitops: true };
+    default:
+      return { tags: [], gitops: false };
+  }
 }
 
 /**

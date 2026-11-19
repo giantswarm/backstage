@@ -74,6 +74,8 @@ export type FixtureAgentDetails = {
   toolset?: string[];
   egress?: string[];
   egressPolicyRefs?: string[];
+  /** The organization's own connectors it binds (`connectors`). */
+  connectors?: string[];
   defaultWorkspace?: string;
   /** The Agent object's `metadata.generation`; 1 by default. */
   generation?: number;
@@ -313,6 +315,7 @@ export function agentManagerAgentOf(
     harness,
     egress: agent.egress ?? [],
     egressPolicyRefs: agent.egressPolicyRefs ?? [],
+    ...(agent.connectors?.length && { connectors: agent.connectors }),
     ...(agent.defaultWorkspace && {
       defaultWorkspace: agent.defaultWorkspace,
     }),

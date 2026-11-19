@@ -325,8 +325,10 @@ export const musterServersExternalRouteRef = createExternalRouteRef({
 /**
  * A connector's page in muster's plugin
  * (`/customize/connectors/<installation>/<server>`). `server` is the page
- * segment: the family name for a server family, the CR name for a singular
- * server.
+ * segment: the family name for a server family, the CR name for muster's own
+ * singular server; an organization's connector has
+ * {@link musterOrganizationServerExternalRouteRef}. Linked through
+ * `useConnectorPageLinks`.
  */
 export const musterServerExternalRouteRef = createExternalRouteRef({
   params: ['installation', 'server'],
@@ -344,6 +346,24 @@ export const musterServerToolExternalRouteRef = createExternalRouteRef({
   params: ['installation', 'server', 'tool'],
   defaultTarget: 'muster.mcpServerTool',
 });
+
+/**
+ * An organization's connector's page in muster's plugin
+ * (`/customize/connectors/<installation>/-/<namespace>/<server>`), and a
+ * tool's page beneath it: two organizations may each own a connector of one
+ * name. Linked through `useConnectorPageLinks`, which picks this or
+ * {@link musterServerExternalRouteRef} by muster's `connectorPageParams`.
+ */
+export const musterOrganizationServerExternalRouteRef = createExternalRouteRef({
+  params: ['installation', 'namespace', 'server'],
+  defaultTarget: 'muster.mcpOrganizationServer',
+});
+
+export const musterOrganizationServerToolExternalRouteRef =
+  createExternalRouteRef({
+    params: ['installation', 'namespace', 'server', 'tool'],
+    defaultTarget: 'muster.mcpOrganizationServerTool',
+  });
 
 /**
  * A workflow's page in muster's plugin

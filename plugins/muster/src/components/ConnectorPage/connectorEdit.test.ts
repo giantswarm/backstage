@@ -21,7 +21,7 @@ function server(
     {
       apiVersion: 'muster.giantswarm.io/v1alpha1',
       kind: 'MCPServer',
-      metadata: { name, namespace: 'muster', labels },
+      metadata: { name, namespace: 'agent-platform', labels },
       spec: {
         type: 'streamable-http',
         url: `https://${name}.example.test/mcp`,

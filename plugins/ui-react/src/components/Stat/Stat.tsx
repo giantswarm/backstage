@@ -35,10 +35,14 @@ const useStyles = makeStyles((theme: Theme) => ({
     color: theme.palette.text.secondary,
   },
   labelInline: {
+    // 11.2px: a short uppercase label beside a number, which caps make read
+    // as large as 12px.
     fontSize: '0.7rem',
     fontWeight: 500,
   },
   labelTile: {
+    // 11px: a short uppercase label above a number, which caps make read as
+    // large as 12px.
     fontSize: 11,
     fontWeight: 600,
   },

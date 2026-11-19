@@ -19,6 +19,7 @@ import { MusterInstallationInfo } from '../../apis/types';
 import { selectMusterInstallations } from './selectInstallations';
 import { useMusterInstallations } from './useMusterInstallations';
 import { useMusterResources } from './useMusterResources';
+import { useMusterKeyedServersState } from '../../hooks/useMusterKeyedServers';
 
 // A light background refetch so the live health reads (per-MC pills, the
 // healthy count) don't drift silently from the CRD between page loads.
@@ -87,6 +88,13 @@ export type MusterInstance = {
   /** Workflow CRs of the active instance. */
   workflows: MusterWorkflow[];
   isLoading: boolean;
+  /**
+   * True while muster's keys for {@link mcpServers} are still read
+   * (`useMusterKeyedServersState`): until then an organization's server and
+   * muster's own outside the chart's namespace look alike, so whatever tells
+   * them apart (an old connector address's redirect) waits.
+   */
+  isLoadingServerKeys?: boolean;
   /**
    * The workflows' own first read, which `isLoading` leaves out: true while
    * it is pending with no workflows yet.
@@ -259,7 +267,7 @@ export const MusterInstanceProvider = ({
   const clusters = activeInstallation ? [activeInstallation] : [];
 
   const {
-    resources: mcpServers,
+    resources: mcpServerResources,
     errors: mcpServerErrors,
     isLoading: isLoadingServers,
     retry: retryServers,
@@ -267,6 +275,10 @@ export const MusterInstanceProvider = ({
   } = useMusterResources(clusters, MCPServer, {
     refetchInterval: HEALTH_REFETCH_INTERVAL_MS,
   });
+
+  // Each with muster's key for it, which every lookup and action names it by.
+  const { servers: mcpServers, isLoadingKeys: isLoadingServerKeys } =
+    useMusterKeyedServersState(mcpServerResources);
 
   const {
     resources: workflows,
@@ -331,6 +343,7 @@ export const MusterInstanceProvider = ({
         (Boolean(activeInstallation) &&
           isLoadingWorkflowsQuery &&
           workflows.length === 0),
+      isLoadingServerKeys,
       mcpServersUpdatedAt,
       retry: () => {
         retryServers();
@@ -353,6 +366,7 @@ export const MusterInstanceProvider = ({
       workflows,
       isLoadingServers,
       isLoadingWorkflowsQuery,
+      isLoadingServerKeys,
       mcpServersUpdatedAt,
       retryServers,
       retryWorkflows,

@@ -195,6 +195,8 @@ type Scenario = {
   toolset?: string[];
   /** The agent's namespace; the platform's (`kagent`) by default. */
   tenant?: string;
+  /** The organization's own connectors picked on the Tools step. */
+  connectors?: string[];
 };
 
 function makeMusterApi(scenario: Scenario = {}) {
@@ -271,6 +273,7 @@ function Seed({
   egressText,
   toolset = ['preset:read-only'],
   tenant = 'kagent',
+  connectors = [],
 }: {
   children: ReactNode;
   withSkill?: boolean;
@@ -278,6 +281,7 @@ function Seed({
   egressText?: string;
   toolset?: string[];
   tenant?: string;
+  connectors?: string[];
 }) {
   const {
     setName,
@@ -291,6 +295,7 @@ function Seed({
     selectHarness,
     toggleSkill,
     setToolset,
+    setConnectors,
     isComplete,
   } = useNewAgentForm();
   useEffect(() => {
@@ -309,6 +314,7 @@ function Seed({
       toggleSkill(SKILL);
     }
     setToolset(toolset);
+    setConnectors(connectors);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return isComplete ? <>{children}</> : null;
@@ -344,8 +350,10 @@ async function renderReview(
               egressText={scenario.egressText}
               toolset={scenario.toolset}
               tenant={scenario.tenant}
+              connectors={scenario.connectors}
             >
               <NewAgentReviewPage />
+              <ConnectorsRefusalProbe />
             </Seed>
           </NewAgentFormProvider>
         </PageHeaderActionsProvider>
@@ -354,6 +362,16 @@ async function renderReview(
     { mountedRoutes: { '/customize/agents': agentsRouteRef } },
   );
   return { callTool };
+}
+
+/** agent-manager's refusal of the connectors, as the Tools step reads it. */
+function ConnectorsRefusalProbe() {
+  const { state } = useNewAgentForm();
+  return (
+    <output data-testid="connectors-refusal">
+      {state.connectorsRefusal?.messages.join(' | ') ?? ''}
+    </output>
+  );
 }
 
 /** The drafts kept in the tab (its other entries are not the form's). */
@@ -575,6 +593,52 @@ describe('NewAgentReviewPage', () => {
       'server:agents-payments-x7k2q/wiki',
       'tool:core_auth_login',
     ]);
+  });
+
+  it("creates an organization's agent with the organization's own connectors picked", async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderReview({
+      tenant: 'agents-payments-x7k2q',
+      connectors: ['jira'],
+    });
+
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    expect(
+      specSentTo(callTool, 'x_agent-manager_validate_agent').connectors,
+    ).toEqual(['jira']);
+    expect(plainRow('Connectors from the organization page')).toHaveTextContent(
+      'jira',
+    );
+    await user.click(deployButton());
+    await waitFor(() =>
+      expect(callTool).toHaveBeenCalledWith(
+        'x_agent-manager_create_agent',
+        expect.anything(),
+        'gazelle',
+      ),
+    );
+    expect(
+      specSentTo(callTool, 'x_agent-manager_create_agent').connectors,
+    ).toEqual(['jira']);
+  });
+
+  it("hands agent-manager's refusal of the connectors to the Tools step in its own words", async () => {
+    const refused =
+      'connectors: RemoteMCPServer "jira" does not exist in namespace agents-payments-x7k2q (list_organization_connectors lists the organization\'s connectors)';
+    await renderReview({
+      tenant: 'agents-payments-x7k2q',
+      connectors: ['jira'],
+      violations: [refused, 'agent.displayName: is required'],
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('connectors-refusal')).toHaveTextContent(
+        refused,
+      ),
+    );
+    expect(screen.getByTestId('connectors-refusal')).not.toHaveTextContent(
+      'displayName',
+    );
   });
 
   it('holds Create while it is still read whether a connector needs the sign-in tool', async () => {

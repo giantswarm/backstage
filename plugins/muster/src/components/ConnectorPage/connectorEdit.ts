@@ -1,10 +1,11 @@
+import { isOrganizationServer } from '../../lib/connectorKey';
 import { isGitOpsManaged } from '../../lib/gitops';
 import { wizardEditBlocker } from '../../lib/mcpServerDefinition';
 import { ServerPageRow } from '../../lib/serverGrouping';
 
 /** Why Edit is unavailable, by cause; the page's menu offers what fits each. */
 export type ConnectorEditBlock = {
-  cause: 'gitops' | 'instances' | 'session' | 'wizard';
+  cause: 'gitops' | 'instances' | 'organization' | 'session' | 'wizard';
   reason: string;
 };
 
@@ -16,6 +17,14 @@ export const GITOPS_FAMILY_EDIT_REASON =
 
 export const INSTANCES_EDIT_REASON =
   'Each instance is configured on its own (see Instances).';
+
+/**
+ * Why an organization's connector is not edited here: muster's
+ * `core_mcpserver_update` and `core_mcpserver_delete` change the connectors of
+ * muster's own namespace only.
+ */
+export const ORGANIZATION_EDIT_REASON =
+  "It belongs to its organization's namespace, where it is changed; Muster changes only its own connectors.";
 
 export const SESSION_EDIT_REASON =
   'Editing needs your Muster session, which is not connected.';
@@ -45,6 +54,9 @@ export function connectorEditBlock(
   }
   if (isGitOpsManaged(row.server)) {
     return { cause: 'gitops', reason: GITOPS_EDIT_REASON };
+  }
+  if (isOrganizationServer(row.server)) {
+    return { cause: 'organization', reason: ORGANIZATION_EDIT_REASON };
   }
   if (!authenticated) {
     return { cause: 'session', reason: SESSION_EDIT_REASON };

@@ -1,3 +1,4 @@
+import type { PaletteConnector } from './usePaletteConnectors';
 import type { ReactNode } from 'react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
@@ -13,6 +14,7 @@ import {
   agentsRouteRef,
   modelsRouteRef,
   musterServerExternalRouteRef,
+  musterOrganizationServerExternalRouteRef,
   musterWorkflowDetailExternalRouteRef,
   sessionsRouteRef,
   skillsRouteRef,
@@ -106,7 +108,7 @@ jest.mock('../../hooks/useSkillCatalog', () => ({
 }));
 
 let mockConnectors: {
-  rows: { page: string; displayName: string; installation: string }[];
+  rows: PaletteConnector[];
   isLoading: boolean;
 };
 jest.mock('./usePaletteConnectors', () => ({
@@ -198,6 +200,8 @@ function renderPalette() {
         '/customize/skills': skillsRouteRef,
         '/customize/connectors/:installation/:server':
           musterServerExternalRouteRef,
+        '/customize/connectors/:installation/-/:namespace/:server':
+          musterOrganizationServerExternalRouteRef,
         '/customize/models': modelsRouteRef,
         '/customize': customizeExternalRouteRef,
         '/customize/workflows/:installation/:name':
@@ -256,6 +260,7 @@ beforeEach(() => {
   mockConnectors = {
     rows: [
       {
+        key: 'server:confluence',
         page: 'confluence',
         displayName: 'confluence',
         installation: 'gazelle',
@@ -628,6 +633,7 @@ describe('CommandPalette', () => {
     mockConnectors = {
       rows: [
         {
+          key: 'server:mcp-confluence',
           page: 'mcp-confluence',
           displayName: 'Team wiki',
           installation: 'gazelle',
@@ -644,11 +650,75 @@ describe('CommandPalette', () => {
     );
   });
 
+  it.each([
+    ['Gazelle wiki', '/customize/connectors/gazelle/-/org-gazelle/wiki'],
+    ['Golem wiki', '/customize/connectors/gazelle/-/org-golem/wiki'],
+  ])(
+    "opens %s, one of two organizations' connectors of one name, at its own address",
+    async (name, href) => {
+      mockConnectors = {
+        rows: [
+          {
+            key: 'server:org-gazelle/wiki',
+            page: '-/org-gazelle/wiki',
+            displayName: 'Gazelle wiki',
+            installation: 'gazelle',
+          },
+          {
+            key: 'server:org-golem/wiki',
+            page: '-/org-golem/wiki',
+            displayName: 'Golem wiki',
+            installation: 'gazelle',
+          },
+        ],
+        isLoading: false,
+      };
+      const input = await openPalette();
+      await userEvent.type(input, 'wiki');
+
+      const option = screen.getByRole('option', { name: new RegExp(name) });
+      expect(option).not.toHaveAttribute('aria-disabled');
+      await userEvent.click(screen.getByText(name));
+      expect(mockNavigate).toHaveBeenCalledWith(href);
+    },
+  );
+
+  it('lists a connector with no page of its own without opening it', async () => {
+    mockConnectors = {
+      rows: [
+        {
+          key: 'server:wiki',
+          displayName: 'wiki',
+          installation: 'gazelle',
+        },
+      ],
+      isLoading: false,
+    };
+    const input = await openPalette();
+    await userEvent.type(input, 'wiki');
+
+    const option = screen.getByRole('option', { name: /wiki/ });
+    expect(option).toHaveAttribute('aria-disabled', 'true');
+    await userEvent.click(screen.getByText('wiki'));
+    await userEvent.keyboard('{Enter}');
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
   it('lists a connector once per installation, each opening there', async () => {
     mockConnectors = {
       rows: [
-        { page: 'jira', displayName: 'Jira', installation: 'gazelle' },
-        { page: 'jira', displayName: 'Jira', installation: 'golem' },
+        {
+          key: 'server:jira',
+          page: 'jira',
+          displayName: 'Jira',
+          installation: 'gazelle',
+        },
+        {
+          key: 'server:jira',
+          page: 'jira',
+          displayName: 'Jira',
+          installation: 'golem',
+        },
       ],
       isLoading: false,
     };
