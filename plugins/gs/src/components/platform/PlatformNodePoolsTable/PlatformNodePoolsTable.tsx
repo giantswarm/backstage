@@ -6,6 +6,7 @@ import {
   getRelativeDate,
   StackedRowList,
   StatusDot,
+  type FittingTier,
   useFittingColumns,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
@@ -166,110 +167,114 @@ export function PlatformNodePoolsTable({
   const now = useMemo(() => new Date(), []);
 
   const columnsFor = useCallback(
-    (isNarrow: boolean): ColumnConfig<PlatformNodePool>[] => [
-      {
-        id: 'name',
-        label: 'Node pool',
-        isRowHeader: true,
-        defaultWidth: '1.2fr',
-        cell: pool => (
-          <Cell>
-            <TwoLines
-              title={
-                <PoolButton
-                  pool={pool}
-                  isSelected={pool.name === selected}
-                  onSelect={onSelect}
-                />
-              }
-              description={[
-                kindLabel(pool.kind),
-                isNarrow && pool.created
-                  ? `created ${createdText(pool.created, now)}`
-                  : undefined,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            />
-          </Cell>
-        ),
-      },
-      {
-        id: 'ready',
-        label: 'Nodes ready',
-        defaultWidth: '1fr',
-        cell: pool => (
-          <Cell>
-            <ReadyStatus pool={pool} />
-          </Cell>
-        ),
-      },
-      {
-        id: 'machines',
-        label: 'Machines',
-        defaultWidth: '1fr',
-        cell: pool => (
-          <Cell>
-            <TwoLines
-              title={pool.machine ?? '—'}
-              description={[
-                pool.machineDetail,
-                isNarrow && formatZones(pool.zones)
-                  ? `zones ${formatZones(pool.zones)}`
-                  : undefined,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
-            />
-          </Cell>
-        ),
-      },
-      {
-        id: 'zones',
-        label: 'Zones',
-        defaultWidth: '0.8fr',
-        cell: pool => (
-          <Cell>
-            <Text
-              variant="body-medium"
-              title={zonesTitle(pool.zones)}
-              style={NO_WRAP}
-            >
-              {formatZones(pool.zones) ?? '—'}
-            </Text>
-          </Cell>
-        ),
-      },
-      {
-        id: 'scaling',
-        label: 'Scaling',
-        defaultWidth: '1.3fr',
-        cell: pool => (
-          <Cell>
-            <Text variant="body-medium">{pool.scaling ?? '—'}</Text>
-          </Cell>
-        ),
-      },
-      {
-        id: 'created',
-        label: 'Created',
-        defaultWidth: '1fr',
-        cell: pool => (
-          <Cell>
-            <Text
-              variant="body-medium"
-              color="secondary"
-              title={
-                pool.created ? formatLocalDateFull(pool.created) : undefined
-              }
-              style={NO_WRAP}
-            >
-              {createdText(pool.created, now) ?? '—'}
-            </Text>
-          </Cell>
-        ),
-      },
-    ],
+    (tier: FittingTier): ColumnConfig<PlatformNodePool>[] => {
+      // The compact layout stacks the rows; its columns are the narrow ones.
+      const isNarrow = tier !== 'full';
+      return [
+        {
+          id: 'name',
+          label: 'Node pool',
+          isRowHeader: true,
+          defaultWidth: '1.2fr',
+          cell: pool => (
+            <Cell>
+              <TwoLines
+                title={
+                  <PoolButton
+                    pool={pool}
+                    isSelected={pool.name === selected}
+                    onSelect={onSelect}
+                  />
+                }
+                description={[
+                  kindLabel(pool.kind),
+                  isNarrow && pool.created
+                    ? `created ${createdText(pool.created, now)}`
+                    : undefined,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              />
+            </Cell>
+          ),
+        },
+        {
+          id: 'ready',
+          label: 'Nodes ready',
+          defaultWidth: '1fr',
+          cell: pool => (
+            <Cell>
+              <ReadyStatus pool={pool} />
+            </Cell>
+          ),
+        },
+        {
+          id: 'machines',
+          label: 'Machines',
+          defaultWidth: '1fr',
+          cell: pool => (
+            <Cell>
+              <TwoLines
+                title={pool.machine ?? '—'}
+                description={[
+                  pool.machineDetail,
+                  isNarrow && formatZones(pool.zones)
+                    ? `zones ${formatZones(pool.zones)}`
+                    : undefined,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              />
+            </Cell>
+          ),
+        },
+        {
+          id: 'zones',
+          label: 'Zones',
+          defaultWidth: '0.8fr',
+          cell: pool => (
+            <Cell>
+              <Text
+                variant="body-medium"
+                title={zonesTitle(pool.zones)}
+                style={NO_WRAP}
+              >
+                {formatZones(pool.zones) ?? '—'}
+              </Text>
+            </Cell>
+          ),
+        },
+        {
+          id: 'scaling',
+          label: 'Scaling',
+          defaultWidth: '1.3fr',
+          cell: pool => (
+            <Cell>
+              <Text variant="body-medium">{pool.scaling ?? '—'}</Text>
+            </Cell>
+          ),
+        },
+        {
+          id: 'created',
+          label: 'Created',
+          defaultWidth: '1fr',
+          cell: pool => (
+            <Cell>
+              <Text
+                variant="body-medium"
+                color="secondary"
+                title={
+                  pool.created ? formatLocalDateFull(pool.created) : undefined
+                }
+                style={NO_WRAP}
+              >
+                {createdText(pool.created, now) ?? '—'}
+              </Text>
+            </Cell>
+          ),
+        },
+      ];
+    },
     [selected, onSelect, now],
   );
 

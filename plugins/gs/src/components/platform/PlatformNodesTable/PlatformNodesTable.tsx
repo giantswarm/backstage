@@ -14,6 +14,7 @@ import {
   InfoHint,
   StackedRowList,
   StatusDot,
+  type FittingTier,
   useFittingColumns,
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { NodePoolNode } from '../../hooks';
@@ -252,136 +253,140 @@ export function PlatformNodesTable({
   );
 
   const columnsFor = useCallback(
-    (isNarrow: boolean): ColumnConfig<NodePoolNode>[] => [
-      {
-        id: 'node',
-        label: 'Node',
-        isRowHeader: true,
-        defaultWidth: '1.2fr',
-        cell: node => (
-          <Cell>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <Text
-                variant="body-small"
-                title={node.node}
-                style={{ fontFamily: '"Roboto Mono", monospace' }}
-              >
-                {shortenNodeName(node.node)}
-              </Text>
-              {isNarrow && (
-                <Text variant="body-small" color="secondary">
-                  {[
-                    node.instanceType,
-                    node.zone ? `zone ${shortenZone(node.zone)}` : undefined,
-                    node.created
-                      ? `created ${getRelativeDate(node.created.toISOString(), now)}`
-                      : undefined,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
+    (tier: FittingTier): ColumnConfig<NodePoolNode>[] => {
+      // The compact layout stacks the rows; its columns are the narrow ones.
+      const isNarrow = tier !== 'full';
+      return [
+        {
+          id: 'node',
+          label: 'Node',
+          isRowHeader: true,
+          defaultWidth: '1.2fr',
+          cell: node => (
+            <Cell>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <Text
+                  variant="body-small"
+                  title={node.node}
+                  style={{ fontFamily: '"Roboto Mono", monospace' }}
+                >
+                  {shortenNodeName(node.node)}
                 </Text>
-              )}
-            </div>
-          </Cell>
-        ),
-      },
-      {
-        id: 'ready',
-        label: 'Ready',
-        defaultWidth: '0.5fr',
-        cell: node => (
-          <Cell>
-            <ReadyStatus node={node} />
-          </Cell>
-        ),
-      },
-      {
-        id: 'machine',
-        label: 'Machine',
-        defaultWidth: '0.8fr',
-        cell: node => (
-          <Cell>
-            <Text variant="body-medium" style={NO_WRAP}>
-              {node.instanceType ?? '—'}
-            </Text>
-          </Cell>
-        ),
-      },
-      {
-        id: 'zone',
-        label: 'Zone',
-        defaultWidth: '0.4fr',
-        cell: node => (
-          <Cell>
-            <Text variant="body-medium" title={node.zone} style={NO_WRAP}>
-              {node.zone ? shortenZone(node.zone) : '—'}
-            </Text>
-          </Cell>
-        ),
-      },
-      {
-        id: 'cpu',
-        label: 'CPU requests',
-        header: () => (
-          <HeaderWithHint
-            id="cpu"
-            label="CPU requests"
-            hint={COLUMN_HINTS.cpu}
-          />
-        ),
-        defaultWidth: '1fr',
-        cell: node => (
-          <MeasureCell measure={cpuMeasure(node)} color={colors.cpu} />
-        ),
-      },
-      {
-        id: 'memory',
-        label: 'Memory requests',
-        header: () => (
-          <HeaderWithHint
-            id="memory"
-            label="Memory requests"
-            hint={COLUMN_HINTS.memory}
-          />
-        ),
-        defaultWidth: '1fr',
-        cell: node => (
-          <MeasureCell measure={memoryMeasure(node)} color={colors.memory} />
-        ),
-      },
-      {
-        id: 'pods',
-        label: 'Pods',
-        header: () => (
-          <HeaderWithHint id="pods" label="Pods" hint={COLUMN_HINTS.pods} />
-        ),
-        defaultWidth: '1fr',
-        cell: node => (
-          <MeasureCell measure={podsMeasure(node)} color={colors.pods} />
-        ),
-      },
-      {
-        id: 'created',
-        label: 'Created',
-        defaultWidth: '0.9fr',
-        cell: node => (
-          <Cell>
-            <Text
-              variant="body-medium"
-              color="secondary"
-              title={
-                node.created ? formatLocalDateFull(node.created) : undefined
-              }
-              style={NO_WRAP}
-            >
-              {node.created
-                ? getRelativeDate(node.created.toISOString(), now)
-                : '—'}
-            </Text>
-          </Cell>
-        ),
-      },
-    ],
+                {isNarrow && (
+                  <Text variant="body-small" color="secondary">
+                    {[
+                      node.instanceType,
+                      node.zone ? `zone ${shortenZone(node.zone)}` : undefined,
+                      node.created
+                        ? `created ${getRelativeDate(node.created.toISOString(), now)}`
+                        : undefined,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </Text>
+                )}
+              </div>
+            </Cell>
+          ),
+        },
+        {
+          id: 'ready',
+          label: 'Ready',
+          defaultWidth: '0.5fr',
+          cell: node => (
+            <Cell>
+              <ReadyStatus node={node} />
+            </Cell>
+          ),
+        },
+        {
+          id: 'machine',
+          label: 'Machine',
+          defaultWidth: '0.8fr',
+          cell: node => (
+            <Cell>
+              <Text variant="body-medium" style={NO_WRAP}>
+                {node.instanceType ?? '—'}
+              </Text>
+            </Cell>
+          ),
+        },
+        {
+          id: 'zone',
+          label: 'Zone',
+          defaultWidth: '0.4fr',
+          cell: node => (
+            <Cell>
+              <Text variant="body-medium" title={node.zone} style={NO_WRAP}>
+                {node.zone ? shortenZone(node.zone) : '—'}
+              </Text>
+            </Cell>
+          ),
+        },
+        {
+          id: 'cpu',
+          label: 'CPU requests',
+          header: () => (
+            <HeaderWithHint
+              id="cpu"
+              label="CPU requests"
+              hint={COLUMN_HINTS.cpu}
+            />
+          ),
+          defaultWidth: '1fr',
+          cell: node => (
+            <MeasureCell measure={cpuMeasure(node)} color={colors.cpu} />
+          ),
+        },
+        {
+          id: 'memory',
+          label: 'Memory requests',
+          header: () => (
+            <HeaderWithHint
+              id="memory"
+              label="Memory requests"
+              hint={COLUMN_HINTS.memory}
+            />
+          ),
+          defaultWidth: '1fr',
+          cell: node => (
+            <MeasureCell measure={memoryMeasure(node)} color={colors.memory} />
+          ),
+        },
+        {
+          id: 'pods',
+          label: 'Pods',
+          header: () => (
+            <HeaderWithHint id="pods" label="Pods" hint={COLUMN_HINTS.pods} />
+          ),
+          defaultWidth: '1fr',
+          cell: node => (
+            <MeasureCell measure={podsMeasure(node)} color={colors.pods} />
+          ),
+        },
+        {
+          id: 'created',
+          label: 'Created',
+          defaultWidth: '0.9fr',
+          cell: node => (
+            <Cell>
+              <Text
+                variant="body-medium"
+                color="secondary"
+                title={
+                  node.created ? formatLocalDateFull(node.created) : undefined
+                }
+                style={NO_WRAP}
+              >
+                {node.created
+                  ? getRelativeDate(node.created.toISOString(), now)
+                  : '—'}
+              </Text>
+            </Cell>
+          ),
+        },
+      ];
+    },
     [colors, now],
   );
 
