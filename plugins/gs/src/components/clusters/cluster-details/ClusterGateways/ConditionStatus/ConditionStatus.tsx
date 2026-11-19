@@ -3,12 +3,24 @@ import {
   StatusOK,
   StatusWarning,
 } from '@backstage/core-components';
+import { Fragment } from 'react';
 import { Flex, Text } from '@backstage/ui';
 import { ConditionState } from '../../../../utils/gatewayTopology';
 
-// Reasons are CamelCase without break points; let them wrap anywhere instead
-// of being clipped.
+// Reasons are CamelCase without break points. They may wrap between their
+// words (NotAllowed|By|Listeners), never inside one, and only a single word
+// longer than the column wraps anywhere rather than being clipped.
 const wrap = { overflowWrap: 'anywhere' } as const;
+
+/** `NotAllowedByListeners` with a break opportunity before each word. */
+export function camelBreaks(text: string) {
+  return text.split(/(?=[A-Z][a-z])/).map((word, index) => (
+    <Fragment key={index}>
+      {index > 0 ? <wbr /> : null}
+      {word}
+    </Fragment>
+  ));
+}
 
 /**
  * One status condition. A healthy condition reads "True"; only a failing one
@@ -39,11 +51,10 @@ export const ConditionStatus = ({
         <Flex align="center" gap="1">
           <StatusError />
           <Text variant="body-medium" style={wrap}>
-            {name
-              ? named(
-                  condition.reason ? `False · ${condition.reason}` : 'False',
-                )
-              : (condition.reason ?? 'False')}
+            {name ? named('False') : null}
+            {name && condition.reason ? ' · ' : null}
+            {condition.reason ? camelBreaks(condition.reason) : null}
+            {!name && !condition.reason ? 'False' : null}
           </Text>
         </Flex>
       );

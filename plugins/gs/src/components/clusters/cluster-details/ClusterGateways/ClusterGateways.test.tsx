@@ -102,12 +102,14 @@ describe('<ClusterGatewaysContent />', () => {
       .getAllByRole('row')
       .filter(row => within(row).queryByText('giantswarm-default'));
     expect(rows).toHaveLength(1);
+    // The name wraps on its own; the route count is never cut with it.
     expect(
-      within(rows[0]).getByText('http · HTTP/80 · any · 1 route'),
-    ).toBeInTheDocument();
+      within(rows[0]).getByText('http · HTTP/80 · any').parentElement,
+    ).toHaveTextContent('http · HTTP/80 · any · 1 route');
     expect(
-      within(rows[0]).getByText('https · HTTPS/443 · *.example.com · 4 routes'),
-    ).toBeInTheDocument();
+      within(rows[0]).getByText('https · HTTPS/443 · *.example.com')
+        .parentElement,
+    ).toHaveTextContent('https · HTTPS/443 · *.example.com · 4 routes');
   });
 
   it('links concrete hostnames and leaves wildcards as text', async () => {
@@ -511,6 +513,32 @@ describe('<ClusterGatewaysContent />', () => {
       expect(unknown).toHaveTextContent('backends not available');
     });
 
+    it('shows the Gateways table without listeners while loading', async () => {
+      await renderInTestApp(
+        <ClusterGatewaysContent
+          clusterName="demo"
+          gateways={[]}
+          routes={[]}
+          isLoading
+          policies={[]}
+          policiesLoading={false}
+        />,
+      );
+      expect(
+        screen.getByRole('columnheader', { name: 'Programmed' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('columnheader', { name: 'Listeners' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('says when a cluster has no Gateways', async () => {
+      await render([], []);
+      expect(
+        screen.getByText(/No Gateways found on cluster/),
+      ).toBeInTheDocument();
+    });
+
     it('shows only the route and its conditions while loading', async () => {
       await renderInTestApp(
         <ClusterGatewaysContent
@@ -530,6 +558,38 @@ describe('<ClusterGatewaysContent />', () => {
       ).not.toBeInTheDocument();
       expect(
         screen.getByRole('columnheader', { name: 'ResolvedRefs' }),
+      ).toBeInTheDocument();
+    });
+
+    it('stacks the Gateways with their conditions and listeners', async () => {
+      await render(
+        [],
+        [
+          {
+            id: 'envoy-gateway-system/giantswarm-default',
+            namespace: 'envoy-gateway-system',
+            name: 'giantswarm-default',
+            className: 'giantswarm-default',
+            accepted: { status: 'true' },
+            programmed: { status: 'false', reason: 'AddressNotAssigned' },
+            listeners: [
+              { name: 'http', protocol: 'HTTP', port: '80', attachedRoutes: 1 },
+            ],
+          },
+        ],
+      );
+      const list = screen.getByRole('list', { name: 'Gateways' });
+      const row = within(list).getByRole('listitem');
+      expect(
+        within(row).getByText('Programmed: False · AddressNotAssigned'),
+      ).toBeInTheDocument();
+      expect(row).toHaveTextContent('envoy-gateway-system');
+      expect(row).toHaveTextContent('1 listener');
+      expect(row).toHaveTextContent(
+        'Accepted: True, Programmed: False · AddressNotAssigned',
+      );
+      expect(
+        within(row).getByText('http · HTTP/80 · any · 1 route'),
       ).toBeInTheDocument();
     });
   });

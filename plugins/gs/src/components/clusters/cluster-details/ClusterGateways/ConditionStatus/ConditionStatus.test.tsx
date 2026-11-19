@@ -57,4 +57,14 @@ describe('<ConditionStatus />', () => {
     expect(screen.getByText('A: Not reported')).toBeInTheDocument();
     expect(screen.getByText('B: Not available')).toBeInTheDocument();
   });
+
+  it('lets a reason break between its words, never inside one', async () => {
+    await renderInTestApp(
+      <ConditionStatus
+        condition={{ status: 'false', reason: 'NotAllowedByListeners' }}
+      />,
+    );
+    const reason = screen.getByText('NotAllowedByListeners');
+    expect(reason.querySelectorAll('wbr')).toHaveLength(3);
+  });
 });

@@ -1,17 +1,13 @@
-import { Cell, CellText, ColumnConfig, Flex, Text } from '@backstage/ui';
+import { Cell, CellText, ColumnConfig } from '@backstage/ui';
 import type { FittingTier } from '@giantswarm/backstage-plugin-ui-react';
 import {
   ConditionState,
-  Gateway,
-  GatewayListener,
   HttpRoute,
   HttpRouteParent,
 } from '../../../utils/gatewayTopology';
 import { ConditionStatus } from './ConditionStatus';
 import { HostnameList } from './HostnameList';
 import { BackendList } from './BackendList';
-
-export type GatewayRow = Gateway;
 
 export type RouteParentRow = {
   id: string;
@@ -24,64 +20,6 @@ function conditionCell(condition: ConditionState | undefined) {
     <Cell>{condition ? <ConditionStatus condition={condition} /> : '—'}</Cell>
   );
 }
-
-/** One line per listener: `https · HTTPS/443 · *.example.com · 4 routes`. */
-function listenerLine(listener: GatewayListener): string {
-  const protocol = listener.protocol ?? '?';
-  const address = listener.port ? `${protocol}/${listener.port}` : protocol;
-  const routes =
-    listener.attachedRoutes === undefined
-      ? undefined
-      : `${listener.attachedRoutes} ${
-          listener.attachedRoutes === 1 ? 'route' : 'routes'
-        }`;
-  return [listener.name, address, listener.hostname ?? 'any', routes]
-    .filter(Boolean)
-    .join(' · ');
-}
-
-export const gatewayColumns: ColumnConfig<GatewayRow>[] = [
-  {
-    id: 'gateway',
-    label: 'Gateway',
-    isRowHeader: true,
-    cell: row => (
-      <CellText
-        title={row.name}
-        description={[row.namespace, row.className].filter(Boolean).join(' · ')}
-      />
-    ),
-  },
-  {
-    id: 'accepted',
-    label: 'Accepted',
-    cell: row => conditionCell(row.accepted),
-  },
-  {
-    id: 'programmed',
-    label: 'Programmed',
-    cell: row => conditionCell(row.programmed),
-  },
-  {
-    id: 'listeners',
-    label: 'Listeners',
-    cell: row => (
-      <Cell>
-        {row.listeners.length ? (
-          <Flex direction="column" gap="1">
-            {row.listeners.map(listener => (
-              <Text key={listener.name} variant="body-medium">
-                {listenerLine(listener)}
-              </Text>
-            ))}
-          </Flex>
-        ) : (
-          '—'
-        )}
-      </Cell>
-    ),
-  },
-];
 
 /** `giantswarm-default · Gateway · envoy-gateway-system · https`, for a parent. */
 export function parentLabel(parent: HttpRouteParent): string {

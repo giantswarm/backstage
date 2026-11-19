@@ -11,6 +11,7 @@ import { useMimirGatewayTopology } from '../../../hooks/useMimirGatewayTopology'
 import { useMimirGatewayPolicies } from '../../../hooks/useMimirGatewayPolicies';
 import { GatewayPolicy } from '../../../utils/gatewayPolicies';
 import { PoliciesTable } from './PoliciesTable';
+import { GatewaysTable } from './GatewaysTable';
 import {
   Gateway,
   HttpRoute,
@@ -19,20 +20,22 @@ import {
   unavailableCauseOf,
 } from '../../../utils/gatewayTopology';
 import {
-  GatewayRow,
   ROUTE_COMPACT_MIN_WIDTHS,
   ROUTE_DROP_FIRST,
   ROUTE_MIN_WIDTHS,
   RouteParentRow,
-  gatewayColumns,
   parentShortLabel,
   routeColumnsFor,
 } from './columns';
 import { ConditionStatus } from './ConditionStatus';
-import { ConditionState } from '../../../utils/gatewayTopology';
+import {
+  NamedCondition,
+  conditionsDetails,
+  worstCondition,
+} from './conditions';
 import { backendLabel } from './BackendList';
 
-function toGatewayRows(gateways: Gateway[]): GatewayRow[] {
+function toGatewayRows(gateways: Gateway[]): Gateway[] {
   // Failing Gateways first, then those without status. The sort is stable, so
   // each band keeps the name order.
   return [...gateways].sort((a, b) => gatewayRank(a) - gatewayRank(b));
@@ -116,61 +119,14 @@ const backendsUnavailableNotice = {
   'not-exported': 'Backends need a newer Gateway API bundle on this cluster.',
 };
 
-type NamedCondition = { name: string; condition: ConditionState };
-
-/**
- * The condition a stacked route row shows next to its name: a failing one
- * first, then one not reported, then one not available, else Accepted, so
- * the row shows a check only when both are true.
- */
-function rowCondition(row: RouteParentRow): NamedCondition | undefined {
+/** The conditions of a route's parent, in the table's column order. */
+function routeConditions(row: RouteParentRow): NamedCondition[] {
   const { parent } = row;
-  if (!parent) return undefined;
-  const accepted = { name: 'Accepted', condition: parent.accepted };
-  const resolvedRefs = { name: 'ResolvedRefs', condition: parent.resolvedRefs };
-  for (const status of ['false', 'not-reported', 'not-available'] as const) {
-    if (parent.accepted.status === status) return accepted;
-    if (parent.resolvedRefs.status === status) return resolvedRefs;
-  }
-  return accepted;
-}
-
-/** `Accepted: False · RefNotPermitted`, as a table cell would show it. */
-function conditionText({ name, condition }: NamedCondition): string {
-  switch (condition.status) {
-    case 'true':
-      return `${name}: True`;
-    case 'false':
-      return condition.reason
-        ? `${name}: False · ${condition.reason}`
-        : `${name}: False`;
-    case 'not-reported':
-      return `${name}: Not reported`;
-    default:
-      return `${name}: Not available`;
-  }
-}
-
-/**
- * Under a stacked route row: both conditions, which the table shows as
- * columns, and why one is not reported, which the table shows on hover.
- */
-function rowDetails(row: RouteParentRow): string | undefined {
-  const { parent } = row;
-  if (!parent) return undefined;
-  const conditions = [
+  if (!parent) return [];
+  return [
     { name: 'Accepted', condition: parent.accepted },
     { name: 'ResolvedRefs', condition: parent.resolvedRefs },
   ];
-  const notReported = conditions.some(
-    ({ condition }) => condition.status === 'not-reported',
-  );
-  return [
-    conditions.map(conditionText).join(', '),
-    notReported ? 'No controller has reported a condition yet.' : '',
-  ]
-    .filter(Boolean)
-    .join('. ');
 }
 
 /** The backends of a stacked route row, as the Backends column reads. */
@@ -282,16 +238,10 @@ export const ClusterGatewaysContent = ({
       ) : (
         <>
           <InfoCard title="Gateways">
-            <Table<GatewayRow>
-              columnConfig={gatewayColumns}
-              data={isLoading ? undefined : gatewayRows}
-              isPending={isLoading}
-              pagination={{ type: 'none' }}
-              emptyState={
-                <Text variant="body-medium" color="secondary">
-                  No Gateways found on cluster <code>{clusterName}</code>.
-                </Text>
-              }
+            <GatewaysTable
+              clusterName={clusterName}
+              gateways={gatewayRows}
+              isLoading={isLoading}
             />
           </InfoCard>
           <InfoCard title="HTTPRoutes">
@@ -321,7 +271,8 @@ export const ClusterGatewaysContent = ({
                 <StackedRowList
                   aria-label="HTTPRoutes"
                   rows={(routeTableProps.data ?? []).map(row => {
-                    const shown = rowCondition(row);
+                    const conditions = routeConditions(row);
+                    const shown = worstCondition(conditions);
                     return {
                       id: row.id,
                       title: row.route.name,
@@ -332,7 +283,9 @@ export const ClusterGatewaysContent = ({
                         />
                       ) : undefined,
                       facts: rowFacts(row),
-                      details: rowDetails(row),
+                      details: conditions.length
+                        ? conditionsDetails(conditions)
+                        : undefined,
                     };
                   })}
                   emptyState={routesEmptyState}
