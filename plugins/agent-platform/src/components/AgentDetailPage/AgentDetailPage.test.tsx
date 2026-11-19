@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import type { ReactElement, ReactNode } from 'react';
+import { Route, Routes } from 'react-router-dom';
 import { analyticsApiRef } from '@backstage/frontend-plugin-api';
 import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, waitFor, within } from '@testing-library/react';
@@ -704,14 +705,23 @@ function makeGitRepository() {
  * index route.
  *
  * Only the parent RouteRef is mountable — `mountedRoutes` rejects a SubRouteRef
- * — and the detail sub-route resolves relative to it. `mountPath` is the splat
- * AgentsRouter mounts this page at, so the page's own `<Routes>` sees the tab
- * segment and `useSplatBasePath` can strip it back off.
+ * — and the detail sub-route resolves relative to it. `routed` mounts the page
+ * at the splat route AgentsRouter mounts it at, so the page's own `<Routes>`
+ * sees the tab segment and `useSplatBasePath` can strip it back off.
  */
+const routed = (page: ReactElement) => (
+  <Routes>
+    <Route
+      path="/customize/agents/:installation/:namespace/:name/*"
+      element={page}
+    />
+  </Routes>
+);
+
 const AGENT_PATH = `/customize/agents/${mockParams.installation}/${mockParams.namespace}/${mockParams.name}`;
 
 const renderPage = (tab: string = '') =>
-  renderInTestApp(<AgentDetailPage />, {
+  renderInTestApp(routed(<AgentDetailPage />), {
     mountedRoutes: {
       '/customize/agents': agentsRouteRef,
       '/customize/models': modelsRouteRef,
@@ -719,7 +729,6 @@ const renderPage = (tab: string = '') =>
       '/customize/skills': skillsRouteRef,
       '/usage': usageRouteRef,
     },
-    mountPath: '/customize/agents/:installation/:namespace/:name/*',
     initialRouteEntries: [tab ? `${AGENT_PATH}/${tab}` : AGENT_PATH],
   });
 
@@ -811,7 +820,7 @@ describe('AgentDetailPage', () => {
     stubResources({ resource: makeAgent() }, { resource: makeModelConfig() });
     const analyticsApi = mockApis.analytics.mock();
 
-    await renderInTestApp(<AgentDetailPage />, {
+    await renderInTestApp(routed(<AgentDetailPage />), {
       apis: [[analyticsApiRef, analyticsApi]],
       mountedRoutes: {
         '/customize/agents': agentsRouteRef,
@@ -820,7 +829,6 @@ describe('AgentDetailPage', () => {
         '/customize/skills': skillsRouteRef,
         '/usage': usageRouteRef,
       },
-      mountPath: '/customize/agents/:installation/:namespace/:name/*',
       initialRouteEntries: [AGENT_PATH],
     });
     await userEvent.click(await screen.findByRole('tab', { name: 'Sessions' }));
@@ -2246,13 +2254,12 @@ describe('AgentDetailPage: the model behind the agent', () => {
   // The Serving view lives under the Models tab; mount it too so the Not
   // serving label has somewhere to link.
   const renderPageWithModels = () =>
-    renderInTestApp(<AgentDetailPage />, {
+    renderInTestApp(routed(<AgentDetailPage />), {
       mountedRoutes: {
         '/customize/agents': agentsRouteRef,
         '/customize/models': modelsRouteRef,
         '/customize': customizeExternalRouteRef,
       },
-      mountPath: '/customize/agents/:installation/:namespace/:name/*',
       initialRouteEntries: [AGENT_PATH],
     });
 
@@ -2336,7 +2343,7 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
     renderInTestApp(
       // On the shell's clock, as its layout mounts it around its pages.
       <DateTimeZoneProvider timeZone="local">
-        <AgentDetailPage />
+        {routed(<AgentDetailPage />)}
       </DateTimeZoneProvider>,
       {
         mountedRoutes: {
@@ -2346,7 +2353,6 @@ describe('AgentDetailPage: the frame and the plain Overview', () => {
           '/customize/skills': skillsRouteRef,
           '/usage': usageRouteRef,
         },
-        mountPath: '/customize/agents/:installation/:namespace/:name/*',
         initialRouteEntries: [tab ? `${path}/${tab}` : path],
       },
     );

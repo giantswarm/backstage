@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router-dom';
-import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { toastApiRef } from '@backstage/frontend-plugin-api';
+import { mockApis, renderInTestApp } from '@backstage/frontend-test-utils';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
@@ -158,7 +159,11 @@ jest.mock('../ServingProvider', () => ({
       : undefined,
 }));
 
+/** The toasts the page posted: test apps collect them without showing them. */
+let toasts = mockApis.toast();
+
 function renderPage(edit?: ModelEdit) {
+  toasts = mockApis.toast();
   return renderInTestApp(
     <PageHeaderActionsProvider>
       <Routes>
@@ -174,6 +179,7 @@ function renderPage(edit?: ModelEdit) {
       </Routes>
     </PageHeaderActionsProvider>,
     {
+      apis: [[toastApiRef, toasts]],
       mountedRoutes: {
         '/customize/models': modelsRouteRef,
         '/organizations': organizationsRouteRef,
@@ -640,15 +646,17 @@ describe("NewModelPage · editing an organization's model", () => {
     );
 
     expect(await screen.findByText('The credential form')).toBeInTheDocument();
-    expect(
-      await screen.findByText('Pull request #7 opened'),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('link', { name: 'Review pull request' }),
-    ).toHaveAttribute(
-      'href',
-      'https://github.com/giantswarm/golem-configs/pull/7',
-    );
+    expect(toasts.getToasts()).toEqual([
+      expect.objectContaining({
+        title: 'Pull request #7 opened',
+        links: [
+          {
+            label: 'Review pull request',
+            href: 'https://github.com/giantswarm/golem-configs/pull/7',
+          },
+        ],
+      }),
+    ]);
   });
 
   it("keeps the provider: its key is the provider's, and a new provider and its key cannot be saved in one step", async () => {

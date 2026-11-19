@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { coreApis } from '@backstage/frontend-plugin-api';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import {
   mockPhoneLayout,
@@ -10,12 +11,6 @@ import type { ConnectorPageTarget } from '@giantswarm/backstage-plugin-muster';
 import type { AgentRow } from '../AgentsDataProvider';
 import { agentsRouteRef } from '../../routes';
 import { ConnectorUsedBy } from './ConnectorUsedBy';
-
-const mockNavigate = jest.fn();
-jest.mock('react-router-dom', () => ({
-  ...jest.requireActual('react-router-dom'),
-  useNavigate: () => mockNavigate,
-}));
 
 function mockPassThrough({ children }: { children: ReactNode }) {
   return <>{children}</>;
@@ -94,7 +89,7 @@ beforeEach(() => {
 });
 
 async function render() {
-  await renderInTestApp(<ConnectorUsedBy />, {
+  return renderInTestApp(<ConnectorUsedBy />, {
     mountedRoutes: {
       '/customize/agents': agentsRouteRef,
     },
@@ -137,13 +132,12 @@ describe('ConnectorUsedBy', () => {
   });
 
   it('opens an agent from anywhere on its row', async () => {
-    await render();
+    const { apis } = await render();
 
     await userEvent.click(screen.getByText('All tools'));
 
-    expect(mockNavigate).toHaveBeenCalledWith(
+    expect(apis.get(coreApis.appHistory)!.getSnapshot().location.pathname).toBe(
       '/customize/agents/gazelle/team/ops',
-      undefined,
     );
   });
 

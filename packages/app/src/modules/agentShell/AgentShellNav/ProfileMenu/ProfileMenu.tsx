@@ -149,7 +149,6 @@ export function ProfileMenu({
   const displayName = profile?.displayName?.trim() || undefined;
   const email = profile?.email?.trim() || undefined;
   const name = displayName ?? email ?? '';
-  const Icon = item.icon;
   const avatar = (
     <Avatar
       src={profile?.picture ?? ''}
@@ -166,23 +165,14 @@ export function ProfileMenu({
     // keeps an explicit "All portal settings" escape hatch to the classic one.
     ...(profileHref
       ? [
-          <MenuItem
-            key="settings"
-            href={profileHref}
-            iconStart={<Icon fontSize="small" />}
-          >
+          <MenuItem key="settings" href={profileHref} iconStart={item.icon}>
             {item.title}
           </MenuItem>,
         ]
       : []),
     ...inShell.map(({ item: entry, href }) => {
-      const EntryIcon = entry.icon;
       return (
-        <MenuItem
-          key={entry.id}
-          href={href}
-          iconStart={<EntryIcon fontSize="small" />}
-        >
+        <MenuItem key={entry.id} href={href} iconStart={entry.icon}>
           {entry.title}
         </MenuItem>
       );
@@ -287,14 +277,13 @@ export function ProfileMenu({
             navigating the portal away mid-session. The Platform Portal
             cross-link joins them on a phone, for the same reason. */}
         {leaving.map(({ item: entry, href }) => {
-          const EntryIcon = entry.icon;
           return (
             <MenuItem
               key={entry.id}
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              iconStart={<EntryIcon fontSize="small" />}
+              iconStart={entry.icon}
             >
               {entry.title}
             </MenuItem>

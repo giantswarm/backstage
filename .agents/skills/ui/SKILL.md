@@ -54,15 +54,31 @@ need an icon name but don't know it (e.g. `grep -i wallet` finds
   `grep -l '"@backstage/ui"' plugins/*/package.json`).
 - The global stylesheet is imported once in `packages/app/src/index.tsx`:
   `import '@backstage/ui/css/styles.css';`. Don't re-import it per component.
-- `BUIProvider` **is** mounted — `@backstage/plugin-app`'s `AppRoot` wraps the
-  app in it (verified in `plugin-app` 0.5.1,
-  `dist/extensions/AppRoot.esm.js`), so react-aria's `RouterProvider` is active
-  and bui `href`s (`Link`, `ButtonLink`, `Tab`, `ListRow`, table `getHref`) are
-  client-side routed through react-router. You don't need to add a provider, and
-  you don't need `onClick` + `useNavigate` to avoid a full page reload. Some
-  older comments in `plugins/agent-platform` still claim the opposite — they are
-  stale. Keep such hrefs **absolute**: a relative bui href inside a splat route
-  appends to the current path (the reason react-router stays pinned to v6).
+- `BUIProvider` **is** mounted: `@backstage/plugin-app`'s `AppRoot` wraps the
+  app in it and hands it the framework's routing integration
+  (`useRoutingIntegration` from `@backstage/frontend-plugin-api/routing`). Since
+  bui 0.20 (Backstage 1.57) each bui component (`Link`, `ButtonLink`, `Tab`,
+  `ListRow`, `Menu`, table `getHref`) wraps itself in a router of its own from
+  that integration, so bui `href`s navigate client-side, through the app
+  history, without `onClick` + `useNavigate`.
+- An `href` outside a bui component does **not** route by itself anymore: a
+  react-aria `Link`, `MenuItem` or `GridListItem` used directly does a full
+  page load. Give it a react-aria `RouterProvider` on `useRoutingIntegration`,
+  as `RowLink` in
+  `packages/app/src/modules/agentShell/NotificationInbox/NotificationRow/NotificationRow.tsx`
+  does, or use bui's component instead. An outer `RouterProvider` around bui
+  components is ignored for the same reason: to change how a subtree's bui
+  controls navigate (a leave guard), override the integration with
+  `RoutingProvider`, as `RouteTabs`' `GuardedStrip` in `plugins/ui-react` does.
+- Keep hrefs **absolute** (`/customize/agents`). The framework's navigation
+  rejects a path-relative target; only a page that renders a routing adapter
+  (`@backstage/frontend-adapter-react-router-v6`) resolves one, against its
+  matched route.
+- In a unit test that renders bui outside a test app (a `MemoryRouter`), wrap
+  the tree in `BUIRouterProvider` from
+  `@giantswarm/backstage-plugin-ui-react/testUtils`; without it bui's tabs never
+  select and its links don't navigate. In `renderInTestApp`, assert where a bui
+  press went with `apis.get(coreApis.appHistory)`, not a mocked `useNavigate`.
 
 ## What bui gives you (0.17.0)
 

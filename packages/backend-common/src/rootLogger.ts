@@ -68,6 +68,17 @@ export function getSentryTransportConfig(config: RootConfigService) {
   };
 }
 
+/**
+ * The format of the root logger's lines: JSON with a `timestamp` field in
+ * production, as Backstage's own root logger writes them, and colored text
+ * elsewhere.
+ */
+export function getLogFormat(nodeEnv = process.env.NODE_ENV) {
+  return nodeEnv === 'production'
+    ? format.combine(format.timestamp(), format.json())
+    : WinstonLogger.colorFormat();
+}
+
 export const rootLogger = createServiceFactory({
   service: coreServices.rootLogger,
   deps: {
@@ -82,10 +93,7 @@ export const rootLogger = createServiceFactory({
 
     const logger = WinstonLogger.create({
       level: process.env.LOG_LEVEL || 'info',
-      format:
-        process.env.NODE_ENV === 'production'
-          ? format.json()
-          : WinstonLogger.colorFormat(),
+      format: getLogFormat(),
       transports: trasporters,
       meta: {
         service: 'backstage',
