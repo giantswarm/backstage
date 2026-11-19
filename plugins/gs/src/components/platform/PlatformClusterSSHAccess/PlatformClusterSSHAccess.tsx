@@ -1,5 +1,5 @@
 import { type ReactNode, useId } from 'react';
-import { Flex, Text } from '@backstage/ui';
+import { Flex, Skeleton, Text, VisuallyHidden } from '@backstage/ui';
 import { CodeBlock, ExternalLink } from '@giantswarm/backstage-plugin-ui-react';
 import { TerminalIcon } from '../../../assets/icons/CustomIcons';
 import { useCurrentCluster } from '../../clusters/ClusterDetailsPage/useCurrentCluster';
@@ -76,6 +76,32 @@ export function PlatformClusterSSHAccess() {
           .
         </Text>
       </Command>
+    </PlatformPanel>
+  );
+}
+
+/**
+ * The SSH access tab while the person's access is read: the panel with its
+ * groups' captions and code blocks as skeletons, in the tab's final shape.
+ */
+export function PlatformClusterSSHAccessSkeleton() {
+  return (
+    <PlatformPanel
+      title="SSH access"
+      icon={<TerminalIcon fontSize="inherit" />}
+    >
+      <div role="status">
+        <VisuallyHidden>Reading your access…</VisuallyHidden>
+        <Flex direction="column" gap="3" aria-hidden>
+          <Skeleton width="60%" height={20} />
+          {[0, 1, 2].map(index => (
+            <Flex key={index} direction="column" gap="2">
+              <Skeleton width={140} height={20} />
+              <Skeleton width="100%" height={40} />
+            </Flex>
+          ))}
+        </Flex>
+      </div>
     </PlatformPanel>
   );
 }

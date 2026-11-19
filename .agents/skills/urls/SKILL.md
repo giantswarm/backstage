@@ -75,8 +75,8 @@ How it is mounted:
   tab selects a pool with `?name=<pool>`, as the classic cluster page does:
   a selection within the tab, not a page of its own, so it stays in the query
   (rule 3 is about which resource a page shows). Its SSH access tab is
-  Giant Swarm staff's only (`useCurrentUser`'s `isGSUser`): anyone else has
-  no such tab, and its path opens Overview. Items 1 to 4 of
+  Giant Swarm staff's only (`useCurrentUser`'s `isGSUser`): a person known
+  not to be staff has no such tab, and its path opens Overview. Items 1 to 4 of
   giantswarm/giantswarm#39295; the planned tree adds
   `/platform/clusters/<inst>/<ns>/<name>[/gateways|/access]`,
   `/platform/environments` and `/platform/environments/<inst>`.

@@ -19,6 +19,11 @@ import path from 'node:path';
 
 const MARKERS = [
   {
+    source:
+      'packages/app/src/modules/kubernetes/fixtures/KubernetesAuthProvidersFixtureApi.ts',
+    marker: 'fixture-giantswarm-staff',
+  },
+  {
     source: 'plugins/plans/src/apis/PlansFixtureApi.ts',
     marker: 'example/team-magazine',
   },

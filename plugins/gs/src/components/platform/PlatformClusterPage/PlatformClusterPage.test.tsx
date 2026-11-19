@@ -19,6 +19,7 @@ let mockState: ClusterReadState;
 let mockBaseDomain: string | undefined;
 let mockInGit: boolean;
 let mockStaff: boolean | undefined;
+let mockUserLoading: boolean;
 let mockNewer: { version: string; date?: string } | undefined;
 
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
@@ -129,7 +130,7 @@ jest.mock('../../hooks', () => ({
     errors: [],
   }),
   useMachineTypeCatalog: () => ({ catalog: undefined, isLoading: false }),
-  useCurrentUser: () => ({ isLoading: false, isGSUser: mockStaff }),
+  useCurrentUser: () => ({ isLoading: mockUserLoading, isGSUser: mockStaff }),
   useFriendlyItemsConfiguration: () => undefined,
   useInstallationsInfo: () => ({
     installationsInfo: [{ name: 'meadow', baseDomain: mockBaseDomain }],
@@ -320,6 +321,7 @@ describe('PlatformClusterPage', () => {
     mockBaseDomain = 'meadow.example.com';
     mockInGit = true;
     mockStaff = false;
+    mockUserLoading = false;
     mockNewer = { version: '31.2.0', date: '2026-09-18T00:00:00Z' };
     mockState = stateOf({
       cluster: workload,
@@ -734,6 +736,40 @@ describe('PlatformClusterPage', () => {
     expect(
       screen.queryByRole('tab', { name: 'SSH access' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('shows SSH access loading, with its tab selected, while the person is read', async () => {
+    mockStaff = undefined;
+    mockUserLoading = true;
+    await renderPage(
+      '/platform/clusters/meadow/org-fern/alder-birch/ssh-access',
+    );
+
+    expect(screen.getByRole('status', { name: 'path' })).toHaveTextContent(
+      /\/ssh-access$/,
+    );
+    expect(screen.getByRole('tab', { name: 'SSH access' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    const panel = screen.getByRole('region', { name: 'SSH access' });
+    expect(within(panel).getByText('Reading your access…')).toBeInTheDocument();
+    expect(panel.textContent).not.toContain('tsh ssh');
+  });
+
+  it('keeps SSH access when whether the person is staff could not be read', async () => {
+    mockStaff = undefined;
+    await renderPage(
+      '/platform/clusters/meadow/org-fern/alder-birch/ssh-access',
+    );
+
+    expect(screen.getByRole('status', { name: 'path' })).toHaveTextContent(
+      /\/ssh-access$/,
+    );
+    expect(screen.getByRole('tab', { name: 'SSH access' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('region', { name: 'SSH access' }).textContent,
+    ).toContain('tsh ssh root@ins=meadow,cluster=alder-birch,role=worker');
   });
 
   it('opens Overview for a tab the page does not have', async () => {

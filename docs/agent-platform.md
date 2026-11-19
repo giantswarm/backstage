@@ -602,7 +602,9 @@ the other tabs take the page's width.
 
 It has three tabs so far, Overview, Node pools and, for Giant Swarm staff
 (`useCurrentUser`), SSH access; any other tab redirects to Overview, and so
-does SSH access for anyone but staff. Overview (the bare path) is a column of panels:
+does SSH access for a person known not to be staff. While that is being
+read, SSH access shows its loading state; where it could not be read (no
+installation token), the tab stays. Overview (the bare path) is a column of panels:
 
 - Release: the cluster's release, linked to its release notes (the GitHub
   release of giantswarm/releases tagged `<provider>/v<version>`), the

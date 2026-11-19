@@ -1,1 +1,4 @@
-export { PlatformClusterSSHAccess } from './PlatformClusterSSHAccess';
+export {
+  PlatformClusterSSHAccess,
+  PlatformClusterSSHAccessSkeleton,
+} from './PlatformClusterSSHAccess';

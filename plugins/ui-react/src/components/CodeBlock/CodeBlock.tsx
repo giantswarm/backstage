@@ -19,9 +19,9 @@ const useStyles = makeStyles(theme => ({
     color: theme.palette.type === 'dark' ? '#ddd' : '#333',
     borderRadius: 4,
     fontFamily: '"Roboto Mono", monospace',
-    // 0.85em, 11.9px under 14px text: monospace reads larger than the
-    // text around it at the same size.
-    fontSize: '0.85em',
+    // 0.85em: monospace reads larger than the text around it at the same
+    // size. 12px at least, the portal's smallest text (docs/ui.md).
+    fontSize: 'max(0.85em, 12px)',
     lineHeight: 1.6,
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',
