@@ -84,6 +84,7 @@ export {
   type FixtureClusterPool,
 } from './clusterBuilders';
 export { clusterNodeSeries, clusterNodeSeriesOf } from './clusterNodeSeries';
+export { gatewayApiSeries, gatewayApiSeriesOf } from './gatewayApiSeries';
 export { capitalize, createNamer, fitName } from './names';
 export { createRandom, hashOf, type FixtureRandom } from './random';
 export {
