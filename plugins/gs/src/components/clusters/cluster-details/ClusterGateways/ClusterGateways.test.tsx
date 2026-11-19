@@ -1,7 +1,10 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { Gateway, HttpRoute } from '../../../utils/gatewayTopology';
-import { mockPhoneLayout } from '@giantswarm/backstage-plugin-ui-react/testUtils';
+import {
+  mockContainerWidth,
+  mockPhoneLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import { ClusterGatewaysContent } from './ClusterGateways';
 
 const parent = {
@@ -310,10 +313,13 @@ describe('<ClusterGatewaysContent />', () => {
 
     it('shows the backends of a route with namespace and weight', async () => {
       await render([withBackends]);
-      expect(screen.getByText('app-v1:80 · weight 90')).toBeInTheDocument();
+      // The weight is its own text, so a narrow column cuts the name only.
+      expect(screen.getByTitle('app-v1:80').parentElement).toHaveTextContent(
+        'app-v1:80 · weight 90',
+      );
       expect(
-        screen.getByText('other/app-v2:80 · weight 10'),
-      ).toBeInTheDocument();
+        screen.getByTitle('other/app-v2:80').parentElement,
+      ).toHaveTextContent('other/app-v2:80 · weight 10');
       expect(
         screen.queryByText(/first three backends/),
       ).not.toBeInTheDocument();
@@ -422,7 +428,9 @@ describe('<ClusterGatewaysContent />', () => {
       ).toBeInTheDocument();
       expect(brokenRow).toHaveTextContent('broken.example.com');
       expect(brokenRow).toHaveTextContent('to app:80');
-      expect(brokenRow).toHaveTextContent('Gateway giantswarm-default/https');
+      expect(brokenRow).toHaveTextContent(
+        'Gateway envoy-gateway-system/giantswarm-default, listener https',
+      );
       const healthyRow = within(list)
         .getAllByRole('listitem')
         .find(item => within(item).queryByText('healthy'))!;
@@ -432,6 +440,117 @@ describe('<ClusterGatewaysContent />', () => {
       expect(healthyRow).toHaveTextContent(
         'Accepted: True, ResolvedRefs: True',
       );
+    });
+
+    it('spells out what a stacked row cannot show as columns', async () => {
+      await render([
+        {
+          ...healthy,
+          id: 'team-a/pending',
+          name: 'pending',
+          hostnames: [],
+          backends: {
+            status: 'available',
+            backends: [
+              {
+                kind: 'Service',
+                namespace: 'team-a',
+                name: 'app',
+                port: '80',
+                weight: '90',
+              },
+            ],
+            mayHaveMore: true,
+          },
+          parents: [
+            {
+              ...parent,
+              sectionName: '',
+              port: '443',
+              accepted: { status: 'not-reported' },
+              resolvedRefs: { status: 'true', reason: 'ResolvedRefs' },
+            },
+          ],
+        },
+        {
+          ...healthy,
+          id: 'team-a/unknown',
+          name: 'unknown',
+          hostnames: undefined,
+          backends: { status: 'not-available', cause: 'not-exported' },
+          parents: [
+            {
+              ...parent,
+              accepted: { status: 'true', reason: 'Accepted' },
+              resolvedRefs: { status: 'not-available', cause: 'load-failed' },
+            },
+          ],
+        },
+      ]);
+      const list = screen.getByRole('list', { name: 'HTTPRoutes' });
+      const rowOf = (name: string) =>
+        within(list)
+          .getAllByRole('listitem')
+          .find(item => within(item).queryByText(name))!;
+      const pending = rowOf('pending');
+      expect(
+        within(pending).getByText('Accepted: Not reported'),
+      ).toBeInTheDocument();
+      expect(pending).toHaveTextContent('No controller has reported');
+      expect(pending).toHaveTextContent('any hostname');
+      expect(pending).toHaveTextContent('to app:80 (weight 90), maybe more');
+      expect(pending).toHaveTextContent(
+        'Gateway envoy-gateway-system/giantswarm-default, port 443',
+      );
+      // Not a check: one condition could not be read.
+      const unknown = rowOf('unknown');
+      expect(
+        within(unknown).getByText('ResolvedRefs: Not available'),
+      ).toBeInTheDocument();
+      expect(unknown).toHaveTextContent('hostnames not available');
+      expect(unknown).toHaveTextContent('backends not available');
+    });
+
+    it('shows only the route and its conditions while loading', async () => {
+      await renderInTestApp(
+        <ClusterGatewaysContent
+          clusterName="demo"
+          gateways={[]}
+          routes={[]}
+          isLoading
+          policies={[]}
+          policiesLoading={false}
+        />,
+      );
+      expect(
+        screen.getByRole('columnheader', { name: 'HTTPRoute' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('columnheader', { name: 'Backends' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('columnheader', { name: 'ResolvedRefs' }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('narrower than all columns', () => {
+    let container: { restore: () => void };
+    beforeEach(() => {
+      container = mockContainerWidth(860);
+    });
+    afterEach(() => container.restore());
+
+    it('moves the parent into the route description', async () => {
+      await render([healthy]);
+      expect(
+        screen.queryByRole('columnheader', { name: 'Parent / listener' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'team-a · Gateway envoy-gateway-system/giantswarm-default, listener https',
+        ),
+      ).toBeInTheDocument();
     });
   });
 });

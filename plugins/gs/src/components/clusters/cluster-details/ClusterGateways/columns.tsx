@@ -89,7 +89,7 @@ export function parentLabel(parent: HttpRouteParent): string {
     parent.name,
     parent.kind,
     parent.namespace,
-    parent.sectionName || 'all listeners',
+    parent.sectionName || (parent.port ? undefined : 'all listeners'),
     parent.port ? `port ${parent.port}` : undefined,
   ]
     .filter(Boolean)
@@ -110,21 +110,34 @@ export const ROUTE_MIN_WIDTHS: Readonly<Record<string, number>> = {
 };
 
 /**
- * A parent in a few words: `Gateway giantswarm-default/https`, the listener
- * after the slash, `all listeners` when the route names none.
+ * A parent in one phrase, for where no column holds it:
+ * `Gateway envoy-gateway-system/giantswarm-default, listener https`; a parent
+ * that names no listener, `all listeners`, or `port 443` when it names a port.
  */
 export function parentShortLabel(parent: HttpRouteParent): string {
-  const listener = parent.sectionName
-    ? `/${parent.sectionName}`
-    : ' (all listeners)';
-  const port = parent.port ? `:${parent.port}` : '';
-  return `${parent.kind} ${parent.name}${listener}${port}`;
+  const listeners = [
+    parent.sectionName ? `listener ${parent.sectionName}` : undefined,
+    parent.port ? `port ${parent.port}` : undefined,
+  ].filter(Boolean);
+  return `${parent.kind} ${parent.namespace}/${parent.name}, ${
+    listeners.length ? listeners.join(', ') : 'all listeners'
+  }`;
 }
 
 const NO_PARENT = 'No Gateway or ListenerSet parent';
 
 /** Narrower, the parent leaves the table for the route's description. */
 export const ROUTE_DROP_FIRST: readonly string[] = ['parent'];
+
+/**
+ * Compact, only the loading table uses the columns (the rows stack): narrow
+ * enough for a phone, so the skeleton does not scroll sideways.
+ */
+export const ROUTE_COMPACT_MIN_WIDTHS: Readonly<Record<string, number>> = {
+  route: 120,
+  accepted: 100,
+  resolvedRefs: 100,
+};
 
 /** The HTTPRoutes table's columns, for `useFittingColumns`. */
 export function routeColumnsFor(

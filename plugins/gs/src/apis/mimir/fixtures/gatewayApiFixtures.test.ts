@@ -152,9 +152,10 @@ describe('the fixture Gateway API series, as the Gateways tab reads them', () =>
       status: 'true',
       reason: 'Accepted',
     });
-    expect(
-      byName.get('admin-console-basic-auth')?.ancestors[0].accepted,
-    ).toEqual({ status: 'false', reason: 'Invalid' });
+    expect(byName.get('checkout-basic-auth')?.ancestors[0].accepted).toEqual({
+      status: 'false',
+      reason: 'Invalid',
+    });
     expect(byName.get('storefront-retired-oidc')?.ancestors).toEqual([]);
   });
 

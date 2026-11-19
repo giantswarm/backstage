@@ -61,13 +61,22 @@ export const BackendList = ({
     <Flex direction="column" gap="1" style={{ minWidth: 0 }}>
       {backends.backends.map(backend => {
         const label = backendLabel(backend, routeNamespace);
-        const text = backend.weight
-          ? `${label} · weight ${backend.weight}`
-          : label;
+        // The name is cut, the weight never: a number is read, not hovered.
         return (
-          <Text key={label} variant="body-medium" style={line} title={text}>
-            {text}
-          </Text>
+          <Flex key={label} align="center" gap="1" style={{ minWidth: 0 }}>
+            <Text variant="body-medium" style={line} title={label}>
+              {label}
+            </Text>
+            {backend.weight ? (
+              <Text
+                variant="body-medium"
+                color="secondary"
+                style={{ flex: 'none', whiteSpace: 'nowrap' }}
+              >
+                {` · weight ${backend.weight}`}
+              </Text>
+            ) : null}
+          </Flex>
         );
       })}
       {backends.mayHaveMore ? (

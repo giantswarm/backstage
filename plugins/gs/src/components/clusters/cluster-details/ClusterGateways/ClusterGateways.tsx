@@ -20,6 +20,7 @@ import {
 } from '../../../utils/gatewayTopology';
 import {
   GatewayRow,
+  ROUTE_COMPACT_MIN_WIDTHS,
   ROUTE_DROP_FIRST,
   ROUTE_MIN_WIDTHS,
   RouteParentRow,
@@ -119,14 +120,15 @@ type NamedCondition = { name: string; condition: ConditionState };
 
 /**
  * The condition a stacked route row shows next to its name: a failing one
- * first, then one not reported, else Accepted.
+ * first, then one not reported, then one not available, else Accepted, so
+ * the row shows a check only when both are true.
  */
 function rowCondition(row: RouteParentRow): NamedCondition | undefined {
   const { parent } = row;
   if (!parent) return undefined;
   const accepted = { name: 'Accepted', condition: parent.accepted };
   const resolvedRefs = { name: 'ResolvedRefs', condition: parent.resolvedRefs };
-  for (const status of ['false', 'not-reported'] as const) {
+  for (const status of ['false', 'not-reported', 'not-available'] as const) {
     if (parent.accepted.status === status) return accepted;
     if (parent.resolvedRefs.status === status) return resolvedRefs;
   }
@@ -241,6 +243,7 @@ export const ClusterGatewaysContent = ({
   const fit = useFittingColumns(routeColumnsFor, {
     minWidths: ROUTE_MIN_WIDTHS,
     dropFirst: ROUTE_DROP_FIRST,
+    compactMinWidths: ROUTE_COMPACT_MIN_WIDTHS,
   });
   const { tableProps: routeTableProps, search } = useTable<RouteParentRow>({
     mode: 'complete',

@@ -329,6 +329,8 @@ function clusterSeries(
     add(GatewayApiGatewayListenerInfo.name, { ...GATEWAY, ...listener });
     const attached = routes.filter(
       route =>
+        // Only a route the controller accepted is attached.
+        route.accepted?.value === 1 &&
         !route.parent.parent_kind &&
         route.parent.parent_section_name === listener.listener_name,
     ).length;
@@ -401,7 +403,10 @@ function policySeries(
   const named = (base: string, suffix: string) =>
     `${fitName(base, MAX_NAME_LENGTH - suffix.length - 1)}-${suffix}`;
   const shop = routes[0];
-  const admin = routes.find(route => !route.accepted) ?? routes[0];
+  // Envoy Gateway reports a policy's status only once it reconciled the
+  // route, so the invalid policy targets an accepted route.
+  const admin =
+    routes.find(route => route !== shop && route.accepted?.value === 1) ?? shop;
   const ancestor = {
     ancestor_group: 'gateway.networking.k8s.io',
     ancestor_kind: 'Gateway',

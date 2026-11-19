@@ -516,8 +516,10 @@ accepted, one with no backends) and Envoy Gateway policies (accepted, invalid,
 on the Gateway, and one whose target is gone). Every third ready workload
 cluster runs older bundles: no conditions, no backends and no policy target
 or status, so the tab shows them as not available. In `many` the first ready
-workload cluster has 150 routes, in `long-names` the names are 63 characters
-long, and the management cluster and clusters being created or deleted have
+workload cluster has 150 routes, in `long-names` a cluster with a name of 60
+characters or more gives its routes, their namespaces and backends, and the
+policies on those routes names of up to 63 characters (the Gateway, its
+namespace and the routes and policies there keep theirs), and the management cluster and clusters being created or deleted have
 no Gateway.
 Each installation's series are built once per data set, and a selector with a
 metric name looks only at that metric's series. The series are derived from the data set
