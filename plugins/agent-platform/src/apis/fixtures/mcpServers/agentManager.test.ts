@@ -21,6 +21,8 @@ import {
   AgentManagerFixtureState,
   ERASURE_STEPS,
   HELM_PLATFORM_MODEL,
+  INCOMPLETE_MODEL,
+  INCOMPLETE_MODEL_INSTALLATION,
   OPERATION_TTL_MS,
   SETTLE_MS,
   UNUSED_VERTEX_MODEL,
@@ -1031,5 +1033,40 @@ it('writes and reports the model settings as agent-manager does', async () => {
   ).rejects.toMatchObject({
     code: 'invalid_request',
     message: expect.stringContaining('spec.ollama.maxTokens'),
+  });
+});
+
+describe('the model whose key Secret is missing', () => {
+  it('reads Incomplete and lists no Secret of it to erase', () => {
+    const data = createFixtureDataSet({ now: NOW });
+    const organization = data.organizations.find(
+      candidate =>
+        candidate.installation === INCOMPLETE_MODEL_INSTALLATION &&
+        candidate.namespace,
+    )!;
+    organization.role = 'admin';
+    const state = new AgentManagerFixtureState(data, () => NOW);
+
+    const model = state
+      .kubernetesObjectsOf(INCOMPLETE_MODEL_INSTALLATION)
+      .find(
+        object =>
+          object.kind === 'ModelConfig' &&
+          object.metadata?.name === INCOMPLETE_MODEL,
+      ) as { status?: { conditions?: { type: string; status: string }[] } };
+    expect(model.status?.conditions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'Accepted', status: 'True' }),
+        expect.objectContaining({ type: 'ResolvedRefs', status: 'False' }),
+      ]),
+    );
+
+    const { erases } = state.getOrganization(
+      INCOMPLETE_MODEL_INSTALLATION,
+      organization.parent,
+      organization.name,
+    );
+    expect(erases?.models).toContain(INCOMPLETE_MODEL);
+    expect(erases?.credentials).not.toContain(`${INCOMPLETE_MODEL}-model-key`);
   });
 });

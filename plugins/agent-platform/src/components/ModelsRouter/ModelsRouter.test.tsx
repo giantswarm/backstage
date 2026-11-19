@@ -458,7 +458,7 @@ describe('ModelsRouter', () => {
     ['/customize/models/hosting/whatever', '/customize/models/hosting'],
     // Deeper addresses under `hosting` or `new` are never a model on an
     // installation named so: the view they name, else Running models, or
-    // Connect a model.
+    // Add a model.
     [
       '/customize/models/hosting/capacity/x',
       '/customize/models/hosting/capacity',

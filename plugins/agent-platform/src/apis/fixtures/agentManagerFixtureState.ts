@@ -109,6 +109,15 @@ export const UNUSED_VERTEX_MODEL = 'gemini-vertex';
 /** The installation's default model, which its Helm release renders. */
 export const HELM_PLATFORM_MODEL = 'platform-default';
 
+/**
+ * Where the one model whose key Secret is missing lives: in the first
+ * namespace of this installation, which no organization is, so
+ * Customize › Models shows an Incomplete model, unused, owned by a bare
+ * namespace.
+ */
+export const INCOMPLETE_MODEL_INSTALLATION = 'tarragon';
+export const INCOMPLETE_MODEL = 'claude-direct';
+
 /** The Secrets agent-manager owns, and writes, in the installation namespace. */
 const PLATFORM_CREDENTIAL_PREFIX = 'tenant-credential-';
 
@@ -435,6 +444,22 @@ export class AgentManagerFixtureState {
         });
         members.set(organization.namespace, membersOf(organization));
       }
+      const firstNamespace = organizations.find(
+        organization => organization.namespace,
+      )?.namespace;
+      if (installation === INCOMPLETE_MODEL_INSTALLATION && firstNamespace) {
+        models.set(keyOf(firstNamespace, INCOMPLETE_MODEL), {
+          namespace: firstNamespace,
+          name: INCOMPLETE_MODEL,
+          displayName: 'Claude Sonnet',
+          provider: 'Anthropic',
+          model: 'claude-sonnet-4-5',
+          default: false,
+          secret: `${INCOMPLETE_MODEL}-model-key`,
+          key: keyNameOf('Anthropic'),
+          keyMissing: true,
+        });
+      }
       models.set(keyOf(MODEL_CONFIG_NAMESPACE, HELM_PLATFORM_MODEL), {
         namespace: MODEL_CONFIG_NAMESPACE,
         name: HELM_PLATFORM_MODEL,
@@ -625,7 +650,10 @@ export class AgentManagerFixtureState {
       connectors: connectorsOf().map(connector => connector.name),
       egressPolicies: egressPoliciesOf(namespace).map(policy => policy.name),
       credentials: [
-        ...models.flatMap(model => (model.secret ? [model.secret] : [])),
+        // A Secret that does not exist is not erased.
+        ...models.flatMap(model =>
+          model.secret && !model.keyMissing ? [model.secret] : [],
+        ),
         ...connectorsOf().flatMap(connector =>
           connector.credentials.map(credential => credential.secret),
         ),
@@ -1312,6 +1340,13 @@ export class AgentManagerFixtureState {
       key: request.key,
       ...(vertex && { inputFormat: GOOGLE_SERVICE_ACCOUNT_JSON }),
     };
+    // Models whose key Secret does not exist: the save creates it.
+    const keyless = this.modelsIn(installation, request.namespace).filter(
+      model =>
+        model.keyMissing &&
+        model.secret === request.secret &&
+        model.key === request.key,
+    );
     return this.once(
       installation,
       'replace_organization_credential',
@@ -1327,16 +1362,23 @@ export class AgentManagerFixtureState {
               namespace: request.namespace,
               kind: 'credential',
               name: request.secret,
-              credentials: [{ ...pair, state: 'replace' }],
+              credentials: [
+                { ...pair, state: keyless.length > 0 ? 'missing' : 'replace' },
+              ],
             },
           },
-          () => ({
-            namespace: request.namespace,
-            kind: 'credential',
-            name: request.secret,
-            created: false,
-            credentials: [{ ...pair, state: 'present' }],
-          }),
+          () => {
+            for (const model of keyless) {
+              delete model.keyMissing;
+            }
+            return {
+              namespace: request.namespace,
+              kind: 'credential',
+              name: request.secret,
+              created: false,
+              credentials: [{ ...pair, state: 'present' }],
+            };
+          },
           vertex?.projectID
             ? { [`${pair.secret}/${pair.key}`]: vertex.projectID }
             : undefined,

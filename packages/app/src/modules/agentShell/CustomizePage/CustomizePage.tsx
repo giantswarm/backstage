@@ -40,6 +40,7 @@ import {
   CustomizeWorkspacesPanel,
   CreateWorkspaceButton,
   EnvironmentSelect,
+  ModelHostingEntry,
   useCanAddSkill,
   useCustomizeData,
   useTrackCustomizeView,
@@ -107,7 +108,7 @@ export const CUSTOMIZE_TABS: CustomizeTab[] = [
     searchLabel: 'Search models',
     component: 'kagent',
     create: {
-      label: 'Connect a model',
+      label: 'Add a model',
       routeRef: agentPlatformPlugin.routes.newModel,
     },
   },
@@ -308,33 +309,39 @@ function CustomizeTabContent({ tab }: { tab: CustomizeTab }) {
     >
       <Flex direction="column" gap="5">
         {tab.id === 'workspaces' && <CustomizeWorkspacesIntro />}
-        <Flex
-          align="center"
-          justify="between"
-          gap="4"
-          style={{ flexWrap: 'wrap' }}
-        >
-          {/* The search's 360px is wider than a phone's 343px content, so
-              there the create action always wrapped under it, left-aligned
-              (T22 P1). On a phone both take the full width, one per line. */}
-          <div
-            style={{
-              flex: isPhone ? '1 1 100%' : '0 1 360px',
-              minWidth: 0,
-            }}
+        {/* Models: the way into Model hosting (or the line saying what
+            turns it on) sits above the search, 16px from it, in view however
+            long the list. */}
+        <Flex direction="column" gap="4">
+          {tab.id === 'models' && <ModelHostingEntry />}
+          <Flex
+            align="center"
+            justify="between"
+            gap="4"
+            style={{ flexWrap: 'wrap' }}
           >
-            <SearchField
-              aria-label={tab.searchLabel}
-              placeholder={tab.searchLabel}
-              value={search}
-              onChange={setSearch}
-            />
-          </div>
-          {tab.id === 'workspaces' ? (
-            <CreateWorkspaceButton fullWidth={isPhone} />
-          ) : (
-            create && <CreateAction create={create} fullWidth={isPhone} />
-          )}
+            {/* The search's 360px is wider than a phone's 343px content, so
+                there the create action always wrapped under it, left-aligned
+                (T22 P1). On a phone both take the full width, one per line. */}
+            <div
+              style={{
+                flex: isPhone ? '1 1 100%' : '0 1 360px',
+                minWidth: 0,
+              }}
+            >
+              <SearchField
+                aria-label={tab.searchLabel}
+                placeholder={tab.searchLabel}
+                value={search}
+                onChange={setSearch}
+              />
+            </div>
+            {tab.id === 'workspaces' ? (
+              <CreateWorkspaceButton fullWidth={isPhone} />
+            ) : (
+              create && <CreateAction create={create} fullWidth={isPhone} />
+            )}
+          </Flex>
         </Flex>
         <TabPanel tab={tab.id} search={search} />
       </Flex>
