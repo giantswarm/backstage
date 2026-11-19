@@ -131,11 +131,29 @@ export const KubernetesAuthProvidersOverride = ApiBlueprint.make({
     defineParams({
       api: kubernetesAuthProvidersApiRef,
       deps: {
+        configApi: configApiRef,
         microsoftAuthApi: microsoftAuthApiRef,
         googleAuthApi: googleAuthApiRef,
         gsAuthProvidersApi: gsAuthProvidersApiRef,
       },
-      factory: ({ microsoftAuthApi, googleAuthApi, gsAuthProvidersApi }) => {
+      factory: ({
+        configApi,
+        microsoftAuthApi,
+        googleAuthApi,
+        gsAuthProvidersApi,
+      }) => {
+        // `gs.fixtures: true`: the guest's token for every installation, in
+        // which the guest is Giant Swarm staff (docs/fixtures.md).
+        if (
+          process.env.NODE_ENV !== 'production' &&
+          configApi.getOptionalBoolean('gs.fixtures')
+        ) {
+          return lazyApi(async () => {
+            const { kubernetesAuthProvidersFixtureApi } =
+              await import('./fixtures/KubernetesAuthProvidersFixtureApi');
+            return kubernetesAuthProvidersFixtureApi();
+          });
+        }
         const base = new KubernetesAuthProviders({
           microsoftAuthApi,
           googleAuthApi,

@@ -671,6 +671,71 @@ describe('PlatformClusterPage', () => {
     expect(screen.queryByText(/being created/)).not.toBeInTheDocument();
   });
 
+  it('gives Giant Swarm staff an SSH access tab with the Teleport commands', async () => {
+    mockStaff = true;
+    await renderPage(
+      '/platform/clusters/meadow/org-fern/alder-birch/ssh-access',
+    );
+
+    expect(screen.getAllByRole('tab').map(tab => tab.dataset.key)).toEqual([
+      'overview',
+      'node-pools',
+      'ssh-access',
+    ]);
+    // The facts column belongs to Overview.
+    expect(
+      screen.queryByRole('complementary', { name: 'Details' }),
+    ).not.toBeInTheDocument();
+    const panel = screen.getByRole('region', { name: 'SSH access' });
+    expect(
+      within(panel).getByText(
+        'Selecting a node to connect to can be done via tags or using the node name.',
+      ),
+    ).toBeInTheDocument();
+    for (const [title, command] of [
+      [
+        'Control plane nodes',
+        'tsh ssh root@ins=meadow,cluster=alder-birch,role=control-plane',
+      ],
+      [
+        'Worker nodes',
+        'tsh ssh root@ins=meadow,cluster=alder-birch,role=worker',
+      ],
+      ['Specific node', 'tsh ssh root@ins=meadow,node=ip-10-0-85-157'],
+    ]) {
+      const group = within(panel).getByRole('region', { name: title });
+      expect(
+        within(group).getByRole('heading', { level: 3, name: title }),
+      ).toHaveAttribute('data-variant', 'body-medium');
+      expect(group.textContent).toContain(command);
+      expect(
+        within(group).getByRole('button', { name: /copy/i }),
+      ).toBeInTheDocument();
+    }
+    const resources = within(panel).getByRole('link', {
+      name: /Teleport resources UI/,
+    });
+    const url = new URL(resources.getAttribute('href')!);
+    expect(url.origin).toBe('https://teleport.giantswarm.io');
+    expect(url.searchParams.get('query')).toBe(
+      'labels["ins"]=="meadow" && labels["cluster"]=="alder-birch"',
+    );
+  });
+
+  it('opens Overview for SSH access, and has no such tab, for anyone but staff', async () => {
+    await renderPage(
+      '/platform/clusters/meadow/org-fern/alder-birch/ssh-access',
+    );
+
+    expect(screen.getByRole('status', { name: 'path' })).toHaveTextContent(
+      /^\/platform\/clusters\/meadow\/org-fern\/alder-birch$/,
+    );
+    expect(screen.getByRole('region', { name: 'Release' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('tab', { name: 'SSH access' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('opens Overview for a tab the page does not have', async () => {
     await renderPage('/platform/clusters/meadow/org-fern/alder-birch/apps');
 

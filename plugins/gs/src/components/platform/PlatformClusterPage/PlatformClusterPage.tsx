@@ -40,6 +40,7 @@ import {
   ShellPageTitleSkeleton,
   useSplatBasePath,
 } from '@giantswarm/backstage-plugin-ui-react';
+import { useCurrentUser } from '../../hooks';
 import { useDisabledInstallations } from '../../hooks/useDisabledInstallations';
 import IconResolver from '../../UI/IconResolver/IconResolver';
 import {
@@ -86,6 +87,7 @@ import {
   LIVE_CLUSTER_REFRESH_MS,
 } from '../../clusters/utils';
 import { PlatformClusterNodePools } from '../PlatformClusterNodePools';
+import { PlatformClusterSSHAccess } from '../PlatformClusterSSHAccess';
 import { PlatformClusterOverview } from '../PlatformClusterOverview';
 import { PlatformClusterStatusDot } from '../PlatformClusterStatusDot';
 import {
@@ -102,22 +104,59 @@ import { usePlatformLinks } from '../PlatformLinks';
 export const PLATFORM_CLUSTER_PAGE_TABS = [
   { id: 'overview', path: '', title: 'Overview' },
   { id: 'node-pools', path: 'node-pools', title: 'Node pools' },
+  { id: 'ssh-access', path: 'ssh-access', title: 'SSH access' },
 ] as const;
 
-const CLUSTER_PAGE_TABS = [...PLATFORM_CLUSTER_PAGE_TABS];
+/** The tabs only Giant Swarm staff have (`useCurrentUser`). */
+const STAFF_TAB_IDS: ReadonlySet<string> = new Set(['ssh-access']);
 
-/** The tabs with the number of node pools on theirs, once it is known. */
-function useClusterPageTabs(nodePools: PlatformNodePools) {
+/** The tabs everyone has. */
+const CLUSTER_PAGE_TABS = PLATFORM_CLUSTER_PAGE_TABS.filter(
+  tab => !STAFF_TAB_IDS.has(tab.id),
+);
+
+/**
+ * The tabs the person has, with the number of node pools on theirs once it
+ * is known.
+ */
+function useClusterPageTabs(
+  nodePools: PlatformNodePools,
+  isGSUser: boolean | undefined,
+) {
   const count = nodePoolCount(nodePools);
   return useMemo(
     () =>
-      CLUSTER_PAGE_TABS.map(tab =>
+      (isGSUser ? PLATFORM_CLUSTER_PAGE_TABS : CLUSTER_PAGE_TABS).map(tab =>
         tab.id === 'node-pools' && count !== undefined
           ? { ...tab, count }
           : tab,
       ),
-    [count],
+    [count, isGSUser],
   );
+}
+
+/**
+ * A staff-only tab: shown once the person is known to be Giant Swarm staff,
+ * nothing while that is being read, and Overview for anyone else.
+ */
+function StaffOnly({
+  isGSUser,
+  isLoading,
+  overviewPath,
+  children,
+}: {
+  isGSUser: boolean | undefined;
+  isLoading: boolean;
+  overviewPath: string;
+  children: ReactNode;
+}) {
+  if (isGSUser) {
+    return <>{children}</>;
+  }
+  if (isLoading) {
+    return null;
+  }
+  return <Navigate to={overviewPath} replace />;
 }
 
 /** The frame of every state of the page: breadcrumbs back to the list. */
@@ -452,7 +491,9 @@ function ClusterPage() {
   const { pathname, search } = useLocation();
   // Read once here: the tab's count and the tab itself show the same pools.
   const nodePools = usePlatformNodePools();
-  const tabs = useClusterPageTabs(nodePools);
+  const { isGSUser, isLoading: isUserLoading } =
+    useCurrentUser(installationName);
+  const tabs = useClusterPageTabs(nodePools, isGSUser);
   // The facts column belongs to Overview; the other tabs take the width.
   const isOverview =
     pathname.replace(/\/+$/, '') === basePath.replace(/\/+$/, '');
@@ -529,6 +570,18 @@ function ClusterPage() {
           <Route
             path="node-pools"
             element={<PlatformClusterNodePools nodePools={nodePools} />}
+          />
+          <Route
+            path="ssh-access"
+            element={
+              <StaffOnly
+                isGSUser={isGSUser}
+                isLoading={isUserLoading}
+                overviewPath={`${basePath}${search}`}
+              >
+                <PlatformClusterSSHAccess />
+              </StaffOnly>
+            }
           />
           {/* A tab the page does not have lands on Overview. */}
           <Route
@@ -797,7 +850,8 @@ function hideClassicErrors(): boolean {
 /**
  * A cluster's page in the shell's Platform section
  * (`/platform/clusters/<installation>/<namespace>/<name>`): its state, a
- * column of facts on Overview, and routed tabs: Overview and Node pools so far.
+ * column of facts on Overview, and routed tabs: Overview, Node pools and, for
+ * Giant Swarm staff, SSH access so far.
  * Reads the cluster as the classic cluster page does (`ClusterProvider`),
  * through the query client of the `PlatformClustersProvider` above it, which
  * the clusters list reads through too.

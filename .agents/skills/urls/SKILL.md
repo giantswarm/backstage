@@ -47,7 +47,7 @@ change needs something the rules do not settle, it needs a decision first.
 /customize/workspaces/<inst>/<org>/<name>/edit
 /platform                                               → /platform/clusters
 /platform/clusters                                      gs.features.platformSection only
-/platform/clusters/<inst>/<ns>/<name>[/node-pools]      bare = Overview
+/platform/clusters/<inst>/<ns>/<name>[/node-pools|/ssh-access]  bare = Overview; ssh-access staff only
 /agent-platform/**  →  one-hop redirects until the end of 2026
 ```
 
@@ -74,7 +74,9 @@ How it is mounted:
   links through the `PlatformLinks` the app's page provides). Its Node pools
   tab selects a pool with `?name=<pool>`, as the classic cluster page does:
   a selection within the tab, not a page of its own, so it stays in the query
-  (rule 3 is about which resource a page shows). Items 1 to 3 of
+  (rule 3 is about which resource a page shows). Its SSH access tab is
+  Giant Swarm staff's only (`useCurrentUser`'s `isGSUser`): anyone else has
+  no such tab, and its path opens Overview. Items 1 to 4 of
   giantswarm/giantswarm#39295; the planned tree adds
   `/platform/clusters/<inst>/<ns>/<name>[/gateways|/access]`,
   `/platform/environments` and `/platform/environments/<inst>`.

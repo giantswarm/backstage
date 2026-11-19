@@ -600,8 +600,9 @@ Organization, Provider with its region, Account (in groups of four, linked to
 the AWS console), Workers and Created. The facts column belongs to Overview;
 the other tabs take the page's width.
 
-It has two tabs so far, Overview and Node pools; any other tab redirects to
-Overview. Overview (the bare path) is a column of panels:
+It has three tabs so far, Overview, Node pools and, for Giant Swarm staff
+(`useCurrentUser`), SSH access; any other tab redirects to Overview, and so
+does SSH access for anyone but staff. Overview (the bare path) is a column of panels:
 
 - Release: the cluster's release, linked to its release notes (the GitHub
   release of giantswarm/releases tagged `<provider>/v<version>`), the
@@ -651,6 +652,13 @@ Then "Technical details of <pool>", open: for a machine pool its instance
 shape, scaling and resources; for a Karpenter pool what runs now, the
 provisioning envelope, lifecycle and disruption, and the node template (the
 classic page's cards, with Karpenter's metrics from Mimir).
+
+SSH access (`/ssh-access`) is the classic cluster page's SSH access tab in
+the shell's style: a sentence on choosing a node, then the Teleport commands
+for the control plane nodes, the worker nodes and, as an example, a specific
+node, each in a code block with a copy button, and a link to the cluster's
+nodes in Teleport's resources UI. The commands come from the classic tab's
+`utils`.
 
 A cluster being deleted says so and follows the deletion. An environment the
 portal does not know, a cluster the environment does not have, an environment
