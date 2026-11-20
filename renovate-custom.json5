@@ -72,9 +72,10 @@
     {
       // The TechDocs generator's Python packages in
       // packages/backend/techdocs-requirements.txt move in one PR.
-      // mkdocs-techdocs-core 1.2.1 holds several of them in place
-      // (mkdocs-material, pymdown-extensions, Markdown), so a bump to one of
-      // those on its own can't be installed and fails the image build.
+      // mkdocs-techdocs-core pins several of them exactly (mkdocs-material,
+      // pymdown-extensions, Pygments, plantuml-markdown) and caps Markdown, so
+      // a bump to one of those on its own can't be installed and fails the
+      // image build.
       groupName: 'techdocs python packages',
       matchManagers: ['pip_requirements'],
     },
