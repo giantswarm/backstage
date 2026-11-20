@@ -730,11 +730,11 @@ describe('SessionsTable in the shell layout', () => {
       expect(rowTitles(screen.getByRole('grid', { name: 'Pinned' }))).toEqual([
         'Release notes',
       ]);
-      // A pinned row can be from any day, so its start shows as a date.
       const pinnedGrid = screen.getByRole('grid', { name: 'Pinned' });
-      expect(
-        within(pinnedGrid).getByRole('rowheader').closest('[role="row"]'),
-      ).toHaveTextContent(/[A-Z][a-z]{2}/);
+      const time = pinnedGrid.querySelector('time');
+      expect(time).toHaveTextContent(/ago$/);
+      expect(time).toHaveAttribute('dateTime', rows[1].createdAt);
+      expect(time?.title).toContain(now.getFullYear().toString());
     });
 
     it('offers the Pinned filter once something is pinned, and filters by it', async () => {
@@ -1107,7 +1107,7 @@ describe('SessionsTable in the shell layout', () => {
 
     it('drops Environment first', async () => {
       layout = mockDesktopLayout();
-      container = mockContainerWidth(700);
+      container = mockContainerWidth(800);
       await renderShell();
 
       expect(headers()).toContain('Last active');
@@ -1125,7 +1125,7 @@ describe('SessionsTable in the shell layout', () => {
 
     it('names the environment on the session’s second line once its column is gone', async () => {
       layout = mockDesktopLayout();
-      container = mockContainerWidth(700);
+      container = mockContainerWidth(800);
       await renderShell();
 
       const row = screen
@@ -1150,18 +1150,17 @@ describe('SessionsTable in the shell layout', () => {
 
       it('drops Environment, then Workspace, then stacks, and comes back as it widens', async () => {
         layout = mockDesktopLayout();
-        container = mockContainerWidth(1100);
+        container = mockContainerWidth(1200);
         await renderShell(withWorkspace);
         expect(headers()).toEqual(
           expect.arrayContaining(['Workspace', 'Environment']),
         );
 
-        // Beside the side rail on a ~1024px window: the table stays.
-        act(() => container.setWidth(900));
+        act(() => container.setWidth(980));
         expect(headers()).toContain('Workspace');
         expect(headers()).not.toContain('Environment');
 
-        act(() => container.setWidth(750));
+        act(() => container.setWidth(800));
         expect(headers()).not.toContain('Workspace');
         expect(headers()).toContain('Last active');
         const row = screen
@@ -1172,7 +1171,7 @@ describe('SessionsTable in the shell layout', () => {
         act(() => container.setWidth(500));
         expect(screen.queryByRole('grid')).not.toBeInTheDocument();
 
-        act(() => container.setWidth(750));
+        act(() => container.setWidth(800));
         expect(screen.getAllByRole('grid').length).toBeGreaterThan(0);
         expect(headers()).not.toContain('Workspace');
       });
