@@ -1,5 +1,5 @@
-import { differenceInMinutes } from 'date-fns/differenceInMinutes';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
+import { useNow } from '../../hooks/useNow';
 import {
   formatDate,
   formatLocalDate,
@@ -8,6 +8,7 @@ import {
   parseDate,
 } from './utils';
 import { useDateTimeZone } from './DateTimeZone';
+// eslint-disable-next-line @typescript-eslint/no-restricted-imports -- Classic consumers depend on Typography props and UTC tooltip presentation.
 import { Tooltip, Typography } from '@material-ui/core';
 
 export interface IDateProps extends React.ComponentPropsWithoutRef<
@@ -15,6 +16,8 @@ export interface IDateProps extends React.ComponentPropsWithoutRef<
 > {
   value: string | Date | null | undefined;
   relative?: boolean;
+  /** A list-owned clock avoids one timer per row. */
+  now?: number;
   /**
    * Whether hovering shows the full date. A relative date always does; an
    * absolute one does when this is set. Not passed on to the DOM.
@@ -22,9 +25,7 @@ export interface IDateProps extends React.ComponentPropsWithoutRef<
   tooltip?: boolean;
 }
 
-// eslint-disable-next-line no-magic-numbers
-const REFRESH_TIMEOUT = 60 * 1000; // 1 minute
-const REFRESH_PERIOD = 45; // 45 minutes
+const REFRESH_TIMEOUT = 60_000;
 
 /**
  * A date, absolute or relative ("5 minutes ago"), in UTC — or in the
@@ -35,10 +36,19 @@ export const DateComponent: React.FC<React.PropsWithChildren<IDateProps>> = ({
   value,
   relative,
   tooltip,
+  now: sharedNow,
   variant = 'inherit',
   ...props
 }) => {
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const valid = Boolean(value && isFinite(parseDate(value).getTime()));
+  const now = useNow(
+    REFRESH_TIMEOUT,
+    Boolean(relative && valid && sharedNow === undefined),
+  );
+  const currentTime = useMemo(
+    () => new Date(sharedNow ?? now),
+    [sharedNow, now],
+  );
   const timeZone = useDateTimeZone();
   const isLocal = timeZone === 'local';
 
@@ -47,32 +57,6 @@ export const DateComponent: React.FC<React.PropsWithChildren<IDateProps>> = ({
 
     return isLocal ? formatLocalDate(value) : formatDate(value);
   }, [value, isLocal]);
-
-  const timeoutId = useRef<ReturnType<typeof setTimeout>>();
-  useEffect(() => {
-    if (!value || !relative) return undefined;
-
-    const givenDate = parseDate(value);
-    const distance = differenceInMinutes(currentTime, givenDate);
-    // An unparsable value shows as given and has nothing to count towards.
-    if (!isFinite(distance) || Math.abs(distance) > REFRESH_PERIOD) {
-      if (timeoutId.current) {
-        clearTimeout(timeoutId.current);
-      }
-
-      return undefined;
-    }
-
-    timeoutId.current = setTimeout(() => {
-      setCurrentTime(new Date());
-    }, REFRESH_TIMEOUT);
-
-    return () => {
-      if (timeoutId.current) {
-        clearTimeout(timeoutId.current);
-      }
-    };
-  }, [value, relative, currentTime]);
 
   const visibleDate = useMemo(() => {
     if (!value) return '';
@@ -109,9 +93,11 @@ export const DateComponent: React.FC<React.PropsWithChildren<IDateProps>> = ({
   if (relative || tooltip) {
     return (
       <Tooltip title={formattedDate}>
-        <Typography component="span" variant={variant} {...props} key="date">
-          {visibleDate}
-        </Typography>
+        <span>
+          <Typography component="span" variant={variant} {...props} key="date">
+            {visibleDate}
+          </Typography>
+        </span>
       </Tooltip>
     );
   }

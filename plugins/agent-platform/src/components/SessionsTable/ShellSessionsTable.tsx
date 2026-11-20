@@ -35,12 +35,14 @@ import {
   CatalogNoMatch,
   catalogFilterKey,
   type CatalogFilterSelection,
+  getRelativeDate,
   formatLocalDateFull,
   isCatalogFiltered,
   PinIcon,
   StackedRowList,
   StatusDot,
   stopRowPress,
+  useNow,
   useWidthTier,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { sessionDetailRouteRef } from '../../routes';
@@ -64,7 +66,6 @@ import type { SessionNotificationsControl } from '../SessionDetailPage/SessionAc
 import { SessionRenameDialog } from '../SessionDetailPage/SessionRenameDialog';
 import {
   compareSessionRecency,
-  formatSessionTime,
   PINNED_GROUP_LABEL,
   SESSION_DAY_GROUPS,
   SessionListGroup,
@@ -333,7 +334,7 @@ function shellColumns({
   showInstallation,
   showWorkspace,
   folded = {},
-  currentYear,
+  ageNow,
   focusAfterDelete,
   onRowDeleted,
   onTogglePin,
@@ -352,7 +353,7 @@ function shellColumns({
    * line instead, so sessions of one title stay apart.
    */
   folded?: { installation?: boolean; workspace?: boolean };
-  currentYear: number;
+  ageNow: number;
   /** The row to focus once a row is deleted, by the deleted row's id. */
   focusAfterDelete: (rowId: string) => string | undefined;
   onRowDeleted: (focusRowId: string | undefined) => void;
@@ -473,9 +474,8 @@ function shellColumns({
     {
       id: 'lastActiveAt',
       label: 'Last active',
-      // The header, and a day of an earlier year ("12 Nov 2025").
-      width: '112px',
-      cell: (row, group) => (
+      width: '184px',
+      cell: row => (
         <Cell>
           {row.lastActiveAt !== undefined ? (
             <Text
@@ -483,11 +483,7 @@ function shellColumns({
               color="secondary"
               style={{ whiteSpace: 'nowrap' }}
             >
-              <SessionTime
-                at={row.lastActiveAt}
-                group={group}
-                currentYear={currentYear}
-              />
+              <SessionTime at={row.lastActiveAt} now={ageNow} />
             </Text>
           ) : (
             <Unknown />
@@ -544,23 +540,12 @@ function WorkspaceCell({ row }: { row: SessionTableRow }) {
   );
 }
 
-/**
- * When the session was last active, as short as its group allows, with the
- * full local stamp on hover.
- */
-function SessionTime({
-  at,
-  group,
-  currentYear,
-}: {
-  at: number;
-  group: SessionListGroup;
-  currentYear: number;
-}) {
+/** When the session was last active, relative, with the full local stamp on hover. */
+function SessionTime({ at, now }: { at: number; now: number }) {
   const iso = new Date(at).toISOString();
   return (
     <time dateTime={iso} title={formatLocalDateFull(iso)}>
-      {formatSessionTime(at, group, currentYear)}
+      {getRelativeDate(iso, new Date(now))}
     </time>
   );
 }
@@ -622,26 +607,24 @@ function DayTable({
 function DayList({
   label,
   rows,
-  group,
   hrefFor,
   buildAvatarUrl,
   isLoadingStates,
   showStates,
   showAgent,
   showInstallation,
-  currentYear,
+  ageNow,
   renderActions,
 }: {
   label: string;
   rows: SessionTableRow[];
-  group: SessionListGroup;
   hrefFor: (row: SessionRow) => string | undefined;
   buildAvatarUrl: ReturnType<typeof useAgentAvatarUrl>;
   isLoadingStates: boolean;
   showStates: boolean;
   showAgent: boolean;
   showInstallation: boolean;
-  currentYear: number;
+  ageNow: number;
   renderActions: (row: SessionTableRow) => ReactNode;
 }) {
   return (
@@ -658,11 +641,7 @@ function DayList({
           showInstallation,
           time:
             row.lastActiveAt !== undefined ? (
-              <SessionTime
-                at={row.lastActiveAt}
-                group={group}
-                currentYear={currentYear}
-              />
+              <SessionTime at={row.lastActiveAt} now={ageNow} />
             ) : undefined,
           actions: renderActions(row),
         }),
@@ -836,7 +815,7 @@ export function ShellSessionsTable({
   // midnight regroups on its next render.
   const now = new Date();
   const today = now.toDateString();
-  const currentYear = now.getFullYear();
+  const ageNow = useNow(60_000);
 
   // Most recently active first, by the comparator the rail orders with
   // (T100 M1). Pinned rows lead whatever page of the list is shown — the
@@ -1003,7 +982,7 @@ export function ShellSessionsTable({
       showAgent,
       showInstallation,
       showWorkspace,
-      currentYear,
+      ageNow,
       focusAfterDelete,
       onRowDeleted,
       onTogglePin: togglePin,
@@ -1016,7 +995,7 @@ export function ShellSessionsTable({
       showAgent,
       showInstallation,
       showWorkspace,
-      currentYear,
+      ageNow,
       focusAfterDelete,
       onRowDeleted,
       togglePin,
@@ -1166,14 +1145,13 @@ export function ShellSessionsTable({
                 <DayList
                   label={group.label}
                   rows={group.rows}
-                  group={group.id}
                   hrefFor={hrefFor}
                   buildAvatarUrl={buildAvatarUrl}
                   isLoadingStates={isLoadingStates}
                   showStates={hasStates}
                   showAgent={showAgent}
                   showInstallation={showInstallation}
-                  currentYear={currentYear}
+                  ageNow={ageNow}
                   renderActions={row => (
                     <RowActions
                       row={row}
