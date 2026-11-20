@@ -37,4 +37,34 @@ describe('<ConditionStatus />', () => {
       expect(screen.queryByLabelText('Status ok')).not.toBeInTheDocument();
     },
   );
+
+  it('names the condition when given a name', async () => {
+    await renderInTestApp(
+      <>
+        <ConditionStatus condition={{ status: 'true' }} name="Accepted" />
+        <ConditionStatus
+          condition={{ status: 'false', reason: 'RefNotPermitted' }}
+          name="ResolvedRefs"
+        />
+        <ConditionStatus condition={{ status: 'not-reported' }} name="A" />
+        <ConditionStatus condition={{ status: 'not-available' }} name="B" />
+      </>,
+    );
+    expect(screen.getByText('Accepted: True')).toBeInTheDocument();
+    expect(
+      screen.getByText('ResolvedRefs: False · RefNotPermitted'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('A: Not reported')).toBeInTheDocument();
+    expect(screen.getByText('B: Not available')).toBeInTheDocument();
+  });
+
+  it('lets a reason break between its words, never inside one', async () => {
+    await renderInTestApp(
+      <ConditionStatus
+        condition={{ status: 'false', reason: 'NotAllowedByListeners' }}
+      />,
+    );
+    const reason = screen.getByText('NotAllowedByListeners');
+    expect(reason.querySelectorAll('wbr')).toHaveLength(3);
+  });
 });

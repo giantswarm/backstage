@@ -1,0 +1,1 @@
+export { GatewaysTable } from './GatewaysTable';
