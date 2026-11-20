@@ -18,6 +18,9 @@ import {
   GatewayApiHttprouteStatusParentAccepted,
   GatewayApiHttprouteStatusParentInfo,
   GatewayApiHttprouteStatusParentResolvedRefs,
+  GatewayApiReferencegrantCreated,
+  GatewayApiReferencegrantFromInfo,
+  GatewayApiReferencegrantToInfo,
 } from '../mimirMetrics';
 import type { FixtureCluster } from './clusterBuilders';
 import type { FixtureDataSet } from './dataSet';
@@ -251,13 +254,15 @@ function longNamedRoutes(
  * The Gateway API and Envoy Gateway series of one installation's clusters,
  * as the kube-state-metrics of observability-bundle and the Gateway API
  * bundle export them: each ready workload cluster has the bundle's Gateway
- * with its listeners, the routes of {@link routesOf} and a few policies; in
- * `many`, the first one has {@link MANY_ROUTES} routes. Every third ready
- * workload cluster runs older bundles: the routes' conditions, the policies'
- * targets and status, and the rules' backends are missing there, as the
- * metrics are, so the tab shows that they are not available. The management
- * cluster, and a cluster being created or deleted, has no Gateway. Info series and gauges, each a single point from
- * the time the cluster was created.
+ * with its listeners, the routes of {@link routesOf}, a few policies and the
+ * routes' ReferenceGrants; in `many`, the first one has {@link MANY_ROUTES}
+ * routes. Every third ready workload cluster runs older bundles: the routes'
+ * conditions, the policies' targets and status, and the rules' backends are
+ * missing there, as the metrics are, so the tab shows that they are not
+ * available (its ReferenceGrants stay: they need only 3.3.0). The management
+ * cluster, and a cluster being created or deleted, has no Gateway. Info
+ * series and gauges, each a single point from the time the cluster was
+ * created.
  */
 export function gatewayApiSeriesOf(
   data: FixtureDataSet,
@@ -385,6 +390,7 @@ function clusterSeries(
   }
 
   policySeries(add, routes, since, olderBundles);
+  referenceGrantSeries(add, routes, since);
 }
 
 /**
@@ -471,6 +477,82 @@ function policySeries(
         { ...id, ...ancestor, reason: policy.status.reason },
         policy.status.value,
       );
+    }
+  }
+}
+
+/**
+ * The ReferenceGrants that let the routes reach their backends in other
+ * namespaces: one per backend namespace and route namespace, for each route
+ * the controller resolved. A route that may not reference its backend
+ * (RefNotPermitted) gets none; its backend's namespace has a grant for
+ * another namespace instead, to any Service, so the table shows both a named
+ * and a whole-kind entry. Exported since observability-bundle 3.3.0, so on
+ * the clusters with older bundles too.
+ */
+function referenceGrantSeries(
+  add: (name: string, labels: Record<string, string>, value?: number) => void,
+  routes: FixtureRoute[],
+  since: number,
+) {
+  type Grant = {
+    namespace: string;
+    name: string;
+    from: Record<string, string>[];
+    to: Record<string, string>[];
+  };
+  const grants = new Map<string, Grant>();
+  const httpRoutesFrom = (namespace: string) => ({
+    from_group: 'gateway.networking.k8s.io',
+    from_kind: 'HTTPRoute',
+    from_namespace: namespace,
+  });
+  for (const route of routes) {
+    for (const rule of route.rules) {
+      for (const backend of rule.backends) {
+        if (!backend.namespace || backend.namespace === route.namespace) {
+          continue;
+        }
+        if (route.resolvedRefs?.value === 0) {
+          const key = `${backend.namespace}/denied`;
+          if (!grants.has(key)) {
+            grants.set(key, {
+              namespace: backend.namespace,
+              name: fitName(`${backend.namespace}-billing`, MAX_NAME_LENGTH),
+              from: [
+                httpRoutesFrom('billing'),
+                { ...httpRoutesFrom('billing'), from_kind: 'GRPCRoute' },
+              ],
+              to: [{ to_kind: 'Service' }],
+            });
+          }
+          continue;
+        }
+        const key = `${backend.namespace}/${route.namespace}`;
+        let grant = grants.get(key);
+        if (!grant) {
+          grant = {
+            namespace: backend.namespace,
+            name: fitName(`from-${route.namespace}`, MAX_NAME_LENGTH),
+            from: [httpRoutesFrom(route.namespace)],
+            to: [],
+          };
+          grants.set(key, grant);
+        }
+        if (!grant.to.some(to => to.to_name === backend.name)) {
+          grant.to.push({ to_kind: 'Service', to_name: backend.name });
+        }
+      }
+    }
+  }
+  for (const grant of grants.values()) {
+    const id = { namespace: grant.namespace, name: grant.name };
+    add(GatewayApiReferencegrantCreated.name, id, since / 1000);
+    for (const from of grant.from) {
+      add(GatewayApiReferencegrantFromInfo.name, { ...id, ...from });
+    }
+    for (const to of grant.to) {
+      add(GatewayApiReferencegrantToInfo.name, { ...id, ...to });
     }
   }
 }

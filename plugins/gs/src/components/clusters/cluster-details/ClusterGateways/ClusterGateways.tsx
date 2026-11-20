@@ -10,7 +10,10 @@ import { useCurrentCluster } from '../../ClusterDetailsPage/useCurrentCluster';
 import { useMimirGatewayTopology } from '../../../hooks/useMimirGatewayTopology';
 import { useMimirGatewayPolicies } from '../../../hooks/useMimirGatewayPolicies';
 import { GatewayPolicy } from '../../../utils/gatewayPolicies';
+import { useMimirGatewayReferenceGrants } from '../../../hooks/useMimirGatewayReferenceGrants';
+import { ReferenceGrant } from '../../../utils/gatewayReferenceGrants';
 import { PoliciesTable } from './PoliciesTable';
+import { ReferenceGrantsTable } from './ReferenceGrantsTable';
 import { GatewaysTable } from './GatewaysTable';
 import {
   Gateway,
@@ -177,6 +180,9 @@ export type ClusterGatewaysContentProps = {
   policies: GatewayPolicy[];
   policiesLoading: boolean;
   policiesError?: unknown;
+  referenceGrants: ReferenceGrant[];
+  referenceGrantsLoading: boolean;
+  referenceGrantsError?: unknown;
 };
 
 /** Renders a cluster's Gateway API topology. Data loading lives in `ClusterGateways`. */
@@ -189,6 +195,9 @@ export const ClusterGatewaysContent = ({
   policies,
   policiesLoading,
   policiesError,
+  referenceGrants,
+  referenceGrantsLoading,
+  referenceGrantsError,
 }: ClusterGatewaysContentProps) => {
   const gatewayRows = useMemo(() => toGatewayRows(gateways), [gateways]);
   const routeRows = useMemo(() => toRouteRows(routes), [routes]);
@@ -230,7 +239,8 @@ export const ClusterGatewaysContent = ({
         Based on Gateway API metrics. Changes can take a minute or two to
         appear.
       </Text>
-      {/* The policies load on their own, so a topology error leaves them shown. */}
+      {/* The policies and ReferenceGrants load on their own, so a topology
+          error leaves them shown. */}
       {error ? (
         <MetricsUnavailableAlert
           error={error}
@@ -304,6 +314,14 @@ export const ClusterGatewaysContent = ({
           </InfoCard>
         </>
       )}
+      <InfoCard title="ReferenceGrants">
+        <ReferenceGrantsTable
+          clusterName={clusterName}
+          referenceGrants={referenceGrants}
+          isLoading={referenceGrantsLoading}
+          error={referenceGrantsError}
+        />
+      </InfoCard>
       <InfoCard title="Envoy Gateway policies">
         <PoliciesTable
           clusterName={clusterName}
@@ -334,6 +352,15 @@ export const ClusterGateways = () => {
     clusterName,
     refetchInterval: 30_000,
   });
+  const {
+    referenceGrants,
+    isLoading: referenceGrantsLoading,
+    error: referenceGrantsError,
+  } = useMimirGatewayReferenceGrants({
+    installationName,
+    clusterName,
+    refetchInterval: 30_000,
+  });
 
   return (
     <ClusterGatewaysContent
@@ -345,6 +372,9 @@ export const ClusterGateways = () => {
       policies={policies}
       policiesLoading={policiesLoading}
       policiesError={policiesError}
+      referenceGrants={referenceGrants}
+      referenceGrantsLoading={referenceGrantsLoading}
+      referenceGrantsError={referenceGrantsError}
     />
   );
 };

@@ -64,6 +64,8 @@ function render(routes: HttpRoute[], gateways: Gateway[] = []) {
       isLoading={false}
       policies={[]}
       policiesLoading={false}
+      referenceGrants={[]}
+      referenceGrantsLoading={false}
     />,
   );
 }
@@ -246,7 +248,11 @@ describe('<ClusterGatewaysContent />', () => {
         'Some route conditions could not be loaded. They are retried automatically.',
       ),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/observability-bundle/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        'Route conditions need observability-bundle 3.6.0 or newer on this cluster.',
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it('explains when route conditions are not available', async () => {
@@ -286,7 +292,7 @@ describe('<ClusterGatewaysContent />', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('keeps the policies when the topology could not be loaded', async () => {
+  it('keeps the ReferenceGrants and policies when the topology could not be loaded', async () => {
     await renderInTestApp(
       <ClusterGatewaysContent
         clusterName="demo"
@@ -296,6 +302,22 @@ describe('<ClusterGatewaysContent />', () => {
         error={new Error('query failed')}
         policies={[]}
         policiesLoading={false}
+        referenceGrants={[
+          {
+            id: 'payments/billing',
+            namespace: 'payments',
+            name: 'billing',
+            from: [
+              {
+                group: 'gateway.networking.k8s.io',
+                kind: 'HTTPRoute',
+                namespace: 'billing',
+              },
+            ],
+            to: [{ group: '', kind: 'Service' }],
+          },
+        ]}
+        referenceGrantsLoading={false}
       />,
     );
     expect(
@@ -303,6 +325,7 @@ describe('<ClusterGatewaysContent />', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText('HTTPRoutes')).not.toBeInTheDocument();
     expect(screen.getByText('Envoy Gateway policies')).toBeInTheDocument();
+    expect(screen.getByText('HTTPRoute in billing')).toBeInTheDocument();
   });
 
   describe('backends', () => {
@@ -539,6 +562,8 @@ describe('<ClusterGatewaysContent />', () => {
           isLoading
           policies={[]}
           policiesLoading={false}
+          referenceGrants={[]}
+          referenceGrantsLoading={false}
         />,
       );
       expect(
@@ -565,6 +590,8 @@ describe('<ClusterGatewaysContent />', () => {
           isLoading
           policies={[]}
           policiesLoading={false}
+          referenceGrants={[]}
+          referenceGrantsLoading={false}
         />,
       );
       expect(

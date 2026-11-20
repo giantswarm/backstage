@@ -312,6 +312,36 @@ export const GatewayApiHttprouteStatusParentResolvedRefs = {
 } as const satisfies PrometheusMetric;
 
 /**
+ * ReferenceGrant metrics, exported by the kube-state-metrics of
+ * observability-bundle since 3.3.0 (its CHANGELOG: "Add KSM metrics for
+ * Gateway API `ListenerSet` and `ReferenceGrant` resources"). Before that a
+ * cluster exports no series, as it does without any ReferenceGrant.
+ */
+export const GatewayApiReferencegrantCreated = {
+  name: 'gatewayapi_referencegrant_created',
+  description:
+    'Creation timestamp of a Gateway API ReferenceGrant, one series per grant. `name`/`namespace` identify the grant; its namespace holds the resources it lets others reference.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const GatewayApiReferencegrantFromInfo = {
+  name: 'gatewayapi_referencegrant_from_info',
+  description:
+    'Info series (value is always 1) per entry in `spec.from` of a ReferenceGrant: `from_group`/`from_kind`/`from_namespace`, the resources that may reference into the namespace of the grant.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+export const GatewayApiReferencegrantToInfo = {
+  name: 'gatewayapi_referencegrant_to_info',
+  description:
+    'Info series (value is always 1) per entry in `spec.to` of a ReferenceGrant: `to_group`/`to_kind`, and `to_name` when the grant names one resource; without it every resource of that kind in the namespace of the grant may be referenced.',
+  type: 'gauge',
+  source: 'kube-state-metrics',
+} as const satisfies PrometheusMetric;
+
+/**
  * Envoy Gateway policy metrics. `created` has one series per policy on every
  * observability-bundle with the Envoy Gateway config (since #366). `info` only
  * reads the deprecated `spec.targetRef`, and a policy without it has no `info`
@@ -607,6 +637,9 @@ export const MetricsRegistry: readonly PrometheusMetric[] = [
   GatewayApiHttprouteStatusParentInfo,
   GatewayApiHttprouteStatusParentAccepted,
   GatewayApiHttprouteStatusParentResolvedRefs,
+  GatewayApiReferencegrantCreated,
+  GatewayApiReferencegrantFromInfo,
+  GatewayApiReferencegrantToInfo,
   EnvoyGatewaySecurityPolicyCreated,
   EnvoyGatewaySecurityPolicyInfo,
   EnvoyGatewaySecurityPolicyTargetInfo,
