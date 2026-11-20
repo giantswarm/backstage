@@ -1520,6 +1520,13 @@ describe('AddGpuNodePoolPage: the selects at scale', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('searchbox')).toBeInTheDocument();
     await user.keyboard('{Escape}');
+    // Focus returns to the trigger a frame later; wait, or it steals focus
+    // from the next popover.
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: /^Pick a cluster/ }),
+      ).toHaveFocus(),
+    );
 
     await user.click(screen.getByRole('button', { name: /^inst-1/ }));
     expect(
