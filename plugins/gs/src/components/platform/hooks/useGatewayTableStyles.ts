@@ -16,11 +16,11 @@ export const useGatewayTableStyles = makeStyles({
   // A row the search found, found by the mark in it: a lighter tint than
   // the mark's, so the mark stays visible in it.
   marksRows: {
-    '& tr:has(mark)': {
+    '& tr:has(mark), & li:has(mark)': {
       backgroundColor:
         'color-mix(in srgb, var(--bui-warning-bg-subdued) 35%, transparent)',
     },
-    '& tr:has(mark) mark': {
+    '& tr:has(mark) mark, & li:has(mark) mark': {
       fontWeight: 500,
     },
   },

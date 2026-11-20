@@ -8,7 +8,7 @@ import {
 import { PlatformCellLines } from '../PlatformCellLines';
 import { PlatformGatewayStatus } from '../PlatformGatewayStatus';
 import { PlatformMarkedText } from '../PlatformMarkedText';
-import { useGatewayTableStyles } from '../utils/gatewayTableStyles';
+import { useGatewayTableStyles } from '../hooks';
 import {
   type GatewayMatch,
   type GatewayView,
@@ -48,7 +48,7 @@ function RoutesCount({ view }: { view: GatewayView }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       <Text as="span" variant="body-medium">
-        {view.routes.length}
+        {view.routeCount}
       </Text>
       {view.failingRoutes > 0 ? (
         <Text as="span" variant="body-small" color="danger">
@@ -69,7 +69,40 @@ export type PlatformGatewaysTableProps = {
   matches: ReadonlyMap<string, GatewayMatch>;
   query: string;
   emptyState: ReactNode;
+  /** The policies could not be read: their counts are unknown, not 0. */
+  policiesUnavailable?: boolean;
 };
+
+const POLICIES_UNAVAILABLE = 'Policies could not be loaded';
+
+/** A Gateway's policy count, or a dash that says why there is none. */
+function PoliciesCount({
+  view,
+  unavailable,
+}: {
+  view: GatewayView;
+  unavailable: boolean;
+}) {
+  if (unavailable) {
+    return (
+      <Text
+        variant="body-medium"
+        color="secondary"
+        title={POLICIES_UNAVAILABLE}
+        aria-label={POLICIES_UNAVAILABLE}
+      >
+        —
+      </Text>
+    );
+  }
+  return <Text variant="body-medium">{view.policies.length}</Text>;
+}
+
+function policiesFact(view: GatewayView, unavailable: boolean): string {
+  return unavailable
+    ? 'policies could not be loaded'
+    : count(view.policies.length, 'policy', 'policies');
+}
 
 /**
  * A cluster's Gateways, one row each: the name, a button that selects the
@@ -85,6 +118,7 @@ export function PlatformGatewaysTable({
   matches,
   query,
   emptyState,
+  policiesUnavailable = false,
 }: PlatformGatewaysTableProps) {
   const classes = useGatewayTableStyles();
 
@@ -127,7 +161,7 @@ export function PlatformGatewaysTable({
                         )
                       : undefined,
                     isNarrow
-                      ? count(view.policies.length, 'policy', 'policies')
+                      ? policiesFact(view, policiesUnavailable)
                       : undefined,
                   ]
                     .filter(Boolean)
@@ -175,13 +209,13 @@ export function PlatformGatewaysTable({
           defaultWidth: '0.6fr',
           cell: view => (
             <Cell>
-              <Text variant="body-medium">{view.policies.length}</Text>
+              <PoliciesCount view={view} unavailable={policiesUnavailable} />
             </Cell>
           ),
         },
       ];
     },
-    [matches, query, selectButton],
+    [matches, query, selectButton, policiesUnavailable],
   );
 
   const fit = useFittingColumns(columnsFor, {
@@ -206,9 +240,9 @@ export function PlatformGatewaysTable({
               facts: [
                 view.gateway.namespace,
                 count(view.gateway.listeners.length, 'listener', 'listeners'),
-                count(view.routes.length, 'route', 'routes') +
+                count(view.routeCount, 'route', 'routes') +
                   (view.failingRoutes ? `, ${view.failingRoutes} failing` : ''),
-                count(view.policies.length, 'policy', 'policies'),
+                policiesFact(view, policiesUnavailable),
               ],
               details: match ? (
                 <MatchLine match={match} query={query} />

@@ -7,6 +7,7 @@ import type {
 import {
   buildGatewayViews,
   gatewayStatus,
+  isTargetGateway,
   matchGateway,
   policyStatus,
   routeStatus,
@@ -173,6 +174,44 @@ describe('buildGatewayViews', () => {
     ]);
   });
 
+  it("reads an ancestor without a namespace in the policy's namespace", () => {
+    const shopEdge = gateway('shop', 'edge');
+    const teamEdge = gateway('team-a', 'edge');
+    const local = policy({
+      namespace: 'shop',
+      name: 'local',
+      ancestors: [
+        {
+          id: 'a',
+          kind: 'Gateway',
+          name: 'edge',
+          accepted: { status: 'true' },
+        },
+      ],
+    });
+    const placed = buildGatewayViews([shopEdge, teamEdge], [], [local]);
+    expect(
+      placed.gateways.map(v => [v.key, v.policies.map(r => r.policy.name)]),
+    ).toEqual([
+      ['shop/edge', ['local']],
+      ['team-a/edge', []],
+    ]);
+  });
+
+  it('counts a route once per Gateway, failing if any of its parents there fails', () => {
+    const redirect = route('shop', 'web', [
+      parent(main, { sectionName: 'http' }),
+      parent(main, {
+        sectionName: 'https',
+        resolvedRefs: { status: 'false', reason: 'BackendNotFound' },
+      }),
+    ]);
+    const [view] = buildGatewayViews([main], [redirect], []).gateways;
+    expect(view.routes).toHaveLength(2);
+    expect(view.routeCount).toBe(1);
+    expect(view.failingRoutes).toBe(1);
+  });
+
   it('orders failing Gateways first', () => {
     const broken = gateway('x', 'broken', {
       programmed: { status: 'false', reason: 'AddressNotAssigned' },
@@ -216,6 +255,22 @@ describe('buildGatewayViews', () => {
       expect(matchGateway(view, '  ')).toBeUndefined();
       expect(matchGateway(view, 'nothing-like-it')).toBeUndefined();
     });
+  });
+});
+
+describe('isTargetGateway', () => {
+  it("needs the Gateway in the policy's namespace, not only its name", () => {
+    const target = { kind: 'Gateway', name: 'main' };
+    expect(
+      isTargetGateway(
+        target,
+        policy({ namespace: 'envoy-gateway-system' }),
+        main,
+      ),
+    ).toBe(true);
+    expect(isTargetGateway(target, policy({ namespace: 'shop' }), main)).toBe(
+      false,
+    );
   });
 });
 

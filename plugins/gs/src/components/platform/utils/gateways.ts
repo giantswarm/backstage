@@ -53,7 +53,9 @@ export type GatewayView = {
   gateway: Gateway;
   routes: GatewayRouteRow[];
   policies: GatewayPolicyRow[];
-  /** Routes whose parent on this Gateway has a failing condition. */
+  /** Distinct routes on this Gateway; `routes` has a row per parent. */
+  routeCount: number;
+  /** Distinct routes with a parent on this Gateway that fails. */
   failingRoutes: number;
 };
 
@@ -77,11 +79,19 @@ function isGatewayParent(parent: HttpRouteParent, gateway: Gateway) {
   );
 }
 
-function isGatewayAncestor(ancestor: PolicyAncestor, gateway: Gateway) {
+/**
+ * An ancestor ref without a namespace is in the namespace of the object that
+ * holds it, the policy, as for any Gateway API reference.
+ */
+function isGatewayAncestor(
+  ancestor: PolicyAncestor,
+  policy: GatewayPolicy,
+  gateway: Gateway,
+) {
   return (
     (ancestor.kind ?? 'Gateway') === 'Gateway' &&
     ancestor.name === gateway.name &&
-    (ancestor.namespace ?? gateway.namespace) === gateway.namespace
+    (ancestor.namespace ?? policy.namespace) === gateway.namespace
   );
 }
 
@@ -109,7 +119,7 @@ function overallPolicyStatus(policy: GatewayPolicy): ConditionState {
 
 function policyRow(policy: GatewayPolicy, gateway?: Gateway): GatewayPolicyRow {
   const ancestor = gateway
-    ? policy.ancestors.find(a => isGatewayAncestor(a, gateway))
+    ? policy.ancestors.find(a => isGatewayAncestor(a, policy, gateway))
     : undefined;
   return {
     id: gateway ? `${gatewayKey(gateway)}|${policy.id}` : policy.id,
@@ -178,7 +188,7 @@ export function buildGatewayViews(
     const policyRows = policies
       .filter(
         policy =>
-          policy.ancestors.some(a => isGatewayAncestor(a, gateway)) ||
+          policy.ancestors.some(a => isGatewayAncestor(a, policy, gateway)) ||
           targetsGateway(policy, gateway) ||
           orderedRoutes.some(
             route => routeIds.has(route.id) && targetsRoute(policy, route),
@@ -195,7 +205,12 @@ export function buildGatewayViews(
       gateway,
       routes: rows,
       policies: policyRows,
-      failingRoutes: rows.filter(row => parentRank(row.parent) === 0).length,
+      routeCount: routeIds.size,
+      failingRoutes: new Set(
+        rows
+          .filter(row => parentRank(row.parent) === 0)
+          .map(row => row.route.id),
+      ).size,
     };
   });
 
@@ -380,7 +395,10 @@ export function matchGateway(
   return undefined;
 }
 
-/** `https · HTTPS/443`; `all listeners`, `port 443` for a parent without one. */
+/**
+ * The listener a parent names: `https`, `https, port 443`, `port 443`; `All
+ * listeners` for a parent that names neither.
+ */
 export function listenerOf(parent: HttpRouteParent): string {
   const parts = [
     parent.sectionName || undefined,
@@ -405,4 +423,21 @@ export function protocolOf(listener: {
 }): string {
   const protocol = listener.protocol ?? '—';
   return listener.port ? `${protocol} / ${listener.port}` : protocol;
+}
+
+/**
+ * Whether a target of the policy is the Gateway: a target ref has no
+ * namespace, so it names a Gateway in the policy's own.
+ */
+export function isTargetGateway(
+  target: { kind: string; name: string },
+  policy: GatewayPolicy,
+  gateway: Gateway | undefined,
+): boolean {
+  return (
+    gateway !== undefined &&
+    target.kind === 'Gateway' &&
+    target.name === gateway.name &&
+    policy.namespace === gateway.namespace
+  );
 }

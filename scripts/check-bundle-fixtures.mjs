@@ -158,7 +158,7 @@ const MARKERS = [
   },
   {
     source: 'plugins/gs-common/src/fixtures/gatewayApiSeries.ts',
-    marker: 'NoMatchingListenerHostname',
+    marker: 'legacy-edge',
   },
   {
     source: 'plugins/gs-common/src/fixtures/gatewayUsage.ts',

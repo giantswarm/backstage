@@ -687,8 +687,7 @@ finder above the table, "Find a gateway by hostname, route or policy",
 matches a case-insensitive substring of a Gateway's name, its routes' names,
 namespaces, hostnames and backends, and its policies' names: it lists only
 the Gateways it finds something on, each with a line saying what
-("Hostname: … (route …)"), selects the first, and marks the matching route
-and policy rows, those of the last section too. Every cell is at the top of
+("Hostname: … (route …)"), keeps the selected Gateway while it finds something on it and selects the first otherwise, and marks the matching route and policy rows, those of the last section too, in every layout. With no match, the table says so and nothing shows below it but the last section. Route counts count a route once per Gateway, however many of its parents are on it; a policy count the portal could not read shows as "—". Every cell is at the top of
 its row; narrower, columns move under the name of each row; at phone width
 the rows stack.
 

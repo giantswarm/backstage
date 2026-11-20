@@ -1,5 +1,4 @@
-import { type ReactNode, useCallback, useId, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { type ReactNode, useId, useMemo, useState } from 'react';
 import { Alert, Flex, SearchField, Text } from '@backstage/ui';
 import { MetricsUnavailableAlert } from '@giantswarm/backstage-plugin-ui-react';
 import { useCurrentCluster } from '../../clusters/ClusterDetailsPage/useCurrentCluster';
@@ -21,7 +20,7 @@ import { PlatformGatewayListenersTable } from '../PlatformGatewayListenersTable'
 import { PlatformGatewayPoliciesTable } from '../PlatformGatewayPoliciesTable';
 import { PlatformGatewayRoutesTable } from '../PlatformGatewayRoutesTable';
 import { PlatformGatewaysTable } from '../PlatformGatewaysTable';
-import { useGatewayTableStyles } from '../utils/gatewayTableStyles';
+import { useGatewayTableStyles, useSelectedGateway } from '../hooks';
 import {
   type GatewayMatch,
   type GatewayPolicyRow,
@@ -32,32 +31,6 @@ import {
   policyMatches,
   routeMatches,
 } from '../utils/gateways';
-
-/** `?gateway=<namespace>/<name>`: the Gateway shown below the table. */
-const GATEWAY_PARAM = 'gateway';
-
-/**
- * The selected Gateway in the address, so a reload or a shared link shows
- * the same one. Replaced, not pushed: a selection is no page to go back to.
- */
-export function useSelectedGateway(): [
-  string | undefined,
-  (key: string) => void,
-] {
-  const [params, setParams] = useSearchParams();
-  const select = useCallback(
-    (key: string) =>
-      setParams(
-        next => {
-          next.set(GATEWAY_PARAM, key);
-          return next;
-        },
-        { replace: true },
-      ),
-    [setParams],
-  );
-  return [params.get(GATEWAY_PARAM) ?? undefined, select];
-}
 
 /** A heading inside a section, with the count of what it lists. */
 function SubSection({
@@ -202,7 +175,7 @@ function GatewayDetails({
         <SubSection title="Listeners">
           <PlatformGatewayListenersTable listeners={gateway.listeners} />
         </SubSection>
-        <SubSection title="HTTP routes" count={view.routes.length}>
+        <SubSection title="HTTP routes" count={view.routeCount}>
           <RouteNotices routes={routes} />
           <PlatformGatewayRoutesTable
             aria-label="HTTP routes"
@@ -292,10 +265,16 @@ export function PlatformClusterGatewaysContent({
 
   const onSearch = (value: string) => {
     setQuery(value);
-    // The finder selects the first Gateway it finds something on.
+    // The selected Gateway stays while the query finds something on it;
+    // otherwise the finder selects the first Gateway it finds something on.
+    if (shown && matchGateway(shown, value)) return;
     const first = views.gateways.find(view => matchGateway(view, value));
-    if (first && first.key !== shown?.key) onSelect(first.key);
+    if (first) onSelect(first.key);
   };
+  // While searching, the details belong to a Gateway the finder lists: with
+  // no match, only the table's empty message.
+  const showDetails =
+    shown !== undefined && (!isSearching || matches.has(shown.key));
 
   const { unattached } = views;
   const hasUnattached =
@@ -363,10 +342,11 @@ export function PlatformClusterGatewaysContent({
             matches={matches}
             query={query}
             emptyState={emptyState}
+            policiesUnavailable={Boolean(policiesError)}
           />
         )}
       </Flex>
-      {!isLoading && shown ? (
+      {!isLoading && shown && showDetails ? (
         // Keyed by the Gateway, so another one's tables start afresh.
         <GatewayDetails
           key={shown.key}
@@ -406,7 +386,10 @@ export function PlatformClusterGatewaysContent({
               </Text>
             </Flex>
             {unattached.routes.length > 0 ? (
-              <SubSection title="HTTP routes" count={unattached.routes.length}>
+              <SubSection
+                title="HTTP routes"
+                count={new Set(unattached.routes.map(row => row.route.id)).size}
+              >
                 <PlatformGatewayRoutesTable
                   aria-label="HTTP routes not attached to a gateway"
                   rows={unattached.routes}

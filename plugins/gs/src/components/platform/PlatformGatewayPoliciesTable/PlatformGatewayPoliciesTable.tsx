@@ -9,9 +9,10 @@ import type { GatewayPolicy, PolicyTarget } from '../../utils/gatewayPolicies';
 import { PlatformCellLines } from '../PlatformCellLines';
 import { PlatformGatewayStatus } from '../PlatformGatewayStatus';
 import { PlatformMarkedText } from '../PlatformMarkedText';
-import { useGatewayTableStyles } from '../utils/gatewayTableStyles';
+import { useGatewayTableStyles } from '../hooks';
 import {
   type GatewayPolicyRow,
+  isTargetGateway,
   policyMatches,
   policyStatus,
 } from '../utils/gateways';
@@ -34,11 +35,7 @@ const DROP_FIRST = ['kind'] as const;
 function targetKind(target: PolicyTarget, row: GatewayPolicyRow): string {
   let kind = target.kind;
   if (target.kind === 'HTTPRoute') kind = 'HTTP route';
-  if (
-    target.kind === 'Gateway' &&
-    row.gateway &&
-    target.name === row.gateway.name
-  ) {
+  if (isTargetGateway(target, row.policy, row.gateway)) {
     kind = 'This gateway';
   }
   return target.sectionName ? `${kind} · ${target.sectionName}` : kind;

@@ -7,7 +7,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import type { GatewayListener } from '../../utils/gatewayTopology';
 import { PlatformCellLines } from '../PlatformCellLines';
-import { useGatewayTableStyles } from '../utils/gatewayTableStyles';
+import { useGatewayTableStyles } from '../hooks';
 import { protocolOf } from '../utils/gateways';
 
 type ListenerRow = GatewayListener & { id: string };

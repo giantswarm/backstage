@@ -11,7 +11,7 @@ import { backendLabel } from '../../clusters/cluster-details/ClusterGateways/Bac
 import { PlatformCellLines } from '../PlatformCellLines';
 import { PlatformGatewayStatus } from '../PlatformGatewayStatus';
 import { PlatformMarkedText } from '../PlatformMarkedText';
-import { useGatewayTableStyles } from '../utils/gatewayTableStyles';
+import { useGatewayTableStyles } from '../hooks';
 import {
   type GatewayRouteRow,
   listenerOf,
@@ -215,7 +215,8 @@ export function PlatformGatewayRoutesTable({
                     isNarrow ? (
                       <>
                         {mark(row.route.namespace)}
-                        {` · ${parentColumn === 'listener' ? 'listener ' : ''}${parentText(row)} · ${backendsText(row.route)}`}
+                        {` · ${parentColumn === 'listener' ? 'listener ' : ''}${parentText(row)} · `}
+                        {mark(backendsText(row.route))}
                       </>
                     ) : (
                       mark(row.route.namespace)
@@ -287,24 +288,20 @@ export function PlatformGatewayRoutesTable({
           aria-label={ariaLabel}
           emptyState={emptyState}
           rows={rows.map(row => {
-            const isMatch = routeMatches(row.route, query);
+            const mark = markerOf(query, routeMatches(row.route, query));
             return {
               id: row.id,
-              title: isMatch ? (
-                <PlatformMarkedText text={row.route.name} query={query} />
-              ) : (
-                row.route.name
-              ),
+              title: mark(row.route.name),
               status: (
                 <PlatformGatewayStatus status={routeStatus(row.parent)} />
               ),
               facts: [
-                row.route.namespace,
+                mark(row.route.namespace),
                 parentColumn === 'listener' && row.parent
                   ? `listener ${parentText(row)}`
                   : parentText(row),
-                hostnamesText(row.route),
-                backendsText(row.route),
+                mark(hostnamesText(row.route)),
+                mark(backendsText(row.route)),
               ],
               details: chips(row) ?? undefined,
             };

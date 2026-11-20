@@ -127,7 +127,15 @@ const ipAllow: GatewayPolicy = {
 };
 
 /** The content with its selection in state, as `?gateway=` keeps it. */
-function Harness({ error, initial }: { error?: Error; initial?: string }) {
+function Harness({
+  error,
+  policiesError,
+  initial,
+}: {
+  error?: Error;
+  policiesError?: Error;
+  initial?: string;
+}) {
   const [selected, setSelected] = useState<string | undefined>(initial);
   return (
     <>
@@ -140,6 +148,7 @@ function Harness({ error, initial }: { error?: Error; initial?: string }) {
         error={error}
         policies={[ipAllow]}
         policiesLoading={false}
+        policiesError={policiesError}
         selected={selected}
         onSelect={setSelected}
       />
@@ -231,7 +240,7 @@ describe('<PlatformClusterGatewaysContent />', () => {
     expect(routes.querySelector('mark')).toHaveTextContent('ledger.internal');
   });
 
-  it('says when no Gateway matches', async () => {
+  it('says when no Gateway matches, and shows no Gateway below', async () => {
     await renderInTestApp(<Harness />);
     fireEvent.change(screen.getByRole('searchbox'), {
       target: { value: 'nothing-like-it' },
@@ -241,6 +250,32 @@ describe('<PlatformClusterGatewaysContent />', () => {
         'No gateway has a route, hostname or policy matching "nothing-like-it".',
       ),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { level: 2, name: 'giantswarm-default' }),
+    ).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Listeners' })).toBeNull();
+  });
+
+  it('keeps the selected Gateway while the query finds something on it', async () => {
+    await renderInTestApp(<Harness initial="payments/payments-internal" />);
+    // On both Gateways: a hostname on each ends in example.com.
+    fireEvent.change(screen.getByRole('searchbox'), {
+      target: { value: 'example.com' },
+    });
+    expect(gatewayButton('giantswarm-default')).toBeInTheDocument();
+    expect(screen.getByTestId('selected')).toHaveTextContent(
+      'payments/payments-internal',
+    );
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'payments-internal' }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the policy counts as unknown when the policies fail to load', async () => {
+    await renderInTestApp(<Harness policiesError={new Error('timeout')} />);
+    const unknown = screen.getAllByLabelText('Policies could not be loaded');
+    expect(unknown).toHaveLength(2);
+    expect(unknown[0]).toHaveTextContent('—');
   });
 
   it('lists what no Gateway takes in a section of its own', async () => {
@@ -279,6 +314,15 @@ describe('<PlatformClusterGatewaysContent /> at phone width', () => {
     layout = mockPhoneLayout();
   });
   afterEach(() => layout.restore());
+
+  it('marks what the finder found in stacked route rows', async () => {
+    await renderInTestApp(<Harness initial="payments/payments-internal" />);
+    fireEvent.change(screen.getByRole('searchbox'), {
+      target: { value: 'ledger-api:9090' },
+    });
+    const routes = screen.getAllByRole('list', { name: 'HTTP routes' })[0];
+    expect(routes.querySelector('mark')).toHaveTextContent('ledger-api:9090');
+  });
 
   it('stacks the Gateways with their counts', async () => {
     await renderInTestApp(<Harness />);
