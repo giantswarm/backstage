@@ -1,5 +1,286 @@
 # app
 
+## 0.44.0
+
+### Minor Changes
+
+- 8949a13: Where `gs.features.platformSection.enabled` is set, a Platform cluster's page has a Node pools tab (`/platform/clusters/<installation>/<namespace>/<name>/node-pools`) with the number of pools on it: a row per AWS machine pool, Karpenter pool or Azure machine pool, with nodes ready, machines, zones, scaling and age. Selecting a pool (`?name=<pool>`, as on the classic page) shows its nodes with their CPU and memory requests and pods, for a machine pool, and its technical details, read as the classic cluster page reads them. The facts column is on Overview only. The Karpenter details' running summary draws CPU in blue and memory in violet on a visible track, an excluded requirement's dashed chip has a stronger border, and a taint wraps only after a `/`, `=` or `:`; these show on the classic page too. On the classic cluster page, the Karpenter node template gives the root volume in GiB, and the nodes table its CPU and memory as the rest of the portal does ("9.1 GiB", not "9.1 Gi"). kubernetes-react's `MachineDeployment` has `getAutoscalerRange()`. Fixture mode serves Karpenter and Azure node pools, every pool's nodes and their Mimir series, and narrows Kubernetes lists by their label selector.
+- d29861d: Where `gs.features.platformSection.enabled` is set, each row of the Platform section's clusters list opens the cluster's page at `/platform/clusters/<installation>/<namespace>/<name>`: its state, facts and tool links, and an Overview tab with its release and Kubernetes version, friendly labels and annotations, GitOps source, login command and technical details. The gs plugin exports `PlatformClusterRoute`, `PlatformLinksProvider` and the `PlatformLinks` type; the classic cluster page's readers take an address (`useCluster`, `ClusterProvider`), unchanged in what they read. The fixture clusters have an App each and, for the GitOps-managed ones, a Flux Kustomization and GitRepository. Coming back from a cluster's page, the list is as it was left, without reading the clusters again. The Flux resources table keeps its Source Cluster, Target Cluster and Status Details headers on one line. kubernetes-react's `ControlPlane` has `getReplicas()`.
+- cac2070: Where `gs.features.platformSection.enabled` is set, a Platform management cluster's page has an RBAC tab (`/platform/clusters/<installation>/<namespace>/<name>/rbac`), after Node pools: the classic cluster page's RBAC tab in the shell's style, a table of the users, groups and service accounts the cluster's RoleBindings and ClusterRoleBindings grant roles, with their kind, roles and access scope, a switch that shows the system subjects, a search over the subjects and their bindings' names, and each row opening to its bindings. A workload cluster has no such tab, and its address opens Overview. Fixture mode serves RBAC bindings for each management cluster.
+- 7577ea2: Where `gs.features.platformSection.enabled` is set, a Platform cluster's page has an SSH access tab (`/platform/clusters/<installation>/<namespace>/<name>/ssh-access`) for Giant Swarm staff, after Node pools: the classic cluster page's SSH access tab in the shell's style, with the Teleport commands for the control plane nodes, the worker nodes and a specific node, each with a copy button, and a link to the cluster's nodes in Teleport. A person known not to be staff has no such tab, and its address opens Overview. A person whose installation token has no `groups` claim counts as not staff instead of breaking the cluster page. In fixture mode the guest is Giant Swarm staff.
+- 3627dfd: The Agent Platform shell has a Platform section at `/platform`, off unless `gs.features.platformSection.enabled` is set: a rail item and a page whose Clusters tab lists every cluster the person can read, with search, Environment, Organization, Status and Release filters, a column picker and sortable headers. The gs plugin exports `PlatformClustersPanel`, `PlatformClustersProvider` and `usePlatformClustersCount`, and its fixtures serve Cluster API clusters (`gsKubernetesObjectsOf`); ui-react exports `ColumnPicker` and `UnreachableInstallationsAlert`, which moved there from agent-platform unchanged but for an `actions` slot; kubernetes-react's `useClustersInfo` returns `error` and `retry`; the fixture data set has clusters.
+
+### Patch Changes
+
+- 2432cb0: Sign-in prompts say "connector" and name each connector by its display name.
+
+  - muster-backend: `GET /servers/names` answers each connector's name (muster's
+    key, `<namespace>/<name>` for a tenant's server), family and display name
+    from `core_mcpserver_list` (muster v5.53.1 or later for the display name),
+    read as the person, so the names are there for people without Kubernetes
+    access to the `MCPServer` objects. A failed list answers
+    `{ servers: [], unavailable: true }` with HTTP 200; a token muster refuses
+    answers 401, and muster unreachable its 5xx. The shape, `ConnectorName`,
+    is in gs-common.
+  - muster: `MusterApi.listConnectorNames` and the hooks `useConnectorLabels` and
+    `useConnectorLabel`, one shared read per installation, replace the
+    `MCPServer` read behind the sign-in dialog and the notification inbox, which
+    showed technical names to people without cluster access. `ServerSignIn`
+    names the connector by it when the caller passes no `displayName`, and shows
+    the display name with `showName`, with the server's own name beside it where
+    they differ, and takes `onSignedIn`, called once per sign-in that lands
+    (also from another tab, or a click that finds the server connected
+    already), saying whether it was made in this tab (`SignedIn.here`). The
+    names are read once per installation and are not read again on a sign-in.
+    The sign-in dialog says "connector", its rows too.
+  - agent-platform: muster's request for the person's sign-in to agent-manager
+    is a sign-in, not agent-manager's own `auth_required` refusal: starting a
+    session without it offers the sign-in instead of "Session not started" with
+    muster's text. Once that sign-in lands the alert goes; where it was made in
+    the tab the person pressed Start in, the refused start goes again. Before,
+    the alert stayed, and its Sign in then answered "already authenticated".
+    The connect alert names the connector by its display name and, for
+    muster's request for a sign-in (`signInRequired`, read from muster's 401
+    where the error is classified), writes its own sentence instead of
+    muster's; any other not-connected answer stays in sight. Once the sign-in
+    lands, every alert of the kind clears: on the create and edit reviews, the
+    agent's delete, skills and Harness dialogs, the skill's update dialog, the
+    GPU node pool, model cache, model backend and cluster pages and dialogs,
+    a dry run behind it asks again and a refused write is cleared for the
+    person to press again; nothing that deletes or removes goes again by
+    itself. The skills and Harness dialogs now show the alert for a write
+    refused for want of the sign-in, which they used to swallow.
+  - bot-prs: the marge sign-in alert does the same.
+  - app: the inbox's sign-in row says "connector".
+
+- 9d0f295: The usage cache no longer shares answers between people signed in as the guest user, and looks the prometheus server up again after a read through it failed. The settings storage no longer reuses a "not set" answer: subscriptions that start together share one read, and every later subscription reads what is stored now.
+- 8a2faea: Usage › Connectors loads faster. The muster backend reuses a complete usage answer for five minutes per installation, window, connectors and signed-in user, across page reloads, shares one read between identical requests, and serves each tool's p95 latency from the new `GET /usage/tool-latency`, so the figures no longer wait for the slowest query. The muster plugin's `MusterApi` gains `getMcpToolLatency`, the tool tables fill in their p95 column when it arrives, and the usage reads and the shell's tag lists are reused for five minutes, and the serving layer's node list for a minute, instead of being read on every mount. The usage read finds the prometheus server once per person, and reads the week before the window apart. The settings storage shares one read between components that subscribe to a key together, and reuses a "not set" answer for a minute while the key's change announcements are being received.
+- 2f03302: Every address a server provides (a connector sign-in, a device-code page, a
+  GitHub or manager connect, a sign-in an agent asks for) opens only after the
+  person agrees in one dialog that shows the full address with its domain
+  highlighted and warns about a punycode domain, plain http and a user name
+  before the domain.
+
+  - ui-react: `externalUrlConsentApiRef` with `ExternalUrlConsentManager`, and
+    `ExternalUrlConsentDialogHost`.
+  - app: registers the consent API and mounts `ExternalUrlConsentDialogHost` at
+    the app root. A desktop notification whose link leads out of the portal
+    asks before it opens.
+  - muster: `useServerSignIn` no longer opens a tab on the Sign in click; it asks
+    to open the sign-in page once muster answers. `ServerSignInState` gains
+    `openSignInPage` and loses `isPreparing`; the hook's options gain
+    `displayName` and lose `tabWaitMs`. A device code's page is a button, not a
+    link.
+  - gs: the GitHub auth API asks before it navigates to muster's connect; a
+    connect not opened is a `no_grant` error and is not asked again for two
+    minutes. Concurrent token requests share one prompt and its answer.
+  - plans, roadmap, repositories, platform-capabilities: a missing grant offers
+    Connect instead of navigating on first sight.
+  - agent-platform: an agent's sign-in, a provider sign-in, a connector
+    sign-in link in a message and the toolchain-manager's App install page are
+    buttons that ask first.
+
+- 22f9eaf: When a sign-in elsewhere ends the portal session in this browser (Dex refuses the refresh with "already been claimed by another client"), the Agent Platform shows "You signed in somewhere else" with a "Sign in again" button. Meanwhile the Customize tabs leave their counts out, the Connectors and Workflows tabs say they could not read the list instead of "None of your environments runs muster", and the sessions rail asks for a sign-in instead of "No sessions yet". After a reload, the sign-in page (shell-style and classic) shows the same notice above the sign-in options. The gs plugin adds `useMainSessionEnd` and `GSAuthProvidersApi.getMainSessionEnd`.
+- 01d651b: Manage installation and organization model credentials through the authenticated credential form, including JSON uploads for Claude and Gemini on Vertex AI. Model configuration, default changes and deletion use agent-manager instead of direct Kubernetes writes. Model credential links of both scopes open the form at `/customize/models/credentials/<installation>/<namespace>/<operation>`, which reads the organization or the installation from the request; links to an organization's `credentials/<operation>` keep working. Organization models take a display name, with the technical name filled in from it, and a Vertex AI model's Google Cloud project must be a project ID.
+- a02eb7e: An Agent Platform organization's credentials are entered on the Dev Portal's credential form, never in a tool call.
+
+  - agent-platform-backend: `GET`, `POST` and `DELETE`
+    `/organizations/credential-operations/:operation?installation=` carry
+    agent-manager's credential operations (giantswarm/agent-manager#312) as the
+    person, with the installation token in `backstage-agent-manager-authorization`,
+    to `https://agentgateway.<baseDomain>/agent-manager` (the agent-platform
+    chart's `agentManager.route`) or
+    `agentPlatform.agentManager.installations.<name>.apiBaseUrl`. The POST body
+    is validated and never logged or echoed; `If-Match` is required on POST and
+    DELETE (428 without it); every answer is `Cache-Control: no-store`; refusals are the
+    backend's error body with agent-manager's `code`. A save that runs past
+    120 s, loses its connection or is refused by a gateway answers code
+    `outcome_unknown`.
+  - agent-platform: `/organizations/<installation>/<parent>/<name>/credentials/<operation>`,
+    the link agent-manager's `credentials.uiURL` names
+    (`…/credentials/{operation}`), shows what the value is for (the
+    organization agent-manager prepared it for, refusing a link that names
+    another, the object that asked, the other objects that read it, where it
+    is sent, and the pull request's repository in commit mode) before it takes
+    a value, saves it once with the confirmation's version, and never shows it
+    back. A changed request is read again; a save interrupted on
+    agent-manager's side is finished from the page; a commit without the
+    GitHub grant offers the connection. The Models tab's Add model and Replace
+    key, and the Connectors tab's Replace credential, ask agent-manager as the
+    person and open the form for the request it prepares (its
+    `credentialOperation`).
+  - analytics-react: `AgentPlatform.organizationCredentialSaved`.
+  - app: the form's page view, without the request's id.
+
+- d8b2289: Gate the Organizations pages behind the `agent-platform-organizations` feature flag, off by default. `agentPlatform.organizations.enabled` enables or disables the pages for everyone and overrides saved browser flags. Show their navigation entry only when the pages are enabled and an agent-manager reports support for Agent Platform organizations. Direct links to enabled pages show discovery failures as errors instead of reporting the feature unavailable.
+- 2667913: Move Organizations from the main sidebar into the Profile and settings menu on desktop and mobile.
+- 65d940b: TelemetryDeck reports every person by their user entity ref: the per-person split of `user:default/guest` is gone with the guest sign-in.
+- Updated dependencies [9ebf632]
+- Updated dependencies [9ebf632]
+- Updated dependencies [d6abe29]
+- Updated dependencies [33eac11]
+- Updated dependencies [d06bfc3]
+- Updated dependencies [4ff7414]
+- Updated dependencies [6ee945f]
+- Updated dependencies [2c73c6c]
+- Updated dependencies [2acb474]
+- Updated dependencies [c0113f8]
+- Updated dependencies [918556a]
+- Updated dependencies [472e866]
+- Updated dependencies [bd5f42a]
+- Updated dependencies [5122bc9]
+- Updated dependencies [771c3c5]
+- Updated dependencies [9ebf632]
+- Updated dependencies [b7be9dd]
+- Updated dependencies [95013a3]
+- Updated dependencies [a2a8223]
+- Updated dependencies [105dc99]
+- Updated dependencies [d553603]
+- Updated dependencies [77d1c12]
+- Updated dependencies [77d1c12]
+- Updated dependencies [7621874]
+- Updated dependencies [f6b43d6]
+- Updated dependencies [2f03302]
+- Updated dependencies [4536f3d]
+- Updated dependencies [4536f3d]
+- Updated dependencies [2432cb0]
+- Updated dependencies [a4721d8]
+- Updated dependencies [9d0f295]
+- Updated dependencies [8a2faea]
+- Updated dependencies [01a63aa]
+- Updated dependencies [41e1c7f]
+- Updated dependencies [d29861d]
+- Updated dependencies [e0bdcaf]
+- Updated dependencies [b6f1f17]
+- Updated dependencies [b6f1f17]
+- Updated dependencies [9a64eae]
+- Updated dependencies [0f3570e]
+- Updated dependencies [a955988]
+- Updated dependencies [898117b]
+- Updated dependencies [a0faf4f]
+- Updated dependencies [a0faf4f]
+- Updated dependencies [98b31eb]
+- Updated dependencies [c0fbc77]
+- Updated dependencies [a158256]
+- Updated dependencies [a0a239d]
+- Updated dependencies [dbd826c]
+- Updated dependencies [2f03302]
+- Updated dependencies [168ca66]
+- Updated dependencies [c775cfb]
+- Updated dependencies [cefb9d4]
+- Updated dependencies [151d17b]
+- Updated dependencies [b3c8677]
+- Updated dependencies [6374412]
+- Updated dependencies [4536f3d]
+- Updated dependencies [371fda2]
+- Updated dependencies [d97c11d]
+- Updated dependencies [d7cd04e]
+- Updated dependencies [859651d]
+- Updated dependencies [3b65ce4]
+- Updated dependencies [959b908]
+- Updated dependencies [694e2ae]
+- Updated dependencies [0c4b7ce]
+- Updated dependencies [01d651b]
+- Updated dependencies [e8c5832]
+- Updated dependencies [3b4a31f]
+- Updated dependencies [648228e]
+- Updated dependencies [d109b68]
+- Updated dependencies [5e5f7eb]
+- Updated dependencies [9156141]
+- Updated dependencies [22f9eaf]
+- Updated dependencies [269c67b]
+- Updated dependencies [a7ecd9d]
+- Updated dependencies [6aa7bde]
+- Updated dependencies [d62e8d3]
+- Updated dependencies [01d651b]
+- Updated dependencies [f1d8771]
+- Updated dependencies [5dac044]
+- Updated dependencies [b5164ce]
+- Updated dependencies [44bae01]
+- Updated dependencies [dcab50b]
+- Updated dependencies [a84f5ec]
+- Updated dependencies [df46f99]
+- Updated dependencies [d9ead9d]
+- Updated dependencies [b623ab3]
+- Updated dependencies [06dfa3d]
+- Updated dependencies [5122bc9]
+- Updated dependencies [a05070d]
+- Updated dependencies [023b36a]
+- Updated dependencies [d29861d]
+- Updated dependencies [a02eb7e]
+- Updated dependencies [2020566]
+- Updated dependencies [99b5956]
+- Updated dependencies [54a9736]
+- Updated dependencies [846cc93]
+- Updated dependencies [943dab0]
+- Updated dependencies [dcab50b]
+- Updated dependencies [6b6b73f]
+- Updated dependencies [e5a1616]
+- Updated dependencies [23d67d0]
+- Updated dependencies [d8b2289]
+- Updated dependencies [83eeba9]
+- Updated dependencies [cede9aa]
+- Updated dependencies [a955988]
+- Updated dependencies [172b3de]
+- Updated dependencies [97d47d1]
+- Updated dependencies [8949a13]
+- Updated dependencies [d29861d]
+- Updated dependencies [cac2070]
+- Updated dependencies [7577ea2]
+- Updated dependencies [a0faf4f]
+- Updated dependencies [3627dfd]
+- Updated dependencies [8a9fb80]
+- Updated dependencies [d8681df]
+- Updated dependencies [7e12f91]
+- Updated dependencies [20ec592]
+- Updated dependencies [3bcb127]
+- Updated dependencies [2b48a03]
+- Updated dependencies [7b7780d]
+- Updated dependencies [3099a22]
+- Updated dependencies [b9f1c63]
+- Updated dependencies [b905271]
+- Updated dependencies [3b113f7]
+- Updated dependencies [986d5ff]
+- Updated dependencies [a136d03]
+- Updated dependencies [13b8d60]
+- Updated dependencies [671372c]
+- Updated dependencies [9893b04]
+- Updated dependencies [2366509]
+- Updated dependencies [f55e45f]
+- Updated dependencies [6db0bbf]
+- Updated dependencies [dba1399]
+- Updated dependencies [287e3f5]
+- Updated dependencies [f5615a0]
+- Updated dependencies [f1e56fe]
+- Updated dependencies [30166ef]
+- Updated dependencies [9ebf632]
+- Updated dependencies [ae00960]
+- Updated dependencies [5bff041]
+- Updated dependencies [130ba32]
+- Updated dependencies [35f1cdd]
+- Updated dependencies [19ec951]
+- Updated dependencies [249a84a]
+- Updated dependencies [d62e8d3]
+- Updated dependencies [8a80e0d]
+- Updated dependencies [b905271]
+  - @giantswarm/backstage-plugin-agent-platform@1.4.0
+  - @giantswarm/backstage-plugin-muster@0.6.0
+  - @giantswarm/backstage-plugin-gs-common@0.24.0
+  - @giantswarm/backstage-plugin-kubernetes-react@1.2.0
+  - @giantswarm/backstage-plugin-agent-platform-common@1.4.0
+  - @giantswarm/backstage-plugin-ui-react@0.11.0
+  - @giantswarm/backstage-plugin-ai-chat-react@0.6.1
+  - @giantswarm/backstage-plugin-ai-chat@0.15.2
+  - @giantswarm/backstage-plugin-gs@0.73.0
+  - @giantswarm/backstage-plugin-bot-prs@0.1.2
+  - @giantswarm/backstage-plugin-repositories@0.1.2
+  - @giantswarm/backstage-plugin-plans@0.2.0
+  - @giantswarm/backstage-plugin-roadmap@0.1.2
+  - @giantswarm/backstage-plugin-platform-capabilities@0.1.2
+  - @giantswarm/backstage-plugin-flux@0.10.2
+  - @giantswarm/backstage-plugin-flux-react@0.15.2
+  - @giantswarm/backstage-plugin-analytics-react@0.4.0
+
 ## 0.43.0
 
 ### Minor Changes

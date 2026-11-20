@@ -1,5 +1,122 @@
 # @giantswarm/backstage-plugin-ui-react
 
+## 0.11.0
+
+### Minor Changes
+
+- 77d1c12: `RouteTabs` hands a tab switch to its `onNavigate` guard through the routing integration of `@backstage/frontend-plugin-api/routing`, which Backstage UI's tabs navigate with from Backstage 1.57. `testUtils` adds `BUIRouterProvider`, which gives Backstage UI components rendered outside a test app the routing of the test's `MemoryRouter`.
+- 2f03302: Raw HTML in chat messages is sanitised to GitHub's allow-list before it renders,
+  and images, from Markdown or HTML, render as links to their URL. A message that
+  quotes tool output no longer makes the browser load a URL or run its handlers.
+  `<details>` blocks still render.
+  GFM footnotes link to their note and back.
+
+  `MermaidDiagram` takes `untrusted`, which drops a diagram's image nodes and
+  the remote references in its CSS (`url(…)`, `image-set(…)`, `@import`)
+  instead of loading them; the AI chat renders its diagrams that way.
+
+- dbd826c: Every link and button that opens a new tab marks it the same way: the launch icon after its text and "(opens in a new tab)" for a screen reader, in place of the "↗" some of them ended in (Review pull request, Edit on GitHub, View on GitHub, the sign-in buttons, All portal settings, the release line, How it works, How alignment works, Workflow runs, the repository phase links). `ui-react`'s `ExternalLink` is now bui's `Link` (always underlined, bui's focus ring) and takes an optional `variant` and `title`; without a `variant` it keeps taking the surrounding font, and off the agent shell it keeps the classic link colour. `ui-react` adds `ExternalButtonLink` (bui's `ButtonLink` with that treatment) and exports `NewTabHint` and `NewTabLabel` (a button label followed by the hint). `ExternalCellText` and `GSReleaseInfo` are built on `ExternalLink`. A skill page's Path links to the SKILL.md on GitHub at the latest commit, and the Instructions file viewer links a file at the commit it was read at, naming no commit when there is none.
+
+  Every text link to outside the portal now opens in a new tab and shows the icon, including the ones that showed nothing before or another external-link icon: docs, GitHub pull requests, commits, releases and issues, Grafana dashboards and endpoints, hostnames, Teleport, PagerDuty, sign-in pages, and the links in rendered markdown (`GSMarkdownContent` renders an `http(s)` link to another origin as an `ExternalLink`). `ui-react` exports `isExternalHref` for telling such a link apart.
+
+- 2f03302: Every address a server provides (a connector sign-in, a device-code page, a
+  GitHub or manager connect, a sign-in an agent asks for) opens only after the
+  person agrees in one dialog that shows the full address with its domain
+  highlighted and warns about a punycode domain, plain http and a user name
+  before the domain.
+
+  - ui-react: `externalUrlConsentApiRef` with `ExternalUrlConsentManager`, and
+    `ExternalUrlConsentDialogHost`.
+  - app: registers the consent API and mounts `ExternalUrlConsentDialogHost` at
+    the app root. A desktop notification whose link leads out of the portal
+    asks before it opens.
+  - muster: `useServerSignIn` no longer opens a tab on the Sign in click; it asks
+    to open the sign-in page once muster answers. `ServerSignInState` gains
+    `openSignInPage` and loses `isPreparing`; the hook's options gain
+    `displayName` and lose `tabWaitMs`. A device code's page is a button, not a
+    link.
+  - gs: the GitHub auth API asks before it navigates to muster's connect; a
+    connect not opened is a `no_grant` error and is not asked again for two
+    minutes. Concurrent token requests share one prompt and its answer.
+  - plans, roadmap, repositories, platform-capabilities: a missing grant offers
+    Connect instead of navigating on first sight.
+  - agent-platform: an agent's sign-in, a provider sign-in, a connector
+    sign-in link in a message and the toolchain-manager's App install page are
+    buttons that ask first.
+
+- e8c5832: `plans.fixtures` and `roadmap.fixtures` take effect outside production builds only: a production build of the app contains no fixture code, and setting the flag on an instance no longer shows made-up data. Outside production the fixture APIs load with a dynamic `import()` on their first call. `ui-react` exports `lazyApi`, which wraps such an API implementation for a synchronous API factory.
+- 269c67b: Long names and narrow tables stay inside the page. The Usage tabs' By agent and By model tables show their compact columns, with names on two lines, wherever they are too narrow for all of them (beside the side rail at tablet width), and keep a sort on a column they show. Long agent names on Home's recent agents and the Used by tabs wrap to two lines on a phone and end in an ellipsis on a desktop, and the Usage overview's top agents stay within their column. A narrow New session composer leaves out the toolchains button's caret, so the agent and workspace keep room for their names. `useCompactLayout` stays compact until its element is 24px wider than its minimum (`COMPACT_LAYOUT_HYSTERESIS`).
+- a7ecd9d: Keep the Workflows list and the Your sessions "By agent" table within their cards. The Workflows list shows all seven columns on a wide screen; in a narrower card it shows four, with each workflow's category, source and tags under its name, and stacks the rows below that. It takes no room for Category or Tags when no workflow listed has one. The By agent table keeps every figure on the row at every width: in a narrower card the turns and the reported cost show under the agent, and below that each agent is a stacked row with its sessions, turns, tokens, cost and reported cost.
+
+  `useFittingColumns` passes `columnsFor` the layout, `'full'`, `'narrow'` or `'compact'` (was a boolean), and while compact returns the compact columns with its minimum widths, each overridable with the new `compactMinWidths` option. The fixture data set gives workflows a category, tags and GitOps provenance, and some agents a runtime that reports a cost.
+
+- 172b3de: `ui-react` exports `formatLocalTime` (`14:05`) and `formatLocalDay` (`16 Oct`, with the year when it is not the current one), the compact forms of `formatLocalDate`. The session list's last-active time and the command palette's session date use them, so they read on the same 24-hour clock and in the same words as every other date in the Agent Platform, whatever the browser's locale; the palette now shows the year of a session from another year. A model cache claim's creation shows as a relative date: "2 months ago" in a "Created" column on Model cache, with the local date and time on hover, and "created 2 months ago" in the add-pool cache note.
+- 3627dfd: The Agent Platform shell has a Platform section at `/platform`, off unless `gs.features.platformSection.enabled` is set: a rail item and a page whose Clusters tab lists every cluster the person can read, with search, Environment, Organization, Status and Release filters, a column picker and sortable headers. The gs plugin exports `PlatformClustersPanel`, `PlatformClustersProvider` and `usePlatformClustersCount`, and its fixtures serve Cluster API clusters (`gsKubernetesObjectsOf`); ui-react exports `ColumnPicker` and `UnreachableInstallationsAlert`, which moved there from agent-platform unchanged but for an `actions` slot; kubernetes-react's `useClustersInfo` returns `error` and `retry`; the fixture data set has clusters.
+- 7e12f91: `/profile`'s Environments section lists every environment as a toggle chip with its access health, with All on, All off and Undo, and Sign in again while a session has expired, sharing its state with the classic sidebar's Cluster access widget. gs exports `useClusterAccessStatus`, `useMutedInstallations`, `useSignInAgain` and the shared access state labels and tones (`CLUSTER_ACCESS_STATE_LABELS` and its neighbours), and `MutedInstallationsApi` gains `setMutedMany`; ui-react's `StatusDot` takes `ring`.
+- f5615a0: Polling stops from hidden tabs and after a permanent error. `ui-react` adds
+  `pollingQueryOptions`, `isPermanentReadError` and `causeChain`: a query
+  spreads the options and polls only while the tab is visible, reads again as
+  it becomes visible where its data is stale, and stops after a 401, a 403 or a
+  "not connected" answer until a read succeeds again; a stopped query is not
+  read on becoming visible either. `inBackground` keeps a poll going from a
+  hidden tab while the caller has a reason, and `refetchOnVisible: false`
+  leaves the read on becoming visible to the next tick. `muster` adds
+  `musterPollingOptions` and `isPermanentMusterReadError`, which also stop on
+  muster's `server_sign_in_required` and a portal session that is gone. The
+  retry policies of the gs, flux, repositories and muster clients and of the
+  Mimir queries build on the same classifier.
+
+  The model-manager reads of the Serving view (`list_backends`, `list_models`,
+  `list_nodes`), the pull jobs, the GPU node pools, workspaces, toolchain
+  builds, session reads, the Kubernetes and Mimir polls, muster's status and
+  connector reads and the repositories watches follow the rule. The GPU node
+  pools read polls from a hidden tab only while a pool is being deployed, and
+  the inventory only while a served model is on its way in, so a pool's serve
+  intent still loads its model meanwhile. Where muster asks the person to sign
+  in to model-manager, the Serving view offers the sign-in, and polling resumes
+  once it lands.
+
+- 249a84a: Hosting · Capacity's GPU table and Model hosting's tables take their compact layout wherever their card is narrower than their columns need, such as beside the side rail on a tablet, instead of squeezing every column to a sliver and cutting off the rows' actions. On a phone, a long model config name in Model hosting's "Used by" no longer runs over its description, and Add a pool's placeholder rows fit the screen. ui-react adds `useCompactLayout(minWidth)` and `tableMinWidth(columns)`, `usePhoneColumns` takes `{ compact }` to keep only its columns in a narrow container as well as on a phone, and the test helper `mockContainerWidth`.
+
+### Patch Changes
+
+- d553603: `useAutosizeTextarea` sets the height for a new width in the next animation frame instead of in its `ResizeObserver` callback, and ignores observations whose width did not change, so resizing a field no longer reports "ResizeObserver loop completed with undelivered notifications".
+- 01a63aa: The Connectors tab's Sign in button sits in a column of its own beside the state, so it lines up across rows instead of wrapping under the state; a label too wide for the column wraps inside the button, and a state too wide for the Status column wraps instead of being cut off. On a phone, an outstanding sign-in's "Open sign-in page" stays at the end of the row's first line. The answer to a Sign in or Sign out click is shared by every place that shows the same connector, so they no longer disagree. `StatusDot` takes `wrap` to wrap its label instead of truncating it.
+- 0f3570e: The Customize lists keep their headers and short values whole: Toolchains shows the newest version and a count ("0.6.1 · 4 older") and how long ago it came ("Latest 1 month ago"), and holds "Waiting for approval" whole; Workspaces holds "Last synchronization" and "Not synchronized yet" whole and stacks its rows wherever the content column is too narrow for its columns, beside the side rail too; Workflows holds Category and the runs ("123 runs · 30 seconds ago") on one line; Connectors holds its Sign-in labels and "3 of 42 tools match", keeps the connector's name whole and, in a narrower content column, leaves out Tags and Sign-in before it stacks its rows, and a connector's name or description that ends in an ellipsis shows in full on hover. `getRelativeDate` takes `{ strict: true }` for an age without "about" or "less than".
+- 168ca66: The facts column beside a record page sets no text below 12px: `FactsColumn` sets bui's 10px size (`body-x-small`, small badges and tags) to 12px inside the column, and the agent page's facts set their secondary lines (the model's provider, the Harness's name and image, the creator's email, a runtime note) in `body-small`.
+- cefb9d4: Fixture mode serves agent-manager, outside production builds only: every tool of it answers from the base data set, so the agent list, an agent's page, the New agent flow and editing an agent work without a cluster, and so do the organizations with their members, models, connectors and egress policies and the credential form. Writes are kept in memory until the page reloads; an agent created or changed reports its new generation at once and the controller's verdict a few seconds later. `@giantswarm/backstage-plugin-agent-platform/fixtures` exports the Agent, RemoteMCPServer, ModelConfig and Harness objects the fixture Kubernetes API lists. An organization's Models, Connectors and Egress tables and the Cost page's By model table no longer fail on a row named like one of their columns, such as a model named `default`.
+- 3b4a31f: Set no text below 12px in the muster workflow pages and state badges, and drop the local 12px overrides of `FactsColumn`, `TagList`, `TagsField` and `MarkerBadge`: the app now sets bui's 10px token to 12px everywhere. A problem under the New agent tools selection now shows an error icon beside its text. The 10px that stays uses the app's `--gs-font-size-exception` token. `ui-react/testUtils` adds `applyBuiStylesheets` and `resolvedFontSize` for tests of rendered text sizes.
+- 5dac044: The Model hosting tables (served models, GPU node pools, model cache and the GPU capacity nodes) keep their headers and values whole: each column has a minimum width, and a card too narrow for every column first leaves out where a pool or cache runs, the control plane's version or a node's Allocatable and Requested, naming them in other cells (the cluster with its organization), before it stacks the rows; a sort on a column it leaves out moves to the name. New in ui-react: `useFittingColumns`.
+- d29861d: The launch icon of a link or button that opens a new tab stays on the line of its text's last word instead of wrapping onto a line of its own (`ExternalLink`, `ExternalButtonLink`, `NewTabLabel`, through the new `WithNewTabHint`). flux-react's `useGitOpsSource` also returns the Kustomization and GitRepository it read, as `resources`.
+- b905271: `RouteTabs` scrolls sideways wherever its tabs don't fit, not only at phone width, so a narrow window beside the shell's rail no longer cuts off the last tabs. With a mouse, a button over each edge with tabs beyond it scrolls the strip. The selected tab is scrolled into view when the selection changes, when the strip starts to overflow and when the tabs' measured width changes, and never undoes a scroll the person made by hand.
+
+  `WizardFrame` keeps its title the room it needs beside the steps (at most 320px). Where the title and the space on the other side can't both keep it, the steps move to a row of their own, centred, instead of squeezing the title.
+
+  `ShellPage` keeps its header actions within the header's width, so a select holding a long value truncates it instead of widening the page past a phone's screen.
+
+- 671372c: The sessions lists (Sessions, and an agent's Sessions tab) keep their headers, states and times whole: State, Environment and Last active have fixed widths and stay on one line, and in a narrower window the list leaves out Environment, then Workspace, naming them under the session's title, before it shows its stacked rows, as at phone width. New in ui-react: `useWidthTier`, one measurement for several layout steps.
+- f1e56fe: Resolve Knowledge document links within the selected collection, preserve literal source paths, focus linked headings after loading, and show an explicit message for missing documents.
+- 35f1cdd: The Usage · Cost tables keep their headers and figures whole: each column has a minimum width for its header and usual value, and the By agent, By organization and By person tables take their compact columns (the name and its spend) wherever the card is too narrow for them, as By model already did. By model's "Avg tokens/call" is now "Tokens/call", and a name cut after two lines in a compact table above phone width shows in full on hover. `tableMinWidth` counts a column's own numeric `minWidth`, and never less than it.
+- Updated dependencies [c0113f8]
+- Updated dependencies [4536f3d]
+- Updated dependencies [c775cfb]
+- Updated dependencies [b3c8677]
+- Updated dependencies [4536f3d]
+- Updated dependencies [371fda2]
+- Updated dependencies [d97c11d]
+- Updated dependencies [859651d]
+- Updated dependencies [3b65ce4]
+- Updated dependencies [959b908]
+- Updated dependencies [694e2ae]
+- Updated dependencies [a7ecd9d]
+- Updated dependencies [b623ab3]
+- Updated dependencies [06dfa3d]
+- Updated dependencies [a05070d]
+- Updated dependencies [8949a13]
+- Updated dependencies [d29861d]
+- Updated dependencies [3627dfd]
+  - @giantswarm/backstage-plugin-gs-common@0.24.0
+
 ## 0.10.0
 
 ### Minor Changes

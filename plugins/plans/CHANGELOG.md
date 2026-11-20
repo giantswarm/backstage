@@ -1,5 +1,92 @@
 # @giantswarm/backstage-plugin-plans
 
+## 0.2.0
+
+### Minor Changes
+
+- 5e5f7eb: Hive's Now and History show the chosen team's own data set: the portal reads `magazine/teams.json` and the team's `magazine/teams/<slug>/` files. A team the magazine collects no data for shows an empty state that leads to its board. A magazine without per-team sets keeps working as before.
+
+### Patch Changes
+
+- dbd826c: Every link and button that opens a new tab marks it the same way: the launch icon after its text and "(opens in a new tab)" for a screen reader, in place of the "↗" some of them ended in (Review pull request, Edit on GitHub, View on GitHub, the sign-in buttons, All portal settings, the release line, How it works, How alignment works, Workflow runs, the repository phase links). `ui-react`'s `ExternalLink` is now bui's `Link` (always underlined, bui's focus ring) and takes an optional `variant` and `title`; without a `variant` it keeps taking the surrounding font, and off the agent shell it keeps the classic link colour. `ui-react` adds `ExternalButtonLink` (bui's `ButtonLink` with that treatment) and exports `NewTabHint` and `NewTabLabel` (a button label followed by the hint). `ExternalCellText` and `GSReleaseInfo` are built on `ExternalLink`. A skill page's Path links to the SKILL.md on GitHub at the latest commit, and the Instructions file viewer links a file at the commit it was read at, naming no commit when there is none.
+
+  Every text link to outside the portal now opens in a new tab and shows the icon, including the ones that showed nothing before or another external-link icon: docs, GitHub pull requests, commits, releases and issues, Grafana dashboards and endpoints, hostnames, Teleport, PagerDuty, sign-in pages, and the links in rendered markdown (`GSMarkdownContent` renders an `http(s)` link to another origin as an `ExternalLink`). `ui-react` exports `isExternalHref` for telling such a link apart.
+
+- 2f03302: Every address a server provides (a connector sign-in, a device-code page, a
+  GitHub or manager connect, a sign-in an agent asks for) opens only after the
+  person agrees in one dialog that shows the full address with its domain
+  highlighted and warns about a punycode domain, plain http and a user name
+  before the domain.
+
+  - ui-react: `externalUrlConsentApiRef` with `ExternalUrlConsentManager`, and
+    `ExternalUrlConsentDialogHost`.
+  - app: registers the consent API and mounts `ExternalUrlConsentDialogHost` at
+    the app root. A desktop notification whose link leads out of the portal
+    asks before it opens.
+  - muster: `useServerSignIn` no longer opens a tab on the Sign in click; it asks
+    to open the sign-in page once muster answers. `ServerSignInState` gains
+    `openSignInPage` and loses `isPreparing`; the hook's options gain
+    `displayName` and lose `tabWaitMs`. A device code's page is a button, not a
+    link.
+  - gs: the GitHub auth API asks before it navigates to muster's connect; a
+    connect not opened is a `no_grant` error and is not asked again for two
+    minutes. Concurrent token requests share one prompt and its answer.
+  - plans, roadmap, repositories, platform-capabilities: a missing grant offers
+    Connect instead of navigating on first sight.
+  - agent-platform: an agent's sign-in, a provider sign-in, a connector
+    sign-in link in a message and the toolchain-manager's App install page are
+    buttons that ask first.
+
+- e8c5832: `plans.fixtures` and `roadmap.fixtures` take effect outside production builds only: a production build of the app contains no fixture code, and setting the flag on an instance no longer shows made-up data. Outside production the fixture APIs load with a dynamic `import()` on their first call. `ui-react` exports `lazyApi`, which wraps such an API implementation for a synchronous API factory.
+- d109b68: Hive's Now drops the lane descriptions for a team the magazine does not follow: they describe the magazine's own team's lanes. The followed team and all teams keep them.
+- 97d47d1: Hive keeps long titles and plan names inside their lists: on Now, the titles under "Plans to grill and review" and "Other teams, coming up" wrap instead of being cut off, and the lanes' Status and Moved columns fit their values on one line; on Plans, a long merged plan name ends in an ellipsis with the full name on hover instead of widening the page, and the proposed plans' Status and Last updated headers fit; on a plan's review, a phone shows the documents' list above the document instead of squeezing the document beside it, and a document's cut name shows in full on hover.
+- f1e56fe: Resolve Knowledge document links within the selected collection, preserve literal source paths, focus linked headings after loading, and show an explicit message for missing documents.
+- Updated dependencies [c0113f8]
+- Updated dependencies [d553603]
+- Updated dependencies [77d1c12]
+- Updated dependencies [2f03302]
+- Updated dependencies [4536f3d]
+- Updated dependencies [01a63aa]
+- Updated dependencies [0f3570e]
+- Updated dependencies [dbd826c]
+- Updated dependencies [2f03302]
+- Updated dependencies [168ca66]
+- Updated dependencies [c775cfb]
+- Updated dependencies [cefb9d4]
+- Updated dependencies [b3c8677]
+- Updated dependencies [4536f3d]
+- Updated dependencies [371fda2]
+- Updated dependencies [d97c11d]
+- Updated dependencies [859651d]
+- Updated dependencies [3b65ce4]
+- Updated dependencies [959b908]
+- Updated dependencies [694e2ae]
+- Updated dependencies [e8c5832]
+- Updated dependencies [3b4a31f]
+- Updated dependencies [269c67b]
+- Updated dependencies [a7ecd9d]
+- Updated dependencies [5dac044]
+- Updated dependencies [b623ab3]
+- Updated dependencies [06dfa3d]
+- Updated dependencies [a05070d]
+- Updated dependencies [d29861d]
+- Updated dependencies [a02eb7e]
+- Updated dependencies [99b5956]
+- Updated dependencies [172b3de]
+- Updated dependencies [8949a13]
+- Updated dependencies [d29861d]
+- Updated dependencies [3627dfd]
+- Updated dependencies [7e12f91]
+- Updated dependencies [b905271]
+- Updated dependencies [671372c]
+- Updated dependencies [f5615a0]
+- Updated dependencies [f1e56fe]
+- Updated dependencies [35f1cdd]
+- Updated dependencies [249a84a]
+  - @giantswarm/backstage-plugin-gs-common@0.24.0
+  - @giantswarm/backstage-plugin-ui-react@0.11.0
+  - @giantswarm/backstage-plugin-analytics-react@0.4.0
+
 ## 0.1.1
 
 ### Patch Changes

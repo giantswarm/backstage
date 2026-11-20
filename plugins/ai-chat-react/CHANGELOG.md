@@ -1,5 +1,11 @@
 # @giantswarm/backstage-plugin-ai-chat-react
 
+## 0.6.1
+
+### Patch Changes
+
+- 77d1c12: Needs Backstage 1.57: the peer ranges are `@backstage/frontend-plugin-api` `^1.0.0` and `@backstage/core-plugin-api` `^1.13.0`.
+
 ## 0.6.0
 
 ### Minor Changes

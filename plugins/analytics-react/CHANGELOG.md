@@ -1,5 +1,43 @@
 # @giantswarm/backstage-plugin-analytics-react
 
+## 0.4.0
+
+### Minor Changes
+
+- 99b5956: A person who manages an organization deletes it from its page. The dialog lists what agent-manager says the delete erases, what is kept and the running sessions it stops. It erases only once the person types `<parent>/<name>`. For an organization applied from git, Delete opens the pull request that removes it, and Erase now on Pending erase erases it after that pull request merged. Missing from git offers neither. The organization page also reads `get_organization` in the shape agent-manager answers it, so its status notices show for organizations-admins. New events `AgentPlatform.organizationDeleteRequested` and `AgentPlatform.organizationErased`.
+
+### Patch Changes
+
+- a02eb7e: An Agent Platform organization's credentials are entered on the Dev Portal's credential form, never in a tool call.
+
+  - agent-platform-backend: `GET`, `POST` and `DELETE`
+    `/organizations/credential-operations/:operation?installation=` carry
+    agent-manager's credential operations (giantswarm/agent-manager#312) as the
+    person, with the installation token in `backstage-agent-manager-authorization`,
+    to `https://agentgateway.<baseDomain>/agent-manager` (the agent-platform
+    chart's `agentManager.route`) or
+    `agentPlatform.agentManager.installations.<name>.apiBaseUrl`. The POST body
+    is validated and never logged or echoed; `If-Match` is required on POST and
+    DELETE (428 without it); every answer is `Cache-Control: no-store`; refusals are the
+    backend's error body with agent-manager's `code`. A save that runs past
+    120 s, loses its connection or is refused by a gateway answers code
+    `outcome_unknown`.
+  - agent-platform: `/organizations/<installation>/<parent>/<name>/credentials/<operation>`,
+    the link agent-manager's `credentials.uiURL` names
+    (`…/credentials/{operation}`), shows what the value is for (the
+    organization agent-manager prepared it for, refusing a link that names
+    another, the object that asked, the other objects that read it, where it
+    is sent, and the pull request's repository in commit mode) before it takes
+    a value, saves it once with the confirmation's version, and never shows it
+    back. A changed request is read again; a save interrupted on
+    agent-manager's side is finished from the page; a commit without the
+    GitHub grant offers the connection. The Models tab's Add model and Replace
+    key, and the Connectors tab's Replace credential, ask agent-manager as the
+    person and open the form for the request it prepares (its
+    `credentialOperation`).
+  - analytics-react: `AgentPlatform.organizationCredentialSaved`.
+  - app: the form's page view, without the request's id.
+
 ## 0.3.0
 
 ### Minor Changes
