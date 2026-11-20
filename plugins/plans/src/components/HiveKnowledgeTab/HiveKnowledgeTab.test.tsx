@@ -46,7 +46,10 @@ function knowledgeApi(document: string) {
 describe('HiveKnowledgeTab', () => {
   afterEach(() => focusManager.setFocused(undefined));
 
-  async function renderCollection(documents: Record<string, string>) {
+  async function renderCollection(
+    documents: Record<string, string>,
+    readContent = async (path: string) => documents[path],
+  ) {
     const plansApi = {
       getMagazine: jest.fn(async () => ({
         configured: true,
@@ -58,7 +61,7 @@ describe('HiveKnowledgeTab', () => {
         tree: Object.keys(documents).map(path => ({ path, type: 'blob' })),
       })),
       getContent: jest.fn(async (path: string) => ({
-        content: documents[path],
+        content: await readContent(path),
       })),
     } as unknown as PlansApi;
     await renderInTestApp(
@@ -76,6 +79,81 @@ describe('HiveKnowledgeTab', () => {
     );
     return plansApi;
   }
+
+  it('scrolls and focuses cross-document headings after loading, including the same fragment in another document', async () => {
+    const originalScroll = Element.prototype.scrollIntoView;
+    const scrollIntoView = jest.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    try {
+      const documents = {
+        'knowledge/product/agent-platform.md':
+          '# Agent Platform\n\n[Architecture](../architecture/architect.md#details)',
+        'knowledge/architecture/architect.md':
+          '# Architect\n\n## Details\n\n[Decision](../decisions/access.md#details)',
+        'knowledge/decisions/access.md':
+          '# Access\n\n## Details\n\nDecision details.\n\n[Copy](copy.md#details)',
+        'knowledge/decisions/copy.md':
+          '# Access\n\n## Details\n\nDecision details.\n\n[Copy](copy.md#details)',
+      };
+      let resolveArchitecture!: (content: string) => void;
+      const architectureContent = new Promise<string>(resolve => {
+        resolveArchitecture = resolve;
+      });
+      const plansApi = await renderCollection(documents, path =>
+        path === 'knowledge/architecture/architect.md'
+          ? architectureContent
+          : Promise.resolve(documents[path as keyof typeof documents]),
+      );
+      const user = userEvent.setup();
+      await user.click(
+        await screen.findByRole('link', { name: 'Architecture' }),
+      );
+      await waitFor(() =>
+        expect(plansApi.getContent).toHaveBeenCalledWith(
+          'knowledge/architecture/architect.md',
+          'main',
+          'giantswarm/magazine',
+        ),
+      );
+      expect(screen.queryByRole('heading', { name: 'Details' })).toBeNull();
+      expect(scrollIntoView).not.toHaveBeenCalled();
+
+      await act(async () => {
+        resolveArchitecture(documents['knowledge/architecture/architect.md']);
+      });
+      const architectureHeading = await screen.findByRole('heading', {
+        name: 'Details',
+      });
+      await waitFor(() =>
+        expect(scrollIntoView.mock.instances).toContain(architectureHeading),
+      );
+      expect(architectureHeading).toHaveFocus();
+
+      await user.click(screen.getByRole('link', { name: 'Decision' }));
+      await screen.findByText('Decision details.');
+      const decisionHeading = screen.getByRole('heading', { name: 'Details' });
+      expect(decisionHeading).not.toBe(architectureHeading);
+      await waitFor(() =>
+        expect(scrollIntoView.mock.instances).toContain(decisionHeading),
+      );
+      expect(decisionHeading).toHaveFocus();
+
+      await user.click(
+        within(screen.getByRole('article', { name: 'Access' })).getByRole(
+          'link',
+          { name: 'Copy' },
+        ),
+      );
+      await waitFor(() => expect(decisionHeading).not.toBeInTheDocument());
+      const copiedHeading = screen.getByRole('heading', { name: 'Details' });
+      await waitFor(() =>
+        expect(scrollIntoView.mock.instances).toContain(copiedHeading),
+      );
+      expect(copiedHeading).toHaveFocus();
+    } finally {
+      Element.prototype.scrollIntoView = originalScroll;
+    }
+  });
 
   it('opens inline sibling and cross-directory documents while retaining the team', async () => {
     const user = userEvent.setup();

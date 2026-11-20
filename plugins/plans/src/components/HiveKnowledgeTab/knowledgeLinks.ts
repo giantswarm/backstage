@@ -9,7 +9,11 @@ export function knowledgeDocumentLink(
   let destination: URL;
   let path: string;
   try {
-    destination = new URL(href, `${origin}/${documentPath}`);
+    const sourcePath = documentPath
+      .split('/')
+      .map(encodeURIComponent)
+      .join('/');
+    destination = new URL(href, `${origin}/${sourcePath}`);
     path = decodeURIComponent(destination.pathname.slice(1));
   } catch {
     return href;

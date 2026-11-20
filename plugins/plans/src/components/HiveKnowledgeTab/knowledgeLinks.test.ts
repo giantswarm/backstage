@@ -47,4 +47,18 @@ describe('knowledgeDocumentLink', () => {
       new URL(target, 'https://portal.example.com').searchParams.get('doc'),
     ).toBe('knowledge/architecture/architect-orb.md');
   });
+
+  it.each(['section#one', 'section?one', 'section%20one', 'section%one'])(
+    'resolves a sibling from the literal source directory %s',
+    directory => {
+      const target = knowledgeDocumentLink(
+        'target.md',
+        `knowledge/product/${directory}/source.md`,
+        page,
+      );
+      expect(
+        new URL(target, 'https://portal.example.com').searchParams.get('doc'),
+      ).toBe(`knowledge/product/${directory}/target.md`);
+    },
+  );
 });

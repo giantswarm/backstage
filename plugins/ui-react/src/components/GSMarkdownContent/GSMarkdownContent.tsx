@@ -19,6 +19,8 @@ type GSMarkdownContentProps = {
   sourceUrl?: string;
   /** Rewrites sanitized links for navigation within a document collection. */
   resolveLink?: (href: string) => string;
+  /** URL fragment without `#` to focus and scroll to as the content loads. */
+  fragment?: string;
   /**
    * Target of links that leave the document, `_blank` to open them in a new
    * tab. A `#fragment` link, a footnote's for one, stays in the page.
@@ -103,6 +105,7 @@ export const GSMarkdownContent = ({
   dialect = 'gfm',
   sourceUrl,
   resolveLink,
+  fragment,
   linkTarget,
   className,
 }: GSMarkdownContentProps) => {
@@ -129,7 +132,13 @@ export const GSMarkdownContent = ({
   );
 
   return inRouter ? (
-    <InPageAnchors className={rootClassName}>{markdown}</InPageAnchors>
+    <InPageAnchors
+      className={rootClassName}
+      content={content}
+      fragment={fragment}
+    >
+      {markdown}
+    </InPageAnchors>
   ) : (
     <div className={rootClassName}>{markdown}</div>
   );

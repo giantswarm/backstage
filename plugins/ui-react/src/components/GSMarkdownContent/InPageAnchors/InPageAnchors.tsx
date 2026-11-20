@@ -1,6 +1,30 @@
-import { MouseEvent, ReactNode, useRef } from 'react';
+import { MouseEvent, ReactNode, useEffect, useRef } from 'react';
 import { useHref } from 'react-router-dom';
 import { findAnchorTarget, getInPageFragment } from './helpers';
+
+function scrollToAnchor(root: HTMLElement, fragment: string) {
+  const target = findAnchorTarget(root, fragment);
+  if (target === 'top') {
+    root.scrollIntoView({ block: 'start' });
+    return undefined;
+  }
+  if (!target) {
+    return undefined;
+  }
+  if (!target.hasAttribute('tabindex')) {
+    target.tabIndex = -1;
+  }
+  // A repeated focus must still notify containers that expand on focus.
+  if (document.activeElement === target) {
+    target.blur();
+  }
+  target.focus({ preventScroll: true });
+  // Containers that expand on focus must lay out before scrolling.
+  const frame = requestAnimationFrame(() =>
+    target.scrollIntoView({ block: 'start' }),
+  );
+  return () => cancelAnimationFrame(frame);
+}
 
 /**
  * A `div` whose `#heading` links inside jump to their target. Markdown links
@@ -10,12 +34,22 @@ import { findAnchorTarget, getInPageFragment } from './helpers';
 export const InPageAnchors = ({
   className,
   children,
+  content,
+  fragment,
 }: {
   className: string;
   children: ReactNode;
+  content: string;
+  fragment?: string;
 }) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const pageHref = useHref('#');
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || fragment === undefined) return undefined;
+    return scrollToAnchor(root, fragment);
+  }, [content, fragment]);
 
   const jumpToAnchor = (event: MouseEvent<HTMLDivElement>) => {
     if (
@@ -29,36 +63,18 @@ export const InPageAnchors = ({
     }
     const root = rootRef.current;
     const link = (event.target as Element).closest('a');
-    const fragment =
+    const linkFragment =
       root && link && root.contains(link)
         ? getInPageFragment(link, pageHref)
         : undefined;
-    if (!root || fragment === undefined) {
+    if (!root || linkFragment === undefined) {
       return;
     }
     // Enough to keep the router from navigating; the link still reports its
     // click.
     event.preventDefault();
 
-    const target = findAnchorTarget(root, fragment);
-    if (target === 'top') {
-      root.scrollIntoView({ block: 'start' });
-      return;
-    }
-    if (!target) {
-      return;
-    }
-    if (!target.hasAttribute('tabindex')) {
-      target.tabIndex = -1;
-    }
-    // Focusing the element that already has focus fires no focus event, and
-    // a container that expands on focus would stay collapsed.
-    if (document.activeElement === target) {
-      target.blur();
-    }
-    target.focus({ preventScroll: true });
-    // A frame later, so a container that expands on focus has laid out.
-    requestAnimationFrame(() => target.scrollIntoView({ block: 'start' }));
+    scrollToAnchor(root, linkFragment);
   };
 
   return (

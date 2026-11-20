@@ -58,6 +58,7 @@ function KnowledgeDocument(props: { path: string }) {
   return (
     <GSMarkdownContent
       content={data}
+      fragment={location.hash ? location.hash.slice(1) : undefined}
       resolveLink={href =>
         knowledgeDocumentLink(
           href,
@@ -157,7 +158,7 @@ export function HiveKnowledgeTab() {
       </nav>
       <article aria-label={selected?.title ?? 'Knowledge document not found'}>
         {selected ? (
-          <KnowledgeDocument path={selected.path} />
+          <KnowledgeDocument key={selected.path} path={selected.path} />
         ) : (
           <EmptyState
             missing="content"
