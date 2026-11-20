@@ -234,6 +234,14 @@ export const GatewayApiHttprouteHostnameInfo = {
   source: 'gateway-api-state-metrics',
 } as const satisfies PrometheusMetric;
 
+export const GatewayApiHttprouteRuleBackendInfo = {
+  name: 'gatewayapi_httproute_rule_backend_info',
+  description:
+    'Info series (value is always 1) with one time series per rule of a Gateway API HTTPRoute, exported by the gateway-api-state-metrics app of the Gateway API bundle. `name` and `namespace` identify the HTTPRoute; `rule_name`, `match_path_type` and `match_path` describe the rule. The first three backendRefs of the rule are labels `backend0_*` to `backend2_*` (`kind`, `namespace`, `name`, `port`, `weight`); labels of a backend the rule does not have are absent, and an absent namespace means the namespace of the route. Further backends are not exported.',
+  type: 'gauge',
+  source: 'gateway-api-state-metrics',
+} as const satisfies PrometheusMetric;
+
 export const GatewayApiHttprouteParentInfo = {
   name: 'gatewayapi_httproute_parent_info',
   description:
@@ -590,6 +598,7 @@ export const MetricsRegistry: readonly PrometheusMetric[] = [
   KubeNodeCreated,
   KubeletRunningPods,
   GatewayApiHttprouteHostnameInfo,
+  GatewayApiHttprouteRuleBackendInfo,
   GatewayApiHttprouteParentInfo,
   GatewayApiGatewayListenerInfo,
   GatewayApiGatewayInfo,
