@@ -302,6 +302,8 @@ describe('MusterMcpClient session recovery (unit)', () => {
  * for non-initialize requests`. No standalone GET stream (405).
  */
 class FakeGateway {
+  silentFilter = false;
+  cancelledFilters = 0;
   readonly sessions = new Set<string>();
   readonly initializes: string[] = [];
   readonly toolCalls: (string | undefined)[] = [];
@@ -376,6 +378,10 @@ class FakeGateway {
       }
       if (message.method === 'tools/call') {
         this.toolCalls.push(sessionId);
+        if (message.params?.name === 'filter_tools' && this.silentFilter) {
+          res.on('close', () => this.cancelledFilters++);
+          return;
+        }
         this.json(
           res,
           200,
@@ -432,6 +438,19 @@ describe('MusterMcpClient against a gateway that forgets sessions', () => {
     await client.dispose();
     await gateway.stop();
   });
+
+  it('aborts a connected filter_tools request that never answers', async () => {
+    gateway.silentFilter = true;
+    const started = Date.now();
+    await expect(
+      client.filterTools({ toolset: ['preset:none'] }),
+    ).rejects.toMatchObject({ kind: 'timeout', status: 504 });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(4_900);
+    expect(Date.now() - started).toBeLessThan(9_000);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(gateway.toolCalls).toHaveLength(1);
+    expect(gateway.cancelledFilters).toBe(1);
+  }, 15_000);
 
   it('re-initializes and succeeds on the next call after the gateway forgot the session (404)', async () => {
     const first = (await client.callTool('x_cm_list_node_pools', {})) as {

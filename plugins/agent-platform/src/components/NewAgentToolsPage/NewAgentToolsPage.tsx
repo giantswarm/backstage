@@ -454,7 +454,7 @@ export function NewAgentToolsPage() {
     state.toolset.length > maxInlineSelectors;
   const serverProblem = overCap ? undefined : resolution.error;
   const serverRefused = serverProblem !== undefined && resolution.refused;
-  const canContinue = isToolsetValid && !resolution.isLoading && !serverRefused;
+  const canContinue = isToolsetValid && !serverRefused;
   // A preset that cannot be shown per connector cannot be changed from there
   // either: its selection stays off until the author picks Only the tools I
   // choose below.
@@ -1086,13 +1086,7 @@ export function NewAgentToolsPage() {
           >
             <Text as="p" color="danger">
               {(serverRefused ? serverProblem : undefined) ??
-                (resolution.isLoading
-                  ? 'Checking the selected tools…'
-                  : blockedLine(
-                      state.toolset,
-                      toolsetProblems,
-                      maxInlineSelectors,
-                    ))}
+                blockedLine(state.toolset, toolsetProblems, maxInlineSelectors)}
             </Text>
             {serverRefused && resolution.refetch && (
               <Button

@@ -489,7 +489,10 @@ describe('MusterFixtureApi', () => {
       );
       await expect(
         api.filterTools({ installation: 'fennel', toolset: ['preset:gone'] }),
-      ).rejects.toThrow('unknown preset "gone"');
+      ).rejects.toMatchObject({
+        message: 'unknown preset "gone"',
+        status: 422,
+      });
     });
   });
 

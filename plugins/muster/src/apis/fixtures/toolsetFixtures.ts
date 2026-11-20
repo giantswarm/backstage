@@ -43,7 +43,7 @@ export function resolveToolset(
     const match = SELECTOR.exec(selector);
     if (!match) {
       throw Object.assign(new Error(`invalid toolset selector "${selector}"`), {
-        status: 400,
+        status: 422,
       });
     }
     const [, kind, name] = match;
@@ -71,7 +71,7 @@ export function resolveToolset(
     const preset = presets.find(p => p.name === name);
     if (!preset || depth > 4) {
       throw Object.assign(new Error(`unknown preset "${name}"`), {
-        status: 400,
+        status: 422,
       });
     }
     return preset.selectors.flatMap(inner => select(inner, depth + 1));

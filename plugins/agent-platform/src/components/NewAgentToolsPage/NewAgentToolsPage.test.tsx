@@ -237,6 +237,7 @@ type Scenario = {
   resolutionFails?: string;
   /** The HTTP status the failed resolution carries, when it has one. */
   resolutionFailsStatus?: number;
+  resolutionPending?: boolean;
   /** More servers muster says the session must sign in to, beside `pro`. */
   alsoRequiringAuth?: string[];
 };
@@ -263,10 +264,13 @@ function makeMusterApi(scenario: Scenario) {
     }
     // Muster's own inline cap, refused with the whole selector list.
     if (selectors.length > maximum) {
-      throw new Error(
-        `toolset [${selectors.join(',')}] has ${
-          selectors.length
-        } selectors, more than the ${maximum} allowed inline; define a preset`,
+      throw Object.assign(
+        new Error(
+          `toolset [${selectors.join(',')}] has ${
+            selectors.length
+          } selectors, more than the ${maximum} allowed inline; define a preset`,
+        ),
+        { status: 422 },
       );
     }
     const matched = new Set<ToolSummary>();
@@ -279,10 +283,13 @@ function makeMusterApi(scenario: Scenario) {
       let hits: ToolSummary[] = [];
       if (kind === 'preset') {
         if (!PRESETS.some(preset => preset.name === name)) {
-          throw new Error(
-            `toolset [${selectors.join(
-              ',',
-            )}] names unknown preset "${name}"; known presets: read-only, none, infrastructure, full`,
+          throw Object.assign(
+            new Error(
+              `toolset [${selectors.join(
+                ',',
+              )}] names unknown preset "${name}"; known presets: read-only, none, infrastructure, full`,
+            ),
+            { status: 422 },
           );
         }
         if (name === 'read-only') {
@@ -334,6 +341,7 @@ function makeMusterApi(scenario: Scenario) {
         };
       }
       if (options.toolset) {
+        if (scenario.resolutionPending) return new Promise(() => {});
         return resolve(options.toolset);
       }
       return {
@@ -1694,6 +1702,7 @@ describe('NewAgentToolsPage', () => {
         evaluatesToolsets: true,
         resolutionFails:
           'toolset encodes to 8193 bytes, more than the 8192 allowed inline; define a preset',
+        resolutionFailsStatus: 422,
       });
       await renderStep({ api, toolset: [`tool:${'é'.repeat(4094)}`] });
       const user = userEvent.setup();
@@ -1830,8 +1839,30 @@ describe('NewAgentToolsPage', () => {
       expect(toolsetOutput()).toBe('server:kubernetes');
     });
 
+    it('lets the person continue while resolution is pending', async () => {
+      const { api } = makeMusterApi({
+        signedIn: false,
+        evaluatesToolsets: true,
+        resolutionPending: true,
+      });
+      await renderStep({ api });
+      const user = userEvent.setup();
+      await connectorsListed();
+      await ownPicks(user);
+      await openIndividual(user);
+      await user.type(screen.getByLabelText('Selector'), 'server:kubernetes');
+      await user.click(screen.getByRole('button', { name: 'Add selector' }));
+      await user.click(continueButton());
+      expect(document.activeElement).toBe(continueButton());
+      expect(
+        screen.queryByText('Checking the selected tools…'),
+      ).not.toBeInTheDocument();
+    });
+
     it.each([
       ['no answer', 'muster is unreachable', undefined],
+      ['an unrelated client error', 'bad request', 400],
+      ['a timeout', 'Muster did not answer', 504],
       ['a server error', 'muster answered 503', 503],
       ['an expired session', 'the muster session expired', 401],
     ])(
@@ -1865,7 +1896,7 @@ describe('NewAgentToolsPage', () => {
       [
         'its own text',
         'toolset [server:kubernetes] selector "server:kubernetes" is reserved for shared toolsets',
-        undefined,
+        422,
       ],
       [
         'a client-error status',
