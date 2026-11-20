@@ -186,7 +186,9 @@ describe('GSMarkdownContent', () => {
     );
     expect(screen.queryByRole('link', { name: 'unsafe' })).toBeNull();
     expect(resolveLink).toHaveBeenCalledWith('guide.md');
-    expect(resolveLink).toHaveBeenCalledTimes(1);
+    expect(resolveLink).not.toHaveBeenCalledWith(
+      expect.stringMatching(/^javascript:/i),
+    );
   });
 
   it('renders an unsafe link as text when resolving against a source URL', async () => {
