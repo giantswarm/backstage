@@ -593,6 +593,106 @@ describe('buildGatewayTopology', () => {
       ]);
     });
 
+    it('shows no split when more than one rule of the route splits', () => {
+      const split = (path: string, names: string[], weights: string[]) =>
+        sample({
+          ...route,
+          match_path: path,
+          backend0_name: names[0],
+          backend0_weight: weights[0],
+          backend1_name: names[1],
+          backend1_weight: weights[1],
+        });
+      expect(
+        weightsOf([
+          split('/a', ['app', 'canary'], ['90', '10']),
+          split('/b', ['api', 'api-canary'], ['1', '3']),
+        ]),
+      ).toEqual([
+        ['api', undefined],
+        ['api-canary', undefined],
+        ['app', undefined],
+        ['canary', undefined],
+      ]);
+    });
+
+    it('keeps a weight of 0, which means no traffic', () => {
+      expect(
+        weightsOf([
+          sample({ ...route, backend0_name: 'off', backend0_weight: '0' }),
+          sample({
+            ...route,
+            match_path: '/b',
+            backend0_name: 'a',
+            backend0_weight: '1',
+            backend1_name: 'b',
+            backend1_weight: '3',
+          }),
+          sample({
+            ...route,
+            match_path: '/c',
+            backend0_name: 'c',
+            backend0_weight: '2',
+            backend1_name: 'd',
+            backend1_weight: '1',
+          }),
+        ]),
+      ).toEqual([
+        ['a', undefined],
+        ['b', undefined],
+        ['c', undefined],
+        ['d', undefined],
+        ['off', '0'],
+      ]);
+    });
+
+    it('keeps a weight of 0 only where no reference gives the backend traffic', () => {
+      // Within the one split.
+      expect(
+        weightsOf([
+          sample({
+            ...route,
+            backend0_name: 'a',
+            backend0_weight: '0',
+            backend1_name: 'b',
+            backend1_weight: '1',
+          }),
+        ]),
+      ).toEqual([
+        ['a', '0'],
+        ['b', '1'],
+      ]);
+      // Listed twice in one rule, once with traffic, in either order.
+      for (const weights of [
+        ['0', '1'],
+        ['1', '0'],
+      ]) {
+        expect(
+          weightsOf([
+            sample({
+              ...route,
+              backend0_name: 'a',
+              backend0_weight: weights[0],
+              backend1_name: 'a',
+              backend1_weight: weights[1],
+            }),
+          ]),
+        ).toEqual([['a', undefined]]);
+      }
+      // 0 in two rules.
+      expect(
+        weightsOf([
+          sample({ ...route, backend0_name: 'off', backend0_weight: '0' }),
+          sample({
+            ...route,
+            match_path: '/b',
+            backend0_name: 'off',
+            backend0_weight: '0',
+          }),
+        ]),
+      ).toEqual([['off', '0']]);
+    });
+
     it('shows no weights for a rule that lists a backend twice or may have more backends', () => {
       expect(
         weightsOf([

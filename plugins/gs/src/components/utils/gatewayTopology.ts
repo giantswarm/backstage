@@ -405,8 +405,12 @@ function ruleKeyOf(labels: Record<string, string>): string {
  * the rule lists no backend twice, and it has fewer backends than the metric
  * exports (with three, more may exist that the weights are relative to). Then
  * all of the rule's weights are shown together, so a weight never shows
- * without the ones it is relative to. The API server defaults every weight to
- * 1, so a missing weight counts as 1 and equal weights are the plain case.
+ * without the ones it is relative to. If more than one rule of a route splits
+ * so, no split is shown: the column lists the backends of all rules in one
+ * list, which would read as one split. A weight of 0 is kept on its own when
+ * every reference to the backend has it, as that backend gets no traffic. The API
+ * server defaults every weight to 1, so a missing weight counts as 1 and equal
+ * weights are the plain case.
  */
 function indexRouteBackends(
   samples: MimirMetricSample[],
@@ -458,21 +462,34 @@ function indexRouteBackends(
       ),
       routeNamespace: route.namespace,
     };
-    for (const rule of rules) {
+    const splits = rules.filter(rule => {
       const keys = rule.backends.map(backendKeyOf);
-      const showWeights =
+      return (
         rule.backends.length < exportedBackendsPerRule &&
         new Set(keys).size === keys.length &&
         new Set(rule.backends.map(backend => backend.weight)).size > 1 &&
         rule.backends.every(
           backend => ruleCount.get(backendKeyOf(backend)) === 1,
-        );
+        )
+      );
+    });
+    const shownSplit = splits.length === 1 ? splits[0] : undefined;
+    // Backends with a reference of a weight other than 0, in any rule.
+    const getTraffic = new Set(
+      rules.flatMap(rule =>
+        rule.backends
+          .filter(backend => backend.weight !== '0')
+          .map(backendKeyOf),
+      ),
+    );
+    for (const rule of rules) {
       for (const backend of rule.backends) {
         const backendKey = backendKeyOf(backend);
         if (entry.backends.has(backendKey)) continue;
+        const noTraffic = !getTraffic.has(backendKey);
         entry.backends.set(backendKey, {
           ...backend,
-          weight: showWeights ? backend.weight : undefined,
+          weight: rule === shownSplit || noTraffic ? backend.weight : undefined,
         });
       }
     }

@@ -12,6 +12,14 @@ const line = {
   whiteSpace: 'nowrap',
 } as const;
 
+/** Keeps a link from stretching across the column's width. */
+const linkBox = {
+  display: 'flex',
+  alignSelf: 'flex-start',
+  maxWidth: '100%',
+  minWidth: 0,
+} as const;
+
 /** A wildcard has no single address to open, so only concrete names link. */
 export const HostnameList = ({
   hostnames,
@@ -33,18 +41,19 @@ export const HostnameList = ({
             {hostname}
           </Text>
         ) : (
-          // The link keeps the cell's width; the name inside it is cut, so
-          // the link itself is never cut off.
-          <ExternalLink
-            key={hostname}
-            href={`https://${hostname}/`}
-            variant="body-medium"
-            display="flex"
-          >
-            <span style={line} title={hostname}>
-              {hostname}
-            </span>
-          </ExternalLink>
+          // The link is as wide as its name, at most the cell's width; the
+          // name inside it is cut, so the link itself is never cut off.
+          <div key={hostname} style={linkBox}>
+            <ExternalLink
+              href={`https://${hostname}/`}
+              variant="body-medium"
+              display="flex"
+            >
+              <span style={line} title={hostname}>
+                {hostname}
+              </span>
+            </ExternalLink>
+          </div>
         ),
       )}
     </Flex>

@@ -56,10 +56,12 @@ function toRouteRows(routes: HttpRoute[]): RouteParentRow[] {
   );
 }
 
-/** The backend names of a route, for the search. */
+/** The backends of a route as the column shows them, for the search. */
 function backendNames(route: HttpRoute): string[] {
   return route.backends.status === 'available'
-    ? route.backends.backends.map(backend => backend.name)
+    ? route.backends.backends.map(backend =>
+        backendLabel(backend, route.namespace),
+      )
     : [];
 }
 

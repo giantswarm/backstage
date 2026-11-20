@@ -5,7 +5,7 @@ import {
   mockContainerWidth,
   mockPhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
-import { ClusterGatewaysContent } from './ClusterGateways';
+import { ClusterGatewaysContent, searchRouteRows } from './ClusterGateways';
 
 const parent = {
   kind: 'Gateway' as const,
@@ -136,6 +136,23 @@ describe('<ClusterGatewaysContent />', () => {
       expect(screen.queryByText('healthy')).not.toBeInTheDocument(),
     );
     expect(screen.getByText('broken')).toBeInTheDocument();
+  });
+
+  it('finds a route by a backend as the column shows it', () => {
+    const withBackend: HttpRoute = {
+      ...healthy,
+      backends: {
+        status: 'available',
+        mayHaveMore: false,
+        backends: [
+          { kind: 'Service', namespace: 'other', name: 'app-v2', port: '80' },
+        ],
+      },
+    };
+    const rows = [{ id: withBackend.id, route: withBackend }];
+    expect(searchRouteRows(rows, 'other')).toEqual(rows);
+    expect(searchRouteRows(rows, 'other/app-v2:80')).toEqual(rows);
+    expect(searchRouteRows(rows, 'elsewhere')).toEqual([]);
   });
 
   it('says no route matches, not that the cluster has none', async () => {
