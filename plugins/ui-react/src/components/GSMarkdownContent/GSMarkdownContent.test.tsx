@@ -170,6 +170,25 @@ describe('GSMarkdownContent', () => {
     ).not.toHaveAttribute('target');
   });
 
+  it('rewrites safe document links and refuses unsafe links before the collection resolver', async () => {
+    const resolveLink = jest.fn(() => '/collection?doc=guide.md');
+    await renderInTestApp(
+      <GSMarkdownContent
+        dialect="common-mark"
+        content="[Guide](guide.md) and [unsafe](javascript:alert(1))"
+        resolveLink={resolveLink}
+      />,
+    );
+
+    expect(screen.getByRole('link', { name: 'Guide' })).toHaveAttribute(
+      'href',
+      '/collection?doc=guide.md',
+    );
+    expect(screen.queryByRole('link', { name: 'unsafe' })).toBeNull();
+    expect(resolveLink).toHaveBeenCalledWith('guide.md');
+    expect(resolveLink).toHaveBeenCalledTimes(1);
+  });
+
   it('renders an unsafe link as text when resolving against a source URL', async () => {
     // common-mark skips rehype-sanitize, so only the link resolver guards it.
     await renderInTestApp(
