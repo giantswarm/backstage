@@ -524,9 +524,11 @@ and https listeners, a set of HTTPRoutes in the states the tab shows (a
 weighted split, a backend in another namespace, a route whose ResolvedRefs is
 false, one with no status, one attached through a ListenerSet that was not
 accepted, one with no backends) and Envoy Gateway policies (accepted, invalid,
-on the Gateway, and one whose target is gone). Every third ready workload
-cluster runs older bundles: no conditions, no backends and no policy target
-or status, so the tab shows them as not available. In `many` the first ready
+on the Gateway, and one whose target is gone), and the ReferenceGrants that let
+the routes reach their backends in other namespaces, plus one in the
+namespace of the denied backend that grants another namespace instead. Every
+third ready workload cluster runs older bundles: no conditions, no backends
+and no policy target or status, so the tab shows them as not available. In `many` the first ready
 workload cluster has 150 routes, in `long-names` a cluster with a name of 60
 characters or more gives its routes, their namespaces and backends, and the
 policies on those routes names of up to 63 characters (the Gateway, its

@@ -4,6 +4,8 @@ import {
   GatewayApiHttprouteParentInfo,
   GatewayApiHttprouteRuleBackendInfo,
   GatewayApiHttprouteStatusParentAccepted,
+  GatewayApiReferencegrantFromInfo,
+  GatewayApiReferencegrantToInfo,
 } from '../mimirMetrics';
 import { baseDataSet } from './dataSet';
 import { gatewayApiSeries, gatewayApiSeriesOf } from './gatewayApiSeries';
@@ -72,6 +74,30 @@ describe('gatewayApiSeries', () => {
       expect(withBackends.has(cluster.name)).toBe(!older);
       expect(withConditions.has(cluster.name)).toBe(!older);
     });
+  });
+
+  it('grants the resolved cross-namespace backends, not the denied one', () => {
+    const cluster = workload[0].name;
+    const on = (metric: string) =>
+      series
+        .filter(
+          s => s.labels.__name__ === metric && s.labels.cluster_id === cluster,
+        )
+        .map(s => s.labels);
+    expect(
+      on(GatewayApiReferencegrantToInfo.name).map(l => [
+        l.namespace,
+        l.to_name ?? '*',
+      ]),
+    ).toEqual([
+      ['shop-preview', 'storefront-next'],
+      ['payments', '*'],
+    ]);
+    expect(
+      on(GatewayApiReferencegrantFromInfo.name)
+        .filter(l => l.namespace === 'payments')
+        .map(l => `${l.from_kind}/${l.from_namespace}`),
+    ).toEqual(['HTTPRoute/billing', 'GRPCRoute/billing']);
   });
 
   it('builds the series once per data set and installation', () => {
