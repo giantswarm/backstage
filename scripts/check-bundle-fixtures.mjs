@@ -157,6 +157,10 @@ const MARKERS = [
     marker: '-fixture-rbac-',
   },
   {
+    source: 'plugins/gs-common/src/fixtures/gatewayApiSeries.ts',
+    marker: 'NoMatchingListenerHostname',
+  },
+  {
     source: 'plugins/gs-common/src/fixtures/gatewayUsage.ts',
     marker: 'sorrel@example.com',
   },
