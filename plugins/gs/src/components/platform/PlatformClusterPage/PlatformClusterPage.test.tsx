@@ -137,6 +137,9 @@ jest.mock('../../hooks', () => ({
     isLoading: false,
   }),
 }));
+jest.mock('../PlatformClusterRBAC', () => ({
+  PlatformClusterRBAC: () => <p>The role bindings</p>,
+}));
 jest.mock('../../hooks/useK8sVersionEOLDate', () => ({
   useK8sVersionEOLDate: () => '2027-03-28',
 }));
@@ -679,6 +682,7 @@ describe('PlatformClusterPage', () => {
       '/platform/clusters/meadow/org-fern/alder-birch/ssh-access',
     );
 
+    // A workload cluster has no RBAC tab.
     expect(screen.getAllByRole('tab').map(tab => tab.dataset.key)).toEqual([
       'overview',
       'node-pools',
@@ -771,6 +775,62 @@ describe('PlatformClusterPage', () => {
       screen.getByRole('region', { name: 'SSH access' }).textContent,
     ).toContain('tsh ssh root@ins=meadow,cluster=alder-birch,role=worker');
   });
+
+  it('gives a management cluster an RBAC tab after Node pools', async () => {
+    mockStaff = true;
+    mockState = stateOf({
+      cluster: clusterOf('meadow', 'org-giantswarm', { management: true }),
+    });
+    await renderPage('/platform/clusters/meadow/org-giantswarm/meadow/rbac');
+
+    expect(screen.getAllByRole('tab').map(tab => tab.dataset.key)).toEqual([
+      'overview',
+      'node-pools',
+      'rbac',
+      'ssh-access',
+    ]);
+    expect(screen.getByRole('tab', { name: 'RBAC' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByText('The role bindings')).toBeInTheDocument();
+    // The facts column belongs to Overview.
+    expect(
+      screen.queryByRole('complementary', { name: 'Details' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('opens Overview for RBAC, and has no such tab, on a workload cluster', async () => {
+    await renderPage('/platform/clusters/meadow/org-fern/alder-birch/rbac');
+
+    expect(screen.getByRole('status', { name: 'path' })).toHaveTextContent(
+      /^\/platform\/clusters\/meadow\/org-fern\/alder-birch$/,
+    );
+    expect(screen.getByRole('region', { name: 'Release' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'RBAC' })).not.toBeInTheDocument();
+    expect(screen.queryByText('The role bindings')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['management', '/platform/clusters/meadow/org-giantswarm/meadow/rbac'],
+    ['workload', '/platform/clusters/meadow/org-fern/alder-birch/rbac'],
+  ])(
+    'stays on RBAC, without its tab, while a %s cluster is read',
+    async (_, path) => {
+      mockState = stateOf({ loading: true });
+      await renderPage(path);
+
+      expect(screen.getByRole('status', { name: 'path' })).toHaveTextContent(
+        /\/rbac$/,
+      );
+      expect(
+        screen.getByRole('tab', { name: 'Node pools' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('tab', { name: 'RBAC' }),
+      ).not.toBeInTheDocument();
+    },
+  );
 
   it('opens Overview for a tab the page does not have', async () => {
     await renderPage('/platform/clusters/meadow/org-fern/alder-birch/apps');

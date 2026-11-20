@@ -2,7 +2,9 @@ import {
   AWSCluster,
   AWSClusterRoleIdentity,
   Cluster,
+  ClusterRoleBinding,
   ControlPlane,
+  RoleBinding,
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
   inInstallation,
@@ -10,6 +12,7 @@ import {
 } from '@giantswarm/backstage-plugin-gs-common/fixtures';
 import { fixtureDataSet } from '@giantswarm/backstage-plugin-gs-common/fixtures';
 import { collectClusterData } from '../../../components/clusters/ClustersDataProvider/utils';
+import { buildRbacSubjectRows } from '../../../components/clusters/cluster-details/ClusterRBAC/utils';
 import { gsKubernetesObjectsOf } from './clusterObjects';
 
 describe('gsKubernetesObjectsOf', () => {
@@ -18,6 +21,33 @@ describe('gsKubernetesObjectsOf', () => {
   function objectsOfKind(kind: string) {
     return gsKubernetesObjectsOf('meadow').filter(o => o.kind === kind);
   }
+
+  it('serves the management cluster’s role bindings as the RBAC tab reads them', () => {
+    const rows = (installation: string) => {
+      const objects = gsKubernetesObjectsOf(installation);
+      return buildRbacSubjectRows(
+        objects
+          .filter(o => o.kind === 'RoleBinding')
+          .map(o => new RoleBinding(o as any, installation)),
+        objects
+          .filter(o => o.kind === 'ClusterRoleBinding')
+          .map(o => new ClusterRoleBinding(o as any, installation)),
+      );
+    };
+
+    const meadow = rows('meadow');
+    expect(new Set(meadow.map(row => row.kind))).toEqual(
+      new Set(['Group', 'User', 'ServiceAccount']),
+    );
+    expect(meadow.some(row => row.isSystem)).toBe(true);
+    expect(meadow.some(row => !row.isSystem && row.clusterWide)).toBe(true);
+    // A subject with access cluster-wide or in several namespaces.
+    expect(meadow.some(row => row.scopeText.includes(', '))).toBe(true);
+    // fennel's management cluster has only the system subjects.
+    const fennel = rows('fennel');
+    expect(fennel.length).toBeGreaterThan(0);
+    expect(fennel.every(row => row.isSystem)).toBe(true);
+  });
 
   it('answers the same array while the data set stays the same', () => {
     expect(gsKubernetesObjectsOf('meadow')).toBe(

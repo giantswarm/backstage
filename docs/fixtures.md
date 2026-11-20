@@ -732,7 +732,19 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
   revision) and GitRepository per GitOps repository and a Release per release
   the clusters run (`gsKubernetesObjectsOf` in
   `@giantswarm/backstage-plugin-gs/fixtures`), which the Clusters pages and the
-  Platform section's list and cluster pages read. The cluster pages' tool
+  Platform section's list and cluster pages read. Each management cluster has
+  RBAC bindings (`rbacBuilders.ts`, from a seed of each installation's own),
+  which gs maps onto RoleBinding and ClusterRoleBinding objects for the
+  cluster pages' RBAC tabs: in every installation the system ones Kubernetes
+  brings along (`system:` subjects, service accounts in `kube-system`); in
+  `meadow` and `tarragon` also the platform team's groups and a person with
+  `cluster-admin` and `read-all` cluster-wide, an automation service account,
+  and per organization of the workload clusters its admins' group and a
+  person, a deployer service account and its readers' group (who read the
+  next organization's namespace too), then three people with `view` in an
+  organization's namespace (`rbacSubjects`: 150 in `many`, none at all in
+  `empty`). `fennel` has only the system ones, so the tab's "only system
+  subjects" state shows there. The cluster pages' tool
   links are `gs.clusterDetails.resources` of `app-config.fixtures.yaml`, at
   made-up addresses; the fixture installations have no base domain, so the
   login command is not shown. The classic Deployments list shows the

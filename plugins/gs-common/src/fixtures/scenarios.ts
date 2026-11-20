@@ -56,6 +56,7 @@ const EMPTY: FixtureDataSetSettings = {
   modelBackends: { count: 0 },
   clusters: { count: 0 },
   managementClusters: false,
+  rbacSubjects: { count: 0 },
 };
 
 /** Hundreds of items in each list, per installation. */
@@ -76,6 +77,7 @@ const MANY: FixtureDataSetSettings = {
   hostedModels: { count: 100 },
   clusters: { count: 100 },
   busiestCluster: { pools: 30, nodes: 40 },
+  rbacSubjects: { count: 150 },
 };
 
 /** Every name as long as a Kubernetes name may be. */
@@ -101,6 +103,7 @@ const LONG_NAMES: FixtureDataSetSettings = {
   cacheClaims: { nameLength: LONG },
   hostedModels: { nameLength: LONG },
   clusters: { nameLength: LONG },
+  rbacSubjects: { nameLength: LONG },
 };
 
 const SETTINGS: Partial<Record<FixtureScenario, FixtureDataSetSettings>> = {
