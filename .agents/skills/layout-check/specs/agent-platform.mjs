@@ -173,6 +173,25 @@ const rbacSystemSubjects = {
   },
 };
 
+/**
+ * Types a search into the RBAC tab's search field. The first text in the
+ * field brings bui's clear button, which takes 32px of the input inside the
+ * field's unchanged box: `shift: false` for that state.
+ */
+const rbacSearch = (name, query, { first = false } = {}) => ({
+  name,
+  ...(first && { shift: false }),
+  run: async ({ page, skip }) => {
+    const field = page.getByRole('searchbox', {
+      name: 'Search subjects, roles and bindings',
+    });
+    if (!(await shows(field)) || (await field.isDisabled())) {
+      skip('no subjects read');
+    }
+    await field.fill(query);
+  },
+});
+
 /** Opens the RBAC tab's first subject to its bindings. */
 const rbacFirstBindings = {
   name: 'first subject opened',
@@ -464,7 +483,15 @@ export default [
     // is the environment's in every scenario (none at all in `empty`).
     name: 'Platform RBAC',
     path: '/platform/clusters/meadow/org-giantswarm/meadow/rbac',
-    states: [rbacSystemSubjects, rbacFirstBindings],
+    // Found through a binding only (its row opens, the match marked), then
+    // a system subject the switch hides, shown, then nothing.
+    states: [
+      rbacFirstBindings,
+      rbacSearch('search: a binding', 'guest', { first: true }),
+      rbacSearch('search: a hidden system subject', 'coredns'),
+      rbacSystemSubjects,
+      rbacSearch('search: no match', 'no-such-subject'),
+    ],
   },
   {
     // Only system subjects: the table's empty state, then the switch.

@@ -279,4 +279,74 @@ describe('PlatformClusterRBAC', () => {
       screen.getByRole('button', { name: 'oidc:platform-admins' }),
     ).toBeInTheDocument();
   });
+
+  describe('search', () => {
+    const search = (text: string) =>
+      userEvent.type(
+        screen.getByRole('searchbox', {
+          name: 'Search subjects, roles and bindings',
+        }),
+        text,
+      );
+
+    it('finds subjects by what their rows show, closed', async () => {
+      await renderInTestApp(<PlatformClusterRBAC />);
+      await search('read-all');
+
+      expect(
+        screen.getByRole('heading', { name: 'Access grants (1 subject)' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'oidc:fern-readers' }),
+      ).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('opens a subject found by a binding’s name, and marks what it found', async () => {
+      await renderInTestApp(<PlatformClusterRBAC />);
+      await search('ORGANIZATION-FERN');
+
+      const toggle = screen.getByRole('button', { name: 'oidc:fern-readers' });
+      expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      const bindings = screen.getByRole('list', {
+        name: 'Bindings of oidc:fern-readers',
+      });
+      const marks = [...bindings.querySelectorAll('mark')].map(
+        mark => mark.textContent,
+      );
+      expect(marks).toEqual(['organization-fern']);
+
+      // Closed by the person, it stays closed.
+      await userEvent.click(toggle);
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('offers the system subjects the switch hides when only they match', async () => {
+      await renderInTestApp(<PlatformClusterRBAC />);
+      await search('coredns');
+
+      expect(
+        screen.getByText(
+          'No subjects match “coredns”, but 1 system subject does.',
+        ),
+      ).toBeInTheDocument();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Show system subjects' }),
+      );
+      expect(
+        screen.getByRole('button', { name: 'kube-system/coredns' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('switch', { name: 'Show system subjects (2)' }),
+      ).toBeChecked();
+    });
+
+    it('says when nothing matches', async () => {
+      await renderInTestApp(<PlatformClusterRBAC />);
+      await search('nettle');
+
+      expect(
+        screen.getByText('No subjects match “nettle”.'),
+      ).toBeInTheDocument();
+    });
+  });
 });

@@ -139,10 +139,13 @@ function tabsOf({
 }
 
 /**
- * The tabs while the cluster is read: every one, as nothing is decided
- * before the read, so a person on a tab's address stays there.
+ * The tabs while the cluster is read: the management cluster's left out
+ * until the read says it is one, so they appear rather than vanish. Nothing
+ * redirects meanwhile: a person on such a tab's address stays there.
  */
-const LOADING_TABS = [...PLATFORM_CLUSTER_PAGE_TABS];
+const LOADING_TABS = PLATFORM_CLUSTER_PAGE_TABS.filter(
+  tab => !MANAGEMENT_TAB_IDS.has(tab.id),
+);
 
 /**
  * The tabs the person has, with the number of node pools on theirs once it

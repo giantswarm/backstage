@@ -811,25 +811,26 @@ describe('PlatformClusterPage', () => {
     expect(screen.queryByText('The role bindings')).not.toBeInTheDocument();
   });
 
-  it('stays on RBAC, with its tab, while a management cluster is read', async () => {
-    mockState = stateOf({ loading: true });
-    await renderPage('/platform/clusters/meadow/org-giantswarm/meadow/rbac');
+  it.each([
+    ['management', '/platform/clusters/meadow/org-giantswarm/meadow/rbac'],
+    ['workload', '/platform/clusters/meadow/org-fern/alder-birch/rbac'],
+  ])(
+    'stays on RBAC, without its tab, while a %s cluster is read',
+    async (_, path) => {
+      mockState = stateOf({ loading: true });
+      await renderPage(path);
 
-    expect(screen.getByRole('status', { name: 'path' })).toHaveTextContent(
-      /\/rbac$/,
-    );
-    expect(screen.getByRole('tab', { name: 'RBAC' })).toBeInTheDocument();
-  });
-
-  it('decides nothing about RBAC while a workload cluster is read', async () => {
-    mockState = stateOf({ loading: true });
-    await renderPage('/platform/clusters/meadow/org-fern/alder-birch/rbac');
-
-    expect(screen.getByRole('status', { name: 'path' })).toHaveTextContent(
-      /\/rbac$/,
-    );
-    expect(screen.getByRole('tab', { name: 'RBAC' })).toBeInTheDocument();
-  });
+      expect(screen.getByRole('status', { name: 'path' })).toHaveTextContent(
+        /\/rbac$/,
+      );
+      expect(
+        screen.getByRole('tab', { name: 'Node pools' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('tab', { name: 'RBAC' }),
+      ).not.toBeInTheDocument();
+    },
+  );
 
   it('opens Overview for a tab the page does not have', async () => {
     await renderPage('/platform/clusters/meadow/org-fern/alder-birch/apps');

@@ -604,8 +604,8 @@ It has four tabs so far, Overview, Node pools, RBAC for a management cluster
 and, for Giant Swarm staff (`useCurrentUser`), SSH access; any other tab
 redirects to Overview, and so does RBAC for a workload cluster and SSH access
 for a person known not to be staff. While the cluster is read, the strip has
-every tab and nothing redirects: RBAC is decided once the cluster is read
-(`isManagementCluster`). While whether the person is staff is being
+no RBAC tab and nothing redirects: RBAC appears once the read says the
+cluster is a management one (`isManagementCluster`). While whether the person is staff is being
 read, SSH access shows its loading state; where it could not be read (no
 installation token), the tab stays. Overview (the bare path) is a column of panels:
 
@@ -667,7 +667,14 @@ first (a system subject has a `system:` name or a `kube-` namespace), then a
 table with a row per subject: the subject (a service account with its
 namespace), a button that opens the row to its bindings ("RoleBinding X in
 namespace Y grants ClusterRole Z"); its kind; its roles as chips; and where
-they apply ("Cluster-wide" and the namespaces). Narrower, the kind moves
+they apply ("Cluster-wide" and the namespaces), every cell at the top of
+its row. A search field above it (as on the clusters list, held while the
+tab is open) finds subjects by a case-insensitive substring of what their
+rows show (the subject with its namespace, kind, roles, scope) or of their
+bindings' names and namespaces, among the subjects the switch shows; a
+subject found only through a binding opens, with what was found marked.
+Where only system subjects the switch hides match, the empty state says how
+many and offers to show them. Narrower, the kind moves
 under the subject; at phone width the rows stack, with the roles and, opened,
 the bindings under each. Nothing to list, a failed read (reading role
 bindings needs cluster-wide read access) and only system subjects each say
