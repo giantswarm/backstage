@@ -1238,17 +1238,17 @@ describe('createRouter', () => {
   });
 
   it("surfaces muster's unknown-preset refusal as the request error", async () => {
-    // gs-node's client turns an `isError` meta-tool result into a thrown Error
-    // carrying muster's text; the frontend shows that text verbatim.
     filterTools.mockRejectedValue(
-      new Error(
+      new MusterToolError(
         'toolset [preset:foo] names unknown preset "foo"; known presets: read-only, none, full',
+        [],
+        { tool: 'filter_tools', installation: 'gazelle' },
       ),
     );
 
     const response = await request(app).get('/tools/filter?toolset=preset:foo');
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(422);
     expect(response.body.error.message).toContain('unknown preset "foo"');
   });
 

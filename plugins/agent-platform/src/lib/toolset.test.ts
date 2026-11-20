@@ -943,25 +943,42 @@ describe('isToolsetRefusal', () => {
   it.each([
     [
       'unknown preset',
-      new Error('toolset [preset:foo] names unknown preset "foo"'),
+      Object.assign(
+        new Error('toolset [preset:foo] names unknown preset "foo"'),
+        { status: 422 },
+      ),
       true,
     ],
     [
       'count',
-      new Error(
-        'toolset [a] has 129 selectors, more than the 128 allowed inline; define a preset',
+      Object.assign(
+        new Error(
+          'toolset [a] has 129 selectors, more than the 128 allowed inline; define a preset',
+        ),
+        { status: 422 },
       ),
       true,
     ],
     [
       'bytes',
-      new Error(
-        'toolset encodes to 9000 bytes, more than the 8192 allowed inline; define a preset',
+      Object.assign(
+        new Error(
+          'toolset encodes to 9000 bytes, more than the 8192 allowed inline; define a preset',
+        ),
+        { status: 422 },
       ),
       true,
     ],
     ['422', Object.assign(new Error('refused'), { status: 422 }), true],
-    ['400', Object.assign(new Error('refused'), { status: 400 }), true],
+    [
+      '500 with refusal text',
+      Object.assign(
+        new Error('toolset [preset:foo] names unknown preset "foo"'),
+        { status: 500 },
+      ),
+      false,
+    ],
+    ['400', Object.assign(new Error('refused'), { status: 400 }), false],
     [
       '401',
       Object.assign(new Error('session expired'), { status: 401 }),

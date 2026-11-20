@@ -1299,6 +1299,11 @@ answer is rendered verbatim:
 
 A full toolset adds a "Full gateway access" warning.
 
+The Tools step allows Continue while Muster checks the selection. Local
+validation errors and an explicit toolset refusal block Continue. The preview
+request times out after five seconds; a failed check offers a retry and allows
+Continue. Agent-manager validates the toolset again on save.
+
 `get_info` (`useAgentManagerInfo`) supplies the chart's OCI URL and range, the
 newest version, the platform Harness's name, the muster MCP URL (`muster.url`),
 the Flux ServiceAccount and the capability flags. The portal has no chart

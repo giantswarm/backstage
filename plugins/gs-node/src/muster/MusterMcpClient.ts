@@ -391,6 +391,7 @@ function authRequiredOf(
  *   names them;
  * - `connector_refused` -- muster refused a connector write
  *   ({@link CONNECTOR_REFUSALS});
+ * - `toolset_refused` -- filter_tools refused the selected toolset;
  * - `interrupted` -- the muster replica serving the call shut down (a
  *   rollout); the caller may send it again;
  * - `timeout` -- the MCP server gave no answer within muster's timeout for it;
@@ -406,6 +407,7 @@ export type MusterToolErrorKind =
   | McpToolRefusal
   | McpToolFailure
   | 'connector_refused'
+  | 'toolset_refused'
   | 'interrupted'
   | 'timeout'
   | 'client_not_connected'
@@ -445,6 +447,7 @@ export const MUSTER_TOOL_ERROR_STATUS: Record<MusterToolErrorKind, number> = {
   unsupported: 400,
   does_not_fit: 422,
   connector_refused: 422,
+  toolset_refused: 422,
   interrupted: 503,
   timeout: 504,
   client_not_connected: 503,
@@ -516,6 +519,8 @@ const MUSTER_FAILURES: Array<[RegExp, MusterToolErrorKind]> = [
   ],
 ];
 
+const TOOLSET_REFUSALS = [/^toolset \[/, /^toolset encodes to /];
+
 /**
  * The kind of a tool's error, from its message; undefined when unknown.
  * `interrupted` is muster's structured mark of a rollout's interruption
@@ -528,6 +533,12 @@ export function musterToolErrorKindOf(
 ): MusterToolErrorKind | undefined {
   if (options.interrupted) {
     return 'interrupted';
+  }
+  if (
+    tool === 'filter_tools' &&
+    TOOLSET_REFUSALS.some(pattern => pattern.test(message))
+  ) {
+    return 'toolset_refused';
   }
   const server = musterServerOfTool(tool);
   const serverRefusal = mcpToolRefusalOf(server, message);
@@ -1007,14 +1018,27 @@ export class MusterMcpClient {
         );
       }
 
-      const result: unknown = await tool.execute(args, {
-        toolCallId: `muster-backend-${metaTool}`,
-        messages: [],
-        // ai@7 added a required `context` field to ToolExecutionOptions
-        // (formerly experimental_context). Muster meta-tools carry no tool
-        // context, so pass undefined.
-        context: undefined,
-      });
+      const signal =
+        metaTool === 'filter_tools' ? AbortSignal.timeout(5_000) : undefined;
+      let result: unknown;
+      try {
+        result = await tool.execute(args, {
+          toolCallId: `muster-backend-${metaTool}`,
+          messages: [],
+          ...(signal ? { abortSignal: signal } : {}),
+          context: undefined,
+        });
+      } catch (error) {
+        if (signal?.aborted) {
+          throw this.toolError(
+            "no answer within the server's timeout of 5s",
+            [],
+            metaTool,
+            false,
+          );
+        }
+        throw error;
+      }
       return result;
     });
   }
