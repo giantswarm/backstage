@@ -1,9 +1,24 @@
 import type { ReactNode } from 'react';
 import { render, screen } from '@testing-library/react';
 import {
+  ModelConfig,
+  type ModelConfigInterface,
+} from '@giantswarm/backstage-plugin-kubernetes-react';
+import {
   CustomizeDataProvider,
   useCustomizeData,
 } from './CustomizeDataProvider';
+
+// A real instance, so every accessor the Models list reads exists.
+const mockModelConfig = new ModelConfig(
+  {
+    apiVersion: 'api.kagent.dev/v1alpha3',
+    kind: 'ModelConfig',
+    metadata: { name: 'sonnet', namespace: 'support' },
+    spec: { provider: 'Anthropic', model: 'claude-sonnet-4-5' },
+  } as ModelConfigInterface,
+  'golem',
+);
 
 let mockAgentsLoading = false;
 let mockAgentsLoadingMore = false;
@@ -34,28 +49,7 @@ jest.mock('../ModelConfigsProvider', () => ({
   useModelConfigs: () => ({
     isLoading: mockModelsLoading || mockModelsPartial,
     installations: ['golem'],
-    modelConfigsFor: () =>
-      mockModelsLoading
-        ? []
-        : [
-            {
-              cluster: 'golem',
-              getNamespace: () => 'support',
-              getName: () => 'sonnet',
-              getAnnotations: () => undefined,
-              getDisplayName: () => 'Sonnet',
-              getProvider: () => 'Anthropic',
-              getModel: () => 'claude-sonnet-4-5',
-              getEndpoint: () => undefined,
-              getReadiness: () => 'accepted',
-              getReadinessMessage: () => undefined,
-              getFailedCondition: () => undefined,
-              isStale: () => false,
-              getAnthropic: () => undefined,
-              getOpenAI: () => undefined,
-              getOllama: () => undefined,
-            },
-          ],
+    modelConfigsFor: () => (mockModelsLoading ? [] : [mockModelConfig]),
   }),
 }));
 jest.mock('../WorkspacesDataProvider', () => ({
