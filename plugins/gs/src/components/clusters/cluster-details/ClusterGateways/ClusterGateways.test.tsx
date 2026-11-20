@@ -1,7 +1,11 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { Gateway, HttpRoute } from '../../../utils/gatewayTopology';
-import { ClusterGatewaysContent } from './ClusterGateways';
+import {
+  mockContainerWidth,
+  mockPhoneLayout,
+} from '@giantswarm/backstage-plugin-ui-react/testUtils';
+import { ClusterGatewaysContent, searchRouteRows } from './ClusterGateways';
 
 const parent = {
   kind: 'Gateway' as const,
@@ -15,6 +19,7 @@ const healthy: HttpRoute = {
   namespace: 'team-a',
   name: 'healthy',
   hostnames: ['healthy.example.com'],
+  backends: { status: 'not-reported' },
   parents: [
     {
       ...parent,
@@ -29,6 +34,7 @@ const broken: HttpRoute = {
   namespace: 'team-z',
   name: 'broken',
   hostnames: ['broken.example.com'],
+  backends: { status: 'not-reported' },
   parents: [
     {
       ...parent,
@@ -96,12 +102,14 @@ describe('<ClusterGatewaysContent />', () => {
       .getAllByRole('row')
       .filter(row => within(row).queryByText('giantswarm-default'));
     expect(rows).toHaveLength(1);
+    // The name wraps on its own; the route count is never cut with it.
     expect(
-      within(rows[0]).getByText('http · HTTP/80 · any · 1 route'),
-    ).toBeInTheDocument();
+      within(rows[0]).getByText('http · HTTP/80 · any').parentElement,
+    ).toHaveTextContent('http · HTTP/80 · any · 1 route');
     expect(
-      within(rows[0]).getByText('https · HTTPS/443 · *.example.com · 4 routes'),
-    ).toBeInTheDocument();
+      within(rows[0]).getByText('https · HTTPS/443 · *.example.com')
+        .parentElement,
+    ).toHaveTextContent('https · HTTPS/443 · *.example.com · 4 routes');
   });
 
   it('links concrete hostnames and leaves wildcards as text', async () => {
@@ -128,6 +136,23 @@ describe('<ClusterGatewaysContent />', () => {
       expect(screen.queryByText('healthy')).not.toBeInTheDocument(),
     );
     expect(screen.getByText('broken')).toBeInTheDocument();
+  });
+
+  it('finds a route by a backend as the column shows it', () => {
+    const withBackend: HttpRoute = {
+      ...healthy,
+      backends: {
+        status: 'available',
+        mayHaveMore: false,
+        backends: [
+          { kind: 'Service', namespace: 'other', name: 'app-v2', port: '80' },
+        ],
+      },
+    };
+    const rows = [{ id: withBackend.id, route: withBackend }];
+    expect(searchRouteRows(rows, 'other')).toEqual(rows);
+    expect(searchRouteRows(rows, 'other/app-v2:80')).toEqual(rows);
+    expect(searchRouteRows(rows, 'elsewhere')).toEqual([]);
   });
 
   it('says no route matches, not that the cluster has none', async () => {
@@ -278,5 +303,331 @@ describe('<ClusterGatewaysContent />', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText('HTTPRoutes')).not.toBeInTheDocument();
     expect(screen.getByText('Envoy Gateway policies')).toBeInTheDocument();
+  });
+
+  describe('backends', () => {
+    const withBackends: HttpRoute = {
+      ...healthy,
+      backends: {
+        status: 'available',
+        backends: [
+          {
+            kind: 'Service',
+            namespace: 'other',
+            name: 'app-v2',
+            port: '80',
+            weight: '10',
+          },
+          {
+            kind: 'Service',
+            namespace: 'team-a',
+            name: 'app-v1',
+            port: '80',
+            weight: '90',
+          },
+        ],
+        mayHaveMore: false,
+      },
+    };
+
+    it('shows the backends of a route with namespace and weight', async () => {
+      await render([withBackends]);
+      // The weight is its own text, so a narrow column cuts the name only.
+      expect(screen.getByTitle('app-v1:80').parentElement).toHaveTextContent(
+        'app-v1:80 · weight 90',
+      );
+      expect(
+        screen.getByTitle('other/app-v2:80').parentElement,
+      ).toHaveTextContent('other/app-v2:80 · weight 10');
+      expect(
+        screen.queryByText(/first three backends/),
+      ).not.toBeInTheDocument();
+    });
+
+    it('names a kind that is not a Service and says more may exist', async () => {
+      await render([
+        {
+          ...healthy,
+          backends: {
+            status: 'available',
+            backends: [
+              {
+                kind: 'Backend',
+                namespace: 'team-a',
+                name: 'external',
+              },
+            ],
+            mayHaveMore: true,
+          },
+        },
+      ]);
+      expect(screen.getByText('Backend external')).toBeInTheDocument();
+      expect(
+        screen.getByText('This route may have more backends than shown.'),
+      ).toBeInTheDocument();
+    });
+
+    it('finds a route by backend name', async () => {
+      await render([withBackends, broken]);
+      fireEvent.change(screen.getByLabelText('Search HTTPRoutes'), {
+        target: { value: 'app-v2' },
+      });
+      await waitFor(() =>
+        expect(screen.queryByText('broken')).not.toBeInTheDocument(),
+      );
+      expect(screen.getByText('healthy')).toBeInTheDocument();
+    });
+
+    it('explains when the cluster does not export the backends', async () => {
+      await render([
+        {
+          ...healthy,
+          backends: { status: 'not-available', cause: 'not-exported' },
+        },
+      ]);
+      expect(
+        screen.getByText(
+          'Backends need a newer Gateway API bundle on this cluster.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Not available')).toBeInTheDocument();
+    });
+
+    it('says a failed backends load will be retried', async () => {
+      await render([
+        {
+          ...healthy,
+          backends: { status: 'not-available', cause: 'not-exported' },
+        },
+        {
+          ...broken,
+          backends: { status: 'not-available', cause: 'load-failed' },
+        },
+      ]);
+      expect(
+        screen.getByText(
+          'The backends could not be loaded. They are retried automatically.',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(/newer Gateway API bundle/),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe('at phone width', () => {
+    let layout: { restore: () => void };
+    beforeEach(() => {
+      layout = mockPhoneLayout();
+    });
+    afterEach(() => layout.restore());
+
+    it('stacks the routes with their failing condition and their facts', async () => {
+      await render([
+        healthy,
+        {
+          ...broken,
+          backends: {
+            status: 'available',
+            backends: [
+              { kind: 'Service', namespace: 'team-z', name: 'app', port: '80' },
+            ],
+            mayHaveMore: false,
+          },
+        },
+      ]);
+      // The Gateways and policies tables stay tables; only the routes stack.
+      expect(screen.queryByText('Parent / listener')).not.toBeInTheDocument();
+      const list = screen.getByRole('list', { name: 'HTTPRoutes' });
+      const brokenRow = within(list)
+        .getAllByRole('listitem')
+        .find(item => within(item).queryByText('broken'))!;
+      expect(
+        within(brokenRow).getByText('ResolvedRefs: False · RefNotPermitted'),
+      ).toBeInTheDocument();
+      expect(brokenRow).toHaveTextContent('broken.example.com');
+      expect(brokenRow).toHaveTextContent('to app:80');
+      expect(brokenRow).toHaveTextContent(
+        'Gateway envoy-gateway-system/giantswarm-default, listener https',
+      );
+      const healthyRow = within(list)
+        .getAllByRole('listitem')
+        .find(item => within(item).queryByText('healthy'))!;
+      expect(
+        within(healthyRow).getByText('Accepted: True'),
+      ).toBeInTheDocument();
+      expect(healthyRow).toHaveTextContent(
+        'Accepted: True, ResolvedRefs: True',
+      );
+    });
+
+    it('spells out what a stacked row cannot show as columns', async () => {
+      await render([
+        {
+          ...healthy,
+          id: 'team-a/pending',
+          name: 'pending',
+          hostnames: [],
+          backends: {
+            status: 'available',
+            backends: [
+              {
+                kind: 'Service',
+                namespace: 'team-a',
+                name: 'app',
+                port: '80',
+                weight: '90',
+              },
+            ],
+            mayHaveMore: true,
+          },
+          parents: [
+            {
+              ...parent,
+              sectionName: '',
+              port: '443',
+              accepted: { status: 'not-reported' },
+              resolvedRefs: { status: 'true', reason: 'ResolvedRefs' },
+            },
+          ],
+        },
+        {
+          ...healthy,
+          id: 'team-a/unknown',
+          name: 'unknown',
+          hostnames: undefined,
+          backends: { status: 'not-available', cause: 'not-exported' },
+          parents: [
+            {
+              ...parent,
+              accepted: { status: 'true', reason: 'Accepted' },
+              resolvedRefs: { status: 'not-available', cause: 'load-failed' },
+            },
+          ],
+        },
+      ]);
+      const list = screen.getByRole('list', { name: 'HTTPRoutes' });
+      const rowOf = (name: string) =>
+        within(list)
+          .getAllByRole('listitem')
+          .find(item => within(item).queryByText(name))!;
+      const pending = rowOf('pending');
+      expect(
+        within(pending).getByText('Accepted: Not reported'),
+      ).toBeInTheDocument();
+      expect(pending).toHaveTextContent('No controller has reported');
+      expect(pending).toHaveTextContent('any hostname');
+      expect(pending).toHaveTextContent('to app:80 (weight 90), maybe more');
+      expect(pending).toHaveTextContent(
+        'Gateway envoy-gateway-system/giantswarm-default, port 443',
+      );
+      // Not a check: one condition could not be read.
+      const unknown = rowOf('unknown');
+      expect(
+        within(unknown).getByText('ResolvedRefs: Not available'),
+      ).toBeInTheDocument();
+      expect(unknown).toHaveTextContent('hostnames not available');
+      expect(unknown).toHaveTextContent('backends not available');
+    });
+
+    it('shows the Gateways table without listeners while loading', async () => {
+      await renderInTestApp(
+        <ClusterGatewaysContent
+          clusterName="demo"
+          gateways={[]}
+          routes={[]}
+          isLoading
+          policies={[]}
+          policiesLoading={false}
+        />,
+      );
+      expect(
+        screen.getByRole('columnheader', { name: 'Programmed' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('columnheader', { name: 'Listeners' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('says when a cluster has no Gateways', async () => {
+      await render([], []);
+      expect(
+        screen.getByText(/No Gateways found on cluster/),
+      ).toBeInTheDocument();
+    });
+
+    it('shows only the route and its conditions while loading', async () => {
+      await renderInTestApp(
+        <ClusterGatewaysContent
+          clusterName="demo"
+          gateways={[]}
+          routes={[]}
+          isLoading
+          policies={[]}
+          policiesLoading={false}
+        />,
+      );
+      expect(
+        screen.getByRole('columnheader', { name: 'HTTPRoute' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('columnheader', { name: 'Backends' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('columnheader', { name: 'ResolvedRefs' }),
+      ).toBeInTheDocument();
+    });
+
+    it('stacks the Gateways with their conditions and listeners', async () => {
+      await render(
+        [],
+        [
+          {
+            id: 'envoy-gateway-system/giantswarm-default',
+            namespace: 'envoy-gateway-system',
+            name: 'giantswarm-default',
+            className: 'giantswarm-default',
+            accepted: { status: 'true' },
+            programmed: { status: 'false', reason: 'AddressNotAssigned' },
+            listeners: [
+              { name: 'http', protocol: 'HTTP', port: '80', attachedRoutes: 1 },
+            ],
+          },
+        ],
+      );
+      const list = screen.getByRole('list', { name: 'Gateways' });
+      const row = within(list).getByRole('listitem');
+      expect(
+        within(row).getByText('Programmed: False · AddressNotAssigned'),
+      ).toBeInTheDocument();
+      expect(row).toHaveTextContent('envoy-gateway-system');
+      expect(row).toHaveTextContent('1 listener');
+      expect(row).toHaveTextContent(
+        'Accepted: True, Programmed: False · AddressNotAssigned',
+      );
+      expect(
+        within(row).getByText('http · HTTP/80 · any · 1 route'),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('narrower than all columns', () => {
+    let container: { restore: () => void };
+    beforeEach(() => {
+      container = mockContainerWidth(860);
+    });
+    afterEach(() => container.restore());
+
+    it('moves the parent into the route description', async () => {
+      await render([healthy]);
+      expect(
+        screen.queryByRole('columnheader', { name: 'Parent / listener' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'team-a · Gateway envoy-gateway-system/giantswarm-default, listener https',
+        ),
+      ).toBeInTheDocument();
+    });
   });
 });

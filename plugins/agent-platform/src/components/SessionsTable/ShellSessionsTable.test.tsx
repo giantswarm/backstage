@@ -220,7 +220,7 @@ async function optionsOf(field: string) {
   const options = within(listbox)
     .getAllByRole('option')
     .map(option => option.textContent);
-  await userEvent.keyboard('{Escape}');
+  await closeDropdown(field);
   return options;
 }
 
@@ -230,7 +230,16 @@ async function pick(field: string, ...options: Array<string | RegExp>) {
   for (const option of options) {
     await userEvent.click(await screen.findByRole('option', { name: option }));
   }
+  await closeDropdown(field);
+}
+
+/**
+ * Closes a facet's dropdown. Focus returns to its trigger a frame later; a
+ * click before then loses its popover to that focus move.
+ */
+async function closeDropdown(field: string) {
   await userEvent.keyboard('{Escape}');
+  await waitFor(() => expect(dropdown(field)).toHaveFocus());
 }
 
 describe('SessionsTable in the shell layout', () => {
@@ -703,8 +712,16 @@ describe('SessionsTable in the shell layout', () => {
     expect(
       screen.getByRole('menuitemradio', { name: 'Muted' }),
     ).toHaveAttribute('aria-checked', 'true');
+    // Escape closes the submenu and the menu. Focus returns to the trigger a
+    // frame later; a click before then loses its menu to that focus move.
     await user.keyboard('{Escape}');
-    await user.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', {
+          name: 'More actions for “Release notes”',
+        }),
+      ).toHaveFocus(),
+    );
 
     // Each row has its own level.
     await openNotifications('Triage this week');

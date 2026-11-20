@@ -897,6 +897,13 @@ describe('ServeModelPage · the selects at scale', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('searchbox')).toBeInTheDocument();
     await userEvent.keyboard('{Escape}');
+    // Focus returns to the trigger a frame later; wait, or it steals focus
+    // from the next popover.
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: /Environment and backend/ }),
+      ).toHaveFocus(),
+    );
 
     await waitFor(() => expect(listPresets).toHaveBeenCalled());
     await userEvent.click(await presetSelect());
