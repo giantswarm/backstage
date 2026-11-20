@@ -600,9 +600,12 @@ Organization, Provider with its region, Account (in groups of four, linked to
 the AWS console), Workers and Created. The facts column belongs to Overview;
 the other tabs take the page's width.
 
-It has three tabs so far, Overview, Node pools and, for Giant Swarm staff
-(`useCurrentUser`), SSH access; any other tab redirects to Overview, and so
-does SSH access for a person known not to be staff. While that is being
+It has four tabs so far, Overview, Node pools, RBAC for a management cluster
+and, for Giant Swarm staff (`useCurrentUser`), SSH access; any other tab
+redirects to Overview, and so does RBAC for a workload cluster and SSH access
+for a person known not to be staff. While the cluster is read, the strip has
+RBAC where the address is a management cluster's (named after its
+environment, in `org-giantswarm`). While whether the person is staff is being
 read, SSH access shows its loading state; where it could not be read (no
 installation token), the tab stays. Overview (the bare path) is a column of panels:
 
@@ -654,6 +657,21 @@ Then "Technical details of <pool>", open: for a machine pool its instance
 shape, scaling and resources; for a Karpenter pool what runs now, the
 provisioning envelope, lifecycle and disruption, and the node template (the
 classic page's cards, with Karpenter's metrics from Mimir).
+
+RBAC (`/rbac`) is the classic cluster page's RBAC tab in the shell's style:
+who can do what in the management cluster, read from the installation's
+RoleBindings and ClusterRoleBindings and grouped by subject with the classic
+tab's `utils` (`buildRbacSubjectRows`). Under a sentence on what it shows,
+"Access grants (n subjects)" and a "Show system subjects (n)" switch, off at
+first (a system subject has a `system:` name or a `kube-` namespace), then a
+table with a row per subject: the subject (a service account with its
+namespace), a button that opens the row to its bindings ("RoleBinding X in
+namespace Y grants ClusterRole Z"); its kind; its roles as chips; and where
+they apply ("Cluster-wide" and the namespaces). Narrower, the kind moves
+under the subject; at phone width the rows stack, with the roles and, opened,
+the bindings under each. Nothing to list, a failed read (reading role
+bindings needs cluster-wide read access) and only system subjects each say
+so.
 
 SSH access (`/ssh-access`) is the classic cluster page's SSH access tab in
 the shell's style: a sentence on choosing a node, then the Teleport commands

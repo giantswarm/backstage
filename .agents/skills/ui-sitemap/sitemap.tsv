@@ -78,6 +78,7 @@ platform-clusters	platform	tab	Clusters	/platform/clusters
 platform-cluster	platform-clusters	tabs	Cluster	/platform/clusters/:installation/:namespace/:name	open /platform/clusters > click the first workload cluster
 platform-cluster-overview	platform-cluster	tab	Overview	/platform/clusters/:installation/:namespace/:name
 platform-cluster-node-pools	platform-cluster	tab	Node pools	/platform/clusters/:installation/:namespace/:name/node-pools
+platform-cluster-rbac	platform-cluster	tab	RBAC	/platform/clusters/:installation/:namespace/:name/rbac	open /platform/clusters > search "giantswarm" > click a management cluster > RBAC	management clusters only
 platform-cluster-ssh-access	platform-cluster	tab	SSH access	/platform/clusters/:installation/:namespace/:name/ssh-access		Giant Swarm staff only
 usage	home	tabs	Usage	/usage
 usage-overview	usage	tab	Overview	/usage

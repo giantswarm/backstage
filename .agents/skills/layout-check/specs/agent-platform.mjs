@@ -162,6 +162,32 @@ const openCluster = kind => async ({ page, skip }) => {
   await page.goto(new URL(href, page.url()).href);
 };
 
+/** Turns on the RBAC tab's "Show system subjects" switch. */
+const rbacSystemSubjects = {
+  name: 'system subjects',
+  run: async ({ page, skip }) => {
+    const label = page.getByText(/^Show system subjects \(\d+\)$/);
+    if (!(await shows(label))) skip('no subjects read');
+    // The input sits under bui's drawn switch: press its label.
+    await label.click();
+  },
+};
+
+/** Opens the RBAC tab's first subject to its bindings. */
+const rbacFirstBindings = {
+  name: 'first subject opened',
+  run: async ({ page, skip }) => {
+    // In the table's rows, or on a phone the stacked list's.
+    const toggle = page
+      .locator(
+        'tbody button[aria-expanded="false"], ul[aria-label="Subjects"] button[aria-expanded="false"]',
+      )
+      .first();
+    if (!(await shows(toggle))) skip('no subject to open');
+    await toggle.click();
+  },
+};
+
 /**
  * Opens a tab of a ready workload cluster's page, by its tab. In `loading`
  * and `error` no cluster is listed, and a cluster's page shows its own state:
@@ -432,6 +458,19 @@ export default [
     name: 'Platform node pools',
     path: '/platform/clusters',
     setup: openClusterTab('node-pools', /^Node pools/),
+  },
+  {
+    // A served environment's management cluster, by its address: its name
+    // is the environment's in every scenario (none at all in `empty`).
+    name: 'Platform RBAC',
+    path: '/platform/clusters/meadow/org-giantswarm/meadow/rbac',
+    states: [rbacSystemSubjects, rbacFirstBindings],
+  },
+  {
+    // Only system subjects: the table's empty state, then the switch.
+    name: 'Platform RBAC · system only',
+    path: '/platform/clusters/fennel/org-giantswarm/fennel/rbac',
+    states: [rbacSystemSubjects],
   },
   {
     name: 'Platform SSH access',
