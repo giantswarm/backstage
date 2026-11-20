@@ -143,6 +143,25 @@ give the Backstage pod a ConfigMap's variables
 lab's `agentlab.yaml`, applied once with `agentlab platform`), then change the
 ConfigMap and restart the Deployment.
 
+An overlay setting `backstage.backstage.extraEnvVars` replaces the chart's
+entire list, including `NODE_EXTRA_CA_CERTS`. Without that variable, the auth
+plugin cannot reach Dex over TLS with the lab CA, and the Backstage pod never
+becomes Ready. If you set `extraEnvVars`, retain `NODE_EXTRA_CA_CERTS` and the
+chart's other entries. To add variables safely, use an existing ConfigMap in
+the Backstage pod's namespace and reference its name in the values overlay:
+
+```yaml
+backstage:
+  backstage:
+    extraEnvVarsCM:
+      - backstage-portal-env
+```
+
+The `backstage-portal-env` ConfigMap's `data` can contain
+`APP_CONFIG_app_portals_agentPlatform: 'true'` for shell mode, or `'false'`
+with `APP_CONFIG_app_rootRedirect: /` for classic mode. This keeps the
+chart's `extraEnvVars`, including its CA configuration, intact.
+
 `agentlab-mobile` drives Chromium as a phone (`mobileContextOptions` in
 `lab.ts`; `fixtures.ts`' `variant` option applies it to every context of the
 worker). Its specs assert phone-only layout and, on every page,
