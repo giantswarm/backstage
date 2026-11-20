@@ -821,12 +821,14 @@ describe('PlatformClusterPage', () => {
     expect(screen.getByRole('tab', { name: 'RBAC' })).toBeInTheDocument();
   });
 
-  it('leaves RBAC out of the strip while a workload cluster is read', async () => {
+  it('decides nothing about RBAC while a workload cluster is read', async () => {
     mockState = stateOf({ loading: true });
-    await renderPage('/platform/clusters/meadow/org-fern/alder-birch');
+    await renderPage('/platform/clusters/meadow/org-fern/alder-birch/rbac');
 
-    expect(screen.getByRole('tab', { name: 'Node pools' })).toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: 'RBAC' })).not.toBeInTheDocument();
+    expect(screen.getByRole('status', { name: 'path' })).toHaveTextContent(
+      /\/rbac$/,
+    );
+    expect(screen.getByRole('tab', { name: 'RBAC' })).toBeInTheDocument();
   });
 
   it('opens Overview for a tab the page does not have', async () => {

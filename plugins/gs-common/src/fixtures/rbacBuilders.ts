@@ -40,6 +40,14 @@ export type FixtureRbacSettings = {
 const EMAIL_DOMAIN = 'example.com';
 
 /**
+ * `<prefix><middle><suffix>` within a Kubernetes name's limit: the middle is
+ * cut, so names that differ in their prefix or suffix stay apart.
+ */
+function named(prefix: string, middle: string, suffix = ''): string {
+  return `${prefix}${fitName(middle, MAX_NAME_LENGTH - prefix.length - suffix.length)}${suffix}`;
+}
+
+/**
  * The bindings Kubernetes and its components bring along: every subject a
  * system one (`system:` names, `kube-` namespaces), as on any cluster.
  */
@@ -175,9 +183,17 @@ export function buildRbacBindings(
 
     const random = createRandom(hashOf(`${installation.name}/rbac`));
     const name = createNamer(random);
-    const person = () => `${name(nameLength).name}@${EMAIL_DOMAIN}`;
-    const platformAdmins = `oidc:${name(nameLength).name}-platform-admins`;
-    const platformReaders = `oidc:${name(nameLength).name}-platform-readers`;
+    const person = () => named('', name(nameLength).name, `@${EMAIL_DOMAIN}`);
+    const platformAdmins = named(
+      'oidc:',
+      name(nameLength).name,
+      '-platform-admins',
+    );
+    const platformReaders = named(
+      'oidc:',
+      name(nameLength).name,
+      '-platform-readers',
+    );
 
     const bindings: Omit<FixtureRbacBinding, 'installation' | 'createdAt'>[] = [
       {
@@ -220,34 +236,34 @@ export function buildRbacBindings(
     ];
     organizations.forEach((organization, turn) => {
       const namespace = `org-${organization}`;
-      const readers = `oidc:${organization}-readers`;
+      const readers = named('oidc:', organization, '-readers');
       bindings.push(
         {
           kind: 'RoleBinding',
-          name: `organization-${organization}-admins`,
+          name: named('organization-', organization, '-admins'),
           namespace,
           role: { kind: 'ClusterRole', name: 'cluster-admin' },
           subjects: [
-            { kind: 'Group', name: `oidc:${organization}-admins` },
+            { kind: 'Group', name: named('oidc:', organization, '-admins') },
             { kind: 'User', name: person() },
           ],
         },
         {
           kind: 'RoleBinding',
-          name: `organization-${organization}-deployer`,
+          name: named('organization-', organization, '-deployer'),
           namespace,
           role: { kind: 'ClusterRole', name: 'edit' },
           subjects: [
             {
               kind: 'ServiceAccount',
-              name: `${organization}-deployer`,
+              name: named('', organization, '-deployer'),
               namespace,
             },
           ],
         },
         {
           kind: 'RoleBinding',
-          name: `organization-${organization}-readers`,
+          name: named('organization-', organization, '-readers'),
           namespace,
           role: { kind: 'ClusterRole', name: 'view' },
           subjects: [{ kind: 'Group', name: readers }],
@@ -259,7 +275,7 @@ export function buildRbacBindings(
       if (next !== organization) {
         bindings.push({
           kind: 'RoleBinding',
-          name: `organization-${next}-guest-readers`,
+          name: named('organization-', next, '-guest-readers'),
           namespace: `org-${next}`,
           role: { kind: 'ClusterRole', name: 'view' },
           subjects: [{ kind: 'Group', name: readers }],
@@ -275,7 +291,7 @@ export function buildRbacBindings(
       const user = person();
       bindings.push({
         kind: 'RoleBinding',
-        name: fitName(`view-${user.split('@')[0]}`, MAX_NAME_LENGTH),
+        name: named('view-', user.split('@')[0]),
         namespace: organization ? `org-${organization}` : 'default',
         role: { kind: 'ClusterRole', name: 'view' },
         subjects: [{ kind: 'User', name: user }],

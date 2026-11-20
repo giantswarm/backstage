@@ -255,6 +255,10 @@ describe('PlatformClusterRBAC', () => {
     expect(alert).toHaveTextContent(
       'Reading role bindings requires cluster-wide read access.',
     );
+    // Both reads failed alike: the cause is said once.
+    expect(alert.textContent?.split('rolebindings is forbidden')).toHaveLength(
+      2,
+    );
   });
 
   it('lists what it read when one of the reads failed', async () => {

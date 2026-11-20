@@ -604,8 +604,8 @@ It has four tabs so far, Overview, Node pools, RBAC for a management cluster
 and, for Giant Swarm staff (`useCurrentUser`), SSH access; any other tab
 redirects to Overview, and so does RBAC for a workload cluster and SSH access
 for a person known not to be staff. While the cluster is read, the strip has
-RBAC where the address is a management cluster's (named after its
-environment, in `org-giantswarm`). While whether the person is staff is being
+every tab and nothing redirects: RBAC is decided once the cluster is read
+(`isManagementCluster`). While whether the person is staff is being
 read, SSH access shows its loading state; where it could not be read (no
 installation token), the tab stays. Overview (the bare path) is a column of panels:
 

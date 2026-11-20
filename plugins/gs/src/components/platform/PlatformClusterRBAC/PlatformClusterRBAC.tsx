@@ -206,9 +206,9 @@ function SubjectToggle({
   );
 }
 
-/** The id of a subject's bindings, shown under its row. */
-function bindingsId(prefix: string, row: RbacSubjectRow): string {
-  return `${prefix}-${row.id.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+/** The id of a subject's bindings, shown under its row: by its place in the list. */
+function bindingsId(prefix: string, index: number): string {
+  return `${prefix}-bindings-${index}`;
 }
 
 /** The subject cell: the toggle, and while the Kind column is left out, the kind under it. */
@@ -268,6 +268,11 @@ function SubjectsTable({
   const classes = useStyles();
   const prefix = useId().replace(/:/g, '');
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  // Each subject's place in the list, for its bindings' DOM id.
+  const indexOf = useMemo(
+    () => new Map(rows.map((row, index) => [row.id, index])),
+    [rows],
+  );
   const toggle = useCallback(
     (id: string) =>
       setExpanded(current => {
@@ -295,7 +300,7 @@ function SubjectsTable({
               isNarrow={isNarrow}
               isExpanded={expanded.has(row.id)}
               onToggle={toggle}
-              controls={bindingsId(prefix, row)}
+              controls={bindingsId(prefix, indexOf.get(row.id) ?? 0)}
             />
           ),
         },
@@ -335,7 +340,7 @@ function SubjectsTable({
         },
       ];
     },
-    [expanded, toggle, prefix],
+    [expanded, toggle, prefix, indexOf],
   );
 
   const fit = useFittingColumns(columnsFor, {
@@ -353,9 +358,9 @@ function SubjectsTable({
         <StackedRowList
           aria-label="Subjects"
           emptyState={emptyState}
-          rows={rows.map(row => {
+          rows={rows.map((row, index) => {
             const isExpanded = expanded.has(row.id);
-            const id = bindingsId(prefix, row);
+            const id = bindingsId(prefix, index);
             return {
               id: row.id,
               title: (
@@ -402,7 +407,10 @@ function SubjectsTable({
                 {() => (
                   <Cell colSpan={visibleColumns.length}>
                     <div className={classes.detail}>
-                      <Bindings row={row} id={bindingsId(prefix, row)} />
+                      <Bindings
+                        row={row}
+                        id={bindingsId(prefix, indexOf.get(row.id) ?? 0)}
+                      />
                     </div>
                   </Cell>
                 )}
@@ -467,7 +475,7 @@ export function PlatformClusterRBAC() {
   );
 
   const readFailed = errors.length > 0;
-  const errorDescription = `${errors.join(' ')} Reading role bindings requires cluster-wide read access.`;
+  const errorDescription = `${[...new Set(errors)].join(' ')} Reading role bindings requires cluster-wide read access.`;
 
   if (!isLoading && rows.length === 0) {
     return readFailed ? (

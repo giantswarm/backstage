@@ -139,18 +139,10 @@ function tabsOf({
 }
 
 /**
- * The tabs while the cluster is read: a management cluster's where the
- * address is one's (named after its environment, in `org-giantswarm`), so
- * the strip keeps its shape once the cluster is read.
+ * The tabs while the cluster is read: every one, as nothing is decided
+ * before the read, so a person on a tab's address stays there.
  */
-function loadingTabsOf(address: ClusterAddress): ClusterPageTab[] {
-  return tabsOf({
-    isManagement:
-      address.namespace === Constants.MANAGEMENT_CLUSTER_NAMESPACE &&
-      address.name === address.installationName,
-    isStaff: true,
-  });
-}
+const LOADING_TABS = [...PLATFORM_CLUSTER_PAGE_TABS];
 
 /**
  * The tabs the person has, with the number of node pools on theirs once it
@@ -220,16 +212,15 @@ function BackToClusters({ href }: { href: string | undefined }) {
   return href ? <Link href={href}>Back to clusters</Link> : null;
 }
 
-/** The page while its address is all it knows, in its final geometry. */
-function LoadingPage({ address }: { address: ClusterAddress }) {
-  const { name } = address;
+/** The page while its name is all it knows, in its final geometry. */
+function LoadingPage({ name }: { name: string }) {
   const { frame } = useFrame(name);
   return (
     <ShellPage
       title={<ShellPageTitleSkeleton label={`Reading ${name}…`} />}
       {...frame}
       badges={<ShellPageBadgeSkeleton />}
-      tabs={loadingTabsOf(address)}
+      tabs={LOADING_TABS}
       aside={<ShellPageFactsSkeleton />}
     >
       <ShellPageFactsSkeleton />
@@ -756,8 +747,7 @@ function InstallerOnly({
  * in its environment, a failed read (with its cause, whatever the installer
  * says), only its installer left (see `InstallerOnly`), or read.
  */
-function ClusterRead({ address }: { address: ClusterAddress }) {
-  const { name } = address;
+function ClusterRead({ name }: { name: string }) {
   const {
     cluster,
     clusterApp,
@@ -776,7 +766,7 @@ function ClusterRead({ address }: { address: ClusterAddress }) {
     return <ClusterPage />;
   }
   if (loading) {
-    return <LoadingPage address={address} />;
+    return <LoadingPage name={name} />;
   }
   if (notFound) {
     return (
@@ -847,7 +837,7 @@ function EnvironmentGate({
     );
   }
   if (installations.isLoading || disabled.isLoading) {
-    return <LoadingPage address={address} />;
+    return <LoadingPage name={name} />;
   }
   if (!installations.clusters.includes(installationName)) {
     return (
@@ -913,7 +903,7 @@ export function PlatformClusterPage({ address }: { address: ClusterAddress }) {
           same query client and its cache. */}
       <EnvironmentGate key={addressKey(address)} address={address}>
         <ClusterProvider address={address}>
-          <ClusterRead address={address} />
+          <ClusterRead name={address.name} />
         </ClusterProvider>
       </EnvironmentGate>
     </ErrorsProvider>

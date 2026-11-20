@@ -24,6 +24,7 @@ import {
   MODEL_BACKEND_STATES,
 } from './hostingBuilders';
 import { MAX_NAME_LENGTH } from './names';
+import { scenarioDataSet } from './scenarios';
 
 const now = Date.parse('2026-11-14T12:00:00Z');
 const kubernetesName = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
@@ -578,12 +579,30 @@ describe('builder settings', () => {
       }
     }
     for (const binding of rbacBindings) {
-      expect(binding.name.length).toBeLessThanOrEqual(MAX_NAME_LENGTH);
       expect(binding.namespace !== undefined).toBe(
         binding.kind === 'RoleBinding',
       );
     }
   });
+
+  it.each(['base', 'many', 'long-names'] as const)(
+    'keeps the RBAC bindings’ and their subjects’ names to a Kubernetes name’s limit, and apart, in %s',
+    scenario => {
+      const { rbacBindings } = scenarioDataSet(scenario);
+      const names = rbacBindings.flatMap(binding => [
+        binding.name,
+        ...binding.subjects.map(subject => subject.name),
+      ]);
+      for (const name of names) {
+        expect(name.length).toBeLessThanOrEqual(MAX_NAME_LENGTH);
+      }
+      // No two bindings of an installation share a kind, namespace and name.
+      const keys = rbacBindings.map(
+        b => `${b.installation}/${b.kind}/${b.namespace ?? ''}/${b.name}`,
+      );
+      expect(new Set(keys).size).toBe(keys.length);
+    },
+  );
 
   it('counts the RBAC bindings of people by rbacSubjects, and builds none for a count of 0', () => {
     const subjects = (count: number) =>
