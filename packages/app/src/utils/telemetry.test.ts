@@ -564,6 +564,11 @@ describe('getTelemetryPageViewPayload', () => {
       '/platform/clusters/:installation/:namespace/:name/node-pools',
     ],
     [
+      '/platform/clusters/meadow/org-fern/alder-birch/gateways',
+      { page: 'Platform cluster', view: 'gateways' },
+      '/platform/clusters/:installation/:namespace/:name/gateways',
+    ],
+    [
       '/platform/clusters/meadow/org-giantswarm/meadow/rbac',
       { page: 'Platform cluster', view: 'rbac' },
       '/platform/clusters/:installation/:namespace/:name/rbac',
@@ -909,6 +914,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/platform/clusters',
       '/platform/clusters/meadow/org-fern/alder-birch',
       '/platform/clusters/meadow/org-fern/alder-birch/node-pools',
+      '/platform/clusters/meadow/org-fern/alder-birch/gateways',
       '/platform/clusters/meadow/org-giantswarm/meadow/rbac',
       '/platform/clusters/meadow/org-fern/alder-birch/ssh-access',
       '/customize/agents',

@@ -31,7 +31,7 @@ import { conditionValue, worstCondition } from '../conditions';
 /** A name that wraps where the column is too narrow, rather than being cut. */
 const wrapping = { minWidth: 0, overflowWrap: 'anywhere' } as const;
 
-const UNATTACHED_REASON =
+export const UNATTACHED_REASON =
   'Target missing, not managed by Envoy Gateway, or not reconciled yet';
 
 function statusUnavailable(policy: GatewayPolicy): policy is GatewayPolicy & {
@@ -43,7 +43,7 @@ function statusUnavailable(policy: GatewayPolicy): policy is GatewayPolicy & {
 }
 
 /** Why targets or status can't be shown, if any can't. */
-function unavailableCause(policies: GatewayPolicy[]) {
+export function policiesUnavailableCause(policies: GatewayPolicy[]) {
   return unavailableCauseOf(
     policies.flatMap((policy): ConditionState[] => [
       ...(policy.targetsLoaded
@@ -56,7 +56,7 @@ function unavailableCause(policies: GatewayPolicy[]) {
   );
 }
 
-const unavailableNotice = {
+export const policiesUnavailableNotice = {
   'load-failed':
     'Some policy targets or status could not be loaded. They are retried automatically.',
   // A cluster on 3.6.0 whose policies all use targetRef or targetSelectors and
@@ -301,7 +301,9 @@ export const PoliciesTable = ({
     );
   }
 
-  const unavailable = isLoading ? undefined : unavailableCause(policies);
+  const unavailable = isLoading
+    ? undefined
+    : policiesUnavailableCause(policies);
   const emptyState = (
     <Text variant="body-medium" color="secondary">
       No Envoy Gateway policies found on cluster <code>{clusterName}</code>.
@@ -311,7 +313,11 @@ export const PoliciesTable = ({
   return (
     <Flex direction="column" gap="2">
       {unavailable ? (
-        <Alert status="info" icon title={unavailableNotice[unavailable]} />
+        <Alert
+          status="info"
+          icon
+          title={policiesUnavailableNotice[unavailable]}
+        />
       ) : null}
       <div ref={fit.ref}>
         {fit.isCompact && !isLoading ? (

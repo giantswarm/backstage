@@ -1,0 +1,1 @@
+export { PlatformGatewayListenersTable } from './PlatformGatewayListenersTable';

@@ -207,6 +207,40 @@ const rbacFirstBindings = {
   },
 };
 
+/** Selects the Gateways tab's second Gateway, by its name's button. */
+const gatewaysSecond = {
+  name: 'another gateway selected',
+  run: async ({ page, skip }) => {
+    // The Gateways table's rows, or on a phone the stacked list's; the
+    // rail has pressed buttons of its own.
+    const second = page
+      .locator(
+        'table button[aria-pressed="false"], ul[aria-label="Gateways"] button[aria-pressed="false"]',
+      )
+      .first();
+    if (!(await shows(second))) skip('no second gateway');
+    await second.click();
+  },
+};
+
+/**
+ * Types into the Gateways tab's finder. The first text in the field brings
+ * bui's clear button: `shift: false` for that state, as on the RBAC tab.
+ */
+const gatewaysSearch = (name, query, { first = false } = {}) => ({
+  name,
+  ...(first && { shift: false }),
+  run: async ({ page, skip }) => {
+    const field = page.getByRole('searchbox', {
+      name: 'Find a gateway by hostname, route or policy',
+    });
+    if (!(await shows(field)) || (await field.isDisabled())) {
+      skip('no gateways read');
+    }
+    await field.fill(query);
+  },
+});
+
 /**
  * Opens a tab of a ready workload cluster's page, by its tab. In `loading`
  * and `error` no cluster is listed, and a cluster's page shows its own state:
@@ -498,6 +532,22 @@ export default [
     name: 'Platform RBAC · system only',
     path: '/platform/clusters/fennel/org-giantswarm/fennel/rbac',
     states: [rbacSystemSubjects],
+  },
+  {
+    // The first Gateway, another one, then the finder: a route on the
+    // second Gateway, a route attached only through a ListenerSet (marked
+    // in "Not attached to a gateway"), and nothing.
+    name: 'Platform Gateways',
+    path: '/platform/clusters',
+    setup: openClusterTab('gateways', 'Gateways'),
+    states: [
+      gatewaysSecond,
+      gatewaysSearch('search: a route on another gateway', 'ledger', {
+        first: true,
+      }),
+      gatewaysSearch('search: outside any gateway', 'event-webhooks'),
+      gatewaysSearch('search: no match', 'no-such-route'),
+    ],
   },
   {
     name: 'Platform SSH access',

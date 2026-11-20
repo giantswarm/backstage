@@ -92,7 +92,7 @@ export function searchRouteRows(
  * the bundle notice would be wrong for it. A single unreported route must not
  * hide the explanation for all the others.
  */
-function unavailableCause(
+export function unavailableCause(
   routes: HttpRoute[],
 ): 'load-failed' | 'not-exported' | undefined {
   return unavailableCauseOf(
@@ -103,7 +103,7 @@ function unavailableCause(
 }
 
 /** Why backends can't be shown, if any can't. A failed load wins, as above. */
-function backendsUnavailableCause(
+export function backendsUnavailableCause(
   routes: HttpRoute[],
 ): 'load-failed' | 'not-exported' | undefined {
   let notExported = false;
@@ -115,7 +115,7 @@ function backendsUnavailableCause(
   return notExported ? 'not-exported' : undefined;
 }
 
-const backendsUnavailableNotice = {
+export const backendsUnavailableNotice = {
   'load-failed':
     'The backends could not be loaded. They are retried automatically.',
   'not-exported': 'Backends need a newer Gateway API bundle on this cluster.',
@@ -161,7 +161,7 @@ function rowFacts(row: RouteParentRow): string[] {
   ];
 }
 
-const unavailableNotice = {
+export const unavailableNotice = {
   'load-failed':
     'Some route conditions could not be loaded. They are retried automatically.',
   'not-exported':
