@@ -1,5 +1,82 @@
 # @giantswarm/backstage-plugin-flux
 
+## 0.10.2
+
+### Patch Changes
+
+- 959b908: Fixture mode serves scenarios, outside production builds only: `?fixtures=empty`, `many`, `long-names`, `loading` or `error` on any page switches the data set of the Agent Platform's and the Kubernetes fixture APIs without a restart, and `?fixtures=base` goes back. In `error`, muster fails with its own signed-out, unauthorised and unreachable errors. The persisted query caches of another scenario are never restored.
+
+  The Toolchains tab and the New toolchain page say "Toolchains could not be checked" when no environment's Muster could say whether it runs the toolchain-manager, with why (a refused sign-in, an ended session, no answer) and a Retry, instead of reading forever. muster's `useMusterServerAvailability` reports each installation's error (`errorOf`).
+
+- f5615a0: Polling stops from hidden tabs and after a permanent error. `ui-react` adds
+  `pollingQueryOptions`, `isPermanentReadError` and `causeChain`: a query
+  spreads the options and polls only while the tab is visible, reads again as
+  it becomes visible where its data is stale, and stops after a 401, a 403 or a
+  "not connected" answer until a read succeeds again; a stopped query is not
+  read on becoming visible either. `inBackground` keeps a poll going from a
+  hidden tab while the caller has a reason, and `refetchOnVisible: false`
+  leaves the read on becoming visible to the next tick. `muster` adds
+  `musterPollingOptions` and `isPermanentMusterReadError`, which also stop on
+  muster's `server_sign_in_required` and a portal session that is gone. The
+  retry policies of the gs, flux, repositories and muster clients and of the
+  Mimir queries build on the same classifier.
+
+  The model-manager reads of the Serving view (`list_backends`, `list_models`,
+  `list_nodes`), the pull jobs, the GPU node pools, workspaces, toolchain
+  builds, session reads, the Kubernetes and Mimir polls, muster's status and
+  connector reads and the repositories watches follow the rule. The GPU node
+  pools read polls from a hidden tab only while a pool is being deployed, and
+  the inventory only while a served model is on its way in, so a pool's serve
+  intent still loads its model meanwhile. Where muster asks the person to sign
+  in to model-manager, the Serving view offers the sign-in, and polling resumes
+  once it lands.
+
+- Updated dependencies [c0113f8]
+- Updated dependencies [bd5f42a]
+- Updated dependencies [d553603]
+- Updated dependencies [77d1c12]
+- Updated dependencies [2f03302]
+- Updated dependencies [4536f3d]
+- Updated dependencies [01a63aa]
+- Updated dependencies [0f3570e]
+- Updated dependencies [dbd826c]
+- Updated dependencies [2f03302]
+- Updated dependencies [168ca66]
+- Updated dependencies [c775cfb]
+- Updated dependencies [cefb9d4]
+- Updated dependencies [b3c8677]
+- Updated dependencies [4536f3d]
+- Updated dependencies [371fda2]
+- Updated dependencies [d97c11d]
+- Updated dependencies [859651d]
+- Updated dependencies [3b65ce4]
+- Updated dependencies [959b908]
+- Updated dependencies [694e2ae]
+- Updated dependencies [e8c5832]
+- Updated dependencies [3b4a31f]
+- Updated dependencies [269c67b]
+- Updated dependencies [a7ecd9d]
+- Updated dependencies [5dac044]
+- Updated dependencies [b623ab3]
+- Updated dependencies [06dfa3d]
+- Updated dependencies [a05070d]
+- Updated dependencies [d29861d]
+- Updated dependencies [172b3de]
+- Updated dependencies [8949a13]
+- Updated dependencies [d29861d]
+- Updated dependencies [3627dfd]
+- Updated dependencies [7e12f91]
+- Updated dependencies [b905271]
+- Updated dependencies [671372c]
+- Updated dependencies [f5615a0]
+- Updated dependencies [f1e56fe]
+- Updated dependencies [35f1cdd]
+- Updated dependencies [249a84a]
+  - @giantswarm/backstage-plugin-gs-common@0.24.0
+  - @giantswarm/backstage-plugin-kubernetes-react@1.2.0
+  - @giantswarm/backstage-plugin-ui-react@0.11.0
+  - @giantswarm/backstage-plugin-flux-react@0.15.2
+
 ## 0.10.1
 
 ### Patch Changes

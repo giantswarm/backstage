@@ -1,5 +1,77 @@
 # @giantswarm/backstage-plugin-agent-platform-backend
 
+## 1.3.0
+
+### Minor Changes
+
+- a02eb7e: An Agent Platform organization's credentials are entered on the Dev Portal's credential form, never in a tool call.
+
+  - agent-platform-backend: `GET`, `POST` and `DELETE`
+    `/organizations/credential-operations/:operation?installation=` carry
+    agent-manager's credential operations (giantswarm/agent-manager#312) as the
+    person, with the installation token in `backstage-agent-manager-authorization`,
+    to `https://agentgateway.<baseDomain>/agent-manager` (the agent-platform
+    chart's `agentManager.route`) or
+    `agentPlatform.agentManager.installations.<name>.apiBaseUrl`. The POST body
+    is validated and never logged or echoed; `If-Match` is required on POST and
+    DELETE (428 without it); every answer is `Cache-Control: no-store`; refusals are the
+    backend's error body with agent-manager's `code`. A save that runs past
+    120 s, loses its connection or is refused by a gateway answers code
+    `outcome_unknown`.
+  - agent-platform: `/organizations/<installation>/<parent>/<name>/credentials/<operation>`,
+    the link agent-manager's `credentials.uiURL` names
+    (`…/credentials/{operation}`), shows what the value is for (the
+    organization agent-manager prepared it for, refusing a link that names
+    another, the object that asked, the other objects that read it, where it
+    is sent, and the pull request's repository in commit mode) before it takes
+    a value, saves it once with the confirmation's version, and never shows it
+    back. A changed request is read again; a save interrupted on
+    agent-manager's side is finished from the page; a commit without the
+    GitHub grant offers the connection. The Models tab's Add model and Replace
+    key, and the Connectors tab's Replace credential, ask agent-manager as the
+    person and open the form for the request it prepares (its
+    `credentialOperation`).
+  - analytics-react: `AgentPlatform.organizationCredentialSaved`.
+  - app: the form's page view, without the request's id.
+
+### Patch Changes
+
+- d62e8d3: Report unreadable credential save outcomes as unknown and accept maximum-size escaped credential values without increasing other routes' body limits.
+- b3c8677: Fixture mode serves the agent gateway's metrics, outside production builds only: with `gs.fixtures`, a fixture `MimirApi` evaluates the pages' PromQL over gateway series derived from the base data set (the agents with sessions, their default model, the person and two teammates), so Usage · Overview, Cost and Your sessions show spend, tokens, calls and gateway health without an observability stack. A query it cannot evaluate answers no series, with a console warning. The person's model cost on Your sessions runs the backend's queries through it, and the backend and fixture mode decide from the answers with the same code, now in `@giantswarm/backstage-plugin-agent-platform-common` (`modelCostQueries`, `modelCostOf`, `callerEmail`). `MimirClient` refuses to query without a token itself, instead of the Mimir hooks, and `@giantswarm/backstage-plugin-gs/fixtures` exports `MimirFixtureApi` for tests.
+- 371fda2: Fixture mode serves kagent, outside production builds only: the session lists, Usage · Your sessions, a session's page and the New session dialog show sessions without a cluster, with conversations recast from the recorded kagent answers, newest turns in every state (completed with an attachment, running, waiting on an approval or on answers, failed, canceled, runtime lost), and a session started from the dialog opens and replays its first turn from a recorded stream. Answers, cancels, renames and deletes are kept in memory until the page reloads. The data set of `@giantswarm/backstage-plugin-gs-common/fixtures` gives each session the state of its newest turn and each installation a session per turn state; `@giantswarm/backstage-plugin-agent-platform-common/testFixtures` exports the recorded approval, canceled and stream answers. The session states and usage summaries' selection and rollup move from agent-platform-backend to `@giantswarm/backstage-plugin-agent-platform-common`, so the backend and fixture mode compute them with the same code; what the backend answers is unchanged.
+- 8a9fb80: When the portal refuses the person's session token, the Sessions pages, the session chat, the agent's sessions, toolchains, workspaces, served models, GPU node pools and the Tools step say that the portal session ended, with a Sign in again button, instead of "Failed user token verification". This covers the kagent routes and the model-manager, cluster-manager, toolchain-manager and workspace-manager reads and the tool catalogue reads through muster. The agent-platform backend answers an installation's refusal of the person's token (kagent, Mimir) and a missing installation token as `InstallationAuthenticationError` (401), so these pages keep that refusal's own message.
+- ae00960: An installation whose muster the portal cannot reach no longer makes people wait. `ReachabilityCache` reports an endpoint unreachable only after two failed probes in a row (`UNREACHABLE_AFTER_FAILED_PROBES`), so muster's and kagent's `/installations` no longer report a distant installation unreachable for one late answer. muster-backend answers a call to an installation the probe reports unreachable at once with a 503, "not reachable from this portal", without a connection attempt or a warning; the probe allows a muster as long to answer as a call has to connect. gs-node exports `MUSTER_CONNECT_TIMEOUT_MS`, and `MusterUnreachableError` names its `installation`. Connections to muster time out after 5 s instead of undici's 10 s, and the Agent Platform stops asking for the server list of such an installation, reading a list that answered 503 again only after a minute, then less and less often.
+- Updated dependencies [c0113f8]
+- Updated dependencies [105dc99]
+- Updated dependencies [4536f3d]
+- Updated dependencies [c775cfb]
+- Updated dependencies [b3c8677]
+- Updated dependencies [4536f3d]
+- Updated dependencies [371fda2]
+- Updated dependencies [d97c11d]
+- Updated dependencies [859651d]
+- Updated dependencies [3b65ce4]
+- Updated dependencies [959b908]
+- Updated dependencies [694e2ae]
+- Updated dependencies [648228e]
+- Updated dependencies [a7ecd9d]
+- Updated dependencies [d62e8d3]
+- Updated dependencies [f1d8771]
+- Updated dependencies [b623ab3]
+- Updated dependencies [06dfa3d]
+- Updated dependencies [a05070d]
+- Updated dependencies [d8b2289]
+- Updated dependencies [8949a13]
+- Updated dependencies [d29861d]
+- Updated dependencies [3627dfd]
+- Updated dependencies [3bcb127]
+- Updated dependencies [7b7780d]
+- Updated dependencies [3b113f7]
+- Updated dependencies [ae00960]
+  - @giantswarm/backstage-plugin-gs-common@0.24.0
+  - @giantswarm/backstage-plugin-agent-platform-common@1.4.0
+  - @giantswarm/backstage-plugin-gs-node@0.6.0
+
 ## 1.2.0
 
 ### Minor Changes
