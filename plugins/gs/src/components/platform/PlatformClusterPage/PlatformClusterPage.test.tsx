@@ -365,7 +365,14 @@ describe('PlatformClusterPage', () => {
       'href',
       'https://console.aws.amazon.com/?account=123456789012',
     );
-    expect(facts.textContent).toContain('12 Jan 2024');
+    const localDateFormat = new Intl.DateTimeFormat(undefined, {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+    expect(facts.textContent).toContain(
+      localDateFormat.format(new Date('2024-01-12T00:00:00Z')),
+    );
     // The tools as tiles, above the facts.
     const tools = screen.getByRole('group', { name: 'Tools' });
     expect(
@@ -381,9 +388,11 @@ describe('PlatformClusterPage', () => {
       'https://github.com/giantswarm/releases/releases/tag/aws/v31.1.0',
     );
     expect(release.textContent).toContain(
-      '1.31.7 · supported until 28 Mar 2027',
+      `1.31.7 · supported until ${localDateFormat.format(new Date('2027-03-28'))}`,
     );
-    expect(release.textContent).toContain('31.2.0, released 18 Sep');
+    expect(release.textContent).toContain(
+      `31.2.0, released ${localDateFormat.format(new Date('2026-09-18T00:00:00Z'))}`,
+    );
 
     const labels = screen.getByRole('region', {
       name: 'Labels and annotations',
