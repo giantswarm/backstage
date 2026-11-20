@@ -11,6 +11,7 @@ import {
 import { matchesSearch } from '../../lib/hive';
 import { KNOWLEDGE_CATEGORIES } from '../../lib/magazine';
 import { HiveSourceState } from '../HiveSourceState';
+import { knowledgeDocumentLink } from './knowledgeLinks';
 
 const useStyles = makeStyles((theme: Theme) => ({
   layout: {
@@ -42,6 +43,7 @@ const useStyles = makeStyles((theme: Theme) => ({
 }));
 
 function KnowledgeDocument(props: { path: string }) {
+  const location = useLocation();
   const { data, isFetching, error, refetch } = useHiveKnowledgeDoc(props.path);
   if (data === undefined) {
     return (
@@ -53,7 +55,19 @@ function KnowledgeDocument(props: { path: string }) {
       />
     );
   }
-  return <GSMarkdownContent content={data} />;
+  return (
+    <GSMarkdownContent
+      content={data}
+      fragment={location.hash ? location.hash.slice(1) : undefined}
+      resolveLink={href =>
+        knowledgeDocumentLink(
+          href,
+          props.path,
+          `${location.pathname}${location.search}`,
+        )
+      }
+    />
+  );
 }
 
 /**
@@ -88,8 +102,10 @@ export function HiveKnowledgeTab() {
       />
     );
   }
-  const selected =
-    all.find(doc => doc.path === searchParams.get('doc')) ?? all[0];
+  const requestedPath = searchParams.get('doc');
+  const selected = requestedPath
+    ? all.find(doc => doc.path === requestedPath)
+    : all[0];
   const docHref = (path: string) => {
     const params = new URLSearchParams(searchParams);
     params.set('doc', path);
@@ -121,10 +137,10 @@ export function HiveKnowledgeTab() {
                           href={docHref(doc.path)}
                           variant="body-small"
                           aria-current={
-                            doc.path === selected.path ? 'page' : undefined
+                            doc.path === selected?.path ? 'page' : undefined
                           }
                           className={
-                            doc.path === selected.path
+                            doc.path === selected?.path
                               ? classes.current
                               : undefined
                           }
@@ -140,8 +156,16 @@ export function HiveKnowledgeTab() {
           })}
         </Flex>
       </nav>
-      <article aria-label={selected.title}>
-        <KnowledgeDocument path={selected.path} />
+      <article aria-label={selected?.title ?? 'Knowledge document not found'}>
+        {selected ? (
+          <KnowledgeDocument path={selected.path} />
+        ) : (
+          <EmptyState
+            missing="content"
+            title="Knowledge document not found"
+            description={`The document ${requestedPath} is not in this knowledge collection. Choose a document from the list.`}
+          />
+        )}
       </article>
     </div>
   );

@@ -58,7 +58,7 @@ function schemeOf(href: string): string | null {
 
 // The allowlist `uriTransformer` applies, which a custom `transformLinkUri`
 // replaces. An unsafe link loses its href and renders as text.
-function sanitize(href: string): string {
+export function sanitizeMarkdownLink(href: string): string {
   const scheme = schemeOf(href);
   return scheme === null || SAFE_PROTOCOLS.includes(scheme) ? href : '';
 }
@@ -97,11 +97,11 @@ export function createMarkdownLinkResolver(
       href.startsWith('//') ||
       schemeOf(href) !== null
     ) {
-      return sanitize(href);
+      return sanitizeMarkdownLink(href);
     }
 
     if (!gitHubDocument) {
-      return sanitize(new URL(href, source).href);
+      return sanitizeMarkdownLink(new URL(href, source).href);
     }
 
     // Resolved on a throwaway origin, so `..` stops at the repository root

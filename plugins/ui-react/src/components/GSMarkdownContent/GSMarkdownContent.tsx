@@ -2,7 +2,10 @@ import { useMemo } from 'react';
 import { makeStyles } from '@material-ui/core';
 import classNames from 'classnames';
 import { useInRouterContext } from 'react-router-dom';
-import { createMarkdownLinkResolver } from '../../utils/resolveMarkdownLink';
+import {
+  createMarkdownLinkResolver,
+  sanitizeMarkdownLink,
+} from '../../utils/resolveMarkdownLink';
 import { InPageAnchors } from './InPageAnchors';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
@@ -14,6 +17,10 @@ type GSMarkdownContentProps = {
   dialect?: Dialect;
   /** URL the markdown was loaded from; relative links resolve against it. */
   sourceUrl?: string;
+  /** Rewrites sanitized links for navigation within a document collection. */
+  resolveLink?: (href: string) => string;
+  /** URL fragment without `#` to focus and scroll to as the content loads. */
+  fragment?: string;
   /**
    * Target of links that leave the document, `_blank` to open them in a new
    * tab. A `#fragment` link, a footnote's for one, stays in the page.
@@ -97,14 +104,20 @@ export const GSMarkdownContent = ({
   content,
   dialect = 'gfm',
   sourceUrl,
+  resolveLink,
+  fragment,
   linkTarget,
   className,
 }: GSMarkdownContentProps) => {
   const classes = useStyles();
-  const transformLinkUri = useMemo(
-    () => createMarkdownLinkResolver(sourceUrl),
-    [sourceUrl],
-  );
+  const transformLinkUri = useMemo(() => {
+    const resolveSource = createMarkdownLinkResolver(sourceUrl);
+    if (!resolveLink) return resolveSource;
+    return (href: string) => {
+      const safeHref = (resolveSource ?? sanitizeMarkdownLink)(href);
+      return safeHref ? resolveLink(safeHref) : '';
+    };
+  }, [sourceUrl, resolveLink]);
   // Without a router there are no links to jump from: they render through it.
   const inRouter = useInRouterContext();
 
@@ -119,7 +132,13 @@ export const GSMarkdownContent = ({
   );
 
   return inRouter ? (
-    <InPageAnchors className={rootClassName}>{markdown}</InPageAnchors>
+    <InPageAnchors
+      className={rootClassName}
+      content={content}
+      fragment={fragment}
+    >
+      {markdown}
+    </InPageAnchors>
   ) : (
     <div className={rootClassName}>{markdown}</div>
   );

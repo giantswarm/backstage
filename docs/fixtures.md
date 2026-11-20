@@ -517,6 +517,21 @@ the rates of Your sessions) reads, and the series of its clusters' nodes
 node, with the `nodepool` label on `kube_node_labels`, and Karpenter's per
 node and per pool, which the cluster pages' Node pools tab and worker figures
 read. Those are gauges, one point each from the time the node or pool started.
+It also answers the Gateway API and Envoy Gateway series of each ready
+workload cluster (`gatewayApiSeries` in gs-common), which the cluster page's
+Gateways tab reads: the bundle's Gateway `giantswarm-default` with its http
+and https listeners, a set of HTTPRoutes in the states the tab shows (a
+weighted split, a backend in another namespace, a route whose ResolvedRefs is
+false, one with no status, one attached through a ListenerSet that was not
+accepted, one with no backends) and Envoy Gateway policies (accepted, invalid,
+on the Gateway, and one whose target is gone). Every third ready workload
+cluster runs older bundles: no conditions, no backends and no policy target
+or status, so the tab shows them as not available. In `many` the first ready
+workload cluster has 150 routes, in `long-names` a cluster with a name of 60
+characters or more gives its routes, their namespaces and backends, and the
+policies on those routes names of up to 63 characters (the Gateway, its
+namespace and the routes and policies there keep theirs), and the management cluster and clusters being created or deleted have
+no Gateway.
 Each installation's series are built once per data set, and a selector with a
 metric name looks only at that metric's series. The series are derived from the data set
 (`gatewayUsage.ts` in gs-common): the ready agents of ready organizations,
@@ -581,7 +596,7 @@ Kubernetes objects. It follows the page's scenario
 
 | Scenario     | What the Plans fixtures serve                                                                                                                                                                                                                                                                                        |
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `base`       | One plans repository, `example/bumblebee-plans` (Hive's default team's), with three open plans and two merged ones; the magazine's Now (four lanes, plans to review, blockers, other teams' work), three weeks of History and six knowledge documents. Names are made up, epic titles are public roadmap issues.     |
+| `base`       | One plans repository, `example/bumblebee-plans` (Hive's default team's), with three open plans and two merged ones; the magazine's Now (four lanes, plans to review, blockers, other teams' work), three weeks of History and eight knowledge documents. Names are made up, epic titles are public roadmap issues.   |
 | `empty`      | The same repository and the team's data set, with nothing in them: no open or merged plans, lanes without cards, no plans to review, nothing moved and no knowledge documents.                                                                                                                                       |
 | `many`       | A plans repository for each of Hive's teams (a picker in the header for all teams), 300 open and 300 merged plans, 200 comments and 120 review comments on each plan, 75 cards in each lane of Now, 120 plans to review, 100 other teams' cards, 150 groups in History and 100 knowledge documents in each category. |
 | `long-names` | The base data with every title as long as GitHub allows (256 characters, in whole words), every login as long (39), every plan folder, branch and knowledge document's file name as long as git allows a path segment (255), and people and customers named in 80 characters of whole words.                         |

@@ -23,6 +23,7 @@ const GIANT_SWARM_CONNECTORS = new Set(['giantswarm-ad', 'giantswarm-github']);
 const FEDERATING_CONNECTORS = new Set([
   'giantswarm-simple-oidc',
   'giantswarm-graveler-oidc',
+  'giantswarm-gazelle-oidc',
 ]);
 
 /** Namespace of every identity that is not looked up in the catalog. */

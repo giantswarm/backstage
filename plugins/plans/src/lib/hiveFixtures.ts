@@ -778,6 +778,21 @@ review and what the team **knows**.
 - **History** tells what moved, epic by epic, with a link to try what shipped.
 - **Roadmap** is the board; every epic opens the same detail page.
 - **Plans** are reviewed where they are written.
+
+Read about [Bot PRs](marge-sweep.md) or [the data](../architecture/magazine-data.md#the-magazine-data).
+Read the [source path example](links%23%3F%2520/source.md) for document links in special-character directories.
+An [unavailable document](missing.md) shows a missing-document message.
+The [source repository](https://github.com/giantswarm/bumblebee-magazine) opens on GitHub.
+`,
+  'knowledge/product/links#?%20/source.md': `# Source path example
+
+Open the [target heading](target.md#details).
+`,
+  'knowledge/product/links#?%20/target.md': `# Target path example
+
+## Details
+
+This document shares its directory with the [source example](source.md).
 `,
   'knowledge/product/marge-sweep.md': `# Bot PRs
 
@@ -798,6 +813,12 @@ page load.
 | \`history-days.json\` | the last 3 work days |
 | \`history-weeks.json\` | the last 3 weeks |
 | \`history-months.json\` | the last 3 months |
+
+\`\`\`mermaid
+graph LR
+  Generator --> Magazine
+  Magazine --> Hive
+\`\`\`
 `,
   'knowledge/architecture/portal-sections.md': `# Portal sections
 
