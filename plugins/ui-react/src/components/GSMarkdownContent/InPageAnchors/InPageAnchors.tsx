@@ -1,5 +1,5 @@
 import { MouseEvent, ReactNode, useEffect, useRef } from 'react';
-import { useHref } from 'react-router-dom';
+import { useHref, useLocation } from 'react-router-dom';
 import { findAnchorTarget, getInPageFragment } from './helpers';
 
 function scrollToAnchor(root: HTMLElement, fragment: string) {
@@ -44,12 +44,13 @@ export const InPageAnchors = ({
 }) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const pageHref = useHref('#');
+  const { key: locationKey } = useLocation();
 
   useEffect(() => {
     const root = rootRef.current;
     if (!root || fragment === undefined) return undefined;
     return scrollToAnchor(root, fragment);
-  }, [content, fragment]);
+  }, [content, fragment, locationKey]);
 
   const jumpToAnchor = (event: MouseEvent<HTMLDivElement>) => {
     if (

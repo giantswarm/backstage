@@ -158,7 +158,7 @@ export function HiveKnowledgeTab() {
       </nav>
       <article aria-label={selected?.title ?? 'Knowledge document not found'}>
         {selected ? (
-          <KnowledgeDocument key={selected.path} path={selected.path} />
+          <KnowledgeDocument path={selected.path} />
         ) : (
           <EmptyState
             missing="content"

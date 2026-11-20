@@ -132,22 +132,36 @@ describe('HiveKnowledgeTab', () => {
       await user.click(screen.getByRole('link', { name: 'Decision' }));
       await screen.findByText('Decision details.');
       const decisionHeading = screen.getByRole('heading', { name: 'Details' });
-      expect(decisionHeading).not.toBe(architectureHeading);
       await waitFor(() =>
         expect(scrollIntoView.mock.instances).toContain(decisionHeading),
       );
       expect(decisionHeading).toHaveFocus();
 
+      const beforeCopyScrollCount = scrollIntoView.mock.calls.length;
       await user.click(
         within(screen.getByRole('article', { name: 'Access' })).getByRole(
           'link',
           { name: 'Copy' },
         ),
       );
-      await waitFor(() => expect(decisionHeading).not.toBeInTheDocument());
+      await screen.findByRole('link', { name: 'Copy', current: 'page' });
       const copiedHeading = screen.getByRole('heading', { name: 'Details' });
       await waitFor(() =>
-        expect(scrollIntoView.mock.instances).toContain(copiedHeading),
+        expect(scrollIntoView.mock.calls.length).toBeGreaterThan(
+          beforeCopyScrollCount,
+        ),
+      );
+      expect(copiedHeading).toHaveFocus();
+
+      const scrollCount = scrollIntoView.mock.calls.length;
+      await user.click(
+        within(screen.getByRole('article', { name: 'Copy' })).getByRole(
+          'link',
+          { name: 'Copy' },
+        ),
+      );
+      await waitFor(() =>
+        expect(scrollIntoView.mock.calls.length).toBeGreaterThan(scrollCount),
       );
       expect(copiedHeading).toHaveFocus();
     } finally {
