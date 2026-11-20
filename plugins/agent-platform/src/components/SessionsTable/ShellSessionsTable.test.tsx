@@ -703,8 +703,16 @@ describe('SessionsTable in the shell layout', () => {
     expect(
       screen.getByRole('menuitemradio', { name: 'Muted' }),
     ).toHaveAttribute('aria-checked', 'true');
+    // Escape closes the submenu and the menu. Focus returns to the trigger a
+    // frame later; a click before then loses its menu to that focus move.
     await user.keyboard('{Escape}');
-    await user.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', {
+          name: 'More actions for “Release notes”',
+        }),
+      ).toHaveFocus(),
+    );
 
     // Each row has its own level.
     await openNotifications('Triage this week');

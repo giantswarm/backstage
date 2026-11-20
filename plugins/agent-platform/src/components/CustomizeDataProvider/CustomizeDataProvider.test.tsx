@@ -47,6 +47,7 @@ jest.mock('../ModelConfigsProvider', () => ({
               getProvider: () => 'Anthropic',
               getModel: () => 'claude-sonnet-4-5',
               getEndpoint: () => undefined,
+              getApiKeySecret: () => undefined,
               getReadiness: () => 'accepted',
               getReadinessMessage: () => undefined,
               getFailedCondition: () => undefined,
