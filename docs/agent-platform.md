@@ -600,8 +600,14 @@ Organization, Provider with its region, Account (in groups of four, linked to
 the AWS console), Workers and Created. The facts column belongs to Overview;
 the other tabs take the page's width.
 
-It has two tabs so far, Overview and Node pools; any other tab redirects to
-Overview. Overview (the bare path) is a column of panels:
+It has four tabs so far, Overview, Node pools, RBAC for a management cluster
+and, for Giant Swarm staff (`useCurrentUser`), SSH access; any other tab
+redirects to Overview, and so does RBAC for a workload cluster and SSH access
+for a person known not to be staff. While the cluster is read, the strip has
+no RBAC tab and nothing redirects: RBAC appears once the read says the
+cluster is a management one (`isManagementCluster`). While whether the person is staff is being
+read, SSH access shows its loading state; where it could not be read (no
+installation token), the tab stays. Overview (the bare path) is a column of panels:
 
 - Release: the cluster's release, linked to its release notes (the GitHub
   release of giantswarm/releases tagged `<provider>/v<version>`), the
@@ -651,6 +657,35 @@ Then "Technical details of <pool>", open: for a machine pool its instance
 shape, scaling and resources; for a Karpenter pool what runs now, the
 provisioning envelope, lifecycle and disruption, and the node template (the
 classic page's cards, with Karpenter's metrics from Mimir).
+
+RBAC (`/rbac`) is the classic cluster page's RBAC tab in the shell's style:
+who can do what in the management cluster, read from the installation's
+RoleBindings and ClusterRoleBindings and grouped by subject with the classic
+tab's `utils` (`buildRbacSubjectRows`). Under a sentence on what it shows,
+"Access grants (n subjects)" and a "Show system subjects (n)" switch, off at
+first (a system subject has a `system:` name or a `kube-` namespace), then a
+table with a row per subject: the subject (a service account with its
+namespace), a button that opens the row to its bindings ("RoleBinding X in
+namespace Y grants ClusterRole Z"); its kind; its roles as chips; and where
+they apply ("Cluster-wide" and the namespaces), every cell at the top of
+its row. A search field above it (as on the clusters list, held while the
+tab is open) finds subjects by a case-insensitive substring of what their
+rows show (the subject with its namespace, kind, roles, scope) or of their
+bindings' names and namespaces, among the subjects the switch shows; a
+subject found only through a binding opens, with what was found marked.
+Where only system subjects the switch hides match, the empty state says how
+many and offers to show them. Narrower, the kind moves
+under the subject; at phone width the rows stack, with the roles and, opened,
+the bindings under each. Nothing to list, a failed read (reading role
+bindings needs cluster-wide read access) and only system subjects each say
+so.
+
+SSH access (`/ssh-access`) is the classic cluster page's SSH access tab in
+the shell's style: a sentence on choosing a node, then the Teleport commands
+for the control plane nodes, the worker nodes and, as an example, a specific
+node, each in a code block with a copy button, and a link to the cluster's
+nodes in Teleport's resources UI. The commands come from the classic tab's
+`utils`.
 
 A cluster being deleted says so and follows the deletion. An environment the
 portal does not know, a cluster the environment does not have, an environment
@@ -815,8 +850,23 @@ combines the `Accepted` and `ResolvedRefs` conditions, named by the one that
 failed: Not accepted (`Accepted` is False: kagent rejects the settings),
 Incomplete (`ResolvedRefs` is False: it accepts them but cannot find what they
 refer to, such as the key Secret) or Pending; a ModelConfig has no workload,
-so there is no `Ready`. The controller's message sits in a hint beside the
-status.
+so accepted settings with resolved references read as Configured. Both the
+Models table and Customize use that label. The status hint for a model with
+a key Secret says: "Settings accepted and the key Secret was found. The key
+itself has not been tested." Models without a key Secret instead say:
+"Settings accepted. Provider access has not been tested." A linked served
+model keeps its own serving readiness, including Ready.
+
+[kagent v1.0.0](https://github.com/kagent-dev/kagent/blob/v1.0.0/go/core/internal/translator/modelconfig.go#L88)
+checks whether the Secret and its named key entry exist. It does not check
+whether the value is non-empty, valid or authorized by the provider. A future
+access check for static keys would make a real provider request and could
+not verify credentials supplied per session.
+
+Installations on kagent 0.10.4 do not report `ResolvedRefs`. Missing-reference
+diagnostics, including Incomplete and the model picker's not-ready warning
+for a missing key, require the kagent upgrade; changing the label does not
+add that diagnostic capability.
 
 One model's page (`ModelDetailPage`) is at
 `/customize/models/<installation>/<namespace>/<name>`, routed by the Models
@@ -1273,6 +1323,11 @@ answer is rendered verbatim:
   (`ociUrl`, `latestVersion`).
 
 A full toolset adds a "Full gateway access" warning.
+
+The Tools step allows Continue while Muster checks the selection. Local
+validation errors and an explicit toolset refusal block Continue. The preview
+request times out after five seconds; a failed check offers a retry and allows
+Continue. Agent-manager validates the toolset again on save.
 
 `get_info` (`useAgentManagerInfo`) supplies the chart's OCI URL and range, the
 newest version, the platform Harness's name, the muster MCP URL (`muster.url`),

@@ -61,7 +61,7 @@ const agentWriteSchema = (installation: string) => ({
 
 /** What the fixture agent-manager of an installation composes and can do. */
 const infoOf = (installation: string, managed: string[]): AgentManagerInfo => ({
-  version: '1.0.0-fixture',
+  version: installation === WITHOUT_CONNECTORS ? '3.2.0' : '3.3.4',
   chart: {
     ociUrl: 'oci://registry.example.com/charts/agent',
     semver: '1.x',
@@ -137,7 +137,14 @@ export function agentManagerFixtureServer(
       args,
       { installation },
     ) => ({
-      connectors: state().listConnectors(installation, text(args, 'namespace')),
+      connectors: state()
+        .listConnectors(installation, text(args, 'namespace'))
+        // An agent-manager older than 3.3.4 does not mark the muster bindings.
+        .map(({ musterBindingOf, ...connector }) =>
+          installation === WITHOUT_CONNECTORS
+            ? connector
+            : { ...connector, ...(musterBindingOf && { musterBindingOf }) },
+        ),
     }),
     [AGENT_MANAGER_TOOLS.setOrganizationModel]: (args, { installation }) =>
       state().setOrganizationModel(

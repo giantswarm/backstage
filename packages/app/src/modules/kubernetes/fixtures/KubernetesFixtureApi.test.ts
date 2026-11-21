@@ -13,6 +13,7 @@ import {
 } from '@giantswarm/backstage-plugin-gs-common/fixtures';
 import { MCPServer } from '@giantswarm/backstage-plugin-muster';
 
+import { FIXTURE_STAFF_GROUP } from './KubernetesAuthProvidersFixtureApi';
 import { KubernetesFixtureApi } from './KubernetesFixtureApi';
 
 describe('KubernetesFixtureApi', () => {
@@ -300,6 +301,14 @@ describe('app-config.fixtures.yaml', () => {
     });
     return ConfigReader.fromConfigs(appConfigs);
   }
+
+  it('lists the group of the guest’s token as staff', async () => {
+    const config = await fixturesConfig();
+
+    expect(config.getStringArray('gs.adminGroups')).toContain(
+      FIXTURE_STAFF_GROUP,
+    );
+  });
 
   it('names the installations every fixture API serves, and only those', async () => {
     const config = await fixturesConfig();

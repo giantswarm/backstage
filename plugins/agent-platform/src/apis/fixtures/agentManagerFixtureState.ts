@@ -2062,7 +2062,8 @@ function serviceAccountKeyProject(raw: string): string | undefined {
 /**
  * The connectors (RemoteMCPServers) every organization has, one in each state
  * the agent form tells apart: ready, its credential missing, not accepted by
- * kagent, and an agent's muster binding.
+ * kagent, one that another Helm chart renders, and an agent's muster binding
+ * (`musterBindingOf`, which an agent-manager older than 3.3.4 does not send).
  */
 function connectorsOf(): OrganizationConnector[] {
   return [
@@ -2110,11 +2111,21 @@ function connectorsOf(): OrganizationConnector[] {
       managedBy: 'agent-manager',
     },
     {
+      name: 'status-page',
+      url: 'https://status.example.com/mcp',
+      description: 'Reads the status of the services the team runs.',
+      credentials: [],
+      accepted: true,
+      reason: 'DiscoverySucceeded',
+      managedBy: 'Helm',
+    },
+    {
       name: MUSTER_BINDING,
       url: 'https://muster.example.com/mcp',
       credentials: [],
       accepted: true,
       managedBy: 'Helm',
+      musterBindingOf: MUSTER_BINDING,
     },
   ];
 }

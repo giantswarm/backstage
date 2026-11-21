@@ -19,6 +19,11 @@ import path from 'node:path';
 
 const MARKERS = [
   {
+    source:
+      'packages/app/src/modules/kubernetes/fixtures/KubernetesAuthProvidersFixtureApi.ts',
+    marker: 'fixture-giantswarm-staff',
+  },
+  {
     source: 'plugins/plans/src/apis/PlansFixtureApi.ts',
     marker: 'example/team-magazine',
   },
@@ -142,6 +147,14 @@ const MARKERS = [
   {
     source: 'plugins/gs-common/src/fixtures/clusterBuilders.ts',
     marker: 'GPU nodes for model hosting',
+  },
+  {
+    source: 'plugins/gs-common/src/fixtures/rbacBuilders.ts',
+    marker: 'system::leader-locking-kube-scheduler',
+  },
+  {
+    source: 'plugins/gs/src/apis/kubernetes/fixtures/rbacObjects.ts',
+    marker: '-fixture-rbac-',
   },
   {
     source: 'plugins/gs-common/src/fixtures/gatewayUsage.ts',

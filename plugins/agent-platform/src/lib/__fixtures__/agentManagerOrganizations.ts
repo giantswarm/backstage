@@ -120,6 +120,8 @@ export type OrganizationsScenario = {
    * requests on this installation.
    */
   commitMode?: boolean;
+  /** `get_info`'s `version`; none, as from a build that is no release. */
+  agentManagerVersion?: string;
 };
 
 /** The pull request a content write in mode commit opens. */
@@ -286,6 +288,9 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
       switch (name) {
         case 'x_agent-manager_get_info':
           return {
+            ...(scenario.agentManagerVersion && {
+              version: scenario.agentManagerVersion,
+            }),
             namespaces: { default: 'kagent', managed: scenario.managed ?? [] },
             capabilities: {
               organizations: true,

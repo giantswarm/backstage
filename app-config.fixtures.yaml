@@ -22,6 +22,10 @@ auth:
 
 gs:
   fixtures: true
+  # The guest's installation token carries this group (FIXTURE_STAFF_GROUP),
+  # so the guest is Giant Swarm staff and the pages show what only staff see.
+  adminGroups:
+    - fixture-giantswarm-staff
   # The shell's Platform section, so its clusters list can be checked.
   features:
     platformSection:

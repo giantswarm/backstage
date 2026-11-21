@@ -19,6 +19,7 @@ let mockState: ClusterReadState;
 let mockBaseDomain: string | undefined;
 let mockInGit: boolean;
 let mockStaff: boolean | undefined;
+let mockUserLoading: boolean;
 let mockNewer: { version: string; date?: string } | undefined;
 
 jest.mock('@giantswarm/backstage-plugin-kubernetes-react', () => ({
@@ -129,12 +130,15 @@ jest.mock('../../hooks', () => ({
     errors: [],
   }),
   useMachineTypeCatalog: () => ({ catalog: undefined, isLoading: false }),
-  useCurrentUser: () => ({ isLoading: false, isGSUser: mockStaff }),
+  useCurrentUser: () => ({ isLoading: mockUserLoading, isGSUser: mockStaff }),
   useFriendlyItemsConfiguration: () => undefined,
   useInstallationsInfo: () => ({
     installationsInfo: [{ name: 'meadow', baseDomain: mockBaseDomain }],
     isLoading: false,
   }),
+}));
+jest.mock('../PlatformClusterRBAC', () => ({
+  PlatformClusterRBAC: () => <p>The role bindings</p>,
 }));
 jest.mock('../../hooks/useK8sVersionEOLDate', () => ({
   useK8sVersionEOLDate: () => '2027-03-28',
@@ -320,6 +324,7 @@ describe('PlatformClusterPage', () => {
     mockBaseDomain = 'meadow.example.com';
     mockInGit = true;
     mockStaff = false;
+    mockUserLoading = false;
     mockNewer = { version: '31.2.0', date: '2026-09-18T00:00:00Z' };
     mockState = stateOf({
       cluster: workload,
@@ -670,6 +675,162 @@ describe('PlatformClusterPage', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/being created/)).not.toBeInTheDocument();
   });
+
+  it('gives Giant Swarm staff an SSH access tab with the Teleport commands', async () => {
+    mockStaff = true;
+    await renderPage(
+      '/platform/clusters/meadow/org-fern/alder-birch/ssh-access',
+    );
+
+    // A workload cluster has no RBAC tab.
+    expect(screen.getAllByRole('tab').map(tab => tab.dataset.key)).toEqual([
+      'overview',
+      'node-pools',
+      'ssh-access',
+    ]);
+    // The facts column belongs to Overview.
+    expect(
+      screen.queryByRole('complementary', { name: 'Details' }),
+    ).not.toBeInTheDocument();
+    const panel = screen.getByRole('region', { name: 'SSH access' });
+    expect(
+      within(panel).getByText(
+        'Selecting a node to connect to can be done via tags or using the node name.',
+      ),
+    ).toBeInTheDocument();
+    for (const [title, command] of [
+      [
+        'Control plane nodes',
+        'tsh ssh root@ins=meadow,cluster=alder-birch,role=control-plane',
+      ],
+      [
+        'Worker nodes',
+        'tsh ssh root@ins=meadow,cluster=alder-birch,role=worker',
+      ],
+      ['Specific node', 'tsh ssh root@ins=meadow,node=ip-10-0-85-157'],
+    ]) {
+      const group = within(panel).getByRole('region', { name: title });
+      expect(
+        within(group).getByRole('heading', { level: 3, name: title }),
+      ).toHaveAttribute('data-variant', 'body-medium');
+      expect(group.textContent).toContain(command);
+      expect(
+        within(group).getByRole('button', { name: /copy/i }),
+      ).toBeInTheDocument();
+    }
+    const resources = within(panel).getByRole('link', {
+      name: /Teleport resources UI/,
+    });
+    const url = new URL(resources.getAttribute('href')!);
+    expect(url.origin).toBe('https://teleport.giantswarm.io');
+    expect(url.searchParams.get('query')).toBe(
+      'labels["ins"]=="meadow" && labels["cluster"]=="alder-birch"',
+    );
+  });
+
+  it('opens Overview for SSH access, and has no such tab, for anyone but staff', async () => {
+    await renderPage(
+      '/platform/clusters/meadow/org-fern/alder-birch/ssh-access',
+    );
+
+    expect(screen.getByRole('status', { name: 'path' })).toHaveTextContent(
+      /^\/platform\/clusters\/meadow\/org-fern\/alder-birch$/,
+    );
+    expect(screen.getByRole('region', { name: 'Release' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('tab', { name: 'SSH access' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows SSH access loading, with its tab selected, while the person is read', async () => {
+    mockStaff = undefined;
+    mockUserLoading = true;
+    await renderPage(
+      '/platform/clusters/meadow/org-fern/alder-birch/ssh-access',
+    );
+
+    expect(screen.getByRole('status', { name: 'path' })).toHaveTextContent(
+      /\/ssh-access$/,
+    );
+    expect(screen.getByRole('tab', { name: 'SSH access' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    const panel = screen.getByRole('region', { name: 'SSH access' });
+    expect(within(panel).getByText('Reading your access…')).toBeInTheDocument();
+    expect(panel.textContent).not.toContain('tsh ssh');
+  });
+
+  it('keeps SSH access when whether the person is staff could not be read', async () => {
+    mockStaff = undefined;
+    await renderPage(
+      '/platform/clusters/meadow/org-fern/alder-birch/ssh-access',
+    );
+
+    expect(screen.getByRole('status', { name: 'path' })).toHaveTextContent(
+      /\/ssh-access$/,
+    );
+    expect(screen.getByRole('tab', { name: 'SSH access' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('region', { name: 'SSH access' }).textContent,
+    ).toContain('tsh ssh root@ins=meadow,cluster=alder-birch,role=worker');
+  });
+
+  it('gives a management cluster an RBAC tab after Node pools', async () => {
+    mockStaff = true;
+    mockState = stateOf({
+      cluster: clusterOf('meadow', 'org-giantswarm', { management: true }),
+    });
+    await renderPage('/platform/clusters/meadow/org-giantswarm/meadow/rbac');
+
+    expect(screen.getAllByRole('tab').map(tab => tab.dataset.key)).toEqual([
+      'overview',
+      'node-pools',
+      'rbac',
+      'ssh-access',
+    ]);
+    expect(screen.getByRole('tab', { name: 'RBAC' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByText('The role bindings')).toBeInTheDocument();
+    // The facts column belongs to Overview.
+    expect(
+      screen.queryByRole('complementary', { name: 'Details' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('opens Overview for RBAC, and has no such tab, on a workload cluster', async () => {
+    await renderPage('/platform/clusters/meadow/org-fern/alder-birch/rbac');
+
+    expect(screen.getByRole('status', { name: 'path' })).toHaveTextContent(
+      /^\/platform\/clusters\/meadow\/org-fern\/alder-birch$/,
+    );
+    expect(screen.getByRole('region', { name: 'Release' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'RBAC' })).not.toBeInTheDocument();
+    expect(screen.queryByText('The role bindings')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['management', '/platform/clusters/meadow/org-giantswarm/meadow/rbac'],
+    ['workload', '/platform/clusters/meadow/org-fern/alder-birch/rbac'],
+  ])(
+    'stays on RBAC, without its tab, while a %s cluster is read',
+    async (_, path) => {
+      mockState = stateOf({ loading: true });
+      await renderPage(path);
+
+      expect(screen.getByRole('status', { name: 'path' })).toHaveTextContent(
+        /\/rbac$/,
+      );
+      expect(
+        screen.getByRole('tab', { name: 'Node pools' }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('tab', { name: 'RBAC' }),
+      ).not.toBeInTheDocument();
+    },
+  );
 
   it('opens Overview for a tab the page does not have', async () => {
     await renderPage('/platform/clusters/meadow/org-fern/alder-birch/apps');

@@ -14,6 +14,93 @@ import {
 } from './context-windows.fixture';
 import { lab } from './lab';
 import { modelManagerUnavailable } from './model-manager.fixture';
+import { KUBECONFIG, kubectl, NEEDS_KUBECONFIG } from './kubectl';
+
+test.describe('a model with an untested key', () => {
+  test.skip(!KUBECONFIG, NEEDS_KUBECONFIG);
+
+  const name = `e2e-untested-key-${process.env.AGENTLAB_E2E_RUN}`;
+  const displayName = `Untested key ${process.env.AGENTLAB_E2E_RUN}`;
+  const detail =
+    'Settings accepted and the key Secret was found. The key itself has not been tested.';
+  const fixture = `
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ${name}
+  namespace: kagent
+type: Opaque
+stringData:
+  ANTHROPIC_API_KEY: deliberately-invalid-provider-key
+---
+apiVersion: api.kagent.dev/v1alpha3
+kind: ModelConfig
+metadata:
+  name: ${name}
+  namespace: kagent
+  annotations:
+    ui.giantswarm.io/display-name: ${displayName}
+spec:
+  provider: Anthropic
+  model: claude-sonnet-4-6
+  apiKeySecret: ${name}
+  apiKeySecretKey: ANTHROPIC_API_KEY
+`;
+
+  test.beforeAll(async () => {
+    await kubectl(['create', '-f', '-'], fixture);
+  });
+
+  test.afterAll(async () => {
+    await kubectl(['delete', '-f', '-', '--ignore-not-found'], fixture);
+  });
+
+  test('is Configured after the controller resolves its Secret, without claiming Ready', async ({
+    admin,
+  }) => {
+    for (const condition of ['Accepted', 'ResolvedRefs']) {
+      await kubectl([
+        'wait',
+        '-n',
+        'kagent',
+        `modelconfigs.api.kagent.dev/${name}`,
+        `--for=condition=${condition}=True`,
+        '--timeout=60s',
+      ]);
+    }
+
+    await open(admin, '/customize/models');
+    const row = admin.getByRole('row').filter({
+      has: admin.getByRole('link', { name: displayName, exact: true }),
+    });
+    await expect(row.getByText('Configured', { exact: true })).toBeVisible();
+    await expect(row.getByText('Ready', { exact: true })).toHaveCount(0);
+    await row
+      .getByRole('button', {
+        name: `About the state of ${displayName}`,
+        exact: true,
+      })
+      .click();
+    await expect(
+      admin.getByRole('dialog', {
+        name: `About the state of ${displayName}`,
+        exact: true,
+      }),
+    ).toContainText(detail);
+    await admin.keyboard.press('Escape');
+
+    await row.getByRole('link', { name: displayName, exact: true }).click();
+    await expect(
+      admin.getByRole('heading', { level: 1, name: displayName, exact: true }),
+    ).toBeVisible();
+    await expect(admin.getByTitle(detail, { exact: true })).toContainText(
+      'Configured',
+    );
+    await expect(
+      admin.getByRole('main').getByText('Ready', { exact: true }),
+    ).toHaveCount(0);
+  });
+});
 
 /**
  * Models in the agent shell: the installation's `ModelConfig`s read through
@@ -152,9 +239,8 @@ test('a model’s page sits under Customize in tabs, says why in Technical detai
   await expect(admin.getByRole('main').getByRole('complementary')).toHaveCount(
     0,
   );
-  // The lab's model works, so nothing says agents cannot use it.
   await expect(
-    admin.getByRole('main').getByText('Ready', { exact: true }).first(),
+    admin.getByRole('main').getByText('Configured', { exact: true }).first(),
   ).toBeVisible();
   await expect(
     admin.getByText('Agents cannot use this model', { exact: true }),
@@ -347,7 +433,7 @@ async function connectVertexModel(page: Page, model: VertexModel) {
         await open(page, modelPath);
         return page
           .getByRole('main')
-          .getByText('Ready', { exact: true })
+          .getByText('Configured', { exact: true })
           .first()
           .isVisible();
       },

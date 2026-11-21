@@ -1,0 +1,1 @@
+export { PlatformClusterRBAC } from './PlatformClusterRBAC';

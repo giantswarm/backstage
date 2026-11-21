@@ -8,7 +8,7 @@ import { useApi } from '@backstage/core-plugin-api';
 import { useSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 
 type JWT = {
-  groups: string[];
+  groups?: string[];
 };
 
 /**
@@ -49,7 +49,8 @@ export function useCurrentUser(installationName: string) {
 
   let isGSUser = undefined;
   if (!isLoading && token) {
-    isGSUser = token.groups.some(group => adminGroups.includes(group));
+    // A token without a `groups` claim is no staff member's.
+    isGSUser = (token.groups ?? []).some(group => adminGroups.includes(group));
   }
 
   return {

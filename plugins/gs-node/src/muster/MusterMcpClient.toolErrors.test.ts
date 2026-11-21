@@ -61,6 +61,39 @@ async function toolError(
 }
 
 describe('MusterMcpClient tool errors', () => {
+  it.each([
+    'toolset [] is empty; use "preset:none"',
+    'toolset [tool:x] has 129 selectors, more than the 128 allowed inline; define a preset',
+    'toolset encodes to 9000 bytes, more than the 8192 allowed inline; define a preset',
+    'toolset [preset:foo] names unknown preset "foo"; known presets: read-only, none, full',
+    'toolset [toolset:shared] selector "toolset:shared" is reserved for shared toolsets',
+    'toolset [label:a=b] selector "label:a=b" is allowed inside presets only',
+    'toolset [bad] selector "bad" is malformed; expected preset:<name>, server:<name>, workflow:<name> or tool:<name>',
+  ])('classifies the filter_tools refusal %s', async message => {
+    const { client, logger } = buildClient({
+      content: [{ type: 'text', text: message }],
+      isError: true,
+    });
+    await expect(
+      client.filterTools({ toolset: ['preset:foo'] }),
+    ).rejects.toMatchObject({
+      kind: 'toolset_refused',
+      status: 422,
+      message,
+    });
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(musterToolErrorKindOf(message, 'x_other_tool')).toBeUndefined();
+  });
+
+  it('keeps unexpected filter_tools failures as server errors', async () => {
+    const { client } = buildClient({
+      content: [{ type: 'text', text: 'unexpected failure' }],
+      isError: true,
+    });
+    const error = await client.filterTools({}).catch(failure => failure);
+    expect(error).toBeInstanceOf(MusterToolError);
+    expect(error).not.toHaveProperty('status');
+  });
   it('names the tool, its server and the installation, never the arguments', async () => {
     const { error } = await toolError(
       "Tool execution failed: no answer within the server's timeout of 30s: context deadline exceeded",

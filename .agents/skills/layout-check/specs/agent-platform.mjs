@@ -162,6 +162,83 @@ const openCluster = kind => async ({ page, skip }) => {
   await page.goto(new URL(href, page.url()).href);
 };
 
+/** Turns on the RBAC tab's "Show system subjects" switch. */
+const rbacSystemSubjects = {
+  name: 'system subjects',
+  run: async ({ page, skip }) => {
+    const label = page.getByText(/^Show system subjects \(\d+\)$/);
+    if (!(await shows(label))) skip('no subjects read');
+    // The input sits under bui's drawn switch: press its label.
+    await label.click();
+  },
+};
+
+/**
+ * Types a search into the RBAC tab's search field. The first text in the
+ * field brings bui's clear button, which takes 32px of the input inside the
+ * field's unchanged box: `shift: false` for that state.
+ */
+const rbacSearch = (name, query, { first = false } = {}) => ({
+  name,
+  ...(first && { shift: false }),
+  run: async ({ page, skip }) => {
+    const field = page.getByRole('searchbox', {
+      name: 'Search subjects, roles and bindings',
+    });
+    if (!(await shows(field)) || (await field.isDisabled())) {
+      skip('no subjects read');
+    }
+    await field.fill(query);
+  },
+});
+
+/** Opens the RBAC tab's first subject to its bindings. */
+const rbacFirstBindings = {
+  name: 'first subject opened',
+  run: async ({ page, skip }) => {
+    // In the table's rows, or on a phone the stacked list's.
+    const toggle = page
+      .locator(
+        'tbody button[aria-expanded="false"], ul[aria-label="Subjects"] button[aria-expanded="false"]',
+      )
+      .first();
+    if (!(await shows(toggle))) skip('no subject to open');
+    await toggle.click();
+  },
+};
+
+/**
+ * Opens a tab of a ready workload cluster's page, by its tab. In `loading`
+ * and `error` no cluster is listed, and a cluster's page shows its own state:
+ * the tab's address of a base cluster, read in the scenario, measures that
+ * state there.
+ */
+const openClusterTab = (path, tab) => async step => {
+  const { page, scenario } = step;
+  if (scenario === 'loading' || scenario === 'error') {
+    await page.goto(new URL('/platform/clusters?fixtures=base', page.url()).href);
+    await openCluster('workload')({
+      ...step,
+      page: {
+        ...page,
+        locator: page.locator.bind(page),
+        getByRole: page.getByRole.bind(page),
+        waitForFunction: page.waitForFunction.bind(page),
+        url: page.url.bind(page),
+        goto: async url => {
+          const target = new URL(url);
+          target.pathname = `${target.pathname}/${path}`;
+          target.searchParams.set('fixtures', scenario);
+          await page.goto(target.href);
+        },
+      },
+    });
+    return;
+  }
+  await openCluster('workload')(step);
+  await page.getByRole('tab', { name: tab }).click();
+};
+
 /**
  * Opens the Node pools tab of a ready workload cluster with a pool of the
  * kind wanted, and selects that pool: the clusters on the list, in turn, until
@@ -399,36 +476,33 @@ export default [
   {
     name: 'Platform node pools',
     path: '/platform/clusters',
-    setup: async step => {
-      const { page, scenario } = step;
-      // In `loading` and `error` no cluster is listed, and a cluster's page
-      // shows its own state: the tab's address of a base cluster, read in
-      // the scenario, measures that state there.
-      if (scenario === 'loading' || scenario === 'error') {
-        await page.goto(
-          new URL('/platform/clusters?fixtures=base', page.url()).href,
-        );
-        await openCluster('workload')({
-          ...step,
-          page: {
-            ...page,
-            locator: page.locator.bind(page),
-            getByRole: page.getByRole.bind(page),
-            waitForFunction: page.waitForFunction.bind(page),
-            url: page.url.bind(page),
-            goto: async url => {
-              const target = new URL(url);
-              target.pathname = `${target.pathname}/node-pools`;
-              target.searchParams.set('fixtures', scenario);
-              await page.goto(target.href);
-            },
-          },
-        });
-        return;
-      }
-      await openCluster('workload')(step);
-      await page.getByRole('tab', { name: /^Node pools/ }).click();
-    },
+    setup: openClusterTab('node-pools', /^Node pools/),
+  },
+  {
+    // A served environment's management cluster, by its address: its name
+    // is the environment's in every scenario (none at all in `empty`).
+    name: 'Platform RBAC',
+    path: '/platform/clusters/meadow/org-giantswarm/meadow/rbac',
+    // Found through a binding only (its row opens, the match marked), then
+    // a system subject the switch hides, shown, then nothing.
+    states: [
+      rbacFirstBindings,
+      rbacSearch('search: a binding', 'guest', { first: true }),
+      rbacSearch('search: a hidden system subject', 'coredns'),
+      rbacSystemSubjects,
+      rbacSearch('search: no match', 'no-such-subject'),
+    ],
+  },
+  {
+    // Only system subjects: the table's empty state, then the switch.
+    name: 'Platform RBAC · system only',
+    path: '/platform/clusters/fennel/org-giantswarm/fennel/rbac',
+    states: [rbacSystemSubjects],
+  },
+  {
+    name: 'Platform SSH access',
+    path: '/platform/clusters',
+    setup: openClusterTab('ssh-access', 'SSH access'),
   },
   {
     name: 'Platform node pools · machine pool',

@@ -1241,6 +1241,49 @@ describe('OrganizationPage', () => {
     ).toBeInTheDocument();
   });
 
+  it.each([
+    {
+      agentManager: '3.3.4, which marks the muster bindings',
+      version: '3.3.4',
+      mark: { musterBindingOf: 'reviewer' },
+      listed: ['jira', 'status-page'],
+    },
+    {
+      agentManager: 'older, which does not mark them',
+      version: '3.3.3',
+      mark: {},
+      listed: ['jira'],
+    },
+  ])(
+    "lists a connector another chart renders, never an agent's muster binding, with agent-manager $agentManager",
+    async ({ version, mark, listed }) => {
+      const helmRendered = { credentials: [], managedBy: 'Helm' };
+      await renderPage('/connectors', {
+        ...SCENARIO,
+        agentManagerVersion: version,
+        connectors: [
+          ...SCENARIO.connectors!,
+          {
+            name: 'reviewer',
+            url: 'https://muster.example.com/mcp',
+            ...helmRendered,
+            ...mark,
+          },
+          {
+            name: 'status-page',
+            url: 'https://status.example.com/mcp',
+            ...helmRendered,
+          },
+        ],
+      });
+
+      await screen.findByText('jira');
+      for (const name of ['jira', 'status-page', 'reviewer']) {
+        expect(screen.queryByText(name) !== null).toBe(listed.includes(name));
+      }
+    },
+  );
+
   it('shows the egress policies and their origins', async () => {
     await renderPage('/egress', SCENARIO);
 

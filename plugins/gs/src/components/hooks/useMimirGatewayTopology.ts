@@ -8,6 +8,7 @@ import {
   GatewayApiGatewayStatusListenerAttachedRoutes,
   GatewayApiHttprouteHostnameInfo,
   GatewayApiHttprouteParentInfo,
+  GatewayApiHttprouteRuleBackendInfo,
   GatewayApiHttprouteStatusParentAccepted,
   GatewayApiHttprouteStatusParentInfo,
   GatewayApiHttprouteStatusParentResolvedRefs,
@@ -77,6 +78,10 @@ export function useMimirGatewayTopology(options: {
     ...common,
     query: queryOf(GatewayApiHttprouteStatusParentResolvedRefs),
   });
+  const routeRuleBackendInfo = useMimirQuery({
+    ...common,
+    query: queryOf(GatewayApiHttprouteRuleBackendInfo),
+  });
 
   const isLoading =
     gatewayInfo.isLoading ||
@@ -87,7 +92,8 @@ export function useMimirGatewayTopology(options: {
     routeHostnameInfo.isLoading ||
     routeStatusParentInfo.isLoading ||
     routeAccepted.isLoading ||
-    routeResolvedRefs.isLoading;
+    routeResolvedRefs.isLoading ||
+    routeRuleBackendInfo.isLoading;
   const error =
     blockingError(gatewayInfo) ??
     blockingError(listenerInfo) ??
@@ -123,6 +129,10 @@ export function useMimirGatewayTopology(options: {
           routeResolvedRefs.data,
           routeResolvedRefs.error,
         ),
+        routeRuleBackendInfo: optionalSamplesOf(
+          routeRuleBackendInfo.data,
+          routeRuleBackendInfo.error,
+        ),
       }),
     [
       gatewayInfo.data,
@@ -140,6 +150,8 @@ export function useMimirGatewayTopology(options: {
       routeAccepted.error,
       routeResolvedRefs.data,
       routeResolvedRefs.error,
+      routeRuleBackendInfo.data,
+      routeRuleBackendInfo.error,
     ],
   );
 

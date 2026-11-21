@@ -54,6 +54,11 @@ import {
   type FixtureCluster,
   type FixtureClusterSettings,
 } from './clusterBuilders';
+import {
+  buildRbacBindings,
+  type FixtureRbacBinding,
+  type FixtureRbacSettings,
+} from './rbacBuilders';
 import { createRandom } from './random';
 
 /**
@@ -89,6 +94,8 @@ export type FixtureDataSet = {
    * workload clusters, and model hosting's GPU clusters among them.
    */
   clusters: FixtureCluster[];
+  /** The RBAC bindings of each installation's management cluster. */
+  rbacBindings: FixtureRbacBinding[];
 } & FixtureHostingData;
 
 /** The settings of a data set: the seed, "now", and each builder's. */
@@ -130,7 +137,8 @@ export type FixtureDataSetSettings = {
   /** Per skill repository that lists its skills. */
   skills?: { count?: number; nameLength?: number };
 } & FixtureHostingSettings &
-  FixtureClusterSettings;
+  FixtureClusterSettings &
+  FixtureRbacSettings;
 
 /** The seed of the base data set. */
 export const BASE_SEED = 20261114;
@@ -238,6 +246,8 @@ export function createFixtureDataSet(
     toolchains,
     skillRepositories,
     clusters,
+    // Each installation's from a seed of its own: they draw nothing here.
+    rbacBindings: buildRbacBindings(context, installations, clusters, settings),
     ...hosting,
   };
 }

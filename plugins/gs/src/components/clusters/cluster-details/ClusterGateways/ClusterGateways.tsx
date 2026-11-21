@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import {
   InfoCard,
   MetricsUnavailableAlert,
+  StackedRowList,
+  useFittingColumns,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { Alert, Flex, SearchField, Table, Text, useTable } from '@backstage/ui';
 import { useCurrentCluster } from '../../ClusterDetailsPage/useCurrentCluster';
@@ -9,6 +11,7 @@ import { useMimirGatewayTopology } from '../../../hooks/useMimirGatewayTopology'
 import { useMimirGatewayPolicies } from '../../../hooks/useMimirGatewayPolicies';
 import { GatewayPolicy } from '../../../utils/gatewayPolicies';
 import { PoliciesTable } from './PoliciesTable';
+import { GatewaysTable } from './GatewaysTable';
 import {
   Gateway,
   HttpRoute,
@@ -17,13 +20,22 @@ import {
   unavailableCauseOf,
 } from '../../../utils/gatewayTopology';
 import {
-  GatewayRow,
+  ROUTE_COMPACT_MIN_WIDTHS,
+  ROUTE_DROP_FIRST,
+  ROUTE_MIN_WIDTHS,
   RouteParentRow,
-  gatewayColumns,
-  routeColumns,
+  parentShortLabel,
+  routeColumnsFor,
 } from './columns';
+import { ConditionStatus } from './ConditionStatus';
+import {
+  NamedCondition,
+  conditionsDetails,
+  worstCondition,
+} from './conditions';
+import { backendLabel } from './BackendList';
 
-function toGatewayRows(gateways: Gateway[]): GatewayRow[] {
+function toGatewayRows(gateways: Gateway[]): Gateway[] {
   // Failing Gateways first, then those without status. The sort is stable, so
   // each band keeps the name order.
   return [...gateways].sort((a, b) => gatewayRank(a) - gatewayRank(b));
@@ -44,7 +56,19 @@ function toRouteRows(routes: HttpRoute[]): RouteParentRow[] {
   );
 }
 
-/** Matches a route row by route name, namespace, hostname or parent name. */
+/** The backends of a route as the column shows them, for the search. */
+function backendNames(route: HttpRoute): string[] {
+  return route.backends.status === 'available'
+    ? route.backends.backends.map(backend =>
+        backendLabel(backend, route.namespace),
+      )
+    : [];
+}
+
+/**
+ * Matches a route row by route name, namespace, hostname, backend name or
+ * parent name.
+ */
 export function searchRouteRows(
   rows: RouteParentRow[],
   search: string,
@@ -56,6 +80,7 @@ export function searchRouteRows(
       route.name,
       route.namespace,
       ...(route.hostnames ?? []),
+      ...backendNames(route),
       parent?.name ?? '',
     ].some(value => value.toLowerCase().includes(needle)),
   );
@@ -75,6 +100,65 @@ function unavailableCause(
       route.parents.flatMap(parent => [parent.accepted, parent.resolvedRefs]),
     ),
   );
+}
+
+/** Why backends can't be shown, if any can't. A failed load wins, as above. */
+function backendsUnavailableCause(
+  routes: HttpRoute[],
+): 'load-failed' | 'not-exported' | undefined {
+  let notExported = false;
+  for (const { backends } of routes) {
+    if (backends.status !== 'not-available') continue;
+    if (backends.cause === 'load-failed') return 'load-failed';
+    notExported = true;
+  }
+  return notExported ? 'not-exported' : undefined;
+}
+
+const backendsUnavailableNotice = {
+  'load-failed':
+    'The backends could not be loaded. They are retried automatically.',
+  'not-exported': 'Backends need a newer Gateway API bundle on this cluster.',
+};
+
+/** The conditions of a route's parent, in the table's column order. */
+function routeConditions(row: RouteParentRow): NamedCondition[] {
+  const { parent } = row;
+  if (!parent) return [];
+  return [
+    { name: 'Accepted', condition: parent.accepted },
+    { name: 'ResolvedRefs', condition: parent.resolvedRefs },
+  ];
+}
+
+/** The backends of a stacked route row, as the Backends column reads. */
+function backendsFact(route: HttpRoute): string {
+  const { backends } = route;
+  if (backends.status === 'not-available') return 'backends not available';
+  if (backends.status === 'not-reported') return 'backends not reported';
+  if (!backends.backends.length) return 'no backends';
+  const labels = backends.backends.map(backend => {
+    const label = backendLabel(backend, route.namespace);
+    return backend.weight ? `${label} (weight ${backend.weight})` : label;
+  });
+  return `to ${labels.join(', ')}${backends.mayHaveMore ? ', maybe more' : ''}`;
+}
+
+/** The second line of a stacked route row. */
+function rowFacts(row: RouteParentRow): string[] {
+  const { route, parent } = row;
+  let hostnames = 'hostnames not available';
+  if (route.hostnames) {
+    hostnames = route.hostnames.length
+      ? route.hostnames.join(', ')
+      : 'any hostname';
+  }
+  return [
+    route.namespace,
+    parent ? parentShortLabel(parent) : 'No Gateway or ListenerSet parent',
+    hostnames,
+    backendsFact(route),
+  ];
 }
 
 const unavailableNotice = {
@@ -109,7 +193,16 @@ export const ClusterGatewaysContent = ({
   const gatewayRows = useMemo(() => toGatewayRows(gateways), [gateways]);
   const routeRows = useMemo(() => toRouteRows(routes), [routes]);
   const unavailable = useMemo(() => unavailableCause(routes), [routes]);
+  const backendsUnavailable = useMemo(
+    () => backendsUnavailableCause(routes),
+    [routes],
+  );
   // No sortFn: the rows keep the problems-first order from toRouteRows.
+  const fit = useFittingColumns(routeColumnsFor, {
+    minWidths: ROUTE_MIN_WIDTHS,
+    dropFirst: ROUTE_DROP_FIRST,
+    compactMinWidths: ROUTE_COMPACT_MIN_WIDTHS,
+  });
   const { tableProps: routeTableProps, search } = useTable<RouteParentRow>({
     mode: 'complete',
     data: isLoading ? undefined : routeRows,
@@ -117,6 +210,19 @@ export const ClusterGatewaysContent = ({
     searchDebounceMs: 150,
     paginationOptions: { type: 'none' },
   });
+
+  const routesEmptyState = (
+    <Text variant="body-medium" color="secondary">
+      {/* Not search.value: the rows filter on the debounced value. */}
+      {routeRows.length ? (
+        'No HTTPRoutes match the search.'
+      ) : (
+        <>
+          No HTTPRoutes found on cluster <code>{clusterName}</code>.
+        </>
+      )}
+    </Text>
+  );
 
   return (
     <Flex direction="column" gap="4">
@@ -134,16 +240,10 @@ export const ClusterGatewaysContent = ({
       ) : (
         <>
           <InfoCard title="Gateways">
-            <Table<GatewayRow>
-              columnConfig={gatewayColumns}
-              data={isLoading ? undefined : gatewayRows}
-              isPending={isLoading}
-              pagination={{ type: 'none' }}
-              emptyState={
-                <Text variant="body-medium" color="secondary">
-                  No Gateways found on cluster <code>{clusterName}</code>.
-                </Text>
-              }
+            <GatewaysTable
+              clusterName={clusterName}
+              gateways={gatewayRows}
+              isLoading={isLoading}
             />
           </InfoCard>
           <InfoCard title="HTTPRoutes">
@@ -154,30 +254,53 @@ export const ClusterGatewaysContent = ({
                 title={unavailableNotice[unavailable]}
               />
             ) : null}
+            {!isLoading && backendsUnavailable ? (
+              <Alert
+                status="info"
+                icon
+                title={backendsUnavailableNotice[backendsUnavailable]}
+              />
+            ) : null}
             <SearchField
               aria-label="Search HTTPRoutes"
-              placeholder="Search by name, namespace, hostname or parent"
+              placeholder="Search by name, namespace, hostname, backend or parent"
               value={search.value}
               onChange={search.onChange}
               style={{ maxWidth: 420 }}
             />
-            <Table<RouteParentRow>
-              {...routeTableProps}
-              columnConfig={routeColumns}
-              isPending={isLoading}
-              emptyState={
-                <Text variant="body-medium" color="secondary">
-                  {/* Not search.value: the rows filter on the debounced value. */}
-                  {routeRows.length ? (
-                    'No HTTPRoutes match the search.'
-                  ) : (
-                    <>
-                      No HTTPRoutes found on cluster <code>{clusterName}</code>.
-                    </>
-                  )}
-                </Text>
-              }
-            />
+            <div ref={fit.ref}>
+              {fit.isCompact && !isLoading ? (
+                <StackedRowList
+                  aria-label="HTTPRoutes"
+                  rows={(routeTableProps.data ?? []).map(row => {
+                    const conditions = routeConditions(row);
+                    const shown = worstCondition(conditions);
+                    return {
+                      id: row.id,
+                      title: row.route.name,
+                      status: shown ? (
+                        <ConditionStatus
+                          condition={shown.condition}
+                          name={shown.name}
+                        />
+                      ) : undefined,
+                      facts: rowFacts(row),
+                      details: conditions.length
+                        ? conditionsDetails(conditions)
+                        : undefined,
+                    };
+                  })}
+                  emptyState={routesEmptyState}
+                />
+              ) : (
+                <Table<RouteParentRow>
+                  {...routeTableProps}
+                  columnConfig={fit.columns}
+                  isPending={isLoading}
+                  emptyState={routesEmptyState}
+                />
+              )}
+            </div>
           </InfoCard>
         </>
       )}

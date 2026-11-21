@@ -148,6 +148,13 @@ create its models (`ModelConfig`), so Add a model offers an organization
 as owner only to them. Their cluster access is healthy from the start. Any
 other request, a write among them, fails with a 501 and a console error.
 Their Mimir is the fixture one (`mimirEnabled: true`, see "Mimir").
+The guest's token for each (`KubernetesAuthProvidersFixtureApi`, next to the
+fixture Kubernetes API) is an unsigned JWT in the group
+`fixture-giantswarm-staff`, which `gs.adminGroups` in
+`app-config.fixtures.yaml` lists: the guest is Giant Swarm staff in every
+scenario, so the pages show what only staff see, such as the Teleport
+commands and a cluster page's SSH access tab. What anyone else sees, the
+pages' unit tests check.
 
 If the backend fails with "Invalid app bundle schema", a production build of
 the app in `packages/app/dist` predates a config schema change: delete the
@@ -297,15 +304,19 @@ uses and whose key Secret is missing, so kagent reports it Incomplete. `fennel`'
 model credential operations: its `set_organization_model` schema lacks the
 model fields, so the portal refuses every model write there.
 
-Each organization lists four connectors (`list_organization_connectors`), one
+Each organization lists five connectors (`list_organization_connectors`), one
 in each state the agent form tells apart: `issue-tracker` and `docs-search`
-ready, `deepwiki` with its credential missing and not accepted by kagent, and
-`helpdesk`, an agent's muster binding (`managedBy: Helm`), which the form does
-not offer. `create_agent`, `update_agent` and `validate_agent` take
-`connectors`, refuse a name the organization lacks or a muster binding as
-agent-manager does, and `get_agent` reads them back. `fennel`'s agent-manager
-also predates `connectors`: its `create_agent` and `update_agent` schemas lack
-them, so the Tools step does not offer the organization's connectors there.
+ready, `deepwiki` with its credential missing and not accepted by kagent,
+`status-page`, which another Helm chart renders (`managedBy: Helm`), and
+`helpdesk`, an agent's muster binding (`musterBindingOf`), which neither the
+form nor the Connectors tab shows. `create_agent`, `update_agent` and
+`validate_agent` take `connectors`, refuse a name the organization lacks or a
+muster binding as agent-manager does, and `get_agent` reads them back. The
+agent-manager reports version 3.3.4. `fennel`'s reports 3.2.0: it sends no
+`musterBindingOf`, so the portal hides every Helm-rendered connector there
+(`status-page` too), and its `create_agent` and `update_agent` schemas lack
+`connectors`, so the Tools step does not offer the organization's connectors
+there.
 
 `set_organization_model`, `replace_organization_credential` and
 `start_session` honour their idempotency key (`requestId`): a retry answers
@@ -506,6 +517,21 @@ the rates of Your sessions) reads, and the series of its clusters' nodes
 node, with the `nodepool` label on `kube_node_labels`, and Karpenter's per
 node and per pool, which the cluster pages' Node pools tab and worker figures
 read. Those are gauges, one point each from the time the node or pool started.
+It also answers the Gateway API and Envoy Gateway series of each ready
+workload cluster (`gatewayApiSeries` in gs-common), which the cluster page's
+Gateways tab reads: the bundle's Gateway `giantswarm-default` with its http
+and https listeners, a set of HTTPRoutes in the states the tab shows (a
+weighted split, a backend in another namespace, a route whose ResolvedRefs is
+false, one with no status, one attached through a ListenerSet that was not
+accepted, one with no backends) and Envoy Gateway policies (accepted, invalid,
+on the Gateway, and one whose target is gone). Every third ready workload
+cluster runs older bundles: no conditions, no backends and no policy target
+or status, so the tab shows them as not available. In `many` the first ready
+workload cluster has 150 routes, in `long-names` a cluster with a name of 60
+characters or more gives its routes, their namespaces and backends, and the
+policies on those routes names of up to 63 characters (the Gateway, its
+namespace and the routes and policies there keep theirs), and the management cluster and clusters being created or deleted have
+no Gateway.
 Each installation's series are built once per data set, and a selector with a
 metric name looks only at that metric's series. The series are derived from the data set
 (`gatewayUsage.ts` in gs-common): the ready agents of ready organizations,
@@ -570,7 +596,7 @@ Kubernetes objects. It follows the page's scenario
 
 | Scenario     | What the Plans fixtures serve                                                                                                                                                                                                                                                                                        |
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `base`       | One plans repository, `example/bumblebee-plans` (Hive's default team's), with three open plans and two merged ones; the magazine's Now (four lanes, plans to review, blockers, other teams' work), three weeks of History and six knowledge documents. Names are made up, epic titles are public roadmap issues.     |
+| `base`       | One plans repository, `example/bumblebee-plans` (Hive's default team's), with three open plans and two merged ones; the magazine's Now (four lanes, plans to review, blockers, other teams' work), three weeks of History and eight knowledge documents. Names are made up, epic titles are public roadmap issues.   |
 | `empty`      | The same repository and the team's data set, with nothing in them: no open or merged plans, lanes without cards, no plans to review, nothing moved and no knowledge documents.                                                                                                                                       |
 | `many`       | A plans repository for each of Hive's teams (a picker in the header for all teams), 300 open and 300 merged plans, 200 comments and 120 review comments on each plan, 75 cards in each lane of Now, 120 plans to review, 100 other teams' cards, 150 groups in History and 100 knowledge documents in each category. |
 | `long-names` | The base data with every title as long as GitHub allows (256 characters, in whole words), every login as long (39), every plan folder, branch and knowledge document's file name as long as git allows a path segment (255), and people and customers named in 80 characters of whole words.                         |
@@ -706,7 +732,19 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
   revision) and GitRepository per GitOps repository and a Release per release
   the clusters run (`gsKubernetesObjectsOf` in
   `@giantswarm/backstage-plugin-gs/fixtures`), which the Clusters pages and the
-  Platform section's list and cluster pages read. The cluster pages' tool
+  Platform section's list and cluster pages read. Each management cluster has
+  RBAC bindings (`rbacBuilders.ts`, from a seed of each installation's own),
+  which gs maps onto RoleBinding and ClusterRoleBinding objects for the
+  cluster pages' RBAC tabs: in every installation the system ones Kubernetes
+  brings along (`system:` subjects, service accounts in `kube-system`); in
+  `meadow` and `tarragon` also the platform team's groups and a person with
+  `cluster-admin` and `read-all` cluster-wide, an automation service account,
+  and per organization of the workload clusters its admins' group and a
+  person, a deployer service account and its readers' group (who read the
+  next organization's namespace too), then three people with `view` in an
+  organization's namespace (`rbacSubjects`: 150 in `many`, none at all in
+  `empty`). `fennel` has only the system ones, so the tab's "only system
+  subjects" state shows there. The cluster pages' tool
   links are `gs.clusterDetails.resources` of `app-config.fixtures.yaml`, at
   made-up addresses; the fixture installations have no base domain, so the
   login command is not shown. The classic Deployments list shows the

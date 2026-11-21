@@ -18,6 +18,13 @@ export type ClusterLoginCommands = {
    * For Giant Swarm staff: `tsh kube login`, with the one-time tsh setup.
    */
   staff?: { command: string; setup: string; installDocsUrl: string };
+  /**
+   * Whether the person is Giant Swarm staff (`useCurrentUser`): undefined
+   * while their installation token is read, or when it could not be.
+   */
+  isGSUser: boolean | undefined;
+  /** Whether the person's installation token is still being read. */
+  isUserLoading: boolean;
 };
 
 /**
@@ -29,11 +36,14 @@ export type ClusterLoginCommands = {
 export function useClusterLoginCommands(): ClusterLoginCommands {
   const { cluster, installationName } = useCurrentCluster();
   const { installationsInfo } = useInstallationsInfo();
-  const { isGSUser } = useCurrentUser(installationName);
+  const { isGSUser, isLoading: isUserLoading } =
+    useCurrentUser(installationName);
   const baseDomain = installationsInfo.find(
     info => info.name === installationName,
   )?.baseDomain;
   return {
+    isGSUser,
+    isUserLoading,
     ...(baseDomain && {
       kubectlGs: getKubectlGsLoginCommand(
         baseDomain,
