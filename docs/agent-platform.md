@@ -600,9 +600,15 @@ Organization, Provider with its region, Account (in groups of four, linked to
 the AWS console), Workers and Created. The facts column belongs to Overview;
 the other tabs take the page's width.
 
-It has three tabs so far, Overview, Node pools and, for Giant Swarm staff
-(`useCurrentUser`), SSH access; any other tab redirects to Overview, and so
-does SSH access for a person known not to be staff. While that is being
+It has five tabs so far, Overview, Node pools, Gateways where the
+installation has Mimir, RBAC for a management cluster and, for Giant Swarm
+staff (`useCurrentUser`), SSH access; any other tab redirects to Overview,
+and so does Gateways without Mimir (`mimirEnabled: false`), RBAC for a
+workload cluster and SSH access for a person known not to be staff. While the
+cluster is read, the strip has no RBAC tab and nothing redirects: RBAC
+appears once the read says the cluster is a management one
+(`isManagementCluster`). Gateways appears the same way once the
+installations' configuration says there is Mimir (`useMimirAvailable`). While whether the person is staff is being
 read, SSH access shows its loading state; where it could not be read (no
 installation token), the tab stays. Overview (the bare path) is a column of panels:
 
@@ -654,6 +660,58 @@ Then "Technical details of <pool>", open: for a machine pool its instance
 shape, scaling and resources; for a Karpenter pool what runs now, the
 provisioning envelope, lifecycle and disruption, and the node template (the
 classic page's cards, with Karpenter's metrics from Mimir).
+
+Gateways (`/gateways`) shows what the classic Gateways tab shows, from the
+same Mimir metrics and helpers (`useMimirGatewayTopology`,
+`useMimirGatewayPolicies`), one Gateway at a time. A table has a row per
+Gateway, failing ones first: the name, a button that selects it, with its
+namespace; one status ("Programmed", or the failing condition named, "Not
+programmed", with its reason under it); and how many listeners, routes
+(with how many fail) and policies it has. The selected Gateway is
+`?gateway=<namespace>/<name>`, the first by default and for a name the
+cluster does not have. Under the table, the selected Gateway's name, its
+namespace and class, then three tables: its listeners (name, protocol and
+port, hostname, attached routes); its HTTP routes, a row per route and
+parent on this Gateway (the route with its namespace and the policies that
+target it as chips, hostnames linked, backends with a split's weight, the
+listener, one status: "Accepted", or "Not accepted" or "Refs not resolved"
+with the reason); and its Envoy Gateway policies (the policy, its kind, what
+it applies to, its status on this Gateway). A policy belongs to a Gateway
+when an ancestor in its status is that Gateway or it targets the Gateway or
+one of its routes. What no Gateway takes, a route attached through a
+ListenerSet (no metric names a ListenerSet's Gateway), a route without a
+parent, a policy whose targets are selected by labels or don't exist, is
+listed in a last section, "Not attached to a gateway", only when there is
+any. The classic tab's notices say what older bundles don't export. A
+finder above the table, "Find a gateway by hostname, route or policy",
+matches a case-insensitive substring of a Gateway's name, its routes' names,
+namespaces, hostnames and backends, and its policies' names: it lists only
+the Gateways it finds something on, each with a line saying what
+("Hostname: … (route …)"), keeps the selected Gateway while it finds something on it and selects the first otherwise, and marks the matching route and policy rows, those of the last section too, in every layout. With no match, the table says so and nothing shows below it but the last section. Route counts count a route once per Gateway, however many of its parents are on it; a policy count the portal could not read shows as "—". Every cell is at the top of
+its row; narrower, columns move under the name of each row; at phone width
+the rows stack.
+
+RBAC (`/rbac`) is the classic cluster page's RBAC tab in the shell's style:
+who can do what in the management cluster, read from the installation's
+RoleBindings and ClusterRoleBindings and grouped by subject with the classic
+tab's `utils` (`buildRbacSubjectRows`). Under a sentence on what it shows,
+"Access grants (n subjects)" and a "Show system subjects (n)" switch, off at
+first (a system subject has a `system:` name or a `kube-` namespace), then a
+table with a row per subject: the subject (a service account with its
+namespace), a button that opens the row to its bindings ("RoleBinding X in
+namespace Y grants ClusterRole Z"); its kind; its roles as chips; and where
+they apply ("Cluster-wide" and the namespaces), every cell at the top of
+its row. A search field above it (as on the clusters list, held while the
+tab is open) finds subjects by a case-insensitive substring of what their
+rows show (the subject with its namespace, kind, roles, scope) or of their
+bindings' names and namespaces, among the subjects the switch shows; a
+subject found only through a binding opens, with what was found marked.
+Where only system subjects the switch hides match, the empty state says how
+many and offers to show them. Narrower, the kind moves
+under the subject; at phone width the rows stack, with the roles and, opened,
+the bindings under each. Nothing to list, a failed read (reading role
+bindings needs cluster-wide read access) and only system subjects each say
+so.
 
 SSH access (`/ssh-access`) is the classic cluster page's SSH access tab in
 the shell's style: a sentence on choosing a node, then the Teleport commands

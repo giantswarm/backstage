@@ -83,6 +83,10 @@ export {
   type FixtureClusterNode,
   type FixtureClusterPool,
 } from './clusterBuilders';
+export {
+  type FixtureRbacBinding,
+  type FixtureRbacSubject,
+} from './rbacBuilders';
 export { clusterNodeSeries, clusterNodeSeriesOf } from './clusterNodeSeries';
 export { gatewayApiSeries, gatewayApiSeriesOf } from './gatewayApiSeries';
 export { capitalize, createNamer, fitName } from './names';

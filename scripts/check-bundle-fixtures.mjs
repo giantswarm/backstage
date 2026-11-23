@@ -149,6 +149,18 @@ const MARKERS = [
     marker: 'GPU nodes for model hosting',
   },
   {
+    source: 'plugins/gs-common/src/fixtures/rbacBuilders.ts',
+    marker: 'system::leader-locking-kube-scheduler',
+  },
+  {
+    source: 'plugins/gs/src/apis/kubernetes/fixtures/rbacObjects.ts',
+    marker: '-fixture-rbac-',
+  },
+  {
+    source: 'plugins/gs-common/src/fixtures/gatewayApiSeries.ts',
+    marker: 'legacy-edge',
+  },
+  {
     source: 'plugins/gs-common/src/fixtures/gatewayUsage.ts',
     marker: 'sorrel@example.com',
   },

@@ -86,12 +86,22 @@ async function policiesOf(cluster: string) {
 describe('the fixture Gateway API series, as the Gateways tab reads them', () => {
   it('shows every state of the tab on a cluster with the current bundles', async () => {
     const { gateways, routes } = await topologyOf(workload[0].name);
-    expect(gateways).toHaveLength(1);
-    expect(gateways[0]).toMatchObject({
+    const gatewayByName = new Map(gateways.map(g => [g.name, g]));
+    expect([...gatewayByName.keys()].sort()).toEqual([
+      'giantswarm-default',
+      'legacy-edge',
+      'payments-internal',
+    ]);
+    const main = gatewayByName.get('giantswarm-default')!;
+    expect(main).toMatchObject({
       accepted: { status: 'true' },
       programmed: { status: 'true' },
     });
-    expect(gateways[0].listeners.map(l => l.name)).toEqual(['http', 'https']);
+    expect(main.listeners.map(l => l.name)).toEqual(['http', 'https']);
+    expect(gatewayByName.get('legacy-edge')?.programmed).toEqual({
+      status: 'false',
+      reason: 'AddressNotAssigned',
+    });
 
     const byName = new Map(routes.map(route => [route.name, route]));
     expect(byName.get('storefront')?.backends).toMatchObject({
@@ -115,6 +125,16 @@ describe('the fixture Gateway API series, as the Gateways tab reads them', () =>
     expect(byName.get('catalog')?.backends).toMatchObject({
       mayHaveMore: true,
     });
+    // On two Gateways, the internal one rejecting its hostname.
+    expect(
+      byName
+        .get('public-api')
+        ?.parents.map(p => [p.name, p.accepted.status])
+        .sort(),
+    ).toEqual([
+      ['giantswarm-default', 'true'],
+      ['payments-internal', 'false'],
+    ]);
     expect(byName.get('admin-console')?.parents[0].accepted).toEqual({
       status: 'not-reported',
     });

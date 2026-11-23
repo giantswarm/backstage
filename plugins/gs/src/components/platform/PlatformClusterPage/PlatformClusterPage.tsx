@@ -85,7 +85,10 @@ import {
   isManagementCluster,
   LIVE_CLUSTER_REFRESH_MS,
 } from '../../clusters/utils';
+import { useMimirAvailable } from '../../hooks/useMimirAvailable';
+import { PlatformClusterGateways } from '../PlatformClusterGateways';
 import { PlatformClusterNodePools } from '../PlatformClusterNodePools';
+import { PlatformClusterRBAC } from '../PlatformClusterRBAC';
 import {
   PlatformClusterSSHAccess,
   PlatformClusterSSHAccessSkeleton,
@@ -100,43 +103,86 @@ import { usePlatformLinks } from '../PlatformLinks';
 
 /**
  * The cluster page's routed tabs, in strip order; Overview is the page's own
- * address. Gateways and Access come later (giantswarm/giantswarm#39295).
- * The app's telemetry reads the tabs' paths from here.
+ * address. The app's telemetry reads the tabs' paths from here.
  */
 export const PLATFORM_CLUSTER_PAGE_TABS = [
   { id: 'overview', path: '', title: 'Overview' },
   { id: 'node-pools', path: 'node-pools', title: 'Node pools' },
+  { id: 'gateways', path: 'gateways', title: 'Gateways' },
+  { id: 'rbac', path: 'rbac', title: 'RBAC' },
   { id: 'ssh-access', path: 'ssh-access', title: 'SSH access' },
 ] as const;
+
+type ClusterPageTab = (typeof PLATFORM_CLUSTER_PAGE_TABS)[number];
 
 /** The tabs only Giant Swarm staff have (`useCurrentUser`). */
 const STAFF_TAB_IDS: ReadonlySet<string> = new Set(['ssh-access']);
 
-/** The tabs of a person known not to be staff. */
-const CUSTOMER_TABS = PLATFORM_CLUSTER_PAGE_TABS.filter(
-  tab => !STAFF_TAB_IDS.has(tab.id),
-);
+/**
+ * The tabs only a management cluster has: the portal reads its role bindings
+ * through the installation's Kubernetes API, which is the management
+ * cluster's.
+ */
+const MANAGEMENT_TAB_IDS: ReadonlySet<string> = new Set(['rbac']);
 
-const CLUSTER_PAGE_TABS = [...PLATFORM_CLUSTER_PAGE_TABS];
+/**
+ * The tabs that show Mimir's metrics only, as the classic page's Gateways
+ * tab: an installation without Mimir (`mimirEnabled: false`) has none.
+ */
+const MIMIR_TAB_IDS: ReadonlySet<string> = new Set(['gateways']);
+
+/** The tabs of a cluster, for a person who is staff or not. */
+function tabsOf({
+  isManagement,
+  isStaff,
+  hasMimir,
+}: {
+  isManagement: boolean;
+  isStaff: boolean;
+  hasMimir: boolean;
+}): ClusterPageTab[] {
+  return PLATFORM_CLUSTER_PAGE_TABS.filter(
+    tab =>
+      (isManagement || !MANAGEMENT_TAB_IDS.has(tab.id)) &&
+      (isStaff || !STAFF_TAB_IDS.has(tab.id)) &&
+      (hasMimir || !MIMIR_TAB_IDS.has(tab.id)),
+  );
+}
+
+/**
+ * The tabs while the cluster is read: the management cluster's and Mimir's
+ * left out until the reads say they belong, so they appear rather than
+ * vanish. Nothing redirects meanwhile: a person on such a tab's address
+ * stays there.
+ */
+const LOADING_TABS = PLATFORM_CLUSTER_PAGE_TABS.filter(
+  tab => !MANAGEMENT_TAB_IDS.has(tab.id) && !MIMIR_TAB_IDS.has(tab.id),
+);
 
 /**
  * The tabs the person has, with the number of node pools on theirs once it
  * is known. The staff tabs are left out only for a person known not to be
- * staff, not while that is being read or could not be.
+ * staff, not while that is being read or could not be; the management
+ * cluster's tabs for a workload cluster; Mimir's until the installation is
+ * known to have Mimir.
  */
 function useClusterPageTabs(
   nodePools: PlatformNodePools,
   isGSUser: boolean | undefined,
+  isManagement: boolean,
+  mimirAvailable: boolean | undefined,
 ) {
   const count = nodePoolCount(nodePools);
+  const hasMimir = mimirAvailable === true;
   return useMemo(
     () =>
-      (isGSUser === false ? CUSTOMER_TABS : CLUSTER_PAGE_TABS).map(tab =>
-        tab.id === 'node-pools' && count !== undefined
-          ? { ...tab, count }
-          : tab,
+      tabsOf({ isManagement, isStaff: isGSUser !== false, hasMimir }).map(
+        tab =>
+          tab.id === 'node-pools' && count !== undefined
+            ? { ...tab, count }
+            : tab,
       ),
-    [count, isGSUser],
+    [count, isGSUser, isManagement, hasMimir],
   );
 }
 
@@ -193,7 +239,7 @@ function LoadingPage({ name }: { name: string }) {
       title={<ShellPageTitleSkeleton label={`Reading ${name}…`} />}
       {...frame}
       badges={<ShellPageBadgeSkeleton />}
-      tabs={CLUSTER_PAGE_TABS}
+      tabs={LOADING_TABS}
       aside={<ShellPageFactsSkeleton />}
     >
       <ShellPageFactsSkeleton />
@@ -501,7 +547,14 @@ function ClusterPage() {
   const nodePools = usePlatformNodePools();
   const { kubectlGs, staff, isGSUser, isUserLoading } =
     useClusterLoginCommands();
-  const tabs = useClusterPageTabs(nodePools, isGSUser);
+  const isManagement = isManagementCluster(cluster);
+  const mimirAvailable = useMimirAvailable(installationName);
+  const tabs = useClusterPageTabs(
+    nodePools,
+    isGSUser,
+    isManagement,
+    mimirAvailable,
+  );
   // The facts column belongs to Overview; the other tabs take the width.
   const isOverview =
     pathname.replace(/\/+$/, '') === basePath.replace(/\/+$/, '');
@@ -578,6 +631,15 @@ function ClusterPage() {
             path="node-pools"
             element={<PlatformClusterNodePools nodePools={nodePools} />}
           />
+          {/* Without Mimir there is no Gateways tab: its address opens
+              Overview. While that is read, the tab's address stays. */}
+          {mimirAvailable !== false && (
+            <Route path="gateways" element={<PlatformClusterGateways />} />
+          )}
+          {/* A workload cluster has no RBAC tab: its address opens Overview. */}
+          {isManagement && (
+            <Route path="rbac" element={<PlatformClusterRBAC />} />
+          )}
           <Route
             path="ssh-access"
             element={
@@ -858,8 +920,9 @@ function hideClassicErrors(): boolean {
 /**
  * A cluster's page in the shell's Platform section
  * (`/platform/clusters/<installation>/<namespace>/<name>`): its state, a
- * column of facts on Overview, and routed tabs: Overview, Node pools and, for
- * Giant Swarm staff, SSH access so far.
+ * column of facts on Overview, and routed tabs: Overview, Node pools,
+ * Gateways where the installation has Mimir, RBAC for a management cluster
+ * and, for Giant Swarm staff, SSH access.
  * Reads the cluster as the classic cluster page does (`ClusterProvider`),
  * through the query client of the `PlatformClustersProvider` above it, which
  * the clusters list reads through too.

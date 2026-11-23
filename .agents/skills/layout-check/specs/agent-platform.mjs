@@ -162,6 +162,85 @@ const openCluster = kind => async ({ page, skip }) => {
   await page.goto(new URL(href, page.url()).href);
 };
 
+/** Turns on the RBAC tab's "Show system subjects" switch. */
+const rbacSystemSubjects = {
+  name: 'system subjects',
+  run: async ({ page, skip }) => {
+    const label = page.getByText(/^Show system subjects \(\d+\)$/);
+    if (!(await shows(label))) skip('no subjects read');
+    // The input sits under bui's drawn switch: press its label.
+    await label.click();
+  },
+};
+
+/**
+ * Types a search into the RBAC tab's search field. The first text in the
+ * field brings bui's clear button, which takes 32px of the input inside the
+ * field's unchanged box: `shift: false` for that state.
+ */
+const rbacSearch = (name, query, { first = false } = {}) => ({
+  name,
+  ...(first && { shift: false }),
+  run: async ({ page, skip }) => {
+    const field = page.getByRole('searchbox', {
+      name: 'Search subjects, roles and bindings',
+    });
+    if (!(await shows(field)) || (await field.isDisabled())) {
+      skip('no subjects read');
+    }
+    await field.fill(query);
+  },
+});
+
+/** Opens the RBAC tab's first subject to its bindings. */
+const rbacFirstBindings = {
+  name: 'first subject opened',
+  run: async ({ page, skip }) => {
+    // In the table's rows, or on a phone the stacked list's.
+    const toggle = page
+      .locator(
+        'tbody button[aria-expanded="false"], ul[aria-label="Subjects"] button[aria-expanded="false"]',
+      )
+      .first();
+    if (!(await shows(toggle))) skip('no subject to open');
+    await toggle.click();
+  },
+};
+
+/** Selects the Gateways tab's second Gateway, by its name's button. */
+const gatewaysSecond = {
+  name: 'another gateway selected',
+  run: async ({ page, skip }) => {
+    // The Gateways table's rows, or on a phone the stacked list's; the
+    // rail has pressed buttons of its own.
+    const second = page
+      .locator(
+        'table button[aria-pressed="false"], ul[aria-label="Gateways"] button[aria-pressed="false"]',
+      )
+      .first();
+    if (!(await shows(second))) skip('no second gateway');
+    await second.click();
+  },
+};
+
+/**
+ * Types into the Gateways tab's finder. The first text in the field brings
+ * bui's clear button: `shift: false` for that state, as on the RBAC tab.
+ */
+const gatewaysSearch = (name, query, { first = false } = {}) => ({
+  name,
+  ...(first && { shift: false }),
+  run: async ({ page, skip }) => {
+    const field = page.getByRole('searchbox', {
+      name: 'Find a gateway by hostname, route or policy',
+    });
+    if (!(await shows(field)) || (await field.isDisabled())) {
+      skip('no gateways read');
+    }
+    await field.fill(query);
+  },
+});
+
 /**
  * Opens a tab of a ready workload cluster's page, by its tab. In `loading`
  * and `error` no cluster is listed, and a cluster's page shows its own state:
@@ -432,6 +511,43 @@ export default [
     name: 'Platform node pools',
     path: '/platform/clusters',
     setup: openClusterTab('node-pools', /^Node pools/),
+  },
+  {
+    // A served environment's management cluster, by its address: its name
+    // is the environment's in every scenario (none at all in `empty`).
+    name: 'Platform RBAC',
+    path: '/platform/clusters/meadow/org-giantswarm/meadow/rbac',
+    // Found through a binding only (its row opens, the match marked), then
+    // a system subject the switch hides, shown, then nothing.
+    states: [
+      rbacFirstBindings,
+      rbacSearch('search: a binding', 'guest', { first: true }),
+      rbacSearch('search: a hidden system subject', 'coredns'),
+      rbacSystemSubjects,
+      rbacSearch('search: no match', 'no-such-subject'),
+    ],
+  },
+  {
+    // Only system subjects: the table's empty state, then the switch.
+    name: 'Platform RBAC · system only',
+    path: '/platform/clusters/fennel/org-giantswarm/fennel/rbac',
+    states: [rbacSystemSubjects],
+  },
+  {
+    // The first Gateway, another one, then the finder: a route on the
+    // second Gateway, a route attached only through a ListenerSet (marked
+    // in "Not attached to a gateway"), and nothing.
+    name: 'Platform Gateways',
+    path: '/platform/clusters',
+    setup: openClusterTab('gateways', 'Gateways'),
+    states: [
+      gatewaysSecond,
+      gatewaysSearch('search: a route on another gateway', 'ledger', {
+        first: true,
+      }),
+      gatewaysSearch('search: outside any gateway', 'event-webhooks'),
+      gatewaysSearch('search: no match', 'no-such-route'),
+    ],
   },
   {
     name: 'Platform SSH access',

@@ -12,6 +12,7 @@ import {
   fixtureDataSet,
   inInstallation,
 } from '@giantswarm/backstage-plugin-gs-common/fixtures';
+import { rbacObjectsOf } from './rbacObjects';
 
 const CAPI = 'cluster.x-k8s.io';
 const INFRASTRUCTURE = 'infrastructure.cluster.x-k8s.io';
@@ -486,10 +487,10 @@ const cache = new WeakMap<FixtureDataSet, Map<string, KubeObjectInterface[]>>();
  * KubeadmControlPlane, the App that installs it (with the Flux Kustomization
  * and GitRepository that apply it, where it is managed through GitOps), and a
  * MachinePool per node pool with the AWSMachinePool or KarpenterMachinePool
- * it points at, plus the Release of each
- * release the clusters run,
- * as the Clusters pages and the Platform section's list read them. The same
- * array while the data set stays the same.
+ * it points at, plus the Release of each release the clusters run and the
+ * management cluster's RoleBindings and ClusterRoleBindings, as the Clusters
+ * pages and the Platform section's list and cluster pages read them. The
+ * same array while the data set stays the same.
  */
 export function gsKubernetesObjectsOf(
   installation: string,
@@ -506,6 +507,7 @@ export function gsKubernetesObjectsOf(
     objects = [
       ...withoutDuplicates(clusters.flatMap(objectsOf)),
       ...releasesOf(installation, clusters),
+      ...rbacObjectsOf(data.rbacBindings, installation),
     ];
     byInstallation.set(installation, objects);
   }

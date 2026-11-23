@@ -3,6 +3,7 @@ import {
   TestApiProvider,
 } from '@backstage/frontend-test-utils';
 import { act, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import {
   focusManager,
   QueryClient,
@@ -44,6 +45,188 @@ function knowledgeApi(document: string) {
 
 describe('HiveKnowledgeTab', () => {
   afterEach(() => focusManager.setFocused(undefined));
+
+  async function renderCollection(
+    documents: Record<string, string>,
+    readContent = async (path: string) => documents[path],
+  ) {
+    const plansApi = {
+      getMagazine: jest.fn(async () => ({
+        configured: true,
+        repository: 'giantswarm/magazine',
+        ref: 'data',
+        knowledgeRef: 'main',
+      })),
+      getTree: jest.fn(async () => ({
+        tree: Object.keys(documents).map(path => ({ path, type: 'blob' })),
+      })),
+      getContent: jest.fn(async (path: string) => ({
+        content: await readContent(path),
+      })),
+    } as unknown as PlansApi;
+    await renderInTestApp(
+      <TestApiProvider apis={[[plansApiRef, plansApi]]}>
+        <QueryClientProvider client={new QueryClient()}>
+          <HiveKnowledgeTab />
+        </QueryClientProvider>
+      </TestApiProvider>,
+      {
+        mountedRoutes: { '/hive': rootRouteRef },
+        initialRouteEntries: [
+          '/hive/knowledge?team=Bumblebee&doc=knowledge%2Fproduct%2Fagent-platform.md',
+        ],
+      },
+    );
+    return plansApi;
+  }
+
+  it('scrolls and focuses cross-document headings after loading, including the same fragment in another document', async () => {
+    const originalScroll = Element.prototype.scrollIntoView;
+    const scrollIntoView = jest.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    try {
+      const documents = {
+        'knowledge/product/agent-platform.md':
+          '# Agent Platform\n\n[Architecture](../architecture/architect.md#details)',
+        'knowledge/architecture/architect.md':
+          '# Architect\n\n## Details\n\n[Decision](../decisions/access.md#details)',
+        'knowledge/decisions/access.md':
+          '# Access\n\n## Details\n\nDecision details.\n\n[Copy](copy.md#details)',
+        'knowledge/decisions/copy.md':
+          '# Access\n\n## Details\n\nDecision details.\n\n[Copy](copy.md#details)',
+      };
+      let resolveArchitecture!: (content: string) => void;
+      const architectureContent = new Promise<string>(resolve => {
+        resolveArchitecture = resolve;
+      });
+      const plansApi = await renderCollection(documents, path =>
+        path === 'knowledge/architecture/architect.md'
+          ? architectureContent
+          : Promise.resolve(documents[path as keyof typeof documents]),
+      );
+      const user = userEvent.setup();
+      await user.click(
+        await screen.findByRole('link', { name: 'Architecture' }),
+      );
+      await waitFor(() =>
+        expect(plansApi.getContent).toHaveBeenCalledWith(
+          'knowledge/architecture/architect.md',
+          'main',
+          'giantswarm/magazine',
+        ),
+      );
+      expect(screen.queryByRole('heading', { name: 'Details' })).toBeNull();
+      expect(scrollIntoView).not.toHaveBeenCalled();
+
+      await act(async () => {
+        resolveArchitecture(documents['knowledge/architecture/architect.md']);
+      });
+      const architectureHeading = await screen.findByRole('heading', {
+        name: 'Details',
+      });
+      await waitFor(() =>
+        expect(scrollIntoView.mock.instances).toContain(architectureHeading),
+      );
+      expect(architectureHeading).toHaveFocus();
+
+      await user.click(screen.getByRole('link', { name: 'Decision' }));
+      await screen.findByText('Decision details.');
+      const decisionHeading = screen.getByRole('heading', { name: 'Details' });
+      await waitFor(() =>
+        expect(scrollIntoView.mock.instances).toContain(decisionHeading),
+      );
+      expect(decisionHeading).toHaveFocus();
+
+      const beforeCopyScrollCount = scrollIntoView.mock.calls.length;
+      await user.click(
+        within(screen.getByRole('article', { name: 'Access' })).getByRole(
+          'link',
+          { name: 'Copy' },
+        ),
+      );
+      await screen.findByRole('link', { name: 'Copy', current: 'page' });
+      const copiedHeading = screen.getByRole('heading', { name: 'Details' });
+      await waitFor(() =>
+        expect(scrollIntoView.mock.calls.length).toBeGreaterThan(
+          beforeCopyScrollCount,
+        ),
+      );
+      expect(copiedHeading).toHaveFocus();
+
+      const scrollCount = scrollIntoView.mock.calls.length;
+      await user.click(
+        within(screen.getByRole('article', { name: 'Copy' })).getByRole(
+          'link',
+          { name: 'Copy' },
+        ),
+      );
+      await waitFor(() =>
+        expect(scrollIntoView.mock.calls.length).toBeGreaterThan(scrollCount),
+      );
+      expect(copiedHeading).toHaveFocus();
+    } finally {
+      Element.prototype.scrollIntoView = originalScroll;
+    }
+  });
+
+  it('opens inline sibling and cross-directory documents while retaining the team', async () => {
+    const user = userEvent.setup();
+    await renderCollection({
+      'knowledge/product/agent-platform.md':
+        '# Agent Platform\n\n[Slack agent](slack-agent.md)',
+      'knowledge/product/slack-agent.md':
+        '# Slack agent\n\n[Architect](../architecture/architect.md)',
+      'knowledge/architecture/architect.md':
+        '# Architect\n\n[Architect orb](architect-orb.md)',
+      'knowledge/architecture/architect-orb.md':
+        '# Architect orb\n\nOrb documentation.',
+    });
+
+    const article = await screen.findByRole('article', {
+      name: 'Agent platform',
+    });
+    const slackLink = await within(article).findByRole('link', {
+      name: 'Slack agent',
+    });
+    expect(slackLink).toHaveAttribute(
+      'href',
+      expect.stringContaining('team=Bumblebee'),
+    );
+    await user.click(slackLink);
+    const slack = await screen.findByRole('article', { name: 'Slack agent' });
+    await user.click(
+      await within(slack).findByRole('link', { name: 'Architect' }),
+    );
+    const architect = await screen.findByRole('article', { name: 'Architect' });
+    await user.click(
+      await within(architect).findByRole('link', { name: 'Architect orb' }),
+    );
+    expect(await screen.findByText('Orb documentation.')).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Architect orb', current: 'page' }),
+    ).toHaveAttribute('href', expect.stringContaining('team=Bumblebee'));
+  });
+
+  it('shows a missing document instead of silently selecting the first document', async () => {
+    const user = userEvent.setup();
+    const plansApi = await renderCollection({
+      'knowledge/product/agent-platform.md':
+        '# Agent Platform\n\n[Missing](missing.md)',
+    });
+
+    await user.click(await screen.findByRole('link', { name: 'Missing' }));
+    expect(
+      await screen.findByText('Knowledge document not found'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('article', { name: 'Agent platform' }),
+    ).toBeNull();
+    expect(plansApi.getContent).not.toHaveBeenCalledWith(
+      'knowledge/product/missing.md',
+      expect.anything(),
+      expect.anything(),
+    );
+  });
 
   it('shows its progress bar while the retry after a 500 waits, then the document', async () => {
     // A background tab: react-query pauses the retry until it is focused,

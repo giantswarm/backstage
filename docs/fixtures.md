@@ -519,19 +519,25 @@ node and per pool, which the cluster pages' Node pools tab and worker figures
 read. Those are gauges, one point each from the time the node or pool started.
 It also answers the Gateway API and Envoy Gateway series of each ready
 workload cluster (`gatewayApiSeries` in gs-common), which the cluster page's
-Gateways tab reads: the bundle's Gateway `giantswarm-default` with its http
-and https listeners, a set of HTTPRoutes in the states the tab shows (a
-weighted split, a backend in another namespace, a route whose ResolvedRefs is
-false, one with no status, one attached through a ListenerSet that was not
-accepted, one with no backends) and Envoy Gateway policies (accepted, invalid,
-on the Gateway, and one whose target is gone). Every third ready workload
+Gateways tabs read: the bundle's Gateway `giantswarm-default` with its http
+and https listeners, a team's `payments-internal` Gateway, and `legacy-edge`,
+accepted but not programmed; a set of HTTPRoutes in the states the tabs show
+(a weighted split, a backend in another namespace, a route whose ResolvedRefs
+is false, one with no status, one on two Gateways that the second does not
+accept, one attached through a ListenerSet that was not accepted, one with no
+backends); and Envoy Gateway policies (accepted, invalid, on a Gateway, on a
+route, and one whose target is gone). Every third ready workload
 cluster runs older bundles: no conditions, no backends and no policy target
 or status, so the tab shows them as not available. In `many` the first ready
-workload cluster has 150 routes, in `long-names` a cluster with a name of 60
+workload cluster has 150 routes and 12 more Gateways, in `long-names` a cluster with a name of 60
 characters or more gives its routes, their namespaces and backends, and the
-policies on those routes names of up to 63 characters (the Gateway, its
-namespace and the routes and policies there keep theirs), and the management cluster and clusters being created or deleted have
-no Gateway.
+policies on those routes names of up to 63 characters, as does the
+`payments-internal` Gateway (`giantswarm-default`, its namespace and the
+routes and policies there keep theirs), and the management cluster and clusters being created or deleted have
+no Gateway. To see a cluster page without Mimir, which has no Gateways tab,
+start the server with a config that turns Mimir off for one installation,
+`yarn fixtures start --config <file>` with
+`gs: { installations: { tarragon: { mimirEnabled: false } } }` in the file.
 Each installation's series are built once per data set, and a selector with a
 metric name looks only at that metric's series. The series are derived from the data set
 (`gatewayUsage.ts` in gs-common): the ready agents of ready organizations,
@@ -596,7 +602,7 @@ Kubernetes objects. It follows the page's scenario
 
 | Scenario     | What the Plans fixtures serve                                                                                                                                                                                                                                                                                        |
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `base`       | One plans repository, `example/bumblebee-plans` (Hive's default team's), with three open plans and two merged ones; the magazine's Now (four lanes, plans to review, blockers, other teams' work), three weeks of History and six knowledge documents. Names are made up, epic titles are public roadmap issues.     |
+| `base`       | One plans repository, `example/bumblebee-plans` (Hive's default team's), with three open plans and two merged ones; the magazine's Now (four lanes, plans to review, blockers, other teams' work), three weeks of History and eight knowledge documents. Names are made up, epic titles are public roadmap issues.   |
 | `empty`      | The same repository and the team's data set, with nothing in them: no open or merged plans, lanes without cards, no plans to review, nothing moved and no knowledge documents.                                                                                                                                       |
 | `many`       | A plans repository for each of Hive's teams (a picker in the header for all teams), 300 open and 300 merged plans, 200 comments and 120 review comments on each plan, 75 cards in each lane of Now, 120 plans to review, 100 other teams' cards, 150 groups in History and 100 knowledge documents in each category. |
 | `long-names` | The base data with every title as long as GitHub allows (256 characters, in whole words), every login as long (39), every plan folder, branch and knowledge document's file name as long as git allows a path segment (255), and people and customers named in 80 characters of whole words.                         |
@@ -732,7 +738,19 @@ modules and tests import (`giantswarm/no-fixture-imports` fails on any other imp
   revision) and GitRepository per GitOps repository and a Release per release
   the clusters run (`gsKubernetesObjectsOf` in
   `@giantswarm/backstage-plugin-gs/fixtures`), which the Clusters pages and the
-  Platform section's list and cluster pages read. The cluster pages' tool
+  Platform section's list and cluster pages read. Each management cluster has
+  RBAC bindings (`rbacBuilders.ts`, from a seed of each installation's own),
+  which gs maps onto RoleBinding and ClusterRoleBinding objects for the
+  cluster pages' RBAC tabs: in every installation the system ones Kubernetes
+  brings along (`system:` subjects, service accounts in `kube-system`); in
+  `meadow` and `tarragon` also the platform team's groups and a person with
+  `cluster-admin` and `read-all` cluster-wide, an automation service account,
+  and per organization of the workload clusters its admins' group and a
+  person, a deployer service account and its readers' group (who read the
+  next organization's namespace too), then three people with `view` in an
+  organization's namespace (`rbacSubjects`: 150 in `many`, none at all in
+  `empty`). `fennel` has only the system ones, so the tab's "only system
+  subjects" state shows there. The cluster pages' tool
   links are `gs.clusterDetails.resources` of `app-config.fixtures.yaml`, at
   made-up addresses; the fixture installations have no base domain, so the
   login command is not shown. The classic Deployments list shows the

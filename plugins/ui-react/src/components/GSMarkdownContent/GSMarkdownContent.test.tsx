@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { renderInTestApp } from '@backstage/test-utils';
 import { useLocation } from 'react-router-dom';
+import { useState } from 'react';
 import { GSMarkdownContent } from './GSMarkdownContent';
 
 jest.mock('mermaid', () => ({
@@ -170,6 +171,27 @@ describe('GSMarkdownContent', () => {
     ).not.toHaveAttribute('target');
   });
 
+  it('rewrites safe document links and refuses unsafe links before the collection resolver', async () => {
+    const resolveLink = jest.fn(() => '/collection?doc=guide.md');
+    await renderInTestApp(
+      <GSMarkdownContent
+        dialect="common-mark"
+        content="[Guide](guide.md) and [unsafe](javascript:alert(1))"
+        resolveLink={resolveLink}
+      />,
+    );
+
+    expect(screen.getByRole('link', { name: 'Guide' })).toHaveAttribute(
+      'href',
+      '/collection?doc=guide.md',
+    );
+    expect(screen.queryByRole('link', { name: 'unsafe' })).toBeNull();
+    expect(resolveLink).toHaveBeenCalledWith('guide.md');
+    expect(resolveLink).not.toHaveBeenCalledWith(
+      expect.stringMatching(/^javascript:/i),
+    );
+  });
+
   it('renders an unsafe link as text when resolving against a source URL', async () => {
     // common-mark skips rehype-sanitize, so only the link resolver guards it.
     await renderInTestApp(
@@ -213,6 +235,43 @@ describe('GSMarkdownContent', () => {
         </>,
       );
     }
+
+    it('reveals a supplied fragment when content arrives and the fragment changes', async () => {
+      function Document() {
+        const [content, setContent] = useState('Loading');
+        const [fragment, setFragment] = useState('first');
+        return (
+          <>
+            <button onClick={() => setContent('## First\n\n## Second')}>
+              Load
+            </button>
+            <button onClick={() => setFragment('second')}>Next</button>
+            <GSMarkdownContent content={content} fragment={fragment} />
+          </>
+        );
+      }
+      await renderInTestApp(<Document />);
+      expect(scrolledTo).toEqual([]);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Load' }));
+      const first = screen.getByRole('heading', { name: 'First' });
+      await waitFor(() => expect(scrolledTo).toEqual([first]));
+      expect(first).toHaveFocus();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+      const second = screen.getByRole('heading', { name: 'Second' });
+      await waitFor(() => expect(scrolledTo).toEqual([first, second]));
+      expect(second).toHaveFocus();
+    });
+
+    it('reveals a supplied fragment on the initial render', async () => {
+      await renderInTestApp(
+        <GSMarkdownContent content="## Details" fragment="details" />,
+      );
+      const heading = screen.getByRole('heading', { name: 'Details' });
+      await waitFor(() => expect(scrolledTo).toEqual([heading]));
+      expect(heading).toHaveFocus();
+    });
 
     it('jumps to a heading by its GitHub slug', async () => {
       await renderMarkdown(
