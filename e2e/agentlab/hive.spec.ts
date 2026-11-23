@@ -214,7 +214,23 @@ const PLANS_REPOSITORIES = [
   'giantswarm/orchard-plans',
 ];
 
+/** The changed document of the mocked pull request (`/pulls/1/files`). */
+const PLAN_DOCUMENT = 'plan/PRD.md';
+const PLAN_BRANCH = 'plan';
+
 const documents: Record<string, string> = {
+  [PLAN_DOCUMENT]: [
+    '# Plan: diagrams in review',
+    '',
+    '## Solution',
+    '',
+    '```mermaid',
+    'flowchart LR',
+    '  Reviewer --> Plans[Plans view]',
+    '```',
+    '',
+    'After the diagram.',
+  ].join('\n'),
   'magazine/meta.json': JSON.stringify(meta),
   'magazine/now.json': JSON.stringify(now),
   'magazine/history-weeks.json': JSON.stringify(history),
@@ -277,12 +293,32 @@ async function mockPlansBackend(page: Page) {
               title: `A plan in ${repo}`,
               author: 'someone',
               draft: false,
+              branch: PLAN_BRANCH,
               updatedAt: NOW,
               body: '',
             },
           ],
         },
       });
+      return;
+    }
+    if (path === '/pulls/1/files') {
+      await route.fulfill({
+        json: {
+          files: [
+            {
+              filename: PLAN_DOCUMENT,
+              status: 'added',
+              additions: documents[PLAN_DOCUMENT].split('\n').length,
+              deletions: 0,
+            },
+          ],
+        },
+      });
+      return;
+    }
+    if (path === '/pulls/1/comments' || path === '/pulls/1/review-comments') {
+      await route.fulfill({ json: { comments: [] } });
       return;
     }
     if (path === '/epics') {
@@ -697,6 +733,53 @@ test.describe('Hive', () => {
     await expect(article.locator('code.language-mermaid')).toHaveText(
       'graph TD\n  A -->',
     );
+    expect(errors).toEqual([]);
+  });
+
+  test('Plans: a pull request’s document draws its Mermaid diagram in the light and the dark theme', async ({
+    admin,
+  }) => {
+    const errors = watchPageErrors(admin);
+    const review = `/hive/plans/pr/1?repo=${encodeURIComponent(
+      PLANS_REPOSITORIES[0],
+    )}&doc=${encodeURIComponent(PLAN_DOCUMENT)}`;
+    /** Relative luminance (0–1) of a CSS `rgb(…)` colour. */
+    const luminance = (rgb: string) => {
+      const [r, g, b] = (rgb.match(/\d+(\.\d+)?/g) ?? []).map(Number);
+      return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    };
+
+    try {
+      for (const colorScheme of ['light', 'dark'] as const) {
+        await admin.emulateMedia({ colorScheme });
+        await open(admin, review);
+        await expect(
+          admin.getByRole('heading', { name: 'Solution' }),
+        ).toBeVisible();
+
+        const diagram = admin.getByTestId('mermaid-diagram');
+        await expect(diagram.locator('svg')).toBeVisible();
+        await expect(diagram).toContainText('Plans view');
+        // The source does not show as code next to it.
+        await expect(admin.locator('code.language-mermaid')).toHaveCount(0);
+        await expect(admin.getByText('After the diagram.')).toBeVisible();
+        // The fence (line 5) stays commentable like any other block.
+        await expect(admin.getByLabel('Comment on line 5')).toBeAttached();
+
+        // Mermaid's light palette in the light theme, its dark one in dark.
+        const fill = await diagram
+          .locator('.node rect')
+          .first()
+          .evaluate(node => getComputedStyle(node).fill);
+        if (colorScheme === 'light') {
+          expect(luminance(fill), `node fill ${fill}`).toBeGreaterThan(0.5);
+        } else {
+          expect(luminance(fill), `node fill ${fill}`).toBeLessThan(0.5);
+        }
+      }
+    } finally {
+      await admin.emulateMedia({ colorScheme: null });
+    }
     expect(errors).toEqual([]);
   });
 

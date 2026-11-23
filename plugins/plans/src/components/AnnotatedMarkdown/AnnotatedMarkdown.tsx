@@ -11,6 +11,10 @@ import AddCommentIcon from '@material-ui/icons/AddComment';
 import ReactMarkdown, { Components, ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Element } from 'hast';
+import {
+  MermaidDiagram,
+  mermaidSource,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { NewReviewComment, PlanPullFile, PlanReviewComment } from '../../apis';
 import {
   CommentableLines,
@@ -197,7 +201,9 @@ type BlockProps = ExtraProps & { children?: ReactNode; className?: string };
 /**
  * Wrap one markdown block element with a hover `+` gutter button and its
  * inline review threads. `li` keeps its own tag (an extra wrapper would be
- * invalid inside `ul`/`ol`); everything else gets a positioning `<div>`.
+ * invalid inside `ul`/`ol`); everything else gets a positioning `<div>`. A
+ * ` ```mermaid ` fence renders as its diagram, in the portal's light or dark
+ * theme, and stays commentable like any other block.
  */
 function renderBlock(Tag: ElementType) {
   return function AnnotatedBlock({
@@ -208,13 +214,19 @@ function renderBlock(Tag: ElementType) {
   }: BlockProps) {
     const ctx = useContext(AnnotationContext);
 
-    const range = blockRange(node);
-    if (!ctx || !range || !node) {
-      return (
+    const diagram = Tag === 'pre' ? mermaidSource(node) : undefined;
+    const block =
+      diagram === undefined ? (
         <Tag {...rest} className={className}>
           {children}
         </Tag>
+      ) : (
+        <MermaidDiagram source={diagram} />
       );
+
+    const range = blockRange(node);
+    if (!ctx || !range || !node) {
+      return block;
     }
 
     const { classes, path, offset, commentable, threads, onCreate } = ctx;
@@ -278,9 +290,7 @@ function renderBlock(Tag: ElementType) {
     return (
       <div className={classes.block}>
         {button}
-        <Tag {...rest} className={className}>
-          {children}
-        </Tag>
+        {block}
         {annotations}
       </div>
     );

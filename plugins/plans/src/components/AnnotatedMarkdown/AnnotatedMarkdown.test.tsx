@@ -1,7 +1,19 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { createTheme, ThemeProvider } from '@material-ui/core/styles';
 import { PlanPullFile, PlanReviewComment } from '../../apis';
 import { AnnotatedMarkdown } from './AnnotatedMarkdown';
+
+const mermaid = {
+  initialize: jest.fn(),
+  render: jest.fn(async (id: string, source: string) => {
+    if (!source.startsWith('graph')) {
+      throw new Error('No diagram type detected matching given configuration');
+    }
+    return { svg: `<svg id="${id}"><g class="node"></g></svg>` };
+  }),
+};
+jest.mock('mermaid', () => ({ __esModule: true, default: mermaid }));
 
 const addedFile: PlanPullFile = {
   filename: 'doc.md',
@@ -234,5 +246,92 @@ describe('AnnotatedMarkdown', () => {
 
     expect(screen.getByLabelText('Comment on line 3')).toBeInTheDocument();
     expect(screen.getByLabelText('Comment on line 4')).toBeInTheDocument();
+  });
+  describe('Mermaid diagrams', () => {
+    const withDiagrams = [
+      '# Plan',
+      '',
+      '```mermaid',
+      'graph TD',
+      '  A --> B',
+      '```',
+      '',
+      '```mermaid',
+      'not a diagram',
+      '```',
+      '',
+    ].join('\n');
+
+    beforeEach(() => jest.clearAllMocks());
+
+    it('renders a mermaid fence as its diagram and keeps the block commentable', async () => {
+      const comments: PlanReviewComment[] = [
+        { id: 1, body: 'Arrow reversed?', path: 'doc.md', line: 3 },
+      ];
+      render(
+        <AnnotatedMarkdown
+          content={withDiagrams}
+          file={addedFile}
+          comments={comments}
+          onCreate={jest.fn()}
+        />,
+      );
+
+      const [diagram] = await screen.findAllByTestId('mermaid-diagram');
+      expect(diagram.querySelector('svg')).not.toBeNull();
+      expect(screen.queryByText(/A --> B/)).toBeNull();
+      expect(mermaid.render).toHaveBeenCalledWith(
+        expect.any(String),
+        'graph TD\n  A --> B',
+      );
+      expect(mermaid.initialize).toHaveBeenCalledWith(
+        expect.objectContaining({ theme: 'default' }),
+      );
+
+      // The fence starts on line 3: its gutter button and thread stay with it.
+      const block = diagram.parentElement as HTMLElement;
+      expect(
+        within(block).getByLabelText('Comment on line 3'),
+      ).toBeInTheDocument();
+      expect(within(block).getByText('Arrow reversed?')).toBeInTheDocument();
+    });
+
+    it('shows an invalid diagram as its source with a note', async () => {
+      render(
+        <AnnotatedMarkdown
+          content={withDiagrams}
+          file={addedFile}
+          comments={[]}
+          onCreate={jest.fn()}
+        />,
+      );
+
+      expect(await screen.findByRole('note')).toHaveTextContent(
+        'No diagram type detected',
+      );
+      expect(screen.getByText('not a diagram')).toBeInTheDocument();
+      expect(screen.getByLabelText('Comment on line 8')).toBeInTheDocument();
+    });
+
+    it('draws the diagram in Mermaid’s dark theme in a dark portal', async () => {
+      render(
+        <ThemeProvider theme={createTheme({ palette: { type: 'dark' } })}>
+          <AnnotatedMarkdown
+            content={withDiagrams}
+            file={addedFile}
+            comments={[]}
+            onCreate={jest.fn()}
+          />
+        </ThemeProvider>,
+      );
+
+      await screen.findAllByTestId('mermaid-diagram');
+      expect(mermaid.initialize).toHaveBeenCalledWith(
+        expect.objectContaining({ theme: 'dark' }),
+      );
+      expect(mermaid.initialize).not.toHaveBeenCalledWith(
+        expect.objectContaining({ theme: 'default' }),
+      );
+    });
   });
 });
