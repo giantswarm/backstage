@@ -199,6 +199,9 @@ const tree = {
       path: 'knowledge/decisions/2026-09-01-0900-adr-data-branch.md',
       type: 'blob',
     },
+    // A plan, merged: the Plans tab's Merged view reads it.
+    { path: 'plan/PRD.md', type: 'blob' },
+    { path: 'plan/design/operations.md', type: 'blob' },
   ],
 };
 
@@ -214,9 +217,27 @@ const PLANS_REPOSITORIES = [
   'giantswarm/orchard-plans',
 ];
 
-/** The changed document of the mocked pull request (`/pulls/1/files`). */
+/** The changed documents of the mocked pull request (`/pulls/1/files`). */
 const PLAN_DOCUMENT = 'plan/PRD.md';
+const PLAN_DESIGN = 'plan/design/operations.md';
 const PLAN_BRANCH = 'plan';
+
+/**
+ * The page opens `doc` at `hash` (and `params`), whatever parameters the
+ * header adds besides.
+ */
+const opensDocument =
+  (doc: string, hash: string, params: Record<string, string> = {}) =>
+  (url: URL) =>
+    url.searchParams.get('doc') === doc &&
+    url.hash === hash &&
+    Object.entries(params).every(
+      ([name, value]) => url.searchParams.get(name) === value,
+    );
+
+/** Paragraphs that push what follows them out of the first screen. */
+const filler = (label: string) =>
+  Array.from({ length: 30 }, (_, n) => `${label} paragraph ${n + 1}.\n`);
 
 const documents: Record<string, string> = {
   [PLAN_DOCUMENT]: [
@@ -230,6 +251,22 @@ const documents: Record<string, string> = {
     '```',
     '',
     'After the diagram.',
+    '',
+    ...filler('Solution'),
+    '## Links',
+    '',
+    '- [Operations](design/operations.md)',
+    '- [Failures](design/operations.md#failures-and-retries)',
+    '- [Back to the solution](#solution)',
+    '- [Design folder](design/)',
+  ].join('\n'),
+  [PLAN_DESIGN]: [
+    '# Operations',
+    '',
+    ...filler('Operations'),
+    '## Failures and retries',
+    '',
+    'A failed run is retried.',
   ].join('\n'),
   'magazine/meta.json': JSON.stringify(meta),
   'magazine/now.json': JSON.stringify(now),
@@ -305,14 +342,12 @@ async function mockPlansBackend(page: Page) {
     if (path === '/pulls/1/files') {
       await route.fulfill({
         json: {
-          files: [
-            {
-              filename: PLAN_DOCUMENT,
-              status: 'added',
-              additions: documents[PLAN_DOCUMENT].split('\n').length,
-              deletions: 0,
-            },
-          ],
+          files: [PLAN_DOCUMENT, PLAN_DESIGN].map(filename => ({
+            filename,
+            status: 'added',
+            additions: documents[filename].split('\n').length,
+            deletions: 0,
+          })),
         },
       });
       return;
@@ -764,7 +799,9 @@ test.describe('Hive', () => {
         await expect(admin.locator('code.language-mermaid')).toHaveCount(0);
         await expect(admin.getByText('After the diagram.')).toBeVisible();
         // The fence (line 5) stays commentable like any other block.
-        await expect(admin.getByLabel('Comment on line 5')).toBeAttached();
+        await expect(
+          admin.getByLabel('Comment on line 5', { exact: true }),
+        ).toBeAttached();
 
         // Mermaid's light palette in the light theme, its dark one in dark.
         const fill = await diagram
@@ -781,6 +818,91 @@ test.describe('Hive', () => {
       await admin.emulateMedia({ colorScheme: null });
     }
     expect(errors).toEqual([]);
+  });
+
+  test('Plans: a pull request’s document links into its other documents, their sections, its own headings and GitHub', async ({
+    admin,
+  }) => {
+    const errors = watchPageErrors(admin);
+    const repo = PLANS_REPOSITORIES[0];
+    await open(
+      admin,
+      `/hive/plans/pr/1?repo=${encodeURIComponent(repo)}&doc=${encodeURIComponent(
+        PLAN_DOCUMENT,
+      )}`,
+    );
+    const solution = admin.getByRole('heading', { name: 'Solution' });
+    await expect(solution).toBeVisible();
+
+    // A document of the pull request opens here, at its start.
+    await admin.getByRole('link', { name: 'Operations', exact: true }).click();
+    await expect(admin).toHaveURL(opensDocument(PLAN_DESIGN, '#top'));
+    await expect(
+      admin.getByRole('heading', { name: 'Operations', exact: true }),
+    ).toBeInViewport();
+
+    // A section of another document opens that document at the section.
+    await admin.goBack();
+    await expect(solution).toBeVisible();
+    await admin.getByRole('link', { name: 'Failures', exact: true }).click();
+    await expect(admin).toHaveURL(
+      opensDocument(PLAN_DESIGN, '#failures-and-retries'),
+    );
+    await expect(
+      admin.getByRole('heading', { name: 'Failures and retries' }),
+    ).toBeInViewport();
+
+    // A heading of the same document is a jump within it.
+    await admin.goBack();
+    await admin.getByRole('link', { name: 'Back to the solution' }).click();
+    await expect(solution).toBeInViewport();
+
+    // A folder opens on GitHub at the head branch, in a new tab.
+    const folder = admin.getByRole('link', { name: /^Design folder/ });
+    const url = `https://github.com/${repo}/tree/${PLAN_BRANCH}/plan/design`;
+    await expect(folder).toHaveAttribute('href', url);
+    await admin.context().route('https://github.com/**', route =>
+      route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: 'GitHub',
+      }),
+    );
+    try {
+      const [github] = await Promise.all([
+        admin.waitForEvent('popup'),
+        folder.click(),
+      ]);
+      await github.waitForLoadState();
+      expect(github.url()).toBe(url);
+      await github.close();
+    } finally {
+      await admin.context().unroute('https://github.com/**');
+    }
+    expect(errors).toEqual([]);
+  });
+
+  test('Plans: a merged plan’s document links into its other documents and their sections', async ({
+    admin,
+  }) => {
+    const repo = PLANS_REPOSITORIES[0];
+    await open(
+      admin,
+      `/hive/plans?team=all&repo=${encodeURIComponent(repo)}&plan=plan`,
+    );
+    await admin.getByRole('link', { name: 'Failures', exact: true }).click();
+    await expect(admin).toHaveURL(
+      opensDocument(PLAN_DESIGN, '#failures-and-retries', { plan: 'plan' }),
+    );
+    await expect(
+      admin.getByRole('heading', { name: 'Failures and retries' }),
+    ).toBeInViewport();
+    await expect(
+      admin.getByRole('link', { name: /^Design folder/ }),
+    ).toHaveAttribute(
+      'href',
+      `https://github.com/${repo}/tree/HEAD/plan/design`,
+    );
   });
 
   test('the old pages redirect into Hive', async ({ admin }) => {

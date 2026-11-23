@@ -1,8 +1,22 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { ReactElement } from 'react';
+import {
+  act,
+  fireEvent,
+  render as renderInDocument,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createTheme, ThemeProvider } from '@material-ui/core/styles';
+import { MemoryRouter } from 'react-router-dom';
 import { PlanPullFile, PlanReviewComment } from '../../apis';
+import { planDocumentLink } from '../../lib/repositoryLinks';
 import { AnnotatedMarkdown } from './AnnotatedMarkdown';
+
+// The document renders its links through the router, as on the review page.
+const render = (ui: ReactElement) =>
+  renderInDocument(ui, { wrapper: MemoryRouter });
 
 const mermaid = {
   initialize: jest.fn(),
@@ -332,6 +346,136 @@ describe('AnnotatedMarkdown', () => {
       expect(mermaid.initialize).not.toHaveBeenCalledWith(
         expect.objectContaining({ theme: 'default' }),
       );
+    });
+  });
+
+  describe('links', () => {
+    const RealScrollIntoView = Element.prototype.scrollIntoView;
+    let scrolledTo: Element[];
+
+    beforeAll(() => {
+      // jsdom does not scroll.
+      Element.prototype.scrollIntoView = function scrollIntoView(
+        this: Element,
+      ) {
+        scrolledTo.push(this);
+      };
+    });
+
+    afterAll(() => {
+      Element.prototype.scrollIntoView = RealScrollIntoView;
+    });
+
+    beforeEach(() => {
+      scrolledTo = [];
+    });
+
+    const plan: PlanPullFile = {
+      filename: 'beekeeper/PRD.md',
+      status: 'added',
+      additions: 20,
+      deletions: 0,
+    };
+    const resolveLink = (href: string) =>
+      planDocumentLink(href, {
+        documentPath: plan.filename,
+        pageHref: '/hive/plans/pr/7?repo=giantswarm%2Fteam-plans&team=Team',
+        documents: new Set([plan.filename, 'beekeeper/design/operations.md']),
+        repo: 'giantswarm/team-plans',
+        ref: 'plan/beekeeper',
+      });
+    const document = [
+      '# Beekeeper',
+      '',
+      '- [Operations](design/operations.md)',
+      '- [Failures](design/operations.md#failures)',
+      '- [Design folder](design/)',
+      '- [Workflow](workflows/sdlc.yaml)',
+      '- [Upstream](https://example.com/spec)',
+      '- [The solution](#the-solution-muster--beekeeper)',
+      '',
+      '## The solution: muster & beekeeper',
+      '',
+      'Text.',
+    ].join('\n');
+
+    it('opens a document of the pull request here and anything else on GitHub', () => {
+      render(
+        <AnnotatedMarkdown
+          content={document}
+          file={plan}
+          comments={[]}
+          onCreate={jest.fn()}
+          resolveLink={resolveLink}
+        />,
+      );
+
+      const href = (name: string) =>
+        new URL(
+          screen
+            .getByRole('link', { name: new RegExp(`^${name}`) })
+            .getAttribute('href')!,
+          'https://portal.example.com',
+        );
+
+      const operations = href('Operations');
+      expect(operations.pathname).toBe('/hive/plans/pr/7');
+      expect(operations.searchParams.get('doc')).toBe(
+        'beekeeper/design/operations.md',
+      );
+      expect(operations.searchParams.get('repo')).toBe('giantswarm/team-plans');
+      expect(operations.searchParams.get('team')).toBe('Team');
+      expect(operations.hash).toBe('#top');
+      expect(href('Failures').hash).toBe('#failures');
+
+      expect(href('Design folder').href).toBe(
+        'https://github.com/giantswarm/team-plans/tree/plan/beekeeper/beekeeper/design',
+      );
+      expect(href('Workflow').href).toBe(
+        'https://github.com/giantswarm/team-plans/blob/plan/beekeeper/beekeeper/workflows/sdlc.yaml',
+      );
+      expect(href('Upstream').href).toBe('https://example.com/spec');
+      // A page out of the portal opens in a new tab.
+      expect(
+        screen.getByRole('link', { name: /^Design folder/ }),
+      ).toHaveAttribute('target', '_blank');
+    });
+
+    it('jumps to a heading by its GitHub slug', async () => {
+      render(
+        <AnnotatedMarkdown
+          content={document}
+          file={plan}
+          comments={[]}
+          onCreate={jest.fn()}
+          resolveLink={resolveLink}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole('link', { name: 'The solution' }));
+
+      const heading = screen.getByRole('heading', {
+        name: 'The solution: muster & beekeeper',
+      });
+      expect(heading).toHaveFocus();
+      await waitFor(() => expect(scrolledTo).toEqual([heading]));
+    });
+
+    it('scrolls to the fragment it opens with', async () => {
+      render(
+        <AnnotatedMarkdown
+          content={document}
+          file={plan}
+          comments={[]}
+          onCreate={jest.fn()}
+          fragment="the-solution-muster--beekeeper"
+        />,
+      );
+
+      const heading = screen.getByRole('heading', {
+        name: 'The solution: muster & beekeeper',
+      });
+      await waitFor(() => expect(scrolledTo).toEqual([heading]));
     });
   });
 });

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { usePreventScroll } from 'react-aria';
 import type { Selection } from 'react-aria-components';
 import { makeStyles, Theme } from '@material-ui/core';
@@ -39,7 +39,13 @@ import {
   plansApiRef,
 } from '../../apis';
 import { formatDate } from '../../lib/dates';
-import { firstHeading, isHtmlFile, isMarkdownFile } from '../../lib/files';
+import {
+  firstHeading,
+  isHtmlFile,
+  isMarkdownFile,
+  isRenderableFile,
+} from '../../lib/files';
+import { planDocumentLink } from '../../lib/repositoryLinks';
 import { rootRouteRef } from '../../routes';
 import { AnnotatedMarkdown } from '../AnnotatedMarkdown';
 import { CommentForm, CommentItem } from '../Comments';
@@ -279,12 +285,31 @@ function DocumentPanel(props: {
   branch?: string;
   pullNumber: number;
   file: PlanPullFile;
+  /** The pull request's documents this page renders, by path. */
+  documents: ReadonlySet<string>;
   comments: PlanReviewComment[];
   onCreate: (comment: NewReviewComment) => Promise<unknown>;
 }) {
-  const { repo, branch, pullNumber, file, comments, onCreate } = props;
+  const { repo, branch, pullNumber, file, documents, comments, onCreate } =
+    props;
   const classes = useStyles();
   const plansApi = useApi(plansApiRef);
+
+  // A relative link opens the document here when the pull request changes it,
+  // and on GitHub at the head branch otherwise.
+  const location = useLocation();
+  const pageHref = `${location.pathname}${location.search}`;
+  const resolveLink = useCallback(
+    (href: string) =>
+      planDocumentLink(href, {
+        documentPath: file.filename,
+        pageHref,
+        documents,
+        repo,
+        ref: branch ?? 'HEAD',
+      }),
+    [file.filename, pageHref, documents, repo, branch],
+  );
 
   const markdown = isMarkdownFile(file.filename);
   const html = isHtmlFile(file.filename);
@@ -375,6 +400,8 @@ function DocumentPanel(props: {
           file={file}
           comments={comments}
           onCreate={onCreate}
+          resolveLink={resolveLink}
+          fragment={location.hash ? location.hash.slice(1) : undefined}
         />
       );
     }
@@ -495,6 +522,18 @@ export function PullReviewPage() {
     enabled: !!repo,
   });
   const files = useMemo(() => filesQuery.data?.files ?? [], [filesQuery.data]);
+  const documents = useMemo(
+    () =>
+      new Set(
+        files
+          .filter(
+            file =>
+              file.status !== 'removed' && isRenderableFile(file.filename),
+          )
+          .map(file => file.filename),
+      ),
+    [files],
+  );
 
   const reviewCommentsQueryKey = ['plans', 'review-comments', repo, pullNumber];
   const { data: reviewComments } = useQuery({
@@ -698,6 +737,7 @@ export function PullReviewPage() {
                 branch={pull.branch}
                 pullNumber={pull.number}
                 file={selectedFile}
+                documents={documents}
                 comments={commentsByFile.get(selectedFile.filename) ?? []}
                 onCreate={comment => createReviewComment.mutateAsync(comment)}
               />

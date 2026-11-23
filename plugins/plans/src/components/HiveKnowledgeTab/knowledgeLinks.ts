@@ -1,27 +1,19 @@
+import {
+  documentPageLink,
+  resolveRepositoryLink,
+} from '../../lib/repositoryLinks';
+
+/**
+ * A link in the knowledge document at `documentPath` as Knowledge opens it:
+ * another markdown document of the repository on the same page
+ * (`pageHref`, `?doc=` naming it), anything else as written.
+ */
 export function knowledgeDocumentLink(
   href: string,
   documentPath: string,
   pageHref: string,
 ): string {
-  if (!href || href.startsWith('#') || href.startsWith('?')) return href;
-
-  const origin = 'https://knowledge.invalid';
-  let destination: URL;
-  let path: string;
-  try {
-    const sourcePath = documentPath
-      .split('/')
-      .map(encodeURIComponent)
-      .join('/');
-    destination = new URL(href, `${origin}/${sourcePath}`);
-    path = decodeURIComponent(destination.pathname.slice(1));
-  } catch {
-    return href;
-  }
-  if (destination.origin !== origin || !/\.mdx?$/i.test(path)) return href;
-
-  const page = new URL(pageHref, origin);
-  page.searchParams.set('doc', path);
-  page.hash = destination.hash;
-  return `${page.pathname}${page.search}${page.hash}`;
+  const target = resolveRepositoryLink(href, documentPath);
+  if (!target || target.folder || !/\.mdx?$/i.test(target.path)) return href;
+  return documentPageLink(pageHref, target.path, target.hash);
 }

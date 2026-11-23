@@ -38,7 +38,7 @@ const useStyles = makeStyles((theme: Theme) => ({
 
 /**
  * Fetches one file from a plan repository at a ref and renders it: markdown
- * via MarkdownContent (GFM), `*.html` (plan explainers) in a sandboxed
+ * via GSMarkdownContent (GFM), `*.html` (plan explainers) in a sandboxed
  * iframe via srcdoc. Scripts may run inside the sandbox, but without
  * `allow-same-origin` the document has no access to the portal's origin,
  * cookies, or storage.
@@ -47,8 +47,12 @@ export function PlanFileContent(props: {
   repo: string;
   refName: string;
   path: string;
+  /** Rewrites a markdown link's `href`: a relative one to where it opens. */
+  resolveLink?: (href: string) => string;
+  /** URL fragment without `#` to scroll to as the markdown loads. */
+  fragment?: string;
 }) {
-  const { repo, refName, path } = props;
+  const { repo, refName, path, resolveLink, fragment } = props;
   const classes = useStyles();
   const plansApi = useApi(plansApiRef);
 
@@ -84,7 +88,11 @@ export function PlanFileContent(props: {
   return (
     <Box className={classes.markdown}>
       {frontmatter && <Box className={classes.frontmatter}>{frontmatter}</Box>}
-      <GSMarkdownContent content={body} />
+      <GSMarkdownContent
+        content={body}
+        resolveLink={resolveLink}
+        fragment={fragment}
+      />
     </Box>
   );
 }
