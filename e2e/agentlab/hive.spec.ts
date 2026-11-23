@@ -222,6 +222,19 @@ const PLAN_DOCUMENT = 'plan/PRD.md';
 const PLAN_DESIGN = 'plan/design/operations.md';
 const PLAN_BRANCH = 'plan';
 
+/**
+ * The page opens `doc` at `hash` (and `params`), whatever parameters the
+ * header adds besides.
+ */
+const opensDocument =
+  (doc: string, hash: string, params: Record<string, string> = {}) =>
+  (url: URL) =>
+    url.searchParams.get('doc') === doc &&
+    url.hash === hash &&
+    Object.entries(params).every(
+      ([name, value]) => url.searchParams.get(name) === value,
+    );
+
 /** Paragraphs that push what follows them out of the first screen. */
 const filler = (label: string) =>
   Array.from({ length: 30 }, (_, n) => `${label} paragraph ${n + 1}.\n`);
@@ -786,7 +799,9 @@ test.describe('Hive', () => {
         await expect(admin.locator('code.language-mermaid')).toHaveCount(0);
         await expect(admin.getByText('After the diagram.')).toBeVisible();
         // The fence (line 5) stays commentable like any other block.
-        await expect(admin.getByLabel('Comment on line 5')).toBeAttached();
+        await expect(
+          admin.getByLabel('Comment on line 5', { exact: true }),
+        ).toBeAttached();
 
         // Mermaid's light palette in the light theme, its dark one in dark.
         const fill = await diagram
@@ -821,7 +836,7 @@ test.describe('Hive', () => {
 
     // A document of the pull request opens here, at its start.
     await admin.getByRole('link', { name: 'Operations', exact: true }).click();
-    await expect(admin).toHaveURL(/doc=plan%2Fdesign%2Foperations\.md#top$/);
+    await expect(admin).toHaveURL(opensDocument(PLAN_DESIGN, '#top'));
     await expect(
       admin.getByRole('heading', { name: 'Operations', exact: true }),
     ).toBeInViewport();
@@ -831,7 +846,7 @@ test.describe('Hive', () => {
     await expect(solution).toBeVisible();
     await admin.getByRole('link', { name: 'Failures', exact: true }).click();
     await expect(admin).toHaveURL(
-      /doc=plan%2Fdesign%2Foperations\.md#failures-and-retries$/,
+      opensDocument(PLAN_DESIGN, '#failures-and-retries'),
     );
     await expect(
       admin.getByRole('heading', { name: 'Failures and retries' }),
@@ -846,15 +861,13 @@ test.describe('Hive', () => {
     const folder = admin.getByRole('link', { name: /^Design folder/ });
     const url = `https://github.com/${repo}/tree/${PLAN_BRANCH}/plan/design`;
     await expect(folder).toHaveAttribute('href', url);
-    await admin
-      .context()
-      .route('https://github.com/**', route =>
-        route.fulfill({
-          status: 200,
-          contentType: 'text/html',
-          body: 'GitHub',
-        }),
-      );
+    await admin.context().route('https://github.com/**', route =>
+      route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: 'GitHub',
+      }),
+    );
     try {
       const [github] = await Promise.all([
         admin.waitForEvent('popup'),
@@ -879,7 +892,7 @@ test.describe('Hive', () => {
     );
     await admin.getByRole('link', { name: 'Failures', exact: true }).click();
     await expect(admin).toHaveURL(
-      /plan=plan&doc=plan%2Fdesign%2Foperations\.md#failures-and-retries$/,
+      opensDocument(PLAN_DESIGN, '#failures-and-retries', { plan: 'plan' }),
     );
     await expect(
       admin.getByRole('heading', { name: 'Failures and retries' }),
