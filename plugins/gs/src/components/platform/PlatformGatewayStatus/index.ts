@@ -1,0 +1,1 @@
+export { PlatformGatewayStatus } from './PlatformGatewayStatus';

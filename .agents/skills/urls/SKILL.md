@@ -47,7 +47,7 @@ change needs something the rules do not settle, it needs a decision first.
 /customize/workspaces/<inst>/<org>/<name>/edit
 /platform                                               → /platform/clusters
 /platform/clusters                                      gs.features.platformSection only
-/platform/clusters/<inst>/<ns>/<name>[/node-pools|/rbac|/ssh-access]  bare = Overview; rbac management clusters only; ssh-access staff only
+/platform/clusters/<inst>/<ns>/<name>[/node-pools|/gateways|/rbac|/ssh-access]  bare = Overview; gateways where Mimir is; rbac management clusters only; ssh-access staff only
 /agent-platform/**  →  one-hop redirects until the end of 2026
 ```
 
@@ -78,9 +78,13 @@ How it is mounted:
   Giant Swarm staff's only (`useCurrentUser`'s `isGSUser`): a person known
   not to be staff has no such tab, and its path opens Overview. Its RBAC tab
   is a management cluster's only (`isManagementCluster`): a workload
-  cluster has no such tab, and its path opens Overview. Items 1 to 5 of
-  giantswarm/giantswarm#39295; the planned tree adds
-  `/platform/clusters/<inst>/<ns>/<name>[/gateways|/access]`,
+  cluster has no such tab, and its path opens Overview. Its Gateways tab
+  exists only where the installation has Mimir (`useMimirAvailable`, as the
+  classic tab): without, there is no such tab and its path opens Overview;
+  while that is read, the path stays. It selects a Gateway with
+  `?gateway=<namespace>/<name>`, as Node pools selects a pool. Items 1 to 6
+  of giantswarm/giantswarm#39295; the planned tree adds
+  `/platform/clusters/<inst>/<ns>/<name>/access`,
   `/platform/environments` and `/platform/environments/<inst>`.
 - `/agent-platform` (`page:agent-platform`) and `/agents` are the app's
   catch-alls (`legacyPagesModule.tsx`), which call
