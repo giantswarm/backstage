@@ -14,21 +14,26 @@ import {
 } from '../../clusters/cluster-details/ClusterGateways/PoliciesTable';
 import { useMimirGatewayPolicies } from '../../hooks/useMimirGatewayPolicies';
 import { useMimirGatewayTopology } from '../../hooks/useMimirGatewayTopology';
+import { useMimirGatewayReferenceGrants } from '../../hooks/useMimirGatewayReferenceGrants';
 import type { GatewayPolicy } from '../../utils/gatewayPolicies';
+import type { ReferenceGrant } from '../../utils/gatewayReferenceGrants';
 import type { Gateway, HttpRoute } from '../../utils/gatewayTopology';
 import { PlatformGatewayListenersTable } from '../PlatformGatewayListenersTable';
 import { PlatformGatewayPoliciesTable } from '../PlatformGatewayPoliciesTable';
+import { PlatformGatewayReferenceGrantsTable } from '../PlatformGatewayReferenceGrantsTable';
 import { PlatformGatewayRoutesTable } from '../PlatformGatewayRoutesTable';
 import { PlatformGatewaysTable } from '../PlatformGatewaysTable';
 import { useGatewayTableStyles, useSelectedGateway } from '../hooks';
 import {
   type GatewayMatch,
   type GatewayPolicyRow,
+  type GatewayReferenceGrantRow,
   type GatewayView,
   buildGatewayViews,
   matchGateway,
   normalizeQuery,
   policyMatches,
+  referenceGrantMatches,
   routeMatches,
 } from '../utils/gateways';
 
@@ -134,18 +139,55 @@ function PoliciesSection({
   );
 }
 
+function ReferenceGrantsSection({
+  rows,
+  error,
+  query,
+  emptyText,
+}: {
+  rows: GatewayReferenceGrantRow[];
+  error?: unknown;
+  query: string;
+  emptyText: string;
+}) {
+  return (
+    <SubSection title="ReferenceGrants" count={error ? undefined : rows.length}>
+      {error ? (
+        <MetricsUnavailableAlert
+          error={error}
+          title="ReferenceGrants could not be loaded."
+          description={error instanceof Error ? error.message : undefined}
+        />
+      ) : (
+        <PlatformGatewayReferenceGrantsTable
+          aria-label="ReferenceGrants"
+          rows={rows}
+          query={query}
+          emptyState={
+            <Text variant="body-medium" color="secondary">
+              {emptyText}
+            </Text>
+          }
+        />
+      )}
+    </SubSection>
+  );
+}
+
 /** What the page shows under the table: the selected Gateway's parts. */
 function GatewayDetails({
   view,
   routes,
   policies,
   policiesError,
+  referenceGrantsError,
   query,
 }: {
   view: GatewayView;
   routes: HttpRoute[];
   policies: GatewayPolicy[];
   policiesError?: unknown;
+  referenceGrantsError?: unknown;
   query: string;
 }) {
   const headingId = useId();
@@ -196,6 +238,12 @@ function GatewayDetails({
           query={query}
           emptyText="No Envoy Gateway policies apply to this Gateway."
         />
+        <ReferenceGrantsSection
+          rows={view.referenceGrants}
+          error={referenceGrantsError}
+          query={query}
+          emptyText="No ReferenceGrant lets this Gateway or its HTTP routes reference another namespace."
+        />
       </Flex>
     </section>
   );
@@ -210,6 +258,9 @@ export type PlatformClusterGatewaysContentProps = {
   policies: GatewayPolicy[];
   policiesLoading: boolean;
   policiesError?: unknown;
+  referenceGrants: ReferenceGrant[];
+  referenceGrantsLoading: boolean;
+  referenceGrantsError?: unknown;
   /** `?gateway=`, the key of the Gateway shown below the table. */
   selected: string | undefined;
   onSelect: (key: string) => void;
@@ -217,7 +268,8 @@ export type PlatformClusterGatewaysContentProps = {
 
 /**
  * The Gateways tab's content: the finder, the Gateways table, the selected
- * Gateway's listeners, HTTP routes and policies, and what no Gateway takes.
+ * Gateway's listeners, HTTP routes, policies and ReferenceGrants, and what no
+ * Gateway takes.
  * Data loading lives in `PlatformClusterGateways`.
  */
 export function PlatformClusterGatewaysContent({
@@ -229,23 +281,31 @@ export function PlatformClusterGatewaysContent({
   policies,
   policiesLoading,
   policiesError,
+  referenceGrants,
+  referenceGrantsLoading,
+  referenceGrantsError,
   selected,
   onSelect,
 }: PlatformClusterGatewaysContentProps) {
   const [query, setQuery] = useState('');
   const unattachedId = useId();
-  // The counts and the placing of policies need both reads.
-  const isLoading = topologyLoading || policiesLoading;
+  // The counts and the placing of policies and grants need every read.
+  const isLoading =
+    topologyLoading || policiesLoading || referenceGrantsLoading;
   const shownPolicies = useMemo(
     () => (policiesError ? [] : policies),
     [policies, policiesError],
   );
+  const shownGrants = useMemo(
+    () => (referenceGrantsError ? [] : referenceGrants),
+    [referenceGrants, referenceGrantsError],
+  );
   const views = useMemo(
     () =>
       error
-        ? buildGatewayViews([], [], shownPolicies)
-        : buildGatewayViews(gateways, routes, shownPolicies),
-    [error, gateways, routes, shownPolicies],
+        ? buildGatewayViews([], [], shownPolicies, shownGrants)
+        : buildGatewayViews(gateways, routes, shownPolicies, shownGrants),
+    [error, gateways, routes, shownPolicies, shownGrants],
   );
   const isSearching = normalizeQuery(query) !== '';
   const matches = useMemo(() => {
@@ -279,11 +339,16 @@ export function PlatformClusterGatewaysContent({
   const { unattached } = views;
   const hasUnattached =
     !isLoading &&
-    (unattached.routes.length > 0 || unattached.policies.length > 0);
+    (unattached.routes.length > 0 ||
+      unattached.policies.length > 0 ||
+      unattached.referenceGrants.length > 0);
   const unattachedMatches =
     isSearching &&
     (unattached.routes.some(row => routeMatches(row.route, query)) ||
-      unattached.policies.some(row => policyMatches(row.policy, query)));
+      unattached.policies.some(row => policyMatches(row.policy, query)) ||
+      unattached.referenceGrants.some(row =>
+        referenceGrantMatches(row.grant, query),
+      ));
 
   let emptyState: ReactNode = (
     <Text variant="body-medium" color="secondary">
@@ -293,7 +358,7 @@ export function PlatformClusterGatewaysContent({
   if (isSearching) {
     emptyState = (
       <Text variant="body-medium" color="secondary">
-        {`No gateway has a route, hostname or policy matching "${query.trim()}".`}
+        {`No gateway has a route, hostname, policy or ReferenceGrant matching "${query.trim()}".`}
         {unattachedMatches
           ? ' Matches outside any gateway are marked below.'
           : ''}
@@ -354,6 +419,7 @@ export function PlatformClusterGatewaysContent({
           routes={routes}
           policies={shownPolicies}
           policiesError={policiesError}
+          referenceGrantsError={referenceGrantsError}
           query={query}
         />
       ) : null}
@@ -365,6 +431,15 @@ export function PlatformClusterGatewaysContent({
           error={policiesError}
           query={query}
           emptyText={`No Envoy Gateway policies found on cluster ${clusterName}.`}
+        />
+      ) : null}
+      {error && !isLoading ? (
+        // Without the topology no grant can be placed: all are listed.
+        <ReferenceGrantsSection
+          rows={unattached.referenceGrants}
+          error={referenceGrantsError}
+          query={query}
+          emptyText={`No ReferenceGrants found on cluster ${clusterName}. Clusters on observability-bundle older than 3.3.0 do not report them.`}
         />
       ) : null}
       {hasUnattached && !error ? (
@@ -382,7 +457,8 @@ export function PlatformClusterGatewaysContent({
               <Text variant="body-medium" color="secondary">
                 The metrics don't say which Gateway these belong to: a route
                 attached through a ListenerSet or to no Gateway on this cluster,
-                a policy whose targets are selected by labels or don't exist.
+                a policy whose targets are selected by labels or don't exist, a
+                ReferenceGrant no route on a Gateway is known to use.
               </Text>
             </Flex>
             {unattached.routes.length > 0 ? (
@@ -412,6 +488,19 @@ export function PlatformClusterGatewaysContent({
                 />
               </SubSection>
             ) : null}
+            {unattached.referenceGrants.length > 0 ? (
+              <SubSection
+                title="ReferenceGrants"
+                count={unattached.referenceGrants.length}
+              >
+                <PlatformGatewayReferenceGrantsTable
+                  aria-label="ReferenceGrants not attached to a gateway"
+                  rows={unattached.referenceGrants}
+                  query={query}
+                  emptyState={null}
+                />
+              </SubSection>
+            ) : null}
           </Flex>
         </section>
       ) : null}
@@ -424,7 +513,7 @@ export function PlatformClusterGatewaysContent({
  * (`/platform/clusters/<inst>/<ns>/<name>/gateways`): the cluster's Gateway
  * API Gateways from Mimir, as the classic tab reads them, one selected
  * (`?gateway=<namespace>/<name>`, the first by default) with its listeners,
- * HTTP routes and Envoy Gateway policies below.
+ * HTTP routes, Envoy Gateway policies and ReferenceGrants below.
  */
 export function PlatformClusterGateways() {
   const { installationName, cluster } = useCurrentCluster();
@@ -444,6 +533,15 @@ export function PlatformClusterGateways() {
     clusterName,
     refetchInterval: 30_000,
   });
+  const {
+    referenceGrants,
+    isLoading: referenceGrantsLoading,
+    error: referenceGrantsError,
+  } = useMimirGatewayReferenceGrants({
+    installationName,
+    clusterName,
+    refetchInterval: 30_000,
+  });
   return (
     <PlatformClusterGatewaysContent
       clusterName={clusterName}
@@ -454,6 +552,9 @@ export function PlatformClusterGateways() {
       policies={policies}
       policiesLoading={policiesLoading}
       policiesError={policiesError}
+      referenceGrants={referenceGrants}
+      referenceGrantsLoading={referenceGrantsLoading}
+      referenceGrantsError={referenceGrantsError}
       selected={selected}
       onSelect={onSelect}
     />

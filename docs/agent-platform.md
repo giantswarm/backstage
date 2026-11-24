@@ -663,29 +663,37 @@ classic page's cards, with Karpenter's metrics from Mimir).
 
 Gateways (`/gateways`) shows what the classic Gateways tab shows, from the
 same Mimir metrics and helpers (`useMimirGatewayTopology`,
-`useMimirGatewayPolicies`), one Gateway at a time. A table has a row per
+`useMimirGatewayPolicies`, `useMimirGatewayReferenceGrants`), one Gateway at
+a time. A table has a row per
 Gateway, failing ones first: the name, a button that selects it, with its
 namespace; one status ("Programmed", or the failing condition named, "Not
 programmed", with its reason under it); and how many listeners, routes
 (with how many fail) and policies it has. The selected Gateway is
 `?gateway=<namespace>/<name>`, the first by default and for a name the
 cluster does not have. Under the table, the selected Gateway's name, its
-namespace and class, then three tables: its listeners (name, protocol and
+namespace and class, then four tables: its listeners (name, protocol and
 port, hostname, attached routes); its HTTP routes, a row per route and
 parent on this Gateway (the route with its namespace and the policies that
 target it as chips, hostnames linked, backends with a split's weight, the
 listener, one status: "Accepted", or "Not accepted" or "Refs not resolved"
-with the reason); and its Envoy Gateway policies (the policy, its kind, what
-it applies to, its status on this Gateway). A policy belongs to a Gateway
+with the reason); its Envoy Gateway policies (the policy, its kind, what
+it applies to, its status on this Gateway); and its ReferenceGrants (the
+grant with its namespace, From, To, and the routes or Gateways it lets
+reference into its namespace). A policy belongs to a Gateway
 when an ancestor in its status is that Gateway or it targets the Gateway or
-one of its routes. What no Gateway takes, a route attached through a
+one of its routes. A ReferenceGrant belongs to a Gateway when it lets one of
+the Gateway's HTTP routes reach a backend (from the backend metric, which
+exports three backends per rule), or lets Gateways in its namespace
+reference into the grant's. What no Gateway takes, a route attached through a
 ListenerSet (no metric names a ListenerSet's Gateway), a route without a
-parent, a policy whose targets are selected by labels or don't exist, is
+parent, a policy whose targets are selected by labels or don't exist, a
+ReferenceGrant no route on a Gateway is known to use, is
 listed in a last section, "Not attached to a gateway", only when there is
 any. The classic tab's notices say what older bundles don't export. A
 finder above the table, "Find a gateway by hostname, route or policy",
 matches a case-insensitive substring of a Gateway's name, its routes' names,
-namespaces, hostnames and backends, and its policies' names: it lists only
+namespaces, hostnames and backends, its policies' names and its
+ReferenceGrants' names: it lists only
 the Gateways it finds something on, each with a line saying what
 ("Hostname: … (route …)"), keeps the selected Gateway while it finds something on it and selects the first otherwise, and marks the matching route and policy rows, those of the last section too, in every layout. With no match, the table says so and nothing shows below it but the last section. Route counts count a route once per Gateway, however many of its parents are on it; a policy count the portal could not read shows as "—". Every cell is at the top of
 its row; narrower, columns move under the name of each row; at phone width

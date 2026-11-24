@@ -154,3 +154,60 @@ export function referenceGrantToEntry(
     label: to.name ? `${kind} ${to.name}` : `any ${kind}`,
   };
 }
+
+const GATEWAY_API_GROUP = 'gateway.networking.k8s.io';
+
+/**
+ * Whether the grant lets an HTTPRoute in `routeNamespace` reference the
+ * backend, as Gateway API matches a backendRef against a ReferenceGrant: the
+ * grant is in the backend's namespace, a `from` names HTTPRoute in the
+ * route's namespace, and a `to` names the backend's kind, and its name or
+ * none. The metric names no group for a backend: a Service is in the core
+ * group, another kind is matched by kind alone.
+ */
+export function grantPermitsBackend(
+  grant: ReferenceGrant,
+  routeNamespace: string,
+  backend: { kind: string; namespace: string; name: string },
+): boolean {
+  if (
+    backend.namespace === routeNamespace ||
+    grant.namespace !== backend.namespace
+  ) {
+    return false;
+  }
+  return (
+    grant.from.some(
+      from =>
+        from.group === GATEWAY_API_GROUP &&
+        from.kind === 'HTTPRoute' &&
+        from.namespace === routeNamespace,
+    ) &&
+    grant.to.some(
+      to =>
+        to.kind === backend.kind &&
+        (backend.kind !== 'Service' || to.group === '') &&
+        (!to.name || to.name === backend.name),
+    )
+  );
+}
+
+/**
+ * Whether the grant lets Gateways in `namespace` reference into its own, as a
+ * Gateway does for a TLS certificate in another namespace. Which resources a
+ * Gateway references isn't exported, so this is what it may do.
+ */
+export function grantPermitsGateways(
+  grant: ReferenceGrant,
+  namespace: string,
+): boolean {
+  return (
+    grant.namespace !== namespace &&
+    grant.from.some(
+      from =>
+        from.group === GATEWAY_API_GROUP &&
+        from.kind === 'Gateway' &&
+        from.namespace === namespace,
+    )
+  );
+}

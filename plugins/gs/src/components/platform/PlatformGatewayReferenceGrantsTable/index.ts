@@ -1,0 +1,1 @@
+export { PlatformGatewayReferenceGrantsTable } from './PlatformGatewayReferenceGrantsTable';

@@ -1,4 +1,5 @@
 import type { GatewayPolicy } from '../../utils/gatewayPolicies';
+import type { ReferenceGrant } from '../../utils/gatewayReferenceGrants';
 import type {
   Gateway,
   HttpRoute,
@@ -210,6 +211,82 @@ describe('buildGatewayViews', () => {
     expect(view.routes).toHaveLength(2);
     expect(view.routeCount).toBe(1);
     expect(view.failingRoutes).toBe(1);
+  });
+
+  describe('ReferenceGrants', () => {
+    const gatewayApi = 'gateway.networking.k8s.io';
+    const crossNamespace: HttpRoute = {
+      ...route('shop', 'web', [parent(main)]),
+      backends: {
+        status: 'available',
+        backends: [{ kind: 'Service', namespace: 'catalog', name: 'catalog' }],
+        mayHaveMore: false,
+      },
+    };
+    const viaListenerSet: HttpRoute = {
+      ...crossNamespace,
+      id: 'events/hooks',
+      namespace: 'events',
+      name: 'hooks',
+      parents: [{ ...parent(main), kind: 'ListenerSet' }],
+    };
+    const grant = (
+      namespace: string,
+      name: string,
+      fromKind: string,
+      fromNamespace: string,
+    ): ReferenceGrant => ({
+      id: `${namespace}/${name}`,
+      namespace,
+      name,
+      from: [{ group: gatewayApi, kind: fromKind, namespace: fromNamespace }],
+      to: [{ group: '', kind: fromKind === 'Gateway' ? 'Secret' : 'Service' }],
+    });
+    const forShop = grant('catalog', 'for-shop', 'HTTPRoute', 'shop');
+    const forEvents = grant('catalog', 'for-events', 'HTTPRoute', 'events');
+    const forGateways = grant('certs', 'gateways', 'Gateway', 'payments');
+    const unused = grant('legacy', 'unused', 'HTTPRoute', 'old');
+    const placed = buildGatewayViews(
+      [main, internal],
+      [crossNamespace, viaListenerSet],
+      [],
+      [forShop, forEvents, forGateways, unused],
+    );
+    const viewOf = (key: string) =>
+      placed.gateways.find(view => view.key === key)!;
+
+    it('puts a grant under the Gateway whose route it lets reach a backend', () => {
+      const rows = viewOf('envoy-gateway-system/main').referenceGrants;
+      expect(rows.map(row => row.grant.name)).toEqual(['for-shop']);
+      expect(rows[0].routes.map(r => r.name)).toEqual(['web']);
+      expect(rows[0].forGateway).toBe(false);
+    });
+
+    it('puts a grant from Gateways under the Gateways of that namespace', () => {
+      const rows = viewOf('payments/internal').referenceGrants;
+      expect(rows.map(row => [row.grant.name, row.forGateway])).toEqual([
+        ['gateways', true],
+      ]);
+    });
+
+    it('leaves the others unattached, with the routes outside a Gateway they serve', () => {
+      expect(
+        placed.unattached.referenceGrants.map(row => [
+          row.grant.name,
+          row.routes.map(r => r.name),
+        ]),
+      ).toEqual([
+        ['for-events', ['hooks']],
+        ['unused', []],
+      ]);
+    });
+
+    it('finds a Gateway by a grant on it', () => {
+      expect(matchGateway(viewOf('payments/internal'), 'gatew')).toEqual({
+        kind: 'ReferenceGrant',
+        value: 'gateways',
+      });
+    });
   });
 
   it('orders failing Gateways first', () => {

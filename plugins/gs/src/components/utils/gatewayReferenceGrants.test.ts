@@ -6,6 +6,8 @@ import {
 } from '@giantswarm/backstage-plugin-gs-common';
 import {
   buildReferenceGrants,
+  grantPermitsBackend,
+  grantPermitsGateways,
   referenceGrantFromEntry,
   referenceGrantToEntry,
 } from './gatewayReferenceGrants';
@@ -171,5 +173,91 @@ describe('buildReferenceGrants', () => {
         to: [],
       },
     ]);
+  });
+});
+
+describe('grantPermitsBackend', () => {
+  const grant = {
+    id: 'payments/from-shop',
+    namespace: 'payments',
+    name: 'from-shop',
+    from: [
+      {
+        group: 'gateway.networking.k8s.io',
+        kind: 'HTTPRoute',
+        namespace: 'shop',
+      },
+    ],
+    to: [{ group: '', kind: 'Service', name: 'payments' }],
+  };
+  const backend = { kind: 'Service', namespace: 'payments', name: 'payments' };
+
+  it('lets a route in the from namespace reach the named Service', () => {
+    expect(grantPermitsBackend(grant, 'shop', backend)).toBe(true);
+  });
+
+  it('refuses another route namespace, Service, group or kind', () => {
+    expect(grantPermitsBackend(grant, 'api', backend)).toBe(false);
+    expect(
+      grantPermitsBackend(grant, 'shop', { ...backend, name: 'ledger' }),
+    ).toBe(false);
+    expect(
+      grantPermitsBackend(
+        { ...grant, to: [{ group: 'example.io', kind: 'Service' }] },
+        'shop',
+        backend,
+      ),
+    ).toBe(false);
+    expect(
+      grantPermitsBackend(
+        {
+          ...grant,
+          from: [
+            {
+              group: 'gateway.networking.k8s.io',
+              kind: 'GRPCRoute',
+              namespace: 'shop',
+            },
+          ],
+        },
+        'shop',
+        backend,
+      ),
+    ).toBe(false);
+  });
+
+  it('needs no grant, so matches none, within one namespace', () => {
+    expect(grantPermitsBackend(grant, 'payments', backend)).toBe(false);
+  });
+
+  it('matches any Service when the grant names none', () => {
+    expect(
+      grantPermitsBackend(
+        { ...grant, to: [{ group: '', kind: 'Service' }] },
+        'shop',
+        { ...backend, name: 'ledger' },
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('grantPermitsGateways', () => {
+  const grant = {
+    id: 'certs/gateways',
+    namespace: 'certs',
+    name: 'gateways',
+    from: [
+      {
+        group: 'gateway.networking.k8s.io',
+        kind: 'Gateway',
+        namespace: 'envoy-gateway-system',
+      },
+    ],
+    to: [{ group: '', kind: 'Secret' }],
+  };
+
+  it('lets Gateways of the from namespace reference into its own', () => {
+    expect(grantPermitsGateways(grant, 'envoy-gateway-system')).toBe(true);
+    expect(grantPermitsGateways(grant, 'payments')).toBe(false);
   });
 });

@@ -6,6 +6,7 @@ import {
   mockPhoneLayout,
 } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 import type { GatewayPolicy } from '../../utils/gatewayPolicies';
+import type { ReferenceGrant } from '../../utils/gatewayReferenceGrants';
 import type { Gateway, HttpRoute } from '../../utils/gatewayTopology';
 import { PlatformClusterGatewaysContent } from './PlatformClusterGateways';
 
@@ -58,6 +59,7 @@ const storefront: HttpRoute = {
     status: 'available',
     backends: [
       { kind: 'Service', namespace: 'shop', name: 'storefront', port: '80' },
+      { kind: 'Service', namespace: 'catalog', name: 'catalog', port: '80' },
     ],
     mayHaveMore: false,
   },
@@ -126,14 +128,43 @@ const ipAllow: GatewayPolicy = {
   status: { status: 'not-reported' },
 };
 
+const GATEWAY_API = 'gateway.networking.k8s.io';
+
+/** One grant per place: a route's, a Gateway's, and one nothing uses. */
+const grants: ReferenceGrant[] = [
+  {
+    id: 'catalog/from-shop',
+    namespace: 'catalog',
+    name: 'from-shop',
+    from: [{ group: GATEWAY_API, kind: 'HTTPRoute', namespace: 'shop' }],
+    to: [{ group: '', kind: 'Service', name: 'catalog' }],
+  },
+  {
+    id: 'certs/payments-gateways',
+    namespace: 'certs',
+    name: 'payments-gateways',
+    from: [{ group: GATEWAY_API, kind: 'Gateway', namespace: 'payments' }],
+    to: [{ group: '', kind: 'Secret' }],
+  },
+  {
+    id: 'legacy/from-old',
+    namespace: 'legacy',
+    name: 'from-old',
+    from: [{ group: GATEWAY_API, kind: 'HTTPRoute', namespace: 'old' }],
+    to: [{ group: '', kind: 'Service' }],
+  },
+];
+
 /** The content with its selection in state, as `?gateway=` keeps it. */
 function Harness({
   error,
   policiesError,
+  referenceGrantsError,
   initial,
 }: {
   error?: Error;
   policiesError?: Error;
+  referenceGrantsError?: Error;
   initial?: string;
 }) {
   const [selected, setSelected] = useState<string | undefined>(initial);
@@ -149,6 +180,9 @@ function Harness({
         policies={[ipAllow]}
         policiesLoading={false}
         policiesError={policiesError}
+        referenceGrants={grants}
+        referenceGrantsLoading={false}
+        referenceGrantsError={referenceGrantsError}
         selected={selected}
         onSelect={setSelected}
       />
@@ -247,7 +281,7 @@ describe('<PlatformClusterGatewaysContent />', () => {
     });
     expect(
       await screen.findByText(
-        'No gateway has a route, hostname or policy matching "nothing-like-it".',
+        'No gateway has a route, hostname, policy or ReferenceGrant matching "nothing-like-it".',
       ),
     ).toBeInTheDocument();
     expect(
@@ -271,6 +305,56 @@ describe('<PlatformClusterGatewaysContent />', () => {
     ).toBeInTheDocument();
   });
 
+  it('shows the ReferenceGrants the selected Gateway and its routes use', async () => {
+    await renderInTestApp(<Harness />);
+    const onMain = screen.getAllByRole('region', {
+      name: 'ReferenceGrants',
+    })[0];
+    expect(within(onMain).getByText('from-shop')).toBeInTheDocument();
+    expect(within(onMain).getByText('HTTPRoute in shop')).toBeInTheDocument();
+    expect(within(onMain).getByText('Service catalog')).toBeInTheDocument();
+    expect(within(onMain).getByText('storefront')).toBeInTheDocument();
+    expect(within(onMain).queryByText('payments-gateways')).toBeNull();
+
+    fireEvent.click(gatewayButton('payments-internal'));
+    const onInternal = screen.getAllByRole('region', {
+      name: 'ReferenceGrants',
+    })[0];
+    expect(
+      within(onInternal).getByText('payments-gateways'),
+    ).toBeInTheDocument();
+    expect(within(onInternal).getByText('any Secret')).toBeInTheDocument();
+    expect(within(onInternal).getByText('Gateways')).toBeInTheDocument();
+  });
+
+  it('finds a Gateway by a ReferenceGrant on it', async () => {
+    await renderInTestApp(<Harness />);
+    fireEvent.change(screen.getByRole('searchbox'), {
+      target: { value: 'payments-gate' },
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId('selected')).toHaveTextContent(
+        'payments/payments-internal',
+      ),
+    );
+    expect(screen.getByText(/^ReferenceGrant:/)).toHaveTextContent(
+      'ReferenceGrant: payments-gateways',
+    );
+  });
+
+  it('shows why the ReferenceGrants could not be loaded', async () => {
+    await renderInTestApp(
+      <Harness referenceGrantsError={new Error('timeout')} />,
+    );
+    expect(
+      screen.getByText('ReferenceGrants could not be loaded.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'Not attached to a gateway' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('from-old')).toBeNull();
+  });
+
   it('shows the policy counts as unknown when the policies fail to load', async () => {
     await renderInTestApp(<Harness policiesError={new Error('timeout')} />);
     const unknown = screen.getAllByLabelText('Policies could not be loaded');
@@ -292,6 +376,13 @@ describe('<PlatformClusterGatewaysContent />', () => {
     expect(within(routes).getByText('event-webhooks')).toBeInTheDocument();
     expect(
       within(routes).getByText('ListenerSet events/events-https, https'),
+    ).toBeInTheDocument();
+    const grantsSection = within(unattached).getByRole('region', {
+      name: 'ReferenceGrants',
+    });
+    expect(within(grantsSection).getByText('from-old')).toBeInTheDocument();
+    expect(
+      within(grantsSection).getByText('No route found'),
     ).toBeInTheDocument();
   });
 

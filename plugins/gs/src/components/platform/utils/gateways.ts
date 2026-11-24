@@ -12,6 +12,11 @@ import {
   gatewayRank,
   routeRank,
 } from '../../utils/gatewayTopology';
+import {
+  type ReferenceGrant,
+  grantPermitsBackend,
+  grantPermitsGateways,
+} from '../../utils/gatewayReferenceGrants';
 import { backendLabel } from '../../clusters/cluster-details/ClusterGateways/BackendList';
 import {
   type NamedCondition,
@@ -45,6 +50,19 @@ export type GatewayPolicyRow = {
   status: ConditionState;
 };
 
+/** A ReferenceGrant as one Gateway uses it: a row of the grants table. */
+export type GatewayReferenceGrantRow = {
+  id: string;
+  grant: ReferenceGrant;
+  /**
+   * The routes whose backends it lets them reach: the Gateway's routes, or
+   * any route in the unattached section.
+   */
+  routes: HttpRoute[];
+  /** It lets Gateways in this Gateway's namespace reference into its own. */
+  forGateway: boolean;
+};
+
 /** A Gateway with what the page shows under it. */
 export type GatewayView = {
   /** {@link gatewayKey}, also the table row's id. */
@@ -53,6 +71,8 @@ export type GatewayView = {
   gateway: Gateway;
   routes: GatewayRouteRow[];
   policies: GatewayPolicyRow[];
+  /** The ReferenceGrants its routes reach backends with, or it may use. */
+  referenceGrants: GatewayReferenceGrantRow[];
   /** Distinct routes on this Gateway; `routes` has a row per parent. */
   routeCount: number;
   /** Distinct routes with a parent on this Gateway that fails. */
@@ -63,6 +83,8 @@ export type GatewayView = {
 export type UnattachedItems = {
   routes: GatewayRouteRow[];
   policies: GatewayPolicyRow[];
+  /** Grants no Gateway on the cluster or route of one is known to use. */
+  referenceGrants: GatewayReferenceGrantRow[];
 };
 
 export type GatewayViews = {
@@ -135,6 +157,20 @@ function routeRowId(route: HttpRoute, parent?: HttpRouteParent): string {
     : route.id;
 }
 
+/** The routes among `routes` the grant lets reach one of their backends. */
+function routesPermitted(
+  grant: ReferenceGrant,
+  routes: HttpRoute[],
+): HttpRoute[] {
+  return routes.filter(
+    route =>
+      route.backends.status === 'available' &&
+      route.backends.backends.some(backend =>
+        grantPermitsBackend(grant, route.namespace, backend),
+      ),
+  );
+}
+
 /** Failing parents first, then those without status, as `routeRank`. */
 function parentRank(parent: HttpRouteParent | undefined): number {
   return parent ? conditionsRank([parent.accepted, parent.resolvedRefs]) : 1;
@@ -154,12 +190,16 @@ function policyRank(row: GatewayPolicyRow): number {
  * a target that is the Gateway, or a target that is one of its routes.
  * What no Gateway on the cluster takes, a route attached only through a
  * ListenerSet (no metric says which Gateway a ListenerSet belongs to) or a
- * policy whose targets aren't known, goes to `unattached`.
+ * policy whose targets aren't known, goes to `unattached`. A ReferenceGrant
+ * goes under each Gateway with a route whose backend it lets the route
+ * reach, and each Gateway in a namespace it lets reference into its own;
+ * the others go to `unattached`.
  */
 export function buildGatewayViews(
   gateways: Gateway[],
   routes: HttpRoute[],
   policies: GatewayPolicy[],
+  referenceGrants: ReferenceGrant[] = [],
 ): GatewayViews {
   const ordered = [...gateways].sort((a, b) => gatewayRank(a) - gatewayRank(b));
   const orderedRoutes = [...routes].sort((a, b) => routeRank(a) - routeRank(b));
@@ -168,6 +208,7 @@ export function buildGatewayViews(
 
   const placedRoutes = new Set<string>();
   const placedPolicies = new Set<string>();
+  const placedGrants = new Set<string>();
 
   const views = ordered.map((gateway): GatewayView => {
     const rows: GatewayRouteRow[] = [];
@@ -199,12 +240,30 @@ export function buildGatewayViews(
         return policyRow(policy, gateway);
       })
       .sort((a, b) => policyRank(a) - policyRank(b));
+    const gatewayRoutes = orderedRoutes.filter(route => routeIds.has(route.id));
+    const grantRows = referenceGrants.flatMap(
+      (grant): GatewayReferenceGrantRow[] => {
+        const permitted = routesPermitted(grant, gatewayRoutes);
+        const forGateway = grantPermitsGateways(grant, gateway.namespace);
+        if (!permitted.length && !forGateway) return [];
+        placedGrants.add(grant.id);
+        return [
+          {
+            id: `${gatewayKey(gateway)}|${grant.id}`,
+            grant,
+            routes: permitted,
+            forGateway,
+          },
+        ];
+      },
+    );
     return {
       id: gatewayKey(gateway),
       key: gatewayKey(gateway),
       gateway,
       routes: rows,
       policies: policyRows,
+      referenceGrants: grantRows,
       routeCount: routeIds.size,
       failingRoutes: new Set(
         rows
@@ -233,6 +292,15 @@ export function buildGatewayViews(
         .filter(policy => !placedPolicies.has(policy.id))
         .map(policy => policyRow(policy))
         .sort((a, b) => policyRank(a) - policyRank(b)),
+      referenceGrants: referenceGrants
+        .filter(grant => !placedGrants.has(grant.id))
+        .map(grant => ({
+          id: grant.id,
+          grant,
+          // A route through a ListenerSet, or on no Gateway of the cluster.
+          routes: routesPermitted(grant, orderedRoutes),
+          forGateway: false,
+        })),
     },
   };
 }
@@ -358,9 +426,25 @@ export function policyMatches(policy: GatewayPolicy, query: string): boolean {
   return needle !== '' && has(policy.name, needle);
 }
 
+/** Whether a ReferenceGrant row has what the query looks for: its name. */
+export function referenceGrantMatches(
+  grant: ReferenceGrant,
+  query: string,
+): boolean {
+  const needle = normalizeQuery(query);
+  return needle !== '' && has(grant.name, needle);
+}
+
 /** What the finder found on a Gateway, for the line under its name. */
 export type GatewayMatch = {
-  kind: 'Hostname' | 'Route' | 'Namespace' | 'Backend' | 'Policy' | 'Gateway';
+  kind:
+    | 'Hostname'
+    | 'Route'
+    | 'Namespace'
+    | 'Backend'
+    | 'Policy'
+    | 'ReferenceGrant'
+    | 'Gateway';
   /** The value that matched, marked where the query occurs. */
   value: string;
   /** The route it belongs to, for a hostname, namespace or backend. */
@@ -370,7 +454,8 @@ export type GatewayMatch = {
 /**
  * The first thing on a Gateway the query matches, as the mockup reads it:
  * route by route a hostname, the route's name, its namespace, a backend;
- * then a policy; then the Gateway's own name. Undefined when nothing does.
+ * then a policy; then a ReferenceGrant; then the Gateway's own name.
+ * Undefined when nothing does.
  */
 export function matchGateway(
   view: GatewayView,
@@ -390,6 +475,8 @@ export function matchGateway(
   }
   const policy = view.policies.find(row => has(row.policy.name, needle));
   if (policy) return { kind: 'Policy', value: policy.policy.name };
+  const grant = view.referenceGrants.find(row => has(row.grant.name, needle));
+  if (grant) return { kind: 'ReferenceGrant', value: grant.grant.name };
   if (has(view.gateway.name, needle))
     return { kind: 'Gateway', value: view.gateway.name };
   return undefined;
