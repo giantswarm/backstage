@@ -849,9 +849,6 @@ const RESERVED_REQUEST_META_KEYS = [
   'tracestate',
   'baggage',
 ];
-/** Key names muster refuses because they would hold a credential. */
-const CREDENTIAL_REQUEST_META_KEY =
-  /^(authorization|cookie|token|access_token|id_token|refresh_token|password|secret|client_secret|api[-_]?key)$/i;
 
 /**
  * Problems in the request-metadata entries, in the order muster's CRD rules
@@ -877,10 +874,6 @@ function validateRequestMetaEntries(
     } else if (RESERVED_REQUEST_META_KEYS.includes(key)) {
       errors.push(
         `Request metadata name ${key} is set by Muster and OpenTelemetry on each request`,
-      );
-    } else if (CREDENTIAL_REQUEST_META_KEY.test(key)) {
-      errors.push(
-        `Request metadata name ${key} would hold a credential, which everyone who can read the connector can read`,
       );
     }
   }
@@ -1143,7 +1136,6 @@ export function sigv4Advisories(state: NewMcpServerFormState): string[] {
       `The URL does not mention ${region}. The signing region must match the region of the endpoint, or the endpoint rejects the signature.`,
     );
   }
-
 
   return advisories;
 }

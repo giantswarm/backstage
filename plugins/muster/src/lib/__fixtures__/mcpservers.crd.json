@@ -14,9 +14,7 @@
       "kind": "MCPServer",
       "listKind": "MCPServerList",
       "plural": "mcpservers",
-      "shortNames": [
-        "mcps"
-      ],
+      "shortNames": ["mcps"],
       "singular": "mcpserver"
     },
     "scope": "Namespaced",
@@ -108,9 +106,7 @@
                                 "type": "string"
                               }
                             },
-                            "required": [
-                              "name"
-                            ],
+                            "required": ["name"],
                             "type": "object"
                           },
                           "expectedIssuer": {
@@ -120,10 +116,7 @@
                           },
                           "grantScope": {
                             "description": "GrantScope decides whom a token obtained from this authorization server\nbelongs to. `session` (the default) keeps today's behavior: the token is\nbound to the login session that completed the browser flow, so every new\nsession signs in again. `subject` files the token under the user's\nidentity as well, so any later session of the same person -- another\nclient, a re-login, a front-end whose bearer rotates -- reuses the grant\nwithout a new consent, until the person signs out of this server\n(`core_auth_logout`) or everywhere. Use `subject` for external accounts\nthe person owns (GitHub), never for tokens that carry session-specific\nauthority. MCPServerAuth.GrantScope says the same for a server that\ndiscovers its authorization server instead of pinning it.",
-                            "enum": [
-                              "session",
-                              "subject"
-                            ],
+                            "enum": ["session", "subject"],
                             "type": "string"
                           },
                           "issuer": {
@@ -146,9 +139,7 @@
                             "type": "string"
                           }
                         },
-                        "required": [
-                          "issuer"
-                        ],
+                        "required": ["issuer"],
                         "type": "object",
                         "x-kubernetes-validations": [
                           {
@@ -173,10 +164,7 @@
                       },
                       "grantScope": {
                         "description": "GrantScope decides whom the grant of this server's OAuth sign-in\nbelongs to, whichever authorization server the server uses: the one\nmuster discovers through the server's RFC 9728 Protected Resource\nMetadata, or the one pinned in AuthorizationServer. `session` (the\ndefault) binds the grant to the login session that completed the\nbrowser flow. `subject` files it under the person as well, so every\nlater session of the same person -- another client, an agent\nconversation, a session after a muster restart -- connects with it\nwithout a new consent, until the person signs out of the server\n(`core_auth_logout`). The semantics are those of\nAuthorizationServer.GrantScope, which a pinned server may set instead;\nset both only to the same value.\n\nmuster decides grant scope per authorization server: a server with\n`subject` and no pin makes the issuer it discovers subject-scoped, as a\npin with `grantScope: subject` does for its issuer, and the\none-description-per-issuer rule of the pins applies to it, except that\nan issuer an operator names in an AuthorizationServer pin keeps that\npin's description. `subject` is only valid with Type \"oauth\" and\nneither ForwardToken nor TokenExchange, which obtain no grant of their\nown; `session` is accepted everywhere.",
-                        "enum": [
-                          "session",
-                          "subject"
-                        ],
+                        "enum": ["session", "subject"],
                         "type": "string"
                       },
                       "providerApps": {
@@ -212,9 +200,7 @@
                             "type": "string"
                           }
                         },
-                        "required": [
-                          "region"
-                        ],
+                        "required": ["region"],
                         "type": "object"
                       },
                       "tokenExchange": {
@@ -242,9 +228,7 @@
                                 "type": "string"
                               }
                             },
-                            "required": [
-                              "name"
-                            ],
+                            "required": ["name"],
                             "type": "object"
                           },
                           "connectorId": {
@@ -278,11 +262,7 @@
                       "type": {
                         "default": "none",
                         "description": "Type specifies the authentication type.\nSupported values:\n  - \"oauth\": OAuth 2.0/OIDC authentication\n  - \"none\": No authentication\n  - \"sigv4\": AWS Signature Version 4, signed with muster's own machine\n    identity. See SigV4.",
-                        "enum": [
-                          "oauth",
-                          "none",
-                          "sigv4"
-                        ],
+                        "enum": ["oauth", "none", "sigv4"],
                         "type": "string"
                       }
                     },
@@ -361,10 +341,7 @@
                         "type": "string"
                       }
                     },
-                    "required": [
-                      "instanceArg",
-                      "name"
-                    ],
+                    "required": ["instanceArg", "name"],
                     "type": "object"
                   },
                   "headers": {
@@ -407,31 +384,20 @@
                             },
                             "type": {
                               "description": "Type is the kind of object that holds the value. Only Secret.",
-                              "enum": [
-                                "Secret"
-                              ],
+                              "enum": ["Secret"],
                               "type": "string"
                             }
                           },
-                          "required": [
-                            "key",
-                            "name",
-                            "type"
-                          ],
+                          "required": ["key", "name", "type"],
                           "type": "object"
                         }
                       },
-                      "required": [
-                        "name",
-                        "valueFrom"
-                      ],
+                      "required": ["name", "valueFrom"],
                       "type": "object"
                     },
                     "maxItems": 32,
                     "type": "array",
-                    "x-kubernetes-list-map-keys": [
-                      "name"
-                    ],
+                    "x-kubernetes-list-map-keys": ["name"],
                     "x-kubernetes-list-type": "map",
                     "x-kubernetes-validations": [
                       {
@@ -459,10 +425,6 @@
                       {
                         "message": "progressToken, traceparent, tracestate and baggage are set by muster and OpenTelemetry, not by configuration",
                         "rule": "self.all(k, !(k in ['progressToken', 'traceparent', 'tracestate', 'baggage']))"
-                      },
-                      {
-                        "message": "requestMeta must not hold a credential: everyone who can read the MCPServer can read it",
-                        "rule": "self.all(k, !k.matches('^(?i)(authorization|cookie|token|access_token|id_token|refresh_token|password|secret|client_secret|api[-_]?key)$'))"
                       }
                     ]
                   },
@@ -498,10 +460,6 @@
                       {
                         "message": "progressToken, traceparent, tracestate and baggage are set by muster and OpenTelemetry, not by configuration",
                         "rule": "self.all(k, !(k in ['progressToken', 'traceparent', 'tracestate', 'baggage']))"
-                      },
-                      {
-                        "message": "requestMeta must not hold a credential: everyone who can read the MCPServer can read it",
-                        "rule": "self.all(k, !k.matches('^(?i)(authorization|cookie|token|access_token|id_token|refresh_token|password|secret|client_secret|api[-_]?key)$'))"
                       }
                     ]
                   },
@@ -529,11 +487,7 @@
                   },
                   "type": {
                     "description": "Type specifies how this MCP server should be executed.\nSupported values: \"stdio\" for local processes, \"streamable-http\" for HTTP-based servers, \"sse\" for Server-Sent Events.\n\n\"stdio\" is CLI-only. A stdio server is started as a subprocess of the muster\nprocess, so a muster running in Kubernetes mode rejects it: the tool handlers\nfail the call, and a CR applied directly through the API server is reconciled\nto state Failed instead of spawning a process in the muster pod. Run the MCP\nserver as its own workload and use \"streamable-http\" or \"sse\" instead.",
-                    "enum": [
-                      "stdio",
-                      "streamable-http",
-                      "sse"
-                    ],
+                    "enum": ["stdio", "streamable-http", "sse"],
                     "type": "string"
                   },
                   "url": {
@@ -549,9 +503,7 @@
                     ]
                   }
                 },
-                "required": [
-                  "type"
-                ],
+                "required": ["type"],
                 "type": "object",
                 "x-kubernetes-validations": [
                   {
@@ -601,11 +553,7 @@
                         },
                         "status": {
                           "description": "status of the condition, one of True, False, Unknown.",
-                          "enum": [
-                            "True",
-                            "False",
-                            "Unknown"
-                          ],
+                          "enum": ["True", "False", "Unknown"],
                           "type": "string"
                         },
                         "type": {

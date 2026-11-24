@@ -289,7 +289,9 @@ describe('composeMcpServerDefinition', () => {
 
   it('omits requestMeta when no entry has a name', () => {
     expect(
-      composeMcpServerDefinition(state({ requestMeta: [{ key: '  ', value: 'x' }] })),
+      composeMcpServerDefinition(
+        state({ requestMeta: [{ key: '  ', value: 'x' }] }),
+      ),
     ).not.toHaveProperty('requestMeta');
   });
 
@@ -733,9 +735,6 @@ describe('validateNewMcpServerForm', () => {
     expect(problems('traceparent')).toEqual([
       'Request metadata name traceparent is set by Muster and OpenTelemetry on each request',
     ]);
-    expect(problems('API_KEY')).toEqual([
-      expect.stringContaining('would hold a credential'),
-    ]);
   });
 
   it('rejects AWS SigV4 on the SSE transport, and says where to fix it', () => {
@@ -952,7 +951,10 @@ function evaluateCel(rule: string, self: unknown): boolean {
     }, undefined);
 
   const isLiteral = (token: string): boolean =>
-    token.startsWith("'") || token === 'true' || token === 'false' || /^\d+$/.test(token);
+    token.startsWith("'") ||
+    token === 'true' ||
+    token === 'false' ||
+    /^\d+$/.test(token);
 
   const literal = (token: string): unknown => {
     if (token.startsWith("'")) {
@@ -1612,7 +1614,9 @@ describe('editing a registered server in the wizard', () => {
       registered({ requestMeta: { AWS_REGION: ' eu-west-1 ' } }),
     );
 
-    expect(form.requestMeta).toEqual([{ key: 'AWS_REGION', value: ' eu-west-1 ' }]);
+    expect(form.requestMeta).toEqual([
+      { key: 'AWS_REGION', value: ' eu-west-1 ' },
+    ]);
     expect(composeMcpServerDefinition(form).requestMeta).toEqual({
       AWS_REGION: 'eu-west-1',
     });
@@ -2294,7 +2298,11 @@ describe('withRequestMetaArgument', () => {
 describe('mergeOntoExisting with the former meta name', () => {
   it('never sends meta next to requestMeta, which muster refuses', () => {
     const merged = mergeOntoExisting(
-      { name: 'aws', type: 'streamable-http', meta: { AWS_REGION: 'eu-west-1' } },
+      {
+        name: 'aws',
+        type: 'streamable-http',
+        meta: { AWS_REGION: 'eu-west-1' },
+      },
       composeMcpServerDefinition(sigv4State({ slug: 'aws' })),
     );
     expect(merged).not.toHaveProperty('meta');
@@ -2303,7 +2311,11 @@ describe('mergeOntoExisting with the former meta name', () => {
 
   it('clears a stored meta explicitly when the wizard leaves none', () => {
     const merged = mergeOntoExisting(
-      { name: 'plain', type: 'streamable-http', meta: { 'com.example/x': 'a' } },
+      {
+        name: 'plain',
+        type: 'streamable-http',
+        meta: { 'com.example/x': 'a' },
+      },
       composeMcpServerDefinition(state({ slug: 'plain' })),
     );
     expect(merged).not.toHaveProperty('meta');
