@@ -67,6 +67,26 @@ const CREDENTIAL_REQUEST_TOOLS: ReadonlySet<AgentManagerTool> = new Set([
   AGENT_MANAGER_TOOLS.replaceOrganizationCredential,
 ]);
 
+/**
+ * `erases` with every list present: agent-manager answers them `null` when
+ * the organization has no namespace yet and only organization-operator's
+ * namespace goes with it. `sessions` keeps its `null`, which says they could
+ * not be counted.
+ */
+function erasureOf(erases: OrganizationErasure): OrganizationErasure {
+  return {
+    ...erases,
+    namespace: erases.namespace ?? '',
+    agents: erases.agents ?? [],
+    helmReleases: erases.helmReleases ?? [],
+    models: erases.models ?? [],
+    connectors: erases.connectors ?? [],
+    egressPolicies: erases.egressPolicies ?? [],
+    credentials: erases.credentials ?? [],
+    members: erases.members ?? [],
+  };
+}
+
 /** `list_model_configs`' answer, as the client reads it. */
 export type ListModelConfigsAnswer = {
   modelConfigs?: AgentManagerModelConfig[];
@@ -332,7 +352,10 @@ export class AgentManagerClient {
     const { erases, ...organization } = await this.call<
       OrganizationSummary & { erases?: OrganizationErasure }
     >(AGENT_MANAGER_TOOLS.getOrganization, { name });
-    return { organization, ...(erases ? { erases } : {}) };
+    return {
+      organization,
+      ...(erases ? { erases: erasureOf(erases) } : {}),
+    };
   }
 
   /**

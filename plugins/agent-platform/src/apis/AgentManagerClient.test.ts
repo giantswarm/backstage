@@ -171,7 +171,7 @@ describe('AgentManagerClient.getOrganization', () => {
       harnesses: ['kagent'],
       workerReplicas: 1,
     });
-    expect(details.erases).toEqual({
+    expect(details.erases).toMatchObject({
       namespace: 'agents-payments',
       kept: 'tombstones',
     });

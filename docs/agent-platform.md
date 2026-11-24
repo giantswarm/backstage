@@ -1002,8 +1002,8 @@ the admins: identity provider groups and people, one per line, both
 optional. agent-manager writes the object with its admins in `spec.admins`
 and does not wait for the operator, so the new organization's page opens at
 once and says that it is not ready until the operator reports its
-namespace. The list marks such an organization "not ready yet" and reads
-again every 10 seconds until it is.
+namespace. The list marks such an organization "not ready yet"; its page
+reads it again every 10 seconds, for five minutes at most, until it is.
 
 **Admins.** The admins are the `Organization`'s `spec.admins`; the operator
 binds them to `agent-platform:admin` in `organization-admins`. The Members

@@ -2082,6 +2082,40 @@ describe('OrganizationPage', () => {
       );
     });
 
+    it("names organization-operator's namespace when it is all a delete of one without a namespace takes", async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        mine: { organizations: [] },
+        organization: WITHOUT_NAMESPACE,
+        // As agent-manager answers it: no Agent Platform namespace, so its
+        // lists are null, and organization-operator's namespace goes along.
+        erases: {
+          namespace: '',
+          agents: null,
+          helmReleases: null,
+          models: null,
+          connectors: null,
+          egressPolicies: null,
+          credentials: null,
+          members: null,
+          sessions: null,
+          organizationNamespace: 'org-payments',
+          kept: 'the organization has no Agent Platform namespace yet',
+        } as unknown as OrganizationsScenario['erases'],
+      });
+
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Delete organization' }),
+      );
+      const dialog = await screen.findByRole('dialog');
+      expect(
+        await within(dialog).findByText(
+          /only the organization itself goes, with organization-operator's namespace org-payments/,
+        ),
+      ).toBeInTheDocument();
+      expect(within(dialog).queryByText(/^Running sessions/)).toBeNull();
+    });
+
     it('opens the pull request for one applied from git that has no namespace yet', async () => {
       const { callTool } = await renderPage('', {
         ...SCENARIO,

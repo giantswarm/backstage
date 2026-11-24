@@ -6,7 +6,6 @@ import { AgentManagerError } from '../lib/agentManager';
 import { organizationOwnConnectors } from '../lib/organizationConnectors';
 import {
   ORGANIZATIONS_CAPABILITY,
-  isOrganizationReady,
   modeArgument,
   organizationContentMode,
   type ListedOrganization,
@@ -84,9 +83,6 @@ export function useOrganizationsSupported(installation: string | undefined): {
   };
 }
 
-/** How often a listing with an organization not ready yet is read again. */
-const NOT_READY_POLL_INTERVAL_MS = 10_000;
-
 /**
  * `list_organizations` on one installation: the organizations the person
  * manages or belongs to, each with their permissions, and who can add them
@@ -109,15 +105,6 @@ export function useOrganizations(
     enabled,
     queryFn: () => client!.listOrganizations(),
     staleTime: 60_000,
-    // An organization the operator has not reported ready yet, a new one
-    // among them, is read again until it is.
-    refetchInterval: ({ state }) =>
-      state.data?.organizations.some(
-        organization =>
-          !organization.deleting && !isOrganizationReady(organization),
-      ) && !state.error
-        ? NOT_READY_POLL_INTERVAL_MS
-        : false,
     retry: false,
   });
   return {
@@ -470,7 +457,7 @@ export function useOrganizationAdminsUpdate(
         ...modeArgument(mode),
       });
     },
-    onSuccess: () =>
+    onSuccess: (_result, { organization }) =>
       Promise.all([
         queryClient.invalidateQueries({
           queryKey: musterOrganizationsQueryKey(installation),
@@ -478,6 +465,16 @@ export function useOrganizationAdminsUpdate(
         queryClient.invalidateQueries({
           queryKey: musterOrganizationQueryKey(installation, name),
         }),
+        ...(organization?.namespace
+          ? [
+              queryClient.invalidateQueries({
+                queryKey: musterOrganizationMembersQueryKey(
+                  installation,
+                  organization.namespace,
+                ),
+              }),
+            ]
+          : []),
       ]),
   });
 }

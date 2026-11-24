@@ -139,7 +139,11 @@ export function OrganizationDeleteDialog({
 
   const expected = name;
   const viaPullRequest = mode === 'pull-request';
-  const erases = erasure.data?.erases;
+  const preview = erasure.data?.erases;
+  // What runs in the organization namespace is listed once it exists;
+  // before, agent-manager may still name organization-operator's namespace.
+  const erases = preview?.namespace ? preview : undefined;
+  const otherNamespace = preview?.organizationNamespace;
   // agent-manager previews an erasure only once the organization namespace
   // exists: without one, nothing runs in it to erase or stop.
   const noNamespace = Boolean(
@@ -242,7 +246,11 @@ export function OrganizationDeleteDialog({
           <Text variant="body-medium">
             {title} has no organization namespace yet, so there are no agents,
             models, connectors, credentials or members to erase and no session
-            stops: only the organization itself goes.
+            stops: only the organization itself goes
+            {otherNamespace
+              ? `, with organization-operator's namespace ${otherNamespace}`
+              : ''}
+            .
           </Text>
         )}
         {!viaPullRequest && (

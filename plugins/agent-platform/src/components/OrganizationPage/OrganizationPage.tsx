@@ -18,6 +18,7 @@ import {
 } from '../../hooks/useOrganization';
 import { agentManagerBlocker } from '../../lib/agentManager';
 import {
+  isOrganizationReady,
   organizationDeleteMode,
   type OrganizationNamespace,
 } from '../../lib/organizations';
@@ -37,8 +38,11 @@ export type OrganizationPageProps = {
   name: string;
 };
 
-/** How often the page reads a new organization again until it is ready. */
-const CREATED_POLL_INTERVAL_MS = 10_000;
+/** How often the page reads its organization again until it is ready. */
+const NOT_READY_POLL_INTERVAL_MS = 10_000;
+
+/** How many reads the page waits for it to be ready: five minutes. */
+const NOT_READY_MAX_READS = 30;
 
 /**
  * `next` of the create that opened this page, as the Organizations page's
@@ -101,19 +105,29 @@ export function OrganizationPage({
   const [deletedHere, setDeletedHere] = useState(false);
   const changesOffId = useId();
 
-  // A new organization agent-manager does not list yet, or lists without
-  // its namespace, is read again until the operator reports it.
-  const awaitingCreated = Boolean(createdNext) && !listed?.namespace;
+  // This organization, while the operator has not reported it ready (one
+  // created here a moment ago that agent-manager does not list yet among
+  // them), is read again, for a few minutes at most: one that stays not
+  // ready is read again on the next visit.
+  const awaitingReady =
+    (Boolean(createdNext) && !listed) ||
+    (listed !== undefined && !listed.deleting && !isOrganizationReady(listed));
   const { refetch } = mine;
   useEffect(() => {
-    if (!awaitingCreated) {
+    if (!awaitingReady) {
       return undefined;
     }
+    let reads = 0;
     const timer = setInterval(() => {
+      reads += 1;
+      if (reads > NOT_READY_MAX_READS) {
+        clearInterval(timer);
+        return;
+      }
       refetch();
-    }, CREATED_POLL_INTERVAL_MS);
+    }, NOT_READY_POLL_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [awaitingCreated, refetch]);
+  }, [awaitingReady, refetch]);
 
   const object = details.data?.organization ?? listed?.organization;
   const status = object ?? listed;

@@ -58,7 +58,7 @@ export function OrganizationAdminsSection({
   return (
     <PageSection
       title="Admins"
-      description="The admins manage members, models and credentials. They are set on the organization, not added as members."
+      description="The admins manage members, models and credentials. They are set on the organization, not added as members. The member list shows a change once the operator has bound them."
       action={
         mayChange ? (
           <Button
