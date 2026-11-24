@@ -112,6 +112,9 @@ export function toMcpServerDefinition(
     'url',
     'env',
     'headers',
+    'requestMeta',
+    // The former name of `requestMeta`: a server stored before the rename
+    // still has it, and a muster without `requestMeta` only takes this one.
     'meta',
     'timeout',
     'auth',

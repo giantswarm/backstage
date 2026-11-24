@@ -61,7 +61,22 @@ describe('MCP server definitions (gitops.ts)', () => {
           roleArn: 'arn:aws:iam::123456789012:role/muster-mcp',
         },
       },
-      meta: { AWS_REGION: 'eu-central-1' },
+      requestMeta: { AWS_REGION: 'eu-central-1' },
+    };
+
+    expect(toMcpServerDefinition(makeMcpServer(spec))).toEqual({
+      name: 'aws-root',
+      ...spec,
+    });
+  });
+
+  // A server stored before the rename keeps the former name: a muster without
+  // requestMeta takes only that one, and a newer one reads it too.
+  it('carries request metadata stored under its former name as it is', () => {
+    const spec = {
+      type: 'streamable-http',
+      url: 'https://mcp.example.com/mcp',
+      meta: { 'com.example/tenant-id': 'giantswarm' },
     };
 
     expect(toMcpServerDefinition(makeMcpServer(spec))).toEqual({

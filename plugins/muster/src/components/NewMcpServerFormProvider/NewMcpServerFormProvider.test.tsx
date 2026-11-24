@@ -10,7 +10,10 @@ import {
 } from './NewMcpServerFormProvider';
 
 /** The input schema muster's create and update tools describe. */
-let toolArguments: Record<string, unknown> = { tags: { type: 'array' } };
+let toolArguments: Record<string, unknown> = {
+  tags: { type: 'array' },
+  requestMeta: { type: 'object' },
+};
 
 function wrapper({ children }: { children: ReactNode }) {
   const musterApi = {
@@ -31,7 +34,7 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 beforeEach(() => {
-  toolArguments = { tags: { type: 'array' } };
+  toolArguments = { tags: { type: 'array' }, requestMeta: { type: 'object' } };
 });
 
 function renderForm() {
@@ -213,10 +216,19 @@ describe('NewMcpServerFormProvider', () => {
     expect(result.current.isComplete).toBe(false);
     expect(result.current.validationErrors).toEqual([
       'Enter the signing region for AWS SigV4, e.g. eu-central-1.',
+      'Enter the region the AWS MCP server operates in, e.g. eu-central-1.',
     ]);
 
     act(() => result.current.setSigv4Region('eu-central-1'));
+    expect(result.current.validationErrors).toEqual([
+      'Enter the region the AWS MCP server operates in, e.g. eu-central-1.',
+    ]);
+
+    act(() => result.current.setOperatingRegion('eu-north-1'));
     expect(result.current.isComplete).toBe(true);
+    expect(result.current.state.requestMeta).toEqual([
+      { key: 'AWS_REGION', value: 'eu-north-1' },
+    ]);
 
     act(() => result.current.setTransport('sse'));
     expect(result.current.validationErrors).toEqual([
@@ -226,23 +238,24 @@ describe('NewMcpServerFormProvider', () => {
     ]);
   });
 
-  it('advises about the wrong-region traps without blocking on them', () => {
+  it('advises about a signing region the URL does not mention without blocking on it', () => {
     const { result, fillDetails } = renderForm();
     fillDetails();
     act(() => result.current.setAuthMode('sigv4'));
-    act(() => result.current.setSigv4Region('eu-central-1'));
+    act(() => {
+      result.current.setSigv4Region('eu-central-1');
+      result.current.setOperatingRegion('eu-central-1');
+    });
 
-    // weather.example.com carries no region, and no AWS_REGION is set.
+    // weather.example.com carries no region.
     expect(result.current.authAdvisories).toEqual([
       expect.stringContaining('The URL does not mention eu-central-1'),
-      expect.stringContaining('No AWS_REGION in request metadata'),
     ]);
     expect(result.current.isComplete).toBe(true);
 
-    act(() => {
-      result.current.setUrl('https://aws-mcp.eu-central-1.api.aws/mcp');
-      result.current.setMeta([{ key: 'AWS_REGION', value: 'eu-central-1' }]);
-    });
+    act(() =>
+      result.current.setUrl('https://aws-mcp.eu-central-1.api.aws/mcp'),
+    );
     expect(result.current.authAdvisories).toEqual([]);
   });
 
@@ -267,18 +280,39 @@ describe('NewMcpServerFormProvider', () => {
     expect(result.current.definition).not.toHaveProperty('auth');
   });
 
-  it('keeps request metadata across an auth-mode change', () => {
-    // `spec.meta` belongs to the endpoint, not the auth answer, so switching
+  it('keeps request metadata across an auth-mode change', async () => {
+    // `spec.requestMeta` belongs to the endpoint, not the auth answer, so switching
     // modes must not drop it the way it drops the mode's own fields.
     const { result, fillDetails } = renderForm();
     fillDetails();
     act(() =>
-      result.current.setMeta([{ key: 'AWS_REGION', value: 'eu-north-1' }]),
+      result.current.setRequestMeta([
+        { key: 'AWS_REGION', value: 'eu-north-1' },
+      ]),
     );
     act(() => result.current.setAuthMode('sigv4'));
 
+    await waitFor(() =>
+      expect(result.current.definition.requestMeta).toEqual({
+        AWS_REGION: 'eu-north-1',
+      }),
+    );
+  });
+
+  it('sends request metadata as meta to a muster that does not take requestMeta', async () => {
+    toolArguments = { tags: { type: 'array' } };
+    const { result, fillDetails } = renderForm();
+    fillDetails();
+    act(() =>
+      result.current.setRequestMeta([
+        { key: 'com.example/tenant-id', value: 'giantswarm' },
+      ]),
+    );
+
+    await waitFor(() => expect(result.current.takesTags).toBe(true));
+    expect(result.current.definition).not.toHaveProperty('requestMeta');
     expect(result.current.definition.meta).toEqual({
-      AWS_REGION: 'eu-north-1',
+      'com.example/tenant-id': 'giantswarm',
     });
   });
 
