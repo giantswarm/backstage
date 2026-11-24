@@ -519,19 +519,25 @@ node and per pool, which the cluster pages' Node pools tab and worker figures
 read. Those are gauges, one point each from the time the node or pool started.
 It also answers the Gateway API and Envoy Gateway series of each ready
 workload cluster (`gatewayApiSeries` in gs-common), which the cluster page's
-Gateways tab reads: the bundle's Gateway `giantswarm-default` with its http
-and https listeners, a set of HTTPRoutes in the states the tab shows (a
-weighted split, a backend in another namespace, a route whose ResolvedRefs is
-false, one with no status, one attached through a ListenerSet that was not
-accepted, one with no backends) and Envoy Gateway policies (accepted, invalid,
-on the Gateway, and one whose target is gone). Every third ready workload
+Gateways tabs read: the bundle's Gateway `giantswarm-default` with its http
+and https listeners, a team's `payments-internal` Gateway, and `legacy-edge`,
+accepted but not programmed; a set of HTTPRoutes in the states the tabs show
+(a weighted split, a backend in another namespace, a route whose ResolvedRefs
+is false, one with no status, one on two Gateways that the second does not
+accept, one attached through a ListenerSet that was not accepted, one with no
+backends); and Envoy Gateway policies (accepted, invalid, on a Gateway, on a
+route, and one whose target is gone). Every third ready workload
 cluster runs older bundles: no conditions, no backends and no policy target
 or status, so the tab shows them as not available. In `many` the first ready
-workload cluster has 150 routes, in `long-names` a cluster with a name of 60
+workload cluster has 150 routes and 12 more Gateways, in `long-names` a cluster with a name of 60
 characters or more gives its routes, their namespaces and backends, and the
-policies on those routes names of up to 63 characters (the Gateway, its
-namespace and the routes and policies there keep theirs), and the management cluster and clusters being created or deleted have
-no Gateway.
+policies on those routes names of up to 63 characters, as does the
+`payments-internal` Gateway (`giantswarm-default`, its namespace and the
+routes and policies there keep theirs), and the management cluster and clusters being created or deleted have
+no Gateway. To see a cluster page without Mimir, which has no Gateways tab,
+start the server with a config that turns Mimir off for one installation,
+`yarn fixtures start --config <file>` with
+`gs: { installations: { tarragon: { mimirEnabled: false } } }` in the file.
 Each installation's series are built once per data set, and a selector with a
 metric name looks only at that metric's series. The series are derived from the data set
 (`gatewayUsage.ts` in gs-common): the ready agents of ready organizations,
