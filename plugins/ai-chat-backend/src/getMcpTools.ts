@@ -9,7 +9,9 @@ import { AuthTokens } from './utils';
 import {
   isClosedClientError,
   McpClientCache,
+  type MusterMcpClient,
 } from '@giantswarm/backstage-plugin-gs-node';
+import { MUSTER_CALL_TOOL, withMusterCallTool } from './musterCalls';
 
 interface McpServerConfig {
   url: string;
@@ -262,9 +264,18 @@ async function getTools(
   logger: LoggerService,
   onClosedClientError: () => void,
   installation?: string,
+  musterCalls?: { client: MusterMcpClient; authToken?: string },
 ): Promise<ToolSet> {
   try {
     const mcpClientTools = (await mcpClient.tools()) as ToolSet;
+    const callTool = mcpClientTools[MUSTER_CALL_TOOL];
+    if (musterCalls && callTool) {
+      mcpClientTools[MUSTER_CALL_TOOL] = withMusterCallTool(
+        callTool as Tool,
+        musterCalls.client,
+        musterCalls.authToken,
+      );
+    }
     const tools = collectTools(
       mcpClientTools,
       installation,
@@ -304,6 +315,7 @@ async function loadServer(
   server: McpServerConfig,
   logger: LoggerService,
   clientCache: McpClientCache,
+  musterClient: MusterMcpClient | undefined,
 ): Promise<ServerLoadResult> {
   const cacheKey = McpClientCache.buildKey(serverName, server.authToken);
   const timeoutMs = server.timeoutMs ?? DEFAULT_MCP_SERVER_TIMEOUT_MS;
@@ -342,6 +354,9 @@ async function loadServer(
         logger,
         () => clientCache.markDead(cacheKey),
         server.installation,
+        musterClient
+          ? { client: musterClient, authToken: server.authToken }
+          : undefined,
       );
 
       return { serverName, tools: serverTools, resources: serverResources };
@@ -369,7 +384,10 @@ export async function getMcpTools(
   backstageUser: BackstageUserContext | undefined,
   logger: LoggerService,
   clientCache: McpClientCache,
+  musterClient?: MusterMcpClient,
 ): Promise<McpToolsResult> {
+  const musterServerName =
+    config.getOptionalString('muster.serverName') ?? 'muster';
   const mcpServers = readMcpServersFromConfig(
     config,
     authTokens,
@@ -388,7 +406,13 @@ export async function getMcpTools(
   // deterministic.
   const results = await Promise.all(
     Object.entries(mcpServers).map(([serverName, server]) =>
-      loadServer(serverName, server, logger, clientCache),
+      loadServer(
+        serverName,
+        server,
+        logger,
+        clientCache,
+        serverName === musterServerName ? musterClient : undefined,
+      ),
     ),
   );
 

@@ -7,3 +7,8 @@ export type {
 } from './ExternalUrlConsentApi';
 export { ExternalUrlConsentManager } from './ExternalUrlConsentManager';
 export type { OpenExternalUrl } from './ExternalUrlConsentManager';
+export { describeExternalUrl } from './describeExternalUrl';
+export type {
+  DescribedExternalUrl,
+  ExternalUrlWarning,
+} from './describeExternalUrl';

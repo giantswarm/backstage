@@ -176,6 +176,34 @@ across runs are desired, combine `temperature: 0` with a fixed `seed`. Do
 **not** ship a fixed seed to production -- users would see the same
 deterministic answer to ambiguous questions.
 
+## Sign-ins muster asks for
+
+The muster entry of `aiChat.mcp` (named by `muster.serverName`, default
+`muster`, with an `authProvider`) runs its `call_tool` through the official MCP
+SDK client and declares URL mode elicitation on each call. When a tool needs
+the person to sign in to another service, muster answers `input_required`
+instead of running it: the call's output carries the sign-in under
+`inputRequired`, the turn ends, and the chat asks the person.
+
+The page answers with `POST /api/ai-chat/muster/retry`, carrying the person's
+muster token in `backstage-ai-chat-authorization-<authProvider>`:
+
+```json
+{
+  "tool": "x_github_get_me",
+  "arguments": {},
+  "input": {
+    "inputResponses": { "muster_sign_in": { "action": "accept" } },
+    "requestState": "<as muster sent it>"
+  }
+}
+```
+
+It answers `{"output": ...}`: the tool's result, the error the model reads
+(a `decline` or `cancel` answer among them), or another `inputRequired` when
+the sign-in has not finished. The page hands the output to the model as the
+call's result.
+
 ## Development
 
 This plugin backend can be started in a standalone mode from directly in this
