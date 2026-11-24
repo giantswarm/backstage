@@ -1442,7 +1442,9 @@ describe('shell connector wizard', () => {
       const operating = screen.getByLabelText(/^Operating region/);
       expect(operating).toHaveAttribute('aria-invalid', 'true');
       expect(operating).toHaveAccessibleDescription(
-        expect.stringContaining('Enter the region the AWS MCP server operates in'),
+        expect.stringContaining(
+          'Enter the region the AWS MCP server operates in',
+        ),
       );
       expect(toolCalls('core_mcpserver_create')).toEqual([]);
 

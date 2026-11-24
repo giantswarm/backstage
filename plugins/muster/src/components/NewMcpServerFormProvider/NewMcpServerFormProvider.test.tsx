@@ -286,7 +286,9 @@ describe('NewMcpServerFormProvider', () => {
     const { result, fillDetails } = renderForm();
     fillDetails();
     act(() =>
-      result.current.setRequestMeta([{ key: 'AWS_REGION', value: 'eu-north-1' }]),
+      result.current.setRequestMeta([
+        { key: 'AWS_REGION', value: 'eu-north-1' },
+      ]),
     );
     act(() => result.current.setAuthMode('sigv4'));
 
