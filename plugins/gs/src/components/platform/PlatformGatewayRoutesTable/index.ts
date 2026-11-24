@@ -1,0 +1,1 @@
+export { PlatformGatewayRoutesTable } from './PlatformGatewayRoutesTable';

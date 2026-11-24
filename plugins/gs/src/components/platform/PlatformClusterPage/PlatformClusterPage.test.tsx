@@ -137,6 +137,13 @@ jest.mock('../../hooks', () => ({
     isLoading: false,
   }),
 }));
+let mockMimir: boolean | undefined = true;
+jest.mock('../../hooks/useMimirAvailable', () => ({
+  useMimirAvailable: () => mockMimir,
+}));
+jest.mock('../PlatformClusterGateways', () => ({
+  PlatformClusterGateways: () => <p>The gateways</p>,
+}));
 jest.mock('../PlatformClusterRBAC', () => ({
   PlatformClusterRBAC: () => <p>The role bindings</p>,
 }));
@@ -325,6 +332,7 @@ describe('PlatformClusterPage', () => {
     mockInGit = true;
     mockStaff = false;
     mockUserLoading = false;
+    mockMimir = true;
     mockNewer = { version: '31.2.0', date: '2026-09-18T00:00:00Z' };
     mockState = stateOf({
       cluster: workload,
@@ -350,6 +358,7 @@ describe('PlatformClusterPage', () => {
     expect(screen.getAllByRole('tab').map(tab => tab.dataset.key)).toEqual([
       'overview',
       'node-pools',
+      'gateways',
     ]);
 
     const facts = screen.getByRole('complementary', { name: 'Details' });
@@ -686,6 +695,7 @@ describe('PlatformClusterPage', () => {
     expect(screen.getAllByRole('tab').map(tab => tab.dataset.key)).toEqual([
       'overview',
       'node-pools',
+      'gateways',
       'ssh-access',
     ]);
     // The facts column belongs to Overview.
@@ -786,6 +796,7 @@ describe('PlatformClusterPage', () => {
     expect(screen.getAllByRole('tab').map(tab => tab.dataset.key)).toEqual([
       'overview',
       'node-pools',
+      'gateways',
       'rbac',
       'ssh-access',
     ]);
@@ -831,6 +842,46 @@ describe('PlatformClusterPage', () => {
       ).not.toBeInTheDocument();
     },
   );
+
+  it('gives a cluster whose environment has Mimir a Gateways tab after Node pools', async () => {
+    await renderPage('/platform/clusters/meadow/org-fern/alder-birch/gateways');
+
+    expect(screen.getAllByRole('tab').map(tab => tab.dataset.key)).toEqual([
+      'overview',
+      'node-pools',
+      'gateways',
+    ]);
+    expect(screen.getByRole('tab', { name: 'Gateways' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByText('The gateways')).toBeInTheDocument();
+  });
+
+  it('opens Overview for Gateways, and has no such tab, without Mimir', async () => {
+    mockMimir = false;
+    await renderPage('/platform/clusters/meadow/org-fern/alder-birch/gateways');
+
+    expect(screen.getByRole('status', { name: 'path' })).toHaveTextContent(
+      /^\/platform\/clusters\/meadow\/org-fern\/alder-birch$/,
+    );
+    expect(
+      screen.queryByRole('tab', { name: 'Gateways' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('The gateways')).not.toBeInTheDocument();
+  });
+
+  it('stays on Gateways, without its tab, while whether there is Mimir is read', async () => {
+    mockMimir = undefined;
+    await renderPage('/platform/clusters/meadow/org-fern/alder-birch/gateways');
+
+    expect(screen.getByRole('status', { name: 'path' })).toHaveTextContent(
+      /\/gateways$/,
+    );
+    expect(
+      screen.queryByRole('tab', { name: 'Gateways' }),
+    ).not.toBeInTheDocument();
+  });
 
   it('opens Overview for a tab the page does not have', async () => {
     await renderPage('/platform/clusters/meadow/org-fern/alder-birch/apps');
