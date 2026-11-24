@@ -152,30 +152,27 @@ describe('AgentManagerClient.getOrganization', () => {
   it('separates the organization from erases, which agent-manager answers side by side', async () => {
     const { api, callTool } = makeMusterApi(async () => ({
       name: 'payments',
-      parent: 'org-acme',
       harnesses: ['kagent'],
       workerReplicas: 1,
-      erases: { namespace: 'agents-payments-x7k2q', kept: 'tombstones' },
+      erases: { namespace: 'agents-payments', kept: 'tombstones' },
     }));
 
     const details = await new AgentManagerClient(api, 'inst-1').getOrganization(
-      'org-acme',
       'payments',
     );
 
     expect(callTool).toHaveBeenCalledWith(
       'x_agent-manager_get_organization',
-      { namespace: 'org-acme', name: 'payments' },
+      { name: 'payments' },
       'inst-1',
     );
     expect(details.organization).toEqual({
       name: 'payments',
-      parent: 'org-acme',
       harnesses: ['kagent'],
       workerReplicas: 1,
     });
     expect(details.erases).toEqual({
-      namespace: 'agents-payments-x7k2q',
+      namespace: 'agents-payments',
       kept: 'tombstones',
     });
   });
@@ -187,19 +184,79 @@ describe('AgentManagerClient.deleteOrganization', () => {
     const client = new AgentManagerClient(api, 'inst-1');
 
     await client.deleteOrganization({
-      parent: 'org-acme',
       name: 'payments',
       mode: 'commit',
     });
     await client.deleteOrganization({
-      parent: 'org-acme',
       name: 'payments',
-      confirm: 'org-acme/payments',
+      confirm: 'payments',
     });
 
     expect(callTool.mock.calls.map(([, args]) => args)).toEqual([
-      { namespace: 'org-acme', name: 'payments', mode: 'commit' },
-      { namespace: 'org-acme', name: 'payments', confirm: 'org-acme/payments' },
+      { name: 'payments', mode: 'commit' },
+      { name: 'payments', confirm: 'payments' },
+    ]);
+  });
+});
+
+describe('AgentManagerClient.createOrganization', () => {
+  it('sends the admins and the display name only when there are some', async () => {
+    const { api, callTool } = makeMusterApi(async () => ({ created: true }));
+    const client = new AgentManagerClient(api, 'inst-1');
+
+    await client.createOrganization({
+      name: 'payments',
+      displayName: 'Payments',
+      adminGroups: ['payments-admins'],
+      adminUsers: ['jane@example.com'],
+    });
+    await client.createOrganization({
+      name: 'billing',
+      displayName: '',
+      adminGroups: [],
+      adminUsers: [],
+    });
+
+    expect(callTool.mock.calls.map(([name, args]) => [name, args])).toEqual([
+      [
+        'x_agent-manager_create_organization',
+        {
+          name: 'payments',
+          displayName: 'Payments',
+          adminGroups: ['payments-admins'],
+          adminUsers: ['jane@example.com'],
+        },
+      ],
+      ['x_agent-manager_create_organization', { name: 'billing' }],
+    ]);
+  });
+});
+
+describe('AgentManagerClient.updateOrganizationAdmins', () => {
+  it('sends an empty kind, which removes it, and leaves out a kind not given', async () => {
+    const { api, callTool } = makeMusterApi(async () => ({}));
+    const client = new AgentManagerClient(api, 'inst-1');
+
+    await client.updateOrganizationAdmins({
+      name: 'payments',
+      adminGroups: [],
+      adminUsers: ['jane@example.com'],
+    });
+    await client.updateOrganizationAdmins({
+      name: 'payments',
+      adminGroups: ['payments-admins'],
+      mode: 'commit',
+    });
+
+    expect(callTool.mock.calls.map(([name, args]) => [name, args])).toEqual([
+      [
+        'x_agent-manager_update_organization',
+        { name: 'payments', adminGroups: [], adminUsers: ['jane@example.com'] },
+      ],
+      [
+        'x_agent-manager_update_organization',
+        { name: 'payments', adminGroups: ['payments-admins'], mode: 'commit' },
+      ],
     ]);
   });
 });

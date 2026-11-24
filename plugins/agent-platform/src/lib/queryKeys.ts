@@ -367,17 +367,12 @@ export function musterOrganizationsQueryKey(installation: string) {
 }
 
 /** `get_organization` of one organization. */
-export function musterOrganizationQueryKey(
-  installation: string,
-  parent: string,
-  name: string,
-) {
+export function musterOrganizationQueryKey(installation: string, name: string) {
   return [
     'muster',
     'agent-platform',
     'agent-manager-organization',
     installation,
-    parent,
     name,
   ] as const;
 }
@@ -389,7 +384,6 @@ export function musterOrganizationQueryKey(
  */
 export function musterOrganizationErasureQueryKey(
   installation: string,
-  parent: string,
   name: string,
 ) {
   return [
@@ -397,7 +391,6 @@ export function musterOrganizationErasureQueryKey(
     'agent-platform',
     'agent-manager-organization-erasure',
     installation,
-    parent,
     name,
   ] as const;
 }

@@ -41,7 +41,6 @@ jest.mock('../components/OrganizationDirectoryProvider', () => ({
         {
           namespace: 'agents-payments-x7k2q',
           organization: 'payments',
-          parent: 'org-acme',
         },
       ],
     ]),
@@ -342,7 +341,6 @@ describe("an organization's model, deleted in the organization's mode", () => {
         organizations: [
           {
             name: 'payments',
-            parent: 'org-acme',
             namespace: ORGANIZATION_NAMESPACE,
             ...(orphaned ? { orphaned } : {}),
             permissions: { manage: false, member: true },

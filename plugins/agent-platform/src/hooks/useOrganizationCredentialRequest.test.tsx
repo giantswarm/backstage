@@ -19,7 +19,6 @@ import { useOrganizationCredentialRequest } from './useOrganizationCredentialReq
 const PAYMENTS = {
   namespace: 'agents-payments-x7k2q',
   organization: 'payments',
-  parent: 'org-acme',
 };
 
 /** Asks for a new value of one Secret's key on each click. */

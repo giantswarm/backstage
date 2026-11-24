@@ -26,9 +26,8 @@ import { modelsRouteRef, organizationsRouteRef } from '../../routes';
 import { OrganizationPage } from './OrganizationPage';
 
 const PAYMENTS = {
-  namespace: 'agents-payments-x7k2q',
+  namespace: 'agents-payments',
   organization: 'payments',
-  parent: 'org-acme',
 };
 
 const SCENARIO: OrganizationsScenario = {
@@ -133,7 +132,7 @@ async function renderPage(tab: string, scenario: OrganizationsScenario) {
         <PageHeaderActionsProvider>
           <Routes>
             <Route
-              path="/organizations/:installation/:parent/:name/credentials/:operation"
+              path="/organizations/:installation/:name/credentials/:operation"
               element={<LocationProbe />}
             />
             <Route
@@ -141,13 +140,9 @@ async function renderPage(tab: string, scenario: OrganizationsScenario) {
               element={<LocationProbe />}
             />
             <Route
-              path="/organizations/:installation/:parent/:name/*"
+              path="/organizations/:installation/:name/*"
               element={
-                <OrganizationPage
-                  installation="gazelle"
-                  parent="org-acme"
-                  name="payments"
-                />
+                <OrganizationPage installation="gazelle" name="payments" />
               }
             />
           </Routes>
@@ -155,7 +150,7 @@ async function renderPage(tab: string, scenario: OrganizationsScenario) {
       </QueryClientProvider>
     </TestApiProvider>,
     {
-      initialRouteEntries: [`/organizations/gazelle/org-acme/payments${tab}`],
+      initialRouteEntries: [`/organizations/gazelle/payments${tab}`],
       mountedRoutes: {
         '/organizations': organizationsRouteRef,
         '/customize/models': modelsRouteRef,
@@ -174,7 +169,6 @@ describe('OrganizationPage', () => {
     const COMMIT = '0123456789abcdef0123456789abcdef01234567';
     const ORGANIZATION = {
       name: 'payments',
-      parent: 'org-acme',
       namespace: PAYMENTS.namespace,
       harnesses: ['kagent'],
       workerReplicas: 3,
@@ -396,7 +390,6 @@ describe('OrganizationPage', () => {
       'It is being erased, so its members, models and credentials can no longer be changed.';
     const ORGANIZATION = {
       name: 'payments',
-      parent: 'org-acme',
       namespace: PAYMENTS.namespace,
       harnesses: ['kagent'],
       workerReplicas: 3,
@@ -668,7 +661,7 @@ describe('OrganizationPage', () => {
         {
           kind: 'ServiceAccount',
           name: 'robot',
-          namespace: 'agents-payments-x7k2q',
+          namespace: 'agents-payments',
           role: 'user',
           binding: 'organization-users',
         },
@@ -734,31 +727,177 @@ describe('OrganizationPage', () => {
     );
   });
 
-  it("shows agent-manager's reason when removing the last admin of organization-admins is refused", async () => {
+  it("offers no removal of an admin, who comes from the organization's admins", async () => {
+    await renderPage('', {
+      ...SCENARIO,
+      members: [
+        {
+          kind: 'Group',
+          name: 'payments-leads',
+          role: 'admin',
+          binding: 'organization-admins',
+          from: "the Organization's spec.admins",
+        },
+        {
+          kind: 'User',
+          name: 'jane@example.com',
+          role: 'user',
+          binding: 'organization-users',
+        },
+      ],
+    });
+
+    const table = await screen.findByRole('grid');
+    expect(
+      within(table).getByText("from the organization's admins"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Remove jane@example.com as user' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^Remove payments-leads/ }),
+    ).toBeNull();
+  });
+
+  it('offers the editor and user roles only to add a member', async () => {
+    const user = userEvent.setup();
+    await renderPage('', SCENARIO);
+
+    await user.click(await screen.findByRole('button', { name: /Role/ }));
+    const options = await screen.findAllByRole('option');
+    expect(options.map(option => option.textContent)).toEqual([
+      'editor: creates agents',
+      'user: uses them',
+    ]);
+  });
+
+  it("shows agent-manager's refusal of an added member in its words", async () => {
     const user = userEvent.setup();
     await renderPage('', {
       ...SCENARIO,
-      removeError:
-        "forbidden: RoleBinding agents-payments-x7k2q/organization-admins: if organization-admins would lose its last admin: add another admin first (add_organization_member role admin); a lockout is a cluster-admin's to fix",
+      addError:
+        "invalid_request: the member tools do not give or remove the admin role: the admins are the Organization's spec.admins",
     });
 
-    await user.click(
-      await screen.findByRole('button', {
-        name: 'Remove payments-leads as admin',
-      }),
+    await user.type(
+      await screen.findByRole('textbox', { name: /Group/ }),
+      'sre',
     );
-    const dialog = await screen.findByRole('dialog', {
-      name: 'Remove group "payments-leads"?',
-    });
-    await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
+    await user.click(screen.getByRole('button', { name: 'Add group' }));
 
     expect(
-      await within(dialog).findByText('payments-leads was not removed.'),
+      await screen.findByText(/do not give or remove the admin role/),
     ).toBeInTheDocument();
-    expect(
-      within(dialog).getByText(/add another admin first/),
-    ).toBeInTheDocument();
-    expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
+  });
+
+  describe("the organization's admins", () => {
+    const MANAGED = {
+      name: 'payments',
+      displayName: 'Payments',
+      namespace: PAYMENTS.namespace,
+      admins: [
+        { kind: 'Group', name: 'payments-leads' },
+        { kind: 'User', name: 'lead@example.com' },
+      ],
+      harnesses: ['kagent'],
+      workerReplicas: 1,
+    };
+
+    it('shows the admins the organization names to a person who manages it', async () => {
+      await renderPage('', { ...SCENARIO, organization: MANAGED });
+
+      const section = await screen.findByRole('region', { name: 'Admins' });
+      expect(
+        within(section).getByText('Groups: payments-leads'),
+      ).toBeInTheDocument();
+      expect(
+        within(section).getByText('People: lead@example.com'),
+      ).toBeInTheDocument();
+    });
+
+    it('replaces each kind of admin with what the dialog holds, as the person', async () => {
+      const user = userEvent.setup();
+      const { callTool } = await renderPage('', {
+        ...SCENARIO,
+        organization: MANAGED,
+      });
+
+      await user.click(
+        await screen.findByRole('button', { name: 'Change admins' }),
+      );
+      const dialog = await screen.findByRole('dialog');
+      const groups = within(dialog).getByRole('textbox', {
+        name: /Admin groups/,
+      });
+      const people = within(dialog).getByRole('textbox', {
+        name: /Admin people/,
+      });
+      expect(groups).toHaveValue('payments-leads');
+      await user.type(groups, '\n  platform-team  \n');
+      await user.clear(people);
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Save admins' }),
+      );
+
+      await waitFor(() =>
+        expect(toolCalls(callTool, 'update_organization')).toEqual([
+          {
+            name: 'payments',
+            adminGroups: ['payments-leads', 'platform-team'],
+            adminUsers: [],
+          },
+        ]),
+      );
+      await waitFor(() =>
+        expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+      );
+      expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'AgentPlatform.organizationAdminsChanged',
+        }),
+      );
+    });
+
+    it("shows agent-manager's refusal of the admins in its words, keeping what was typed", async () => {
+      const user = userEvent.setup();
+      await renderPage('', {
+        ...SCENARIO,
+        organization: MANAGED,
+        updateError: /you may not update organizations/,
+      });
+
+      await user.click(
+        await screen.findByRole('button', { name: 'Change admins' }),
+      );
+      const dialog = await screen.findByRole('dialog');
+      await user.type(
+        within(dialog).getByRole('textbox', { name: /Admin people/ }),
+        '\nnew@example.com',
+      );
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Save admins' }),
+      );
+
+      expect(
+        await within(dialog).findByText(/you may not update organizations/),
+      ).toBeInTheDocument();
+      expect(
+        within(dialog).getByRole('textbox', { name: /Admin people/ }),
+      ).toHaveValue('lead@example.com\nnew@example.com');
+    });
+
+    it('offers no change of the admins to a person who does not manage the organization', async () => {
+      await renderPage('', {
+        ...SCENARIO,
+        organization: MANAGED,
+        manage: false,
+      });
+
+      await screen.findByRole('region', { name: 'Admins' });
+      expect(
+        screen.queryByRole('button', { name: 'Change admins' }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it('shows the models with the default mark agent-manager resolves', async () => {
@@ -1193,7 +1332,7 @@ describe('OrganizationPage', () => {
       ]),
     );
     expect(await screen.findByTestId('location')).toHaveTextContent(
-      `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
+      `/organizations/gazelle/payments/credentials/${CREDENTIAL_OPERATION}`,
     );
   });
 
@@ -1321,7 +1460,7 @@ describe('OrganizationPage', () => {
       ]),
     );
     expect(await screen.findByTestId('location')).toHaveTextContent(
-      `/organizations/gazelle/org-acme/payments/credentials/${CREDENTIAL_OPERATION}`,
+      `/organizations/gazelle/payments/credentials/${CREDENTIAL_OPERATION}`,
     );
   });
 
@@ -1441,7 +1580,6 @@ describe('OrganizationPage', () => {
   describe('deleting the organization', () => {
     const MANAGED = {
       name: 'payments',
-      parent: 'org-acme',
       displayName: 'Payments',
       namespace: PAYMENTS.namespace,
       harnesses: ['kagent'],
@@ -1463,6 +1601,7 @@ describe('OrganizationPage', () => {
         { agent: 'triage', running: 2, stopped: 1 },
         { agent: 'refunds', running: 0, stopped: 3 },
       ],
+      organizationNamespace: 'org-payments',
       kept: 'session tombstones stay in the agent runtime',
     };
 
@@ -1483,6 +1622,12 @@ describe('OrganizationPage', () => {
 
       expect(
         await within(dialog).findByText('Agents: triage, refunds'),
+      ).toBeInTheDocument();
+      // organization-operator's namespace goes with the Organization.
+      expect(
+        within(dialog).getByText(
+          `Namespaces: ${PAYMENTS.namespace}, org-payments`,
+        ),
       ).toBeInTheDocument();
       expect(
         within(dialog).getByText(
@@ -1524,7 +1669,7 @@ describe('OrganizationPage', () => {
       ).toBeInTheDocument();
     });
 
-    it('erases only once the typed name matches parent/name', async () => {
+    it("erases only once the typed name matches the organization's name", async () => {
       const { dialog, callTool } = await openDelete({
         ...SCENARIO,
         organization: MANAGED,
@@ -1534,23 +1679,22 @@ describe('OrganizationPage', () => {
         name: 'Delete organization',
       });
       const field = await within(dialog).findByLabelText(
-        'Type org-acme/payments to confirm',
+        'Type payments to confirm',
       );
 
       expect(confirm).toBeDisabled();
-      await userEvent.type(field, 'payments');
+      await userEvent.type(field, 'payment');
       expect(confirm).toBeDisabled();
       await userEvent.clear(field);
-      await userEvent.type(field, 'org-acme/payments');
+      await userEvent.type(field, 'payments');
       await waitFor(() => expect(confirm).toBeEnabled());
       await userEvent.click(confirm);
 
       await waitFor(() =>
         expect(toolCalls(callTool, 'delete_organization')).toEqual([
           {
-            namespace: 'org-acme',
             name: 'payments',
-            confirm: 'org-acme/payments',
+            confirm: 'payments',
           },
         ]),
       );
@@ -1564,23 +1708,18 @@ describe('OrganizationPage', () => {
         ...SCENARIO,
         organization: MANAGED,
         erases: ERASES,
-        deleteError:
-          'forbidden: you may not delete agentplatformorganizations in org-acme',
+        deleteError: 'forbidden: you may not delete organizations',
       });
       await userEvent.type(
-        await within(dialog).findByLabelText(
-          'Type org-acme/payments to confirm',
-        ),
-        'org-acme/payments',
+        await within(dialog).findByLabelText('Type payments to confirm'),
+        'payments',
       );
       await userEvent.click(
         within(dialog).getByRole('button', { name: 'Delete organization' }),
       );
 
       expect(
-        await within(dialog).findByText(
-          /you may not delete agentplatformorganizations in org-acme/,
-        ),
+        await within(dialog).findByText(/you may not delete organizations/),
       ).toBeInTheDocument();
     });
 
@@ -1595,7 +1734,7 @@ describe('OrganizationPage', () => {
       });
 
       expect(
-        within(dialog).queryByLabelText('Type org-acme/payments to confirm'),
+        within(dialog).queryByLabelText('Type payments to confirm'),
       ).not.toBeInTheDocument();
       const open = within(dialog).getByRole('button', {
         name: 'Open pull request',
@@ -1612,7 +1751,7 @@ describe('OrganizationPage', () => {
         'https://github.com/giantswarm/gazelle-configs/pull/42',
       );
       expect(toolCalls(callTool, 'delete_organization')).toEqual([
-        { namespace: 'org-acme', name: 'payments', mode: 'commit' },
+        { name: 'payments', mode: 'commit' },
       ]);
       expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1708,10 +1847,8 @@ describe('OrganizationPage', () => {
         deleteResult: { deleted: false, next },
       });
       await userEvent.type(
-        await within(dialog).findByLabelText(
-          'Type org-acme/payments to confirm',
-        ),
-        'org-acme/payments',
+        await within(dialog).findByLabelText('Type payments to confirm'),
+        'payments',
       );
       await userEvent.click(
         within(dialog).getByRole('button', { name: 'Delete organization' }),
@@ -1739,10 +1876,8 @@ describe('OrganizationPage', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Erase now' }));
       const dialog = await screen.findByRole('dialog');
       await userEvent.type(
-        await within(dialog).findByLabelText(
-          'Type org-acme/payments to confirm',
-        ),
-        'org-acme/payments',
+        await within(dialog).findByLabelText('Type payments to confirm'),
+        'payments',
       );
       await userEvent.click(
         within(dialog).getByRole('button', { name: 'Erase organization' }),
@@ -1751,9 +1886,8 @@ describe('OrganizationPage', () => {
       await waitFor(() =>
         expect(toolCalls(callTool, 'delete_organization')).toEqual([
           {
-            namespace: 'org-acme',
             name: 'payments',
-            confirm: 'org-acme/payments',
+            confirm: 'payments',
             mode: 'commit',
           },
         ]),
@@ -1885,7 +2019,6 @@ describe('OrganizationPage', () => {
         mine: { organizations: [] },
         organization: {
           name: 'payments',
-          parent: 'org-acme',
           displayName: 'Payments',
           namespace: PAYMENTS.namespace,
           harnesses: ['kagent'],
@@ -1900,10 +2033,9 @@ describe('OrganizationPage', () => {
     });
 
     // The operator never created its namespace: agent-manager still deletes
-    // it by its parent namespace and name, and previews no erasure.
+    // it by its name, and previews no erasure.
     const WITHOUT_NAMESPACE = {
       name: 'payments',
-      parent: 'org-acme',
       displayName: 'Payments',
       harnesses: ['kagent'],
       workerReplicas: 0,
@@ -1917,7 +2049,7 @@ describe('OrganizationPage', () => {
       });
 
       expect(
-        await screen.findByText('Payments has no namespace yet'),
+        await screen.findByText('Payments is not ready yet'),
       ).toBeInTheDocument();
       await userEvent.click(
         await screen.findByRole('button', { name: 'Delete organization' }),
@@ -1934,8 +2066,8 @@ describe('OrganizationPage', () => {
       });
       expect(confirm).toBeDisabled();
       await userEvent.type(
-        within(dialog).getByLabelText('Type org-acme/payments to confirm'),
-        'org-acme/payments',
+        within(dialog).getByLabelText('Type payments to confirm'),
+        'payments',
       );
       await waitFor(() => expect(confirm).toBeEnabled());
       await userEvent.click(confirm);
@@ -1943,9 +2075,8 @@ describe('OrganizationPage', () => {
       await waitFor(() =>
         expect(toolCalls(callTool, 'delete_organization')).toEqual([
           {
-            namespace: 'org-acme',
             name: 'payments',
-            confirm: 'org-acme/payments',
+            confirm: 'payments',
           },
         ]),
       );
@@ -1973,7 +2104,7 @@ describe('OrganizationPage', () => {
 
       await waitFor(() =>
         expect(toolCalls(callTool, 'delete_organization')).toEqual([
-          { namespace: 'org-acme', name: 'payments', mode: 'commit' },
+          { name: 'payments', mode: 'commit' },
         ]),
       );
     });
@@ -1987,7 +2118,7 @@ describe('OrganizationPage', () => {
       });
 
       expect(
-        await screen.findByText('Payments has no namespace yet'),
+        await screen.findByText('Payments is not ready yet'),
       ).toBeInTheDocument();
       expect(
         screen.queryByRole('button', { name: 'Delete organization' }),
@@ -2009,10 +2140,8 @@ describe('OrganizationPage', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Erase now' }));
       const dialog = await screen.findByRole('dialog');
       await userEvent.type(
-        await within(dialog).findByLabelText(
-          'Type org-acme/payments to confirm',
-        ),
-        'org-acme/payments',
+        await within(dialog).findByLabelText('Type payments to confirm'),
+        'payments',
       );
       await userEvent.click(
         within(dialog).getByRole('button', { name: 'Erase organization' }),
@@ -2021,9 +2150,8 @@ describe('OrganizationPage', () => {
       await waitFor(() =>
         expect(toolCalls(callTool, 'delete_organization')).toEqual([
           {
-            namespace: 'org-acme',
             name: 'payments',
-            confirm: 'org-acme/payments',
+            confirm: 'payments',
             mode: 'commit',
           },
         ]),
@@ -2043,10 +2171,8 @@ describe('OrganizationPage', () => {
       );
       const dialog = await screen.findByRole('dialog');
       await userEvent.type(
-        await within(dialog).findByLabelText(
-          'Type org-acme/payments to confirm',
-        ),
-        'org-acme/payments',
+        await within(dialog).findByLabelText('Type payments to confirm'),
+        'payments',
       );
       // No namespace to erase: the operator is done before the list is read
       // again, which then no longer lists it.
@@ -2069,7 +2195,6 @@ describe('OrganizationPage', () => {
         mine: { organizations: [] },
         organization: {
           name: 'payments',
-          parent: 'org-acme',
           displayName: 'Payments',
           harnesses: ['kagent'],
           workerReplicas: 0,
@@ -2077,7 +2202,7 @@ describe('OrganizationPage', () => {
       });
 
       expect(
-        await screen.findByText('Payments has no namespace yet'),
+        await screen.findByText('Payments is not ready yet'),
       ).toBeInTheDocument();
       expect(
         screen.queryByText(/You are not a member/),
@@ -2274,7 +2399,6 @@ describe('OrganizationPage', () => {
         commitMode: true,
         organization: {
           name: 'payments',
-          parent: 'org-acme',
           namespace: PAYMENTS.namespace,
           harnesses: ['kagent'],
           workerReplicas: 3,
@@ -2333,7 +2457,7 @@ describe('OrganizationPage', () => {
 
     it("shows agent-manager's refusal of a pull request for a live object, and keeps the action", async () => {
       const sentence =
-        "ModelConfig agents-payments-x7k2q/gpt was written live, not applied from git, so no file in the organization's content path defines it: change it with mode apply";
+        "ModelConfig agents-payments/gpt was written live, not applied from git, so no file in the organization's content path defines it: change it with mode apply";
       const user = userEvent.setup();
       await renderPage('/models', {
         ...FROM_GIT,
@@ -2357,7 +2481,7 @@ describe('OrganizationPage', () => {
 
     it("shows agent-manager's refusal of a live write of an object from git, and keeps the action", async () => {
       const sentence =
-        'RoleBinding agents-payments-x7k2q/organization-users is applied from git by the Flux Kustomization flux-giantswarm/payments, which would revert a live change: use mode commit to change it with a pull request';
+        'RoleBinding agents-payments/organization-users is applied from git by the Flux Kustomization flux-giantswarm/payments, which would revert a live change: use mode commit to change it with a pull request';
       await addGroup({
         ...SCENARIO,
         commitMode: true,

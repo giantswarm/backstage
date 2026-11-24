@@ -106,7 +106,6 @@ jest.mock('../../hooks/useSetDefaultModelConfig', () => ({
 const PAYMENTS = {
   namespace: 'agents-payments-x7k2q',
   organization: 'payments',
-  parent: 'org-acme',
 };
 
 function writtenByAgentManager(namespace: string) {

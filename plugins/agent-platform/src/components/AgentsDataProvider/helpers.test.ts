@@ -262,7 +262,7 @@ describe('toAgentRow', () => {
 
     // The organization as agent-manager names the namespace.
     const organizations = organizationDirectory([
-      { namespace: 'org-acme', organization: 'acme', parent: 'org-parent' },
+      { namespace: 'org-acme', organization: 'acme' },
     ]);
     expect(
       toAgentRow(agent, [], undefined, undefined, undefined, organizations),

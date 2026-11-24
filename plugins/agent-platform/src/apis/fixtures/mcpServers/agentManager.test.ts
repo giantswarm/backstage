@@ -242,7 +242,7 @@ describe('the fixture agent-manager', () => {
     ).rejects.toMatchObject({ code: 'not_found' });
   });
 
-  it('adds and removes members, keeping the last admin of organization-admins', async () => {
+  it('adds and removes members, and leaves the admins to the organization', async () => {
     const { client, organizationWith } = setup();
     const { namespace } = organizationWith('admin');
 
@@ -264,57 +264,58 @@ describe('the fixture agent-manager', () => {
       expect.objectContaining({ name: 'reviewers' }),
     );
 
-    // The person is an admin too: once they leave, the group is the last.
-    await client.removeOrganizationMember({
-      namespace: namespace!,
-      user: 'guest@example.com',
-      role: 'admin',
-    });
-    const group = members.find(
-      member =>
-        member.kind === 'Group' && member.binding === 'organization-admins',
-    )!;
+    // The admins come from spec.admins: the member tools neither give the
+    // role nor take it.
+    const admin = members.find(member => member.role === 'admin')!;
+    expect(admin.from).toMatch(/spec\.admins/);
+    await expect(
+      client.addOrganizationMember({
+        namespace: namespace!,
+        group: 'leads',
+        role: 'admin' as 'user',
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_request' });
     await expect(
       client.removeOrganizationMember({
         namespace: namespace!,
-        group: group.name,
-        role: 'admin',
+        group: admin.name,
       }),
-    ).rejects.toThrow(/would lose its last admin/);
-    await expect(
-      client.removeOrganizationMember({
-        namespace: namespace!,
-        group: group.name,
-        role: 'admin',
-      }),
-    ).rejects.toMatchObject({ code: 'forbidden' });
+    ).rejects.toMatchObject({ code: 'not_found' });
   });
 
-  it('adds an admin to the admins binding and lists groups first', async () => {
-    const { client, organizationWith } = setup();
-    const { namespace } = organizationWith('admin');
+  it('creates an organization that turns ready, and changes its admins', async () => {
+    const { client, advance } = setup();
 
-    await client.addOrganizationMember({
-      namespace: namespace!,
-      group: 'leads',
-      role: 'admin',
+    const created = await client.createOrganization({
+      name: 'newcomers',
+      adminGroups: ['newcomers-admins'],
     });
-    const { members } = await client.listOrganizationMembers(namespace!);
-    const kinds = members.map(member => member.kind);
-    expect(kinds.lastIndexOf('Group')).toBeLessThan(kinds.indexOf('User'));
-    expect(members.find(member => member.name === 'leads')?.binding).toBe(
-      'organization-admins',
-    );
+    expect(created).toMatchObject({ created: true, next: expect.any(String) });
+    const listed = async () =>
+      (await client.listOrganizations()).organizations.find(
+        organization => organization.name === 'newcomers',
+      );
+    expect((await listed())?.namespace).toBeUndefined();
+    await expect(
+      client.createOrganization({ name: 'newcomers' }),
+    ).rejects.toMatchObject({ code: 'conflict' });
 
-    const first = members.find(
-      member =>
-        member.kind === 'Group' && member.binding === 'organization-admins',
-    )!;
-    await client.removeOrganizationMember({
-      namespace: namespace!,
-      group: first.name,
-      role: 'admin',
+    advance(SETTLE_MS);
+    const ready = await listed();
+    expect(ready?.namespace).toBe('agents-newcomers');
+
+    await client.updateOrganizationAdmins({
+      name: 'newcomers',
+      adminGroups: [],
+      adminUsers: ['jane@example.com'],
     });
+    expect((await listed())?.organization?.admins).toEqual([
+      { kind: 'User', name: 'jane@example.com' },
+    ]);
+    const { members } = await client.listOrganizationMembers(ready!.namespace!);
+    expect(
+      members.filter(member => member.role === 'admin').map(m => m.name),
+    ).toEqual(['jane@example.com']);
   });
 
   it('adds a model once its key is saved on the credential form', async () => {
@@ -469,15 +470,11 @@ describe('the fixture agent-manager', () => {
     const { client, organizationWith } = setup();
     const organization = organizationWith('admin');
 
-    const { erases } = await client.getOrganization(
-      organization.parent,
-      organization.name,
-    );
+    const { erases } = await client.getOrganization(organization.name);
     expect(erases?.models).toEqual(['default', UNUSED_VERTEX_MODEL]);
     const result = await client.deleteOrganization({
-      parent: organization.parent,
       name: organization.name,
-      confirm: `${organization.parent}/${organization.name}`,
+      confirm: organization.name,
     });
     expect(result).toMatchObject({
       deleted: true,
@@ -660,9 +657,8 @@ describe('the fixture agent-manager', () => {
     const { client, state, organizationWith, advance } = setup();
     const organization = organizationWith('admin');
     await client.deleteOrganization({
-      parent: organization.parent,
       name: organization.name,
-      confirm: `${organization.parent}/${organization.name}`,
+      confirm: organization.name,
     });
     await expect(
       client.addOrganizationMember({
@@ -674,14 +670,14 @@ describe('the fixture agent-manager', () => {
     const steps: (string | undefined)[] = [];
     for (let i = 0; i < ERASURE_STEPS.length; i++) {
       steps.push(
-        (await client.getOrganization(organization.parent, organization.name))
-          .organization.erasureStep,
+        (await client.getOrganization(organization.name)).organization
+          .erasureStep,
       );
       advance(SETTLE_MS);
     }
     expect(steps).toEqual([...ERASURE_STEPS]);
     await expect(
-      client.getOrganization(organization.parent, organization.name),
+      client.getOrganization(organization.name),
     ).rejects.toMatchObject({ code: 'not_found' });
     expect(
       state
@@ -1063,7 +1059,6 @@ describe('the model whose key Secret is missing', () => {
 
     const { erases } = state.getOrganization(
       INCOMPLETE_MODEL_INSTALLATION,
-      organization.parent,
       organization.name,
     );
     expect(erases?.models).toContain(INCOMPLETE_MODEL);

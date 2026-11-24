@@ -217,7 +217,6 @@ describe('in an organization applied from git, where agent-manager opens pull re
             organizations: [
               {
                 name: 'payments',
-                parent: 'org-acme',
                 namespace: NAMESPACE,
                 ...(orphaned ? { orphaned } : {}),
                 permissions: { manage: false, member: true },

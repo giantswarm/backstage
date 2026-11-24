@@ -119,8 +119,6 @@ export type FixtureOrganization = {
   installation: string;
   name: string;
   displayName: string;
-  /** The parent namespace the organization lives in. */
-  parent: string;
   /** The organization namespace; absent while `pending`. */
   namespace?: string;
   state: OrganizationState;
@@ -208,8 +206,8 @@ export const MINUTE = 60 * 1000;
 export const HOUR = 60 * MINUTE;
 export const DAY = 24 * HOUR;
 
-/** The parent namespace organizations live in. */
-export const ORGANIZATION_PARENT = 'agents';
+/** The prefix of an organization namespace's name (`agents-<name>`). */
+export const ORGANIZATION_NAMESPACE_PREFIX = 'agents';
 
 /**
  * Makes `count` items per parent, each taking the next of `states` (counted
@@ -335,17 +333,19 @@ export function buildOrganizations(
     },
     (installation, state, nameLength) => {
       const organization = name(nameLength);
-      const suffix = hex(context, 5);
+      // The namespace's name is fixed now (`agents-<name>`); the draw its
+      // random suffix took stays, so the rest of the data set keeps its
+      // names.
+      hex(context, 5);
       return {
         installation: installation.name,
         name: organization.name,
         displayName: organization.displayName,
-        parent: ORGANIZATION_PARENT,
         ...(state !== 'pending' && {
-          namespace: `${ORGANIZATION_PARENT}-${fitName(
+          namespace: `${ORGANIZATION_NAMESPACE_PREFIX}-${fitName(
             organization.name,
-            MAX_NAME_LENGTH - ORGANIZATION_PARENT.length - suffix.length - 2,
-          )}-${suffix}`,
+            MAX_NAME_LENGTH - ORGANIZATION_NAMESPACE_PREFIX.length - 1,
+          )}`,
         }),
         state,
         role: roleOf(installation.name, state),

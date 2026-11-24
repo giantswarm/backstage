@@ -99,7 +99,6 @@ export type CredentialOperation = {
   organization: {
     scope?: 'platform';
     namespace?: string;
-    parent?: string;
     organization?: string;
   };
   changes?: CredentialChange[];

@@ -871,7 +871,7 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
 
     // The shell's Organizations: the list of the person's organizations (the
     // bare path) and one organization's page
-    // (`/organizations/<installation>/<parent>/<name>`), whose segments name
+    // (`/organizations/<installation>/<name>`), whose segments name
     // an organization and stay out of every attribute; its tab goes in
     // `view`, a closed set, Members, the index, carrying none. Any other
     // address only redirects to the list.
@@ -882,16 +882,13 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
 
     // The credential form of one organization's request; the request's id
     // (agent-manager's operation) stays out of every attribute.
-    case /^\/organizations\/[^/]+\/[^/]+\/[^/]+\/credentials\/[^/]+$/.test(
-      pathname,
-    ):
+    case /^\/organizations\/[^/]+\/[^/]+\/credentials\/[^/]+$/.test(pathname):
       payload = { page: 'Organization credential form' };
-      route =
-        '/organizations/:installation/:parent/:name/credentials/:operation';
+      route = '/organizations/:installation/:name/credentials/:operation';
       break;
 
-    case /^\/organizations\/[^/]+\/[^/]+\/[^/]+(\/.*)?$/.test(pathname): {
-      const tab = segments.slice(4).join('/');
+    case /^\/organizations\/[^/]+\/[^/]+(\/.*)?$/.test(pathname): {
+      const tab = segments.slice(3).join('/');
       payload =
         tab === ''
           ? { page: 'Organization detail' }
@@ -900,7 +897,7 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
               view: ORGANIZATION_TABS.has(tab) ? tab : 'redirect',
             };
       route = tabRoute(
-        '/organizations/:installation/:parent/:name',
+        '/organizations/:installation/:name',
         tab,
         ORGANIZATION_TABS,
       );

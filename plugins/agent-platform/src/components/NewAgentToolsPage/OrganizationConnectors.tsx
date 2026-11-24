@@ -141,7 +141,6 @@ export function OrganizationConnectors() {
   }
   const organizationHref = organizationRoute?.({
     installation,
-    parent: organization.parent,
     name: organization.organization,
   });
   const connectorsTab = organizationHref && `${organizationHref}/connectors`;

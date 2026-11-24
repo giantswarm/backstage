@@ -19,8 +19,8 @@ export type OrganizationAccess = {
  * Asks the API server, with the person's token, what they may change in an
  * organization namespace, so the page offers only those actions. These are
  * the organization admin's rights (agent-platform:admin), which
- * `list_organizations`' `manage` does not report: that one is the parent
- * namespace's organizations-admin. Fails closed while a review is out or
+ * `list_organizations`' `manage` does not report: that one is `update` on
+ * the cluster-scoped `Organization` (organizations-admin). Fails closed while a review is out or
  * failed; agent-manager still decides every write.
  */
 export function useOrganizationAccess(

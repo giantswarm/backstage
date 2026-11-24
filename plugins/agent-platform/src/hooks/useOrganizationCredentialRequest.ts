@@ -191,7 +191,6 @@ export function useOrganizationCredentialRequest(
               formLink,
               {
                 installation,
-                parent: organization.parent,
                 name: organization.organization,
                 operation,
               },

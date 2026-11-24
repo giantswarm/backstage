@@ -1,13 +1,14 @@
 /**
  * Agent Platform organizations, as agent-manager's organization tools answer
- * them (giantswarm/giantswarm#38891).
+ * them (giantswarm/giantswarm#39492).
  *
- * An organization is an `AgentPlatformOrganization` in a parent namespace;
- * agent-platform-operator keeps its organization namespace
- * (`agents-<name>-<random>`), labelled with the organization's name and its
- * parent. The portal learns which namespace is which organization only from
- * agent-manager's answers, which read those labels: a namespace's name is
- * never parsed.
+ * An organization is an `Organization` (`security.giantswarm.io`,
+ * cluster-scoped) with the Agent Platform enabled, identified by its name
+ * alone. agent-platform-operator keeps its organization namespace and
+ * reports it in the object's status; its admins are the object's
+ * `spec.admins`. The portal learns which namespace is which organization
+ * only from agent-manager's answers: a namespace's name is never parsed or
+ * computed.
  */
 
 import { listOf } from './listOf';
@@ -22,12 +23,18 @@ export const ORGANIZATIONS_CAPABILITY = 'organizations';
 export type OrganizationNamespace = {
   /** The organization namespace, e.g. `agents-payments-x7k2q`. */
   namespace: string;
-  /** The organization's name (`agent-platform.giantswarm.io/organization`). */
+  /** The organization's name: the name of its `Organization`. */
   organization: string;
-  /** The parent namespace it lives in (`agent-platform.giantswarm.io/parent`). */
-  parent: string;
-  /** The display name (`agent-platform.giantswarm.io/display-name`), if set. */
+  /** The display name, if set. */
   displayName?: string;
+};
+
+/** A group or a person, as a RoleBinding or `spec.admins` names them. */
+export type OrganizationSubject = {
+  /** `Group` or `User`. */
+  kind: string;
+  name: string;
+  namespace?: string;
 };
 
 /** A condition of the organization as the operator reports it. */
@@ -43,13 +50,18 @@ export type OrganizationCondition = {
  */
 export const ORPHANED_DELETE_MERGED = 'DeleteMerged';
 
-/** `get_organization`'s organization. */
-export type AgentPlatformOrganization = {
+/** `get_organization`'s organization: the summary of its `Organization`. */
+export type OrganizationSummary = {
   name: string;
-  parent: string;
-  /** The display name (`agent-platform.giantswarm.io/display-name`). */
   displayName?: string;
+  /** The organization namespace, once the operator reported it. */
   namespace?: string;
+  /**
+   * `spec.admins`: the groups and people the organization is handed to,
+   * whom the operator binds to `agent-platform:admin` in its namespace.
+   * Absent from an answer that predates the field.
+   */
+  admins?: OrganizationSubject[];
   harnesses: string[];
   workerReplicas: number;
   ready?: OrganizationCondition;
@@ -97,6 +109,11 @@ export type OrganizationErasure = {
   /** The RoleBindings to the organization's roles. */
   members: string[];
   snapshotPrefix?: string;
+  /**
+   * organization-operator's namespace of the `Organization` (`org-<name>`),
+   * on an installation where it runs: it goes with the organization.
+   */
+  organizationNamespace?: string;
   /** Only agents with a session; `null` when they could not be listed. */
   sessions: OrganizationAgentSessions[] | null;
   /** Why `sessions` is `null`. */
@@ -125,7 +142,7 @@ export type OrganizationCommit = {
 
 /** `delete_organization`'s answer. */
 export type OrganizationDeleteResult = {
-  organization: AgentPlatformOrganization;
+  organization: OrganizationSummary;
   erases?: OrganizationErasure;
   deleted: boolean;
   next?: string;
@@ -146,10 +163,7 @@ export type OrganizationDeleteMode =
  * Missing from git.
  */
 export function organizationDeleteMode(
-  organization: Pick<
-    AgentPlatformOrganization,
-    'deleting' | 'orphaned' | 'gitops'
-  >,
+  organization: Pick<OrganizationSummary, 'deleting' | 'orphaned' | 'gitops'>,
 ): OrganizationDeleteMode | undefined {
   if (organization.deleting) {
     return undefined;
@@ -232,9 +246,9 @@ export function modeArgument(mode: OrganizationWriteMode | undefined): {
  */
 export type OrganizationPermissions = {
   /**
-   * `update` on the AgentPlatformOrganization in its parent namespace
-   * (agent-platform:organizations-admin): reading it whole, deleting and
-   * erasing it.
+   * `update` on the cluster-scoped `Organization`
+   * (agent-platform:organizations-admin): reading it whole, changing its
+   * admins, deleting and erasing it.
    */
   manage: boolean;
   /** `list` on Agents in the organization namespace: a member of any role. */
@@ -300,14 +314,13 @@ export function createAgentsRefusedOn(installation: string): string {
  */
 export type ListedOrganization = {
   name: string;
-  parent: string;
   displayName?: string;
   /** The organization namespace, once the operator created it. */
   namespace?: string;
   orphaned?: OrganizationCondition;
   deleting?: boolean;
   permissions: OrganizationPermissions;
-  organization?: AgentPlatformOrganization;
+  organization?: OrganizationSummary;
 };
 
 /** `list_organizations`: the organizations the person manages or belongs to. */
@@ -327,7 +340,6 @@ export function organizationNamespacesOf(
           {
             namespace: organization.namespace,
             organization: organization.name,
-            parent: organization.parent,
             ...(organization.displayName
               ? { displayName: organization.displayName }
               : {}),
@@ -339,7 +351,7 @@ export function organizationNamespacesOf(
 
 /** What the status notices of an organization read. */
 export type OrganizationStatus = Pick<
-  AgentPlatformOrganization,
+  OrganizationSummary,
   | 'deleting'
   | 'erasureStep'
   | 'orphaned'
@@ -349,14 +361,21 @@ export type OrganizationStatus = Pick<
 
 /** `get_organization`: the organization, and what a delete would erase. */
 export type OrganizationDetails = {
-  organization: AgentPlatformOrganization;
+  organization: OrganizationSummary;
   /** Absent until the operator created the organization namespace. */
   erases?: OrganizationErasure;
 };
 
-/** The roles of an organization, as the member tools take them. */
+/** The roles of an organization, as the member list shows them. */
 export const MEMBER_ROLES = ['admin', 'editor', 'user'] as const;
 export type MemberRole = (typeof MEMBER_ROLES)[number];
+
+/**
+ * The roles the member tools give and take: never admin. The admins are
+ * the `Organization`'s `spec.admins`, changed with `update_organization`.
+ */
+export const MEMBER_FORM_ROLES = ['editor', 'user'] as const;
+export type MemberFormRole = (typeof MEMBER_FORM_ROLES)[number];
 
 /** What each role may do, in the words of agent-manager's tool schema. */
 export const MEMBER_ROLE_DESCRIPTIONS: Record<MemberRole, string> = {
@@ -366,8 +385,8 @@ export const MEMBER_ROLE_DESCRIPTIONS: Record<MemberRole, string> = {
 };
 
 /**
- * The RoleBinding that holds the first admins. Admission keeps its last admin
- * while the organization lives, so removing that one is refused.
+ * The RoleBinding agent-platform-operator writes from the `Organization`'s
+ * `spec.admins`: the member tools do not change it.
  */
 export const FIRST_ADMINS_BINDING = 'organization-admins';
 
@@ -380,6 +399,11 @@ export type OrganizationMember = {
   role: MemberRole;
   /** The RoleBinding that grants it. */
   binding: string;
+  /**
+   * Where an admin comes from: the `Organization`'s `spec.admins`, in
+   * agent-manager's words. Absent on every other member.
+   */
+  from?: string;
 };
 
 export type OrganizationMembers = {
@@ -390,7 +414,7 @@ export type OrganizationMembers = {
 /** A group or a person to add or remove (`add_organization_member`). */
 export type MemberRequest = {
   namespace: string;
-  role?: MemberRole;
+  role?: MemberFormRole;
   /** A pull request instead of a live write ({@link organizationContentMode}). */
   mode?: 'commit';
 } & ({ group: string; user?: never } | { user: string; group?: never });
@@ -403,7 +427,114 @@ export type MemberResult = {
   bindings?: string[];
   /** The pull request of a change in mode commit. */
   commit?: OrganizationCommit;
+  /** What a remove left as it was: an admin role, which the object holds. */
+  note?: string;
 };
+
+/** An organization's admins by kind, as the create and update tools take them. */
+export type OrganizationAdmins = {
+  /** Identity provider groups, as the API server sees them. */
+  adminGroups: string[];
+  /** People, as the API server sees them. */
+  adminUsers: string[];
+};
+
+/** `spec.admins` split by kind; another kind of subject is left out. */
+export function adminsOf(
+  subjects: readonly OrganizationSubject[] | undefined,
+): OrganizationAdmins {
+  const of = (kind: string) =>
+    (subjects ?? [])
+      .filter(subject => subject.kind === kind)
+      .map(subject => subject.name);
+  return { adminGroups: of('Group'), adminUsers: of('User') };
+}
+
+/**
+ * Names typed one per line: each trimmed, the empty lines and the repeats
+ * left out, in the order typed.
+ */
+export function namesPerLine(text: string): string[] {
+  return [
+    ...new Set(
+      text
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+/** `create_organization`: an `Organization` with the Agent Platform on. */
+export type OrganizationCreateRequest = {
+  name: string;
+  displayName?: string;
+} & Partial<OrganizationAdmins>;
+
+/**
+ * `create_organization`'s answer. agent-manager writes the object and does
+ * not wait for the operator: `next` says what the operator does next.
+ */
+export type OrganizationCreateResult = {
+  organization: OrganizationSummary;
+  created: boolean;
+  next?: string;
+  /** The pull request of a create in mode commit. */
+  commit?: OrganizationCommit;
+};
+
+/**
+ * `update_organization` of the admins: each kind given replaces that kind
+ * of `spec.admins`; `[]` removes them.
+ */
+export type OrganizationAdminsUpdate = {
+  name: string;
+  /** A pull request for an organization applied from git. */
+  mode?: 'commit';
+} & Partial<OrganizationAdmins>;
+
+/** `update_organization`'s answer. */
+export type OrganizationUpdateResult = {
+  before?: OrganizationSummary;
+  after?: OrganizationSummary;
+  changed?: string[];
+  commit?: OrganizationCommit;
+};
+
+/**
+ * An organization's name, as `create_organization` takes it: the name of
+ * its `Organization`, at most 56 characters, a DNS label. agent-manager
+ * checks it again.
+ */
+export const ORGANIZATION_NAME_MAX_LENGTH = 56;
+
+/** Why `name` cannot name a new organization; `undefined` when it can. */
+export function organizationNameProblem(name: string): string | undefined {
+  if (!name) {
+    return 'Enter a name for the organization.';
+  }
+  if (name.length > ORGANIZATION_NAME_MAX_LENGTH) {
+    return `Use at most ${ORGANIZATION_NAME_MAX_LENGTH} characters.`;
+  }
+  if (!/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/.test(name)) {
+    return 'Use lowercase letters, digits and hyphens, starting and ending with a letter or a digit, e.g. payments.';
+  }
+  return undefined;
+}
+
+/**
+ * Whether the operator reports the organization ready: it has its
+ * namespace, and its `Ready` condition, where the person reads it, is not
+ * `False`. A member reads no condition: the namespace says it there.
+ */
+export function isOrganizationReady(
+  organization: Pick<ListedOrganization, 'namespace' | 'organization'>,
+): boolean {
+  return (
+    Boolean(organization.namespace) &&
+    organization.organization?.ready?.status !== 'False'
+  );
+}
 
 /**
  * Whether a credential's Secret exists, as agent-manager 3.3 and later ask it

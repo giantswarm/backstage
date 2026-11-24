@@ -32,8 +32,12 @@ import type {
   OrganizationConnector,
   OrganizationCredentialReplacement,
   OrganizationModelRequest,
-  AgentPlatformOrganization,
+  OrganizationSummary,
+  OrganizationAdminsUpdate,
+  OrganizationCreateRequest,
+  OrganizationCreateResult,
   OrganizationDeleteResult,
+  OrganizationUpdateResult,
   OrganizationDetails,
   OrganizationErasure,
   OrganizationMembers,
@@ -320,27 +324,65 @@ export class AgentManagerClient {
   }
 
   /**
-   * One organization, by its parent namespace and name, and what a delete
-   * would erase. agent-manager answers the organization's fields and
-   * `erases` side by side.
+   * One organization, by its name, and what a delete would erase.
+   * agent-manager answers the organization's fields and `erases` side by
+   * side.
    */
-  async getOrganization(
-    parent: string,
-    name: string,
-  ): Promise<OrganizationDetails> {
+  async getOrganization(name: string): Promise<OrganizationDetails> {
     const { erases, ...organization } = await this.call<
-      AgentPlatformOrganization & { erases?: OrganizationErasure }
-    >(AGENT_MANAGER_TOOLS.getOrganization, { namespace: parent, name });
+      OrganizationSummary & { erases?: OrganizationErasure }
+    >(AGENT_MANAGER_TOOLS.getOrganization, { name });
     return { organization, ...(erases ? { erases } : {}) };
+  }
+
+  /**
+   * Creates an organization as the person: one `Organization` with the
+   * Agent Platform on and its admins in `spec.admins`. agent-manager writes
+   * no RoleBinding and does not wait for the operator.
+   */
+  createOrganization(
+    request: OrganizationCreateRequest,
+  ): Promise<OrganizationCreateResult> {
+    return this.call<OrganizationCreateResult>(
+      AGENT_MANAGER_TOOLS.createOrganization,
+      {
+        name: request.name,
+        ...(request.displayName ? { displayName: request.displayName } : {}),
+        ...(request.adminGroups?.length
+          ? { adminGroups: request.adminGroups }
+          : {}),
+        ...(request.adminUsers?.length
+          ? { adminUsers: request.adminUsers }
+          : {}),
+      },
+    );
+  }
+
+  /**
+   * Changes an organization's admins as the person: each kind given
+   * replaces that kind of `spec.admins`, `[]` removes them, and a kind left
+   * out stays.
+   */
+  updateOrganizationAdmins(
+    request: OrganizationAdminsUpdate,
+  ): Promise<OrganizationUpdateResult> {
+    return this.call<OrganizationUpdateResult>(
+      AGENT_MANAGER_TOOLS.updateOrganization,
+      {
+        name: request.name,
+        ...(request.adminGroups ? { adminGroups: request.adminGroups } : {}),
+        ...(request.adminUsers ? { adminUsers: request.adminUsers } : {}),
+        ...(request.mode ? { mode: request.mode } : {}),
+      },
+    );
   }
 
   /**
    * Deletes an organization as the person. Without `confirm` it opens the
    * pull request that removes it from git (`mode: commit`); with `confirm`
-   * (`parent/name`, as typed) it erases it.
+   * (its name, as typed) it erases it.
    */
   deleteOrganization(request: {
-    parent: string;
     name: string;
     confirm?: string;
     mode?: 'commit';
@@ -348,7 +390,6 @@ export class AgentManagerClient {
     return this.call<OrganizationDeleteResult>(
       AGENT_MANAGER_TOOLS.deleteOrganization,
       {
-        namespace: request.parent,
         name: request.name,
         ...(request.confirm ? { confirm: request.confirm } : {}),
         ...(request.mode ? { mode: request.mode } : {}),
@@ -375,9 +416,9 @@ export class AgentManagerClient {
   }
 
   /**
-   * Unbinds a group or a person from a role, as the person. Admission keeps
-   * the last admin of `organization-admins`: that refusal comes back as
-   * agent-manager's error, with the way out in its message.
+   * Unbinds a group or a person from the editor or user role, as the
+   * person. An admin stays one: the admins are the `Organization`'s
+   * `spec.admins`, and agent-manager's `note` says so.
    */
   removeOrganizationMember(request: MemberRequest): Promise<MemberResult> {
     return this.call<MemberResult>(

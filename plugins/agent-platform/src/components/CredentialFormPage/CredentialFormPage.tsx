@@ -46,8 +46,6 @@ import { serviceAccountKeyError } from '../../lib/modelConfigs';
 
 export type CredentialFormPageProps = {
   installation: string;
-  /** The parent namespace the organization lives in. */
-  parent?: string;
   /** The organization's name. */
   name?: string;
   /**
@@ -206,7 +204,7 @@ function Confirmation({
   const asking = askingObjects(operation);
   const others = otherReferences(operation);
   const sentTo = destinations(operation);
-  const { organization, parent, namespace } = operation.organization;
+  const { organization, namespace } = operation.organization;
   const owner =
     operation.organization.scope === 'platform'
       ? 'the installation'
@@ -223,7 +221,7 @@ function Confirmation({
           }
         >
           <Text>
-            {[organization, parent, namespace, installation]
+            {[organization, namespace, installation]
               .filter(Boolean)
               .join(' · ')}
           </Text>
@@ -408,7 +406,6 @@ function SaveError({
  */
 function sameOrganization(
   operation: CredentialOperation,
-  parent: string | undefined,
   name: string | undefined,
   namespace: string | undefined,
 ) {
@@ -416,7 +413,7 @@ function sameOrganization(
     return operation.organization.namespace === namespace;
   }
   return (
-    operation.organization.parent === parent &&
+    operation.organization.scope !== 'platform' &&
     operation.organization.organization === name
   );
 }
@@ -485,7 +482,6 @@ function operationPhase(
  */
 export function CredentialFormPage({
   installation,
-  parent,
   name,
   namespace,
   operation: operationParam,
@@ -533,29 +529,24 @@ export function CredentialFormPage({
       ? loaded.operation.organization
       : undefined;
   const organizationTarget =
-    target &&
-    target.scope !== 'platform' &&
-    target.parent &&
-    target.organization
-      ? { parent: target.parent, name: target.organization }
+    target && target.scope !== 'platform' && target.organization
+      ? { name: target.organization }
       : undefined;
-  const linkParent = parent ?? organizationTarget?.parent;
   const linkName = name ?? organizationTarget?.name;
   const installationTarget = target?.scope === 'platform';
 
   const organizationsLink = useRouteRef(organizationsRouteRef);
   const organizationLink = useRouteRef(organizationDetailRouteRef);
   const modelsLink = useRouteRef(modelsRouteRef);
-  const organizationHref =
-    linkParent && linkName
-      ? organizationLink?.({ installation, parent: linkParent, name: linkName })
-      : modelsLink?.();
+  const organizationHref = linkName
+    ? organizationLink?.({ installation, name: linkName })
+    : modelsLink?.();
   // A namespace link shows no target until the request it opens is read and
   // found to write in that namespace: the namespace itself means nothing to
   // a person.
   const targetLabel =
     linkName ?? (installationTarget || !namespace ? 'Installation' : undefined);
-  const underOrganizations = Boolean(linkParent && linkName);
+  const underOrganizations = Boolean(linkName);
   const breadcrumbs: BreadcrumbItem[] = [
     {
       label: underOrganizations ? 'Organizations' : 'Models',
@@ -818,7 +809,7 @@ export function CredentialFormPage({
     );
   }
   const { operation } = loaded;
-  if (!sameOrganization(operation, parent, name, namespace)) {
+  if (!sameOrganization(operation, name, namespace)) {
     return (
       <ShellPage title="Enter a credential" {...frame}>
         <EmptyStateCard
@@ -826,7 +817,7 @@ export function CredentialFormPage({
           description={
             namespace
               ? `The request writes in another namespace. Open it from ${startAgainPlace(operation, true)} or ask the agent again.`
-              : `The link names ${name} in ${parent}, but the request is for ${operation.organization.organization ?? 'another organization'} in ${operation.organization.parent ?? 'another parent'}. Nothing is shown or saved: open the request from that organization's tab, or ask the agent again.`
+              : `The link names ${name}, but the request is for ${operation.organization.organization ?? 'another organization'}. Nothing is shown or saved: open the request from that organization's tab, or ask the agent again.`
           }
           actions={backLink}
         />
@@ -864,9 +855,7 @@ export function CredentialFormPage({
     <ShellPage
       title="Enter a credential"
       {...frame}
-      meta={[linkName, linkParent, namespace, installation]
-        .filter(Boolean)
-        .join(' · ')}
+      meta={[linkName, namespace, installation].filter(Boolean).join(' · ')}
     >
       <Flex direction="column" gap="5">
         {notice ? (

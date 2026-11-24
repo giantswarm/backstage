@@ -57,12 +57,10 @@ jest.mock('../ModelConfigsProvider', () => ({
 const PAYMENTS = {
   namespace: 'agents-payments-x7k2q',
   organization: 'payments',
-  parent: 'org-acme',
 };
 const RISK = {
   namespace: 'agents-risk-p3m9z',
   organization: 'risk',
-  parent: 'org-acme',
 };
 
 function model(

@@ -105,7 +105,6 @@ describe('agent-platform fixture data', () => {
         .map(organization => ({
           namespace: organization.namespace,
           organization: organization.name,
-          parent: organization.parent,
           displayName: organization.displayName,
         })),
     );

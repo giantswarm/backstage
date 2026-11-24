@@ -322,10 +322,7 @@ describe('OrganizationConnectors', () => {
       within(section()).getByRole('link', {
         name: /Open the Connectors tab/,
       }),
-    ).toHaveAttribute(
-      'href',
-      '/organizations/gazelle/org-parent/otter/connectors',
-    );
+    ).toHaveAttribute('href', '/organizations/gazelle/otter/connectors');
     expect(
       screen.getByRole('checkbox', { name: 'jira' }),
     ).toHaveAccessibleDescription('Ready to use.');
@@ -367,10 +364,7 @@ describe('OrganizationConnectors', () => {
       within(section()).getByRole('link', {
         name: /See the organization's connectors/,
       }),
-    ).toHaveAttribute(
-      'href',
-      '/organizations/gazelle/org-parent/alpha/connectors',
-    );
+    ).toHaveAttribute('href', '/organizations/gazelle/alpha/connectors');
     expect(within(section()).queryByText(/Add one/)).toBeNull();
   });
 

@@ -33,19 +33,17 @@ export async function kubectl(args: string[], input?: string) {
 
 /**
  * The namespace of the lab's organization ({@link lab.organization}), its
- * `AgentPlatformOrganization`'s `status.namespace`; undefined on a lab without
+ * `Organization`'s `status.agentPlatform.namespace`; undefined on a lab without
  * organizations, where the wizard offers Platform and reads `kagent`.
  */
 export async function labOrganizationNamespace(): Promise<string | undefined> {
   const { stdout } = await kubectl([
     'get',
-    'agentplatformorganizations.agent-platform.giantswarm.io',
-    '-n',
-    lab.organization.parent,
+    'organizations.security.giantswarm.io',
     lab.organization.name,
     '--ignore-not-found',
     '-o',
-    'jsonpath={.status.namespace}',
+    'jsonpath={.status.agentPlatform.namespace}',
   ]).catch(() => ({ stdout: '' }));
   return stdout.trim() || undefined;
 }

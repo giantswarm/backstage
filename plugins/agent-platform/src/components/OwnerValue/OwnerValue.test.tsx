@@ -31,7 +31,7 @@ describe('OwnerValue', () => {
 
     expect(screen.getByRole('link', { name: 'acme' })).toHaveAttribute(
       'href',
-      '/organizations/gazelle/org-parent/acme',
+      '/organizations/gazelle/acme',
     );
   });
 

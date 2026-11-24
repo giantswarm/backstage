@@ -20,7 +20,6 @@ import { PullRequestOutcome } from '../PullRequestOutcome';
 
 export type OrganizationDeleteDialogProps = {
   installation: string;
-  parent: string;
   name: string;
   /** The display name, else the name. */
   title: string;
@@ -38,6 +37,14 @@ function plural(count: number, noun: string): string {
 /** What the erasure takes, one line per kind that has something. */
 function ErasureList({ erasure }: { erasure: OrganizationErasure }) {
   const lines: [string, string[]][] = [
+    // The organization namespace, and organization-operator's namespace of
+    // the `Organization`, which goes with it where that operator runs.
+    [
+      'Namespaces',
+      [erasure.namespace, erasure.organizationNamespace].filter(
+        (namespace): namespace is string => Boolean(namespace),
+      ),
+    ],
     ['Agents', erasure.agents],
     ['Connectors', erasure.connectors],
     ['Models', erasure.models],
@@ -113,13 +120,12 @@ function RunningSessions({ erasure }: { erasure: OrganizationErasure }) {
  * Asks before deleting an organization, with what agent-manager says the
  * delete erases now and the running sessions it stops. An erase, live or
  * once the delete pull request merged, cannot be undone, so it waits for the
- * person to type `parent/name`; agent-manager checks that name again. A
+ * person to type the organization's name; agent-manager checks it again. A
  * delete of an organization applied from git only opens the pull request
  * that removes it, which can be closed unmerged, so it asks no name.
  */
 export function OrganizationDeleteDialog({
   installation,
-  parent,
   name,
   title,
   mode,
@@ -127,11 +133,11 @@ export function OrganizationDeleteDialog({
   onOpenChange,
   onDeleted,
 }: OrganizationDeleteDialogProps) {
-  const erasure = useOrganizationErasure(installation, parent, name);
-  const deletion = useOrganizationDeletion(installation, parent, name);
+  const erasure = useOrganizationErasure(installation, name);
+  const deletion = useOrganizationDeletion(installation, name);
   const [typed, setTyped] = useState('');
 
-  const expected = `${parent}/${name}`;
+  const expected = name;
   const viaPullRequest = mode === 'pull-request';
   const erases = erasure.data?.erases;
   // agent-manager previews an erasure only once the organization namespace

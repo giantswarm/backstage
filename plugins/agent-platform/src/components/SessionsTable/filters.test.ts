@@ -317,7 +317,6 @@ describe('the shell list’s dropdown filters (T92)', () => {
       {
         namespace: 'agents-acme-x7k2q',
         organization: 'acme',
-        parent: 'org-acme',
       },
     ]);
     const fleet = withSessionStates(

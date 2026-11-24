@@ -28,15 +28,16 @@ import { useOrganizationAccess } from '../../hooks/useOrganizationAccess';
 import {
   CONTENT_PULL_REQUEST_NEXT,
   CONTENT_PULL_REQUEST_UNCHANGED,
-  FIRST_ADMINS_BINDING,
+  MEMBER_FORM_ROLES,
   MEMBER_ROLE_DESCRIPTIONS,
-  MEMBER_ROLES,
   memberKindLabel,
+  type ListedOrganization,
+  type MemberFormRole,
   type MemberRequest,
-  type MemberRole,
   type OrganizationMember,
 } from '../../lib/organizations';
 import { PullRequestOutcome } from '../PullRequestOutcome';
+import { OrganizationAdminsSection } from './OrganizationAdminsSection';
 import { WrappingCellText } from './WrappingCellText';
 
 /** A group comes first: membership then changes in the identity provider. */
@@ -48,7 +49,7 @@ function memberRequest(
   namespace: string,
   kind: MemberKind,
   name: string,
-  role?: MemberRole,
+  role?: MemberFormRole,
 ): MemberRequest {
   return kind === 'group'
     ? { namespace, group: name, ...(role ? { role } : {}) }
@@ -92,7 +93,7 @@ function AddMember({
   const { add } = useOrganizationMemberWrites(installation, namespace);
   const [kind, setKind] = useState<MemberKind>('group');
   const [name, setName] = useState('');
-  const [role, setRole] = useState<MemberRole>('user');
+  const [role, setRole] = useState<MemberFormRole>('user');
   const trimmed = name.trim();
   const noun = kind === 'group' ? 'group' : 'person';
   const scope = useRef<HTMLDivElement>(null);
@@ -137,13 +138,14 @@ function AddMember({
           isDisabled={off}
           aria-describedby={changesDisabledBy}
           selectedKey={role}
-          options={MEMBER_ROLES.map(id => ({
+          description="Admins are not added here: they are the organization's admins, above."
+          options={MEMBER_FORM_ROLES.map(id => ({
             id,
             label: `${id}: ${MEMBER_ROLE_DESCRIPTIONS[id]}`,
           }))}
           onSelectionChange={key => {
             if (key) {
-              setRole(key as MemberRole);
+              setRole(key as MemberFormRole);
             }
           }}
         />
@@ -186,19 +188,24 @@ function AddMember({
 /**
  * An organization's members: the groups and people bound to its roles, as
  * agent-manager reads its RoleBindings (`list_organization_members`), groups
- * first. Adding offers a group first and a person second; a removal agent-
- * manager refuses, such as the last admin of `organization-admins`, which
- * admission keeps, is shown with its reason. With `changesDisabledBy` (the
- * id of the line that says why, on Pending erase and while Erasing) the
- * members stay listed and every change is off.
+ * first. The admins come from the `Organization` (`spec.admins`): they are
+ * listed with the others, changed only in the Admins section, and never
+ * offered as a role to add or as a member to remove. Adding offers a group
+ * first and a person second, as an editor or a user; a refusal of
+ * agent-manager is shown in its words. With `changesDisabledBy` (the id of
+ * the line that says why, on Pending erase and while Erasing) the members
+ * stay listed and every change is off.
  */
 export function MembersTab({
   installation,
   namespace,
+  organization,
   changesDisabledBy,
 }: {
   installation: string;
   namespace: string;
+  /** The organization as `list_organizations` lists it, if it does. */
+  organization?: ListedOrganization;
   changesDisabledBy?: string;
 }) {
   const members = useOrganizationMembers(installation, namespace);
@@ -236,11 +243,7 @@ export function MembersTab({
       cell: row => (
         <WrappingCellText
           title={row.binding}
-          description={
-            row.binding === FIRST_ADMINS_BINDING
-              ? 'the first admins; its last admin stays'
-              : undefined
-          }
+          description={row.from ? "from the organization's admins" : undefined}
         />
       ),
     },
@@ -250,10 +253,13 @@ export function MembersTab({
       defaultWidth: '1fr',
       // "Remove" whole, on a phone too.
       minWidth: 100,
-      // Only a group or a person is added or removed here; another
-      // subject (a ServiceAccount) is changed where it was bound.
+      // Only a group or a person is added or removed here, as an editor or
+      // a user; an admin is changed in the Admins section, another subject
+      // (a ServiceAccount) where it was bound.
       cell: row =>
-        access.members && (row.kind === 'Group' || row.kind === 'User') ? (
+        access.members &&
+        row.role !== 'admin' &&
+        (row.kind === 'Group' || row.kind === 'User') ? (
           <Cell>
             <Button
               size="small"
@@ -303,6 +309,13 @@ export function MembersTab({
 
   return (
     <Flex direction="column" gap="5">
+      {organization?.organization && (
+        <OrganizationAdminsSection
+          installation={installation}
+          organization={organization}
+          changesDisabledBy={changesDisabledBy}
+        />
+      )}
       <PageSection
         title="Members"
         description="Admins manage members, models and credentials; editors create agents; users use them."
@@ -344,7 +357,7 @@ export function MembersTab({
               namespace,
               removing.kind === 'Group' ? 'group' : 'person',
               removing.name,
-              removing.role,
+              removing.role === 'admin' ? undefined : removing.role,
             ),
             {
               // In mode commit the dialog stays with the pull request.

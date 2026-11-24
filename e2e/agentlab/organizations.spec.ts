@@ -21,8 +21,7 @@ import { RUN, contextOptionsFor, lab, type LabUser } from './lab';
  * Agents per organization (giantswarm/giantswarm#36698 D6,
  * giantswarm/backstage#2606, #3363, #3378), the portal half of agentlab's
  * `organizations-test` (giantswarm/agentlab#1155), in a browser: what only a
- * page shows. Two organizations under the lab's parent
- * namespace:
+ * page shows. Two organizations:
  *
  * - the lab's own ({@link lab.organization}), whose `organization-editors`
  *   binds the developers, so the lab's developer, and where the worker's
@@ -58,15 +57,10 @@ const users = {
 } satisfies Record<string, LabUser>;
 
 const organization = 'e2e-organization';
-const { parent: PARENT, name: LAB_ORGANIZATION } = lab.organization;
-const ORGANIZATION_RESOURCE =
-  'agentplatformorganizations.agent-platform.giantswarm.io';
-/** The spec's organization in the lab's parent namespace, as kubectl names it. */
-const organizationRef = [
-  '-n',
-  PARENT,
-  `${ORGANIZATION_RESOURCE}/${organization}`,
-];
+const { name: LAB_ORGANIZATION } = lab.organization;
+const ORGANIZATION_RESOURCE = 'organizations.security.giantswarm.io';
+/** The spec's `Organization` (cluster-scoped), as kubectl names it. */
+const organizationRef = [`${ORGANIZATION_RESOURCE}/${organization}`];
 /** The organization as a sentence names it. */
 const inSentence = `the ${organization} organization`;
 /** The lab API server's `--oidc-username-prefix` and groups prefix. */
@@ -84,9 +78,9 @@ function detailPathIn(namespace: string): string {
   return `/customize/agents/${lab.installation}/${namespace}/${agent.slug}`;
 }
 
-/** An organization's `<parent>/<name>` page. */
+/** An organization's page. */
 function organizationPath(name: string): string {
-  return `/organizations/${lab.installation}/${PARENT}/${name}`;
+  return `/organizations/${lab.installation}/${name}`;
 }
 
 type OrganizationFixtures = {
@@ -255,7 +249,8 @@ async function deleteOrganization() {
 
 /**
  * The spec's organization, made as its creator makes one and applied again as
- * it is: the `AgentPlatformOrganization` (the platform Harness, one worker),
+ * it is: the `Organization` with the Agent Platform on (the platform
+ * Harness, one worker),
  * Ready with its namespace; then there its editor (alice's group) and user
  * (the developer) and its model, the lab's default (`lab.defaultModel`) on
  * the lab's `aiModel`, marked the namespace's default. Its key is a
@@ -284,7 +279,7 @@ async function applyOrganization(): Promise<string> {
     ...organizationRef,
     '--ignore-not-found',
     '-o',
-    'jsonpath={.status.namespace}',
+    'jsonpath={.status.agentPlatform.namespace}',
   ]);
   for (const [user, group] of [
     [users.alice, 'tenant-a'],
@@ -300,10 +295,16 @@ async function applyOrganization(): Promise<string> {
   await kubectl(
     ['apply', '-f', '-'],
     JSON.stringify({
-      apiVersion: 'agent-platform.giantswarm.io/v1alpha1',
-      kind: 'AgentPlatformOrganization',
-      metadata: { name: organization, namespace: PARENT },
-      spec: { harnesses: ['kagent'], workers: { replicas: 1 } },
+      apiVersion: 'security.giantswarm.io/v1alpha1',
+      kind: 'Organization',
+      metadata: { name: organization },
+      spec: {
+        agentPlatform: {
+          enabled: true,
+          harnesses: ['kagent'],
+          workers: { replicas: 1 },
+        },
+      },
     }),
   );
   await kubectl([
@@ -316,11 +317,11 @@ async function applyOrganization(): Promise<string> {
     'get',
     ...organizationRef,
     '-o',
-    'jsonpath={.status.namespace}',
+    'jsonpath={.status.agentPlatform.namespace}',
   ]);
   if (!namespace) {
     throw new Error(
-      `the organization ${PARENT}/${organization} is Ready without status.namespace`,
+      `the organization ${organization} is Ready without status.agentPlatform.namespace`,
     );
   }
   const { stdout: model } = await kubectl([
@@ -417,7 +418,7 @@ function fact(page: Page, term: string) {
     .locator('xpath=following-sibling::dd[1]');
 }
 
-/** The Organizations list's row of an organization: its name, then its parent and namespace. */
+/** The Organizations list's row of an organization: its name, then its namespace. */
 function organizationRow(page: Page, name: string) {
   return page
     .getByRole('grid', { name: `Your organizations on ${lab.installation}` })

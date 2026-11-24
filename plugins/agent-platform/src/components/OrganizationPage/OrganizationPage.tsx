@@ -1,7 +1,7 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Button, Flex, Link } from '@backstage/ui';
+import { Alert, Button, Flex, Link } from '@backstage/ui';
 import {
   type BreadcrumbItem,
   EmptyStateCard,
@@ -33,11 +33,24 @@ import {
 
 export type OrganizationPageProps = {
   installation: string;
-  /** The parent namespace the organization lives in. */
-  parent: string;
   /** The organization's name. */
   name: string;
 };
+
+/** How often the page reads a new organization again until it is ready. */
+const CREATED_POLL_INTERVAL_MS = 10_000;
+
+/**
+ * `next` of the create that opened this page, as the Organizations page's
+ * create passes it in the location's state; nothing otherwise.
+ */
+function createdNextOf(state: unknown): string | undefined {
+  if (state && typeof state === 'object' && 'createdNext' in state) {
+    const next = (state as { createdNext?: unknown }).createdNext;
+    return typeof next === 'string' && next ? next : undefined;
+  }
+  return undefined;
+}
 
 function useOrganizationFrame(title: string) {
   const organizationsLink = useRouteRef(organizationsRouteRef);
@@ -63,7 +76,6 @@ function useOrganizationFrame(title: string) {
  */
 export function OrganizationPage({
   installation,
-  parent,
   name,
 }: OrganizationPageProps) {
   const availability = useAgentManagerAvailability([installation]);
@@ -73,19 +85,35 @@ export function OrganizationPage({
   );
   const mine = useOrganizations(blocker ? undefined : installation);
   const listed = mine.data?.organizations.find(
-    organization =>
-      organization.parent === parent && organization.name === name,
+    organization => organization.name === name,
   );
-  const details = useOrganizationDetails(installation, parent, name, {
+  const details = useOrganizationDetails(installation, name, {
     enabled: listed?.permissions.manage === true && listed.deleting === true,
   });
   const basePath = useSplatBasePath();
-  const { search } = useLocation();
+  const { search, state: locationState } = useLocation();
+  // What agent-manager said the operator does next, when this page was
+  // opened right after the organization was created here.
+  const createdNext = createdNextOf(locationState);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   // A delete this page made: an organization without a namespace can be
   // erased before the list is read again, and then is no longer listed.
   const [deletedHere, setDeletedHere] = useState(false);
   const changesOffId = useId();
+
+  // A new organization agent-manager does not list yet, or lists without
+  // its namespace, is read again until the operator reports it.
+  const awaitingCreated = Boolean(createdNext) && !listed?.namespace;
+  const { refetch } = mine;
+  useEffect(() => {
+    if (!awaitingCreated) {
+      return undefined;
+    }
+    const timer = setInterval(() => {
+      refetch();
+    }, CREATED_POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [awaitingCreated, refetch]);
 
   const object = details.data?.organization ?? listed?.organization;
   const status = object ?? listed;
@@ -146,7 +174,7 @@ export function OrganizationPage({
       <ShellPage title={title} {...frame}>
         <EmptyStateCard
           title={`${title} is erased`}
-          description={`${name} in ${parent} on ${installation} is deleted and erased.`}
+          description={`${name} on ${installation} is deleted and erased.`}
           actions={backLink}
         />
       </ShellPage>
@@ -154,7 +182,7 @@ export function OrganizationPage({
   }
   // Only a person who manages it deletes it; the mode follows its state.
   // Offered with or without its organization namespace: agent-manager
-  // deletes it by its parent namespace and name, and one whose namespace
+  // deletes it by its name, and one whose namespace
   // the operator never created is still to be removed.
   const deleteMode =
     listed?.permissions.manage && object
@@ -187,7 +215,6 @@ export function OrganizationPage({
       {deleteMode && confirmingDelete && (
         <OrganizationDeleteDialog
           installation={installation}
-          parent={parent}
           name={name}
           title={title}
           mode={deleteMode}
@@ -218,14 +245,23 @@ export function OrganizationPage({
         </ShellPage>
       );
     }
-    if (listed) {
+    // Listed, or created here a moment ago: agent-manager may list a new
+    // organization only on a later read.
+    if (listed || (createdNext && !mine.isLoading)) {
       return (
         <ShellPage title={title} {...frame} actions={deleteAction}>
           <Flex direction="column" gap="5">
             {deletion}
             <EmptyStateCard
-              title={`${title} has no namespace yet`}
-              description={`agent-manager lists ${name} in ${parent} on ${installation}, and the operator has not created its organization namespace yet.`}
+              title={`${title} is not ready yet`}
+              description={[
+                `The operator has not created the namespace of ${name} on ${installation} yet. This page shows its members, models and connectors once it has.`,
+                object?.ready?.status === 'False' && object.ready.message,
+                createdNext &&
+                  (createdNext.endsWith('.') ? createdNext : `${createdNext}.`),
+              ]
+                .filter(Boolean)
+                .join(' ')}
               actions={backLink}
             />
           </Flex>
@@ -246,7 +282,7 @@ export function OrganizationPage({
       <ShellPage title={name} {...frame}>
         <EmptyStateCard
           title={`You are not a member of ${name}`}
-          description={`${name} in ${parent} on ${installation} is not among the organizations you belong to, or it does not exist. An admin of ${name} can add you.`}
+          description={`${name} on ${installation} is not among the organizations you belong to, or it does not exist. An admin of ${name} can add you.`}
           actions={backLink}
         />
       </ShellPage>
@@ -256,20 +292,36 @@ export function OrganizationPage({
   const organization: OrganizationNamespace = {
     namespace,
     organization: name,
-    parent,
   };
+  // The operator created the namespace and reports the organization not
+  // ready: its tabs still work, and the reason is said above them.
+  const notReady =
+    object?.ready?.status === 'False' && !status?.deleting
+      ? object.ready
+      : undefined;
 
   return (
     <ShellPage
       title={title}
       {...frame}
-      meta={`${namespace} · ${parent} · ${installation}`}
+      meta={`${namespace} · ${installation}`}
       tabs={ORGANIZATION_PAGE_TABS}
       tabsBasePath={basePath}
       actions={deleteAction}
     >
       <Flex direction="column" gap="5">
         {deletion}
+        {notReady && (
+          <Alert
+            status="info"
+            title={`${title} is not ready yet`}
+            description={
+              notReady.message ??
+              notReady.reason ??
+              'The operator has not reported it ready.'
+            }
+          />
+        )}
         <Routes>
           <Route
             index
@@ -277,6 +329,7 @@ export function OrganizationPage({
               <MembersTab
                 installation={installation}
                 namespace={namespace}
+                organization={listed}
                 changesDisabledBy={changesDisabledBy}
               />
             }

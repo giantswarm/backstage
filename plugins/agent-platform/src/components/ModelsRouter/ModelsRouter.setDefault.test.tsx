@@ -113,7 +113,6 @@ jest.mock('../../hooks/useDeleteModelConfig', () => ({
 const PAYMENTS = {
   namespace: 'agents-payments-x7k2q',
   organization: 'payments',
-  parent: 'org-acme',
 };
 
 const MARK = 'agent-platform.giantswarm.io/is-default-model-config';

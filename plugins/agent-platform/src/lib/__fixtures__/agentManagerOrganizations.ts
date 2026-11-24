@@ -4,7 +4,7 @@ import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 
 import type { AgentManagerModelConfig } from '../agentManager';
 import type {
-  AgentPlatformOrganization,
+  OrganizationSummary,
   ListedOrganization,
   MemberResult,
   OrganizationDeleteResult,
@@ -13,6 +13,8 @@ import type {
   OrganizationMember,
   OrganizationNamespace,
   OrganizationListing,
+  OrganizationCreateResult,
+  OrganizationUpdateResult,
 } from '../organizations';
 
 /**
@@ -63,7 +65,7 @@ export type OrganizationsScenario = {
    * `get_organization`'s organization, as an organizations-admin reads it;
    * without it the call is refused, as for a member.
    */
-  organization?: AgentPlatformOrganization;
+  organization?: OrganizationSummary;
   /**
    * `false`: the person may read `organization` but not manage it
    * (`permissions.manage` false). The listing still carries its summary, so
@@ -76,7 +78,10 @@ export type OrganizationsScenario = {
    * by resource; an organization admin's (all allowed) when left out.
    */
   access?: Partial<
-    Record<'rolebindings' | 'modelconfigs' | 'secrets', boolean>
+    Record<
+      'rolebindings' | 'modelconfigs' | 'secrets' | 'organizations',
+      boolean
+    >
   >;
   /** The same per namespace, over `access`, for the namespaces named. */
   namespaceAccess?: Record<string, OrganizationsScenario['access']>;
@@ -115,6 +120,10 @@ export type OrganizationsScenario = {
   modelError?: string;
   /** What `add_organization_member` fails with. */
   addError?: string;
+  /** What `create_organization` fails with. */
+  createError?: string;
+  /** What `update_organization` fails with. */
+  updateError?: string;
   /**
    * `get_info` reports the `commit` capability: agent-manager opens pull
    * requests on this installation.
@@ -123,6 +132,10 @@ export type OrganizationsScenario = {
   /** `get_info`'s `version`; none, as from a build that is no release. */
   agentManagerVersion?: string;
 };
+
+/** `create_organization`'s `next`: what the operator does after the write. */
+export const CREATED_NEXT =
+  'agent-platform-operator creates the organization namespace and binds spec.admins to agent-platform:admin there';
 
 /** The pull request a content write in mode commit opens. */
 export const CONTENT_PULL_REQUEST = {
@@ -148,20 +161,15 @@ export function listedOrganizations(
   scenario: OrganizationsScenario,
 ): OrganizationListing {
   const managed = scenario.organization;
-  const isManaged = (parent: string, name: string) =>
-    managed?.parent === parent && managed?.name === name;
+  const isManaged = (name: string) => managed?.name === name;
   const manages = scenario.manage ?? true;
   const listed: ListedOrganization[] = (scenario.mine?.organizations ?? []).map(
     organization => {
-      const readable = isManaged(
-        organization.parent,
-        organization.organization,
-      );
+      const readable = isManaged(organization.organization);
       const manage = readable && manages;
       const createAgents = scenario.createAgents?.[organization.namespace];
       return {
         name: organization.organization,
-        parent: organization.parent,
         namespace: organization.namespace,
         ...(readable
           ? {
@@ -179,15 +187,9 @@ export function listedOrganizations(
       };
     },
   );
-  if (
-    managed &&
-    !listed.some(organization =>
-      isManaged(organization.parent, organization.name),
-    )
-  ) {
+  if (managed && !listed.some(organization => isManaged(organization.name))) {
     listed.push({
       name: managed.name,
-      parent: managed.parent,
       displayName: managed.displayName,
       namespace: managed.namespace,
       orphaned: managed.orphaned,
@@ -308,9 +310,7 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
           return listedOrganizations(scenario);
         case 'x_agent-manager_get_organization':
           if (scenario.organizationErased) {
-            throw new Error(
-              'not_found: get AgentPlatformOrganization org-acme/payments',
-            );
+            throw new Error('not_found: get Organization payments');
           }
           // agent-manager answers the organization's fields and `erases`
           // side by side.
@@ -320,16 +320,15 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
               ...(scenario.erases ? { erases: scenario.erases } : {}),
             };
           }
-          // A member may not read the AgentPlatformOrganization itself.
+          // A member may not read the Organization itself.
           throw new Error(
-            'forbidden: you may not get agentplatformorganizations in org-acme: agent-platform:organizations-admin grants it',
+            'forbidden: you may not get organizations: agent-platform:organizations-admin grants it',
           );
         case 'x_agent-manager_delete_organization': {
           if (scenario.deleteError) {
             throw new Error(scenario.deleteError);
           }
-          const confirmed =
-            args.confirm === `${String(args.namespace)}/${String(args.name)}`;
+          const confirmed = args.confirm === String(args.name);
           const result: OrganizationDeleteResult = {
             organization: scenario.organization!,
             ...(scenario.erases ? { erases: scenario.erases } : {}),
@@ -348,6 +347,44 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
                 }
               : {}),
             ...scenario.deleteResult,
+          };
+          return result;
+        }
+        case 'x_agent-manager_create_organization': {
+          if (scenario.createError) {
+            throw new Error(scenario.createError);
+          }
+          const result: OrganizationCreateResult = {
+            organization: {
+              name: String(args.name),
+              ...(args.displayName
+                ? { displayName: String(args.displayName) }
+                : {}),
+              admins: [
+                ...((args.adminGroups as string[] | undefined) ?? []).map(
+                  group => ({ kind: 'Group', name: group }),
+                ),
+                ...((args.adminUsers as string[] | undefined) ?? []).map(
+                  user => ({ kind: 'User', name: user }),
+                ),
+              ],
+              harnesses: [],
+              workerReplicas: 1,
+            },
+            created: true,
+            next: CREATED_NEXT,
+          };
+          return result;
+        }
+        case 'x_agent-manager_update_organization': {
+          if (scenario.updateError) {
+            throw new Error(scenario.updateError);
+          }
+          const result: OrganizationUpdateResult = {
+            before: scenario.organization,
+            after: scenario.organization,
+            changed: ['admins'],
+            ...commitOf(args),
           };
           return result;
         }

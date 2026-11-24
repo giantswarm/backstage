@@ -27,7 +27,6 @@ import {
 const PAYMENTS = {
   namespace: 'agents-payments-x7k2q',
   organization: 'payments',
-  parent: 'org-acme',
 };
 
 const VALUES = {
@@ -478,7 +477,6 @@ describe('useSaveOrganizationModel', () => {
               organizations: [
                 {
                   name: PAYMENTS.organization,
-                  parent: PAYMENTS.parent,
                   namespace: PAYMENTS.namespace,
                   ...(orphaned ? { orphaned } : {}),
                   permissions: { manage: false, member: true },

@@ -15,6 +15,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
+  CREATED_NEXT,
   fakeOrganizationAccess,
   fakeOrganizationsMuster,
   toolCalls,
@@ -55,7 +56,6 @@ jest.mock('../QueryClientProvider', () => {
 // created: its delete erases it at once, before the list is read again.
 const PAYMENTS = {
   name: 'payments',
-  parent: 'org-acme',
   displayName: 'Payments',
   harnesses: ['kagent'],
   workerReplicas: 0,
@@ -81,7 +81,6 @@ describe('OrganizationsRouter', () => {
               state: 'pending',
               mode: 'apply',
               organization: {
-                parent: 'org-acme',
                 organization:
                   operation === firstOperation ? 'payments' : 'billing',
               },
@@ -143,7 +142,7 @@ describe('OrganizationsRouter', () => {
                 <>
                   <OrganizationsRouter />
                   <RouterLink
-                    to={`/organizations/gazelle/org-acme/billing/credentials/${nextOperation}`}
+                    to={`/organizations/gazelle/billing/credentials/${nextOperation}`}
                   >
                     Open next request
                   </RouterLink>
@@ -154,7 +153,7 @@ describe('OrganizationsRouter', () => {
         </TestApiProvider>,
         {
           initialRouteEntries: [
-            `/organizations/gazelle/org-acme/payments/credentials/${firstOperation}`,
+            `/organizations/gazelle/payments/credentials/${firstOperation}`,
           ],
           mountedRoutes: { '/organizations': organizationsRouteRef },
         },
@@ -213,7 +212,7 @@ describe('OrganizationsRouter', () => {
                 <OrganizationsRouter />
                 {/* Another organization the person is no member of, opened
                     in the same mounted router (a link, the history). */}
-                <RouterLink to="/organizations/gazelle/org-acme/billing">
+                <RouterLink to="/organizations/gazelle/billing">
                   Open billing
                 </RouterLink>
               </>
@@ -222,7 +221,7 @@ describe('OrganizationsRouter', () => {
         </Routes>
       </TestApiProvider>,
       {
-        initialRouteEntries: ['/organizations/gazelle/org-acme/payments'],
+        initialRouteEntries: ['/organizations/gazelle/payments'],
         mountedRoutes: { '/organizations': organizationsRouteRef },
       },
     );
@@ -232,8 +231,8 @@ describe('OrganizationsRouter', () => {
     );
     const dialog = await screen.findByRole('dialog');
     await user.type(
-      await within(dialog).findByLabelText('Type org-acme/payments to confirm'),
-      'org-acme/payments',
+      await within(dialog).findByLabelText('Type payments to confirm'),
+      'payments',
     );
     const confirm = within(dialog).getByRole('button', {
       name: 'Delete organization',
@@ -250,5 +249,81 @@ describe('OrganizationsRouter', () => {
       await screen.findByText('You are not a member of billing'),
     ).toBeInTheDocument();
     expect(screen.queryByText('billing is erased')).toBeNull();
+  });
+
+  it('creates an organization with its admins and opens its page at once, not ready yet', async () => {
+    const user = userEvent.setup();
+    const analyticsApi = mockApis.analytics.mock();
+    // agent-manager lists the new organization only on a later read.
+    const { api, callTool } = fakeOrganizationsMuster({
+      mine: { organizations: [] },
+    });
+    await renderInTestApp(
+      <TestApiProvider
+        apis={[
+          [musterApiRef, api],
+          [kubernetesApiRef, fakeOrganizationAccess()],
+          [analyticsApiRef, analyticsApi],
+          [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+        ]}
+      >
+        <Routes>
+          <Route path="/organizations/*" element={<OrganizationsRouter />} />
+        </Routes>
+      </TestApiProvider>,
+      {
+        initialRouteEntries: ['/organizations'],
+        mountedRoutes: { '/organizations': organizationsRouteRef },
+      },
+    );
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Create organization' }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    // A name that cannot name an Organization is caught before agent-manager.
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /^Name/ }),
+      'Payments',
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Create organization' }),
+    );
+    expect(
+      await within(dialog).findByText(
+        /^Use lowercase letters, digits and hyphens/,
+      ),
+    ).toBeInTheDocument();
+    expect(toolCalls(callTool, 'create_organization')).toEqual([]);
+
+    await user.clear(within(dialog).getByRole('textbox', { name: /^Name/ }));
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /^Name/ }),
+      'payments',
+    );
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /^Admin groups/ }),
+      'payments-leads\n\nplatform-team',
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Create organization' }),
+    );
+
+    await waitFor(() =>
+      expect(toolCalls(callTool, 'create_organization')).toEqual([
+        {
+          name: 'payments',
+          adminGroups: ['payments-leads', 'platform-team'],
+        },
+      ]),
+    );
+    expect(
+      await screen.findByText('payments is not ready yet'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(CREATED_NEXT))).toBeInTheDocument();
+    expect(screen.queryByText(/You are not a member/)).toBeNull();
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'AgentPlatform.organizationCreated' }),
+    );
   });
 });

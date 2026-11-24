@@ -15,6 +15,8 @@ import {
   MODEL_OPERATION_FIELDS,
   ORGANIZATIONS_CAPABILITY,
   type MemberRequest,
+  type OrganizationAdminsUpdate,
+  type OrganizationCreateRequest,
   type OrganizationCredentialReplacement,
   type OrganizationModelRequest,
 } from '../../../lib/organizations';
@@ -112,17 +114,25 @@ export function agentManagerFixtureServer(
     [AGENT_MANAGER_TOOLS.getOrganization]: (args, { installation }) => {
       const { organization, erases } = state().getOrganization(
         installation,
-        text(args, 'namespace'),
         text(args, 'name'),
       );
       return { ...organization, ...(erases && { erases }) };
     },
     [AGENT_MANAGER_TOOLS.deleteOrganization]: (args, { installation }) =>
       state().deleteOrganization(installation, {
-        parent: text(args, 'namespace'),
         name: text(args, 'name'),
         ...(typeof args.confirm === 'string' && { confirm: args.confirm }),
       }),
+    [AGENT_MANAGER_TOOLS.createOrganization]: (args, { installation }) =>
+      state().createOrganization(
+        installation,
+        args as OrganizationCreateRequest,
+      ),
+    [AGENT_MANAGER_TOOLS.updateOrganization]: (args, { installation }) =>
+      state().updateOrganizationAdmins(
+        installation,
+        args as OrganizationAdminsUpdate,
+      ),
     [AGENT_MANAGER_TOOLS.listOrganizationMembers]: (
       args,
       { installation },

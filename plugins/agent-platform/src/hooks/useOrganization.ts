@@ -6,10 +6,17 @@ import { AgentManagerError } from '../lib/agentManager';
 import { organizationOwnConnectors } from '../lib/organizationConnectors';
 import {
   ORGANIZATIONS_CAPABILITY,
+  isOrganizationReady,
   modeArgument,
+  organizationContentMode,
+  type ListedOrganization,
   type MemberRequest,
   type MemberResult,
+  type OrganizationAdmins,
   type OrganizationConnector,
+  type OrganizationCreateRequest,
+  type OrganizationCreateResult,
+  type OrganizationUpdateResult,
   type OrganizationDeleteMode,
   type OrganizationDeleteResult,
   type OrganizationDetails,
@@ -77,6 +84,9 @@ export function useOrganizationsSupported(installation: string | undefined): {
   };
 }
 
+/** How often a listing with an organization not ready yet is read again. */
+const NOT_READY_POLL_INTERVAL_MS = 10_000;
+
 /**
  * `list_organizations` on one installation: the organizations the person
  * manages or belongs to, each with their permissions, and who can add them
@@ -99,6 +109,15 @@ export function useOrganizations(
     enabled,
     queryFn: () => client!.listOrganizations(),
     staleTime: 60_000,
+    // An organization the operator has not reported ready yet, a new one
+    // among them, is read again until it is.
+    refetchInterval: ({ state }) =>
+      state.data?.organizations.some(
+        organization =>
+          !organization.deleting && !isOrganizationReady(organization),
+      ) && !state.error
+        ? NOT_READY_POLL_INTERVAL_MS
+        : false,
     retry: false,
   });
   return {
@@ -125,16 +144,15 @@ function isNotFound(error: unknown): boolean {
  */
 export function useOrganizationDetails(
   installation: string,
-  parent: string,
   name: string,
   options: { enabled?: boolean } = {},
 ): OrganizationRead<OrganizationDetails> {
   const client = useAgentManagerClient(installation);
   const enabled = Boolean(client) && (options.enabled ?? true);
   const query = useQuery({
-    queryKey: musterOrganizationQueryKey(installation, parent, name),
+    queryKey: musterOrganizationQueryKey(installation, name),
     enabled,
-    queryFn: () => client!.getOrganization(parent, name),
+    queryFn: () => client!.getOrganization(name),
     staleTime: 60_000,
     refetchInterval: ({ state }) =>
       state.data?.organization.deleting && !isNotFound(state.error)
@@ -281,15 +299,14 @@ export function useOrganizationMemberWrites(
  */
 export function useOrganizationErasure(
   installation: string,
-  parent: string,
   name: string,
 ): OrganizationRead<OrganizationDetails> {
   const client = useAgentManagerClient(installation);
   const enabled = Boolean(client);
   const query = useQuery({
-    queryKey: musterOrganizationErasureQueryKey(installation, parent, name),
+    queryKey: musterOrganizationErasureQueryKey(installation, name),
     enabled,
-    queryFn: () => client!.getOrganization(parent, name),
+    queryFn: () => client!.getOrganization(name),
     refetchOnMount: 'always',
     gcTime: 0,
     retry: false,
@@ -307,11 +324,7 @@ export function useOrganizationErasure(
  * otherwise or once that pull request merged. agent-manager checks the
  * name again; its refusal is the mutation's error, in its own words.
  */
-export function useOrganizationDeletion(
-  installation: string,
-  parent: string,
-  name: string,
-) {
+export function useOrganizationDeletion(installation: string, name: string) {
   const client = useAgentManagerClient(installation);
   const queryClient = useQueryClient();
   return useTrackedMutation<
@@ -337,7 +350,6 @@ export function useOrganizationDeletion(
         throw new Error('agent-manager is not reachable on this installation.');
       }
       return client.deleteOrganization({
-        parent,
         name,
         ...(mode === 'pull-request' ? {} : { confirm }),
         ...(mode === 'delete' ? {} : { mode: 'commit' as const }),
@@ -346,10 +358,125 @@ export function useOrganizationDeletion(
     onSuccess: () =>
       Promise.all([
         queryClient.invalidateQueries({
-          queryKey: musterOrganizationQueryKey(installation, parent, name),
+          queryKey: musterOrganizationQueryKey(installation, name),
         }),
         queryClient.invalidateQueries({
           queryKey: musterOrganizationsQueryKey(installation),
+        }),
+      ]),
+  });
+}
+
+/**
+ * The listing with a new organization in it, as `create_organization`
+ * answered it, unless the listing has it already: agent-manager may list it
+ * only on a later read. The person who created it manages it.
+ */
+function withCreated(
+  listing: OrganizationListing | undefined,
+  created: OrganizationCreateResult['organization'],
+): OrganizationListing | undefined {
+  if (
+    !listing ||
+    listing.organizations.some(listed => listed.name === created.name)
+  ) {
+    return listing;
+  }
+  const organization: ListedOrganization = {
+    name: created.name,
+    ...(created.displayName ? { displayName: created.displayName } : {}),
+    ...(created.namespace ? { namespace: created.namespace } : {}),
+    permissions: { manage: true, member: false },
+    organization: created,
+  };
+  return {
+    ...listing,
+    organizations: [...listing.organizations, organization],
+  };
+}
+
+/**
+ * Creates an organization as the person (`create_organization`): one
+ * `Organization` with the Agent Platform on and its admins. agent-manager
+ * does not wait for the operator, so the new organization goes into the
+ * listing at once, not ready, and the listing is read until it is.
+ */
+export function useOrganizationCreation(installation: string | undefined) {
+  const client = useAgentManagerClient(installation);
+  const queryClient = useQueryClient();
+  return useTrackedMutation<
+    OrganizationCreateResult,
+    Error,
+    OrganizationCreateRequest
+  >({
+    event: result =>
+      result.created
+        ? { name: 'AgentPlatform.organizationCreated', attributes: {} }
+        : null,
+    mutationFn: request => {
+      if (!client || !installation) {
+        throw new Error('agent-manager is not reachable on this installation.');
+      }
+      return client.createOrganization(request);
+    },
+    onSuccess: async result => {
+      if (!installation || !result.created) {
+        return;
+      }
+      const key = musterOrganizationsQueryKey(installation);
+      await queryClient.cancelQueries({ queryKey: key });
+      queryClient.setQueryData<OrganizationListing>(key, listing =>
+        withCreated(listing, result.organization),
+      );
+    },
+  });
+}
+
+/**
+ * Changes an organization's admins as the person (`update_organization`'s
+ * `adminGroups` and `adminUsers`): each kind replaces that kind of
+ * `spec.admins`. An organization applied from git is changed by pull
+ * request where agent-manager opens them, as its content is
+ * ({@link organizationContentMode}).
+ */
+export function useOrganizationAdminsUpdate(
+  installation: string,
+  name: string,
+) {
+  const client = useAgentManagerClient(installation);
+  const info = useAgentManagerInfo(installation);
+  const queryClient = useQueryClient();
+  return useTrackedMutation<
+    OrganizationUpdateResult,
+    Error,
+    OrganizationAdmins & { organization: ListedOrganization | undefined }
+  >({
+    event: result =>
+      result.commit
+        ? null
+        : { name: 'AgentPlatform.organizationAdminsChanged', attributes: {} },
+    mutationFn: ({ organization, adminGroups, adminUsers }) => {
+      if (!client) {
+        throw new Error('agent-manager is not reachable on this installation.');
+      }
+      const mode = organizationContentMode(
+        organization,
+        info.info?.capabilities?.commit === true,
+      );
+      return client.updateOrganizationAdmins({
+        name,
+        adminGroups,
+        adminUsers,
+        ...modeArgument(mode),
+      });
+    },
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: musterOrganizationsQueryKey(installation),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: musterOrganizationQueryKey(installation, name),
         }),
       ]),
   });
