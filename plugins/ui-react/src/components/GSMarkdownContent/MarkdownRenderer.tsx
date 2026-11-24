@@ -12,7 +12,7 @@ import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { CodeSnippet, Link } from '@backstage/core-components';
 import { makeStyles } from '@material-ui/core/styles';
 import { ExternalLink } from '../ExternalLink';
-import { MermaidDiagram } from '../MermaidDiagram';
+import { MermaidDiagram, mermaidSource } from '../MermaidDiagram';
 import { isExternalHref } from '../../utils/isExternalHref';
 
 // The renderer of core-components' `MarkdownContent` (the same react-markdown,
@@ -69,24 +69,6 @@ const useStyles = makeStyles(theme => ({
     },
   },
 }));
-
-const textOf = (node: HastNode): string =>
-  node.type === 'text'
-    ? (node.value ?? '')
-    : (node.children ?? []).map(textOf).join('');
-
-const classNamesOf = (node: HastNode) => {
-  const className = node.properties?.className;
-  return Array.isArray(className) ? className.map(String) : [];
-};
-
-/** The source of a `<pre><code class="language-mermaid">` block, if it is one. */
-function mermaidSource(pre: HastNode | undefined) {
-  const code = pre?.children?.find(child => child.type === 'element');
-  if (code?.tagName !== 'code') return undefined;
-  if (!classNamesOf(code).includes('language-mermaid')) return undefined;
-  return textOf(code).replace(/\n+$/, '');
-}
 
 const flatten = (text: string, child: ReactNode): string => {
   if (!child) return text;

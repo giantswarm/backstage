@@ -162,6 +162,53 @@ renders neutral "metrics unavailable" states instead of errors, and the backend
 Mimir proxy refuses queries for it. `baseDomain` cannot carry this meaning
 because other features (e.g. agent avatars) require it on every installation.
 
+### Metrics from another installation's Mimir (`mimir`)
+
+Use `mimir` when an installation's series land in another Mimir than its own,
+for example a platform on a workload cluster whose metrics go to its management
+cluster's Mimir:
+
+```yaml
+gs:
+  installations:
+    gerbil:
+      baseDomain: gerbil.example.net
+      mimir:
+        url: https://observability.golem.example.net # default: https://observability.<baseDomain>
+        tenant: giantswarm # the default
+        matchers: # default: none
+          cluster_id: gerbil
+```
+
+- `url` is the Mimir's address without `/prometheus`, and `tenant` the
+  `X-Scope-OrgID` header. The person's OIDC token for the installation is
+  forwarded as everywhere else, so that Mimir must accept it.
+- `matchers` are added to every vector and matrix selector of every query of
+  the installation, in `MimirService` (gs-node), which every Mimir query of the
+  portal passes through: the frontend's `/api/gs/mimir/query` and
+  `/mimir/query_range` and agent-platform-backend's model cost. The PromQL is
+  parsed with the Prometheus project's `@prometheus-io/lezer-promql` and
+  rewritten, as prom-label-proxy does. A matcher the query already has on an
+  enforced label stays, next to the enforced one, so the selector reads the
+  intersection: `cluster_id=~"golem|gerbil"` becomes
+  `cluster_id=~"golem|gerbil",cluster_id="gerbil"`.
+- A query whose matcher cannot select the enforced value (`cluster_id="golem"`,
+  `cluster_id!="gerbil"`, a regex that does not match `gerbil`) asks about
+  another cluster. It is not sent: the backend answers 400 with the reason
+  `outside_installation_matchers`, and the page shows what it shows without
+  metrics. On such an installation, the cluster and deployment pages of every
+  cluster but the enforced one show no metrics. A query that does not parse is
+  refused with a plain 400, an error.
+- Each key is optional and overrides one default on its own. The block is
+  checked when the backend starts: an invalid one (a `url` that is not
+  http(s), an empty `tenant`, a matcher name that is not a label name, an empty
+  or non-string matcher value) is logged once as an error naming the
+  installation and the key, and that installation's metrics are then
+  unavailable (503), while the other installations work.
+- Without `mimir`, queries go to `https://observability.<baseDomain>` with
+  tenant `giantswarm`, unchanged. `mimirEnabled: false` still turns the metrics
+  off, with or without `mimir`.
+
 ### Cluster-access status element
 
 A sidebar status element shows the per-installation access state -- connecting

@@ -73,6 +73,22 @@ function extractConditions(
   }));
 }
 
+/** The queries behind {@link useMimirWorkloadDiagnostics}, for one workload. */
+export function workloadDiagnosticsQueries(
+  clusterName: string | undefined,
+  namespace: string | undefined,
+  name: string,
+) {
+  const podSelector = `cluster_id="${clusterName}",namespace="${namespace}",pod=~"${name}-.*"`;
+  return {
+    waitingQuery: `${KubePodContainerStatusWaitingReason.name}{${podSelector}} == 1`,
+    terminatedQuery: `${KubePodContainerStatusTerminatedReason.name}{${podSelector}} == 1`,
+    restartsQuery: `sum by (container) (${KubePodContainerStatusRestartsTotal.name}{${podSelector}})`,
+    phasesQuery: `count by (phase) (${KubePodStatusPhase.name}{${podSelector}} == 1)`,
+    conditionsQuery: `${KubeDeploymentStatusCondition.name}{cluster_id="${clusterName}",namespace="${namespace}",deployment="${name}"} == 1`,
+  };
+}
+
 export function useMimirWorkloadDiagnostics(options: {
   installationName: string;
   clusterName: string | undefined;
@@ -91,13 +107,13 @@ export function useMimirWorkloadDiagnostics(options: {
   } = options;
 
   const isEnabled = Boolean(enabled && clusterName && namespace && name);
-  const podSelector = `cluster_id="${clusterName}",namespace="${namespace}",pod=~"${name}-.*"`;
-
-  const waitingQuery = `${KubePodContainerStatusWaitingReason.name}{${podSelector}} == 1`;
-  const terminatedQuery = `${KubePodContainerStatusTerminatedReason.name}{${podSelector}} == 1`;
-  const restartsQuery = `sum by (container) (${KubePodContainerStatusRestartsTotal.name}{${podSelector}})`;
-  const phasesQuery = `count by (phase) (${KubePodStatusPhase.name}{${podSelector}} == 1)`;
-  const conditionsQuery = `${KubeDeploymentStatusCondition.name}{cluster_id="${clusterName}",namespace="${namespace}",deployment="${name}"} == 1`;
+  const {
+    waitingQuery,
+    terminatedQuery,
+    restartsQuery,
+    phasesQuery,
+    conditionsQuery,
+  } = workloadDiagnosticsQueries(clusterName, namespace, name);
 
   const {
     data: waitingData,

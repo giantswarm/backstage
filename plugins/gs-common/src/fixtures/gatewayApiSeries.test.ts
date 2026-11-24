@@ -120,9 +120,16 @@ describe('gatewayApiSeries', () => {
         c.kind === 'workload' &&
         c.state === 'ready',
     )!;
-    const routes = routesOn(gatewayApiSeriesOf(many, installation), first.name);
-    expect(routes.length).toBeGreaterThanOrEqual(150);
-    expect(new Set(routes).size).toBe(routes.length);
+    const manySeries = gatewayApiSeriesOf(many, installation);
+    // A route with two parents has a series for each.
+    const routes = new Set(routesOn(manySeries, first.name));
+    expect(routes.size).toBeGreaterThanOrEqual(150);
+    const gateways = manySeries.filter(
+      s =>
+        s.labels.__name__ === 'gatewayapi_gateway_info' &&
+        s.labels.cluster_id === first.name,
+    );
+    expect(gateways.length).toBeGreaterThan(10);
   });
 
   it('names objects as long as a Kubernetes name may be in the long-names scenario', () => {

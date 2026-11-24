@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import type { Selection } from 'react-aria-components';
 import {
   Accordion,
@@ -24,6 +24,7 @@ import {
   isRenderableFile,
   stripFolderPrefix,
 } from '../../lib/files';
+import { planDocumentLink } from '../../lib/repositoryLinks';
 import { EpicChip } from '../EpicChip';
 import { PlanFileContent } from '../PlanFileContent';
 import { PlansErrorAlert } from '../PlansErrorAlert';
@@ -63,7 +64,9 @@ interface PlanGroup {
 /**
  * Merged plans: renderable documents on the default branch, grouped by their
  * top-level folder (one folder per plan by convention). Loose repository-root
- * documents and dot files/folders are hidden.
+ * documents and dot files/folders are hidden. A relative link to one of these
+ * documents selects its plan and scrolls to it (`?doc=`, its `#anchor`); one
+ * to any other file or folder opens on GitHub.
  */
 export function MergedTab({ repo }: { repo: string }) {
   const classes = useStyles();
@@ -72,11 +75,15 @@ export function MergedTab({ repo }: { repo: string }) {
   // anyone with the URL) can deep-link a specific plan.
   const [searchParams, setSearchParams] = useSearchParams();
   const selected = searchParams.get('plan') ?? undefined;
+  const selectedDoc = searchParams.get('doc') ?? undefined;
   const selectPlan = (name: string) => {
     const params = new URLSearchParams(searchParams);
     params.set('plan', name);
+    params.delete('doc');
     setSearchParams(params, { replace: true });
   };
+  const location = useLocation();
+  const pageHref = `${location.pathname}${location.search}`;
 
   const tree = useQuery({
     queryKey: ['plans', 'tree', repo],
@@ -125,6 +132,19 @@ export function MergedTab({ repo }: { repo: string }) {
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [data]);
+  const documents = useMemo(
+    () => new Set(groups.flatMap(group => group.files)),
+    [groups],
+  );
+  const resolveLink = (documentPath: string) => (href: string) =>
+    planDocumentLink(href, {
+      documentPath,
+      pageHref,
+      documents,
+      repo,
+      ref: 'HEAD',
+      params: path => ({ plan: path.slice(0, path.indexOf('/')) }),
+    });
 
   if (isAwaitingData(tree)) {
     return <Progress />;
@@ -219,7 +239,15 @@ export function MergedTab({ repo }: { repo: string }) {
                   )}
                 </AccordionTrigger>
                 <AccordionPanel>
-                  <PlanFileContent repo={repo} refName="HEAD" path={path} />
+                  <PlanFileContent
+                    repo={repo}
+                    refName="HEAD"
+                    path={path}
+                    resolveLink={resolveLink(path)}
+                    fragment={
+                      path === selectedDoc ? location.hash.slice(1) : undefined
+                    }
+                  />
                 </AccordionPanel>
               </Accordion>
             );

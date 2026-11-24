@@ -1,4 +1,5 @@
 import {
+  AnchorHTMLAttributes,
   ElementType,
   ReactNode,
   createContext,
@@ -11,6 +12,14 @@ import AddCommentIcon from '@material-ui/icons/AddComment';
 import ReactMarkdown, { Components, ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Element } from 'hast';
+import { Link } from '@backstage/core-components';
+import {
+  ExternalLink,
+  InPageAnchors,
+  MermaidDiagram,
+  isExternalHref,
+  mermaidSource,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { NewReviewComment, PlanPullFile, PlanReviewComment } from '../../apis';
 import {
   CommentableLines,
@@ -183,6 +192,7 @@ interface BlockContext {
   commentingLine: number | undefined;
   setCommentingLine: (line: number | undefined) => void;
   onCreate: (comment: NewReviewComment) => Promise<unknown>;
+  resolveLink?: (href: string) => string;
 }
 
 /**
@@ -197,7 +207,9 @@ type BlockProps = ExtraProps & { children?: ReactNode; className?: string };
 /**
  * Wrap one markdown block element with a hover `+` gutter button and its
  * inline review threads. `li` keeps its own tag (an extra wrapper would be
- * invalid inside `ul`/`ol`); everything else gets a positioning `<div>`.
+ * invalid inside `ul`/`ol`); everything else gets a positioning `<div>`. A
+ * ` ```mermaid ` fence renders as its diagram, in the portal's light or dark
+ * theme, and stays commentable like any other block.
  */
 function renderBlock(Tag: ElementType) {
   return function AnnotatedBlock({
@@ -208,13 +220,19 @@ function renderBlock(Tag: ElementType) {
   }: BlockProps) {
     const ctx = useContext(AnnotationContext);
 
-    const range = blockRange(node);
-    if (!ctx || !range || !node) {
-      return (
+    const diagram = Tag === 'pre' ? mermaidSource(node) : undefined;
+    const block =
+      diagram === undefined ? (
         <Tag {...rest} className={className}>
           {children}
         </Tag>
+      ) : (
+        <MermaidDiagram source={diagram} />
       );
+
+    const range = blockRange(node);
+    if (!ctx || !range || !node) {
+      return block;
     }
 
     const { classes, path, offset, commentable, threads, onCreate } = ctx;
@@ -278,9 +296,7 @@ function renderBlock(Tag: ElementType) {
     return (
       <div className={classes.block}>
         {button}
-        <Tag {...rest} className={className}>
-          {children}
-        </Tag>
+        {block}
         {annotations}
       </div>
     );
@@ -295,9 +311,41 @@ function renderBlock(Tag: ElementType) {
  * (the "empty form that stays open" symptom). The per-render state goes
  * through AnnotationContext instead, so re-renders reconcile in place.
  */
-const BLOCK_COMPONENTS = Object.fromEntries(
-  [...BLOCK_TAGS].map(tag => [tag, renderBlock(tag as ElementType)]),
-) as Components;
+/**
+ * A link as the page resolves it (`resolveLink`): a page of the portal through
+ * the router, so `InPageAnchors` jumps to a `#heading` in the document, and a
+ * page out of the portal in a new tab, which it says.
+ */
+function AnnotatedLink({
+  href,
+  title,
+  children,
+}: ExtraProps & AnchorHTMLAttributes<HTMLAnchorElement>) {
+  const resolveLink = useContext(AnnotationContext)?.resolveLink;
+  const to = href && resolveLink ? resolveLink(href) : href;
+  if (!to) {
+    return <>{children}</>;
+  }
+  if (isExternalHref(to)) {
+    return (
+      <ExternalLink href={to} display="inline" title={title}>
+        {children}
+      </ExternalLink>
+    );
+  }
+  return (
+    <Link to={to} title={title}>
+      {children}
+    </Link>
+  );
+}
+
+const BLOCK_COMPONENTS = {
+  ...Object.fromEntries(
+    [...BLOCK_TAGS].map(tag => [tag, renderBlock(tag as ElementType)]),
+  ),
+  a: AnnotatedLink,
+} as Components;
 
 const REMARK_PLUGINS = [remarkGfm];
 
@@ -307,7 +355,8 @@ const REMARK_PLUGINS = [remarkGfm];
  * margin; existing review threads render in place under their anchor block.
  * Comments stay ordinary GitHub review comments -- the anchor line is
  * derived from react-markdown's source positions plus the frontmatter
- * offset.
+ * offset. Links go where `resolveLink` sends them, and a `#heading` link
+ * jumps to its heading, matched the way GitHub matches it.
  */
 export function AnnotatedMarkdown(props: {
   /** Full file content at the PR head, including frontmatter. */
@@ -316,8 +365,12 @@ export function AnnotatedMarkdown(props: {
   /** Review comments; entries for other paths are ignored. */
   comments: PlanReviewComment[];
   onCreate: (comment: NewReviewComment) => Promise<unknown>;
+  /** Rewrites a link's `href`: a relative one to where the portal opens it. */
+  resolveLink?: (href: string) => string;
+  /** URL fragment without `#` to scroll to as the document loads. */
+  fragment?: string;
 }) {
-  const { content, file, comments, onCreate } = props;
+  const { content, file, comments, onCreate, resolveLink, fragment } = props;
   const classes = useStyles();
   const [commentingLine, setCommentingLine] = useState<number | undefined>(
     undefined,
@@ -341,6 +394,7 @@ export function AnnotatedMarkdown(props: {
       commentingLine,
       setCommentingLine,
       onCreate,
+      resolveLink,
     }),
     [
       classes,
@@ -350,11 +404,16 @@ export function AnnotatedMarkdown(props: {
       threads,
       commentingLine,
       onCreate,
+      resolveLink,
     ],
   );
 
   return (
-    <Box className={classes.root}>
+    <InPageAnchors
+      className={classes.root}
+      content={content}
+      fragment={fragment}
+    >
       {frontmatter && <Box className={classes.frontmatter}>{frontmatter}</Box>}
       <AnnotationContext.Provider value={ctx}>
         <ReactMarkdown
@@ -364,6 +423,6 @@ export function AnnotatedMarkdown(props: {
           {body}
         </ReactMarkdown>
       </AnnotationContext.Provider>
-    </Box>
+    </InPageAnchors>
   );
 }
