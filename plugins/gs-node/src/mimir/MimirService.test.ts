@@ -568,6 +568,68 @@ describe('MimirService with `gs.installations.<name>.mimir`', () => {
     );
   });
 
+  it.each([
+    [
+      'url',
+      { url: 'https://observability.golem.example.net' },
+      'https://observability.golem.example.net',
+      'giantswarm',
+      'up',
+    ],
+    [
+      'tenant',
+      { tenant: 'glean' },
+      'https://observability.gerbil.example.net',
+      'glean',
+      'up',
+    ],
+    [
+      'matchers',
+      { matchers: { cluster_id: 'gerbil' } },
+      'https://observability.gerbil.example.net',
+      'giantswarm',
+      'up{cluster_id="gerbil"}',
+    ],
+  ])(
+    'overrides only %s when it is the one key set',
+    async (_, mimir, origin, tenant, query) => {
+      const service = serviceWith(mimir);
+
+      await service.query({
+        installationName: 'alba',
+        query: 'up',
+        oidcToken: 'tok',
+      });
+
+      const [href, init] = mockFetch.mock.calls[0];
+      const url = new URL(href);
+      expect(url.origin).toBe(origin);
+      expect(url.pathname).toBe('/prometheus/api/v1/query');
+      expect(url.searchParams.get('query')).toBe(query);
+      expect(init.headers).toMatchObject({
+        Authorization: 'Bearer tok',
+        'X-Scope-OrgID': tenant,
+      });
+    },
+  );
+
+  it('behaves as without it with an empty `mimir` block', async () => {
+    const service = serviceWith({});
+
+    await service.query({
+      installationName: 'alba',
+      query: 'sum(up',
+      oidcToken: 't',
+    });
+
+    const [href, init] = mockFetch.mock.calls[0];
+    expect(new URL(href).origin).toBe(
+      'https://observability.gerbil.example.net',
+    );
+    expect(new URL(href).searchParams.get('query')).toBe('sum(up');
+    expect(init.headers['X-Scope-OrgID']).toBe('giantswarm');
+  });
+
   it('queries `url` with `tenant`, and the OIDC token as before', async () => {
     const service = serviceWith({
       url: 'https://observability.golem.example.net/',
