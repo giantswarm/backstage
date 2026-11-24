@@ -10,6 +10,9 @@ import {
   formStateFromServer,
   hasUserInput,
   mergeOntoExisting,
+  operatingRegion,
+  withOperatingRegion,
+  withRequestMetaArgument,
   wizardEditBlocker,
   wizardAuthModeLabel,
   WIZARD_ANSWER_MODES,
@@ -65,6 +68,7 @@ function sigv4State(
     url: 'https://aws-mcp.eu-central-1.api.aws/mcp',
     authMode: 'sigv4',
     sigv4Region: 'eu-central-1',
+    requestMeta: [{ key: 'AWS_REGION', value: 'eu-central-1' }],
     ...overrides,
   });
 }
@@ -274,31 +278,31 @@ describe('composeMcpServerDefinition', () => {
     expect(
       composeMcpServerDefinition(
         state({
-          meta: [
+          requestMeta: [
             { key: ' AWS_REGION ', value: ' eu-north-1 ' },
             { key: '', value: '' },
           ],
         }),
-      ).meta,
+      ).requestMeta,
     ).toEqual({ AWS_REGION: 'eu-north-1' });
   });
 
-  it('omits meta when no entry has a name', () => {
+  it('omits requestMeta when no entry has a name', () => {
     expect(
-      composeMcpServerDefinition(state({ meta: [{ key: '  ', value: 'x' }] })),
-    ).not.toHaveProperty('meta');
+      composeMcpServerDefinition(state({ requestMeta: [{ key: '  ', value: 'x' }] })),
+    ).not.toHaveProperty('requestMeta');
   });
 
   it('carries request metadata for a server without sigv4 too', () => {
-    // `spec.meta` belongs to the endpoint, not to auth: the CRD allows it for
+    // `spec.requestMeta` belongs to the endpoint, not to auth: the CRD allows it for
     // every non-stdio server.
     expect(
       composeMcpServerDefinition(
         state({
           transport: 'sse',
-          meta: [{ key: 'AWS_REGION', value: 'eu-north-1' }],
+          requestMeta: [{ key: 'AWS_REGION', value: 'eu-north-1' }],
         }),
-      ).meta,
+      ).requestMeta,
     ).toEqual({ AWS_REGION: 'eu-north-1' });
   });
 
@@ -703,6 +707,37 @@ describe('validateNewMcpServerForm', () => {
     );
   });
 
+  it('requires an operating region for AWS SigV4, which muster refuses without', () => {
+    expect(validateNewMcpServerForm(sigv4State({ requestMeta: [] }))).toEqual([
+      'Enter the region the AWS MCP server operates in, e.g. eu-central-1.',
+    ]);
+    expect(
+      validateNewMcpServerForm(
+        sigv4State({ requestMeta: [{ key: 'AWS_REGION', value: ' ' }] }),
+      ),
+    ).toEqual([
+      'Enter the region the AWS MCP server operates in, e.g. eu-central-1.',
+    ]);
+  });
+
+  it('rejects request metadata names muster refuses', () => {
+    const problems = (key: string) =>
+      validateNewMcpServerForm(state({ requestMeta: [{ key, value: 'x' }] }));
+    expect(problems('com.example/tenant-id')).toEqual([]);
+    expect(problems('region_')).toEqual([
+      expect.stringContaining('must be an optional dot-separated prefix'),
+    ]);
+    expect(problems('io.modelcontextprotocol/clientInfo')).toEqual([
+      'Request metadata name io.modelcontextprotocol/clientInfo uses a prefix reserved for MCP',
+    ]);
+    expect(problems('traceparent')).toEqual([
+      'Request metadata name traceparent is set by Muster and OpenTelemetry on each request',
+    ]);
+    expect(problems('API_KEY')).toEqual([
+      expect.stringContaining('would hold a credential'),
+    ]);
+  });
+
   it('rejects AWS SigV4 on the SSE transport, and says where to fix it', () => {
     expect(validateNewMcpServerForm(sigv4State({ transport: 'sse' }))).toEqual([
       expect.stringContaining(
@@ -714,13 +749,13 @@ describe('validateNewMcpServerForm', () => {
   it('flags request metadata that the composed map would silently swallow', () => {
     expect(
       validateNewMcpServerForm(
-        state({ meta: [{ key: '', value: 'eu-north-1' }] }),
+        state({ requestMeta: [{ key: '', value: 'eu-north-1' }] }),
       ),
     ).toEqual(['Request metadata needs a name for every value']);
     expect(
       validateNewMcpServerForm(
         state({
-          meta: [
+          requestMeta: [
             { key: 'AWS_REGION', value: 'eu-north-1' },
             { key: 'AWS_REGION', value: 'eu-central-1' },
           ],
@@ -750,26 +785,15 @@ describe('sigv4Advisories', () => {
   it('warns when the signing region is not the endpoint’s region', () => {
     expect(sigv4Advisories(sigv4State({ sigv4Region: 'us-east-1' }))).toEqual([
       expect.stringContaining('The URL does not mention us-east-1'),
-      expect.anything(),
     ]);
   });
 
-  it('warns when the operating region is missing, the silent-wrong-answer case', () => {
-    expect(sigv4Advisories(sigv4State())).toEqual([
-      expect.stringContaining('No AWS_REGION in request metadata'),
-    ]);
-  });
-
-  it('goes quiet once both are set', () => {
-    expect(
-      sigv4Advisories(
-        sigv4State({ meta: [{ key: 'AWS_REGION', value: 'eu-north-1' }] }),
-      ),
-    ).toEqual([]);
+  it('goes quiet when the signing region matches the endpoint', () => {
+    expect(sigv4Advisories(sigv4State())).toEqual([]);
   });
 
   it('never blocks: advisories are not validation errors', () => {
-    const advised = sigv4State();
+    const advised = sigv4State({ sigv4Region: 'us-east-1' });
     expect(sigv4Advisories(advised).length).toBeGreaterThan(0);
     expect(validateNewMcpServerForm(advised)).toEqual([]);
   });
@@ -882,10 +906,11 @@ const openApiSchema = mcpServersCrd.spec.versions[0].schema
   .openAPIV3Schema as CrdSchema;
 
 /**
- * Evaluates the CEL subset the MCPServer CRD uses — `has()`, `!`, `&&`, `||`,
- * `==`, `!=`, parentheses, string and boolean literals — against a candidate
- * object, so the rules can be run as written instead of paraphrased in test
- * assertions.
+ * Evaluates the CEL subset the MCPServer CRD's object, spec and auth rules use
+ * — `has()`, `size()`, `!`, `&&`, `||`, `==`, `!=`, `<`, `<=`, `>`, `>=`,
+ * `in`, `?:`, map indexing, parentheses, string, integer and boolean literals
+ * — against a candidate object, so the rules can be run as written instead of
+ * paraphrased in test assertions.
  *
  * Comparison operands are values, not just paths: the sigv4 pairing rule
  * (`has(self.sigv4) == (self.type == 'sigv4')`) compares two boolean
@@ -897,7 +922,9 @@ const openApiSchema = mcpServersCrd.spec.versions[0].schema
  * rules grow beyond this: a real CEL package.
  */
 function evaluateCel(rule: string, self: unknown): boolean {
-  const tokens = rule.match(/'[^']*'|[A-Za-z_][\w.]*|&&|\|\||==|!=|[!()]/g);
+  const tokens = rule.match(
+    /'[^']*'|[A-Za-z_][\w.]*|\d+|&&|\|\||==|!=|>=|<=|[!()<>?:[\]]/g,
+  );
   if (!tokens || tokens.join('').length !== rule.replace(/\s+/g, '').length) {
     throw new Error(`CEL rule uses unsupported syntax: ${rule}`);
   }
@@ -924,6 +951,9 @@ function evaluateCel(rule: string, self: unknown): boolean {
         : (value as Record<string, unknown>)[key];
     }, undefined);
 
+  const isLiteral = (token: string): boolean =>
+    token.startsWith("'") || token === 'true' || token === 'false' || /^\d+$/.test(token);
+
   const literal = (token: string): unknown => {
     if (token.startsWith("'")) {
       return token.slice(1, -1);
@@ -931,10 +961,41 @@ function evaluateCel(rule: string, self: unknown): boolean {
     if (token === 'true' || token === 'false') {
       return token === 'true';
     }
+    if (/^\d+$/.test(token)) {
+      return Number(token);
+    }
     throw new Error(`unsupported literal ${token} in: ${rule}`);
   };
 
+  const asNumber = (value: unknown): number => {
+    if (value instanceof Error) {
+      throw value;
+    }
+    if (typeof value !== 'number') {
+      throw new Error(`expected a number, got ${String(value)} in: ${rule}`);
+    }
+    return value;
+  };
+
+  // `size()` of a string, list or map, as CEL defines it. An operand's error
+  // passes through.
+  const sizeOf = (value: unknown): number | Error => {
+    if (value instanceof Error) {
+      return value;
+    }
+    if (typeof value === 'string' || Array.isArray(value)) {
+      return value.length;
+    }
+    if (value !== null && typeof value === 'object') {
+      return Object.keys(value).length;
+    }
+    return new Error(`size() of ${String(value)} in: ${rule}`);
+  };
+
   const asBoolean = (value: unknown): boolean => {
+    if (value instanceof Error) {
+      throw value;
+    }
     if (typeof value !== 'boolean') {
       throw new Error(`expected a boolean, got ${String(value)} in: ${rule}`);
     }
@@ -948,7 +1009,7 @@ function evaluateCel(rule: string, self: unknown): boolean {
     }
     if (peek() === '(') {
       next('(');
-      const value = disjunction();
+      const value = conditional();
       next(')');
       // A sub-expression's held-back error resurfaces here: outside a
       // short-circuit it must fail loudly, never compare as a value.
@@ -964,17 +1025,73 @@ function evaluateCel(rule: string, self: unknown): boolean {
       next(')');
       return resolve(path) !== undefined;
     }
+    if (peek() === 'size') {
+      next('size');
+      next('(');
+      const value = primary();
+      next(')');
+      return sizeOf(value);
+    }
     const token = next();
-    return token.startsWith("'") || token === 'true' || token === 'false'
-      ? literal(token)
-      : resolve(token);
+    if (isLiteral(token)) {
+      return literal(token);
+    }
+    // `self.requestMeta['AWS_REGION']`: a map read, an error when the key is
+    // missing as in CEL. The error is returned as a value, not thrown, so the
+    // rest of the operand is still parsed and a short-circuit can drop it.
+    let value = resolve(token);
+    while (peek() === '[') {
+      next('[');
+      const key = String(literal(next()));
+      next(']');
+      if (value instanceof Error) {
+        continue;
+      }
+      value =
+        value !== null && typeof value === 'object' && key in value
+          ? (value as Record<string, unknown>)[key]
+          : new Error(`no such key ${key} in: ${rule}`);
+    }
+    return value;
+  };
+
+  const relation = (): unknown => {
+    let value = primary();
+    while (['<', '<=', '>', '>=', 'in'].includes(peek())) {
+      const operator = next();
+      const right = primary();
+      if (value instanceof Error || right instanceof Error) {
+        value = value instanceof Error ? value : right;
+        continue;
+      }
+      if (operator === 'in') {
+        value =
+          right !== null &&
+          typeof right === 'object' &&
+          String(value) in (right as Record<string, unknown>);
+        continue;
+      }
+      const [l, r] = [asNumber(value), asNumber(right)];
+      const compare: Record<string, boolean> = {
+        '<': l < r,
+        '<=': l <= r,
+        '>': l > r,
+        '>=': l >= r,
+      };
+      value = compare[operator];
+    }
+    return value;
   };
 
   const equality = (): unknown => {
-    let value = primary();
+    let value = relation();
     while (peek() === '==' || peek() === '!=') {
       const operator = next();
-      const right = primary();
+      const right = relation();
+      if (value instanceof Error || right instanceof Error) {
+        value = value instanceof Error ? value : right;
+        continue;
+      }
       value = operator === '==' ? value === right : value !== right;
     }
     return value;
@@ -1020,6 +1137,22 @@ function evaluateCel(rule: string, self: unknown): boolean {
     return value;
   }
 
+  // `cond ? a : b`, only inside parentheses in this CRD's rules.
+  function conditional(): unknown {
+    const condition = disjunction();
+    if (peek() !== '?') {
+      return condition;
+    }
+    next('?');
+    if (condition instanceof Error) {
+      throw condition;
+    }
+    const whenTrue = conditional();
+    next(':');
+    const whenFalse = conditional();
+    return condition ? whenTrue : whenFalse;
+  }
+
   const result = disjunction();
   if (result instanceof Error) {
     throw result;
@@ -1060,8 +1193,10 @@ function celViolations(schema: CrdSchema, self: unknown): string[] {
     .map(({ message }) => message);
 }
 
-const authSchema = ((openApiSchema.properties?.spec as CrdSchema).properties
-  ?.auth as CrdSchema) ?? { 'x-kubernetes-validations': [] };
+const specSchema = openApiSchema.properties?.spec as CrdSchema;
+const authSchema = (specSchema.properties?.auth as CrdSchema) ?? {
+  'x-kubernetes-validations': [],
+};
 
 // strict: false — the schema carries k8s vocabulary (x-kubernetes-validations,
 // descriptions on every node) ajv doesn't know; formats are only used by status
@@ -1136,11 +1271,12 @@ describe('CRD conformance', () => {
     ],
     ['sse transport', state({ transport: 'sse' })],
     [
-      'sigv4 (signing region only)',
+      'sigv4 (signing and operating region)',
       state({
         url: 'https://aws-mcp.eu-central-1.api.aws/mcp',
         authMode: 'sigv4',
         sigv4Region: 'eu-central-1',
+        requestMeta: [{ key: 'AWS_REGION', value: 'eu-north-1' }],
       }),
     ],
     [
@@ -1151,12 +1287,12 @@ describe('CRD conformance', () => {
         sigv4Region: 'eu-central-1',
         sigv4Service: 'aws-mcp',
         sigv4RoleArn: 'arn:aws:iam::123456789012:role/muster-mcp',
-        meta: [{ key: 'AWS_REGION', value: 'eu-central-1' }],
+        requestMeta: [{ key: 'AWS_REGION', value: 'eu-central-1' }],
       }),
     ],
     [
       'request metadata without sigv4',
-      state({ meta: [{ key: 'AWS_REGION', value: 'eu-north-1' }] }),
+      state({ requestMeta: [{ key: 'AWS_REGION', value: 'eu-north-1' }] }),
     ],
     [
       'longest allowed description',
@@ -1176,6 +1312,7 @@ describe('CRD conformance', () => {
       customResource(formState),
     ) as ReturnType<typeof customResource>;
     expect(celViolations(openApiSchema, cr)).toEqual([]);
+    expect(celViolations(specSchema, cr.spec)).toEqual([]);
     expect(cr.spec.auth ? celViolations(authSchema, cr.spec.auth) : []).toEqual(
       [],
     );
@@ -1257,11 +1394,11 @@ describe('CRD conformance', () => {
         spec: {
           type: 'stdio',
           command: 'mcp-server',
-          meta: { AWS_REGION: 'x' },
+          requestMeta: { AWS_REGION: 'x' },
         },
       }),
     ).toEqual([
-      'meta field is only allowed when type is streamable-http or sse',
+      'requestMeta field is only allowed when type is streamable-http or sse',
     ]);
   });
 
@@ -1329,7 +1466,7 @@ describe('editing a registered server in the wizard', () => {
         type: 'oauth',
         authorizationServer: { issuer: 'https://idp', scopes: 'read' },
       },
-      meta: { AWS_REGION: 'eu-west-1' },
+      requestMeta: { AWS_REGION: 'eu-west-1' },
     });
     const form = formStateFromServer(server);
 
@@ -1340,10 +1477,10 @@ describe('editing a registered server in the wizard', () => {
       transport: 'sse',
       issuer: 'https://idp',
       scopes: 'read',
-      meta: [{ key: 'AWS_REGION', value: 'eu-west-1' }],
+      requestMeta: [{ key: 'AWS_REGION', value: 'eu-west-1' }],
     });
     expect(validateNewMcpServerForm(form)).toEqual([]);
-    const { name, type, url, description, auth, meta } =
+    const { name, type, url, description, auth, requestMeta } =
       toMcpServerDefinition(server);
     expect(composeMcpServerDefinition(form)).toEqual({
       name,
@@ -1351,7 +1488,7 @@ describe('editing a registered server in the wizard', () => {
       url,
       description,
       auth,
-      meta,
+      requestMeta,
       autoStart: true,
     });
   });
@@ -1472,11 +1609,11 @@ describe('editing a registered server in the wizard', () => {
     // The wizard composes trimmed values, so a stored value with surrounding
     // whitespace is saved back without it once the server is edited.
     const form = formStateFromServer(
-      registered({ meta: { AWS_REGION: ' eu-west-1 ' } }),
+      registered({ requestMeta: { AWS_REGION: ' eu-west-1 ' } }),
     );
 
-    expect(form.meta).toEqual([{ key: 'AWS_REGION', value: ' eu-west-1 ' }]);
-    expect(composeMcpServerDefinition(form).meta).toEqual({
+    expect(form.requestMeta).toEqual([{ key: 'AWS_REGION', value: ' eu-west-1 ' }]);
+    expect(composeMcpServerDefinition(form).requestMeta).toEqual({
       AWS_REGION: 'eu-west-1',
     });
   });
@@ -1527,12 +1664,12 @@ describe('editing a registered server in the wizard', () => {
   });
 
   it('sends a cleared auth answer or metadata explicitly', () => {
-    // muster's update keeps a stored auth/meta block it is not sent, so
+    // muster's update keeps a stored auth/requestMeta block it is not sent, so
     // omitting them would silently keep the old values.
     const existing = toMcpServerDefinition(
       registered({
         auth: { type: 'oauth' },
-        meta: { AWS_REGION: 'eu-west-1' },
+        requestMeta: { AWS_REGION: 'eu-west-1' },
       }),
     );
     const merged = mergeOntoExisting(
@@ -1541,14 +1678,14 @@ describe('editing a registered server in the wizard', () => {
     );
 
     expect(merged.auth).toEqual({ type: 'none' });
-    expect(merged.meta).toEqual({});
+    expect(merged.requestMeta).toEqual({});
     // A server that never had either gets neither.
     const plain = mergeOntoExisting(
       toMcpServerDefinition(registered({})),
       composeMcpServerDefinition(state({ slug: 'weather-mcp' })),
     );
     expect(plain).not.toHaveProperty('auth');
-    expect(plain).not.toHaveProperty('meta');
+    expect(plain).not.toHaveProperty('requestMeta');
   });
 
   it('keeps the stored description when it is cleared', () => {
@@ -1979,7 +2116,7 @@ describe('hasUserInput', () => {
     expect(
       hasUserInput({
         ...emptyFormState,
-        meta: [{ key: 'A', value: '' }],
+        requestMeta: [{ key: 'A', value: '' }],
       }),
     ).toBe(true);
   });
@@ -2107,5 +2244,69 @@ describe('tags', () => {
     ).toBe(true);
     expect(takesArgument({ properties: { name: {} } }, 'tags')).toBe(false);
     expect(takesArgument(undefined, 'tags')).toBe(false);
+  });
+});
+
+describe('operating region', () => {
+  it('reads the AWS_REGION entry, or nothing', () => {
+    expect(operatingRegion(sigv4State())).toBe('eu-central-1');
+    expect(operatingRegion(state())).toBe('');
+  });
+
+  it('replaces the AWS_REGION entry in place and keeps the others', () => {
+    const entries = [
+      { key: 'com.example/tenant-id', value: 'a' },
+      { key: 'AWS_REGION', value: 'eu-central-1' },
+    ];
+    expect(withOperatingRegion(entries, 'eu-north-1')).toEqual([
+      { key: 'com.example/tenant-id', value: 'a' },
+      { key: 'AWS_REGION', value: 'eu-north-1' },
+    ]);
+    expect(entries[1].value).toBe('eu-central-1');
+  });
+
+  it('appends an AWS_REGION entry when there is none', () => {
+    expect(withOperatingRegion([], 'eu-north-1')).toEqual([
+      { key: 'AWS_REGION', value: 'eu-north-1' },
+    ]);
+  });
+});
+
+describe('withRequestMetaArgument', () => {
+  const definition = composeMcpServerDefinition(sigv4State());
+
+  it('keeps requestMeta for a muster whose tools take it', () => {
+    expect(withRequestMetaArgument(definition, true)).toBe(definition);
+  });
+
+  it('sends the former name meta to a muster whose tools do not take requestMeta', () => {
+    const sent = withRequestMetaArgument(definition, false);
+    expect(sent).not.toHaveProperty('requestMeta');
+    expect(sent.meta).toEqual({ AWS_REGION: 'eu-central-1' });
+  });
+
+  it('leaves a definition without request metadata alone', () => {
+    const plain = composeMcpServerDefinition(state());
+    expect(withRequestMetaArgument(plain, false)).toBe(plain);
+  });
+});
+
+describe('mergeOntoExisting with the former meta name', () => {
+  it('never sends meta next to requestMeta, which muster refuses', () => {
+    const merged = mergeOntoExisting(
+      { name: 'aws', type: 'streamable-http', meta: { AWS_REGION: 'eu-west-1' } },
+      composeMcpServerDefinition(sigv4State({ slug: 'aws' })),
+    );
+    expect(merged).not.toHaveProperty('meta');
+    expect(merged.requestMeta).toEqual({ AWS_REGION: 'eu-central-1' });
+  });
+
+  it('clears a stored meta explicitly when the wizard leaves none', () => {
+    const merged = mergeOntoExisting(
+      { name: 'plain', type: 'streamable-http', meta: { 'com.example/x': 'a' } },
+      composeMcpServerDefinition(state({ slug: 'plain' })),
+    );
+    expect(merged).not.toHaveProperty('meta');
+    expect(merged.requestMeta).toEqual({});
   });
 });

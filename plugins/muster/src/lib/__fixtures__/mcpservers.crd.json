@@ -14,7 +14,9 @@
       "kind": "MCPServer",
       "listKind": "MCPServerList",
       "plural": "mcpservers",
-      "shortNames": ["mcps"],
+      "shortNames": [
+        "mcps"
+      ],
       "singular": "mcpserver"
     },
     "scope": "Namespaced",
@@ -102,11 +104,13 @@
                                 "type": "string"
                               },
                               "namespace": {
-                                "description": "Namespace is the Kubernetes namespace where the secret is located.\nIf not specified, defaults to the MCPServer's namespace.",
+                                "description": "Namespace is the Kubernetes namespace where the secret is located.\nIf not specified, defaults to the MCPServer's namespace. An MCPServer\noutside muster's own namespace may name only its own namespace here;\nmuster refuses the server otherwise.",
                                 "type": "string"
                               }
                             },
-                            "required": ["name"],
+                            "required": [
+                              "name"
+                            ],
                             "type": "object"
                           },
                           "expectedIssuer": {
@@ -115,12 +119,20 @@
                             "type": "string"
                           },
                           "grantScope": {
-                            "description": "GrantScope decides whom a token obtained from this authorization server\nbelongs to. `session` (the default) keeps today's behavior: the token is\nbound to the login session that completed the browser flow, so every new\nsession signs in again. `subject` files the token under the user's\nidentity as well, so any later session of the same person -- another\nclient, a re-login, a front-end whose bearer rotates -- reuses the grant\nwithout a new consent, until the person signs out of this server\n(`core_auth_logout`) or everywhere. Use `subject` for external accounts\nthe person owns (GitHub), never for tokens that carry session-specific\nauthority.",
-                            "enum": ["session", "subject"],
+                            "description": "GrantScope decides whom a token obtained from this authorization server\nbelongs to. `session` (the default) keeps today's behavior: the token is\nbound to the login session that completed the browser flow, so every new\nsession signs in again. `subject` files the token under the user's\nidentity as well, so any later session of the same person -- another\nclient, a re-login, a front-end whose bearer rotates -- reuses the grant\nwithout a new consent, until the person signs out of this server\n(`core_auth_logout`) or everywhere. Use `subject` for external accounts\nthe person owns (GitHub), never for tokens that carry session-specific\nauthority. MCPServerAuth.GrantScope says the same for a server that\ndiscovers its authorization server instead of pinning it.",
+                            "enum": [
+                              "session",
+                              "subject"
+                            ],
                             "type": "string"
                           },
                           "issuer": {
                             "description": "Issuer is the OAuth 2.0 / OIDC issuer URL of the authorization server\nthe sign-in runs against, and the identity the session's grants are\nfiled under. It takes precedence over the authorization server the\nendpoint's own RFC 9728 metadata names: the browser flow, the token\nstore, the connection and core_auth_logout all use this issuer, so an\nendpoint that accepts tokens from an authorization server other than the\none it advertises is pinned by naming the accepting one here. It may be\nmuster's own identity provider; muster keeps the session's login token\napart from the grant. A change to this field takes effect on the next\ncore_auth_login, without a restart.\nmuster fetches AS metadata via the existing OAuth client, which performs\nRFC 8414 / OIDC discovery against this issuer -- unless\nAuthorizationEndpoint and TokenEndpoint are set, in which case no\ndiscovery happens and the issuer is only that identity. When the\nauthorization server publishes a different issuer identifier than the\nidentity pinned here, set ExpectedIssuer.",
+                            "pattern": "^https://[^/?#]+(/[^?#]*[^/?#])?$",
+                            "type": "string"
+                          },
+                          "revocationEndpoint": {
+                            "description": "RevocationEndpoint is the authorization server's RFC 7009 token\nrevocation endpoint. When the person disconnects a subject-scoped grant\n(core_auth_logout), muster revokes its refresh and access tokens there\nbefore dropping its copy, so the provider stops honouring them and the\nnext sign-in asks for consent again. Default: the revocation_endpoint\nof the authorization server's metadata; set it for one whose metadata\nnames none or is pinned through AuthorizationEndpoint and TokenEndpoint\n(GitLab: https://gitlab.example.com/oauth/revoke). Without either, the\ngrant stays valid at the provider until it expires.",
                             "pattern": "^https://[^/?#]+(/[^?#]*[^/?#])?$",
                             "type": "string"
                           },
@@ -134,7 +146,9 @@
                             "type": "string"
                           }
                         },
-                        "required": ["issuer"],
+                        "required": [
+                          "issuer"
+                        ],
                         "type": "object",
                         "x-kubernetes-validations": [
                           {
@@ -156,6 +170,24 @@
                         "default": false,
                         "description": "ForwardToken enables ID token forwarding for SSO.\nWhen true, muster forwards the session's upstream dex ID token (or, for\nsessions established by a trusted-issuer bearer, that IdP-issued bearer)\nto this server byte-identical, instead of triggering a separate OAuth\nflow. Every forwarded token is issued by the IdP (dex); muster is not\nan identity provider, never signs tokens, and no backend is ever\nconfigured to trust a muster JWKS. The downstream server must trust the\nIdP's issuer/JWKS (e.g. muster's client ID in its TrustedAudiences for\nforwarded dex ID tokens).\n\nThe forwarded token is not audience-scoped to this server: the same\ntoken is accepted by every forwardToken backend, so all forwardToken\nbackends must be equally trusted. A token's nested act claim (minted\nby the IdP, e.g. via exchange at dex) carries the delegation chain for\nbackend authorization decisions.",
                         "type": "boolean"
+                      },
+                      "grantScope": {
+                        "description": "GrantScope decides whom the grant of this server's OAuth sign-in\nbelongs to, whichever authorization server the server uses: the one\nmuster discovers through the server's RFC 9728 Protected Resource\nMetadata, or the one pinned in AuthorizationServer. `session` (the\ndefault) binds the grant to the login session that completed the\nbrowser flow. `subject` files it under the person as well, so every\nlater session of the same person -- another client, an agent\nconversation, a session after a muster restart -- connects with it\nwithout a new consent, until the person signs out of the server\n(`core_auth_logout`). The semantics are those of\nAuthorizationServer.GrantScope, which a pinned server may set instead;\nset both only to the same value.\n\nmuster decides grant scope per authorization server: a server with\n`subject` and no pin makes the issuer it discovers subject-scoped, as a\npin with `grantScope: subject` does for its issuer, and the\none-description-per-issuer rule of the pins applies to it, except that\nan issuer an operator names in an AuthorizationServer pin keeps that\npin's description. `subject` is only valid with Type \"oauth\" and\nneither ForwardToken nor TokenExchange, which obtain no grant of their\nown; `session` is accepted everywhere.",
+                        "enum": [
+                          "session",
+                          "subject"
+                        ],
+                        "type": "string"
+                      },
+                      "providerApps": {
+                        "description": "ProviderApps names the provider Apps (muster's aggregator.providerApps)\nwhose grants this server receives. On every request muster attaches the\naccess token of each named App the person granted, in the header\nX-Muster-Grant-<app>, refreshed ahead of its expiry; an App the person\ndid not grant sends no header. A tool result that names missing Apps\n({\"status\": \"grant_required\", \"apps\": [...]} in structuredContent) is\nanswered auth_required with each App's sign-in link. The person's\nconnection is made as the person, so this needs ForwardToken or\nForwardIdentity.",
+                        "items": {
+                          "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+                          "type": "string"
+                        },
+                        "maxItems": 32,
+                        "type": "array",
+                        "x-kubernetes-list-type": "set"
                       },
                       "requiredAudiences": {
                         "description": "RequiredAudiences specifies additional audience(s) that the forwarded ID token\nshould contain. When ForwardToken is true, muster will request these audiences\nfrom the upstream IdP (e.g., Dex) using cross-client scopes.\n\nThis is used when the downstream server requires tokens with specific audiences,\nfor example when forwarding tokens to Kubernetes for OIDC authentication:\n  requiredAudiences:\n    - \"dex-k8s-authenticator\"\n\nAt user authentication, muster collects all requiredAudiences from MCPServers\nwith forwardToken: true or forwardIdentity: true and requests them all\nfrom the IdP.",
@@ -180,7 +212,9 @@
                             "type": "string"
                           }
                         },
-                        "required": ["region"],
+                        "required": [
+                          "region"
+                        ],
                         "type": "object"
                       },
                       "tokenExchange": {
@@ -204,15 +238,17 @@
                                 "type": "string"
                               },
                               "namespace": {
-                                "description": "Namespace is the Kubernetes namespace where the secret is located.\nIf not specified, defaults to the MCPServer's namespace.",
+                                "description": "Namespace is the Kubernetes namespace where the secret is located.\nIf not specified, defaults to the MCPServer's namespace. An MCPServer\noutside muster's own namespace may name only its own namespace here;\nmuster refuses the server otherwise.",
                                 "type": "string"
                               }
                             },
-                            "required": ["name"],
+                            "required": [
+                              "name"
+                            ],
                             "type": "object"
                           },
                           "connectorId": {
-                            "description": "ConnectorID is the ID of the OIDC connector on the remote Dex that\ntrusts the local cluster's Dex.\nRequired when Enabled is true.\nExample: \"cluster-a-dex\"",
+                            "description": "ConnectorID is the ID of the OIDC connector on the remote Dex that\ntrusts the local cluster's Dex, sent as Dex's connector_id parameter.\nRequired for a person's exchange. A delegated caller's exchange sends\nnone: it goes to the Dex that issued the delegated token, which verifies\nit with its own keys, so a server only delegated callers reach may leave\nit empty.\nExample: \"cluster-a-dex\"",
                             "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$",
                             "type": "string"
                           },
@@ -242,7 +278,11 @@
                       "type": {
                         "default": "none",
                         "description": "Type specifies the authentication type.\nSupported values:\n  - \"oauth\": OAuth 2.0/OIDC authentication\n  - \"none\": No authentication\n  - \"sigv4\": AWS Signature Version 4, signed with muster's own machine\n    identity. See SigV4.",
-                        "enum": ["oauth", "none", "sigv4"],
+                        "enum": [
+                          "oauth",
+                          "none",
+                          "sigv4"
+                        ],
                         "type": "string"
                       }
                     },
@@ -271,6 +311,18 @@
                       {
                         "message": "forwardIdentity sends the session's ID token next to a pinned grant, so it needs type oauth and authorizationServer",
                         "rule": "!has(self.forwardIdentity) || !self.forwardIdentity || (self.type == 'oauth' && has(self.authorizationServer))"
+                      },
+                      {
+                        "message": "providerApps attaches the person's App tokens to a connection made as the person, so it needs forwardToken or forwardIdentity",
+                        "rule": "!has(self.providerApps) || size(self.providerApps) == 0 || (has(self.forwardToken) && self.forwardToken) || (has(self.forwardIdentity) && self.forwardIdentity)"
+                      },
+                      {
+                        "message": "grantScope subject files the grant of a per-server OAuth sign-in under the person, so it needs type oauth and neither forwardToken nor tokenExchange",
+                        "rule": "!has(self.grantScope) || self.grantScope != 'subject' || (self.type == 'oauth' && !(has(self.forwardToken) && self.forwardToken) && !(has(self.tokenExchange) && has(self.tokenExchange.enabled) && self.tokenExchange.enabled))"
+                      },
+                      {
+                        "message": "grantScope and authorizationServer.grantScope disagree: set one of them, or both to the same value",
+                        "rule": "!has(self.grantScope) || !has(self.authorizationServer) || !has(self.authorizationServer.grantScope) || self.grantScope == self.authorizationServer.grantScope"
                       }
                     ]
                   },
@@ -292,7 +344,7 @@
                     "additionalProperties": {
                       "type": "string"
                     },
-                    "description": "Env contains environment variables to set for the MCP server.\nFor stdio servers, these are passed to the process when it is started.\nFor remote servers, these can be used for authentication or configuration.",
+                    "description": "Env contains environment variables to set for a stdio server's process\nwhen it is started. Only allowed when Type is \"stdio\": a remote server\nhas no process to receive them. A remote server that needs a credential\nreads it from a Secret through HeadersFrom.",
                     "type": "object"
                   },
                   "family": {
@@ -309,22 +361,149 @@
                         "type": "string"
                       }
                     },
-                    "required": ["instanceArg", "name"],
+                    "required": [
+                      "instanceArg",
+                      "name"
+                    ],
                     "type": "object"
                   },
                   "headers": {
                     "additionalProperties": {
                       "type": "string"
                     },
-                    "description": "Headers contains HTTP headers to send with requests to remote MCP servers.\nThis field is only relevant when Type is \"streamable-http\" or \"sse\".",
-                    "type": "object"
+                    "description": "Headers contains HTTP headers to send with requests to remote MCP servers.\nThis field is only relevant when Type is \"streamable-http\" or \"sse\".\n\nEveryone who can read the MCPServer can read these values, so they hold\nno credential: a value in an Authorization, Proxy-Authorization, Cookie\nor X-API-Key header (in any case) is refused. Send a credential with\nHeadersFrom instead.",
+                    "maxProperties": 32,
+                    "type": "object",
+                    "x-kubernetes-validations": [
+                      {
+                        "message": "headers must not hold a credential (Authorization, Proxy-Authorization, Cookie, X-API-Key): put it in a Secret and refer to it in headersFrom",
+                        "rule": "self.all(k, self[k] == '' || !k.matches('^(?i)(authorization|proxy-authorization|cookie|x-api-key)$'))"
+                      }
+                    ]
+                  },
+                  "headersFrom": {
+                    "description": "HeadersFrom lists HTTP headers whose values muster reads from a Secret\nin the MCPServer's own namespace, each time it connects to the server.\nIt is the place for a credential such as an Authorization header: the\nvalue never enters the MCPServer, muster's service data or the output\nof a core tool. An entry wins over a Headers entry of the same name.\nOnly relevant when Type is \"streamable-http\" or \"sse\".\n\nA connection that carries a person's own credential (an OAuth sign-in,\na forwarded or exchanged token) sends its own Authorization header, so\nan Authorization entry here reaches only muster's own connection.\n\nHeader names are case-insensitive, so two entries whose names differ\nonly in case are refused.",
+                    "items": {
+                      "description": "MCPServerHeaderFrom is an HTTP header whose value muster reads from a\nSecret, in the shape of kagent's RemoteMCPServer headersFrom.",
+                      "properties": {
+                        "name": {
+                          "description": "Name is the HTTP header name, for example Authorization.",
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "valueFrom": {
+                          "description": "ValueFrom names the Secret key that holds the header's value.",
+                          "properties": {
+                            "key": {
+                              "description": "Key is the key in the Secret's data that holds the value.",
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "name": {
+                              "description": "Name is the name of the Secret.",
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "type": {
+                              "description": "Type is the kind of object that holds the value. Only Secret.",
+                              "enum": [
+                                "Secret"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "key",
+                            "name",
+                            "type"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "valueFrom"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 32,
+                    "type": "array",
+                    "x-kubernetes-list-map-keys": [
+                      "name"
+                    ],
+                    "x-kubernetes-list-type": "map",
+                    "x-kubernetes-validations": [
+                      {
+                        "message": "headersFrom names a header twice: header names are case-insensitive",
+                        "rule": "self.all(x, self.exists_one(y, y.name.lowerAscii() == x.name.lowerAscii()))"
+                      }
+                    ]
                   },
                   "meta": {
                     "additionalProperties": {
                       "type": "string"
                     },
-                    "description": "Meta contains entries merged into the `params._meta` object of every\noutbound JSON-RPC request that carries `params`. It carries call-scoped\nconfiguration to a backend that reads it from the MCP metadata field\ninstead of from tool arguments.\n\nAn entry already present in a request's `_meta` wins, so a caller can\nstill override per call. Requests without `params` are left untouched.\n\nThe injection happens in an HTTP round tripper shared by every remote\nclient, so it applies to `streamable-http` and `sse` alike, with or\nwithout auth. For a SigV4 server the round tripper sits in front of the\nsigner, because the body has to be rewritten before it is signed.\n\nA stdio server has no HTTP transport, so the CEL rule above rejects the\nfield there rather than accepting and dropping it.\n\nThe AWS-hosted MCP server is the motivating case: it takes the region it\noperates in from `params._meta.AWS_REGION`, and its tools declare no\nregion argument, so without this a call fails with NoRegionError. That\noperating region is a different value from Auth.SigV4.Region, which is\nthe signing region — the two default to the same string but resolve\nindependently, endpoint-first for signing and config-first for operating.",
+                    "description": "Meta is the former name of RequestMeta and is read the same way.\nSetting both is refused.\n\nDeprecated: use RequestMeta.",
+                    "maxProperties": 32,
+                    "type": "object",
+                    "x-kubernetes-validations": [
+                      {
+                        "message": "a key must follow the MCP _meta key format: an optional dot-separated prefix ending in '/', then a name that begins and ends with a letter or digit",
+                        "rule": "self.all(k, k.matches('^([a-zA-Z]([a-zA-Z0-9-]*[a-zA-Z0-9])?([.][a-zA-Z]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*/)?[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'))"
+                      },
+                      {
+                        "message": "a key prefix whose second label is modelcontextprotocol or mcp is reserved for MCP",
+                        "rule": "self.all(k, !k.matches('^(?i)[^./]+[.](modelcontextprotocol|mcp)([.][^/]*)?/'))"
+                      },
+                      {
+                        "message": "progressToken, traceparent, tracestate and baggage are set by muster and OpenTelemetry, not by configuration",
+                        "rule": "self.all(k, !(k in ['progressToken', 'traceparent', 'tracestate', 'baggage']))"
+                      },
+                      {
+                        "message": "requestMeta must not hold a credential: everyone who can read the MCPServer can read it",
+                        "rule": "self.all(k, !k.matches('^(?i)(authorization|cookie|token|access_token|id_token|refresh_token|password|secret|client_secret|api[-_]?key)$'))"
+                      }
+                    ]
+                  },
+                  "progress": {
+                    "description": "Progress configures how progress the server reports on a tool call\naffects that call's budget. Unset, progress keeps a tool call going for\nup to 3600 seconds.",
+                    "properties": {
+                      "maxDuration": {
+                        "default": 3600,
+                        "description": "MaxDuration bounds, in seconds, a tool call kept going by progress. On\na tool call, each progress notification from the server restarts\nTimeout, up to MaxDuration; muster sends the server a progressToken on\nevery tool call, whether its caller asked for progress or not. Any other\noperation stays bounded by Timeout. A value equal to Timeout extends\nnothing. Unset, 3600.",
+                        "maximum": 3600,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
                     "type": "object"
+                  },
+                  "requestMeta": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "RequestMeta contains entries added to the `params._meta` object of every\noutbound JSON-RPC request that carries `params`. It carries server-wide\nconfiguration to a backend that reads it from the MCP metadata field\ninstead of from tool arguments.\n\nKeys follow the MCP `_meta` key format. Keys reserved by MCP, and the\nones muster and OpenTelemetry set themselves, are refused. muster does\nnot forward a caller's `_meta`, so an entry here applies to every call\nunless muster has already set the same key on that request. Requests\nwithout `params` are left untouched.\n\nEveryone who can read the MCPServer can read these values, so they hold\nno credential.\n\nThe entries are added by an HTTP round tripper shared by every remote\nclient, so they apply to `streamable-http` and `sse` alike, with or\nwithout auth. For a SigV4 server the round tripper runs before the\nsigner, because the signature covers a hash of the body.\n\nThe AWS-hosted MCP server reads the region it operates in from\n`AWS_REGION` and falls back to us-east-1 without it, so a SigV4 server\nmust set that key. It is a different value from Auth.SigV4.Region, the\nsigning region, which must match the endpoint.",
+                    "maxProperties": 32,
+                    "type": "object",
+                    "x-kubernetes-validations": [
+                      {
+                        "message": "a key must follow the MCP _meta key format: an optional dot-separated prefix ending in '/', then a name that begins and ends with a letter or digit",
+                        "rule": "self.all(k, k.matches('^([a-zA-Z]([a-zA-Z0-9-]*[a-zA-Z0-9])?([.][a-zA-Z]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*/)?[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'))"
+                      },
+                      {
+                        "message": "a key prefix whose second label is modelcontextprotocol or mcp is reserved for MCP",
+                        "rule": "self.all(k, !k.matches('^(?i)[^./]+[.](modelcontextprotocol|mcp)([.][^/]*)?/'))"
+                      },
+                      {
+                        "message": "progressToken, traceparent, tracestate and baggage are set by muster and OpenTelemetry, not by configuration",
+                        "rule": "self.all(k, !(k in ['progressToken', 'traceparent', 'tracestate', 'baggage']))"
+                      },
+                      {
+                        "message": "requestMeta must not hold a credential: everyone who can read the MCPServer can read it",
+                        "rule": "self.all(k, !k.matches('^(?i)(authorization|cookie|token|access_token|id_token|refresh_token|password|secret|client_secret|api[-_]?key)$'))"
+                      }
+                    ]
                   },
                   "restartRequestedAt": {
                     "description": "RestartRequestedAt requests a one-shot restart of this server's service.\nRestart is an action, not a steady state, so it cannot be a boolean: the\ncaller writes a timestamp, which doubles as the audit record of when the\nrestart was requested. The reconciler restarts the service only when this\ndiffers from status.lastRestartedAt, then mirrors the processed value\ninto status — repeated reconciles of an already-processed request are\nno-ops (issue #1055).",
@@ -338,7 +517,7 @@
                   },
                   "timeout": {
                     "default": 30,
-                    "description": "Timeout bounds every operation on the server in seconds, a tool call\nincluded, for every type; for a remote server also the connect and the\nhealth probe.",
+                    "description": "Timeout bounds every operation on the server in seconds, a tool call\nincluded, for every type; for a remote server also the connect and the\nhealth probe. See Progress for a tool call that reports progress.",
                     "maximum": 300,
                     "minimum": 1,
                     "type": "integer"
@@ -350,17 +529,44 @@
                   },
                   "type": {
                     "description": "Type specifies how this MCP server should be executed.\nSupported values: \"stdio\" for local processes, \"streamable-http\" for HTTP-based servers, \"sse\" for Server-Sent Events.\n\n\"stdio\" is CLI-only. A stdio server is started as a subprocess of the muster\nprocess, so a muster running in Kubernetes mode rejects it: the tool handlers\nfail the call, and a CR applied directly through the API server is reconciled\nto state Failed instead of spawning a process in the muster pod. Run the MCP\nserver as its own workload and use \"streamable-http\" or \"sse\" instead.",
-                    "enum": ["stdio", "streamable-http", "sse"],
+                    "enum": [
+                      "stdio",
+                      "streamable-http",
+                      "sse"
+                    ],
                     "type": "string"
                   },
                   "url": {
-                    "description": "URL is the endpoint where the remote MCP server can be reached\nThis field is required when Type is \"streamable-http\" or \"sse\".\nExamples: http://mcp-server:8080/mcp, https://api.example.com/mcp",
+                    "description": "URL is the endpoint where the remote MCP server can be reached\nThis field is required when Type is \"streamable-http\" or \"sse\".\nExamples: http://mcp-server:8080/mcp, https://api.example.com/mcp\n\nThe URL holds no credential: a user name or password in it is refused.\nPut the credential in a Secret and send it with HeadersFrom. The rule is\na regex, because CEL's URL library has no accessor for the user info.",
+                    "maxLength": 2048,
                     "pattern": "^https?://[^\\s/$.?#].[^\\s]*$",
-                    "type": "string"
+                    "type": "string",
+                    "x-kubernetes-validations": [
+                      {
+                        "message": "url must not hold a user name or password: put the credential in a Secret and refer to it in headersFrom",
+                        "rule": "!self.matches('^[^:/?#]+://[^/?#]*@')"
+                      }
+                    ]
                   }
                 },
-                "required": ["type"],
-                "type": "object"
+                "required": [
+                  "type"
+                ],
+                "type": "object",
+                "x-kubernetes-validations": [
+                  {
+                    "message": "progress.maxDuration must be at least timeout",
+                    "rule": "!has(self.progress) || !has(self.progress.maxDuration) || self.progress.maxDuration >= (has(self.timeout) ? self.timeout : 30)"
+                  },
+                  {
+                    "message": "meta is the deprecated name of requestMeta: set requestMeta only",
+                    "rule": "!(has(self.meta) && has(self.requestMeta))"
+                  },
+                  {
+                    "message": "a sigv4 server needs requestMeta.AWS_REGION: the AWS MCP server runs every call in us-east-1 without it",
+                    "rule": "!has(self.auth) || !has(self.auth.sigv4) || (has(self.requestMeta) && 'AWS_REGION' in self.requestMeta && size(self.requestMeta['AWS_REGION']) > 0) || (has(self.meta) && 'AWS_REGION' in self.meta && size(self.meta['AWS_REGION']) > 0)"
+                  }
+                ]
               },
               "status": {
                 "description": "MCPServerStatus defines the observed state of MCPServer.\n\nThis status reflects server-side observable state including auth requirements.\nIt captures infrastructure connectivity as well as whether the server demands\nauthentication (e.g. \"Auth Required\"). Per-user session state (which specific\nuser is authenticated, token expiry, etc.) is tracked separately in the\nSession Registry (internal/aggregator/session_registry.go).\n\nServer-Side State (CRD):\n  - State: Running/Connected/Starting/Connecting/Stopped/Disconnected/Auth Required/Awaiting Session/Failed\n  - Conditions: Standard K8s conditions for detailed status\n\nPer-User Session State (Session Registry):\n  - ConnectionStatus: Connected, PendingAuth, Failed (per-user)\n  - AuthStatus: Authenticated, AuthRequired, TokenExpired (per-user)\n  - AvailableTools: Tools visible to this specific user",
@@ -395,7 +601,11 @@
                         },
                         "status": {
                           "description": "status of the condition, one of True, False, Unknown.",
-                          "enum": ["True", "False", "Unknown"],
+                          "enum": [
+                            "True",
+                            "False",
+                            "Unknown"
+                          ],
                           "type": "string"
                         },
                         "type": {
@@ -419,6 +629,12 @@
                   "consecutiveFailures": {
                     "description": "ConsecutiveFailures tracks the number of consecutive connection failures.\nThis is used for exponential backoff and to identify unreachable servers.\nReset to 0 when a connection succeeds.",
                     "type": "integer"
+                  },
+                  "icon": {
+                    "description": "Icon is the icon the server declares in its initialize result,\notherwise a built-in brand icon when spec.url is on a known brand\ndomain, or is in-cluster and names a known brand as service,\nnamespace or first path segment. It is a data: URI (data:<mime>;base64,...) of type\nimage/svg+xml, image/png, image/jpeg or image/webp; the whole data: URI\nis at most 65536 characters. SVG icons are sanitised (allowlist) before\nthey are stored. Absent when there is neither.\nRender only as an image (e.g. <img src>); never inline the markup.",
+                    "maxLength": 65536,
+                    "pattern": "^data:image/(svg\\+xml|png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$",
+                    "type": "string"
                   },
                   "lastAttempt": {
                     "description": "LastAttempt indicates when the last connection attempt was made.\nUsed with ConsecutiveFailures to implement exponential backoff.",
@@ -490,8 +706,20 @@
                 "rule": "self.spec.type != 'stdio' || !has(self.spec.headers)"
               },
               {
+                "message": "requestMeta field is only allowed when type is streamable-http or sse",
+                "rule": "self.spec.type != 'stdio' || !has(self.spec.requestMeta)"
+              },
+              {
                 "message": "meta field is only allowed when type is streamable-http or sse",
                 "rule": "self.spec.type != 'stdio' || !has(self.spec.meta)"
+              },
+              {
+                "message": "headersFrom field is only allowed when type is streamable-http or sse",
+                "rule": "self.spec.type != 'stdio' || !has(self.spec.headersFrom)"
+              },
+              {
+                "message": "env field is only allowed when type is stdio: put a remote server's credential in a Secret and refer to it in headersFrom",
+                "rule": "self.spec.type == 'stdio' || !has(self.spec.env)"
               },
               {
                 "message": "auth.sigv4 is only allowed when type is streamable-http",

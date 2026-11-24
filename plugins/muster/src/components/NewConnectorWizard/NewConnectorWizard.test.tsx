@@ -1433,16 +1433,38 @@ describe('shell connector wizard', () => {
         screen.getByLabelText(/^Signing service/),
         'aws-mcp',
       );
+
+      // The operating region is required too: muster refuses a sigv4 server
+      // without it.
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Add connector' }),
+      );
+      const operating = screen.getByLabelText(/^Operating region/);
+      expect(operating).toHaveAttribute('aria-invalid', 'true');
+      expect(operating).toHaveAccessibleDescription(
+        expect.stringContaining('Enter the region the AWS MCP server operates in'),
+      );
+      expect(toolCalls('core_mcpserver_create')).toEqual([]);
+
+      await userEvent.type(operating, 'eu-north-1');
       await userEvent.click(
         screen.getByRole('button', { name: 'Add connector' }),
       );
       await screen.findByText('Test the connection');
 
-      expect(toolCalls('core_mcpserver_create')[0][1]).toMatchObject({
+      const created = toolCalls('core_mcpserver_create')[0][1] as Record<
+        string,
+        unknown
+      >;
+      expect(created).toMatchObject({
         auth: {
           type: 'sigv4',
           sigv4: { region: 'eu-central-1', service: 'aws-mcp' },
         },
+      });
+      // Under whichever name the muster's create tool takes.
+      expect(created.requestMeta ?? created.meta).toEqual({
+        AWS_REGION: 'eu-north-1',
       });
     });
   });

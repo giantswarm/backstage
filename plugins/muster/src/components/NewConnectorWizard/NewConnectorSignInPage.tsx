@@ -26,6 +26,7 @@ import {
 
 import {
   SIGV4_SHARED_IDENTITY_WARNING,
+  operatingRegion,
   clientCredentialsArgument,
   clientCredentialsProblems,
   effectiveGrantScope,
@@ -225,6 +226,7 @@ export function NewConnectorSignInPage() {
     setSigv4Region,
     setSigv4Service,
     setSigv4RoleArn,
+    setOperatingRegion,
     authFields,
     authAdvisories,
     detailsErrors,
@@ -804,6 +806,16 @@ export function NewConnectorSignInPage() {
                 : authFields.sigv4.reason
             }
             {...textFieldProps('sigv4Region', fieldErrors.sigv4Region)}
+          />
+          <TextField
+            label="Operating region"
+            isRequired
+            isDisabled={!authFields.sigv4.available}
+            value={operatingRegion(state)}
+            onChange={setOperatingRegion}
+            placeholder={state.sigv4Region.trim() || 'eu-central-1'}
+            description="The region the AWS MCP server runs calls in, sent as AWS_REGION. Without it every call runs in us-east-1."
+            {...textFieldProps('operatingRegion', fieldErrors.operatingRegion)}
           />
           <TextField
             label="Signing service"

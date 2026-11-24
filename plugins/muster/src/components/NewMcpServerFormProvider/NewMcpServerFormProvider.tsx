@@ -31,11 +31,13 @@ import {
   mcpServerFieldErrors,
   mergeOntoExisting,
   sigv4Advisories,
+  withOperatingRegion,
+  withRequestMetaArgument,
   type FieldAvailability,
   type McpServerAuthMode,
   type McpServerDefinition,
   type McpServerFieldErrors,
-  type McpServerMetaEntry,
+  type McpServerRequestMetaEntry,
   type McpServerTransport,
   type NewMcpServerFormState,
 } from '../../lib/mcpServerDefinition';
@@ -70,7 +72,9 @@ export type NewMcpServerFormContextValue = TagsFieldUpdaters & {
   setSigv4Region: (region: string) => void;
   setSigv4Service: (service: string) => void;
   setSigv4RoleArn: (roleArn: string) => void;
-  setMeta: (meta: McpServerMetaEntry[]) => void;
+  setRequestMeta: (requestMeta: McpServerRequestMetaEntry[]) => void;
+  /** Sets the request metadata's `AWS_REGION` entry, the sigv4 operating region. */
+  setOperatingRegion: (region: string) => void;
   /**
    * The CR name this wizard run edits: the server an Edit started from, or the
    * one the review step's successful create registered. While set, saving is
@@ -403,6 +407,11 @@ export function NewMcpServerFormProvider({
     registeredName ? registeredInstallation : state.installation,
     'tags',
   );
+  const takesRequestMeta = useToolTakesArgument(
+    registeredName ? 'core_mcpserver_update' : 'core_mcpserver_create',
+    registeredName ? registeredInstallation : state.installation,
+    'requestMeta',
+  );
 
   const value = useMemo<NewMcpServerFormContextValue>(() => {
     const detailsProblems = mcpServerDetailsProblems(state, {
@@ -412,15 +421,18 @@ export function NewMcpServerFormProvider({
     const problems = [...detailsProblems, ...mcpServerAuthProblems(state)];
     const detailsErrors = detailsProblems.map(problem => problem.message);
     const validationErrors = problems.map(problem => problem.message);
-    const definition = base
-      ? mergeOntoExisting(
-          base.definition,
-          composeMcpServerDefinition(state, {
-            stored: base.displayName,
-            tags: base.tags,
-          }),
-        )
-      : composeMcpServerDefinition(state);
+    const definition = withRequestMetaArgument(
+      base
+        ? mergeOntoExisting(
+            base.definition,
+            composeMcpServerDefinition(state, {
+              stored: base.displayName,
+              tags: base.tags,
+            }),
+          )
+        : composeMcpServerDefinition(state),
+      takesRequestMeta,
+    );
 
     return {
       state,
@@ -512,7 +524,13 @@ export function NewMcpServerFormProvider({
         setState(prev => ({ ...prev, sigv4Service })),
       setSigv4RoleArn: sigv4RoleArn =>
         setState(prev => ({ ...prev, sigv4RoleArn })),
-      setMeta: meta => setState(prev => ({ ...prev, meta })),
+      setRequestMeta: requestMeta =>
+        setState(prev => ({ ...prev, requestMeta })),
+      setOperatingRegion: region =>
+        setState(prev => ({
+          ...prev,
+          requestMeta: withOperatingRegion(prev.requestMeta, region),
+        })),
       registeredName,
       registeredInstallation,
       lastSave,
@@ -554,6 +572,7 @@ export function NewMcpServerFormProvider({
     reset,
     tagUpdaters,
     takesTags,
+    takesRequestMeta,
     storedTags,
   ]);
 
