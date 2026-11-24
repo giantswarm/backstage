@@ -206,7 +206,7 @@ export const MINUTE = 60 * 1000;
 export const HOUR = 60 * MINUTE;
 export const DAY = 24 * HOUR;
 
-/** The prefix of an organization namespace's name (`agents-<name>`). */
+/** The prefix of an organization namespace's name. */
 export const ORGANIZATION_NAMESPACE_PREFIX = 'agents';
 
 /**
@@ -333,10 +333,10 @@ export function buildOrganizations(
     },
     (installation, state, nameLength) => {
       const organization = name(nameLength);
-      // The namespace's name is fixed now (`agents-<name>`); the draw its
-      // random suffix took stays, so the rest of the data set keeps its
-      // names.
-      hex(context, 5);
+      // The namespace's name is the operator's to choose and the portal's
+      // only to read: the data set keeps its suffixed names, which the
+      // gateway's usage figures are derived from.
+      const suffix = hex(context, 5);
       return {
         installation: installation.name,
         name: organization.name,
@@ -344,8 +344,11 @@ export function buildOrganizations(
         ...(state !== 'pending' && {
           namespace: `${ORGANIZATION_NAMESPACE_PREFIX}-${fitName(
             organization.name,
-            MAX_NAME_LENGTH - ORGANIZATION_NAMESPACE_PREFIX.length - 1,
-          )}`,
+            MAX_NAME_LENGTH -
+              ORGANIZATION_NAMESPACE_PREFIX.length -
+              suffix.length -
+              2,
+          )}-${suffix}`,
         }),
         state,
         role: roleOf(installation.name, state),
