@@ -10,7 +10,10 @@ import {
 } from '@giantswarm/backstage-plugin-gs-node';
 import { InstallationAuthenticationError } from './installationAuthenticationError';
 import { modelCostQueries as modelCostQueriesOver } from '@giantswarm/backstage-plugin-agent-platform-common';
-import { AgentgatewayGenAiClientCostUsdTotal as Cost } from '@giantswarm/backstage-plugin-gs-common';
+import {
+  AgentgatewayGenAiClientCostUsdTotal as Cost,
+  enforceMatchers,
+} from '@giantswarm/backstage-plugin-gs-common';
 import { MimirQuerier, readModelCost } from './modelCost';
 
 const modelCostQueries = (user: string, days: number) =>
@@ -316,4 +319,24 @@ describe('readModelCost', () => {
       message: 'token refused',
     });
   });
+});
+
+describe('modelCostQueries with enforced matchers', () => {
+  // `MimirService` rewrites every query of an installation with
+  // `mimir.matchers`; the cost read reaches Mimir only through it.
+  const matchers = { cluster_id: 'gerbil' };
+
+  it.each(Object.entries(modelCostQueries('me@example.com', 30)))(
+    '%s: carries the matchers on every selector, the person kept',
+    (_, query) => {
+      const rewritten = enforceMatchers(query, matchers);
+      const selectors = rewritten.match(/[a-z_:][a-z0-9_:]*\{[^}]*\}/gi) ?? [];
+
+      expect(selectors.length).toBeGreaterThan(0);
+      for (const selector of selectors) {
+        expect(selector).toContain('cluster_id="gerbil"');
+        expect(selector).toMatch(/user(=|!~|=~)"/);
+      }
+    },
+  );
 });

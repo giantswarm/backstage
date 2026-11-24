@@ -47,7 +47,11 @@
     "postpack": "backstage-cli package postpack"
   },
   "dependencies": {
-    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.10"
+    "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.10",
+    "@lezer/common": "^1.5.3",
+    "@lezer/highlight": "^1.2.5",
+    "@lezer/lr": "^1.4.5",
+    "@prometheus-io/lezer-promql": "0.316.0"
   },
   "devDependencies": {
     "@backstage/cli": "backstage:^"

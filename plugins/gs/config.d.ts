@@ -326,6 +326,33 @@ export interface Config {
          */
         mimirEnabled?: boolean;
         /**
+         * Where the installation's metrics are queried, when not in its own
+         * Mimir: for a platform on a workload cluster whose series land in
+         * its management cluster's Mimir. `mimirEnabled: false` still turns
+         * the metrics off.
+         */
+        mimir?: {
+          /**
+           * The Mimir's address, without `/prometheus`. Defaults to
+           * `https://observability.<baseDomain>`.
+           */
+          url?: string;
+          /**
+           * The tenant (`X-Scope-OrgID`), not empty. Defaults to
+           * `giantswarm`.
+           */
+          tenant?: string;
+          /**
+           * Label matchers added to every series selector of every query of
+           * the installation, as label name to value, e.g.
+           * `cluster_id: <workload cluster>`. A query that can't carry them
+           * is refused, never sent without them: one about another cluster
+           * reads as no data, one that doesn't parse as an error. Values must
+           * not be empty.
+           */
+          matchers?: { [label: string]: string };
+        };
+        /**
          * The currency the Agent Platform shows costs in for this
          * installation. The gateway prices calls in USD, so `usdRate` is the
          * amount of `code` one USD buys. A code other than USD without a

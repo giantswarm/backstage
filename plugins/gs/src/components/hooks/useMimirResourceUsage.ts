@@ -48,6 +48,21 @@ export interface MimirResourceUsage {
   error: Error | null;
 }
 
+/** The queries behind {@link useMimirResourceUsage}, for one deployment. */
+export function resourceUsageQueries(
+  clusterName: string | undefined,
+  namespace: string,
+  deploymentName: string,
+) {
+  const labelSelector = `cluster_id="${clusterName}",namespace="${namespace}",pod=~"${deploymentName}-.*",container!=""`;
+  return {
+    cpuUsageQuery: `sum(rate(${ContainerCpuUsageSecondsTotal.name}{${labelSelector}}[5m]))`,
+    memoryUsageQuery: `sum(avg_over_time(${ContainerMemoryWorkingSetBytes.name}{${labelSelector}}[5m]))`,
+    requestsQuery: `sum by (resource)(${KubePodContainerResourceRequests.name}{${labelSelector},resource=~"cpu|memory"})`,
+    limitsQuery: `sum by (resource)(${KubePodContainerResourceLimits.name}{${labelSelector},resource=~"cpu|memory"})`,
+  };
+}
+
 export function useMimirResourceUsage(options: {
   installationName: string;
   clusterName: string | undefined;
@@ -64,12 +79,8 @@ export function useMimirResourceUsage(options: {
   } = options;
 
   const isEnabled = Boolean(clusterName && namespace && deploymentName);
-  const labelSelector = `cluster_id="${clusterName}",namespace="${namespace}",pod=~"${deploymentName}-.*",container!=""`;
-
-  const cpuUsageQuery = `sum(rate(${ContainerCpuUsageSecondsTotal.name}{${labelSelector}}[5m]))`;
-  const memoryUsageQuery = `sum(avg_over_time(${ContainerMemoryWorkingSetBytes.name}{${labelSelector}}[5m]))`;
-  const requestsQuery = `sum by (resource)(${KubePodContainerResourceRequests.name}{${labelSelector},resource=~"cpu|memory"})`;
-  const limitsQuery = `sum by (resource)(${KubePodContainerResourceLimits.name}{${labelSelector},resource=~"cpu|memory"})`;
+  const { cpuUsageQuery, memoryUsageQuery, requestsQuery, limitsQuery } =
+    resourceUsageQueries(clusterName, namespace, deploymentName);
 
   const {
     data: cpuUsageData,
