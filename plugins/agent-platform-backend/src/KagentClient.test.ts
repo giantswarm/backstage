@@ -9,6 +9,7 @@ import {
   TURN_PENDING_ERROR_NAME,
 } from './KagentClient';
 import { A2A_EXTENSIONS_HEADER, HITL_EXTENSION_URI } from './kagent/hitl';
+import { A2A_PROTOCOL_VERSION, A2A_VERSION_HEADER } from './kagent/protocol';
 import {
   createFakeController,
   FakeControllerOptions,
@@ -452,6 +453,7 @@ describe('KagentClient against a fake controller', () => {
       )!;
       expect(stream.tenant).toBe('kagent/sre-agent');
       expect(stream.headers[A2A_EXTENSIONS_HEADER]).toBe(HITL_EXTENSION_URI);
+      expect(stream.headers[A2A_VERSION_HEADER]).toBe(A2A_PROTOCOL_VERSION);
     });
 
     it('answers the finished task for a unary send', async () => {
@@ -765,6 +767,7 @@ describe('KagentClient against a fake controller', () => {
         .at(-1)!;
       expect(send.tenant).toBe('kagent/sre-agent');
       expect(send.headers[A2A_EXTENSIONS_HEADER]).toBe(HITL_EXTENSION_URI);
+      expect(send.headers[A2A_VERSION_HEADER]).toBe(A2A_PROTOCOL_VERSION);
     });
 
     it('streams the resumed turn for an answer, routed and typed like the unary one', async () => {
@@ -814,6 +817,7 @@ describe('KagentClient against a fake controller', () => {
         .at(-1)!;
       expect(stream.tenant).toBe('kagent/sre-agent');
       expect(stream.headers[A2A_EXTENSIONS_HEADER]).toBe(HITL_EXTENSION_URI);
+      expect(stream.headers[A2A_VERSION_HEADER]).toBe(A2A_PROTOCOL_VERSION);
 
       // The controller recorded the resume against the same task, with the
       // typed approval it validates strictly.
