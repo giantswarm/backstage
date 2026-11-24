@@ -63,6 +63,7 @@ import {
   readHitlRequest,
   type HitlAnswer,
 } from './kagent/hitl';
+import { A2A_PROTOCOL_VERSION, A2A_VERSION_HEADER } from './kagent/protocol';
 import {
   createKagentTransport,
   deriveKagentApiBaseUrl,
@@ -1639,13 +1640,14 @@ export class KagentClient {
   }
 
   /**
-   * The metadata of an A2A call: the bearer and the HITL extension requested
-   * so a confirmation on this turn arrives typed. The session is addressed in
-   * the request, not in metadata.
+   * The metadata of an A2A call: the bearer, the A2A protocol version and the
+   * HITL extension requested so a confirmation on this turn arrives typed. The
+   * session is addressed in the request, not in metadata.
    */
   private turnHeaders(options: KagentRequestOptions): Record<string, string> {
     return {
       ...bearerHeaders(options),
+      [A2A_VERSION_HEADER]: A2A_PROTOCOL_VERSION,
       [A2A_EXTENSIONS_HEADER]: HITL_EXTENSION_URI,
     };
   }
