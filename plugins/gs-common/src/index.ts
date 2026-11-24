@@ -14,3 +14,4 @@ export * from './connectorName';
 export * from './connectorIcon';
 export * from './organizationNamespace';
 export * from './fixtureMode';
+export * from './enforceMatchers';

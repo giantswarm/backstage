@@ -162,6 +162,44 @@ renders neutral "metrics unavailable" states instead of errors, and the backend
 Mimir proxy refuses queries for it. `baseDomain` cannot carry this meaning
 because other features (e.g. agent avatars) require it on every installation.
 
+### Metrics from another installation's Mimir (`mimir`)
+
+Use `mimir` when an installation's series land in another Mimir than its own,
+for example a platform on a workload cluster whose metrics go to its management
+cluster's Mimir:
+
+```yaml
+gs:
+  installations:
+    gerbil:
+      baseDomain: gerbil.example.net
+      mimir:
+        url: https://observability.golem.example.net # default: https://observability.<baseDomain>
+        tenant: giantswarm # the default
+        matchers: # default: none
+          cluster_id: gerbil
+```
+
+- `url` is the Mimir's address without `/prometheus`, and `tenant` the
+  `X-Scope-OrgID` header. The person's OIDC token for the installation is
+  forwarded as everywhere else, so that Mimir must accept it.
+- `matchers` are added to every vector and matrix selector of every query of
+  the installation, in `MimirService` (gs-node), which every Mimir query of the
+  portal passes through: the frontend's `/api/gs/mimir/query` and
+  `/mimir/query_range` and agent-platform-backend's model cost. The PromQL is
+  parsed with the Prometheus project's `@prometheus-io/lezer-promql` and
+  rewritten, as prom-label-proxy does. A matcher the query already has on an
+  enforced label stays, next to the enforced one, so the selector reads the
+  intersection: `cluster_id=~"golem|gerbil"` becomes
+  `cluster_id=~"golem|gerbil",cluster_id="gerbil"`. A query that does not
+  parse, or whose matcher cannot select the enforced value
+  (`cluster_id="golem"`, `cluster_id!="gerbil"`, a regex that does not match
+  `gerbil`), is refused with a 400 and never sent: it could only answer
+  nothing, which would read as no data.
+- Without `mimir`, queries go to `https://observability.<baseDomain>` with
+  tenant `giantswarm`, unchanged. `mimirEnabled: false` still turns the metrics
+  off, with or without `mimir`.
+
 ### Cluster-access status element
 
 A sidebar status element shows the per-installation access state -- connecting
