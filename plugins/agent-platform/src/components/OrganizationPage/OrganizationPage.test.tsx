@@ -863,7 +863,7 @@ describe('OrganizationPage', () => {
       await renderPage('', {
         ...SCENARIO,
         organization: MANAGED,
-        updateError: /you may not update organizations/,
+        updateError: 'forbidden: you may not update organizations',
       });
 
       await user.click(
