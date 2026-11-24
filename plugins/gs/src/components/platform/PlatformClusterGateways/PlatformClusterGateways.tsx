@@ -139,33 +139,50 @@ function PoliciesSection({
   );
 }
 
+/** Under an empty grants table: none, or none an older bundle reports. */
+const NO_GRANTS_NOTE =
+  'Clusters on observability-bundle older than 3.3.0 do not report them.';
+
 function ReferenceGrantsSection({
   rows,
+  isLoading,
   error,
   query,
   emptyText,
 }: {
   rows: GatewayReferenceGrantRow[];
+  isLoading: boolean;
   error?: unknown;
   query: string;
   emptyText: string;
 }) {
+  const unknown = isLoading || Boolean(error);
   return (
-    <SubSection title="ReferenceGrants" count={error ? undefined : rows.length}>
-      {error ? (
+    <SubSection
+      title="ReferenceGrants"
+      count={unknown ? undefined : rows.length}
+    >
+      {/* They load on their own: the rest of the Gateway doesn't wait. */}
+      {isLoading ? (
+        <Text variant="body-medium" color="secondary">
+          Loading ReferenceGrants…
+        </Text>
+      ) : null}
+      {!isLoading && error ? (
         <MetricsUnavailableAlert
           error={error}
           title="ReferenceGrants could not be loaded."
           description={error instanceof Error ? error.message : undefined}
         />
-      ) : (
+      ) : null}
+      {unknown ? null : (
         <PlatformGatewayReferenceGrantsTable
           aria-label="ReferenceGrants"
           rows={rows}
           query={query}
           emptyState={
             <Text variant="body-medium" color="secondary">
-              {emptyText}
+              {`${emptyText} ${NO_GRANTS_NOTE}`}
             </Text>
           }
         />
@@ -180,6 +197,7 @@ function GatewayDetails({
   routes,
   policies,
   policiesError,
+  referenceGrantsLoading,
   referenceGrantsError,
   query,
 }: {
@@ -187,6 +205,7 @@ function GatewayDetails({
   routes: HttpRoute[];
   policies: GatewayPolicy[];
   policiesError?: unknown;
+  referenceGrantsLoading: boolean;
   referenceGrantsError?: unknown;
   query: string;
 }) {
@@ -240,9 +259,10 @@ function GatewayDetails({
         />
         <ReferenceGrantsSection
           rows={view.referenceGrants}
+          isLoading={referenceGrantsLoading}
           error={referenceGrantsError}
           query={query}
-          emptyText="No ReferenceGrant lets this Gateway or its HTTP routes reference another namespace."
+          emptyText="No ReferenceGrant found for this Gateway or its HTTP routes."
         />
       </Flex>
     </section>
@@ -289,21 +309,22 @@ export function PlatformClusterGatewaysContent({
 }: PlatformClusterGatewaysContentProps) {
   const [query, setQuery] = useState('');
   const unattachedId = useId();
-  // The counts and the placing of policies and grants need every read.
-  const isLoading =
-    topologyLoading || policiesLoading || referenceGrantsLoading;
+  // The counts and the placing of policies need both reads. The grants load
+  // on their own: their section waits, the rest of the tab doesn't.
+  const isLoading = topologyLoading || policiesLoading;
   const shownPolicies = useMemo(
     () => (policiesError ? [] : policies),
     [policies, policiesError],
   );
   const shownGrants = useMemo(
-    () => (referenceGrantsError ? [] : referenceGrants),
-    [referenceGrants, referenceGrantsError],
+    () =>
+      referenceGrantsError || referenceGrantsLoading ? [] : referenceGrants,
+    [referenceGrants, referenceGrantsError, referenceGrantsLoading],
   );
   const views = useMemo(
     () =>
       error
-        ? buildGatewayViews([], [], shownPolicies, shownGrants)
+        ? buildGatewayViews([], [], shownPolicies, shownGrants, false)
         : buildGatewayViews(gateways, routes, shownPolicies, shownGrants),
     [error, gateways, routes, shownPolicies, shownGrants],
   );
@@ -380,8 +401,8 @@ export function PlatformClusterGatewaysContent({
         >
           <div style={{ flex: '0 1 460px', minWidth: 'min(260px, 100%)' }}>
             <SearchField
-              aria-label="Find a gateway by hostname, route or policy"
-              placeholder="Find a gateway by hostname, route or policy"
+              aria-label="Find a gateway by hostname, route, policy or ReferenceGrant"
+              placeholder="Find a gateway by hostname, route, policy or ReferenceGrant"
               value={query}
               onChange={onSearch}
               isDisabled={isLoading || Boolean(error)}
@@ -419,6 +440,7 @@ export function PlatformClusterGatewaysContent({
           routes={routes}
           policies={shownPolicies}
           policiesError={policiesError}
+          referenceGrantsLoading={referenceGrantsLoading}
           referenceGrantsError={referenceGrantsError}
           query={query}
         />
@@ -437,9 +459,10 @@ export function PlatformClusterGatewaysContent({
         // Without the topology no grant can be placed: all are listed.
         <ReferenceGrantsSection
           rows={unattached.referenceGrants}
+          isLoading={referenceGrantsLoading}
           error={referenceGrantsError}
           query={query}
-          emptyText={`No ReferenceGrants found on cluster ${clusterName}. Clusters on observability-bundle older than 3.3.0 do not report them.`}
+          emptyText={`No ReferenceGrants found on cluster ${clusterName}.`}
         />
       ) : null}
       {hasUnattached && !error ? (
@@ -458,7 +481,7 @@ export function PlatformClusterGatewaysContent({
                 The metrics don't say which Gateway these belong to: a route
                 attached through a ListenerSet or to no Gateway on this cluster,
                 a policy whose targets are selected by labels or don't exist, a
-                ReferenceGrant no route on a Gateway is known to use.
+                ReferenceGrant no route or Gateway here is known to use.
               </Text>
             </Flex>
             {unattached.routes.length > 0 ? (

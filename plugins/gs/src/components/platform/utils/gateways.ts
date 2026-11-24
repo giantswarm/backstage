@@ -59,8 +59,16 @@ export type GatewayReferenceGrantRow = {
    * any route in the unattached section.
    */
   routes: HttpRoute[];
-  /** It lets Gateways in this Gateway's namespace reference into its own. */
-  forGateway: boolean;
+  /**
+   * False when a route's backends aren't known (an older bundle, a failed
+   * read, no topology), so `routes` may miss some.
+   */
+  routesKnown: boolean;
+  /**
+   * The namespace whose Gateways it lets reference into its own: the row's
+   * Gateway's. Undefined when it lets no Gateway here do so.
+   */
+  gatewayNamespace?: string;
 };
 
 /** A Gateway with what the page shows under it. */
@@ -157,6 +165,11 @@ function routeRowId(route: HttpRoute, parent?: HttpRouteParent): string {
     : route.id;
 }
 
+/** Whether every route among `routes` reports its backends. */
+function backendsKnown(routes: HttpRoute[]): boolean {
+  return routes.every(route => route.backends.status === 'available');
+}
+
 /** The routes among `routes` the grant lets reach one of their backends. */
 function routesPermitted(
   grant: ReferenceGrant,
@@ -200,6 +213,8 @@ export function buildGatewayViews(
   routes: HttpRoute[],
   policies: GatewayPolicy[],
   referenceGrants: ReferenceGrant[] = [],
+  /** False without the topology: no grant's use can be known. */
+  topologyKnown = true,
 ): GatewayViews {
   const ordered = [...gateways].sort((a, b) => gatewayRank(a) - gatewayRank(b));
   const orderedRoutes = [...routes].sort((a, b) => routeRank(a) - routeRank(b));
@@ -252,7 +267,8 @@ export function buildGatewayViews(
             id: `${gatewayKey(gateway)}|${grant.id}`,
             grant,
             routes: permitted,
-            forGateway,
+            routesKnown: backendsKnown(gatewayRoutes),
+            gatewayNamespace: forGateway ? gateway.namespace : undefined,
           },
         ];
       },
@@ -299,7 +315,7 @@ export function buildGatewayViews(
           grant,
           // A route through a ListenerSet, or on no Gateway of the cluster.
           routes: routesPermitted(grant, orderedRoutes),
-          forGateway: false,
+          routesKnown: topologyKnown && backendsKnown(orderedRoutes),
         })),
     },
   };

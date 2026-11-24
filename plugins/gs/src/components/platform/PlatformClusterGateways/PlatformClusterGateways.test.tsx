@@ -160,11 +160,13 @@ function Harness({
   error,
   policiesError,
   referenceGrantsError,
+  referenceGrantsLoading = false,
   initial,
 }: {
   error?: Error;
   policiesError?: Error;
   referenceGrantsError?: Error;
+  referenceGrantsLoading?: boolean;
   initial?: string;
 }) {
   const [selected, setSelected] = useState<string | undefined>(initial);
@@ -181,7 +183,7 @@ function Harness({
         policiesLoading={false}
         policiesError={policiesError}
         referenceGrants={grants}
-        referenceGrantsLoading={false}
+        referenceGrantsLoading={referenceGrantsLoading}
         referenceGrantsError={referenceGrantsError}
         selected={selected}
         onSelect={setSelected}
@@ -255,7 +257,7 @@ describe('<PlatformClusterGatewaysContent />', () => {
     await renderInTestApp(<Harness />);
     fireEvent.change(
       screen.getByRole('searchbox', {
-        name: 'Find a gateway by hostname, route or policy',
+        name: 'Find a gateway by hostname, route, policy or ReferenceGrant',
       }),
       { target: { value: 'ledger.internal' } },
     );
@@ -342,6 +344,17 @@ describe('<PlatformClusterGatewaysContent />', () => {
     );
   });
 
+  it('shows the rest of the Gateway while the ReferenceGrants load', async () => {
+    await renderInTestApp(<Harness referenceGrantsLoading />);
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'giantswarm-default' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText('Loading ReferenceGrants…')[0],
+    ).toBeInTheDocument();
+    expect(screen.queryByText('from-shop')).toBeNull();
+  });
+
   it('shows why the ReferenceGrants could not be loaded', async () => {
     await renderInTestApp(
       <Harness referenceGrantsError={new Error('timeout')} />,
@@ -350,7 +363,7 @@ describe('<PlatformClusterGatewaysContent />', () => {
       screen.getByText('ReferenceGrants could not be loaded.'),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('heading', { name: 'Not attached to a gateway' }),
+      screen.getByRole('heading', { name: 'Not attached to a gateway' }),
     ).toBeInTheDocument();
     expect(screen.queryByText('from-old')).toBeNull();
   });

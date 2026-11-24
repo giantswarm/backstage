@@ -56,13 +56,22 @@ function Entries({ entries }: { entries: ReferenceGrantEntry[] }) {
   );
 }
 
-const NOT_USED = 'No route found';
+/**
+ * Why a row names nothing it is used by: the routes' backends aren't known,
+ * or no route or Gateway the grant is for is on the cluster.
+ */
+function notUsedText(row: GatewayReferenceGrantRow): string {
+  if (!row.routesKnown) return 'Backends not available';
+  const kinds = new Set(row.grant.from.map(from => from.kind));
+  if (kinds.has('Gateway') && kinds.size === 1) return 'No Gateway found';
+  return kinds.has('Gateway') ? 'No route or Gateway found' : 'No route found';
+}
 
 function UsedBy({ row }: { row: GatewayReferenceGrantRow }) {
-  if (!row.routes.length && !row.forGateway) {
+  if (!row.routes.length && !row.gatewayNamespace) {
     return (
       <Text variant="body-medium" color="secondary">
-        {NOT_USED}
+        {notUsedText(row)}
       </Text>
     );
   }
@@ -75,13 +84,10 @@ function UsedBy({ row }: { row: GatewayReferenceGrantRow }) {
           description={`HTTP route in ${route.namespace}`}
         />
       ))}
-      {row.forGateway ? (
+      {row.gatewayNamespace ? (
         <PlatformCellLines
           title="Gateways"
-          description={`in ${row.grant.from
-            .filter(from => from.kind === 'Gateway')
-            .map(from => from.namespace)
-            .join(', ')}`}
+          description={`in ${row.gatewayNamespace}`}
         />
       ) : null}
     </div>
@@ -97,9 +103,11 @@ function list(entries: ReferenceGrantEntry[]): string {
 function usedByText(row: GatewayReferenceGrantRow): string {
   const users = [
     ...row.routes.map(route => `${route.name} (HTTP route)`),
-    ...(row.forGateway ? ['Gateways'] : []),
+    ...(row.gatewayNamespace ? [`Gateways in ${row.gatewayNamespace}`] : []),
   ];
-  return users.length ? `used by ${users.join(', ')}` : NOT_USED.toLowerCase();
+  return users.length
+    ? `used by ${users.join(', ')}`
+    : notUsedText(row).toLowerCase();
 }
 
 export type PlatformGatewayReferenceGrantsTableProps = {

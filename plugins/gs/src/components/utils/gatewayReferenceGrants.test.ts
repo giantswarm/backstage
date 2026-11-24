@@ -230,6 +230,23 @@ describe('grantPermitsBackend', () => {
     expect(grantPermitsBackend(grant, 'payments', backend)).toBe(false);
   });
 
+  it('is only for a backend in its own namespace', () => {
+    expect(
+      grantPermitsBackend(grant, 'shop', { ...backend, namespace: 'ledger' }),
+    ).toBe(false);
+  });
+
+  it('matches another backend kind by kind', () => {
+    const backendKind = {
+      ...grant,
+      to: [{ group: 'gateway.envoyproxy.io', kind: 'Backend' }],
+    };
+    expect(
+      grantPermitsBackend(backendKind, 'shop', { ...backend, kind: 'Backend' }),
+    ).toBe(true);
+    expect(grantPermitsBackend(backendKind, 'shop', backend)).toBe(false);
+  });
+
   it('matches any Service when the grant names none', () => {
     expect(
       grantPermitsBackend(
@@ -259,5 +276,32 @@ describe('grantPermitsGateways', () => {
   it('lets Gateways of the from namespace reference into its own', () => {
     expect(grantPermitsGateways(grant, 'envoy-gateway-system')).toBe(true);
     expect(grantPermitsGateways(grant, 'payments')).toBe(false);
+  });
+
+  it('needs a Secret or ConfigMap, what a Gateway references', () => {
+    expect(
+      grantPermitsGateways(
+        { ...grant, to: [{ group: '', kind: 'Service' }] },
+        'envoy-gateway-system',
+      ),
+    ).toBe(false);
+    expect(
+      grantPermitsGateways(
+        { ...grant, to: [{ group: '', kind: 'ConfigMap', name: 'ca' }] },
+        'envoy-gateway-system',
+      ),
+    ).toBe(true);
+  });
+
+  it('needs no grant, so matches none, within one namespace', () => {
+    expect(
+      grantPermitsGateways(
+        {
+          ...grant,
+          from: [{ ...grant.from[0], namespace: 'certs' }],
+        },
+        'certs',
+      ),
+    ).toBe(false);
   });
 });

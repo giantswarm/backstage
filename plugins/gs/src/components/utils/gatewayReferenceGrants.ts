@@ -194,7 +194,8 @@ export function grantPermitsBackend(
 
 /**
  * Whether the grant lets Gateways in `namespace` reference into its own, as a
- * Gateway does for a TLS certificate in another namespace. Which resources a
+ * Gateway does for a TLS certificate (a Secret) or a CA bundle (a ConfigMap)
+ * in another namespace, the only kinds a Gateway references. Which ones a
  * Gateway references isn't exported, so this is what it may do.
  */
 export function grantPermitsGateways(
@@ -208,6 +209,10 @@ export function grantPermitsGateways(
         from.group === GATEWAY_API_GROUP &&
         from.kind === 'Gateway' &&
         from.namespace === namespace,
+    ) &&
+    grant.to.some(
+      to =>
+        to.group === '' && (to.kind === 'Secret' || to.kind === 'ConfigMap'),
     )
   );
 }

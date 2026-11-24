@@ -259,13 +259,14 @@ describe('buildGatewayViews', () => {
       const rows = viewOf('envoy-gateway-system/main').referenceGrants;
       expect(rows.map(row => row.grant.name)).toEqual(['for-shop']);
       expect(rows[0].routes.map(r => r.name)).toEqual(['web']);
-      expect(rows[0].forGateway).toBe(false);
+      expect(rows[0].gatewayNamespace).toBeUndefined();
+      expect(rows[0].routesKnown).toBe(true);
     });
 
     it('puts a grant from Gateways under the Gateways of that namespace', () => {
       const rows = viewOf('payments/internal').referenceGrants;
-      expect(rows.map(row => [row.grant.name, row.forGateway])).toEqual([
-        ['gateways', true],
+      expect(rows.map(row => [row.grant.name, row.gatewayNamespace])).toEqual([
+        ['gateways', 'payments'],
       ]);
     });
 
@@ -279,6 +280,42 @@ describe('buildGatewayViews', () => {
         ['for-events', ['hooks']],
         ['unused', []],
       ]);
+    });
+
+    it('puts a grant under each Gateway a route of it is on', () => {
+      const onBoth: HttpRoute = {
+        ...crossNamespace,
+        parents: [parent(main), parent(internal)],
+      };
+      const both = buildGatewayViews([main, internal], [onBoth], [], [forShop]);
+      expect(
+        both.gateways.map(view => [
+          view.key,
+          view.referenceGrants.map(row => row.id),
+        ]),
+      ).toEqual([
+        [
+          'envoy-gateway-system/main',
+          ['envoy-gateway-system/main|catalog/for-shop'],
+        ],
+        ['payments/internal', ['payments/internal|catalog/for-shop']],
+      ]);
+      expect(both.unattached.referenceGrants).toEqual([]);
+    });
+
+    it('says when the backends are not known, rather than no route', () => {
+      const unknown: HttpRoute = {
+        ...crossNamespace,
+        backends: { status: 'not-available', cause: 'not-exported' },
+      };
+      const unknownViews = buildGatewayViews([main], [unknown], [], [forShop]);
+      expect(
+        unknownViews.unattached.referenceGrants.map(r => r.routesKnown),
+      ).toEqual([false]);
+      const noTopology = buildGatewayViews([], [], [], [forShop], false);
+      expect(
+        noTopology.unattached.referenceGrants.map(r => r.routesKnown),
+      ).toEqual([false]);
     });
 
     it('finds a Gateway by a grant on it', () => {
