@@ -1,4 +1,5 @@
 import { DiscoveryApi, FetchApi } from '@backstage/core-plugin-api';
+import { MIMIR_OUTSIDE_MATCHERS_REASON } from '@giantswarm/backstage-plugin-gs-common';
 import { MimirQueryError } from './MimirQueryError';
 import { MimirApi, MimirQueryResponse, MimirRangeQueryResponse } from './types';
 
@@ -71,6 +72,21 @@ export class MimirClient implements MimirApi {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      // A query about another cluster than the one the installation's
+      // `mimir.matchers` allow: the backend did not send it, and its answer
+      // would have been empty. The page shows what it shows without metrics.
+      if (
+        response.status === 400 &&
+        (errorData as any)?.error?.reason === MIMIR_OUTSIDE_MATCHERS_REASON
+      ) {
+        return {
+          status: 'success',
+          data: {
+            resultType: path === 'query' ? 'vector' : 'matrix',
+            result: [],
+          },
+        } as T;
+      }
       const message =
         (errorData as any)?.error?.message ??
         `Mimir query failed with status ${response.status}`;

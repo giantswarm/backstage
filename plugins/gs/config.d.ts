@@ -337,14 +337,18 @@ export interface Config {
            * `https://observability.<baseDomain>`.
            */
           url?: string;
-          /** The tenant (`X-Scope-OrgID`). Defaults to `giantswarm`. */
+          /**
+           * The tenant (`X-Scope-OrgID`), not empty. Defaults to
+           * `giantswarm`.
+           */
           tenant?: string;
           /**
            * Label matchers added to every series selector of every query of
            * the installation, as label name to value, e.g.
            * `cluster_id: <workload cluster>`. A query that can't carry them
-           * (it doesn't parse, or a matcher of its excludes the enforced
-           * value) is refused, never sent without them.
+           * is refused, never sent without them: one about another cluster
+           * reads as no data, one that doesn't parse as an error. Values must
+           * not be empty.
            */
           matchers?: { [label: string]: string };
         };

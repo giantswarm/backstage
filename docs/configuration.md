@@ -191,11 +191,20 @@ gs:
   rewritten, as prom-label-proxy does. A matcher the query already has on an
   enforced label stays, next to the enforced one, so the selector reads the
   intersection: `cluster_id=~"golem|gerbil"` becomes
-  `cluster_id=~"golem|gerbil",cluster_id="gerbil"`. A query that does not
-  parse, or whose matcher cannot select the enforced value
-  (`cluster_id="golem"`, `cluster_id!="gerbil"`, a regex that does not match
-  `gerbil`), is refused with a 400 and never sent: it could only answer
-  nothing, which would read as no data.
+  `cluster_id=~"golem|gerbil",cluster_id="gerbil"`.
+- A query whose matcher cannot select the enforced value (`cluster_id="golem"`,
+  `cluster_id!="gerbil"`, a regex that does not match `gerbil`) asks about
+  another cluster. It is not sent: the backend answers 400 with the reason
+  `outside_installation_matchers`, and the page shows what it shows without
+  metrics. On such an installation, the cluster and deployment pages of every
+  cluster but the enforced one show no metrics. A query that does not parse is
+  refused with a plain 400, an error.
+- Each key is optional and overrides one default on its own. The block is
+  checked when the backend starts: an invalid one (a `url` that is not
+  http(s), an empty `tenant`, a matcher name that is not a label name, an empty
+  or non-string matcher value) is logged once as an error naming the
+  installation and the key, and that installation's metrics are then
+  unavailable (503), while the other installations work.
 - Without `mimir`, queries go to `https://observability.<baseDomain>` with
   tenant `giantswarm`, unchanged. `mimirEnabled: false` still turns the metrics
   off, with or without `mimir`.

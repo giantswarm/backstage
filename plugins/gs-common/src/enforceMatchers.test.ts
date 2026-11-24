@@ -191,6 +191,47 @@ describe('enforceMatchers', () => {
     });
   });
 
+  describe('escapes, read as Go reads them', () => {
+    const KAESE = { cluster_id: 'käse' };
+
+    it.each([
+      ['UTF-8 bytes in \\x escapes', 'up{cluster_id="k\\xc3\\xa4se"}'],
+      ['UTF-8 bytes in octal escapes', 'up{cluster_id="k\\303\\244se"}'],
+      ['a \\u escape', 'up{cluster_id="k\\u00e4se"}'],
+      ['the character itself', 'up{cluster_id="käse"}'],
+    ])('keeps the equal matcher: %s', (_, query) => {
+      expect(enforceMatchers(query, KAESE)).toBe(query);
+    });
+
+    it('refuses bytes that are not UTF-8, as Prometheus does', () => {
+      expect(() => enforceMatchers('up{cluster_id="k\\xe4se"}', KAESE)).toThrow(
+        QueryRefusedError,
+      );
+    });
+  });
+
+  describe('tells a query about other series from one it cannot read', () => {
+    it.each([
+      ['another value', 'up{cluster_id="golem"}'],
+      ['a regex that does not match', 'up{cluster_id=~"golem|glean"}'],
+      ['a negative matcher of the value', 'up{cluster_id!="gerbil"}'],
+    ])('outside the matchers: %s', (_, query) => {
+      expect(() => enforceMatchers(query, GERBIL)).toThrow(
+        expect.objectContaining({ outsideMatchers: true }),
+      );
+    });
+
+    it.each([
+      ['a query that does not parse', 'sum(up'],
+      ['a regex it cannot evaluate', 'up{cluster_id=~`\\Qgerbil\\E`}'],
+      ['a string it cannot read', 'up{cluster_id="\\q"}'],
+    ])('not outside them: %s', (_, query) => {
+      expect(() => enforceMatchers(query, GERBIL)).toThrow(
+        expect.objectContaining({ outsideMatchers: false }),
+      );
+    });
+  });
+
   describe('refuses', () => {
     it.each([
       ['another value', 'up{cluster_id="golem"}'],

@@ -53,16 +53,6 @@ function extractHostnames(samples: MimirMetricSample[]): HttpRouteHostname[] {
     .sort((a, b) => a.hostname.localeCompare(b.hostname));
 }
 
-/**
- * Fetches the hostnames exposed by Gateway API HTTPRoutes in the workload's
- * target namespace, and enriches each with its serving TLS certificate.
- *
- * The metric carries no backendRef, so hostnames are narrowed to the workload
- * via `cluster_id` + `namespace`. Certificates are resolved by walking
- * HTTPRoute → Gateway listener → cert-manager Certificate (see
- * `resolveHostnameCert`). The full label set is surfaced per series so the
- * filtering can be verified.
- */
 /** The queries behind {@link useMimirHttpRouteHostnames}, for one namespace. */
 export function httpRouteHostnameQueries(
   clusterName: string | undefined,
@@ -79,6 +69,16 @@ export function httpRouteHostnameQueries(
   };
 }
 
+/**
+ * Fetches the hostnames exposed by Gateway API HTTPRoutes in the workload's
+ * target namespace, and enriches each with its serving TLS certificate.
+ *
+ * The metric carries no backendRef, so hostnames are narrowed to the workload
+ * via `cluster_id` + `namespace`. Certificates are resolved by walking
+ * HTTPRoute → Gateway listener → cert-manager Certificate (see
+ * `resolveHostnameCert`). The full label set is surfaced per series so the
+ * filtering can be verified.
+ */
 export function useMimirHttpRouteHostnames(options: {
   installationName: string;
   clusterName: string | undefined;

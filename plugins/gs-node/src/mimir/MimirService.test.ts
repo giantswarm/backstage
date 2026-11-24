@@ -13,6 +13,7 @@ import { ConfigReader } from '@backstage/config';
 import { JsonObject } from '@backstage/types';
 import { ReportedServiceUnavailableError } from '../errors';
 import { MimirService } from './MimirService';
+import { MimirQueryRefusedError } from './MimirQueryRefusedError';
 import { MimirUnavailableError } from './MimirUnavailableError';
 
 jest.mock('node-fetch', () => jest.fn());
@@ -730,16 +731,14 @@ describe('MimirService with `gs.installations.<name>.mimir`', () => {
   });
 
   it.each([
-    ['a conflicting matcher', 'up{cluster_id="golem"}', /conflicts/],
+    ['a conflicting matcher', 'up{cluster_id="golem"}'],
     [
       'a regex on the enforced label that excludes its value',
       'up{cluster_id=~"golem.*"}',
-      /conflicts/,
     ],
-    ['a query that does not parse', 'sum(up', /could not be parsed/],
   ])(
-    'refuses %s with a 400, without sending it, logged at info',
-    async (_, query, reason) => {
+    'refuses %s as outside the matchers: a 400 with its reason, not sent, logged at info',
+    async (_, query) => {
       const logger = makeLogger();
       const service = serviceWith(
         { matchers: { cluster_id: 'gerbil' } },
@@ -752,9 +751,17 @@ describe('MimirService with `gs.installations.<name>.mimir`', () => {
         oidcToken: 'tok',
       });
 
-      await expect(refused).rejects.toThrow(InputError);
-      await expect(refused).rejects.toThrow(reason);
+      await expect(refused).rejects.toThrow(MimirQueryRefusedError);
+      await expect(refused).rejects.toThrow(/conflicts/);
       await expect(refused).rejects.toThrow(/installation "alba"/);
+      const error = await refused.catch(e => e);
+      // An `InputError` by name, so the routes answer 400, with the reason
+      // the frontend reads as no data.
+      expect(error.name).toBe('InputError');
+      expect(serializeError(error)).toMatchObject({
+        name: 'InputError',
+        reason: 'outside_installation_matchers',
+      });
       expect(mockFetch).not.toHaveBeenCalled();
       expect(logger.warn).not.toHaveBeenCalled();
       expect(logger.info).toHaveBeenCalledWith(
@@ -763,6 +770,20 @@ describe('MimirService with `gs.installations.<name>.mimir`', () => {
       );
     },
   );
+
+  it('refuses a query that does not parse as a plain 400, a failure', async () => {
+    const service = serviceWith({ matchers: { cluster_id: 'gerbil' } });
+
+    const error = await service
+      .query({ installationName: 'alba', query: 'sum(up', oidcToken: 'tok' })
+      .catch(e => e);
+
+    expect(error).toBeInstanceOf(InputError);
+    expect(error).not.toBeInstanceOf(MimirQueryRefusedError);
+    expect(error.message).toMatch(/could not be parsed/);
+    expect(serializeError(error)).not.toHaveProperty('reason');
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
 
   it('refuses a range query it cannot limit, too', async () => {
     const service = serviceWith({ matchers: { cluster_id: 'gerbil' } });
@@ -815,15 +836,88 @@ describe('MimirService with `gs.installations.<name>.mimir`', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ['a name that is not a label name', { 'cluster-id': 'gerbil' }],
-    ['a value that is not a string', { cluster_id: 7 }],
-  ])('throws on %s in `matchers`, without sending', async (_, matchers) => {
-    const service = serviceWith({ matchers });
+  describe('an invalid `mimir` block', () => {
+    const otherInstallation = {
+      baseDomain: 'golem.example.net',
+      mimir: { tenant: 'glean' },
+    };
 
-    await expect(
-      service.query({ installationName: 'alba', query: 'up', oidcToken: 't' }),
-    ).rejects.toThrow(/Invalid config/);
-    expect(mockFetch).not.toHaveBeenCalled();
+    function serviceWithInvalid(mimir: JsonObject, logger = makeLogger()) {
+      return MimirService.create({
+        config: new ConfigReader({
+          gs: {
+            installations: {
+              alba: { baseDomain: 'gerbil.example.net', mimir },
+              golem: otherInstallation,
+            },
+          },
+        }) as unknown as RootConfigService,
+        logger,
+      });
+    }
+
+    it.each([
+      ['a url that is not one', { url: 'observability.golem' }, 'mimir.url'],
+      [
+        'a url that is not http(s)',
+        { url: 'ftp://golem.example.net' },
+        'mimir.url',
+      ],
+      ['an empty tenant', { tenant: '' }, 'mimir.tenant'],
+      [
+        'a name that is not a label name',
+        { matchers: { 'cluster-id': 'gerbil' } },
+        'mimir.matchers',
+      ],
+      [
+        'a value that is not a string',
+        { matchers: { cluster_id: 7 } },
+        'mimir.matchers.cluster_id',
+      ],
+      [
+        'an empty matcher value',
+        { matchers: { cluster_id: '' } },
+        'mimir.matchers.cluster_id',
+      ],
+    ])(
+      '%s: logs one error at startup, then answers 503 without logging or sending',
+      async (_, mimir, key) => {
+        const logger = makeLogger();
+        const service = serviceWithInvalid(mimir as JsonObject, logger);
+
+        expect(logger.error).toHaveBeenCalledTimes(1);
+        expect(logger.error.mock.calls[0][0]).toContain('"alba"');
+        expect(logger.error.mock.calls[0][0]).toContain(
+          `gs.installations.alba.${key}`,
+        );
+
+        for (let i = 0; i < 3; i++) {
+          await expect(
+            service.query({
+              installationName: 'alba',
+              query: 'up',
+              oidcToken: 't',
+            }),
+          ).rejects.toThrow(MimirUnavailableError);
+        }
+        expect(mockFetch).not.toHaveBeenCalled();
+        expect(logger.error).toHaveBeenCalledTimes(1);
+        expect(logger.warn).not.toHaveBeenCalled();
+      },
+    );
+
+    it("leaves the other installations' metrics working", async () => {
+      const service = serviceWithInvalid({ tenant: '' });
+
+      await service.query({
+        installationName: 'golem',
+        query: 'up',
+        oidcToken: 't',
+      });
+
+      const [href, init] = mockFetch.mock.calls[0];
+      expect(new URL(href).host).toBe('observability.golem.example.net');
+      expect(init.headers['X-Scope-OrgID']).toBe('glean');
+    });
   });
 });

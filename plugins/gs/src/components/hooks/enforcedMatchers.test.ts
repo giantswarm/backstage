@@ -74,8 +74,12 @@ describe('the cluster and deployment queries with enforced matchers', () => {
     it.each(Object.entries(queriesFor('golem')))(
       '%s: is refused, not sent',
       (_, query) => {
+        // As outside the matchers: the page shows its no-data state.
         expect(() => enforceMatchers(query, MATCHERS)).toThrow(
-          QueryRefusedError,
+          expect.objectContaining({
+            name: QueryRefusedError.name,
+            outsideMatchers: true,
+          }),
         );
       },
     );
@@ -95,8 +99,12 @@ describe('the cluster and deployment queries with enforced matchers', () => {
     it.each(Object.entries(multiClusterQueries(['golem', 'glean'])))(
       '%s: is refused when none of the clusters is the installation’s',
       (_, query) => {
+        // As outside the matchers: the page shows its no-data state.
         expect(() => enforceMatchers(query, MATCHERS)).toThrow(
-          QueryRefusedError,
+          expect.objectContaining({
+            name: QueryRefusedError.name,
+            outsideMatchers: true,
+          }),
         );
       },
     );

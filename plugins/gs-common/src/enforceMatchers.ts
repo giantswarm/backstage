@@ -10,16 +10,31 @@ export type EnforcedMatchers = Record<string, string>;
 /**
  * A query {@link enforceMatchers} would not send: the message says why, for
  * the person who reads it.
+ *
+ * `outsideMatchers` is true when the query asks about series the enforced
+ * matchers exclude (another cluster, say): its answer would be empty, not
+ * wrong, so a page can show it as no data. False when the query could not be
+ * read at all, which is a failure.
  */
 export class QueryRefusedError extends Error {
-  constructor(reason: string) {
+  readonly outsideMatchers: boolean;
+
+  constructor(reason: string, options: { outsideMatchers?: boolean } = {}) {
     super(`the query was refused: ${reason}`);
     this.name = 'QueryRefusedError';
+    this.outsideMatchers = options.outsideMatchers ?? false;
   }
 }
 
 /** Why a selector cannot carry the matchers; {@link refuse} words it. */
-class SelectorError extends Error {}
+class SelectorError extends Error {
+  constructor(
+    message: string,
+    readonly outsideMatchers = false,
+  ) {
+    super(message);
+  }
+}
 
 /** A Prometheus label name, as a matcher's name and as a config key here. */
 const LABEL_NAME = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -54,9 +69,16 @@ const SIMPLE_ESCAPES: Record<string, string> = {
   '"': '"',
 };
 
+/** The UTF-8 bytes of `text`. */
+function utf8(text: string): number[] {
+  return Array.from(new TextEncoder().encode(text));
+}
+
 /**
  * A PromQL string literal's value: Go's `strconv.Unquote`, which Prometheus
- * uses. Throws on an escape it does not know, which the caller refuses.
+ * uses. `\x` and octal escapes are bytes and `\u`, `\U` code points, so the
+ * value is read as UTF-8 bytes and decoded at the end. Throws on an escape it
+ * does not know or on bytes that are not UTF-8, which the caller refuses.
  */
 function decodeStringLiteral(literal: string): string {
   const quote = literal[0];
@@ -64,36 +86,49 @@ function decodeStringLiteral(literal: string): string {
   if (quote === '`') {
     return body;
   }
-  let result = '';
+  if (!body.includes('\\')) {
+    return body;
+  }
+  const bytes: number[] = [];
   for (let i = 0; i < body.length; i++) {
     const char = body[i];
     if (char !== '\\') {
-      result += char;
+      const codePoint = body.codePointAt(i)!;
+      const whole = String.fromCodePoint(codePoint);
+      bytes.push(...utf8(whole));
+      i += whole.length - 1;
       continue;
     }
     const next = body[++i];
     if (next in SIMPLE_ESCAPES) {
-      result += SIMPLE_ESCAPES[next];
+      bytes.push(...utf8(SIMPLE_ESCAPES[next]));
     } else if (next === 'x' || next === 'u' || next === 'U') {
       const length = { x: 2, u: 4, U: 8 }[next];
       const hex = body.slice(i + 1, i + 1 + length);
       if (!/^[0-9a-fA-F]+$/.test(hex) || hex.length !== length) {
         throw new Error(`invalid escape in ${literal}`);
       }
-      result += String.fromCodePoint(parseInt(hex, 16));
+      const value = parseInt(hex, 16);
+      if (next === 'x') {
+        bytes.push(value);
+      } else {
+        bytes.push(...utf8(String.fromCodePoint(value)));
+      }
       i += length;
     } else if (next !== undefined && /[0-7]/.test(next)) {
       const octal = body.slice(i, i + 3);
-      if (!/^[0-7]{3}$/.test(octal)) {
+      if (!/^[0-7]{3}$/.test(octal) || parseInt(octal, 8) > 255) {
         throw new Error(`invalid escape in ${literal}`);
       }
-      result += String.fromCharCode(parseInt(octal, 8));
+      bytes.push(parseInt(octal, 8));
       i += 2;
     } else {
       throw new Error(`invalid escape in ${literal}`);
     }
   }
-  return result;
+  return new TextDecoder('utf-8', { fatal: true }).decode(
+    new Uint8Array(bytes),
+  );
 }
 
 function children(node: SyntaxNode): SyntaxNode[] {
@@ -243,6 +278,7 @@ function selectorInsertions(
     if (!selectsValue(matcher, enforced, text)) {
       throw new SelectorError(
         `the matcher ${text} conflicts with the enforced ${matcherText(matcher.name, enforced)}`,
+        true,
       );
     }
   }
@@ -283,8 +319,8 @@ function isEnforced(query: string, matchers: EnforcedMatchers): boolean {
   }
 }
 
-function refuse(reason: string): never {
-  throw new QueryRefusedError(reason);
+function refuse(reason: string, outsideMatchers = false): never {
+  throw new QueryRefusedError(reason, { outsideMatchers });
 }
 
 /**
@@ -326,7 +362,7 @@ export function enforceMatchers(
     );
   } catch (error) {
     if (error instanceof SelectorError) {
-      refuse(error.message);
+      refuse(error.message, error.outsideMatchers);
     }
     throw error;
   }
@@ -342,3 +378,10 @@ export function enforceMatchers(
 
   return rewritten;
 }
+
+/**
+ * The `reason` of the gs backend's 400 for a Mimir query that asks about
+ * series the installation's `mimir.matchers` exclude (`outsideMatchers`): the
+ * frontend answers it as an empty result, the page's no-data state.
+ */
+export const MIMIR_OUTSIDE_MATCHERS_REASON = 'outside_installation_matchers';

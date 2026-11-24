@@ -6,3 +6,4 @@
  */
 export * from './MimirService';
 export * from './MimirUnavailableError';
+export * from './MimirQueryRefusedError';

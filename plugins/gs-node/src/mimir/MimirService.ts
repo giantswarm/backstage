@@ -12,6 +12,7 @@ import {
 } from '@backstage/errors';
 import { Expand, JsonObject } from '@backstage/types';
 import fetch from 'node-fetch';
+import { MimirQueryRefusedError } from './MimirQueryRefusedError';
 import {
   MimirUnavailableError,
   mimirErrorText,
@@ -36,32 +37,119 @@ interface MimirTarget {
   matchers?: EnforcedMatchers;
 }
 
+/** `gs.installations.<name>.mimir`, read: each key overrides one default. */
+interface MimirOverride {
+  url?: string;
+  tenant?: string;
+  matchers?: EnforcedMatchers;
+}
+
+function isObject(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Thrown by {@link readMimirOverride}: names the key and what is wrong. */
+class InvalidMimirConfig extends Error {}
+
 /**
- * `gs.installations.<name>.mimir.matchers`, read as a raw object: a label name
- * like `__tenant` or `label_1` is not a valid config key, so `keys()` would
- * refuse it. An empty map is no matchers.
+ * One installation's `mimir` block, validated. Read as raw values rather than
+ * through `Config`: a label name like `__tenant` or `label_1` is not a valid
+ * config key, so `keys()` would refuse it. An empty value is invalid, not a
+ * default: an empty tenant reads as a refused token in Mimir's answer, and
+ * `cluster_id=""` selects the series *without* a `cluster_id`.
  */
-function readMatchers(
-  config: RootConfigService,
-  key: string,
-): EnforcedMatchers | undefined {
-  const raw = config.getOptional<JsonObject>(key);
+function readMimirOverride(raw: unknown, key: string): MimirOverride {
   if (raw === undefined) {
-    return undefined;
+    return {};
   }
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-    throw new Error(`Invalid config at ${key}: expected a map of label values`);
+  if (!isObject(raw)) {
+    throw new InvalidMimirConfig(`${key} is not a map`);
   }
-  const matchers: EnforcedMatchers = {};
-  for (const [name, value] of Object.entries(raw)) {
-    if (!isLabelName(name) || typeof value !== 'string') {
-      throw new Error(
-        `Invalid config at ${key}.${name}: expected a label name with a string value`,
-      );
+  const override: MimirOverride = {};
+
+  if (raw.url !== undefined) {
+    let url: URL | undefined;
+    try {
+      url = typeof raw.url === 'string' ? new URL(raw.url) : undefined;
+    } catch {
+      url = undefined;
     }
-    matchers[name] = value;
+    if (!url || (url.protocol !== 'https:' && url.protocol !== 'http:')) {
+      throw new InvalidMimirConfig(`${key}.url is not an http(s) URL`);
+    }
+    override.url = (raw.url as string).replace(/\/+$/, '');
   }
-  return Object.keys(matchers).length > 0 ? matchers : undefined;
+
+  if (raw.tenant !== undefined) {
+    if (typeof raw.tenant !== 'string' || raw.tenant === '') {
+      throw new InvalidMimirConfig(`${key}.tenant is not a non-empty string`);
+    }
+    override.tenant = raw.tenant;
+  }
+
+  if (raw.matchers !== undefined) {
+    if (!isObject(raw.matchers)) {
+      throw new InvalidMimirConfig(`${key}.matchers is not a map`);
+    }
+    const matchers: EnforcedMatchers = {};
+    for (const [name, value] of Object.entries(raw.matchers)) {
+      if (!isLabelName(name)) {
+        throw new InvalidMimirConfig(
+          `${key}.matchers has "${name}", which is not a label name`,
+        );
+      }
+      if (typeof value !== 'string' || value === '') {
+        throw new InvalidMimirConfig(
+          `${key}.matchers.${name} is not a non-empty string`,
+        );
+      }
+      matchers[name] = value;
+    }
+    if (Object.keys(matchers).length > 0) {
+      override.matchers = matchers;
+    }
+  }
+
+  return override;
+}
+
+/**
+ * Every installation's `mimir` block, read once. An invalid one is logged
+ * here, once, naming the installation and the key, and kept as invalid: that
+ * installation's metrics then answer 503 like a Mimir that is down, and the
+ * other installations work.
+ */
+function readMimirOverrides(
+  config: RootConfigService,
+  logger: LoggerService,
+): Map<string, MimirOverride | 'invalid'> {
+  const overrides = new Map<string, MimirOverride | 'invalid'>();
+  const installations = config.getOptional('gs.installations');
+  if (!isObject(installations)) {
+    return overrides;
+  }
+  for (const [name, installation] of Object.entries(installations)) {
+    const key = `gs.installations.${name}.mimir`;
+    try {
+      overrides.set(
+        name,
+        readMimirOverride(
+          isObject(installation) ? installation.mimir : undefined,
+          key,
+        ),
+      );
+    } catch (error) {
+      if (!(error instanceof InvalidMimirConfig)) {
+        throw error;
+      }
+      logger.error(
+        `Invalid Mimir config for installation "${name}": ${error.message}; its metrics are unavailable`,
+        { installation: name },
+      );
+      overrides.set(name, 'invalid');
+    }
+  }
+  return overrides;
 }
 
 export interface MimirMetricSample {
@@ -107,12 +195,17 @@ export class MimirService {
     config: RootConfigService;
     logger: LoggerService;
   }): MimirService {
-    return new MimirService(options.config, options.logger);
+    return new MimirService(
+      options.config,
+      options.logger,
+      readMimirOverrides(options.config, options.logger),
+    );
   }
 
   private constructor(
     private readonly config: RootConfigService,
     private readonly logger: LoggerService,
+    private readonly overrides: Map<string, MimirOverride | 'invalid'>,
   ) {}
 
   /**
@@ -193,13 +286,18 @@ export class MimirService {
       );
     }
 
-    const tenant =
-      this.config.getOptionalString(`${prefix}.mimir.tenant`) ?? DEFAULT_TENANT;
-    const matchers = readMatchers(this.config, `${prefix}.mimir.matchers`);
+    const override = this.overrides.get(installationName) ?? {};
+    if (override === 'invalid') {
+      // Logged once, when the config was read: not again per query.
+      throw new MimirUnavailableError(
+        `Mimir is not configured correctly for installation "${installationName}"`,
+      );
+    }
+    const { url, matchers } = override;
+    const tenant = override.tenant ?? DEFAULT_TENANT;
 
-    const url = this.config.getOptionalString(`${prefix}.mimir.url`);
     if (url) {
-      return { baseUrl: url.replace(/\/+$/, ''), tenant, matchers };
+      return { baseUrl: url, tenant, matchers };
     }
 
     const baseDomain = this.config.getOptionalString(`${prefix}.baseDomain`);
@@ -218,8 +316,14 @@ export class MimirService {
    *
    * - a refused token: `AuthenticationError` (401), which the person can act
    *   on by signing in again;
-   * - a query that could not be limited to the installation's matchers:
-   *   `InputError` (400), never sent;
+   * - a query about series the installation's matchers exclude (another
+   *   cluster): `MimirQueryRefusedError` (400, `reason`
+   *   `outside_installation_matchers`), never sent, which the frontend reads
+   *   as no data;
+   * - a query that could not be limited to the matchers at all (it does not
+   *   parse): `InputError` (400), never sent;
+   * - an installation whose `mimir` block is invalid: `MimirUnavailableError`
+   *   (503), logged once when the config was read;
    * - a query Mimir refused (any other 4xx: bad PromQL, a range over its
    *   limits): `InputError` (400) with Mimir's text, which asking again would
    *   not change, and not logged, since nothing is down;
@@ -263,9 +367,10 @@ export class MimirService {
           endpoint: path,
           reason: error.message,
         });
-        throw new InputError(
-          `Mimir ${path} for installation "${installationName}" was not sent: ${error.message}`,
-        );
+        const message = `Mimir ${path} for installation "${installationName}" was not sent: ${error.message}`;
+        throw error.outsideMatchers
+          ? new MimirQueryRefusedError(message)
+          : new InputError(message);
       }
     }
     for (const [key, value] of Object.entries(sent)) {

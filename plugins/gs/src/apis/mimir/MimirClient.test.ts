@@ -83,4 +83,45 @@ describe('MimirClient', () => {
     expect(error.name).toBe('InputError');
     expect(error.message).toMatch(/exceeded maximum resolution$/);
   });
+
+  describe('a query outside the installation’s matchers', () => {
+    const refusal = {
+      error: {
+        name: 'InputError',
+        message:
+          'Mimir query for installation "alba" was not sent: the query was refused: …',
+        reason: 'outside_installation_matchers',
+      },
+    };
+
+    it('answers an instant query with no series, the no-data state', async () => {
+      const { client } = clientAnswering(400, refusal);
+
+      await expect(client.query(query)).resolves.toEqual({
+        status: 'success',
+        data: { resultType: 'vector', result: [] },
+      });
+    });
+
+    it('answers a range query with no series', async () => {
+      const { client } = clientAnswering(400, refusal);
+
+      await expect(
+        client.queryRange({ ...query, start: '1', end: '2', step: '1d' }),
+      ).resolves.toEqual({
+        status: 'success',
+        data: { resultType: 'matrix', result: [] },
+      });
+    });
+
+    it('still fails on any other 400', async () => {
+      const { client } = clientAnswering(400, {
+        error: { name: 'InputError', message: 'could not be parsed' },
+      });
+
+      const error = await client.query(query).catch(e => e);
+
+      expect(error.name).toBe('InputError');
+    });
+  });
 });
