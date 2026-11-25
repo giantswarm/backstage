@@ -540,8 +540,8 @@ export function offersOrganizationPullRequests(
 
 /**
  * The ways the Create organization dialog offers, in the order it shows
- * them; the first is selected. Pull request first is a default the owner has
- * not confirmed yet: change the order here.
+ * them; the first is selected. The pull request is first: an installation
+ * whose agent-manager opens pull requests was set up to use them.
  */
 export const ORGANIZATION_CREATE_MODES: readonly OrganizationWriteMode[] = [
   'commit',
