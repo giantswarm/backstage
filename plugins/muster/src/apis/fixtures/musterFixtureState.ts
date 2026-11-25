@@ -392,6 +392,7 @@ export class MusterFixtureState {
       state,
       ...(toolPrefix && toolPrefix !== stored.connector.name && { toolPrefix }),
       ...(approval && { approval }),
+      generation: stored.generation,
       // The second installation's muster has no shared store: what asks is
       // refused there, which the pages show as a warning.
       ...(stored.connector.installation ===
@@ -679,8 +680,20 @@ export class MusterFixtureState {
       args.name,
       'Failed to set the approval of MCP server',
     );
+    // muster's precondition: refused when the server changed since the
+    // caller read its generation.
+    const { expectedGeneration, ...rest } = args;
+    if (
+      expectedGeneration !== undefined &&
+      expectedGeneration !== stored.generation
+    ) {
+      throw connectorToolError(
+        `conflict: MCP server '${stored.connector.name}' changed since it was read (generation ${stored.generation} now, expectedGeneration ${String(expectedGeneration)}): read it again with core_mcpserver_get and apply the change to what it holds now`,
+        409,
+      );
+    }
     const approval = approvalArgOf(
-      args,
+      rest,
       this.viewOf(stored, this.stateOf(stored, this.now())),
     );
     if (!approval) {

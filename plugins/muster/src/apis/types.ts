@@ -276,6 +276,12 @@ export interface McpServerRuntime {
    * that does not know them.
    */
   approval?: MCPServerApproval;
+  /**
+   * The MCPServer's `metadata.generation`, which
+   * `core_mcpserver_set_approval` takes as `expectedGeneration` to refuse a
+   * write over a change made since (muster with that precondition).
+   */
+  generation?: number;
 }
 
 /**

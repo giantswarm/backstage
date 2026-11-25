@@ -382,7 +382,8 @@ export function takesArgument(
     | 'clientCredentials'
     | 'requestMeta'
     | 'approval'
-    | 'preset',
+    | 'preset'
+    | 'expectedGeneration',
 ): boolean {
   return Boolean(inputSchema?.properties?.[argument]);
 }

@@ -236,6 +236,15 @@ describe('MusterMcpClient tool errors', () => {
     },
   );
 
+  it("answers set_approval's stale expectedGeneration 422", async () => {
+    const refusal =
+      "conflict: MCP server 'jira' changed since it was read (generation 4 now, expectedGeneration 3): read it again with core_mcpserver_get and apply the change to what it holds now";
+
+    expect(
+      (await toolError(refusal, 'core_mcpserver_set_approval')).error,
+    ).toMatchObject({ kind: 'connector_refused', status: 422 });
+  });
+
   it("keeps muster's sign-in a 401", async () => {
     const { client } = buildClient({
       content: [

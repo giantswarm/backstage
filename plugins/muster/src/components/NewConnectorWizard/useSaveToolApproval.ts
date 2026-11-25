@@ -18,12 +18,22 @@ export type ToolApprovalSave = {
   approval: Required<MCPServerApproval>;
   /**
    * The stored settings the draft was built on. muster's
-   * `core_mcpserver_set_approval` replaces `spec.approval` whole and takes no
-   * precondition, so the save reads the settings again right before it and
-   * writes nothing when they changed since ({@link ToolApprovalConflictError}).
+   * `core_mcpserver_set_approval` replaces `spec.approval` whole, so the save
+   * reads the settings again right before it and writes nothing when they
+   * changed since ({@link ToolApprovalConflictError}).
    */
   base: MCPServerApproval | undefined;
+  /**
+   * muster's `set_approval` takes `expectedGeneration`: the write then
+   * carries the generation that read returned, and muster refuses it when
+   * the connector changed in between.
+   */
+  precondition: boolean;
 };
+
+/** muster's refusal of a write whose `expectedGeneration` is stale. */
+const STALE_GENERATION =
+  /^conflict: MCP server '[^']*' changed since it was read/;
 
 /**
  * Someone changed the connector's settings since the draft was built: nothing
@@ -33,7 +43,7 @@ export type ToolApprovalSave = {
 export class ToolApprovalConflictError extends Error {
   constructor() {
     super(
-      'Someone changed these tool settings since you opened them, so yours were not saved over theirs. The settings below are the current ones, with your own changes on top: check them and press Done again.',
+      'Someone changed this connector since you opened its settings, so yours were not saved over theirs. The settings below are the current ones, with your own changes on top: check them and press Done again.',
     );
     this.name = 'ToolApprovalConflictError';
   }
@@ -46,12 +56,12 @@ export class ToolApprovalConflictError extends Error {
  * `preset`: the wizard expanded the preset already and the person saw each
  * setting before saving.
  *
- * muster replaces the settings whole and offers no precondition (no
- * `resourceVersion` or expected settings on `set_approval`), so the save
- * re-reads them (`core_mcpserver_list`, the step's own query) immediately
- * before writing and refuses to overwrite a change made since the draft was
- * built. A change in the moment between that read and the write still wins
- * silently; only a precondition in muster closes that.
+ * muster replaces the settings whole. The save re-reads them
+ * (`core_mcpserver_list`, the step's own query) immediately before writing
+ * and refuses to overwrite a change made since the draft was built; where
+ * muster takes `expectedGeneration`, the write carries the generation of
+ * that read, so muster also refuses a change made between the read and the
+ * write. A muster without it leaves that moment open.
  */
 export function useSaveToolApproval() {
   const musterApi = useApi(musterApiRef);
@@ -62,23 +72,40 @@ export function useSaveToolApproval() {
       installation,
       approval,
       base,
+      precondition,
     }: ToolApprovalSave) => {
       const fresh = await queryClient.fetchQuery({
         queryKey: musterServerListQueryKey(installation),
         queryFn: () => musterApi.listServers(installation),
         staleTime: 0,
       });
-      const current = fresh.mcpServers?.find(
-        server => server.name === name,
-      )?.approval;
-      if (!sameStoredApproval(current, base)) {
+      const server = fresh.mcpServers?.find(entry => entry.name === name);
+      if (!sameStoredApproval(server?.approval, base)) {
         throw new ToolApprovalConflictError();
       }
-      return musterApi.callTool(
-        SET_APPROVAL_TOOL,
-        { name, approval },
-        installation,
-      );
+      const generation = server?.generation;
+      try {
+        return await musterApi.callTool(
+          SET_APPROVAL_TOOL,
+          {
+            name,
+            approval,
+            ...(precondition &&
+              typeof generation === 'number' && {
+                expectedGeneration: generation,
+              }),
+          },
+          installation,
+        );
+      } catch (error) {
+        if (error instanceof Error && STALE_GENERATION.test(error.message)) {
+          await queryClient.invalidateQueries({
+            queryKey: musterServerListQueryKey(installation),
+          });
+          throw new ToolApprovalConflictError();
+        }
+        throw error;
+      }
     },
     event: () => TOOL_APPROVAL_SAVED,
     // The connector, its tools and their reported approval change.

@@ -264,6 +264,10 @@ export function NewConnectorTestPage() {
           installation,
           approval: approvalOf(approval.draft),
           base: stored,
+          precondition: takesArgument(
+            setApprovalSchema.data?.inputSchema,
+            'expectedGeneration',
+          ),
         });
       } catch {
         // Shown in place; the person stays on the step.
@@ -279,6 +283,7 @@ export function NewConnectorTestPage() {
     serverName,
     save,
     stored,
+    setApprovalSchema.data,
     installation,
     reset,
     navigate,

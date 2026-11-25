@@ -383,6 +383,7 @@ function withSetApproval(rules = ['Allow', 'Ask', 'Block']) {
               properties: { rule: { type: 'string', enum: rules } },
             },
             preset: { type: 'string' },
+            expectedGeneration: { type: 'integer' },
           }
         : { displayName: { type: 'string' } };
     return Promise.resolve({ name, inputSchema: { properties } });
@@ -407,7 +408,11 @@ function approvalTools(
   }));
 }
 
-function connectedWith(tools: ToolSummary[], approval?: unknown) {
+function connectedWith(
+  tools: ToolSummary[],
+  approval?: unknown,
+  generation?: number,
+) {
   listServers.mockResolvedValue({
     mcpServers: [
       {
@@ -415,6 +420,7 @@ function connectedWith(tools: ToolSummary[], approval?: unknown) {
         state: 'Connected',
         toolsCount: tools.length,
         ...(approval ? { approval } : {}),
+        ...(generation !== undefined && { generation }),
       },
     ],
   });
@@ -793,6 +799,57 @@ describe('NewConnectorTestPage: Test & Tools', () => {
         .getAllByRole('radio')
         .map(r => r.textContent),
     ).toEqual(['Allow', 'Ask']);
+  });
+
+  it('sends the generation it read as expectedGeneration, and shows muster refusing a stale one as a conflict', async () => {
+    connectedWith(approvalTools(), undefined, 7);
+    callTool.mockImplementation((name: string) =>
+      name === 'core_mcpserver_set_approval'
+        ? Promise.reject(
+            new Error(
+              "conflict: MCP server 'jira' changed since it was read (generation 8 now, expectedGeneration 7): read it again with core_mcpserver_get and apply the change to what it holds now",
+            ),
+          )
+        : Promise.resolve({}),
+    );
+
+    await renderTestStep();
+    await screen.findByText('Everything runs.');
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+    await waitFor(() => expect(setApprovalCalls()).toHaveLength(1));
+    expect(setApprovalCalls()[0][1]).toMatchObject({
+      name: 'jira',
+      expectedGeneration: 7,
+    });
+    expect(
+      await screen.findByText('The tool settings changed meanwhile'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Test the connection')).toBeInTheDocument();
+  });
+
+  it('sends no expectedGeneration to a muster whose set_approval does not take it', async () => {
+    describeTool.mockImplementation((name: string) =>
+      Promise.resolve({
+        name,
+        inputSchema: {
+          properties: (name === 'core_mcpserver_set_approval'
+            ? { name: {}, approval: {} }
+            : { displayName: { type: 'string' } }) as Record<
+            string,
+            JsonSchema
+          >,
+        },
+      }),
+    );
+    connectedWith(approvalTools(), undefined, 7);
+
+    await renderTestStep();
+    await screen.findByText('Everything runs.');
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+    await waitFor(() => expect(setApprovalCalls()).toHaveLength(1));
+    expect(setApprovalCalls()[0][1]).not.toHaveProperty('expectedGeneration');
   });
 
   it('saves nothing when a reviewed connector is left unchanged', async () => {

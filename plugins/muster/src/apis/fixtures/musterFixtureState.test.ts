@@ -188,6 +188,30 @@ describe('the connector writes in fixture mode', () => {
       expect((await toolsOf(name)).map(t => t.name)).toEqual([kept.name]);
     });
 
+    it('refuses a settings write whose expectedGeneration is stale, as muster does', async () => {
+      const name = named('Connected');
+      const generation = (await api.listServers(INSTALLATION)).mcpServers?.find(
+        server => server.name === name,
+      )?.generation;
+      expect(typeof generation).toBe('number');
+
+      await call('core_mcpserver_update', { name, description: 'Changed.' });
+      await expect(
+        call('core_mcpserver_set_approval', {
+          name,
+          approval: { rule: 'Ask' },
+          expectedGeneration: generation,
+        }),
+      ).rejects.toThrow(/^conflict: MCP server '.*' changed since it was read/);
+      await expect(
+        call('core_mcpserver_set_approval', {
+          name,
+          approval: { rule: 'Ask' },
+          expectedGeneration: generation! + 1,
+        }),
+      ).resolves.toBeDefined();
+    });
+
     it('refuses a create without approval settings, as muster does', async () => {
       await expect(
         call('core_mcpserver_create', {

@@ -126,6 +126,8 @@ export type MusterFixtureConnector = FixtureConnector & {
   toolPrefix?: string;
   /** `spec.approval`, as seeded or written; absent: not reviewed. */
   approval?: MCPServerApproval;
+  /** `metadata.generation`, bumped by every write to the spec. */
+  generation?: number;
   /**
    * Why approvals cannot be answered where this connector is served (a
    * prerequisite is missing): reported as `approval.unavailable` on each of
@@ -237,6 +239,9 @@ export function mcpServerRuntimeOf(
       consecutiveFailures: 3,
     }),
     ...(connector.approval && { approval: connector.approval }),
+    ...(connector.generation !== undefined && {
+      generation: connector.generation,
+    }),
   };
 }
 
@@ -551,6 +556,11 @@ export const FIXTURE_CORE_TOOLS: readonly ToolSummary[] = [
         },
       },
       preset: APPROVAL_PRESET_ARGUMENT,
+      expectedGeneration: {
+        type: 'integer',
+        description:
+          'The generation core_mcpserver_get returned; the write is refused when the server changed since.',
+      },
     },
     ['name'],
     false,

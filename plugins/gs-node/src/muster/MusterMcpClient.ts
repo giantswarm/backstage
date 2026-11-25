@@ -496,6 +496,8 @@ const CONNECTOR_WRITE_TOOLS = new Set([
  *   another authorization server, a server outside muster's namespace);
  * - an admission policy denied the MCPServer (`ValidatingAdmissionPolicy …
  *   denied request: …`, e.g. a Secret its writer may not get);
+ * - `core_mcpserver_set_approval`'s `expectedGeneration` is stale (`conflict:
+ *   MCP server 'x' changed since it was read …`);
  * - a split write was sent another write's arguments (`core_mcpserver_update
  *   does not take url: use core_mcpserver_connect …`), refused before
  *   anything is written.
@@ -512,6 +514,7 @@ const CONNECTOR_REFUSALS = [
   /^Cannot store the client credentials of MCP server '[^']*'(, so it was not (created|updated))?: (Permission denied: your user may not |Secret "[^"]*" already exists in namespace )/,
   /ValidatingAdmissionPolicy '[^']*' with binding '[^']*' denied request: /,
   /^core_mcpserver_[a-z_]+ does not take [^:]+: use core_mcpserver_/,
+  /^conflict: MCP server '[^']*' changed since it was read /,
 ];
 const CONNECTOR_FAILURES = [/Removing the server failed too/];
 
