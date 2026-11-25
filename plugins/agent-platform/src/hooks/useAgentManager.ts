@@ -7,15 +7,12 @@ import {
 } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
-import {
-  AgentManagerClient,
-  type OrganizationOfNamespace,
-} from '../apis/AgentManagerClient';
+import { AgentManagerClient } from '../apis/AgentManagerClient';
 import {
   AGENT_MANAGER_SERVER,
   type AgentManagerInfo,
 } from '../lib/agentManager';
-import { organizationOfNamespace } from '../lib/organizations';
+import type { OrganizationReads } from '../lib/organizations';
 import {
   musterAgentManagerInfoQueryKey,
   musterOrganizationsQueryKey,
@@ -60,20 +57,19 @@ export function useAgentManagerClients():
       return undefined;
     }
     return (installation: string) => {
-      const organizationOf: OrganizationOfNamespace | undefined = queryClient
-        ? namespace =>
-            organizationOfNamespace(namespace, {
-              info: () =>
-                queryClient.fetchQuery(
-                  agentManagerInfoQuery(musterApi, installation),
-                ),
-              listing: () =>
-                queryClient.fetchQuery(
-                  organizationsQuery(musterApi, installation),
-                ),
-            })
+      const reads: OrganizationReads | undefined = queryClient
+        ? {
+            info: () =>
+              queryClient.fetchQuery(
+                agentManagerInfoQuery(musterApi, installation),
+              ),
+            listing: () =>
+              queryClient.fetchQuery(
+                organizationsQuery(musterApi, installation),
+              ),
+          }
         : undefined;
-      return new AgentManagerClient(musterApi, installation, organizationOf);
+      return new AgentManagerClient(musterApi, installation, reads);
     };
   }, [musterApi, queryClient]);
 }

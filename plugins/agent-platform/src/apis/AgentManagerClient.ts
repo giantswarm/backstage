@@ -30,6 +30,7 @@ import { PLATFORM_TENANT_NAMESPACE } from '../lib/tenants';
 import {
   modelNamespaceRefused,
   organizationOfNamespace,
+  type OrganizationReads,
 } from '../lib/organizations';
 import type {
   MemberRequest,
@@ -93,14 +94,6 @@ function erasureOf(erases: OrganizationErasure): OrganizationErasure {
   };
 }
 
-/**
- * Which organization a namespace of the installation is, by its name; none
- * for a namespace that is no organization's the person belongs to.
- */
-export type OrganizationOfNamespace = (
-  namespace: string,
-) => Promise<string | undefined>;
-
 /** How an agent tool is told where it acts. */
 type AgentPlace = { organization: string } | { namespace: string };
 
@@ -123,42 +116,49 @@ export class AgentManagerClient {
   constructor(
     private readonly musterApi: MusterApi,
     readonly installation: string,
-    organizationOf?: OrganizationOfNamespace,
+    reads?: OrganizationReads,
   ) {
-    this.organizationOf =
-      organizationOf ??
-      (namespace =>
-        organizationOfNamespace(namespace, {
-          info: () => this.getInfo(),
-          listing: () => this.listOrganizations(),
-        }));
+    this.reads = reads ?? {
+      info: () => this.getInfo(),
+      listing: () => this.listOrganizations(),
+    };
   }
 
-  private readonly organizationOf: OrganizationOfNamespace;
+  /**
+   * `get_info` and `list_organizations`, which tell an organization's
+   * namespace and the installation's own; cached where the caller has a
+   * cache, read afresh otherwise.
+   */
+  private readonly reads: OrganizationReads;
+
+  /** The organization's name whose namespace `namespace` is, if any. */
+  private organizationOf(namespace: string): Promise<string | undefined> {
+    return organizationOfNamespace(namespace, this.reads);
+  }
 
   /**
    * Where an agent tool acts on `namespace`: an organization's namespace by
    * the organization's name, as agent-manager takes it; any other namespace
-   * as it is. When the organizations cannot be read the namespace goes as
-   * it is: agent-manager refuses an organization's namespace and names the
-   * organization to pass, so nothing lands in the wrong place.
+   * as it is. A failed read of the organizations fails the call with its
+   * own reason: sent as it is, the namespace would come back refused in
+   * words about the tool's arguments.
    */
   private async agentPlace(namespace: string): Promise<AgentPlace> {
     if (!namespace || namespace === PLATFORM_TENANT_NAMESPACE) {
       return { namespace };
     }
-    const organization = await this.organizationOf(namespace).catch(
-      () => undefined,
-    );
+    const organization = await this.organizationOf(namespace);
     return organization ? { organization } : { namespace };
   }
 
   /**
    * Where a model tool acts on `namespace`: no organization for the
-   * installation's models, the organization's name for an organization's
-   * namespace (`known`, when the caller knows it). Any other namespace is
-   * refused before the call: without an organization agent-manager would
-   * act on the installation's models.
+   * installation's models, in the platform namespace `get_info` names
+   * (`namespaces.default`; `kagent` where it names none), the organization's
+   * name for an organization's namespace (`known`, when the caller knows
+   * it). Any other namespace is refused before the call: without an
+   * organization agent-manager acts on its own platform namespace's models,
+   * whatever namespace the portal meant.
    */
   private async modelPlace(
     namespace: string,
@@ -167,7 +167,8 @@ export class AgentManagerClient {
     if (known) {
       return { organization: known };
     }
-    if (namespace === MODEL_CONFIG_NAMESPACE) {
+    const info = await this.reads.info();
+    if (namespace === (info.namespaces?.default || MODEL_CONFIG_NAMESPACE)) {
       return {};
     }
     const organization = await this.organizationOf(namespace);

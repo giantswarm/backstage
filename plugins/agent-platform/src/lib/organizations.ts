@@ -355,7 +355,10 @@ export function organizationNamespacesOf(
  * `list_organizations`.
  */
 export type OrganizationReads = {
-  info: () => Promise<{ capabilities?: Record<string, boolean> }>;
+  info: () => Promise<{
+    capabilities?: Record<string, boolean>;
+    namespaces?: { default?: string };
+  }>;
   listing: () => Promise<OrganizationListing>;
 };
 

@@ -261,14 +261,28 @@ describe('AgentManagerClient.updateOrganizationAdmins', () => {
   });
 });
 
+const SPEC = {
+  namespace: 'agents-payments',
+  name: 'helper',
+  displayName: 'Helper',
+  modelConfig: 'default',
+  toolset: ['preset:read-only'],
+};
+const UPDATE = { namespace: 'agents-payments', name: 'helper', tags: [] };
+
 describe('AgentManagerClient addresses an organization by its name', () => {
   /** agent-manager with one organization, payments, in agents-payments. */
-  function withPayments() {
+  function withPayments(platformNamespace?: string) {
     const callTool = jest.fn(
       async (name: string, _args: Record<string, unknown>, _inst?: string) => {
         switch (name) {
           case 'x_agent-manager_get_info':
-            return { capabilities: { organizations: true } };
+            return {
+              capabilities: { organizations: true },
+              ...(platformNamespace && {
+                namespaces: { default: platformNamespace, managed: [] },
+              }),
+            };
           case 'x_agent-manager_list_organizations':
             return {
               organizations: [
@@ -316,6 +330,87 @@ describe('AgentManagerClient addresses an organization by its name', () => {
     );
   });
 
+  it.each<[string, string, (client: AgentManagerClient) => Promise<unknown>]>([
+    ['create_agent', 'create_agent', client => client.createAgent(SPEC)],
+    [
+      'create_agent in mode commit',
+      'create_agent',
+      client => client.commitAgent(SPEC),
+    ],
+    ['validate_agent', 'validate_agent', client => client.validateAgent(SPEC)],
+    [
+      'validate_agent of an update',
+      'validate_agent',
+      client => client.validateUpdate(UPDATE, 'commit'),
+    ],
+    ['update_agent', 'update_agent', client => client.updateAgent(UPDATE)],
+    [
+      'update_agent in mode commit',
+      'update_agent',
+      client => client.commitUpdateAgent(UPDATE),
+    ],
+    [
+      'the dry run of update_agent in mode commit',
+      'update_agent',
+      client => client.dryRunCommitUpdateAgent(UPDATE),
+    ],
+    [
+      'delete_agent',
+      'delete_agent',
+      client => client.deleteAgent('agents-payments', 'helper'),
+    ],
+    [
+      'delete_agent in mode commit',
+      'delete_agent',
+      client => client.commitDeleteAgent('agents-payments', 'helper'),
+    ],
+    [
+      'get_agent_status',
+      'get_agent_status',
+      client => client.getAgentStatus('agents-payments', 'helper'),
+    ],
+    [
+      'list_model_configs',
+      'list_model_configs',
+      client => client.listModelConfigs('agents-payments'),
+    ],
+    [
+      'list_egress_policies',
+      'list_egress_policies',
+      client => client.listEgressPolicies('agents-payments'),
+    ],
+  ])(
+    '%s names the organization, never its namespace',
+    async (_case, tool, call) => {
+      const { client, argsOf } = withPayments();
+      await call(client);
+      const [args] = argsOf(tool);
+      expect(args).toMatchObject({ organization: 'payments' });
+      expect(args).not.toHaveProperty('namespace');
+    },
+  );
+
+  it('fails an agent tool with the reason the organizations could not be read', async () => {
+    const callTool = jest.fn(async (name: string) => {
+      if (name === 'x_agent-manager_get_info') {
+        throw new Error('backend_error: the API server did not answer in time');
+      }
+      return {};
+    });
+    const client = new AgentManagerClient(
+      { callTool } as unknown as MusterApi,
+      'inst-1',
+    );
+    await expect(client.getAgent('agents-payments', 'helper')).rejects.toThrow(
+      'the API server did not answer in time',
+    );
+    expect(callTool).not.toHaveBeenCalledWith(
+      'x_agent-manager_get_agent',
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
   it('a model tool names the organization, or none for the installation, and refuses any other namespace', async () => {
     const { client, argsOf } = withPayments();
     await client.deleteModel('agents-payments', 'claude', { dryRun: true });
@@ -326,6 +421,18 @@ describe('AgentManagerClient addresses an organization by its name', () => {
     expect(argsOf('delete_organization_object')).toEqual([
       { organization: 'payments', name: 'claude', kind: 'model', dryRun: true },
       { name: 'claude', kind: 'model', dryRun: true },
+    ]);
+  });
+
+  it("takes the installation's models in the platform namespace get_info names, and refuses kagent there", async () => {
+    const { client, argsOf } = withPayments('platform-ai');
+    await client.deleteModel('platform-ai', 'sonnet', { dryRun: true });
+    // Without an organization agent-manager would delete platform-ai/sonnet.
+    await expect(
+      client.deleteModel('kagent', 'sonnet', { dryRun: true }),
+    ).rejects.toThrow(/kagent is neither/);
+    expect(argsOf('delete_organization_object')).toEqual([
+      { name: 'sonnet', kind: 'model', dryRun: true },
     ]);
   });
 
