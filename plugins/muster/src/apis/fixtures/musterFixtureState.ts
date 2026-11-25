@@ -12,12 +12,15 @@ import {
 import type { KubeObjectInterface } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { DISPLAY_NAME_ANNOTATION } from '../../lib/k8s/MCPServer';
-import type { ToolSummary } from '../types';
+import type { ApprovalPreset } from '../../lib/toolApproval';
+import type { MCPServerApproval, ToolSummary } from '../types';
 import {
   connectorToolsOf,
   connectorKeyOf,
   mcpServerObjectOf,
   musterWorkflowObjectOf,
+  presetApprovalOf,
+  reviewedApprovalOf,
   musterWorkflowOf,
   servedToolsOf,
   type MusterFixtureConnector,
@@ -74,7 +77,52 @@ const NOT_SPEC = new Set([
   'tags',
   'clientCredentials',
   'suspended',
+  'preset',
 ]);
+
+const APPROVAL_PRESETS = new Set(['recommended', 'allow-all', 'ask-all']);
+
+/**
+ * The `approval` or `preset` of a connector write, checked as muster's CRD
+ * checks it: a rule of `Allow` or `Ask`, each tool `Allow`, `Ask` or `Block`.
+ */
+function approvalArgOf(
+  args: Record<string, unknown>,
+  connector: MusterFixtureConnector,
+): MCPServerApproval | undefined {
+  const preset = args.preset;
+  if (preset !== undefined) {
+    if (typeof preset !== 'string' || !APPROVAL_PRESETS.has(preset)) {
+      throw connectorToolError(
+        `Invalid preset ${JSON.stringify(preset)}: use recommended, allow-all or ask-all`,
+        422,
+      );
+    }
+    return presetApprovalOf(preset as ApprovalPreset, connector);
+  }
+  const approval = args.approval as MCPServerApproval | undefined;
+  if (approval === undefined) {
+    return undefined;
+  }
+  if (
+    approval.rule !== undefined &&
+    !['Allow', 'Ask'].includes(approval.rule)
+  ) {
+    throw connectorToolError(
+      `Invalid approval: rule must be Allow or Ask, not ${approval.rule}`,
+      422,
+    );
+  }
+  for (const [tool, value] of Object.entries(approval.tools ?? {})) {
+    if (!['Allow', 'Ask', 'Block'].includes(value)) {
+      throw connectorToolError(
+        `Invalid approval: ${tool} must be Allow, Ask or Block, not ${value}`,
+        422,
+      );
+    }
+  }
+  return { ...approval };
+}
 
 type StoredConnector = {
   /** The record the reads map; `state` is the settled or seeded one. */
@@ -207,13 +255,23 @@ export class MusterFixtureState {
         ...connectors,
         ...inInstallation(this.data.organizationConnectors ?? [], installation),
       ];
+      // One connector starts reviewed, so the Tools tab and the edit's Test &
+      // Tools step show settings, a blocked tool and a New one.
+      const reviewed = connectors.find(
+        connector => !connector.namespace && connector.state === 'Connected',
+      );
       store = {
         connectors: new Map(
           served.map(connector => [
             connectorKeyOf(connector),
             {
               connector,
-              spec: { ...mcpServerObjectOf(connector).spec },
+              spec: {
+                ...mcpServerObjectOf(connector).spec,
+                ...(connector === reviewed && {
+                  approval: reviewedApprovalOf(connector),
+                }),
+              },
               tags: [],
               suspended: connector.state === 'Stopped',
               signedIn: false,
@@ -295,10 +353,12 @@ export class MusterFixtureState {
     state: ConnectorState,
   ): MusterFixtureConnector {
     const toolPrefix = stringOf(stored.spec.toolPrefix);
+    const approval = stored.spec.approval as MCPServerApproval | undefined;
     return {
       ...stored.connector,
       state,
       ...(toolPrefix && toolPrefix !== stored.connector.name && { toolPrefix }),
+      ...(approval && { approval }),
     };
   }
 
@@ -446,6 +506,13 @@ export class MusterFixtureState {
       generation: 1,
       observedGeneration: 1,
     };
+    const approval = approvalArgOf(
+      args,
+      this.viewOf(stored, stored.connector.state),
+    );
+    if (approval) {
+      stored.spec.approval = approval;
+    }
     // muster starts a server with `autoStart` as it registers it; one
     // without waits for a start.
     if (args.autoStart === true) {
@@ -519,6 +586,34 @@ export class MusterFixtureState {
     }
     this.changed(installation);
     return `MCP server '${stored.connector.name}' updated successfully`;
+  }
+
+  /**
+   * `core_mcpserver_set_approval`: the connector's tool approval, explicit
+   * (`approval`) or a preset written out for its tools. Applies at once, as
+   * muster reads the settings on every listing and call.
+   */
+  setApproval(installation: string, args: Record<string, unknown>): string {
+    const stored = this.find(
+      installation,
+      args.name,
+      'Failed to set the approval of MCP server',
+    );
+    const approval = approvalArgOf(
+      args,
+      this.viewOf(stored, this.stateOf(stored, this.now())),
+    );
+    if (!approval) {
+      throw connectorToolError(
+        'approval or preset is required (presets: recommended, allow-all, ask-all)',
+        422,
+      );
+    }
+    stored.spec = { ...stored.spec, approval };
+    this.written(stored);
+    stored.observedGeneration = stored.generation;
+    this.changed(installation);
+    return `Approval of MCP server '${stored.connector.name}' updated successfully`;
   }
 
   /** `core_mcpserver_delete`. */

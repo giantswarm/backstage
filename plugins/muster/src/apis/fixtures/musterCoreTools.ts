@@ -47,6 +47,8 @@ export const musterCoreToolHandlers: Record<string, FixtureToolHandler> = {
     musterFixtureState().create(installation, args),
   core_mcpserver_update: (args, { installation }) =>
     musterFixtureState().update(installation, args),
+  core_mcpserver_set_approval: (args, { installation }) =>
+    musterFixtureState().setApproval(installation, args),
   core_mcpserver_delete: (args, { installation }) =>
     musterFixtureState().delete(installation, args),
   core_service_start: (args, { installation }) =>

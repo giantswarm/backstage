@@ -21,8 +21,14 @@ import {
   type WorkflowArgDefinition,
   WORKFLOW_CATEGORY_LABEL,
 } from '../../lib/k8s/MusterWorkflow';
+import {
+  approvalKeyOf,
+  expandPreset,
+  type ApprovalPreset,
+} from '../../lib/toolApproval';
 import type {
   JsonSchema,
+  MCPServerApproval,
   McpServerRuntime,
   MusterInstallationInfo,
   PromptSummary,
@@ -116,7 +122,11 @@ const CONNECTED: ReadonlySet<MCPServerState> = new Set([
  * A connector as muster serves it live: the data set's record, with the tool
  * prefix its definition sets, if any (`spec.toolPrefix`).
  */
-export type MusterFixtureConnector = FixtureConnector & { toolPrefix?: string };
+export type MusterFixtureConnector = FixtureConnector & {
+  toolPrefix?: string;
+  /** `spec.approval`, as seeded or written; absent: not reviewed. */
+  approval?: MCPServerApproval;
+};
 
 /**
  * The segment muster names a connector's tools and prompts with,
@@ -193,7 +203,7 @@ export function mcpServerObjectOf(
 
 /** A connector as `core_mcpserver_list` reports it live. */
 export function mcpServerRuntimeOf(
-  connector: FixtureConnector,
+  connector: MusterFixtureConnector,
 ): McpServerRuntime {
   return {
     name: connector.name,
@@ -213,6 +223,7 @@ export function mcpServerRuntimeOf(
       error: READY[connector.state].message,
       consecutiveFailures: 3,
     }),
+    ...(connector.approval && { approval: connector.approval }),
   };
 }
 
@@ -393,6 +404,13 @@ const MCPSERVER_DEFINITION: Record<string, JsonSchema> = {
   auth: { type: 'object' },
 };
 
+/** The `preset` argument of muster's connector writes (tool approval). */
+const APPROVAL_PRESET_ARGUMENT: JsonSchema = {
+  type: 'string',
+  enum: ['recommended', 'allow-all', 'ask-all'],
+  description: 'Fills every tool from its annotations, then stores them.',
+};
+
 /**
  * muster's own `core_*` tools, as `filter_tools` lists them for the muster
  * row of the servers list.
@@ -419,7 +437,11 @@ export const FIXTURE_CORE_TOOLS: readonly ToolSummary[] = [
   connectorTool(
     'core_mcpserver_create',
     'Register an MCP server.',
-    { ...MCPSERVER_DEFINITION, clientCredentials: { type: 'object' } },
+    {
+      ...MCPSERVER_DEFINITION,
+      clientCredentials: { type: 'object' },
+      preset: APPROVAL_PRESET_ARGUMENT,
+    },
     ['name'],
     false,
   ),
@@ -427,6 +449,21 @@ export const FIXTURE_CORE_TOOLS: readonly ToolSummary[] = [
     'core_mcpserver_update',
     'Change an MCP server definition.',
     { ...MCPSERVER_DEFINITION, clientCredentials: { type: 'object' } },
+    ['name'],
+    false,
+  ),
+  connectorTool(
+    'core_mcpserver_set_approval',
+    "Set an MCP server's tool approval: explicit settings or a preset.",
+    {
+      name: { type: 'string', description: "The server's name." },
+      approval: {
+        type: 'object',
+        description:
+          'rule (Allow or Ask) and tools (tool name to Allow, Ask or Block).',
+      },
+      preset: APPROVAL_PRESET_ARGUMENT,
+    },
     ['name'],
     false,
   ),
@@ -539,9 +576,96 @@ export function servedToolsOf(
   return new Map(
     connectors
       .filter(isServing)
-      .flatMap(connectorToolsOf)
+      .flatMap(connector =>
+        connectorToolsOf(connector)
+          .map(tool => withApprovalOf(tool, connector))
+          // muster hides a blocked tool from every listing.
+          .filter(tool => tool.approval?.setting !== 'block'),
+      )
       .map(tool => [tool.name, tool]),
   );
+}
+
+/** A connector tool's own name, its settings' key. */
+function approvalToolKeyOf(
+  tool: ToolSummary,
+  connector: MusterFixtureConnector,
+): string {
+  return approvalKeyOf(tool.name, `x_${toolSegmentOf(connector)}`);
+}
+
+/**
+ * A served tool with its approval as muster reports it (tool approval,
+ * slice 1): its own entry, else the connector's rule (*New*), else `allow`,
+ * not reviewed. The guest administers muster's own connectors, never an
+ * organization's.
+ */
+function withApprovalOf(
+  tool: ToolSummary,
+  connector: MusterFixtureConnector,
+): ToolSummary {
+  const { approval } = connector;
+  let reported: ToolSummary['approval'] = {
+    setting: 'allow',
+    source: 'unreviewed',
+  };
+  if (approval) {
+    const entry = approval.tools?.[approvalToolKeyOf(tool, connector)];
+    const lower = (value: string | undefined) =>
+      value === 'Allow' || value === 'Block'
+        ? (value.toLowerCase() as 'allow' | 'block')
+        : 'ask';
+    reported =
+      entry !== undefined
+        ? { setting: lower(entry), source: 'tool' }
+        : {
+            setting:
+              approval.rule === undefined ? 'allow' : lower(approval.rule),
+            source: 'connector',
+            new: true,
+          };
+  }
+  return {
+    ...tool,
+    approval: reported,
+    connectorAdmin: connector.namespace === undefined,
+  };
+}
+
+/** A preset written out for a connector's tools, as muster expands it on save. */
+export function presetApprovalOf(
+  preset: ApprovalPreset,
+  connector: MusterFixtureConnector,
+): MCPServerApproval {
+  return expandPreset(
+    preset,
+    connectorToolsOf(connector).map(tool => ({
+      key: approvalToolKeyOf(tool, connector),
+      readOnly: tool.annotations?.readOnlyHint === true,
+    })),
+  );
+}
+
+/**
+ * The settings of the one connector per installation the data set starts
+ * reviewed: *Recommended*, its delete tools blocked, its last tool without
+ * an entry (*New*, following the rule).
+ */
+export function reviewedApprovalOf(
+  connector: MusterFixtureConnector,
+): MCPServerApproval {
+  const recommended = presetApprovalOf('recommended', connector);
+  const tools = connectorToolsOf(connector);
+  const entries = Object.fromEntries(
+    tools.slice(0, -1).map(tool => {
+      const key = approvalToolKeyOf(tool, connector);
+      return [
+        key,
+        tool.annotations?.destructiveHint ? 'Block' : recommended.tools![key],
+      ];
+    }),
+  );
+  return { rule: 'Ask', tools: entries };
 }
 
 /**

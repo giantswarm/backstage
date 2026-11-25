@@ -49,6 +49,89 @@ describe('the connector writes in fixture mode', () => {
     setFixtureScenarioForTests(undefined);
   });
 
+  describe('tool approval', () => {
+    const toolsOf = async (name: string) =>
+      (
+        await api.filterTools({
+          installation: INSTALLATION,
+          pattern: `x_${name}_*`,
+          limit: 200,
+        })
+      ).tools ?? [];
+
+    it('starts one connector reviewed: its settings, a hidden blocked tool and a New one', async () => {
+      const name = named('Connected');
+      const approval = objectOf(name)?.getApproval();
+      expect(approval?.rule).toBe('Ask');
+      expect(Object.values(approval?.tools ?? {})).toContain('Block');
+
+      const tools = await toolsOf(name);
+      expect(tools.every(tool => tool.connectorAdmin === true)).toBe(true);
+      expect(tools.some(tool => tool.name.includes('_delete_'))).toBe(false);
+      expect(tools.filter(tool => tool.approval?.new)).toHaveLength(1);
+      expect(
+        (await api.listServers(INSTALLATION)).mcpServers?.find(
+          server => server.name === name,
+        )?.approval,
+      ).toEqual(approval);
+    });
+
+    it('sets the settings explicitly, and the next listing reports them', async () => {
+      const name = named('Connected');
+      const keys = Object.keys(objectOf(name)!.getApproval()!.tools!);
+      await expect(
+        call('core_mcpserver_set_approval', {
+          name,
+          approval: {
+            rule: 'Allow',
+            tools: Object.fromEntries(keys.map(key => [key, 'Allow'])),
+          },
+        }),
+      ).resolves.toBe(`Approval of MCP server '${name}' updated successfully`);
+
+      const tools = await toolsOf(name);
+      // The blocked tool is listed again; the last one still follows the rule.
+      expect(tools.some(tool => tool.name.includes('_delete_'))).toBe(true);
+      expect(
+        tools.filter(tool => tool.approval?.source === 'tool'),
+      ).toHaveLength(keys.length);
+      expect(tools.every(tool => tool.approval?.setting === 'allow')).toBe(
+        true,
+      );
+    });
+
+    it('refuses a setting muster does not know, and a call without settings', async () => {
+      const name = named('Connected');
+      await expect(
+        call('core_mcpserver_set_approval', {
+          name,
+          approval: { tools: { list_records: 'Maybe' } },
+        }),
+      ).rejects.toThrow(/must be Allow, Ask or Block/);
+      await expect(
+        call('core_mcpserver_set_approval', { name }),
+      ).rejects.toThrow(/presets: recommended, allow-all, ask-all/);
+    });
+
+    it('writes out the preset a create carries', async () => {
+      await call('core_mcpserver_create', {
+        name: 'cellar',
+        type: 'streamable-http',
+        url: 'https://cellar.example.com/mcp',
+        preset: 'ask-all',
+      });
+
+      const approval = objectOf('cellar')?.getApproval();
+      expect(approval?.rule).toBe('Ask');
+      expect(Object.keys(approval?.tools ?? {})).toHaveLength(
+        NEW_CONNECTOR_TOOLS,
+      );
+      expect(new Set(Object.values(approval?.tools ?? {}))).toEqual(
+        new Set(['Ask']),
+      );
+    });
+  });
+
   it('registers a connector, which connects and then serves its tools', async () => {
     await expect(
       call('core_mcpserver_create', {

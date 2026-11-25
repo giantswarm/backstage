@@ -187,8 +187,9 @@ check (`core_mcpserver_validate`, which passes), and the writes to
 connectors. The catalogue describes them all, the definition tools
 with the arguments the flow asks about (`displayName`, `tags`).
 
-The connector writes (`core_mcpserver_create`, `_update`, `_delete`,
-`core_service_start`, `_stop`, `_restart`) are kept in memory until the page
+The connector writes (`core_mcpserver_create`, `_update`,
+`_set_approval`, `_delete`, `core_service_start`, `_stop`, `_restart`) are
+kept in memory until the page
 reloads, in one state per scenario that every muster read takes its data
 from (`plugins/muster/src/apis/fixtures/musterFixtureState.ts`): the
 `MCPServer` and `Workflow` objects, the servers list, the connector names,
@@ -196,6 +197,12 @@ the person's sign-in status, the catalogue with its workflows and presets,
 the executions and the usage. An installation's reads are worked out again
 only after a write there.
 
+- Tool approval: the first connected connector of muster's own namespace in
+  each installation starts reviewed (_Recommended_, its delete tools
+  blocked and hidden, its last tool _New_); every other connector is not
+  reviewed. The guest is connector admin of muster's own connectors, not of
+  an organization's. `core_mcpserver_set_approval` and a create's `preset`
+  write `spec.approval`, which the next listing reports.
 - A workflow's steps call the tools they were written against, from the data
   set's serving connectors; it is available while a serving connector offers
   each of them. Deleting, turning off or failing a connector makes the

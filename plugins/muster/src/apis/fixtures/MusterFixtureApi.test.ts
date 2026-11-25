@@ -128,6 +128,7 @@ describe('MusterFixtureApi', () => {
       'core_mcpserver_validate',
       'core_mcpserver_create',
       'core_mcpserver_update',
+      'core_mcpserver_set_approval',
       'core_mcpserver_delete',
       'core_service_start',
       'core_service_stop',
@@ -236,9 +237,15 @@ describe('MusterFixtureApi', () => {
           serving.includes(connector),
         );
       }
+      // Every tool but the ones its settings block, which muster hides.
+      const { mcpServers } = await api.listServers('fennel');
+      const blocked = Object.values(
+        mcpServers?.find(s => s.name === serving[0].name)?.approval?.tools ??
+          {},
+      ).filter(setting => setting === 'Block').length;
       expect(
         tools?.filter(t => t.server === connectorKeyOf(serving[0])),
-      ).toHaveLength(serving[0].toolsCount);
+      ).toHaveLength(serving[0].toolsCount - blocked);
       const available = inInstallation(data.workflows, 'fennel').filter(
         w => w.state === 'available',
       );
