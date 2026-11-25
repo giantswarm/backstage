@@ -435,8 +435,11 @@ export class MusterFixtureApi implements MusterApi {
   }
 
   async listServers(installation?: string): Promise<McpServerListResponse> {
-    const connectors = this.liveConnectors(this.reachable(installation));
+    const target = this.reachable(installation);
+    const connectors = this.liveConnectors(target);
     return {
+      // As muster reports it beside the servers (tool approval).
+      governance: musterFixtureState().governanceOf(target),
       mcpServers: [
         ...connectors.map(mcpServerRuntimeOf),
         ...this.servers.map(server => ({

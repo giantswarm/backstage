@@ -506,6 +506,16 @@ export class MusterFixtureState {
     return stored;
   }
 
+  /**
+   * The governance mode muster reports on `core_mcpserver_list`: the data
+   * set's second installation is governed, every other trusted.
+   */
+  governanceOf(installation: string): 'trusted' | 'governed' {
+    return installation === this.data.installations[1]?.name
+      ? 'governed'
+      : 'trusted';
+  }
+
   /** `core_mcpserver_create`. */
   create(installation: string, args: Record<string, unknown>): string {
     const name = stringOf(args.name)?.trim();

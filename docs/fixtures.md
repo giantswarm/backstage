@@ -204,9 +204,10 @@ arguments and refuse each other's in muster's words before writing
   blocked and hidden, its last tool _New_); every other connector is not
   reviewed. The guest is connector admin of muster's own connectors, not of
   an organization's. `core_mcpserver_set_approval` and a create's `preset`
-  write `spec.approval`, which the next listing reports. muster reports no
-  governance mode (as muster does not yet), so the wizard pre-selects
-  _Recommended_ and says the mode could not be read.
+  write `spec.approval`, which the next listing reports. muster reports its
+  governance mode on `core_mcpserver_list` as muster does: the first
+  installation is trusted (_Allow all_ pre-selected), the second governed
+  (_Recommended_).
   On the second installation's muster the tools that ask also report
   `approval.unavailable` ("muster's shared store is not on Valkey"), for the
   warning that approvals cannot be answered right now.

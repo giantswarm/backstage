@@ -1,16 +1,19 @@
-import type { GovernanceMode, MusterServerInfoResponse } from '../apis/types';
+import type {
+  GovernanceMode,
+  McpServerListResponse,
+  MusterServerInfoResponse,
+} from '../apis/types';
 
 /**
  * The installation's governance mode as the portal reads it, or `undefined`
- * when it is not known: muster does not report it, it reported something
- * else, or muster could not be asked.
+ * when it is not known: muster does not report it (an older muster), it
+ * reported something else, or muster could not be asked.
  *
- * This is the one place the mode's source plugs in. muster (branch
- * `tool-approval`) does not report its mode to clients yet: it appears only
- * inside approval records (`contract-muster-approval.md` §4), and
- * muster-backend's `/server-info` carries only muster's icon. When muster
- * reports the mode read-only, map it here (and pass it through muster-backend
- * `/server-info` as `governance`); nothing else in the portal changes.
+ * muster reports its mode as `governance` on `core_mcpserver_list`
+ * (`trusted` or `governed`), which muster-backend's `/servers` passes on
+ * unchanged (`listServers`). `/server-info`'s `governance` is read after it,
+ * for a backend that serves it there. The first source that names a mode
+ * wins.
  *
  * Unknown is never read as `trusted`: the portal then pre-selects and sends
  * the stricter *Recommended* preset and says the mode could not be read
@@ -18,12 +21,17 @@ import type { GovernanceMode, MusterServerInfoResponse } from '../apis/types';
  * configuration as governed.
  */
 export function governanceModeOf(
-  serverInfo: MusterServerInfoResponse | undefined,
+  ...sources: ReadonlyArray<
+    McpServerListResponse | MusterServerInfoResponse | undefined
+  >
 ): GovernanceMode | undefined {
-  const reported = serverInfo?.governance;
-  return reported === 'trusted' || reported === 'governed'
-    ? reported
-    : undefined;
+  for (const source of sources) {
+    const reported: unknown = source?.governance;
+    if (reported === 'trusted' || reported === 'governed') {
+      return reported;
+    }
+  }
+  return undefined;
 }
 
 /** The query key of muster-backend's `/server-info` for `installation`. */

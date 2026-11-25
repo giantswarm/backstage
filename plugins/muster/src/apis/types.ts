@@ -337,6 +337,12 @@ export type GovernanceMode = 'trusted' | 'governed';
 
 export interface McpServerListResponse {
   mcpServers: McpServerRuntime[] | null;
+  /**
+   * The installation's governance mode, as `core_mcpserver_list` reports it
+   * (muster with tool approval); absent from an older muster. Read through
+   * `governanceModeOf`, which never takes an unknown value for `trusted`.
+   */
+  governance?: string;
 }
 
 /** A connector as muster-backend names it (`/servers/names`). */

@@ -6,26 +6,41 @@ import {
   governanceModeOf,
   musterServerInfoQueryKey,
 } from '../lib/governanceMode';
+import { musterServerListQueryKey } from './useMusterServerAvailability';
 
 /**
- * The installation's governance mode (`governanceModeOf`, the one adapter),
- * from muster-backend's `/server-info` (the query `useMusterIcon` shares).
- * `undefined` while it is read, from a muster that does not report it and
- * when it cannot be asked: never `trusted` on a guess. It only picks the
- * preset the connector wizard pre-selects; muster enforces the rest.
+ * The installation's governance mode (`governanceModeOf`): `governance` on
+ * muster's `core_mcpserver_list` (muster-backend `/servers`, the query the
+ * connector pages share), else on `/server-info` (the query `useMusterIcon`
+ * shares). `undefined` while it is read, from a muster that does not report
+ * it and when it cannot be asked: never `trusted` on a guess. It only picks
+ * the preset the connector wizard pre-selects; muster enforces the rest.
  */
 export function useGovernanceMode(installation: string | undefined): {
   mode: GovernanceMode | undefined;
-  /** The read has settled (with a mode or without one). */
+  /** The reads have settled (with a mode or without one). */
   settled: boolean;
 } {
   const musterApi = useApi(musterApiRef);
-  const { data, isSuccess, isError } = useQuery({
+  const list = useQuery({
+    queryKey: musterServerListQueryKey(installation),
+    queryFn: () => musterApi.listServers(installation),
+    enabled: Boolean(installation),
+    retry: false,
+  });
+  const listMode = governanceModeOf(list.data);
+  const info = useQuery({
     queryKey: musterServerInfoQueryKey(installation),
     queryFn: () => musterApi.getServerInfo(installation),
-    enabled: Boolean(installation),
+    // Only asked when the list did not name a mode.
+    enabled:
+      Boolean(installation) && (list.isSuccess || list.isError) && !listMode,
     staleTime: 10 * 60_000,
     retry: false,
   });
-  return { mode: governanceModeOf(data), settled: isSuccess || isError };
+  const mode = governanceModeOf(list.data, info.data);
+  return {
+    mode,
+    settled: Boolean(mode) || info.isSuccess || info.isError,
+  };
 }

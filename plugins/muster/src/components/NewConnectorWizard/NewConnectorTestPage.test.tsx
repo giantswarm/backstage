@@ -75,6 +75,8 @@ const describeTool = jest.fn(
 );
 
 const getServerInfo = jest.fn();
+/** The governance mode `core_mcpserver_list` reports beside the servers. */
+let reportedGovernance: string | undefined = 'trusted';
 
 const musterApi = {
   callTool,
@@ -153,7 +155,12 @@ describe('NewConnectorTestPage', () => {
     mockMcpServers = [];
     jest.clearAllMocks();
     callTool.mockResolvedValue({});
-    listServers.mockResolvedValue({ mcpServers: [] });
+    listServers.mockImplementation(() =>
+      Promise.resolve({
+        mcpServers: [],
+        ...(reportedGovernance && { governance: reportedGovernance }),
+      }),
+    );
     getAuthStatus.mockResolvedValue({ servers: [] });
     filterTools.mockResolvedValue({
       total: 0,
@@ -161,9 +168,10 @@ describe('NewConnectorTestPage', () => {
       truncated: false,
       tools: [],
     });
-    // A muster that reports its mode (none does yet: the adapter's one
-    // place, `governanceModeOf`); unknown is tested on its own.
-    getServerInfo.mockResolvedValue({ governance: 'trusted' });
+    // muster reports its mode on core_mcpserver_list (`/servers`), never on
+    // `/server-info`; unknown is tested on its own.
+    reportedGovernance = 'trusted';
+    getServerInfo.mockResolvedValue({});
   });
 
   it('reads the settings before offering them', async () => {
@@ -423,6 +431,7 @@ function connectedWith(
         ...(generation !== undefined && { generation }),
       },
     ],
+    ...(reportedGovernance && { governance: reportedGovernance }),
   });
   filterTools.mockResolvedValue({
     total: tools.length,
@@ -461,9 +470,10 @@ describe('NewConnectorTestPage: Test & Tools', () => {
     jest.clearAllMocks();
     callTool.mockResolvedValue({});
     getAuthStatus.mockResolvedValue({ servers: [] });
-    // A muster that reports its mode (none does yet: the adapter's one
-    // place, `governanceModeOf`); unknown is tested on its own.
-    getServerInfo.mockResolvedValue({ governance: 'trusted' });
+    // muster reports its mode on core_mcpserver_list (`/servers`), never on
+    // `/server-info`; unknown is tested on its own.
+    reportedGovernance = 'trusted';
+    getServerInfo.mockResolvedValue({});
     withSetApproval();
   });
 
@@ -499,7 +509,7 @@ describe('NewConnectorTestPage: Test & Tools', () => {
   });
 
   it('pre-selects Recommended on a governed platform: reads run, the rest ask', async () => {
-    getServerInfo.mockResolvedValue({ governance: 'governed' });
+    reportedGovernance = 'governed';
     connectedWith(approvalTools());
 
     await renderTestStep();
@@ -516,10 +526,18 @@ describe('NewConnectorTestPage: Test & Tools', () => {
   });
 
   it.each([
-    ['reports no mode', () => getServerInfo.mockResolvedValue({})],
     [
-      'cannot be asked',
-      () => getServerInfo.mockRejectedValue(new Error('upstream 502')),
+      'reports no mode (an older muster)',
+      () => {
+        reportedGovernance = undefined;
+      },
+    ],
+    [
+      'reports another value and /server-info cannot be asked',
+      () => {
+        reportedGovernance = 'open';
+        getServerInfo.mockRejectedValue(new Error('upstream 502'));
+      },
     ],
   ])(
     'pre-selects Recommended and says so when muster %s, never Allow all',
@@ -775,7 +793,7 @@ describe('NewConnectorTestPage: Test & Tools', () => {
   });
 
   it('keeps Ask pre-selected for new tools on a governed platform, Block selectable', async () => {
-    getServerInfo.mockResolvedValue({ governance: 'governed' });
+    reportedGovernance = 'governed';
     connectedWith(approvalTools());
 
     await renderTestStep();
@@ -850,6 +868,30 @@ describe('NewConnectorTestPage: Test & Tools', () => {
 
     await waitFor(() => expect(setApprovalCalls()).toHaveLength(1));
     expect(setApprovalCalls()[0][1]).not.toHaveProperty('expectedGeneration');
+  });
+
+  it('keeps a stored Block rule without tool entries, and Done does not loosen it', async () => {
+    connectedWith(
+      approvalTools().map(t => ({
+        ...t,
+        approval: { setting: 'ask' as const, source: 'connector' as const },
+      })),
+      { rule: 'Block' },
+    );
+
+    await renderTestStep();
+    const rule = await screen.findByRole('radiogroup', {
+      name: 'Rule for new tools',
+    });
+    expect(chosen(rule)).toBe('Block');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await waitFor(() => expect(setApprovalCalls()).toHaveLength(1));
+    const { approval } = setApprovalCalls()[0][1] as {
+      approval: { rule: string; tools: Record<string, string> };
+    };
+    expect(approval.rule).toBe('Block');
+    expect(new Set(Object.values(approval.tools))).toEqual(new Set(['Ask']));
   });
 
   it('saves nothing when a reviewed connector is left unchanged', async () => {

@@ -17,6 +17,7 @@ import {
   governanceModeOf,
   musterServerInfoQueryKey,
 } from '../../lib/governanceMode';
+import { musterServerListQueryKey } from '../../hooks/useMusterServerAvailability';
 import {
   CONNECTOR_UPDATE_TOOL,
   editTakesArgument,
@@ -134,20 +135,33 @@ export function useRegisterMcpServer() {
       // stores only the preset's rule then (no tools are listed yet); the
       // Test & Tools step writes each tool's setting once it lists them. A
       // mode that cannot be read sends Recommended, never Allow all.
+      const governanceMode = async () => {
+        const list = await queryClient
+          .fetchQuery({
+            queryKey: musterServerListQueryKey(installation),
+            queryFn: () => musterApi.listServers(installation),
+            staleTime: 30_000,
+            retry: false,
+          })
+          .catch(() => undefined);
+        const fromList = governanceModeOf(list);
+        if (fromList) {
+          return fromList;
+        }
+        return governanceModeOf(
+          await queryClient
+            .fetchQuery({
+              queryKey: musterServerInfoQueryKey(installation),
+              queryFn: () => musterApi.getServerInfo(installation),
+              staleTime: 10 * 60_000,
+              retry: false,
+            })
+            .catch(() => undefined),
+        );
+      };
       const preset =
         tool === 'core_mcpserver_create'
-          ? defaultPresetFor(
-              governanceModeOf(
-                await queryClient
-                  .fetchQuery({
-                    queryKey: musterServerInfoQueryKey(installation),
-                    queryFn: () => musterApi.getServerInfo(installation),
-                    staleTime: 10 * 60_000,
-                    retry: false,
-                  })
-                  .catch(() => undefined),
-              ),
-            )
+          ? defaultPresetFor(await governanceMode())
           : undefined;
       const definitionFor = async (
         name: string,

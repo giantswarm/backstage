@@ -600,18 +600,33 @@ describe('useRegisterMcpServer', () => {
         },
       });
 
-    /** muster-backend's `/server-info` for the test; restored after it. */
-    const serving = (answer: () => Promise<unknown>) => {
-      (musterApi as { getServerInfo?: unknown }).getServerInfo =
-        jest.fn(answer);
+    /**
+     * muster-backend's `/servers` (core_mcpserver_list, which reports the
+     * mode) for the test, and `/server-info` as production serves it (no
+     * mode); restored after it.
+     */
+    const serving = (list: () => Promise<unknown>) => {
+      const api = musterApi as {
+        listServers?: unknown;
+        getServerInfo?: unknown;
+      };
+      api.listServers = jest.fn(list);
+      api.getServerInfo = jest.fn(() => Promise.resolve({}));
     };
+    const listing = (governance?: string) => () =>
+      Promise.resolve({ mcpServers: [], ...(governance && { governance }) });
     afterEach(() => {
-      delete (musterApi as { getServerInfo?: unknown }).getServerInfo;
+      const api = musterApi as {
+        listServers?: unknown;
+        getServerInfo?: unknown;
+      };
+      delete api.listServers;
+      delete api.getServerInfo;
     });
 
     it("sends the trusted mode's Allow all to a create that takes a preset, and only there", async () => {
       describeTool.mockImplementation(withPreset);
-      serving(() => Promise.resolve({ governance: 'trusted' }));
+      serving(listing('trusted'));
       const { result } = renderRegister();
 
       let sent: McpServerDefinition | undefined;
@@ -632,11 +647,8 @@ describe('useRegisterMcpServer', () => {
     });
 
     it.each([
-      [
-        'on a governed platform',
-        () => Promise.resolve({ governance: 'governed' }),
-      ],
-      ['when muster reports no mode', () => Promise.resolve({})],
+      ['on a governed platform', listing('governed')],
+      ['when muster reports no mode (an older muster)', listing()],
       [
         'when the mode cannot be read',
         () => Promise.reject(new Error('upstream 502')),
@@ -664,7 +676,7 @@ describe('useRegisterMcpServer', () => {
         }
         return withPreset(name);
       });
-      serving(() => Promise.resolve({ governance: 'trusted' }));
+      serving(listing('trusted'));
       const { result } = renderRegister();
 
       await act(() => result.current.mutateAsync(registration));

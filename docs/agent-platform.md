@@ -392,16 +392,18 @@ settings; it decides nothing.
   reviewed opens on the preset the governance mode pre-selects (_Allow all_
   on a platform known to be trusted, _Recommended_ on a governed one and
   whenever the mode is unknown, with a note that it could not be read; never
-  _Allow all_ on a guess). muster does not report its mode to the portal yet,
-  so today the mode is always unknown: the one place its source plugs in is
-  `governanceModeOf` (`plugins/muster/src/lib/governanceMode.ts`), which
-  reads `governance` from muster-backend's `/server-info` once it is served
-  there. muster stores a create's preset as its rule alone (the connector
+  _Allow all_ on a guess). The mode is `governance` on muster's
+  `core_mcpserver_list` (muster-backend's `/servers`), read through
+  `governanceModeOf` (`plugins/muster/src/lib/governanceMode.ts`), else
+  `/server-info`'s `governance`; an older muster reports none, so its mode is
+  unknown. muster stores a create's preset as its rule alone (the connector
   lists no tools yet), so a connector whose settings hold a rule and no
   tool's own entry is not reviewed either: it opens on that preset
   (_Recommended_ for the rule Ask, _Allow all_ for Allow) expanded against
   the tools listed now, with no _New_ markers, and _Done_ writes every tool's
-  setting. Only settings with tools' own entries count as reviewed. A
+  setting. A stored _Block_ rule is kept (its tools filled with _Ask all_),
+  so _Done_ never loosens it. Only settings with tools' own entries count as
+  reviewed. A
   reviewed one opens on its saved settings, a tool without its own entry marked _New_ and pre-filled
   with the rule, a blocked tool (which muster lists nowhere) as a row of its
   own. A row changed from the saved setting (or, on a first review, from the
