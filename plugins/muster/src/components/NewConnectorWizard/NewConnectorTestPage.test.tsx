@@ -646,6 +646,50 @@ describe('NewConnectorTestPage: Test & Tools', () => {
     });
   });
 
+  it.each([
+    ['Ask', 'recommended', 'Read-only tools run. The rest ask.', 'Allow'],
+    ['Allow', 'allow-all', 'Everything runs.', 'Allow'],
+  ])(
+    'opens a just-created connector (rule %s stored, no tools) on its preset expanded, not reviewed, and Done writes every tool',
+    async (rule, _preset, hint, readOnly) => {
+      // As muster reports a create's preset: the rule alone, every tool
+      // following it as New.
+      connectedWith(
+        approvalTools().map(t => ({
+          ...t,
+          approval: {
+            setting: rule === 'Ask' ? ('ask' as const) : ('allow' as const),
+            source: 'connector' as const,
+            new: true,
+          },
+        })),
+        { rule },
+      );
+
+      await renderTestStep();
+
+      expect(await screen.findByText(hint)).toBeInTheDocument();
+      expect(chosen(pills('search_issues'))).toBe(readOnly);
+      expect(screen.queryByText('New')).not.toBeInTheDocument();
+      expect(screen.queryByText('Changed')).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+      await waitFor(() => expect(setApprovalCalls()).toHaveLength(1));
+      const { approval } = setApprovalCalls()[0][1] as {
+        approval: { rule: string; tools: Record<string, string> };
+      };
+      expect(approval.rule).toBe(rule);
+      expect(Object.keys(approval.tools).sort()).toEqual([
+        'add_comment',
+        'create_issue',
+        'get_issue',
+        'search_issues',
+      ]);
+      expect(approval.tools.add_comment).toBe(rule);
+      expect(approval.tools.search_issues).toBe('Allow');
+    },
+  );
+
   it('saves nothing when a reviewed connector is left unchanged', async () => {
     connectedWith(approvalTools({}, 'tool'), {
       rule: 'Allow',

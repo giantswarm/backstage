@@ -435,6 +435,30 @@ describe('ConnectorToolsTab: tool approval', () => {
     expect(screen.queryByText('Not reviewed')).toBeNull();
   });
 
+  it("says a just-created connector (its create's rule alone) is not reviewed, without a New on every row", async () => {
+    // As muster reports a create's preset: every tool follows the rule, New.
+    const created = makeTools(4).map(tool => ({
+      ...tool,
+      approval: {
+        setting: 'ask' as const,
+        source: 'connector' as const,
+        new: true,
+      },
+      connectorAdmin: true,
+    }));
+    await renderApprovalTab(created);
+
+    expect(screen.getByText('Ask — not reviewed')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Every tool asks first until its settings are reviewed/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Review tool settings' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('New')).toBeNull();
+    expect(screen.queryByText("Connector's rule")).toBeNull();
+  });
+
   it('offers no review to a person who is not a connector admin', async () => {
     const unreviewed = makeTools(4).map(tool => ({
       ...tool,

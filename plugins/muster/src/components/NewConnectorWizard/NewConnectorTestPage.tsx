@@ -87,8 +87,9 @@ export function toolCountsLine(tools: ToolSummary[]): string {
  * it offers — each tool with whether it only reads or changes things, and
  * its approval setting (`ToolApprovalEditor`): pills for a connector admin,
  * pre-filled by the preset the governance mode picks on a connector nobody
- * reviewed (*Recommended*, with a note, when the mode cannot be read); the settings read-only for everyone else. *Done* saves the
- * explicit settings through `core_mcpserver_set_approval`; a failed save
+ * reviewed (*Recommended*, with a note, when the mode cannot be read) or
+ * by the preset a create stored as a rule alone; the settings read-only for
+ * everyone else. *Done* saves the explicit settings through `core_mcpserver_set_approval`; a failed save
  * keeps the person on the step with the reason. The edit flow reuses the
  * step, and the Tools tab's *Review* leads straight to it.
  *

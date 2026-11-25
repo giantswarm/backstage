@@ -140,21 +140,43 @@ describe('the connector writes in fixture mode', () => {
       ).rejects.toThrow(/presets: recommended, allow-all, ask-all/);
     });
 
-    it('writes out the preset a create carries', async () => {
+    it("stores a create's preset as its rule alone, as muster does before any tool is listed", async () => {
       await call('core_mcpserver_create', {
+        preset: 'recommended',
         name: 'cellar',
         type: 'streamable-http',
         url: 'https://cellar.example.com/mcp',
-        preset: 'ask-all',
+        autoStart: true,
       });
 
-      const approval = objectOf('cellar')?.getApproval();
-      expect(approval?.rule).toBe('Ask');
-      expect(Object.keys(approval?.tools ?? {})).toHaveLength(
-        NEW_CONNECTOR_TOOLS,
-      );
-      expect(new Set(Object.values(approval?.tools ?? {}))).toEqual(
-        new Set(['Ask']),
+      expect(objectOf('cellar')?.getApproval()).toEqual({ rule: 'Ask' });
+      jest.advanceTimersByTime(CONNECT_MS);
+      const tools = await toolsOf('cellar');
+      expect(tools.length).toBeGreaterThan(0);
+      // Each tool follows the rule, New: nothing is written out per tool.
+      expect(
+        tools.every(
+          t =>
+            t.approval?.source === 'connector' &&
+            t.approval.new === true &&
+            t.approval.setting === 'ask',
+        ),
+      ).toBe(true);
+    });
+
+    it('refuses a create without approval settings, as muster does', async () => {
+      await expect(
+        call('core_mcpserver_create', {
+          name: 'bare',
+          type: 'streamable-http',
+          url: 'https://bare.example.com/mcp',
+        }),
+      ).rejects.toEqual(
+        expect.objectContaining({
+          message:
+            "core_mcpserver_create needs the server's approval settings: pass preset (recommended, allow-all, ask-all) or approval {rule, tools}",
+          status: 422,
+        }),
       );
     });
   });
@@ -162,6 +184,7 @@ describe('the connector writes in fixture mode', () => {
   it('registers a connector, which connects and then serves its tools', async () => {
     await expect(
       call('core_mcpserver_create', {
+        preset: 'allow-all',
         name: 'orchard',
         displayName: 'Orchard',
         tags: ['team-a'],
@@ -198,6 +221,7 @@ describe('the connector writes in fixture mode', () => {
   it('refuses a name taken, as muster does', async () => {
     await expect(
       call('core_mcpserver_create', {
+        preset: 'allow-all',
         name: named('Connected'),
         type: 'streamable-http',
         url: 'https://taken.example.com/mcp',
@@ -247,6 +271,7 @@ describe('the connector writes in fixture mode', () => {
 
   it('has a connector at a host no muster reaches fail once it tried', async () => {
     await call('core_mcpserver_create', {
+      preset: 'allow-all',
       name: 'nowhere',
       type: 'streamable-http',
       url: 'https://nowhere.invalid/mcp',
@@ -261,6 +286,7 @@ describe('the connector writes in fixture mode', () => {
 
   it('has an OAuth connector wait for the person’s sign-in, and connect after it', async () => {
     await call('core_mcpserver_create', {
+      preset: 'allow-all',
       name: 'grove',
       type: 'streamable-http',
       url: 'https://grove.example.com/mcp',
@@ -447,6 +473,7 @@ describe('the connector writes in fixture mode', () => {
 
   it('leaves a connector never started stopped when it is edited', async () => {
     await call('core_mcpserver_create', {
+      preset: 'allow-all',
       name: 'idle',
       type: 'streamable-http',
       url: 'https://idle.example.com/mcp',
@@ -582,6 +609,7 @@ describe('the connector writes in fixture mode', () => {
     ).toEqual(expect.objectContaining({ reachable: true }));
 
     await call('core_mcpserver_create', {
+      preset: 'allow-all',
       name: 'nowhere',
       type: 'streamable-http',
       url,
@@ -608,6 +636,7 @@ describe('the connector writes in fixture mode', () => {
 
   it('names a connector’s tools after the tool prefix its definition sets', async () => {
     await call('core_mcpserver_create', {
+      preset: 'allow-all',
       name: 'orchard',
       type: 'streamable-http',
       url: 'https://orchard.example.com/mcp',

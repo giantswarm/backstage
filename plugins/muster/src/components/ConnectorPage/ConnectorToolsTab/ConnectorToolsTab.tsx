@@ -30,6 +30,8 @@ import {
   isSettingsUnreadable,
   isUnreviewed,
   reportedSetting,
+  unreviewedSetting,
+  type ApprovalSetting,
 } from '../../../lib/toolApproval';
 import {
   ApprovalBadge,
@@ -332,11 +334,18 @@ export function ConnectorToolsTab({
     );
   }
   const listedTools = listed ?? [];
+  // Every tool of a connector nobody reviewed is *New* to muster (a create's
+  // rule, no entries): the note says it once instead.
+  const reviewed = isUnreviewed(listedTools) !== true;
   const approvalNote = (
     <ApprovalNote
       unavailable={isSettingsUnreadable(listedTools)}
       refusalReason={approvalRefusalReason(listedTools)}
-      unreviewed={isUnreviewed(listedTools) === true}
+      unreviewed={
+        isUnreviewed(listedTools) === true
+          ? unreviewedSetting(listedTools)
+          : undefined
+      }
       admin={connectorAdminOf(listedTools)}
       settingsHref={settingsHref}
       settingsInGit={settingsInGit}
@@ -412,9 +421,13 @@ export function ConnectorToolsTab({
                   title: shortName(tool.name),
                   href: hrefOf(tool),
                   status: (
-                    <ToolStatus tool={tool} listed={!blocked.has(tool.name)} />
+                    <ToolStatus
+                      tool={tool}
+                      listed={!blocked.has(tool.name)}
+                      reviewed={reviewed}
+                    />
                   ),
-                  facts: approvalFacts(tool, allowedFor?.[tool.name]),
+                  facts: approvalFacts(tool, reviewed, allowedFor?.[tool.name]),
                   description: blocked.has(tool.name)
                     ? 'Hidden from everyone, so muster lists it nowhere else.'
                     : (tool.description ?? tool.summary),
@@ -429,7 +442,15 @@ export function ConnectorToolsTab({
 }
 
 /** What a tool does, and its approval where muster reports one. */
-function ToolStatus({ tool, listed }: { tool: ToolSummary; listed: boolean }) {
+function ToolStatus({
+  tool,
+  listed,
+  reviewed,
+}: {
+  tool: ToolSummary;
+  listed: boolean;
+  reviewed: boolean;
+}) {
   return (
     <Flex align="center" gap="1">
       {listed && <EffectBadge effect={toolEffect(tool)} />}
@@ -439,7 +460,9 @@ function ToolStatus({ tool, listed }: { tool: ToolSummary; listed: boolean }) {
           builtIn={tool.approval.source === 'builtin'}
         />
       )}
-      {tool.approval?.new && <MarkerBadge tone="neutral">New</MarkerBadge>}
+      {reviewed && tool.approval?.new && (
+        <MarkerBadge tone="neutral">New</MarkerBadge>
+      )}
     </Flex>
   );
 }
@@ -451,11 +474,12 @@ function ToolStatus({ tool, listed }: { tool: ToolSummary; listed: boolean }) {
  */
 function approvalFacts(
   tool: ToolSummary,
+  reviewed: boolean,
   allowedFor: readonly string[] | undefined,
 ): string[] {
   const facts: string[] = [];
   const source = tool.approval?.source;
-  if (source && source !== 'unreviewed' && source !== 'builtin') {
+  if (reviewed && source && source !== 'unreviewed' && source !== 'builtin') {
     facts.push(approvalSourceLabel(source));
   }
   if (allowedFor && allowedFor.length > 0) {
@@ -476,7 +500,8 @@ function ApprovalNote({
 }: {
   unavailable: boolean;
   refusalReason?: string;
-  unreviewed: boolean;
+  /** What every tool does while nobody reviewed the settings. */
+  unreviewed: ApprovalSetting | undefined;
   admin: boolean | undefined;
   settingsHref?: string;
   settingsInGit?: boolean;
@@ -504,7 +529,7 @@ function SettingsNote({
   settingsInGit,
 }: {
   unavailable: boolean;
-  unreviewed: boolean;
+  unreviewed: ApprovalSetting | undefined;
   admin: boolean | undefined;
   settingsHref?: string;
   settingsInGit?: boolean;
@@ -532,8 +557,12 @@ function SettingsNote({
       <Alert
         className={classes.note}
         status="info"
-        title="Allow — not reviewed"
-        description={`Every tool runs without asking until its settings are reviewed. ${how}`}
+        title={`${unreviewed} — not reviewed`}
+        description={`${
+          unreviewed === 'Allow'
+            ? 'Every tool runs without asking'
+            : 'Every tool asks first'
+        } until its settings are reviewed. ${how}`}
         customActions={
           canChange ? (
             <ButtonLink size="small" variant="secondary" href={settingsHref}>

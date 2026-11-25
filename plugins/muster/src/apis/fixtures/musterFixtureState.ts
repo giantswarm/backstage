@@ -113,7 +113,8 @@ function refuseOtherArguments(
  */
 function approvalArgOf(
   args: Record<string, unknown>,
-  connector: MusterFixtureConnector,
+  /** The connector a preset expands against; none lists no tools yet. */
+  connector: MusterFixtureConnector | undefined,
 ): MCPServerApproval | undefined {
   const preset = args.preset;
   if (preset !== undefined) {
@@ -122,6 +123,12 @@ function approvalArgOf(
         `Invalid preset ${JSON.stringify(preset)}: use recommended, allow-all or ask-all`,
         422,
       );
+    }
+    if (args.approval !== undefined) {
+      throw connectorToolError('pass either preset or approval, not both', 422);
+    }
+    if (!connector) {
+      return { rule: preset === 'allow-all' ? 'Allow' : 'Ask' };
     }
     return presetApprovalOf(preset as ApprovalPreset, connector);
   }
@@ -537,13 +544,18 @@ export class MusterFixtureState {
       generation: 1,
       observedGeneration: 1,
     };
-    const approval = approvalArgOf(
-      args,
-      this.viewOf(stored, stored.connector.state),
-    );
-    if (approval) {
-      stored.spec.approval = approval;
+    // As muster: a create needs approval settings, and its preset stores
+    // the preset's rule alone, since the connector lists no tools yet
+    // (`approvalFromArgs(args, true, noTools)`); the Test & Tools step
+    // writes each tool's setting.
+    const approval = approvalArgOf(args, undefined);
+    if (!approval) {
+      throw connectorToolError(
+        "core_mcpserver_create needs the server's approval settings: pass preset (recommended, allow-all, ask-all) or approval {rule, tools}",
+        422,
+      );
     }
+    stored.spec.approval = approval;
     // muster starts a server with `autoStart` as it registers it; one
     // without waits for a start.
     if (args.autoStart === true) {

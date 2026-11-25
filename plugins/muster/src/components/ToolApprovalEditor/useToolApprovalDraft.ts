@@ -12,7 +12,9 @@ import {
   defaultPresetFor,
   draftFromStored,
   expandPreset,
+  isWrittenOut,
   matchingPreset,
+  presetOfRule,
   sameDraft,
   type ApprovalDraft,
   type ApprovalPreset,
@@ -36,7 +38,10 @@ export type ApprovalRow = ApprovalTool & {
 
 export type ToolApprovalDraft = {
   rows: ApprovalRow[];
-  /** The connector has settings (`spec.approval`): it was reviewed. */
+  /**
+   * The connector's settings hold tools' own entries: an admin saved them.
+   * Settings with a rule alone (a create's preset) are not reviewed.
+   */
   reviewed: boolean;
   draft: ApprovalDraft;
   /** The preset whose fill the draft equals, if any. */
@@ -57,8 +62,11 @@ export type ToolApprovalDraft = {
 /**
  * The connector wizard's approval draft. A preset is a shortcut: picking one
  * fills every tool's pill and the rule, and what is saved is the explicit
- * setting of each tool. A connector nobody reviewed opens on the preset the
- * governance mode pre-selects; a reviewed one on its saved settings, a tool
+ * setting of each tool. A connector without settings opens on the preset the
+ * governance mode pre-selects; one whose settings hold only a rule (muster
+ * stores a create's preset that way, before the connector lists tools) on
+ * that preset expanded against the tools listed now, not reviewed, so *Done*
+ * writes every tool's setting; a reviewed one on its saved settings, a tool
  * without its own entry (*New*) pre-filled with the rule it follows. Tools
  * that arrive while the connector connects join the draft as they come.
  */
@@ -75,7 +83,7 @@ export function useToolApprovalDraft({
   /** Unknown pre-selects *Recommended*, never *Allow all*. */
   mode: GovernanceMode | undefined;
 }): ToolApprovalDraft {
-  const reviewed = stored !== undefined;
+  const reviewed = isWrittenOut(stored);
   const rows = useMemo<ApprovalRow[]>(() => {
     const listed = tools.map(tool => {
       const key = approvalKeyOf(tool.name, prefix);
@@ -119,8 +127,14 @@ export function useToolApprovalDraft({
     if (picked) {
       return expandPreset(picked, rows);
     }
-    return saved ?? expandPreset(defaultPresetFor(mode), rows);
-  }, [picked, saved, rows, mode]);
+    if (saved) {
+      return saved;
+    }
+    return expandPreset(
+      stored ? presetOfRule(stored) : defaultPresetFor(mode),
+      rows,
+    );
+  }, [picked, saved, stored, rows, mode]);
   const draft = useMemo<ApprovalDraft>(
     () => ({
       rule: ruleEdit ?? base.rule,

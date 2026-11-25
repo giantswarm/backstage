@@ -390,8 +390,13 @@ settings; it decides nothing.
   so today the mode is always unknown: the one place its source plugs in is
   `governanceModeOf` (`plugins/muster/src/lib/governanceMode.ts`), which
   reads `governance` from muster-backend's `/server-info` once it is served
-  there. A reviewed one opens on its
-  saved settings, a tool without its own entry marked _New_ and pre-filled
+  there. muster stores a create's preset as its rule alone (the connector
+  lists no tools yet), so a connector whose settings hold a rule and no
+  tool's own entry is not reviewed either: it opens on that preset
+  (_Recommended_ for the rule Ask, _Allow all_ for Allow) expanded against
+  the tools listed now, with no _New_ markers, and _Done_ writes every tool's
+  setting. Only settings with tools' own entries count as reviewed. A
+  reviewed one opens on its saved settings, a tool without its own entry marked _New_ and pre-filled
   with the rule, a blocked tool (which muster lists nowhere) as a row of its
   own. A row changed from the saved setting (or, on a first review, from the
   preset's fill) is marked _Changed_ and can be reset. Everyone else sees the
@@ -412,7 +417,10 @@ settings; it decides nothing.
   in its own tone and icon), where it comes from ("Set for this tool",
   "Connector's rule"), _New_, _Allowed for: …_ when it is given the agents
   that may skip an Ask, and an _Approval_ filter. A connector nobody reviewed
-  says _Allow — not reviewed_ once above the list, with _Review tool
+  (no settings, or a create's rule alone, where muster reports every tool
+  _New_) says once above the list what every tool does until then (_Allow —
+  not reviewed_, or _Ask — not reviewed_ after a _Recommended_ create),
+  without _New_ or the source on each row, with _Review tool
   settings_ (the edit's Test & Tools step) for a connector admin, or a
   pointer to `spec.approval` in Git for a GitOps-managed one. The same
   warning with muster's reason shows above the list where approvals cannot be

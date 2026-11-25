@@ -8,7 +8,9 @@ import {
   draftFromStored,
   expandPreset,
   isUnreviewed,
+  isWrittenOut,
   matchingPreset,
+  presetOfRule,
   sameDraft,
   storedRule,
   storedSetting,
@@ -97,6 +99,23 @@ describe('toolApproval', () => {
     expect(
       isUnreviewed([{ approval: { setting: 'ask', source: 'connector' } }]),
     ).toBe(false);
+    // A create's preset: the rule alone, every tool New. Not reviewed.
+    expect(
+      isUnreviewed([
+        { approval: { setting: 'ask', source: 'connector', new: true } },
+        { approval: { setting: 'ask', source: 'connector', new: true } },
+      ]),
+    ).toBe(true);
+    expect(
+      isUnreviewed([
+        { approval: { setting: 'ask', source: 'connector', new: true } },
+        { approval: { setting: 'allow', source: 'tool' } },
+      ]),
+    ).toBe(false);
+    expect(isWrittenOut({ rule: 'Ask' })).toBe(false);
+    expect(isWrittenOut({ rule: 'Ask', tools: { a: 'Allow' } })).toBe(true);
+    expect(presetOfRule({ rule: 'Ask' })).toBe('recommended');
+    expect(presetOfRule({ rule: 'Allow' })).toBe('allow-all');
     expect(connectorAdminOf([{}])).toBeUndefined();
     expect(
       connectorAdminOf([{ connectorAdmin: true }, { connectorAdmin: false }]),

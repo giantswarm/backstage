@@ -81,6 +81,25 @@ export function defaultPresetFor(
 export const GOVERNANCE_MODE_UNKNOWN_NOTE =
   "This platform's governance mode could not be read, so Recommended is pre-selected: read-only tools run, the rest ask. Pick another preset if it should be different.";
 
+/**
+ * Whether stored settings hold a tool's own entry: what a connector admin's
+ * *Done* writes. A create's preset stores only the preset's rule (muster
+ * cannot expand it before the connector lists its tools), so settings with a
+ * rule and no entry were never reviewed against real tools.
+ */
+export function isWrittenOut(approval: MCPServerApproval | undefined): boolean {
+  return Object.keys(approval?.tools ?? {}).length > 0;
+}
+
+/**
+ * The preset a create stored as a rule alone, to expand against the tools
+ * listed now: the rule `Ask` is *Recommended* (the stricter preset a create
+ * sends), `Allow` (or none) *Allow all*.
+ */
+export function presetOfRule(approval: MCPServerApproval): ApprovalPreset {
+  return storedRule(approval.rule) === 'Ask' ? 'recommended' : 'allow-all';
+}
+
 /** A tool as the settings key it: the server's own name, and its effect. */
 export type ApprovalTool = {
   /** The server's own tool name (no `x_`, family or tool prefix). */
@@ -223,17 +242,41 @@ export function approvalSourceLabel(source: string): string {
 
 /**
  * Whether muster reports the connector's settings as not reviewed: it lists
- * tools, each `unreviewed`. Undefined when muster reports no approval at all
- * (an older muster), which says nothing either way.
+ * tools, each `unreviewed` (no settings), or each following the connector's
+ * rule as *New* with no entry of its own (a create's preset stored the rule
+ * alone, before any tool was listed). Undefined when muster reports no
+ * approval at all (an older muster), which says nothing either way.
+ * muster's built-in settings do not count.
  */
 export function isUnreviewed(
   tools: readonly { approval?: ToolApproval }[],
 ): boolean | undefined {
-  const reported = tools.filter(tool => tool.approval);
+  const reported = tools.filter(
+    tool => tool.approval && tool.approval.source !== 'builtin',
+  );
   if (reported.length === 0) {
     return undefined;
   }
-  return reported.every(tool => tool.approval?.source === 'unreviewed');
+  return (
+    reported.every(tool => tool.approval?.source === 'unreviewed') ||
+    reported.every(
+      tool =>
+        tool.approval?.source === 'connector' && tool.approval.new === true,
+    )
+  );
+}
+
+/**
+ * What every tool of a connector nobody reviewed does now: `Allow` without
+ * settings, the rule a create stored otherwise.
+ */
+export function unreviewedSetting(
+  tools: readonly { approval?: ToolApproval }[],
+): ApprovalSetting {
+  const reported = tools.find(
+    tool => tool.approval && tool.approval.source !== 'builtin',
+  )?.approval;
+  return reported ? reportedSetting(reported) : 'Allow';
 }
 
 /**
