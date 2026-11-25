@@ -13,8 +13,10 @@ import {
   APPROVAL_PRESET_HINTS,
   APPROVAL_PRESET_LABELS,
   APPROVAL_PRESETS,
+  APPROVAL_RULE_BLOCK_HINT,
   APPROVAL_RULE_HINT,
   APPROVAL_RULES,
+  type ApprovalRule,
   APPROVAL_SETTING_HINTS,
   APPROVAL_SETTINGS,
   reportedSetting,
@@ -111,6 +113,8 @@ export type ToolApprovalEditorProps = {
   view: 'edit' | 'read';
   /** Shown under the list when muster listed only some of the tools. */
   partialNote?: string;
+  /** The rule's choices muster takes (`ruleOptionsOf`); all by default. */
+  ruleOptions?: readonly ApprovalRule[];
 };
 
 /** A tool's markers beside its name: what it does, New, Changed. */
@@ -147,6 +151,7 @@ export function ToolApprovalEditor({
   approval,
   view,
   partialNote,
+  ruleOptions = APPROVAL_RULES,
 }: ToolApprovalEditorProps) {
   const classes = useStyles();
   const { rows, draft, preset, reference } = approval;
@@ -299,12 +304,18 @@ export function ToolApprovalEditor({
         </Text>
         <ApprovalPills
           aria-label="Rule for new tools"
-          options={APPROVAL_RULES}
+          options={
+            ruleOptions.includes(draft.rule)
+              ? ruleOptions
+              : [...ruleOptions, draft.rule]
+          }
           value={draft.rule}
           onChange={approval.setRule}
         />
         <Text variant="body-small" color="secondary">
-          {APPROVAL_RULE_HINT}
+          {draft.rule === 'Block'
+            ? APPROVAL_RULE_BLOCK_HINT
+            : APPROVAL_RULE_HINT}
         </Text>
       </div>
       {list}

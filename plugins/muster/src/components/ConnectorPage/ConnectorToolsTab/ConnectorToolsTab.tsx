@@ -190,6 +190,12 @@ export interface ConnectorToolsTabProps {
   /** Its settings are changed in Git (a GitOps-managed connector). */
   settingsInGit?: boolean;
   /**
+   * The connector's stored rule for tools without their own entry
+   * (`spec.approval.rule`). *Block* hides every tool added later, which
+   * muster then lists nowhere, so the tab says so.
+   */
+  newToolsRule?: string;
+  /**
    * Per exposed tool name, the agents that may skip its *Ask* (a connector
    * admin's exception), as *Allowed for: Alert Review*.
    */
@@ -222,6 +228,7 @@ export function ConnectorToolsTab({
   blockedTools,
   settingsHref,
   settingsInGit,
+  newToolsRule,
   allowedFor,
 }: ConnectorToolsTabProps) {
   const classes = useStyles();
@@ -349,6 +356,7 @@ export function ConnectorToolsTab({
       admin={connectorAdminOf(listedTools)}
       settingsHref={settingsHref}
       settingsInGit={settingsInGit}
+      blocksNewTools={reviewed && newToolsRule === 'Block'}
     />
   );
 
@@ -496,10 +504,13 @@ function approvalFacts(
  */
 function ApprovalNote({
   refusalReason,
+  blocksNewTools,
   ...settings
 }: {
   unavailable: boolean;
   refusalReason?: string;
+  /** The rule is *Block*: tools added later are hidden. */
+  blocksNewTools?: boolean;
   /** What every tool does while nobody reviewed the settings. */
   unreviewed: ApprovalSetting | undefined;
   admin: boolean | undefined;
@@ -514,6 +525,14 @@ function ApprovalNote({
           className={classes.note}
           status="warning"
           {...approvalRefusalNote(refusalReason)}
+        />
+      )}
+      {blocksNewTools && (
+        <Alert
+          className={classes.note}
+          status="info"
+          title="Block for new tools"
+          description="Tools this connector adds later are hidden and can't be used until a connector admin sets them, so they are not listed here."
         />
       )}
       <SettingsNote {...settings} />

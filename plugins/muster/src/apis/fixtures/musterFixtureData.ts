@@ -538,7 +538,17 @@ export const FIXTURE_CORE_TOOLS: readonly ToolSummary[] = [
       approval: {
         type: 'object',
         description:
-          'rule (Allow or Ask) and tools (tool name to Allow, Ask or Block).',
+          'rule (Allow, Ask or Block) and tools (tool name to Allow, Ask or Block).',
+        properties: {
+          rule: { type: 'string', enum: ['Allow', 'Ask', 'Block'] },
+          tools: {
+            type: 'object',
+            additionalProperties: {
+              type: 'string',
+              enum: ['Allow', 'Ask', 'Block'],
+            },
+          },
+        },
       },
       preset: APPROVAL_PRESET_ARGUMENT,
     },

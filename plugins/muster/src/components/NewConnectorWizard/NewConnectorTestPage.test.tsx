@@ -372,13 +372,16 @@ describe('NewConnectorTestPage', () => {
 });
 
 /** A muster that saves tool settings (`core_mcpserver_set_approval`). */
-function withSetApproval() {
+function withSetApproval(rules = ['Allow', 'Ask', 'Block']) {
   describeTool.mockImplementation((name: string) => {
     const properties: Record<string, JsonSchema> =
       name === 'core_mcpserver_set_approval'
         ? {
             name: { type: 'string' },
-            approval: { type: 'object' },
+            approval: {
+              type: 'object',
+              properties: { rule: { type: 'string', enum: rules } },
+            },
             preset: { type: 'string' },
           }
         : { displayName: { type: 'string' } };
@@ -741,6 +744,55 @@ describe('NewConnectorTestPage: Test & Tools', () => {
         },
       },
     });
+  });
+
+  it('blocks new tools when the rule is set to Block, and says what that does', async () => {
+    connectedWith(approvalTools());
+
+    await renderTestStep();
+    await screen.findByText('Everything runs.');
+    const rule = screen.getByRole('radiogroup', { name: 'Rule for new tools' });
+    await userEvent.click(within(rule).getByRole('radio', { name: 'Block' }));
+
+    expect(chosen(rule)).toBe('Block');
+    expect(
+      screen.getByText(
+        /they are hidden and can't be used until someone sets them/,
+      ),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await waitFor(() => expect(setApprovalCalls()).toHaveLength(1));
+    expect(
+      (setApprovalCalls()[0][1] as { approval: { rule: string } }).approval
+        .rule,
+    ).toBe('Block');
+  });
+
+  it('keeps Ask pre-selected for new tools on a governed platform, Block selectable', async () => {
+    getServerInfo.mockResolvedValue({ governance: 'governed' });
+    connectedWith(approvalTools());
+
+    await renderTestStep();
+    await screen.findByText('Read-only tools run. The rest ask.');
+    const rule = screen.getByRole('radiogroup', { name: 'Rule for new tools' });
+
+    expect(chosen(rule)).toBe('Ask');
+    expect(within(rule).getByRole('radio', { name: 'Block' })).toBeEnabled();
+  });
+
+  it('offers no Block rule where muster takes only Allow and Ask', async () => {
+    withSetApproval(['Allow', 'Ask']);
+    connectedWith(approvalTools());
+
+    await renderTestStep();
+    await screen.findByText('Everything runs.');
+    const rule = screen.getByRole('radiogroup', { name: 'Rule for new tools' });
+
+    expect(
+      within(rule)
+        .getAllByRole('radio')
+        .map(r => r.textContent),
+    ).toEqual(['Allow', 'Ask']);
   });
 
   it('saves nothing when a reviewed connector is left unchanged', async () => {

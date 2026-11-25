@@ -15,8 +15,11 @@ import type {
 /** A tool's setting: it runs, it asks a person first, or it is hidden. */
 export type ApprovalSetting = 'Allow' | 'Ask' | 'Block';
 
-/** What a tool without its own entry gets, new tools included. */
-export type ApprovalRule = 'Allow' | 'Ask';
+/**
+ * What a tool without its own entry gets, new tools included: it runs, it
+ * asks first, or it is hidden and refused until someone sets it.
+ */
+export type ApprovalRule = 'Allow' | 'Ask' | 'Block';
 
 /** The settings in the order the pills show them. */
 export const APPROVAL_SETTINGS: readonly ApprovalSetting[] = [
@@ -25,8 +28,16 @@ export const APPROVAL_SETTINGS: readonly ApprovalSetting[] = [
   'Block',
 ];
 
-/** The rule's choices: a rule cannot block. */
-export const APPROVAL_RULES: readonly ApprovalRule[] = ['Allow', 'Ask'];
+/**
+ * The rule's choices, where muster takes them all
+ * ({@link ruleOptionsOf}): *Block* hides tools added later until someone
+ * sets them.
+ */
+export const APPROVAL_RULES: readonly ApprovalRule[] = [
+  'Allow',
+  'Ask',
+  'Block',
+];
 
 /** Each setting in one short sentence, wherever its pill or badge shows. */
 export const APPROVAL_SETTING_HINTS: Record<ApprovalSetting, string> = {
@@ -37,6 +48,27 @@ export const APPROVAL_SETTING_HINTS: Record<ApprovalSetting, string> = {
 
 /** Under the connector's rule. */
 export const APPROVAL_RULE_HINT = 'New tools follow this rule.';
+
+/** Under the connector's rule when it is *Block*. */
+export const APPROVAL_RULE_BLOCK_HINT =
+  "New tools follow this rule: they are hidden and can't be used until someone sets them.";
+
+/**
+ * The rule's choices `core_mcpserver_set_approval` takes, from its input
+ * schema: the `approval.rule` enum it declares, else all of them. A muster
+ * whose rule takes only Allow and Ask does not offer *Block*.
+ */
+export function ruleOptionsOf(
+  inputSchema: { properties?: Record<string, unknown> } | undefined,
+): readonly ApprovalRule[] {
+  const approval = inputSchema?.properties?.approval as
+    { properties?: { rule?: { enum?: unknown } } } | undefined;
+  const declared = approval?.properties?.rule?.enum;
+  if (!Array.isArray(declared)) {
+    return APPROVAL_RULES;
+  }
+  return APPROVAL_RULES.filter(rule => declared.includes(rule));
+}
 
 /** A built-in setting nobody changes (muster's own configuration tools). */
 export const BUILT_IN_HINT = 'Built in. Always asks.';
@@ -97,7 +129,7 @@ export function isWrittenOut(approval: MCPServerApproval | undefined): boolean {
  * sends), `Allow` (or none) *Allow all*.
  */
 export function presetOfRule(approval: MCPServerApproval): ApprovalPreset {
-  return storedRule(approval.rule) === 'Ask' ? 'recommended' : 'allow-all';
+  return storedRule(approval.rule) === 'Allow' ? 'allow-all' : 'recommended';
 }
 
 /** A tool as the settings key it: the server's own name, and its effect. */
@@ -129,10 +161,10 @@ export function storedSetting(
 
 /** A stored rule as muster reads it: unset is `Allow`, unknown is `Ask`. */
 export function storedRule(value: string | undefined): ApprovalRule {
-  if (value === undefined || value === 'Allow') {
+  if (value === undefined || value === '' || value === 'Allow') {
     return 'Allow';
   }
-  return 'Ask';
+  return value === 'Block' ? 'Block' : 'Ask';
 }
 
 /**

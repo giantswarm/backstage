@@ -11,6 +11,7 @@ import {
   isWrittenOut,
   matchingPreset,
   presetOfRule,
+  ruleOptionsOf,
   sameDraft,
   storedRule,
   storedSetting,
@@ -49,7 +50,8 @@ describe('toolApproval', () => {
     expect(storedSetting('block')).toBe('Ask');
     expect(storedSetting(undefined)).toBeUndefined();
     expect(storedRule(undefined)).toBe('Allow');
-    expect(storedRule('Block')).toBe('Ask');
+    expect(storedRule('Block')).toBe('Block');
+    expect(storedRule('block')).toBe('Ask');
   });
 
   it('fills a tool without its own entry with the rule, and keeps unlisted entries', () => {
@@ -163,5 +165,26 @@ describe('toolApproval', () => {
     expect(approvalRefusalNote('no public URL').description).toContain(
       'no public URL. Ask',
     );
+  });
+
+  it("offers the rule's choices muster's set_approval declares", () => {
+    const schema = (rule: object) => ({
+      properties: { approval: { properties: { rule } } },
+    });
+    expect(ruleOptionsOf(schema({ enum: ['Allow', 'Ask', 'Block'] }))).toEqual([
+      'Allow',
+      'Ask',
+      'Block',
+    ]);
+    expect(ruleOptionsOf(schema({ enum: ['Allow', 'Ask'] }))).toEqual([
+      'Allow',
+      'Ask',
+    ]);
+    expect(ruleOptionsOf({ properties: { approval: {} } })).toEqual([
+      'Allow',
+      'Ask',
+      'Block',
+    ]);
+    expect(presetOfRule({ rule: 'Block' })).toBe('recommended');
   });
 });

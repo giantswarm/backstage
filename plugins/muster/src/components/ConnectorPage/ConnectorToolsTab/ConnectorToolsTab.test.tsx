@@ -372,6 +372,12 @@ describe('ConnectorToolsTab: tool approval', () => {
     ).toHaveAttribute('href', '/customize/connectors/gazelle/jira/edit/verify');
   });
 
+  it('says that tools added later are hidden when the rule is Block', async () => {
+    await renderApprovalTab(reviewedTools(), { newToolsRule: 'Block' });
+
+    expect(screen.getByText('Block for new tools')).toBeInTheDocument();
+  });
+
   it('lists the tools the connector blocks, apart and with no page to open', async () => {
     await renderApprovalTab(reviewedTools(), {
       blockedTools: ['x_jira_delete_project'],

@@ -164,6 +164,30 @@ describe('the connector writes in fixture mode', () => {
       ).toBe(true);
     });
 
+    it('hides the tools without their own entry when the rule is Block', async () => {
+      const name = 'cellar-block';
+      await call('core_mcpserver_create', {
+        name,
+        type: 'streamable-http',
+        url: 'https://cellar.example.com/mcp',
+        autoStart: true,
+        preset: 'allow-all',
+      });
+      jest.advanceTimersByTime(CONNECT_MS);
+      const [kept, ...rest] = await toolsOf(name);
+      expect(rest.length).toBeGreaterThan(0);
+
+      await call('core_mcpserver_set_approval', {
+        name,
+        approval: {
+          rule: 'Block',
+          tools: { [kept.name.replace(`x_${name}_`, '')]: 'Allow' },
+        },
+      });
+
+      expect((await toolsOf(name)).map(t => t.name)).toEqual([kept.name]);
+    });
+
     it('refuses a create without approval settings, as muster does', async () => {
       await expect(
         call('core_mcpserver_create', {

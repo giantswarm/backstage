@@ -109,7 +109,8 @@ function refuseOtherArguments(
 
 /**
  * The `approval` or `preset` of a connector write, checked as muster's CRD
- * checks it: a rule of `Allow` or `Ask`, each tool `Allow`, `Ask` or `Block`.
+ * checks it: a rule of `Allow`, `Ask` or `Block`, each tool `Allow`, `Ask` or
+ * `Block`.
  */
 function approvalArgOf(
   args: Record<string, unknown>,
@@ -138,10 +139,10 @@ function approvalArgOf(
   }
   if (
     approval.rule !== undefined &&
-    !['Allow', 'Ask'].includes(approval.rule)
+    !['Allow', 'Ask', 'Block'].includes(approval.rule)
   ) {
     throw connectorToolError(
-      `Invalid approval: rule must be Allow or Ask, not ${approval.rule}`,
+      `Invalid approval: rule must be Allow, Ask or Block, not ${approval.rule}`,
       422,
     );
   }

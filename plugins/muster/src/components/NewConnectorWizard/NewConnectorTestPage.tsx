@@ -31,6 +31,7 @@ import {
   approvalRefusalReason,
   GOVERNANCE_MODE_UNKNOWN_NOTE,
   isSettingsUnreadable,
+  ruleOptionsOf,
 } from '../../lib/toolApproval';
 import { useGovernanceMode } from '../../hooks/useGovernanceMode';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
@@ -431,6 +432,7 @@ export function NewConnectorTestPage() {
           <ToolApprovalEditor
             approval={approval}
             view={view}
+            ruleOptions={ruleOptionsOf(setApprovalSchema.data?.inputSchema)}
             partialNote={
               partial
                 ? `Only the first ${tools.length} of ${toolsTotal} tools are listed.${

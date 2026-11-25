@@ -793,6 +793,7 @@ function ConnectorPageContent({
                   blockedTools={blockedTools}
                   settingsHref={settingsHref}
                   settingsInGit={gitOpsManaged}
+                  newToolsRule={singular?.getApproval()?.rule}
                 />
               }
             />

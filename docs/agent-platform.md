@@ -368,9 +368,15 @@ Instances tab. muster's own page has no Details tab.
 muster decides, per tool of a connector, whether a call runs (**Allow**, "Runs
 without asking."), asks a person to confirm the exact call first (**Ask**,
 "Asks first.") or is hidden and refused (**Block**, "Hidden. Can't be
-used."), from the MCPServer's `spec.approval`: a `rule` (Allow or Ask) that
-tools without their own entry follow, new ones included ("New tools follow
-this rule."), and an entry per tool. The portal only shows what muster reports
+used."), from the MCPServer's `spec.approval`: a `rule` (Allow, Ask or Block)
+that tools without their own entry follow, new ones included ("New tools follow
+this rule."), and an entry per tool. A _Block_ rule hides tools the connector
+adds later and refuses them until someone sets them; the wizard offers it
+where `core_mcpserver_set_approval`'s schema takes it (its `approval.rule`
+enum), keeps _Ask_ pre-selected on a governed platform (the _Recommended_
+preset's rule), and says under the rule what it does. The Tools tab of a
+reviewed connector whose rule is _Block_ says that tools added later are
+hidden, since muster lists them nowhere. The portal only shows what muster reports
 (`approval {setting, source, new, unavailable}` and `connectorAdmin` on each tool from
 `filter_tools`, `approval` on `core_mcpserver_list`) and writes explicit
 settings; it decides nothing.

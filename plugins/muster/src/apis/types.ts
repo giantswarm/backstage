@@ -286,7 +286,7 @@ export interface McpServerRuntime {
  * `Ask` (`storedSetting`).
  */
 export interface MCPServerApproval {
-  /** `Allow` or `Ask`. */
+  /** `Allow`, `Ask` or `Block` (tools added later are hidden). */
   rule?: string;
   /** `Allow`, `Ask` or `Block` per tool. */
   tools?: Record<string, string>;
