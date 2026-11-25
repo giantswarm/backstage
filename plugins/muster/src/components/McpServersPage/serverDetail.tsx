@@ -128,12 +128,12 @@ export function ServerConfig({ server }: { server: MCPServer }) {
     label: 'Auto start',
     value: server.getAutoStart() ? 'yes' : 'no',
   });
-  // `spec.meta`: merged into `params._meta` of every request. Worth its own row
-  // rather than a footnote — an AWS-hosted server reads the region it operates
-  // in from here, and a wrong value produces confident answers about the wrong
-  // account region rather than an error.
-  for (const [key, value] of Object.entries(server.getMeta() ?? {})) {
-    facts.push({ label: `Meta ${key}`, value: <Mono>{value}</Mono> });
+  // `spec.requestMeta`: added to `params._meta` of every request. Worth its own
+  // row rather than a footnote — an AWS-hosted server reads the region it
+  // operates in from here, and a wrong value produces confident answers about
+  // the wrong region rather than an error.
+  for (const [key, value] of Object.entries(server.getRequestMeta() ?? {})) {
+    facts.push({ label: `Request meta ${key}`, value: <Mono>{value}</Mono> });
   }
 
   return <FactList facts={facts} maxWidth={null} />;

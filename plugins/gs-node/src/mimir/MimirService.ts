@@ -12,13 +12,145 @@ import {
 } from '@backstage/errors';
 import { Expand, JsonObject } from '@backstage/types';
 import fetch from 'node-fetch';
+import { MimirQueryRefusedError } from './MimirQueryRefusedError';
 import {
   MimirUnavailableError,
   mimirErrorText,
   mimirUnavailableReason,
 } from './MimirUnavailableError';
+import {
+  EnforcedMatchers,
+  enforceMatchers,
+  isLabelName,
+  QueryRefusedError,
+} from '@giantswarm/backstage-plugin-gs-common';
 
 const REQUEST_TIMEOUT_MS = 30_000;
+
+const DEFAULT_TENANT = 'giantswarm';
+
+interface MimirTarget {
+  /** Without a trailing slash; `/prometheus/api/v1/…` is appended. */
+  baseUrl: string;
+  tenant: string;
+  /** `undefined` when the installation's queries are sent as they are. */
+  matchers?: EnforcedMatchers;
+}
+
+/** `gs.installations.<name>.mimir`, read: each key overrides one default. */
+interface MimirOverride {
+  url?: string;
+  tenant?: string;
+  matchers?: EnforcedMatchers;
+}
+
+function isObject(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Thrown by {@link readMimirOverride}: names the key and what is wrong. */
+class InvalidMimirConfig extends Error {}
+
+/**
+ * One installation's `mimir` block, validated. Read as raw values rather than
+ * through `Config`: a label name like `__tenant` or `label_1` is not a valid
+ * config key, so `keys()` would refuse it. An empty value is invalid, not a
+ * default: an empty tenant reads as a refused token in Mimir's answer, and
+ * `cluster_id=""` selects the series *without* a `cluster_id`.
+ */
+function readMimirOverride(raw: unknown, key: string): MimirOverride {
+  if (raw === undefined) {
+    return {};
+  }
+  if (!isObject(raw)) {
+    throw new InvalidMimirConfig(`${key} is not a map`);
+  }
+  const override: MimirOverride = {};
+
+  if (raw.url !== undefined) {
+    let url: URL | undefined;
+    try {
+      url = typeof raw.url === 'string' ? new URL(raw.url) : undefined;
+    } catch {
+      url = undefined;
+    }
+    if (!url || (url.protocol !== 'https:' && url.protocol !== 'http:')) {
+      throw new InvalidMimirConfig(`${key}.url is not an http(s) URL`);
+    }
+    override.url = (raw.url as string).replace(/\/+$/, '');
+  }
+
+  if (raw.tenant !== undefined) {
+    if (typeof raw.tenant !== 'string' || raw.tenant === '') {
+      throw new InvalidMimirConfig(`${key}.tenant is not a non-empty string`);
+    }
+    override.tenant = raw.tenant;
+  }
+
+  if (raw.matchers !== undefined) {
+    if (!isObject(raw.matchers)) {
+      throw new InvalidMimirConfig(`${key}.matchers is not a map`);
+    }
+    const matchers: EnforcedMatchers = {};
+    for (const [name, value] of Object.entries(raw.matchers)) {
+      if (!isLabelName(name)) {
+        throw new InvalidMimirConfig(
+          `${key}.matchers has "${name}", which is not a label name`,
+        );
+      }
+      if (typeof value !== 'string' || value === '') {
+        throw new InvalidMimirConfig(
+          `${key}.matchers.${name} is not a non-empty string`,
+        );
+      }
+      matchers[name] = value;
+    }
+    if (Object.keys(matchers).length > 0) {
+      override.matchers = matchers;
+    }
+  }
+
+  return override;
+}
+
+/**
+ * Every installation's `mimir` block, read once. An invalid one is logged
+ * here, once, naming the installation and the key, and kept as invalid: that
+ * installation's metrics then answer 503 like a Mimir that is down, and the
+ * other installations work.
+ */
+function readMimirOverrides(
+  config: RootConfigService,
+  logger: LoggerService,
+): Map<string, MimirOverride | 'invalid'> {
+  const overrides = new Map<string, MimirOverride | 'invalid'>();
+  const installations = config.getOptional('gs.installations');
+  if (!isObject(installations)) {
+    return overrides;
+  }
+  for (const [name, installation] of Object.entries(installations)) {
+    const key = `gs.installations.${name}.mimir`;
+    try {
+      overrides.set(
+        name,
+        readMimirOverride(
+          isObject(installation) ? installation.mimir : undefined,
+          key,
+        ),
+      );
+    } catch (error) {
+      if (!(error instanceof InvalidMimirConfig)) {
+        throw error;
+      }
+      logger.error(
+        `Invalid Mimir config for installation "${name}": ${error.message}; its metrics are unavailable`,
+        { installation: name },
+      );
+      overrides.set(name, 'invalid');
+    }
+  }
+  return overrides;
+}
 
 export interface MimirMetricSample {
   metric: Record<string, string>;
@@ -63,12 +195,17 @@ export class MimirService {
     config: RootConfigService;
     logger: LoggerService;
   }): MimirService {
-    return new MimirService(options.config, options.logger);
+    return new MimirService(
+      options.config,
+      options.logger,
+      readMimirOverrides(options.config, options.logger),
+    );
   }
 
   private constructor(
     private readonly config: RootConfigService,
     private readonly logger: LoggerService,
+    private readonly overrides: Map<string, MimirOverride | 'invalid'>,
   ) {}
 
   /**
@@ -128,12 +265,65 @@ export class MimirService {
   }
 
   /**
-   * The shared leg of both queries: resolve the installation's Mimir, call it
-   * with the user's OIDC token, and turn every failure into the error class
-   * that describes it:
+   * Where an installation's queries go, and the matchers they must carry.
+   * `gs.installations.<name>.mimir` sets the address, the tenant and the
+   * matchers; without it, the installation's own Mimir at
+   * `observability.<baseDomain>`, tenant `giantswarm`, and no matchers.
+   */
+  private resolveTarget(installationName: string): MimirTarget {
+    const prefix = `gs.installations.${installationName}`;
+
+    // `mimirEnabled: false` opts an installation out of the observability
+    // integration entirely (standalone installations have no Mimir at
+    // `observability.<baseDomain>`, even though `baseDomain` is set for other
+    // features). Refusing here keeps the frontend gate honest.
+    const mimirEnabled = this.config.getOptionalBoolean(
+      `${prefix}.mimirEnabled`,
+    );
+    if (mimirEnabled === false) {
+      throw new NotFoundError(
+        `Mimir is not enabled for installation "${installationName}"`,
+      );
+    }
+
+    const override = this.overrides.get(installationName) ?? {};
+    if (override === 'invalid') {
+      // Logged once, when the config was read: not again per query.
+      throw new MimirUnavailableError(
+        `Mimir is not configured correctly for installation "${installationName}"`,
+      );
+    }
+    const { url, matchers } = override;
+    const tenant = override.tenant ?? DEFAULT_TENANT;
+
+    if (url) {
+      return { baseUrl: url, tenant, matchers };
+    }
+
+    const baseDomain = this.config.getOptionalString(`${prefix}.baseDomain`);
+    if (!baseDomain) {
+      throw new NotFoundError(
+        `No baseDomain configured for installation "${installationName}"`,
+      );
+    }
+    return { baseUrl: `https://observability.${baseDomain}`, tenant, matchers };
+  }
+
+  /**
+   * The shared leg of both queries: resolve the installation's Mimir, limit
+   * the query to the installation's matchers, call it with the user's OIDC
+   * token, and turn every failure into the error class that describes it:
    *
    * - a refused token: `AuthenticationError` (401), which the person can act
    *   on by signing in again;
+   * - a query about series the installation's matchers exclude (another
+   *   cluster): `MimirQueryRefusedError` (400, `reason`
+   *   `outside_installation_matchers`), never sent, which the frontend reads
+   *   as no data;
+   * - a query that could not be limited to the matchers at all (it does not
+   *   parse): `InputError` (400), never sent;
+   * - an installation whose `mimir` block is invalid: `MimirUnavailableError`
+   *   (503), logged once when the config was read;
    * - a query Mimir refused (any other 4xx: bad PromQL, a range over its
    *   limits): `InputError` (400) with Mimir's text, which asking again would
    *   not change, and not logged, since nothing is down;
@@ -146,7 +336,7 @@ export class MimirService {
   private async fetchPrometheus<T>(options: {
     installationName: string;
     path: 'query' | 'query_range';
-    params: Record<string, string>;
+    params: { query: string } & Record<string, string>;
     oidcToken: string;
     redactQuery?: boolean;
     logFailures?: boolean;
@@ -160,39 +350,36 @@ export class MimirService {
       logFailures = true,
     } = options;
 
-    // `mimirEnabled: false` opts an installation out of the observability
-    // integration entirely (standalone installations have no Mimir at
-    // `observability.<baseDomain>`, even though `baseDomain` is set for other
-    // features). Refusing here keeps the frontend gate honest.
-    const mimirEnabled = this.config.getOptionalBoolean(
-      `gs.installations.${installationName}.mimirEnabled`,
-    );
-    if (mimirEnabled === false) {
-      throw new NotFoundError(
-        `Mimir is not enabled for installation "${installationName}"`,
-      );
+    const target = this.resolveTarget(installationName);
+
+    const url = new URL(`${target.baseUrl}/prometheus/api/v1/${path}`);
+    const sent = { ...params };
+    if (target.matchers) {
+      try {
+        sent.query = enforceMatchers(params.query, target.matchers);
+      } catch (error) {
+        if (!(error instanceof QueryRefusedError)) {
+          throw error;
+        }
+        // Handled, at `info`: the query never leaves, and nothing is down.
+        this.logger.info(`Refused a Mimir ${path} that could not be limited`, {
+          installation: installationName,
+          endpoint: path,
+          reason: error.message,
+        });
+        const message = `Mimir ${path} for installation "${installationName}" was not sent: ${error.message}`;
+        throw error.outsideMatchers
+          ? new MimirQueryRefusedError(message)
+          : new InputError(message);
+      }
     }
-
-    const baseDomain = this.config.getOptionalString(
-      `gs.installations.${installationName}.baseDomain`,
-    );
-
-    if (!baseDomain) {
-      throw new NotFoundError(
-        `No baseDomain configured for installation "${installationName}"`,
-      );
-    }
-
-    const url = new URL(
-      `https://observability.${baseDomain}/prometheus/api/v1/${path}`,
-    );
-    for (const [key, value] of Object.entries(params)) {
+    for (const [key, value] of Object.entries(sent)) {
       url.searchParams.set(key, value);
     }
 
     this.logger.debug(
       `Proxying Mimir ${path} for installation "${installationName}": ${
-        redactQuery ? '(query redacted)' : params.query
+        redactQuery ? '(query redacted)' : sent.query
       }`,
     );
 
@@ -216,7 +403,7 @@ export class MimirService {
       response = await fetch(url.toString(), {
         headers: {
           Authorization: `Bearer ${oidcToken}`,
-          'X-Scope-OrgID': 'giantswarm',
+          'X-Scope-OrgID': target.tenant,
           Accept: 'application/json',
         },
         signal: controller.signal,

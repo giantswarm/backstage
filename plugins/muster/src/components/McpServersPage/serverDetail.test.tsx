@@ -47,17 +47,17 @@ const SIGV4_SPEC = {
   type: 'streamable-http',
   url: 'https://aws-mcp.eu-central-1.api.aws/mcp',
   auth: { type: 'sigv4', sigv4: { region: 'eu-central-1' } },
-  meta: { AWS_REGION: 'eu-central-1' },
+  requestMeta: { AWS_REGION: 'eu-central-1' },
 };
 
 describe('ServerConfig', () => {
   it('shows the request metadata a remote server sends on every call', async () => {
-    // `spec.meta` decides which region an AWS-hosted server answers about, and
-    // a wrong value produces a confident answer rather than an error — so it
-    // belongs in the config view, not hidden behind the raw manifest.
+    // `spec.requestMeta` decides which region an AWS-hosted server answers
+    // about, and a wrong value produces a confident answer rather than an error
+    // — so it belongs in the config view, not hidden behind the raw manifest.
     await renderInTestApp(<ServerConfig server={makeServer(SIGV4_SPEC)} />);
 
-    expect(screen.getByText('Meta AWS_REGION')).toBeInTheDocument();
+    expect(screen.getByText('Request meta AWS_REGION')).toBeInTheDocument();
     expect(screen.getByText('eu-central-1')).toBeInTheDocument();
   });
 
@@ -66,7 +66,7 @@ describe('ServerConfig', () => {
       <ServerConfig server={makeServer({ type: 'streamable-http' })} />,
     );
 
-    expect(screen.queryByText(/^Meta /)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Request meta /)).not.toBeInTheDocument();
   });
 
   it('names the deactivation and where to undo it', async () => {

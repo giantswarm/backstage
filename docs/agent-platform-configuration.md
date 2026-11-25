@@ -36,6 +36,7 @@ A key works only in the channel it is meant for:
 | `gs.features.platformSection.enabled`                     | `false`    | No                                             | No `/platform` route and no Platform item in the rail                    |
 | `gs.installations.<name>.baseDomain`                      | —          | Yes, per installation running the platform     | No kagent, muster, Mimir or avatar endpoint can be derived               |
 | `gs.installations.<name>.mimirEnabled`                    | `true`     | Set `false` on installations without Mimir     | Usage metrics are requested from a Mimir that does not exist             |
+| `gs.installations.<name>.mimir`                           | own Mimir  | Where the series are in another Mimir          | Usage metrics are read from `observability.<baseDomain>`, unfiltered     |
 | `gs.installations.<name>.currency`                        | USD        | No                                             | Costs shown in USD                                                       |
 | `agentPlatform.kagent.installations`                      | derived    | No                                             | Every installation with a `baseDomain` is tried                          |
 | `agentPlatform.kagent.*` timeouts and bounds              | see below  | No                                             | —                                                                        |
@@ -181,6 +182,13 @@ Set `mimirEnabled: false` where the Giant Swarm observability stack does not
 run (a standalone installation): the backend answers 404 instead of calling a
 missing Mimir, and the metrics-backed UI reads "unavailable" rather than
 erroring.
+
+Where the platform's series land in another installation's Mimir (a platform on
+a workload cluster, its metrics in the management cluster's Mimir), set
+`gs.installations.<name>.mimir` with that Mimir's `url` and the `matchers` that
+select the platform's own series (`cluster_id: <workload cluster>`). Every
+usage and cost query of the installation is then limited to them:
+[`docs/configuration.md`, "Metrics from another installation's Mimir"](configuration.md#metrics-from-another-installations-mimir-mimir).
 
 Required in Mimir (the metric registry is
 `plugins/gs-common/src/mimirMetrics.ts`; the queries are
