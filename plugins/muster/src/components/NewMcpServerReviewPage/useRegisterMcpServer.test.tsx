@@ -4,7 +4,15 @@ import { analyticsApiRef } from '@backstage/core-plugin-api';
 import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import {
+  baseDataSet,
+  inInstallation,
+} from '@giantswarm/backstage-plugin-gs-common/fixtures';
+
 import { musterApiRef, type MusterApi } from '../../apis';
+import { musterKubernetesObjectsOf } from '../../apis/fixtures';
+import { musterFixtureApi } from '../../apis/fixtures/MusterFixtureApi';
+import { MCPServer } from '../../lib/k8s/MCPServer';
 import type { McpServerDefinition } from '../../lib/mcpServerDefinition';
 import {
   OneTimeClientCredentials,
@@ -14,7 +22,19 @@ import {
 
 const callTool = jest.fn();
 const describeTool = jest.fn();
-const musterApi = { callTool, describeTool } as unknown as MusterApi;
+/**
+ * A muster from before the split connector writes unless a test says
+ * otherwise: no `core_mcpserver_connect`, one update that takes everything.
+ * The split is tested against the fixture muster, which declares and refuses
+ * as muster does (`against muster with split connector writes`).
+ */
+const musterApi = {
+  callTool,
+  describeTool: (name: string, installation?: string) =>
+    name === 'core_mcpserver_connect'
+      ? Promise.reject(new Error('tool not found: core_mcpserver_connect'))
+      : describeTool(name, installation),
+} as unknown as MusterApi;
 const analyticsApi = mockApis.analytics.mock();
 
 const definition: McpServerDefinition = {
@@ -32,7 +52,7 @@ const registration: McpServerRegistration = {
   startedFromEdit: false,
 };
 
-function renderRegister() {
+function renderRegister(api: MusterApi = musterApi) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -43,7 +63,7 @@ function renderRegister() {
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
     <TestApiProvider
       apis={[
-        [musterApiRef, musterApi],
+        [musterApiRef, api],
         [analyticsApiRef, analyticsApi],
       ]}
     >
@@ -456,14 +476,112 @@ describe('useRegisterMcpServer', () => {
     expect(callTool).not.toHaveBeenCalled();
   });
 
-  it('asks for no schema when there is no display name to send', async () => {
+  it('asks for no schema but which edit writes muster has when there is no display name to send', async () => {
     const { result } = renderRegister();
 
     await act(() =>
       result.current.mutateAsync({ ...registration, isEdit: true }),
     );
 
+    // Only core_mcpserver_connect, which this muster does not have.
     expect(describeTool).not.toHaveBeenCalled();
+  });
+
+  describe('against muster with split connector writes', () => {
+    const INSTALLATION = 'meadow';
+    const fixtureApi = musterFixtureApi([]);
+    const stored = () => {
+      const connector = inInstallation(
+        baseDataSet().connectors,
+        INSTALLATION,
+      ).find(c => c.state === 'Connected')!;
+      const object = musterKubernetesObjectsOf(INSTALLATION).find(
+        o => o.kind === 'MCPServer' && o.metadata.name === connector.name,
+      )!;
+      return new MCPServer(object as MCPServer['jsonData'], INSTALLATION);
+    };
+
+    it('writes an edit of the address and the description through connect and update', async () => {
+      const server = stored();
+      const calls = jest.spyOn(fixtureApi, 'callTool');
+      const { result } = renderRegister(fixtureApi);
+
+      await act(() =>
+        result.current.mutateAsync({
+          ...registration,
+          installation: INSTALLATION,
+          isEdit: true,
+          startedFromEdit: true,
+          definition: {
+            name: server.getName(),
+            type: 'streamable-http',
+            url: 'https://moved.example.com/mcp',
+            description: 'Moved.',
+            autoStart: true,
+          },
+        }),
+      );
+
+      expect(calls.mock.calls.map(([tool, args]) => [tool, args])).toEqual([
+        ['core_mcpserver_validate', expect.anything()],
+        [
+          'core_mcpserver_connect',
+          {
+            name: server.getName(),
+            type: 'streamable-http',
+            url: 'https://moved.example.com/mcp',
+          },
+        ],
+        [
+          'core_mcpserver_update',
+          { name: server.getName(), description: 'Moved.', autoStart: true },
+        ],
+      ]);
+      expect(stored().getUrl()).toBe('https://moved.example.com/mcp');
+      expect(stored().getDescription()).toBe('Moved.');
+      calls.mockRestore();
+    });
+
+    it('stores a client through connect', async () => {
+      const server = stored();
+      const calls = jest.spyOn(fixtureApi, 'callTool');
+      const { result } = renderRegister(fixtureApi);
+
+      await act(() =>
+        result.current.mutateAsync({
+          ...registration,
+          installation: INSTALLATION,
+          isEdit: true,
+          definition: {
+            name: server.getName(),
+            type: 'streamable-http',
+            url: server.getUrl() ?? 'https://x.example.com/mcp',
+            autoStart: true,
+            auth: {
+              type: 'oauth',
+              authorizationServer: { issuer: 'https://idp.example.com' },
+            },
+          },
+          clientCredentials: new OneTimeClientCredentials({
+            clientId: 'id',
+            clientSecret: 'secret',
+          }),
+        }),
+      );
+
+      const connectCall = calls.mock.calls.find(
+        ([tool]) => tool === 'core_mcpserver_connect',
+      );
+      expect(connectCall?.[1]).toHaveProperty('clientCredentials');
+      const updateCall = calls.mock.calls.find(
+        ([tool]) => tool === 'core_mcpserver_update',
+      );
+      expect(updateCall?.[1]).toEqual({
+        name: server.getName(),
+        autoStart: true,
+      });
+      calls.mockRestore();
+    });
   });
 
   describe('tool approval preset on create', () => {

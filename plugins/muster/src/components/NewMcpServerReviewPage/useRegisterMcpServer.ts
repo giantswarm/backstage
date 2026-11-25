@@ -13,7 +13,15 @@ import {
   type McpServerDefinition,
 } from '../../lib/mcpServerDefinition';
 import { defaultPresetFor } from '../../lib/toolApproval';
-import { toolArgumentsQuery } from '../shared/hooks';
+import {
+  CONNECTOR_UPDATE_TOOL,
+  editTakesArgument,
+} from '../../lib/connectorWrites';
+import {
+  connectToolSchema,
+  toolArgumentsQuery,
+  writeConnectorEdit,
+} from '../shared/hooks';
 
 /**
  * Client credentials handed to exactly one write. React Query keeps a
@@ -61,8 +69,11 @@ export type McpServerRegistration = {
  * The wizard's write, through muster's own core tools over the per-user MCP
  * session — the same live write path the raw-JSON dialog and the CLI use.
  * Validate runs as a dry-run first, so the definition is checked by the
- * authority that will apply it; then create, or update when this wizard run
- * registered the server already (never a delete-and-recreate). A create is
+ * authority that will apply it; then create, or an edit when this wizard run
+ * registered the server already (never a delete-and-recreate), through
+ * muster's split writes: the connection through `core_mcpserver_connect`, the
+ * rest through `core_mcpserver_update` (`writeConnectorEdit`; one update on
+ * an older muster). A create is
  * reported as `Muster.mcpServerAdded`, an update in a run started from the
  * server's Edit as `Muster.mcpServerUpdated`; an update later in an Add run is
  * part of the registration, and reports nothing.
@@ -87,7 +98,7 @@ export function useRegisterMcpServer() {
       isEdit,
       clientCredentials: handedOver,
     }: McpServerRegistration): Promise<McpServerDefinition> => {
-      const tool = isEdit ? 'core_mcpserver_update' : 'core_mcpserver_create';
+      const tool = isEdit ? CONNECTOR_UPDATE_TOOL : 'core_mcpserver_create';
       // Taken at once, so the values live only in this call's scope.
       const clientCredentials = handedOver?.take();
       const definition = clientCredentials
@@ -159,13 +170,24 @@ export function useRegisterMcpServer() {
       // typed a client: say what it cannot do instead (the sign-in step
       // hides the fields once it knows).
       const takesClient = async () => {
-        if (
-          clientCredentials &&
-          !takesArgument(
-            await schemaOf(tool, 'can store a client'),
-            'clientCredentials',
-          )
-        ) {
+        if (!clientCredentials) {
+          return;
+        }
+        const asking = 'can store a client';
+        // An edit stores it through `core_mcpserver_connect`, or the one
+        // update of a muster without it.
+        const takes = isEdit
+          ? editTakesArgument('clientCredentials', {
+              update: await schemaOf(tool, asking),
+              connect:
+                (await connectToolSchema(
+                  queryClient,
+                  musterApi,
+                  installation,
+                )) ?? null,
+            })
+          : takesArgument(await schemaOf(tool, asking), 'clientCredentials');
+        if (!takes) {
           throw new Error(
             'Muster on this installation cannot store a client yet. Nothing was saved; choose Existing Secret to name a Secret that holds the client instead.',
           );
@@ -181,11 +203,12 @@ export function useRegisterMcpServer() {
         validated,
         installation,
       );
-      await musterApi.callTool(
-        tool,
-        clientCredentials ? { ...sent, clientCredentials } : sent,
-        installation,
-      );
+      const args = clientCredentials ? { ...sent, clientCredentials } : sent;
+      if (isEdit) {
+        await writeConnectorEdit(queryClient, musterApi, args, installation);
+      } else {
+        await musterApi.callTool(tool, args, installation);
+      }
       // What was written, without the credentials or the preset (a create's
       // only): the caller keeps it as the base of later saves.
       const { preset: _preset, ...written } = sent as McpServerDefinition & {

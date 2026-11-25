@@ -15,6 +15,7 @@ import {
 import { parseJsonDefinition } from '../../lib/definitionParsers';
 import { mutationErrorMessage } from '../../lib/authError';
 import { DefinitionEditorDialog } from '../shared';
+import { useConnectorEditWrite } from '../shared/hooks';
 import {
   type ConnectorActionTool,
   useConnectorToolCall,
@@ -125,9 +126,10 @@ export function ConfirmActionDialog({
 
 /**
  * Ad-hoc server edit dialog: a JSON editor seeded from the existing server,
- * validated via `core_mcpserver_validate` and saved via
- * `core_mcpserver_update`. New servers are added through the "Register server"
- * flow instead.
+ * validated via `core_mcpserver_validate` and saved through muster's split
+ * writes (`writeConnectorEdit`: the connection via `core_mcpserver_connect`,
+ * the rest via `core_mcpserver_update`; one update on an older muster). New
+ * servers are added through the "Register server" flow instead.
  */
 export function AdHocServerDialog({
   server,
@@ -139,6 +141,7 @@ export function AdHocServerDialog({
   onClose: () => void;
 }) {
   const classes = useStyles();
+  const save = useConnectorEditWrite(server.cluster);
   return (
     <DefinitionEditorDialog
       open={open}
@@ -160,7 +163,7 @@ export function AdHocServerDialog({
         />
       )}
       validateTool="core_mcpserver_validate"
-      saveTool="core_mcpserver_update"
+      saveTool={save}
       saveTracking={{ event: MCP_SERVER_UPDATED }}
       savedMessage="Saved."
     />

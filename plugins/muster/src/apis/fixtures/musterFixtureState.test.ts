@@ -211,6 +211,40 @@ describe('the connector writes in fixture mode', () => {
     );
   });
 
+  it("refuses each split write the other's arguments before writing, as muster does", async () => {
+    const name = named('Connected');
+    const before = objectOf(name)?.getUrl();
+
+    await expect(
+      call('core_mcpserver_update', {
+        name,
+        url: 'https://elsewhere.example.com/mcp',
+        description: 'Moved.',
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        message:
+          'core_mcpserver_update does not take url: use core_mcpserver_connect or core_mcpserver_set_approval',
+        status: 422,
+      }),
+    );
+    await expect(
+      call('core_mcpserver_connect', { name, description: 'Moved.' }),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        message:
+          'core_mcpserver_connect does not take description: use core_mcpserver_update or core_mcpserver_set_approval',
+      }),
+    );
+    expect(objectOf(name)?.getUrl()).toBe(before);
+
+    await call('core_mcpserver_connect', {
+      name,
+      url: 'https://elsewhere.example.com/mcp',
+    });
+    expect(objectOf(name)?.getUrl()).toBe('https://elsewhere.example.com/mcp');
+  });
+
   it('has a connector at a host no muster reaches fail once it tried', async () => {
     await call('core_mcpserver_create', {
       name: 'nowhere',
@@ -260,10 +294,15 @@ describe('the connector writes in fixture mode', () => {
     const before = objectOf(name)!;
 
     await expect(
-      call('core_mcpserver_update', {
+      call('core_mcpserver_connect', {
         name,
         type: 'streamable-http',
         url: 'https://moved.example.com/mcp',
+      }),
+    ).resolves.toBe(`MCP server '${name}' updated successfully`);
+    await expect(
+      call('core_mcpserver_update', {
+        name,
         description: '',
         displayName: 'Moved',
       }),
@@ -273,7 +312,7 @@ describe('the connector writes in fixture mode', () => {
     expect(after.getUrl()).toBe('https://moved.example.com/mcp');
     expect(after.getDescription()).toBe(before.getDescription());
     expect(after.getDisplayName()).toBe('Moved');
-    expect(after.jsonData.metadata.generation).toBe(2);
+    expect(after.jsonData.metadata.generation).toBe(3);
     expect(after.isReconcilePending()).toBe(true);
     expect(await stateOf(name)).toBe('Connecting');
     // The new URL answers: it no longer fails.
@@ -556,7 +595,7 @@ describe('the connector writes in fixture mode', () => {
     const name = named('Running');
     const url = objectOf(name)!.getUrl();
 
-    await call('core_mcpserver_update', {
+    await call('core_mcpserver_connect', {
       name,
       type: 'streamable-http',
       url,
@@ -608,7 +647,7 @@ describe('the connector writes in fixture mode', () => {
     expect(state.restart(INSTALLATION, { name })).toBe(
       `Restart of service '${name}' requested; the reconciler will restart it`,
     );
-    state.update(INSTALLATION, { name, auth: { type: 'oauth' } });
+    state.connectWrite(INSTALLATION, { name, auth: { type: 'oauth' } });
     state.signIn(INSTALLATION, name);
     expect(state.restart(INSTALLATION, { name })).toBe(
       `Restart of service '${name}' requested; the reconciler will restart it. This server uses OAuth: if it comes up auth-required, authenticate with core_auth_login`,

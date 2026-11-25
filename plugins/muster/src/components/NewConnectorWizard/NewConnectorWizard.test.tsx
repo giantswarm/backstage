@@ -126,6 +126,18 @@ async function renderSignInStep() {
 }
 
 /**
+ * A muster from before the split connector writes: one
+ * `core_mcpserver_update` takes everything, and `core_mcpserver_connect` does
+ * not exist. The split itself is tested against muster's own argument lists
+ * (`describe('against muster with split connector writes')`).
+ */
+function olderMusterTool(name: string, detail: object) {
+  return name === 'core_mcpserver_connect'
+    ? Promise.reject(new Error('tool not found: core_mcpserver_connect'))
+    : Promise.resolve(detail);
+}
+
+/**
  * `describe_tool` of a muster whose create and update take a display name
  * (v5.43.0 and later) or not, and a client to store (giantswarm/muster#1737)
  * unless `client` is false.
@@ -135,7 +147,7 @@ function musterTakesDisplayName(
   { client = true }: { client?: boolean } = {},
 ) {
   describeTool.mockImplementation((name: string) =>
-    Promise.resolve({
+    olderMusterTool(name, {
       name,
       inputSchema: {
         type: 'object',
@@ -154,7 +166,7 @@ function musterTakesDisplayName(
 /** `describe_tool` of a muster whose create and update take tags too. */
 function musterTakesTags() {
   describeTool.mockImplementation((name: string) =>
-    Promise.resolve({
+    olderMusterTool(name, {
       name,
       inputSchema: {
         type: 'object',

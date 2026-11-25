@@ -22,6 +22,8 @@ import {
   FIXTURE_APPROVAL_UNAVAILABLE,
   presetApprovalOf,
   reviewedApprovalOf,
+  CONNECT_ARGUMENTS,
+  UPDATE_ARGUMENTS,
   musterWorkflowOf,
   servedToolsOf,
   type MusterFixtureConnector,
@@ -82,6 +84,28 @@ const NOT_SPEC = new Set([
 ]);
 
 const APPROVAL_PRESETS = new Set(['recommended', 'allow-all', 'ask-all']);
+
+/**
+ * muster's refusal of arguments a split connector write does not take
+ * (`refuseOtherFields` in `internal/mcpserver/connector_writes.go`): before
+ * anything is written, naming the tool that takes them.
+ */
+function refuseOtherArguments(
+  tool: string,
+  args: Record<string, unknown>,
+  allowed: readonly string[],
+  elsewhere: string,
+): void {
+  const other = Object.keys(args)
+    .filter(key => key !== 'name' && !allowed.includes(key))
+    .sort();
+  if (other.length > 0) {
+    throw connectorToolError(
+      `${tool} does not take ${other.join(', ')}: use ${elsewhere}`,
+      422,
+    );
+  }
+}
 
 /**
  * The `approval` or `preset` of a connector write, checked as muster's CRD
@@ -531,14 +555,48 @@ export class MusterFixtureState {
   }
 
   /**
-   * `core_mcpserver_update`: a merge onto the stored definition, by muster's
-   * rules (`mergeOntoExisting` in `lib/mcpServerDefinition.ts`): an omitted
-   * field keeps its value, `autoStart` is overwritten, an empty description
-   * keeps the stored one, an empty display name removes it, and `suspended`
-   * changes only when given. A connector that was started connects again;
-   * one never started stays stopped.
+   * `core_mcpserver_update`: what changes no target (description, display
+   * name, tags, autoStart, timeout, suspended, restart). Refuses every other
+   * argument before it writes, naming the tool that takes it, as muster does.
    */
   update(installation: string, args: Record<string, unknown>): string {
+    refuseOtherArguments(
+      'core_mcpserver_update',
+      args,
+      UPDATE_ARGUMENTS,
+      'core_mcpserver_connect or core_mcpserver_set_approval',
+    );
+    return this.write(installation, args, { autoStart: true });
+  }
+
+  /**
+   * `core_mcpserver_connect`: where the server is and how muster reaches it
+   * (type, URL, sign-in, client, headers, ...). Refuses every other argument
+   * before it writes, as muster does.
+   */
+  connectWrite(installation: string, args: Record<string, unknown>): string {
+    refuseOtherArguments(
+      'core_mcpserver_connect',
+      args,
+      CONNECT_ARGUMENTS,
+      'core_mcpserver_update or core_mcpserver_set_approval',
+    );
+    return this.write(installation, args);
+  }
+
+  /**
+   * The write of `update` and `connect`: a merge onto the stored definition,
+   * by muster's rules (`mergeOntoExisting` in `lib/mcpServerDefinition.ts`):
+   * an omitted field keeps its value, `autoStart` is overwritten, an empty
+   * description keeps the stored one, an empty display name removes it, and
+   * `suspended` changes only when given. A connector that was started
+   * connects again; one never started stays stopped.
+   */
+  private write(
+    installation: string,
+    args: Record<string, unknown>,
+    { autoStart = false }: { autoStart?: boolean } = {},
+  ): string {
     const stored = this.find(
       installation,
       args.name,
@@ -556,7 +614,9 @@ export class MusterFixtureState {
       }
       spec[key] = value;
     }
-    if (args.autoStart === undefined) {
+    // The update's: there an omitted `autoStart` reads false; a connect
+    // does not take it and keeps it.
+    if (autoStart && args.autoStart === undefined) {
       delete spec.autoStart;
     }
     if (authOf(spec) === undefined) {

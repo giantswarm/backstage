@@ -57,8 +57,13 @@ export type DefinitionEditorDialogProps = {
   renderEditor: (props: DefinitionEditorProps) => ReactNode;
   /** The muster tool that checks a definition and writes nothing. */
   validateTool: string;
-  /** The muster tool that writes the definition. */
-  saveTool: string;
+  /**
+   * The muster tool that writes the definition, or the write itself where
+   * one definition takes more than one tool (a connector's edit:
+   * `writeConnectorEdit`).
+   */
+  saveTool:
+    string | ((definition: Record<string, unknown>) => Promise<unknown>);
   /**
    * What a save reports once it went through, or why it reports nothing (an
    * edit through a create flow, say).
@@ -72,7 +77,7 @@ export type DefinitionEditorDialogProps = {
 
 /**
  * A live muster definition in an editor: Validate runs `validateTool`, Save
- * runs `saveTool`, both through the `/call` proxy against `installation`.
+ * runs `saveTool` (or the write it names), both through the `/call` proxy against `installation`.
  *
  * The dialog cannot be dismissed while either call is in flight, so a stray
  * click cannot orphan a write; the editor is seeded on open only, so a polled
@@ -148,7 +153,9 @@ export function DefinitionEditorDialog({
       ? { event: () => saveTracking.event }
       : { event: null, untrackedReason: saveTracking.untrackedReason }),
     mutationFn: (def: Record<string, unknown>) =>
-      musterApi.callTool(saveTool, def, installation),
+      typeof saveTool === 'string'
+        ? musterApi.callTool(saveTool, def, installation)
+        : saveTool(def),
     onSuccess: () => {
       // muster writes the CR synchronously, so refetching now shows the
       // change instead of waiting for the next 30s poll.

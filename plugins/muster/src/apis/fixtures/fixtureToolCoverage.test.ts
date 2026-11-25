@@ -26,6 +26,15 @@ const UNRESOLVED = new Set([
   'components/ToolPage/ToolPage.tsx: tool',
   // A workflow's Run tab runs the workflow's `workflow_<name>` tool.
   'components/WorkflowPage/WorkflowPage.tsx: workflow.getName()',
+  // A connector's edit runs core_mcpserver_connect and core_mcpserver_update
+  // (lib/connectorWrites.ts), both answered.
+  'components/shared/hooks/connectorEdit.ts: write.tool',
+  // The JSON edit saves through that edit (`useConnectorEditWrite`).
+  `components/shared/hooks/connectorEdit.ts: useCallback(
+    (args: Record<string, unknown>) =>
+      writeConnectorEdit(queryClient, musterApi, args, installation),
+    [queryClient, musterApi, installation],
+  )`,
 ]);
 
 describe('fixture mode’s tool handlers', () => {

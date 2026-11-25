@@ -264,6 +264,19 @@ set on the MCPServer directly, for example in its GitOps source or with
 `kubectl annotate mcpserver <name> -n <namespace> ui.giantswarm.io/display-name="<Display name>"`;
 an edit that does not change the name keeps it.
 
+An edit of a connector (the wizard's _Save changes_, the JSON edit on its page)
+goes through muster's split writes where muster has them: where the server is
+and how muster reaches it (type, URL, sign-in, client, headers, request
+metadata) through `core_mcpserver_connect`, the rest (description, display
+name, tags, autoStart, timeout) through `core_mcpserver_update`, connect
+first; tool approval only through `core_mcpserver_set_approval`. Which
+arguments go where is read from `core_mcpserver_connect`'s input schema; a
+muster without that tool gets one `core_mcpserver_update` as before. When the
+update fails after the connect went through, the error says that the
+connection settings were saved and names the fields that were not. Turning a
+connector off and on uses `core_service_stop` and `_start`, which are not
+connector writes.
+
 A connector whose tools wait for the person's sign-in says so in the
 Connectors list ("Sign in needed", "Sign-in expired", with its Sign in) and on
 its Tools tab, which offers the sign-in in place of the hidden tools. A

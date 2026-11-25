@@ -46,7 +46,10 @@ import {
 } from '../NewMcpServerReviewPage';
 import { SelectableCard } from '../SelectableCard';
 import { DisclosureAccordion, SessionGate } from '../shared';
-import { useToolArgumentSupport } from '../shared/hooks';
+import {
+  useEditArgumentSupport,
+  useToolArgumentSupport,
+} from '../shared/hooks';
 import { useConnectorWizardLinks } from '../NewMcpServerEditGate';
 import { ConnectorWizardFrame } from './ConnectorWizardFrame';
 
@@ -248,12 +251,20 @@ export function NewConnectorSignInPage() {
     useState<ClientCredentials>(NO_CREDENTIALS);
   // An older muster takes no `clientCredentials` (giantswarm/muster#1737):
   // New Secret then has no fields to type a client into, and says why.
-  const takesClient = useToolArgumentSupport(
-    registeredName ? 'core_mcpserver_update' : 'core_mcpserver_create',
+  // An edit stores it through `core_mcpserver_connect` (the one update of
+  // an older muster).
+  const createTakesClient = useToolArgumentSupport(
+    'core_mcpserver_create',
     state.installation,
     'clientCredentials',
-    { enabled: state.authMode === 'own-account' },
+    { enabled: !registeredName && state.authMode === 'own-account' },
   );
+  const editTakesClient = useEditArgumentSupport(
+    state.installation,
+    'clientCredentials',
+    { enabled: Boolean(registeredName) && state.authMode === 'own-account' },
+  );
+  const takesClient = registeredName ? editTakesClient : createTakesClient;
   const cannotStoreClient = takesClient === false;
   const [replacing, setReplacing] = useState(false);
   // A client muster stored for this connector. It is used only while an

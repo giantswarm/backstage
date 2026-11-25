@@ -464,6 +464,8 @@ export const MUSTER_TOOL_ERROR_STATUS: Record<MusterToolErrorKind, number> = {
 const CONNECTOR_WRITE_TOOLS = new Set([
   'core_mcpserver_create',
   'core_mcpserver_update',
+  'core_mcpserver_connect',
+  'core_mcpserver_set_approval',
   'core_mcpserver_validate',
 ]);
 
@@ -485,7 +487,10 @@ const CONNECTOR_WRITE_TOOLS = new Set([
  *   server describes the issuer differently, the stored client belongs to
  *   another authorization server, a server outside muster's namespace);
  * - an admission policy denied the MCPServer (`ValidatingAdmissionPolicy …
- *   denied request: …`, e.g. a Secret its writer may not get).
+ *   denied request: …`, e.g. a Secret its writer may not get);
+ * - a split write was sent another write's arguments (`core_mcpserver_update
+ *   does not take url: use core_mcpserver_connect …`), refused before
+ *   anything is written.
  *
  * A failure in the same breath as a refusal stays a failure: a server left
  * behind because removing it failed too.
@@ -498,6 +503,7 @@ const CONNECTOR_REFUSALS = [
   /^Cannot (create|update) MCP server '[^']*': /,
   /^Cannot store the client credentials of MCP server '[^']*'(, so it was not (created|updated))?: (Permission denied: your user may not |Secret "[^"]*" already exists in namespace )/,
   /ValidatingAdmissionPolicy '[^']*' with binding '[^']*' denied request: /,
+  /^core_mcpserver_[a-z_]+ does not take [^:]+: use core_mcpserver_/,
 ];
 const CONNECTOR_FAILURES = [/Removing the server failed too/];
 

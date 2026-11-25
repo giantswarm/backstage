@@ -117,6 +117,25 @@ describe('MusterFixtureApi', () => {
     }
   });
 
+  it("splits the edit's arguments between update and connect as muster does", async () => {
+    const argumentsOf = async (tool: string) =>
+      Object.keys(
+        (await api.describeTool(tool, 'meadow')).inputSchema?.properties ?? {},
+      );
+
+    const update = await argumentsOf('core_mcpserver_update');
+    const connect = await argumentsOf('core_mcpserver_connect');
+
+    expect(update).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/^(url|type|auth)$/)]),
+    );
+    expect(connect).toEqual(
+      expect.arrayContaining(['name', 'type', 'url', 'auth', 'requestMeta']),
+    );
+    expect(connect).not.toContain('description');
+    expect(connect).not.toContain('displayName');
+  });
+
   it('names the tools it answers', () => {
     expect([
       ...fixtureToolNames([
@@ -128,6 +147,7 @@ describe('MusterFixtureApi', () => {
       'core_mcpserver_validate',
       'core_mcpserver_create',
       'core_mcpserver_update',
+      'core_mcpserver_connect',
       'core_mcpserver_set_approval',
       'core_mcpserver_delete',
       'core_service_start',

@@ -417,6 +417,64 @@ const MCPSERVER_DEFINITION: Record<string, JsonSchema> = {
   auth: { type: 'object' },
 };
 
+/**
+ * The arguments of muster's `core_mcpserver_connect` besides `name`: where the
+ * server is and how muster reaches it (`connectFields` and the client
+ * arguments in muster's `internal/mcpserver/connector_writes.go`).
+ */
+export const CONNECT_ARGUMENTS: readonly string[] = [
+  'type',
+  'toolPrefix',
+  'family',
+  'command',
+  'args',
+  'url',
+  'env',
+  'headers',
+  'headersFrom',
+  'requestMeta',
+  'meta',
+  'auth',
+  'clientCredentials',
+  'clearClientCredentials',
+];
+
+/**
+ * The arguments of muster's `core_mcpserver_update` besides `name`: what
+ * changes no target (`updateFields` in `connector_writes.go`).
+ */
+export const UPDATE_ARGUMENTS: readonly string[] = [
+  'description',
+  'displayName',
+  'tags',
+  'autoStart',
+  'timeout',
+  'progress',
+  'suspended',
+  'restartRequestedAt',
+];
+
+/** The definition's arguments one of the split writes declares. */
+function definitionArguments(
+  names: readonly string[],
+): Record<string, JsonSchema> {
+  const all: Record<string, JsonSchema> = {
+    ...MCPSERVER_DEFINITION,
+    autoStart: { type: 'boolean' },
+    timeout: { type: 'integer' },
+    suspended: { type: 'boolean' },
+    restartRequestedAt: { type: 'string' },
+    headers: { type: 'object' },
+    requestMeta: { type: 'object' },
+    clientCredentials: { type: 'object' },
+    clearClientCredentials: { type: 'boolean' },
+    toolPrefix: { type: 'string' },
+  };
+  return Object.fromEntries(
+    ['name', ...names].filter(name => all[name]).map(name => [name, all[name]]),
+  );
+}
+
 /** The `preset` argument of muster's connector writes (tool approval). */
 const APPROVAL_PRESET_ARGUMENT: JsonSchema = {
   type: 'string',
@@ -460,8 +518,15 @@ export const FIXTURE_CORE_TOOLS: readonly ToolSummary[] = [
   ),
   connectorTool(
     'core_mcpserver_update',
-    'Change an MCP server definition.',
-    { ...MCPSERVER_DEFINITION, clientCredentials: { type: 'object' } },
+    "Update an MCP server's description, display name, tags, autoStart, timeout, progress, suspended or restart.",
+    definitionArguments(UPDATE_ARGUMENTS),
+    ['name'],
+    false,
+  ),
+  connectorTool(
+    'core_mcpserver_connect',
+    'Change where an MCP server is and how muster reaches it.',
+    definitionArguments(CONNECT_ARGUMENTS),
     ['name'],
     false,
   ),
