@@ -1,5 +1,6 @@
 import {
   createFixtureDataSet,
+  isUnreachableInstallation,
   type FixtureOrganization,
   type OrganizationRole,
 } from '@giantswarm/backstage-plugin-gs-common/fixtures';
@@ -314,14 +315,18 @@ describe('the fixture agent-manager', () => {
   });
 
   it('answers a create in mode commit with a pull request where it reports commit, and creates nothing', async () => {
-    const { server, client } = setup();
-    const tarragon = new AgentManagerClient(
+    const { data, server, client } = setup();
+    // The portal reaches it, so the Create organization dialog offers it.
+    expect(
+      isUnreachableInstallation(data, ORGANIZATION_PULL_REQUEST_INSTALLATION),
+    ).toBe(false);
+    const withPullRequests = new AgentManagerClient(
       musterApiOf(server),
       ORGANIZATION_PULL_REQUEST_INSTALLATION,
     );
 
-    expect((await tarragon.getInfo()).capabilities?.commit).toBe(true);
-    const opened = await tarragon.createOrganization({
+    expect((await withPullRequests.getInfo()).capabilities?.commit).toBe(true);
+    const opened = await withPullRequests.createOrganization({
       name: 'newcomers',
       mode: 'commit',
     });
@@ -330,7 +335,9 @@ describe('the fixture agent-manager', () => {
       commit: { pullRequest: expect.stringMatching(/^https:\/\//) },
     });
     expect(
-      (await tarragon.listOrganizations()).organizations.map(o => o.name),
+      (await withPullRequests.listOrganizations()).organizations.map(
+        o => o.name,
+      ),
     ).not.toContain('newcomers');
 
     // Where agent-manager reports no commit, it refuses as it words it.

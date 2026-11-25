@@ -81,7 +81,9 @@ export function CreateOrganizationDialog({
     useState<OrganizationWriteMode>(DEFAULT_CREATE_MODE);
   const create = useOrganizationCreation(installation);
   const info = useAgentManagerInfo(installation);
-  // A failed read offers no choice: the create is direct, as it was.
+  // The Organizations page offers Create organization only on an
+  // installation whose get_info answered, and a failed refetch keeps that
+  // answer: a failed read here is not reached from the page.
   const offersPullRequest = offersOrganizationPullRequests(
     info.info?.capabilities,
   );

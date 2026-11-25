@@ -322,7 +322,7 @@ there.
 `start_session` honour their idempotency key (`requestId`): a retry answers
 what the first call answered. This agent-manager writes live only: it reports
 no `commit` capability, and a write in mode `commit` is refused as
-`unsupported`. On `tarragon` it reports the `commit` capability, so the Create
+`unsupported`. On `fennel` it reports the `commit` capability, so the Create
 organization dialog offers a pull request there: `create_organization` in mode
 `commit` answers a pull request and creates nothing, since the pull request is
 never merged. Every other write in mode `commit` is refused there too, also the

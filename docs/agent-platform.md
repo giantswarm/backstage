@@ -1005,6 +1005,21 @@ once and says that it is not ready until the operator reports its
 namespace. The list marks such an organization "not ready yet"; its page
 reads it again every 10 seconds, for five minutes at most, until it is.
 
+Where the installation's agent-manager opens pull requests for organizations
+(`get_info` reports `commit` and `organizations`), the dialog also asks how
+to create it: **with a pull request** in the installation's repository
+(`create_organization` with `mode: commit`), or **directly**. The pull
+request is shown first and selected (`ORGANIZATION_CREATE_MODES` in
+`lib/organizations.ts` holds the order). The choice stays, and the dialog
+says so: agent-manager changes an organization created with a pull request
+with pull requests from then on, also its models, members and connectors,
+and one created directly directly. After a pull request the dialog shows it
+and opens no page: the organization is created once the pull request is
+merged and Flux applies it, and only then does the Organizations page list
+it. Until `get_info` answers, the dialog creates nothing. A refusal, also the one of an
+installation where agent-manager has no organizations repository, shows in
+agent-manager's words.
+
 **Admins.** The admins are the `Organization`'s `spec.admins`; the operator
 binds them to `agent-platform:admin` in `organization-admins`. The Members
 tab shows them, to a person who manages the organization, in an Admins

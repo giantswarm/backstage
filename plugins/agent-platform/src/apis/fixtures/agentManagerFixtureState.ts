@@ -129,21 +129,22 @@ export const INCOMPLETE_MODEL = 'claude-direct';
 /**
  * The installation whose agent-manager reports the `commit` capability and
  * answers `create_organization` in mode commit with a pull request, so the
- * Create organization dialog offers the choice there. No organization comes
+ * Create organization dialog offers the choice there. It must be an
+ * installation the data set keeps reachable. No organization comes
  * of it: the pull request is never merged. Every other write in mode commit
  * is refused, there too.
  */
-export const ORGANIZATION_PULL_REQUEST_INSTALLATION = 'tarragon';
+export const ORGANIZATION_PULL_REQUEST_INSTALLATION = 'fennel';
 
 /** The pull request a create of `name` in mode commit opens. */
 export function organizationCreatePullRequest(
   name: string,
 ): OrganizationCommit {
   return {
-    repository: 'example/tarragon-configs',
+    repository: 'example/fennel-configs',
     base: 'main',
     branch: `agent-manager/create-${name}_f1x7`,
-    pullRequest: 'https://github.com/example/tarragon-configs/pull/41',
+    pullRequest: 'https://github.com/example/fennel-configs/pull/41',
     number: 41,
     review:
       "the platform team reviews it: the repository's CODEOWNERS names them for the organization paths, and an organization's admin cannot approve it alone",
