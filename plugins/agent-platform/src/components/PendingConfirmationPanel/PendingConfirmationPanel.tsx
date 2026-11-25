@@ -42,7 +42,7 @@ import {
   sendEnterKeyHint,
 } from '../../lib/sendKey';
 import { SendKeyHint } from '../SendKeyHint';
-import { SignInRequestPanel } from '../SignInRequestPanel';
+import { UrlElicitationPanel } from '../UrlElicitationPanel';
 
 /**
  * The tallest the card grows before its body scrolls: about half the view, so
@@ -224,6 +224,11 @@ export type PendingConfirmationPanelProps = {
   agentName?: string;
   /** Names the connector the tool belongs to, as Customize does (UX review M2). */
   connectorOf?: ConnectorOf;
+  /**
+   * The origin of the session's muster, for a URL elicitation: a link on it
+   * returns to the session once the person is done there.
+   */
+  musterOrigin?: string;
 };
 
 /**
@@ -294,13 +299,14 @@ export type PendingConfirmationPanelProps = {
  * a side-effecting tool call.
  */
 export function PendingConfirmationPanel(props: PendingConfirmationPanelProps) {
-  if (props.pending.asks === 'sign-in') {
+  if (props.pending.asks === 'url') {
     return (
-      <SignInRequestPanel
+      <UrlElicitationPanel
         pending={props.pending}
         isAnswering={props.isAnswering}
         error={props.error}
         onAnswer={props.onAnswer}
+        musterOrigin={props.musterOrigin}
       />
     );
   }

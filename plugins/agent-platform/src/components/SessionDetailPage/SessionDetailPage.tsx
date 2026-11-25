@@ -82,6 +82,8 @@ import { InstallationChip } from '../InstallationChip';
 import { SessionWorkspaceChip } from '../SessionWorkspace';
 import { PendingConfirmationPanel } from '../PendingConfirmationPanel';
 import { ConnectorSignInLinks } from '../ConnectorSignInLinks';
+import { useUrlElicitationReturn } from '../UrlElicitationPanel';
+import { useMusterOrigin } from '../../hooks/useMusterOrigin';
 import { SessionComposer } from '../SessionComposer';
 import {
   ChatGptConnectDialog,
@@ -413,6 +415,10 @@ export function SessionDetailPage() {
   // the installation's MCPServer CRs.
   const { servers: musterServers, labels: connectorLabelsOf } =
     useMusterServers(installation);
+  // A URL elicitation's page on muster's origin returns to this page, which
+  // tells the tab that opened it (`UrlElicitationPanel`).
+  const musterOrigin = useMusterOrigin(installation);
+  useUrlElicitationReturn();
   const connectorOf = useCallback(
     (toolName: string) =>
       connectorOfTool(toolName, musterServers, connectorLabelsOf),
@@ -1658,6 +1664,7 @@ export function SessionDetailPage() {
                   error={shownMessage(confirmation.error)}
                   restore={confirmation.failed}
                   isUserScoped={isUserScoped}
+                  musterOrigin={musterOrigin}
                   onAnswer={answer => {
                     // Errors surface through the hook's `error`, which the card
                     // renders above the choices it hands back. The request it

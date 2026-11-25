@@ -137,6 +137,12 @@ jest.mock('../../hooks/useMusterServers', () => ({
   }),
 }));
 
+// The origin of the session's muster, which a URL elicitation's link returns
+// from (`UrlElicitationPanel`).
+jest.mock('../../hooks/useMusterOrigin', () => ({
+  useMusterOrigin: () => 'https://muster.gazelle.example.com',
+}));
+
 jest.mock('../../hooks/useKagentCapabilities', () => ({
   useKagentCapabilities: () => ({ isUserScoped: true }),
 }));
@@ -2507,6 +2513,55 @@ describe('SessionDetailPage', () => {
         decision: 'approve',
         answers: [["I've signed in"]],
         text: "I've signed in",
+      });
+    });
+  });
+
+  describe('a URL elicitation the agent waits on', () => {
+    it("shows muster's message with Open, returning to the session from muster's page", async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+        state: awaitingInput,
+        pendingConfirmation: {
+          taskId: 'task-1',
+          asks: 'url',
+          questions: [],
+          elicitation: {
+            id: 'call-7',
+            server: 'muster',
+            message:
+              'Alert Review wants to acknowledge an incident in PagerDuty.',
+            url: 'https://muster.gazelle.example.com/approvals/0f3c9a',
+            elicitationId: 'el-9b1d',
+          },
+          askedIn: 'status-1',
+        },
+      });
+      const user = userEvent.setup();
+      const open = jest.fn().mockResolvedValue('accept');
+      await render([[externalUrlConsentApiRef, { open }]]);
+
+      const card = screen.getByTestId('url-elicitation-card');
+      expect(card).toHaveTextContent(
+        'Alert Review wants to acknowledge an incident in PagerDuty.',
+      );
+      expect(card).toHaveTextContent('muster.gazelle.example.com');
+      await user.click(
+        within(card).getByRole('button', {
+          name: 'Open (opens in a new tab)',
+        }),
+      );
+      const opened = new URL(open.mock.lastCall[0].url);
+      const back = new URL(opened.searchParams.get('redirect')!);
+      expect(back.searchParams.get('elicitationId')).toBe('el-9b1d');
+
+      await user.click(within(card).getByRole('button', { name: 'Done' }));
+      expect(mockAnswer).toHaveBeenCalledWith({
+        taskId: 'task-1',
+        decision: 'approve',
+        text: 'Done.',
+        askedIn: 'status-1',
       });
     });
   });
