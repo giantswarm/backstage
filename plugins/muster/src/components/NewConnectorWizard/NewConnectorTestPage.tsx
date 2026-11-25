@@ -42,7 +42,11 @@ import {
   ToolApprovalEditor,
   useToolApprovalDraft,
 } from '../ToolApprovalEditor';
-import { SET_APPROVAL_TOOL, useSaveToolApproval } from './useSaveToolApproval';
+import {
+  SET_APPROVAL_TOOL,
+  ToolApprovalConflictError,
+  useSaveToolApproval,
+} from './useSaveToolApproval';
 import {
   ConnectorWizardFrame,
   useConnectorWizardCloseHref,
@@ -258,6 +262,7 @@ export function NewConnectorTestPage() {
           name: serverName,
           installation,
           approval: approvalOf(approval.draft),
+          base: stored,
         });
       } catch {
         // Shown in place; the person stays on the step.
@@ -272,6 +277,7 @@ export function NewConnectorTestPage() {
     approval,
     serverName,
     save,
+    stored,
     installation,
     reset,
     navigate,
@@ -488,7 +494,7 @@ function ToolsSection({
         status="info"
         description={
           reportsApproval
-            ? `Muster on ${installation} can't save tool settings from the portal yet. They are shown as they are; set them in the connector's MCPServer (spec.approval) instead.`
+            ? `Muster on ${installation} can't save tool settings from the portal yet. They are shown as they are, and Done saves nothing; set them in the connector's MCPServer (spec.approval) instead.`
             : `Muster on ${installation} doesn't support tool approval yet: every tool runs without asking.`
         }
       />
@@ -508,7 +514,14 @@ function ToolsSection({
       )}
       {note}
       {modeNote && <Alert status="info" description={modeNote} />}
-      {saveError && (
+      {saveError instanceof ToolApprovalConflictError && (
+        <Alert
+          status="warning"
+          title="The tool settings changed meanwhile"
+          description={saveError.message}
+        />
+      )}
+      {saveError && !(saveError instanceof ToolApprovalConflictError) && (
         <Alert
           status="danger"
           title="The tool settings were not saved"

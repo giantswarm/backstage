@@ -690,6 +690,59 @@ describe('NewConnectorTestPage: Test & Tools', () => {
     },
   );
 
+  it('writes nothing over settings another admin changed since the step read them, and shows theirs', async () => {
+    const saved = {
+      rule: 'Ask',
+      tools: {
+        search_issues: 'Allow',
+        get_issue: 'Allow',
+        add_comment: 'Ask',
+        create_issue: 'Ask',
+      },
+    };
+    connectedWith(approvalTools({}, 'tool'), saved);
+
+    await renderTestStep();
+    await screen.findByRole('radiogroup', {
+      name: 'Approval for create_issue',
+    });
+    expect(chosen(pills('create_issue'))).toBe('Ask');
+
+    // Meanwhile another admin blocks create_issue.
+    const theirs = {
+      ...saved,
+      tools: { ...saved.tools, create_issue: 'Block' },
+    };
+    connectedWith(approvalTools({}, 'tool'), theirs);
+    await userEvent.click(
+      within(pills('get_issue')).getByRole('radio', { name: 'Ask' }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+    expect(
+      await screen.findByText('The tool settings changed meanwhile'),
+    ).toBeInTheDocument();
+    expect(setApprovalCalls()).toHaveLength(0);
+    // Their Block shows; the person's own change stays on top.
+    await waitFor(() => expect(chosen(pills('create_issue'))).toBe('Block'));
+    expect(chosen(pills('get_issue'))).toBe('Ask');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await waitFor(() => expect(setApprovalCalls()).toHaveLength(1));
+    expect(setApprovalCalls()[0][1]).toEqual({
+      name: 'jira',
+      approval: {
+        rule: 'Ask',
+        tools: {
+          search_issues: 'Allow',
+          get_issue: 'Ask',
+          add_comment: 'Ask',
+          create_issue: 'Block',
+        },
+      },
+    });
+  });
+
   it('saves nothing when a reviewed connector is left unchanged', async () => {
     connectedWith(approvalTools({}, 'tool'), {
       rule: 'Allow',

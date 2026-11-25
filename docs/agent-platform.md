@@ -401,7 +401,13 @@ settings; it decides nothing.
   own. A row changed from the saved setting (or, on a first review, from the
   preset's fill) is marked _Changed_ and can be reset. Everyone else sees the
   settings as badges, with no controls. A failed save keeps the person on
-  the step with muster's reason. Where muster cannot save them (no
+  the step with muster's reason. `core_mcpserver_set_approval` replaces the
+  settings whole and takes no precondition, so _Done_ reads them again
+  (`core_mcpserver_list`) right before saving: when another admin changed
+  them since the step read them, nothing is written, the step shows the
+  current settings with the person's own changes on top and asks to press
+  _Done_ again. A change in the instant between that read and the write
+  still wins silently until muster takes a precondition. Where muster cannot save them (no
   `core_mcpserver_set_approval` taking `approval`) the step shows them as
   they are; where it cannot read them (`source: unavailable`) it says calls
   are refused. Where approvals cannot be answered right now (a tool that asks

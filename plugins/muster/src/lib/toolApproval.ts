@@ -177,6 +177,23 @@ export function draftFromStored(
   return { rule, tools: stored };
 }
 
+/**
+ * Whether two stored settings are the same, as muster compares them: no
+ * settings equal empty ones (no rule, no entries).
+ */
+export function sameStoredApproval(
+  a: MCPServerApproval | undefined,
+  b: MCPServerApproval | undefined,
+): boolean {
+  if ((a?.rule || undefined) !== (b?.rule || undefined)) {
+    return false;
+  }
+  const left = a?.tools ?? {};
+  const right = b?.tools ?? {};
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  return [...keys].every(key => left[key] === right[key]);
+}
+
 /** Whether two drafts store the same settings. */
 export function sameDraft(a: ApprovalDraft, b: ApprovalDraft): boolean {
   if (a.rule !== b.rule) {
