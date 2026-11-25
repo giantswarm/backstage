@@ -350,6 +350,50 @@ fold-out opens on arrival while muster reports the connector failed. A family
 shows one instance's technical details; each instance's own are on its
 Instances tab. muster's own page has no Details tab.
 
+#### Tool approval
+
+muster decides, per tool of a connector, whether a call runs (**Allow**, "Runs
+without asking."), asks a person to confirm the exact call first (**Ask**,
+"Asks first.") or is hidden and refused (**Block**, "Hidden. Can't be
+used."), from the MCPServer's `spec.approval`: a `rule` (Allow or Ask) that
+tools without their own entry follow, new ones included ("New tools follow
+this rule."), and an entry per tool. The portal only shows what muster reports
+(`approval {setting, source, new}` and `connectorAdmin` on each tool from
+`filter_tools`, `approval` on `core_mcpserver_list`) and writes explicit
+settings; it decides nothing.
+
+- The connector wizard's third step is **Test & Tools** (`…/new/verify`, an
+  edit's `…/<connector>/edit/verify`). Once the connector lists its tools, a
+  connector admin (`connectorAdmin`) gets the presets as pills (_Recommended_:
+  read-only tools Allow, the rest Ask, rule Ask; _Allow all_; _Ask all_), the
+  rule, and `Allow · Ask · Block` pills per tool. A preset only fills the
+  pills; _Done_ saves every tool's setting explicitly through
+  `core_mcpserver_set_approval` (`{name, approval: {rule, tools}}`), and
+  saves nothing on a reviewed connector left unchanged. A connector nobody
+  reviewed opens on the preset the governance mode pre-selects (_Allow all_
+  on a trusted platform, _Recommended_ on a governed one, read from
+  `/server-info`'s `governance`, trusted when absent); a reviewed one on its
+  saved settings, a tool without its own entry marked _New_ and pre-filled
+  with the rule, a blocked tool (which muster lists nowhere) as a row of its
+  own. A row changed from the saved setting (or, on a first review, from the
+  preset's fill) is marked _Changed_ and can be reset. Everyone else sees the
+  settings as badges, with no controls. A failed save keeps the person on
+  the step with muster's reason. Where muster cannot save them (no
+  `core_mcpserver_set_approval` taking `approval`) the step shows them as
+  they are; where it cannot read them (`source: unavailable`) it says calls
+  are refused.
+- `core_mcpserver_create` carries the mode's `preset` where its input schema
+  declares one (muster requires one once it enforces approval), so a new
+  connector starts reviewed; the step then writes each tool's setting.
+- The connector's **Tools** tab shows each tool's setting as a badge (Block
+  in its own tone and icon), where it comes from ("Set for this tool",
+  "Connector's rule"), _New_, _Allowed for: …_ when it is given the agents
+  that may skip an Ask, and an _Approval_ filter. A connector nobody reviewed
+  says _Allow — not reviewed_ once above the list, with _Review tool
+  settings_ (the edit's Test & Tools step) for a connector admin, or a
+  pointer to `spec.approval` in Git for a GitOps-managed one. Blocked tools
+  are listed from `spec.approval`, without a page to open.
+
 ### Models
 
 Models are kagent ModelConfigs. Customize › Models lists every one in scope,
