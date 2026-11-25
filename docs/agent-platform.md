@@ -3019,12 +3019,13 @@ carries in its `metadata`, under the extension URI (also listed in
 `message.extensions`), a `tool_approval_request` (`tools[]` with `id`, the
 proposed `call_id`, `name`, `args`), an `ask_user_request` (`id`, `questions[]`
 with `question`, `choices`, `multiple`) or a `url_elicitation_request` (`id`,
-`server`, `message`, `url`). The last is an MCP server's URL elicitation, such as muster's sign-in
-link for a backend the person has not connected, from a runtime that relays MCP
-URL elicitations (the claude and codex Harnesses, the Go ADK). Its reply is a
-`url_elicitation_response` with `action` `accept` (an approval: the person
-signed in) or `decline` (a rejection). Without the negotiation there is nothing
-to answer.
+`server`, `message`, `url`, and `elicitation_id`, the MCP `elicitationId`). The
+last is an MCP server's URL elicitation, such as muster's sign-in link for a
+backend the person has not connected or its approval page for a tool call that
+asks, from a runtime that relays MCP URL elicitations (the claude and codex
+Harnesses, the Go ADK). Its reply is a `url_elicitation_response` with `action`
+`accept` (an approval: the person is done at the page) or `decline` (a
+rejection). Without the negotiation there is nothing to answer.
 
 The reply names the task (`taskId`) and carries the typed response in the same
 place. The page sends it over `SendStreamingMessage`
@@ -3106,16 +3107,26 @@ part is discarded). A question can be answered with a choice, text or both,
 sent choices first.
 
 A `url_elicitation_request` is read off the status message's metadata
-(`readUrlElicitationRequest` in `agent-platform-common`) and renders as the
-sign-in card (`SignInRequestPanel`) in place of the question card. `server` is
-the MCP server that asked, muster for every backend behind it, so the card
-attributes the request to it ("muster asks you to sign in so the agent can
-continue") and quotes its message, which names the backend ("Sign in to github
-to continue."). Inside a session the link is one of the session's connector
-sign-ins (below), returning to the page, and muster's return answers `accept`
-for the person, once, from the tab that started it; whatever server muster
-reports on the way back counts, since the card does not know the backend's
-name. _I've signed in_ answers it by hand, _Not now_ declines.
+(`readUrlElicitationRequest` in `agent-platform-common`) and renders as one
+generic prompt (`UrlElicitationPanel`) in place of the question card, whatever
+it asks for: muster's sign-in, its approval page for a tool call
+(giantswarm/giantswarm#38902), or any later page. The server's `message` is the
+heading ("Alert Review wants to acknowledge an incident in PagerDuty."), or
+"<server> asks you to open a page so the agent can continue." without one;
+_Open_ (new-tab icon) goes through the external URL consent dialog and names the
+link's host beside it; _Done_ answers `accept`, _Not now_ `decline`. The prompt
+decides nothing: the agent retries the call, and muster's answer to the retry
+(run, refused, declined) is the outcome the timeline shows.
+
+A link on the origin of the session's muster (its endpoint in the muster
+backend's `/installations`; the trust is by origin, never by path) with an
+`elicitation_id` opens with `redirect` set to the session page plus
+`elicitationId=<id>`. muster returns the browser there once the person is done
+(on its post-login allowlist; otherwise it shows its own page and the person
+says _Done_), appending the `elicitationId` too. The returned tab tells the
+session's other tabs (a `BroadcastChannel`), drops the parameter and closes; the
+tab that opened that very elicitation answers `accept` for the person, once. The
+return never says what was decided. Any other link opens as sent.
 
 When the session waits but the request cannot be read (unrecognised payload, or
 no task id), the panel is withheld and the page says so.
