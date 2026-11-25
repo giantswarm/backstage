@@ -1,5 +1,6 @@
 import { renderInTestApp } from '@backstage/frontend-test-utils';
-import { TestApiProvider } from '@backstage/test-utils';
+import { mockApis, TestApiProvider } from '@backstage/test-utils';
+import { identityApiRef } from '@backstage/core-plugin-api';
 import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
 import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -13,6 +14,8 @@ import {
 } from './UrlElicitationPanel';
 
 const MUSTER = 'https://muster.gazelle.example.io';
+const PAGES = { origin: MUSTER, basePath: '' };
+const PERSON = 'user:default/ada';
 
 /**
  * muster's answer to a tool call that asks (slice 2 of the tool-approval
@@ -75,36 +78,53 @@ const openedUrl = (): string => consentOpen.mock.lastCall[0].url;
 const returnPage = (href: string): URL =>
   new URL(new URL(href).searchParams.get('redirect')!);
 
+/** The random value of the last open, as muster carries it back. */
+const lastNonce = (): string =>
+  returnPage(openedUrl()).searchParams.get('elicitationReturn')!;
+
 /** muster's return, as the tab it returned to tells the others. */
-function returned(elicitationId: string) {
-  act(() => {
-    new FakeChannel(URL_ELICITATION_CHANNEL).postMessage({ elicitationId });
+async function returned(elicitationId: string, nonce = lastNonce()) {
+  await act(async () => {
+    new FakeChannel(URL_ELICITATION_CHANNEL).postMessage({
+      elicitationId,
+      nonce,
+    });
   });
 }
 
 async function renderPanel({
   pending = APPROVAL,
-  musterOrigin = MUSTER,
+  musterPages = PAGES,
   error,
   isAnswering = false,
+  user = PERSON,
+  route = '/sessions/gazelle/s1',
 }: {
   pending?: PendingConfirmation;
-  musterOrigin?: string;
+  /** `null`: not known. */
+  musterPages?: typeof PAGES | null;
   error?: string;
   isAnswering?: boolean;
+  user?: string;
+  route?: string;
 } = {}) {
   const onAnswer = jest.fn();
   const rendered = await renderInTestApp(
-    <TestApiProvider apis={[[externalUrlConsentApiRef, { open: consentOpen }]]}>
+    <TestApiProvider
+      apis={[
+        [externalUrlConsentApiRef, { open: consentOpen }],
+        [identityApiRef, mockApis.identity({ userEntityRef: user })],
+      ]}
+    >
       <UrlElicitationPanel
         pending={pending}
         isAnswering={isAnswering}
         error={error}
         onAnswer={onAnswer}
-        musterOrigin={musterOrigin}
+        musterPages={musterPages ?? undefined}
       />
     </TestApiProvider>,
-    { initialRouteEntries: ['/sessions/gazelle/s1'] },
+    { initialRouteEntries: [route] },
   );
   return { ...rendered, onAnswer };
 }
@@ -165,7 +185,7 @@ describe('UrlElicitationPanel', () => {
     ).toBeInTheDocument();
   });
 
-  it("opens a link on muster's origin through the consent dialog, returning to this page with the elicitationId", async () => {
+  it("opens muster's approval page through the consent dialog, returning to this page with this open's value", async () => {
     const user = userEvent.setup();
     await renderPanel();
 
@@ -181,20 +201,21 @@ describe('UrlElicitationPanel', () => {
     const back = returnPage(openedUrl());
     expect(back.origin).toBe(window.location.origin);
     expect(back.pathname).toBe('/sessions/gazelle/s1');
-    expect(back.searchParams.get('elicitationId')).toBe('el-9b1d');
-    // The return never carries a decision.
-    expect([...back.searchParams.keys()]).toEqual(['elicitationId']);
+    // muster's approval page names the elicitation on its return; the
+    // return never carries a decision.
+    expect([...back.searchParams.keys()]).toEqual(['elicitationReturn']);
   });
 
-  it("resumes the agent on muster's return to the elicitation this tab opened, once", async () => {
+  it("resumes the agent on muster's return to the open this tab made, once", async () => {
     const user = userEvent.setup();
     const { onAnswer } = await renderPanel();
 
     await user.click(openButton());
-    returned('el-9b1d');
-    returned('el-9b1d');
+    const nonce = lastNonce();
+    await returned('el-9b1d', nonce);
+    await returned('el-9b1d', nonce);
 
-    expect(onAnswer).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onAnswer).toHaveBeenCalledTimes(1));
     expect(onAnswer).toHaveBeenCalledWith({
       taskId: 'task-1',
       decision: 'approve',
@@ -203,22 +224,71 @@ describe('UrlElicitationPanel', () => {
     });
   });
 
+  it('resumes the agent on the sign-in start, whose return the portal names', async () => {
+    const user = userEvent.setup();
+    const { onAnswer } = await renderPanel({ pending: SIGN_IN });
+
+    await user.click(openButton());
+    expect(returnPage(openedUrl()).searchParams.get('elicitationId')).toBe(
+      '5e1f0c',
+    );
+    await returned('5e1f0c');
+
+    await waitFor(() => expect(onAnswer).toHaveBeenCalledTimes(1));
+  });
+
+  // Security review M1-BS-S-01: a visit to the session page that names the
+  // elicitation (its id travels in the session's messages) is no return.
+  it.each([
+    ['a guessed value', 'f'.repeat(32)],
+    ['no value', ''],
+  ])('resumes nothing on a return with %s', async (_, nonce) => {
+    const user = userEvent.setup();
+    const { onAnswer } = await renderPanel();
+
+    await user.click(openButton());
+    await returned('el-9b1d', nonce);
+
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(onAnswer).not.toHaveBeenCalled();
+  });
+
   it('resumes nothing on the return of another elicitation', async () => {
     const user = userEvent.setup();
     const { onAnswer } = await renderPanel();
 
     await user.click(openButton());
-    returned('el-other');
+    await returned('el-other');
 
+    await new Promise(resolve => setTimeout(resolve, 0));
     expect(onAnswer).not.toHaveBeenCalled();
   });
 
   it('resumes nothing in a tab that did not open the page', async () => {
     const { onAnswer } = await renderPanel();
 
-    returned('el-9b1d');
+    await returned('el-9b1d', 'a'.repeat(32));
 
+    await new Promise(resolve => setTimeout(resolve, 0));
     expect(onAnswer).not.toHaveBeenCalled();
+  });
+
+  it('resumes nothing for another person or another session in this tab', async () => {
+    const user = userEvent.setup();
+    const first = await renderPanel();
+    await user.click(openButton());
+    const nonce = lastNonce();
+    first.unmount();
+
+    const other = await renderPanel({ user: 'user:default/eve' });
+    await returned('el-9b1d', nonce);
+    other.unmount();
+    const elsewhere = await renderPanel({ route: '/sessions/gazelle/s2' });
+    await returned('el-9b1d', nonce);
+
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(other.onAnswer).not.toHaveBeenCalled();
+    expect(elsewhere.onAnswer).not.toHaveBeenCalled();
   });
 
   it('resumes nothing when the person did not open the page', async () => {
@@ -227,17 +297,22 @@ describe('UrlElicitationPanel', () => {
     const { onAnswer } = await renderPanel();
 
     await user.click(openButton());
-    returned('el-9b1d');
+    await returned('el-9b1d');
 
+    await new Promise(resolve => setTimeout(resolve, 0));
     expect(onAnswer).not.toHaveBeenCalled();
   });
 
+  // Security review M1-BS-S-03: a relayed link on muster's origin that is
+  // not one of its returning pages opens as sent and resumes nothing.
   it.each([
     ['on another origin', `https://approvals.example.org/approvals/0f3c9a`],
     [
       'on a look-alike host',
-      `https://muster.gazelle.example.io.evil.example/x`,
+      `https://muster.gazelle.example.io.evil.example/approvals/0f3c9a`,
     ],
+    ["on muster's origin, another path", `${MUSTER}/oauth/authorize?x=1`],
+    ["on muster's origin, any page", `${MUSTER}/anything/else`],
   ])('opens a link %s as sent, without a return', async (_, url) => {
     const user = userEvent.setup();
     const { onAnswer } = await renderPanel({
@@ -248,15 +323,17 @@ describe('UrlElicitationPanel', () => {
     });
 
     await user.click(openButton());
-    returned('el-9b1d');
+    await returned('el-9b1d', 'b'.repeat(32));
 
     expect(openedUrl()).toBe(url);
+    expect(window.sessionStorage.length).toBe(0);
+    await new Promise(resolve => setTimeout(resolve, 0));
     expect(onAnswer).not.toHaveBeenCalled();
   });
 
-  it("opens the link as sent when muster's origin is not known", async () => {
+  it("opens the link as sent when muster's pages are not known", async () => {
     const user = userEvent.setup();
-    await renderPanel({ musterOrigin: '' });
+    await renderPanel({ musterPages: null });
 
     await user.click(openButton());
 
@@ -336,32 +413,39 @@ describe('useUrlElicitationReturn', () => {
     return <span data-testid="search">{search}</span>;
   }
 
-  it("tells the session's tabs which elicitation muster returned from, drops it from the address and closes", async () => {
+  it("tells the session's tabs which elicitation and open muster returned from, drops both from the address and closes", async () => {
     const heard = jest.fn();
     const listener = new FakeChannel(URL_ELICITATION_CHANNEL);
     listener.onmessage = event => heard(event.data);
 
     await renderInTestApp(<ReturnPage />, {
       initialRouteEntries: [
-        '/sessions/gazelle/s1?tab=chat&elicitationId=el-9b1d',
+        '/sessions/gazelle/s1?tab=chat&elicitationReturn=n-1&elicitationId=el-9b1d',
       ],
     });
 
-    expect(heard).toHaveBeenCalledWith({ elicitationId: 'el-9b1d' });
+    expect(heard).toHaveBeenCalledWith({
+      elicitationId: 'el-9b1d',
+      nonce: 'n-1',
+    });
     await waitFor(() =>
       expect(screen.getByTestId('search')).toHaveTextContent('?tab=chat'),
     );
     expect(close).toHaveBeenCalled();
   });
 
-  it('does nothing on a page muster did not return to', async () => {
+  it.each([
+    ['muster did not return to', '/sessions/gazelle/s1'],
+    [
+      'that names an elicitation but no open',
+      '/sessions/gazelle/s1?elicitationId=el-9b1d',
+    ],
+  ])('does nothing on a page %s', async (_, route) => {
     const heard = jest.fn();
     const listener = new FakeChannel(URL_ELICITATION_CHANNEL);
     listener.onmessage = event => heard(event.data);
 
-    await renderInTestApp(<ReturnPage />, {
-      initialRouteEntries: ['/sessions/gazelle/s1'],
-    });
+    await renderInTestApp(<ReturnPage />, { initialRouteEntries: [route] });
 
     expect(heard).not.toHaveBeenCalled();
     expect(close).not.toHaveBeenCalled();

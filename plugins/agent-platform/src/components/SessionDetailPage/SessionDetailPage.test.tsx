@@ -139,8 +139,11 @@ jest.mock('../../hooks/useMusterServers', () => ({
 
 // The origin of the session's muster, which a URL elicitation's link returns
 // from (`UrlElicitationPanel`).
-jest.mock('../../hooks/useMusterOrigin', () => ({
-  useMusterOrigin: () => 'https://muster.gazelle.example.com',
+jest.mock('../../hooks/useMusterPages', () => ({
+  useMusterPages: () => ({
+    origin: 'https://muster.gazelle.example.com',
+    basePath: '',
+  }),
 }));
 
 jest.mock('../../hooks/useKagentCapabilities', () => ({
@@ -2554,7 +2557,12 @@ describe('SessionDetailPage', () => {
       );
       const opened = new URL(open.mock.lastCall[0].url);
       const back = new URL(opened.searchParams.get('redirect')!);
-      expect(back.searchParams.get('elicitationId')).toBe('el-9b1d');
+      // muster's approval page names the elicitation on its return itself;
+      // the return carries this open's random value.
+      expect(back.searchParams.get('elicitationId')).toBeNull();
+      expect(back.searchParams.get('elicitationReturn')).toMatch(
+        /^[0-9a-f]{32}$/,
+      );
 
       await user.click(within(card).getByRole('button', { name: 'Done' }));
       expect(mockAnswer).toHaveBeenCalledWith({

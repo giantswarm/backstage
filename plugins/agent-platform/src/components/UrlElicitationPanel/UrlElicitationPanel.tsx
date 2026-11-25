@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useHref, useLocation, useSearchParams } from 'react-router-dom';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
-import { useApi } from '@backstage/core-plugin-api';
+import { identityApiRef, useApi } from '@backstage/core-plugin-api';
 import {
   externalUrlConsentApiRef,
   NewTabLabel,
@@ -12,11 +12,14 @@ import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 import type { ConfirmationAnswer } from '../../hooks/useAnswerConfirmation';
 import type { PendingConfirmation } from '../../lib/kagentHitl';
 import {
+  ELICITATION_NONCE_PARAM,
   ELICITATION_RETURN_PARAM,
   elicitationHref,
-  isOnOrigin,
   linkHost,
-  returnedElicitationId,
+  musterPageKind,
+  newReturnNonce,
+  returnedElicitation,
+  type MusterPages,
 } from '../../lib/urlElicitation';
 
 /** Where a tab muster returned to tells the session's other tabs. */
@@ -24,11 +27,24 @@ export const URL_ELICITATION_CHANNEL =
   'giantswarm.agent-platform.url-elicitation';
 
 /**
- * The elicitations this tab opened, by `elicitationId`, so a reload keeps
- * them. Per tab: only the tab that opened the page answers for the person
- * when muster returns, and another tab must not think it did.
+ * The links this tab opened, one record per open, so a reload keeps them.
+ * Per tab (`sessionStorage`): only the tab that opened the page answers for
+ * the person when muster returns, and another tab must not think it did.
  */
 const OPENED_KEY = 'agent-platform.url-elicitation.opened';
+
+/** One open of a link that returns: what the return must match. */
+type OpenedRecord = {
+  /** The random value the return carries back. */
+  nonce: string;
+  elicitationId: string;
+  /** The task that asked, in this session. */
+  taskId: string;
+  /** The session page the link returns to. */
+  page: string;
+  /** Who opened it. */
+  user: string;
+};
 
 function openChannel(): BroadcastChannel | undefined {
   try {
@@ -40,26 +56,33 @@ function openChannel(): BroadcastChannel | undefined {
   }
 }
 
-function readOpened(): string[] {
+function readOpened(): OpenedRecord[] {
   try {
     const parsed = JSON.parse(
       window.sessionStorage.getItem(OPENED_KEY) ?? '[]',
     );
     return Array.isArray(parsed)
-      ? parsed.filter((id): id is string => typeof id === 'string')
+      ? parsed.filter(
+          (entry): entry is OpenedRecord =>
+            typeof entry === 'object' &&
+            entry !== null &&
+            ['nonce', 'elicitationId', 'taskId', 'page', 'user'].every(
+              key =>
+                typeof (entry as Record<string, unknown>)[key] === 'string',
+            ),
+        )
       : [];
   } catch {
     return [];
   }
 }
 
-function markOpened(elicitationId: string): void {
+function writeOpened(records: OpenedRecord[]): void {
   try {
-    const opened = readOpened().filter(id => id !== elicitationId);
     // The last few are enough: an elicitation lives minutes.
     window.sessionStorage.setItem(
       OPENED_KEY,
-      JSON.stringify([...opened, elicitationId].slice(-20)),
+      JSON.stringify(records.slice(-20)),
     );
   } catch {
     // Blocked storage: the person says Done themselves.
@@ -67,31 +90,57 @@ function markOpened(elicitationId: string): void {
 }
 
 /**
+ * Takes the record a return matches out of this tab's opens, so it is
+ * answered once: the same nonce, the elicitation the prompt shows, its task,
+ * this session page and this person. False when none matches.
+ */
+function takeOpened(match: OpenedRecord): boolean {
+  const records = readOpened();
+  const index = records.findIndex(
+    record =>
+      record.nonce === match.nonce &&
+      record.elicitationId === match.elicitationId &&
+      record.taskId === match.taskId &&
+      record.page === match.page &&
+      record.user === match.user,
+  );
+  if (index < 0) {
+    return false;
+  }
+  writeOpened(records.filter((_, i) => i !== index));
+  return true;
+}
+
+/**
  * The page muster returns the browser to after one of its pages: tells the
- * session's other tabs (and this one) which elicitation the person finished,
- * drops the parameter and closes the tab, which the link opened. Called by
+ * session's other tabs (and this one) which elicitation the person finished
+ * and with which open's value, drops both from the address and closes the
+ * tab, which the link opened. A visit without both does nothing. Called by
  * the session page, whether or not it shows the prompt yet.
  */
 export function useUrlElicitationReturn(): void {
   const [searchParams, setSearchParams] = useSearchParams();
-  const returned = returnedElicitationId(searchParams);
+  const returned = returnedElicitation(searchParams);
+  const elicitationId = returned?.elicitationId;
+  const nonce = returned?.nonce;
   useEffect(() => {
-    if (!returned) {
+    if (!elicitationId || !nonce) {
       return;
     }
     const channel = openChannel();
-    channel?.postMessage({ elicitationId: returned });
+    channel?.postMessage({ elicitationId, nonce });
     channel?.close();
     setSearchParams(
       previous => {
         const next = new URLSearchParams(previous);
         next.delete(ELICITATION_RETURN_PARAM);
+        next.delete(ELICITATION_NONCE_PARAM);
         return next;
       },
       { replace: true },
     );
     window.close();
-  }, [returned, setSearchParams]);
+  }, [elicitationId, nonce, setSearchParams]);
 }
 
 const useStyles = makeStyles(theme => ({
@@ -124,11 +173,12 @@ export type UrlElicitationPanelProps = {
   error?: string;
   onAnswer: (answer: ConfirmationAnswer) => void;
   /**
-   * The origin of the session's muster. A link on it, with an
-   * `elicitationId`, returns to this page, and the agent continues once the
-   * person is done there; any other link opens as sent.
+   * Where the session's muster serves its pages. A link to its approval page
+   * or sign-in start there, with an `elicitationId`, returns to this page,
+   * and the agent continues once the person is done there; any other link
+   * opens as sent.
    */
-  musterOrigin?: string;
+  musterPages?: MusterPages;
 };
 
 /**
@@ -148,10 +198,11 @@ export function UrlElicitationPanel({
   isAnswering,
   error,
   onAnswer,
-  musterOrigin,
+  musterPages,
 }: UrlElicitationPanelProps) {
   const classes = useStyles();
   const consentApi = useApi(externalUrlConsentApiRef);
+  const identityApi = useApi(identityApiRef);
   const elicitation = pending.elicitation;
   // The page muster returns the browser to: this one, as the browser
   // addresses it (the app's base path included).
@@ -168,10 +219,11 @@ export function UrlElicitationPanel({
     [onAnswer, pending.taskId, pending.askedIn],
   );
 
-  // muster returned from the page this tab opened: the agent goes on, once.
+  // muster returned from a page this tab opened for this elicitation, in
+  // this session, as this person: the agent goes on, once.
   const elicitationId = elicitation?.elicitationId;
-  const latest = useRef({ answer, isAnswering });
-  latest.current = { answer, isAnswering };
+  const latest = useRef({ answer, isAnswering, taskId: pending.taskId, page });
+  latest.current = { answer, isAnswering, taskId: pending.taskId, page };
   const answered = useRef<string>();
   useEffect(() => {
     if (!elicitationId) {
@@ -182,41 +234,74 @@ export function UrlElicitationPanel({
       return undefined;
     }
     channel.onmessage = (event: MessageEvent) => {
-      const data = event.data as { elicitationId?: unknown } | undefined;
+      const data = event.data as
+        { elicitationId?: unknown; nonce?: unknown } | undefined;
       if (
         data?.elicitationId !== elicitationId ||
+        typeof data.nonce !== 'string' ||
         answered.current === elicitationId ||
-        latest.current.isAnswering ||
-        !readOpened().includes(elicitationId)
+        latest.current.isAnswering
       ) {
         return;
       }
-      answered.current = elicitationId;
-      latest.current.answer('approve');
+      const nonce = data.nonce;
+      const { taskId, page: current } = latest.current;
+      void identityApi.getBackstageIdentity().then(({ userEntityRef }) => {
+        if (
+          answered.current === elicitationId ||
+          !takeOpened({
+            nonce,
+            elicitationId,
+            taskId,
+            page: current,
+            user: userEntityRef,
+          })
+        ) {
+          return;
+        }
+        answered.current = elicitationId;
+        latest.current.answer('approve');
+      });
     };
     return () => channel.close();
-  }, [elicitationId]);
+  }, [elicitationId, identityApi]);
 
   if (!elicitation) {
     return null;
   }
   const host = linkHost(elicitation.url);
   const returns = Boolean(
-    elicitationId && isOnOrigin(elicitation.url, musterOrigin),
+    elicitationId && musterPageKind(elicitation.url, musterPages),
   );
   const open = async () => {
+    const nonce = newReturnNonce();
     const href = elicitationHref(elicitation.url, {
-      musterOrigin,
+      musterPages,
       elicitationId,
+      nonce,
       back: new URL(page, window.location.origin).toString(),
     });
+    // Recorded before the page can return, taken back when the person does
+    // not open it.
+    let record: OpenedRecord | undefined;
+    if (returns && elicitationId) {
+      const { userEntityRef } = await identityApi.getBackstageIdentity();
+      record = {
+        nonce,
+        elicitationId,
+        taskId: pending.taskId,
+        page,
+        user: userEntityRef,
+      };
+      writeOpened([...readOpened(), record]);
+    }
     const consent = await consentApi.open({
       url: href,
       requester: elicitation.server,
       ...(elicitation.message && { message: elicitation.message }),
     });
-    if (consent === 'accept' && returns && elicitationId) {
-      markOpened(elicitationId);
+    if (consent !== 'accept' && record) {
+      writeOpened(readOpened().filter(entry => entry.nonce !== nonce));
     }
   };
 

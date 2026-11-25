@@ -3201,15 +3201,25 @@ link's host beside it; _Done_ answers `accept`, _Not now_ `decline`. The prompt
 decides nothing: the agent retries the call, and muster's answer to the retry
 (run, refused, declined) is the outcome the timeline shows.
 
-A link on the origin of the session's muster (its endpoint in the muster
-backend's `/installations`; the trust is by origin, never by path) with an
-`elicitation_id` opens with `redirect` set to the session page plus
-`elicitationId=<id>`. muster returns the browser there once the person is done
-(on its post-login allowlist; otherwise it shows its own page and the person
-says _Done_), appending the `elicitationId` too. The returned tab tells the
-session's other tabs (a `BroadcastChannel`), drops the parameter and closes; the
-tab that opened that very elicitation answers `accept` for the person, once. The
-return never says what was decided. Any other link opens as sent.
+A link to one of muster's pages that return the browser, its approval page
+(`/approvals/<id>`, contract §5) or its sign-in start (`/oauth/proxy/start`), on
+the origin muster serves its pages from (the session installation's muster in
+the muster backend's `/installations`), with an `elicitation_id`, opens with
+`redirect` set to the session page plus `elicitationReturn=<random value>`, a
+new 128-bit value per _Open_ that the tab keeps (per tab, `sessionStorage`)
+with the elicitation, the task, the session page and the person. muster's
+approval page adds the `elicitationId` on its return itself, so a return names
+the elicitation muster recorded; for the sign-in start, whose return does not
+name it, the portal adds it to the `redirect`. muster returns the browser there
+once the person is done (on its post-login allowlist; otherwise it shows its
+own page and the person says _Done_). The returned tab tells the session's
+other tabs (a `BroadcastChannel`) the `elicitationId` and the value, drops both
+from the address and closes; only the tab that made that open answers
+`accept` for the person, once, and only for the elicitation it shows, its
+task, the same session page and the same person (the open's record is used
+up). A visit to the session page with an `elicitationId` alone, or with a value
+no tab made, does nothing. The return never says what was decided. Any other
+link, another path on muster's origin included, opens as sent.
 
 When the session waits but the request cannot be read (unrecognised payload, or
 no task id), the panel is withheld and the page says so.
