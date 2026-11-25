@@ -655,6 +655,27 @@ describe('useRegisterMcpServer', () => {
       );
     });
 
+    it('asks for the preset once more after a transient failure, and creates', async () => {
+      let failed = false;
+      describeTool.mockImplementation((name: string) => {
+        if (name === 'core_mcpserver_create' && !failed) {
+          failed = true;
+          return Promise.reject(new Error('upstream 502'));
+        }
+        return withPreset(name);
+      });
+      serving(() => Promise.resolve({ governance: 'trusted' }));
+      const { result } = renderRegister();
+
+      await act(() => result.current.mutateAsync(registration));
+
+      expect(callTool).toHaveBeenLastCalledWith(
+        'core_mcpserver_create',
+        { ...definition, preset: 'allow-all' },
+        'gazelle',
+      );
+    });
+
     it('sends no preset to a muster whose create does not take one', async () => {
       const { result } = renderRegister();
 

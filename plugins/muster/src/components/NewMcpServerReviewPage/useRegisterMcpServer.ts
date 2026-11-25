@@ -109,9 +109,15 @@ export function useRegisterMcpServer() {
         ? withoutClientSecretRef(composed)
         : composed;
       const { displayName, tags } = definition;
-      const schemaOf = (name: string, asking: string) =>
+      // `retry`: asked once more after a failure, for a read every create
+      // needs now (the preset) that a transient fault should not stop.
+      const schemaOf = (name: string, asking: string, retry = 0) =>
         queryClient
-          .fetchQuery(toolArgumentsQuery(musterApi, name, installation))
+          .fetchQuery({
+            ...toolArgumentsQuery(musterApi, name, installation),
+            retry,
+            retryDelay: 500,
+          })
           .then(detail => detail.inputSchema)
           .catch(error => {
             if (isMusterAuthError(error)) {
@@ -156,7 +162,11 @@ export function useRegisterMcpServer() {
         } else if (tags !== undefined) {
           asking = "keeps the connector's tags";
         }
-        const inputSchema = await schemaOf(name, asking);
+        // Only the preset asks: every create reads the schema for it, where
+        // none did before, so a transient fault is asked about once more.
+        const onlyPreset =
+          displayName === undefined && tags === undefined && asksPreset;
+        const inputSchema = await schemaOf(name, asking, onlyPreset ? 1 : 0);
         const sent: McpServerDefinition & { preset?: string } = {
           ...definition,
         };
