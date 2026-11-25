@@ -167,7 +167,8 @@ export interface MCPServerSigV4 {
   /**
    * The signing region. Required, and it must match the region in `spec.url` —
    * the endpoint checks the signature's credential scope. This is NOT the
-   * region the backend operates in; that one travels in `spec.meta`.
+   * region the backend operates in; that one travels in
+   * `spec.requestMeta.AWS_REGION`.
    */
   region: string;
   /**
@@ -238,13 +239,15 @@ interface MCPServerInterface extends KubeObjectInterface {
     timeout?: number;
     auth?: MCPServerAuth;
     /**
-     * Entries merged into `params._meta` of every outbound JSON-RPC request
-     * that carries `params`. Provider-agnostic (it applies to plain
-     * streamable-http and sse alike), but the motivating case is the
-     * AWS-hosted server, which reads the region it OPERATES in from
-     * `params._meta.AWS_REGION` — a different value from the sigv4 signing
-     * region. Only allowed when `type` is not `stdio`.
+     * Entries added to `params._meta` of every outbound JSON-RPC request that
+     * carries `params`. Provider-agnostic (it applies to plain streamable-http
+     * and sse alike); the AWS-hosted server reads the region it OPERATES in
+     * from `AWS_REGION` here, a different value from the sigv4 signing region,
+     * and muster requires it on a sigv4 server. Only allowed when `type` is
+     * not `stdio`.
      */
+    requestMeta?: Record<string, string>;
+    /** The former name of `requestMeta`, still read by muster. */
     meta?: Record<string, string>;
   };
   status?: {
@@ -441,8 +444,9 @@ export class MCPServer extends KubeObject<MCPServerInterface> {
     return this.jsonData.spec?.auth;
   }
 
-  getMeta() {
-    return this.jsonData.spec?.meta;
+  /** `spec.requestMeta`, or the deprecated `spec.meta` when only that is set. */
+  getRequestMeta() {
+    return this.jsonData.spec?.requestMeta ?? this.jsonData.spec?.meta;
   }
 
   /**

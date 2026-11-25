@@ -53,6 +53,22 @@ function extractHostnames(samples: MimirMetricSample[]): HttpRouteHostname[] {
     .sort((a, b) => a.hostname.localeCompare(b.hostname));
 }
 
+/** The queries behind {@link useMimirHttpRouteHostnames}, for one namespace. */
+export function httpRouteHostnameQueries(
+  clusterName: string | undefined,
+  namespace: string | undefined,
+) {
+  const nsSelector = `cluster_id="${clusterName}",namespace="${namespace}"`;
+  const clusterSelector = `cluster_id="${clusterName}"`;
+  return {
+    hostnamesQuery: `${GatewayApiHttprouteHostnameInfo.name}{${nsSelector}}`,
+    parentsQuery: `${GatewayApiHttprouteParentInfo.name}{${nsSelector}}`,
+    listenersQuery: `${GatewayApiGatewayListenerInfo.name}{${clusterSelector}}`,
+    expirationQuery: `${CertmanagerCertificateExpirationTimestampSeconds.name}{${clusterSelector}}`,
+    readyQuery: `${CertmanagerCertificateReadyStatus.name}{${clusterSelector}}`,
+  };
+}
+
 /**
  * Fetches the hostnames exposed by Gateway API HTTPRoutes in the workload's
  * target namespace, and enriches each with its serving TLS certificate.
@@ -72,14 +88,13 @@ export function useMimirHttpRouteHostnames(options: {
   const { installationName, clusterName, namespace, refetchInterval } = options;
 
   const isEnabled = Boolean(clusterName && namespace);
-  const nsSelector = `cluster_id="${clusterName}",namespace="${namespace}"`;
-  const clusterSelector = `cluster_id="${clusterName}"`;
-
-  const hostnamesQuery = `${GatewayApiHttprouteHostnameInfo.name}{${nsSelector}}`;
-  const parentsQuery = `${GatewayApiHttprouteParentInfo.name}{${nsSelector}}`;
-  const listenersQuery = `${GatewayApiGatewayListenerInfo.name}{${clusterSelector}}`;
-  const expirationQuery = `${CertmanagerCertificateExpirationTimestampSeconds.name}{${clusterSelector}}`;
-  const readyQuery = `${CertmanagerCertificateReadyStatus.name}{${clusterSelector}}`;
+  const {
+    hostnamesQuery,
+    parentsQuery,
+    listenersQuery,
+    expirationQuery,
+    readyQuery,
+  } = httpRouteHostnameQueries(clusterName, namespace);
 
   const {
     data: hostnamesData,

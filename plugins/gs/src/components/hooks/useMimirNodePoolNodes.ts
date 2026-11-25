@@ -29,7 +29,10 @@ export interface NodePoolNode {
 
 const REFETCH_INTERVAL = 30_000;
 
-function buildQuery(clusterName: string, nodePoolName: string): string {
+export function buildNodePoolNodesQuery(
+  clusterName: string,
+  nodePoolName: string,
+): string {
   const safeCluster = sanitizePromQLValue(clusterName);
   const safeNodePool = sanitizePromQLValue(nodePoolName);
   const l = `cluster_id="${safeCluster}"`;
@@ -150,7 +153,9 @@ export function useMimirNodePoolNodes(options: {
 
   const query = useMemo(
     () =>
-      clusterName && nodePoolName ? buildQuery(clusterName, nodePoolName) : '',
+      clusterName && nodePoolName
+        ? buildNodePoolNodesQuery(clusterName, nodePoolName)
+        : '',
     [clusterName, nodePoolName],
   );
 

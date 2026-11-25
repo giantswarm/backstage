@@ -9,8 +9,11 @@ import {
   serializeError,
   ServiceUnavailableError,
 } from '@backstage/errors';
+import { ConfigReader } from '@backstage/config';
+import { JsonObject } from '@backstage/types';
 import { ReportedServiceUnavailableError } from '../errors';
 import { MimirService } from './MimirService';
+import { MimirQueryRefusedError } from './MimirQueryRefusedError';
 import { MimirUnavailableError } from './MimirUnavailableError';
 
 jest.mock('node-fetch', () => jest.fn());
@@ -21,20 +24,11 @@ const mockFetch = fetch as unknown as jest.Mock;
 
 function makeConfig(
   baseDomain: string,
-  options: { mimirEnabled?: boolean } = {},
+  options: { mimirEnabled?: boolean; mimir?: JsonObject } = {},
 ): RootConfigService {
-  return {
-    getOptionalString: (key: string) => {
-      if (key === 'gs.installations.alba.baseDomain') return baseDomain;
-      return undefined;
-    },
-    getOptionalBoolean: (key: string) => {
-      if (key === 'gs.installations.alba.mimirEnabled') {
-        return options.mimirEnabled;
-      }
-      return undefined;
-    },
-  } as unknown as RootConfigService;
+  return new ConfigReader({
+    gs: { installations: { alba: { baseDomain, ...options } } },
+  }) as unknown as RootConfigService;
 }
 
 function makeLogger(): jest.Mocked<LoggerService> {
@@ -120,10 +114,7 @@ describe('MimirService.query', () => {
       logger: makeLogger(),
     });
     // Override: return undefined for unknown installation
-    (s as any).config = {
-      getOptionalString: () => undefined,
-      getOptionalBoolean: () => undefined,
-    } as unknown as RootConfigService;
+    (s as any).config = new ConfigReader({});
 
     await expect(
       s.query({ installationName: 'unknown', query: 'up', oidcToken: 'tok' }),
@@ -524,5 +515,409 @@ describe('MimirService.queryRange', () => {
         'Mimir refused the query for installation "alba" (HTTP 422): exceeded maximum resolution',
       ),
     );
+  });
+});
+
+describe('MimirService with `gs.installations.<name>.mimir`', () => {
+  const ok = () =>
+    makeResponse(200, JSON.stringify({ status: 'success', data: {} }));
+
+  function serviceWith(mimir: JsonObject, logger = makeLogger()) {
+    return MimirService.create({
+      config: makeConfig('gerbil.example.net', { mimir }),
+      logger,
+    });
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockFetch.mockResolvedValue(ok());
+  });
+
+  it('passes a query through unchanged without `mimir`, to the derived address and tenant', async () => {
+    const service = MimirService.create({
+      config: makeConfig('gerbil.example.net'),
+      logger: makeLogger(),
+    });
+    // Odd spacing and a selector with no matchers: a rewrite would show.
+    const query = 'sum  by(model)( rate(foo[5m]) )  /  bar';
+
+    await service.query({ installationName: 'alba', query, oidcToken: 'tok' });
+
+    const [href, init] = mockFetch.mock.calls[0];
+    const url = new URL(href);
+    expect(url.origin).toBe('https://observability.gerbil.example.net');
+    expect(url.pathname).toBe('/prometheus/api/v1/query');
+    expect(url.searchParams.get('query')).toBe(query);
+    expect(init.headers['X-Scope-OrgID']).toBe('giantswarm');
+  });
+
+  it('sends even a query it could not parse unchanged without `mimir`', async () => {
+    const service = MimirService.create({
+      config: makeConfig('gerbil.example.net'),
+      logger: makeLogger(),
+    });
+
+    await service.query({
+      installationName: 'alba',
+      query: 'sum(up',
+      oidcToken: 'tok',
+    });
+
+    expect(new URL(mockFetch.mock.calls[0][0]).searchParams.get('query')).toBe(
+      'sum(up',
+    );
+  });
+
+  it.each([
+    [
+      'url',
+      { url: 'https://observability.golem.example.net' },
+      'https://observability.golem.example.net',
+      'giantswarm',
+      'up',
+    ],
+    [
+      'tenant',
+      { tenant: 'glean' },
+      'https://observability.gerbil.example.net',
+      'glean',
+      'up',
+    ],
+    [
+      'matchers',
+      { matchers: { cluster_id: 'gerbil' } },
+      'https://observability.gerbil.example.net',
+      'giantswarm',
+      'up{cluster_id="gerbil"}',
+    ],
+  ])(
+    'overrides only %s when it is the one key set',
+    async (_, mimir, origin, tenant, query) => {
+      const service = serviceWith(mimir);
+
+      await service.query({
+        installationName: 'alba',
+        query: 'up',
+        oidcToken: 'tok',
+      });
+
+      const [href, init] = mockFetch.mock.calls[0];
+      const url = new URL(href);
+      expect(url.origin).toBe(origin);
+      expect(url.pathname).toBe('/prometheus/api/v1/query');
+      expect(url.searchParams.get('query')).toBe(query);
+      expect(init.headers).toMatchObject({
+        Authorization: 'Bearer tok',
+        'X-Scope-OrgID': tenant,
+      });
+    },
+  );
+
+  it('behaves as without it with an empty `mimir` block', async () => {
+    const service = serviceWith({});
+
+    await service.query({
+      installationName: 'alba',
+      query: 'sum(up',
+      oidcToken: 't',
+    });
+
+    const [href, init] = mockFetch.mock.calls[0];
+    expect(new URL(href).origin).toBe(
+      'https://observability.gerbil.example.net',
+    );
+    expect(new URL(href).searchParams.get('query')).toBe('sum(up');
+    expect(init.headers['X-Scope-OrgID']).toBe('giantswarm');
+  });
+
+  it('queries `url` with `tenant`, and the OIDC token as before', async () => {
+    const service = serviceWith({
+      url: 'https://observability.golem.example.net/',
+      tenant: 'glean',
+    });
+
+    await service.query({
+      installationName: 'alba',
+      query: 'up',
+      oidcToken: 'tok',
+    });
+
+    const [href, init] = mockFetch.mock.calls[0];
+    expect(new URL(href).origin + new URL(href).pathname).toBe(
+      'https://observability.golem.example.net/prometheus/api/v1/query',
+    );
+    // No matchers: the query as it came.
+    expect(new URL(href).searchParams.get('query')).toBe('up');
+    expect(init.headers).toMatchObject({
+      Authorization: 'Bearer tok',
+      'X-Scope-OrgID': 'glean',
+    });
+  });
+
+  it('needs no baseDomain with a `url`', async () => {
+    const service = MimirService.create({
+      config: new ConfigReader({
+        gs: {
+          installations: {
+            alba: { mimir: { url: 'https://observability.golem.example.net' } },
+          },
+        },
+      }) as unknown as RootConfigService,
+      logger: makeLogger(),
+    });
+
+    await service.query({
+      installationName: 'alba',
+      query: 'up',
+      oidcToken: 't',
+    });
+
+    expect(new URL(mockFetch.mock.calls[0][0]).host).toBe(
+      'observability.golem.example.net',
+    );
+  });
+
+  it('defaults the address and tenant when `mimir` only sets matchers', async () => {
+    const service = serviceWith({ matchers: { cluster_id: 'gerbil' } });
+
+    await service.query({
+      installationName: 'alba',
+      query: 'up',
+      oidcToken: 't',
+    });
+
+    const [href, init] = mockFetch.mock.calls[0];
+    expect(new URL(href).host).toBe('observability.gerbil.example.net');
+    expect(init.headers['X-Scope-OrgID']).toBe('giantswarm');
+  });
+
+  it('adds the matchers to every selector of an instant query', async () => {
+    const service = serviceWith({
+      url: 'https://observability.golem.example.net',
+      matchers: { cluster_id: 'gerbil', cluster_type: 'workload_cluster' },
+    });
+
+    await service.query({
+      installationName: 'alba',
+      query: 'sum(rate(a[5m])) / sum(b)',
+      oidcToken: 'tok',
+    });
+
+    expect(new URL(mockFetch.mock.calls[0][0]).searchParams.get('query')).toBe(
+      'sum(rate(a{cluster_id="gerbil",cluster_type="workload_cluster"}[5m])) / sum(b{cluster_id="gerbil",cluster_type="workload_cluster"})',
+    );
+  });
+
+  it('adds the matchers to a range query, and keeps its window', async () => {
+    const service = serviceWith({ matchers: { cluster_id: 'gerbil' } });
+
+    await service.queryRange({
+      installationName: 'alba',
+      query: 'sum(increase(cost[1d]))',
+      start: '1',
+      end: '2',
+      step: '1d',
+      oidcToken: 'tok',
+    });
+
+    const url = new URL(mockFetch.mock.calls[0][0]);
+    expect(url.searchParams.get('query')).toBe(
+      'sum(increase(cost{cluster_id="gerbil"}[1d]))',
+    );
+    expect(url.searchParams.get('start')).toBe('1');
+    expect(url.searchParams.get('end')).toBe('2');
+    expect(url.searchParams.get('step')).toBe('1d');
+  });
+
+  it.each([
+    ['a conflicting matcher', 'up{cluster_id="golem"}'],
+    [
+      'a regex on the enforced label that excludes its value',
+      'up{cluster_id=~"golem.*"}',
+    ],
+  ])(
+    'refuses %s as outside the matchers: a 400 with its reason, not sent, logged at info',
+    async (_, query) => {
+      const logger = makeLogger();
+      const service = serviceWith(
+        { matchers: { cluster_id: 'gerbil' } },
+        logger,
+      );
+
+      const refused = service.query({
+        installationName: 'alba',
+        query,
+        oidcToken: 'tok',
+      });
+
+      await expect(refused).rejects.toThrow(MimirQueryRefusedError);
+      await expect(refused).rejects.toThrow(/conflicts/);
+      await expect(refused).rejects.toThrow(/installation "alba"/);
+      const error = await refused.catch(e => e);
+      // An `InputError` by name, so the routes answer 400, with the reason
+      // the frontend reads as no data.
+      expect(error.name).toBe('InputError');
+      expect(serializeError(error)).toMatchObject({
+        name: 'InputError',
+        reason: 'outside_installation_matchers',
+      });
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.info).toHaveBeenCalledWith(
+        'Refused a Mimir query that could not be limited',
+        expect.objectContaining({ installation: 'alba' }),
+      );
+    },
+  );
+
+  it('refuses a query that does not parse as a plain 400, a failure', async () => {
+    const service = serviceWith({ matchers: { cluster_id: 'gerbil' } });
+
+    const error = await service
+      .query({ installationName: 'alba', query: 'sum(up', oidcToken: 'tok' })
+      .catch(e => e);
+
+    expect(error).toBeInstanceOf(InputError);
+    expect(error).not.toBeInstanceOf(MimirQueryRefusedError);
+    expect(error.message).toMatch(/could not be parsed/);
+    expect(serializeError(error)).not.toHaveProperty('reason');
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('refuses a range query it cannot limit, too', async () => {
+    const service = serviceWith({ matchers: { cluster_id: 'gerbil' } });
+
+    await expect(
+      service.queryRange({
+        installationName: 'alba',
+        query: 'up{cluster_id!="gerbil"}',
+        start: '1',
+        end: '2',
+        step: '1d',
+        oidcToken: 'tok',
+      }),
+    ).rejects.toThrow(InputError);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('keeps a redacted query out of the refusal and the logs', async () => {
+    const logger = makeLogger();
+    const service = serviceWith({ matchers: { cluster_id: 'gerbil' } }, logger);
+
+    await expect(
+      service.query({
+        installationName: 'alba',
+        query: 'cost{user="me@example.com",cluster_id="golem"}',
+        oidcToken: 'tok',
+        redactQuery: true,
+      }),
+    ).rejects.toThrow(InputError);
+
+    const logged = JSON.stringify([
+      logger.info.mock.calls,
+      logger.debug.mock.calls,
+    ]);
+    expect(logged).not.toContain('me@example.com');
+  });
+
+  it('still refuses every query with `mimirEnabled: false`', async () => {
+    const service = MimirService.create({
+      config: makeConfig('gerbil.example.net', {
+        mimirEnabled: false,
+        mimir: { url: 'https://observability.golem.example.net' },
+      }),
+      logger: makeLogger(),
+    });
+
+    await expect(
+      service.query({ installationName: 'alba', query: 'up', oidcToken: 't' }),
+    ).rejects.toThrow(NotFoundError);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  describe('an invalid `mimir` block', () => {
+    const otherInstallation = {
+      baseDomain: 'golem.example.net',
+      mimir: { tenant: 'glean' },
+    };
+
+    function serviceWithInvalid(mimir: JsonObject, logger = makeLogger()) {
+      return MimirService.create({
+        config: new ConfigReader({
+          gs: {
+            installations: {
+              alba: { baseDomain: 'gerbil.example.net', mimir },
+              golem: otherInstallation,
+            },
+          },
+        }) as unknown as RootConfigService,
+        logger,
+      });
+    }
+
+    it.each([
+      ['a url that is not one', { url: 'observability.golem' }, 'mimir.url'],
+      [
+        'a url that is not http(s)',
+        { url: 'ftp://golem.example.net' },
+        'mimir.url',
+      ],
+      ['an empty tenant', { tenant: '' }, 'mimir.tenant'],
+      [
+        'a name that is not a label name',
+        { matchers: { 'cluster-id': 'gerbil' } },
+        'mimir.matchers',
+      ],
+      [
+        'a value that is not a string',
+        { matchers: { cluster_id: 7 } },
+        'mimir.matchers.cluster_id',
+      ],
+      [
+        'an empty matcher value',
+        { matchers: { cluster_id: '' } },
+        'mimir.matchers.cluster_id',
+      ],
+    ])(
+      '%s: logs one error at startup, then answers 503 without logging or sending',
+      async (_, mimir, key) => {
+        const logger = makeLogger();
+        const service = serviceWithInvalid(mimir as JsonObject, logger);
+
+        expect(logger.error).toHaveBeenCalledTimes(1);
+        expect(logger.error.mock.calls[0][0]).toContain('"alba"');
+        expect(logger.error.mock.calls[0][0]).toContain(
+          `gs.installations.alba.${key}`,
+        );
+
+        for (let i = 0; i < 3; i++) {
+          await expect(
+            service.query({
+              installationName: 'alba',
+              query: 'up',
+              oidcToken: 't',
+            }),
+          ).rejects.toThrow(MimirUnavailableError);
+        }
+        expect(mockFetch).not.toHaveBeenCalled();
+        expect(logger.error).toHaveBeenCalledTimes(1);
+        expect(logger.warn).not.toHaveBeenCalled();
+      },
+    );
+
+    it("leaves the other installations' metrics working", async () => {
+      const service = serviceWithInvalid({ tenant: '' });
+
+      await service.query({
+        installationName: 'golem',
+        query: 'up',
+        oidcToken: 't',
+      });
+
+      const [href, init] = mockFetch.mock.calls[0];
+      expect(new URL(href).host).toBe('observability.golem.example.net');
+      expect(init.headers['X-Scope-OrgID']).toBe('glean');
+    });
   });
 });

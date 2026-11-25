@@ -28,14 +28,14 @@ describe('MCPServer sigv4 accessors', () => {
         type: 'sigv4',
         sigv4: { region: 'eu-central-1', service: 'aws-mcp' },
       },
-      meta: { AWS_REGION: 'eu-central-1' },
+      requestMeta: { AWS_REGION: 'eu-central-1' },
     });
 
     expect(server.getAuth()?.sigv4).toEqual({
       region: 'eu-central-1',
       service: 'aws-mcp',
     });
-    expect(server.getMeta()).toEqual({ AWS_REGION: 'eu-central-1' });
+    expect(server.getRequestMeta()).toEqual({ AWS_REGION: 'eu-central-1' });
   });
 
   it('reports that a sigv4 server has no sign-in a user could complete', () => {

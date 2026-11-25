@@ -10205,6 +10205,10 @@ __metadata:
   dependencies:
     "@backstage/cli": "backstage:^"
     "@giantswarm/semver-ts": "github:giantswarm/semver-ts#v0.2.10"
+    "@lezer/common": "npm:^1.5.3"
+    "@lezer/highlight": "npm:^1.2.5"
+    "@lezer/lr": "npm:^1.4.5"
+    "@prometheus-io/lezer-promql": "npm:0.316.0"
   languageName: unknown
   linkType: soft
 
@@ -12349,6 +12353,15 @@ __metadata:
   dependencies:
     "@lezer/common": "npm:^1.0.0"
   checksum: 10c0/06a6fcba5093eb654303f0bcca5009c404fe865d19c5e302e095c3d317ca50ceafd5753bb05aa26403996fc039dffa12288154fb9e201f49a94dea798d0cb6bc
+  languageName: node
+  linkType: hard
+
+"@lezer/lr@npm:^1.4.5":
+  version: 1.4.12
+  resolution: "@lezer/lr@npm:1.4.12"
+  dependencies:
+    "@lezer/common": "npm:^1.0.0"
+  checksum: 10c0/3912ecd5f9ed916a13e929ab5f7d2cfc26d6d389b0b0d0673cbfb4d957042069f7c7182c991ebcb2019c4bba289102f81662200277b6c365911e62969fa67d74
   languageName: node
   linkType: hard
 
@@ -15788,6 +15801,16 @@ __metadata:
   version: 2.11.8
   resolution: "@popperjs/core@npm:2.11.8"
   checksum: 10c0/4681e682abc006d25eb380d0cf3efc7557043f53b6aea7a5057d0d1e7df849a00e281cd8ea79c902a35a414d7919621fc2ba293ecec05f413598e0b23d5a1e63
+  languageName: node
+  linkType: hard
+
+"@prometheus-io/lezer-promql@npm:0.316.0":
+  version: 0.316.0
+  resolution: "@prometheus-io/lezer-promql@npm:0.316.0"
+  peerDependencies:
+    "@lezer/highlight": ^1.1.2
+    "@lezer/lr": ^1.2.3
+  checksum: 10c0/95cb13ebe1aae45674fff61a159febb51a09c9dd584ac7a09ade2c32dbd163661301eb08236f068a41fa6d43bb676bd00aa778af6fe0744552f72ece0462a0dd
   languageName: node
   linkType: hard
 
