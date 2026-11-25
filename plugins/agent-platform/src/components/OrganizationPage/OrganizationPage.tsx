@@ -153,7 +153,7 @@ export function OrganizationPage({
     return (
       <ShellPage title={name} {...frame}>
         <EmptyStateCard
-          title={`Could not read agent-manager on ${installation}`}
+          title={`Could not read agent-manager on the installation ${installation}`}
           description={mine.infoError.message}
           actions={
             <Flex gap="3" align="center">
@@ -172,7 +172,7 @@ export function OrganizationPage({
       <ShellPage title={name} {...frame}>
         <EmptyStateCard
           title="Organizations are not available here"
-          description={`agent-manager on ${installation} does not serve the organization tools yet.`}
+          description={`agent-manager on the installation ${installation} does not serve the organization tools yet.`}
           actions={backLink}
         />
       </ShellPage>
@@ -188,7 +188,7 @@ export function OrganizationPage({
       <ShellPage title={title} {...frame}>
         <EmptyStateCard
           title={`${title} is erased`}
-          description={`${name} on ${installation} is deleted and erased.`}
+          description={`${name} on the installation ${installation} is deleted and erased.`}
           actions={backLink}
         />
       </ShellPage>
@@ -245,7 +245,7 @@ export function OrganizationPage({
       return (
         <ShellPage title={name} {...frame}>
           <EmptyStateCard
-            title={`Could not read your organizations on ${installation}`}
+            title={`Could not read your organizations on the installation ${installation}`}
             description={mine.failure.message}
             actions={
               <Flex gap="3" align="center">
@@ -269,7 +269,7 @@ export function OrganizationPage({
             <EmptyStateCard
               title={`${title} is not ready yet`}
               description={[
-                `The operator has not created the namespace of ${name} on ${installation} yet. This page shows its members, models and connectors once it has.`,
+                `The operator has not created the namespace of ${name} on the installation ${installation} yet. This page shows its members, models and connectors once it has.`,
                 object?.ready?.status === 'False' && object.ready.message,
                 createdNext &&
                   (createdNext.endsWith('.') ? createdNext : `${createdNext}.`),
@@ -296,7 +296,7 @@ export function OrganizationPage({
       <ShellPage title={name} {...frame}>
         <EmptyStateCard
           title={`You are not a member of ${name}`}
-          description={`${name} on ${installation} is not among the organizations you belong to, or it does not exist. An admin of ${name} can add you.`}
+          description={`${name} on the installation ${installation} is not among the organizations you belong to, or it does not exist. An admin of ${name} can add you.`}
           actions={backLink}
         />
       </ShellPage>

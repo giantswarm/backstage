@@ -2251,7 +2251,9 @@ describe('OrganizationPage', () => {
     });
 
     expect(
-      await screen.findByText('Could not read your organizations on gazelle'),
+      await screen.findByText(
+        'Could not read your organizations on the installation gazelle',
+      ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/You are not a member/)).not.toBeInTheDocument();
 
