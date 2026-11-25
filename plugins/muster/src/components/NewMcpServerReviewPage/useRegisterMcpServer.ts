@@ -12,6 +12,7 @@ import {
   type McpServerAuthMode,
   type McpServerDefinition,
 } from '../../lib/mcpServerDefinition';
+import { defaultPresetFor } from '../../lib/toolApproval';
 import { toolArgumentsQuery } from '../shared/hooks';
 
 /**
@@ -107,22 +108,50 @@ export function useRegisterMcpServer() {
               }). Nothing was saved; try again.`,
             );
           });
+      // A create carries the preset the governance mode pre-selects, where
+      // muster takes one (it requires one once it has tool approval): the
+      // connector starts reviewed, and the Test & Tools step writes each
+      // tool's setting after it lists them.
+      const preset =
+        tool === 'core_mcpserver_create'
+          ? defaultPresetFor(
+              (
+                await queryClient
+                  .fetchQuery({
+                    queryKey: ['muster', 'server-info', installation],
+                    queryFn: () => musterApi.getServerInfo(installation),
+                    staleTime: 10 * 60_000,
+                    retry: false,
+                  })
+                  .catch(() => undefined)
+              )?.governance ?? 'trusted',
+            )
+          : undefined;
       const definitionFor = async (
         name: string,
       ): Promise<McpServerDefinition> => {
-        if (displayName === undefined && tags === undefined) {
+        const asksPreset = preset !== undefined && name === tool;
+        if (displayName === undefined && tags === undefined && !asksPreset) {
           return definition;
         }
-        const inputSchema = await schemaOf(
-          name,
-          `keeps the connector's ${displayName === undefined ? 'tags' : 'name'}`,
-        );
-        const sent = { ...definition };
+        let asking = 'takes a tool approval preset';
+        if (displayName !== undefined) {
+          asking = "keeps the connector's name";
+        } else if (tags !== undefined) {
+          asking = "keeps the connector's tags";
+        }
+        const inputSchema = await schemaOf(name, asking);
+        const sent: McpServerDefinition & { preset?: string } = {
+          ...definition,
+        };
         if (!takesArgument(inputSchema, 'displayName')) {
           delete sent.displayName;
         }
         if (!takesArgument(inputSchema, 'tags')) {
           delete sent.tags;
+        }
+        if (asksPreset && takesArgument(inputSchema, 'preset')) {
+          sent.preset = preset;
         }
         return sent;
       };
@@ -157,9 +186,12 @@ export function useRegisterMcpServer() {
         clientCredentials ? { ...sent, clientCredentials } : sent,
         installation,
       );
-      // What was written, without the credentials: the caller keeps it as the
-      // base of later saves.
-      return sent;
+      // What was written, without the credentials or the preset (a create's
+      // only): the caller keeps it as the base of later saves.
+      const { preset: _preset, ...written } = sent as McpServerDefinition & {
+        preset?: string;
+      };
+      return written;
     },
     event: (_data, { isEdit, startedFromEdit, authMode }) => {
       if (!isEdit) {

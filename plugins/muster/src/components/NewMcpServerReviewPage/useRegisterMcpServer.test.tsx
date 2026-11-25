@@ -459,9 +459,85 @@ describe('useRegisterMcpServer', () => {
   it('asks for no schema when there is no display name to send', async () => {
     const { result } = renderRegister();
 
-    await act(() => result.current.mutateAsync(registration));
+    await act(() =>
+      result.current.mutateAsync({ ...registration, isEdit: true }),
+    );
 
     expect(describeTool).not.toHaveBeenCalled();
+  });
+
+  describe('tool approval preset on create', () => {
+    /** A muster whose create takes `preset` (tool approval, slice 2). */
+    const withPreset = (name: string) =>
+      Promise.resolve({
+        name,
+        inputSchema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            ...(name === 'core_mcpserver_create'
+              ? { preset: { type: 'string' } }
+              : {}),
+          },
+        },
+      });
+
+    it("sends the trusted mode's Allow all to a create that takes a preset, and only there", async () => {
+      describeTool.mockImplementation(withPreset);
+      const { result } = renderRegister();
+
+      let sent: McpServerDefinition | undefined;
+      await act(async () => {
+        sent = await result.current.mutateAsync(registration);
+      });
+
+      expect(callTool.mock.calls).toEqual([
+        ['core_mcpserver_validate', definition, 'gazelle'],
+        [
+          'core_mcpserver_create',
+          { ...definition, preset: 'allow-all' },
+          'gazelle',
+        ],
+      ]);
+      // Later saves (updates) take no preset.
+      expect(sent).toEqual(definition);
+    });
+
+    it('sends Recommended on a governed platform', async () => {
+      describeTool.mockImplementation(withPreset);
+      (musterApi as { getServerInfo?: unknown }).getServerInfo = jest
+        .fn()
+        .mockResolvedValue({ governance: 'governed' });
+      try {
+        const { result } = renderRegister();
+
+        await act(() => result.current.mutateAsync(registration));
+
+        expect(callTool).toHaveBeenLastCalledWith(
+          'core_mcpserver_create',
+          { ...definition, preset: 'recommended' },
+          'gazelle',
+        );
+      } finally {
+        delete (musterApi as { getServerInfo?: unknown }).getServerInfo;
+      }
+    });
+
+    it('sends no preset to a muster whose create does not take one', async () => {
+      const { result } = renderRegister();
+
+      await act(() => result.current.mutateAsync(registration));
+
+      expect(describeTool).toHaveBeenCalledWith(
+        'core_mcpserver_create',
+        'gazelle',
+      );
+      expect(callTool).toHaveBeenLastCalledWith(
+        'core_mcpserver_create',
+        definition,
+        'gazelle',
+      );
+    });
   });
 
   it('writes nothing and reports nothing when validation refuses', async () => {
