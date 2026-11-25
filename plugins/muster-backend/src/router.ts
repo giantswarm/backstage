@@ -426,6 +426,8 @@ export async function createRouter(
         // domain isn't derivable from the name, so it comes from config rather
         // than being fabricated frontend-side.
         endpoint: installation.url,
+        // Where muster serves its own pages, when not on the endpoint's host.
+        ...(installation.publicUrl && { publicUrl: installation.publicUrl }),
         requiresAuth: musterInstallationRequiresAuth(installation),
         ...reachabilityFields(
           reachability.get(musterProbeUrl(installation.url)),

@@ -182,6 +182,11 @@ export interface MusterInstallationInfo {
   /** The aggregator's MCP endpoint URL (shown atop the Servers view). */
   endpoint?: string;
   /**
+   * Where muster serves its own pages (approval page, sign-in start), when
+   * configured because they are not on the endpoint's host.
+   */
+  publicUrl?: string;
+  /**
    * Whether requests need the person's token: always for a derived
    * installation, for a configured one when it declares an `authProvider`.
    */

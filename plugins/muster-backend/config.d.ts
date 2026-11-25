@@ -54,6 +54,15 @@ export interface Config {
        * with no provider name needed.
        */
       authProvider?: string;
+      /**
+       * Where this muster serves its own pages (its approval page and sign-in
+       * start): muster's `muster.oauth.mcpClient.publicUrl`. Needed only when
+       * that is not on the host of `url` (a `url` that reaches muster from
+       * inside the cluster, say): the portal returns a person to the session
+       * from muster's pages only for links there, and otherwise trusts the
+       * origin of `url`. Reported by `GET /installations`.
+       */
+      publicUrl?: string;
       /** Static headers added to every request to this installation. */
       headers?: { [key: string]: string };
       /**

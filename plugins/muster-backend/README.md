@@ -94,14 +94,25 @@ which single sign-on replaced; they are not the value here.
 ```yaml
 muster:
   installations:
-    # Overrides only the endpoint of a derived installation.
+    # Overrides only the endpoint of a derived installation. Its pages
+    # (approval, sign-in) stay on muster's public URL, so name it.
     - name: golem
       url: https://muster-internal.golem.example/mcp
+      publicUrl: https://muster.golem.example
     # Adds an installation the fleet configuration does not know.
     - name: lab
       url: https://muster.lab.example/mcp
       authProvider: oidc-lab
 ```
+
+`publicUrl` is where that muster serves its own pages, its
+`muster.oauth.mcpClient.publicUrl`. Set it only when that is not on the host of
+`url` (a `url` that reaches muster from inside the cluster, say): the Agent
+Platform session page returns a person from muster's approval page and sign-in
+start only for links on it, and otherwise on the origin of `url`. Without it,
+on such an installation, those links open as sent and the person presses
+_Done_ to go on. muster's `postLoginRedirectAllowlist` must admit the portal
+either way.
 
 `GET /api/muster/installations` reports each installation with its `source`
 (`derived` or `configured`), whether it requires the person's token

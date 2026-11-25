@@ -1025,6 +1025,7 @@ describe('createRouter', () => {
               name: 'gazelle',
               url: 'https://muster-internal.gazelle.example.test/mcp',
               authProvider: 'mcp-muster',
+              publicUrl: 'https://muster.gazelle.example.test',
             },
           ],
         },
@@ -1038,6 +1039,7 @@ describe('createRouter', () => {
           {
             name: 'gazelle',
             endpoint: 'https://muster-internal.gazelle.example.test/mcp',
+            publicUrl: 'https://muster.gazelle.example.test',
             requiresAuth: true,
             reachable: true,
           },

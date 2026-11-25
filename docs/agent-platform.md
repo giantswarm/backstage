@@ -3204,7 +3204,9 @@ decides nothing: the agent retries the call, and muster's answer to the retry
 A link to one of muster's pages that return the browser, its approval page
 (`/approvals/<id>`, contract §5) or its sign-in start (`/oauth/proxy/start`), on
 the origin muster serves its pages from (the session installation's muster in
-the muster backend's `/installations`), with an `elicitation_id`, opens with
+the muster backend's `/installations`: its `publicUrl` where configured, for a
+muster whose pages are not on its endpoint's host, else its endpoint; see the
+muster-backend README), with an `elicitation_id`, opens with
 `redirect` set to the session page plus `elicitationReturn=<random value>`, a
 new 128-bit value per _Open_ that the tab keeps (per tab, `sessionStorage`)
 with the elicitation, the task, the session page and the person. muster's

@@ -116,6 +116,14 @@ export interface MusterInstallationConfig extends MusterServerConfig {
    */
   prometheusServer?: string;
   /**
+   * Where this muster serves its own pages (approval page, sign-in start):
+   * its `aggregator.oauth.mcpClient.publicUrl`. Set only when that is not on
+   * the host of `url`, e.g. a `url` that reaches muster from inside the
+   * cluster; the portal trusts a URL elicitation's link to those pages by it
+   * (otherwise by `url`'s origin).
+   */
+  publicUrl?: string;
+  /**
    * Where the entry came from: `derived` from a `gs.installations` entry's
    * `baseDomain`, `configured` in `muster.installations` (or the legacy
    * `aiChat.mcp` entry). Set by `resolveMusterInstallations`; absent from

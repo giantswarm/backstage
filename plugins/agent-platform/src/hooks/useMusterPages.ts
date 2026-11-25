@@ -6,7 +6,10 @@ import { useMusterPluginApi } from './useMusterPluginApi';
 
 /**
  * Where the installation's muster serves its own pages (sign-in, approval),
- * from the muster backend's installation list: its aggregator endpoint's host.
+ * from the muster backend's installation list: the installation's configured
+ * `publicUrl` (muster's `aggregator.oauth.mcpClient.publicUrl`, for a muster
+ * whose pages are not on its endpoint's host), else its aggregator endpoint's
+ * host.
  * A URL elicitation's link to one of those pages gets a return to the portal.
  * `undefined` while unknown, without an installation, and on a portal
  * without the muster plugin: links then open as sent.
@@ -23,5 +26,5 @@ export function useMusterPages(
     enabled: Boolean(musterApi && installation),
   });
   const entry = data?.installations.find(i => i.name === installation);
-  return musterPagesOf(entry?.endpoint);
+  return musterPagesOf(entry?.publicUrl ?? entry?.endpoint);
 }
