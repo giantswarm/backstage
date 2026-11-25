@@ -15,6 +15,7 @@ import {
   isWrittenOut,
   matchingPreset,
   presetOfRule,
+  storedRule,
   sameDraft,
   type ApprovalDraft,
   type ApprovalPreset,
@@ -130,10 +131,14 @@ export function useToolApprovalDraft({
     if (saved) {
       return saved;
     }
-    return expandPreset(
+    const expanded = expandPreset(
       stored ? presetOfRule(stored) : defaultPresetFor(mode),
       rows,
     );
+    // A stored Block rule is kept: no preset loosens what hides new tools.
+    return stored && storedRule(stored.rule) === 'Block'
+      ? { ...expanded, rule: 'Block' }
+      : expanded;
   }, [picked, saved, stored, rows, mode]);
   const draft = useMemo<ApprovalDraft>(
     () => ({

@@ -185,6 +185,6 @@ describe('toolApproval', () => {
       'Ask',
       'Block',
     ]);
-    expect(presetOfRule({ rule: 'Block' })).toBe('recommended');
+    expect(presetOfRule({ rule: 'Block' })).toBe('ask-all');
   });
 });

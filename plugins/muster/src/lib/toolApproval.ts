@@ -129,7 +129,15 @@ export function isWrittenOut(approval: MCPServerApproval | undefined): boolean {
  * sends), `Allow` (or none) *Allow all*.
  */
 export function presetOfRule(approval: MCPServerApproval): ApprovalPreset {
-  return storedRule(approval.rule) === 'Allow' ? 'allow-all' : 'recommended';
+  switch (storedRule(approval.rule)) {
+    case 'Allow':
+      return 'allow-all';
+    case 'Block':
+      // The strictest fill for the tools listed; the rule stays Block.
+      return 'ask-all';
+    default:
+      return 'recommended';
+  }
 }
 
 /** A tool as the settings key it: the server's own name, and its effect. */
