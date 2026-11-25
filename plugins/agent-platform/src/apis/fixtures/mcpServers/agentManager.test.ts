@@ -24,6 +24,7 @@ import {
   INCOMPLETE_MODEL,
   INCOMPLETE_MODEL_INSTALLATION,
   OPERATION_TTL_MS,
+  ORGANIZATION_PULL_REQUEST_INSTALLATION,
   SETTLE_MS,
   UNUSED_VERTEX_MODEL,
 } from '../agentManagerFixtureState';
@@ -310,6 +311,33 @@ describe('the fixture agent-manager', () => {
         group: admin.name,
       }),
     ).rejects.toMatchObject({ code: 'not_found' });
+  });
+
+  it('answers a create in mode commit with a pull request where it reports commit, and creates nothing', async () => {
+    const { server, client } = setup();
+    const tarragon = new AgentManagerClient(
+      musterApiOf(server),
+      ORGANIZATION_PULL_REQUEST_INSTALLATION,
+    );
+
+    expect((await tarragon.getInfo()).capabilities?.commit).toBe(true);
+    const opened = await tarragon.createOrganization({
+      name: 'newcomers',
+      mode: 'commit',
+    });
+    expect(opened).toMatchObject({
+      created: false,
+      commit: { pullRequest: expect.stringMatching(/^https:\/\//) },
+    });
+    expect(
+      (await tarragon.listOrganizations()).organizations.map(o => o.name),
+    ).not.toContain('newcomers');
+
+    // Where agent-manager reports no commit, it refuses as it words it.
+    expect((await client.getInfo()).capabilities?.commit).toBe(false);
+    await expect(
+      client.createOrganization({ name: 'newcomers', mode: 'commit' }),
+    ).rejects.toMatchObject({ code: 'unsupported' });
   });
 
   it('creates an organization that turns ready, and changes its admins', async () => {

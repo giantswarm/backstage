@@ -42,6 +42,7 @@ import {
   type MemberResult,
   type MemberRole,
   type OrganizationAgentSessions,
+  type OrganizationCommit,
   type OrganizationConnector,
   type OrganizationCredentialReplacement,
   type OrganizationDeleteResult,
@@ -124,6 +125,33 @@ export const HELM_PLATFORM_MODEL = 'platform-default';
  */
 export const INCOMPLETE_MODEL_INSTALLATION = 'tarragon';
 export const INCOMPLETE_MODEL = 'claude-direct';
+
+/**
+ * The installation whose agent-manager reports the `commit` capability and
+ * answers `create_organization` in mode commit with a pull request, so the
+ * Create organization dialog offers the choice there. No organization comes
+ * of it: the pull request is never merged. Every other write in mode commit
+ * is refused, there too.
+ */
+export const ORGANIZATION_PULL_REQUEST_INSTALLATION = 'tarragon';
+
+/** The pull request a create of `name` in mode commit opens. */
+export function organizationCreatePullRequest(
+  name: string,
+): OrganizationCommit {
+  return {
+    repository: 'example/tarragon-configs',
+    base: 'main',
+    branch: `agent-manager/create-${name}_f1x7`,
+    pullRequest: 'https://github.com/example/tarragon-configs/pull/41',
+    number: 41,
+    review:
+      "the platform team reviews it: the repository's CODEOWNERS names them for the organization paths, and an organization's admin cannot approve it alone",
+    liveSteps: [
+      'after the merge Flux applies the object; agent-platform-operator creates the organization namespace and binds spec.admins to agent-platform:admin there',
+    ],
+  };
+}
 
 /** The Secrets agent-manager owns, and writes, in the installation namespace. */
 const PLATFORM_CREDENTIAL_PREFIX = 'tenant-credential-';
@@ -391,12 +419,18 @@ function nameTaken(agent: FixtureAgentRecord): string {
   return `a HelmRelease named ${agent.name} already exists in namespace ${agent.namespace}`;
 }
 
-/** A write in mode `commit`: this agent-manager writes live only. */
-function mustBeLive(mode: unknown): void {
+/**
+ * A write in mode `commit`: this agent-manager opens no pull request for it.
+ * Where it reports the `commit` capability, it opens one only for a new
+ * organization.
+ */
+function mustBeLive(mode: unknown, installation: string): void {
   if (mode === 'commit') {
     throw refusal(
       'unsupported',
-      'this agent-manager writes live only: it has no commit capability',
+      installation === ORGANIZATION_PULL_REQUEST_INSTALLATION
+        ? 'fixture mode opens a pull request only for create_organization: write live'
+        : 'this agent-manager writes live only: it has no commit capability',
     );
   }
 }
@@ -867,6 +901,28 @@ export class AgentManagerFixtureState {
       })),
       ...(request.adminUsers ?? []).map(user => ({ kind: 'User', name: user })),
     ];
+    if (request.mode === 'commit') {
+      if (installation !== ORGANIZATION_PULL_REQUEST_INSTALLATION) {
+        throw refusal(
+          'unsupported',
+          'mode commit is not configured for organizations on this installation (no organizations repository): use mode apply',
+        );
+      }
+      // Nothing live: the organization exists once the pull request merges.
+      const commit = organizationCreatePullRequest(name);
+      return {
+        organization: {
+          name,
+          ...(request.displayName && { displayName: request.displayName }),
+          admins,
+          harnesses: [],
+          workerReplicas: 1,
+        },
+        created: false,
+        next: `merge the pull request ${commit.pullRequest}; ${commit.review}`,
+        commit,
+      };
+    }
     const organization: FixtureOrganizationState = {
       installation,
       name,
@@ -1911,7 +1967,7 @@ export class AgentManagerFixtureState {
     installation: string,
     spec: AgentSpec & { mode?: string },
   ): CreateAgentResult {
-    mustBeLive(spec.mode);
+    mustBeLive(spec.mode, installation);
     this.mustCreateAgentsIn(this.writableIn(installation, spec.namespace));
     const record = this.recordOf(installation, spec);
     if (
@@ -1978,7 +2034,7 @@ export class AgentManagerFixtureState {
     installation: string,
     update: AgentUpdate & { mode?: string },
   ): ValidateAgentResult {
-    mustBeLive(update.mode);
+    mustBeLive(update.mode, installation);
     const agent = this.stored(installation, update.namespace, update.name);
     return this.validation(installation, this.merged(agent, update), 'update');
   }
@@ -1987,7 +2043,7 @@ export class AgentManagerFixtureState {
     installation: string,
     update: AgentUpdate & { mode?: string },
   ): UpdateAgentResult {
-    mustBeLive(update.mode);
+    mustBeLive(update.mode, installation);
     this.mustCreateAgentsIn(this.writableIn(installation, update.namespace));
     const agent = this.stored(installation, update.namespace, update.name);
     const next = this.merged(agent, update);
@@ -2038,7 +2094,7 @@ export class AgentManagerFixtureState {
     name: string,
     mode?: string,
   ): DeleteAgentResult {
-    mustBeLive(mode);
+    mustBeLive(mode, installation);
     this.mustCreateAgentsIn(this.writableIn(installation, namespace));
     const agent = this.stored(installation, namespace, name);
     this.stateOf(installation).agents.delete(keyOf(namespace, name));

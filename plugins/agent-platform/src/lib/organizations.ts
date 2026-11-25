@@ -516,7 +516,58 @@ export function namesPerLine(text: string): string[] {
 export type OrganizationCreateRequest = {
   name: string;
   displayName?: string;
+  /**
+   * A pull request in the installation's repository instead of a live
+   * write: the organization exists once it is merged.
+   */
+  mode?: 'commit';
 } & Partial<OrganizationAdmins>;
+
+/**
+ * Whether an installation's agent-manager opens pull requests for
+ * organizations, as `get_info` says it: the `commit` capability with the
+ * organization tools. agent-manager still refuses mode commit where its
+ * organizations repository is not configured.
+ */
+export function offersOrganizationPullRequests(
+  capabilities: Record<string, boolean> | undefined,
+): boolean {
+  return (
+    capabilities?.commit === true &&
+    capabilities?.[ORGANIZATIONS_CAPABILITY] === true
+  );
+}
+
+/**
+ * The ways the Create organization dialog offers, in the order it shows
+ * them; the first is selected. Pull request first is a default the owner has
+ * not confirmed yet: change the order here.
+ */
+export const ORGANIZATION_CREATE_MODES: readonly OrganizationWriteMode[] = [
+  'commit',
+  'apply',
+];
+
+/** How each way of creating an organization reads in the dialog. */
+export const ORGANIZATION_CREATE_MODE_LABELS: Record<
+  OrganizationWriteMode,
+  string
+> = {
+  commit:
+    'With a pull request — in the installation’s repository, opened as you; the organization is created once it is merged',
+  apply: 'Directly — the organization is created now',
+};
+
+/**
+ * Beside the choice: what follows from it, and that it stays. agent-manager
+ * keeps each organization's writes in the mode it was created in.
+ */
+export const ORGANIZATION_CREATE_MODE_DESCRIPTION =
+  'You cannot change this later. An organization created with a pull request is changed with pull requests from then on, also its models, members and connectors. One created directly is changed directly.';
+
+/** What a create's pull request does once merged. */
+export const CREATE_PULL_REQUEST_NEXT =
+  'The organization is created once the pull request is merged and Flux applies it; then it shows on the Organizations page.';
 
 /**
  * `create_organization`'s answer. agent-manager writes the object and does

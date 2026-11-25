@@ -423,8 +423,10 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
               harnesses: [],
               workerReplicas: 1,
             },
-            created: true,
+            // In mode commit only the pull request is opened.
+            created: args.mode !== 'commit',
             next: CREATED_NEXT,
+            ...commitOf(args),
           };
           return result;
         }

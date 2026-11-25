@@ -28,6 +28,7 @@ import { modelEndpointProblem } from '../lib/modelEndpoint';
 import { MODEL_CONFIG_NAMESPACE } from '../lib/modelConfigs';
 import { PLATFORM_TENANT_NAMESPACE } from '../lib/tenants';
 import {
+  modeArgument,
   modelNamespaceRefused,
   organizationOfNamespace,
   type OrganizationReads,
@@ -465,6 +466,7 @@ export class AgentManagerClient {
         ...(request.adminUsers?.length
           ? { adminUsers: request.adminUsers }
           : {}),
+        ...modeArgument(request.mode),
       },
     );
   }

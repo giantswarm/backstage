@@ -27,6 +27,7 @@ import { TOOLCHAINS_CAPABILITY } from '../../../lib/toolchainManager';
 import type { ListModelConfigsAnswer } from '../../AgentManagerClient';
 import {
   agentManagerFixtureState,
+  ORGANIZATION_PULL_REQUEST_INSTALLATION,
   refusal,
   type AgentManagerFixtureState,
   type FixtureMemberRequest,
@@ -78,7 +79,7 @@ const infoOf = (installation: string, managed: string[]): AgentManagerInfo => ({
   capabilities: {
     create: true,
     validate: true,
-    commit: false,
+    commit: installation === ORGANIZATION_PULL_REQUEST_INSTALLATION,
     [TAGS_CAPABILITY]: true,
     [EGRESS_POLICIES_CAPABILITY]: true,
     [ORGANIZATIONS_CAPABILITY]: true,
