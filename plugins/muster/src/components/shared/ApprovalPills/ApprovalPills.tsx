@@ -2,10 +2,7 @@ import { ToggleButton, ToggleButtonGroup } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import BlockIcon from '@material-ui/icons/Block';
 import CheckIcon from '@material-ui/icons/Check';
-import {
-  APPROVAL_SETTING_HINTS,
-  type ApprovalSetting,
-} from '../../../lib/toolApproval';
+import type { ApprovalSetting } from '../../../lib/toolApproval';
 
 const useStyles = makeStyles({
   group: {
@@ -28,13 +25,20 @@ export type ApprovalPillsProps<T extends ApprovalSetting> = {
   options: readonly T[];
   value: T;
   onChange: (value: T) => void;
+  /**
+   * The id of the element that says what each setting means (the editor's
+   * legend), the pill's accessible description (`aria-describedby`).
+   */
+  hintIds: Readonly<Record<ApprovalSetting, string>>;
 };
 
 /**
  * One choice of `Allow · Ask · Block` as pills (bui's `ToggleButtonGroup`,
  * as the new-agent Tools step draws its connector choices). The chosen pill
  * carries a check, a chosen *Block* its own icon and the danger tone. Each
- * pill's hint is its accessible description. Only for a person who may
+ * pill is described by its setting's line in the legend beside it
+ * (`aria-describedby`, which screen readers announce, unlike
+ * `aria-description`). Only for a person who may
  * change the setting: everyone else gets an {@link ApprovalBadge}, never a
  * disabled group.
  */
@@ -43,6 +47,7 @@ export function ApprovalPills<T extends ApprovalSetting>({
   options,
   value,
   onChange,
+  hintIds,
 }: ApprovalPillsProps<T>) {
   const classes = useStyles();
   return (
@@ -75,7 +80,7 @@ export function ApprovalPills<T extends ApprovalSetting>({
             id={option}
             size="small"
             iconStart={icon}
-            aria-description={APPROVAL_SETTING_HINTS[option]}
+            aria-describedby={hintIds[option]}
             className={option === 'Block' ? classes.block : undefined}
           >
             {option}

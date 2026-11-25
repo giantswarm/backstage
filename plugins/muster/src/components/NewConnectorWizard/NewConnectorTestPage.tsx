@@ -485,7 +485,7 @@ function ToolsSection({
       <Alert
         status="warning"
         title="The tool settings can't be read"
-        description="Muster could not read this connector's tool approval settings, so it refuses calls to its tools until it can. Try again later; nothing is saved from here."
+        description="Muster could not read this connector's tool approval settings. It reports every tool as Ask and does not run them until it can read the settings. Try again later; Done saves nothing here."
       />
     );
   }

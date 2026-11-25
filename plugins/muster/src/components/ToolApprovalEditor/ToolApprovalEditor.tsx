@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import {
   Button,
   Flex,
@@ -17,6 +18,7 @@ import {
   APPROVAL_RULE_HINT,
   APPROVAL_RULES,
   type ApprovalRule,
+  type ApprovalSetting,
   APPROVAL_SETTING_HINTS,
   APPROVAL_SETTINGS,
   reportedSetting,
@@ -170,12 +172,18 @@ export function ToolApprovalEditor({
     </Flex>
   );
 
+  // Each pill is described by its setting's line here.
+  const legendId = useId();
+  const hintIds = Object.fromEntries(
+    APPROVAL_SETTINGS.map(setting => [setting, `${legendId}-${setting}`]),
+  ) as Record<ApprovalSetting, string>;
   const legend = (
     <ul className={classes.legend} aria-label="What the settings mean">
       {APPROVAL_SETTINGS.map(setting => (
         <li key={setting}>
           <Text variant="body-small" color="secondary">
-            <strong>{setting}</strong> — {APPROVAL_SETTING_HINTS[setting]}
+            <strong>{setting}</strong> —{' '}
+            <span id={hintIds[setting]}>{APPROVAL_SETTING_HINTS[setting]}</span>
           </Text>
         </li>
       ))}
@@ -222,6 +230,7 @@ export function ToolApprovalEditor({
                         )}
                         <ApprovalPills
                           aria-label={`Approval for ${row.key}`}
+                          hintIds={hintIds}
                           options={APPROVAL_SETTINGS}
                           value={setting}
                           onChange={next => approval.setTool(row.key, next)}
@@ -304,6 +313,7 @@ export function ToolApprovalEditor({
         </Text>
         <ApprovalPills
           aria-label="Rule for new tools"
+          hintIds={hintIds}
           options={
             ruleOptions.includes(draft.rule)
               ? ruleOptions

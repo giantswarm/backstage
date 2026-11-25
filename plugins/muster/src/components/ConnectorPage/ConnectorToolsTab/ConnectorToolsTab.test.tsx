@@ -395,6 +395,23 @@ describe('ConnectorToolsTab: tool approval', () => {
     );
   });
 
+  it('counts a blocked row under no effect, as it shows none', async () => {
+    await renderApprovalTab(reviewedTools(), {
+      blockedTools: ['x_jira_delete_project'],
+    });
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Filter by what it does/ }),
+    );
+    const counts = within(await screen.findByRole('listbox'))
+      .getAllByRole('option')
+      .map(option => option.textContent);
+    const total = counts
+      .map(text => Number(/(\d+)$/.exec(text ?? '')?.[1] ?? 0))
+      .reduce((a, b) => a + b, 0);
+    expect(total).toBe(reviewedTools().length);
+  });
+
   it('filters by approval', async () => {
     await renderApprovalTab(reviewedTools(), {
       blockedTools: ['x_jira_delete_project'],
@@ -411,18 +428,6 @@ describe('ConnectorToolsTab: tool approval', () => {
     await userEvent.keyboard('{Escape}');
     expect(screen.getByText('delete_project')).toBeInTheDocument();
     expect(screen.queryByText('tool_001')).toBeNull();
-  });
-
-  it('names the agents allowed to skip a tool’s Ask', async () => {
-    await renderApprovalTab(reviewedTools(), {
-      allowedFor: { x_jira_tool_001: ['Alert Review', 'Release Bot'] },
-    });
-
-    expect(
-      within(row('tool_001')).getByText(
-        'Allowed for: Alert Review, Release Bot',
-      ),
-    ).toBeInTheDocument();
   });
 
   it('says a connector nobody reviewed allows everything, and leads its admin to review it', async () => {
@@ -505,7 +510,11 @@ describe('ConnectorToolsTab: tool approval', () => {
     expect(
       screen.getByText("The tool settings can't be read"),
     ).toBeInTheDocument();
-    expect(screen.getByText(/refuses calls to its tools/)).toBeInTheDocument();
+    // What muster does: the tools report Ask and calls do not run.
+    expect(
+      screen.getByText(/reports every tool as Ask and does not run them/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/refuses calls/)).toBeNull();
   });
 
   it("warns with muster's reason where approvals cannot be answered, beside the settings", async () => {

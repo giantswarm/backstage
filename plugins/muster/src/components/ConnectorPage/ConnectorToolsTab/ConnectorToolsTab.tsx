@@ -62,11 +62,16 @@ const useStyles = makeStyles({
   },
 });
 
-/** The "What it does" dropdown, as the wizard's catalogue draws it (T81). */
+/**
+ * The "What it does" dropdown, as the wizard's catalogue draws it (T81). A
+ * blocked tool's row (muster lists no blocked tool, so the row knows nothing
+ * of what it does and shows no effect) counts nowhere.
+ */
 const EFFECT_FACET: CatalogFacet<ToolSummary> = {
   id: 'effect',
   label: 'What it does',
-  value: tool => toolEffect(tool),
+  value: tool =>
+    tool.approval?.setting === 'block' ? undefined : toolEffect(tool),
   optionLabel: id => TOOL_EFFECT_LABELS[id as ToolEffect] ?? id,
   order: ['reads', 'changes'],
 };
@@ -195,11 +200,6 @@ export interface ConnectorToolsTabProps {
    * muster then lists nowhere, so the tab says so.
    */
   newToolsRule?: string;
-  /**
-   * Per exposed tool name, the agents that may skip its *Ask* (a connector
-   * admin's exception), as *Allowed for: Alert Review*.
-   */
-  allowedFor?: Readonly<Record<string, readonly string[]>>;
 }
 
 /**
@@ -229,7 +229,6 @@ export function ConnectorToolsTab({
   settingsHref,
   settingsInGit,
   newToolsRule,
-  allowedFor,
 }: ConnectorToolsTabProps) {
   const classes = useStyles();
   const ownSearch = useToolSearchState();
@@ -435,7 +434,7 @@ export function ConnectorToolsTab({
                       reviewed={reviewed}
                     />
                   ),
-                  facts: approvalFacts(tool, reviewed, allowedFor?.[tool.name]),
+                  facts: approvalFacts(tool, reviewed),
                   description: blocked.has(tool.name)
                     ? 'Hidden from everyone, so muster lists it nowhere else.'
                     : (tool.description ?? tool.summary),
@@ -476,22 +475,16 @@ function ToolStatus({
 }
 
 /**
- * Where a tool's setting comes from, and which agents may skip its *Ask*.
- * Nothing for a connector nobody reviewed: the note above the list says it
- * once.
+ * Where a tool's setting comes from. Nothing for a connector nobody
+ * reviewed: the note above the list says it once. (*Allowed for: …*, the
+ * agents that may skip an *Ask*, waits for agent-manager's grants, PRD
+ * slices 3 and 5; it is not drawn before there is data for it.)
  */
-function approvalFacts(
-  tool: ToolSummary,
-  reviewed: boolean,
-  allowedFor: readonly string[] | undefined,
-): string[] {
+function approvalFacts(tool: ToolSummary, reviewed: boolean): string[] {
   const facts: string[] = [];
   const source = tool.approval?.source;
   if (reviewed && source && source !== 'unreviewed' && source !== 'builtin') {
     facts.push(approvalSourceLabel(source));
-  }
-  if (allowedFor && allowedFor.length > 0) {
-    facts.push(`Allowed for: ${allowedFor.join(', ')}`);
   }
   return facts;
 }
@@ -561,7 +554,7 @@ function SettingsNote({
         className={classes.note}
         status="warning"
         title="The tool settings can't be read"
-        description="Muster could not read this connector's tool approval settings, so it refuses calls to its tools until it can."
+        description="Muster could not read this connector's tool approval settings. It reports every tool as Ask and does not run them until it can read the settings."
       />
     );
   }

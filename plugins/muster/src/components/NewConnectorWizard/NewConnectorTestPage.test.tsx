@@ -862,7 +862,26 @@ describe('NewConnectorTestPage: Test & Tools', () => {
     expect(
       await screen.findByText("The tool settings can't be read"),
     ).toBeInTheDocument();
+    // In muster's terms: the tools report Ask, and calls do not run.
+    expect(
+      screen.getByText(/reports every tool as Ask and does not run them/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Done saves nothing here/)).toBeInTheDocument();
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+  });
+
+  it("describes each pill by its setting's line in the legend", async () => {
+    connectedWith(approvalTools());
+
+    await renderTestStep();
+    await screen.findByText('Everything runs.');
+
+    expect(
+      within(pills('add_comment')).getByRole('radio', { name: 'Allow' }),
+    ).toHaveAccessibleDescription('Runs without asking.');
+    expect(
+      within(pills('add_comment')).getByRole('radio', { name: 'Block' }),
+    ).toHaveAccessibleDescription("Hidden. Can't be used.");
   });
 
   it('warns with the reason where approvals cannot be answered, and keeps the settings', async () => {

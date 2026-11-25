@@ -415,8 +415,9 @@ settings; it decides nothing.
   _Done_ again. A change in the instant between that read and the write
   still wins silently until muster takes a precondition. Where muster cannot save them (no
   `core_mcpserver_set_approval` taking `approval`) the step shows them as
-  they are; where it cannot read them (`source: unavailable`) it says calls
-  are refused. Where approvals cannot be answered right now (a tool that asks
+  they are; where it cannot read them (`source: unavailable`) it says that
+  muster reports every tool as Ask and does not run them until it can, and
+  that _Done_ saves nothing. Where approvals cannot be answered right now (a tool that asks
   reports `approval.unavailable`, muster's reason: no shared storage, no
   browser sign-in, no public URL), a warning names the reason for an admin to
   act on, above the settings, which stay as they are; calls to those tools
@@ -427,8 +428,10 @@ settings; it decides nothing.
   the mode cannot be read.
 - The connector's **Tools** tab shows each tool's setting as a badge (Block
   in its own tone and icon), where it comes from ("Set for this tool",
-  "Connector's rule"), _New_, _Allowed for: …_ when it is given the agents
-  that may skip an Ask, and an _Approval_ filter. A connector nobody reviewed
+  "Connector's rule"), _New_, and an _Approval_ filter (a blocked tool's row
+  counts under no effect in _What it does_, as it shows none). _Allowed for:
+  …_, the agents that may skip an Ask, comes with agent-manager's grants
+  (PRD slices 3 and 5) and is not drawn yet. A connector nobody reviewed
   (no settings, or a create's rule alone, where muster reports every tool
   _New_) says once above the list what every tool does until then (_Allow —
   not reviewed_, or _Ask — not reviewed_ after a _Recommended_ create),
