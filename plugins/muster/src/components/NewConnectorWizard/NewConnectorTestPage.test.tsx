@@ -680,6 +680,31 @@ describe('NewConnectorTestPage: Test & Tools', () => {
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
   });
 
+  it('warns with the reason where approvals cannot be answered, and keeps the settings', async () => {
+    connectedWith(
+      approvalTools({
+        approval: {
+          setting: 'ask',
+          source: 'connector',
+          unavailable: "muster's shared store is not on Valkey",
+        },
+      }),
+    );
+
+    await renderTestStep();
+
+    expect(
+      await screen.findByText("Approvals can't be answered right now"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/shared store is not on Valkey/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("The tool settings can't be read"),
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByRole('radio').length).toBeGreaterThan(0);
+  });
+
   it('keeps the person on the step with the reason when the save fails, and saves on the next Done', async () => {
     connectedWith(approvalTools());
     callTool.mockImplementation((name: string) =>

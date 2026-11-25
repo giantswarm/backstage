@@ -1,5 +1,8 @@
 import {
   approvalKeyOf,
+  approvalRefusalNote,
+  approvalRefusalReason,
+  isSettingsUnreadable,
   connectorAdminOf,
   defaultPresetFor,
   draftFromStored,
@@ -105,6 +108,39 @@ describe('toolApproval', () => {
     );
     expect(approvalKeyOf('core_config_save', 'x_github')).toBe(
       'core_config_save',
+    );
+  });
+
+  it('tells unreadable settings from approvals that cannot be answered', () => {
+    const unreadable = [
+      { approval: { setting: 'ask', source: 'unavailable' } },
+    ];
+    const refused = [
+      { approval: { setting: 'allow', source: 'connector' } },
+      {
+        approval: {
+          setting: 'ask',
+          source: 'connector',
+          unavailable: 'muster runs no browser sign-in.',
+        },
+      },
+    ] as const;
+
+    expect(isSettingsUnreadable(unreadable as never)).toBe(true);
+    expect(approvalRefusalReason(unreadable as never)).toBeUndefined();
+    expect(isSettingsUnreadable(refused as never)).toBe(false);
+    expect(approvalRefusalReason(refused as never)).toBe(
+      'muster runs no browser sign-in.',
+    );
+    expect(approvalRefusalReason([])).toBeUndefined();
+  });
+
+  it('ends the refusal reason with one full stop', () => {
+    expect(approvalRefusalNote('no public URL.').description).toContain(
+      'no public URL. Ask',
+    );
+    expect(approvalRefusalNote('no public URL').description).toContain(
+      'no public URL. Ask',
     );
   });
 });

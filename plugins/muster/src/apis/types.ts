@@ -293,6 +293,7 @@ export type ToolApprovalSource =
   | 'connector'
   | 'unreviewed'
   | 'builtin'
+  // The connector's settings could not be read; muster reports them as `ask`.
   | 'unavailable'
   | 'agent'
   | 'agent-exception'
@@ -307,6 +308,14 @@ export interface ToolApproval {
   source: ToolApprovalSource;
   /** No own entry on a connector that has settings: it follows the rule. */
   new?: boolean;
+  /**
+   * Set on a tool whose setting is `ask` when approvals cannot work right now
+   * (a prerequisite is missing, such as muster's shared storage or its browser
+   * sign-in): the reason, in muster's words. Calls to the tool are refused
+   * with it. Not `source: 'unavailable'`, which says the connector's settings
+   * could not be read.
+   */
+  unavailable?: string;
 }
 
 /**

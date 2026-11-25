@@ -229,11 +229,42 @@ export function isUnreviewed(
   return reported.every(tool => tool.approval?.source === 'unreviewed');
 }
 
-/** Whether muster could not read the settings for any of the tools. */
-export function isApprovalUnavailable(
+/**
+ * Whether muster could not read the connector's settings for any of the
+ * tools (`source: unavailable`).
+ */
+export function isSettingsUnreadable(
   tools: readonly { approval?: ToolApproval }[],
 ): boolean {
   return tools.some(tool => tool.approval?.source === 'unavailable');
+}
+
+/**
+ * Why muster refuses the calls of the tools that ask, when approvals cannot
+ * be answered right now (`approval.unavailable`): a missing prerequisite an
+ * admin can fix. Undefined when no tool reports one. A tool that does not ask
+ * never carries it.
+ */
+export function approvalRefusalReason(
+  tools: readonly { approval?: ToolApproval }[],
+): string | undefined {
+  return tools
+    .map(tool => tool.approval?.unavailable?.trim())
+    .find((reason): reason is string => Boolean(reason));
+}
+
+/** The warning for tools that ask where approvals cannot be answered. */
+export function approvalRefusalNote(reason: string): {
+  title: string;
+  description: string;
+} {
+  return {
+    title: "Approvals can't be answered right now",
+    description: `Tools that ask first are refused until this is fixed: ${reason.replace(
+      /[.\s]+$/,
+      '',
+    )}. Ask an admin of this platform.`,
+  };
 }
 
 /**

@@ -25,7 +25,9 @@ import {
   approvalSourceLabel,
   APPROVAL_SETTINGS,
   connectorAdminOf,
-  isApprovalUnavailable,
+  approvalRefusalNote,
+  approvalRefusalReason,
+  isSettingsUnreadable,
   isUnreviewed,
   reportedSetting,
 } from '../../../lib/toolApproval';
@@ -332,7 +334,8 @@ export function ConnectorToolsTab({
   const listedTools = listed ?? [];
   const approvalNote = (
     <ApprovalNote
-      unavailable={isApprovalUnavailable(listedTools)}
+      unavailable={isSettingsUnreadable(listedTools)}
+      refusalReason={approvalRefusalReason(listedTools)}
       unreviewed={isUnreviewed(listedTools) === true}
       admin={connectorAdminOf(listedTools)}
       settingsHref={settingsHref}
@@ -462,11 +465,38 @@ function approvalFacts(
 }
 
 /**
- * The connector's tool approval as a whole, above its tools: muster cannot
- * read the settings; nobody reviewed them (with the way to, for a connector
+ * The connector's tool approval as a whole, above its tools: approvals
+ * cannot be answered right now (a warning an admin can act on, beside the
+ * rest); muster cannot read the settings; nobody reviewed them (with the way to, for a connector
  * admin); or, reviewed, where a connector admin changes them.
  */
 function ApprovalNote({
+  refusalReason,
+  ...settings
+}: {
+  unavailable: boolean;
+  refusalReason?: string;
+  unreviewed: boolean;
+  admin: boolean | undefined;
+  settingsHref?: string;
+  settingsInGit?: boolean;
+}) {
+  const classes = useStyles();
+  return (
+    <>
+      {refusalReason && (
+        <Alert
+          className={classes.note}
+          status="warning"
+          {...approvalRefusalNote(refusalReason)}
+        />
+      )}
+      <SettingsNote {...settings} />
+    </>
+  );
+}
+
+function SettingsNote({
   unavailable,
   unreviewed,
   admin,

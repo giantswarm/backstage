@@ -27,7 +27,9 @@ import { takesArgument } from '../../lib/mcpServerDefinition';
 import {
   approvalOf,
   connectorAdminOf,
-  isApprovalUnavailable,
+  approvalRefusalNote,
+  approvalRefusalReason,
+  isSettingsUnreadable,
 } from '../../lib/toolApproval';
 import { useGovernanceMode } from '../../hooks/useGovernanceMode';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
@@ -235,7 +237,8 @@ export function NewConnectorTestPage() {
     canSave = false;
   }
   const reportsApproval = tools.some(tool => tool.approval);
-  const unavailable = isApprovalUnavailable(tools);
+  const unavailable = isSettingsUnreadable(tools);
+  const refusalReason = approvalRefusalReason(tools);
   const admin = connectorAdminOf(tools);
   const view = canSave && admin !== false ? 'edit' : 'read';
   const save = useSaveToolApproval();
@@ -406,6 +409,7 @@ export function NewConnectorTestPage() {
           installation={installation}
           loading={canSave === undefined}
           unavailable={unavailable}
+          refusalReason={refusalReason}
           canSave={canSave}
           reportsApproval={reportsApproval}
           admin={admin}
@@ -438,6 +442,7 @@ function ToolsSection({
   installation,
   loading,
   unavailable,
+  refusalReason,
   canSave,
   reportsApproval,
   admin,
@@ -447,6 +452,7 @@ function ToolsSection({
   installation: string | undefined;
   loading: boolean;
   unavailable: boolean;
+  refusalReason: string | undefined;
   canSave: boolean | undefined;
   reportsApproval: boolean;
   admin: boolean | undefined;
@@ -487,6 +493,9 @@ function ToolsSection({
   }
   return (
     <Flex direction="column" gap="3">
+      {refusalReason && (
+        <Alert status="warning" {...approvalRefusalNote(refusalReason)} />
+      )}
       {note}
       {saveError && (
         <Alert

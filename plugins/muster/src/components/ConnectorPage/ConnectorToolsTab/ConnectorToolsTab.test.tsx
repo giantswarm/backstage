@@ -478,6 +478,25 @@ describe('ConnectorToolsTab: tool approval', () => {
     expect(screen.getByText(/refuses calls to its tools/)).toBeInTheDocument();
   });
 
+  it("warns with muster's reason where approvals cannot be answered, beside the settings", async () => {
+    const refused = makeTools(2).map(tool => ({
+      ...tool,
+      approval: {
+        setting: 'ask' as const,
+        source: 'connector' as const,
+        unavailable: 'muster runs no browser sign-in',
+      },
+    }));
+    await renderApprovalTab(refused);
+
+    expect(
+      screen.getByText("Approvals can't be answered right now"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/runs no browser sign-in/)).toBeInTheDocument();
+    expect(screen.queryByText("The tool settings can't be read")).toBeNull();
+    expect(screen.getAllByText('Ask').length).toBeGreaterThan(0);
+  });
+
   it('shows no approval where muster reports none (an older muster)', async () => {
     await renderApprovalTab(makeTools(2));
 
