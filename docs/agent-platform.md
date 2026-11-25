@@ -401,7 +401,7 @@ settings; it decides nothing.
   tool's own entry is not reviewed either: it opens on that preset
   (_Recommended_ for the rule Ask, _Allow all_ for Allow) expanded against
   the tools listed now, with no _New_ markers, and _Done_ writes every tool's
-  setting. A stored _Block_ rule is kept (its tools filled with _Ask all_),
+  setting. A stored _Block_ rule is kept (its listed tools stay _Block_),
   so _Done_ never loosens it. Only settings with tools' own entries count as
   reviewed. A
   reviewed one opens on its saved settings, a tool without its own entry marked _New_ and pre-filled

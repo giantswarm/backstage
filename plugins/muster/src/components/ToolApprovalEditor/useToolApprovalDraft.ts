@@ -135,10 +135,15 @@ export function useToolApprovalDraft({
       stored ? presetOfRule(stored) : defaultPresetFor(mode),
       rows,
     );
-    // A stored Block rule is kept: no preset loosens what hides new tools.
-    return stored && storedRule(stored.rule) === 'Block'
-      ? { ...expanded, rule: 'Block' }
-      : expanded;
+    // A stored Block rule is kept, and every listed tool keeps what it does
+    // now under it, Block: Done writes nothing looser than what is stored.
+    if (stored && storedRule(stored.rule) === 'Block') {
+      return {
+        rule: 'Block',
+        tools: Object.fromEntries(rows.map(row => [row.key, 'Block'])),
+      };
+    }
+    return expanded;
   }, [picked, saved, stored, rows, mode]);
   const draft = useMemo<ApprovalDraft>(
     () => ({

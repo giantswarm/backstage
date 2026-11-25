@@ -891,7 +891,8 @@ describe('NewConnectorTestPage: Test & Tools', () => {
       approval: { rule: string; tools: Record<string, string> };
     };
     expect(approval.rule).toBe('Block');
-    expect(new Set(Object.values(approval.tools))).toEqual(new Set(['Ask']));
+    // Each listed tool stays as the rule leaves it now: Block, not Ask.
+    expect(new Set(Object.values(approval.tools))).toEqual(new Set(['Block']));
   });
 
   it('saves nothing when a reviewed connector is left unchanged', async () => {
