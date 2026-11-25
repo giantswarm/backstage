@@ -61,6 +61,9 @@ export type CredentialResourceKind =
 
 /** What a save answers, and what the operation will write. */
 export type CredentialResourceResult = {
+  /** The organization the write is in, by its name; none for the installation's. */
+  organization?: string;
+  /** Its namespace, a detail. */
   namespace?: string;
   kind?: CredentialResourceKind;
   name?: string;

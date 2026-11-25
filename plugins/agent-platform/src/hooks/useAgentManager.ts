@@ -1,13 +1,25 @@
-import { useMemo } from 'react';
-import { queryOptions, useQueries, useQuery } from '@tanstack/react-query';
+import { useContext, useMemo } from 'react';
+import {
+  QueryClientContext,
+  queryOptions,
+  useQueries,
+  useQuery,
+} from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
-import { AgentManagerClient } from '../apis/AgentManagerClient';
+import {
+  AgentManagerClient,
+  type OrganizationOfNamespace,
+} from '../apis/AgentManagerClient';
 import {
   AGENT_MANAGER_SERVER,
   type AgentManagerInfo,
 } from '../lib/agentManager';
-import { musterAgentManagerInfoQueryKey } from '../lib/queryKeys';
+import { organizationOfNamespace } from '../lib/organizations';
+import {
+  musterAgentManagerInfoQueryKey,
+  musterOrganizationsQueryKey,
+} from '../lib/queryKeys';
 import { useMusterPluginApi } from './useMusterPluginApi';
 import {
   useMusterServerAvailability,
@@ -23,14 +35,64 @@ import {
 export function useAgentManagerClient(
   installation: string | undefined,
 ): AgentManagerClient | undefined {
-  const musterApi = useMusterPluginApi();
+  const clientOf = useAgentManagerClients();
   return useMemo(
-    () =>
-      musterApi && installation
-        ? new AgentManagerClient(musterApi, installation)
-        : undefined,
-    [musterApi, installation],
+    () => (clientOf && installation ? clientOf(installation) : undefined),
+    [clientOf, installation],
   );
+}
+
+/**
+ * Makes agent-manager clients for any installation, as
+ * {@link useAgentManagerClient} makes one: each tells an organization's
+ * namespace by the cached `get_info` and `list_organizations`, the entries
+ * the organization pages and the directory share. `undefined` without the
+ * muster plugin.
+ */
+export function useAgentManagerClients():
+  ((installation: string) => AgentManagerClient) | undefined {
+  const musterApi = useMusterPluginApi();
+  // Outside a QueryClientProvider (a page header's actions) the client
+  // reads the organizations itself, uncached.
+  const queryClient = useContext(QueryClientContext);
+  return useMemo(() => {
+    if (!musterApi) {
+      return undefined;
+    }
+    return (installation: string) => {
+      const organizationOf: OrganizationOfNamespace | undefined = queryClient
+        ? namespace =>
+            organizationOfNamespace(namespace, {
+              info: () =>
+                queryClient.fetchQuery(
+                  agentManagerInfoQuery(musterApi, installation),
+                ),
+              listing: () =>
+                queryClient.fetchQuery(
+                  organizationsQuery(musterApi, installation),
+                ),
+            })
+        : undefined;
+      return new AgentManagerClient(musterApi, installation, organizationOf);
+    };
+  }, [musterApi, queryClient]);
+}
+
+/**
+ * `list_organizations` of one installation as a query, the entry the
+ * organization pages read: a minute of staleness is fine.
+ */
+function organizationsQuery(
+  musterApi: ReturnType<typeof useMusterPluginApi>,
+  installation: string,
+) {
+  return queryOptions({
+    queryKey: musterOrganizationsQueryKey(installation),
+    queryFn: () =>
+      new AgentManagerClient(musterApi!, installation).listOrganizations(),
+    staleTime: 60_000,
+    retry: false,
+  });
 }
 
 /**

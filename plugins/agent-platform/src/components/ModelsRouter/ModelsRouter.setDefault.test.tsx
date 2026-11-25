@@ -226,7 +226,7 @@ describe('ModelsRouter · Set as default on an organization model', () => {
     await waitFor(() =>
       expect(toolCalls(callTool, 'set_organization_model')).toEqual([
         {
-          namespace: PAYMENTS.namespace,
+          organization: PAYMENTS.organization,
           name: 'claude-sonnet',
           default: true,
           requestId: expect.any(String),

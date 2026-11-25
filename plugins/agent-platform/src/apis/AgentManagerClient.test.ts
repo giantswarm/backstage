@@ -260,3 +260,92 @@ describe('AgentManagerClient.updateOrganizationAdmins', () => {
     ]);
   });
 });
+
+describe('AgentManagerClient addresses an organization by its name', () => {
+  /** agent-manager with one organization, payments, in agents-payments. */
+  function withPayments() {
+    const callTool = jest.fn(
+      async (name: string, _args: Record<string, unknown>, _inst?: string) => {
+        switch (name) {
+          case 'x_agent-manager_get_info':
+            return { capabilities: { organizations: true } };
+          case 'x_agent-manager_list_organizations':
+            return {
+              organizations: [
+                {
+                  name: 'payments',
+                  namespace: 'agents-payments',
+                  permissions: { manage: true, member: true },
+                },
+              ],
+            };
+          case 'x_agent-manager_start_session':
+            return { session: { id: 'sess-1' } };
+          default:
+            return {};
+        }
+      },
+    );
+    const client = new AgentManagerClient(
+      { callTool } as unknown as MusterApi,
+      'inst-1',
+    );
+    const argsOf = (tool: string) =>
+      callTool.mock.calls
+        .filter(([name]) => name === `x_agent-manager_${tool}`)
+        .map(([, args]) => args);
+    return { client, argsOf };
+  }
+
+  it.each([
+    [
+      'an organization namespace',
+      'agents-payments',
+      { organization: 'payments' },
+    ],
+    ['the platform namespace', 'kagent', { namespace: 'kagent' }],
+    ['a namespace of no organization', 'team-x', { namespace: 'team-x' }],
+  ])('an agent tool in %s', async (_case, namespace, place) => {
+    const { client, argsOf } = withPayments();
+    await client.getAgent(namespace, 'helper');
+    await client.startSession({ ...REQUEST, namespace });
+    expect(argsOf('get_agent')).toEqual([{ ...place, name: 'helper' }]);
+    expect(argsOf('start_session')[0]).toMatchObject(place);
+    expect(argsOf('start_session')[0]).not.toHaveProperty(
+      'organization' in place ? 'namespace' : 'organization',
+    );
+  });
+
+  it('a model tool names the organization, or none for the installation, and refuses any other namespace', async () => {
+    const { client, argsOf } = withPayments();
+    await client.deleteModel('agents-payments', 'claude', { dryRun: true });
+    await client.deleteModel('kagent', 'claude', { dryRun: true });
+    await expect(client.deleteModel('team-x', 'claude')).rejects.toThrow(
+      /team-x is neither/,
+    );
+    expect(argsOf('delete_organization_object')).toEqual([
+      { organization: 'payments', name: 'claude', kind: 'model', dryRun: true },
+      { name: 'claude', kind: 'model', dryRun: true },
+    ]);
+  });
+
+  it('the member and connector tools take the organization only', async () => {
+    const { client, argsOf } = withPayments();
+    await client.listOrganizationMembers('payments');
+    await client.addOrganizationMember({
+      organization: 'payments',
+      group: 'reviewers',
+      role: 'user',
+    });
+    await client.listOrganizationConnectors('payments');
+    expect(argsOf('list_organization_members')).toEqual([
+      { organization: 'payments' },
+    ]);
+    expect(argsOf('add_organization_member')).toEqual([
+      { organization: 'payments', group: 'reviewers', role: 'user' },
+    ]);
+    expect(argsOf('list_organization_connectors')).toEqual([
+      { organization: 'payments' },
+    ]);
+  });
+});

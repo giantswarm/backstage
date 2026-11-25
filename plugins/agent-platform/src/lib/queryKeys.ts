@@ -395,31 +395,31 @@ export function musterOrganizationErasureQueryKey(
   ] as const;
 }
 
-/** `list_organization_members` of one organization namespace. */
+/** `list_organization_members` of one organization, by its name. */
 export function musterOrganizationMembersQueryKey(
   installation: string,
-  namespace: string,
+  organization: string,
 ) {
   return [
     'muster',
     'agent-platform',
     'agent-manager-organization-members',
     installation,
-    namespace,
+    organization,
   ] as const;
 }
 
-/** `list_organization_connectors` of one organization namespace. */
+/** `list_organization_connectors` of one organization, by its name. */
 export function musterOrganizationConnectorsQueryKey(
   installation: string,
-  namespace: string,
+  organization: string,
 ) {
   return [
     'muster',
     'agent-platform',
     'agent-manager-organization-connectors',
     installation,
-    namespace,
+    organization,
   ] as const;
 }
 

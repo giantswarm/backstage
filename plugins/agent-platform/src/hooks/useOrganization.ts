@@ -20,6 +20,7 @@ import {
   type OrganizationDeleteResult,
   type OrganizationDetails,
   type OrganizationMember,
+  type OrganizationNamespace,
   type OrganizationListing,
 } from '../lib/organizations';
 import {
@@ -150,18 +151,24 @@ export function useOrganizationDetails(
   return readOf(enabled, query);
 }
 
-/** `list_organization_members`: groups first, each with its role. */
+/**
+ * `list_organization_members` of an organization, by its name: groups
+ * first, each with its role. Not asked without one.
+ */
 export function useOrganizationMembers(
   installation: string,
-  namespace: string | undefined,
+  organization: string | undefined,
 ): OrganizationRead<OrganizationMember[]> {
   const client = useAgentManagerClient(installation);
-  const enabled = Boolean(client) && Boolean(namespace);
+  const enabled = Boolean(client) && Boolean(organization);
   const query = useQuery({
-    queryKey: musterOrganizationMembersQueryKey(installation, namespace ?? ''),
+    queryKey: musterOrganizationMembersQueryKey(
+      installation,
+      organization ?? '',
+    ),
     enabled,
     queryFn: async () =>
-      (await client!.listOrganizationMembers(namespace!)).members,
+      (await client!.listOrganizationMembers(organization!)).members,
     staleTime: 30_000,
     retry: false,
   });
@@ -169,7 +176,8 @@ export function useOrganizationMembers(
 }
 
 /**
- * `list_organization_connectors`: the organization's own connectors
+ * `list_organization_connectors` of an organization, by its name: its own
+ * connectors
  * (`organizationOwnConnectors`, which leaves out the agents' muster bindings
  * by what this installation's agent-manager can say), with the ones in
  * `picked` whatever they are. Waits for `get_info`, whose version decides
@@ -177,19 +185,19 @@ export function useOrganizationMembers(
  */
 export function useOrganizationConnectors(
   installation: string,
-  namespace: string | undefined,
+  organization: string | undefined,
   picked: readonly string[] = [],
 ): OrganizationRead<OrganizationConnector[]> {
   const client = useAgentManagerClient(installation);
   const infoRead = useAgentManagerInfo(installation);
-  const enabled = Boolean(client) && Boolean(namespace);
+  const enabled = Boolean(client) && Boolean(organization);
   const query = useQuery({
     queryKey: musterOrganizationConnectorsQueryKey(
       installation,
-      namespace ?? '',
+      organization ?? '',
     ),
     enabled,
-    queryFn: () => client!.listOrganizationConnectors(namespace!),
+    queryFn: () => client!.listOrganizationConnectors(organization!),
     staleTime: 60_000,
     retry: false,
   });
@@ -211,8 +219,9 @@ function memberKind(request: MemberRequest): 'group' | 'person' {
 }
 
 /**
- * Adding and removing an organization's members as the person
- * (`add_organization_member`, `remove_organization_member`). A refusal is
+ * Adding and removing the members of the organization in `namespace`, by
+ * its name, as the person (`add_organization_member`,
+ * `remove_organization_member`). A refusal is
  * agent-manager's, in its own words: the page shows it as it comes, the
  * removal of `organization-admins`' last admin among them. The mode follows
  * the organization ({@link useOrganizationContentMode}): in mode commit the
@@ -220,14 +229,17 @@ function memberKind(request: MemberRequest): 'group' | 'person' {
  */
 export function useOrganizationMemberWrites(
   installation: string,
-  namespace: string,
+  organization: OrganizationNamespace,
 ) {
   const client = useAgentManagerClient(installation);
   const contentMode = useOrganizationContentMode();
   const queryClient = useQueryClient();
   const refresh = () =>
     queryClient.invalidateQueries({
-      queryKey: musterOrganizationMembersQueryKey(installation, namespace),
+      queryKey: musterOrganizationMembersQueryKey(
+        installation,
+        organization.organization,
+      ),
     });
 
   const add = useTrackedMutation<MemberResult, Error, MemberRequest>({
@@ -248,7 +260,9 @@ export function useOrganizationMemberWrites(
       }
       return client.addOrganizationMember({
         ...request,
-        ...modeArgument(await contentMode(installation, namespace)),
+        ...modeArgument(
+          await contentMode(installation, organization.namespace),
+        ),
       });
     },
     onSuccess: refresh,
@@ -268,7 +282,9 @@ export function useOrganizationMemberWrites(
       }
       return client.removeOrganizationMember({
         ...request,
-        ...modeArgument(await contentMode(installation, namespace)),
+        ...modeArgument(
+          await contentMode(installation, organization.namespace),
+        ),
       });
     },
     onSuccess: refresh,
@@ -457,7 +473,7 @@ export function useOrganizationAdminsUpdate(
         ...modeArgument(mode),
       });
     },
-    onSuccess: (_result, { organization }) =>
+    onSuccess: () =>
       Promise.all([
         queryClient.invalidateQueries({
           queryKey: musterOrganizationsQueryKey(installation),
@@ -465,16 +481,9 @@ export function useOrganizationAdminsUpdate(
         queryClient.invalidateQueries({
           queryKey: musterOrganizationQueryKey(installation, name),
         }),
-        ...(organization?.namespace
-          ? [
-              queryClient.invalidateQueries({
-                queryKey: musterOrganizationMembersQueryKey(
-                  installation,
-                  organization.namespace,
-                ),
-              }),
-            ]
-          : []),
+        queryClient.invalidateQueries({
+          queryKey: musterOrganizationMembersQueryKey(installation, name),
+        }),
       ]),
   });
 }

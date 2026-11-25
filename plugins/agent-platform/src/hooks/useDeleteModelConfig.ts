@@ -97,6 +97,7 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
       try {
         await client!.deleteModel(namespace!, name!, {
           dryRun: true,
+          organization: directory.get(namespace!)?.organization,
           ...modeArgument(await contentMode(cluster, namespace!)),
         });
       } catch (error) {
@@ -214,11 +215,10 @@ export function useDeleteModelConfig(modelConfig: ModelConfig | undefined) {
       if (!client || !namespace) {
         throw new Error('agent-manager is not reachable on this installation.');
       }
-      const result = await client.deleteModel(
-        namespace,
-        name,
-        modeArgument(await contentMode(cluster, namespace)),
-      );
+      const result = await client.deleteModel(namespace, name, {
+        organization: directory.get(namespace)?.organization,
+        ...modeArgument(await contentMode(cluster, namespace)),
+      });
       await invalidateReads([gvk]);
       // A pull request deletes nothing until it is merged.
       return {

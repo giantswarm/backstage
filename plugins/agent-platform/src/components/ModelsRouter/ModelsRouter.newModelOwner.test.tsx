@@ -178,7 +178,7 @@ describe('Add a model, under the Models tab: the owner', () => {
     );
     expect(toolCalls(callTool, 'set_organization_model')).toEqual([
       expect.objectContaining({
-        namespace: PAYMENTS.namespace,
+        organization: PAYMENTS.organization,
         name: 'sonnet',
       }),
     ]);

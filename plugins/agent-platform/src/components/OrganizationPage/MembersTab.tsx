@@ -35,6 +35,7 @@ import {
   type MemberFormRole,
   type MemberRequest,
   type OrganizationMember,
+  type OrganizationNamespace,
 } from '../../lib/organizations';
 import { PullRequestOutcome } from '../PullRequestOutcome';
 import { OrganizationAdminsSection } from './OrganizationAdminsSection';
@@ -46,14 +47,14 @@ type MemberKind = 'group' | 'person';
 type MemberRow = OrganizationMember & { id: string };
 
 function memberRequest(
-  namespace: string,
+  organization: string,
   kind: MemberKind,
   name: string,
   role?: MemberFormRole,
 ): MemberRequest {
   return kind === 'group'
-    ? { namespace, group: name, ...(role ? { role } : {}) }
-    : { namespace, user: name, ...(role ? { role } : {}) };
+    ? { organization, group: name, ...(role ? { role } : {}) }
+    : { organization, user: name, ...(role ? { role } : {}) };
 }
 
 const useStyles = makeStyles({
@@ -81,16 +82,16 @@ const useStyles = makeStyles({
 /** The form that binds a group (first) or a person to a role. */
 function AddMember({
   installation,
-  namespace,
+  organization,
   changesDisabledBy,
 }: {
   installation: string;
-  namespace: string;
+  organization: OrganizationNamespace;
   changesDisabledBy?: string;
 }) {
   const classes = useStyles();
   const off = changesDisabledBy !== undefined;
-  const { add } = useOrganizationMemberWrites(installation, namespace);
+  const { add } = useOrganizationMemberWrites(installation, organization);
   const [kind, setKind] = useState<MemberKind>('group');
   const [name, setName] = useState('');
   const [role, setRole] = useState<MemberFormRole>('user');
@@ -158,9 +159,10 @@ function AddMember({
               validation.reveal();
               return;
             }
-            add.mutate(memberRequest(namespace, kind, trimmed, role), {
-              onSuccess: () => setName(''),
-            });
+            add.mutate(
+              memberRequest(organization.organization, kind, trimmed, role),
+              { onSuccess: () => setName('') },
+            );
           }}
         >
           {add.isPending ? 'Adding…' : `Add ${noun}`}
@@ -198,19 +200,23 @@ function AddMember({
  */
 export function MembersTab({
   installation,
-  namespace,
   organization,
+  listed,
   changesDisabledBy,
 }: {
   installation: string;
-  namespace: string;
+  /** The organization: its name, which the tools take, and its namespace. */
+  organization: OrganizationNamespace;
   /** The organization as `list_organizations` lists it, if it does. */
-  organization?: ListedOrganization;
+  listed?: ListedOrganization;
   changesDisabledBy?: string;
 }) {
-  const members = useOrganizationMembers(installation, namespace);
-  const { remove } = useOrganizationMemberWrites(installation, namespace);
-  const access = useOrganizationAccess(installation, namespace);
+  const members = useOrganizationMembers(
+    installation,
+    organization.organization,
+  );
+  const { remove } = useOrganizationMemberWrites(installation, organization);
+  const access = useOrganizationAccess(installation, organization.namespace);
   const [removing, setRemoving] = useState<MemberRow>();
 
   const columns: ColumnConfig<MemberRow>[] = [
@@ -309,10 +315,10 @@ export function MembersTab({
 
   return (
     <Flex direction="column" gap="5">
-      {organization?.organization && (
+      {listed?.organization && (
         <OrganizationAdminsSection
           installation={installation}
-          organization={organization}
+          organization={listed}
           changesDisabledBy={changesDisabledBy}
         />
       )}
@@ -354,7 +360,7 @@ export function MembersTab({
           }
           remove.mutate(
             memberRequest(
-              namespace,
+              organization.organization,
               removing.kind === 'Group' ? 'group' : 'person',
               removing.name,
               removing.role === 'admin' ? undefined : removing.role,
@@ -389,7 +395,7 @@ export function MembersTab({
         <PageSection title="Add a member">
           <AddMember
             installation={installation}
-            namespace={namespace}
+            organization={organization}
             changesDisabledBy={changesDisabledBy}
           />
         </PageSection>

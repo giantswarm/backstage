@@ -83,6 +83,35 @@ describe('the fixture agent-manager', () => {
     );
   });
 
+  it('takes an organization by its name, as agent-manager does, and refuses its namespace', async () => {
+    const { server, organizationWith, client } = setup();
+    const call = (tool: string, args: Record<string, unknown>) =>
+      musterApiOf(server).callTool(
+        `x_agent-manager_${tool}`,
+        args,
+        INSTALLATION,
+      );
+    const { name, namespace } = organizationWith('admin');
+
+    await expect(
+      call('list_organization_members', { namespace }),
+    ).rejects.toThrow(/^invalid_request: unknown argument namespace/);
+    await expect(call('list_model_configs', { namespace })).rejects.toThrow(
+      `invalid_request: namespace ${namespace} is the namespace of organization ${name}: pass organization "${name}"`,
+    );
+    await expect(
+      call('list_model_configs', { organization: name }),
+    ).resolves.toMatchObject({ organization: name });
+
+    await client.createOrganization({ name: 'newcomers' });
+    await expect(
+      call('list_organization_members', { organization: 'newcomers' }),
+    ).rejects.toThrow(/^conflict: organization newcomers is not ready yet/);
+    await expect(
+      call('list_organization_members', { organization: 'nobody' }),
+    ).rejects.toThrow(/^not_found: organization nobody not found/);
+  });
+
   it('lists the organizations of the installation with what the person may do', async () => {
     const { client, data } = setup();
     const { organizations } = await client.listOrganizations();
@@ -244,22 +273,22 @@ describe('the fixture agent-manager', () => {
 
   it('adds and removes members, and leaves the admins to the organization', async () => {
     const { client, organizationWith } = setup();
-    const { namespace } = organizationWith('admin');
+    const { name: organization } = organizationWith('admin');
 
     await client.addOrganizationMember({
-      namespace: namespace!,
+      organization,
       group: 'reviewers',
       role: 'user',
     });
     expect(
-      (await client.listOrganizationMembers(namespace!)).members,
+      (await client.listOrganizationMembers(organization)).members,
     ).toContainEqual(expect.objectContaining({ name: 'reviewers' }));
     await client.removeOrganizationMember({
-      namespace: namespace!,
+      organization,
       group: 'reviewers',
       role: 'user',
     });
-    const { members } = await client.listOrganizationMembers(namespace!);
+    const { members } = await client.listOrganizationMembers(organization);
     expect(members).not.toContainEqual(
       expect.objectContaining({ name: 'reviewers' }),
     );
@@ -270,14 +299,14 @@ describe('the fixture agent-manager', () => {
     expect(admin.from).toMatch(/spec\.admins/);
     await expect(
       client.addOrganizationMember({
-        namespace: namespace!,
+        organization,
         group: 'leads',
         role: 'admin' as 'user',
       }),
     ).rejects.toMatchObject({ code: 'invalid_request' });
     await expect(
       client.removeOrganizationMember({
-        namespace: namespace!,
+        organization,
         group: admin.name,
       }),
     ).rejects.toMatchObject({ code: 'not_found' });
@@ -312,7 +341,7 @@ describe('the fixture agent-manager', () => {
     expect((await listed())?.organization?.admins).toEqual([
       { kind: 'User', name: 'jane@example.com' },
     ]);
-    const { members } = await client.listOrganizationMembers(ready!.namespace!);
+    const { members } = await client.listOrganizationMembers(ready!.name);
     expect(
       members.filter(member => member.role === 'admin').map(m => m.name),
     ).toEqual(['jane@example.com']);
@@ -567,10 +596,10 @@ describe('the fixture agent-manager', () => {
 
   it('asks for a new connector credential', async () => {
     const { client, credentials, organizationWith } = setup();
-    const { namespace } = organizationWith('admin');
-    const [connector] = (
-      await client.listOrganizationConnectors(namespace!)
-    ).filter(candidate => candidate.credentials.length > 0);
+    const { name, namespace } = organizationWith('admin');
+    const [connector] = (await client.listOrganizationConnectors(name)).filter(
+      candidate => candidate.credentials.length > 0,
+    );
     const [credential] = connector.credentials;
 
     const operation = preparedCredentialOperation(
@@ -662,7 +691,7 @@ describe('the fixture agent-manager', () => {
     });
     await expect(
       client.addOrganizationMember({
-        namespace: organization.namespace!,
+        organization: organization.name,
         group: 'late',
       }),
     ).rejects.toMatchObject({ code: 'conflict' });

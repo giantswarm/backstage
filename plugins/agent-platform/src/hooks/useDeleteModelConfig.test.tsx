@@ -366,7 +366,11 @@ describe("an organization's model, deleted in the organization's mode", () => {
         await result.current.deleteModelConfig();
       });
 
-      const expected = mode ? { mode } : {};
+      // The organization by its name, as the listing names it.
+      const expected = {
+        organization: 'payments',
+        ...(mode ? { mode } : {}),
+      };
       // The dry run asks as the delete will be made.
       expect(mockDeleteModel).toHaveBeenCalledWith(
         ORGANIZATION_NAMESPACE,

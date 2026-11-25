@@ -310,9 +310,10 @@ describe('useSaveOrganizationModel', () => {
     expect(await screen.findByTestId('answer')).toHaveTextContent(
       `/customize/models/credentials/gazelle/kagent/${CREDENTIAL_OPERATION}`,
     );
+    expect(setCalls(callTool)[0]).not.toHaveProperty('organization');
+    expect(setCalls(callTool)[0]).not.toHaveProperty('namespace');
     expect(setCalls(callTool)).toEqual([
       expect.objectContaining({
-        namespace: 'kagent',
         provider: 'GeminiVertexAI',
         projectID: 'vertex-test',
         location: 'global',
@@ -355,7 +356,7 @@ describe('useSaveOrganizationModel', () => {
     expect(callTool).toHaveBeenCalledWith(
       'x_agent-manager_set_organization_model',
       {
-        namespace: PAYMENTS.namespace,
+        organization: PAYMENTS.organization,
         name: 'claude-sonnet',
         provider: 'Anthropic',
         model: 'claude-sonnet-4-6',
@@ -432,7 +433,7 @@ describe('useSaveOrganizationModel', () => {
     const callTool = await saveWith(
       { organization: PAYMENTS, values: VALUES, original: SONNET },
       async () => ({
-        namespace: PAYMENTS.namespace,
+        organization: PAYMENTS.organization,
         kind: 'model',
         name: 'claude-sonnet',
         defaultModel: 'claude-sonnet',
@@ -629,7 +630,7 @@ describe('useSaveOrganizationModel', () => {
       [
         'x_agent-manager_replace_organization_credential',
         {
-          namespace: PAYMENTS.namespace,
+          organization: PAYMENTS.organization,
           secret: 'tenant-credential-claude-sonnet',
           key: 'apiKey',
           requestId: expect.any(String),

@@ -342,8 +342,8 @@ export function OrganizationPage({
             element={
               <MembersTab
                 installation={installation}
-                namespace={namespace}
-                organization={listed}
+                organization={organization}
+                listed={listed}
                 changesDisabledBy={changesDisabledBy}
               />
             }

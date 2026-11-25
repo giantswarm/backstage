@@ -136,6 +136,14 @@ const GOOGLE_SERVICE_ACCOUNT_JSON = 'google-service-account-json' as const;
 
 const DAY = 24 * 60 * 60 * 1000;
 
+/**
+ * A member tool's request as the state takes it: the organization's
+ * namespace, which the fixture server finds from the organization's name.
+ */
+export type FixtureMemberRequest = Omit<MemberRequest, 'organization'> & {
+  namespace: string;
+};
+
 /** The error of a refusal, in agent-manager's words: `<code>: <message>`. */
 export function refusal(code: string, message: string): Error {
   return new Error(`${code}: ${message}`);
@@ -699,6 +707,41 @@ export class AgentManagerFixtureState {
     };
   }
 
+  /**
+   * The namespace of the organization `name`, as agent-manager finds it for
+   * every tool that takes an organization by its name: refused, nothing
+   * written, while the organization does not exist or the operator has not
+   * reported its namespace.
+   */
+  organizationNamespace(installation: string, name: string): string {
+    const organization = this.stateOf(installation).organizations.find(
+      candidate => candidate.name === name,
+    );
+    if (!organization) {
+      throw refusal(
+        'not_found',
+        `organization ${name} not found; list_organizations lists yours`,
+      );
+    }
+    if (!organization.namespace) {
+      throw refusal(
+        'conflict',
+        `organization ${name} is not ready yet: agent-platform-operator has not reported its namespace (status.agentPlatform.namespace); nothing was written, try again shortly`,
+      );
+    }
+    return organization.namespace;
+  }
+
+  /** The name of the organization whose namespace `namespace` is, if any. */
+  organizationOfNamespace(
+    installation: string,
+    namespace: string,
+  ): string | undefined {
+    return this.stateOf(installation).organizations.find(
+      candidate => candidate.namespace === namespace,
+    )?.name;
+  }
+
   private erasureOf(
     installation: string,
     organization: FixtureOrganizationState,
@@ -881,7 +924,7 @@ export class AgentManagerFixtureState {
     return this.stateOf(installation).members.get(namespace) ?? [];
   }
 
-  addMember(installation: string, request: MemberRequest): MemberResult {
+  addMember(installation: string, request: FixtureMemberRequest): MemberResult {
     const organization = this.writableIn(installation, request.namespace);
     this.mustManage(organization);
     if ((request.role as string | undefined) === 'admin') {
@@ -912,6 +955,7 @@ export class AgentManagerFixtureState {
       this.changed();
     }
     return {
+      organization: organization.name,
       namespace: request.namespace,
       member,
       changed: !exists,
@@ -919,7 +963,10 @@ export class AgentManagerFixtureState {
     };
   }
 
-  removeMember(installation: string, request: MemberRequest): MemberResult {
+  removeMember(
+    installation: string,
+    request: FixtureMemberRequest,
+  ): MemberResult {
     const organization = this.writableIn(installation, request.namespace);
     this.mustManage(organization);
     const kind = request.group ? 'Group' : 'User';
@@ -943,6 +990,7 @@ export class AgentManagerFixtureState {
     this.stateOf(installation).members.set(request.namespace, kept);
     this.changed();
     return {
+      organization: organization.name,
       namespace: request.namespace,
       member: removed[0],
       changed: true,

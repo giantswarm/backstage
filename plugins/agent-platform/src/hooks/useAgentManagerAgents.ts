@@ -2,10 +2,9 @@ import { useMemo } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
-import { AgentManagerClient } from '../apis/AgentManagerClient';
 import type { AgentManagerAgent } from '../lib/agentManager';
 import { musterAgentManagerAgentQueryKey } from '../lib/queryKeys';
-import { useMusterPluginApi } from './useMusterPluginApi';
+import { useAgentManagerClients } from './useAgentManager';
 
 /** One agent to read, by its identity. */
 export type AgentManagerAgentRef = {
@@ -31,16 +30,12 @@ export type AgentManagerAgentReading = {
 export function useAgentManagerAgents(
   refs: AgentManagerAgentRef[],
 ): Map<string, AgentManagerAgentReading> {
-  const musterApi = useMusterPluginApi();
+  const agentManagerOf = useAgentManagerClients();
   const results = useQueries({
     queries: refs.map(({ installation, namespace, name }) => ({
       queryKey: musterAgentManagerAgentQueryKey(installation, namespace, name),
-      queryFn: () =>
-        new AgentManagerClient(musterApi!, installation).getAgent(
-          namespace,
-          name,
-        ),
-      enabled: Boolean(musterApi),
+      queryFn: () => agentManagerOf!(installation).getAgent(namespace, name),
+      enabled: Boolean(agentManagerOf),
       retry: false,
       staleTime: 15_000,
     })),
@@ -63,13 +58,13 @@ export function useAgentManagerAgents(
             `${ref.installation}/${ref.namespace}/${ref.name}`,
             {
               agent: result?.data,
-              settled: !musterApi || !result || !isAwaitingData(result),
+              settled: !agentManagerOf || !result || !isAwaitingData(result),
             },
           ];
         }),
       ),
     // The signatures stand in for refs and results, new arrays each render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [refsKey, signature, musterApi],
+    [refsKey, signature, agentManagerOf],
   );
 }

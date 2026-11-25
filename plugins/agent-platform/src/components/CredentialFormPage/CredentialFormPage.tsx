@@ -646,17 +646,18 @@ export function CredentialFormPage({
       setNotice(undefined);
       const savedNamespace =
         result.namespace ?? loaded?.operation.organization.namespace;
-      if (!savedNamespace) {
-        return undefined;
-      }
+      const savedOrganization =
+        result.organization ?? loaded?.operation.organization.organization;
       return Promise.all([
-        invalidateModelReads(queryClient, installation, savedNamespace),
-        queryClient.invalidateQueries({
-          queryKey: musterOrganizationConnectorsQueryKey(
-            installation,
-            savedNamespace,
-          ),
-        }),
+        savedNamespace &&
+          invalidateModelReads(queryClient, installation, savedNamespace),
+        savedOrganization &&
+          queryClient.invalidateQueries({
+            queryKey: musterOrganizationConnectorsQueryKey(
+              installation,
+              savedOrganization,
+            ),
+          }),
       ]);
     },
     onError: error => {

@@ -131,7 +131,7 @@ export function OrganizationConnectors() {
   const picked = state.connectors;
   const read = useOrganizationConnectors(
     installation ?? '',
-    offered && organization ? organization.namespace : undefined,
+    offered && organization ? organization.organization : undefined,
     picked,
   );
   const organizationRoute = useRouteRef(organizationDetailRouteRef);

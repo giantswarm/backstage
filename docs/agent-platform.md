@@ -1018,6 +1018,26 @@ alone.
 erases as `get_organization` answers it, the organization namespace and
 organization-operator's `org-<name>` namespace included where it runs.
 
+**The tools take the organization's name.** agent-manager's tools address
+an organization by its name (`organization`), never by its namespace:
+the member tools and `list_organization_connectors` take it alone, the
+model tools (`set_organization_model`, `replace_organization_credential`,
+`delete_organization_object`) take it or none for the installation's
+models, and the agent tools (`get_agent`, `create_agent`, `start_session`
+and the others) take it for an organization's agent and `namespace` for the
+installation's own platform namespace. `AgentManagerClient` sends it: the
+organization page passes the name it shows, and a call that starts from a
+namespace (an agent or a model read from the cluster) finds the
+organization in the cached `list_organizations`. A model write in a
+namespace that is neither the installation's models' nor a listed
+organization's is refused before the call. The answers carry
+`organization`; the namespace is a detail. agent-manager answers an
+organization it cannot use in its own words: not found, the Agent Platform
+not enabled for it, or not ready yet. A new organization's page asks for
+none of its content until the operator reports its namespace. The
+credential form's HTTP API and the Kubernetes proxy still take the
+namespace.
+
 ### The serving layer (Model hosting)
 
 **Model hosting** (Customize → Models → Model hosting) shows what is served, or

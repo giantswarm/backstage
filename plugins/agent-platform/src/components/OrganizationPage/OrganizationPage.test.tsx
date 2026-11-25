@@ -598,7 +598,7 @@ describe('OrganizationPage', () => {
     );
   });
 
-  it('shows the members agent-manager lists, each with its role, from the organization namespace it names', async () => {
+  it('shows the members agent-manager lists, each with its role, asked by the organization name', async () => {
     const { callTool } = await renderPage('', SCENARIO);
 
     const table = await screen.findByRole('grid');
@@ -610,9 +610,9 @@ describe('OrganizationPage', () => {
     for (const tab of ['Members', 'Models', 'Connectors', 'Egress']) {
       expect(screen.getByRole('tab', { name: tab })).toBeInTheDocument();
     }
-    // The namespace is agent-manager's answer, never derived from a name.
+    // The tools take the organization by its name, never its namespace.
     expect(toolCalls(callTool, 'list_organization_members')).toEqual([
-      { namespace: PAYMENTS.namespace },
+      { organization: PAYMENTS.organization },
     ]);
   });
 
@@ -631,7 +631,7 @@ describe('OrganizationPage', () => {
 
     await waitFor(() =>
       expect(toolCalls(callTool, 'add_organization_member')).toEqual([
-        { namespace: PAYMENTS.namespace, group: 'sre', role: 'user' },
+        { organization: PAYMENTS.organization, group: 'sre', role: 'user' },
       ]),
     );
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
@@ -686,7 +686,7 @@ describe('OrganizationPage', () => {
     await waitFor(() =>
       expect(toolCalls(callTool, 'add_organization_member')).toEqual([
         {
-          namespace: PAYMENTS.namespace,
+          organization: PAYMENTS.organization,
           user: 'joe@example.com',
           role: 'user',
         },
@@ -713,7 +713,7 @@ describe('OrganizationPage', () => {
     await waitFor(() =>
       expect(toolCalls(callTool, 'remove_organization_member')).toEqual([
         {
-          namespace: PAYMENTS.namespace,
+          organization: PAYMENTS.organization,
           user: 'jane@example.com',
           role: 'user',
         },
@@ -1125,7 +1125,7 @@ describe('OrganizationPage', () => {
     await waitFor(() =>
       expect(toolCalls(callTool, 'set_organization_model')).toEqual([
         expect.objectContaining({
-          namespace: PAYMENTS.namespace,
+          organization: PAYMENTS.organization,
           name: 'claude-sonnet',
           displayName: 'Claude Sonnet',
           provider: 'Anthropic',
@@ -1269,7 +1269,7 @@ describe('OrganizationPage', () => {
     await waitFor(() =>
       expect(toolCalls(callTool, 'replace_organization_credential')).toEqual([
         {
-          namespace: PAYMENTS.namespace,
+          organization: PAYMENTS.organization,
           secret: 'tenant-credential-gpt',
           key: 'OPENAI_API_KEY',
           requestId: expect.any(String),
@@ -1324,7 +1324,7 @@ describe('OrganizationPage', () => {
     await waitFor(() =>
       expect(toolCalls(callTool, 'replace_organization_credential')).toEqual([
         {
-          namespace: PAYMENTS.namespace,
+          organization: PAYMENTS.organization,
           secret: 'tenant-credential-jira',
           key: 'token',
           requestId: expect.any(String),
@@ -1452,7 +1452,7 @@ describe('OrganizationPage', () => {
     await waitFor(() =>
       expect(toolCalls(callTool, 'replace_organization_credential')).toEqual([
         {
-          namespace: PAYMENTS.namespace,
+          organization: PAYMENTS.organization,
           secret: 'tenant-credential-stripe',
           key: 'token',
           requestId: expect.any(String),

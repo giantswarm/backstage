@@ -336,6 +336,16 @@ describe('OrganizationsRouter', () => {
     ).toBeInTheDocument();
     expect(screen.getByText(new RegExp(CREATED_NEXT))).toBeInTheDocument();
     expect(screen.queryByText(/You are not a member/)).toBeNull();
+    // Not ready is a state, not an error: no tool is asked for its content,
+    // which agent-manager would refuse as not ready yet.
+    for (const tool of [
+      'list_organization_members',
+      'list_model_configs',
+      'list_organization_connectors',
+      'list_egress_policies',
+    ]) {
+      expect(toolCalls(callTool, tool)).toEqual([]);
+    }
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'AgentPlatform.organizationCreated' }),
     );

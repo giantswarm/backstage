@@ -190,8 +190,8 @@ describe('New agent: the organization picker', () => {
     expect(screen.queryByText('sonnet')).toBeNull();
     await waitFor(() =>
       expect(toolCalls(callTool, 'list_model_configs')).toEqual([
-        { namespace: PAYMENTS.namespace },
-        { namespace: RISK.namespace },
+        { organization: PAYMENTS.organization },
+        { organization: RISK.organization },
       ]),
     );
   });

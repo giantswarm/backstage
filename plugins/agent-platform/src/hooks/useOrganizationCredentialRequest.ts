@@ -101,6 +101,7 @@ export function useOrganizationCredentialRequest(
         try {
           return await client.setOrganizationModel({
             namespace,
+            organization: organization.organization,
             name: request.name,
             displayName: request.displayName,
             provider: request.provider,
@@ -138,6 +139,7 @@ export function useOrganizationCredentialRequest(
         });
         return client.replaceOrganizationCredential({
           namespace,
+          organization: organization.organization,
           secret,
           key,
           requestId,
@@ -147,6 +149,7 @@ export function useOrganizationCredentialRequest(
       default:
         return client.replaceOrganizationCredential({
           namespace,
+          organization: organization.organization,
           secret: request.secret,
           key: request.key,
           requestId,
@@ -231,7 +234,7 @@ export function useOrganizationCredentialRequest(
         queryClient.invalidateQueries({
           queryKey: musterOrganizationConnectorsQueryKey(
             installation,
-            organization.namespace,
+            organization.organization,
           ),
         }),
       ]);

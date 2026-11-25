@@ -86,7 +86,9 @@ function modelToolSchema(createOnly: boolean) {
 /** Adds a model once, on an agent-manager whose tool takes `create` or not. */
 async function addModel(createOnly: boolean, answer: () => Promise<unknown>) {
   const user = userEvent.setup();
-  const { api, callTool } = fakeOrganizationsMuster({});
+  const { api, callTool } = fakeOrganizationsMuster({
+    mine: { organizations: [PAYMENTS] },
+  });
   jest
     .mocked(api.describeTool)
     .mockResolvedValue(modelToolSchema(createOnly) as never);
@@ -121,7 +123,9 @@ describe('useOrganizationCredentialRequest', () => {
     'tracks an immediate model write (created: %s)',
     async created => {
       const user = userEvent.setup();
-      const { api, callTool } = fakeOrganizationsMuster({});
+      const { api, callTool } = fakeOrganizationsMuster({
+        mine: { organizations: [PAYMENTS] },
+      });
       callTool.mockResolvedValue({ kind: 'model', name: 'claude', created });
       const analyticsApi = mockApis.analytics.mock();
       await renderInTestApp(
@@ -165,8 +169,16 @@ describe('useOrganizationCredentialRequest', () => {
     }));
     await screen.findByText('Completed');
     expect(toolCalls(callTool, 'set_organization_model')).toEqual([
-      expect.objectContaining({ name: 'claude', create: true }),
+      expect.objectContaining({
+        organization: 'payments',
+        name: 'claude',
+        create: true,
+      }),
     ]);
+    // The organization by its name, never its namespace.
+    expect(toolCalls(callTool, 'set_organization_model')[0]).not.toHaveProperty(
+      'namespace',
+    );
   });
 
   it('leaves create out where the tool does not take it (agent-manager 2.24.0 and older)', async () => {
@@ -203,7 +215,9 @@ describe('useOrganizationCredentialRequest', () => {
     'sends a fresh requestId with each request (form route bound: %s)',
     async mounted => {
       const user = userEvent.setup();
-      const { api, callTool } = fakeOrganizationsMuster({});
+      const { api, callTool } = fakeOrganizationsMuster({
+        mine: { organizations: [PAYMENTS] },
+      });
       await renderInTestApp(
         <TestApiProvider
           apis={[

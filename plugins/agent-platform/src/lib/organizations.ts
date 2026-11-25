@@ -349,6 +349,45 @@ export function organizationNamespacesOf(
   );
 }
 
+/**
+ * The reads that tell which organization a namespace is: `get_info`, whose
+ * capability says whether the installation serves organizations, and
+ * `list_organizations`.
+ */
+export type OrganizationReads = {
+  info: () => Promise<{ capabilities?: Record<string, boolean> }>;
+  listing: () => Promise<OrganizationListing>;
+};
+
+/**
+ * The name of the organization whose namespace `namespace` is, as
+ * `list_organizations` names it: agent-manager's tools take an organization
+ * by its name, never by its namespace. None where the installation serves no
+ * organizations or the listing names no organization with that namespace.
+ */
+export async function organizationOfNamespace(
+  namespace: string,
+  reads: OrganizationReads,
+): Promise<string | undefined> {
+  const info = await reads.info();
+  if (info.capabilities?.[ORGANIZATIONS_CAPABILITY] !== true) {
+    return undefined;
+  }
+  const listing = await reads.listing();
+  return listing.organizations.find(listed => listed.namespace === namespace)
+    ?.name;
+}
+
+/**
+ * Why a model write in `namespace` is refused: the namespace is neither the
+ * installation's models' nor that of an organization the person belongs to,
+ * and agent-manager's model tools take only those, the organization by its
+ * name.
+ */
+export function modelNamespaceRefused(namespace: string): string {
+  return `${namespace} is neither the installation's models namespace nor the namespace of an organization you belong to, so nothing was written.`;
+}
+
 /** What the status notices of an organization read. */
 export type OrganizationStatus = Pick<
   OrganizationSummary,
@@ -407,13 +446,15 @@ export type OrganizationMember = {
 };
 
 export type OrganizationMembers = {
-  namespace: string;
+  /** The organization, as agent-manager answered it. */
+  organization: string;
   members: OrganizationMember[];
 };
 
 /** A group or a person to add or remove (`add_organization_member`). */
 export type MemberRequest = {
-  namespace: string;
+  /** The organization's name: the name of its `Organization`. */
+  organization: string;
   role?: MemberFormRole;
   /** A pull request instead of a live write ({@link organizationContentMode}). */
   mode?: 'commit';
@@ -421,7 +462,10 @@ export type MemberRequest = {
 
 /** `add_organization_member` and `remove_organization_member`. */
 export type MemberResult = {
-  namespace: string;
+  /** The organization, as agent-manager answered it. */
+  organization?: string;
+  /** Its namespace, a detail. */
+  namespace?: string;
   member: OrganizationMember;
   changed: boolean;
   bindings?: string[];
@@ -618,7 +662,14 @@ export type OrganizationModelRequest = {
   insecureSkipTLSVerify?: boolean;
   noCredential?: boolean;
   create?: boolean;
+  /**
+   * The model's namespace: the installation's models' or an organization's.
+   * The client sends the organization by its name, or none for the
+   * installation's models.
+   */
   namespace: string;
+  /** The organization of `namespace`, by its name, when the caller knows it. */
+  organization?: string;
   name: string;
   provider?: string;
   model?: string;
@@ -645,7 +696,9 @@ export type OrganizationModelRequest = {
  * the models, connectors or egress policies that read it.
  */
 export type OrganizationCredentialReplacement = {
+  /** As {@link OrganizationModelRequest}'s `namespace` and `organization`. */
   namespace: string;
+  organization?: string;
   /** The credential Secret, by name. */
   secret: string;
   /** The key of that Secret the objects read. */
