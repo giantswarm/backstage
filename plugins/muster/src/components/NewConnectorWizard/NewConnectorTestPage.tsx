@@ -29,6 +29,7 @@ import {
   connectorAdminOf,
   approvalRefusalNote,
   approvalRefusalReason,
+  GOVERNANCE_MODE_UNKNOWN_NOTE,
   isSettingsUnreadable,
 } from '../../lib/toolApproval';
 import { useGovernanceMode } from '../../hooks/useGovernanceMode';
@@ -86,7 +87,7 @@ export function toolCountsLine(tools: ToolSummary[]): string {
  * it offers — each tool with whether it only reads or changes things, and
  * its approval setting (`ToolApprovalEditor`): pills for a connector admin,
  * pre-filled by the preset the governance mode picks on a connector nobody
- * reviewed; the settings read-only for everyone else. *Done* saves the
+ * reviewed (*Recommended*, with a note, when the mode cannot be read); the settings read-only for everyone else. *Done* saves the
  * explicit settings through `core_mcpserver_set_approval`; a failed save
  * keeps the person on the step with the reason. The edit flow reuses the
  * step, and the Tools tab's *Review* leads straight to it.
@@ -222,7 +223,7 @@ export function NewConnectorTestPage() {
 
   // Tool approval: what is stored, who may change it, whether muster can
   // save it here.
-  const mode = useGovernanceMode(installation);
+  const { mode, settled: modeSettled } = useGovernanceMode(installation);
   const stored = runtime?.approval ?? cr?.getApproval();
   const approval = useToolApprovalDraft({ tools, prefix, stored, mode });
   const setApprovalSchema = useQuery({
@@ -414,6 +415,11 @@ export function NewConnectorTestPage() {
           reportsApproval={reportsApproval}
           admin={admin}
           saveError={save.error}
+          modeNote={
+            view === 'edit' && !approval.reviewed && modeSettled && !mode
+              ? GOVERNANCE_MODE_UNKNOWN_NOTE
+              : undefined
+          }
         >
           <ToolApprovalEditor
             approval={approval}
@@ -447,6 +453,7 @@ function ToolsSection({
   reportsApproval,
   admin,
   saveError,
+  modeNote,
   children,
 }: {
   installation: string | undefined;
@@ -457,6 +464,8 @@ function ToolsSection({
   reportsApproval: boolean;
   admin: boolean | undefined;
   saveError: Error | null;
+  /** Why the pre-selection is the stricter one: the mode is unknown. */
+  modeNote?: string;
   children: ReactNode;
 }) {
   if (loading) {
@@ -497,6 +506,7 @@ function ToolsSection({
         <Alert status="warning" {...approvalRefusalNote(refusalReason)} />
       )}
       {note}
+      {modeNote && <Alert status="info" description={modeNote} />}
       {saveError && (
         <Alert
           status="danger"

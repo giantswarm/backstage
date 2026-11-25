@@ -1,6 +1,7 @@
 import { useApi } from '@backstage/frontend-plugin-api';
 import { useQuery } from '@tanstack/react-query';
 import { musterApiRef } from '../../apis';
+import { musterServerInfoQueryKey } from '../../lib/governanceMode';
 
 /** How long an answer muster gave (an icon or none) is kept. */
 const MUSTER_ICON_STALE_TIME_MS = 10 * 60_000;
@@ -22,7 +23,7 @@ export function useMusterIcon(
 ): string | undefined {
   const musterApi = useApi(musterApiRef);
   const { data } = useQuery({
-    queryKey: ['muster', 'server-info', installation],
+    queryKey: musterServerInfoQueryKey(installation),
     queryFn: () => musterApi.getServerInfo(installation),
     enabled: enabled && Boolean(installation),
     // muster announces it once per session; it changes with a muster release.

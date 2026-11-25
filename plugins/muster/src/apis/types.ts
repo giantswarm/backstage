@@ -350,8 +350,8 @@ export interface ConnectorNamesResponse {
 export interface MusterServerInfoResponse {
   icon?: string;
   /**
-   * The installation's governance mode, once muster reports it; absent reads
-   * as `trusted`, the default.
+   * The installation's governance mode, once muster reports it. Absent is
+   * unknown, never `trusted` (`governanceModeOf`).
    */
   governance?: GovernanceMode;
   unavailable?: boolean;

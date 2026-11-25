@@ -161,7 +161,9 @@ describe('NewConnectorTestPage', () => {
       truncated: false,
       tools: [],
     });
-    getServerInfo.mockResolvedValue({});
+    // A muster that reports its mode (none does yet: the adapter's one
+    // place, `governanceModeOf`); unknown is tested on its own.
+    getServerInfo.mockResolvedValue({ governance: 'trusted' });
   });
 
   it('reads the settings before offering them', async () => {
@@ -450,7 +452,9 @@ describe('NewConnectorTestPage: Test & Tools', () => {
     jest.clearAllMocks();
     callTool.mockResolvedValue({});
     getAuthStatus.mockResolvedValue({ servers: [] });
-    getServerInfo.mockResolvedValue({});
+    // A muster that reports its mode (none does yet: the adapter's one
+    // place, `governanceModeOf`); unknown is tested on its own.
+    getServerInfo.mockResolvedValue({ governance: 'trusted' });
     withSetApproval();
   });
 
@@ -501,6 +505,38 @@ describe('NewConnectorTestPage: Test & Tools', () => {
       chosen(screen.getByRole('radiogroup', { name: 'Rule for new tools' })),
     ).toBe('Ask');
   });
+
+  it.each([
+    ['reports no mode', () => getServerInfo.mockResolvedValue({})],
+    [
+      'cannot be asked',
+      () => getServerInfo.mockRejectedValue(new Error('upstream 502')),
+    ],
+  ])(
+    'pre-selects Recommended and says so when muster %s, never Allow all',
+    async (_, serve) => {
+      serve();
+      connectedWith(approvalTools());
+
+      await renderTestStep();
+
+      expect(
+        await screen.findByText('Read-only tools run. The rest ask.'),
+      ).toBeInTheDocument();
+      expect(
+        await screen.findByText(/governance mode could not be read/),
+      ).toBeInTheDocument();
+      expect(chosen(pills('add_comment'))).toBe('Ask');
+      expect(chosen(pills('search_issues'))).toBe('Allow');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+      await waitFor(() => expect(setApprovalCalls()).toHaveLength(1));
+      expect(
+        (setApprovalCalls()[0][1] as { approval: { rule: string } }).approval
+          .rule,
+      ).toBe('Ask');
+    },
+  );
 
   it('fills every pill from a preset, marks a changed row and resets it', async () => {
     connectedWith(approvalTools());

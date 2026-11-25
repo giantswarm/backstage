@@ -72,7 +72,8 @@ export function useToolApprovalDraft({
   /** The connector's tool name prefix (`x_<segment>`). */
   prefix: string;
   stored: MCPServerApproval | undefined;
-  mode: GovernanceMode;
+  /** Unknown pre-selects *Recommended*, never *Allow all*. */
+  mode: GovernanceMode | undefined;
 }): ToolApprovalDraft {
   const reviewed = stored !== undefined;
   const rows = useMemo<ApprovalRow[]>(() => {

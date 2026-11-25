@@ -600,8 +600,18 @@ describe('useRegisterMcpServer', () => {
         },
       });
 
+    /** muster-backend's `/server-info` for the test; restored after it. */
+    const serving = (answer: () => Promise<unknown>) => {
+      (musterApi as { getServerInfo?: unknown }).getServerInfo =
+        jest.fn(answer);
+    };
+    afterEach(() => {
+      delete (musterApi as { getServerInfo?: unknown }).getServerInfo;
+    });
+
     it("sends the trusted mode's Allow all to a create that takes a preset, and only there", async () => {
       describeTool.mockImplementation(withPreset);
+      serving(() => Promise.resolve({ governance: 'trusted' }));
       const { result } = renderRegister();
 
       let sent: McpServerDefinition | undefined;
@@ -621,24 +631,28 @@ describe('useRegisterMcpServer', () => {
       expect(sent).toEqual(definition);
     });
 
-    it('sends Recommended on a governed platform', async () => {
+    it.each([
+      [
+        'on a governed platform',
+        () => Promise.resolve({ governance: 'governed' }),
+      ],
+      ['when muster reports no mode', () => Promise.resolve({})],
+      [
+        'when the mode cannot be read',
+        () => Promise.reject(new Error('upstream 502')),
+      ],
+    ])('sends Recommended %s, never Allow all', async (_, answer) => {
       describeTool.mockImplementation(withPreset);
-      (musterApi as { getServerInfo?: unknown }).getServerInfo = jest
-        .fn()
-        .mockResolvedValue({ governance: 'governed' });
-      try {
-        const { result } = renderRegister();
+      serving(answer);
+      const { result } = renderRegister();
 
-        await act(() => result.current.mutateAsync(registration));
+      await act(() => result.current.mutateAsync(registration));
 
-        expect(callTool).toHaveBeenLastCalledWith(
-          'core_mcpserver_create',
-          { ...definition, preset: 'recommended' },
-          'gazelle',
-        );
-      } finally {
-        delete (musterApi as { getServerInfo?: unknown }).getServerInfo;
-      }
+      expect(callTool).toHaveBeenLastCalledWith(
+        'core_mcpserver_create',
+        { ...definition, preset: 'recommended' },
+        'gazelle',
+      );
     });
 
     it('sends no preset to a muster whose create does not take one', async () => {

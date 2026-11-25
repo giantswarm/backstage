@@ -38,6 +38,8 @@ describe('toolApproval', () => {
   it('pre-selects Allow all on a trusted platform and Recommended on a governed one', () => {
     expect(defaultPresetFor('trusted')).toBe('allow-all');
     expect(defaultPresetFor('governed')).toBe('recommended');
+    // An unknown mode is never read as trusted.
+    expect(defaultPresetFor(undefined)).toBe('recommended');
   });
 
   it('reads stored values as muster does: unknown asks, an unset rule allows', () => {

@@ -14,6 +14,10 @@ import {
 } from '../../lib/mcpServerDefinition';
 import { defaultPresetFor } from '../../lib/toolApproval';
 import {
+  governanceModeOf,
+  musterServerInfoQueryKey,
+} from '../../lib/governanceMode';
+import {
   CONNECTOR_UPDATE_TOOL,
   editTakesArgument,
 } from '../../lib/connectorWrites';
@@ -120,22 +124,23 @@ export function useRegisterMcpServer() {
             );
           });
       // A create carries the preset the governance mode pre-selects, where
-      // muster takes one (it requires one once it has tool approval): the
-      // connector starts reviewed, and the Test & Tools step writes each
-      // tool's setting after it lists them.
+      // muster takes one (it requires one once it has tool approval). muster
+      // stores only the preset's rule then (no tools are listed yet); the
+      // Test & Tools step writes each tool's setting once it lists them. A
+      // mode that cannot be read sends Recommended, never Allow all.
       const preset =
         tool === 'core_mcpserver_create'
           ? defaultPresetFor(
-              (
+              governanceModeOf(
                 await queryClient
                   .fetchQuery({
-                    queryKey: ['muster', 'server-info', installation],
+                    queryKey: musterServerInfoQueryKey(installation),
                     queryFn: () => musterApi.getServerInfo(installation),
                     staleTime: 10 * 60_000,
                     retry: false,
                   })
-                  .catch(() => undefined)
-              )?.governance ?? 'trusted',
+                  .catch(() => undefined),
+              ),
             )
           : undefined;
       const definitionFor = async (

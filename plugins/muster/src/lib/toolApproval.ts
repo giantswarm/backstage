@@ -66,13 +66,20 @@ export const APPROVAL_PRESET_HINTS: Record<ApprovalPreset, string> = {
 };
 
 /**
- * The preset the wizard pre-selects on a connector nobody reviewed: *Allow
- * all* on a trusted platform (an upgrade changes nothing), *Recommended* on
- * a governed one.
+ * The preset the wizard pre-selects and a create sends on a connector nobody
+ * reviewed: *Allow all* only on a platform known to be trusted (an upgrade
+ * changes nothing there), *Recommended* on a governed one and whenever the
+ * mode is unknown (fail safe: never *Allow all* on a guess).
  */
-export function defaultPresetFor(mode: GovernanceMode): ApprovalPreset {
-  return mode === 'governed' ? 'recommended' : 'allow-all';
+export function defaultPresetFor(
+  mode: GovernanceMode | undefined,
+): ApprovalPreset {
+  return mode === 'trusted' ? 'allow-all' : 'recommended';
 }
+
+/** Said where the mode decides a pre-selection and could not be read. */
+export const GOVERNANCE_MODE_UNKNOWN_NOTE =
+  "This platform's governance mode could not be read, so Recommended is pre-selected: read-only tools run, the rest ask. Pick another preset if it should be different.";
 
 /** A tool as the settings key it: the server's own name, and its effect. */
 export type ApprovalTool = {

@@ -384,8 +384,13 @@ settings; it decides nothing.
   `core_mcpserver_set_approval` (`{name, approval: {rule, tools}}`), and
   saves nothing on a reviewed connector left unchanged. A connector nobody
   reviewed opens on the preset the governance mode pre-selects (_Allow all_
-  on a trusted platform, _Recommended_ on a governed one, read from
-  `/server-info`'s `governance`, trusted when absent); a reviewed one on its
+  on a platform known to be trusted, _Recommended_ on a governed one and
+  whenever the mode is unknown, with a note that it could not be read; never
+  _Allow all_ on a guess). muster does not report its mode to the portal yet,
+  so today the mode is always unknown: the one place its source plugs in is
+  `governanceModeOf` (`plugins/muster/src/lib/governanceMode.ts`), which
+  reads `governance` from muster-backend's `/server-info` once it is served
+  there. A reviewed one opens on its
   saved settings, a tool without its own entry marked _New_ and pre-filled
   with the rule, a blocked tool (which muster lists nowhere) as a row of its
   own. A row changed from the saved setting (or, on a first review, from the
@@ -400,8 +405,9 @@ settings; it decides nothing.
   act on, above the settings, which stay as they are; calls to those tools
   are refused until it is fixed.
 - `core_mcpserver_create` carries the mode's `preset` where its input schema
-  declares one (muster requires one once it enforces approval), so a new
-  connector starts reviewed; the step then writes each tool's setting.
+  declares one (muster requires one once it enforces approval): _Allow all_
+  only on a platform known to be trusted, _Recommended_ otherwise, also when
+  the mode cannot be read.
 - The connector's **Tools** tab shows each tool's setting as a badge (Block
   in its own tone and icon), where it comes from ("Set for this tool",
   "Connector's rule"), _New_, _Allowed for: …_ when it is given the agents
