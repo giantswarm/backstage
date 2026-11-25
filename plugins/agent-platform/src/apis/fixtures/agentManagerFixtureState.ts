@@ -132,9 +132,9 @@ export const INCOMPLETE_MODEL = 'claude-direct';
  * The installation whose agent-manager reports the `commit` capability and
  * answers `create_organization`, `create_agent`, `update_agent` and
  * `delete_agent` in mode commit with a pull request (and `validate_agent`
- * with a validation), so the Create
- * organization dialog and the agent forms offer the choice there. It must be
- * an installation the data set keeps reachable. Nothing live comes of it:
+ * with a validation), so the Create organization dialog and the New agent
+ * review offer the choice there. It must be an installation the data set
+ * keeps reachable. Nothing live comes of it:
  * the pull request is never merged. Every other write in mode commit is
  * refused, there too.
  */

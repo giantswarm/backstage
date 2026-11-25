@@ -370,7 +370,8 @@ describe('the fixture agent-manager', () => {
     };
     const opened = { pullRequest: expect.stringMatching(/^https:\/\//) };
 
-    // What the Edit agent page asks before it offers Commit: it passes.
+    // What Edit agent asks before it offers Commit for an agent applied
+    // from git: it passes.
     expect(
       await withPullRequests.dryRunCommitUpdateAgent(update),
     ).toMatchObject({ changed: ['agent.description'] });
