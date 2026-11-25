@@ -308,7 +308,7 @@ describe('AgentManagerClient addresses an organization by its name', () => {
       callTool.mock.calls
         .filter(([name]) => name === `x_agent-manager_${tool}`)
         .map(([, args]) => args);
-    return { client, argsOf };
+    return { client, argsOf, callTool };
   }
 
   it.each([
@@ -434,6 +434,26 @@ describe('AgentManagerClient addresses an organization by its name', () => {
     expect(argsOf('delete_organization_object')).toEqual([
       { name: 'sonnet', kind: 'model', dryRun: true },
     ]);
+  });
+
+  it('reads the platform namespace afresh for a model write, not from a cached get_info', async () => {
+    const { argsOf, callTool } = withPayments('platform-next');
+    // The cache still holds the configuration of a minute ago.
+    const client = new AgentManagerClient(
+      { callTool } as unknown as MusterApi,
+      'inst-1',
+      {
+        info: async () => ({
+          capabilities: { organizations: true },
+          namespaces: { default: 'platform-ai' },
+        }),
+        listing: async () => ({ organizations: [] }),
+      },
+    );
+    await expect(client.deleteModel('platform-ai', 'sonnet')).rejects.toThrow(
+      /platform-ai is neither/,
+    );
+    expect(argsOf('delete_organization_object')).toEqual([]);
   });
 
   it('the member and connector tools take the organization only', async () => {

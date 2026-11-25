@@ -158,7 +158,7 @@ export class AgentManagerClient {
    * name for an organization's namespace (`known`, when the caller knows
    * it). Any other namespace is refused before the call: without an
    * organization agent-manager acts on its own platform namespace's models,
-   * whatever namespace the portal meant.
+   * whatever namespace the portal meant. `get_info` is read afresh here.
    */
   private async modelPlace(
     namespace: string,
@@ -167,7 +167,9 @@ export class AgentManagerClient {
     if (known) {
       return { organization: known };
     }
-    const info = await this.reads.info();
+    // Read afresh, not from the cache: a write goes where agent-manager's
+    // configuration says now.
+    const info = await this.getInfo();
     if (namespace === (info.namespaces?.default || MODEL_CONFIG_NAMESPACE)) {
       return {};
     }
