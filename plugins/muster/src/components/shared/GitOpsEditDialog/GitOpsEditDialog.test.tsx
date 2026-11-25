@@ -20,7 +20,10 @@ const KUSTOMIZATION = {
   path: './management-clusters/gazelle/extras',
 };
 
-function makeServer(labels: Record<string, string>): MCPServer {
+function makeServer(
+  labels: Record<string, string>,
+  spec: Record<string, unknown> = {},
+): MCPServer {
   return new MCPServer(
     {
       apiVersion: 'muster.giantswarm.io/v1alpha1',
@@ -29,6 +32,7 @@ function makeServer(labels: Record<string, string>): MCPServer {
       spec: {
         type: 'streamable-http',
         url: 'https://api.githubcopilot.com/mcp/',
+        ...spec,
       },
     } as never,
     'gazelle',
@@ -290,6 +294,29 @@ describe('GitOpsEditDialog', () => {
 
     expect(dialog).not.toHaveTextContent('Find where HelmRelease');
     expect(dialog).not.toHaveTextContent('could not be found');
+  });
+
+  it("shows the connector's tool approval (spec.approval) in the manifest to edit", async () => {
+    mockUseGitOpsSource.mockReturnValue({
+      inGit: true,
+      isLoading: false,
+      url: SOURCE_URL,
+      errors: [],
+      kustomization: KUSTOMIZATION,
+    });
+
+    const dialog = await openDialog(
+      makeServer(KUSTOMIZE_LABELS, {
+        approval: {
+          rule: 'Ask',
+          tools: { get_issue: 'Allow', delete_repository: 'Block' },
+        },
+      }),
+    );
+
+    expect(dialog).toHaveTextContent(/approval:\s*rule: Ask\s*tools:/);
+    expect(dialog).toHaveTextContent(/get_issue: Allow/);
+    expect(dialog).toHaveTextContent(/delete_repository: Block/);
   });
 
   it('copies the manifest', async () => {
