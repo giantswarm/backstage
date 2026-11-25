@@ -687,4 +687,23 @@ describe('readUrlElicitationRequest', () => {
       readUrlElicitationRequest({ ...signIn({}), extensions: [] }),
     ).toBeUndefined();
   });
+
+  it("keeps the server's elicitationId, which muster's return names", () => {
+    const approval = signIn({
+      id: 'call-7',
+      message: 'Alert Review wants to acknowledge an incident in PagerDuty.',
+      url: 'https://muster.example/approvals/0f3c9a',
+      elicitation_id: 'el-9b1d',
+    });
+    expect(readUrlElicitationRequest(approval)).toEqual({
+      id: 'call-7',
+      server: 'muster',
+      message: 'Alert Review wants to acknowledge an incident in PagerDuty.',
+      url: 'https://muster.example/approvals/0f3c9a',
+      elicitationId: 'el-9b1d',
+    });
+    expect(
+      readUrlElicitationRequest(signIn({ elicitation_id: '' })),
+    ).not.toHaveProperty('elicitationId');
+  });
 });

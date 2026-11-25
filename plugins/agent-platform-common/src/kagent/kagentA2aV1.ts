@@ -227,10 +227,10 @@ function readHitlPayload(
 }
 
 /**
- * An MCP server's URL elicitation, such as muster's sign-in link: the request
- * of a paused task (the HITL `url_elicitation_request`).
- * `server` is the MCP server that asked, which for a platform agent is muster;
- * what needs the sign-in is in its `message`.
+ * An MCP server's URL elicitation, such as muster's sign-in link or its
+ * approval page: the request of a paused task (the HITL
+ * `url_elicitation_request`). `server` is the MCP server that asked, which for
+ * a platform agent is muster; what it asks for is in its `message`.
  */
 export type UrlElicitationRequest = {
   /** Correlates the reply with the request; echoed back verbatim. */
@@ -238,6 +238,13 @@ export type UrlElicitationRequest = {
   server: string;
   message?: string;
   url: string;
+  /**
+   * The MCP `elicitationId` the server gave the elicitation (the payload's
+   * `elicitation_id`), when the runtime relays it. muster returns the browser
+   * from its page with it, which is how the page knows which request the
+   * person finished.
+   */
+  elicitationId?: string;
 };
 
 /**
@@ -270,11 +277,13 @@ export function readUrlElicitationRequest(
     return undefined;
   }
   const text = asNonEmptyString(payload!.message);
+  const elicitationId = asNonEmptyString(payload!.elicitation_id);
   return {
     id,
     server: asNonEmptyString(payload!.server) ?? 'An MCP server',
     url,
     ...(text && { message: text }),
+    ...(elicitationId && { elicitationId }),
   };
 }
 
