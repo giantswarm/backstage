@@ -24,7 +24,7 @@ export function OrganizationAdminsFields({
     <>
       <TextAreaField
         label="Admin groups"
-        secondaryLabel="(optional)"
+        secondaryLabel="optional"
         description="Identity provider groups, one per line, as the cluster sees them. Prefer a group: its members then change in the identity provider."
         rows={3}
         value={value.groups}
@@ -32,7 +32,7 @@ export function OrganizationAdminsFields({
       />
       <TextAreaField
         label="Admin people"
-        secondaryLabel="(optional)"
+        secondaryLabel="optional"
         description="User names, one per line, as the cluster sees them, when no group fits."
         rows={3}
         value={value.users}

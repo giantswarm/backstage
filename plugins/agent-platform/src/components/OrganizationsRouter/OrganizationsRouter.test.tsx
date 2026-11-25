@@ -281,6 +281,20 @@ describe('OrganizationsRouter', () => {
       await screen.findByRole('button', { name: 'Create organization' }),
     );
     const dialog = await screen.findByRole('dialog');
+    // The one installation is named as an installation, not as the product,
+    // and each field shows its mark once, as the label reads on screen.
+    expect(
+      within(dialog).getByText(
+        'The organization is created on the installation gazelle.',
+      ),
+    ).toBeInTheDocument();
+    const labelText = (name: RegExp) =>
+      (within(dialog).getByRole('textbox', { name }) as HTMLInputElement)
+        .labels?.[0]?.textContent;
+    expect(labelText(/^Name/)).toBe('Name(Required)');
+    expect(labelText(/^Display name/)).toBe('Display name(optional)');
+    expect(labelText(/^Admin groups/)).toBe('Admin groups(optional)');
+    expect(labelText(/^Admin people/)).toBe('Admin people(optional)');
     // A name that cannot name an Organization is caught before agent-manager.
     await user.type(
       within(dialog).getByRole('textbox', { name: /^Name/ }),

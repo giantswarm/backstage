@@ -135,7 +135,7 @@ export function CreateOrganizationDialog({
                 />
               ) : (
                 <Text variant="body-medium">
-                  The organization is created on {installation}.
+                  {`The organization is created on the installation ${installation}.`}
                 </Text>
               )}
               <TextField
@@ -153,7 +153,7 @@ export function CreateOrganizationDialog({
               />
               <TextField
                 label="Display name"
-                secondaryLabel="(optional)"
+                secondaryLabel="optional"
                 description="The name people see, e.g. Payments team."
                 value={displayName}
                 onChange={setDisplayName}
