@@ -21,8 +21,10 @@ import type {
   AgentStatus,
   AgentStatusVerdict,
   AgentUpdate,
+  CommitAgentResult,
   CreateAgentResult,
   DeleteAgentResult,
+  GitOpsCommit,
   StartSessionRequest,
   StartSessionResult,
   UpdateAgentResult,
@@ -128,11 +130,13 @@ export const INCOMPLETE_MODEL = 'claude-direct';
 
 /**
  * The installation whose agent-manager reports the `commit` capability and
- * answers `create_organization` in mode commit with a pull request, so the
- * Create organization dialog offers the choice there. It must be an
- * installation the data set keeps reachable. No organization comes
- * of it: the pull request is never merged. Every other write in mode commit
- * is refused, there too.
+ * answers `create_organization`, `create_agent`, `update_agent` and
+ * `delete_agent` in mode commit with a pull request (and `validate_agent`
+ * with a validation), so the Create
+ * organization dialog and the agent forms offer the choice there. It must be
+ * an installation the data set keeps reachable. Nothing live comes of it:
+ * the pull request is never merged. Every other write in mode commit is
+ * refused, there too.
  */
 export const ORGANIZATION_PULL_REQUEST_INSTALLATION = 'fennel';
 
@@ -421,19 +425,61 @@ function nameTaken(agent: FixtureAgentRecord): string {
 }
 
 /**
- * A write in mode `commit`: this agent-manager opens no pull request for it.
- * Where it reports the `commit` capability, it opens one only for a new
- * organization.
+ * Whether a write of an agent in `mode` opens a pull request rather than
+ * writing live: in mode `commit`, where agent-manager reports the `commit`
+ * capability. Elsewhere mode `commit` is refused.
  */
-function mustBeLive(mode: unknown, installation: string): void {
-  if (mode === 'commit') {
+function commitsAgent(mode: unknown, installation: string): boolean {
+  if (mode !== 'commit') {
+    return false;
+  }
+  if (installation !== ORGANIZATION_PULL_REQUEST_INSTALLATION) {
     throw refusal(
       'unsupported',
-      installation === ORGANIZATION_PULL_REQUEST_INSTALLATION
-        ? 'fixture mode opens a pull request only for create_organization: write live'
-        : 'this agent-manager writes live only: it has no commit capability',
+      'this agent-manager writes live only: it has no commit capability',
     );
   }
+  return true;
+}
+
+/**
+ * The pull request a write of `agent` in mode commit opens: its HelmRelease
+ * file written or removed. A dry run opens none and carries the file's
+ * content instead. It is never merged, so the agent stays as it is.
+ */
+function agentCommit(
+  action: 'create' | 'update' | 'delete',
+  agent: FixtureAgentRecord,
+  dryRun: boolean,
+): CommitAgentResult {
+  const directory = `flux/agent-manager/${agent.namespace}`;
+  return {
+    mode: 'commit',
+    dryRun,
+    commit: {
+      repository: 'example/fennel-configs',
+      base: 'main',
+      directory,
+      kustomization: 'flux-giantswarm/agents',
+      prune: true,
+      branch: `agent-manager/${action}-${agent.name}_f1x7`,
+      files: [
+        {
+          path: `${directory}/${agent.name}.yaml`,
+          action,
+          ...(dryRun &&
+            action !== 'delete' && {
+              content: manifestsOf(agent).helmRelease,
+            }),
+        },
+      ],
+      ...(!dryRun && {
+        pullRequest: 'https://github.com/example/fennel-configs/pull/42',
+        number: 42,
+        author: FIXTURE_USER.email,
+      }),
+    } satisfies GitOpsCommit,
+  };
 }
 
 export class AgentManagerFixtureState {
@@ -1967,8 +2013,8 @@ export class AgentManagerFixtureState {
   createAgent(
     installation: string,
     spec: AgentSpec & { mode?: string },
-  ): CreateAgentResult {
-    mustBeLive(spec.mode, installation);
+  ): CreateAgentResult | CommitAgentResult {
+    const commits = commitsAgent(spec.mode, installation);
     this.mustCreateAgentsIn(this.writableIn(installation, spec.namespace));
     const record = this.recordOf(installation, spec);
     if (
@@ -1979,6 +2025,9 @@ export class AgentManagerFixtureState {
     const validation = this.validation(installation, record, 'create');
     if (!validation.valid) {
       throw refusal('invalid_request', validation.errors!.join('; '));
+    }
+    if (commits) {
+      return agentCommit('create', record, false);
     }
     this.stateOf(installation).agents.set(keyOf(spec.namespace, spec.name), {
       ...record,
@@ -2035,16 +2084,16 @@ export class AgentManagerFixtureState {
     installation: string,
     update: AgentUpdate & { mode?: string },
   ): ValidateAgentResult {
-    mustBeLive(update.mode, installation);
+    commitsAgent(update.mode, installation);
     const agent = this.stored(installation, update.namespace, update.name);
     return this.validation(installation, this.merged(agent, update), 'update');
   }
 
   updateAgent(
     installation: string,
-    update: AgentUpdate & { mode?: string },
-  ): UpdateAgentResult {
-    mustBeLive(update.mode, installation);
+    update: AgentUpdate & { mode?: string; dryRun?: boolean },
+  ): UpdateAgentResult | (UpdateAgentResult & CommitAgentResult) {
+    const commits = commitsAgent(update.mode, installation);
     this.mustCreateAgentsIn(this.writableIn(installation, update.namespace));
     const agent = this.stored(installation, update.namespace, update.name);
     const next = this.merged(agent, update);
@@ -2055,6 +2104,17 @@ export class AgentManagerFixtureState {
     const before = valuesOf(agent);
     const after = valuesOf(next);
     const changed = changedPaths(before, after);
+    if (commits) {
+      return {
+        agent: this.getAgent(installation, agent.namespace, agent.name),
+        before,
+        after,
+        changed,
+        manifests: validation.manifests,
+        requestedBy: FIXTURE_USER.email,
+        ...agentCommit('update', next, update.dryRun === true),
+      };
+    }
     if (changed.length > 0 || update.refreshSkills) {
       const current = this.view(agent);
       // What the agent settles in after the writes before this one, which
@@ -2094,10 +2154,13 @@ export class AgentManagerFixtureState {
     namespace: string,
     name: string,
     mode?: string,
-  ): DeleteAgentResult {
-    mustBeLive(mode, installation);
+  ): DeleteAgentResult | CommitAgentResult {
+    const commits = commitsAgent(mode, installation);
     this.mustCreateAgentsIn(this.writableIn(installation, namespace));
     const agent = this.stored(installation, namespace, name);
+    if (commits) {
+      return agentCommit('delete', agent, false);
+    }
     this.stateOf(installation).agents.delete(keyOf(namespace, name));
     this.changed();
     const others = this.agentsIn(installation, namespace);

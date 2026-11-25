@@ -347,6 +347,53 @@ describe('the fixture agent-manager', () => {
     ).rejects.toMatchObject({ code: 'unsupported' });
   });
 
+  it('answers the agent writes in mode commit with a pull request where it reports commit, and writes nothing', async () => {
+    const { data, server } = setup();
+    const withPullRequests = new AgentManagerClient(
+      musterApiOf(server),
+      ORGANIZATION_PULL_REQUEST_INSTALLATION,
+    );
+    const agent = data.agents.find(
+      candidate =>
+        candidate.installation === ORGANIZATION_PULL_REQUEST_INSTALLATION &&
+        data.organizations.some(
+          organization =>
+            organization.namespace === candidate.namespace &&
+            organization.role !== 'user',
+        ),
+    )!;
+    const before = await withPullRequests.getAgent(agent.namespace, agent.name);
+    const update = {
+      namespace: agent.namespace,
+      name: agent.name,
+      description: 'Changed.',
+    };
+    const opened = { pullRequest: expect.stringMatching(/^https:\/\//) };
+
+    // What the Edit agent page asks before it offers Commit: it passes.
+    expect(
+      await withPullRequests.dryRunCommitUpdateAgent(update),
+    ).toMatchObject({ changed: ['agent.description'] });
+    expect(await withPullRequests.commitUpdateAgent(update)).toMatchObject({
+      commit: opened,
+    });
+    expect(
+      await withPullRequests.commitDeleteAgent(agent.namespace, agent.name),
+    ).toMatchObject({ commit: opened });
+    expect(
+      await withPullRequests.commitAgent(
+        specIn(agent.namespace, { name: 'fixture-checker' }),
+      ),
+    ).toMatchObject({ commit: opened });
+
+    expect(
+      await withPullRequests.getAgent(agent.namespace, agent.name),
+    ).toEqual(before);
+    await expect(
+      withPullRequests.getAgent(agent.namespace, 'fixture-checker'),
+    ).rejects.toMatchObject({ code: 'not_found' });
+  });
+
   it('creates an organization that turns ready, and changes its admins', async () => {
     const { client, advance } = setup();
 

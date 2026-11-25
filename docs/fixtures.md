@@ -323,10 +323,12 @@ there.
 what the first call answered. This agent-manager writes live only: it reports
 no `commit` capability, and a write in mode `commit` is refused as
 `unsupported`. On `fennel` it reports the `commit` capability, so the Create
-organization dialog offers a pull request there: `create_organization` in mode
-`commit` answers a pull request and creates nothing, since the pull request is
-never merged. Every other write in mode `commit` is refused there too, also the
-Commit the agent forms then offer.
+organization dialog and the agent forms (New agent, Edit agent, Delete agent,
+Update agents of a skill) offer a pull request there: `create_organization`,
+`create_agent`, `update_agent` and `delete_agent` in mode `commit` answer a
+pull request and write nothing live, since the pull request is never merged.
+`validate_agent` and the dry run of `update_agent` in mode `commit` answer as
+they do live. Every other write in mode `commit` is refused there too.
 
 `start_session` creates the session in kagent's fixture (see "kagent"), so
 the session page it leads to opens it and sends the first prompt.

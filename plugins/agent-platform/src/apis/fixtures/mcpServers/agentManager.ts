@@ -375,7 +375,7 @@ export function agentManagerFixtureServer(
         state().updateAgent(installation, {
           ...at.rest,
           namespace: at.namespace,
-        } as AgentUpdate & { mode?: string }),
+        } as AgentUpdate & { mode?: string; dryRun?: boolean }),
         at.organization,
       );
     },
