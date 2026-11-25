@@ -202,7 +202,7 @@ describe('shell connector wizard', () => {
         within(strip)
           .getAllByRole('listitem')
           .map(item => item.textContent),
-      ).toEqual(['1Connect', '2Sign-in', '3Test']);
+      ).toEqual(['1Connect', '2Sign-in', '3Test & Tools']);
       expect(screen.getByText('Connect an app')).toBeInTheDocument();
       // The prototype's audience choice has no muster equivalent, so the
       // wizard does not ask it.

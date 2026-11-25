@@ -240,6 +240,11 @@ export const portalEvents = defineEvents({
       "An MCP server's definition was edited in muster: through the wizard opened from its Edit, as JSON on its page, or on its update tool's page.",
     attributes: {},
   },
+  'Muster.toolApprovalSaved': {
+    description:
+      "A connector's tool approval settings were saved in muster: in the connector wizard's Test & Tools step, or on the tool's page.",
+    attributes: {},
+  },
   'Muster.mcpServerConnectionChanged': {
     description:
       "An MCP server was activated, deactivated or reconnected in muster, on its page or on the tool's page.",

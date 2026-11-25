@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useApi } from '@backstage/core-plugin-api';
 import { useQuery } from '@tanstack/react-query';
@@ -7,7 +7,7 @@ import { makeStyles } from '@material-ui/core';
 import CheckIcon from '@material-ui/icons/Check';
 import {
   countNoun,
-  ShowMore,
+  LoadingIndicator,
   useProvidePageHeaderActions,
   WizardStepHeading,
   type PollingQuery,
@@ -23,10 +23,23 @@ import {
   musterOwnServer,
 } from '../../lib/serverGrouping';
 import { toolEffect } from '../../lib/toolAnnotations';
+import { takesArgument } from '../../lib/mcpServerDefinition';
+import {
+  approvalOf,
+  connectorAdminOf,
+  isApprovalUnavailable,
+} from '../../lib/toolApproval';
+import { useGovernanceMode } from '../../hooks/useGovernanceMode';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
-import { EffectBadge, ServerSignIn, StateBadge, severityTone } from '../shared';
+import { ServerSignIn, StateBadge, severityTone } from '../shared';
+import { toolArgumentsQuery } from '../shared/hooks';
 import { useConnectorWizardLinks } from '../NewMcpServerEditGate';
+import {
+  ToolApprovalEditor,
+  useToolApprovalDraft,
+} from '../ToolApprovalEditor';
+import { SET_APPROVAL_TOOL, useSaveToolApproval } from './useSaveToolApproval';
 import {
   ConnectorWizardFrame,
   useConnectorWizardCloseHref,
@@ -36,12 +49,6 @@ import {
 const TEST_POLL_INTERVAL_MS = 5_000;
 /** Once connected the panel only confirms; the slow poll covers drift. */
 const SETTLED_POLL_INTERVAL_MS = 30_000;
-
-/**
- * How many tools the list shows first, and how many each *Show more* adds: a
- * preview of what the connector offers, not a catalogue to read through.
- */
-const TOOL_PREVIEW_COUNT = 6;
 
 const useStyles = makeStyles({
   connected: {
@@ -54,35 +61,6 @@ const useStyles = makeStyles({
     color: 'var(--bui-success-fg-subdued, #14612a)',
     fontSize: 14,
     '& svg': { width: 18, height: 18, flex: 'none' },
-  },
-  toolHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    fontSize: 12.5,
-    color: 'var(--bui-fg-secondary)',
-    paddingBottom: 6,
-    borderBottom: '1px solid var(--bui-border-1)',
-  },
-  tool: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    padding: '11px 0',
-    borderBottom: '1px solid var(--bui-border-1)',
-    fontSize: 14,
-  },
-  // An unbroken snake_case tool name wraps inside its column at 375px
-  // rather than running under the effect badge.
-  toolText: {
-    flex: '1 1 auto',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 2,
-    minWidth: 0,
-    overflowWrap: 'anywhere',
-  },
-  toolEffect: {
-    flex: 'none',
   },
   code: {
     fontFamily: 'monospace',
@@ -99,11 +77,17 @@ export function toolCountsLine(tools: ToolSummary[]): string {
 }
 
 /**
- * Step 3 (Test) of the shell's connector wizard. The connector is already
- * registered when this opens (step 2's "Add connector" created it), so this is
- * a live status panel, not a gate: it follows the CR and the per-session
- * runtime view until the connector is connected, then lists what it offers —
- * each tool with whether it only reads or changes things.
+ * Step 3 (Test & Tools) of the shell's connector wizard. The connector is
+ * already registered when this opens (step 2's "Add connector" created it),
+ * so this is a live status panel, not a gate: it follows the CR and the
+ * per-session runtime view until the connector is connected, then lists what
+ * it offers — each tool with whether it only reads or changes things, and
+ * its approval setting (`ToolApprovalEditor`): pills for a connector admin,
+ * pre-filled by the preset the governance mode picks on a connector nobody
+ * reviewed; the settings read-only for everyone else. *Done* saves the
+ * explicit settings through `core_mcpserver_set_approval`; a failed save
+ * keeps the person on the step with the reason. The edit flow reuses the
+ * step, and the Tools tab's *Review* leads straight to it.
  *
  * `Auth Required` is a normal state here: an OAuth connector needs this
  * person's one-time sign-in before it can be tested as them, offered inline
@@ -224,7 +208,7 @@ export function NewConnectorTestPage() {
       (connected || (toolsCount ?? 0) > 0),
     ),
   });
-  const tools = toolsQuery.data?.tools ?? [];
+  const tools = useMemo(() => toolsQuery.data?.tools ?? [], [toolsQuery.data]);
   // muster answers one page (the 200 asked for); its total counts every match,
   // so a larger connector is said to be larger rather than cut silently.
   const toolsTotal = Math.max(toolsQuery.data?.total ?? 0, tools.length);
@@ -234,10 +218,60 @@ export function NewConnectorTestPage() {
     ? connectorDisplayNameOn(mcpServers, installation, cr.getName())
     : state.name.trim() || serverName || 'The connector';
 
-  const onDone = useCallback(() => {
+  // Tool approval: what is stored, who may change it, whether muster can
+  // save it here.
+  const mode = useGovernanceMode(installation);
+  const stored = runtime?.approval ?? cr?.getApproval();
+  const approval = useToolApprovalDraft({ tools, prefix, stored, mode });
+  const setApprovalSchema = useQuery({
+    ...toolArgumentsQuery(musterApi, SET_APPROVAL_TOOL, installation),
+    enabled: Boolean(authenticated && installation && tools.length > 0),
+  });
+  // Unknown while muster is asked; a muster without the tool cannot save.
+  let canSave: boolean | undefined;
+  if (setApprovalSchema.isSuccess) {
+    canSave = takesArgument(setApprovalSchema.data.inputSchema, 'approval');
+  } else if (setApprovalSchema.isError) {
+    canSave = false;
+  }
+  const reportsApproval = tools.some(tool => tool.approval);
+  const unavailable = isApprovalUnavailable(tools);
+  const admin = connectorAdminOf(tools);
+  const view = canSave && admin !== false ? 'edit' : 'read';
+  const save = useSaveToolApproval();
+
+  const onDone = useCallback(async () => {
+    if (
+      view === 'edit' &&
+      !unavailable &&
+      approval.rows.length > 0 &&
+      approval.dirty &&
+      serverName
+    ) {
+      try {
+        await save.mutateAsync({
+          name: serverName,
+          installation,
+          approval: approvalOf(approval.draft),
+        });
+      } catch {
+        // Shown in place; the person stays on the step.
+        return;
+      }
+    }
     reset();
     navigate(closeHref);
-  }, [reset, navigate, closeHref]);
+  }, [
+    view,
+    unavailable,
+    approval,
+    serverName,
+    save,
+    installation,
+    reset,
+    navigate,
+    closeHref,
+  ]);
 
   const onBack = useCallback(() => {
     const signIn = wizardLinks('auth', {
@@ -251,11 +285,11 @@ export function NewConnectorTestPage() {
 
   const actions = useMemo(
     () => (
-      <Button variant="primary" onPress={onDone}>
+      <Button variant="primary" onPress={onDone} loading={save.isPending}>
         Done
       </Button>
     ),
-    [onDone],
+    [onDone, save.isPending],
   );
 
   const isRedirecting = !serverName;
@@ -368,47 +402,100 @@ export function NewConnectorTestPage() {
       )}
 
       {tools.length > 0 && (
-        <div>
-          <div className={classes.toolHeader}>
-            <span>Tool</span>
-            <span>Effect</span>
-          </div>
-          <ShowMore items={tools} initial={TOOL_PREVIEW_COUNT} noun="tool">
-            {visible => (
-              <div>
-                {visible.map(tool => (
-                  <div key={tool.name} className={classes.tool}>
-                    <span className={classes.toolText}>
-                      <Text weight="bold">
-                        {tool.name.startsWith(`${prefix}_`)
-                          ? tool.name.slice(prefix.length + 1)
-                          : tool.name}
-                      </Text>
-                      {(tool.summary ?? tool.description) && (
-                        <Text variant="body-small" color="secondary">
-                          {tool.summary ?? tool.description}
-                        </Text>
-                      )}
-                    </span>
-                    <span className={classes.toolEffect}>
-                      <EffectBadge effect={toolEffect(tool)} />
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </ShowMore>
-          {partial && (
-            <Text as="p" variant="body-small" color="secondary">
-              Only the first {tools.length} of {toolsTotal} tools are listed.
-            </Text>
-          )}
-          <Text as="p" variant="body-small" color="secondary">
-            Agents limited to read-only tools never get the ones that change
-            things.
-          </Text>
-        </div>
+        <ToolsSection
+          installation={installation}
+          loading={canSave === undefined}
+          unavailable={unavailable}
+          canSave={canSave}
+          reportsApproval={reportsApproval}
+          admin={admin}
+          saveError={save.error}
+        >
+          <ToolApprovalEditor
+            approval={approval}
+            view={view}
+            partialNote={
+              partial
+                ? `Only the first ${tools.length} of ${toolsTotal} tools are listed.${
+                    view === 'edit'
+                      ? ' The others follow the rule for new tools.'
+                      : ''
+                  }`
+                : undefined
+            }
+          />
+        </ToolsSection>
       )}
     </ConnectorWizardFrame>
+  );
+}
+
+/**
+ * What stands around the tool settings: a reading state, why they cannot be
+ * changed or applied here, and a failed save.
+ */
+function ToolsSection({
+  installation,
+  loading,
+  unavailable,
+  canSave,
+  reportsApproval,
+  admin,
+  saveError,
+  children,
+}: {
+  installation: string | undefined;
+  loading: boolean;
+  unavailable: boolean;
+  canSave: boolean | undefined;
+  reportsApproval: boolean;
+  admin: boolean | undefined;
+  saveError: Error | null;
+  children: ReactNode;
+}) {
+  if (loading) {
+    return <LoadingIndicator label="Reading the tool settings…" />;
+  }
+  if (unavailable) {
+    return (
+      <Alert
+        status="warning"
+        title="The tool settings can't be read"
+        description="Muster could not read this connector's tool approval settings, so it refuses calls to its tools until it can. Try again later; nothing is saved from here."
+      />
+    );
+  }
+  let note: ReactNode;
+  if (!canSave) {
+    note = (
+      <Alert
+        status="info"
+        description={
+          reportsApproval
+            ? `Muster on ${installation} can't save tool settings from the portal yet. They are shown as they are; set them in the connector's MCPServer (spec.approval) instead.`
+            : `Muster on ${installation} doesn't support tool approval yet: every tool runs without asking.`
+        }
+      />
+    );
+  } else if (admin === false) {
+    note = (
+      <Alert
+        status="info"
+        description="Only a connector admin can change these settings. Ask one of the people who manage connectors here."
+      />
+    );
+  }
+  return (
+    <Flex direction="column" gap="3">
+      {note}
+      {saveError && (
+        <Alert
+          status="danger"
+          title="The tool settings were not saved"
+          description={`${saveError.message} Nothing changed; press Done to try again, or leave and set them later on the connector's Tools tab.`}
+        />
+      )}
+      {children}
+    </Flex>
   );
 }

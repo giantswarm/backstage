@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -9,7 +9,7 @@ import {
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import { mockPhoneLayout } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
-import { musterApiRef, type ToolSummary } from '../../apis';
+import { musterApiRef, type JsonSchema, type ToolSummary } from '../../apis';
 import { mcpServersRouteRef } from '../../routes';
 import { MCPServer } from '../../lib/k8s';
 import { McpServersRouter } from '../McpServersRouter';
@@ -66,12 +66,15 @@ const listServers = jest.fn();
 const getAuthStatus = jest.fn();
 const filterTools = jest.fn();
 // A muster whose core tools take a display name (v5.43.0 and later).
-const describeTool = jest.fn((name: string) =>
-  Promise.resolve({
-    name,
-    inputSchema: { properties: { displayName: { type: 'string' } } },
-  }),
+const describeTool = jest.fn(
+  (name: string): Promise<{ name: string; inputSchema: JsonSchema }> =>
+    Promise.resolve({
+      name,
+      inputSchema: { properties: { displayName: { type: 'string' } } },
+    }),
 );
+
+const getServerInfo = jest.fn();
 
 const musterApi = {
   callTool,
@@ -79,6 +82,7 @@ const musterApi = {
   getAuthStatus,
   filterTools,
   describeTool,
+  getServerInfo,
 } as unknown as jest.Mocked<import('../../apis').MusterApi>;
 
 function renderWizard(path: string) {
@@ -157,6 +161,34 @@ describe('NewConnectorTestPage', () => {
       truncated: false,
       tools: [],
     });
+    getServerInfo.mockResolvedValue({});
+  });
+
+  it('reads the settings before offering them', async () => {
+    // First of the file's tests to read muster's tools: the wizard's query
+    // client is the module's own, so a later test finds them cached.
+    withSetApproval();
+    connectedWith(approvalTools());
+    let answer: () => void = () => {};
+    const answered = new Promise<void>(resolve => {
+      answer = resolve;
+    });
+    const plain = describeTool.getMockImplementation()!;
+    describeTool.mockImplementation((name: string) =>
+      name === 'core_mcpserver_set_approval'
+        ? answered.then(() => plain(name))
+        : plain(name),
+    );
+
+    await renderTestStep();
+
+    expect(
+      await screen.findByText('Reading the tool settings…'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+
+    answer();
+    expect(await screen.findByText('Everything runs.')).toBeInTheDocument();
   });
 
   it('sends a deep link with nothing registered back to the Connect step', async () => {
@@ -195,7 +227,7 @@ describe('NewConnectorTestPage', () => {
     ).toBeInTheDocument();
     // Eight is the preview of six plus a remainder too small to hide:
     // every tool shows, prefix-stripped, each with its effect badge.
-    expect(screen.getByText('search_issues')).toBeInTheDocument();
+    expect(await screen.findByText('search_issues')).toBeInTheDocument();
     expect(screen.getByText('Find tickets with a query')).toBeInTheDocument();
     expect(screen.getByText('list_boards')).toBeInTheDocument();
     expect(screen.getAllByText('Reads')).toHaveLength(5);
@@ -203,7 +235,7 @@ describe('NewConnectorTestPage', () => {
     expect(screen.queryByRole('button', { name: /^Show / })).toBeNull();
   });
 
-  it('fits a phone: one line for the steps, long tool names wrap beside their badge', async () => {
+  it('fits a phone: one line for the steps, long tool names wrap beside their setting', async () => {
     const layout = mockPhoneLayout();
     try {
       listServers.mockResolvedValue({
@@ -220,19 +252,23 @@ describe('NewConnectorTestPage', () => {
 
       await renderTestStep();
 
-      expect(screen.getByText('Step 3 of 3 · Test')).toBeInTheDocument();
+      expect(
+        screen.getByText('Step 3 of 3 · Test & Tools'),
+      ).toBeInTheDocument();
       const name = await screen.findByText(
         'transition_issue_to_the_next_status_in_its_workflow',
       );
-      const column = name.parentElement!;
+      // The name's column: the name, its badges and its description.
+      const column = name.parentElement!.parentElement!;
       expect(getComputedStyle(column).minWidth).toBe('0px');
       expect(getComputedStyle(column).overflowWrap).toBe('anywhere');
-      // The badge keeps its width; the name gives way.
-      const badge = screen.getByText('Changes things');
-      expect(column.nextElementSibling).toContainElement(badge);
-      expect(getComputedStyle(column.nextElementSibling!).flex).toMatch(
-        /^(none|0 0 auto)$/,
-      );
+      expect(column).toContainElement(screen.getByText('Changes things'));
+      // The setting keeps its width; the name gives way.
+      const setting = column.nextElementSibling!;
+      expect(
+        within(setting as HTMLElement).getByText('Allow'),
+      ).toBeInTheDocument();
+      expect(getComputedStyle(setting).flex).toMatch(/^(none|0 0 auto)$/);
     } finally {
       layout.restore();
     }
@@ -283,7 +319,7 @@ describe('NewConnectorTestPage', () => {
       await screen.findByText(/Jira offers 300 tools\./),
     ).toBeInTheDocument();
     expect(
-      screen.getByText('Only the first 200 of 300 tools are listed.'),
+      screen.getByText(/^Only the first 200 of 300 tools are listed\./),
     ).toBeInTheDocument();
     const badges = () => screen.getAllByText(/^(Reads|Changes things)$/).length;
     expect(badges()).toBe(6);
@@ -330,6 +366,379 @@ describe('NewConnectorTestPage', () => {
     ).toBeInTheDocument();
     // In the status line and the failure explanation.
     expect(screen.getAllByText('connection refused').length).toBeGreaterThan(0);
+  });
+});
+
+/** A muster that saves tool settings (`core_mcpserver_set_approval`). */
+function withSetApproval() {
+  describeTool.mockImplementation((name: string) => {
+    const properties: Record<string, JsonSchema> =
+      name === 'core_mcpserver_set_approval'
+        ? {
+            name: { type: 'string' },
+            approval: { type: 'object' },
+            preset: { type: 'string' },
+          }
+        : { displayName: { type: 'string' } };
+    return Promise.resolve({ name, inputSchema: { properties } });
+  });
+}
+
+/** Jira's tools as muster reports them with approval, for a connector admin. */
+function approvalTools(
+  overrides: Partial<ToolSummary> = {},
+  source: 'unreviewed' | 'tool' | 'connector' | 'unavailable' = 'unreviewed',
+): ToolSummary[] {
+  return [
+    tool('search_issues', true, 'Find tickets with a query'),
+    tool('get_issue', true),
+    tool('add_comment', false, 'Write a comment on a ticket'),
+    tool('create_issue', false),
+  ].map(t => ({
+    ...t,
+    approval: { setting: source === 'unavailable' ? 'ask' : 'allow', source },
+    connectorAdmin: true,
+    ...overrides,
+  }));
+}
+
+function connectedWith(tools: ToolSummary[], approval?: unknown) {
+  listServers.mockResolvedValue({
+    mcpServers: [
+      {
+        name: 'jira',
+        state: 'Connected',
+        toolsCount: tools.length,
+        ...(approval ? { approval } : {}),
+      },
+    ],
+  });
+  filterTools.mockResolvedValue({
+    total: tools.length,
+    filtered_count: tools.length,
+    truncated: false,
+    tools,
+  });
+}
+
+const pills = (name: string) =>
+  screen.getByRole('radiogroup', { name: `Approval for ${name}` });
+
+/** The pill chosen in a group: bui's toggle buttons say it with aria-checked or aria-pressed. */
+function chosen(group: HTMLElement): string | undefined {
+  return (
+    within(group)
+      .queryAllByRole('radio')
+      .concat(within(group).queryAllByRole('button'))
+      .find(
+        button =>
+          button.getAttribute('aria-checked') === 'true' ||
+          button.getAttribute('aria-pressed') === 'true',
+      )?.textContent ?? undefined
+  );
+}
+
+function setApprovalCalls() {
+  return callTool.mock.calls.filter(
+    ([name]) => name === 'core_mcpserver_set_approval',
+  );
+}
+
+describe('NewConnectorTestPage: Test & Tools', () => {
+  beforeEach(() => {
+    mockMcpServers = [];
+    jest.clearAllMocks();
+    callTool.mockResolvedValue({});
+    getAuthStatus.mockResolvedValue({ servers: [] });
+    getServerInfo.mockResolvedValue({});
+    withSetApproval();
+  });
+
+  it('pre-selects Allow all on a trusted platform and saves every tool explicitly', async () => {
+    connectedWith(approvalTools());
+
+    await renderTestStep();
+
+    expect(await screen.findByText('Everything runs.')).toBeInTheDocument();
+    expect(chosen(pills('add_comment'))).toBe('Allow');
+    expect(chosen(pills('search_issues'))).toBe('Allow');
+    expect(screen.getByText('New tools follow this rule.')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+    await waitFor(() => expect(setApprovalCalls()).toHaveLength(1));
+    expect(setApprovalCalls()[0]).toEqual([
+      'core_mcpserver_set_approval',
+      {
+        name: 'jira',
+        approval: {
+          rule: 'Allow',
+          tools: {
+            search_issues: 'Allow',
+            get_issue: 'Allow',
+            add_comment: 'Allow',
+            create_issue: 'Allow',
+          },
+        },
+      },
+      'gazelle',
+    ]);
+  });
+
+  it('pre-selects Recommended on a governed platform: reads run, the rest ask', async () => {
+    getServerInfo.mockResolvedValue({ governance: 'governed' });
+    connectedWith(approvalTools());
+
+    await renderTestStep();
+
+    expect(
+      await screen.findByText('Read-only tools run. The rest ask.'),
+    ).toBeInTheDocument();
+    expect(chosen(pills('search_issues'))).toBe('Allow');
+    expect(chosen(pills('add_comment'))).toBe('Ask');
+    expect(chosen(pills('create_issue'))).toBe('Ask');
+    expect(
+      chosen(screen.getByRole('radiogroup', { name: 'Rule for new tools' })),
+    ).toBe('Ask');
+  });
+
+  it('fills every pill from a preset, marks a changed row and resets it', async () => {
+    connectedWith(approvalTools());
+
+    await renderTestStep();
+    await screen.findByText('Everything runs.');
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Ask all' }));
+    expect(screen.getByText('Everything asks.')).toBeInTheDocument();
+    for (const name of ['search_issues', 'get_issue', 'add_comment']) {
+      expect(chosen(pills(name))).toBe('Ask');
+    }
+
+    // A tool set apart from the preset: no preset is chosen any more, and
+    // the row says so and can go back.
+    await userEvent.click(
+      within(pills('create_issue')).getByRole('radio', { name: 'Block' }),
+    );
+    expect(chosen(pills('create_issue'))).toBe('Block');
+    expect(screen.getByText('Changed')).toBeInTheDocument();
+    expect(
+      screen.getByText('Your own settings. A preset fills every tool again.'),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Reset create_issue to Ask' }),
+    );
+    expect(chosen(pills('create_issue'))).toBe('Ask');
+    expect(screen.queryByText('Changed')).not.toBeInTheDocument();
+
+    await userEvent.click(
+      within(pills('create_issue')).getByRole('radio', { name: 'Block' }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await waitFor(() => expect(setApprovalCalls()).toHaveLength(1));
+    expect(setApprovalCalls()[0][1]).toEqual({
+      name: 'jira',
+      approval: {
+        rule: 'Ask',
+        tools: {
+          search_issues: 'Ask',
+          get_issue: 'Ask',
+          add_comment: 'Ask',
+          create_issue: 'Block',
+        },
+      },
+    });
+  });
+
+  it('opens a reviewed connector on its saved settings, with New tools and hidden blocked ones', async () => {
+    connectedWith(
+      approvalTools({ connectorAdmin: true }, 'tool').map(t =>
+        t.name === 'x_jira_create_issue'
+          ? {
+              ...t,
+              approval: { setting: 'ask', source: 'connector', new: true },
+            }
+          : t,
+      ),
+      {
+        rule: 'Ask',
+        tools: {
+          search_issues: 'Allow',
+          get_issue: 'Allow',
+          add_comment: 'Ask',
+          delete_project: 'Block',
+        },
+      },
+    );
+
+    await renderTestStep();
+
+    // No preset fits the saved settings; the rule and the rows show them.
+    expect(
+      await screen.findByText(
+        'Your own settings. A preset fills every tool again.',
+      ),
+    ).toBeInTheDocument();
+    expect(chosen(pills('add_comment'))).toBe('Ask');
+    expect(chosen(pills('create_issue'))).toBe('Ask');
+    expect(screen.getByText('New')).toBeInTheDocument();
+    // muster lists no blocked tool; its entry still has a row.
+    expect(chosen(pills('delete_project'))).toBe('Block');
+    expect(
+      screen.getByText(/Not listed by the connector right now/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Changed')).not.toBeInTheDocument();
+
+    await userEvent.click(
+      within(pills('add_comment')).getByRole('radio', { name: 'Allow' }),
+    );
+    expect(screen.getByText('Changed')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await waitFor(() => expect(setApprovalCalls()).toHaveLength(1));
+    expect(setApprovalCalls()[0][1]).toEqual({
+      name: 'jira',
+      approval: {
+        rule: 'Ask',
+        tools: {
+          search_issues: 'Allow',
+          get_issue: 'Allow',
+          add_comment: 'Allow',
+          create_issue: 'Ask',
+          delete_project: 'Block',
+        },
+      },
+    });
+  });
+
+  it('saves nothing when a reviewed connector is left unchanged', async () => {
+    connectedWith(approvalTools({}, 'tool'), {
+      rule: 'Allow',
+      tools: {
+        search_issues: 'Allow',
+        get_issue: 'Allow',
+        add_comment: 'Allow',
+        create_issue: 'Allow',
+      },
+    });
+
+    await renderTestStep();
+    await screen.findByText('Everything runs.');
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+    await waitFor(() =>
+      expect(screen.queryByText('Test the connection')).not.toBeInTheDocument(),
+    );
+    expect(setApprovalCalls()).toHaveLength(0);
+  });
+
+  it('shows the settings read-only, with no controls, to a person who is not a connector admin', async () => {
+    connectedWith(
+      approvalTools({ connectorAdmin: false }, 'tool').map(t =>
+        t.name === 'x_jira_create_issue'
+          ? { ...t, approval: { setting: 'ask', source: 'tool' } }
+          : t,
+      ),
+      {
+        tools: {
+          search_issues: 'Allow',
+          get_issue: 'Allow',
+          add_comment: 'Allow',
+          create_issue: 'Ask',
+        },
+      },
+    );
+
+    await renderTestStep();
+
+    expect(
+      await screen.findByText(
+        /Only a connector admin can change these settings/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryAllByRole('radiogroup')).toHaveLength(0);
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    const createRow = screen
+      .getByText('create_issue')
+      .closest('[role="listitem"]') as HTMLElement;
+    expect(within(createRow).getByText('Ask')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await waitFor(() =>
+      expect(screen.queryByText('Test the connection')).not.toBeInTheDocument(),
+    );
+    expect(setApprovalCalls()).toHaveLength(0);
+  });
+
+  it('says so when muster cannot read the settings, and offers nothing to change', async () => {
+    connectedWith(approvalTools({}, 'unavailable'));
+
+    await renderTestStep();
+
+    expect(
+      await screen.findByText("The tool settings can't be read"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+  });
+
+  it('keeps the person on the step with the reason when the save fails, and saves on the next Done', async () => {
+    connectedWith(approvalTools());
+    callTool.mockImplementation((name: string) =>
+      name === 'core_mcpserver_set_approval'
+        ? Promise.reject(new Error('mcpservers "jira" is forbidden.'))
+        : Promise.resolve({}),
+    );
+
+    await renderTestStep();
+    await screen.findByText('Everything runs.');
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+    expect(
+      await screen.findByText('The tool settings were not saved'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/is forbidden/)).toBeInTheDocument();
+    expect(screen.getByText('Test the connection')).toBeInTheDocument();
+
+    callTool.mockResolvedValue({});
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await waitFor(() =>
+      expect(screen.queryByText('Test the connection')).not.toBeInTheDocument(),
+    );
+    expect(setApprovalCalls()).toHaveLength(2);
+  });
+
+  it('shows the settings as they are where muster cannot save them yet', async () => {
+    connectedWith(approvalTools());
+    describeTool.mockImplementation((name: string) =>
+      name === 'core_mcpserver_set_approval'
+        ? Promise.reject(new Error('tool not found'))
+        : Promise.resolve({
+            name,
+            inputSchema: { properties: { displayName: { type: 'string' } } },
+          }),
+    );
+
+    await renderTestStep();
+
+    expect(
+      await screen.findByText(/can't save tool settings from the portal yet/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+  });
+
+  it('offers no settings while the connector lists no tools, and Done saves nothing', async () => {
+    connectedWith([]);
+
+    await renderTestStep();
+
+    expect(
+      await screen.findByText(/No tools reported yet/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Tool settings' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await waitFor(() =>
+      expect(screen.queryByText('Test the connection')).not.toBeInTheDocument(),
+    );
+    expect(setApprovalCalls()).toHaveLength(0);
   });
 });
 

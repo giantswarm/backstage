@@ -11,6 +11,10 @@ describe('connectorToolEvent', () => {
       { name: 'Muster.mcpServerDeleted', attributes: {} },
     ],
     [
+      'core_mcpserver_set_approval',
+      { name: 'Muster.toolApprovalSaved', attributes: {} },
+    ],
+    [
       'core_service_start',
       {
         name: 'Muster.mcpServerConnectionChanged',
