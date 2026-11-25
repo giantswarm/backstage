@@ -265,7 +265,55 @@ export interface McpServerRuntime {
    * muster#1050). Servers registered earlier only carry `registeredBy`.
    */
   registeredByEmail?: string;
+  /**
+   * `spec.approval`, the connector's tool approval settings; absent when the
+   * connector has none (every tool `Allow`, not reviewed) and from a muster
+   * that does not know them.
+   */
+  approval?: MCPServerApproval;
 }
+
+/**
+ * A connector's tool approval settings as stored (`spec.approval` of the
+ * MCPServer): `rule` for every tool without its own entry, new ones
+ * included, and `tools` from the server's own tool name (no prefix) to its
+ * setting. Values are kept as strings: one muster does not know counts as
+ * `Ask` (`storedSetting`).
+ */
+export interface MCPServerApproval {
+  /** `Allow` or `Ask`. */
+  rule?: string;
+  /** `Allow`, `Ask` or `Block` per tool. */
+  tools?: Record<string, string>;
+}
+
+/** Where a tool's effective approval comes from, as muster reports it. */
+export type ToolApprovalSource =
+  | 'tool'
+  | 'connector'
+  | 'unreviewed'
+  | 'builtin'
+  | 'unavailable'
+  | 'agent'
+  | 'agent-exception'
+  | 'governance';
+
+/**
+ * A tool's effective approval for the caller, as `filter_tools` and
+ * `describe_tool` report it (muster's tool approval, slice 1).
+ */
+export interface ToolApproval {
+  setting: 'allow' | 'ask' | 'block';
+  source: ToolApprovalSource;
+  /** No own entry on a connector that has settings: it follows the rule. */
+  new?: boolean;
+}
+
+/**
+ * The installation's governance mode: `trusted` (the default) or
+ * `governed`. Only picks the connector wizard's pre-selected preset here.
+ */
+export type GovernanceMode = 'trusted' | 'governed';
 
 export interface McpServerListResponse {
   mcpServers: McpServerRuntime[] | null;
@@ -292,6 +340,11 @@ export interface ConnectorNamesResponse {
  */
 export interface MusterServerInfoResponse {
   icon?: string;
+  /**
+   * The installation's governance mode, once muster reports it; absent reads
+   * as `trusted`, the default.
+   */
+  governance?: GovernanceMode;
   unavailable?: boolean;
 }
 
@@ -324,6 +377,14 @@ export interface ToolSummary {
    * Omitted when the server declares none.
    */
   annotations?: ToolAnnotations;
+  /** The tool's effective approval for the caller; absent from older musters. */
+  approval?: ToolApproval;
+  /**
+   * Whether the caller may change the settings of the tool's connector (may
+   * `update` MCPServers in its namespace); absent for core tools, workflows
+   * and from older musters.
+   */
+  connectorAdmin?: boolean;
 }
 
 /** `tool` = an aggregated server's tool, `workflow` = `workflow_<name>`, `core` = `core_*`. */
@@ -472,6 +533,10 @@ export interface ToolDetail {
   server?: string;
   kind?: ToolKind;
   annotations?: ToolAnnotations;
+  /** See {@link ToolSummary.approval}. */
+  approval?: ToolApproval;
+  /** See {@link ToolSummary.connectorAdmin}. */
+  connectorAdmin?: boolean;
 }
 
 /** A server the aggregator cannot use until the caller authenticates. */

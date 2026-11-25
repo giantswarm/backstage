@@ -1,0 +1,256 @@
+import type {
+  GovernanceMode,
+  MCPServerApproval,
+  ToolApproval,
+  ToolApprovalSource,
+} from '../apis/types';
+
+/**
+ * A connector's tool approval, as the portal shows and edits it. muster
+ * decides and enforces; the portal renders what muster reports and writes
+ * explicit settings. The words are the same on every surface (PRD "Labels
+ * and tooltips").
+ */
+
+/** A tool's setting: it runs, it asks a person first, or it is hidden. */
+export type ApprovalSetting = 'Allow' | 'Ask' | 'Block';
+
+/** What a tool without its own entry gets, new tools included. */
+export type ApprovalRule = 'Allow' | 'Ask';
+
+/** The settings in the order the pills show them. */
+export const APPROVAL_SETTINGS: readonly ApprovalSetting[] = [
+  'Allow',
+  'Ask',
+  'Block',
+];
+
+/** The rule's choices: a rule cannot block. */
+export const APPROVAL_RULES: readonly ApprovalRule[] = ['Allow', 'Ask'];
+
+/** Each setting in one short sentence, wherever its pill or badge shows. */
+export const APPROVAL_SETTING_HINTS: Record<ApprovalSetting, string> = {
+  Allow: 'Runs without asking.',
+  Ask: 'Asks first.',
+  Block: "Hidden. Can't be used.",
+};
+
+/** Under the connector's rule. */
+export const APPROVAL_RULE_HINT = 'New tools follow this rule.';
+
+/** A built-in setting nobody changes (muster's own configuration tools). */
+export const BUILT_IN_HINT = 'Built in. Always asks.';
+
+/**
+ * The creation presets: shortcuts that fill every tool's setting, never a
+ * value stored or read at runtime.
+ */
+export type ApprovalPreset = 'recommended' | 'allow-all' | 'ask-all';
+
+export const APPROVAL_PRESETS: readonly ApprovalPreset[] = [
+  'recommended',
+  'allow-all',
+  'ask-all',
+];
+
+export const APPROVAL_PRESET_LABELS: Record<ApprovalPreset, string> = {
+  recommended: 'Recommended',
+  'allow-all': 'Allow all',
+  'ask-all': 'Ask all',
+};
+
+export const APPROVAL_PRESET_HINTS: Record<ApprovalPreset, string> = {
+  recommended: 'Read-only tools run. The rest ask.',
+  'allow-all': 'Everything runs.',
+  'ask-all': 'Everything asks.',
+};
+
+/**
+ * The preset the wizard pre-selects on a connector nobody reviewed: *Allow
+ * all* on a trusted platform (an upgrade changes nothing), *Recommended* on
+ * a governed one.
+ */
+export function defaultPresetFor(mode: GovernanceMode): ApprovalPreset {
+  return mode === 'governed' ? 'recommended' : 'allow-all';
+}
+
+/** A tool as the settings key it: the server's own name, and its effect. */
+export type ApprovalTool = {
+  /** The server's own tool name (no `x_`, family or tool prefix). */
+  key: string;
+  /** Annotated `readOnlyHint: true` by its server. */
+  readOnly: boolean;
+};
+
+/** The settings being edited: always explicit, one entry per tool. */
+export type ApprovalDraft = {
+  rule: ApprovalRule;
+  tools: Record<string, ApprovalSetting>;
+};
+
+/**
+ * A stored setting, as muster reads it: a value it does not know counts as
+ * `Ask` (fail closed). Undefined for no value.
+ */
+export function storedSetting(
+  value: string | undefined,
+): ApprovalSetting | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return value === 'Allow' || value === 'Block' ? value : 'Ask';
+}
+
+/** A stored rule as muster reads it: unset is `Allow`, unknown is `Ask`. */
+export function storedRule(value: string | undefined): ApprovalRule {
+  if (value === undefined || value === 'Allow') {
+    return 'Allow';
+  }
+  return 'Ask';
+}
+
+/**
+ * A preset written out for the tools listed now, as muster expands it on
+ * save: *Recommended* rule `Ask`, each read-only tool `Allow`, every other
+ * `Ask`; *Allow all* everything `Allow`; *Ask all* everything `Ask`.
+ */
+export function expandPreset(
+  preset: ApprovalPreset,
+  tools: readonly ApprovalTool[],
+): ApprovalDraft {
+  const rule: ApprovalRule = preset === 'allow-all' ? 'Allow' : 'Ask';
+  const settingOf = (tool: ApprovalTool): ApprovalSetting => {
+    if (preset === 'recommended') {
+      return tool.readOnly ? 'Allow' : 'Ask';
+    }
+    return rule;
+  };
+  return {
+    rule,
+    tools: Object.fromEntries(tools.map(tool => [tool.key, settingOf(tool)])),
+  };
+}
+
+/**
+ * The stored settings as a draft: each tool's own entry, else the rule it
+ * follows now (a *New* tool), so saving writes it out. Entries for tools not
+ * listed now (a blocked tool is never listed) are kept as they are.
+ */
+export function draftFromStored(
+  approval: MCPServerApproval | undefined,
+  tools: readonly ApprovalTool[],
+): ApprovalDraft {
+  const rule = storedRule(approval?.rule);
+  const stored: Record<string, ApprovalSetting> = {};
+  for (const [key, value] of Object.entries(approval?.tools ?? {})) {
+    stored[key] = storedSetting(value) ?? 'Ask';
+  }
+  for (const tool of tools) {
+    stored[tool.key] ??= rule;
+  }
+  return { rule, tools: stored };
+}
+
+/** Whether two drafts store the same settings. */
+export function sameDraft(a: ApprovalDraft, b: ApprovalDraft): boolean {
+  if (a.rule !== b.rule) {
+    return false;
+  }
+  const keys = new Set([...Object.keys(a.tools), ...Object.keys(b.tools)]);
+  return [...keys].every(key => a.tools[key] === b.tools[key]);
+}
+
+/**
+ * The preset whose expansion the draft equals for the listed tools, if any:
+ * the preset pill then shows selected. Entries for unlisted tools do not
+ * count, as a preset cannot know them.
+ */
+export function matchingPreset(
+  draft: ApprovalDraft,
+  tools: readonly ApprovalTool[],
+): ApprovalPreset | undefined {
+  return APPROVAL_PRESETS.find(preset => {
+    const expanded = expandPreset(preset, tools);
+    return (
+      expanded.rule === draft.rule &&
+      tools.every(tool => draft.tools[tool.key] === expanded.tools[tool.key])
+    );
+  });
+}
+
+/** The draft as `spec.approval`, explicit for every tool it holds. */
+export function approvalOf(draft: ApprovalDraft): Required<MCPServerApproval> {
+  return { rule: draft.rule, tools: { ...draft.tools } };
+}
+
+/** A reported setting (`allow`) as the stored word (`Allow`). */
+export function reportedSetting(
+  approval: Pick<ToolApproval, 'setting'>,
+): ApprovalSetting {
+  switch (approval.setting) {
+    case 'allow':
+      return 'Allow';
+    case 'block':
+      return 'Block';
+    default:
+      return 'Ask';
+  }
+}
+
+/** Where a setting comes from, in words, for the Tools tab. */
+export const APPROVAL_SOURCE_LABELS: Record<ToolApprovalSource, string> = {
+  tool: 'Set for this tool',
+  connector: "Connector's rule",
+  unreviewed: 'Not reviewed',
+  builtin: BUILT_IN_HINT,
+  unavailable: "Settings can't be read",
+  agent: "Agent's setting",
+  'agent-exception': 'Allowed for this agent',
+  governance: 'Governance mode',
+};
+
+/** A source muster may add later reads as itself rather than as nothing. */
+export function approvalSourceLabel(source: string): string {
+  return (APPROVAL_SOURCE_LABELS as Record<string, string>)[source] ?? source;
+}
+
+/**
+ * Whether muster reports the connector's settings as not reviewed: it lists
+ * tools, each `unreviewed`. Undefined when muster reports no approval at all
+ * (an older muster), which says nothing either way.
+ */
+export function isUnreviewed(
+  tools: readonly { approval?: ToolApproval }[],
+): boolean | undefined {
+  const reported = tools.filter(tool => tool.approval);
+  if (reported.length === 0) {
+    return undefined;
+  }
+  return reported.every(tool => tool.approval?.source === 'unreviewed');
+}
+
+/** Whether muster could not read the settings for any of the tools. */
+export function isApprovalUnavailable(
+  tools: readonly { approval?: ToolApproval }[],
+): boolean {
+  return tools.some(tool => tool.approval?.source === 'unavailable');
+}
+
+/**
+ * Whether the caller is a connector admin, as muster reports it on the
+ * connector's tools: `false` when any tool says not, `true` when one says
+ * so, undefined when none says (no tools, an older muster).
+ */
+export function connectorAdminOf(
+  tools: readonly { connectorAdmin?: boolean }[],
+): boolean | undefined {
+  if (tools.some(tool => tool.connectorAdmin === false)) {
+    return false;
+  }
+  return tools.some(tool => tool.connectorAdmin === true) ? true : undefined;
+}
+
+/** The tool's own name: its exposed name without the connector's prefix. */
+export function approvalKeyOf(name: string, prefix: string): string {
+  return name.startsWith(`${prefix}_`) ? name.slice(prefix.length + 1) : name;
+}

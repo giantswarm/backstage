@@ -6,6 +6,7 @@ import {
   parseTags,
   TAGS_ANNOTATION,
 } from '@giantswarm/backstage-plugin-ui-react';
+import type { MCPServerApproval } from '../../apis/types';
 
 /**
  * Label muster sets on every aggregated MCPServer CR identifying the target
@@ -249,6 +250,11 @@ interface MCPServerInterface extends KubeObjectInterface {
     requestMeta?: Record<string, string>;
     /** The former name of `requestMeta`, still read by muster. */
     meta?: Record<string, string>;
+    /**
+     * The connector's tool approval settings; absent on a connector nobody
+     * reviewed (every tool `Allow`).
+     */
+    approval?: MCPServerApproval;
   };
   status?: {
     state?: MCPServerState;
@@ -442,6 +448,11 @@ export class MCPServer extends KubeObject<MCPServerInterface> {
 
   getAuth() {
     return this.jsonData.spec?.auth;
+  }
+
+  /** `spec.approval`, or undefined on a connector without settings. */
+  getApproval(): MCPServerApproval | undefined {
+    return this.jsonData.spec?.approval;
   }
 
   /** `spec.requestMeta`, or the deprecated `spec.meta` when only that is set. */

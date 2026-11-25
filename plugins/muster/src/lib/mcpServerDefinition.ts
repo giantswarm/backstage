@@ -376,7 +376,13 @@ export function tagsArgument(
  */
 export function takesArgument(
   inputSchema: { properties?: Record<string, unknown> } | undefined,
-  argument: 'displayName' | 'tags' | 'clientCredentials' | 'requestMeta',
+  argument:
+    | 'displayName'
+    | 'tags'
+    | 'clientCredentials'
+    | 'requestMeta'
+    | 'approval'
+    | 'preset',
 ): boolean {
   return Boolean(inputSchema?.properties?.[argument]);
 }

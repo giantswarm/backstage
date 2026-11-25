@@ -8,6 +8,10 @@ export { WorkflowEffectBadge } from './WorkflowEffectBadge';
 export type { WorkflowEffectBadgeProps } from './WorkflowEffectBadge';
 export { MarkerBadge } from './MarkerBadge';
 export type { MarkerBadgeProps } from './MarkerBadge';
+export { ApprovalBadge } from './ApprovalBadge';
+export type { ApprovalBadgeProps } from './ApprovalBadge';
+export { ApprovalPills } from './ApprovalPills';
+export type { ApprovalPillsProps } from './ApprovalPills';
 // `Stat` moved to `ui-react` when the agent-platform Usage page needed it too.
 // Re-exported from here so muster's own call sites and its public
 // `src/index.ts` surface stay unchanged.
