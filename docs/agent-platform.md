@@ -358,7 +358,7 @@ without asking."), asks a person to confirm the exact call first (**Ask**,
 used."), from the MCPServer's `spec.approval`: a `rule` (Allow or Ask) that
 tools without their own entry follow, new ones included ("New tools follow
 this rule."), and an entry per tool. The portal only shows what muster reports
-(`approval {setting, source, new}` and `connectorAdmin` on each tool from
+(`approval {setting, source, new, unavailable}` and `connectorAdmin` on each tool from
 `filter_tools`, `approval` on `core_mcpserver_list`) and writes explicit
 settings; it decides nothing.
 
@@ -381,7 +381,11 @@ settings; it decides nothing.
   the step with muster's reason. Where muster cannot save them (no
   `core_mcpserver_set_approval` taking `approval`) the step shows them as
   they are; where it cannot read them (`source: unavailable`) it says calls
-  are refused.
+  are refused. Where approvals cannot be answered right now (a tool that asks
+  reports `approval.unavailable`, muster's reason: no shared storage, no
+  browser sign-in, no public URL), a warning names the reason for an admin to
+  act on, above the settings, which stay as they are; calls to those tools
+  are refused until it is fixed.
 - `core_mcpserver_create` carries the mode's `preset` where its input schema
   declares one (muster requires one once it enforces approval), so a new
   connector starts reviewed; the step then writes each tool's setting.
@@ -391,7 +395,9 @@ settings; it decides nothing.
   that may skip an Ask, and an _Approval_ filter. A connector nobody reviewed
   says _Allow — not reviewed_ once above the list, with _Review tool
   settings_ (the edit's Test & Tools step) for a connector admin, or a
-  pointer to `spec.approval` in Git for a GitOps-managed one. Blocked tools
+  pointer to `spec.approval` in Git for a GitOps-managed one. The same
+  warning with muster's reason shows above the list where approvals cannot be
+  answered right now. Blocked tools
   are listed from `spec.approval`, without a page to open.
 
 ### Models

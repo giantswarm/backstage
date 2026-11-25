@@ -203,6 +203,9 @@ only after a write there.
   reviewed. The guest is connector admin of muster's own connectors, not of
   an organization's. `core_mcpserver_set_approval` and a create's `preset`
   write `spec.approval`, which the next listing reports.
+  On the second installation's muster the tools that ask also report
+  `approval.unavailable` ("muster's shared store is not on Valkey"), for the
+  warning that approvals cannot be answered right now.
 - A workflow's steps call the tools they were written against, from the data
   set's serving connectors; it is available while a serving connector offers
   each of them. Deleting, turning off or failing a connector makes the

@@ -126,7 +126,20 @@ export type MusterFixtureConnector = FixtureConnector & {
   toolPrefix?: string;
   /** `spec.approval`, as seeded or written; absent: not reviewed. */
   approval?: MCPServerApproval;
+  /**
+   * Why approvals cannot be answered where this connector is served (a
+   * prerequisite is missing): reported as `approval.unavailable` on each of
+   * its tools that asks.
+   */
+  approvalUnavailable?: string;
 };
+
+/**
+ * What muster on the data set's second installation reports: its storage is
+ * not shared, so a tool that asks is refused (fixtures, tool approval).
+ */
+export const FIXTURE_APPROVAL_UNAVAILABLE =
+  "muster's shared store is not on Valkey";
 
 /**
  * The segment muster names a connector's tools and prompts with,
@@ -627,7 +640,13 @@ function withApprovalOf(
   }
   return {
     ...tool,
-    approval: reported,
+    approval: {
+      ...reported,
+      ...(reported.setting === 'ask' &&
+        connector.approvalUnavailable && {
+          unavailable: connector.approvalUnavailable,
+        }),
+    },
     connectorAdmin: connector.namespace === undefined,
   };
 }

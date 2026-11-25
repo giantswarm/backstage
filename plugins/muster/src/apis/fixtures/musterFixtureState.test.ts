@@ -14,6 +14,7 @@ import {
   MusterFixtureState,
   NEW_CONNECTOR_TOOLS,
 } from './musterFixtureState';
+import { FIXTURE_APPROVAL_UNAVAILABLE } from './musterFixtureData';
 import { musterFixtureApi } from './MusterFixtureApi';
 
 const INSTALLATION = 'meadow';
@@ -74,6 +75,32 @@ describe('the connector writes in fixture mode', () => {
           server => server.name === name,
         )?.approval,
       ).toEqual(approval);
+    });
+
+    it("reports why asking calls are refused on the second installation's muster only", async () => {
+      const asking = (installation: string) =>
+        api
+          .filterTools({ installation, pattern: 'x_*', limit: 200 })
+          .then(result =>
+            (result.tools ?? []).filter(
+              tool => tool.approval?.setting === 'ask',
+            ),
+          );
+
+      const meadow = await asking(INSTALLATION);
+      expect(meadow.length).toBeGreaterThan(0);
+      expect(meadow.some(tool => tool.approval?.unavailable)).toBe(false);
+
+      const fennel = await asking('fennel');
+      expect(fennel.length).toBeGreaterThan(0);
+      expect(
+        fennel.every(
+          tool => tool.approval?.unavailable === FIXTURE_APPROVAL_UNAVAILABLE,
+        ),
+      ).toBe(true);
+      expect(
+        fennel.every(tool => tool.approval?.source !== 'unavailable'),
+      ).toBe(true);
     });
 
     it('sets the settings explicitly, and the next listing reports them', async () => {

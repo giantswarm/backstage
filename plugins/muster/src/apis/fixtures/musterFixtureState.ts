@@ -19,6 +19,7 @@ import {
   connectorKeyOf,
   mcpServerObjectOf,
   musterWorkflowObjectOf,
+  FIXTURE_APPROVAL_UNAVAILABLE,
   presetApprovalOf,
   reviewedApprovalOf,
   musterWorkflowOf,
@@ -359,6 +360,12 @@ export class MusterFixtureState {
       state,
       ...(toolPrefix && toolPrefix !== stored.connector.name && { toolPrefix }),
       ...(approval && { approval }),
+      // The second installation's muster has no shared store: what asks is
+      // refused there, which the pages show as a warning.
+      ...(stored.connector.installation ===
+        this.data.installations[1]?.name && {
+        approvalUnavailable: FIXTURE_APPROVAL_UNAVAILABLE,
+      }),
     };
   }
 
