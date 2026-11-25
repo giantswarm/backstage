@@ -1,6 +1,6 @@
 import { MouseEvent, ReactNode, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Alert, Box, Flex, SearchField, Text } from '@backstage/ui';
+import { Alert, Box, ButtonLink, Flex, SearchField, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
   CatalogFilterBar,
@@ -22,7 +22,17 @@ import {
 } from '../../../lib/toolAnnotations';
 import { toolMatchesQuery } from '../../../lib/toolSearch';
 import {
+  approvalSourceLabel,
+  APPROVAL_SETTINGS,
+  connectorAdminOf,
+  isApprovalUnavailable,
+  isUnreviewed,
+  reportedSetting,
+} from '../../../lib/toolApproval';
+import {
+  ApprovalBadge,
   EffectBadge,
+  MarkerBadge,
   TruncatedListNote,
   type ToolsListView,
   useServerPageLinks,
@@ -43,17 +53,32 @@ const useStyles = makeStyles({
   search: {
     maxWidth: 360,
   },
+  note: {
+    marginBottom: 8,
+  },
 });
 
 /** The "What it does" dropdown, as the wizard's catalogue draws it (T81). */
-const EFFECT_FACETS: readonly CatalogFacet<ToolSummary>[] = [
-  {
-    id: 'effect',
-    label: 'What it does',
-    value: tool => toolEffect(tool),
-    optionLabel: id => TOOL_EFFECT_LABELS[id as ToolEffect] ?? id,
-    order: ['reads', 'changes'],
-  },
+const EFFECT_FACET: CatalogFacet<ToolSummary> = {
+  id: 'effect',
+  label: 'What it does',
+  value: tool => toolEffect(tool),
+  optionLabel: id => TOOL_EFFECT_LABELS[id as ToolEffect] ?? id,
+  order: ['reads', 'changes'],
+};
+
+/** The *Approval* dropdown: Allow, Ask, Block, as muster reports them. */
+const APPROVAL_FACET: CatalogFacet<ToolSummary> = {
+  id: 'approval',
+  label: 'Approval',
+  value: tool => (tool.approval ? reportedSetting(tool.approval) : undefined),
+  order: APPROVAL_SETTINGS,
+};
+
+const EFFECT_FACETS: readonly CatalogFacet<ToolSummary>[] = [EFFECT_FACET];
+const APPROVAL_FACETS: readonly CatalogFacet<ToolSummary>[] = [
+  EFFECT_FACET,
+  APPROVAL_FACET,
 ];
 
 /**
@@ -147,6 +172,24 @@ export interface ConnectorToolsTabProps {
    * holds its own, seeded the same way.
    */
   searchState?: ToolSearchState;
+  /**
+   * The exposed names of the tools the connector blocks, which muster hides
+   * from every listing (from `spec.approval`): listed after the rest, with no
+   * page to open.
+   */
+  blockedTools?: readonly string[];
+  /**
+   * The connector's edit at its *Test & Tools* step, where a connector admin
+   * changes the settings; absent where the wizard cannot edit it.
+   */
+  settingsHref?: string;
+  /** Its settings are changed in Git (a GitOps-managed connector). */
+  settingsInGit?: boolean;
+  /**
+   * Per exposed tool name, the agents that may skip its *Ask* (a connector
+   * admin's exception), as *Allowed for: Alert Review*.
+   */
+  allowedFor?: Readonly<Record<string, readonly string[]>>;
 }
 
 /**
@@ -172,6 +215,10 @@ export function ConnectorToolsTab({
   sessionGate,
   signInGate,
   searchState,
+  blockedTools,
+  settingsHref,
+  settingsInGit,
+  allowedFor,
 }: ConnectorToolsTabProps) {
   const classes = useStyles();
   const ownSearch = useToolSearchState();
@@ -182,7 +229,26 @@ export function ConnectorToolsTab({
   const navigate = useNavigate();
 
   const { tools: listed, shortName } = tools;
-  const all = useMemo(() => listed ?? [], [listed]);
+  const all = useMemo<ToolSummary[]>(() => {
+    const known = new Set((listed ?? []).map(tool => tool.name));
+    return [
+      ...(listed ?? []),
+      ...(blockedTools ?? [])
+        .filter(name => !known.has(name))
+        .map(name => ({
+          name,
+          approval: { setting: 'block' as const, source: 'tool' as const },
+        })),
+    ];
+  }, [listed, blockedTools]);
+  const blocked = useMemo(
+    () =>
+      new Set(
+        (blockedTools ?? []).filter(name => all.some(t => t.name === name)),
+      ),
+    [blockedTools, all],
+  );
+  const reportsApproval = all.some(tool => tool.approval);
   const searched = useMemo(
     () =>
       all.filter(tool => toolMatchesQuery(tool, shortName(tool.name), query)),
@@ -191,7 +257,7 @@ export function ConnectorToolsTab({
   const filters = useCatalogFilters({
     items: all,
     searched,
-    facets: EFFECT_FACETS,
+    facets: reportsApproval ? APPROVAL_FACETS : EFFECT_FACETS,
     initialSelection,
   });
   const shown = filters.filtered;
@@ -202,7 +268,9 @@ export function ConnectorToolsTab({
       : undefined,
   };
   const hrefOf = (tool: ToolSummary) =>
-    links.tool(server, tool.name, installation, view);
+    blocked.has(tool.name)
+      ? undefined
+      : links.tool(server, tool.name, installation, view);
   // The list as the tab opened on it: it pages far enough to show the tool
   // last opened from it again, until the search or filter changes.
   const [openedKey] = useState(() => `${filters.key}|${query}`);
@@ -261,6 +329,17 @@ export function ConnectorToolsTab({
       />
     );
   }
+  const listedTools = listed ?? [];
+  const approvalNote = (
+    <ApprovalNote
+      unavailable={isApprovalUnavailable(listedTools)}
+      unreviewed={isUnreviewed(listedTools) === true}
+      admin={connectorAdminOf(listedTools)}
+      settingsHref={settingsHref}
+      settingsInGit={settingsInGit}
+    />
+  );
+
   if (all.length === 0) {
     if (signInGate) {
       return <>{signInGate}</>;
@@ -284,6 +363,7 @@ export function ConnectorToolsTab({
   return (
     <Flex direction="column" gap="0">
       {signInGate}
+      {approvalNote}
       {searchable && (
         <div className={classes.toolbar}>
           <Box className={classes.search}>
@@ -328,8 +408,13 @@ export function ConnectorToolsTab({
                   id: tool.name,
                   title: shortName(tool.name),
                   href: hrefOf(tool),
-                  status: <EffectBadge effect={toolEffect(tool)} />,
-                  description: tool.description ?? tool.summary,
+                  status: (
+                    <ToolStatus tool={tool} listed={!blocked.has(tool.name)} />
+                  ),
+                  facts: approvalFacts(tool, allowedFor?.[tool.name]),
+                  description: blocked.has(tool.name)
+                    ? 'Hidden from everyone, so muster lists it nowhere else.'
+                    : (tool.description ?? tool.summary),
                 }))}
               />
             )}
@@ -338,4 +423,105 @@ export function ConnectorToolsTab({
       )}
     </Flex>
   );
+}
+
+/** What a tool does, and its approval where muster reports one. */
+function ToolStatus({ tool, listed }: { tool: ToolSummary; listed: boolean }) {
+  return (
+    <Flex align="center" gap="1">
+      {listed && <EffectBadge effect={toolEffect(tool)} />}
+      {tool.approval && (
+        <ApprovalBadge
+          setting={reportedSetting(tool.approval)}
+          builtIn={tool.approval.source === 'builtin'}
+        />
+      )}
+      {tool.approval?.new && <MarkerBadge tone="neutral">New</MarkerBadge>}
+    </Flex>
+  );
+}
+
+/**
+ * Where a tool's setting comes from, and which agents may skip its *Ask*.
+ * Nothing for a connector nobody reviewed: the note above the list says it
+ * once.
+ */
+function approvalFacts(
+  tool: ToolSummary,
+  allowedFor: readonly string[] | undefined,
+): string[] {
+  const facts: string[] = [];
+  const source = tool.approval?.source;
+  if (source && source !== 'unreviewed' && source !== 'builtin') {
+    facts.push(approvalSourceLabel(source));
+  }
+  if (allowedFor && allowedFor.length > 0) {
+    facts.push(`Allowed for: ${allowedFor.join(', ')}`);
+  }
+  return facts;
+}
+
+/**
+ * The connector's tool approval as a whole, above its tools: muster cannot
+ * read the settings; nobody reviewed them (with the way to, for a connector
+ * admin); or, reviewed, where a connector admin changes them.
+ */
+function ApprovalNote({
+  unavailable,
+  unreviewed,
+  admin,
+  settingsHref,
+  settingsInGit,
+}: {
+  unavailable: boolean;
+  unreviewed: boolean;
+  admin: boolean | undefined;
+  settingsHref?: string;
+  settingsInGit?: boolean;
+}) {
+  const classes = useStyles();
+  const canChange = admin === true && Boolean(settingsHref);
+  if (unavailable) {
+    return (
+      <Alert
+        className={classes.note}
+        status="warning"
+        title="The tool settings can't be read"
+        description="Muster could not read this connector's tool approval settings, so it refuses calls to its tools until it can."
+      />
+    );
+  }
+  if (unreviewed) {
+    let how = 'A connector admin can review them.';
+    if (canChange) {
+      how = 'Review them to choose which tools ask first or are hidden.';
+    } else if (settingsInGit) {
+      how = "Review them in Git: the MCPServer's spec.approval.";
+    }
+    return (
+      <Alert
+        className={classes.note}
+        status="info"
+        title="Allow — not reviewed"
+        description={`Every tool runs without asking until its settings are reviewed. ${how}`}
+        customActions={
+          canChange ? (
+            <ButtonLink size="small" variant="secondary" href={settingsHref}>
+              Review tool settings
+            </ButtonLink>
+          ) : undefined
+        }
+      />
+    );
+  }
+  if (canChange) {
+    return (
+      <Flex justify="end" className={classes.note}>
+        <ButtonLink size="small" variant="tertiary" href={settingsHref}>
+          Change tool settings
+        </ButtonLink>
+      </Flex>
+    );
+  }
+  return null;
 }

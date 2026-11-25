@@ -377,6 +377,23 @@ function ConnectorPageContent({
       ? wizardLinks('connect', { name: singular.getName(), installation })
       : undefined;
   const gitOpsManaged = singular ? isGitOpsManaged(singular) : false;
+  // Tool approval: its settings change at the edit's Test & Tools step, and
+  // the tools it blocks are listed although muster hides them.
+  const settingsHref =
+    singular && !editBlock
+      ? wizardLinks('verify', { name: singular.getName(), installation })
+      : undefined;
+  const blockedTools = useMemo(() => {
+    const approval = singular?.getApproval();
+    if (!singular || !approval?.tools) {
+      return undefined;
+    }
+    const prefix = singular.getToolNamePrefix();
+    return Object.entries(approval.tools)
+      .filter(([, setting]) => setting === 'Block')
+      .map(([tool]) => `${prefix}_${tool}`)
+      .sort();
+  }, [singular]);
 
   const [action, setAction] = useState<LiveAction | undefined>();
   const [actionOpen, setActionOpen] = useState(false);
@@ -773,6 +790,9 @@ function ConnectorPageContent({
                   sessionGate={sessionGate}
                   signInGate={signInGate}
                   searchState={toolSearch}
+                  blockedTools={blockedTools}
+                  settingsHref={settingsHref}
+                  settingsInGit={gitOpsManaged}
                 />
               }
             />
