@@ -145,7 +145,13 @@ export function toolListOf(raw: unknown): AgentToolEntry[] {
   });
 }
 
-type Connector = { server: string; uid?: string; admin: boolean };
+type Connector = {
+  server: string;
+  uid?: string;
+  admin: boolean;
+  /** The connector's own names of the tools the entry lifts there. */
+  tools: string[];
+};
 
 /**
  * The connectors each `Allow` entry (and an allowing default, as
@@ -182,12 +188,18 @@ export function grantNeeds(
     }
     const list = needs.get(entry) ?? [];
     for (const connector of tool.connectors ?? []) {
-      if (!list.some(known => known.server === connector.server)) {
-        list.push({
+      let known = list.find(other => other.server === connector.server);
+      if (!known) {
+        known = {
           server: connector.server,
           uid: connector.uid,
           admin: tool.connectorAdmin === true,
-        });
+          tools: [],
+        };
+        list.push(known);
+      }
+      if (connector.tool && !known.tools.includes(connector.tool)) {
+        known.tools.push(connector.tool);
       }
     }
     needs.set(entry, list);
@@ -294,13 +306,14 @@ export function settleGrants(
 function recorded(
   grant: Pick<
     AgentApprovalGrant,
-    'entry' | 'server' | 'namespace' | 'connectorUid'
+    'entry' | 'server' | 'namespace' | 'connectorUid' | 'tools'
   >,
   generation: number,
 ): AgentApprovalGrant {
   return {
     entry: grant.entry,
     server: grant.server,
+    ...(grant.tools && { tools: [...grant.tools] }),
     ...(grant.namespace && { namespace: grant.namespace }),
     ...(grant.connectorUid && { connectorUid: grant.connectorUid }),
     grantedBy: FIXTURE_USER.email,
@@ -337,7 +350,12 @@ export function grantsOfApproval(
       }
       grants.push(
         recorded(
-          { entry, server: connector.server, connectorUid: connector.uid },
+          {
+            entry,
+            server: connector.server,
+            connectorUid: connector.uid,
+            tools: connector.tools,
+          },
           generation,
         ),
       );

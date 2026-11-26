@@ -11,8 +11,15 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
-import { useAgentManagerInfo } from '../../hooks/useAgentManager';
-import { supportsTags } from '../../lib/agentManager';
+import {
+  useAgentManagerClient,
+  useAgentManagerInfo,
+} from '../../hooks/useAgentManager';
+import {
+  agentGenerationOf,
+  isStaleWriteConflict,
+  supportsTags,
+} from '../../lib/agentManager';
 import { classifyCommitFailure } from '../../hooks/useAgentCommitCheck';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { useSignInTool } from '../../hooks/useSignInTool';
@@ -53,11 +60,17 @@ import { ToolsetResolutionList } from '../ToolsetResolutionList';
 import { ExceptionsNote } from '../AgentApprovalSettings';
 import { useWizardApproval } from '../../hooks/useWizardApproval';
 import {
+  APPROVAL_NOT_ENFORCED_NOTE,
   agentToolListOf,
+  approvalNotEnforced,
+  approvalStateKey,
+  carriesApprovalSettings,
+  connectorAdminFrom,
   droppedExceptions,
   editApprovalPlan,
   isApprovalSetting,
 } from '../../lib/agentApproval';
+import { useAgentManagerAgent } from '../../hooks/useAgentManagerAgent';
 import { PrivateSkillsNote } from '../PrivateSkillsNote';
 import { pickedSourcesOf } from '../../lib/agentSpec';
 import { agentSkillsSecretOf } from '../../lib/privateSkills';
@@ -193,9 +206,24 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
     agent.grants,
   );
   const approvalActive = approval.supported && agent.approvalSettings === true;
+  // An agent with settings while agent-manager's support cannot be told:
+  // a save now could write the list without them, so there is none.
+  const approvalUnknown =
+    carriesApprovalSettings(agent) && approval.support !== 'supported';
   const approvalPending =
-    approvalActive &&
-    (approval.coveragePending || approval.report.status === 'loading');
+    approval.support === 'reading' ||
+    (approvalActive &&
+      (approval.coveragePending || approval.report.status === 'loading'));
+  // agent-manager's reading now, for the exceptions a save drops: not the one
+  // the form opened with (another admin may have granted one since).
+  const live = useAgentManagerAgent(installation, agent.namespace, agent.name);
+  const grants = useMemo(
+    () => live.agent?.grants ?? agent.grants ?? [],
+    [live.agent?.grants, agent.grants],
+  );
+  const client = useAgentManagerClient(installation);
+  const [stale, setStale] = useState(false);
+  const [savedWithWarnings, setSavedWithWarnings] = useState<string[]>();
   const reported =
     approval.report.status === 'ready' ? approval.report.tools : undefined;
   const plan = useMemo(() => {
@@ -231,13 +259,12 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   const dropped = useMemo(
     () =>
       droppedExceptions(
-        agent.grants ?? [],
+        grants,
         { tools: approval.tools, default: approval.default },
-        server =>
-          reported?.find(tool => tool.server === server)?.connectorAdmin,
+        connectorAdminFrom(reported),
         viaPullRequest,
       ),
-    [agent.grants, approval.tools, approval.default, reported, viaPullRequest],
+    [grants, approval.tools, approval.default, reported, viaPullRequest],
   );
   const isReady = isComplete && isToolsetValid;
 
@@ -261,6 +288,8 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   const canWrite =
     !signIn.isLoading &&
     !approvalPending &&
+    !approvalUnknown &&
+    !stale &&
     dirty &&
     // Settings alone are not dry-run: validate_agent has none of them.
     (!updates || Boolean(dryRun.result)) &&
@@ -291,13 +320,49 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   const isCommitted =
     committed?.signature === signature && committed.result.commit !== undefined;
 
+  /**
+   * Right before a write: whether the agent's list, default, grants or
+   * generation moved since the form read it. A save composed from that
+   * reading would write its old values back.
+   */
+  const changedMeanwhile = useCallback(async () => {
+    if (!client || !approvalActive) {
+      return false;
+    }
+    try {
+      const fresh = await client.getAgent(agent.namespace, agent.name);
+      return approvalStateKey(fresh) !== approvalStateKey(agent);
+    } catch {
+      // The write's own precondition still holds it.
+      return false;
+    }
+  }, [client, approvalActive, agent]);
+  const generation = agentGenerationOf(agent);
+
   const onSave = useCallback(async () => {
     updating.reset();
+    if (await changedMeanwhile()) {
+      setStale(true);
+      return;
+    }
     let result;
     try {
-      result = await updating.update(save);
+      result = await updating.update(
+        generation === undefined
+          ? save
+          : { ...save, expectedGeneration: generation },
+      );
     } catch {
       // Left to `updating.failure`, rendered inline below.
+      return;
+    }
+    // Saved, but agent-manager could not finish everything (muster not yet
+    // told about a dropped exception): said here before leaving.
+    if (
+      result.sessionsUpdated === false ||
+      (result.warnings?.length ?? 0) > 0
+    ) {
+      setSavedWithWarnings(result.warnings ?? []);
       return;
     }
     if (detailHref) {
@@ -316,17 +381,30 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
         },
       });
     }
-  }, [updating, save, detailHref, navigate, installation, agent]);
+  }, [
+    updating,
+    save,
+    generation,
+    changedMeanwhile,
+    detailHref,
+    navigate,
+    installation,
+    agent,
+  ]);
 
   const onCommit = useCallback(async () => {
     updating.reset();
+    if (await changedMeanwhile()) {
+      setStale(true);
+      return;
+    }
     try {
       const result = await updating.commit(save);
       setCommitted({ signature, result });
     } catch {
       // Left to `updating.failure`, rendered inline below.
     }
-  }, [updating, save, signature]);
+  }, [updating, save, signature, changedMeanwhile]);
 
   const isBusy = updating.isUpdating || updating.isCommitting;
   const isPhone = usePhoneLayout();
@@ -346,7 +424,9 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
     () => (
       <Button
         variant="primary"
-        isDisabled={isBusy || !canWrite || isCommitted}
+        isDisabled={
+          isBusy || !canWrite || isCommitted || Boolean(savedWithWarnings)
+        }
         onPress={viaPullRequest ? onCommit : onSave}
       >
         {writeLabel}
@@ -356,6 +436,7 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
       isBusy,
       canWrite,
       isCommitted,
+      savedWithWarnings,
       viaPullRequest,
       onCommit,
       onSave,
@@ -471,10 +552,63 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
           <Text color="secondary">Nothing changed yet.</Text>
         )}
 
+        {savedWithWarnings && (
+          <Flex direction="column" align="start" gap="1">
+            <Alert
+              status="warning"
+              title="Saved, with something left to finish"
+              description={`Sessions already running may keep a removed exception until muster is told; agent-manager keeps trying.${
+                savedWithWarnings.length > 0
+                  ? ` ${savedWithWarnings.join(' ')}`
+                  : ''
+              }`}
+            />
+            {detailHref && (
+              <Button
+                variant="secondary"
+                size="small"
+                onPress={() => navigate(detailHref)}
+              >
+                Open the agent
+              </Button>
+            )}
+          </Flex>
+        )}
+        {(stale || isStaleWriteConflict(updating.failure)) && (
+          <Flex direction="column" align="start" gap="1">
+            <Alert
+              status="warning"
+              title="This agent changed since you opened it"
+              description="Someone saved its tools, settings or exceptions meanwhile. Saving now would write back what you started from, so nothing was saved. Reload the agent and make your change again."
+            />
+            <Button
+              variant="secondary"
+              size="small"
+              onPress={() => window.location.reload()}
+            >
+              Reload the agent
+            </Button>
+          </Flex>
+        )}
+        {approvalUnknown && (
+          <Alert
+            status="warning"
+            title="The approval settings can't be checked right now"
+            description="agent-manager's tools could not be read, so a save now could drop this agent's approval settings. Nothing is saved until they can be read; try again in a moment."
+          />
+        )}
+        {approvalActive && approvalNotEnforced(agent) && (
+          <Alert
+            status="info"
+            title="Approval settings not enforced"
+            description={APPROVAL_NOT_ENFORCED_NOTE}
+          />
+        )}
         {dirty && (
           <ExceptionsNote
             notAdmin={dropped.notAdmin}
             viaGit={dropped.viaGit}
+            unchecked={dropped.unchecked}
             labelOf={server => labels.get(server) ?? server}
           />
         )}
@@ -527,6 +661,14 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
             }
           />
         )}
+        {committed &&
+          committed.signature === signature &&
+          (committed.result.earlier?.length ?? 0) > 0 && (
+            <Text variant="body-small">
+              This change is {(committed.result.earlier?.length ?? 0) + 1} pull
+              requests, one per kind of change: merge them in the order below.
+            </Text>
+          )}
         {committed &&
           committed.signature === signature &&
           [...(committed.result.earlier ?? []), committed.result].map(

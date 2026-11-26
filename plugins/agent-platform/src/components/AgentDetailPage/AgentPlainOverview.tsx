@@ -26,7 +26,7 @@ import {
 
 import { useAgentToolset } from '../../hooks/useAgentToolset';
 import { useAgentApproval } from '../../hooks/useAgentApproval';
-import { approvalCounts, approvalSummary } from '../../lib/agentApproval';
+import { reportSummary } from '../../lib/agentApproval';
 import { useReachCatalogue } from '../../hooks/useReachCatalogue';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { underlyingModelLine } from '../../hooks/useUnderlyingModel';
@@ -438,7 +438,7 @@ function ConnectorsSection({
       )}
       {approval.active && approval.report.status === 'ready' && (
         <Text variant="body-small" color="secondary">
-          Approval: {approvalSummary(approvalCounts(approval.report.tools))}
+          Approval: {reportSummary(approval.report, approval.notEnforced)}
           {toolsHref && (
             <>
               {' · '}

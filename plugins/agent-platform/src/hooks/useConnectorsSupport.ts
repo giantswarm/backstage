@@ -19,11 +19,9 @@ export type ConnectorsSupport =
  */
 export function useConnectorsSupport(
   installation: string | undefined,
-  editing: boolean,
+  _editing?: boolean,
 ): ConnectorsSupport {
   const musterApi = useMusterPluginApi();
-  // Kept in the signature: the callers say whether they edit.
-  void editing;
   const tool = agentManagerToolName(AGENT_MANAGER_TOOLS.createAgent);
   const enabled = Boolean(musterApi && installation);
   const { data, isError } = useQuery({
@@ -35,7 +33,9 @@ export function useConnectorsSupport(
     retry: false,
   });
   if (!enabled) return 'unsupported';
+  // What was read stands while a later re-read fails: a failed refetch
+  // never turns a known answer into an unknown one.
+  if (data !== undefined) return data ? 'supported' : 'unsupported';
   if (isError) return 'unread';
-  if (data === undefined) return 'reading';
-  return data ? 'supported' : 'unsupported';
+  return 'reading';
 }

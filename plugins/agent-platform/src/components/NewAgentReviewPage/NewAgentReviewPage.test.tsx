@@ -206,6 +206,10 @@ type Scenario = {
   approvalReport?: ToolSummary[];
   /** The approval settings set on the Tools step, by selector. */
   approval?: Record<string, AgentApprovalSetting>;
+  /** What set_agent_approval does after the create: succeed, or throw this. */
+  approvalError?: Error;
+  /** Whether create_agent's schema can be read (`false`: it fails). */
+  schemaReadable?: boolean;
 };
 
 function makeMusterApi(scenario: Scenario = {}) {
@@ -226,6 +230,9 @@ function makeMusterApi(scenario: Scenario = {}) {
           return scenario.notes ? { ...result, notes: scenario.notes } : result;
         }
         case 'x_agent-manager_set_agent_approval':
+          if (scenario.approvalError) {
+            throw scenario.approvalError;
+          }
           return { grants: [], dropped: [] };
         case 'x_agent-manager_create_agent': {
           if (scenario.createError) {
@@ -252,10 +259,16 @@ function makeMusterApi(scenario: Scenario = {}) {
     filtered_count: 0,
     truncated: false,
     tools: options.agentTools ? (scenario.approvalReport ?? []) : [],
+    ...(options.agentTools
+      ? { agentTools: { entries: [], settings: [] } }
+      : {}),
     toolset: ['preset:read-only'],
     toolset_unmatched: [],
   }));
   const describeTool = jest.fn(async (name: string) => {
+    if (scenario.schemaReadable === false) {
+      throw new Error('muster answered 503');
+    }
     if (scenario.approvalReport && name === 'x_agent-manager_create_agent') {
       return { name, inputSchema: { properties: { tools: {}, default: {} } } };
     }
@@ -547,7 +560,7 @@ describe('NewAgentReviewPage', () => {
     ).toBeInTheDocument();
   });
 
-  it("creates an agent with its settings, then grants its Allow over a connector's Ask with set_agent_approval", async () => {
+  it('creates an agent with its Ask and Block settings in create_agent alone', async () => {
     const user = userEvent.setup();
     const { callTool } = await renderReview({
       toolset: ['server:github'],
@@ -590,6 +603,68 @@ describe('NewAgentReviewPage', () => {
       expect.anything(),
       'gazelle',
     );
+  });
+
+  it('offers the created agent, never a second create, when its exceptions are refused after the create', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderReview({
+      toolset: ['tool:x_github_merge'],
+      approval: { 'tool:x_github_merge': 'Allow' },
+      approvalError: new Error(
+        'forbidden: allowing tool:x_github_merge over the Ask of connector github needs a connector admin of it',
+      ),
+      approvalReport: [
+        {
+          name: 'x_github_merge',
+          server: 'github',
+          kind: 'tool',
+          connectorAdmin: true,
+          approval: {
+            setting: 'ask',
+            source: 'tool',
+            entry: 'tool:x_github_merge',
+            admin: { setting: 'ask', source: 'tool' },
+          },
+        },
+      ],
+    });
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    await user.click(deployButton());
+
+    expect(
+      await screen.findByText(
+        'The agent was created without some of its approval settings',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Not saved: x_github_merge Allow\./),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/agent-manager said: allowing/),
+    ).toBeInTheDocument();
+    expect(deployButton()).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Open the agent' }));
+    expect(mockNavigate).toHaveBeenCalled();
+    expect(
+      callTool.mock.calls.filter(
+        ([name]) => name === 'x_agent-manager_create_agent',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('creates nothing while it cannot tell whether agent-manager takes the chosen settings', async () => {
+    await renderReview({
+      toolset: ['server:github'],
+      approval: { 'server:github': 'Block' },
+      approvalReport: [],
+      schemaReadable: false,
+    });
+    expect(
+      await screen.findByText(
+        "The approval settings can't be checked right now",
+      ),
+    ).toBeInTheDocument();
+    expect(deployButton()).toBeDisabled();
   });
 
   it("leaves an Allow over a connector's Ask out of create_agent and grants it after", async () => {

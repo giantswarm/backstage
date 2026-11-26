@@ -5,6 +5,8 @@ import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react
 import {
   AgentManagerError,
   AgentManagerNotConnectedError,
+  agentGenerationOf,
+  type AgentManagerAgent,
   type AgentApprovalChange,
   type AgentUpdate,
   type CommitAgentResult,
@@ -49,12 +51,52 @@ function carriesFields(update: AgentUpdate): boolean {
   return Object.keys(update).some(key => key !== 'namespace' && key !== 'name');
 }
 
-/** A refusal of the approval settings after the rest of the edit landed. */
-function approvalAfterSaveError(error: unknown): Error {
+/**
+ * The precondition of the approval write: the generation the update before
+ * it wrote, else the one the edit was composed from.
+ */
+function withGeneration(
+  approval: AgentApprovalChange,
+  update: AgentUpdate,
+  result: { agent?: Pick<AgentManagerAgent, 'generation'> } | undefined,
+): AgentApprovalChange {
+  if (update.expectedGeneration === undefined) {
+    return approval;
+  }
+  const generation = result
+    ? agentGenerationOf(result.agent)
+    : update.expectedGeneration;
+  return generation === undefined
+    ? approval
+    : { ...approval, expectedGeneration: generation };
+}
+
+/** The approval settings a change names, in a sentence. */
+function approvalChangeLine(approval: AgentApprovalChange): string {
+  const parts = Object.entries(approval.settings ?? {}).map(
+    ([selector, setting]) =>
+      `${selector.replace(/^[a-z]+:/, '')} ${setting || 'without a setting'}`,
+  );
+  if (approval.default !== undefined) {
+    parts.push(`default ${approval.default || 'removed'}`);
+  }
+  return parts.join(', ');
+}
+
+/**
+ * A refusal of `set_agent_approval` after the rest of the edit landed:
+ * says what was saved and which settings were not, in agent-manager's code.
+ */
+function approvalAfterSaveError(
+  error: unknown,
+  approval: AgentApprovalChange,
+): Error {
   if (error instanceof AgentManagerError) {
     return new AgentManagerError(
       error.code,
-      `The other changes were saved; the approval settings were not: ${error.message}`,
+      `Saved: every other change, the tool list included. Not saved (set_agent_approval refused it): ${approvalChangeLine(
+        approval,
+      )}. ${error.message} Reload the agent before trying again.`,
       { cause: error },
     );
   }
@@ -170,20 +212,26 @@ export function useUpdateAgent(
           const set = await agentManager.setAgentApproval(
             update.namespace,
             update.name,
-            approval,
+            withGeneration(approval, update, result),
           );
           return {
             ...result,
             dropped: [...(result?.dropped ?? []), ...(set.dropped ?? [])],
+            warnings: [...(result?.warnings ?? []), ...(set.warnings ?? [])],
+            ...((result?.sessionsUpdated === false ||
+              set.sessionsUpdated === false) && { sessionsUpdated: false }),
             fromGeneration,
           };
         } catch (error) {
-          throw result ? approvalAfterSaveError(error) : error;
+          throw result ? approvalAfterSaveError(error, approval) : error;
         }
       }
       return { ...result, fromGeneration };
     },
     onSuccess: (_result, update) => invalidateReads(update),
+    // A refusal after a write landed leaves the agent changed: read it again,
+    // so the next look at it is not the one from before the save.
+    onError: (_error, update) => invalidateReads(update),
   });
   const commitMutation = useTrackedMutation({
     event: (_result, update) => ({
@@ -206,11 +254,12 @@ export function useUpdateAgent(
         set = await agentManager.setAgentApproval(
           update.namespace,
           update.name,
-          approval,
+          // A pull request moves no generation until merged.
+          withGeneration(approval, update, undefined),
           'commit',
         );
       } catch (error) {
-        throw result ? approvalAfterSaveError(error) : error;
+        throw result ? approvalAfterSaveError(error, approval) : error;
       }
       return result
         ? {

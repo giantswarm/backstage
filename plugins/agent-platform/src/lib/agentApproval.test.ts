@@ -3,7 +3,11 @@ import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 
 import {
   agentToolListOf,
+  agentToolsArgumentOf,
   approvalNotEnforced,
+  approvalStateKey,
+  connectorAdminFrom,
+  reportSummary,
   allowBlocker,
   allowBlockerOfMany,
   approvalDraftOf,
@@ -304,5 +308,69 @@ describe('shownSetting and the summary', () => {
     expect(approvalSummary(approvalCounts([merge, list, list]))).toBe(
       '2 run without asking, 1 ask first',
     );
+  });
+});
+
+describe('review fixes', () => {
+  it('forwards the tools a grant covers to muster (a mark without them lifts nothing)', () => {
+    expect(
+      agentToolsArgumentOf(['server:gh'], undefined, [
+        {
+          entry: 'server:gh',
+          server: 'gh',
+          connectorUid: 'u',
+          tools: ['merge'],
+        },
+      ]),
+    ).toEqual({
+      tools: ['server:gh'],
+      grants: [
+        { entry: 'server:gh', server: 'gh', uid: 'u', tools: ['merge'] },
+      ],
+    });
+  });
+
+  it('does not warn from an admin right it could not check, and matches through connectors', () => {
+    const isAdminOf = connectorAdminFrom([
+      {
+        server: 'family',
+        connectors: [{ server: 'gh' }],
+        connectorAdmin: true,
+      },
+    ]);
+    expect(isAdminOf('gh')).toBe(true);
+    expect(isAdminOf('family')).toBeUndefined();
+    const dropped = droppedExceptions(
+      [
+        { entry: 'tool:a', server: 'gh' },
+        { entry: 'tool:b', server: 'other' },
+      ],
+      { tools: [{ 'tool:a': 'Allow' }, { 'tool:b': 'Allow' }] },
+      isAdminOf,
+    );
+    expect(dropped.notAdmin).toEqual([]);
+    expect(dropped.unchecked.map(grant => grant.server)).toEqual(['other']);
+  });
+
+  it('marks a partial report and settings saved but not enforced', () => {
+    expect(reportSummary({ tools: [merge], truncated: true }, true)).toBe(
+      '1 ask first (of the first tools listed only) — saved, not enforced',
+    );
+  });
+
+  it('tells a changed list, default, grant or generation apart', () => {
+    const agent = {
+      toolSettings: ['server:gh'],
+      defaultApproval: 'Ask',
+      grants: [{ entry: 'server:gh', server: 'gh', tools: ['a'] }],
+      generation: 3,
+    };
+    expect(approvalStateKey(agent)).toBe(approvalStateKey({ ...agent }));
+    expect(approvalStateKey({ ...agent, generation: 4 })).not.toBe(
+      approvalStateKey(agent),
+    );
+    expect(
+      approvalStateKey({ ...agent, toolSettings: [{ 'server:gh': 'Block' }] }),
+    ).not.toBe(approvalStateKey(agent));
   });
 });

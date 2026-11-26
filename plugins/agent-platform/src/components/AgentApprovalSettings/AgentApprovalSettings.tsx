@@ -1,4 +1,5 @@
 import { useId, useMemo } from 'react';
+import { reportedSetting } from '@giantswarm/backstage-plugin-muster';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 // eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Approval pills and settings are muster's.
@@ -91,16 +92,26 @@ function ToolPills({
   onSetting: AgentApprovalSettingsProps['onSetting'];
 }) {
   const classes = useStyles();
+  const reasonId = useId();
   const selector = selectorForTool(tool);
   const own = draft.settings[selector];
   const blocker = allowBlocker(tool, {
     connectorLabel: labelOf(tool.server ?? ''),
     viaGit,
   });
+  // A built-in, governance or unreadable Ask holds whatever the agent says:
+  // the pills show what muster reports and never offer Allow, even where a
+  // stored entry says Allow.
+  const floor = isPlatformAsk(tool);
+  let value = shownSetting(tool, draft);
+  if (floor && tool.approval) {
+    value = reportedSetting(tool.approval);
+  }
   // An Allow the person picked over a connector's Ask: an exception, saved
   // with set_agent_approval, which only that connector's admins can.
   const exception =
     own === 'Allow' &&
+    !floor &&
     (tool.approval?.admin?.setting ?? tool.approval?.setting) === 'ask' &&
     tool.approval?.source !== 'agent-exception';
   return (
@@ -108,13 +119,16 @@ function ToolPills({
       <ApprovalPills
         aria-label={`Approval for ${tool.name}`}
         options={AGENT_APPROVAL_SETTINGS}
-        value={shownSetting(tool, draft)}
-        disabledOptions={blocker && own !== 'Allow' ? ['Allow'] : undefined}
+        value={value}
+        disabledOptions={
+          blocker && (floor || own !== 'Allow') ? ['Allow'] : undefined
+        }
+        describedBy={blocker ? reasonId : undefined}
         onChange={setting => onSetting(selector, setting)}
         hintIds={hintIds}
       />
       {blocker && (
-        <Text variant="body-small" color="secondary">
+        <Text id={reasonId} variant="body-small" color="secondary">
           {blocker}
         </Text>
       )}
@@ -127,12 +141,116 @@ function ToolPills({
         <Button
           variant="tertiary"
           size="small"
+          aria-label={`Reset approval for ${tool.name}`}
           onPress={() => onSetting(selector, undefined)}
         >
           Reset
         </Button>
       )}
     </span>
+  );
+}
+
+/**
+ * A row for an entry covering many tools — a whole connector, or the
+ * list's default — with its pills, why Allow cannot be picked (the group's
+ * description) and, for an Allow that lifts a connector's Ask, that it is
+ * an exception.
+ */
+function EntryRow({
+  label,
+  groupLabel,
+  resetLabel,
+  resetText,
+  description,
+  note,
+  value,
+  tools,
+  blocker,
+  hintIds,
+  onChange,
+}: {
+  label: string;
+  groupLabel: string;
+  resetLabel: string;
+  resetText: string;
+  description: string;
+  note?: string;
+  value: AgentApprovalSetting | undefined;
+  tools: readonly ToolSummary[];
+  blocker: string | undefined;
+  hintIds: Record<ApprovalSetting, string>;
+  onChange: (setting: AgentApprovalSetting | undefined) => void;
+}) {
+  const classes = useStyles();
+  const reasonId = useId();
+  return (
+    <div className={classes.row} role="group" aria-label={label}>
+      <Flex direction="column" gap="1">
+        <Text weight="bold">{label}</Text>
+        <Text variant="body-small" color="secondary">
+          {description}
+        </Text>
+        {note && (
+          <Text variant="body-small" color="secondary">
+            {note}
+          </Text>
+        )}
+      </Flex>
+      <span className={classes.cell}>
+        <ApprovalPills
+          aria-label={groupLabel}
+          options={AGENT_APPROVAL_SETTINGS}
+          value={value}
+          disabledOptions={blocker && value !== 'Allow' ? ['Allow'] : undefined}
+          describedBy={blocker ? reasonId : undefined}
+          onChange={onChange}
+          hintIds={hintIds}
+        />
+        {blocker && (
+          <Text id={reasonId} variant="body-small" color="secondary">
+            {blocker}
+          </Text>
+        )}
+        {value === 'Allow' && !blocker && liftsConnectorAsk(tools) && (
+          <Text variant="body-small" color="secondary">
+            An exception for this agent: the tools here that ask run without
+            asking once saved.
+          </Text>
+        )}
+        {value && (
+          <Button
+            variant="tertiary"
+            size="small"
+            aria-label={resetLabel}
+            onPress={() => onChange(undefined)}
+          >
+            {resetText}
+          </Button>
+        )}
+      </span>
+    </div>
+  );
+}
+
+/** A tool that asks whatever the agent says: built in, governance, unreadable. */
+function isPlatformAsk(tool: Pick<ToolSummary, 'approval'>): boolean {
+  const source = tool.approval?.source;
+  return (
+    source === 'builtin' || source === 'governance' || source === 'unavailable'
+  );
+}
+
+/**
+ * Whether an Allow on a whole connector or the default lifts a connector's
+ * Ask among these tools: an exception, said beside its pills.
+ */
+function liftsConnectorAsk(tools: readonly ToolSummary[]): boolean {
+  return tools.some(
+    tool =>
+      !isPlatformAsk(tool) &&
+      tool.approval?.source !== 'agent-exception' &&
+      (tool.approval?.admin?.setting ?? tool.approval?.setting) === 'ask',
   );
 }
 
@@ -204,96 +322,46 @@ export function AgentApprovalSettings({
   } else {
     body = (
       <Flex direction="column" gap="3">
-        <div className={classes.row} role="group" aria-label="Default">
-          <Flex direction="column" gap="1">
-            <Text weight="bold">Default</Text>
-            <Text variant="body-small" color="secondary">
-              For every tool below without a setting of its own.
-            </Text>
-          </Flex>
-          <span className={classes.cell}>
-            <ApprovalPills
-              aria-label="Default approval"
-              options={AGENT_APPROVAL_SETTINGS}
-              value={draft.default}
-              disabledOptions={
-                defaultBlocker && draft.default !== 'Allow'
-                  ? ['Allow']
-                  : undefined
-              }
-              onChange={onDefault}
-              hintIds={hintIds}
-            />
-            {defaultBlocker && (
-              <Text variant="body-small" color="secondary">
-                {defaultBlocker.replace('can allow this', 'can allow it')}
-              </Text>
-            )}
-            {draft.default && (
-              <Button
-                variant="tertiary"
-                size="small"
-                onPress={() => onDefault(undefined)}
-              >
-                No default
-              </Button>
-            )}
-          </span>
-        </div>
+        <EntryRow
+          label="Default"
+          groupLabel="Default approval"
+          resetLabel="Remove the default approval"
+          resetText="No default"
+          description="For every tool below without a setting of its own."
+          value={draft.default}
+          tools={report.tools}
+          blocker={defaultBlocker?.replace('can allow this', 'can allow it')}
+          hintIds={hintIds}
+          onChange={onDefault}
+        />
         {connectorEntries.map(selector => {
           const server = parseSelector(selector)!.name;
           const tools = report.tools.filter(tool => tool.server === server);
-          const blocker = allowBlockerOfMany(tools, { labelOf, viaGit });
           const platformAsks = platformAskCount(tools);
           const own = draft.settings[selector];
           return (
-            <div
+            <EntryRow
               key={selector}
-              className={classes.row}
-              role="group"
-              aria-label={`Connector ${labelOf(server)}`}
-            >
-              <Flex direction="column" gap="1">
-                <Text weight="bold">{labelOf(server)}</Text>
-                <Text variant="body-small" color="secondary">
-                  {own
-                    ? 'Every tool of it, new ones too, unless a tool has its own setting.'
-                    : "No setting: the connector's own settings apply."}
-                </Text>
-                {platformAsks > 0 && (
-                  <Text variant="body-small" color="secondary">
-                    {platformAsks} of its tools always ask when an agent calls
-                    them, whatever is set here.
-                  </Text>
-                )}
-              </Flex>
-              <span className={classes.cell}>
-                <ApprovalPills
-                  aria-label={`Approval for ${labelOf(server)}`}
-                  options={AGENT_APPROVAL_SETTINGS}
-                  value={own}
-                  disabledOptions={
-                    blocker && own !== 'Allow' ? ['Allow'] : undefined
-                  }
-                  onChange={setting => onSetting(selector, setting)}
-                  hintIds={hintIds}
-                />
-                {blocker && (
-                  <Text variant="body-small" color="secondary">
-                    {blocker}
-                  </Text>
-                )}
-                {own && (
-                  <Button
-                    variant="tertiary"
-                    size="small"
-                    onPress={() => onSetting(selector, undefined)}
-                  >
-                    Reset
-                  </Button>
-                )}
-              </span>
-            </div>
+              label={labelOf(server)}
+              groupLabel={`Approval for ${labelOf(server)}`}
+              resetLabel={`Reset approval for ${labelOf(server)}`}
+              resetText="Reset"
+              description={
+                own
+                  ? 'Every tool of it, new ones too, unless a tool has its own setting.'
+                  : "No setting: the connector's own settings apply."
+              }
+              note={
+                platformAsks > 0
+                  ? `${platformAsks} of its tools always ask when an agent calls them, whatever is set here.`
+                  : undefined
+              }
+              value={own}
+              tools={tools}
+              blocker={allowBlockerOfMany(tools, { labelOf, viaGit })}
+              hintIds={hintIds}
+              onChange={setting => onSetting(selector, setting)}
+            />
           );
         })}
         <ToolsetResolutionList

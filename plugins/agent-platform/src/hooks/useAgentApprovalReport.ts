@@ -7,10 +7,13 @@ import type {
 } from '@giantswarm/backstage-plugin-muster';
 
 import { musterAgentApprovalReportQueryKey } from '../lib/queryKeys';
-import { toolsetWasEvaluated } from '../lib/toolset';
 import { portalSessionError } from '../lib/portalSession';
 import { useMusterPluginApi } from './useMusterPluginApi';
-import { RESOLUTION_PAGE_SIZE } from './useToolsetResolution';
+
+/** As agent-manager pages muster's report (contract §5). */
+export const REPORT_PAGE_SIZE = 500;
+/** A bound on the pages read: far beyond any real catalogue. */
+const MAX_PAGES = 20;
 
 export type AgentApprovalReport = {
   /**
@@ -49,12 +52,29 @@ export function useAgentApprovalReport(
       JSON.stringify(agentTools ?? null),
     ),
     enabled,
-    queryFn: () =>
-      musterApi!
-        .filterTools({ installation, agentTools, limit: RESOLUTION_PAGE_SIZE })
-        .catch(failure => {
-          throw portalSessionError(failure);
-        }),
+    queryFn: async () => {
+      // Every page, as agent-manager reads it: a tool past the first page
+      // still decides whether an Allow needs a grant.
+      const tools: ToolSummary[] = [];
+      let page;
+      try {
+        for (let index = 0; index < MAX_PAGES; index++) {
+          page = await musterApi!.filterTools({
+            installation,
+            agentTools,
+            limit: REPORT_PAGE_SIZE,
+            offset: index * REPORT_PAGE_SIZE,
+          });
+          tools.push(...(page.tools ?? []));
+          if (!page.truncated || (page.tools ?? []).length === 0) {
+            break;
+          }
+        }
+      } catch (failure) {
+        throw portalSessionError(failure);
+      }
+      return { ...page!, tools };
+    },
     retry: false,
     // Keeps the last report while a pill change is read again, so the rows
     // do not flash away under the pointer.
@@ -78,7 +98,9 @@ export function useAgentApprovalReport(
       truncated: false,
     };
   }
-  if (!toolsetWasEvaluated(data)) {
+  // A muster that evaluates agent lists echoes the list (C-07); one that
+  // ignores the argument answers its catalogue, which is no report.
+  if (!data.agentTools) {
     return { status: 'unsupported', tools: NONE, truncated: false };
   }
   return {

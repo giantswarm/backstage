@@ -120,11 +120,21 @@ jest.mock('../NewAgentToolsPage', () => ({
     const { useNewAgentForm } = jest.requireActual('../NewAgentFormProvider');
     const navigate = useNavigate();
     const { review } = useAgentWizardLinks();
-    const { setConnectors } = useNewAgentForm();
+    const { setConnectors, setToolset, setApprovalDefault, state } =
+      useNewAgentForm();
     return (
       <>
         <button type="button" onClick={() => setConnectors([])}>
           Unpick the organization's connectors
+        </button>
+        <button
+          type="button"
+          onClick={() => setToolset([...state.toolset, 'server:pagerduty'])}
+        >
+          Add PagerDuty
+        </button>
+        <button type="button" onClick={() => setApprovalDefault('Block')}>
+          Default Block
         </button>
         <button type="button" onClick={() => review && navigate(review())}>
           To review
@@ -250,11 +260,18 @@ type Scenario = {
    * agent's list with its settings, and muster's report of it.
    */
   approval?: boolean;
+  /** What get_agent answers after the first read (someone saved meanwhile). */
+  agentAfterOpen?: AgentManagerAgent;
+  /** What set_agent_approval does: succeed, or throw this. */
+  approvalError?: string;
+  /** Whether create_agent's schema can be read (`false`: it fails). */
+  schemaReadable?: boolean;
 };
 
 /** The agent with an exception a GitHub admin granted, on an agent-manager with tool approval. */
 const APPROVAL_AGENT: AgentManagerAgent = {
   ...AGENT,
+  generation: 7,
   toolset: ['server:github', 'tool:x_github_merge'],
   toolSettings: ['server:github', { 'tool:x_github_merge': 'Allow' }],
   approvalSettings: true,
@@ -295,6 +312,7 @@ const TOKEN_REFUSED =
 
 function makeMusterApi(scenario: Scenario = {}) {
   const agent = scenario.agent ?? (scenario.approval ? APPROVAL_AGENT : AGENT);
+  let reads = 0;
   const callTool = jest.fn(
     async (name: string, args: Record<string, unknown>) => {
       if (scenario.notConnected) {
@@ -310,7 +328,10 @@ function makeMusterApi(scenario: Scenario = {}) {
           if (scenario.getAgentError) {
             throw new Error(scenario.getAgentError);
           }
-          return agent;
+          reads += 1;
+          return reads > 1 && scenario.agentAfterOpen
+            ? scenario.agentAfterOpen
+            : agent;
         case 'x_agent-manager_get_agent_status':
           return { agent: { generation: 3 } };
         case 'x_agent-manager_validate_agent':
@@ -328,6 +349,12 @@ function makeMusterApi(scenario: Scenario = {}) {
           };
         case 'x_agent-manager_update_agent_access':
         case 'x_agent-manager_set_agent_approval':
+          if (
+            name === 'x_agent-manager_set_agent_approval' &&
+            scenario.approvalError
+          ) {
+            throw new Error(scenario.approvalError);
+          }
           return {
             agent,
             before: {},
@@ -375,9 +402,15 @@ function makeMusterApi(scenario: Scenario = {}) {
         (options.agentTools || options.toolset) && {
           toolset: options.toolset ?? [],
         }),
+      ...(scenario.approval && options.agentTools
+        ? { agentTools: { entries: [], settings: [] } }
+        : {}),
     }),
   );
   const describeTool = jest.fn(async (name: string) => {
+    if (scenario.schemaReadable === false) {
+      throw new Error('muster answered 503');
+    }
     if (scenario.approval) {
       return {
         name,
@@ -1584,6 +1617,7 @@ describe('EditAgentPage: tool approval', () => {
           namespace: 'kagent',
           name: 'pr-reviewer',
           description: 'Reviews every pull request.',
+          expectedGeneration: 7,
         },
         'gazelle',
       ],
@@ -1592,5 +1626,134 @@ describe('EditAgentPage: tool approval', () => {
       [],
     );
     expect(callsOf(callTool, 'x_agent-manager_set_agent_approval')).toEqual([]);
+  });
+});
+
+describe('EditAgentPage: tool approval saves', () => {
+  /** Changes the description, adds PagerDuty and a default on the Tools step. */
+  async function changeAllAndReview(user: ReturnType<typeof userEvent.setup>) {
+    const description = await screen.findByLabelText(/^What is it for\?/);
+    await user.clear(description);
+    await user.type(description, 'Reviews every pull request.');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByRole('checkbox', { name: 'Skill PR review' });
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Add PagerDuty' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Default Block' }));
+    await user.click(screen.getByRole('button', { name: 'To review' }));
+    await screen.findByRole('heading', { name: 'Check and save' });
+  }
+
+  it('writes what the agent is, what it reaches, then its settings, in that order', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE, { approval: true });
+    await changeAllAndReview(user);
+    const save = screen.getByRole('button', { name: 'Save changes' });
+    await waitFor(() => expect(save).toBeEnabled());
+    await user.click(save);
+    await screen.findByText(/agent detail/);
+    const writes = callTool.mock.calls
+      .map(([name]) => name)
+      .filter(name =>
+        /update_agent|update_agent_access|set_agent_approval/.test(name),
+      );
+    expect(writes).toEqual([
+      'x_agent-manager_update_agent',
+      'x_agent-manager_update_agent_access',
+      'x_agent-manager_set_agent_approval',
+    ]);
+    expect(
+      callsOf(callTool, 'x_agent-manager_update_agent_access')[0][1],
+    ).toEqual(
+      expect.objectContaining({
+        tools: [
+          'server:github',
+          { 'tool:x_github_merge': 'Allow' },
+          'server:pagerduty',
+        ],
+      }),
+    );
+    expect(
+      callsOf(callTool, 'x_agent-manager_set_agent_approval')[0][1],
+    ).toEqual(expect.objectContaining({ default: 'Block' }));
+  });
+
+  it('says what landed and what did not when the settings are refused after the rest', async () => {
+    const user = userEvent.setup();
+    await renderEdit(BASE, {
+      approval: true,
+      approvalError: 'invalid_request: default: refused',
+    });
+    await changeAllAndReview(user);
+    const save = screen.getByRole('button', { name: 'Save changes' });
+    await waitFor(() => expect(save).toBeEnabled());
+    await user.click(save);
+    expect(
+      await screen.findByText(
+        /Saved: every other change, the tool list included\. Not saved \(set_agent_approval refused it\): default Block\./,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/agent detail/)).toBeNull();
+  });
+
+  it('saves nothing over a change someone else saved meanwhile, and offers a reload', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE, {
+      approval: true,
+      agentAfterOpen: {
+        ...APPROVAL_AGENT,
+        generation: 8,
+        toolSettings: ['server:github', { 'tool:x_github_merge': 'Block' }],
+      },
+    });
+    await changeDescriptionAndReview(user);
+    const save = screen.getByRole('button', { name: 'Save changes' });
+    await waitFor(() => expect(save).toBeEnabled());
+    await user.click(save);
+    expect(
+      await screen.findByText('This agent changed since you opened it'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Reload the agent' }),
+    ).toBeInTheDocument();
+    expect(callsOf(callTool, 'x_agent-manager_update_agent')).toEqual([]);
+    expect(save).toBeDisabled();
+  });
+
+  it("shows agent-manager's stale-write refusal as the same conflict", async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE, { approval: true });
+    await changeDescriptionAndReview(user);
+    const original = callTool.getMockImplementation()!;
+    callTool.mockImplementation(
+      async (name: string, args: Record<string, unknown>) => {
+        if (name === 'x_agent-manager_update_agent') {
+          throw new Error(
+            'conflict: agent kagent/pr-reviewer changed since it was read (generation 8 now, expectedGeneration 7): read it again with get_agent and apply the change to what it holds now',
+          );
+        }
+        return original(name, args);
+      },
+    );
+    const save = screen.getByRole('button', { name: 'Save changes' });
+    await waitFor(() => expect(save).toBeEnabled());
+    await user.click(save);
+    expect(
+      await screen.findByText('This agent changed since you opened it'),
+    ).toBeInTheDocument();
+  });
+
+  it("saves nothing for an agent with settings while agent-manager's support cannot be told", async () => {
+    const user = userEvent.setup();
+    await renderEdit(BASE, { approval: true, schemaReadable: false });
+    await changeDescriptionAndReview(user);
+    expect(
+      await screen.findByText(
+        "The approval settings can't be checked right now",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
   });
 });

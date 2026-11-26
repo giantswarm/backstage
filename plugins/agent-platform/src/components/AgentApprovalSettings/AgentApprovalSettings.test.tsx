@@ -113,7 +113,9 @@ describe('AgentApprovalSettings', () => {
       settings: { 'tool:x_github_merge': 'Allow' },
     });
     expect(screen.getByText(/An exception for this agent/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Reset' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Reset approval for x_github_merge' }),
+    );
     expect(onChange).toHaveBeenLastCalledWith({ settings: {} });
   });
 
@@ -127,6 +129,52 @@ describe('AgentApprovalSettings', () => {
       screen.getByText(/governance mode asks first when an agent calls it/),
     ).toBeInTheDocument();
     expect(screen.getByText(/1 of its tools always ask/)).toBeInTheDocument();
+  });
+
+  it('shows what muster reports, not a stored Allow, where the platform asks', async () => {
+    await renderInTestApp(
+      <Harness
+        tools={[deploy]}
+        initial={{ settings: { 'tool:x_platform_deploy': 'Allow' } }}
+      />,
+    );
+    const pills = screen.getByRole('radiogroup', {
+      name: 'Approval for x_platform_deploy',
+    });
+    expect(within(pills).getByRole('radio', { name: 'Ask' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(within(pills).getByRole('radio', { name: 'Allow' })).toBeDisabled();
+    expect(screen.queryByText(/An exception for this agent/)).toBeNull();
+  });
+
+  it("says a connector's Allow over its Ask is an exception", async () => {
+    await renderInTestApp(
+      <Harness tools={[{ ...merge, connectorAdmin: true }]} />,
+    );
+    await userEvent.click(
+      within(
+        screen.getByRole('radiogroup', { name: 'Approval for GitHub' }),
+      ).getByRole('radio', { name: 'Allow' }),
+    );
+    expect(
+      screen.getByText(/the tools here that ask run without asking once saved/),
+    ).toBeInTheDocument();
+  });
+
+  it('describes each group by why Allow cannot be picked', async () => {
+    await renderInTestApp(<Harness tools={[merge, list]} />);
+    expect(
+      screen.getByRole('radiogroup', { name: 'Approval for x_github_merge' }),
+    ).toHaveAccessibleDescription('Only GitHub admins can allow this.');
+    expect(
+      screen.getByRole('radiogroup', { name: 'Approval for GitHub' }),
+    ).toHaveAccessibleDescription('Only GitHub admins can allow this.');
+  });
+
+  it('says on a trusted platform that agents create and start agents freely', async () => {
+    await renderInTestApp(<Harness tools={[list]} />);
     expect(
       screen.getByText('Agents can create and start agents without asking.'),
     ).toBeInTheDocument();
@@ -144,7 +192,9 @@ describe('AgentApprovalSettings', () => {
       settings: {},
       default: 'Block',
     });
-    await userEvent.click(screen.getByRole('button', { name: 'No default' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Remove the default approval' }),
+    );
     expect(onChange).toHaveBeenLastCalledWith({
       settings: {},
       default: undefined,

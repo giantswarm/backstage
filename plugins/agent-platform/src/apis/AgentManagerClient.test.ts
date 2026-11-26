@@ -203,3 +203,99 @@ describe('AgentManagerClient.deleteOrganization', () => {
     ]);
   });
 });
+
+describe('AgentManagerClient split updates (tool approval)', () => {
+  function splitting(
+    describe: jest.Mock,
+    answers: Record<string, (args: Record<string, unknown>) => unknown> = {},
+  ) {
+    const callTool = jest.fn(
+      async (name: string, args: Record<string, unknown>) => {
+        const tool = name.replace('x_agent-manager_', '');
+        if (answers[tool]) {
+          return answers[tool](args);
+        }
+        return {
+          agent: { name: 'helper', namespace: 'kagent', generation: 8 },
+          before: {},
+          after: {},
+          changed: [tool],
+          manifests: { ociRepository: '', helmRelease: '', values: {} },
+        };
+      },
+    );
+    const api = { callTool, describeTool: describe } as unknown as MusterApi;
+    return { client: new AgentManagerClient(api, 'inst-1'), callTool };
+  }
+
+  it('reads a tool muster does not know as an older agent-manager', async () => {
+    const { client } = splitting(
+      jest.fn(async () => {
+        throw new Error('Tool not found: x_agent-manager_update_agent_access');
+      }),
+    );
+    await expect(client.takesSplitUpdates()).resolves.toBe(false);
+  });
+
+  it('never remembers a transient failure as an older agent-manager', async () => {
+    const describe = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('muster answered 503'))
+      .mockResolvedValue({ name: 'x_agent-manager_update_agent_access' });
+    const { client } = splitting(describe);
+    await expect(client.takesSplitUpdates()).rejects.toThrow('503');
+    await expect(client.takesSplitUpdates()).resolves.toBe(true);
+  });
+
+  it('writes what the agent is, then what it reaches, each with the generation the write before left', async () => {
+    const { client, callTool } = splitting(jest.fn(async () => ({})));
+    await client.updateAgent({
+      namespace: 'kagent',
+      name: 'helper',
+      description: 'New.',
+      skills: [],
+      expectedGeneration: 7,
+    });
+    expect(callTool.mock.calls.map(([name, args]) => [name, args])).toEqual([
+      [
+        'x_agent-manager_update_agent',
+        {
+          namespace: 'kagent',
+          name: 'helper',
+          description: 'New.',
+          expectedGeneration: 7,
+        },
+      ],
+      [
+        'x_agent-manager_update_agent_access',
+        {
+          namespace: 'kagent',
+          name: 'helper',
+          skills: [],
+          expectedGeneration: 8,
+        },
+      ],
+    ]);
+  });
+
+  it('says what was saved when the second write is refused', async () => {
+    const { client } = splitting(
+      jest.fn(async () => ({})),
+      {
+        update_agent_access: () => {
+          throw new Error('invalid_request: skills: not pinned');
+        },
+      },
+    );
+    const write = client.updateAgent({
+      namespace: 'kagent',
+      name: 'helper',
+      description: 'New.',
+      skills: [],
+    });
+    await expect(write).rejects.toBeInstanceOf(AgentManagerError);
+    await expect(write).rejects.toThrow(
+      /Saved: the agent's name, description, instructions and model\. Not saved \(update_agent_access refused it\).*skills: not pinned/,
+    );
+  });
+});

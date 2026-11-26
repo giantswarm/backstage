@@ -32,7 +32,9 @@ export function useAgentApprovalSupport(
     retry: false,
   });
   if (!enabled) return 'unsupported';
+  // What was read stands while a later re-read fails: a failed refetch
+  // never turns a known answer into an unknown one.
+  if (data !== undefined) return data ? 'supported' : 'unsupported';
   if (isError) return 'unread';
-  if (data === undefined) return 'reading';
-  return data ? 'supported' : 'unsupported';
+  return 'reading';
 }

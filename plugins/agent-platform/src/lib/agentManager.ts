@@ -281,12 +281,19 @@ export type AgentApprovalGrant = {
   /** The MCPServer's namespace. */
   namespace?: string;
   connectorUid?: string;
+  /**
+   * The server's own names of the tools it covered when it was granted:
+   * muster lifts only those (a grant without them lifts nothing).
+   */
+  tools?: string[];
   /** Who saved it: email, else subject. */
   grantedBy?: string;
   grantedAt?: string;
   generation?: number;
   /** `list_approval_grants` only: the agent it is for. */
   agent?: { namespace: string; name: string; uid?: string };
+  /** `list_approval_grants` only: the agent's name as people see it. */
+  agentDisplayName?: string;
 };
 
 /** A grant a save removed, as the write tools answer it (`dropped`). */
@@ -303,14 +310,18 @@ export type DroppedApprovalGrant = {
 export type AgentApprovalChange = {
   settings?: Record<string, AgentApprovalSetting | ''>;
   default?: AgentApprovalSetting | '';
+  /** As {@link AgentUpdate.expectedGeneration}. */
+  expectedGeneration?: number;
 };
 
 /** `set_agent_approval`: the list after it, the grants that hold, the ones dropped. */
 export type SetAgentApprovalResult = {
-  tools?: AgentToolEntry[];
-  default?: string | null;
+  toolSettings?: AgentToolEntry[];
+  defaultApproval?: string | null;
   grants?: AgentApprovalGrant[];
   dropped?: DroppedApprovalGrant[];
+  sessionsUpdated?: boolean;
+  warnings?: string[];
 };
 
 /** One MCP binding of the agent's kagent template, as `get_agent` reports it (`tools`). */
@@ -811,6 +822,12 @@ export type AgentManagerAgent = {
   defaultApproval?: string;
   /** The agent's grants that hold. */
   grants?: AgentApprovalGrant[];
+  /**
+   * The HelmRelease's `metadata.generation` as read (working name, slice 3
+   * fix round): what a write's `expectedGeneration` names. Read through
+   * `agentGenerationOf`.
+   */
+  generation?: number;
   /** True when the agent's chart takes approval settings (`tools`, `default`). */
   approvalSettings?: boolean;
   /**
@@ -957,6 +974,11 @@ export type AgentUpdate = {
    * over a connector's `Ask`.
    */
   tools?: AgentToolEntry[];
+  /**
+   * The release's generation the update was composed from: agent-manager
+   * refuses the write with a `conflict` when the release moved since.
+   */
+  expectedGeneration?: number;
   /** Replaces the whole list; an empty list clears it. */
   egress?: string[];
   /** Replaces the whole list; an empty list clears it. */
@@ -989,6 +1011,13 @@ export type UpdateAgentResult = {
   requestedBy?: string;
   /** The approval grants the save removed (tool approval). */
   dropped?: DroppedApprovalGrant[];
+  /**
+   * False when muster was not told about the dropped grants yet: running
+   * Sessions keep them until agent-manager's retry lands.
+   */
+  sessionsUpdated?: boolean;
+  /** What agent-manager could not finish, in its words. */
+  warnings?: string[];
 };
 
 /**
@@ -1018,7 +1047,12 @@ export function splitAgentUpdate(update: AgentUpdate): {
   const describe: AgentUpdate = { ...identity };
   const access: AgentUpdate = { ...identity };
   for (const [key, value] of Object.entries(update)) {
-    if (key === 'namespace' || key === 'name' || value === undefined) {
+    if (
+      key === 'namespace' ||
+      key === 'name' ||
+      key === 'expectedGeneration' ||
+      value === undefined
+    ) {
       continue;
     }
     const target = (DESCRIBING_UPDATE_FIELDS as readonly string[]).includes(key)
@@ -1057,3 +1091,27 @@ export type DeleteAgentResult = {
   ociRepositoryKept?: string;
   requestedBy?: string;
 };
+
+/**
+ * The release generation `get_agent` reports, the precondition of a write;
+ * undefined from an agent-manager that reports none (then no precondition
+ * is sent). One place, so the field's final name is a one-line change.
+ */
+export function agentGenerationOf(
+  agent: Pick<AgentManagerAgent, 'generation'> | undefined,
+): number | undefined {
+  return typeof agent?.generation === 'number' ? agent.generation : undefined;
+}
+
+/**
+ * Whether a refusal is agent-manager's stale-write `conflict`: the agent
+ * changed since the form read it.
+ */
+export function isStaleWriteConflict(
+  failure: { code?: AgentManagerErrorCode; message: string } | undefined,
+): boolean {
+  return (
+    failure?.code === 'conflict' &&
+    /generation|changed since/i.test(failure.message)
+  );
+}

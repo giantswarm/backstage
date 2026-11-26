@@ -18,6 +18,7 @@ import {
   type AgentApprovalGrant,
   type SetAgentApprovalResult,
   splitAgentUpdate,
+  agentGenerationOf,
   type WriteMode,
   type CommitAgentResult,
   type CreateAgentResult,
@@ -54,19 +55,62 @@ function toolchainArgs(toolchains: StartSessionRequest['toolchains']) {
   return toolchains.length > 0 ? { toolchains } : { noToolchains: true };
 }
 
+/** muster's answer for a tool it does not serve. */
+function isToolNotFound(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    /tool not found|unknown tool|no tool/i.test(message) ||
+    (error instanceof Error && error.name === 'NotFoundError') ||
+    (error as { status?: number })?.status === 404
+  );
+}
+
 /**
  * A refusal of the second write of an update, after the first landed: said
  * so, keeping agent-manager's code and words.
  */
-function partialWriteError(error: unknown): Error {
+export class PartialAgentWriteError extends AgentManagerError {
+  constructor(
+    code: AgentManagerError['code'],
+    message: string,
+    /** The tool that refused; everything written before it landed. */
+    readonly failedTool: string,
+    options?: ErrorOptions,
+  ) {
+    super(code, message, options);
+  }
+}
+
+function partialWriteError(error: unknown, tool: AgentManagerTool): Error {
   if (error instanceof AgentManagerError) {
-    return new AgentManagerError(
+    return new PartialAgentWriteError(
       error.code,
-      `The agent's name, description, instructions and model were saved; the rest was not: ${error.message}`,
+      `Saved: the agent's name, description, instructions and model. Not saved (${tool} refused it): what it can reach and its approval settings. ${error.message}`,
+      tool,
       { cause: error },
     );
   }
   return error instanceof Error ? error : new Error(String(error));
+}
+
+/**
+ * A write after another of the same update: its precondition is the
+ * generation the one before wrote, when agent-manager reported it; without
+ * one, none (the first write already checked the read).
+ */
+function chainGeneration(
+  args: AgentUpdate,
+  previous: UpdateAgentResult,
+  update: AgentUpdate,
+): AgentUpdate {
+  if (update.expectedGeneration === undefined) {
+    return args;
+  }
+  const { expectedGeneration: _, ...rest } = args;
+  const written = agentGenerationOf(previous.agent);
+  return written === undefined
+    ? rest
+    : { ...rest, expectedGeneration: written };
 }
 
 /**
@@ -115,6 +159,10 @@ export class AgentManagerClient {
    * the single update in its own words before writing anything.
    */
   takesSplitUpdates(): Promise<boolean> {
+    // A muster API that describes no tools (a reduced one) has none to ask.
+    if (typeof this.musterApi.describeTool !== 'function') {
+      return Promise.resolve(false);
+    }
     this.splitUpdates ??= Promise.resolve()
       .then(() =>
         this.musterApi.describeTool(
@@ -124,7 +172,15 @@ export class AgentManagerClient {
       )
       .then(
         detail => Boolean(detail),
-        () => false,
+        error => {
+          // Only a tool muster does not know is an older agent-manager; any
+          // other failure is asked again next time, never remembered.
+          if (isToolNotFound(error)) {
+            return false;
+          }
+          this.splitUpdates = undefined;
+          throw error;
+        },
       );
     return this.splitUpdates;
   }
@@ -263,6 +319,14 @@ export class AgentManagerClient {
       return [{ tool: AGENT_MANAGER_TOOLS.updateAgent, args: update }];
     }
     const { describe, access } = splitAgentUpdate(update);
+    // The precondition goes with the first write; each next one carries the
+    // generation the one before it wrote (`chainGeneration`).
+    if (update.expectedGeneration !== undefined) {
+      const first = describe ?? access;
+      if (first) {
+        first.expectedGeneration = update.expectedGeneration;
+      }
+    }
     const writes: { tool: AgentManagerTool; args: AgentUpdate }[] = [];
     if (describe) {
       writes.push({ tool: AGENT_MANAGER_TOOLS.updateAgent, args: describe });
@@ -289,12 +353,13 @@ export class AgentManagerClient {
     let merged: UpdateAgentResult | undefined;
     for (const write of writes) {
       let result: UpdateAgentResult;
+      const args = merged
+        ? chainGeneration(write.args, merged, update)
+        : write.args;
       try {
-        result = await this.call<UpdateAgentResult>(write.tool, {
-          ...write.args,
-        });
+        result = await this.call<UpdateAgentResult>(write.tool, { ...args });
       } catch (error) {
-        throw merged ? partialWriteError(error) : error;
+        throw merged ? partialWriteError(error, write.tool) : error;
       }
       merged = merged
         ? {
@@ -302,6 +367,9 @@ export class AgentManagerClient {
             before: merged.before,
             changed: [...new Set([...merged.changed, ...result.changed])],
             dropped: [...(merged.dropped ?? []), ...(result.dropped ?? [])],
+            warnings: [...(merged.warnings ?? []), ...(result.warnings ?? [])],
+            ...((merged.sessionsUpdated === false ||
+              result.sessionsUpdated === false) && { sessionsUpdated: false }),
           }
         : result;
     }
@@ -327,7 +395,7 @@ export class AgentManagerClient {
           }),
         );
       } catch (error) {
-        throw results.length > 0 ? partialWriteError(error) : error;
+        throw results.length > 0 ? partialWriteError(error, write.tool) : error;
       }
     }
     const last = results[results.length - 1];

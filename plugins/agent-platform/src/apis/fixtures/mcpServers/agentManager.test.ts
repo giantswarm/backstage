@@ -1149,6 +1149,46 @@ describe('the fixture agent-manager with tool approval', () => {
     ).toBeUndefined();
   });
 
+  it('refuses a write composed from an older generation, as agent-manager does', async () => {
+    const { client, state } = setup();
+    const agent = seeded(state);
+    await expect(
+      client.updateAgent({
+        namespace: agent.namespace,
+        name: agent.name,
+        description: 'Changed.',
+        expectedGeneration: (agent.generation ?? 1) - 1,
+      }),
+    ).rejects.toMatchObject({ code: 'conflict' });
+    await expect(
+      client.setAgentApproval(agent.namespace, agent.name, {
+        default: 'Ask',
+        expectedGeneration: 99,
+      }),
+    ).rejects.toThrow(/changed since it was read/);
+  });
+
+  it('lists grants with the tools they cover, every readable namespace at once, the others unreadable', async () => {
+    const { server, state } = setup();
+    const agent = seeded(state);
+    const answer = (await server.tools.list_approval_grants(
+      {},
+      { installation: INSTALLATION, signal: new AbortController().signal },
+    )) as { content: Array<{ text: string }> } | Record<string, unknown>;
+    const body =
+      'content' in answer
+        ? JSON.parse((answer.content as Array<{ text: string }>)[0].text)
+        : answer;
+    const grant = (body.grants as Array<Record<string, unknown>>).find(
+      candidate => (candidate.agent as { name: string }).name === agent.name,
+    );
+    expect(grant).toMatchObject({
+      agentDisplayName: agent.displayName,
+      tools: [expect.any(String)],
+    });
+    expect(Array.isArray(body.unreadable)).toBe(true);
+  });
+
   it('serves the older agent-manager without the approval tools', async () => {
     const { server } = setup();
     const older = new AgentManagerClient(

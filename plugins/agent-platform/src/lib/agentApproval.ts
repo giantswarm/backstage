@@ -204,6 +204,8 @@ export function agentToolsArgumentOf(
           entry: grant.entry,
           server: grant.server,
           ...(grant.connectorUid && { uid: grant.connectorUid }),
+          // muster lifts only the tools a grant names (#86).
+          ...(grant.tools && { tools: [...grant.tools] }),
         })),
       }),
   };
@@ -356,6 +358,8 @@ export type DroppedExceptions = {
   changed: AgentApprovalGrant[];
   /** The save goes to git, which carries no grant. */
   viaGit: AgentApprovalGrant[];
+  /** Whether the person is admin of their connector could not be checked. */
+  unchecked: AgentApprovalGrant[];
 };
 
 /**
@@ -370,7 +374,12 @@ export function droppedExceptions(
   viaGit = false,
 ): DroppedExceptions {
   const settings = settingsOf(draft.tools);
-  const dropped: DroppedExceptions = { notAdmin: [], changed: [], viaGit: [] };
+  const dropped: DroppedExceptions = {
+    notAdmin: [],
+    changed: [],
+    viaGit: [],
+    unchecked: [],
+  };
   for (const grant of grants) {
     const allows =
       grant.entry === 'default'
@@ -380,8 +389,13 @@ export function droppedExceptions(
       dropped.changed.push(grant);
     } else if (viaGit) {
       dropped.viaGit.push(grant);
-    } else if (isAdminOf(grant.server) !== true) {
-      dropped.notAdmin.push(grant);
+    } else {
+      const admin = isAdminOf(grant.server);
+      if (admin === false) {
+        dropped.notAdmin.push(grant);
+      } else if (admin === undefined) {
+        dropped.unchecked.push(grant);
+      }
     }
   }
   return dropped;
@@ -548,4 +562,88 @@ export function approvalSummary(
     counts.Block > 0 && `${counts.Block} blocked`,
   ].filter((part): part is string => Boolean(part));
   return parts.length === 0 ? 'No tools' : parts.join(', ');
+}
+
+/**
+ * Whether the person is connector admin of a server, as muster's report
+ * says it on the tools behind it (matched through `connectors[]`, so a
+ * family's member counts): undefined when no reported tool is on it.
+ */
+export function connectorAdminFrom(
+  report:
+    | readonly Pick<ToolSummary, 'server' | 'connectors' | 'connectorAdmin'>[]
+    | undefined,
+): (server: string) => boolean | undefined {
+  return server =>
+    report?.find(
+      tool =>
+        tool.connectorAdmin !== undefined &&
+        ((tool.connectors ?? []).some(ref => ref.server === server) ||
+          (!tool.connectors && tool.server === server)),
+    )?.connectorAdmin;
+}
+
+/**
+ * What of an agent its approval save is composed from — its tool list, the
+ * default, the grants and the release generation — as one comparable key:
+ * a save stops when it changed since the form read it.
+ */
+export function approvalStateKey(
+  agent: Pick<
+    AgentManagerAgent,
+    typeof TOOL_LIST_FIELD | 'defaultApproval' | 'grants' | 'generation'
+  >,
+): string {
+  const grants = (agent.grants ?? [])
+    .map(grant =>
+      [
+        grant.entry,
+        grant.server,
+        [...(grant.tools ?? [])].sort().join(','),
+      ].join('|'),
+    )
+    .sort();
+  return JSON.stringify({
+    tools: agentToolListOf(agent) ?? null,
+    default: agent.defaultApproval ?? null,
+    grants,
+    generation: agent.generation ?? null,
+  });
+}
+
+/** Whether an agent carries approval settings or exceptions a save must keep. */
+export function carriesApprovalSettings(
+  agent: Pick<
+    AgentManagerAgent,
+    typeof TOOL_LIST_FIELD | 'defaultApproval' | 'grants' | 'approvalSettings'
+  >,
+): boolean {
+  return (
+    agent.approvalSettings === true ||
+    Boolean(agentToolListOf(agent)?.some(entry => typeof entry !== 'string')) ||
+    isApprovalSetting(agent.defaultApproval) ||
+    (agent.grants?.length ?? 0) > 0
+  );
+}
+
+/**
+ * The one-line summary of a report as a page says it: marked when muster
+ * listed only part of the tools, and when the settings are saved but not
+ * enforced (#86).
+ */
+export function reportSummary(
+  report: {
+    tools: readonly Pick<ToolSummary, 'approval'>[];
+    truncated: boolean;
+  },
+  notEnforced = false,
+): string {
+  let line = approvalSummary(approvalCounts(report.tools));
+  if (report.truncated) {
+    line += ' (of the first tools listed only)';
+  }
+  if (notEnforced) {
+    line += ' — saved, not enforced';
+  }
+  return line;
 }

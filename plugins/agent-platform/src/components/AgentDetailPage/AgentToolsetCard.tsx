@@ -28,8 +28,7 @@ import { useToolsetResolution } from '../../hooks/useToolsetResolution';
 import { useAgentApproval } from '../../hooks/useAgentApproval';
 import {
   APPROVAL_NOT_ENFORCED_NOTE,
-  approvalCounts,
-  approvalSummary,
+  reportSummary,
 } from '../../lib/agentApproval';
 import {
   buildCatalogue,
@@ -364,7 +363,7 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
         {approvalReady && (
           <Text variant="body-small">
             Approval for this agent:{' '}
-            {approvalSummary(approvalCounts(approval.report.tools))}.
+            {reportSummary(approval.report, approval.notEnforced)}.
           </Text>
         )}
         {approval.active && approval.notEnforced && (
@@ -386,7 +385,13 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
                     return null;
                   }
                   return (
-                    <span title={approvalSourceLabel(reported.source)}>
+                    <span
+                      title={
+                        approval.notEnforced
+                          ? `${approvalSourceLabel(reported.source)} (saved, not enforced)`
+                          : approvalSourceLabel(reported.source)
+                      }
+                    >
                       <ApprovalBadge
                         setting={reportedSetting(reported)}
                         builtIn={reported.source === 'builtin'}

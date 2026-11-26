@@ -179,6 +179,23 @@ type StoredAgent = FixtureAgentRecord & {
   grants?: AgentApprovalGrant[];
 };
 
+/** What `set_agent_approval` declares. */
+const SET_APPROVAL_ARGS = new Set([
+  'name',
+  'namespace',
+  'organization',
+  'cluster',
+  'settings',
+  'default',
+  'expectedGeneration',
+  'mode',
+  'dryRun',
+  'force',
+  'repository',
+  'branch',
+  'path',
+]);
+
 /** Who granted the exception the data set seeds: not the guest. */
 export const SEEDED_GRANTOR = 'dana@example.com';
 
@@ -422,12 +439,27 @@ function seedException(
         server: ref.server,
         namespace: ref.namespace,
         connectorUid: ref.uid,
+        ...(ref.tool && { tools: [ref.tool] }),
         grantedBy: SEEDED_GRANTOR,
         grantedAt: new Date(Date.now() - 3 * DAY).toISOString(),
         generation: agent.generation ?? 1,
       },
     ];
     return;
+  }
+}
+
+/**
+ * agent-manager's stale-write refusal: the release moved past the generation
+ * the write was composed from.
+ */
+function mustBeAt(agent: StoredAgent, expected: unknown): void {
+  const now = agent.generation ?? 1;
+  if (typeof expected === 'number' && expected !== now) {
+    throw refusal(
+      'conflict',
+      `agent ${agent.namespace}/${agent.name} changed since it was read (generation ${now} now, expectedGeneration ${expected}): read it again with get_agent and apply the change to that`,
+    );
   }
 }
 
@@ -1663,7 +1695,8 @@ export class AgentManagerFixtureState {
       ...answer,
       toolSettings: agent.tools ?? agent.toolset ?? FIXTURE_TOOLSET,
       ...(agent.defaultApproval && { defaultApproval: agent.defaultApproval }),
-      ...(grants.length > 0 && { grants: [...grants] }),
+      ...(grants.length > 0 && { grants: grants.map(grant => ({ ...grant })) }),
+      generation: agent.generation ?? 1,
       approvalSettings: true,
     };
   }
@@ -1685,19 +1718,41 @@ export class AgentManagerFixtureState {
     installation: string,
     namespace: string | undefined,
     server: string | undefined,
-  ): { grants: AgentApprovalGrant[] } {
-    const scope = namespace ?? PLATFORM_TENANT_NAMESPACE;
+  ): { grants: AgentApprovalGrant[]; unreadable: string[] } {
+    // As agent-manager's review (`list helmreleases` in the namespace): the
+    // guest reads where it manages agents. Without a namespace, every one it
+    // may read, the others named as unreadable.
+    const readable = this.managedNamespaces(installation);
+    if (namespace !== undefined && !readable.includes(namespace)) {
+      throw refusal(
+        'forbidden',
+        `you may not list helmreleases in namespace ${namespace}`,
+      );
+    }
+    const scope = namespace ? [namespace] : readable;
+    const agents = [...this.stateOf(installation).agents.values()];
+    const unreadable = namespace
+      ? []
+      : [
+          ...new Set(
+            agents
+              .map(agent => agent.namespace)
+              .filter(ns => !readable.includes(ns)),
+          ),
+        ].sort();
     return {
-      grants: [...this.stateOf(installation).agents.values()]
-        .filter(agent => agent.namespace === scope)
+      grants: agents
+        .filter(agent => scope.includes(agent.namespace))
         .flatMap(agent =>
           (agent.grants ?? [])
             .filter(grant => !server || grant.server === server)
             .map(grant => ({
               ...grant,
               agent: { namespace: agent.namespace, name: agent.name },
+              agentDisplayName: agent.displayName,
             })),
         ),
+      unreadable,
     };
   }
 
@@ -1717,8 +1772,18 @@ export class AgentManagerFixtureState {
   ) {
     mustBeLive(args.mode);
     refuseOtherToolsArgs('set_agent_approval', args);
+    // As agent-manager: it refuses any argument it does not declare.
+    for (const key of Object.keys(args)) {
+      if (!SET_APPROVAL_ARGS.has(key)) {
+        throw refusal(
+          'invalid_request',
+          `set_agent_approval does not take ${key}`,
+        );
+      }
+    }
     this.mustCreateAgentsIn(this.writableIn(installation, args.namespace));
     const agent = this.stored(installation, args.namespace, args.name);
+    mustBeAt(agent, args.expectedGeneration);
     if (args.settings === undefined && args.default === undefined) {
       throw refusal(
         'invalid_request',
@@ -1788,8 +1853,12 @@ export class AgentManagerFixtureState {
       tools,
       default: fallback ?? null,
       before: { tools: before, default: null },
+      toolSettings: tools,
+      defaultApproval: fallback,
       grants: agent.grants,
       dropped,
+      sessionsUpdated: true,
+      warnings: [],
       dryRun: false,
     };
   }
@@ -2107,8 +2176,12 @@ export class AgentManagerFixtureState {
     }
     this.mustCreateAgentsIn(this.writableIn(installation, update.namespace));
     const agent = this.stored(installation, update.namespace, update.name);
+    if (takesToolApproval(installation)) {
+      mustBeAt(agent, update.expectedGeneration);
+    }
     this.checkAccessList(installation, agent, update);
-    const next = this.merged(agent, update);
+    const { expectedGeneration: _expected, ...fields } = update;
+    const next = this.merged(agent, fields);
     const validation = this.validation(installation, next, 'update');
     if (!validation.valid) {
       throw refusal('invalid_request', validation.errors!.join('; '));
@@ -2165,6 +2238,8 @@ export class AgentManagerFixtureState {
       manifests: validation.manifests,
       requestedBy: FIXTURE_USER.email,
       ...(dropped && dropped.length > 0 && { dropped }),
+      sessionsUpdated: true,
+      warnings: [],
     };
   }
 
