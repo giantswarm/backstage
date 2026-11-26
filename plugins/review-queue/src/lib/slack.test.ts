@@ -127,6 +127,12 @@ describe('slack', () => {
           'team-shield',
         ),
       ).toBeUndefined();
+      expect(
+        channelIdIn(
+          '- #general (C0GENERAL1): ask #team-shield for reviews',
+          'team-shield',
+        ),
+      ).toBeUndefined();
     });
 
     it('finds nothing for a name that only starts the same', () => {

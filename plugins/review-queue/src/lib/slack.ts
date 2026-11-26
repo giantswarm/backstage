@@ -63,8 +63,8 @@ const CHANNEL_ID_PATTERN = /\b([CG][A-Z0-9]{8,})\b/g;
 /**
  * The ID of the channel named `name` in a `search_channels` answer, which
  * Slack's MCP server words as it likes: JSON with `id` and `name` fields, or
- * text that lists each channel as `#name` or `Name: name` with its ID on the
- * same line. Only
+ * text whose lines each start with a channel, as `#name` or `Name: name`,
+ * and carry its ID. Only
  * the channel's own name counts, never a word of its topic or purpose, so
  * `team-shield` never resolves to a channel that mentions it.
  */
@@ -77,11 +77,13 @@ export function channelIdIn(answer: unknown, name: string): string | undefined {
   if (typeof answer !== 'string') {
     return undefined;
   }
-  // The channel's own name: `#team-shield`, or a name field
-  // (`Name: team-shield`, `name="team-shield"`), never a word of its purpose.
+  // The channel each line lists, where it lists it: at the start of the
+  // line, as `#team-shield` (a bullet allowed) or as a name field
+  // (`Name: team-shield`). A mention further along the line, in another
+  // channel's topic or purpose, never counts.
   const exact = `${escapeRegExp(wanted)}(?![a-z0-9._-])`;
   const ownName = new RegExp(
-    `(^|[^a-z0-9._-])#${exact}|\\bname["']?\\s*[:=]\\s*["']?#?${exact}`,
+    `^\\s*(?:[-*•]\\s*)?(?:#${exact}|name["']?\\s*[:=]\\s*["']?#?${exact})`,
   );
   for (const line of answer.split('\n')) {
     if (!ownName.test(line.toLowerCase())) {
