@@ -9,7 +9,7 @@ import {
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import CheckIcon from '@material-ui/icons/Check';
-import EditIcon from '@material-ui/icons/Edit';
+import { Pencil } from 'lucide-react';
 import {
   CatalogNoMatch,
   countNoun,
@@ -231,7 +231,7 @@ function EditedMarker({
   return (
     <span className={classes.editedGroup}>
       <span className={classes.edited} title={hint}>
-        <EditIcon aria-hidden />
+        <Pencil aria-hidden />
         <span>Edited, was {was}</span>
         <VisuallyHidden>{`. ${hint}`}</VisuallyHidden>
       </span>

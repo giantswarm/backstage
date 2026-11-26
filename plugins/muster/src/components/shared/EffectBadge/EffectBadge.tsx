@@ -1,6 +1,5 @@
 import { VisuallyHidden } from '@backstage/ui';
-import BoltIcon from '@material-ui/icons/FlashOn';
-import EyeIcon from '@material-ui/icons/VisibilityOutlined';
+import { Eye, Zap } from 'lucide-react';
 import {
   TOOL_EFFECT_HINTS,
   TOOL_EFFECT_LABELS,
@@ -27,7 +26,7 @@ export function EffectBadge({ effect, size }: EffectBadgeProps) {
   const hint = TOOL_EFFECT_HINTS[effect];
   // An icon is a property mark (an eye, a bolt), never a pencil: that is the
   // edit-state marker's. None on the compact flow-canvas badge.
-  const Icon = effect === 'changes' ? BoltIcon : EyeIcon;
+  const Icon = effect === 'changes' ? Zap : Eye;
   const icon = size === 'compact' ? undefined : <Icon aria-hidden />;
   return (
     <span title={hint}>

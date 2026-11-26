@@ -10338,6 +10338,7 @@ __metadata:
     ajv: "npm:^8.17.1"
     js-yaml: "npm:^5.0.0"
     lodash: "npm:^4.17.21"
+    lucide-react: "npm:1.72.0"
     react: "npm:^16.13.1 || ^17.0.0 || ^18.0.0"
     react-helmet: "npm:6.1.0"
     react-use: "npm:^17.2.4"
