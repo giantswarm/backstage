@@ -594,7 +594,7 @@ describe('NewConnectorTestPage: Test & Tools', () => {
       within(pills('create_issue')).getByRole('radio', { name: 'Block' }),
     );
     expect(chosen(pills('create_issue'))).toBe('Block');
-    expect(screen.getByText('Changed')).toBeInTheDocument();
+    expect(screen.getByText('Edited, was Ask')).toBeInTheDocument();
     expect(
       screen.getByText('Your own settings. A preset fills every tool again.'),
     ).toBeInTheDocument();
@@ -602,7 +602,7 @@ describe('NewConnectorTestPage: Test & Tools', () => {
       screen.getByRole('button', { name: 'Reset create_issue to Ask' }),
     );
     expect(chosen(pills('create_issue'))).toBe('Ask');
-    expect(screen.queryByText('Changed')).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Edited, was/)).not.toBeInTheDocument();
 
     await userEvent.click(
       within(pills('create_issue')).getByRole('radio', { name: 'Block' }),
@@ -660,12 +660,22 @@ describe('NewConnectorTestPage: Test & Tools', () => {
     expect(
       screen.getByText(/Not listed by the connector right now/),
     ).toBeInTheDocument();
-    expect(screen.queryByText('Changed')).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Edited, was/)).not.toBeInTheDocument();
 
     await userEvent.click(
       within(pills('add_comment')).getByRole('radio', { name: 'Allow' }),
     );
-    expect(screen.getByText('Changed')).toBeInTheDocument();
+    expect(screen.getByText('Edited, was Ask')).toBeInTheDocument();
+    // Edit state is plain text beside the setting with its own explanation,
+    // not a badge, and no tool effect reads "Changed".
+    expect(
+      screen.getByText(/Unsaved change: this tool was Ask/),
+    ).toBeInTheDocument();
+    expect(screen.getByTitle(/Unsaved change: this tool was Ask/)).toBeTruthy();
+    expect(screen.queryByText('Changed')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Edited, was Ask').closest('.bui-Badge'),
+    ).toBeNull();
 
     await userEvent.click(screen.getByRole('button', { name: 'Done' }));
     await waitFor(() => expect(setApprovalCalls()).toHaveLength(1));
@@ -709,7 +719,7 @@ describe('NewConnectorTestPage: Test & Tools', () => {
       expect(await screen.findByText(hint)).toBeInTheDocument();
       expect(chosen(pills('search_issues'))).toBe(readOnly);
       expect(screen.queryByText('New')).not.toBeInTheDocument();
-      expect(screen.queryByText('Changed')).not.toBeInTheDocument();
+      expect(screen.queryByText(/^Edited, was/)).not.toBeInTheDocument();
 
       await userEvent.click(screen.getByRole('button', { name: 'Done' }));
       await waitFor(() => expect(setApprovalCalls()).toHaveLength(1));

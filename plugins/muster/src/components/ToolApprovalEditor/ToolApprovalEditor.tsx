@@ -3,11 +3,13 @@ import {
   Button,
   Flex,
   Text,
+  VisuallyHidden,
   ToggleButton,
   ToggleButtonGroup,
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import CheckIcon from '@material-ui/icons/Check';
+import EditIcon from '@material-ui/icons/Edit';
 import {
   CatalogNoMatch,
   countNoun,
@@ -103,6 +105,7 @@ const useStyles = makeStyles({
     fontSize: 12,
     color: 'var(--bui-fg-secondary)',
     paddingBottom: 6,
+    paddingLeft: 10,
     borderBottom: '1px solid var(--bui-border-1)',
   },
   // The pills wrap under the name at phone width rather than squeezing it.
@@ -112,9 +115,23 @@ const useStyles = makeStyles({
     alignItems: 'center',
     columnGap: 12,
     rowGap: 8,
-    padding: '11px 0',
+    padding: '11px 0 11px 10px',
     borderBottom: '1px solid var(--bui-border-1)',
     fontSize: 14,
+  },
+  // An unsaved change: an accent edge on the row, in the warning
+  // tone. Decorative; the "Edited" text carries the meaning.
+  toolEdited: {
+    boxShadow: 'inset 3px 0 0 var(--bui-fg-warning)',
+  },
+  edited: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    fontSize: 12,
+    // Primary text on the surface: contrast holds in light and dark.
+    color: 'var(--bui-fg-primary)',
+    '& svg': { width: 12, height: 12 },
   },
   // An unbroken snake_case tool name wraps inside its column.
   toolText: {
@@ -153,14 +170,16 @@ export type ToolApprovalEditorProps = {
   ruleOptions?: readonly ApprovalRule[];
 };
 
-/** A tool's markers beside its name: what it does, New, Changed. */
+/**
+ * A tool's markers beside its name: what it does (a property of the tool),
+ * New, and why it is listed. An unsaved change is not here: it is edit state
+ * and sits beside the setting ({@link EditedMarker}).
+ */
 function RowMarkers({
   row,
-  changed,
   unmatched,
 }: {
   row: ApprovalRow;
-  changed: boolean;
   unmatched: boolean;
 }) {
   const classes = useStyles();
@@ -171,10 +190,27 @@ function RowMarkers({
         <EffectBadge effect={row.readOnly ? 'reads' : 'changes'} />
       )}
       {row.isNew && <MarkerBadge tone="neutral">New</MarkerBadge>}
-      {changed && <MarkerBadge tone="warning">Changed</MarkerBadge>}
       {unmatched && (
         <MarkerBadge tone="neutral">Doesn't match the filter now</MarkerBadge>
       )}
+    </span>
+  );
+}
+
+/**
+ * The edit state of a row: this setting differs from the saved one (or, on a
+ * first review, from the preset's fill) and is not saved yet. Plain text with
+ * a pencil, beside the control it describes, not a badge like the tool's
+ * effect.
+ */
+function EditedMarker({ was }: { was: ApprovalSetting }) {
+  const classes = useStyles();
+  const hint = `Unsaved change: this tool was ${was}. Reset puts it back.`;
+  return (
+    <span className={classes.edited} title={hint}>
+      <EditIcon aria-hidden />
+      <span>Edited, was {was}</span>
+      <VisuallyHidden>{`. ${hint}`}</VisuallyHidden>
     </span>
   );
 }
@@ -192,7 +228,7 @@ function rowDescription(row: ApprovalRow): string | undefined {
  * Picking a preset fills every tool's pill and the rule; what is saved is
  * the explicit setting of each tool. A row the person changed from the
  * saved setting (or, on a first review, from the preset's fill) is marked
- * *Changed* and can be reset.
+ * *Edited, was Ask* beside its setting and can be reset.
  */
 export function ToolApprovalEditor({
   approval,
@@ -329,13 +365,15 @@ export function ToolApprovalEditor({
                 editing && saved !== undefined && saved !== setting;
               const description = rowDescription(row);
               return (
-                <div key={row.key} role="listitem" className={classes.tool}>
+                <div
+                  key={row.key}
+                  role="listitem"
+                  className={[classes.tool, changed && classes.toolEdited]
+                    .filter(Boolean)
+                    .join(' ')}
+                >
                   <span className={classes.toolText}>
-                    <RowMarkers
-                      row={row}
-                      changed={changed}
-                      unmatched={!matching.has(row.key)}
-                    />
+                    <RowMarkers row={row} unmatched={!matching.has(row.key)} />
                     {description && (
                       <Text variant="body-small" color="secondary">
                         {description}
@@ -345,6 +383,9 @@ export function ToolApprovalEditor({
                   <span className={classes.toolSetting}>
                     {editing ? (
                       <>
+                        {changed && saved !== undefined && (
+                          <EditedMarker was={saved} />
+                        )}
                         {changed && (
                           <Button
                             size="small"

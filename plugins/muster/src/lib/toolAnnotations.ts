@@ -37,6 +37,13 @@ export function isDestructive(tool: {
  */
 export type ToolEffect = 'reads' | 'changes';
 
+/** What each effect means, as the badge's title and accessible description. */
+export const TOOL_EFFECT_HINTS: Record<ToolEffect, string> = {
+  reads: 'This tool only reads. It does not change anything.',
+  changes:
+    'This tool can change things, or its server does not say it only reads.',
+};
+
 /**
  * A tool's effect in words: the one vocabulary of the effect badge, the
  * "What it does" filter and the approval card, for a workflow's derived

@@ -1,4 +1,8 @@
+import { VisuallyHidden } from '@backstage/ui';
+import BoltIcon from '@material-ui/icons/FlashOn';
+import EyeIcon from '@material-ui/icons/VisibilityOutlined';
 import {
+  TOOL_EFFECT_HINTS,
   TOOL_EFFECT_LABELS,
   type ToolEffect,
 } from '../../../lib/toolAnnotations';
@@ -20,12 +24,21 @@ export type EffectBadgeProps = {
  * them).
  */
 export function EffectBadge({ effect, size }: EffectBadgeProps) {
+  const hint = TOOL_EFFECT_HINTS[effect];
+  // An icon is a property mark (an eye, a bolt), never a pencil: that is the
+  // edit-state marker's. None on the compact flow-canvas badge.
+  const Icon = effect === 'changes' ? BoltIcon : EyeIcon;
+  const icon = size === 'compact' ? undefined : <Icon aria-hidden />;
   return (
-    <MarkerBadge
-      tone={effect === 'changes' ? 'warning' : 'neutral'}
-      size={size}
-    >
-      {TOOL_EFFECT_LABELS[effect]}
-    </MarkerBadge>
+    <span title={hint}>
+      <MarkerBadge
+        tone={effect === 'changes' ? 'warning' : 'neutral'}
+        size={size}
+        icon={icon}
+      >
+        {TOOL_EFFECT_LABELS[effect]}
+        <VisuallyHidden>{`: ${hint}`}</VisuallyHidden>
+      </MarkerBadge>
+    </span>
   );
 }
