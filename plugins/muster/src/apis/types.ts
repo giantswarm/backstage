@@ -347,7 +347,17 @@ export interface ToolApproval {
 export interface AgentToolsArgument {
   tools: Array<string | Record<string, string>>;
   default?: string;
-  grants?: Array<{ entry: string; server: string; uid?: string }>;
+  /**
+   * The agent's grants: each names the server's own names of the tools it
+   * covers (`tools`); muster lifts only those, and a grant without them
+   * lifts nothing.
+   */
+  grants?: Array<{
+    entry: string;
+    server: string;
+    uid?: string;
+    tools?: string[];
+  }>;
 }
 
 /** The MCPServer behind a server tool, as `filter_tools` reports it with `agentTools`. */
@@ -358,6 +368,8 @@ export interface ToolConnectorRef {
   name?: string;
   /** The MCPServer's `metadata.uid`; empty in muster's filesystem mode. */
   uid?: string;
+  /** The tool's own name on that connector (what a grant's `tools` names). */
+  tool?: string;
 }
 
 /**
@@ -494,6 +506,11 @@ export interface FilterToolsResponse {
   presets?: ToolsetPreset[];
   /** The installation's governance mode (tool approval): `trusted` or `governed`. */
   governance?: string;
+  /**
+   * With `agentTools`: the list as muster evaluated it. Its absence is a
+   * muster that does not evaluate agent lists (contract §5, C-07).
+   */
+  agentTools?: { entries?: unknown[]; settings?: unknown[] };
 }
 
 export interface FilterToolsOptions {

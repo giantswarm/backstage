@@ -18,7 +18,6 @@ const NOT_SERVED = new Set<string>([
   // The connector Tools tab's *Allowed for* reads agent-manager's grants:
   // agent-manager is the agent-platform plugin's fixture server, whose drift
   // guard covers these.
-  'x_agent-manager_get_info',
   'x_agent-manager_list_approval_grants',
 ]);
 

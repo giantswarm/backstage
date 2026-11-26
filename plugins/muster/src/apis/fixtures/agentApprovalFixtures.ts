@@ -198,7 +198,10 @@ export function reportForAgent(
             connector =>
               connector.server === grant.server &&
               Boolean(grant.uid) &&
-              connector.uid === grant.uid,
+              connector.uid === grant.uid &&
+              // A grant names the tools it covers; one without lifts nothing.
+              Boolean(connector.tool) &&
+              (grant.tools ?? []).includes(connector.tool!),
           ),
       );
     return {

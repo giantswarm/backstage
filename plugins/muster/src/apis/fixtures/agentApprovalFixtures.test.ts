@@ -16,7 +16,11 @@ const catalogue: ToolSummary[] = [
 ];
 
 const connectorsOf = (summary: ToolSummary) => [
-  { server: summary.server!, uid: `uid-${summary.server}` },
+  {
+    server: summary.server!,
+    uid: `uid-${summary.server}`,
+    tool: summary.name.replace(`x_${summary.server}_`, ''),
+  },
 ];
 
 function report(agentTools: Parameters<typeof reportForAgent>[1]) {
@@ -41,7 +45,7 @@ describe('reportForAgent', () => {
       source: 'tool',
     });
     expect(tools.get('x_gh_merge')?.connectors).toEqual([
-      { server: 'gh', uid: 'uid-gh' },
+      { server: 'gh', uid: 'uid-gh', tool: 'merge' },
     ]);
   });
 
@@ -71,9 +75,23 @@ describe('reportForAgent', () => {
     expect(
       report({
         ...agentTools,
-        grants: [{ entry: 'tool:x_gh_merge', server: 'gh', uid: 'uid-gh' }],
+        grants: [
+          {
+            entry: 'tool:x_gh_merge',
+            server: 'gh',
+            uid: 'uid-gh',
+            tools: ['merge'],
+          },
+        ],
       }).get('x_gh_merge')?.approval,
     ).toMatchObject({ setting: 'allow', source: 'agent-exception' });
+    // A mark without the tools it covers lifts nothing, as in muster.
+    expect(
+      report({
+        ...agentTools,
+        grants: [{ entry: 'tool:x_gh_merge', server: 'gh', uid: 'uid-gh' }],
+      }).get('x_gh_merge')?.approval,
+    ).toMatchObject({ setting: 'ask', source: 'tool' });
     expect(
       report({
         ...agentTools,
@@ -85,7 +103,9 @@ describe('reportForAgent', () => {
   it('never lifts a governance Ask, grant or not', () => {
     const tools = report({
       tools: [{ 'server:pd': 'Allow' }],
-      grants: [{ entry: 'server:pd', server: 'pd', uid: 'uid-pd' }],
+      grants: [
+        { entry: 'server:pd', server: 'pd', uid: 'uid-pd', tools: ['ack'] },
+      ],
     });
     expect(tools.get('x_pd_ack')?.approval).toMatchObject({
       setting: 'ask',

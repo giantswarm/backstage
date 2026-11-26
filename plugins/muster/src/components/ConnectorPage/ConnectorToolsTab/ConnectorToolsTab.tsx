@@ -247,10 +247,14 @@ export function ConnectorToolsTab({
   // The agents that may skip the connector's Asks (tool approval): by
   // muster's server key, which its tools carry.
   const serverKey = listed?.find(tool => tool.server)?.server;
-  const grants = useApprovalGrants(installation, serverKey);
+  const grantsReading = useApprovalGrants(installation, serverKey);
+  const { grants } = grantsReading;
   // Exceptions by a broader entry (the whole connector, a preset, the
   // default) cover more than one tool: said once, above the list.
-  const broadGrants = grants.filter(grant => !grant.entry.startsWith('tool:'));
+  // Those that name no tools (older records) are said once above the list.
+  const broadGrants = grants.filter(
+    grant => !grant.entry.startsWith('tool:') && !grant.tools?.length,
+  );
   const all = useMemo<ToolSummary[]>(() => {
     const known = new Set((listed ?? []).map(tool => tool.name));
     return [
@@ -395,10 +399,26 @@ export function ConnectorToolsTab({
     <Flex direction="column" gap="0">
       {signInGate}
       {approvalNote}
+      {reportsApproval &&
+        (grantsReading.status === 'error' ||
+          grantsReading.status === 'partial') && (
+          <Alert
+            className={classes.note}
+            status="warning"
+            title="Could not read which agents are allowed"
+            description={
+              grantsReading.refused
+                ? "Exceptions are listed only for the namespaces whose agents you may read, so an agent elsewhere may skip this connector's Ask without being named here."
+                : "agent-manager could not be asked, so an agent may skip this connector's Ask without being named here."
+            }
+          />
+        )}
       {broadGrants.length > 0 && (
         <Text variant="body-small" color="secondary" className={classes.note}>
-          Allowed for every asking tool its exception covers:{' '}
-          {broadGrants.map(grantLabel).join(', ')}
+          Allowed by a broader exception:{' '}
+          {broadGrants
+            .map(grant => `${grantLabel(grant)}, for ${entryKind(grant.entry)}`)
+            .join('; ')}
         </Text>
       )}
       {searchable && (
@@ -452,7 +472,7 @@ export function ConnectorToolsTab({
                       reviewed={reviewed}
                     />
                   ),
-                  facts: approvalFacts(tool, reviewed, grants),
+                  facts: approvalFacts(tool, reviewed, grants, shortName),
                   description: blocked.has(tool.name)
                     ? 'Hidden from everyone, so muster lists it nowhere else.'
                     : (tool.description ?? tool.summary),
@@ -464,6 +484,15 @@ export function ConnectorToolsTab({
       )}
     </Flex>
   );
+}
+
+/** A grant's entry in words: what its exception covers. */
+function entryKind(entry: string): string {
+  if (entry === 'default') return "the agent's default";
+  if (entry.startsWith('server:')) return 'every tool of this connector';
+  if (entry.startsWith('preset:')) return `the preset ${entry.slice(7)}`;
+  if (entry.startsWith('workflow:')) return `the workflow ${entry.slice(9)}`;
+  return entry;
 }
 
 /** What a tool does, and its approval where muster reports one. */
@@ -501,14 +530,21 @@ function approvalFacts(
   tool: ToolSummary,
   reviewed: boolean,
   grants: readonly ApprovalGrant[] = [],
+  ownName?: (name: string) => string,
 ): string[] {
   const facts: string[] = [];
   const source = tool.approval?.source;
   if (reviewed && source && source !== 'unreviewed' && source !== 'builtin') {
     facts.push(approvalSourceLabel(source));
   }
-  // The agents that may skip its Ask, by an exception for exactly this tool.
-  const allowed = grants.filter(grant => grant.entry === `tool:${tool.name}`);
+  // The agents that may skip its Ask: an exception for exactly this tool,
+  // or a broader one that names it among the tools it covers.
+  const own = ownName?.(tool.name);
+  const allowed = grants.filter(
+    grant =>
+      grant.entry === `tool:${tool.name}` ||
+      (own !== undefined && (grant.tools ?? []).includes(own)),
+  );
   if (tool.approval?.setting === 'ask' && allowed.length > 0) {
     facts.push(`Allowed for: ${allowed.map(grantLabel).join(', ')}`);
   }

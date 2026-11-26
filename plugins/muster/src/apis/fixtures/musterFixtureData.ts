@@ -176,11 +176,15 @@ export function fixtureMcpServerUid(
 }
 
 /** The MCPServer behind a connector's tools, as `filter_tools` reports it with `agentTools`. */
-export function connectorRefOf(connector: MusterFixtureConnector): {
+export function connectorRefOf(
+  connector: MusterFixtureConnector,
+  tool?: ToolSummary,
+): {
   server: string;
   namespace: string;
   name: string;
   uid: string;
+  tool?: string;
 } {
   const server = connectorKeyOf(connector);
   return {
@@ -188,6 +192,7 @@ export function connectorRefOf(connector: MusterFixtureConnector): {
     namespace: connector.namespace ?? FIXTURE_MUSTER_NAMESPACE,
     name: connector.name,
     uid: fixtureMcpServerUid(connector.installation, server),
+    ...(tool && { tool: approvalToolKeyOf(tool, connector) }),
   };
 }
 

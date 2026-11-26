@@ -33,6 +33,12 @@ export type ApprovalPillsProps<T extends ApprovalSetting> = {
    */
   disabledOptions?: readonly T[];
   /**
+   * The id of the text that says why an option is disabled, the group's
+   * accessible description: a disabled pill cannot take the focus, so the
+   * group says it.
+   */
+  describedBy?: string;
+  /**
    * The id of the element that says what each setting means (the editor's
    * legend), the pill's accessible description (`aria-describedby`).
    */
@@ -56,11 +62,13 @@ export function ApprovalPills<T extends ApprovalSetting>({
   onChange,
   hintIds,
   disabledOptions,
+  describedBy,
 }: ApprovalPillsProps<T>) {
   const classes = useStyles();
   return (
     <ToggleButtonGroup
       aria-label={ariaLabel}
+      aria-describedby={describedBy}
       className={classes.group}
       selectionMode="single"
       disallowEmptySelection

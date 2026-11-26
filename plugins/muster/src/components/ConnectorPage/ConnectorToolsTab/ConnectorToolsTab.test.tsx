@@ -556,49 +556,27 @@ describe('ConnectorToolsTab: tool approval', () => {
 });
 
 describe('ConnectorToolsTab: Allowed for', () => {
-  it("names the agents that may skip a tool's Ask, read from agent-manager's grants", async () => {
-    const callTool = jest.fn(
-      async (name: string, args: Record<string, unknown>) => {
-        if (name === 'x_agent-manager_get_info') {
-          return { namespaces: { managed: ['kagent', 'org-a'] } };
-        }
-        return {
-          grants:
-            args.namespace === 'org-a'
-              ? [
-                  {
-                    agent: { namespace: 'org-a', name: 'alert-review' },
-                    entry: 'tool:x_jira_close',
-                    server: 'jira',
-                    grantedBy: 'dana@example.com',
-                  },
-                  {
-                    agent: { namespace: 'org-a', name: 'triage' },
-                    entry: 'server:jira',
-                    server: 'jira',
-                  },
-                ]
-              : [],
-        };
+  function renderWith(
+    callTool: jest.Mock,
+    tools: ToolSummary[] = [
+      {
+        name: 'x_jira_close',
+        server: 'jira',
+        approval: { setting: 'ask', source: 'tool' },
       },
-    );
-    await renderInTestApp(
+      {
+        name: 'x_jira_list',
+        server: 'jira',
+        approval: { setting: 'allow', source: 'tool' },
+      },
+    ],
+  ) {
+    return renderInTestApp(
       <ConnectorToolsTab
         server="jira"
         installation="gazelle"
         tools={{
-          tools: [
-            {
-              name: 'x_jira_close',
-              server: 'jira',
-              approval: { setting: 'ask', source: 'tool' },
-            },
-            {
-              name: 'x_jira_list',
-              server: 'jira',
-              approval: { setting: 'allow', source: 'tool' },
-            },
-          ],
+          tools,
           truncated: false,
           isLoading: false,
           shortName: name => name.replace(/^x_jira_/, ''),
@@ -611,20 +589,93 @@ describe('ConnectorToolsTab: Allowed for', () => {
         apis: [[musterApiRef, { callTool } as unknown as MusterApi]],
       },
     );
+  }
+
+  it("names the agents that may skip a tool's Ask, from one list across namespaces", async () => {
+    const callTool = jest.fn(async () => ({
+      grants: [
+        {
+          agent: { namespace: 'org-a', name: 'alert-review' },
+          agentDisplayName: 'Alert Review',
+          entry: 'tool:x_jira_close',
+          server: 'jira',
+          grantedBy: 'dana@example.com',
+        },
+        {
+          agent: { namespace: 'org-a', name: 'triage' },
+          entry: 'server:jira',
+          server: 'jira',
+        },
+      ],
+      unreadable: [],
+    }));
+    await renderWith(callTool);
     expect(
       await screen.findByText(
-        'Allowed for: alert-review (by dana@example.com)',
+        'Allowed for: Alert Review (by dana@example.com)',
       ),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Allowed for every asking tool its exception covers: triage/,
+        /Allowed by a broader exception: triage, for every tool of this connector/,
       ),
     ).toBeInTheDocument();
     expect(callTool).toHaveBeenCalledWith(
       'x_agent-manager_list_approval_grants',
-      { namespace: 'org-a', server: 'jira' },
+      { server: 'jira' },
       'gazelle',
     );
+    expect(screen.queryByText(/Could not read which agents/)).toBeNull();
+  });
+
+  it('names an agent whose broader exception covers the tool by its own name', async () => {
+    await renderWith(
+      jest.fn(async () => ({
+        grants: [
+          {
+            agent: { namespace: 'org-a', name: 'triage' },
+            entry: 'server:jira',
+            server: 'jira',
+            tools: ['close'],
+          },
+        ],
+      })),
+    );
+    expect(await screen.findByText('Allowed for: triage')).toBeInTheDocument();
+  });
+
+  it('never reads an unreadable namespace as "nobody is allowed"', async () => {
+    await renderWith(
+      jest.fn(async () => ({ grants: [], unreadable: ['org-b'] })),
+    );
+    expect(
+      await screen.findByText('Could not read which agents are allowed'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /listed only for the namespaces whose agents you may read/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says so when agent-manager could not be asked', async () => {
+    await renderWith(
+      jest.fn(async () => {
+        throw new Error('agent-manager unreachable');
+      }),
+    );
+    expect(
+      await screen.findByText('Could not read which agents are allowed'),
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing for an agent-manager without grants', async () => {
+    await renderWith(
+      jest.fn(async () => {
+        throw new Error('Tool not found: x_agent-manager_list_approval_grants');
+      }),
+    );
+    await screen.findByText('close');
+    expect(screen.queryByText(/Could not read which agents/)).toBeNull();
   });
 });

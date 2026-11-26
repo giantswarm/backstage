@@ -49,7 +49,7 @@ export function musterAgentToolReportOf(
     snapshot.presets,
     tool => {
       const connector = tool.server ? connectors.get(tool.server) : undefined;
-      return connector ? [connectorRefOf(connector)] : undefined;
+      return connector ? [connectorRefOf(connector, tool)] : undefined;
     },
   );
 }

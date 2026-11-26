@@ -542,6 +542,14 @@ export class MusterFixtureApi implements MusterApi {
       filtered_count: all.length,
       truncated,
       tools: items,
+      ...(options.agentTools && {
+        agentTools: {
+          entries: [...options.agentTools.tools],
+          settings: options.agentTools.tools.filter(
+            item => typeof item !== 'string',
+          ),
+        },
+      }),
       ...(selectors && {
         toolset: [...selectors],
         toolset_unmatched: resolution?.unmatched ?? [],
@@ -573,7 +581,7 @@ export class MusterFixtureApi implements MusterApi {
       this.snapshot(installation).presets,
       tool => {
         const connector = tool.server ? connectors.get(tool.server) : undefined;
-        return connector ? [connectorRefOf(connector)] : undefined;
+        return connector ? [connectorRefOf(connector, tool)] : undefined;
       },
     );
   }
