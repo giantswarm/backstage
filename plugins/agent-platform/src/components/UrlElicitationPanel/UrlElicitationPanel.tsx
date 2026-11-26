@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useHref, useLocation, useSearchParams } from 'react-router-dom';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { identityApiRef, useApi } from '@backstage/core-plugin-api';
@@ -12,6 +12,11 @@ import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 import type { ConfirmationAnswer } from '../../hooks/useAnswerConfirmation';
 import type { PendingConfirmation } from '../../lib/kagentHitl';
 import {
+  announceElicitationReturn,
+  listenForElicitationReturn,
+  URL_ELICITATION_CHANNEL,
+} from '../../lib/urlElicitationChannel';
+import {
   ELICITATION_NONCE_PARAM,
   ELICITATION_RETURN_PARAM,
   elicitationHref,
@@ -22,10 +27,6 @@ import {
   withHandoff,
   type MusterPages,
 } from '../../lib/urlElicitation';
-
-/** Where a tab muster returned to tells the session's other tabs. */
-export const URL_ELICITATION_CHANNEL =
-  'giantswarm.agent-platform.url-elicitation';
 
 /**
  * The links this tab opened, one record per open, so a reload keeps them.
@@ -47,15 +48,7 @@ type OpenedRecord = {
   user: string;
 };
 
-function openChannel(): BroadcastChannel | undefined {
-  try {
-    return typeof BroadcastChannel === 'undefined'
-      ? undefined
-      : new BroadcastChannel(URL_ELICITATION_CHANNEL);
-  } catch {
-    return undefined;
-  }
-}
+export { URL_ELICITATION_CHANNEL };
 
 function readOpened(): OpenedRecord[] {
   try {
@@ -116,10 +109,13 @@ function takeOpened(match: OpenedRecord): boolean {
  * The page muster returns the browser to after one of its pages: tells the
  * session's other tabs (and this one) which elicitation the person finished
  * and with which open's value, drops both from the address and closes the
- * tab, which the link opened. A visit without both does nothing. Called by
- * the session page, whether or not it shows the prompt yet.
+ * tab, which the link opened (a browser lets a script close only a tab a
+ * script opened). A visit without both does nothing. Called by the session
+ * page, whether or not it shows the prompt yet. True once this tab is such a
+ * return tab, so the page can say the person may close it.
  */
-export function useUrlElicitationReturn(): void {
+export function useUrlElicitationReturn(): boolean {
+  const [returnedHere, setReturnedHere] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const returned = returnedElicitation(searchParams);
   const elicitationId = returned?.elicitationId;
@@ -128,9 +124,8 @@ export function useUrlElicitationReturn(): void {
     if (!elicitationId || !nonce) {
       return;
     }
-    const channel = openChannel();
-    channel?.postMessage({ elicitationId, nonce });
-    channel?.close();
+    announceElicitationReturn({ elicitationId, nonce });
+    setReturnedHere(true);
     setSearchParams(
       previous => {
         const next = new URLSearchParams(previous);
@@ -142,6 +137,29 @@ export function useUrlElicitationReturn(): void {
     );
     window.close();
   }, [elicitationId, nonce, setSearchParams]);
+  return returnedHere;
+}
+
+/**
+ * What the tab muster returned to shows: the chat goes on in the tab that
+ * opened the page, so this one may be closed. It says nothing of what was
+ * decided there (the return does not carry it).
+ */
+export function ElicitationReturnNotice() {
+  return (
+    <div
+      role="status"
+      data-testid="elicitation-return-notice"
+      style={{ padding: 32 }}
+    >
+      <Text as="p" variant="title-small" weight="bold">
+        Done — you can close this tab
+      </Text>
+      <Text as="p" variant="body-medium" color="secondary">
+        The chat continues in the tab where you started.
+      </Text>
+    </div>
+  );
 }
 
 const useStyles = makeStyles(theme => ({
@@ -261,22 +279,14 @@ export function UrlElicitationPanel({
     if (!elicitationId) {
       return undefined;
     }
-    const channel = openChannel();
-    if (!channel) {
-      return undefined;
-    }
-    channel.onmessage = (event: MessageEvent) => {
-      const data = event.data as
-        { elicitationId?: unknown; nonce?: unknown } | undefined;
+    return listenForElicitationReturn(({ elicitationId: id, nonce }) => {
       if (
-        data?.elicitationId !== elicitationId ||
-        typeof data.nonce !== 'string' ||
+        id !== elicitationId ||
         answered.current === elicitationId ||
         latest.current.isAnswering
       ) {
         return;
       }
-      const nonce = data.nonce;
       const { taskId, page: current } = latest.current;
       void identityApi.getBackstageIdentity().then(({ userEntityRef }) => {
         if (
@@ -294,8 +304,7 @@ export function UrlElicitationPanel({
         answered.current = elicitationId;
         latest.current.answer('approve');
       });
-    };
-    return () => channel.close();
+    });
   }, [elicitationId, identityApi]);
 
   if (!elicitation) {

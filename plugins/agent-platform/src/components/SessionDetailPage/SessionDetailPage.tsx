@@ -82,7 +82,10 @@ import { InstallationChip } from '../InstallationChip';
 import { SessionWorkspaceChip } from '../SessionWorkspace';
 import { PendingConfirmationPanel } from '../PendingConfirmationPanel';
 import { ConnectorSignInLinks } from '../ConnectorSignInLinks';
-import { useUrlElicitationReturn } from '../UrlElicitationPanel';
+import {
+  ElicitationReturnNotice,
+  useUrlElicitationReturn,
+} from '../UrlElicitationPanel';
 import { useMusterPages } from '../../hooks/useMusterPages';
 import { useMusterHandoff } from '../../hooks/useMusterHandoff';
 import { SessionComposer } from '../SessionComposer';
@@ -401,7 +404,7 @@ function shownMessage(error: Error | null | undefined): string | undefined {
  * context-window usage live in the composer's `SessionCostPopover` chip, from
  * the data that does exist.
  */
-export function SessionDetailPage() {
+function SessionDetail() {
   const classes = useStyles();
   const { installation = '', sessionId = '' } = useParams();
   const buildAvatarUrl = useAgentAvatarUrl();
@@ -417,10 +420,10 @@ export function SessionDetailPage() {
   const { servers: musterServers, labels: connectorLabelsOf } =
     useMusterServers(installation);
   // A URL elicitation's page of muster's returns to this page, which
-  // tells the tab that opened it (`UrlElicitationPanel`).
+  // tells the tab that opened it (`UrlElicitationPanel`); the wrapper
+  // below shows that tab a notice instead of the session.
   const musterPages = useMusterPages(installation);
   const requestHandoff = useMusterHandoff(installation);
-  useUrlElicitationReturn();
   const connectorOf = useCallback(
     (toolName: string) =>
       connectorOfTool(toolName, musterServers, connectorLabelsOf),
@@ -2022,4 +2025,14 @@ export function SessionDetailPage() {
       />
     </Shell>
   );
+}
+
+/**
+ * The session page; in the tab muster's approval page or connector sign-in
+ * returned to, a short notice instead (the chat continues in the tab that
+ * opened it, and the person may close this one).
+ */
+export function SessionDetailPage() {
+  const returnedHere = useUrlElicitationReturn();
+  return returnedHere ? <ElicitationReturnNotice /> : <SessionDetail />;
 }

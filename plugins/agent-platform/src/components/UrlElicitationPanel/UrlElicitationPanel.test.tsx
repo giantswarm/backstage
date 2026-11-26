@@ -7,7 +7,9 @@ import userEvent from '@testing-library/user-event';
 import { useLocation } from 'react-router-dom';
 
 import type { PendingConfirmation } from '../../lib/kagentHitl';
+import { URL_ELICITATION_STORAGE_KEY } from '../../lib/urlElicitationChannel';
 import {
+  ElicitationReturnNotice,
   URL_ELICITATION_CHANNEL,
   UrlElicitationPanel,
   useUrlElicitationReturn,
@@ -235,6 +237,28 @@ describe('UrlElicitationPanel', () => {
       text: 'Done.',
       askedIn: 'status-1',
     });
+  });
+
+  it('resumes the agent on a storage event when there is no BroadcastChannel, once', async () => {
+    const user = userEvent.setup();
+    const { onAnswer } = await renderPanel();
+    await user.click(openButton());
+    const nonce = lastNonce();
+    delete (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel;
+    const send = async (n: string) =>
+      act(async () => {
+        window.dispatchEvent(
+          new StorageEvent('storage', {
+            key: URL_ELICITATION_STORAGE_KEY,
+            newValue: JSON.stringify({ elicitationId: 'el-9b1d', nonce: n }),
+          }),
+        );
+      });
+    await send('unknown-nonce');
+    expect(onAnswer).not.toHaveBeenCalled();
+    await send(nonce);
+    await send(nonce);
+    await waitFor(() => expect(onAnswer).toHaveBeenCalledTimes(1));
   });
 
   it('resumes the agent on the sign-in start, whose return the portal names', async () => {
@@ -516,6 +540,37 @@ describe('useUrlElicitationReturn', () => {
     await renderInTestApp(<ReturnPage />, { initialRouteEntries: [route] });
 
     expect(heard).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+  });
+});
+
+describe('return notice and storage fallback', () => {
+  let close: jest.SpyInstance;
+  beforeEach(() => {
+    delete (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel;
+    close = jest.spyOn(window, 'close').mockImplementation(() => {});
+    window.sessionStorage.clear();
+  });
+  afterEach(() => close.mockRestore());
+
+  function ReturnPage() {
+    const isReturn = useUrlElicitationReturn();
+    return isReturn ? <ElicitationReturnNotice /> : <span>chat</span>;
+  }
+
+  it('shows the return tab that it may be closed', async () => {
+    await renderInTestApp(<ReturnPage />, {
+      initialRouteEntries: ['/s?elicitationReturn=n-1&elicitationId=el-1'],
+    });
+    expect(
+      await screen.findByText('Done — you can close this tab'),
+    ).toBeInTheDocument();
+    expect(close).toHaveBeenCalled();
+  });
+
+  it('shows the chat on a visit that is no return', async () => {
+    await renderInTestApp(<ReturnPage />, { initialRouteEntries: ['/s'] });
+    expect(screen.getByText('chat')).toBeInTheDocument();
     expect(close).not.toHaveBeenCalled();
   });
 });
