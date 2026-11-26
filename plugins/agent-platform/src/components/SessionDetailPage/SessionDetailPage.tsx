@@ -1478,7 +1478,7 @@ export function SessionDetailPage() {
     // would be guessing at what the agent asked.
     composerWithheldReason = pendingConfirmation
       ? undefined
-      : 'The agent is waiting for you, but its request could not be read. Reply in the kagent UI.';
+      : 'The agent is waiting for your answer, but its request could not be read.';
   }
 
   /**

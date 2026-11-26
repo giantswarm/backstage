@@ -259,8 +259,8 @@ describe('useSessionDetail', () => {
   });
 
   it('keeps a loaded session when a poll returns an unreadable 200', async () => {
-    // `getSessionDetail` resolves undefined for any 200 that does not parse — an
-    // expired oauth2-proxy serving an HTML sign-in page is the realistic trigger.
+    // `getSessionDetail` resolves undefined for any 200 that does not parse — a
+    // proxy or gateway in front serving an HTML page is the realistic trigger.
     // Nothing was deleted, so the user must not be told the session is gone.
     getSessionDetail
       .mockResolvedValueOnce(SESSION)
