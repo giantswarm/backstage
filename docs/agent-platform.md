@@ -1592,8 +1592,8 @@ controller route (`kagent.controllerRoute.hostname`, default
 `agentgateway.<domain>`), whose `GRPCRoute` serves the controller's services and
 which the chart itself writes as `apiBaseUrl`. It has no path (gRPC matches by
 service) and is overridable in
-`agentPlatform.kagent.installations`. `kagent.<baseDomain>` is the kagent UI's
-`HTTPRoute` and carries no gRPC. An `http://` origin is plaintext h2c, for
+`agentPlatform.kagent.installations`. It is the only route the portal uses to
+reach kagent. An `http://` origin is plaintext h2c, for
 in-cluster Service URLs only.
 
 ### Prerequisite: the connectivity chart's controller route
@@ -1832,8 +1832,8 @@ no `ErrorsProvider`). Three cases needed their own answer:
 - **A 200 with no readable session.** `getSessionDetail` resolves `undefined`,
   which react-query rejects, so the query function coerces it to `null`. An
   empty read means "no such session" only before one was read; afterwards it
-  means unreadable (for example an expired oauth2-proxy answering HTML with a
-  200). A genuine 404 counts at any time.
+  means unreadable (for example a proxy or gateway in front answering HTML with
+  a 200). A genuine 404 counts at any time.
 - **A delete in flight.** An interval tick could 404 between kagent accepting
   the delete and navigation, so the page passes
   `enabled: !isDeleting && !isDeleted` and stops both reads.

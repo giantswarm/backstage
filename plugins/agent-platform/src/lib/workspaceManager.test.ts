@@ -4,6 +4,7 @@ import {
   authorizationError,
   classifyWorkspaceManagerError,
   providerDisplayName,
+  providerOfConnect,
   providerSignInTarget,
   workspaceManagerToolName,
   type WorkspaceAuthorization,
@@ -208,5 +209,55 @@ describe('providerSignInTarget', () => {
   it('names no target where the sentence names no grant', () => {
     expect(providerSignInTarget('ask your platform team')).toBeUndefined();
     expect(providerSignInTarget(undefined)).toBeUndefined();
+  });
+});
+
+describe('providerOfConnect', () => {
+  const providers = [
+    {
+      name: 'github-com',
+      kind: 'github',
+      host: 'github.com',
+      connected: false,
+      signIn:
+        'Grant it in muster first: core_auth_login app=agent-platform-github',
+    },
+    { name: 'gitlab-lab', kind: 'gitlab', connected: true },
+  ];
+
+  it("finds the instance of an App muster named by the instance's own sign-in", () => {
+    expect(
+      providerOfConnect(providers, {
+        provider: 'agent-platform-github',
+        app: 'agent-platform-github',
+        signIn: 'core_auth_login app=agent-platform-github',
+      })?.name,
+    ).toBe('github-com');
+  });
+
+  it('finds none for an App no instance signs in with, not one of its name', () => {
+    expect(
+      providerOfConnect(providers, {
+        provider: 'gitlab-lab',
+        app: 'gitlab-lab',
+        signIn: 'core_auth_login app=gitlab-lab',
+      }),
+    ).toBeUndefined();
+    expect(
+      providerOfConnect(undefined, {
+        provider: 'github',
+        app: 'github',
+        signIn: 'core_auth_login app=github',
+      }),
+    ).toBeUndefined();
+  });
+
+  it("finds the manager's own entry by its instance name", () => {
+    expect(
+      providerOfConnect(providers, {
+        provider: 'gitlab-lab',
+        signIn: 'core_auth_login app=gitlab-lab',
+      })?.kind,
+    ).toBe('gitlab');
   });
 });

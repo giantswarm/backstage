@@ -767,6 +767,10 @@ export class WorkspaceManagerFixtureState {
       return {
         workspace: name,
         outcome: 'connect_required',
+        // As workspace-manager answers it: muster reads these two and answers
+        // its own auth_required error with the Apps' sign-ins instead.
+        status: 'grant_required',
+        apps: ungranted.map(p => p.name),
         reason: `grant ${ungranted
           .map(p => p.name)
           .join(

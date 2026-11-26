@@ -1,7 +1,7 @@
 import {
   classifyToolchainManagerError,
   defaultToolchainsOf,
-  grantProvider,
+  grantProviders,
   imageTag,
   isFinalBuildState,
   parseToolchainEntry,
@@ -59,21 +59,29 @@ describe('toolchainManager', () => {
     ).toBe(false);
   });
 
-  it("turns a grant_required answer into the App's sign-in in muster", () => {
+  it("turns a grant_required answer into each App's sign-in in muster", () => {
     expect(
-      grantProvider({
+      grantProviders({
         status: 'grant_required',
-        apps: ['toolchain-manager'],
+        apps: ['toolchain-manager', 'toolchain-gitlab', 'toolchain-manager'],
         message: 'grant it',
       }),
-    ).toEqual({
-      name: 'toolchain-manager',
-      kind: 'github',
-      connected: false,
-      signIn: 'core_auth_login app=toolchain-manager',
-    });
-    expect(grantProvider({ message: '3 toolchains' })).toBeUndefined();
-    expect(grantProvider(undefined)).toBeUndefined();
+    ).toEqual([
+      {
+        name: 'toolchain-manager',
+        kind: 'github',
+        connected: false,
+        signIn: 'core_auth_login app=toolchain-manager',
+      },
+      {
+        name: 'toolchain-gitlab',
+        kind: 'github',
+        connected: false,
+        signIn: 'core_auth_login app=toolchain-gitlab',
+      },
+    ]);
+    expect(grantProviders({ message: '3 toolchains' })).toEqual([]);
+    expect(grantProviders(undefined)).toEqual([]);
   });
 
   it('knows the build states that no longer move', () => {
@@ -91,5 +99,12 @@ describe('toolchainManager', () => {
     expect(classifyToolchainManagerError(new Error('boom')).kind).toBe(
       'failed',
     );
+    expect(
+      classifyToolchainManagerError(
+        new Error(
+          "auth_required: server 'toolchain-manager' requires authentication: it needs your grant of a provider App (github) for this call.",
+        ),
+      ).kind,
+    ).toBe('unavailable');
   });
 });

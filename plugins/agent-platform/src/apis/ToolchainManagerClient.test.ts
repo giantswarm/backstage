@@ -4,7 +4,7 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import { PortalSessionEndedError } from '../lib/portalSession';
-import { ToolchainManagerError } from '../lib/toolchainManager';
+import { grantProviders, ToolchainManagerError } from '../lib/toolchainManager';
 import { ToolchainManagerClient } from './ToolchainManagerClient';
 
 function makeMusterApi(answer: unknown = {}) {
@@ -167,5 +167,59 @@ describe('ToolchainManagerClient', () => {
 
     expect(error).toBeInstanceOf(PortalSessionEndedError);
     expect(error.message).not.toMatch(/token verification/);
+  });
+
+  it("reads muster's auth_required answer naming the App as grant_required", async () => {
+    // muster's tool error in place of the manager's grant_required, as
+    // muster-backend answers it: a 401 with the Apps from muster's
+    // structuredContent.apps.
+    const { api, callTool } = makeMusterApi();
+    callTool.mockRejectedValue(
+      new MusterUnauthorizedError(
+        "auth_required: server 'toolchain-manager' requires authentication: it needs your grant of a provider App (toolchain-github) for this call.",
+        'server_sign_in_required',
+        'toolchain-manager',
+        'gazelle',
+        'MusterUnauthorizedError',
+        [
+          {
+            app: 'toolchain-github',
+            authUrl: 'https://muster.example/oauth/proxy/start?state=s1',
+          },
+        ],
+      ),
+    );
+    const client = new ToolchainManagerClient(api, 'gazelle');
+
+    const list = await client.listToolchains();
+    expect(list.status).toBe('grant_required');
+    expect(list.toolchains).toEqual([]);
+    expect(grantProviders(list)).toMatchObject([
+      {
+        name: 'toolchain-github',
+        signIn: 'core_auth_login app=toolchain-github',
+      },
+    ]);
+    await expect(client.listSources()).resolves.toMatchObject({
+      status: 'grant_required',
+      apps: ['toolchain-github'],
+      sources: [],
+    });
+  });
+
+  it('keeps a sign-in to the server itself a failure', async () => {
+    const { api, callTool } = makeMusterApi();
+    callTool.mockRejectedValue(
+      new MusterUnauthorizedError(
+        "auth_required: server 'toolchain-manager' requires authentication; sign in to it to use its tools.",
+        'server_sign_in_required',
+        'toolchain-manager',
+        'gazelle',
+      ),
+    );
+
+    await expect(
+      new ToolchainManagerClient(api, 'gazelle').listToolchains(),
+    ).rejects.toMatchObject({ kind: 'unavailable' });
   });
 });
