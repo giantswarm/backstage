@@ -31,11 +31,6 @@ export interface KagentInstallationConfig {
  * app-config as `apiBaseUrl` when it renders that file itself. No path: gRPC is
  * matched by service, not by prefix.
  *
- * `kagent.<baseDomain>` is a different route: the kagent UI's `HTTPRoute`
- * behind oauth2-proxy (`kagent.uiRoute.hostname`), which does not carry gRPC
- * — a gRPC call there ends with "server closed the stream without sending
- * trailers".
- *
  * Returns undefined when the installation has no `baseDomain`.
  */
 export function deriveKagentApiBaseUrl(

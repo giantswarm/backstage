@@ -1851,9 +1851,9 @@ describe('createRouter', () => {
   });
 
   it('exposes no version route', async () => {
-    // kagent's /version lives at the server root, which neither supported door
-    // proxies to the controller, so a probe would fail on every healthy
-    // installation. Asserted so the route is not reintroduced casually.
+    // Nothing in the frontend gates on a version string, and
+    // `SystemService/GetVersion` serves only the reachability probe (see the
+    // router). Asserted so the route is not reintroduced casually.
     const response = await request(app)
       .get('/kagent/version')
       .query({ installation: 'gazelle' });
