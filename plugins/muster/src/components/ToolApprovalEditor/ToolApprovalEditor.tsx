@@ -124,6 +124,16 @@ const useStyles = makeStyles({
   toolEdited: {
     boxShadow: 'inset 3px 0 0 var(--bui-fg-warning)',
   },
+  editedGroup: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    columnGap: 4,
+    width: 0,
+    minWidth: '100%',
+    textAlign: 'right',
+  },
   edited: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -148,11 +158,15 @@ const useStyles = makeStyles({
     alignItems: 'center',
     gap: 6,
   },
+  // The control keeps its place on every row; the edit marker stacks under
+  // it without widening the column (zero basis, as wide as the control).
   toolSetting: {
     flex: 'none',
+    alignSelf: 'flex-start',
     display: 'flex',
-    alignItems: 'center',
-    gap: 8,
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 4,
   },
 });
 
@@ -173,7 +187,7 @@ export type ToolApprovalEditorProps = {
 /**
  * A tool's markers beside its name: what it does (a property of the tool),
  * New, and why it is listed. An unsaved change is not here: it is edit state
- * and sits beside the setting ({@link EditedMarker}).
+ * and sits under the setting ({@link EditedMarker}).
  */
 function RowMarkers({
   row,
@@ -200,17 +214,35 @@ function RowMarkers({
 /**
  * The edit state of a row: this setting differs from the saved one (or, on a
  * first review, from the preset's fill) and is not saved yet. Plain text with
- * a pencil, beside the control it describes, not a badge like the tool's
- * effect.
+ * a pencil and a small Reset, as one line under the control it describes, not
+ * a badge like the tool's effect.
  */
-function EditedMarker({ was }: { was: ApprovalSetting }) {
+function EditedMarker({
+  was,
+  tool,
+  onReset,
+}: {
+  was: ApprovalSetting;
+  tool: string;
+  onReset: () => void;
+}) {
   const classes = useStyles();
   const hint = `Unsaved change: this tool was ${was}. Reset puts it back.`;
   return (
-    <span className={classes.edited} title={hint}>
-      <EditIcon aria-hidden />
-      <span>Edited, was {was}</span>
-      <VisuallyHidden>{`. ${hint}`}</VisuallyHidden>
+    <span className={classes.editedGroup}>
+      <span className={classes.edited} title={hint}>
+        <EditIcon aria-hidden />
+        <span>Edited, was {was}</span>
+        <VisuallyHidden>{`. ${hint}`}</VisuallyHidden>
+      </span>
+      <Button
+        size="small"
+        variant="tertiary"
+        aria-label={`Reset ${tool} to ${was}`}
+        onPress={onReset}
+      >
+        Reset
+      </Button>
     </span>
   );
 }
@@ -228,7 +260,7 @@ function rowDescription(row: ApprovalRow): string | undefined {
  * Picking a preset fills every tool's pill and the rule; what is saved is
  * the explicit setting of each tool. A row the person changed from the
  * saved setting (or, on a first review, from the preset's fill) is marked
- * *Edited, was Ask* beside its setting and can be reset.
+ * *Edited, was Ask* under its setting and can be reset.
  */
 export function ToolApprovalEditor({
   approval,
@@ -383,22 +415,6 @@ export function ToolApprovalEditor({
                   <span className={classes.toolSetting}>
                     {editing ? (
                       <>
-                        {changed && saved !== undefined && (
-                          <EditedMarker was={saved} />
-                        )}
-                        {changed && (
-                          <Button
-                            size="small"
-                            variant="tertiary"
-                            aria-label={`Reset ${row.key} to ${saved}`}
-                            onPress={() => {
-                              keepListed([row.key]);
-                              approval.resetTool(row.key);
-                            }}
-                          >
-                            Reset
-                          </Button>
-                        )}
                         <ApprovalPills
                           aria-label={`Approval for ${row.key}`}
                           hintIds={hintIds}
@@ -406,6 +422,16 @@ export function ToolApprovalEditor({
                           value={setting}
                           onChange={next => changeTool(row.key, next)}
                         />
+                        {changed && saved !== undefined && (
+                          <EditedMarker
+                            was={saved}
+                            tool={row.key}
+                            onReset={() => {
+                              keepListed([row.key]);
+                              approval.resetTool(row.key);
+                            }}
+                          />
+                        )}
                       </>
                     ) : (
                       <ApprovalBadge

@@ -407,7 +407,7 @@ settings; it decides nothing.
   reviewed one opens on its saved settings, a tool without its own entry marked _New_ and pre-filled
   with the rule, a blocked tool (which muster lists nowhere) as a row of its
   own. A row changed from the saved setting (or, on a first review, from the
-  preset's fill) shows _Edited, was Ask_ (an unsaved-change marker beside
+  preset's fill) shows _Edited, was Ask_ (an unsaved-change marker under
   its setting, not a badge like the tool's _Reads_ or _Changes things_) and can be reset. Everyone else sees the
   settings as badges, with no controls. A failed save keeps the person on
   the step with muster's reason. `core_mcpserver_set_approval` replaces the

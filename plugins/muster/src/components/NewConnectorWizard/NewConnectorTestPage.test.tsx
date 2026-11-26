@@ -595,6 +595,25 @@ describe('NewConnectorTestPage: Test & Tools', () => {
     );
     expect(chosen(pills('create_issue'))).toBe('Block');
     expect(screen.getByText('Edited, was Ask')).toBeInTheDocument();
+    // The marker and Reset sit under the control, in its container, which
+    // holds the same control as on an unedited row.
+    const editedRow = screen
+      .getByRole('button', { name: 'Reset create_issue to Ask' })
+      .closest('[role="listitem"]') as HTMLElement;
+    const plainRow = pills('get_issue').closest(
+      '[role="listitem"]',
+    ) as HTMLElement;
+    const settingBox = (row: HTMLElement, name: string) =>
+      within(row).getByRole('radiogroup', { name: `Approval for ${name}` })
+        .parentElement as HTMLElement;
+    const editedBox = settingBox(editedRow, 'create_issue');
+    expect(editedBox.className).toBe(
+      settingBox(plainRow, 'get_issue').className,
+    );
+    expect(editedBox).toContainElement(screen.getByText('Edited, was Ask'));
+    expect(
+      within(editedRow).getByText('create_issue').parentElement,
+    ).not.toContainElement(screen.getByText('Edited, was Ask'));
     expect(
       screen.getByText('Your own settings. A preset fills every tool again.'),
     ).toBeInTheDocument();
