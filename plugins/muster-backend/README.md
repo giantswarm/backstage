@@ -105,68 +105,49 @@ muster:
       authProvider: oidc-lab
 ```
 
-`publicUrl` is where that muster serves its own pages, its
-`muster.oauth.mcpClient.publicUrl`. Set it only when that is not on the host of
-`url` (a `url` that reaches muster from inside the cluster, say): the Agent
-Platform session page returns a person from muster's approval page and sign-in
-start only for links on it, and otherwise on the origin of `url`. Without it,
-on such an installation, those links open as sent and the person presses
-_Done_ to go on. muster's `postLoginRedirectAllowlist` must admit the portal
-either way.
+`publicUrl` is where that muster serves its own pages (its
+`muster.oauth.mcpClient.publicUrl`). Set it only when that is not on the host of
+`url`: the session page returns a person from muster's approval page and
+sign-in start only for links on it, else on the origin of `url`; otherwise those
+links open as sent and the person presses _Done_. muster's
+`postLoginRedirectAllowlist` must admit the portal either way.
 
-`POST /api/muster/handoff?installation=<name>` with `{"url": "<page>"}` and the
-person's token asks that muster for a one-time sign-in handoff ticket for its
-connector sign-in start (muster also takes its approval page) on its
-`publicUrl` (else the origin of `url`). It answers `{ "ticket": "..." }`, or
-`{}` when muster issues none; the ticket is never logged.
+Routes (all take the person's token; `installation=<name>`):
 
-`POST /api/muster/approvals/view?installation=<name>` with `{"url":
-"<approval page>"}` and the person's token reads the person's pending approval
-from that muster's decision API (`GET /approvals/<id>`, contract §5b) and
-answers `{ "view": {...} }`, or `{ "refusal": { "status", "error", "message"
-} }`. `POST /api/muster/approvals/decision?installation=<name>` with `{"url",
-"decision": "approve" | "decline", "digest"}` posts the person's decision
-(`POST /approvals/<id>/decision`) and answers `{ "status": "approved" |
-"declined" }` or `{ "refusal" }`; the chat calls it only on the person's
-click. Only a link to the installation's approval page is accepted (400
-otherwise).
+| Route                                 | Body                                                  | Answer                                                         |
+| ------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------- |
+| `POST /api/muster/handoff`            | `{"url"}` (sign-in start or approval page)            | `{ "ticket" }`, or `{}` when muster issues none (never logged) |
+| `POST /api/muster/approvals/view`     | `{"url"}` (approval page)                             | `{ "view" }` or `{ "refusal": { status, error, message } }`    |
+| `POST /api/muster/approvals/decision` | `{"url", "decision": "approve"\|"decline", "digest"}` | `{ "status": "approved"\|"declined" }` or `{ "refusal" }`      |
 
-muster issues tickets and takes decisions only from the OAuth clients its
-`approval.trustedClients` lists (formerly `approval.handoffClients`): list the
-portal's own Dex client there (the `azp` of the token the portal forwards),
-never a client a CLI or an agent signs in through. The person's token alone is
-not enough: it also reaches the browser and the servers muster forwards it to.
-All three routes send the portal backend's own workload token beside it, in
-`X-Muster-Approval-Client`: the projected ServiceAccount token (audience
-`muster`) read from `muster.workloadTokenFile`, default
-`/var/run/secrets/muster.giantswarm.io/serviceaccount/token`, where the Agent
-Platform chart mounts it, on every request (it rotates). muster reviews it
-(TokenReview, then verb `decide` on `toolapprovals.muster.giantswarm.io`,
-granted only to the portal's ServiceAccount). Without the file the portal
-logs it once and sends none; muster then refuses (`untrusted_workload`) and
-the chat opens muster's own pages instead. `agentlab portal dev` writes a
-token it mints for the lab portal's ServiceAccount and points
-`muster.workloadTokenFile` at it. The portal backend decides only on the
-person's click.
+Only a link to the installation's approval page is accepted (400 otherwise);
+the chat calls `decision` only on the person's click.
 
-The workload token tells muster that the portal presents the person's token,
-so the portal presents only the signed-in person's own. Before muster is
-called, all three routes check that the forwarded token's identity is the
-Backstage user the request is signed in as, by the mapping the portal's
-sign-in applies (`oidcIdentity` in gs-node): `user:oidc/<hash of sub>`, or
-for staff the catalog user with that GitHub username or verified email. A
-token of another person (one a portal user obtained from a server muster
-forwarded it to, say), a request without a user, a service or the shared
-guest is refused with 403 and logged (`muster_token_not_own`, with the user,
-the installation and why, never the token).
+Trust, all enforced by muster:
 
-Only one installation's muster gets the workload token: the one the portal's
-ServiceAccount belongs to, where the token is valid. `muster.workloadInstallation`
-names it; without it, the `gs.installations` entry whose `oidcTokenProvider`
-is `gs.authProvider`, else the only muster installation. Inline approval and
-the sign-in handoff work on that installation only: for every other the
-approval routes answer the refusal `untrusted_workload` and `/handoff` `{}`,
-without asking its muster, and the chat opens muster's own pages.
+- Tickets and decisions only for OAuth clients in muster's
+  `approval.trustedClients` (formerly `approval.handoffClients`): list the
+  portal's own Dex client (the `azp` of the forwarded token), never a client a
+  CLI or an agent signs in through.
+- All three routes also send the portal's workload token in
+  `X-Muster-Approval-Client`: the projected ServiceAccount token (audience
+  `muster`) read on every request from `muster.workloadTokenFile`, default
+  `/var/run/secrets/muster.giantswarm.io/serviceaccount/token` (mounted by the
+  Agent Platform chart). muster reviews it (TokenReview, then verb `decide` on
+  `toolapprovals.muster.giantswarm.io`, granted only to the portal's
+  ServiceAccount). Without the file none is sent and muster refuses
+  (`untrusted_workload`); the chat opens muster's own pages. `agentlab portal
+dev` mints one and sets `muster.workloadTokenFile`.
+- Before muster is called, the forwarded token's identity must be the signed-in
+  Backstage user (`oidcIdentity` in gs-node: `user:oidc/<hash of sub>`, or for
+  staff the catalog user with that GitHub username or verified email). Another
+  person's token, no user, a service or the guest gets 403, logged as
+  `muster_token_not_own` (never the token).
+- Only one installation's muster gets the workload token:
+  `muster.workloadInstallation`, else the `gs.installations` entry whose
+  `oidcTokenProvider` is `gs.authProvider`, else the only muster installation.
+  Every other installation answers `untrusted_workload` (and `/handoff` `{}`)
+  without asking its muster.
 
 `GET /api/muster/installations` reports each installation with its `source`
 (`derived` or `configured`), whether it requires the person's token

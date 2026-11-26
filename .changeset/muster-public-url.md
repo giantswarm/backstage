@@ -5,4 +5,4 @@
 '@giantswarm/backstage-plugin-agent-platform': patch
 ---
 
-`muster.installations[].publicUrl` names where an installation's muster serves its own pages (its `oauth.mcpClient.publicUrl`) when that is not on the host of its `url`, and `GET /api/muster/installations` reports it. The Agent Platform session page returns a person from muster's approval page and sign-in start by it, else by the endpoint's origin as before.
+`muster.installations[].publicUrl` names where an installation's muster serves its pages when not on the host of its `url`; the session page returns from approval and sign-in by it.

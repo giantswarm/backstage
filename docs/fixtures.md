@@ -200,42 +200,25 @@ arguments and refuse each other's in muster's words before writing
 (`core_mcpserver_update does not take url: use core_mcpserver_connect …`).
 
 - Tool approval: the first connected connector of muster's own namespace in
-  each installation starts reviewed (_Recommended_, its delete tools
-  blocked and hidden, its last tool _New_), and so does every
-  organization's own connected connector (`wiki`); every other connector is
-  not reviewed. The guest is connector admin of muster's own connectors, not of
-  an organization's. `core_mcpserver_set_approval` and a create's `preset`
-  write `spec.approval`, which the next listing reports. muster reports its
-  governance mode on `core_mcpserver_list` as muster does: the first
-  installation is trusted (_Allow all_ pre-selected), the second governed
-  (_Recommended_). With `agentTools`, `filter_tools` reports an agent's
-  list as muster does (the deciding `entry`, the connector's `admin`
-  setting, `connectors` with a made-up MCPServer uid; a grant lifts only a
-  connector's Ask).
-- An agent's tool approval: agent-manager (not on `fennel`) answers the
-  tool list as `toolSettings` beside the kagent bindings in `tools`, takes
-  `tools` and `default` on `create_agent`, splits `update_agent` (what an
-  agent is) from `update_agent_access` (what it can reach) in its words,
-  refuses an `Allow` over a connector's `Ask` there, and grants one with
-  `set_agent_approval` only for a connector the guest is admin of, recording
-  the tools a grant covers. Every save drops the grants of connectors the
-  guest is no admin of. `get_agent` reports the release `generation`; the
-  write tools refuse a stale `expectedGeneration` with agent-manager's
-  `conflict`. `list_approval_grants` without a namespace lists every
-  namespace the guest manages agents in, names the others `unreadable` and
-  only counts organizations' ones (`unreadableCount`); an agent's
+  each installation and every organization's connected connector (`wiki`) start
+  reviewed (_Recommended_; muster's own also with delete tools blocked and a
+  _New_ last tool); all others are not reviewed. The guest is connector admin of
+  muster's own connectors only. `core_mcpserver_set_approval` and a create's
+  `preset` write `spec.approval`. Governance mode on `core_mcpserver_list`: the
+  first installation is trusted, the second governed. `filter_tools` with
+  `agentTools` reports an agent's list as muster does.
+- An agent's tool approval: agent-manager (not on `fennel`, which has no
+  `update_agent_access`, `set_agent_approval` or `list_approval_grants`)
+  answers `toolSettings`, takes `tools` and `default` on `create_agent`, splits
+  `update_agent` from `update_agent_access`, and refuses an `Allow` over a
+  connector's `Ask` except through `set_agent_approval` for a connector the
+  guest administers. Every save drops grants on connectors the guest does not
+  administer. Writes refuse a stale `expectedGeneration` with `conflict`.
   `approvalEnforcement` is `pending` until a write settled, then `enforced`;
-  `tarragon`'s first organization serves an older chart, so settings there
-  are refused `unsupported`; `delete_agent` returns the grants it `dropped`;
-  muster lifts a grant only for the tools it names. The last
-  ready agent of an organization starts with an exception on its
-  organization's `wiki` connector granted by `dana@example.com`, so its
-  Tools step, its page, the connector's _Allowed for_ and the pre-save note
-  show one. `fennel`'s agent-manager has none of this: no
-  `update_agent_access`, `set_agent_approval` or `list_approval_grants`.
-  On the second installation's muster the tools that ask also report
-  `approval.unavailable` ("muster's shared store is not on Valkey"), for the
-  warning that approvals cannot be answered right now.
+  `tarragon`'s first organization serves an older chart (`unsupported`). The
+  last ready agent of an organization starts with an exception on its `wiki`
+  connector granted by `dana@example.com`. On the second installation's muster
+  tools that ask also report `approval.unavailable`.
 - A workflow's steps call the tools they were written against, from the data
   set's serving connectors; it is available while a serving connector offers
   each of them. Deleting, turning off or failing a connector makes the

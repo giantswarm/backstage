@@ -2,4 +2,4 @@
 '@giantswarm/backstage-plugin-agent-platform': patch
 ---
 
-The approval prompt and the connector sign-in prompt in the chat use Lucide icons (ShieldCheck, TriangleAlert, KeyRound) in the text colour instead of hand-drawn SVGs in a low-contrast blue.
+The approval and connector sign-in prompts use Lucide icons instead of hand-drawn SVGs.

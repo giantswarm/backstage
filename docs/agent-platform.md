@@ -264,18 +264,15 @@ set on the MCPServer directly, for example in its GitOps source or with
 `kubectl annotate mcpserver <name> -n <namespace> ui.giantswarm.io/display-name="<Display name>"`;
 an edit that does not change the name keeps it.
 
-An edit of a connector (the wizard's _Save changes_, the JSON edit on its page)
-goes through muster's split writes where muster has them: where the server is
-and how muster reaches it (type, URL, sign-in, client, headers, request
-metadata) through `core_mcpserver_connect`, the rest (description, display
-name, tags, autoStart, timeout) through `core_mcpserver_update`, connect
-first; tool approval only through `core_mcpserver_set_approval`. Which
-arguments go where is read from `core_mcpserver_connect`'s input schema; a
-muster without that tool gets one `core_mcpserver_update` as before. When the
-update fails after the connect went through, the error says that the
-connection settings were saved and names the fields that were not. Turning a
-connector off and on uses `core_service_stop` and `_start`, which are not
-connector writes.
+An edit of a connector (_Save changes_, the JSON edit) uses muster's split
+writes: the connection (type, URL, sign-in, client, headers, request metadata)
+through `core_mcpserver_connect` first, the rest (description, display name,
+tags, autoStart, timeout) through `core_mcpserver_update`, tool approval only
+through `core_mcpserver_set_approval`. The split is read from
+`core_mcpserver_connect`'s input schema; a muster without that tool gets one
+`core_mcpserver_update`. A failure after the connect names the fields not
+saved. Turning a connector off and on (`core_service_stop`, `_start`) is not a
+connector write.
 
 A connector whose tools wait for the person's sign-in says so in the
 Connectors list ("Sign in needed", "Sign-in expired", with its Sign in) and on
@@ -365,155 +362,91 @@ Instances tab. muster's own page has no Details tab.
 
 #### Tool approval
 
-muster decides, per tool of a connector, whether a call runs (**Allow**, "Runs
-without asking."), asks a person to confirm the exact call first (**Ask**,
-"Asks first.") or is hidden and refused (**Block**, "Hidden. Can't be
-used."), from the MCPServer's `spec.approval`: a `rule` (Allow, Ask or Block)
-that tools without their own entry follow, new ones included ("New tools follow
-this rule."), and an entry per tool. A _Block_ rule hides tools the connector
-adds later and refuses them until someone sets them; the wizard offers it
-where `core_mcpserver_set_approval`'s schema takes it (its `approval.rule`
-enum), keeps _Ask_ pre-selected on a governed platform (the _Recommended_
-preset's rule), and says under the rule what it does. The Tools tab of a
-reviewed connector whose rule is _Block_ says that tools added later are
-hidden, since muster lists them nowhere. The portal only shows what muster reports
-(`approval {setting, source, new, unavailable}` and `connectorAdmin` on each tool from
-`filter_tools`, `approval` on `core_mcpserver_list`) and writes explicit
-settings; it decides nothing.
+muster decides per tool whether a call runs (**Allow**), asks a person to
+confirm the exact call first (**Ask**) or is hidden and refused (**Block**),
+from the MCPServer's `spec.approval`: a `rule` for tools without their own
+entry (new ones included) and an entry per tool. The portal shows what muster
+reports (`approval {setting, source, new, unavailable}` and `connectorAdmin` per
+tool from `filter_tools`, `approval` on `core_mcpserver_list`) and writes
+explicit settings; it decides nothing.
 
-- The connector wizard's third step is **Test & Tools** (`…/new/verify`, an
-  edit's `…/<connector>/edit/verify`). Once the connector lists its tools, a
-  connector admin (`connectorAdmin`) gets the presets as pills (_Recommended_:
-  read-only tools Allow, the rest Ask, rule Ask; _Allow all_; _Ask all_), the
-  rule, and `Allow · Ask · Block` pills per tool. A preset only fills the
-  pills; _Done_ saves every tool's setting explicitly through
-  `core_mcpserver_set_approval` (`{name, approval: {rule, tools}}`), and
-  saves nothing on a reviewed connector left unchanged. A connector nobody
-  reviewed opens on the preset the governance mode pre-selects (_Allow all_
-  on a platform known to be trusted, _Recommended_ on a governed one and
-  whenever the mode is unknown, with a note that it could not be read; never
-  _Allow all_ on a guess). The mode is `governance` on muster's
-  `core_mcpserver_list` (muster-backend's `/servers`), read through
-  `governanceModeOf` (`plugins/muster/src/lib/governanceMode.ts`), else
-  `/server-info`'s `governance`; an older muster reports none, so its mode is
-  unknown. muster stores a create's preset as its rule alone (the connector
-  lists no tools yet), so a connector whose settings hold a rule and no
-  tool's own entry is not reviewed either: it opens on that preset
-  (_Recommended_ for the rule Ask, _Allow all_ for Allow) expanded against
-  the tools listed now, with no _New_ markers, and _Done_ writes every tool's
-  setting. A stored _Block_ rule is kept (its listed tools stay _Block_),
-  so _Done_ never loosens it. Only settings with tools' own entries count as
-  reviewed. A
-  reviewed one opens on its saved settings, a tool without its own entry marked _New_ and pre-filled
-  with the rule, a blocked tool (which muster lists nowhere) as a row of its
-  own. A row changed from the saved setting (or, on a first review, from the
-  preset's fill) shows _Edited, was Ask_ (an unsaved-change marker under
-  its setting, not a badge like the tool's _Reads_ or _Changes things_) and can be reset. Everyone else sees the
-  settings as badges, with no controls. A failed save keeps the person on
-  the step with muster's reason. `core_mcpserver_set_approval` replaces the
-  settings whole, so _Done_ reads them again (`core_mcpserver_list`) right
-  before saving: when another admin changed them since the step read them,
-  nothing is written, the step shows the current settings with the person's
-  own changes on top and asks to press _Done_ again. Where
-  `core_mcpserver_set_approval` takes `expectedGeneration`, the write carries
-  the MCPServer's generation from that read, and muster refuses it when the
-  connector changed in between (`conflict: …`), which the step shows the same
-  way; a muster without it leaves that moment open. Where muster cannot save them (no
-  `core_mcpserver_set_approval` taking `approval`) the step shows them as
-  they are; where it cannot read them (`source: unavailable`) it says that
-  muster reports every tool as Ask and does not run them until it can, and
-  that _Done_ saves nothing. Where approvals cannot be answered right now (a tool that asks
-  reports `approval.unavailable`, muster's reason: no shared storage, no
-  browser sign-in, no public URL), a warning names the reason for an admin to
-  act on, above the settings, which stay as they are; calls to those tools
-  are refused until it is fixed.
-- `core_mcpserver_create` carries the mode's `preset` where its input schema
-  declares one (muster requires one once it enforces approval): _Allow all_
-  only on a platform known to be trusted, _Recommended_ otherwise, also when
-  the mode cannot be read.
-- The connector's **Tools** tab shows each tool's setting as a badge (Block
-  in its own tone and icon), where it comes from ("Set for this tool",
-  "Connector's rule"), _New_, and an _Approval_ filter (a blocked tool's row
-  counts under no effect in _What it does_, as it shows none). _Allowed for:
-  agent (by person)_ names the agents that may skip a tool's Ask, from
-  agent-manager's `list_approval_grants` with the connector's server key and
-  no namespace (every namespace the person may read; a grant's `tools` say
-  which tools it covers, names are `agentDisplayName`). Unreadable namespaces
-  (named, or counted for organizations' in `unreadableCount`, shown as a
-  count) or a failed read say that agents may be allowed without being named here,
-  never "nobody".
-  A connector nobody reviewed
-  (no settings, or a create's rule alone, where muster reports every tool
-  _New_) says once above the list what every tool does until then (_Allow —
-  not reviewed_, or _Ask — not reviewed_ after a _Recommended_ create),
-  without _New_ or the source on each row, with _Review tool
-  settings_ (the edit's Test & Tools step) for a connector admin, or a
-  pointer to `spec.approval` in Git for a GitOps-managed one. The same
-  warning with muster's reason shows above the list where approvals cannot be
-  answered right now. Blocked tools
-  are listed from `spec.approval`, without a page to open.
+- **Wizard step 3, Test & Tools** (`…/new/verify`, `…/<connector>/edit/verify`):
+  a connector admin (`connectorAdmin`) gets presets (_Recommended_: read-only
+  tools Allow, the rest Ask, rule Ask; _Allow all_; _Ask all_), the rule for new
+  tools and `Allow · Ask · Block` pills per tool; everyone else sees badges.
+  The rule takes _Block_ (hides tools added later) where
+  `core_mcpserver_set_approval`'s `approval.rule` enum does. _Done_ saves every
+  tool explicitly (`{name, approval: {rule, tools}}`), nothing on an unchanged
+  reviewed connector. A changed row shows _Edited, was Ask_ and can be reset.
+- **Reviewed or not**: only settings with tools' own entries are reviewed; they
+  open as saved, tools without an entry marked _New_, blocked tools as rows of
+  their own. Otherwise the step opens on the preset the governance mode picks:
+  _Allow all_ on a platform known to be trusted, _Recommended_ when governed or
+  unknown (with a note; never _Allow all_ on a guess). A create's preset is
+  stored as its rule alone, so such a connector opens on that preset (Ask →
+  _Recommended_, Allow → _Allow all_) expanded against the listed tools; a
+  stored _Block_ rule is kept, never loosened.
+- **Governance mode**: `governance` on `core_mcpserver_list` (muster-backend's
+  `/servers`), read by `governanceModeOf`
+  (`plugins/muster/src/lib/governanceMode.ts`), else `/server-info`; an older
+  muster reports none (unknown).
+- **Create**: `core_mcpserver_create` carries the mode's `preset` where its
+  input schema declares one.
+- **Stale saves**: _Done_ re-reads the settings (`core_mcpserver_list`) first;
+  if another admin changed them it writes nothing, shows the current settings
+  under the person's changes and asks to press _Done_ again. Where
+  `core_mcpserver_set_approval` takes `expectedGeneration` it carries that
+  read's generation, and muster's `conflict: …` shows the same way.
+- **Degraded**: without a `core_mcpserver_set_approval` taking `approval` the
+  step is read-only. With `source: unavailable` it says muster reports every
+  tool as Ask and _Done_ saves nothing. With `approval.unavailable` (muster's
+  reason: no shared storage, no browser sign-in, no public URL) a warning names
+  the reason; calls to tools that ask are refused until it is fixed.
+- **Tools tab**: each tool's setting badge, its source ("Set for this tool",
+  "Connector's rule"), _New_, an _Approval_ filter and blocked tools (from
+  `spec.approval`). _Allowed for: agent (by person)_ lists agents that may skip
+  an Ask, from agent-manager's `list_approval_grants` with the server key and no
+  namespace; unreadable namespaces or a failed read say agents may be allowed
+  without being named, never "nobody". A connector not reviewed says once what
+  every tool does meanwhile (_Allow — not reviewed_, _Ask — not reviewed_), with
+  _Review tool settings_ for admins or a pointer to `spec.approval` in Git for
+  GitOps connectors.
 
 #### An agent's tool approval
 
-Where agent-manager takes approval settings (its `create_agent` schema
-declares `tools`), an agent's tools
-carry settings too (`lib/agentApproval.ts`). muster decides; the portal
-composes the agent's tool list, reads what muster reports for it and writes
-through agent-manager:
+Where agent-manager takes approval settings (its `create_agent` schema declares
+`tools`), an agent's tools carry settings too (`lib/agentApproval.ts`); hidden
+for an older agent-manager or muster, or a chart without `approvalSettings`.
+muster decides; the portal composes the list, reads muster's report and writes
+through agent-manager.
 
-- **Tools step, _How it asks_** (`AgentApprovalSettings`): the list's
-  default on top, each whole connector the agent has (`server:` entries) and
-  each tool it resolves to, with `Allow · Ask · Block` pills showing what
-  applies now. The report is muster's `filter_tools` with `agentTools`
-  (`useAgentApprovalReport`): per tool `approval` with the deciding `entry`,
-  the connector's own setting (`admin`), `connectorAdmin` and `connectors`.
-  _Allow_ over a connector's _Ask_ is disabled with "Only GitHub admins can
-  allow this." for anyone who is not that connector's admin, and for an
-  agent applied from Git (a pull request carries no exceptions). A built-in
-  or a governance _Ask_ is never offered as liftable: _Allow_ is disabled
-  there with why. A setting on a single tool its connector's entry covers is
-  written as its own `tool:` entry, only while the selection still covers
-  the tool. Hidden for an agent whose chart takes no settings
-  (`approvalSettings`), and for an older agent-manager or muster.
-- **Create**: `create_agent` with `tools` (settings) and `default` (Ask or
-  Block), never `toolset`; an `Allow` over a connector's `Ask` and an
-  allowing default follow with `set_agent_approval`. If that is refused the
-  review says the agent was created without them. A pull request is not
-  offered for such an agent.
-- **Edit**: agent-manager's split tools — `update_agent` (what the agent
-  is), `update_agent_access` (what it can reach, the list's entries; a new
-  `Allow` over an `Ask` carried as it stood), then `set_agent_approval` for
-  the settings and the default. Every save drops the exceptions of
-  connectors the saver is no admin of; the review says so before saving
-  ("Saving removes 1 exception (merge PRs). A GitHub admin can grant it
-  again."). Partial failures say what was saved. In mode `commit` each tool
-  opens its own pull request; the review lists each.
-- **Agent page**: the Tools tab's resolved list gets an approval column and a
-  one-line summary; the Overview's Connectors section says it in one line
-  with a link to the Tools tab. Both from `get_agent`'s tool list, default
-  and grants, reported by muster for the viewer.
-- `get_agent` keeps `tools` for the kagent bindings; the tool list with
-  settings is read from one field (`TOOL_LIST_FIELD`, `toolSettings`)
-  next to `defaultApproval`, `grants` (each with the `tools`
-  it covers, forwarded to muster), `approvalSettings`, `approvalEnforced`
-  and `generation`. Where the settings are not enforced
-  (`approvalEnforcement: not-enforced`), the step, the review and the agent
-  page warn; while `pending` they say, as information, that the settings
-  apply once the agent has rolled out. A namespace whose chart source serves
-  an older chart refuses settings (`unsupported`, naming the chart): the
-  reviews say so in plain words and how to save without them.
-- **Stale saves**: every write carries `expectedGeneration` from the read;
-  right before a save the review reads the agent again and saves nothing
-  when its list, default, grants or generation moved ("This agent changed
-  since you opened it", with a reload). agent-manager's `conflict` reads the
-  same. The pre-save note uses the grants as read now.
-- **Unknown support**: a failed re-read of agent-manager's schema keeps the
-  answer read before; with no answer at all, an agent with settings (or a
-  draft with settings) is not saved rather than written as a bare list.
-- **Partial saves** say what landed and what did not, per write; after a
-  save agent-manager could not finish (`sessionsUpdated: false`,
-  `warnings`) the review stays and says so. A create whose exceptions are
-  refused offers the created agent, never a second create.
+- **Tools step, _How it asks_** (`AgentApprovalSettings`): pills for the list's
+  default, each whole connector (`server:` entries) and each tool, showing what
+  applies now (`filter_tools` with `agentTools`, `useAgentApprovalReport`).
+  _Allow_ over a connector's _Ask_ is disabled for anyone not that connector's
+  admin and for an agent applied from Git; a built-in or governance _Ask_ is
+  never liftable. A setting on a tool a connector entry covers is written as its
+  own `tool:` entry.
+- **Create**: `create_agent` with `tools` and `default` (Ask or Block), never
+  `toolset`; exceptions (`Allow` over `Ask`, an allowing default) follow with
+  `set_agent_approval`, and a refusal is reported as created without them. No
+  pull request for such an agent.
+- **Edit**: `update_agent`, `update_agent_access`, then `set_agent_approval`.
+  Every save drops the exceptions of connectors the saver is no admin of; the
+  review says so first. In mode `commit` each tool opens its own pull request.
+- **Agent page**: Tools tab approval column and summary, Overview one-liner,
+  from `get_agent`.
+- **`get_agent`**: `tools` stays the kagent bindings; settings come from
+  `TOOL_LIST_FIELD` (`toolSettings`) beside `defaultApproval`, `grants` (with
+  the `tools` they cover, forwarded to muster), `approvalSettings`,
+  `approvalEnforced` and `generation`. `approvalEnforcement: not-enforced`
+  warns, `pending` says settings apply after rollout, `unsupported` (older chart
+  in the namespace) refuses settings.
+- **Stale and partial saves**: every write carries `expectedGeneration`; the
+  review re-reads first and writes nothing when list, default, grants or
+  generation moved (agent-manager's `conflict` reads the same). Partial saves
+  say what landed; `sessionsUpdated: false` or `warnings` keeps the review open.
+  With unknown schema support an agent with settings is not saved.
 
 ### Models
 
@@ -3276,97 +3209,53 @@ A `url_elicitation_request` is read off the status message's metadata
 (`readUrlElicitationRequest` in `agent-platform-common`) and renders in place
 of the question card (`UrlElicitationPanel`).
 
-**An approval of muster is decided in the chat** (decision #108 of the tool
-approval epic). A link to the session installation's muster approval page
-(`/approvals/<id>`, contract §5, on the origin muster serves its pages from: its
-`publicUrl` where configured, else its endpoint) shows the request inline
-(`InlineApproval`): the muster backend (`POST /api/muster/approvals/view`)
-reads it from muster's decision API with the person's token (`GET
-/approvals/<id>`, contract §5b), and the card shows what muster's page shows:
-the connector (display name and server), the tool (display name and raw
-name, "Changes data"), every argument in full (a long or multi-line value is
-collapsed behind _Show all N characters_, never cut; muster's `⟨U+XXXX⟩`
-marking of invisible and bidi characters kept), what changes, a preset's
-settings, a workflow's steps with each step's arguments, the agent's stated
-reason under "Agent says" (marked as the agent's own words), why it asks (the
-connector's setting, the agent's setting, governance, a built-in floor) and
-when it expires, and under "About this request" the asking agent, the caller
-kind, the person it acts for, the name the tool is called as, the setting,
-the session, the client and the expiry time; the canonical arguments and
-their SHA-256 are under "Show details". Every field of muster's view, which
-the decision's digest covers, is on the card (a test fails when a field is
-neither rendered nor named as deliberately left out). A warning line names
-the asking agent unless muster positively names the conversation's agent:
-when another agent asks (a sub-agent the session's agent invoked, another
-agent), when muster names no agent ("muster does not know which agent
-asks"), or when it names one the portal cannot match. A request made for
-someone else is refused by muster and the card says so. Everything is
-rendered as text, with no inner scroll box.
+**Muster approval, decided in the chat.** A link to the session installation's
+muster approval page (`/approvals/<id>`, on muster's `publicUrl` else its
+endpoint origin) shows the request inline (`InlineApproval`). The muster backend
+reads it with the person's token (`POST /api/muster/approvals/view`) and the
+card shows everything muster's view and the decision's digest cover (a test
+fails when a field is neither rendered nor deliberately left out): connector,
+tool, arguments in full (long values collapsed behind _Show all N characters_,
+never cut), what changes, the agent's stated reason, why it asks, expiry and
+"About this request"; canonical arguments and SHA-256 under "Show details". A
+warning names the asking agent unless muster positively names the
+conversation's agent.
 
-_Approve_ and _Decline_ come after all of it and are the only things that
-decide, and only on the person's click. They are inert until they have been
-in view, on a visible page, for a second (as on muster's own page), anew each
-time the request is shown again; _Approve_ also waits until every collapsed
-value was opened, since the approval covers all of it. A card belongs to one
-approval link: the next approval gets a new card, never the previous view or
-its decided state. The muster backend posts the decision with the person's
-token, the portal backend's own workload token (its projected ServiceAccount
-token, audience `muster`, `X-Muster-Approval-Client`: muster takes a
-person's token of the portal's client only together with it) and the digest
-of the view that is shown (`POST /api/muster/approvals/decision`,
-muster `POST /approvals/<id>/decision`), and muster refuses it if the request
-is not that one (the card then shows the request again and says so), if the
-token is not the person's own (an agent's credential; the muster backend
-itself refuses, before muster is called, a forwarded token that is not the
-signed-in portal user's), if the portal's OAuth
-client is not on muster's `approval.trustedClients`, if the portal backend's
-workload token is missing or not allowed to `decide`, if the request is someone
-else's, expired, used or already decided. On success the chat answers the
-elicitation at once, `accept` ("Approved.") or `decline` ("Declined."), and the
-agent goes on; muster's answer to the retried call is the outcome the timeline
-shows. A request already decided on muster's page goes on with what stands.
-_Open in muster_ stays as a secondary way: muster's page in a new tab (no
-consent dialog, no sign-in handoff, no return: the page signs the browser in
-itself). When muster shows nothing here (the portal not trusted there, muster
-unreachable, someone else's request, an installation other than the portal's
-own, whose muster never gets the portal's workload token), the card says why
-and offers _Done_ for after a decision on muster's page. _Not now_ answers `decline`.
+- _Approve_ and _Decline_ come last and decide only on click. They are inert
+  until in view for a second, _Approve_ also until every collapsed value was
+  opened. Each approval link gets its own card.
+- The muster backend posts the decision (`POST /api/muster/approvals/decision`)
+  with the person's token, the portal's workload token
+  (`X-Muster-Approval-Client`) and the digest of the shown view. muster refuses
+  when the request changed, the token is not the person's own, the portal's
+  OAuth client is not in `approval.trustedClients`, the workload token is
+  missing or not allowed to `decide`, or the request is someone else's, expired
+  or decided; the card says so. On success the chat answers the elicitation
+  (`accept` or `decline`) and the agent continues.
+- Where muster shows nothing (portal not trusted, muster unreachable, an
+  installation other than the portal's own), the card says why and offers _Done_
+  for after deciding on muster's page. _Open in muster_ (new tab) is always the
+  secondary way; _Not now_ answers `decline`.
 
-**Any other URL elicitation** (muster's connector sign-in, any later page)
-renders as one generic prompt. The server's `message` is the heading, or
-"<server> asks you to open a page so the agent can continue." without one;
-_Open_ (new-tab icon) names the link's full host beside it; muster's connector
-sign-in start opens at once in a new tab, any other link goes through the
-external URL consent dialog; _Done_ answers `accept`, _Not now_ `decline`. The
-prompt decides nothing: the agent retries the call, and muster's answer to the
-retry is the outcome the timeline shows.
+**Any other URL elicitation** renders as one generic prompt: the server's
+`message` as heading (else "<server> asks you to open a page so the agent can
+continue."), _Open_ naming the link's full host, _Done_ (`accept`) and _Not now_
+(`decline`). muster's connector sign-in start opens at once in a new tab, other
+links go through the external URL consent dialog. The prompt decides nothing;
+the agent retries the call.
 
-A link to muster's sign-in start (`/oauth/proxy/start`) with an
-`elicitation_id` opens with `redirect` set to the session page plus
-`elicitationReturn=<random value>` and the `elicitationId`, a new 128-bit
-value per _Open_ that the tab keeps (per tab, `sessionStorage`) with the
-elicitation, the task, the session page and the person. muster returns the
-browser there once the person signed in (on its post-login allowlist;
-otherwise it shows its own page and the person says _Done_). The returned tab
-tells the session's other tabs (a `BroadcastChannel`) the `elicitationId` and
-the value, drops both from the address and closes; only the tab that made
-that open answers `accept` for the person, once, and only for the elicitation
-it shows, its task, the same session page and the same person. A visit to the
-session page with an `elicitationId` alone, or with a value no tab made, does
-nothing. Any other link, another path on muster's origin included, opens as
-sent, through the consent dialog.
-
-The sign-in start skips the consent dialog: the person chose _Open_ in the
-chat line, which names the host and the server's message, and the origin is
-the one the portal is configured with. The tab opens during the click
-(`about:blank`, its `opener` dropped) and is pointed at the page once the
-portal has its return and a sign-in handoff: the muster backend (`POST
-/api/muster/handoff`) asks muster, with the person's token, for a one-time
-ticket (`POST /handoff-tickets`, muster contract §5a), and the link carries it
-as `handoff`. muster redeems it once, within 60 seconds, for that start and
-that person only. Without a ticket (muster lists no `approval.trustedClients`,
-an older muster, an error) the start signs in as before. A blocked new tab
-falls back to the consent dialog, without a ticket.
+**Return and sign-in handoff.** A link to muster's sign-in start
+(`/oauth/proxy/start`) with an `elicitation_id` opens with `redirect` set to the
+session page plus `elicitationReturn=<random value>` and the `elicitationId`;
+the tab keeps the value (`sessionStorage`) with the elicitation, task, page and
+person. The returned tab tells the others (`BroadcastChannel`), clears both from
+the address and closes; only the opening tab answers `accept`, once, for that
+elicitation, task, page and person. A visit with an `elicitationId` alone, or an
+unknown value, does nothing. The tab opens during the click and is pointed at
+the page once the portal has a one-time handoff ticket (`POST
+/api/muster/handoff`, muster `POST /handoff-tickets`), carried as `handoff` and
+redeemed once within 60 seconds. Without a ticket the start signs in as before;
+a blocked tab falls back to the consent dialog.
 
 When the session waits but the request cannot be read (unrecognised payload, or
 no task id), the panel is withheld and the page says so.

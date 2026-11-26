@@ -2,4 +2,4 @@
 '@giantswarm/backstage-plugin-muster': patch
 ---
 
-The effect badges (Eye for reads, Zap for changes) and the "Edited" marker (Pencil) use Lucide icons.
+Lucide icons on the effect badges and the "Edited" marker.
