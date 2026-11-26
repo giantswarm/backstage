@@ -1,7 +1,10 @@
 import {
+  connectorSaveErrorMessage,
+  isForbiddenError,
   isMusterAuthError,
   mutationErrorMessage,
   MUSTER_AUTH_PROMPT,
+  NO_EDIT_RIGHTS_MESSAGE,
 } from './authError';
 
 describe('isMusterAuthError', () => {
@@ -46,5 +49,27 @@ describe('mutationErrorMessage', () => {
 
   it('falls back when there is no message', () => {
     expect(mutationErrorMessage({})).toBe('The request failed.');
+  });
+});
+
+describe('connectorSaveErrorMessage', () => {
+  it('says plainly that the person lacks edit rights on an RBAC refusal', () => {
+    const rbac = new Error(
+      'Failed to update MCP server: mcpservers.muster.giantswarm.io "wiki" is forbidden: User "dev@lab.local" cannot update resource "mcpservers" in API group "muster.giantswarm.io" in the namespace "muster"',
+    );
+    expect(isForbiddenError(rbac)).toBe(true);
+    expect(connectorSaveErrorMessage(rbac)).toBe(NO_EDIT_RIGHTS_MESSAGE);
+    expect(NO_EDIT_RIGHTS_MESSAGE).toMatch(/don't have rights to edit/);
+    expect(isForbiddenError(new Error('forbidden: nope'))).toBe(true);
+  });
+
+  it('keeps other errors, and a missing session, as they were', () => {
+    expect(connectorSaveErrorMessage(new Error('url is required'))).toBe(
+      'url is required',
+    );
+    expect(connectorSaveErrorMessage(new Error('authentication failure'))).toBe(
+      MUSTER_AUTH_PROMPT,
+    );
+    expect(isForbiddenError(new Error('authentication failure'))).toBe(false);
   });
 });

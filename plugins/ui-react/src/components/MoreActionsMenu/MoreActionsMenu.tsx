@@ -1,3 +1,4 @@
+import { Text as RacText } from 'react-aria-components';
 import { ButtonIcon, Menu, MenuItem, MenuTrigger } from '@backstage/ui';
 import MoreVertIcon from '@material-ui/icons/MoreVert';
 import { MENU_WIDTH } from '../../utils/menuWidth';
@@ -11,6 +12,11 @@ export type MoreActionsMenuItem = {
   /** Opens `href` in a new tab, for a link that leaves the portal. */
   newTab?: boolean;
   isDisabled?: boolean;
+  /**
+   * Why a disabled item is unavailable: the tooltip on hover (a native title,
+   * as a disabled item takes no focus) and its accessible description.
+   */
+  disabledReason?: string;
   /** The destructive treatment, for a removal. */
   danger?: boolean;
 };
@@ -41,14 +47,26 @@ export function MoreActionsMenu({ items }: MoreActionsMenuProps) {
           <MenuItem
             key={item.id}
             id={item.id}
+            textValue={item.label}
             href={item.href}
             target={item.href && item.newTab ? '_blank' : undefined}
             rel={item.href && item.newTab ? 'noopener noreferrer' : undefined}
             onAction={item.onAction}
             isDisabled={item.isDisabled}
+            aria-description={item.isDisabled ? item.disabledReason : undefined}
             color={item.danger ? 'danger' : undefined}
           >
-            {item.label}
+            {item.isDisabled && item.disabledReason ? (
+              <span title={item.disabledReason}>
+                {item.label}
+                {/* The menu item's description slot: read as its description, apart from the name. */}
+                <RacText slot="description" style={{ display: 'none' }}>
+                  {item.disabledReason}
+                </RacText>
+              </span>
+            ) : (
+              item.label
+            )}
           </MenuItem>
         ))}
       </Menu>

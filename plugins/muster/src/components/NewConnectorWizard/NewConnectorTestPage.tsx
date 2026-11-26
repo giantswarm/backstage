@@ -16,6 +16,7 @@ import {
 import { musterServerListQueryKey } from '../../hooks/useMusterServerAvailability';
 import { musterApiRef } from '../../apis';
 import { musterPollingOptions } from '../../lib/musterPolling';
+import { isForbiddenError, NO_EDIT_RIGHTS_MESSAGE } from '../../lib/authError';
 import type { McpServerListResponse, ToolSummary } from '../../apis/types';
 import { mcpServerStateSeverity, type MCPServerState } from '../../lib/k8s';
 import {
@@ -532,7 +533,11 @@ function ToolsSection({
         <Alert
           status="danger"
           title="The tool settings were not saved"
-          description={`${saveError.message} Nothing changed; press Done to try again, or leave and set them later on the connector's Tools tab.`}
+          description={
+            isForbiddenError(saveError)
+              ? NO_EDIT_RIGHTS_MESSAGE
+              : `${saveError.message} Nothing changed; press Done to try again, or leave and set them later on the connector's Tools tab.`
+          }
         />
       )}
       {children}

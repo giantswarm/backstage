@@ -36,7 +36,10 @@ import {
   type ClientCredentials,
   type McpServerAuthMode,
 } from '../../lib/mcpServerDefinition';
-import { mutationErrorMessage } from '../../lib/authError';
+import {
+  connectorSaveErrorMessage,
+  mutationErrorMessage,
+} from '../../lib/authError';
 import { musterOAuthCallbackUrl } from '../../lib/oauthCallback';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
 import { useNewMcpServerForm } from '../NewMcpServerFormProvider';
@@ -366,7 +369,9 @@ export function NewConnectorSignInPage() {
   const { mutate: register } = registration;
   const busy = registration.isPending;
   const registrationError = registration.error
-    ? mutationErrorMessage(registration.error)
+    ? (isEdit ? connectorSaveErrorMessage : mutationErrorMessage)(
+        registration.error,
+      )
     : undefined;
 
   // Each field shows its own problem once the person leaves it having typed

@@ -43,4 +43,30 @@ describe('MoreActionsMenu', () => {
     );
     expect(onEdit).toHaveBeenCalled();
   });
+
+  it('says why a disabled item is unavailable, on hover and to a screen reader', async () => {
+    await renderInTestApp(
+      <MoreActionsMenu
+        items={[
+          {
+            id: 'edit',
+            label: 'Change settings',
+            isDisabled: true,
+            disabledReason: "You don't have rights to edit it.",
+          },
+        ]}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    const item = screen.getByRole('menuitem', { name: 'Change settings' });
+    expect(item).toHaveAttribute('aria-disabled', 'true');
+    expect(item).toHaveAccessibleDescription(
+      "You don't have rights to edit it.",
+    );
+    expect(screen.getByText('Change settings')).toHaveAttribute(
+      'title',
+      "You don't have rights to edit it.",
+    );
+  });
 });

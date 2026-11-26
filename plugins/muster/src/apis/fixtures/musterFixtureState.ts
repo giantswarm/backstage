@@ -20,6 +20,7 @@ import {
   mcpServerObjectOf,
   musterWorkflowObjectOf,
   FIXTURE_APPROVAL_UNAVAILABLE,
+  fixtureNotEditorText,
   presetApprovalOf,
   reviewedApprovalOf,
   CONNECT_ARGUMENTS,
@@ -404,6 +405,8 @@ export class MusterFixtureState {
       ...(stored.connector.installation ===
         this.data.installations[1]?.name && {
         approvalUnavailable: FIXTURE_APPROVAL_UNAVAILABLE,
+        // ... and the guest is no editor of muster's namespace there.
+        notEditor: true,
       }),
     };
   }
@@ -632,6 +635,7 @@ export class MusterFixtureState {
       args.name,
       'Failed to update MCP server',
     );
+    this.refuseNonEditor(stored);
     const wasStarted = this.stateOf(stored, this.now()) !== 'Stopped';
     const previous = JSON.stringify([stored.spec.url, authOf(stored.spec)]);
     const spec = { ...stored.spec };
@@ -696,6 +700,7 @@ export class MusterFixtureState {
       args.name,
       'Failed to set the approval of MCP server',
     );
+    this.refuseNonEditor(stored);
     // muster's precondition: refused when the server changed since the
     // caller read its generation.
     const { expectedGeneration, ...rest } = args;
@@ -725,6 +730,19 @@ export class MusterFixtureState {
     return `Approval of MCP server '${stored.connector.name}' updated successfully`;
   }
 
+  /**
+   * A write as the person is refused where they may not update MCPServers:
+   * muster passes the apiserver's RBAC text on.
+   */
+  private refuseNonEditor(stored: StoredConnector) {
+    if (this.viewOf(stored, 'Stopped').notEditor) {
+      throw connectorToolError(
+        `Failed to update MCP server: ${fixtureNotEditorText(stored.connector.name)}`,
+        403,
+      );
+    }
+  }
+
   /** `core_mcpserver_delete`. */
   delete(installation: string, args: Record<string, unknown>): string {
     const stored = this.find(
@@ -732,6 +750,7 @@ export class MusterFixtureState {
       args.name,
       'Failed to delete MCP server',
     );
+    this.refuseNonEditor(stored);
     this.storeOf(installation).connectors.delete(
       connectorKeyOf(stored.connector),
     );

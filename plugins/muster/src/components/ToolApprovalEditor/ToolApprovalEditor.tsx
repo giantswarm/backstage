@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useCallback, useId, useState } from 'react';
 import {
   Button,
   Flex,
@@ -8,7 +8,13 @@ import {
 } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import CheckIcon from '@material-ui/icons/Check';
-import { ShowMore } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  CatalogNoMatch,
+  countNoun,
+  isSearchableList,
+  ShowMore,
+  type CatalogFacet,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   APPROVAL_PRESET_HINTS,
@@ -29,6 +35,9 @@ import {
   ApprovalPills,
   EffectBadge,
   MarkerBadge,
+  toolEffectFacet,
+  ToolListToolbar,
+  useToolListFilter,
 } from '../shared';
 import type { ApprovalRow, ToolApprovalDraft } from './useToolApprovalDraft';
 
@@ -37,6 +46,30 @@ import type { ApprovalRow, ToolApprovalDraft } from './useToolApprovalDraft';
  * as the Test step's preview did.
  */
 const TOOL_PAGE = 6;
+
+/**
+ * The same "What it does" dropdown as the connector's Tools tab; a tool muster
+ * does not list counts nowhere.
+ */
+const EFFECT_FACETS: readonly CatalogFacet<ApprovalRow>[] = [
+  toolEffectFacet<ApprovalRow>(row => {
+    if (!row.listed) {
+      return undefined;
+    }
+    return row.readOnly ? 'reads' : 'changes';
+  }),
+];
+
+/** Whether a row answers the search: as the Tools tab's, by name or text. */
+function rowMatches(row: ApprovalRow, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) {
+    return true;
+  }
+  return [row.key, row.name, row.summary].some(value =>
+    value?.toLowerCase().includes(q),
+  );
+}
 
 const useStyles = makeStyles({
   section: {
@@ -159,6 +192,30 @@ export function ToolApprovalEditor({
   const { rows, draft, preset, reference } = approval;
   const editing = view === 'edit';
 
+  // Search and filters only narrow what is listed: the draft keeps every
+  // tool's setting, and the saved settings are the draft's, shown or not.
+  const [query, setQuery] = useState('');
+  const matches = useCallback(
+    (row: ApprovalRow) => rowMatches(row, query),
+    [query],
+  );
+  const {
+    filters,
+    shown: visibleRows,
+    isNarrowed,
+  } = useToolListFilter({ items: rows, matches, facets: EFFECT_FACETS });
+  const searchable = isSearchableList(rows.length, isNarrowed);
+  const hidden = rows.length - visibleRows.length;
+  const presetHint = preset ? APPROVAL_PRESET_HINTS[preset] : undefined;
+  const toolbar = searchable && (
+    <ToolListToolbar
+      query={query}
+      onQueryChange={setQuery}
+      total={rows.length}
+      filters={filters}
+    />
+  );
+
   const heading = (
     <Flex direction="column" gap="1">
       <h3 className={classes.heading}>
@@ -196,7 +253,20 @@ export function ToolApprovalEditor({
         <span>Tool</span>
         <span>Setting</span>
       </div>
-      <ShowMore items={rows} initial={TOOL_PAGE} noun="tool">
+      {visibleRows.length === 0 && (
+        <CatalogNoMatch
+          plural="tools"
+          search={query}
+          isFiltered={filters.isFiltered}
+          onClearFilters={filters.clear}
+        />
+      )}
+      <ShowMore
+        key={`${filters.key}|${query}`}
+        items={visibleRows}
+        initial={TOOL_PAGE}
+        noun="tool"
+      >
         {visible => (
           <div role="list" aria-label="Tool settings">
             {visible.map(row => {
@@ -250,6 +320,13 @@ export function ToolApprovalEditor({
           </div>
         )}
       </ShowMore>
+      {hidden > 0 && (
+        <Text as="p" variant="body-small" color="secondary">
+          {editing
+            ? `${hidden} of ${rows.length} tools are hidden by the search or filter. They keep their settings and are saved with the rest.`
+            : `${hidden} of ${rows.length} tools are hidden by the search or filter.`}
+        </Text>
+      )}
       {partialNote && (
         <Text as="p" variant="body-small" color="secondary">
           {partialNote}
@@ -263,6 +340,7 @@ export function ToolApprovalEditor({
       <section className={classes.section} aria-label="Tool settings">
         {heading}
         {legend}
+        {toolbar}
         {list}
       </section>
     );
@@ -271,39 +349,56 @@ export function ToolApprovalEditor({
   return (
     <section className={classes.section} aria-label="Tool settings">
       {heading}
+      {toolbar}
       <div className={classes.control}>
         <Text variant="body-small" weight="bold" id="tool-approval-preset">
-          Start from
+          {isNarrowed
+            ? `Set the ${countNoun(visibleRows.length, 'shown tool')} to`
+            : 'Start from'}
         </Text>
-        <ToggleButtonGroup
-          aria-labelledby="tool-approval-preset"
-          selectionMode="single"
-          disallowEmptySelection
-          selectedKeys={preset ? [preset] : []}
-          onSelectionChange={keys => {
-            const next = [...keys][0] as ApprovalPreset | undefined;
-            if (next) {
-              approval.applyPreset(next);
+        {isNarrowed ? (
+          <ScopedPresets
+            labelledBy="tool-approval-preset"
+            disabled={visibleRows.length === 0}
+            onApply={next =>
+              approval.applyPreset(
+                next,
+                visibleRows.map(row => row.key),
+              )
             }
-          }}
-        >
-          {APPROVAL_PRESETS.map(option => (
-            <ToggleButton
-              key={option}
-              id={option}
-              size="small"
-              iconStart={
-                option === preset ? <CheckIcon aria-hidden /> : undefined
+          />
+        ) : (
+          <ToggleButtonGroup
+            aria-labelledby="tool-approval-preset"
+            selectionMode="single"
+            disallowEmptySelection
+            selectedKeys={preset ? [preset] : []}
+            onSelectionChange={keys => {
+              const next = [...keys][0] as ApprovalPreset | undefined;
+              if (next) {
+                approval.applyPreset(next);
               }
-            >
-              {APPROVAL_PRESET_LABELS[option]}
-            </ToggleButton>
-          ))}
-        </ToggleButtonGroup>
+            }}
+          >
+            {APPROVAL_PRESETS.map(option => (
+              <ToggleButton
+                key={option}
+                id={option}
+                size="small"
+                iconStart={
+                  option === preset ? <CheckIcon aria-hidden /> : undefined
+                }
+              >
+                {APPROVAL_PRESET_LABELS[option]}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        )}
         <Text variant="body-small" color="secondary">
-          {preset
-            ? APPROVAL_PRESET_HINTS[preset]
-            : 'Your own settings. A preset fills every tool again.'}
+          {isNarrowed
+            ? `Applies to the ${visibleRows.length} shown only: the other ${hidden} and the rule for new tools keep their settings.`
+            : (presetHint ??
+              'Your own settings. A preset fills every tool again.')}
         </Text>
       </div>
       {legend}
@@ -330,5 +425,38 @@ export function ToolApprovalEditor({
       </div>
       {list}
     </section>
+  );
+}
+
+/**
+ * The presets while the list is narrowed: plain buttons that fill only the
+ * shown tools, not a toggle group, since no preset describes the whole draft
+ * then.
+ */
+function ScopedPresets({
+  labelledBy,
+  disabled,
+  onApply,
+}: {
+  labelledBy: string;
+  disabled: boolean;
+  onApply: (preset: ApprovalPreset) => void;
+}) {
+  return (
+    <span role="group" aria-labelledby={labelledBy}>
+      <Flex gap="2">
+        {APPROVAL_PRESETS.map(option => (
+          <Button
+            key={option}
+            size="small"
+            variant="secondary"
+            isDisabled={disabled}
+            onPress={() => onApply(option)}
+          >
+            {APPROVAL_PRESET_LABELS[option]}
+          </Button>
+        ))}
+      </Flex>
+    </span>
   );
 }

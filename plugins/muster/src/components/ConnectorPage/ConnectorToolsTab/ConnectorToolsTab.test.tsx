@@ -377,9 +377,13 @@ describe('ConnectorToolsTab: tool approval', () => {
     ).toBeInTheDocument();
     // The tab only reads: the settings change in the connector's edit.
     expect(screen.queryByRole('radio')).toBeNull();
+    // Changing them is in the connector page's menu, not on the tab.
     expect(
-      screen.getByRole('link', { name: 'Change tool settings' }),
-    ).toHaveAttribute('href', '/customize/connectors/gazelle/jira/edit/verify');
+      screen.queryByRole('link', { name: 'Change tool settings' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Change tool settings' }),
+    ).toBeNull();
   });
 
   it('says that tools added later are hidden when the rule is Block', async () => {

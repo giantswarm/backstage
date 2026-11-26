@@ -240,8 +240,9 @@ describe('NewConnectorTestPage', () => {
     expect(await screen.findByText('search_issues')).toBeInTheDocument();
     expect(screen.getByText('Find tickets with a query')).toBeInTheDocument();
     expect(screen.getByText('list_boards')).toBeInTheDocument();
-    expect(screen.getAllByText('Reads')).toHaveLength(5);
-    expect(screen.getAllByText('Changes things')).toHaveLength(3);
+    const list = within(screen.getByRole('list', { name: 'Tool settings' }));
+    expect(list.getAllByText('Reads')).toHaveLength(5);
+    expect(list.getAllByText('Changes things')).toHaveLength(3);
     expect(screen.queryByRole('button', { name: /^Show / })).toBeNull();
   });
 
@@ -284,7 +285,7 @@ describe('NewConnectorTestPage', () => {
     }
   });
 
-  it('lists three tools with no reveal control and no partial-list note', async () => {
+  it('lists three tools with the search, no reveal control and no partial-list note', async () => {
     listServers.mockResolvedValue({
       mcpServers: [{ name: 'jira', state: 'Connected', toolsCount: 3 }],
     });
@@ -302,9 +303,16 @@ describe('NewConnectorTestPage', () => {
         /Jira offers 3 tools — 3 that read and 0 that change things\./,
       ),
     ).toBeInTheDocument();
-    expect(screen.getAllByText('Reads')).toHaveLength(3);
+    expect(
+      within(screen.getByRole('list', { name: 'Tool settings' })).getAllByText(
+        'Reads',
+      ),
+    ).toHaveLength(3);
     expect(screen.queryByRole('button', { name: /^Show / })).toBeNull();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    // From three tools on, as the connector page's Tools tab does.
+    expect(
+      screen.getByRole('searchbox', { name: 'Search tools' }),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/are listed here/)).toBeNull();
   });
 
@@ -331,7 +339,10 @@ describe('NewConnectorTestPage', () => {
     expect(
       screen.getByText(/^Only the first 200 of 300 tools are listed\./),
     ).toBeInTheDocument();
-    const badges = () => screen.getAllByText(/^(Reads|Changes things)$/).length;
+    const badges = () =>
+      within(screen.getByRole('list', { name: 'Tool settings' })).getAllByText(
+        /^(Reads|Changes things)$/,
+      ).length;
     expect(badges()).toBe(6);
     expect(screen.getByText('tool_6')).toBeInTheDocument();
     expect(screen.queryByText('tool_7')).not.toBeInTheDocument();
@@ -916,6 +927,131 @@ describe('NewConnectorTestPage: Test & Tools', () => {
     expect(setApprovalCalls()).toHaveLength(0);
   });
 
+  describe('searching and filtering the tool settings', () => {
+    const rows = () =>
+      within(
+        screen.getByRole('list', { name: 'Tool settings' }),
+      ).queryAllByRole('listitem');
+
+    async function openStep() {
+      connectedWith(approvalTools());
+      await renderTestStep();
+      await screen.findByText('Everything runs.');
+    }
+
+    it('narrows the list by search and by what a tool does, and says what is hidden', async () => {
+      await openStep();
+      expect(rows()).toHaveLength(4);
+
+      await userEvent.type(
+        screen.getByRole('searchbox', { name: 'Search tools' }),
+        'comment',
+      );
+      expect(rows()).toHaveLength(1);
+      expect(screen.getByText('add_comment')).toBeInTheDocument();
+      expect(
+        screen.getByText(/3 of 4 tools are hidden by the search or filter/),
+      ).toBeInTheDocument();
+
+      await userEvent.clear(
+        screen.getByRole('searchbox', { name: 'Search tools' }),
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: /Filter by what it does/ }),
+      );
+      await userEvent.click(
+        await screen.findByRole('option', { name: /Changes things/ }),
+      );
+      await userEvent.keyboard('{Escape}');
+      expect(rows()).toHaveLength(2);
+      expect(screen.getByText('create_issue')).toBeInTheDocument();
+      expect(screen.queryByText('get_issue')).not.toBeInTheDocument();
+    });
+
+    it('never changes the settings of hidden tools: only the change made is saved over the rest', async () => {
+      await openStep();
+      await userEvent.type(
+        screen.getByRole('searchbox', { name: 'Search tools' }),
+        'comment',
+      );
+      await userEvent.click(
+        within(pills('add_comment')).getByRole('radio', { name: 'Ask' }),
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+      await waitFor(() => expect(setApprovalCalls()).toHaveLength(1));
+      expect(setApprovalCalls()[0][1].approval).toEqual({
+        rule: 'Allow',
+        tools: {
+          search_issues: 'Allow',
+          get_issue: 'Allow',
+          add_comment: 'Ask',
+          create_issue: 'Allow',
+        },
+      });
+    });
+
+    it('applies a preset to all tools unfiltered, and to the shown ones only, with their count, when narrowed', async () => {
+      await openStep();
+      expect(screen.getByText('Start from')).toBeInTheDocument();
+
+      await userEvent.type(
+        screen.getByRole('searchbox', { name: 'Search tools' }),
+        'issue',
+      );
+      // search_issues, get_issue, create_issue.
+      expect(screen.getByText('Set the 3 shown tools to')).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /Applies to the 3 shown only: the other 1 and the rule/,
+        ),
+      ).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Ask all' }));
+      expect(chosen(pills('get_issue'))).toBe('Ask');
+
+      await userEvent.clear(
+        screen.getByRole('searchbox', { name: 'Search tools' }),
+      );
+      expect(screen.getByText('Start from')).toBeInTheDocument();
+      expect(chosen(pills('add_comment'))).toBe('Allow');
+      expect(chosen(pills('create_issue'))).toBe('Ask');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+      await waitFor(() => expect(setApprovalCalls()).toHaveLength(1));
+      expect(setApprovalCalls()[0][1].approval).toEqual({
+        rule: 'Allow',
+        tools: {
+          search_issues: 'Ask',
+          get_issue: 'Ask',
+          add_comment: 'Allow',
+          create_issue: 'Ask',
+        },
+      });
+    });
+
+    it('offers the same search to a person who cannot change the settings', async () => {
+      connectedWith(approvalTools({ connectorAdmin: false }, 'tool'), {
+        tools: {
+          search_issues: 'Allow',
+          get_issue: 'Allow',
+          add_comment: 'Allow',
+          create_issue: 'Allow',
+        },
+      });
+      await renderTestStep();
+      await screen.findByText(
+        /Only a connector admin can change these settings/,
+      );
+
+      await userEvent.type(
+        screen.getByRole('searchbox', { name: 'Search tools' }),
+        'comment',
+      );
+      expect(rows()).toHaveLength(1);
+      expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    });
+  });
+
   it('shows the settings read-only, with no controls, to a person who is not a connector admin', async () => {
     connectedWith(
       approvalTools({ connectorAdmin: false }, 'tool').map(t =>
@@ -1024,7 +1160,8 @@ describe('NewConnectorTestPage: Test & Tools', () => {
     expect(
       await screen.findByText('The tool settings were not saved'),
     ).toBeInTheDocument();
-    expect(screen.getByText(/is forbidden/)).toBeInTheDocument();
+    // Said plainly, not as the apiserver's words.
+    expect(screen.getByText(/don't have rights to edit/)).toBeInTheDocument();
     expect(screen.getByText('Test the connection')).toBeInTheDocument();
 
     callTool.mockResolvedValue({});

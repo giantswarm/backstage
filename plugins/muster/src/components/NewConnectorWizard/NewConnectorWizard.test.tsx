@@ -1629,6 +1629,32 @@ describe('shell connector wizard', () => {
       });
     });
 
+    it("says plainly the person may not edit the connector when muster's RBAC refuses the save", async () => {
+      callTool.mockImplementation((tool: string) =>
+        tool === 'core_mcpserver_update'
+          ? Promise.reject(
+              new Error(
+                'mcpservers.muster.giantswarm.io "jira" is forbidden: User "dev@lab.local" cannot update resource "mcpservers" in API group "muster.giantswarm.io" in the namespace "muster"',
+              ),
+            )
+          : Promise.resolve({}),
+      );
+      await renderWizard('/customize/connectors/gazelle/jira/edit');
+
+      await screen.findByLabelText(/^Server address/);
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Save changes' }),
+      );
+
+      expect(
+        await screen.findByText('Could not save the connector'),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/don't have rights to edit/)).toBeInTheDocument();
+      expect(screen.queryByText(/cannot update resource/)).toBeNull();
+      expect(screen.queryByText('Test the connection')).toBeNull();
+    });
+
     it('sends the tags on save only when they changed', async () => {
       musterTakesTags();
       const server = registered();

@@ -1,9 +1,8 @@
-import { MouseEvent, ReactNode, useMemo, useState } from 'react';
+import { MouseEvent, ReactNode, useCallback, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Alert, Box, ButtonLink, Flex, SearchField, Text } from '@backstage/ui';
+import { Alert, ButtonLink, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import {
-  CatalogFilterBar,
   type CatalogFacet,
   type CatalogFilterSelection,
   CatalogNoMatch,
@@ -12,14 +11,9 @@ import {
   isSearchableList,
   ShowMore,
   StackedRowList,
-  useCatalogFilters,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { ToolSummary } from '../../../apis';
-import {
-  TOOL_EFFECT_LABELS,
-  toolEffect,
-  ToolEffect,
-} from '../../../lib/toolAnnotations';
+import { toolEffect } from '../../../lib/toolAnnotations';
 import { toolMatchesQuery } from '../../../lib/toolSearch';
 import {
   grantLabel,
@@ -43,43 +37,29 @@ import {
   EffectBadge,
   MarkerBadge,
   TruncatedListNote,
+  toolEffectFacet,
+  ToolListToolbar,
   type ToolsListView,
   useServerPageLinks,
+  useToolListFilter,
 } from '../../shared';
 import type { NoToolsExplanation } from '../../McpServersPage/serverDetail';
 import { ServerTools } from '../../ServerPage/useServerPageData';
 
 const useStyles = makeStyles({
-  toolbar: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-    marginBottom: 8,
-  },
-  // A width cap, as the Resources and Prompts tabs' search has. The toolbar
-  // is a column, so a flex basis here set the field's height: a tall empty
-  // band between the search and the filter.
-  search: {
-    maxWidth: 360,
-  },
   note: {
     marginBottom: 8,
   },
 });
 
 /**
- * The "What it does" dropdown, as the wizard's catalogue draws it (T81). A
- * blocked tool's row (muster lists no blocked tool, so the row knows nothing
- * of what it does and shows no effect) counts nowhere.
+ * The "What it does" dropdown, shared with the tool settings. A blocked
+ * tool's row (muster lists no blocked tool, so the row knows nothing of what
+ * it does and shows no effect) counts nowhere.
  */
-const EFFECT_FACET: CatalogFacet<ToolSummary> = {
-  id: 'effect',
-  label: 'What it does',
-  value: tool =>
-    tool.approval?.setting === 'block' ? undefined : toolEffect(tool),
-  optionLabel: id => TOOL_EFFECT_LABELS[id as ToolEffect] ?? id,
-  order: ['reads', 'changes'],
-};
+const EFFECT_FACET: CatalogFacet<ToolSummary> = toolEffectFacet(tool =>
+  tool.approval?.setting === 'block' ? undefined : toolEffect(tool),
+);
 
 /** The *Approval* dropdown: Allow, Ask, Block, as muster reports them. */
 const APPROVAL_FACET: CatalogFacet<ToolSummary> = {
@@ -275,18 +255,16 @@ export function ConnectorToolsTab({
     [blockedTools, all],
   );
   const reportsApproval = all.some(tool => tool.approval);
-  const searched = useMemo(
-    () =>
-      all.filter(tool => toolMatchesQuery(tool, shortName(tool.name), query)),
-    [all, query, shortName],
+  const matches = useCallback(
+    (tool: ToolSummary) => toolMatchesQuery(tool, shortName(tool.name), query),
+    [query, shortName],
   );
-  const filters = useCatalogFilters({
+  const { filters, shown } = useToolListFilter({
     items: all,
-    searched,
+    matches,
     facets: reportsApproval ? APPROVAL_FACETS : EFFECT_FACETS,
     initialSelection,
   });
-  const shown = filters.filtered;
   const view: ToolsListView = {
     q: query.trim() || undefined,
     effect: filters.selection.effect?.length
@@ -430,22 +408,12 @@ export function ConnectorToolsTab({
         </Text>
       )}
       {searchable && (
-        <div className={classes.toolbar}>
-          <Box className={classes.search}>
-            <SearchField
-              aria-label="Search tools"
-              placeholder={`Search ${all.length} tools`}
-              size="small"
-              value={query}
-              onChange={setQuery}
-            />
-          </Box>
-          <CatalogFilterBar
-            dimensions={filters.dimensions}
-            onSelect={filters.select}
-            onClear={filters.clear}
-          />
-        </div>
+        <ToolListToolbar
+          query={query}
+          onQueryChange={setQuery}
+          total={all.length}
+          filters={filters}
+        />
       )}
       <TruncatedListNote plural="tools" truncated={tools.truncated} />
       {shown.length === 0 ? (
@@ -655,14 +623,6 @@ function SettingsNote({
       />
     );
   }
-  if (canChange) {
-    return (
-      <Flex justify="end" className={classes.note}>
-        <ButtonLink size="small" variant="tertiary" href={settingsHref}>
-          Change tool settings
-        </ButtonLink>
-      </Flex>
-    );
-  }
+  // Changing reviewed settings is in the page's menu, with Edit.
   return null;
 }

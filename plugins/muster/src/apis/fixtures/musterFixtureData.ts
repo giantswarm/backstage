@@ -134,6 +134,12 @@ export type MusterFixtureConnector = FixtureConnector & {
    * its tools that asks.
    */
   approvalUnavailable?: string;
+  /**
+   * The person may not update MCPServers in muster's namespace here: its
+   * tools report `connectorAdmin: false` and every write to it is refused
+   * with the apiserver's RBAC text (`FIXTURE_NOT_EDITOR`).
+   */
+  notEditor?: boolean;
 };
 
 /**
@@ -142,6 +148,15 @@ export type MusterFixtureConnector = FixtureConnector & {
  */
 export const FIXTURE_APPROVAL_UNAVAILABLE =
   "muster's shared store is not on Valkey";
+
+/**
+ * What the apiserver's RBAC says to a person who may not update MCPServers
+ * in muster's namespace, as muster passes it on (fixtures: the data set's
+ * second installation, where the guest is no editor).
+ */
+export function fixtureNotEditorText(name: string): string {
+  return `mcpservers.muster.giantswarm.io "${name}" is forbidden: User "guest@example.com" cannot update resource "mcpservers" in API group "muster.giantswarm.io" in the namespace "${FIXTURE_MUSTER_NAMESPACE}"`;
+}
 
 /**
  * The segment muster names a connector's tools and prompts with,
@@ -765,7 +780,7 @@ function withApprovalOf(
           unavailable: connector.approvalUnavailable,
         }),
     },
-    connectorAdmin: connector.namespace === undefined,
+    connectorAdmin: connector.namespace === undefined && !connector.notEditor,
   };
 }
 

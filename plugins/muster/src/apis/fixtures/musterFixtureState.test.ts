@@ -103,6 +103,31 @@ describe('the connector writes in fixture mode', () => {
       ).toBe(true);
     });
 
+    it('models a person who may not edit on the second installation: no connectorAdmin, writes refused', async () => {
+      const own = (
+        await api.filterTools({
+          installation: 'fennel',
+          pattern: 'x_*',
+          limit: 200,
+        })
+      ).tools?.filter(tool => tool.connectorAdmin !== undefined);
+      expect(own?.length).toBeGreaterThan(0);
+      expect(own?.every(tool => tool.connectorAdmin === false)).toBe(true);
+
+      const server = (await api.listServers('fennel')).mcpServers?.find(
+        entry => entry.state === 'Connected',
+      );
+      for (const [tool, args] of [
+        ['core_mcpserver_update', { description: 'x' }],
+        ['core_mcpserver_set_approval', { approval: { rule: 'Ask' } }],
+        ['core_mcpserver_delete', {}],
+      ] as const) {
+        await expect(
+          api.callTool(tool, { name: server!.name, ...args }, 'fennel'),
+        ).rejects.toThrow(/is forbidden: User .* cannot update resource/);
+      }
+    });
+
     it('sets the settings explicitly, and the next listing reports them', async () => {
       const name = named('Connected');
       const keys = Object.keys(objectOf(name)!.getApproval()!.tools!);

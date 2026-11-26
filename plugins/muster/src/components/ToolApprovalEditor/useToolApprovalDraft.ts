@@ -54,7 +54,12 @@ export type ToolApprovalDraft = {
   reference: (key: string) => ApprovalSetting | undefined;
   /** A save would change what muster stores (always, for a first review). */
   dirty: boolean;
-  applyPreset: (preset: ApprovalPreset) => void;
+  /**
+   * Fills the pills with the preset: every tool and the rule, or, given
+   * `keys`, only those tools, leaving every other tool and the rule as
+   * they are (a list narrowed by a search or filter).
+   */
+  applyPreset: (preset: ApprovalPreset, keys?: readonly string[]) => void;
   setRule: (rule: ApprovalRule) => void;
   setTool: (key: string, setting: ApprovalSetting) => void;
   resetTool: (key: string) => void;
@@ -154,11 +159,24 @@ export function useToolApprovalDraft({
   );
   const referenceDraft = saved ?? base;
 
-  const applyPreset = useCallback((preset: ApprovalPreset) => {
-    setPicked(preset);
-    setRuleEdit(undefined);
-    setEdits({});
-  }, []);
+  const applyPreset = useCallback(
+    (preset: ApprovalPreset, keys?: readonly string[]) => {
+      if (keys) {
+        // Only these tools: the rest, and the rule, keep what they hold.
+        const chosen = new Set(keys);
+        const { tools: filled } = expandPreset(
+          preset,
+          rows.filter(row => chosen.has(row.key)),
+        );
+        setEdits(previous => ({ ...previous, ...filled }));
+        return;
+      }
+      setPicked(preset);
+      setRuleEdit(undefined);
+      setEdits({});
+    },
+    [rows],
+  );
   const setTool = useCallback(
     (key: string, setting: ApprovalSetting) =>
       setEdits(previous => ({ ...previous, [key]: setting })),
