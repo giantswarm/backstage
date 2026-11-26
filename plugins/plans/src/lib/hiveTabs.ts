@@ -10,6 +10,7 @@ export const HIVE_TAB_ORDER = [
   'sub-page:roadmap/hive',
   'sub-page:plans/hive-plans',
   'sub-page:plans/hive-knowledge',
+  'sub-page:review-queue/hive',
 ] as const;
 
 /** Where a tab goes; one the list does not know goes last. */

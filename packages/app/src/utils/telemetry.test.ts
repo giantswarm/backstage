@@ -736,6 +736,7 @@ describe('getTelemetryPageViewPayload', () => {
       { page: 'Hive plan detail', path: '/hive/plans/pr/:number' },
     ],
     ['/hive/knowledge', { page: 'Hive knowledge', path: '/hive/knowledge' }],
+    ['/hive/reviews', { page: 'Hive reviews', path: '/hive/reviews' }],
     ['/metrics', { page: 'Metrics', path: '/metrics' }],
     ['/search', { page: 'Search', path: '/search' }],
   ])('reports %s', (pathname, payload) => {
@@ -1027,6 +1028,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/hive/plans',
       '/hive/plans/pr/22',
       '/hive/knowledge',
+      '/hive/reviews',
       '/api-docs',
       '/repositories',
       '/repositories/create',
