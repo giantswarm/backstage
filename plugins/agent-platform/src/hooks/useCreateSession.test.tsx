@@ -455,6 +455,44 @@ describe('useCreateSession', () => {
     expect(keys[0]).toBe(keys[1]);
   });
 
+  it.each([
+    [
+      'refused by the approval settings',
+      "approval_unavailable: reading agent kagent/default-agent's tool approval settings: its renderer cannot be found",
+    ],
+    [
+      'refused by kagent as a spent key',
+      'conflict: requestId "r" belongs to a session that no longer exists; start again with a new requestId (or none)',
+    ],
+    ['refused by muster', 'forbidden: muster refused the sandbox binding'],
+  ])(
+    'mints a new key when the same prompt is retried after a start %s',
+    async (_why, refusal) => {
+      // A refused start leaves no session behind: kagent's session for it was
+      // deleted again, which spends its key, so the retry is a new submission.
+      callTool.mockRejectedValueOnce(new Error(refusal));
+      const { result } = renderWith();
+
+      await act(async () => {
+        await result.current
+          .createSession({ agent, prompt: 'Why is the ingress failing?' })
+          .catch(() => {});
+      });
+      let sessionId: string | undefined;
+      await act(async () => {
+        sessionId = await result.current.createSession({
+          agent,
+          prompt: 'Why is the ingress failing?',
+        });
+      });
+
+      const keys = startCalls().map(call => call.args.requestId);
+      expect(keys).toHaveLength(2);
+      expect(keys[0]).not.toBe(keys[1]);
+      expect(sessionId).toBeDefined();
+    },
+  );
+
   it('mints a new key for a different prompt, and after a successful create', async () => {
     const { result } = renderWith();
 
