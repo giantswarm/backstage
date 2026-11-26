@@ -13,10 +13,8 @@ import {
   type AgentManagerInfo,
 } from '../lib/agentManager';
 import type { OrganizationReads } from '../lib/organizations';
-import {
-  musterAgentManagerInfoQueryKey,
-  musterOrganizationsQueryKey,
-} from '../lib/queryKeys';
+import { musterAgentManagerInfoQueryKey } from '../lib/queryKeys';
+import { organizationsQuery } from './organizationsQuery';
 import { useMusterPluginApi } from './useMusterPluginApi';
 import {
   useMusterServerAvailability,
@@ -72,23 +70,6 @@ export function useAgentManagerClients():
       return new AgentManagerClient(musterApi, installation, reads);
     };
   }, [musterApi, queryClient]);
-}
-
-/**
- * `list_organizations` of one installation as a query, the entry the
- * organization pages read: a minute of staleness is fine.
- */
-function organizationsQuery(
-  musterApi: ReturnType<typeof useMusterPluginApi>,
-  installation: string,
-) {
-  return queryOptions({
-    queryKey: musterOrganizationsQueryKey(installation),
-    queryFn: () =>
-      new AgentManagerClient(musterApi!, installation).listOrganizations(),
-    staleTime: 60_000,
-    retry: false,
-  });
 }
 
 /**

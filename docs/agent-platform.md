@@ -122,7 +122,11 @@ again**; where the person may create nowhere, the field's warning names who
 grants access. An agent-manager that answers without a `managed` list says
 nothing either way, so no owner is asked for and the create call gets its own
 answer. The form takes the answer in one place (`useTenantChoicesSync`,
-mounted by every step), and every step starts `get_info` for the likely
+mounted by every step). Where agent-manager serves organizations, the answer
+is the person's organizations (`list_organizations`, the directory's read,
+kept a minute); a step that opens on an answer older than 10 seconds reads it
+again, so an organization the person was just added to is offered. Every
+step starts `get_info` for the likely
 environment (the only one configured, or the home installation) beside the
 reads that pick it (`useWarmNewAgentForm`), as the agents list does, so the
 owner does not arrive after the environment. Warnings about environments that
@@ -873,6 +877,15 @@ one `ModelConfig`, resolved incrementally.
   listing across all namespaces is admin-only) become
   `unreachableInstallations` and a warning, so an empty result is told apart
   from a failed one.
+- **A refused cluster-wide list is read namespace by namespace**
+  (`useNamespacedFallback`, which the agents list's reads use too): the platform
+  namespace, `get_info`'s `namespaces.default` and `namespaces.managed`, the
+  namespaces of the Agents the controller lists for the person, and the
+  namespaces of the person's organizations as `list_organizations` names them.
+  The last source is the one that names a new organization, or one the person
+  was just added to: agent-manager keeps its `managed` list for a few seconds
+  and the portal its `get_info` for a minute, and the organization holds no
+  Agent yet. A namespace that refuses the list is skipped.
 
 ### Model management (the Models tab)
 

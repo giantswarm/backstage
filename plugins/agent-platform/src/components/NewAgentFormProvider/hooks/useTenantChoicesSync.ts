@@ -1,6 +1,9 @@
-import { useEffect } from 'react';
+import { useContext, useEffect } from 'react';
+import { QueryClientContext } from '@tanstack/react-query';
 
 import { useAgentManagerInfo } from '../../../hooks/useAgentManager';
+import { useMusterPluginApi } from '../../../hooks/useMusterPluginApi';
+import { organizationsQuery } from '../../../hooks/organizationsQuery';
 import {
   mayCreateAgentsIn,
   ORGANIZATIONS_CAPABILITY,
@@ -10,6 +13,13 @@ import {
   useNewAgentForm,
 } from '../NewAgentFormProvider';
 import { useOrganizationDirectory } from '../../OrganizationDirectoryProvider';
+
+/**
+ * How old the person's organizations may be when a step of the form opens:
+ * an older answer is read again. The directory keeps its answer for a
+ * minute; a person added to an organization a moment ago would wait for it.
+ */
+const CHOICES_STALE_MS = 10_000;
 
 export type TenantChoicesSync = {
   /**
@@ -50,6 +60,22 @@ export function useTenantChoicesSync(): TenantChoicesSync {
     byOrganization && installation
       ? organizations.organizationsOf(installation)
       : undefined;
+  // A step that opens on an answer older than `CHOICES_STALE_MS` reads it
+  // again, into the same entry: an organization the person was added to a
+  // moment ago is then a choice, and its models are read
+  // (`useNamespacedResources` reads the same entry). Only over an answer: a
+  // read that failed is read again on Check again, as before.
+  const musterApi = useMusterPluginApi();
+  const queryClient = useContext(QueryClientContext);
+  const answered = Boolean(mine);
+  useEffect(() => {
+    if (queryClient && musterApi && installation && answered) {
+      queryClient.prefetchQuery({
+        ...organizationsQuery(musterApi, installation),
+        staleTime: CHOICES_STALE_MS,
+      });
+    }
+  }, [queryClient, musterApi, installation, answered]);
   const organizationsFailed =
     byOrganization &&
     Boolean(installation) &&

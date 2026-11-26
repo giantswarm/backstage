@@ -13,6 +13,8 @@ import {
   type OrganizationsScenario,
 } from '../../lib/__fixtures__/agentManagerOrganizations';
 import type { AgentManagerModelConfig } from '../../lib/agentManager';
+import type { OrganizationListing } from '../../lib/organizations';
+import { musterOrganizationsQueryKey } from '../../lib/queryKeys';
 import {
   NewAgentFormProvider,
   useNewAgentForm,
@@ -113,15 +115,32 @@ function Step({ preselect }: { preselect?: string }) {
   ) : null;
 }
 
+/**
+ * `cached`: a `list_organizations` answer the portal read `age` ms before the
+ * form opens, as another page left it.
+ */
 async function renderStep(
   scenario: OrganizationsScenario,
-  { preselect }: { preselect?: string } = {},
+  {
+    preselect,
+    cached,
+  }: {
+    preselect?: string;
+    cached?: { listing: OrganizationListing; age: number };
+  } = {},
 ) {
   mockListed = Object.values(scenario.models ?? {}).flat();
   const { api, callTool } = fakeOrganizationsMuster(scenario);
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  if (cached) {
+    queryClient.setQueryData(
+      musterOrganizationsQueryKey('gazelle'),
+      cached.listing,
+      { updatedAt: Date.now() - cached.age },
+    );
+  }
   await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, api]]}>
       <QueryClientProvider client={queryClient}>
@@ -226,6 +245,30 @@ describe('New agent: the organization picker', () => {
         /^You belong to no organization: an admin of an organization adds you/,
       ),
     ).toBeInTheDocument();
+  });
+
+  it('reads the person’s organizations again when the form opens on an older answer, so an organization they were just added to is offered', async () => {
+    // Another page read the organizations half a minute ago, before an
+    // admin added the person to payments.
+    const { callTool } = await renderStep(
+      {
+        mine: { organizations: [PAYMENTS] },
+        models: {
+          [PAYMENTS.namespace]: [model('sonnet', PAYMENTS.namespace, true)],
+        },
+      },
+      { cached: { listing: { organizations: [] }, age: 30_000 } },
+    );
+
+    expect(
+      await screen.findByText(/the only organization you belong to on gazelle/),
+    ).toHaveTextContent(/^Organization: payments,/);
+    expect(
+      await screen.findByRole('radio', {
+        name: 'Select model sonnet-model, default',
+      }),
+    ).toHaveAttribute('aria-checked', 'true');
+    expect(toolCalls(callTool, 'list_organizations')).toHaveLength(1);
   });
 
   it("reads the person's organizations again on Check again after that read failed", async () => {
