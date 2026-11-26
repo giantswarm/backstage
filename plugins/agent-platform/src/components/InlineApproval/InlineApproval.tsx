@@ -129,7 +129,7 @@ const useStyles = makeStyles(theme => ({
     '& > svg': { marginTop: 2, flexShrink: 0 },
   },
   // Giant Swarm's vivid blue for the pictogram.
-  headerIcon: { color: 'var(--bui-fg-info, #009fff)' },
+  headerIcon: { color: '#009fff' },
 }));
 
 function Value({ value }: { value: ApprovalValue }) {
