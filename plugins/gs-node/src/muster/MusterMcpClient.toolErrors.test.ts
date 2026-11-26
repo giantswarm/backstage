@@ -290,6 +290,8 @@ describe('MusterMcpClient tool errors', () => {
       apps: error.apps,
     });
     expect(unauthorized?.message).toContain('github, chatgpt');
+    // Frontends that read no `reason` match this phrase.
+    expect(unauthorized?.message).toMatch(/requires authentication/);
   });
 
   it.each([

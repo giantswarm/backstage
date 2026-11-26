@@ -6,6 +6,7 @@ import { useWorkspaceManagerClient } from '../../hooks/useWorkspaceManager';
 import {
   providerDisplayName,
   providerKindName,
+  providerOfConnect,
   providerSignInTarget,
   WorkspaceManagerError,
   type ProviderConnect,
@@ -179,9 +180,9 @@ function ConnectCards({
         </div>
       )}
       {connect.map(entry => {
-        const known = providers.data?.find(p => p.name === entry.provider);
+        const known = providerOfConnect(providers.data, entry);
         const provider: WorkspaceProvider = {
-          name: entry.provider,
+          name: known?.name ?? entry.provider,
           kind: known?.kind ?? '',
           host: known?.host,
           connected: false,

@@ -23,6 +23,26 @@ describe('agentManagerToolName', () => {
 });
 
 describe('classifyAgentManagerError', () => {
+  it("reads muster-backend's provider App 401 as muster's sign-in, as before", () => {
+    // `auth_required: …` alone is agent-manager's own refusal; muster's 401
+    // is told apart by its reason, which the App grant keeps.
+    const message =
+      "auth_required: server 'agent-manager' requires authentication: it needs your grant of a provider App (github) for this call.";
+    expect(looksNotConnected(message)).toBe(true);
+    const error = classifyAgentManagerError(
+      new MusterUnauthorizedError(
+        message,
+        'server_sign_in_required',
+        'agent-manager',
+        'gazelle',
+        'MusterUnauthorizedError',
+        [{ app: 'github' }],
+      ),
+    );
+    expect(error).toBeInstanceOf(AgentManagerNotConnectedError);
+    expect((error as AgentManagerNotConnectedError).signInRequired).toBe(true);
+  });
+
   it("reads agent-manager's code prefix and keeps its message", () => {
     const error = classifyAgentManagerError(
       new Error(

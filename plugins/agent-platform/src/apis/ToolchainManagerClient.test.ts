@@ -4,7 +4,7 @@ import {
 } from '@giantswarm/backstage-plugin-muster';
 
 import { PortalSessionEndedError } from '../lib/portalSession';
-import { grantProvider, ToolchainManagerError } from '../lib/toolchainManager';
+import { grantProviders, ToolchainManagerError } from '../lib/toolchainManager';
 import { ToolchainManagerClient } from './ToolchainManagerClient';
 
 function makeMusterApi(answer: unknown = {}) {
@@ -176,7 +176,7 @@ describe('ToolchainManagerClient', () => {
     const { api, callTool } = makeMusterApi();
     callTool.mockRejectedValue(
       new MusterUnauthorizedError(
-        "auth_required: server 'toolchain-manager' needs your grant of a provider App (toolchain-github) for this call.",
+        "auth_required: server 'toolchain-manager' requires authentication: it needs your grant of a provider App (toolchain-github) for this call.",
         'server_sign_in_required',
         'toolchain-manager',
         'gazelle',
@@ -194,10 +194,12 @@ describe('ToolchainManagerClient', () => {
     const list = await client.listToolchains();
     expect(list.status).toBe('grant_required');
     expect(list.toolchains).toEqual([]);
-    expect(grantProvider(list)).toMatchObject({
-      name: 'toolchain-github',
-      signIn: 'core_auth_login app=toolchain-github',
-    });
+    expect(grantProviders(list)).toMatchObject([
+      {
+        name: 'toolchain-github',
+        signIn: 'core_auth_login app=toolchain-github',
+      },
+    ]);
     await expect(client.listSources()).resolves.toMatchObject({
       status: 'grant_required',
       apps: ['toolchain-github'],

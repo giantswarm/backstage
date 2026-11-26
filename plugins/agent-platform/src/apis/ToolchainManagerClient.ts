@@ -135,14 +135,18 @@ export class ToolchainManagerClient {
     };
   }
 
-  /** A new toolchain's Dockerfile from the picked packages; writes nothing. */
+  /**
+   * A new toolchain's Dockerfile from the picked packages; writes nothing. Or
+   * the answer's status (a grant to give) with none.
+   */
   addPackages(input: {
     name: string;
     packages: string[];
-  }): Promise<WrittenToolchain> {
-    return this.call<WrittenToolchain>(TOOLCHAIN_MANAGER_TOOLS.addPackages, {
-      ...input,
-    });
+  }): Promise<WrittenToolchain | ToolchainAnswer> {
+    return this.call<WrittenToolchain | ToolchainAnswer>(
+      TOOLCHAIN_MANAGER_TOOLS.addPackages,
+      { ...input },
+    );
   }
 
   /** Opens the pull request, as the person, that adds the toolchain to a source. */

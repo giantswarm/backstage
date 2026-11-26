@@ -100,28 +100,47 @@ describe('MusterMcpClient gated sign-ins', () => {
     });
   });
 
-  it('answers a held call with the provider Apps muster named', async () => {
+  describe("muster's answer for a provider App grant", () => {
     const apps = [{ app: 'github', authUrl: AUTH_URL }];
-    const execute = jest.fn().mockResolvedValue(
-      envelope({
-        content: [{ type: 'text', text: CHALLENGE_TEXT }],
-        isError: true,
-        structuredContent: {
-          status: 'auth_required',
-          server: 'workspace-manager',
-          authUrl: AUTH_URL,
-          apps,
-        },
-      }),
-    );
-    const client = buildClient(execute);
+    const appGrantRequired = envelope({
+      content: [{ type: 'text', text: CHALLENGE_TEXT }],
+      isError: true,
+      structuredContent: {
+        status: 'auth_required',
+        server: 'workspace-manager',
+        authUrl: AUTH_URL,
+        apps,
+      },
+    });
 
-    for (let call = 0; call < 2; call++) {
-      await expect(
-        client.callTool(LIST, {}, { authToken: 'alice' }),
-      ).rejects.toMatchObject({ server: 'workspace-manager', apps });
-    }
-    expect(execute).toHaveBeenCalledTimes(1);
+    it('is not held: a reload or a second tab gets the Apps from muster', async () => {
+      const execute = jest.fn().mockResolvedValue(appGrantRequired);
+      const client = buildClient(execute);
+
+      for (const token of [jwt('alice', 1), jwt('alice', 1), jwt('alice', 2)]) {
+        await expect(
+          client.callTool(LIST, {}, { authToken: token }),
+        ).rejects.toMatchObject({ server: 'workspace-manager', apps });
+      }
+      expect(execute).toHaveBeenCalledTimes(3);
+    });
+
+    it('lets the call after the grant reach muster', async () => {
+      const execute = jest
+        .fn()
+        .mockResolvedValueOnce(appGrantRequired)
+        .mockResolvedValue(listed);
+      const client = buildClient(execute);
+      const alice = { authToken: jwt('alice', 1) };
+
+      await expect(client.callTool(LIST, {}, alice)).rejects.toThrow(
+        MusterAuthRequiredError,
+      );
+      // The person grants the App in the other tab, then starts again.
+      now += 5_000;
+      await expect(client.callTool(LIST, {}, alice)).resolves.toBeDefined();
+      expect(execute).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('answers repeated gated calls from the pending sign-in without asking muster', async () => {

@@ -846,7 +846,6 @@ export class MusterMcpClient {
             pending.server,
             pending.authUrl,
             pending.texts,
-            pending.apps,
           )
         : new MusterAuthRequiredError(pending.server, undefined, [
             `auth_required: server '${pending.server}' requires authentication; a sign-in to it is pending for you, sign in to use its tools.`,
@@ -855,12 +854,14 @@ export class MusterMcpClient {
     try {
       return await call();
     } catch (error) {
-      if (error instanceof MusterAuthRequiredError) {
+      // A provider App grant is not a sign-in to the server: it is not
+      // held, so a reload or a second tab gets muster's answer with its Apps,
+      // and the call after the grant reaches muster.
+      if (error instanceof MusterAuthRequiredError && error.apps.length === 0) {
         this.signIns.remember(caller, toolName, {
           server: error.server,
           authUrl: error.authUrl,
           texts: [error.message, ...error.details],
-          apps: error.apps,
           token,
         });
       }

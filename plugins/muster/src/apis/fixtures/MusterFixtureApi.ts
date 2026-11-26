@@ -162,7 +162,7 @@ function providerAppGrantError(
   installation: string,
 ): MusterUnauthorizedError {
   return new MusterUnauthorizedError(
-    `auth_required: server '${server}' needs your grant of a provider App (${apps.join(
+    `auth_required: server '${server}' requires authentication: it needs your grant of a provider App (${apps.join(
       ', ',
     )}) for this call.`,
     'server_sign_in_required',

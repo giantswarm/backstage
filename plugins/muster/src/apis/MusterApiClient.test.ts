@@ -983,7 +983,7 @@ describe('MusterApiClient 401 answers', () => {
         error: {
           name: 'MusterUnauthorizedError',
           message:
-            "auth_required: server 'workspace-manager' needs your grant of a provider App (github) for this call.",
+            "auth_required: server 'workspace-manager' requires authentication: it needs your grant of a provider App (github) for this call.",
           reason: 'server_sign_in_required',
           server: 'workspace-manager',
           apps: [

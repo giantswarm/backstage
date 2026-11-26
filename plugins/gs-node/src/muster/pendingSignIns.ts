@@ -1,5 +1,3 @@
-import type { MusterProviderAppGrant } from '@giantswarm/backstage-plugin-gs-common';
-
 /**
  * How long muster's sign-in answer for a server is reused for the caller's
  * calls of its tools: well inside the 10 minutes muster keeps a sign-in
@@ -21,8 +19,6 @@ export interface SignInChallenge {
   authUrl?: string;
   /** Muster's own text blocks: the message first. */
   texts: string[];
-  /** The provider Apps to grant, when muster asks for those. */
-  apps?: MusterProviderAppGrant[];
   /**
    * The token muster gave this answer to (a key of it, never the token):
    * only that token's calls are told the link and muster's text, which
@@ -81,8 +77,8 @@ export class PendingSignIns {
       if (pending.until <= now) {
         servers.delete(server);
       } else if (pending.tools.has(tool) || tool.startsWith(`x_${server}_`)) {
-        const { authUrl, texts, token, apps } = pending;
-        return { server, authUrl, texts, token, apps };
+        const { authUrl, texts, token } = pending;
+        return { server, authUrl, texts, token };
       }
     }
     if (servers.size === 0) {

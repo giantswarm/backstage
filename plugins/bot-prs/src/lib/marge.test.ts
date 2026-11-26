@@ -195,6 +195,17 @@ describe('statusIntentOf', () => {
 });
 
 describe('classifyMargeError', () => {
+  it("reads muster-backend's provider App 401 as not connected, by its wording too", () => {
+    // What a frontend that reads no `reason` (a tab open across a deploy) sees.
+    expect(
+      classifyMargeError(
+        new Error(
+          "auth_required: server 'mcp-marge' requires authentication: it needs your grant of a provider App (github) for this call.",
+        ),
+      ),
+    ).toBeInstanceOf(MargeNotConnectedError);
+  });
+
   // From muster's structured 401, not from its wording.
   it("says whether a not-connected answer is muster's request for the sign-in", () => {
     const signIn = classifyMargeError(

@@ -5,6 +5,7 @@ import type { AgentRow } from '../AgentsDataProvider';
 import {
   WorkspaceManagerError,
   type Workspace,
+  type WorkspaceProvider,
 } from '../../lib/workspaceManager';
 import { NewSessionComposer } from './NewSessionComposer';
 
@@ -63,9 +64,7 @@ jest.mock('../../hooks/useWorkspaceManager', () => ({
   useWorkspaceManagerClient: () => undefined,
 }));
 /** `list_providers` as the test moves it along. */
-const mockProviders = {
-  data: [{ name: 'github', kind: 'github', connected: false }],
-};
+const mockProviders: { data: WorkspaceProvider[] } = { data: [] };
 jest.mock('../../hooks/useWorkspaceEditor', () => ({
   useWorkspaceProviders: () => mockProviders,
 }));
@@ -128,6 +127,7 @@ const workspacePicker = () => screen.getByRole('button', { name: /Workspace/ });
 
 beforeEach(() => {
   jest.useFakeTimers({ now: NOW, advanceTimers: true });
+  mockProviders.data = [{ name: 'github', kind: 'github', connected: false }];
   window.localStorage.clear();
   onStart.mockReset();
   mockWorkspacesOf.mockReset();
@@ -484,6 +484,49 @@ describe('NewSessionComposer workspaces', () => {
       screen.getByRole('button', { name: 'Start the session' }),
     );
     expect(onStart).toHaveBeenCalledTimes(2);
+  });
+
+  it("names the App's provider from list_providers, and the App alone where none matches", async () => {
+    mockWorkspacesOf.mockReturnValue([mix]);
+    window.localStorage.setItem(
+      'gs-agent-platform-last-workspace',
+      JSON.stringify({ [claude.id]: 'platform-mix' }),
+    );
+    mockProviders.data = [
+      {
+        name: 'github-com',
+        kind: 'github',
+        connected: false,
+        signIn: 'core_auth_login app=agent-platform-github',
+      },
+    ];
+    const { rerenderWith } = renderComposer();
+    await userEvent.type(field(), 'List the repositories');
+    await userEvent.click(startButton());
+    const fromMuster = (app: string) =>
+      new WorkspaceManagerError(
+        'not_connected',
+        `auth_required: server 'workspace-manager' requires authentication: it needs your grant of a provider App (${app}) for this call.`,
+        [],
+        [
+          {
+            provider: app,
+            app,
+            signIn: `Grant the ${app} App in muster first: core_auth_login app=${app}`,
+          },
+        ],
+      );
+
+    rerenderWith({ error: fromMuster('agent-platform-github') });
+    expect(screen.getByTestId('provider-connect-github-com')).toHaveTextContent(
+      'Sign in to github-com (GitHub) to use platform-mix',
+    );
+
+    // No instance signs in with this App: its name, no provider's kind.
+    rerenderWith({ error: fromMuster('github') });
+    const card = screen.getByTestId('provider-connect-github');
+    expect(card).toHaveTextContent('Sign in to github to use platform-mix');
+    expect(card).not.toHaveTextContent('GitHub');
   });
 
   it('starts nothing by itself without a sign-in made here', async () => {

@@ -379,7 +379,7 @@ describe('WorkspaceManagerClient', () => {
      */
     const appGrantRequired = () =>
       new MusterUnauthorizedError(
-        "auth_required: server 'workspace-manager' needs your grant of a provider App (github) for this call.",
+        "auth_required: server 'workspace-manager' requires authentication: it needs your grant of a provider App (github) for this call.",
         'server_sign_in_required',
         'workspace-manager',
         'lab',
@@ -401,7 +401,7 @@ describe('WorkspaceManagerClient', () => {
       expect(error).toBeInstanceOf(WorkspaceManagerError);
       expect(error.kind).toBe('not_connected');
       expect(error.connect).toEqual([
-        { provider: 'github', signIn: expect.any(String) },
+        { provider: 'github', app: 'github', signIn: expect.any(String) },
       ]);
       expect(providerSignInTarget(error.connect[0].signIn)).toEqual({
         name: 'github',

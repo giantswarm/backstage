@@ -467,7 +467,32 @@ export type ProviderConnect = {
    * manager is pinned to, or that muster holds no grant for this one.
    */
   signIn: string;
+  /**
+   * The muster App to grant, where muster named it in place of the manager's
+   * answer: `provider` is then that App's name, not an instance's, until
+   * {@link providerOfConnect} finds the instance.
+   */
+  app?: string;
 };
+
+/**
+ * The provider instance of `list_providers` an entry asks to grant: for an
+ * App muster named, the instance whose sign-in is that App's; otherwise the
+ * instance of the entry's name. None where none matches: the card then
+ * names the App alone, never another instance's kind or host.
+ */
+export function providerOfConnect(
+  providers: readonly WorkspaceProvider[] | undefined,
+  entry: ProviderConnect,
+): WorkspaceProvider | undefined {
+  if (entry.app === undefined) {
+    return providers?.find(p => p.name === entry.provider);
+  }
+  return providers?.find(p => {
+    const target = providerSignInTarget(p.signIn);
+    return target?.app === true && target.name === entry.app;
+  });
+}
 
 /**
  * `authorize_workspace`: may the person start a Session on the workspace?
@@ -562,6 +587,7 @@ export function classifyWorkspaceManagerError(
       [],
       apps.map(({ app }) => ({
         provider: app,
+        app,
         signIn: providerAppSignIn(app),
       })),
       { cause: error },

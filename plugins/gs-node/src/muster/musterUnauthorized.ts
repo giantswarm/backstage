@@ -75,9 +75,10 @@ export function toMusterUnauthorizedError(
   if (error instanceof MusterAuthRequiredError) {
     return new MusterUnauthorizedError(
       // muster's own wording, which frontends from before `reason` match
-      // on (a tab left open across a deploy runs one).
+      // on (a tab left open across a deploy runs one): "requires
+      // authentication" for a provider App grant too.
       error.apps.length > 0
-        ? `auth_required: server '${error.server}' needs your grant of a provider App (${error.apps
+        ? `auth_required: server '${error.server}' requires authentication: it needs your grant of a provider App (${error.apps
             .map(grant => grant.app)
             .join(', ')}) for this call.`
         : `auth_required: server '${error.server}' requires authentication; sign in to it to use its tools.`,
