@@ -2,9 +2,11 @@ import { magazineTarget } from '../components/HiveRedirect';
 import {
   ALL_TEAMS,
   historyForTeam,
+  hiveTeamSlug,
   matchesSearch,
   nowFigures,
   nowForTeam,
+  ownHiveTeamOf,
   plansRepositoriesForTeam,
   sameTeam,
   statusIntent,
@@ -21,7 +23,6 @@ import {
 
 const MAGAZINE_TEAM = fixtureMeta().sources.team;
 import { HIVE_TAB_ORDER, orderHiveTabs } from './hiveTabs';
-import { hiveTeamSlug, ownHiveTeamOf } from '../hooks/useHive';
 
 describe('hive', () => {
   it('compares team names without their emoji', () => {

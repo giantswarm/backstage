@@ -15,11 +15,11 @@ import { PlansApi, plansApiRef } from '../apis';
 import {
   ALL_TEAMS,
   DEFAULT_TEAM,
-  HIVE_TEAMS,
   historyForTeam,
   nowForTeam,
-  teamName,
+  ownHiveTeamOf,
   teamSetFor,
+  teamSlugOfGroupRef,
 } from '../lib/hive';
 import {
   History,
@@ -59,14 +59,17 @@ async function readMagazineJson<T>(
 /**
  * The team the reader picked in the header. A key of its own: the header
  * used to save the team it showed under `plans.hive.team` even when nobody
- * picked it, so that key holds Bumblebee for every reader and is not read.
+ * picked it, so that key holds Bumblebee for every reader. It is removed the
+ * first time storage is read, and earlier picks start over once.
  */
 const TEAM_STORAGE_KEY = 'plans.hive.team.chosen';
+const LEGACY_TEAM_STORAGE_KEY = 'plans.hive.team';
 const TEAM_SEARCH_PARAM = 'team';
 const teamListeners = new Set<() => void>();
 
 function readStoredTeam(): string | undefined {
   try {
+    window.localStorage.removeItem(LEGACY_TEAM_STORAGE_KEY);
     return window.localStorage.getItem(TEAM_STORAGE_KEY) ?? undefined;
   } catch {
     return undefined;
@@ -98,24 +101,6 @@ function storeTeam(team: string) {
   teamListeners.forEach(listener => listener());
 }
 
-/** `Honey Badger 🦡` → `team-honeybadger`, the GitHub team and catalog group. */
-export function hiveTeamSlug(team: string): string {
-  return `team-${teamName(team)
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '')}`;
-}
-
-/** `group:default/team-shield` → `team-shield`; undefined for other groups. */
-function teamSlugOfGroupRef(ref: string): string | undefined {
-  const match = ref.match(/^group:(?:[^/]+\/)?(team-[a-z0-9-]+)$/i);
-  return match ? match[1].toLowerCase() : undefined;
-}
-
-/** The first Hive team, in the header's order, whose group the reader is in. */
-export function ownHiveTeamOf(slugs: readonly string[]): string | undefined {
-  return HIVE_TEAMS.find(team => slugs.includes(hiveTeamSlug(team)));
-}
-
 // The reader's own Hive team, read once per page load and shared by the
 // header and every tab: `undefined` until read, then the team or `null`.
 let ownTeam: string | null | undefined;
@@ -130,32 +115,34 @@ function subscribeOwnTeam(listener: () => void) {
 const getOwnTeamSnapshot = () => ownTeam;
 
 async function readOwnTeam(
-  identityApi: IdentityApi | undefined,
+  identityApi: IdentityApi,
   catalogApi: CatalogApi | undefined,
 ): Promise<string | null> {
-  if (!identityApi) {
-    return null;
-  }
   const identity = await identityApi.getBackstageIdentity();
   const slugs = identity.ownershipEntityRefs
     .map(teamSlugOfGroupRef)
     .filter((slug): slug is string => Boolean(slug));
   // The identity carries the groups only when the sign-in matched a catalog
-  // user; the catalog's `hasMember` answers otherwise (as on Bot PRs).
+  // user; the catalog's `hasMember` answers otherwise (as on Bot PRs). A
+  // catalog that fails leaves the identity's groups to decide.
   if (catalogApi) {
-    const groups = await catalogApi.getEntities({
-      filter: {
-        kind: 'Group',
-        'spec.type': 'team',
-        'relations.hasMember': identity.userEntityRef,
-      },
-      fields: ['metadata.name'],
-    });
-    for (const group of groups.items) {
-      const slug = teamSlugOfGroupRef(`group:default/${group.metadata.name}`);
-      if (slug) {
-        slugs.push(slug);
+    try {
+      const groups = await catalogApi.getEntities({
+        filter: {
+          kind: 'Group',
+          'spec.type': 'team',
+          'relations.hasMember': identity.userEntityRef,
+        },
+        fields: ['metadata.name'],
+      });
+      for (const group of groups.items) {
+        const slug = teamSlugOfGroupRef(`group:default/${group.metadata.name}`);
+        if (slug) {
+          slugs.push(slug);
+        }
       }
+    } catch {
+      // The identity's groups, if any, still answer.
     }
   }
   return ownHiveTeamOf(slugs) ?? null;
@@ -164,19 +151,23 @@ async function readOwnTeam(
 /**
  * The reader's own Hive team from their catalog groups (`team-shield` →
  * `Shield 🛡️`), `null` when they are in none of Hive's teams, `undefined`
- * while it is read. Without the identity or catalog API (a test of a tab
- * alone), `null` at once.
+ * while it is read. Without the identity API (a tab rendered alone in a
+ * test), `null` at once. A read that fails answers `null` for now and is
+ * tried again by the next component that mounts.
  */
 function useOwnHiveTeam(): string | null | undefined {
   const apis = useApiHolder();
   const identityApi = apis.get(identityApiRef);
   const catalogApi = apis.get(catalogApiRef);
   useEffect(() => {
-    if (ownTeamRead) {
+    if (!identityApi || ownTeamRead) {
       return;
     }
     ownTeamRead = readOwnTeam(identityApi, catalogApi)
-      .catch(() => null)
+      .catch(() => {
+        ownTeamRead = undefined;
+        return null;
+      })
       .then(team => {
         ownTeam = team;
         ownTeamListeners.forEach(listener => listener());
@@ -193,7 +184,11 @@ function useOwnHiveTeam(): string | null | undefined {
 export type HiveTeamScope = [
   team: string,
   setTeam: (team: string) => void,
-  /** Whether the reader's own team, the default, has been read. */
+  /**
+   * Whether `team` is final: the URL names one, the reader picked one, or
+   * their own team has been read. Before that it is `DEFAULT_TEAM`, which a
+   * tab should not load.
+   */
   isResolved: boolean,
 ];
 
@@ -201,7 +196,9 @@ export type HiveTeamScope = [
  * The team every Hive tab is scoped to: `?team=` while the URL names one,
  * else the one the reader picked in the header (localStorage, across
  * visits), else the reader's own team from the catalog, else
- * `DEFAULT_TEAM`. `ALL_TEAMS` for every team.
+ * `DEFAULT_TEAM`. `ALL_TEAMS` for every team. Only a pick in the header is
+ * saved: a link's `?team=` scopes the page it opens and nothing more, so an
+ * old link that carries Bumblebee does not become the reader's team.
  */
 export function useHiveTeam(): HiveTeamScope {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -212,16 +209,7 @@ export function useHiveTeam(): HiveTeamScope {
     getTeamSnapshot,
   );
   const own = useOwnHiveTeam();
-  const isResolved = own !== undefined;
   const shown = picked ?? own ?? DEFAULT_TEAM;
-
-  // A link that names another team than the reader would see becomes their
-  // pick. The header writing the shown team into the URL is no pick.
-  useEffect(() => {
-    if (isResolved && urlTeam && urlTeam !== shown) {
-      storeTeam(urlTeam);
-    }
-  }, [isResolved, urlTeam, shown]);
 
   const setTeam = useCallback(
     (next: string) => {
@@ -238,13 +226,17 @@ export function useHiveTeam(): HiveTeamScope {
     [setSearchParams],
   );
 
-  return [urlTeam ?? shown, setTeam, isResolved];
+  return [
+    urlTeam ?? shown,
+    setTeam,
+    urlTeam !== null || picked !== undefined || own !== undefined,
+  ];
 }
 
 /**
  * Writes the shown team into `?team=` without making it the reader's pick,
- * so a tab that reads the URL (the roadmap's board, the Reviews tab) follows
- * the header and a copied link carries the team.
+ * so a tab that reads the URL (the roadmap's board) follows the header and a
+ * copied link carries the team.
  */
 export function useShowHiveTeamInUrl(): (team: string) => void {
   const [, setSearchParams] = useSearchParams();
@@ -355,11 +347,12 @@ async function readScoped<T>(
 }
 
 /** Now (`now.json` of the team's data set), scoped to a team. */
-export function useHiveNow(team: string) {
+export function useHiveNow(team: string, enabled = true) {
   const plansApi = useApi(plansApiRef);
   const queryClient = useQueryClient();
   return useQuery({
     queryKey: ['plans', 'hive', 'now', team],
+    enabled,
     queryFn: () => readScoped<Now>(queryClient, plansApi, 'now', team),
     select: ({ view, magazineTeam }): ScopedView<Now> => ({
       view: view && nowForTeam(view, team, magazineTeam),
@@ -369,11 +362,12 @@ export function useHiveNow(team: string) {
 }
 
 /** Hive's history (`history-weeks.json` of the team's data set), scoped to a team. */
-export function useHiveHistory(team: string) {
+export function useHiveHistory(team: string, enabled = true) {
   const plansApi = useApi(plansApiRef);
   const queryClient = useQueryClient();
   return useQuery({
     queryKey: ['plans', 'hive', 'history', team],
+    enabled,
     queryFn: () =>
       readScoped<History>(queryClient, plansApi, HIVE_HISTORY_WINDOW, team),
     select: ({ view, magazineTeam }): ScopedView<History> => ({
