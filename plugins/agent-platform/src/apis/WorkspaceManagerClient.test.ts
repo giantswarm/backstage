@@ -5,6 +5,8 @@ import {
 
 import { PortalSessionEndedError } from '../lib/portalSession';
 import {
+  authorizationError,
+  providerSignInTarget,
   WorkspaceManagerError,
   type Workspace,
   type WorkspaceDetail,
@@ -367,5 +369,86 @@ describe('WorkspaceManagerClient', () => {
     const error = await client.listWorkspaces('acme').catch(e => e);
     expect(error).toBeInstanceOf(PortalSessionEndedError);
     expect(error.message).not.toMatch(/token verification/);
+  });
+
+  describe("muster's answer for a provider App the person has not granted", () => {
+    /**
+     * muster's `auth_required` tool error in place of workspace-manager's
+     * `connect_required`, as muster-backend answers it: a 401 with the Apps
+     * from muster's `structuredContent.apps`.
+     */
+    const appGrantRequired = () =>
+      new MusterUnauthorizedError(
+        "auth_required: server 'workspace-manager' requires authentication: it needs your grant of a provider App (github) for this call.",
+        'server_sign_in_required',
+        'workspace-manager',
+        'lab',
+        'MusterUnauthorizedError',
+        [
+          {
+            app: 'github',
+            authUrl: 'https://muster.example/oauth/proxy/start?state=s1',
+          },
+        ],
+      );
+
+    it('reads it as not_connected with the sign-in to each App', async () => {
+      const { api, callTool } = makeMusterApi();
+      callTool.mockRejectedValue(appGrantRequired());
+      const client = new WorkspaceManagerClient(api, 'lab');
+
+      const error = await client.authorizeWorkspace('portal').catch(e => e);
+      expect(error).toBeInstanceOf(WorkspaceManagerError);
+      expect(error.kind).toBe('not_connected');
+      expect(error.connect).toEqual([
+        { provider: 'github', app: 'github', signIn: expect.any(String) },
+      ]);
+      expect(providerSignInTarget(error.connect[0].signIn)).toEqual({
+        name: 'github',
+        app: true,
+      });
+    });
+
+    it('keeps a sign-in to the server itself unavailable', async () => {
+      const { api, callTool } = makeMusterApi();
+      callTool.mockRejectedValue(
+        new MusterUnauthorizedError(
+          "auth_required: server 'workspace-manager' requires authentication; sign in to it to use its tools.",
+          'server_sign_in_required',
+          'workspace-manager',
+          'lab',
+        ),
+      );
+      const client = new WorkspaceManagerClient(api, 'lab');
+
+      await expect(client.authorizeWorkspace('portal')).rejects.toMatchObject({
+        kind: 'unavailable',
+        connect: [],
+      });
+    });
+
+    it('still reads connect_required answered as data', async () => {
+      const { api } = makeMusterApi({
+        workspace: 'portal',
+        outcome: 'connect_required',
+        status: 'grant_required',
+        apps: ['github'],
+        reason: 'grant github in muster to use workspace portal',
+        connect: [
+          {
+            provider: 'github',
+            signIn:
+              'Grant the github App in muster first: core_auth_login app=github',
+          },
+        ],
+      });
+      const client = new WorkspaceManagerClient(api, 'lab');
+
+      const error = authorizationError(
+        await client.authorizeWorkspace('portal'),
+      );
+      expect(error?.kind).toBe('not_connected');
+      expect(error?.connect.map(c => c.provider)).toEqual(['github']);
+    });
   });
 });

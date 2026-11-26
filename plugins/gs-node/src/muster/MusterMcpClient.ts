@@ -21,6 +21,8 @@ import {
   musterServerOfTool,
   MUSTER_INPUT_REQUIRED_STATUS,
   type MusterInputAnswer,
+  type MusterProviderAppGrant,
+  musterProviderAppGrantsOf,
   type MusterUrlElicitation,
   readJwtClaims,
   serverInfoIconOf,
@@ -355,17 +357,21 @@ function interruptedOf(meta: unknown, text: string | undefined): boolean {
 /**
  * The server an errored result is muster's auth_required answer for, and the
  * sign-in link it carries: `structuredContent: {status: "auth_required",
- * server, authUrl?}`, on the result or on the wrapped result in its text.
+ * server, authUrl?, apps?}`, on the result or on the wrapped result in its
+ * text. `apps` names the provider Apps the call needs the person's grant of,
+ * when that, not a sign-in to the server, is what muster asks for.
  */
 function authRequiredOf(
   structuredContent: unknown,
   text: string | undefined,
-): { server: string; authUrl?: string } | undefined {
+):
+  | { server: string; authUrl?: string; apps: MusterProviderAppGrant[] }
+  | undefined {
   const structured = (structuredContent ??
     (text === undefined
       ? undefined
       : innerResultOf(text)?.structuredContent)) as
-    | { status?: unknown; server?: unknown; authUrl?: unknown }
+    | { status?: unknown; server?: unknown; authUrl?: unknown; apps?: unknown }
     | null
     | undefined;
   if (
@@ -378,7 +384,11 @@ function authRequiredOf(
     typeof structured.authUrl === 'string' && structured.authUrl !== ''
       ? structured.authUrl
       : undefined;
-  return { server: structured.server, authUrl };
+  return {
+    server: structured.server,
+    authUrl,
+    apps: musterProviderAppGrantsOf(structured.apps),
+  };
 }
 
 /**
@@ -628,6 +638,8 @@ export class MusterAuthRequiredError extends MusterToolError {
     override readonly server: string,
     readonly authUrl: string | undefined,
     [message, ...details]: string[],
+    /** The provider Apps to grant, when muster asks for those. */
+    readonly apps: MusterProviderAppGrant[] = [],
   ) {
     super(
       message ?? `auth_required: server '${server}' requires authentication`,
@@ -842,7 +854,10 @@ export class MusterMcpClient {
     try {
       return await call();
     } catch (error) {
-      if (error instanceof MusterAuthRequiredError) {
+      // A provider App grant is not a sign-in to the server: it is not
+      // held, so a reload or a second tab gets muster's answer with its Apps,
+      // and the call after the grant reaches muster.
+      if (error instanceof MusterAuthRequiredError && error.apps.length === 0) {
         this.signIns.remember(caller, toolName, {
           server: error.server,
           authUrl: error.authUrl,
@@ -1535,6 +1550,7 @@ export class MusterMcpClient {
           authRequired.server,
           authRequired.authUrl,
           texts,
+          authRequired.apps,
         );
       }
       const [message, ...details] = texts;

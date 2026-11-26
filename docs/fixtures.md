@@ -407,7 +407,9 @@ agent-manager.
   the person granted and one they have not, which one workspace of each
   installation selects from; the access check before a Session answers
   granted, refused (a repository the person cannot read, a workspace not
-  synced yet or being deleted) or connect_required (that workspace). The
+  synced yet or being deleted) or connect_required (that workspace), which
+  the fixture muster answers as the real one does: its `auth_required` 401
+  naming the Apps to grant, never the manager's answer. The
   repository picker pages, searches and filters the owners' repositories
   from the manager's own listing, whatever the person's grant, and the
   preview resolves a selection as workspace-manager does. Creating, editing,
@@ -668,6 +670,12 @@ handler of a fixture MCP server, and lists those servers as connected and their
 tools in the catalogue. A call no handler answers fails with "Fixture mode has
 no handler for the tool …", in the console and as the page's error state, never
 as an empty result: add the handler.
+
+A handler answers as the MCP server does, and the fixture `MusterApi` answers
+as muster does: an answer of `status: "grant_required"` with `apps` (a manager
+that needs the person's grant of a provider App) never reaches the page, but
+fails the call with muster-backend's 401, `server_sign_in_required` with
+`error.apps`, as muster's `auth_required` error does on an installation.
 
 A plugin contributes its servers with an extension that attaches to
 `FIXTURE_MCP_SERVERS.attachTo` (`api:muster/muster`, input `fixtureServers`)

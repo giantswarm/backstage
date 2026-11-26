@@ -9,6 +9,7 @@ import {
   musterServerOfTool,
   musterToolErrorKindOf,
 } from './MusterMcpClient';
+import { toMusterUnauthorizedError } from './musterUnauthorized';
 
 const SECRET = 'do-not-leak-this-secret';
 
@@ -242,6 +243,55 @@ describe('MusterMcpClient tool errors', () => {
 
     expect(error).toBeInstanceOf(MusterAuthRequiredError);
     expect(error.status).toBe(401);
+  });
+
+  it("keeps the provider Apps muster's grant answer names", async () => {
+    // muster's answer to a call of a server that receives the person's
+    // provider App grants, made without them (its provider_app_signin.go).
+    const text =
+      "auth_required: server 'workspace-manager' needs your grant of a provider App for this call. Sign in once per App, then call again:\n- github: https://muster.example/oauth/proxy/start?state=s1";
+    const { client } = buildClient({
+      content: [{ type: 'text', text }],
+      structuredContent: {
+        status: 'auth_required',
+        server: 'workspace-manager',
+        authUrl: 'https://muster.example/oauth/proxy/start?state=s1',
+        apps: [
+          {
+            app: 'github',
+            authUrl: 'https://muster.example/oauth/proxy/start?state=s1',
+          },
+          { app: 'chatgpt', userCode: 'ABCD', verificationUrl: 'https://x' },
+        ],
+      },
+      isError: true,
+    });
+
+    const error = (await client
+      .callTool('x_workspace-manager_authorize_workspace', {})
+      .catch(e => e)) as MusterAuthRequiredError;
+
+    expect(error).toBeInstanceOf(MusterAuthRequiredError);
+    expect(error.server).toBe('workspace-manager');
+    expect(error.apps).toEqual([
+      {
+        app: 'github',
+        authUrl: 'https://muster.example/oauth/proxy/start?state=s1',
+      },
+      { app: 'chatgpt' },
+    ]);
+
+    const unauthorized = toMusterUnauthorizedError(error, {
+      installation: 'gazelle',
+    });
+    expect(unauthorized).toMatchObject({
+      reason: 'server_sign_in_required',
+      server: 'workspace-manager',
+      apps: error.apps,
+    });
+    expect(unauthorized?.message).toContain('github, chatgpt');
+    // Frontends that read no `reason` match this phrase.
+    expect(unauthorized?.message).toMatch(/requires authentication/);
   });
 
   it.each([
