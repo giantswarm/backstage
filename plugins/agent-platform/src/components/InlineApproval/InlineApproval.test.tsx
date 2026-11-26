@@ -16,10 +16,34 @@ describe('InlineApproval helpers', () => {
     ).toBeUndefined();
     expect(
       otherAgent(view({ namespace: 'team-b', name: 'review' }), session),
-    ).toBe('team-b/review');
+    ).toMatchObject({ name: 'team-b/review', hasDisplayName: false });
     expect(
       otherAgent(view({ namespace: 'team-a', name: 'sub' }), session),
-    ).toBe('team-a/sub');
+    ).toMatchObject({ name: 'team-a/sub', technical: 'team-a/sub' });
+  });
+
+  it('names the asking agent by display name, the technical name beside it', () => {
+    const session = { namespace: 'team-a', name: 'review' };
+    expect(
+      otherAgent(
+        view({ namespace: 'team-a', name: 'sub', displayName: ' Sub Agent ' }),
+        session,
+      ),
+    ).toEqual({
+      name: 'Sub Agent',
+      technical: 'team-a/sub',
+      hasDisplayName: true,
+    });
+    expect(
+      otherAgent(
+        view({ namespace: 'team-a', name: 'sub', displayName: '  ' }),
+        session,
+      ),
+    ).toEqual({
+      name: 'team-a/sub',
+      technical: 'team-a/sub',
+      hasDisplayName: false,
+    });
   });
 
   it('says when the request expires', () => {

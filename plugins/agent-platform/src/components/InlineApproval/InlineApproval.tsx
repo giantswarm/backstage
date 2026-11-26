@@ -52,14 +52,25 @@ export function expiresIn(expiresAt: string, now = Date.now()): string {
   return minutes < 1 ? 'in less than a minute' : `in ${minutes} min`;
 }
 
+/** An asking agent as the chat names it. */
+export type AskingAgent = {
+  /** The display name when the binding carries one, else `technical`. */
+  name: string;
+  /** `namespace/name`, the secondary detail. */
+  technical: string;
+  /** The display name is shown, so the technical name is secondary. */
+  hasDisplayName: boolean;
+};
+
 /**
  * The asking agent differs from the session's agent (a sub-agent the
- * session's agent invoked, or another one): only then the chat names it.
+ * session's agent invoked, or another one): only then the chat names it, by
+ * display name with `namespace/name` as secondary detail.
  */
 export function otherAgent(
   view: ApprovalView,
   sessionAgent: SessionAgent | undefined,
-): string | undefined {
+): AskingAgent | undefined {
   if (!view.agent || !sessionAgent) {
     return undefined;
   }
@@ -69,9 +80,15 @@ export function otherAgent(
   if (sameName && sameNamespace) {
     return undefined;
   }
-  return view.agent.namespace
+  const technical = view.agent.namespace
     ? `${view.agent.namespace}/${view.agent.name}`
     : view.agent.name;
+  const displayName = view.agent.displayName?.trim();
+  return {
+    name: displayName || technical,
+    technical,
+    hasDisplayName: Boolean(displayName),
+  };
 }
 
 const useStyles = makeStyles(theme => ({
@@ -202,7 +219,21 @@ function RequestDetails({
         >
           <TriangleAlert size="1.25em" aria-hidden />
           <span>
-            Asked by another agent, {asker}, not the agent of this conversation.
+            Asked by another agent,{' '}
+            <span title={asker.technical} data-testid="approval-asker-name">
+              {asker.name}
+            </span>
+            {asker.hasDisplayName && (
+              <>
+                {' '}
+                (
+                <code data-testid="approval-asker-technical">
+                  {asker.technical}
+                </code>
+                )
+              </>
+            )}
+            , not the agent of this conversation.
           </span>
         </div>
       )}

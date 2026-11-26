@@ -995,7 +995,12 @@ export type ApprovalView = {
   preset?: ApprovalValue[];
   steps?: ApprovalStepView[];
   agentSays?: string;
-  agent?: { namespace?: string; name: string };
+  /**
+   * The asking agent. `displayName` is the name people know it by, from the
+   * session binding agent-manager sent (absent without one): show it as the
+   * name and `namespace/name` as secondary detail.
+   */
+  agent?: { namespace?: string; name: string; displayName?: string };
   why: { setting: string; source: string };
   actsFor: { name?: string; subject: string; issuer: string };
   callerKind: string;

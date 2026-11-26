@@ -651,6 +651,33 @@ describe('UrlElicitationPanel, approval decided inline', () => {
     );
   });
 
+  it('names the other agent by its display name, with the technical name beside it', async () => {
+    await renderPanel({
+      approvals: inlineApprovals({
+        get: jest.fn().mockResolvedValue({
+          view: {
+            ...VIEW,
+            agent: {
+              namespace: 'team-a',
+              name: 'alert-review',
+              displayName: 'Alert Review',
+            },
+          },
+        }),
+      }),
+      sessionAgent: { namespace: 'team-a', name: 'orchestrator' },
+    });
+
+    const warning = await screen.findByTestId('approval-other-agent');
+    expect(warning).toHaveTextContent(
+      'Asked by another agent, Alert Review (team-a/alert-review), not the agent of this conversation.',
+    );
+    expect(screen.getByTestId('approval-asker-name')).toHaveAttribute(
+      'title',
+      'team-a/alert-review',
+    );
+  });
+
   it('approves on the click with the digest of what is shown, and the chat goes on at once', async () => {
     const approvals = inlineApprovals();
     const user = userEvent.setup();
