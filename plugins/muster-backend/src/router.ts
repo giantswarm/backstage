@@ -49,7 +49,13 @@ import {
 } from './mcpUsage';
 import { UsageCache, usageCacheKey } from './usageCache';
 import { isOnMusterPages, requestHandoffTicket } from './handoff';
-import { type WorkloadTokenSource, workloadTokenSource } from './workloadToken';
+import {
+  type WorkloadTokenSource,
+  workloadInstallationOf,
+  workloadTokenSource,
+} from './workloadToken';
+import { assertOwnToken } from './ownToken';
+import type { CatalogService } from '@backstage/plugin-catalog-node';
 import { approvalIdOf, fetchApproval, postApprovalDecision } from './approvals';
 
 const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
@@ -111,6 +117,12 @@ export interface RouterOptions {
    * names.
    */
   workloadToken?: WorkloadTokenSource;
+  /**
+   * Where a staff person is looked up to tell whether the token forwarded
+   * for the approval routes and the handoff is theirs (`ownToken.ts`).
+   * Without it, such a person's token is refused there.
+   */
+  catalog?: CatalogService;
 }
 
 /**
@@ -305,6 +317,18 @@ const NO_PERSON_REFUSAL = {
     'This muster takes no decisions from the portal: it runs without per-user sign-in.',
 };
 
+/**
+ * What an approval route answers for an installation that is not the
+ * portal's own (`workloadInstallationOf`): its muster gets no workload token,
+ * so it takes no decision from the portal and is not asked.
+ */
+const NOT_WORKLOAD_INSTALLATION_REFUSAL = {
+  status: 403,
+  error: 'untrusted_workload',
+  message:
+    "This portal decides inline only on its own installation's muster: open muster's page to decide.",
+};
+
 /** The approval id of the body's `url`, which must be the installation's muster approval page. */
 function approvalLinkId(
   req: express.Request,
@@ -410,6 +434,13 @@ export async function createRouter(
       );
     }
   }
+
+  // The one installation whose muster gets the portal's workload token.
+  const workloadInstallation = workloadInstallationOf(
+    config,
+    [...installations.keys()],
+    logger,
+  );
 
   if (installations.size === 0) {
     logger.info(
@@ -600,6 +631,42 @@ export async function createRouter(
       throw musterTokenExpiredError(installation.name);
     }
     return { authToken };
+  };
+
+  /** Why an approval route asks no muster (see `presentedTokens`). */
+  const refusalWithoutMuster = (installation: MusterInstallationConfig) =>
+    hasPerUserSession(installation)
+      ? NOT_WORKLOAD_INSTALLATION_REFUSAL
+      : NO_PERSON_REFUSAL;
+
+  /**
+   * The person's token and the portal's workload token for a route that
+   * presents both to muster (`/handoff`, `/approvals/*`), or `undefined` when
+   * muster is not to be asked: no per-person token, or an installation that
+   * is not the portal's own (its muster gets no workload token, which is
+   * valid at the portal's own muster only). Refuses (403) a token that is not the signed-in person's own
+   * before muster is called: the workload token tells muster that the portal
+   * presents the person's token, so it presents nobody else's.
+   */
+  const presentedTokens = async (
+    req: express.Request,
+    installation: MusterInstallationConfig,
+    route: string,
+  ): Promise<{ token: string; workloadToken?: string } | undefined> => {
+    const { authToken } = readCallOptions(req, installation);
+    if (!authToken || installation.name !== workloadInstallation) {
+      return undefined;
+    }
+    await assertOwnToken({
+      req,
+      token: authToken,
+      httpAuth: options.httpAuth,
+      catalog: options.catalog,
+      logger,
+      installation: installation.name,
+      route,
+    });
+    return { token: authToken, workloadToken: await workloadToken() };
   };
 
   /**
@@ -1097,13 +1164,12 @@ export async function createRouter(
       res.json({});
       return;
     }
-    const { authToken } = readCallOptions(req, installation);
-    const ticket = authToken
+    const presented = await presentedTokens(req, installation, 'handoff');
+    const ticket = presented
       ? await requestHandoffTicket({
           installation,
           url,
-          token: authToken,
-          workloadToken: await workloadToken(),
+          ...presented,
           logger,
           ...(options.handoffFetch && { fetchFn: options.handoffFetch }),
         })
@@ -1123,18 +1189,21 @@ export async function createRouter(
   router.post('/approvals/view', async (req, res) => {
     const { config: installation } = resolveInstallation(req);
     const id = approvalLinkId(req, installation);
-    const { authToken } = readCallOptions(req, installation);
     res.setHeader('Cache-Control', 'no-store');
-    if (!authToken) {
-      res.json({ refusal: NO_PERSON_REFUSAL });
+    const presented = await presentedTokens(
+      req,
+      installation,
+      'approvals/view',
+    );
+    if (!presented) {
+      res.json({ refusal: refusalWithoutMuster(installation) });
       return;
     }
     res.json(
       await fetchApproval({
         installation,
         id,
-        token: authToken,
-        workloadToken: await workloadToken(),
+        ...presented,
         logger,
         ...(options.handoffFetch && { fetchFn: options.handoffFetch }),
       }),
@@ -1158,10 +1227,14 @@ export async function createRouter(
     if (!digest) {
       throw new InputError('digest is required');
     }
-    const { authToken } = readCallOptions(req, installation);
     res.setHeader('Cache-Control', 'no-store');
-    if (!authToken) {
-      res.json({ refusal: NO_PERSON_REFUSAL });
+    const presented = await presentedTokens(
+      req,
+      installation,
+      'approvals/decision',
+    );
+    if (!presented) {
+      res.json({ refusal: refusalWithoutMuster(installation) });
       return;
     }
     res.json(
@@ -1170,8 +1243,7 @@ export async function createRouter(
         id,
         decision,
         digest,
-        token: authToken,
-        workloadToken: await workloadToken(),
+        ...presented,
         logger,
         ...(options.handoffFetch && { fetchFn: options.handoffFetch }),
       }),

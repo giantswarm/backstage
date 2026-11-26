@@ -22,6 +22,16 @@ export interface Config {
     workloadTokenFile?: string;
 
     /**
+     * The installation whose muster gets the workload token above: the one
+     * the portal's ServiceAccount belongs to, where the token is valid. No
+     * other muster receives it, so inline approval and the sign-in handoff
+     * work there only. Defaults to the `gs.installations` entry whose
+     * `oidcTokenProvider` is `gs.authProvider` (the home installation), else
+     * the only muster installation.
+     */
+    workloadInstallation?: string;
+
+    /**
      * Overrides of, and additions to, the derived muster installations.
      *
      * The proxy derives one installation per `gs.installations` entry with a

@@ -149,6 +149,25 @@ token it mints for the lab portal's ServiceAccount and points
 `muster.workloadTokenFile` at it. The portal backend decides only on the
 person's click.
 
+The workload token tells muster that the portal presents the person's token,
+so the portal presents only the signed-in person's own. Before muster is
+called, all three routes check that the forwarded token's identity is the
+Backstage user the request is signed in as, by the mapping the portal's
+sign-in applies (`oidcIdentity` in gs-node): `user:oidc/<hash of sub>`, or
+for staff the catalog user with that GitHub username or verified email. A
+token of another person (one a portal user obtained from a server muster
+forwarded it to, say), a request without a user, a service or the shared
+guest is refused with 403 and logged (`muster_token_not_own`, with the user,
+the installation and why, never the token).
+
+Only one installation's muster gets the workload token: the one the portal's
+ServiceAccount belongs to, where the token is valid. `muster.workloadInstallation`
+names it; without it, the `gs.installations` entry whose `oidcTokenProvider`
+is `gs.authProvider`, else the only muster installation. Inline approval and
+the sign-in handoff work on that installation only: for every other the
+approval routes answer the refusal `untrusted_workload` and `/handoff` `{}`,
+without asking its muster, and the chat opens muster's own pages.
+
 `GET /api/muster/installations` reports each installation with its `source`
 (`derived` or `configured`), whether it requires the person's token
 (`requiresAuth`; always true for a derived installation, since every muster

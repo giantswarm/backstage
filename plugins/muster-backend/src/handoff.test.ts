@@ -1,5 +1,5 @@
 import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
-import { mockServices } from '@backstage/backend-test-utils';
+import { mockCredentials, mockServices } from '@backstage/backend-test-utils';
 import express from 'express';
 import request from 'supertest';
 import {
@@ -12,6 +12,7 @@ import {
   requestHandoffTicket,
 } from './handoff';
 import { createRouter, MUSTER_AUTH_HEADER } from './router';
+import { PERSON_REF, PERSON_TOKEN } from './testPerson';
 
 const PAGE =
   'https://muster.gazelle.example/approvals/ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -63,7 +64,7 @@ describe('handoff helpers', () => {
         url: 'https://muster.gazelle.example/mcp',
       },
       url: PAGE,
-      token: 'person-token',
+      token: PERSON_TOKEN,
       logger,
       fetchFn,
     });
@@ -74,7 +75,7 @@ describe('handoff helpers', () => {
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({
-          Authorization: 'Bearer person-token',
+          Authorization: `Bearer ${PERSON_TOKEN}`,
         }),
         body: JSON.stringify({ url: PAGE }),
         redirect: 'error',
@@ -100,14 +101,14 @@ describe('handoff helpers', () => {
         url: 'https://muster.gazelle.example/mcp',
       },
       url: PAGE,
-      token: 'person-token',
+      token: PERSON_TOKEN,
       logger,
       fetchFn: jest.fn().mockImplementation(impl),
     });
 
     expect(ticket).toBeUndefined();
     expect(JSON.stringify((logger.info as jest.Mock).mock.calls)).not.toContain(
-      'person-token',
+      PERSON_TOKEN,
     );
   });
 });
@@ -131,7 +132,9 @@ describe('POST /handoff', () => {
     const router = await createRouter({
       logger,
       config,
-      httpAuth: mockServices.httpAuth(),
+      httpAuth: mockServices.httpAuth({
+        defaultCredentials: mockCredentials.user(PERSON_REF),
+      }),
       client: {} as MusterMcpClient,
       reachability: new ReachabilityCache({
         probe: async () => ({ reachable: true, checkedAt: 0 }),
@@ -151,14 +154,14 @@ describe('POST /handoff', () => {
 
     const response = await request(app)
       .post('/handoff?installation=gazelle')
-      .set(MUSTER_AUTH_HEADER, 'person-token')
+      .set(MUSTER_AUTH_HEADER, PERSON_TOKEN)
       .send({ url: PAGE });
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ ticket: 'T1' });
     expect(response.headers['cache-control']).toBe('no-store');
     expect(fetchFn.mock.calls[0][1].headers.Authorization).toBe(
-      'Bearer person-token',
+      `Bearer ${PERSON_TOKEN}`,
     );
     expect(fetchFn.mock.calls[0][1].headers['X-Muster-Approval-Client']).toBe(
       'portal-workload-token',
@@ -179,7 +182,7 @@ describe('POST /handoff', () => {
 
     const response = await request(app)
       .post('/handoff?installation=gazelle')
-      .set(MUSTER_AUTH_HEADER, 'person-token')
+      .set(MUSTER_AUTH_HEADER, PERSON_TOKEN)
       .send({ url: PAGE });
 
     expect(response.status).toBe(200);
@@ -192,7 +195,7 @@ describe('POST /handoff', () => {
 
     const response = await request(app)
       .post('/handoff?installation=gazelle')
-      .set(MUSTER_AUTH_HEADER, 'person-token')
+      .set(MUSTER_AUTH_HEADER, PERSON_TOKEN)
       .send({ url: 'https://evil.example/approvals/X' });
 
     expect(response.status).toBe(400);

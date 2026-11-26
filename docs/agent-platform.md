@@ -3316,7 +3316,9 @@ person's token of the portal's client only together with it) and the digest
 of the view that is shown (`POST /api/muster/approvals/decision`,
 muster `POST /approvals/<id>/decision`), and muster refuses it if the request
 is not that one (the card then shows the request again and says so), if the
-token is not the person's own (an agent's credential), if the portal's OAuth
+token is not the person's own (an agent's credential; the muster backend
+itself refuses, before muster is called, a forwarded token that is not the
+signed-in portal user's), if the portal's OAuth
 client is not on muster's `approval.trustedClients`, if the portal backend's
 workload token is missing or not allowed to `decide`, if the request is someone
 else's, expired, used or already decided. On success the chat answers the
@@ -3326,8 +3328,9 @@ shows. A request already decided on muster's page goes on with what stands.
 _Open in muster_ stays as a secondary way: muster's page in a new tab (no
 consent dialog, no sign-in handoff, no return: the page signs the browser in
 itself). When muster shows nothing here (the portal not trusted there, muster
-unreachable, someone else's request), the card says why and offers _Done_ for
-after a decision on muster's page. _Not now_ answers `decline`.
+unreachable, someone else's request, an installation other than the portal's
+own, whose muster never gets the portal's workload token), the card says why
+and offers _Done_ for after a decision on muster's page. _Not now_ answers `decline`.
 
 **Any other URL elicitation** (muster's connector sign-in, any later page)
 renders as one generic prompt. The server's `message` is the heading, or
