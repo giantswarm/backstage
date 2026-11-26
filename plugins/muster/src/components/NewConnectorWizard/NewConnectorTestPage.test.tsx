@@ -1029,6 +1029,114 @@ describe('NewConnectorTestPage: Test & Tools', () => {
       });
     });
 
+    describe('by approval setting', () => {
+      async function openReviewed() {
+        connectedWith(approvalTools({}, 'tool'), {
+          rule: 'Ask',
+          tools: {
+            search_issues: 'Allow',
+            get_issue: 'Allow',
+            add_comment: 'Ask',
+            create_issue: 'Ask',
+            delete_project: 'Block',
+          },
+        });
+        await renderTestStep();
+        await screen.findByText(
+          'Your own settings. A preset fills every tool again.',
+        );
+      }
+
+      async function pickApproval(option: RegExp) {
+        await userEvent.click(
+          screen.getByRole('button', { name: /Filter by approval/ }),
+        );
+        await userEvent.click(
+          await screen.findByRole('option', { name: option }),
+        );
+        await userEvent.keyboard('{Escape}');
+      }
+
+      it('lists only the blocked tools when Block is picked, and offers the setting counts', async () => {
+        await openReviewed();
+        await userEvent.click(
+          screen.getByRole('button', { name: /Filter by approval/ }),
+        );
+        expect(
+          within(await screen.findByRole('listbox'))
+            .getAllByRole('option')
+            .map(option => option.textContent),
+        ).toEqual(['Allow 2', 'Ask 2', 'Block 1']);
+        await userEvent.click(screen.getByRole('option', { name: /Block/ }));
+        await userEvent.keyboard('{Escape}');
+
+        expect(rows()).toHaveLength(1);
+        expect(screen.getByText('delete_project')).toBeInTheDocument();
+        expect(
+          screen.getByText(/4 of 5 tools are hidden by the search or filter/),
+        ).toBeInTheDocument();
+      });
+
+      it('keeps a row listed, marked, when its setting is changed under a filter, until the filter changes', async () => {
+        await openReviewed();
+        await pickApproval(/Ask/);
+        expect(rows()).toHaveLength(2);
+
+        await userEvent.click(
+          within(pills('add_comment')).getByRole('radio', { name: 'Allow' }),
+        );
+        expect(rows()).toHaveLength(2);
+        expect(
+          screen.getAllByText("Doesn't match the filter now"),
+        ).toHaveLength(1);
+        // The counts follow the pills.
+        await userEvent.click(
+          screen.getByRole('button', { name: /Filter by approval/ }),
+        );
+        expect(
+          within(await screen.findByRole('listbox'))
+            .getAllByRole('option')
+            .map(option => option.textContent),
+        ).toEqual(['Allow 3', 'Ask 1', 'Block 1']);
+
+        // Changing the filter lets the row go.
+        await userEvent.click(screen.getByRole('option', { name: /Block/ }));
+        await userEvent.keyboard('{Escape}');
+        expect(
+          screen.queryByText("Doesn't match the filter now"),
+        ).not.toBeInTheDocument();
+        // Ask and Block now: create_issue and delete_project.
+        expect(rows()).toHaveLength(2);
+        expect(screen.queryByText('add_comment')).not.toBeInTheDocument();
+      });
+
+      it('applies a preset to the shown tools only, and saves the hidden ones as they were', async () => {
+        await openReviewed();
+        await pickApproval(/Ask/);
+        expect(
+          screen.getByText('Set the 2 shown tools to'),
+        ).toBeInTheDocument();
+        await userEvent.click(
+          screen.getByRole('button', { name: 'Allow all' }),
+        );
+        // Both rows no longer match but stay, marked.
+        expect(rows()).toHaveLength(2);
+        expect(
+          screen.getAllByText("Doesn't match the filter now"),
+        ).toHaveLength(2);
+
+        await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+        await waitFor(() => expect(setApprovalCalls()).toHaveLength(1));
+        expect(setApprovalCalls()[0][1].approval.tools).toEqual({
+          search_issues: 'Allow',
+          get_issue: 'Allow',
+          add_comment: 'Allow',
+          create_issue: 'Allow',
+          delete_project: 'Block',
+        });
+      });
+    });
+
     it('offers the same search to a person who cannot change the settings', async () => {
       connectedWith(approvalTools({ connectorAdmin: false }, 'tool'), {
         tools: {

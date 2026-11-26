@@ -1,4 +1,4 @@
-import { useCallback, useId, useState } from 'react';
+import { useCallback, useId, useMemo, useState } from 'react';
 import {
   Button,
   Flex,
@@ -35,6 +35,7 @@ import {
   ApprovalPills,
   EffectBadge,
   MarkerBadge,
+  toolApprovalFacet,
   toolEffectFacet,
   ToolListToolbar,
   useToolListFilter,
@@ -51,14 +52,14 @@ const TOOL_PAGE = 6;
  * The same "What it does" dropdown as the connector's Tools tab; a tool muster
  * does not list counts nowhere.
  */
-const EFFECT_FACETS: readonly CatalogFacet<ApprovalRow>[] = [
-  toolEffectFacet<ApprovalRow>(row => {
+const EFFECT_FACET: CatalogFacet<ApprovalRow> = toolEffectFacet<ApprovalRow>(
+  row => {
     if (!row.listed) {
       return undefined;
     }
     return row.readOnly ? 'reads' : 'changes';
-  }),
-];
+  },
+);
 
 /** Whether a row answers the search: as the Tools tab's, by name or text. */
 function rowMatches(row: ApprovalRow, query: string): boolean {
@@ -153,7 +154,15 @@ export type ToolApprovalEditorProps = {
 };
 
 /** A tool's markers beside its name: what it does, New, Changed. */
-function RowMarkers({ row, changed }: { row: ApprovalRow; changed: boolean }) {
+function RowMarkers({
+  row,
+  changed,
+  unmatched,
+}: {
+  row: ApprovalRow;
+  changed: boolean;
+  unmatched: boolean;
+}) {
   const classes = useStyles();
   return (
     <span className={classes.markers}>
@@ -163,6 +172,9 @@ function RowMarkers({ row, changed }: { row: ApprovalRow; changed: boolean }) {
       )}
       {row.isNew && <MarkerBadge tone="neutral">New</MarkerBadge>}
       {changed && <MarkerBadge tone="warning">Changed</MarkerBadge>}
+      {unmatched && (
+        <MarkerBadge tone="neutral">Doesn't match the filter now</MarkerBadge>
+      )}
     </span>
   );
 }
@@ -199,11 +211,52 @@ export function ToolApprovalEditor({
     (row: ApprovalRow) => rowMatches(row, query),
     [query],
   );
-  const {
-    filters,
-    shown: visibleRows,
-    isNarrowed,
-  } = useToolListFilter({ items: rows, matches, facets: EFFECT_FACETS });
+  // What a row shows as its setting: the draft's while editing, what muster
+  // reports in the read-only view. The facet reads it, so its counts follow
+  // the pills.
+  const settingOf = useCallback(
+    (row: ApprovalRow): ApprovalSetting =>
+      !editing && row.reported
+        ? reportedSetting(row.reported)
+        : (draft.tools[row.key] ?? draft.rule),
+    [editing, draft],
+  );
+  const facets = useMemo(
+    () => [EFFECT_FACET, toolApprovalFacet<ApprovalRow>(settingOf)],
+    [settingOf],
+  );
+  const { filters, shown, isNarrowed } = useToolListFilter({
+    items: rows,
+    matches,
+    facets,
+  });
+
+  // A row whose setting is changed while a filter is active stays listed
+  // (it may no longer match) until the search or a filter changes, so the
+  // pill just clicked does not take its row away.
+  const listKey = `${filters.key}|${query}`;
+  const [sticky, setSticky] = useState<{ key: string; rows: Set<string> }>({
+    key: listKey,
+    rows: new Set(),
+  });
+  const stuck = sticky.key === listKey ? sticky.rows : undefined;
+  const keepListed = (keys: readonly string[]) => {
+    if (isNarrowed) {
+      setSticky({ key: listKey, rows: new Set([...(stuck ?? []), ...keys]) });
+    }
+  };
+  const changeTool = (key: string, setting: ApprovalSetting) => {
+    keepListed([key]);
+    approval.setTool(key, setting);
+  };
+  const matching = useMemo(() => new Set(shown.map(row => row.key)), [shown]);
+  const visibleRows = useMemo(
+    () =>
+      stuck
+        ? rows.filter(row => matching.has(row.key) || stuck.has(row.key))
+        : shown,
+    [rows, shown, matching, stuck],
+  );
   const searchable = isSearchableList(rows.length, isNarrowed);
   const hidden = rows.length - visibleRows.length;
   const presetHint = preset ? APPROVAL_PRESET_HINTS[preset] : undefined;
@@ -262,7 +315,7 @@ export function ToolApprovalEditor({
         />
       )}
       <ShowMore
-        key={`${filters.key}|${query}`}
+        key={listKey}
         items={visibleRows}
         initial={TOOL_PAGE}
         noun="tool"
@@ -278,7 +331,11 @@ export function ToolApprovalEditor({
               return (
                 <div key={row.key} role="listitem" className={classes.tool}>
                   <span className={classes.toolText}>
-                    <RowMarkers row={row} changed={changed} />
+                    <RowMarkers
+                      row={row}
+                      changed={changed}
+                      unmatched={!matching.has(row.key)}
+                    />
                     {description && (
                       <Text variant="body-small" color="secondary">
                         {description}
@@ -293,7 +350,10 @@ export function ToolApprovalEditor({
                             size="small"
                             variant="tertiary"
                             aria-label={`Reset ${row.key} to ${saved}`}
-                            onPress={() => approval.resetTool(row.key)}
+                            onPress={() => {
+                              keepListed([row.key]);
+                              approval.resetTool(row.key);
+                            }}
                           >
                             Reset
                           </Button>
@@ -303,7 +363,7 @@ export function ToolApprovalEditor({
                           hintIds={hintIds}
                           options={APPROVAL_SETTINGS}
                           value={setting}
-                          onChange={next => approval.setTool(row.key, next)}
+                          onChange={next => changeTool(row.key, next)}
                         />
                       </>
                     ) : (
@@ -353,19 +413,20 @@ export function ToolApprovalEditor({
       <div className={classes.control}>
         <Text variant="body-small" weight="bold" id="tool-approval-preset">
           {isNarrowed
-            ? `Set the ${countNoun(visibleRows.length, 'shown tool')} to`
+            ? `Set the ${countNoun(shown.length, 'shown tool')} to`
             : 'Start from'}
         </Text>
         {isNarrowed ? (
           <ScopedPresets
             labelledBy="tool-approval-preset"
-            disabled={visibleRows.length === 0}
-            onApply={next =>
-              approval.applyPreset(
-                next,
-                visibleRows.map(row => row.key),
-              )
-            }
+            disabled={shown.length === 0}
+            onApply={next => {
+              // Only the tools the search and filter match; a row that stops
+              // matching stays listed, marked.
+              const keys = shown.map(row => row.key);
+              keepListed(keys);
+              approval.applyPreset(next, keys);
+            }}
           />
         ) : (
           <ToggleButtonGroup
@@ -396,7 +457,7 @@ export function ToolApprovalEditor({
         )}
         <Text variant="body-small" color="secondary">
           {isNarrowed
-            ? `Applies to the ${visibleRows.length} shown only: the other ${hidden} and the rule for new tools keep their settings.`
+            ? `Applies to the ${shown.length} shown only: the other ${rows.length - shown.length} and the rule for new tools keep their settings.`
             : (presetHint ??
               'Your own settings. A preset fills every tool again.')}
         </Text>

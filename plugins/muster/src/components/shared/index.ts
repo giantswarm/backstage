@@ -101,6 +101,7 @@ export type {
 export { TruncatedListNote } from './TruncatedListNote';
 export type { TruncatedListNoteProps } from './TruncatedListNote';
 export {
+  toolApprovalFacet,
   toolEffectFacet,
   ToolListToolbar,
   useToolListFilter,

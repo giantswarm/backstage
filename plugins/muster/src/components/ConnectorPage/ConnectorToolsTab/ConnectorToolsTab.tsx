@@ -22,7 +22,6 @@ import {
 } from '../../../hooks/useApprovalGrants';
 import {
   approvalSourceLabel,
-  APPROVAL_SETTINGS,
   connectorAdminOf,
   approvalRefusalNote,
   approvalRefusalReason,
@@ -37,6 +36,7 @@ import {
   EffectBadge,
   MarkerBadge,
   TruncatedListNote,
+  toolApprovalFacet,
   toolEffectFacet,
   ToolListToolbar,
   type ToolsListView,
@@ -62,12 +62,9 @@ const EFFECT_FACET: CatalogFacet<ToolSummary> = toolEffectFacet(tool =>
 );
 
 /** The *Approval* dropdown: Allow, Ask, Block, as muster reports them. */
-const APPROVAL_FACET: CatalogFacet<ToolSummary> = {
-  id: 'approval',
-  label: 'Approval',
-  value: tool => (tool.approval ? reportedSetting(tool.approval) : undefined),
-  order: APPROVAL_SETTINGS,
-};
+const APPROVAL_FACET: CatalogFacet<ToolSummary> = toolApprovalFacet(tool =>
+  tool.approval ? reportedSetting(tool.approval) : undefined,
+);
 
 const EFFECT_FACETS: readonly CatalogFacet<ToolSummary>[] = [EFFECT_FACET];
 const APPROVAL_FACETS: readonly CatalogFacet<ToolSummary>[] = [

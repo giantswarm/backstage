@@ -1,4 +1,5 @@
 export {
+  toolApprovalFacet,
   toolEffectFacet,
   ToolListToolbar,
   useToolListFilter,

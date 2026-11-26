@@ -9,6 +9,10 @@ import {
   useCatalogFilters,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
+  APPROVAL_SETTINGS,
+  type ApprovalSetting,
+} from '../../../lib/toolApproval';
+import {
   TOOL_EFFECT_LABELS,
   type ToolEffect,
 } from '../../../lib/toolAnnotations';
@@ -44,6 +48,22 @@ export function toolEffectFacet<T>(
     value: effectOf,
     optionLabel: id => TOOL_EFFECT_LABELS[id as ToolEffect] ?? id,
     order: ['reads', 'changes'],
+  };
+}
+
+/**
+ * The "Approval" dropdown: Allow, Ask, Block. `settingOf` says what an item
+ * is set to (what the row shows), or undefined where nothing is reported. One
+ * definition for the connector's Tools tab and the tool settings.
+ */
+export function toolApprovalFacet<T>(
+  settingOf: (item: T) => ApprovalSetting | undefined,
+): CatalogFacet<T> {
+  return {
+    id: 'approval',
+    label: 'Approval',
+    value: settingOf,
+    order: APPROVAL_SETTINGS,
   };
 }
 
