@@ -438,7 +438,8 @@ settings; it decides nothing.
   agent-manager's `list_approval_grants` with the connector's server key and
   no namespace (every namespace the person may read; a grant's `tools` say
   which tools it covers, names are `agentDisplayName`). Unreadable namespaces
-  or a failed read say that agents may be allowed without being named here,
+  (named, or counted for organizations' in `unreadableCount`, shown as a
+  count) or a failed read say that agents may be allowed without being named here,
   never "nobody".
   A connector nobody reviewed
   (no settings, or a create's rule alone, where muster reports every tool

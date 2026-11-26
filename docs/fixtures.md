@@ -222,7 +222,8 @@ arguments and refuse each other's in muster's words before writing
   guest is no admin of. `get_agent` reports the release `generation`; the
   write tools refuse a stale `expectedGeneration` with agent-manager's
   `conflict`. `list_approval_grants` without a namespace lists every
-  namespace the guest manages agents in and names the others `unreadable`;
+  namespace the guest manages agents in, names the others `unreadable` and
+  only counts organizations' ones (`unreadableCount`);
   muster lifts a grant only for the tools it names. The last
   ready agent of an organization starts with an exception on its
   organization's `wiki` connector granted by `dana@example.com`, so its

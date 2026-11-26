@@ -1187,6 +1187,17 @@ describe('the fixture agent-manager with tool approval', () => {
       tools: [expect.any(String)],
     });
     expect(Array.isArray(body.unreadable)).toBe(true);
+    // An organization's namespace is counted, never named.
+    const organizations = new Set(
+      state
+        .listOrganizations(INSTALLATION)
+        .organizations.map(listed => listed.organization?.namespace)
+        .filter(Boolean),
+    );
+    expect(
+      (body.unreadable as string[]).some(ns => organizations.has(ns)),
+    ).toBe(false);
+    expect(typeof body.unreadableCount).toBe('number');
   });
 
   it('serves the older agent-manager without the approval tools', async () => {

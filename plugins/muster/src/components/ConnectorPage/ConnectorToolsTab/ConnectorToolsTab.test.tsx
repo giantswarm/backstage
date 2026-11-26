@@ -658,6 +658,19 @@ describe('ConnectorToolsTab: Allowed for', () => {
     ).toBeInTheDocument();
   });
 
+  it('counts the organization namespaces it could not read, which agent-manager never names', async () => {
+    await renderWith(
+      jest.fn(async () => ({
+        grants: [],
+        unreadable: ['team-x'],
+        unreadableCount: 2,
+      })),
+    );
+    expect(
+      await screen.findByText(/\(3 namespaces could not be read\)/),
+    ).toBeInTheDocument();
+  });
+
   it('says so when agent-manager could not be asked', async () => {
     await renderWith(
       jest.fn(async () => {

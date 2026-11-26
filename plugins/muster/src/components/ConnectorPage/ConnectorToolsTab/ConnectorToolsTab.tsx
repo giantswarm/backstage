@@ -408,7 +408,15 @@ export function ConnectorToolsTab({
             title="Could not read which agents are allowed"
             description={
               grantsReading.refused
-                ? "Exceptions are listed only for the namespaces whose agents you may read, so an agent elsewhere may skip this connector's Ask without being named here."
+                ? `Exceptions are listed only for the namespaces whose agents you may read${
+                    grantsReading.unreadableCount
+                      ? ` (${grantsReading.unreadableCount} ${
+                          grantsReading.unreadableCount === 1
+                            ? 'namespace'
+                            : 'namespaces'
+                        } could not be read)`
+                      : ''
+                  }, so an agent elsewhere may skip this connector's Ask without being named here.`
                 : "agent-manager could not be asked, so an agent may skip this connector's Ask without being named here."
             }
           />

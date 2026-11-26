@@ -1718,10 +1718,15 @@ export class AgentManagerFixtureState {
     installation: string,
     namespace: string | undefined,
     server: string | undefined,
-  ): { grants: AgentApprovalGrant[]; unreadable: string[] } {
+  ): {
+    grants: AgentApprovalGrant[];
+    unreadable: string[];
+    unreadableCount: number;
+  } {
     // As agent-manager's review (`list helmreleases` in the namespace): the
     // guest reads where it manages agents. Without a namespace, every one it
-    // may read, the others named as unreadable.
+    // may read; of the others, an organization's are only counted, never
+    // named, the rest named as unreadable.
     const readable = this.managedNamespaces(installation);
     if (namespace !== undefined && !readable.includes(namespace)) {
       throw refusal(
@@ -1731,7 +1736,7 @@ export class AgentManagerFixtureState {
     }
     const scope = namespace ? [namespace] : readable;
     const agents = [...this.stateOf(installation).agents.values()];
-    const unreadable = namespace
+    const others = namespace
       ? []
       : [
           ...new Set(
@@ -1740,6 +1745,13 @@ export class AgentManagerFixtureState {
               .filter(ns => !readable.includes(ns)),
           ),
         ].sort();
+    const organizationNamespaces = new Set(
+      this.stateOf(installation).organizations.map(
+        organization => organization.namespace,
+      ),
+    );
+    const unreadable = others.filter(ns => !organizationNamespaces.has(ns));
+    const unreadableCount = others.length - unreadable.length;
     return {
       grants: agents
         .filter(agent => scope.includes(agent.namespace))
@@ -1753,6 +1765,7 @@ export class AgentManagerFixtureState {
             })),
         ),
       unreadable,
+      unreadableCount,
     };
   }
 

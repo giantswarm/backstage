@@ -35,6 +35,11 @@ export type ApprovalGrantsReading = {
   grants: ApprovalGrant[];
   /** Some namespace was refused for this person (`forbidden`). */
   refused: boolean;
+  /**
+   * How many namespaces could not be read: those named in `unreadable` and
+   * the organizations' ones agent-manager only counts (`unreadableCount`).
+   */
+  unreadableCount?: number;
 };
 
 async function grantsOf(
@@ -61,14 +66,19 @@ async function grantsOf(
     }
     throw error;
   }
-  const answer = parsed<{ grants?: ApprovalGrant[]; unreadable?: string[] }>(
-    result,
-  );
-  const unreadable = answer.unreadable ?? [];
+  const answer = parsed<{
+    grants?: ApprovalGrant[];
+    unreadable?: string[];
+    unreadableCount?: number;
+  }>(result);
+  // Organization namespaces are counted, never named.
+  const count =
+    (answer.unreadable ?? []).length + (answer.unreadableCount ?? 0);
   return {
     grants: answer.grants ?? [],
-    refused: unreadable.length > 0,
-    partial: unreadable.length > 0,
+    refused: count > 0,
+    partial: count > 0,
+    unreadableCount: count,
   };
 }
 
@@ -108,7 +118,12 @@ export function useApprovalGrants(
   const status: ApprovalGrantsReading['status'] = data.partial
     ? 'partial'
     : 'ready';
-  return { status, grants: data.grants, refused: data.refused };
+  return {
+    status,
+    grants: data.grants,
+    refused: data.refused,
+    unreadableCount: data.unreadableCount,
+  };
 }
 
 /** "Alert Review (by dana@example.com)": an agent a grant names, and who granted it. */
