@@ -231,6 +231,11 @@ export type PendingConfirmationPanelProps = {
    * once the person is done there.
    */
   musterPages?: MusterPages;
+  /**
+   * Asks muster for a one-time sign-in handoff ticket for one of its pages,
+   * so the person is not asked to sign in to muster again there.
+   */
+  requestHandoff?: (url: string) => Promise<string | undefined>;
 };
 
 /**
@@ -309,6 +314,7 @@ export function PendingConfirmationPanel(props: PendingConfirmationPanelProps) {
         error={props.error}
         onAnswer={props.onAnswer}
         musterPages={props.musterPages}
+        requestHandoff={props.requestHandoff}
       />
     );
   }

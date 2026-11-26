@@ -114,6 +114,15 @@ on such an installation, those links open as sent and the person presses
 _Done_ to go on. muster's `postLoginRedirectAllowlist` must admit the portal
 either way.
 
+`POST /api/muster/handoff?installation=<name>` with `{"url": "<page>"}` and the
+person's token asks that muster for a one-time sign-in handoff ticket for one
+of its pages on its `publicUrl` (else the origin of `url`): its approval page
+or its connector sign-in start. It answers `{ "ticket": "..." }`, or `{}` when
+muster issues none; the ticket is never logged. muster issues tickets only to
+the OAuth clients its `approval.handoffClients` lists: list the portal's own
+Dex client there (the `azp` of the token the portal forwards), never a client
+a CLI or an agent signs in through.
+
 `GET /api/muster/installations` reports each installation with its `source`
 (`derived` or `configured`), whether it requires the person's token
 (`requiresAuth`; always true for a derived installation, since every muster

@@ -3279,8 +3279,9 @@ it asks for: muster's sign-in, its approval page for a tool call,
 or any later page. The server's `message` is the
 heading ("Alert Review wants to acknowledge an incident in PagerDuty."), or
 "<server> asks you to open a page so the agent can continue." without one;
-_Open_ (new-tab icon) goes through the external URL consent dialog and names the
-link's host beside it; _Done_ answers `accept`, _Not now_ `decline`. The prompt
+_Open_ (new-tab icon) names the link's full host beside it; a link to one of the
+configured muster's own pages (below) opens at once in a new tab, any other link
+goes through the external URL consent dialog; _Done_ answers `accept`, _Not now_ `decline`. The prompt
 decides nothing: the agent retries the call, and muster's answer to the retry
 (run, refused, declined) is the outcome the timeline shows.
 
@@ -3304,7 +3305,23 @@ from the address and closes; only the tab that made that open answers
 task, the same session page and the same person (the open's record is used
 up). A visit to the session page with an `elicitationId` alone, or with a value
 no tab made, does nothing. The return never says what was decided. Any other
-link, another path on muster's origin included, opens as sent.
+link, another path on muster's origin included, opens as sent, through the
+consent dialog.
+
+Such a link to muster's own pages skips the consent dialog: the person chose
+_Open_ in the chat line, which names the host and the server's message, and
+the origin is the one the portal is configured with, so the dialog would only
+ask again. The tab opens during the click (`about:blank`, its `opener`
+dropped) and is pointed at the page once the portal has its return and a
+sign-in handoff: the muster backend (`POST /api/muster/handoff`) asks muster,
+with the person's token, for a one-time ticket for that page
+(`POST /handoff-tickets`, muster contract §5a), and the link carries it as
+`handoff`. muster redeems it once, within 60 seconds, for that page and that
+person only, signs the browser in as them and drops it from the address, so
+the person is not asked to sign in to muster again. Without a ticket (muster
+lists no `approval.handoffClients`, an older muster, an error) the page signs
+in as before. A blocked new tab falls back to the consent dialog, without a
+ticket.
 
 When the session waits but the request cannot be read (unrecognised payload, or
 no task id), the panel is withheld and the page says so.

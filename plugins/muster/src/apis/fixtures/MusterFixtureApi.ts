@@ -769,6 +769,11 @@ export class MusterFixtureApi implements MusterApi {
     musterFixtureState().signOut(target, name);
     return { status: 'signed_out', message: `Signed out of ${name}.` };
   }
+
+  /** The fixture muster issues no sign-in handoff: links open as they are. */
+  async requestHandoff(): Promise<string | undefined> {
+    return undefined;
+  }
 }
 
 /**

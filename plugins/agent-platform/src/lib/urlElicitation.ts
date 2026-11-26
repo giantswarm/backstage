@@ -3,10 +3,12 @@
  * whatever it asks for: muster's sign-in
  * to a connector, its approval page for a tool call, or any later page.
  *
- * Every link opens through the consent dialog. Only a link to one of
- * muster's own pages that return the browser (its approval page, its sign-in
- * start), on muster's origin, gets `redirect`: the page muster returns the
- * browser to once the person is done there. The return carries a random
+ * A link to one of muster's own pages that return the browser (its approval
+ * page, its sign-in start), on the configured muster's origin, opens at once,
+ * with `redirect` (the page muster returns the browser to once the person is
+ * done there) and, when muster issues one, a one-time sign-in handoff ticket
+ * so the person is not asked to sign in to muster again. Every other link
+ * opens through the consent dialog. The return carries a random
  * value the opening tab made for that one open, so only that tab resumes the
  * agent, once; a visit to the session page with a guessed or relayed
  * `elicitationId` does nothing. The return never says what was decided: the
@@ -144,6 +146,23 @@ export function elicitationHref(
   }
   const target = new URL(url);
   target.searchParams.set(ELICITATION_REDIRECT_PARAM, page.toString());
+  return target.toString();
+}
+
+/**
+ * The query parameter that carries muster's one-time sign-in handoff ticket
+ * (contract-muster-approval.md §5a): the page redeems it, signs the browser
+ * in as the person and drops it from the address.
+ */
+export const ELICITATION_HANDOFF_PARAM = 'handoff';
+
+/** The link with muster's sign-in handoff ticket added, when there is one. */
+export function withHandoff(href: string, ticket: string | undefined): string {
+  if (!ticket) {
+    return href;
+  }
+  const target = new URL(href);
+  target.searchParams.set(ELICITATION_HANDOFF_PARAM, ticket);
   return target.toString();
 }
 

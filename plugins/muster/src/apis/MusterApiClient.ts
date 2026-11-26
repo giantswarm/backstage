@@ -710,6 +710,23 @@ export class MusterApiClient implements MusterApi {
     );
   }
 
+  async requestHandoff(
+    url: string,
+    installation?: string,
+  ): Promise<string | undefined> {
+    try {
+      const { ticket } = await this.post<{ ticket?: unknown }>(
+        '/handoff',
+        { url },
+        installation,
+      );
+      return typeof ticket === 'string' && ticket !== '' ? ticket : undefined;
+    } catch {
+      // No ticket: muster signs the browser in itself.
+      return undefined;
+    }
+  }
+
   async authHeaders(installation?: string): Promise<Record<string, string>> {
     const token = await this.resolveToken(installation);
     return token ? { [MUSTER_AUTH_HEADER]: token } : {};

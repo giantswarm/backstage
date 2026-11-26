@@ -120,6 +120,46 @@ describe('MusterApiClient tool errors', () => {
   });
 });
 
+describe('MusterApiClient.requestHandoff', () => {
+  it('asks muster-backend for a ticket for the page and returns it', async () => {
+    const { client, fetchMock } = setup();
+    fetchMock.mockResolvedValue(okResponse({ ticket: 'T1' }));
+
+    const ticket = await client.requestHandoff(
+      'https://muster.open.example/approvals/ABC',
+      'open',
+    );
+
+    expect(ticket).toBe('T1');
+    const [url, init] = fetchMock.mock.calls.find(([called]) =>
+      String(called).includes('/handoff'),
+    )!;
+    expect(url).toBe('http://backend/api/muster/handoff?installation=open');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({
+      url: 'https://muster.open.example/approvals/ABC',
+    });
+  });
+
+  it.each([
+    ['muster issued none', okResponse({})],
+    [
+      'muster-backend failed',
+      errorResponse(503, { error: { message: 'down' } }),
+    ],
+  ])('returns no ticket when %s', async (_, response) => {
+    const { client, fetchMock } = setup();
+    fetchMock.mockResolvedValue(response);
+
+    await expect(
+      client.requestHandoff(
+        'https://muster.open.example/approvals/ABC',
+        'open',
+      ),
+    ).resolves.toBeUndefined();
+  });
+});
+
 describe('MusterApiClient refused session token', () => {
   // The portal's backend refuses the session token before muster-backend
   // runs (Backstage's AuthenticationError): the name stays with the 401, so

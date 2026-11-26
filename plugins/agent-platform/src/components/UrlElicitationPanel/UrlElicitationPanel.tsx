@@ -19,6 +19,7 @@ import {
   musterPageKind,
   newReturnNonce,
   returnedElicitation,
+  withHandoff,
   type MusterPages,
 } from '../../lib/urlElicitation';
 
@@ -179,14 +180,44 @@ export type UrlElicitationPanelProps = {
    * opens as sent.
    */
   musterPages?: MusterPages;
+  /**
+   * Asks muster for a one-time sign-in handoff ticket for one of its pages,
+   * so the page opens signed in as the person (contract-muster-approval.md
+   * §5a); without it, or without a ticket, muster signs the browser in.
+   */
+  requestHandoff?: (url: string) => Promise<string | undefined>;
 };
+
+/**
+ * Opens a blank tab for a link the person asked for, at once, while the
+ * click still allows a new tab, cut off from this page (`opener`), to be
+ * pointed at the link once it is known. `undefined` when the browser opens
+ * none (a blocked pop-up).
+ */
+function openBlankTab(): Window | undefined {
+  const tab = window.open('about:blank', '_blank');
+  if (!tab) {
+    return undefined;
+  }
+  try {
+    tab.opener = null;
+  } catch {
+    // Some browsers do not let the opener go; the page is muster's own.
+  }
+  return tab;
+}
 
 /**
  * An MCP server's URL elicitation the agent waits on (`pending.asks ===
  * 'url'`), the same for every one: muster's sign-in, its approval page for a
  * tool call, or any later page. The server's message is the heading; *Open*
- * names the host the link leads to and goes through the portal's consent
- * dialog; *Done* tells the agent to go on, *Not now* declines.
+ * names the host the link leads to. A link to one of the configured muster's
+ * own pages (its approval page, its connector sign-in start, by origin and
+ * path) opens at once in a new tab, signed in through a one-time handoff
+ * when muster issues one: the person already chose *Open* here, and the
+ * chat line names the host and the server's message. Any other link goes
+ * through the portal's consent dialog. *Done* tells the agent to go on, *Not
+ * now* declines.
  *
  * The prompt knows nothing of what the page decides. The agent retries the
  * call on *Done*, and the outcome is muster's answer to that retry, which the
@@ -199,6 +230,7 @@ export function UrlElicitationPanel({
   error,
   onAnswer,
   musterPages,
+  requestHandoff,
 }: UrlElicitationPanelProps) {
   const classes = useStyles();
   const consentApi = useApi(externalUrlConsentApiRef);
@@ -270,10 +302,13 @@ export function UrlElicitationPanel({
     return null;
   }
   const host = linkHost(elicitation.url);
-  const returns = Boolean(
-    elicitationId && musterPageKind(elicitation.url, musterPages),
-  );
+  const kind = musterPageKind(elicitation.url, musterPages);
+  const returns = Boolean(elicitationId && kind);
   const open = async () => {
+    // A page of the configured muster opens without the consent dialog: in a
+    // tab opened now, during the click, and pointed at the page once its
+    // return and handoff are known.
+    const tab = kind ? openBlankTab() : undefined;
     const nonce = newReturnNonce();
     const href = elicitationHref(elicitation.url, {
       musterPages,
@@ -295,6 +330,16 @@ export function UrlElicitationPanel({
       };
       writeOpened([...readOpened(), record]);
     }
+    if (tab) {
+      const ticket = requestHandoff
+        ? await requestHandoff(elicitation.url).catch(() => undefined)
+        : undefined;
+      tab.location.replace(withHandoff(href, ticket));
+      return;
+    }
+    // Any other link, or a blocked new tab: the consent dialog, whose Open
+    // is a click of its own. No handoff: the dialog may wait longer than a
+    // ticket lives.
     const consent = await consentApi.open({
       url: href,
       requester: elicitation.server,

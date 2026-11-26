@@ -71,8 +71,13 @@ class FakeChannel {
 
 /** The person's answer in the external URL consent dialog. */
 const consentOpen = jest.fn();
-/** The address the last *Open* asked the person to open. */
-const openedUrl = (): string => consentOpen.mock.lastCall[0].url;
+/** Where the new tab an *Open* of a muster page opened was sent. */
+const tabGoesTo = jest.fn();
+/** The tab `window.open` opened, `null` when the browser blocked it. */
+let openedTab: { opener: unknown; location: { replace: jest.Mock } } | null;
+/** The address the last *Open* opened: in a new tab, else in the dialog. */
+const openedUrl = (): string =>
+  tabGoesTo.mock.lastCall?.[0] ?? consentOpen.mock.lastCall[0].url;
 /** Where muster returns the browser to, as the link asks it to. */
 const returnPage = (href: string): URL =>
   new URL(new URL(href).searchParams.get('redirect')!);
@@ -98,6 +103,7 @@ async function renderPanel({
   isAnswering = false,
   user = PERSON,
   route = '/sessions/example/s1',
+  requestHandoff,
 }: {
   pending?: PendingConfirmation;
   /** `null`: not known. */
@@ -106,6 +112,7 @@ async function renderPanel({
   isAnswering?: boolean;
   user?: string;
   route?: string;
+  requestHandoff?: (url: string) => Promise<string | undefined>;
 } = {}) {
   const onAnswer = jest.fn();
   const rendered = await renderInTestApp(
@@ -121,6 +128,7 @@ async function renderPanel({
         error={error}
         onAnswer={onAnswer}
         musterPages={musterPages ?? undefined}
+        requestHandoff={requestHandoff}
       />
     </TestApiProvider>,
     { initialRouteEntries: [route] },
@@ -133,9 +141,15 @@ const openButton = () =>
 
 describe('UrlElicitationPanel', () => {
   let close: jest.SpyInstance;
+  let windowOpen: jest.SpyInstance;
   beforeEach(() => {
     FakeChannel.open = [];
     consentOpen.mockReset().mockResolvedValue('accept');
+    tabGoesTo.mockReset();
+    openedTab = { opener: window, location: { replace: tabGoesTo } };
+    windowOpen = jest
+      .spyOn(window, 'open')
+      .mockImplementation(() => openedTab as unknown as Window);
     window.sessionStorage.clear();
     (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel =
       FakeChannel;
@@ -144,6 +158,7 @@ describe('UrlElicitationPanel', () => {
   afterEach(() => {
     delete (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel;
     close.mockRestore();
+    windowOpen.mockRestore();
   });
 
   it("shows muster's message as the heading, Open with the link's host, Done and Not now", async () => {
@@ -184,17 +199,16 @@ describe('UrlElicitationPanel', () => {
     ).toBeInTheDocument();
   });
 
-  it("opens muster's approval page through the consent dialog, returning to this page with this open's value", async () => {
+  it("opens muster's approval page at once in a new tab, without the consent dialog, returning to this page with this open's value", async () => {
     const user = userEvent.setup();
     await renderPanel();
 
     await user.click(openButton());
 
-    expect(consentOpen).toHaveBeenCalledWith({
-      url: expect.any(String),
-      requester: 'muster',
-      message: 'Alert Review wants to acknowledge an incident in PagerDuty.',
-    });
+    expect(consentOpen).not.toHaveBeenCalled();
+    expect(windowOpen).toHaveBeenCalledWith('about:blank', '_blank');
+    expect(openedTab!.opener).toBeNull();
+    await waitFor(() => expect(tabGoesTo).toHaveBeenCalledTimes(1));
     const href = new URL(openedUrl());
     expect(`${href.origin}${href.pathname}`).toBe(`${MUSTER}/approvals/0f3c9a`);
     const back = returnPage(openedUrl());
@@ -290,7 +304,59 @@ describe('UrlElicitationPanel', () => {
     expect(elsewhere.onAnswer).not.toHaveBeenCalled();
   });
 
+  it("signs the page in with muster's handoff ticket, asked for that page", async () => {
+    const requestHandoff = jest.fn().mockResolvedValue('T1');
+    const user = userEvent.setup();
+    await renderPanel({ requestHandoff });
+
+    await user.click(openButton());
+
+    await waitFor(() => expect(tabGoesTo).toHaveBeenCalledTimes(1));
+    expect(requestHandoff).toHaveBeenCalledWith(`${MUSTER}/approvals/0f3c9a`);
+    const href = new URL(openedUrl());
+    expect(href.searchParams.get('handoff')).toBe('T1');
+    expect(href.searchParams.get('redirect')).not.toBeNull();
+  });
+
+  it.each([
+    ['muster issues none', async () => undefined],
+    [
+      'asking fails',
+      async () => {
+        throw new Error('down');
+      },
+    ],
+  ])('opens the page without a ticket when %s', async (_, impl) => {
+    const user = userEvent.setup();
+    await renderPanel({ requestHandoff: jest.fn().mockImplementation(impl) });
+
+    await user.click(openButton());
+
+    await waitFor(() => expect(tabGoesTo).toHaveBeenCalledTimes(1));
+    expect(new URL(openedUrl()).searchParams.has('handoff')).toBe(false);
+  });
+
+  it('falls back to the consent dialog, without a ticket, when the browser blocks the new tab', async () => {
+    openedTab = null;
+    const requestHandoff = jest.fn().mockResolvedValue('T1');
+    const user = userEvent.setup();
+    await renderPanel({ requestHandoff });
+
+    await user.click(openButton());
+
+    await waitFor(() =>
+      expect(consentOpen).toHaveBeenCalledWith({
+        url: expect.any(String),
+        requester: 'muster',
+        message: 'Alert Review wants to acknowledge an incident in PagerDuty.',
+      }),
+    );
+    expect(requestHandoff).not.toHaveBeenCalled();
+    expect(new URL(openedUrl()).searchParams.has('handoff')).toBe(false);
+  });
+
   it('resumes nothing when the person did not open the page', async () => {
+    openedTab = null;
     consentOpen.mockResolvedValue('cancel');
     const user = userEvent.setup();
     const { onAnswer } = await renderPanel();
@@ -324,6 +390,7 @@ describe('UrlElicitationPanel', () => {
     await user.click(openButton());
     await returned('el-9b1d', 'b'.repeat(32));
 
+    expect(windowOpen).not.toHaveBeenCalled();
     expect(openedUrl()).toBe(url);
     expect(window.sessionStorage.length).toBe(0);
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -336,6 +403,7 @@ describe('UrlElicitationPanel', () => {
 
     await user.click(openButton());
 
+    expect(windowOpen).not.toHaveBeenCalled();
     expect(openedUrl()).toBe(`${MUSTER}/approvals/0f3c9a`);
   });
 
@@ -346,6 +414,7 @@ describe('UrlElicitationPanel', () => {
 
     await user.click(openButton());
 
+    await waitFor(() => expect(tabGoesTo).toHaveBeenCalledTimes(1));
     expect(openedUrl()).toBe(`${MUSTER}/approvals/0f3c9a`);
   });
 

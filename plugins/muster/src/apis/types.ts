@@ -927,6 +927,18 @@ export interface MusterApi {
     server: SignInTarget,
     installation?: string,
   ): Promise<ServerSignOutResult>;
+  /**
+   * A one-time sign-in handoff ticket for one of muster's own pages (its
+   * approval page, its connector sign-in start) at `url`, asked with the
+   * person's token, so the page opens signed in as them instead of asking
+   * them to sign in to muster again (add it to the link as `handoff`).
+   * `undefined` when muster issues none; the link then opens as is. Ask only
+   * when the person opens that page.
+   */
+  requestHandoff(
+    url: string,
+    installation?: string,
+  ): Promise<string | undefined>;
 }
 
 /**

@@ -84,6 +84,7 @@ import { PendingConfirmationPanel } from '../PendingConfirmationPanel';
 import { ConnectorSignInLinks } from '../ConnectorSignInLinks';
 import { useUrlElicitationReturn } from '../UrlElicitationPanel';
 import { useMusterPages } from '../../hooks/useMusterPages';
+import { useMusterHandoff } from '../../hooks/useMusterHandoff';
 import { SessionComposer } from '../SessionComposer';
 import {
   ChatGptConnectDialog,
@@ -418,6 +419,7 @@ export function SessionDetailPage() {
   // A URL elicitation's page of muster's returns to this page, which
   // tells the tab that opened it (`UrlElicitationPanel`).
   const musterPages = useMusterPages(installation);
+  const requestHandoff = useMusterHandoff(installation);
   useUrlElicitationReturn();
   const connectorOf = useCallback(
     (toolName: string) =>
@@ -1665,6 +1667,7 @@ export function SessionDetailPage() {
                   restore={confirmation.failed}
                   isUserScoped={isUserScoped}
                   musterPages={musterPages}
+                  requestHandoff={requestHandoff}
                   onAnswer={answer => {
                     // Errors surface through the hook's `error`, which the card
                     // renders above the choices it hands back. The request it

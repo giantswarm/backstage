@@ -48,6 +48,7 @@ import {
   type McpUsageRead,
 } from './mcpUsage';
 import { UsageCache, usageCacheKey } from './usageCache';
+import { isOnMusterPages, requestHandoffTicket } from './handoff';
 
 const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
 
@@ -97,6 +98,8 @@ export interface RouterOptions {
   lifecycle?: Pick<RootLifecycleService, 'addStartupHook'>;
   /** Names the Backstage user a usage answer is cached for. */
   httpAuth: HttpAuthService;
+  /** Overridable for tests: how the sign-in handoff reaches muster. */
+  handoffFetch?: typeof fetch;
 }
 
 /**
@@ -1029,6 +1032,44 @@ export async function createRouter(
     }
 
     res.json(parseAuthLogoutResult(payload));
+  });
+
+  /**
+   * A one-time sign-in handoff ticket for one of muster's pages (its approval
+   * page, its connector sign-in start), so the person signed in here is not
+   * asked to sign in to muster again when the page opens
+   * (contract-muster-approval.md §5a). Asked with the person's own token,
+   * only when they open the page from the portal. Answers `{ ticket }`, or
+   * `{}` when muster issues none (the link then opens as is and muster signs
+   * the browser in itself). The ticket is never logged.
+   */
+  router.post('/handoff', async (req, res) => {
+    const { config: installation } = resolveInstallation(req);
+    const url = nonEmptyString(req.body?.url);
+    if (!url) {
+      throw new InputError('url is required');
+    }
+    if (!isOnMusterPages(url, installation)) {
+      throw new InputError(
+        `url is not on the muster pages of installation '${installation.name}'`,
+      );
+    }
+    if (!hasPerUserSession(installation)) {
+      res.json({});
+      return;
+    }
+    const { authToken } = readCallOptions(req, installation);
+    const ticket = authToken
+      ? await requestHandoffTicket({
+          installation,
+          url,
+          token: authToken,
+          logger,
+          ...(options.handoffFetch && { fetchFn: options.handoffFetch }),
+        })
+      : undefined;
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(ticket ? { ticket } : {});
   });
 
   // --- MCP servers (runtime view via core_mcpserver_list) ------------------
