@@ -1200,6 +1200,53 @@ describe('the fixture agent-manager with tool approval', () => {
     expect(typeof body.unreadableCount).toBe('number');
   });
 
+  it('reports the settings pending until the write settled, then enforced', async () => {
+    const { client, state, advance } = setup();
+    const agent = seeded(state);
+    expect(agent.approvalEnforcement).toBe('enforced');
+    await client.updateAgent({
+      namespace: agent.namespace,
+      name: agent.name,
+      description: 'Changed.',
+    });
+    const written = await client.getAgent(agent.namespace, agent.name);
+    expect(written.approvalEnforcement).toBe('pending');
+    expect(written.approvalEnforced).toBeUndefined();
+    advance(SETTLE_MS);
+    expect(
+      (await client.getAgent(agent.namespace, agent.name)).approvalEnforcement,
+    ).toBe('enforced');
+  });
+
+  it('refuses settings where the namespace serves an older chart, as agent-manager does', async () => {
+    const data = createFixtureDataSet({ now: NOW });
+    const state = new AgentManagerFixtureState(data, () => NOW);
+    const client = new AgentManagerClient(
+      musterApiOf(agentManagerFixtureServer(() => state)),
+      'tarragon',
+    );
+    const namespace = state
+      .listOrganizations('tarragon')
+      .organizations.map(listed => listed.organization?.namespace)
+      .find(Boolean)!;
+    await expect(
+      client.createAgent({
+        ...specIn(namespace, { name: 'older-chart' }),
+        toolset: undefined,
+        tools: [{ 'preset:read-only': 'Ask' }],
+      }),
+    ).rejects.toMatchObject({ code: 'unsupported' });
+  });
+
+  it('says which grants a delete removed', async () => {
+    const { client, state } = setup();
+    const agent = seeded(state);
+    const result = await client.deleteAgent(agent.namespace, agent.name);
+    expect(result.dropped).toEqual([
+      expect.objectContaining({ reason: 'agent deleted' }),
+    ]);
+  });
+
   it('serves the older agent-manager without the approval tools', async () => {
     const { server } = setup();
     const older = new AgentManagerClient(

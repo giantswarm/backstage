@@ -438,7 +438,12 @@ function ConnectorsSection({
       )}
       {approval.active && approval.report.status === 'ready' && (
         <Text variant="body-small" color="secondary">
-          Approval: {reportSummary(approval.report, approval.notEnforced)}
+          Approval:{' '}
+          {reportSummary(
+            approval.report,
+            approval.notEnforced,
+            approval.pending,
+          )}
           {toolsHref && (
             <>
               {' · '}

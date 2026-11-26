@@ -463,6 +463,28 @@ function mustBeAt(agent: StoredAgent, expected: unknown): void {
   }
 }
 
+/**
+ * The chart an organization's older agent chart source serves: the first
+ * organization of {@link INCOMPLETE_MODEL_INSTALLATION}'s namespace, so
+ * settings there are refused as agent-manager refuses them.
+ */
+export const OLDER_CHART = '1.4.0';
+
+/** The installation states whose first organization serves {@link OLDER_CHART}. */
+const OLDER_CHART_INSTALLATIONS = new WeakSet<InstallationState>();
+
+function servesOlderChart(
+  state: InstallationState,
+  namespace: string,
+): boolean {
+  return (
+    state.organizations.find(organization => organization.namespace)
+      ?.namespace === namespace &&
+    namespace !== PLATFORM_TENANT_NAMESPACE &&
+    OLDER_CHART_INSTALLATIONS.has(state)
+  );
+}
+
 /** A list's selectors: what the chart renders as the toolset header. */
 function selectorsOf(tools: readonly AgentToolEntry[]): string[] {
   return tools.map(entrySelector);
@@ -586,6 +608,9 @@ export class AgentManagerFixtureState {
         seedException(installation, agents);
       }
       state = { organizations, agents, models, members, erasing: new Map() };
+      if (installation === INCOMPLETE_MODEL_INSTALLATION) {
+        OLDER_CHART_INSTALLATIONS.add(state);
+      }
       this.installations.set(installation, state);
     }
     this.finishErasures(state);
@@ -1681,6 +1706,7 @@ export class AgentManagerFixtureState {
     installation: string,
     agent: FixtureAgentRecord,
     grants: readonly AgentApprovalGrant[] = [],
+    pending = false,
   ): AgentManagerAgent {
     const answer: AgentManagerAgent = {
       ...agentManagerAgentOf(agent),
@@ -1698,6 +1724,10 @@ export class AgentManagerFixtureState {
       ...(grants.length > 0 && { grants: grants.map(grant => ({ ...grant })) }),
       generation: agent.generation ?? 1,
       approvalSettings: true,
+      // Bound to Sessions once the release ran its current generation.
+      ...(pending
+        ? { approvalEnforcement: 'pending' }
+        : { approvalEnforcement: 'enforced', approvalEnforced: true }),
     };
   }
 
@@ -1707,7 +1737,12 @@ export class AgentManagerFixtureState {
     name: string,
   ): AgentManagerAgent {
     const stored = this.stored(installation, namespace, name);
-    return this.agentAnswerOf(installation, this.view(stored), stored.grants);
+    return this.agentAnswerOf(
+      installation,
+      this.view(stored),
+      stored.grants,
+      stored.settlesAt !== undefined && this.now() < stored.settlesAt,
+    );
   }
 
   /**
@@ -1797,6 +1832,14 @@ export class AgentManagerFixtureState {
     this.mustCreateAgentsIn(this.writableIn(installation, args.namespace));
     const agent = this.stored(installation, args.namespace, args.name);
     mustBeAt(agent, args.expectedGeneration);
+    this.mustTakeSettings(
+      installation,
+      args.namespace,
+      Object.entries(args.settings ?? {})
+        .filter(([, value]) => value)
+        .map(([selector, value]) => ({ [selector]: value as never })),
+      args.default,
+    );
     if (args.settings === undefined && args.default === undefined) {
       throw refusal(
         'invalid_request',
@@ -2025,6 +2068,30 @@ export class AgentManagerFixtureState {
   }
 
   /** `create_agent`'s and `validate_agent`'s checks of the tool list. */
+  /**
+   * agent-manager's refusal of settings for a namespace whose agent chart
+   * source serves a chart without them.
+   */
+  private mustTakeSettings(
+    installation: string,
+    namespace: string,
+    tools: readonly AgentToolEntry[] | undefined,
+    fallback: unknown,
+  ): void {
+    const hasSettings =
+      (tools ?? []).some(entry => typeof entry !== 'string') ||
+      (fallback !== undefined && fallback !== '');
+    if (
+      hasSettings &&
+      servesOlderChart(this.stateOf(installation), namespace)
+    ) {
+      throw refusal(
+        'unsupported',
+        `the agent chart ${OLDER_CHART} has no tool approval settings (tools, default); use a chart that has them`,
+      );
+    }
+  }
+
   private checkCreateList(installation: string, spec: AgentSpec): void {
     if (!takesToolApproval(installation)) {
       if (spec.tools !== undefined || spec.default !== undefined) {
@@ -2044,6 +2111,12 @@ export class AgentManagerFixtureState {
     if (spec.tools !== undefined) {
       toolListOf(spec.tools);
     }
+    this.mustTakeSettings(
+      installation,
+      spec.namespace,
+      spec.tools,
+      spec.default,
+    );
     if (spec.default !== undefined && !isApprovalSetting(spec.default)) {
       throw refusal('invalid_request', 'default: must be Allow, Ask or Block');
     }
@@ -2153,6 +2226,12 @@ export class AgentManagerFixtureState {
         'pass tools or toolset (deprecated), not both',
       );
     }
+    this.mustTakeSettings(
+      installation,
+      agent.namespace,
+      update.tools,
+      undefined,
+    );
     refuseAllowOverAsk(
       installation,
       'update_agent_access',
@@ -2271,6 +2350,13 @@ export class AgentManagerFixtureState {
     return {
       name,
       namespace,
+      ...(agent.grants?.length && {
+        dropped: agent.grants.map(grant => ({
+          entry: grant.entry,
+          server: grant.server,
+          reason: 'agent deleted',
+        })),
+      }),
       helmReleaseDeleted: true,
       agentDeleted: agent.release === 'ready',
       remoteMcpServerDeleted: agent.release === 'ready',

@@ -495,8 +495,12 @@ through agent-manager:
   settings is read from one field (`TOOL_LIST_FIELD`, `toolSettings`,
   decision #86) next to `defaultApproval`, `grants` (each with the `tools`
   it covers, forwarded to muster), `approvalSettings`, `approvalEnforced`
-  and `generation`. Where the settings are not enforced, the step, the
-  review and the agent page say so.
+  and `generation`. Where the settings are not enforced
+  (`approvalEnforcement: not-enforced`), the step, the review and the agent
+  page warn; while `pending` they say, as information, that the settings
+  apply once the agent has rolled out. A namespace whose chart source serves
+  an older chart refuses settings (`unsupported`, naming the chart): the
+  reviews say so in plain words and how to save without them.
 - **Stale saves**: every write carries `expectedGeneration` from the read;
   right before a save the review reads the agent again and saves nothing
   when its list, default, grants or generation moved ("This agent changed

@@ -105,10 +105,34 @@ export function agentToolListOf(
  * settings to the agent's calls.
  */
 export function approvalNotEnforced(
-  agent: Pick<AgentManagerAgent, 'approvalEnforced'> | undefined,
+  agent:
+    | Pick<AgentManagerAgent, 'approvalEnforced' | 'approvalEnforcement'>
+    | undefined,
 ): boolean {
-  return agent?.approvalEnforced === false;
+  return approvalEnforcementOf(agent) === 'not-enforced';
 }
+
+/**
+ * Whether the agent's settings are bound to its Sessions, from
+ * `approvalEnforcement` (`enforced`, `not-enforced`, `pending`), else the
+ * boolean an earlier agent-manager sent; undefined when neither says.
+ */
+export function approvalEnforcementOf(
+  agent:
+    | Pick<AgentManagerAgent, 'approvalEnforced' | 'approvalEnforcement'>
+    | undefined,
+): 'enforced' | 'not-enforced' | 'pending' | undefined {
+  const state = agent?.approvalEnforcement;
+  if (state === 'enforced' || state === 'not-enforced' || state === 'pending') {
+    return state;
+  }
+  if (agent?.approvalEnforced === true) return 'enforced';
+  if (agent?.approvalEnforced === false) return 'not-enforced';
+  return undefined;
+}
+
+/** Said while the agent's settings wait for its rollout: information, not a warning. */
+export const APPROVAL_PENDING_NOTE = 'Applies once the agent has rolled out.';
 
 /** Said where an agent's settings are shown or edited but not enforced. */
 export const APPROVAL_NOT_ENFORCED_NOTE =
@@ -637,6 +661,7 @@ export function reportSummary(
     truncated: boolean;
   },
   notEnforced = false,
+  pending = false,
 ): string {
   let line = approvalSummary(approvalCounts(report.tools));
   if (report.truncated) {
@@ -644,6 +669,8 @@ export function reportSummary(
   }
   if (notEnforced) {
     line += ' — saved, not enforced';
+  } else if (pending) {
+    line += ' — applies once the agent has rolled out';
   }
   return line;
 }

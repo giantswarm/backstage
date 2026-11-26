@@ -17,6 +17,7 @@ import { parseSelector, selectorForTool } from '../../lib/toolset';
 import {
   AGENT_APPROVAL_SETTINGS,
   APPROVAL_NOT_ENFORCED_NOTE,
+  APPROVAL_PENDING_NOTE,
   TRUSTED_AGENT_NOTE,
   allowBlocker,
   allowBlockerOfMany,
@@ -73,6 +74,8 @@ export type AgentApprovalSettingsProps = {
   viaGit?: boolean;
   /** agent-manager says the settings are saved but not enforced. */
   notEnforced?: boolean;
+  /** The agent's saved settings wait for its rollout. */
+  pending?: boolean;
 };
 
 /** A tool's pills, at its row's end, with why *Allow* cannot be picked. */
@@ -272,6 +275,7 @@ export function AgentApprovalSettings({
   onDefault,
   viaGit,
   notEnforced,
+  pending,
 }: AgentApprovalSettingsProps) {
   const classes = useStyles();
   const id = useId();
@@ -405,6 +409,11 @@ export function AgentApprovalSettings({
         {report.governance === 'trusted' && (
           <Text variant="body-small" color="secondary">
             {TRUSTED_AGENT_NOTE}
+          </Text>
+        )}
+        {pending && !notEnforced && (
+          <Text variant="body-small" color="secondary">
+            {APPROVAL_PENDING_NOTE}
           </Text>
         )}
         {notEnforced && (

@@ -9,6 +9,7 @@ import type { AgentApprovalDraft } from '../../lib/agentApproval';
 import type { AgentApprovalSetting } from '../../lib/agentManager';
 import { AgentApprovalSettings } from './AgentApprovalSettings';
 import { ExceptionsNote } from './ExceptionsNote';
+import { ApprovalChartRefusal } from './ApprovalChartRefusal';
 
 const merge: ToolSummary = {
   name: 'x_github_merge',
@@ -215,5 +216,48 @@ describe('ExceptionsNote', () => {
         'Saving removes 1 exception (x_github_merge). A GitHub admin can grant it again.',
       ),
     ).toBeInTheDocument();
+  });
+});
+
+describe('ApprovalChartRefusal', () => {
+  it("says in plain words that the namespace's chart takes no settings", async () => {
+    await renderInTestApp(
+      <ApprovalChartRefusal
+        failure={{
+          code: 'unsupported',
+          message:
+            'the agent chart 1.4.0 has no tool approval settings (tools, default); use a chart that has them',
+        }}
+      />,
+    );
+    expect(
+      screen.getByText("This agent's chart takes no approval settings"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /The agent chart 1\.4\.0 that this agent's namespace uses/,
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
+describe('AgentApprovalSettings while the settings wait for the rollout', () => {
+  it('says they apply once the agent has rolled out, as information', async () => {
+    await renderInTestApp(
+      <AgentApprovalSettings
+        selection={['server:github']}
+        draft={{ settings: {} }}
+        report={{ status: 'ready', tools: [list], truncated: false }}
+        servers={[]}
+        labelOf={server => server}
+        onSetting={() => {}}
+        onDefault={() => {}}
+        pending
+      />,
+    );
+    expect(
+      screen.getByText('Applies once the agent has rolled out.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Not enforced')).toBeNull();
   });
 });

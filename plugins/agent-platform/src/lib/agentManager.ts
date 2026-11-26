@@ -831,6 +831,12 @@ export type AgentManagerAgent = {
   /** True when the agent's chart takes approval settings (`tools`, `default`). */
   approvalSettings?: boolean;
   /**
+   * Whether the agent's settings are bound to its Sessions: `pending` until
+   * the release ran its current generation (`approvalEnforced` is then
+   * absent). Read through `approvalEnforcementOf`.
+   */
+  approvalEnforcement?: string;
+  /**
    * False when agent-manager says the settings are not enforced (its
    * session binding is off); read through `approvalNotEnforced`.
    */
@@ -1082,6 +1088,8 @@ export type UpdateAgentCommitDryRun = UpdateAgentResult & CommitAgentResult;
  * caller is the reader (see the toast rule in `docs/ui.md`).
  */
 export type DeleteAgentResult = {
+  /** The approval grants the delete removed (tool approval). */
+  dropped?: DroppedApprovalGrant[];
   name: string;
   namespace: string;
   helmReleaseDeleted: boolean;
@@ -1114,4 +1122,21 @@ export function isStaleWriteConflict(
     failure?.code === 'conflict' &&
     /generation|changed since/i.test(failure.message)
   );
+}
+
+/**
+ * agent-manager's refusal of approval settings for an agent whose
+ * namespace's chart source serves a chart without them: the chart it names,
+ * or undefined for any other refusal. The test pins agent-manager's wording.
+ */
+export function noApprovalChartRefusal(
+  failure: { code?: AgentManagerErrorCode; message: string } | undefined,
+): { chart: string } | undefined {
+  if (failure?.code !== 'unsupported') {
+    return undefined;
+  }
+  const match = failure.message.match(
+    /the agent chart (.+?) has no tool approval settings/,
+  );
+  return match ? { chart: match[1] } : undefined;
 }

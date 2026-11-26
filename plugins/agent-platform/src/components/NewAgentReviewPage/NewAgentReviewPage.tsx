@@ -15,7 +15,12 @@ import {
 import { useAgentIconUrl } from '../../hooks/useAgentIconUrl';
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
-import { supportsTags, type AgentApprovalChange } from '../../lib/agentManager';
+import {
+  noApprovalChartRefusal,
+  supportsTags,
+  type AgentApprovalChange,
+} from '../../lib/agentManager';
+import { ApprovalChartRefusal } from '../AgentApprovalSettings';
 import {
   useCreateAgent,
   type CreateAgentFailure,
@@ -513,13 +518,15 @@ function CreateAgentReview() {
             signInRequired={validation.failure.signInRequired}
           />
         )}
-        {validation.failure?.kind === 'refused' && (
-          <Alert
-            status="danger"
-            title="agent-manager refused the dry run"
-            description={validation.failure.message}
-          />
-        )}
+        <ApprovalChartRefusal failure={validation.failure} />
+        {validation.failure?.kind === 'refused' &&
+          !noApprovalChartRefusal(validation.failure) && (
+            <Alert
+              status="danger"
+              title="agent-manager refused the dry run"
+              description={validation.failure.message}
+            />
+          )}
         {validation.failure?.kind === 'error' && (
           <Alert
             status="danger"
@@ -547,13 +554,15 @@ function CreateAgentReview() {
             onSignedIn={creation.reset}
           />
         )}
-        {creation.failure?.kind === 'refused' && (
-          <Alert
-            status="danger"
-            title={refusalTitle(creation.failure.code)}
-            description={creation.failure.message}
-          />
-        )}
+        <ApprovalChartRefusal failure={creation.failure} />
+        {creation.failure?.kind === 'refused' &&
+          !noApprovalChartRefusal(creation.failure) && (
+            <Alert
+              status="danger"
+              title={refusalTitle(creation.failure.code)}
+              description={creation.failure.message}
+            />
+          )}
         {creation.failure?.kind === 'error' && (
           <Alert
             status="danger"

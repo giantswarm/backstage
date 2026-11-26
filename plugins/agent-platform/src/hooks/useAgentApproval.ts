@@ -5,6 +5,7 @@ import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 import {
   agentToolListOf,
   agentToolsArgumentOf,
+  approvalEnforcementOf,
   approvalNotEnforced,
   isApprovalSetting,
 } from '../lib/agentApproval';
@@ -22,6 +23,8 @@ export type AgentApproval = {
   byName: Map<string, ToolSummary>;
   /** agent-manager says the settings are saved but not enforced. */
   notEnforced: boolean;
+  /** The settings apply once the agent has rolled out. */
+  pending: boolean;
 };
 
 /**
@@ -58,5 +61,6 @@ export function useAgentApproval(
     report,
     byName,
     notEnforced: approvalNotEnforced(agent),
+    pending: approvalEnforcementOf(agent) === 'pending',
   };
 }

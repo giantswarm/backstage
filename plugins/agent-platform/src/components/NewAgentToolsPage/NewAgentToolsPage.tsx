@@ -33,7 +33,10 @@ import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useToolsetPresets } from '../../hooks/useToolsetPresets';
 import { useToolsetResolution } from '../../hooks/useToolsetResolution';
 import { useWizardApproval } from '../../hooks/useWizardApproval';
-import { approvalNotEnforced } from '../../lib/agentApproval';
+import {
+  approvalEnforcementOf,
+  approvalNotEnforced,
+} from '../../lib/agentApproval';
 import { AgentApprovalSettings } from '../AgentApprovalSettings';
 import { filterCatalogue } from '../../lib/filterCatalogue';
 import { SIGN_IN_TOOL_SELECTOR } from '../../lib/signInTool';
@@ -925,6 +928,7 @@ export function NewAgentToolsPage() {
             onDefault={setApprovalDefault}
             viaGit={edit?.writeMode === 'commit'}
             notEnforced={approvalNotEnforced(edit?.agent)}
+            pending={approvalEnforcementOf(edit?.agent) === 'pending'}
           />
         )}
 

@@ -4,6 +4,7 @@ import type { ToolSummary } from '@giantswarm/backstage-plugin-muster';
 import {
   agentToolListOf,
   agentToolsArgumentOf,
+  approvalEnforcementOf,
   approvalNotEnforced,
   approvalStateKey,
   connectorAdminFrom,
@@ -20,6 +21,7 @@ import {
   exceptionsNote,
   shownSetting,
 } from './agentApproval';
+import { noApprovalChartRefusal } from './agentManager';
 
 const merge: ToolSummary = {
   name: 'x_github_merge',
@@ -372,5 +374,36 @@ describe('review fixes', () => {
     expect(
       approvalStateKey({ ...agent, toolSettings: [{ 'server:gh': 'Block' }] }),
     ).not.toBe(approvalStateKey(agent));
+  });
+});
+
+describe('approval enforcement', () => {
+  it('reads the three states, and the boolean of an earlier agent-manager', () => {
+    expect(approvalEnforcementOf({ approvalEnforcement: 'pending' })).toBe(
+      'pending',
+    );
+    expect(approvalEnforcementOf({ approvalEnforced: false })).toBe(
+      'not-enforced',
+    );
+    expect(approvalNotEnforced({ approvalEnforcement: 'pending' })).toBe(false);
+    expect(
+      reportSummary({ tools: [merge], truncated: false }, false, true),
+    ).toBe('1 ask first — applies once the agent has rolled out');
+  });
+
+  it("recognises agent-manager's refusal of settings on an older chart", () => {
+    expect(
+      noApprovalChartRefusal({
+        code: 'unsupported',
+        message:
+          'the agent chart 1.4.0 has no tool approval settings (tools, default); use a chart that has them',
+      }),
+    ).toEqual({ chart: '1.4.0' });
+    expect(
+      noApprovalChartRefusal({
+        code: 'conflict',
+        message: 'the agent chart 1.4.0 has no tool approval settings',
+      }),
+    ).toBeUndefined();
   });
 });

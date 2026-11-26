@@ -363,7 +363,12 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
         {approvalReady && (
           <Text variant="body-small">
             Approval for this agent:{' '}
-            {reportSummary(approval.report, approval.notEnforced)}.
+            {reportSummary(
+              approval.report,
+              approval.notEnforced,
+              approval.pending,
+            )}
+            .
           </Text>
         )}
         {approval.active && approval.notEnforced && (

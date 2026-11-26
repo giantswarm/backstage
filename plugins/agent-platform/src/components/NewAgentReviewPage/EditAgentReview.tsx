@@ -18,6 +18,7 @@ import {
 import {
   agentGenerationOf,
   isStaleWriteConflict,
+  noApprovalChartRefusal,
   supportsTags,
 } from '../../lib/agentManager';
 import { classifyCommitFailure } from '../../hooks/useAgentCommitCheck';
@@ -57,11 +58,13 @@ import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { useRuntimeChoices } from '../HarnessPicker';
 import { type AgentWizardEdit, useNewAgentForm } from '../NewAgentFormProvider';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
-import { ExceptionsNote } from '../AgentApprovalSettings';
+import { ApprovalChartRefusal, ExceptionsNote } from '../AgentApprovalSettings';
 import { useWizardApproval } from '../../hooks/useWizardApproval';
 import {
   APPROVAL_NOT_ENFORCED_NOTE,
+  APPROVAL_PENDING_NOTE,
   agentToolListOf,
+  approvalEnforcementOf,
   approvalNotEnforced,
   approvalStateKey,
   carriesApprovalSettings,
@@ -123,6 +126,9 @@ function WriteFailure({
         onSignedIn={onSignedIn}
       />
     );
+  }
+  if (noApprovalChartRefusal(failure)) {
+    return <ApprovalChartRefusal failure={failure} />;
   }
   if (refused?.kind === 'release-outside') {
     return (
@@ -597,6 +603,13 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
             description="agent-manager's tools could not be read, so a save now could drop this agent's approval settings. Nothing is saved until they can be read; try again in a moment."
           />
         )}
+        {approvalActive &&
+          approvalEnforcementOf(agent) === 'pending' &&
+          dirty && (
+            <Text variant="body-small" color="secondary">
+              {APPROVAL_PENDING_NOTE}
+            </Text>
+          )}
         {approvalActive && approvalNotEnforced(agent) && (
           <Alert
             status="info"
