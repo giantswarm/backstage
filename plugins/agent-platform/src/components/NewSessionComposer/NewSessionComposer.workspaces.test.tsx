@@ -529,6 +529,43 @@ describe('NewSessionComposer workspaces', () => {
     expect(card).not.toHaveTextContent('GitHub');
   });
 
+  it("sets the sign-in card's Start without workspace beside its sign-in button, the hint under both", async () => {
+    mockWorkspacesOf.mockReturnValue([mix]);
+    window.localStorage.setItem(
+      'gs-agent-platform-last-workspace',
+      JSON.stringify({ [claude.id]: 'platform-mix' }),
+    );
+    const { rerenderWith } = renderComposer();
+    await userEvent.type(field(), 'List the repositories');
+    await userEvent.click(startButton());
+    rerenderWith({
+      error: new WorkspaceManagerError(
+        'not_connected',
+        'sign in first',
+        [],
+        [{ provider: 'github', signIn: 'core_auth_login app=github' }],
+      ),
+    });
+
+    const card = screen.getByTestId('provider-connect-github');
+    const signIn = within(card).getByRole('button', {
+      name: /Continue with GitHub/,
+    });
+    const without = within(card).getByRole('button', {
+      name: 'Start without workspace',
+    });
+    // One row of buttons; what the sign-in says follows the row.
+    expect(without.parentElement).toBe(signIn.parentElement);
+    const hint = within(card).getByText(
+      'Opens a new tab. What you entered here stays.',
+    );
+    expect(
+      signIn.parentElement!.compareDocumentPosition(hint) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(signIn.parentElement).not.toContainElement(hint);
+  });
+
   it('starts nothing by itself without a sign-in made here', async () => {
     mockWorkspacesOf.mockReturnValue([mix]);
     window.localStorage.setItem(
