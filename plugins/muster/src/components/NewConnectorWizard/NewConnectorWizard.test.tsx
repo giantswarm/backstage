@@ -1265,35 +1265,14 @@ describe('shell connector wizard', () => {
         }),
       );
 
-      // Without an issuer muster can only file the sign-in per session: the
-      // choice shows it, disabled, and says what lifts it.
+      // One sign-in is the default, also for an app whose sign-in settings
+      // muster looks up (giantswarm/muster#1755).
       const once = screen.getByRole('radio', {
         name: 'Once, for the portal and every agent conversation (subject)',
       });
       const again = screen.getByRole('radio', {
         name: 'Again in every conversation (session)',
       });
-      expect(again).toBeChecked();
-      expect(once).toBeDisabled();
-      expect(
-        screen.getByText(/needs the app's issuer URL/),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText(
-          'Agents will ask you to sign in again in every conversation.',
-        ),
-      ).toBeInTheDocument();
-
-      // An issuer makes one sign-in the default, and the warning goes.
-      await userEvent.click(
-        screen.getByText(
-          "Advanced: sign-in settings for apps Muster can't look up",
-        ),
-      );
-      await userEvent.type(
-        await screen.findByLabelText(/^Where people sign in \(issuer URL\)/),
-        'https://auth.example.com',
-      );
       expect(once).toBeEnabled();
       expect(once).toBeChecked();
       expect(
@@ -1316,17 +1295,10 @@ describe('shell connector wizard', () => {
       await screen.findByText('Test the connection');
       // `session` is muster's default, so it is not spelled out.
       expect(toolCalls('core_mcpserver_create')[0][1]).toMatchObject({
-        auth: {
-          type: 'oauth',
-          authorizationServer: { issuer: 'https://auth.example.com' },
-        },
+        auth: { type: 'oauth' },
       });
       expect(
-        (
-          toolCalls('core_mcpserver_create')[0][1] as {
-            auth: { authorizationServer: object };
-          }
-        ).auth.authorizationServer,
+        (toolCalls('core_mcpserver_create')[0][1] as { auth: object }).auth,
       ).not.toHaveProperty('grantScope');
     });
 

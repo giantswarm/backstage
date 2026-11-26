@@ -70,8 +70,9 @@ export function authModeOf(auth: MCPServerAuth | undefined): ServerAuthMode {
  *
  * muster's own report decides where the person's `auth://status` carries one
  * (`grant_scope`, or a `kind` other than a grant of their own). Otherwise the
- * spec does: a server people sign in to with their own account, unless its
- * authorization server is pinned with `grantScope: subject`.
+ * spec does: a server people sign in to with their own account, unless it
+ * sets `grantScope: subject` (on `spec.auth` or its pinned authorization
+ * server).
  */
 export function signInServesOneSession(
   server: MCPServer,
@@ -85,6 +86,7 @@ export function signInServesOneSession(
   }
   return (
     serverAuthMode(server) === 'own-account' &&
-    server.getAuth()?.authorizationServer?.grantScope !== 'subject'
+    server.getAuth()?.authorizationServer?.grantScope !== 'subject' &&
+    server.getAuth()?.grantScope !== 'subject'
   );
 }

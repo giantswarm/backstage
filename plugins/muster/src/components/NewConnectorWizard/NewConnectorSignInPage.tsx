@@ -144,29 +144,20 @@ const SESSION_GRANT_WARNING =
  * How often people sign in to an own-account connector, outside the Advanced
  * disclosure: it decides whether their agents see the sign-in at all. Plain
  * first, muster's `grantScope` value in parentheses for whoever is matching
- * this up with the MCPServer resource. muster takes `subject` only on a pinned
- * authorization server, so without an issuer the choice shows `session`,
- * disabled, and says what lifts it.
+ * this up with the MCPServer resource.
  */
 function GrantScopeChoice({
   grantScope,
-  hasIssuer,
   onChange,
 }: {
   /** The scope the connector ends up with (`effectiveGrantScope`). */
   grantScope: 'session' | 'subject';
-  hasIssuer: boolean;
   onChange: (grantScope: 'session' | 'subject') => void;
 }) {
-  let description: string | undefined;
-  if (!hasIssuer) {
-    description =
-      "Signing in once needs the app's issuer URL, under Advanced: Muster can't yet reuse a sign-in to an app whose sign-in settings it looks up.";
-  } else if (grantScope === 'subject') {
-    description = 'A sign-in lasts until the person signs out of it.';
-  }
-  // Why the choice is disabled is the description's to say; the warning only
-  // says what a session sign-in means.
+  const description =
+    grantScope === 'subject'
+      ? 'A sign-in lasts until the person signs out of it.'
+      : undefined;
   const warning =
     grantScope === 'session'
       ? 'A sign-in covers one session only: the portal, or one agent conversation.'
@@ -181,7 +172,6 @@ function GrantScopeChoice({
             onChange(value);
           }
         }}
-        isDisabled={!hasIssuer}
         description={description}
       >
         <Radio value="subject">
@@ -550,7 +540,6 @@ export function NewConnectorSignInPage() {
           )}
           <GrantScopeChoice
             grantScope={effectiveGrantScope(state)}
-            hasIssuer={Boolean(state.issuer.trim())}
             onChange={setGrantScope}
           />
           {/* Remounted on each blocked attempt, open when a field inside

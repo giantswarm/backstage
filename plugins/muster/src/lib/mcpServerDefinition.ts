@@ -619,6 +619,10 @@ function composeAuth(state: NewMcpServerFormState): MCPServerAuth | undefined {
           authorizationServer.grantScope = 'subject';
         }
         auth.authorizationServer = authorizationServer;
+      } else if (state.grantScope === 'subject') {
+        // No pin: muster applies `spec.auth.grantScope` to the authorization
+        // server it discovers (giantswarm/muster#1755).
+        auth.grantScope = 'subject';
       }
       return auth;
     }
@@ -905,8 +909,7 @@ const ENDPOINT_PATTERN = /^https:\/\/\S+$/;
  * Whether any of the advanced authorization-server settings (pinned endpoints,
  * client-credentials Secret) is filled in — they all live on the
  * `authorizationServer` block, so they need an issuer to hang off. The grant
- * scope lives there too but is no such setting: it has a default either way,
- * and without an issuer it is muster's (`session`), see
+ * scope is no such setting: without an issuer it goes on `spec.auth`, see
  * {@link effectiveGrantScope}.
  */
 export function hasAdvancedAuthorizationServer(
@@ -930,17 +933,15 @@ export function hasAdvancedAuthorizationServer(
 }
 
 /**
- * The grant scope an `own-account` connector ends up with: the chosen one
- * where an issuer is pinned, else muster's `session`. muster only takes
- * `grantScope` on a pinned authorization server (`issuer` is required on
- * `spec.auth.authorizationServer`), so a connector whose authorization server
- * muster looks up has every sign-in serve one muster session until muster
- * accepts it there too (giantswarm/muster#1755).
+ * The grant scope an `own-account` connector ends up with: the chosen one.
+ * With a pinned issuer it is written on `spec.auth.authorizationServer`,
+ * without one on `spec.auth`, which muster applies to the authorization
+ * server it discovers (giantswarm/muster#1755).
  */
 export function effectiveGrantScope(
   state: NewMcpServerFormState,
 ): 'session' | 'subject' {
-  return state.issuer.trim() ? state.grantScope : 'session';
+  return state.grantScope;
 }
 
 // A key of a Secret's `data`, as the API server checks it
@@ -1264,7 +1265,7 @@ export function wizardAuthModeLabel(answer: McpServerAuthMode): string {
  */
 const WIZARD_AUTH_KEYS: Record<McpServerAuthMode, string[]> = {
   none: [],
-  'own-account': ['type', 'authorizationServer'],
+  'own-account': ['type', 'authorizationServer', 'grantScope'],
   // forwardToken implies OAuth in muster, so an explicit `type: oauth` is the
   // same server and composing it without one keeps it.
   'platform-sso': ['type', 'forwardToken', 'requiredAudiences'],
@@ -1446,14 +1447,10 @@ export function formStateFromServer(server: MCPServer): NewMcpServerFormState {
     clientSecretKey:
       auth?.authorizationServer?.clientCredentialsSecretRef?.clientSecretKey ??
       '',
-    // A pinned authorization server keeps what it says, its absent
-    // `grantScope` being muster's `session`. Without a pin there is no value
-    // to keep (the connector is `session` whatever the field holds, see
-    // `effectiveGrantScope`), so the wizard's default stands for an issuer the
-    // edit adds.
-    grantScope: auth?.authorizationServer
-      ? (auth.authorizationServer.grantScope ?? 'session')
-      : emptyFormState.grantScope,
+    // What the server says, on its pin or on `spec.auth`; absent is muster's
+    // `session`.
+    grantScope:
+      auth?.authorizationServer?.grantScope ?? auth?.grantScope ?? 'session',
     requiredAudiences: auth?.requiredAudiences ?? [],
     sigv4Region: auth?.sigv4?.region ?? '',
     sigv4Service: auth?.sigv4?.service ?? '',

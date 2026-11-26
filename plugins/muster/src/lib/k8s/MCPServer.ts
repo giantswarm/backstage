@@ -218,6 +218,13 @@ export interface MCPServerAuthorizationServer {
 
 export interface MCPServerAuth {
   type?: 'oauth' | 'none' | 'sigv4';
+  /**
+   * Whom a person's grant belongs to: their login session (`session`, the
+   * default) or the person, across the portal and every agent conversation
+   * (`subject`). For a server whose authorization server muster discovers;
+   * a pinned one may set it on `authorizationServer` instead.
+   */
+  grantScope?: 'session' | 'subject';
   forwardToken?: boolean;
   requiredAudiences?: string[];
   tokenExchange?: MCPServerTokenExchange;
