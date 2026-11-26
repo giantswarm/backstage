@@ -2521,7 +2521,7 @@ describe('SessionDetailPage', () => {
   });
 
   describe('a URL elicitation the agent waits on', () => {
-    it("shows muster's message with Open, returning to the session from muster's page", async () => {
+    it("shows muster's message with Open and Done where it cannot decide the approval inline", async () => {
       mockUseSessionDetail.mockReturnValue({
         ...loadedView,
         isAgentWorking: false,
@@ -2555,13 +2555,10 @@ describe('SessionDetailPage', () => {
           name: 'Open (opens in a new tab)',
         }),
       );
-      const opened = new URL(open.mock.lastCall[0].url);
-      const back = new URL(opened.searchParams.get('redirect')!);
-      // muster's approval page names the elicitation on its return itself;
-      // the return carries this open's random value.
-      expect(back.searchParams.get('elicitationId')).toBeNull();
-      expect(back.searchParams.get('elicitationReturn')).toMatch(
-        /^[0-9a-f]{32}$/,
+      // Without muster's decision API (no muster plugin here) the approval
+      // page opens as sent: no return, the person says Done.
+      expect(open.mock.lastCall[0].url).toBe(
+        'https://muster.example.example.com/approvals/0f3c9a',
       );
 
       await user.click(within(card).getByRole('button', { name: 'Done' }));

@@ -5,7 +5,7 @@ import type { MusterInstallationConfig } from '@giantswarm/backstage-plugin-gs-n
  * muster's endpoint that issues a one-time sign-in handoff ticket for one of
  * its pages (contract-muster-approval.md §5a): POST with the person's bearer
  * and `{"url": "<page>"}`, answered 201 `{"ticket", "expiresIn"}`. muster
- * issues one only to its `approval.handoffClients` (the portal's own OAuth
+ * issues one only to its `approval.trustedClients` (the portal's own OAuth
  * client), only for the person the page is bound to.
  */
 export const MUSTER_HANDOFF_PATH = '/handoff-tickets';
@@ -42,10 +42,14 @@ export function isOnMusterPages(
   }
 }
 
+/** Where muster serves its pages next to an MCP endpoint: `/mcp` dropped. */
+export function musterPagesBase(endpoint: string): string {
+  return endpoint.replace(/\/+$/, '').replace(/\/mcp$/, '');
+}
+
 /** The handoff endpoint next to the installation's MCP endpoint. */
 export function musterHandoffUrl(endpoint: string): string {
-  const base = endpoint.replace(/\/+$/, '').replace(/\/mcp$/, '');
-  return `${base}${MUSTER_HANDOFF_PATH}`;
+  return `${musterPagesBase(endpoint)}${MUSTER_HANDOFF_PATH}`;
 }
 
 /**

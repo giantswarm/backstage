@@ -939,7 +939,92 @@ export interface MusterApi {
     url: string,
     installation?: string,
   ): Promise<string | undefined>;
+  /**
+   * The person's pending approval behind a link to muster's approval page
+   * (`url`), as muster's decision API shows it to the portal: what muster's
+   * page shows, made safe the same way, with the digest a decision carries.
+   * A refusal when muster shows nothing (another person's, expired, the
+   * portal not trusted there, ...).
+   */
+  getApproval(url: string, installation?: string): Promise<ApprovalLookup>;
+  /**
+   * Decides that approval as the person, with the digest of the view they
+   * saw. Call only on the person's click; never from message content.
+   */
+  decideApproval(
+    url: string,
+    decision: 'approve' | 'decline',
+    digest: string,
+    installation?: string,
+  ): Promise<ApprovalDecisionResult>;
 }
+
+/** An argument, change or preset entry of an approval, made visible by muster. */
+export type ApprovalValue = {
+  key: string;
+  label: string;
+  value: string;
+  type?: string;
+};
+
+/** A workflow step of an approval. */
+export type ApprovalStepView = {
+  id: string;
+  label: string;
+  tool: string;
+  asks?: boolean;
+  workflow?: string;
+  arguments?: ApprovalValue[];
+};
+
+/**
+ * What muster's decision API shows of a pending approval
+ * (contract-muster-approval.md §5b). Every text an agent or a connector chose
+ * has its invisible characters marked (`⟨U+XXXX⟩`); render it as text only.
+ */
+export type ApprovalView = {
+  id: string;
+  status: string;
+  heading: string;
+  message: string;
+  tool: { title: string; name: string; exposed?: string; kind: string };
+  connector?: { displayName: string; server: string };
+  changesData: boolean;
+  arguments: ApprovalValue[];
+  changes?: Array<{ field: string; old: string; new: string }>;
+  preset?: ApprovalValue[];
+  steps?: ApprovalStepView[];
+  agentSays?: string;
+  agent?: { namespace?: string; name: string };
+  why: { setting: string; source: string };
+  actsFor: { name?: string; subject: string; issuer: string };
+  callerKind: string;
+  installation?: string;
+  canonicalArguments: string;
+  argumentsHash: string;
+  expiresAt: string;
+  digest: string;
+};
+
+/** Why muster showed or decided nothing. */
+export type ApprovalRefusal = {
+  /** muster's HTTP status; 502 when it could not be reached. */
+  status: number;
+  /**
+   * `untrusted_client`, `acting_party`, `foreign`, `not_found`, `decided`,
+   * `expired`, `changed`, `bad_request`, `unavailable`, `unreachable`.
+   */
+  error: string;
+  message: string;
+  /** For `decided`: what stands. */
+  decided?: string;
+};
+
+export type ApprovalLookup =
+  { view: ApprovalView } | { refusal: ApprovalRefusal };
+
+export type ApprovalDecisionResult =
+  { status: 'approved' | 'declined' } | { refusal: ApprovalRefusal };
 
 /**
  * What a sign-in is for: an aggregated server by name, or a provider App

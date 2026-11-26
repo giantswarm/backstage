@@ -48,6 +48,8 @@ import {
   ListExecutionsOptions,
   ListToolsResponse,
   McpServerListResponse,
+  ApprovalDecisionResult,
+  ApprovalLookup,
   ConnectorNamesResponse,
   MusterServerInfoResponse,
   MusterAnswerCutError,
@@ -725,6 +727,26 @@ export class MusterApiClient implements MusterApi {
       // No ticket: muster signs the browser in itself.
       return undefined;
     }
+  }
+
+  async getApproval(
+    url: string,
+    installation?: string,
+  ): Promise<ApprovalLookup> {
+    return this.post<ApprovalLookup>('/approvals/view', { url }, installation);
+  }
+
+  async decideApproval(
+    url: string,
+    decision: 'approve' | 'decline',
+    digest: string,
+    installation?: string,
+  ): Promise<ApprovalDecisionResult> {
+    return this.post<ApprovalDecisionResult>(
+      '/approvals/decision',
+      { url, decision, digest },
+      installation,
+    );
   }
 
   async authHeaders(installation?: string): Promise<Record<string, string>> {

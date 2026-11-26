@@ -88,6 +88,7 @@ import {
 } from '../UrlElicitationPanel';
 import { useMusterPages } from '../../hooks/useMusterPages';
 import { useMusterHandoff } from '../../hooks/useMusterHandoff';
+import { useMusterApprovals } from '../../hooks/useMusterApprovals';
 import { SessionComposer } from '../SessionComposer';
 import {
   ChatGptConnectDialog,
@@ -424,6 +425,7 @@ function SessionDetail() {
   // below shows that tab a notice instead of the session.
   const musterPages = useMusterPages(installation);
   const requestHandoff = useMusterHandoff(installation);
+  const approvals = useMusterApprovals(installation);
   const connectorOf = useCallback(
     (toolName: string) =>
       connectorOfTool(toolName, musterServers, connectorLabelsOf),
@@ -1671,6 +1673,8 @@ function SessionDetail() {
                   isUserScoped={isUserScoped}
                   musterPages={musterPages}
                   requestHandoff={requestHandoff}
+                  approvals={approvals}
+                  sessionAgent={agent}
                   onAnswer={answer => {
                     // Errors surface through the hook's `error`, which the card
                     // renders above the choices it hands back. The request it

@@ -3,12 +3,13 @@
  * whatever it asks for: muster's sign-in
  * to a connector, its approval page for a tool call, or any later page.
  *
- * A link to one of muster's own pages that return the browser (its approval
- * page, its sign-in start), on the configured muster's origin, opens at once,
- * with `redirect` (the page muster returns the browser to once the person is
- * done there) and, when muster issues one, a one-time sign-in handoff ticket
- * so the person is not asked to sign in to muster again. Every other link
- * opens through the consent dialog. The return carries a random
+ * A link to the configured muster's approval page is decided in the chat
+ * (`InlineApproval`); opened as a secondary way, it opens as sent. A link to
+ * its connector sign-in start opens at once, with `redirect` (the page muster
+ * returns the browser to once the person is done there) and, when muster
+ * issues one, a one-time sign-in handoff ticket so the person is not asked to
+ * sign in to muster again. Every other link opens through the consent
+ * dialog. The return carries a random
  * value the opening tab made for that one open, so only that tab resumes the
  * agent, once; a visit to the session page with a guessed or relayed
  * `elicitationId` does nothing. The return never says what was decided: the
@@ -21,9 +22,8 @@ import { isWebURL } from '@giantswarm/backstage-plugin-ui-react';
 
 /**
  * The query parameter of the page muster returns the browser to: the
- * `elicitationId` of the elicitation the person finished. muster's approval
- * page sets it itself on its return (contract §5); for its sign-in, whose
- * return does not name it, the portal puts it in the `redirect`.
+ * `elicitationId` of the elicitation the person finished. muster's sign-in
+ * return does not name it, so the portal puts it in the `redirect`.
  */
 export const ELICITATION_RETURN_PARAM = 'elicitationId';
 
@@ -42,15 +42,18 @@ export const ELICITATION_REDIRECT_PARAM = 'redirect';
  */
 export type MusterPages = { origin: string; basePath: string };
 
-/** One of muster's pages that returns the browser to `redirect`. */
+/**
+ * One of muster's own pages: its approval page (decided in the chat, opened
+ * without the consent dialog) or its connector sign-in start (which returns
+ * the browser to `redirect`).
+ */
 export type MusterPageKind = 'approval' | 'sign-in';
 
 /**
- * muster's pages that return the browser to the portal, under its public URL:
- * the approval page `/approvals/<id>` (contract-muster-approval.md §5, a
- * 26-character base32 id) and the sign-in start `/oauth/proxy/start`
- * (muster's `DefaultOAuthProxyStartPath`). No other path on muster's origin
- * gets a return.
+ * muster's own pages under its public URL: the approval page `/approvals/<id>`
+ * (contract-muster-approval.md §5, a 26-character base32 id) and the sign-in
+ * start `/oauth/proxy/start` (muster's `DefaultOAuthProxyStartPath`). Only the
+ * sign-in start gets a return.
  */
 const MUSTER_PAGES: ReadonlyArray<[RegExp, MusterPageKind]> = [
   [/^\/approvals\/[A-Za-z0-9]+$/, 'approval'],
@@ -115,15 +118,12 @@ export function musterPageKind(
 }
 
 /**
- * The link to open: to one of muster's returning pages, with an
+ * The link to open: to muster's connector sign-in start, with an
  * `elicitationId` to come back with, the link with `redirect` to `back`,
- * which carries `nonce`; otherwise the link as the server sent it. The
- * approval page sets the `elicitationId` on its return itself, so a return
- * from it names the elicitation muster recorded, not the one relayed to the
- * page; the sign-in's return does not, so the portal names it. muster honours
- * the redirect only when the portal is on its post-login allowlist, and
- * otherwise shows its own page; the elicitation works either way, the person
- * then says *Done*.
+ * which carries `nonce` and the `elicitationId`; otherwise (an approval page
+ * included) the link as the server sent it. muster honours the redirect only
+ * when the portal is on its post-login allowlist, and otherwise shows its own
+ * page; the elicitation works either way, the person then says *Done*.
  */
 export function elicitationHref(
   url: string,
@@ -135,15 +135,12 @@ export function elicitationHref(
   },
 ): string {
   const { musterPages, elicitationId, nonce, back } = options;
-  const kind = musterPageKind(url, musterPages);
-  if (!elicitationId || !kind) {
+  if (!elicitationId || musterPageKind(url, musterPages) !== 'sign-in') {
     return url;
   }
   const page = new URL(back);
   page.searchParams.set(ELICITATION_NONCE_PARAM, nonce);
-  if (kind === 'sign-in') {
-    page.searchParams.set(ELICITATION_RETURN_PARAM, elicitationId);
-  }
+  page.searchParams.set(ELICITATION_RETURN_PARAM, elicitationId);
   const target = new URL(url);
   target.searchParams.set(ELICITATION_REDIRECT_PARAM, page.toString());
   return target.toString();

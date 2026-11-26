@@ -3273,55 +3273,81 @@ part is discarded). A question can be answered with a choice, text or both,
 sent choices first.
 
 A `url_elicitation_request` is read off the status message's metadata
-(`readUrlElicitationRequest` in `agent-platform-common`) and renders as one
-generic prompt (`UrlElicitationPanel`) in place of the question card, whatever
-it asks for: muster's sign-in, its approval page for a tool call,
-or any later page. The server's `message` is the
-heading ("Alert Review wants to acknowledge an incident in PagerDuty."), or
+(`readUrlElicitationRequest` in `agent-platform-common`) and renders in place
+of the question card (`UrlElicitationPanel`).
+
+**An approval of muster is decided in the chat** (decision #108 of the tool
+approval epic). A link to the session installation's muster approval page
+(`/approvals/<id>`, contract §5, on the origin muster serves its pages from: its
+`publicUrl` where configured, else its endpoint) shows the request inline
+(`InlineApproval`): the muster backend (`POST /api/muster/approvals/view`)
+reads it from muster's decision API with the person's token (`GET
+/approvals/<id>`, contract §5b), and the card shows what muster's page shows:
+the connector (display name and server), the tool (display name and raw
+name, "Changes data"), every argument (long values collapsed, muster's
+`⟨U+XXXX⟩` marking of invisible and bidi characters kept), what changes, a
+preset's settings, a workflow's steps, the agent's stated reason under
+"Agent says" (marked as the agent's own words), why it asks (the connector's
+setting, the agent's setting, governance, a built-in floor) and when it
+expires, plus the canonical arguments and their SHA-256 under "Show details".
+Who asks and for whom are not shown in the normal case: it is the
+conversation's agent, acting for the person. When the asking agent is not the
+session's (a sub-agent the session's agent invoked, another agent), a warning
+line names it; a request made for someone else is refused by muster and the
+card says so. Everything is rendered as text.
+
+_Approve_ and _Decline_ are the only things that decide, and only on the
+person's click: the muster backend posts the decision with the person's token
+and the digest of the view that is shown (`POST /api/muster/approvals/decision`,
+muster `POST /approvals/<id>/decision`), and muster refuses it if the request
+is not that one (the card then shows the request again and says so), if the
+token is not the person's own (an agent's credential), if the portal's OAuth
+client is not on muster's `approval.trustedClients`, if the request is someone
+else's, expired, used or already decided. On success the chat answers the
+elicitation at once, `accept` ("Approved.") or `decline` ("Declined."), and the
+agent goes on; muster's answer to the retried call is the outcome the timeline
+shows. A request already decided on muster's page goes on with what stands.
+_Open in muster_ stays as a secondary way: muster's page in a new tab (no
+consent dialog, no sign-in handoff, no return: the page signs the browser in
+itself). When muster shows nothing here (the portal not trusted there, muster
+unreachable, someone else's request), the card says why and offers _Done_ for
+after a decision on muster's page. _Not now_ answers `decline`.
+
+**Any other URL elicitation** (muster's connector sign-in, any later page)
+renders as one generic prompt. The server's `message` is the heading, or
 "<server> asks you to open a page so the agent can continue." without one;
-_Open_ (new-tab icon) names the link's full host beside it; a link to one of the
-configured muster's own pages (below) opens at once in a new tab, any other link
-goes through the external URL consent dialog; _Done_ answers `accept`, _Not now_ `decline`. The prompt
-decides nothing: the agent retries the call, and muster's answer to the retry
-(run, refused, declined) is the outcome the timeline shows.
+_Open_ (new-tab icon) names the link's full host beside it; muster's connector
+sign-in start opens at once in a new tab, any other link goes through the
+external URL consent dialog; _Done_ answers `accept`, _Not now_ `decline`. The
+prompt decides nothing: the agent retries the call, and muster's answer to the
+retry is the outcome the timeline shows.
 
-A link to one of muster's pages that return the browser, its approval page
-(`/approvals/<id>`, contract §5) or its sign-in start (`/oauth/proxy/start`), on
-the origin muster serves its pages from (the session installation's muster in
-the muster backend's `/installations`: its `publicUrl` where configured, for a
-muster whose pages are not on its endpoint's host, else its endpoint; see the
-muster-backend README), with an `elicitation_id`, opens with
-`redirect` set to the session page plus `elicitationReturn=<random value>`, a
-new 128-bit value per _Open_ that the tab keeps (per tab, `sessionStorage`)
-with the elicitation, the task, the session page and the person. muster's
-approval page adds the `elicitationId` on its return itself, so a return names
-the elicitation muster recorded; for the sign-in start, whose return does not
-name it, the portal adds it to the `redirect`. muster returns the browser there
-once the person is done (on its post-login allowlist; otherwise it shows its
-own page and the person says _Done_). The returned tab tells the session's
-other tabs (a `BroadcastChannel`) the `elicitationId` and the value, drops both
-from the address and closes; only the tab that made that open answers
-`accept` for the person, once, and only for the elicitation it shows, its
-task, the same session page and the same person (the open's record is used
-up). A visit to the session page with an `elicitationId` alone, or with a value
-no tab made, does nothing. The return never says what was decided. Any other
-link, another path on muster's origin included, opens as sent, through the
-consent dialog.
+A link to muster's sign-in start (`/oauth/proxy/start`) with an
+`elicitation_id` opens with `redirect` set to the session page plus
+`elicitationReturn=<random value>` and the `elicitationId`, a new 128-bit
+value per _Open_ that the tab keeps (per tab, `sessionStorage`) with the
+elicitation, the task, the session page and the person. muster returns the
+browser there once the person signed in (on its post-login allowlist;
+otherwise it shows its own page and the person says _Done_). The returned tab
+tells the session's other tabs (a `BroadcastChannel`) the `elicitationId` and
+the value, drops both from the address and closes; only the tab that made
+that open answers `accept` for the person, once, and only for the elicitation
+it shows, its task, the same session page and the same person. A visit to the
+session page with an `elicitationId` alone, or with a value no tab made, does
+nothing. Any other link, another path on muster's origin included, opens as
+sent, through the consent dialog.
 
-Such a link to muster's own pages skips the consent dialog: the person chose
-_Open_ in the chat line, which names the host and the server's message, and
-the origin is the one the portal is configured with, so the dialog would only
-ask again. The tab opens during the click (`about:blank`, its `opener`
-dropped) and is pointed at the page once the portal has its return and a
-sign-in handoff: the muster backend (`POST /api/muster/handoff`) asks muster,
-with the person's token, for a one-time ticket for that page
-(`POST /handoff-tickets`, muster contract §5a), and the link carries it as
-`handoff`. muster redeems it once, within 60 seconds, for that page and that
-person only, signs the browser in as them and drops it from the address, so
-the person is not asked to sign in to muster again. Without a ticket (muster
-lists no `approval.handoffClients`, an older muster, an error) the page signs
-in as before. A blocked new tab falls back to the consent dialog, without a
-ticket.
+The sign-in start skips the consent dialog: the person chose _Open_ in the
+chat line, which names the host and the server's message, and the origin is
+the one the portal is configured with. The tab opens during the click
+(`about:blank`, its `opener` dropped) and is pointed at the page once the
+portal has its return and a sign-in handoff: the muster backend (`POST
+/api/muster/handoff`) asks muster, with the person's token, for a one-time
+ticket (`POST /handoff-tickets`, muster contract §5a), and the link carries it
+as `handoff`. muster redeems it once, within 60 seconds, for that start and
+that person only. Without a ticket (muster lists no `approval.trustedClients`,
+an older muster, an error) the start signs in as before. A blocked new tab
+falls back to the consent dialog, without a ticket.
 
 When the session waits but the request cannot be read (unrecognised payload, or
 no task id), the panel is withheld and the page says so.

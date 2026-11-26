@@ -44,6 +44,7 @@ import {
 import { SendKeyHint } from '../SendKeyHint';
 import { UrlElicitationPanel } from '../UrlElicitationPanel';
 import type { MusterPages } from '../../lib/urlElicitation';
+import type { InlineApprovals, SessionAgent } from '../InlineApproval';
 
 /**
  * The tallest the card grows before its body scrolls: about half the view, so
@@ -236,6 +237,13 @@ export type PendingConfirmationPanelProps = {
    * so the person is not asked to sign in to muster again there.
    */
   requestHandoff?: (url: string) => Promise<string | undefined>;
+  /**
+   * Reads and decides the person's approvals on the session's muster, so a
+   * link to its approval page is decided in the chat.
+   */
+  approvals?: InlineApprovals;
+  /** The session's agent, to say when another agent asks. */
+  sessionAgent?: SessionAgent;
 };
 
 /**
@@ -315,6 +323,8 @@ export function PendingConfirmationPanel(props: PendingConfirmationPanelProps) {
         onAnswer={props.onAnswer}
         musterPages={props.musterPages}
         requestHandoff={props.requestHandoff}
+        approvals={props.approvals}
+        sessionAgent={props.sessionAgent}
       />
     );
   }

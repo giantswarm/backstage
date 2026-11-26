@@ -27,6 +27,11 @@ import {
   withHandoff,
   type MusterPages,
 } from '../../lib/urlElicitation';
+import {
+  InlineApproval,
+  type InlineApprovals,
+  type SessionAgent,
+} from '../InlineApproval';
 
 /**
  * The links this tab opened, one record per open, so a reload keeps them.
@@ -199,11 +204,21 @@ export type UrlElicitationPanelProps = {
    */
   musterPages?: MusterPages;
   /**
-   * Asks muster for a one-time sign-in handoff ticket for one of its pages,
-   * so the page opens signed in as the person (contract-muster-approval.md
-   * §5a); without it, or without a ticket, muster signs the browser in.
+   * Asks muster for a one-time sign-in handoff ticket for its connector
+   * sign-in start, so it opens signed in as the person
+   * (contract-muster-approval.md §5a); without it, or without a ticket,
+   * muster signs the browser in.
    */
   requestHandoff?: (url: string) => Promise<string | undefined>;
+  /**
+   * Reads and decides the person's approvals on the session's muster: a link
+   * to its approval page then shows the request here, with Approve and
+   * Decline (contract-muster-approval.md §5b). Without it the person decides
+   * on muster's page.
+   */
+  approvals?: InlineApprovals;
+  /** The session's agent: an approval asked by another agent says so. */
+  sessionAgent?: SessionAgent;
 };
 
 /**
@@ -227,20 +242,24 @@ function openBlankTab(): Window | undefined {
 
 /**
  * An MCP server's URL elicitation the agent waits on (`pending.asks ===
- * 'url'`), the same for every one: muster's sign-in, its approval page for a
- * tool call, or any later page. The server's message is the heading; *Open*
- * names the host the link leads to. A link to one of the configured muster's
- * own pages (its approval page, its connector sign-in start, by origin and
- * path) opens at once in a new tab, signed in through a one-time handoff
- * when muster issues one: the person already chose *Open* here, and the
- * chat line names the host and the server's message. Any other link goes
- * through the portal's consent dialog. *Done* tells the agent to go on, *Not
- * now* declines.
+ * 'url'`): muster's connector sign-in, its approval page for a tool call, or
+ * any later page.
  *
- * The prompt knows nothing of what the page decides. The agent retries the
- * call on *Done*, and the outcome is muster's answer to that retry, which the
- * timeline shows as the tool call's result: an approval page the person did
- * not approve leaves the call refused there, whatever the prompt said.
+ * A link to the configured muster's approval page shows the request here
+ * (`InlineApproval`, contract-muster-approval.md §5b) with Approve and
+ * Decline: the person's click decides through muster's decision API, and the
+ * elicitation is answered at once (accept on approve, decline on decline),
+ * so the chat goes on. *Open in muster* stays as a secondary way: muster's
+ * page in a new tab, signing the browser in itself; when the request cannot
+ * be shown here, *Done* tells the agent to go on after deciding there.
+ *
+ * Any other link: the server's message is the heading and *Open* names the
+ * host. muster's connector sign-in start opens at once in a new tab, signed
+ * in through a one-time handoff when muster issues one, and returns to the
+ * chat (`useUrlElicitationReturn`); every other link goes through the
+ * portal's consent dialog. *Done* tells the agent to go on, *Not now*
+ * declines. The outcome of a page is muster's answer to the call the agent
+ * retries, which the timeline shows.
  */
 export function UrlElicitationPanel({
   pending,
@@ -249,6 +268,8 @@ export function UrlElicitationPanel({
   onAnswer,
   musterPages,
   requestHandoff,
+  approvals,
+  sessionAgent,
 }: UrlElicitationPanelProps) {
   const classes = useStyles();
   const consentApi = useApi(externalUrlConsentApiRef);
@@ -259,15 +280,17 @@ export function UrlElicitationPanel({
   const page = useHref(useLocation().pathname);
 
   const answer = useCallback(
-    (decision: ConfirmationAnswer['decision']) =>
+    (decision: ConfirmationAnswer['decision'], text?: string) =>
       onAnswer({
         taskId: pending.taskId,
         decision,
-        text: decision === 'approve' ? 'Done.' : 'Not now.',
+        text: text ?? (decision === 'approve' ? 'Done.' : 'Not now.'),
         ...(pending.askedIn && { askedIn: pending.askedIn }),
       }),
     [onAnswer, pending.taskId, pending.askedIn],
   );
+  // muster showed nothing to decide here: the page and Done remain.
+  const [inlineRefused, setInlineRefused] = useState(false);
 
   // muster returned from a page this tab opened for this elicitation, in
   // this session, as this person: the agent goes on, once.
@@ -312,7 +335,10 @@ export function UrlElicitationPanel({
   }
   const host = linkHost(elicitation.url);
   const kind = musterPageKind(elicitation.url, musterPages);
-  const returns = Boolean(elicitationId && kind);
+  // Only muster's connector sign-in returns to the chat: an approval is
+  // decided here (or on muster's page, then Done).
+  const returns = Boolean(elicitationId && kind === 'sign-in');
+  const inline = kind === 'approval' && approvals !== undefined;
   const open = async () => {
     // A page of the configured muster opens without the consent dialog: in a
     // tab opened now, during the click, and pointed at the page once its
@@ -340,9 +366,12 @@ export function UrlElicitationPanel({
       writeOpened([...readOpened(), record]);
     }
     if (tab) {
-      const ticket = requestHandoff
-        ? await requestHandoff(elicitation.url).catch(() => undefined)
-        : undefined;
+      // A sign-in handoff only for the connector sign-in: an approval page
+      // opened from here signs the browser in itself.
+      const ticket =
+        requestHandoff && kind === 'sign-in'
+          ? await requestHandoff(elicitation.url).catch(() => undefined)
+          : undefined;
       tab.location.replace(withHandoff(href, ticket));
       return;
     }
@@ -358,6 +387,60 @@ export function UrlElicitationPanel({
       writeOpened(readOpened().filter(entry => entry.nonce !== nonce));
     }
   };
+
+  if (inline && approvals) {
+    return (
+      <section
+        aria-label="Approval request from the agent's tools"
+        className={classes.card}
+        data-testid="url-elicitation-card"
+      >
+        <InlineApproval
+          url={elicitation.url}
+          approvals={approvals}
+          sessionAgent={sessionAgent}
+          isAnswering={isAnswering}
+          onUnavailable={() => setInlineRefused(true)}
+          onDecided={status =>
+            status === 'approved'
+              ? answer('approve', 'Approved.')
+              : answer('reject', 'Declined.')
+          }
+        />
+        {error && (
+          <Alert status="danger" title="Answer not sent" description={error} />
+        )}
+        <Flex align="center" gap="2" style={{ flexWrap: 'wrap' }}>
+          <Button variant="tertiary" size="small" onPress={() => void open()}>
+            <NewTabLabel>Open in muster</NewTabLabel>
+          </Button>
+          {host && (
+            <Text as="span" variant="body-small" color="secondary">
+              {host}
+            </Text>
+          )}
+          {inlineRefused && (
+            <Button
+              variant="secondary"
+              size="small"
+              isDisabled={isAnswering}
+              onPress={() => answer('approve')}
+            >
+              Done
+            </Button>
+          )}
+          <Button
+            variant="tertiary"
+            size="small"
+            isDisabled={isAnswering}
+            onPress={() => answer('reject')}
+          >
+            Not now
+          </Button>
+        </Flex>
+      </section>
+    );
+  }
 
   return (
     <section

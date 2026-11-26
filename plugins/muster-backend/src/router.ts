@@ -49,6 +49,7 @@ import {
 } from './mcpUsage';
 import { UsageCache, usageCacheKey } from './usageCache';
 import { isOnMusterPages, requestHandoffTicket } from './handoff';
+import { approvalIdOf, fetchApproval, postApprovalDecision } from './approvals';
 
 const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
 
@@ -98,7 +99,10 @@ export interface RouterOptions {
   lifecycle?: Pick<RootLifecycleService, 'addStartupHook'>;
   /** Names the Backstage user a usage answer is cached for. */
   httpAuth: HttpAuthService;
-  /** Overridable for tests: how the sign-in handoff reaches muster. */
+  /**
+   * Overridable for tests: how the sign-in handoff and the decision API
+   * reach muster.
+   */
   handoffFetch?: typeof fetch;
 }
 
@@ -284,6 +288,32 @@ function loginTarget(
     );
   }
   return hasServer ? { server: server as string } : { app: app as string };
+}
+
+/** What an approval route answers on an installation without per-user sessions. */
+const NO_PERSON_REFUSAL = {
+  status: 403,
+  error: 'untrusted_client',
+  message:
+    'This muster takes no decisions from the portal: it runs without per-user sign-in.',
+};
+
+/** The approval id of the body's `url`, which must be the installation's muster approval page. */
+function approvalLinkId(
+  req: express.Request,
+  installation: MusterInstallationConfig,
+): string {
+  const url = nonEmptyString(req.body?.url);
+  if (!url) {
+    throw new InputError('url is required');
+  }
+  const id = approvalIdOf(url, installation);
+  if (!id) {
+    throw new InputError(
+      `url is not an approval page of the muster of installation '${installation.name}'`,
+    );
+  }
+  return id;
 }
 
 function nonEmptyString(value: unknown): string | undefined {
@@ -1070,6 +1100,70 @@ export async function createRouter(
       : undefined;
     res.setHeader('Cache-Control', 'no-store');
     res.json(ticket ? { ticket } : {});
+  });
+
+  /**
+   * The person's pending approval behind a link to the installation's muster
+   * approval page, as muster's decision API shows it to a trusted client
+   * (contract-muster-approval.md §5b), so the chat can show it and offer
+   * Approve and Decline inline. Asked with the person's own token. Answers
+   * `{ view }`, or `{ refusal: { status, error, message } }` when muster
+   * shows nothing (not a trusted client, someone else's, expired, ...).
+   */
+  router.post('/approvals/view', async (req, res) => {
+    const { config: installation } = resolveInstallation(req);
+    const id = approvalLinkId(req, installation);
+    const { authToken } = readCallOptions(req, installation);
+    res.setHeader('Cache-Control', 'no-store');
+    if (!authToken) {
+      res.json({ refusal: NO_PERSON_REFUSAL });
+      return;
+    }
+    res.json(
+      await fetchApproval({
+        installation,
+        id,
+        token: authToken,
+        logger,
+        ...(options.handoffFetch && { fetchFn: options.handoffFetch }),
+      }),
+    );
+  });
+
+  /**
+   * The person's decision on that approval, posted on their click in the
+   * chat with the digest of the view they saw. Answers `{ status }`
+   * (`approved`, `declined`) or `{ refusal }`; nothing is decided on a
+   * refusal.
+   */
+  router.post('/approvals/decision', async (req, res) => {
+    const { config: installation } = resolveInstallation(req);
+    const id = approvalLinkId(req, installation);
+    const decision = req.body?.decision;
+    if (decision !== 'approve' && decision !== 'decline') {
+      throw new InputError('decision must be approve or decline');
+    }
+    const digest = nonEmptyString(req.body?.digest);
+    if (!digest) {
+      throw new InputError('digest is required');
+    }
+    const { authToken } = readCallOptions(req, installation);
+    res.setHeader('Cache-Control', 'no-store');
+    if (!authToken) {
+      res.json({ refusal: NO_PERSON_REFUSAL });
+      return;
+    }
+    res.json(
+      await postApprovalDecision({
+        installation,
+        id,
+        decision,
+        digest,
+        token: authToken,
+        logger,
+        ...(options.handoffFetch && { fetchFn: options.handoffFetch }),
+      }),
+    );
   });
 
   // --- MCP servers (runtime view via core_mcpserver_list) ------------------

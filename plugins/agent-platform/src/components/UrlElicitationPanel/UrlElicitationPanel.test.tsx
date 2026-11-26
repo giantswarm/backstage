@@ -8,6 +8,8 @@ import { useLocation } from 'react-router-dom';
 
 import type { PendingConfirmation } from '../../lib/kagentHitl';
 import { URL_ELICITATION_STORAGE_KEY } from '../../lib/urlElicitationChannel';
+import type { ApprovalView } from '@giantswarm/backstage-plugin-muster';
+import type { InlineApprovals, SessionAgent } from '../InlineApproval';
 import {
   ElicitationReturnNotice,
   URL_ELICITATION_CHANNEL,
@@ -106,7 +108,11 @@ async function renderPanel({
   user = PERSON,
   route = '/sessions/example/s1',
   requestHandoff,
+  approvals,
+  sessionAgent,
 }: {
+  approvals?: InlineApprovals;
+  sessionAgent?: SessionAgent;
   pending?: PendingConfirmation;
   /** `null`: not known. */
   musterPages?: typeof PAGES | null;
@@ -131,6 +137,8 @@ async function renderPanel({
         onAnswer={onAnswer}
         musterPages={musterPages ?? undefined}
         requestHandoff={requestHandoff}
+        approvals={approvals}
+        sessionAgent={sessionAgent}
       />
     </TestApiProvider>,
     { initialRouteEntries: [route] },
@@ -201,9 +209,10 @@ describe('UrlElicitationPanel', () => {
     ).toBeInTheDocument();
   });
 
-  it("opens muster's approval page at once in a new tab, without the consent dialog, returning to this page with this open's value", async () => {
+  it("opens muster's approval page at once in a new tab, without the consent dialog, as sent: no return, no handoff", async () => {
+    const requestHandoff = jest.fn().mockResolvedValue('T1');
     const user = userEvent.setup();
-    await renderPanel();
+    await renderPanel({ requestHandoff });
 
     await user.click(openButton());
 
@@ -211,37 +220,48 @@ describe('UrlElicitationPanel', () => {
     expect(windowOpen).toHaveBeenCalledWith('about:blank', '_blank');
     expect(openedTab!.opener).toBeNull();
     await waitFor(() => expect(tabGoesTo).toHaveBeenCalledTimes(1));
-    const href = new URL(openedUrl());
-    expect(`${href.origin}${href.pathname}`).toBe(`${MUSTER}/approvals/0f3c9a`);
+    expect(openedUrl()).toBe(`${MUSTER}/approvals/0f3c9a`);
+    expect(requestHandoff).not.toHaveBeenCalled();
+    expect(window.sessionStorage.length).toBe(0);
+  });
+
+  it("opens muster's sign-in start returning to this page with this open's value and the elicitation", async () => {
+    const user = userEvent.setup();
+    await renderPanel({ pending: SIGN_IN });
+
+    await user.click(openButton());
+
+    await waitFor(() => expect(tabGoesTo).toHaveBeenCalledTimes(1));
     const back = returnPage(openedUrl());
     expect(back.origin).toBe(window.location.origin);
     expect(back.pathname).toBe('/sessions/example/s1');
-    // muster's approval page names the elicitation on its return; the
-    // return never carries a decision.
-    expect([...back.searchParams.keys()]).toEqual(['elicitationReturn']);
+    expect([...back.searchParams.keys()].sort()).toEqual([
+      'elicitationId',
+      'elicitationReturn',
+    ]);
   });
 
   it("resumes the agent on muster's return to the open this tab made, once", async () => {
     const user = userEvent.setup();
-    const { onAnswer } = await renderPanel();
+    const { onAnswer } = await renderPanel({ pending: SIGN_IN });
 
     await user.click(openButton());
     const nonce = lastNonce();
-    await returned('el-9b1d', nonce);
-    await returned('el-9b1d', nonce);
+    await returned('5e1f0c', nonce);
+    await returned('5e1f0c', nonce);
 
     await waitFor(() => expect(onAnswer).toHaveBeenCalledTimes(1));
     expect(onAnswer).toHaveBeenCalledWith({
-      taskId: 'task-1',
+      taskId: 'task-2',
       decision: 'approve',
       text: 'Done.',
-      askedIn: 'status-1',
+      askedIn: 'status-2',
     });
   });
 
   it('resumes the agent on a storage event when there is no BroadcastChannel, once', async () => {
     const user = userEvent.setup();
-    const { onAnswer } = await renderPanel();
+    const { onAnswer } = await renderPanel({ pending: SIGN_IN });
     await user.click(openButton());
     const nonce = lastNonce();
     delete (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel;
@@ -250,7 +270,7 @@ describe('UrlElicitationPanel', () => {
         window.dispatchEvent(
           new StorageEvent('storage', {
             key: URL_ELICITATION_STORAGE_KEY,
-            newValue: JSON.stringify({ elicitationId: 'el-9b1d', nonce: n }),
+            newValue: JSON.stringify({ elicitationId: '5e1f0c', nonce: n }),
           }),
         );
       });
@@ -292,7 +312,7 @@ describe('UrlElicitationPanel', () => {
 
   it('resumes nothing on the return of another elicitation', async () => {
     const user = userEvent.setup();
-    const { onAnswer } = await renderPanel();
+    const { onAnswer } = await renderPanel({ pending: SIGN_IN });
 
     await user.click(openButton());
     await returned('el-other');
@@ -312,31 +332,39 @@ describe('UrlElicitationPanel', () => {
 
   it('resumes nothing for another person or another session in this tab', async () => {
     const user = userEvent.setup();
-    const first = await renderPanel();
+    const first = await renderPanel({ pending: SIGN_IN });
     await user.click(openButton());
     const nonce = lastNonce();
     first.unmount();
 
-    const other = await renderPanel({ user: 'user:default/eve' });
-    await returned('el-9b1d', nonce);
+    const other = await renderPanel({
+      pending: SIGN_IN,
+      user: 'user:default/eve',
+    });
+    await returned('5e1f0c', nonce);
     other.unmount();
-    const elsewhere = await renderPanel({ route: '/sessions/example/s2' });
-    await returned('el-9b1d', nonce);
+    const elsewhere = await renderPanel({
+      pending: SIGN_IN,
+      route: '/sessions/example/s2',
+    });
+    await returned('5e1f0c', nonce);
 
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(other.onAnswer).not.toHaveBeenCalled();
     expect(elsewhere.onAnswer).not.toHaveBeenCalled();
   });
 
-  it("signs the page in with muster's handoff ticket, asked for that page", async () => {
+  it("signs the sign-in start in with muster's handoff ticket, asked for that page", async () => {
     const requestHandoff = jest.fn().mockResolvedValue('T1');
     const user = userEvent.setup();
-    await renderPanel({ requestHandoff });
+    await renderPanel({ pending: SIGN_IN, requestHandoff });
 
     await user.click(openButton());
 
     await waitFor(() => expect(tabGoesTo).toHaveBeenCalledTimes(1));
-    expect(requestHandoff).toHaveBeenCalledWith(`${MUSTER}/approvals/0f3c9a`);
+    expect(requestHandoff).toHaveBeenCalledWith(
+      `${MUSTER}/oauth/proxy/start?state=abc`,
+    );
     const href = new URL(openedUrl());
     expect(href.searchParams.get('handoff')).toBe('T1');
     expect(href.searchParams.get('redirect')).not.toBeNull();
@@ -352,7 +380,10 @@ describe('UrlElicitationPanel', () => {
     ],
   ])('opens the page without a ticket when %s', async (_, impl) => {
     const user = userEvent.setup();
-    await renderPanel({ requestHandoff: jest.fn().mockImplementation(impl) });
+    await renderPanel({
+      pending: SIGN_IN,
+      requestHandoff: jest.fn().mockImplementation(impl),
+    });
 
     await user.click(openButton());
 
@@ -364,7 +395,7 @@ describe('UrlElicitationPanel', () => {
     openedTab = null;
     const requestHandoff = jest.fn().mockResolvedValue('T1');
     const user = userEvent.setup();
-    await renderPanel({ requestHandoff });
+    await renderPanel({ pending: SIGN_IN, requestHandoff });
 
     await user.click(openButton());
 
@@ -372,7 +403,7 @@ describe('UrlElicitationPanel', () => {
       expect(consentOpen).toHaveBeenCalledWith({
         url: expect.any(String),
         requester: 'muster',
-        message: 'Alert Review wants to acknowledge an incident in PagerDuty.',
+        message: 'Sign in to github to continue.',
       }),
     );
     expect(requestHandoff).not.toHaveBeenCalled();
@@ -383,10 +414,10 @@ describe('UrlElicitationPanel', () => {
     openedTab = null;
     consentOpen.mockResolvedValue('cancel');
     const user = userEvent.setup();
-    const { onAnswer } = await renderPanel();
+    const { onAnswer } = await renderPanel({ pending: SIGN_IN });
 
     await user.click(openButton());
-    await returned('el-9b1d');
+    await returned('5e1f0c');
 
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(onAnswer).not.toHaveBeenCalled();
@@ -483,6 +514,355 @@ describe('UrlElicitationPanel', () => {
     expect(
       screen.getByText('The agent is not waiting for a decision'),
     ).toBeInTheDocument();
+  });
+});
+
+/** What muster's decision API shows of the approval APPROVAL links to. */
+const VIEW: ApprovalView = {
+  id: '0f3c9a',
+  status: 'pending',
+  heading: 'Approve this action?',
+  message: 'An agent wants to run Acknowledge incident in PagerDuty.',
+  tool: {
+    title: 'Acknowledge incident',
+    name: 'acknowledge_incident',
+    exposed: 'x_pagerduty_acknowledge_incident',
+    kind: 'tool',
+  },
+  connector: { displayName: 'PagerDuty', server: 'pagerduty' },
+  changesData: true,
+  arguments: [
+    {
+      key: 'incident',
+      label: 'Incident',
+      value: '"P1⟨U+202E⟩2"',
+      type: 'string',
+    },
+    {
+      key: 'note',
+      label: 'Note',
+      value: `"${'x'.repeat(300)}"`,
+      type: 'string',
+    },
+  ],
+  agentSays: 'It is a false alarm⟨U+200B⟩, closing it.',
+  agent: { namespace: 'team-a', name: 'alert-review' },
+  why: { setting: 'ask', source: 'connector' },
+  actsFor: {
+    name: 'ada@example.com',
+    subject: 'ada',
+    issuer: 'https://dex.example.io',
+  },
+  callerKind: 'actor JWT',
+  installation: 'example',
+  canonicalArguments: '{"incident":"P1⟨U+202E⟩2"}',
+  argumentsHash: 'a'.repeat(64),
+  expiresAt: new Date(Date.now() + 4.5 * 60_000).toISOString(),
+  digest: 'digest-1',
+};
+
+const SESSION_AGENT = { namespace: 'team-a', name: 'alert-review' };
+
+function inlineApprovals(
+  overrides: Partial<InlineApprovals> = {},
+): InlineApprovals & { get: jest.Mock; decide: jest.Mock } {
+  return {
+    get: jest.fn().mockResolvedValue({ view: VIEW }),
+    decide: jest.fn().mockResolvedValue({ status: 'approved' }),
+    ...overrides,
+  } as InlineApprovals & { get: jest.Mock; decide: jest.Mock };
+}
+
+describe('UrlElicitationPanel, approval decided inline', () => {
+  let windowOpen: jest.SpyInstance;
+  beforeEach(() => {
+    consentOpen.mockReset().mockResolvedValue('accept');
+    tabGoesTo.mockReset();
+    openedTab = { opener: window, location: { replace: tabGoesTo } };
+    windowOpen = jest
+      .spyOn(window, 'open')
+      .mockImplementation(() => openedTab as unknown as Window);
+    window.sessionStorage.clear();
+  });
+  afterEach(() => windowOpen.mockRestore());
+
+  const approveButton = () => screen.getByRole('button', { name: 'Approve' });
+  const declineButton = () => screen.getByRole('button', { name: 'Decline' });
+
+  it('shows everything the person needs to judge the request before Approve and Decline', async () => {
+    const approvals = inlineApprovals();
+    await renderPanel({ approvals, sessionAgent: SESSION_AGENT });
+
+    expect(await screen.findByText('Approve this action?')).toBeInTheDocument();
+    expect(approvals.get).toHaveBeenCalledWith(`${MUSTER}/approvals/0f3c9a`);
+    // Connector: display name and server.
+    expect(screen.getByTestId('approval-connector')).toHaveTextContent(
+      'PagerDuty pagerduty',
+    );
+    // Tool: display name and raw name, and that it changes data.
+    expect(screen.getByTestId('approval-tool')).toHaveTextContent(
+      'Acknowledge incident acknowledge_incident',
+    );
+    expect(screen.getByText('Changes data')).toBeInTheDocument();
+    // Full arguments, with muster's marking of invisible characters.
+    expect(screen.getByTestId('approval-argument-incident')).toHaveTextContent(
+      '"P1⟨U+202E⟩2" (string)',
+    );
+    // A long value starts collapsed, and is all there.
+    const note = screen.getByTestId('approval-argument-note');
+    expect(note.querySelector('details')).not.toBeNull();
+    expect(note).toHaveTextContent('x'.repeat(300));
+    // The agent's reason, marked as its own words.
+    const says = screen.getByTestId('approval-agent-says');
+    expect(says).toHaveTextContent('Agent says');
+    expect(says).toHaveTextContent('It is a false alarm⟨U+200B⟩, closing it.');
+    expect(says).toHaveTextContent("The agent's own words");
+    // Why it asks and when it expires.
+    expect(screen.getByTestId('approval-why')).toHaveTextContent(
+      "Asks because of the connector's setting for its tools · Expires in 4 min",
+    );
+    // The agent and the person are the conversation's own: not shown.
+    expect(
+      screen.queryByTestId('approval-other-agent'),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/alert-review/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ada@example.com/)).not.toBeInTheDocument();
+    expect(approveButton()).toBeEnabled();
+    expect(declineButton()).toBeEnabled();
+    // Muster's page stays a secondary way; Done is not needed here.
+    expect(
+      screen.getByRole('button', {
+        name: 'Open in muster (opens in a new tab)',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Done' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('warns when another agent than the conversation’s asks', async () => {
+    await renderPanel({
+      approvals: inlineApprovals(),
+      sessionAgent: { namespace: 'team-a', name: 'orchestrator' },
+    });
+
+    expect(await screen.findByTestId('approval-other-agent')).toHaveTextContent(
+      'Asked by another agent, team-a/alert-review, not the agent of this conversation.',
+    );
+  });
+
+  it('approves on the click with the digest of what is shown, and the chat goes on at once', async () => {
+    const approvals = inlineApprovals();
+    const user = userEvent.setup();
+    const { onAnswer } = await renderPanel({
+      approvals,
+      sessionAgent: SESSION_AGENT,
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Approve' }));
+
+    expect(approvals.decide).toHaveBeenCalledWith(
+      `${MUSTER}/approvals/0f3c9a`,
+      'approve',
+      'digest-1',
+    );
+    await waitFor(() =>
+      expect(onAnswer).toHaveBeenCalledWith({
+        taskId: 'task-1',
+        decision: 'approve',
+        text: 'Approved.',
+        askedIn: 'status-1',
+      }),
+    );
+    expect(onAnswer).toHaveBeenCalledTimes(1);
+  });
+
+  it('declines on the click, and the elicitation is declined', async () => {
+    const approvals = inlineApprovals({
+      decide: jest.fn().mockResolvedValue({ status: 'declined' }),
+    });
+    const user = userEvent.setup();
+    const { onAnswer } = await renderPanel({ approvals });
+
+    await user.click(await screen.findByRole('button', { name: 'Decline' }));
+
+    expect(approvals.decide).toHaveBeenCalledWith(
+      `${MUSTER}/approvals/0f3c9a`,
+      'decline',
+      'digest-1',
+    );
+    await waitFor(() =>
+      expect(onAnswer).toHaveBeenCalledWith({
+        taskId: 'task-1',
+        decision: 'reject',
+        text: 'Declined.',
+        askedIn: 'status-1',
+      }),
+    );
+  });
+
+  it('decides nothing without a click', async () => {
+    const approvals = inlineApprovals();
+    const { onAnswer } = await renderPanel({ approvals });
+    await screen.findByText('Approve this action?');
+    expect(approvals.decide).not.toHaveBeenCalled();
+    expect(onAnswer).not.toHaveBeenCalled();
+  });
+
+  it("shows muster's refusal of a decision and answers nothing", async () => {
+    const approvals = inlineApprovals({
+      decide: jest.fn().mockResolvedValue({
+        refusal: {
+          status: 503,
+          error: 'unavailable',
+          message: 'Approval is unavailable right now.',
+        },
+      }),
+    });
+    const user = userEvent.setup();
+    const { onAnswer } = await renderPanel({ approvals });
+
+    await user.click(await screen.findByRole('button', { name: 'Approve' }));
+
+    expect(await screen.findByText('Nothing was decided')).toBeInTheDocument();
+    expect(
+      screen.getByText('Approval is unavailable right now.'),
+    ).toBeInTheDocument();
+    expect(onAnswer).not.toHaveBeenCalled();
+    expect(approveButton()).toBeEnabled();
+  });
+
+  it('shows the request again when it changed, and decides only the one shown then', async () => {
+    const changed = {
+      ...VIEW,
+      digest: 'digest-2',
+      arguments: [VIEW.arguments[0]],
+    };
+    const approvals = inlineApprovals({
+      get: jest
+        .fn()
+        .mockResolvedValueOnce({ view: VIEW })
+        .mockResolvedValue({ view: changed }),
+      decide: jest
+        .fn()
+        .mockResolvedValueOnce({
+          refusal: {
+            status: 409,
+            error: 'changed',
+            message: 'not the one shown',
+          },
+        })
+        .mockResolvedValue({ status: 'approved' }),
+    });
+    const user = userEvent.setup();
+    const { onAnswer } = await renderPanel({ approvals });
+
+    await user.click(await screen.findByRole('button', { name: 'Approve' }));
+
+    expect(
+      await screen.findByText(
+        'The request is not the one shown before. Check it again before you decide.',
+      ),
+    ).toBeInTheDocument();
+    expect(onAnswer).not.toHaveBeenCalled();
+    expect(
+      screen.queryByTestId('approval-argument-note'),
+    ).not.toBeInTheDocument();
+
+    await user.click(approveButton());
+    expect(approvals.decide).toHaveBeenLastCalledWith(
+      `${MUSTER}/approvals/0f3c9a`,
+      'approve',
+      'digest-2',
+    );
+    await waitFor(() => expect(onAnswer).toHaveBeenCalledTimes(1));
+  });
+
+  it("says when the request is someone else's, offers no Approve, and keeps muster's page", async () => {
+    const approvals = inlineApprovals({
+      get: jest.fn().mockResolvedValue({
+        refusal: {
+          status: 403,
+          error: 'foreign',
+          message:
+            'This request was made for someone else; only they can decide it.',
+        },
+      }),
+    });
+    await renderPanel({ approvals });
+
+    expect(
+      await screen.findByText('This request is someone else’s'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'This request was made for someone else; only they can decide it.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Approve' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument();
+  });
+
+  it('goes on with what stands when the request was decided meanwhile on muster’s page', async () => {
+    const approvals = inlineApprovals({
+      decide: jest.fn().mockResolvedValue({
+        refusal: {
+          status: 409,
+          error: 'decided',
+          decided: 'declined',
+          message: 'x',
+        },
+      }),
+    });
+    const user = userEvent.setup();
+    const { onAnswer } = await renderPanel({ approvals });
+
+    await user.click(await screen.findByRole('button', { name: 'Approve' }));
+
+    await waitFor(() =>
+      expect(onAnswer).toHaveBeenCalledWith(
+        expect.objectContaining({ decision: 'reject', text: 'Declined.' }),
+      ),
+    );
+  });
+
+  it("opens muster's page as a secondary way, and offers Done when muster shows nothing here", async () => {
+    const approvals = inlineApprovals({
+      get: jest.fn().mockResolvedValue({
+        refusal: {
+          status: 403,
+          error: 'untrusted_client',
+          message: 'This client may not decide approvals.',
+        },
+      }),
+    });
+    const user = userEvent.setup();
+    const { onAnswer } = await renderPanel({ approvals });
+
+    expect(
+      await screen.findByText('The request can’t be shown here'),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Open in muster (opens in a new tab)',
+      }),
+    );
+    await waitFor(() =>
+      expect(tabGoesTo).toHaveBeenCalledWith(`${MUSTER}/approvals/0f3c9a`),
+    );
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    expect(onAnswer).toHaveBeenLastCalledWith(
+      expect.objectContaining({ decision: 'approve', text: 'Done.' }),
+    );
+  });
+
+  it('keeps the sign-in start on the tab and return flow', async () => {
+    const approvals = inlineApprovals();
+    await renderPanel({ pending: SIGN_IN, approvals });
+    expect(openButton()).toBeInTheDocument();
+    expect(approvals.get).not.toHaveBeenCalled();
   });
 });
 

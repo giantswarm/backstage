@@ -115,13 +115,28 @@ _Done_ to go on. muster's `postLoginRedirectAllowlist` must admit the portal
 either way.
 
 `POST /api/muster/handoff?installation=<name>` with `{"url": "<page>"}` and the
-person's token asks that muster for a one-time sign-in handoff ticket for one
-of its pages on its `publicUrl` (else the origin of `url`): its approval page
-or its connector sign-in start. It answers `{ "ticket": "..." }`, or `{}` when
-muster issues none; the ticket is never logged. muster issues tickets only to
-the OAuth clients its `approval.handoffClients` lists: list the portal's own
-Dex client there (the `azp` of the token the portal forwards), never a client
-a CLI or an agent signs in through.
+person's token asks that muster for a one-time sign-in handoff ticket for its
+connector sign-in start (muster also takes its approval page) on its
+`publicUrl` (else the origin of `url`). It answers `{ "ticket": "..." }`, or
+`{}` when muster issues none; the ticket is never logged.
+
+`POST /api/muster/approvals/view?installation=<name>` with `{"url":
+"<approval page>"}` and the person's token reads the person's pending approval
+from that muster's decision API (`GET /approvals/<id>`, contract §5b) and
+answers `{ "view": {...} }`, or `{ "refusal": { "status", "error", "message"
+} }`. `POST /api/muster/approvals/decision?installation=<name>` with `{"url",
+"decision": "approve" | "decline", "digest"}` posts the person's decision
+(`POST /approvals/<id>/decision`) and answers `{ "status": "approved" |
+"declined" }` or `{ "refusal" }`; the chat calls it only on the person's
+click. Only a link to the installation's approval page is accepted (400
+otherwise).
+
+muster issues tickets and takes decisions only from the OAuth clients its
+`approval.trustedClients` lists (formerly `approval.handoffClients`): list the
+portal's own Dex client there (the `azp` of the token the portal forwards),
+never a client a CLI or an agent signs in through. Whoever holds the person's
+token of that client can approve without muster's browser sign-in; the portal
+does so only on the person's click.
 
 `GET /api/muster/installations` reports each installation with its `source`
 (`derived` or `configured`), whether it requires the person's token

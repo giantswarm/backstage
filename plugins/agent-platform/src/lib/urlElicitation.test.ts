@@ -95,23 +95,16 @@ describe('urlElicitation', () => {
     expect(musterPageKind(url, pages)).toBe('approval');
   });
 
-  it("returns from the approval page with this open's value; muster names the elicitation", () => {
-    const href = new URL(
-      elicitationHref(
-        `${MUSTER}/approvals/0f3c9a?redirect=https://portal.example.io/other&elicitationId=zz`,
-        {
-          musterPages: PAGES,
-          elicitationId: 'el-1',
-          nonce: 'n-1',
-          back: BACK,
-        },
-      ),
-    );
-    const back = new URL(href.searchParams.get('redirect')!);
-    expect(`${back.origin}${back.pathname}`).toBe(BACK);
-    expect(back.searchParams.get('elicitationReturn')).toBe('n-1');
-    // Not the relayed id: a return counts only with the one muster sets.
-    expect(back.searchParams.get('elicitationId')).toBeNull();
+  it('leaves an approval page link as sent: it is decided in the chat, not returned from', () => {
+    const url = `${MUSTER}/approvals/0f3c9a`;
+    expect(
+      elicitationHref(url, {
+        musterPages: PAGES,
+        elicitationId: 'el-1',
+        nonce: 'n-1',
+        back: BACK,
+      }),
+    ).toBe(url);
   });
 
   it('returns from the sign-in start naming the elicitation, keeping its own query', () => {
