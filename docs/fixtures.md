@@ -201,13 +201,29 @@ arguments and refuse each other's in muster's words before writing
 
 - Tool approval: the first connected connector of muster's own namespace in
   each installation starts reviewed (_Recommended_, its delete tools
-  blocked and hidden, its last tool _New_); every other connector is not
-  reviewed. The guest is connector admin of muster's own connectors, not of
+  blocked and hidden, its last tool _New_), and so does every
+  organization's own connected connector (`wiki`); every other connector is
+  not reviewed. The guest is connector admin of muster's own connectors, not of
   an organization's. `core_mcpserver_set_approval` and a create's `preset`
   write `spec.approval`, which the next listing reports. muster reports its
   governance mode on `core_mcpserver_list` as muster does: the first
   installation is trusted (_Allow all_ pre-selected), the second governed
-  (_Recommended_).
+  (_Recommended_). With `agentTools`, `filter_tools` reports an agent's
+  list as muster does (the deciding `entry`, the connector's `admin`
+  setting, `connectors` with a made-up MCPServer uid; a grant lifts only a
+  connector's Ask).
+- An agent's tool approval: agent-manager (not on `fennel`) answers the
+  tool list as `toolSettings` beside the kagent bindings in `tools`, takes
+  `tools` and `default` on `create_agent`, splits `update_agent` (what an
+  agent is) from `update_agent_access` (what it can reach) in its words,
+  refuses an `Allow` over a connector's `Ask` there, and grants one with
+  `set_agent_approval` only for a connector the guest is admin of. Every
+  save drops the grants of connectors the guest is no admin of. The last
+  ready agent of an organization starts with an exception on its
+  organization's `wiki` connector granted by `dana@example.com`, so its
+  Tools step, its page, the connector's _Allowed for_ and the pre-save note
+  show one. `fennel`'s agent-manager has none of this: no
+  `update_agent_access`, `set_agent_approval` or `list_approval_grants`.
   On the second installation's muster the tools that ask also report
   `approval.unavailable` ("muster's shared store is not on Valkey"), for the
   warning that approvals cannot be answered right now.

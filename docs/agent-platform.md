@@ -434,8 +434,11 @@ settings; it decides nothing.
   in its own tone and icon), where it comes from ("Set for this tool",
   "Connector's rule"), _New_, and an _Approval_ filter (a blocked tool's row
   counts under no effect in _What it does_, as it shows none). _Allowed for:
-  …_, the agents that may skip an Ask, comes with agent-manager's grants
-  (PRD slices 3 and 5) and is not drawn yet. A connector nobody reviewed
+  agent (by person)_ names the agents that may skip a tool's Ask, from
+  agent-manager's `list_approval_grants` with the connector's server key, per
+  namespace `get_info` reports as managed; an exception on a broader entry
+  (the whole connector, a preset, the default) is named once above the list.
+  A connector nobody reviewed
   (no settings, or a create's rule alone, where muster reports every tool
   _New_) says once above the list what every tool does until then (_Allow —
   not reviewed_, or _Ask — not reviewed_ after a _Recommended_ create),
@@ -445,6 +448,51 @@ settings; it decides nothing.
   warning with muster's reason shows above the list where approvals cannot be
   answered right now. Blocked tools
   are listed from `spec.approval`, without a page to open.
+
+#### An agent's tool approval
+
+Where agent-manager takes approval settings (its `create_agent` schema
+declares `tools`; giantswarm/giantswarm#38902, milestone 2), an agent's tools
+carry settings too (`lib/agentApproval.ts`). muster decides; the portal
+composes the agent's tool list, reads what muster reports for it and writes
+through agent-manager:
+
+- **Tools step, _How it asks_** (`AgentApprovalSettings`): the list's
+  default on top, each whole connector the agent has (`server:` entries) and
+  each tool it resolves to, with `Allow · Ask · Block` pills showing what
+  applies now. The report is muster's `filter_tools` with `agentTools`
+  (`useAgentApprovalReport`): per tool `approval` with the deciding `entry`,
+  the connector's own setting (`admin`), `connectorAdmin` and `connectors`.
+  _Allow_ over a connector's _Ask_ is disabled with "Only GitHub admins can
+  allow this." for anyone who is not that connector's admin, and for an
+  agent applied from Git (a pull request carries no exceptions). A built-in
+  or a governance _Ask_ is never offered as liftable: _Allow_ is disabled
+  there with why. A setting on a single tool its connector's entry covers is
+  written as its own `tool:` entry, only while the selection still covers
+  the tool. Hidden for an agent whose chart takes no settings
+  (`approvalSettings`), and for an older agent-manager or muster.
+- **Create**: `create_agent` with `tools` (settings) and `default` (Ask or
+  Block), never `toolset`; an `Allow` over a connector's `Ask` and an
+  allowing default follow with `set_agent_approval`. If that is refused the
+  review says the agent was created without them. A pull request is not
+  offered for such an agent.
+- **Edit**: agent-manager's split tools — `update_agent` (what the agent
+  is), `update_agent_access` (what it can reach, the list's entries; a new
+  `Allow` over an `Ask` carried as it stood), then `set_agent_approval` for
+  the settings and the default. Every save drops the exceptions of
+  connectors the saver is no admin of; the review says so before saving
+  ("Saving removes 1 exception (merge PRs). A GitHub admin can grant it
+  again."). Partial failures say what was saved. In mode `commit` each tool
+  opens its own pull request; the review lists each.
+- **Agent page**: the Tools tab's resolved list gets an approval column and a
+  one-line summary; the Overview's Connectors section says it in one line
+  with a link to the Tools tab. Both from `get_agent`'s tool list, default
+  and grants, reported by muster for the viewer.
+- `get_agent` keeps `tools` for the kagent bindings; the tool list with
+  settings is read from one field (`TOOL_LIST_FIELD`, working name
+  `toolSettings`, decision #86) next to `defaultApproval`, `grants` and
+  `approvalSettings`. Where agent-manager says the settings are not enforced
+  (`approvalEnforced: false`), the step and the page say so.
 
 ### Models
 
@@ -1429,7 +1477,8 @@ The review page turns the form into agent-manager's create contract
 (`lib/agentSpec.ts` → `AgentSpec`: `namespace` = the ModelConfig's, `name` =
 the slug, `displayName`, `description`, `systemMessage`, `modelConfig`,
 `harness` when not the platform Harness, `iconUrl` from the avatar rule,
-`skills` pinned to commits, `toolset` from the Tools step, `egress` when set)
+`skills` pinned to commits, `toolset` from the Tools step — `tools` and
+`default` instead where agent-manager takes approval settings —, `egress` when set)
 and validates it (`useValidateAgent` → `x_agent-manager_validate_agent`). The
 answer is rendered verbatim:
 
