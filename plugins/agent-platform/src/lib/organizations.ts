@@ -622,8 +622,9 @@ export function organizationNameProblem(name: string): string | undefined {
 
 /**
  * Whether the operator reports the organization ready: it has its
- * namespace, and its `Ready` condition, where the person reads it, is not
- * `False`. A member reads no condition: the namespace says it there.
+ * namespace, and its `AgentPlatformReady` condition (agent-manager's
+ * `ready`), where the person reads it, is not `False`. A member reads no
+ * condition: the namespace says it there.
  */
 export function isOrganizationReady(
   organization: Pick<ListedOrganization, 'namespace' | 'organization'>,
