@@ -517,4 +517,29 @@ describe('NewSessionComposer workspaces', () => {
     ).toBeInTheDocument();
     expect(onStart).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['failed', 'workspace-manager: connection reset by peer'],
+    ['unavailable', 'tool not found: x_workspace-manager_authorize_workspace'],
+    ['not_connected', 'sign in first'],
+  ] as const)(
+    'says a %s start once, below the box, rather than nothing',
+    async (kind, message) => {
+      mockWorkspacesOf.mockReturnValue([mix]);
+      window.localStorage.setItem(
+        'gs-agent-platform-last-workspace',
+        JSON.stringify({ [claude.id]: 'platform-mix' }),
+      );
+      const { rerenderWith } = renderComposer();
+      await userEvent.type(field(), 'List the repositories');
+      await userEvent.click(startButton());
+      // not_connected without a provider to sign in to has no card either.
+      rerenderWith({ error: new WorkspaceManagerError(kind, message) });
+
+      expect(screen.getAllByText('Session not started')).toHaveLength(1);
+      expect(screen.getByText(message)).toBeInTheDocument();
+      expect(screen.queryByTestId(/^provider-connect-/)).toBeNull();
+      expect(field()).toHaveValue('List the repositories');
+    },
+  );
 });

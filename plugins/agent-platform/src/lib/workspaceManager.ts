@@ -19,6 +19,7 @@ import {
   WORKSPACE_MANAGER_SERVER,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { looksNotConnected } from './agentManager';
+import { providerAppGrantsOf, providerAppSignIn } from './managerToolCall';
 
 /** The MCPServer name muster registers workspace-manager under. */
 export { WORKSPACE_MANAGER_SERVER };
@@ -488,6 +489,13 @@ export type WorkspaceAuthorization = {
   changed?: string[];
   unreadable?: string[];
   connect?: ProviderConnect[];
+  /**
+   * connect_required: `grant_required` and the Apps to grant, which muster
+   * reads to answer its own `auth_required` error in place of this answer
+   * (`classifyWorkspaceManagerError`).
+   */
+  status?: 'grant_required';
+  apps?: string[];
 };
 
 /**
@@ -531,10 +539,11 @@ export class WorkspaceManagerError extends Error {
 }
 
 /**
- * Classifies what a tool call threw: workspace-manager's refusals become
- * {@link WorkspaceManagerError} of their kind; muster's "not connected"
- * answers (the tool missing from the person's session) are `unavailable`;
- * anything else is `failed`, verbatim.
+ * Classifies what a tool call threw: muster's answer that the call needs
+ * the person's grant of provider Apps is `not_connected` with those Apps;
+ * workspace-manager's refusals become {@link WorkspaceManagerError} of their
+ * kind; muster's "not connected" answers (the tool missing from the person's
+ * session) are `unavailable`; anything else is `failed`, verbatim.
  */
 export function classifyWorkspaceManagerError(
   error: unknown,
@@ -543,6 +552,21 @@ export function classifyWorkspaceManagerError(
     return error;
   }
   const message = error instanceof Error ? error.message : String(error);
+  // muster's answer in place of the manager's connect_required: the Apps to
+  // grant, each signed in to as the manager's own answer names it.
+  const apps = providerAppGrantsOf(error);
+  if (apps) {
+    return new WorkspaceManagerError(
+      'not_connected',
+      message,
+      [],
+      apps.map(({ app }) => ({
+        provider: app,
+        signIn: providerAppSignIn(app),
+      })),
+      { cause: error },
+    );
+  }
   // Shared with gs-node, which answers these refusals 4xx.
   const match = WORKSPACE_MANAGER_REFUSALS.find(([, pattern]) =>
     pattern.test(message),

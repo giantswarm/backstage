@@ -17,6 +17,7 @@ import { MusterTokenMintError } from './installationToken';
 import {
   isMusterAuthFailure,
   musterSignInRequiredOf,
+  musterUnauthorizedInfoOf,
   MusterUnauthorizedError,
 } from './musterUnauthorized';
 import { MusterAnswerCutError, MusterAuthProvidersApi } from './types';
@@ -973,6 +974,40 @@ describe('MusterApiClient 401 answers', () => {
       installation: 'gazelle',
     });
     expect(t.fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the provider Apps a server needs the grant of', async () => {
+    const t = setup();
+    t.fetchMock.mockResolvedValue(
+      errorResponse(401, {
+        error: {
+          name: 'MusterUnauthorizedError',
+          message:
+            "auth_required: server 'workspace-manager' needs your grant of a provider App (github) for this call.",
+          reason: 'server_sign_in_required',
+          server: 'workspace-manager',
+          apps: [
+            { app: 'github', authUrl: 'https://muster.example/start?s=1' },
+            { app: 'device-app' },
+            { authUrl: 'https://muster.example/no-app' },
+          ],
+        },
+      }),
+    );
+
+    const error: unknown = await t.client
+      .callTool('x_workspace-manager_authorize_workspace', {}, 'gazelle')
+      .catch(e => e);
+
+    expect(error).toBeInstanceOf(MusterUnauthorizedError);
+    expect(musterUnauthorizedInfoOf(error)).toMatchObject({
+      reason: 'server_sign_in_required',
+      server: 'workspace-manager',
+      apps: [
+        { app: 'github', authUrl: 'https://muster.example/start?s=1' },
+        { app: 'device-app' },
+      ],
+    });
   });
 
   it('refreshes an expired token and sends the call once more with the new one', async () => {

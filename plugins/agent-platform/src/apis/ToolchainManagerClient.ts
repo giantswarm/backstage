@@ -13,10 +13,15 @@ import {
   type ToolchainDescribeResult,
   type ToolchainList,
   type ToolchainManagerTool,
+  type ToolchainAnswer,
   type ToolchainSourceList,
   type WrittenToolchain,
 } from '../lib/toolchainManager';
-import { callManagerTool, type ManagerErrors } from '../lib/managerToolCall';
+import {
+  callManagerTool,
+  providerAppGrantsOf,
+  type ManagerErrors,
+} from '../lib/managerToolCall';
 
 const TOOLCHAIN_MANAGER_ERRORS: ManagerErrors = {
   classify: classifyToolchainManagerError,
@@ -33,7 +38,10 @@ const TOOLCHAIN_MANAGER_ERRORS: ManagerErrors = {
  * the toolchain-manager's GitHub App. No toolchain-manager URL and no proxy
  * route: the portal knows it only as `x_toolchain-manager_<tool>` in muster.
  * Every failure is a {@link ToolchainManagerError}; a `grant_required` answer
- * is data, which the page turns into muster's sign-in.
+ * is data, which the page turns into muster's sign-in. muster answers most
+ * calls the person has not granted the App for with its own `auth_required`
+ * error instead, naming the Apps: that is read as the same `grant_required`
+ * answer.
  */
 export class ToolchainManagerClient {
   constructor(
@@ -41,17 +49,29 @@ export class ToolchainManagerClient {
     readonly installation: string,
   ) {}
 
-  private call<T>(
+  private async call<T>(
     tool: ToolchainManagerTool,
     args: Record<string, unknown>,
   ): Promise<T> {
-    return callManagerTool<T>(
-      this.musterApi,
-      this.installation,
-      toolchainManagerToolName(tool),
-      args,
-      TOOLCHAIN_MANAGER_ERRORS,
-    );
+    try {
+      return await callManagerTool<T>(
+        this.musterApi,
+        this.installation,
+        toolchainManagerToolName(tool),
+        args,
+        TOOLCHAIN_MANAGER_ERRORS,
+      );
+    } catch (error) {
+      const apps = providerAppGrantsOf(error);
+      if (apps) {
+        const answer: ToolchainAnswer = {
+          status: 'grant_required',
+          apps: apps.map(({ app }) => app),
+        };
+        return answer as T;
+      }
+      throw error;
+    }
   }
 
   /** The toolchains the installation offers, each with its versions. */

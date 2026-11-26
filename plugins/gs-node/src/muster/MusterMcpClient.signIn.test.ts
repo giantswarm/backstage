@@ -100,6 +100,30 @@ describe('MusterMcpClient gated sign-ins', () => {
     });
   });
 
+  it('answers a held call with the provider Apps muster named', async () => {
+    const apps = [{ app: 'github', authUrl: AUTH_URL }];
+    const execute = jest.fn().mockResolvedValue(
+      envelope({
+        content: [{ type: 'text', text: CHALLENGE_TEXT }],
+        isError: true,
+        structuredContent: {
+          status: 'auth_required',
+          server: 'workspace-manager',
+          authUrl: AUTH_URL,
+          apps,
+        },
+      }),
+    );
+    const client = buildClient(execute);
+
+    for (let call = 0; call < 2; call++) {
+      await expect(
+        client.callTool(LIST, {}, { authToken: 'alice' }),
+      ).rejects.toMatchObject({ server: 'workspace-manager', apps });
+    }
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
   it('answers repeated gated calls from the pending sign-in without asking muster', async () => {
     const execute = jest.fn().mockResolvedValue(authRequired());
     const client = buildClient(execute);

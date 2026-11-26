@@ -32,13 +32,28 @@ export type WorkspaceStartNoticeProps = {
 };
 
 /**
+ * Whether {@link WorkspaceStartNotice} says this failed start: the sign-in
+ * cards or the refusal. The composer says every other failure itself, so a
+ * start never fails without a word, and never with two.
+ */
+export function workspaceStartNoticeSays(
+  error: unknown,
+): error is WorkspaceManagerError {
+  return (
+    error instanceof WorkspaceManagerError &&
+    ((error.kind === 'not_connected' && error.connect.length > 0) ||
+      error.kind === 'refused')
+  );
+}
+
+/**
  * What a start in a workspace says above the composer, per the WsTStart
  * board: the access check while it runs; a sign-in card for each provider
  * whose App the person has not granted (`connect_required`), after which the
  * start goes again by itself; or the refusal, naming the workspace and every
  * repository the person cannot read, or why the workspace cannot be started
  * on yet. The prompt stays in the box below throughout. Nothing for any other
- * error, which the composer says as before.
+ * error ({@link workspaceStartNoticeSays}), which the composer says.
  */
 export function WorkspaceStartNotice({
   installation,
@@ -68,10 +83,10 @@ export function WorkspaceStartNotice({
       />
     );
   }
-  if (!(error instanceof WorkspaceManagerError)) {
+  if (!workspaceStartNoticeSays(error)) {
     return null;
   }
-  if (error.kind === 'not_connected' && error.connect.length > 0) {
+  if (error.kind === 'not_connected') {
     return (
       <ConnectCards
         installation={installation}
@@ -82,40 +97,38 @@ export function WorkspaceStartNotice({
       />
     );
   }
-  if (error.kind === 'refused') {
-    const count = error.repositories.length;
-    return (
-      <Alert
-        status="danger"
-        role="alert"
-        title={
-          count > 0
-            ? `You cannot read ${count} ${repositoryNoun(
-                undefined,
-                count,
-              )} of ${workspace}`
-            : `${workspace} cannot be used yet`
-        }
-        description={
-          <Flex direction="column" gap="2">
-            <Text variant="body-small">
-              {count > 0
-                ? `The session was not started: its agent would read ${workspace} as you, and you have no access to ${error.repositories.join(
-                    ', ',
-                  )}. Ask an owner of these repositories for access, or start without the workspace.`
-                : `The session was not started. ${error.message}`}
-            </Text>
-            <div>
-              <Button variant="secondary" size="small" onPress={onStartWithout}>
-                Start without workspace
-              </Button>
-            </div>
-          </Flex>
-        }
-      />
-    );
-  }
-  return null;
+  // Refused: every repository the person cannot read, or why not yet.
+  const count = error.repositories.length;
+  return (
+    <Alert
+      status="danger"
+      role="alert"
+      title={
+        count > 0
+          ? `You cannot read ${count} ${repositoryNoun(
+              undefined,
+              count,
+            )} of ${workspace}`
+          : `${workspace} cannot be used yet`
+      }
+      description={
+        <Flex direction="column" gap="2">
+          <Text variant="body-small">
+            {count > 0
+              ? `The session was not started: its agent would read ${workspace} as you, and you have no access to ${error.repositories.join(
+                  ', ',
+                )}. Ask an owner of these repositories for access, or start without the workspace.`
+              : `The session was not started. ${error.message}`}
+          </Text>
+          <div>
+            <Button variant="secondary" size="small" onPress={onStartWithout}>
+              Start without workspace
+            </Button>
+          </div>
+        </Flex>
+      }
+    />
+  );
 }
 
 /**
