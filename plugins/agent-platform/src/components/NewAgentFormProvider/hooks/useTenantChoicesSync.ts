@@ -1,4 +1,4 @@
-import { useContext, useEffect } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { QueryClientContext } from '@tanstack/react-query';
 
 import { useAgentManagerInfo } from '../../../hooks/useAgentManager';
@@ -13,13 +13,6 @@ import {
   useNewAgentForm,
 } from '../NewAgentFormProvider';
 import { useOrganizationDirectory } from '../../OrganizationDirectoryProvider';
-
-/**
- * How old the person's organizations may be when a step of the form opens:
- * an older answer is read again. The directory keeps its answer for a
- * minute; a person added to an organization a moment ago would wait for it.
- */
-const CHOICES_STALE_MS = 10_000;
 
 export type TenantChoicesSync = {
   /**
@@ -60,22 +53,33 @@ export function useTenantChoicesSync(): TenantChoicesSync {
     byOrganization && installation
       ? organizations.organizationsOf(installation)
       : undefined;
-  // A step that opens on an answer older than `CHOICES_STALE_MS` reads it
-  // again, into the same entry: an organization the person was added to a
-  // moment ago is then a choice, and its models are read
-  // (`useNamespacedResources` reads the same entry). Only over an answer: a
-  // read that failed is read again on Check again, as before.
+  // The directory keeps its answers for a minute. A step that opens reads
+  // again each answer it holds from before the step opened, into the same
+  // entries, on every installation, picked or not: an organization the
+  // person was added to a moment ago is then a choice, and its models are
+  // read (`useNamespacedResources` reads the same entries), also where they
+  // decide which environments the form offers. An answer read since the step
+  // opened is kept; a read that failed is read again on Check again.
   const musterApi = useMusterPluginApi();
   const queryClient = useContext(QueryClientContext);
-  const answered = Boolean(mine);
+  const [openedAt] = useState(() => Date.now());
+  const answeredKey = edit
+    ? ''
+    : organizations.installations
+        .filter(name => organizations.organizationsOf(name) !== undefined)
+        .join(',');
   useEffect(() => {
-    if (queryClient && musterApi && installation && answered) {
-      queryClient.prefetchQuery({
-        ...organizationsQuery(musterApi, installation),
-        staleTime: CHOICES_STALE_MS,
-      });
+    if (!queryClient || !musterApi || !answeredKey) {
+      return;
     }
-  }, [queryClient, musterApi, installation, answered]);
+    for (const name of answeredKey.split(',')) {
+      const options = organizationsQuery(musterApi, name);
+      const readAt = queryClient.getQueryState(options.queryKey)?.dataUpdatedAt;
+      if (readAt !== undefined && readAt < openedAt) {
+        queryClient.prefetchQuery({ ...options, staleTime: 0 });
+      }
+    }
+  }, [queryClient, musterApi, answeredKey, openedAt]);
   const organizationsFailed =
     byOrganization &&
     Boolean(installation) &&
