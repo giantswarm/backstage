@@ -1070,3 +1070,91 @@ describe('the model whose key Secret is missing', () => {
     expect(erases?.credentials).not.toContain(`${INCOMPLETE_MODEL}-model-key`);
   });
 });
+
+describe('the fixture agent-manager with tool approval', () => {
+  /** The agent the data set seeds an exception on. */
+  function seeded(state: AgentManagerFixtureState) {
+    for (const ref of state.agentRefs(INSTALLATION)) {
+      const agent = state.getAgent(INSTALLATION, ref.namespace, ref.name);
+      if (agent.grants?.length) return agent;
+    }
+    throw new Error('no seeded exception');
+  }
+
+  it('answers the tool list beside the kagent bindings, which keep their name', async () => {
+    const { client, state } = setup();
+    const agent = seeded(state);
+    const answer = await client.getAgent(agent.namespace, agent.name);
+    expect(answer.tools).toEqual([{ server: agent.name }]);
+    expect(answer.approvalSettings).toBe(true);
+    expect(answer.toolSettings).toEqual(
+      expect.arrayContaining([expect.objectContaining({})]),
+    );
+    expect(answer.grants?.[0]).toMatchObject({ grantedBy: 'dana@example.com' });
+  });
+
+  it('splits the update tools and refuses the other tools’ fields in their words', async () => {
+    const { client, state } = setup();
+    const agent = seeded(state);
+    await expect(client.takesSplitUpdates()).resolves.toBe(true);
+    expect(() =>
+      state.updateAgent(INSTALLATION, {
+        namespace: agent.namespace,
+        name: agent.name,
+        skills: [],
+      }),
+    ).toThrow('update_agent does not take skills: use update_agent_access');
+  });
+
+  it("refuses an Allow over a connector's Ask on create, and grants it only to its connector admin", async () => {
+    const { client, state } = setup();
+    const agent = seeded(state);
+    const asking = (
+      agent.toolSettings as Array<string | Record<string, string>>
+    )
+      .map(entry => (typeof entry === 'string' ? entry : Object.keys(entry)[0]))
+      .find(selector => selector.startsWith('tool:'))!;
+    await expect(
+      client.createAgent({
+        ...specIn(agent.namespace, { name: 'copycat' }),
+        toolset: undefined,
+        tools: [`server:${agent.namespace}/wiki`, { [asking]: 'Allow' }],
+      }),
+    ).rejects.toThrow(/does not grant exceptions/);
+    await client.createAgent({
+      ...specIn(agent.namespace, { name: 'copycat' }),
+      toolset: undefined,
+      tools: [`server:${agent.namespace}/wiki`, asking],
+    });
+    await expect(
+      client.setAgentApproval(agent.namespace, 'copycat', {
+        settings: { [asking]: 'Allow' },
+      }),
+    ).rejects.toMatchObject({ code: 'forbidden' });
+  });
+
+  it('drops the exceptions of connectors the guest is no admin of on any save', async () => {
+    const { client, state } = setup();
+    const agent = seeded(state);
+    const result = await client.updateAgent({
+      namespace: agent.namespace,
+      name: agent.name,
+      description: 'Changed.',
+    });
+    expect(result.dropped).toEqual([
+      expect.objectContaining({ server: `${agent.namespace}/wiki` }),
+    ]);
+    expect(
+      (await client.getAgent(agent.namespace, agent.name)).grants,
+    ).toBeUndefined();
+  });
+
+  it('serves the older agent-manager without the approval tools', async () => {
+    const { server } = setup();
+    const older = new AgentManagerClient(
+      musterApiOf(server),
+      WITHOUT_MODEL_OPERATIONS,
+    );
+    await expect(older.takesSplitUpdates()).resolves.toBe(false);
+  });
+});

@@ -245,7 +245,44 @@ type Scenario = {
   getAgentPending?: boolean;
   /** What muster's `auth://status` reports for agent-manager. */
   agentManagerAuth?: 'auth_required' | 'connected';
+  /**
+   * agent-manager and muster with tool approval: the split update tools, the
+   * agent's list with its settings, and muster's report of it.
+   */
+  approval?: boolean;
 };
+
+/** The agent with an exception a GitHub admin granted, on an agent-manager with tool approval. */
+const APPROVAL_AGENT: AgentManagerAgent = {
+  ...AGENT,
+  toolset: ['server:github', 'tool:x_github_merge'],
+  toolSettings: ['server:github', { 'tool:x_github_merge': 'Allow' }],
+  approvalSettings: true,
+  grants: [
+    {
+      entry: 'tool:x_github_merge',
+      server: 'github',
+      connectorUid: 'uid-github',
+      grantedBy: 'dana@example.com',
+    },
+  ],
+};
+
+/** muster's report of that list for someone who is no GitHub admin. */
+const APPROVAL_REPORT = [
+  {
+    name: 'x_github_merge',
+    server: 'github',
+    kind: 'tool',
+    connectorAdmin: false,
+    approval: {
+      setting: 'allow',
+      source: 'agent-exception',
+      entry: 'tool:x_github_merge',
+      admin: { setting: 'ask', source: 'tool' },
+    },
+  },
+];
 
 // agent-manager's answers in mode `commit`, as they come over MCP (see
 // `missingReleaseFile`'s test for the first).
@@ -257,7 +294,7 @@ const TOKEN_REFUSED =
   'auth_required: GitHub refused your token on get contents (status 404): reconnect agent-manager in muster (core_auth_login server=agent-manager); the App must be installed on the repository and your account allowed to push to it';
 
 function makeMusterApi(scenario: Scenario = {}) {
-  const agent = scenario.agent ?? AGENT;
+  const agent = scenario.agent ?? (scenario.approval ? APPROVAL_AGENT : AGENT);
   const callTool = jest.fn(
     async (name: string, args: Record<string, unknown>) => {
       if (scenario.notConnected) {
@@ -289,6 +326,15 @@ function makeMusterApi(scenario: Scenario = {}) {
               values: { agent: { description: args.description } },
             },
           };
+        case 'x_agent-manager_update_agent_access':
+        case 'x_agent-manager_set_agent_approval':
+          return {
+            agent,
+            before: {},
+            after: {},
+            changed: [],
+            manifests: { ociRepository: '', helmRelease: '', values: {} },
+          };
         case 'x_agent-manager_update_agent':
           if (args.mode === 'commit' && args.dryRun) {
             if (scenario.commitDryRunError) {
@@ -318,13 +364,28 @@ function makeMusterApi(scenario: Scenario = {}) {
   const listServers = jest.fn(async () => ({
     mcpServers: [{ name: 'agent-manager' }],
   }));
-  const filterTools = jest.fn(async () => ({
-    total: 0,
-    filtered_count: 0,
-    truncated: false,
-    tools: [],
-    presets: [],
-  }));
+  const filterTools = jest.fn(
+    async (options: { agentTools?: unknown; toolset?: string[] }) => ({
+      total: 0,
+      filtered_count: 0,
+      truncated: false,
+      tools: scenario.approval && options.agentTools ? APPROVAL_REPORT : [],
+      presets: [],
+      ...(scenario.approval &&
+        (options.agentTools || options.toolset) && {
+          toolset: options.toolset ?? [],
+        }),
+    }),
+  );
+  const describeTool = jest.fn(async (name: string) => {
+    if (scenario.approval) {
+      return {
+        name,
+        inputSchema: { properties: { tools: {}, default: {}, connectors: {} } },
+      };
+    }
+    throw new Error(`Tool not found: ${name}`);
+  });
   const listInstallations = jest.fn(async () => ({
     installations: [
       { name: 'gazelle', requiresAuth: scenario.requiresAuth ?? true },
@@ -335,6 +396,7 @@ function makeMusterApi(scenario: Scenario = {}) {
       callTool,
       listServers,
       filterTools,
+      describeTool,
       listInstallations,
       getAuthStatus: jest.fn(async () => ({
         servers: [
@@ -1496,5 +1558,39 @@ describe('EditAgentPage', () => {
         await screen.findByText('Authorize GitHub for agent-manager'),
       ).toBeInTheDocument();
     });
+  });
+});
+
+describe('EditAgentPage: tool approval', () => {
+  it('says before saving which exceptions a save removes, and saves what the agent is with update_agent alone', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE, { approval: true });
+    await changeDescriptionAndReview(user);
+
+    expect(
+      await screen.findByText(
+        'Saving removes 1 exception (x_github_merge). A github admin can grant it again.',
+      ),
+    ).toBeInTheDocument();
+
+    const save = screen.getByRole('button', { name: 'Save changes' });
+    await waitFor(() => expect(save).toBeEnabled());
+    await user.click(save);
+    await screen.findByText(/agent detail/);
+    expect(callsOf(callTool, 'x_agent-manager_update_agent')).toEqual([
+      [
+        'x_agent-manager_update_agent',
+        {
+          namespace: 'kagent',
+          name: 'pr-reviewer',
+          description: 'Reviews every pull request.',
+        },
+        'gazelle',
+      ],
+    ]);
+    expect(callsOf(callTool, 'x_agent-manager_update_agent_access')).toEqual(
+      [],
+    );
+    expect(callsOf(callTool, 'x_agent-manager_set_agent_approval')).toEqual([]);
   });
 });

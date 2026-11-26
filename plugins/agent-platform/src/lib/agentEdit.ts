@@ -6,6 +6,7 @@ import type {
   AgentUpdate,
 } from './agentManager';
 import { SIGN_IN_TOOL_SELECTOR, withoutSignInTool } from './signInTool';
+import { approvalDraftOf } from './agentApproval';
 import { declaredToolset, normalizeSelection } from './toolset';
 import { egressTextOf, parseEgressText, sameEgress } from './egress';
 import { skillEntryOf } from './agentSpec';
@@ -398,6 +399,7 @@ export function formStateOfAgent(
       agent.toolset !== undefined &&
       baseline.toolset.length === 0 &&
       baseline.connectors.length === 0,
+    approval: approvalDraftOf(agent),
   };
 }
 

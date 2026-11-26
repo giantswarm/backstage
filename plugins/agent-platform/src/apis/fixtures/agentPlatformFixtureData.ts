@@ -25,10 +25,12 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import type {
+  AgentApprovalSetting,
   AgentManagerAgent,
   AgentObjectStatus,
   AgentPluginEntry,
   AgentSkillEntry,
+  AgentToolEntry,
 } from '../../lib/agentManager';
 import { DEFAULT_MODEL_ANNOTATION } from '../../lib/defaultModel';
 import { DEFAULT_WORKSPACE_ANNOTATION } from '../../lib/defaultWorkspace';
@@ -72,6 +74,13 @@ export type FixtureAgentDetails = {
   skills?: AgentSkillEntry[];
   plugins?: AgentPluginEntry[];
   toolset?: string[];
+  /**
+   * The tool list with its approval settings, where agent-manager takes
+   * them (tool approval); its selectors are `toolset`.
+   */
+  tools?: AgentToolEntry[];
+  /** The list's default approval setting. */
+  defaultApproval?: AgentApprovalSetting;
   egress?: string[];
   egressPolicyRefs?: string[];
   /** The organization's own connectors it binds (`connectors`). */

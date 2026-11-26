@@ -16,7 +16,10 @@ export function musterApiOf(server: FixtureMcpServer): MusterApi {
       args: Record<string, unknown>,
       installation: string,
     ) => {
-      const handler = server.tools[name.replace(`x_${server.server}_`, '')];
+      const tool = name.replace(`x_${server.server}_`, '');
+      const handler = server.unservedTools?.(installation).includes(tool)
+        ? undefined
+        : server.tools[tool];
       if (!handler) {
         throw new Error(`no handler for ${name}`);
       }
@@ -25,12 +28,17 @@ export function musterApiOf(server: FixtureMcpServer): MusterApi {
         signal: new AbortController().signal,
       });
     },
-    describeTool: async (name: string) => {
+    describeTool: async (name: string, installation: string) => {
       const tool = name.replace(`x_${server.server}_`, '');
+      if (server.unservedTools?.(installation).includes(tool)) {
+        throw new Error(`Tool not found: ${name}`);
+      }
+      const schema = server.inputSchemas?.[tool];
       return {
         name,
         server: server.server,
-        inputSchema: server.inputSchemas?.[tool],
+        inputSchema:
+          typeof schema === 'function' ? schema(installation) : schema,
       };
     },
   } as unknown as MusterApi;

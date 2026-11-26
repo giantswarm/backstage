@@ -10,19 +10,21 @@ export type ConnectorsSupport =
   'reading' | 'supported' | 'unsupported' | 'unread';
 
 /**
- * Whether the write the agent wizard ends with (`create_agent`, or
- * `update_agent` while editing) takes the organization's own connectors,
- * from that tool's schema: agent-manager announces no capability for them.
- * `unread` when the schema could not be read.
+ * Whether agent-manager takes the organization's own connectors, from
+ * `create_agent`'s schema: agent-manager announces no capability for them.
+ * The edit writes them with the same release (`update_agent` before tool
+ * approval, `update_agent_access` since, which `update_agent` no longer
+ * covers), so `create_agent` answers for both. `unread` when the schema
+ * could not be read.
  */
 export function useConnectorsSupport(
   installation: string | undefined,
   editing: boolean,
 ): ConnectorsSupport {
   const musterApi = useMusterPluginApi();
-  const tool = agentManagerToolName(
-    editing ? AGENT_MANAGER_TOOLS.updateAgent : AGENT_MANAGER_TOOLS.createAgent,
-  );
+  // Kept in the signature: the callers say whether they edit.
+  void editing;
+  const tool = agentManagerToolName(AGENT_MANAGER_TOOLS.createAgent);
   const enabled = Boolean(musterApi && installation);
   const { data, isError } = useQuery({
     queryKey: musterToolSchemaQueryKey(installation ?? '', tool),

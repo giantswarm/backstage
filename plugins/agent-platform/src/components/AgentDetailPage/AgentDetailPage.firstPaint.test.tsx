@@ -41,6 +41,15 @@ function setCookie(value: CookieState) {
   mockCookieStore.value = value;
   mockCookieStore.listeners.forEach(listener => listener());
 }
+// The agent's approval report reads muster (tool approval): none here.
+jest.mock('../../hooks/useAgentApprovalReport', () => ({
+  useAgentApprovalReport: () => ({
+    status: 'idle',
+    tools: [],
+    truncated: false,
+  }),
+}));
+
 jest.mock('@backstage/plugin-auth-react', () => {
   const { useSyncExternalStore } = jest.requireActual('react');
   const subscribe = (listener: () => void) => {

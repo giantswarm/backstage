@@ -29,6 +29,11 @@ import {
 } from '../agentManagerFixtureState';
 import { FIXTURE_HARNESS } from '../agentPlatformFixtureData';
 import { asJson, text } from './jsonTools';
+import {
+  ACCESS_ARGS,
+  DESCRIBING_ARGS,
+  takesToolApproval,
+} from '../agentApprovalFixtures';
 
 /**
  * The installation whose agent-manager predates model credential operations:
@@ -52,12 +57,46 @@ const agentWriteSchema = (installation: string) => ({
     [
       'namespace',
       'name',
-      'toolset',
+      ...(takesToolApproval(installation)
+        ? ['tools', 'default', 'toolset']
+        : ['toolset']),
       'egressPolicyRefs',
       ...(installation === WITHOUT_CONNECTORS ? [] : ['connectors']),
     ].map(field => [field, {}]),
   ),
 });
+
+/**
+ * `update_agent`'s arguments: everything on the older agent-manager, what an
+ * agent is once it has tool approval (the rest is `update_agent_access`'s).
+ */
+const updateSchema = (installation: string) =>
+  takesToolApproval(installation)
+    ? {
+        type: 'object',
+        properties: Object.fromEntries(
+          ['namespace', 'name', ...DESCRIBING_ARGS].map(field => [field, {}]),
+        ),
+      }
+    : agentWriteSchema(installation);
+
+const accessSchema = (installation: string) => ({
+  type: 'object',
+  properties: Object.fromEntries(
+    ['namespace', 'name', ...ACCESS_ARGS]
+      .filter(
+        field => field !== 'connectors' || installation !== WITHOUT_CONNECTORS,
+      )
+      .map(field => [field, {}]),
+  ),
+});
+
+/** The tools an agent-manager before tool approval does not serve. */
+const APPROVAL_TOOLS = [
+  AGENT_MANAGER_TOOLS.updateAgentAccess,
+  AGENT_MANAGER_TOOLS.setAgentApproval,
+  AGENT_MANAGER_TOOLS.listApprovalGrants,
+];
 
 /** What the fixture agent-manager of an installation composes and can do. */
 const infoOf = (installation: string, managed: string[]): AgentManagerInfo => ({
@@ -207,6 +246,23 @@ export function agentManagerFixtureServer(
         installation,
         args as AgentUpdate & { mode?: string },
       ),
+    [AGENT_MANAGER_TOOLS.updateAgentAccess]: (args, { installation }) =>
+      state().updateAgent(
+        installation,
+        args as AgentUpdate & { mode?: string },
+        'update_agent_access',
+      ),
+    [AGENT_MANAGER_TOOLS.setAgentApproval]: (args, { installation }) =>
+      state().setAgentApproval(
+        installation,
+        args as Parameters<AgentManagerFixtureState['setAgentApproval']>[1],
+      ),
+    [AGENT_MANAGER_TOOLS.listApprovalGrants]: (args, { installation }) =>
+      state().listApprovalGrants(
+        installation,
+        typeof args.namespace === 'string' ? args.namespace : undefined,
+        typeof args.server === 'string' ? args.server : undefined,
+      ),
     [AGENT_MANAGER_TOOLS.deleteAgent]: (args, { installation }) =>
       state().deleteAgent(
         installation,
@@ -223,9 +279,12 @@ export function agentManagerFixtureServer(
   return {
     server: AGENT_MANAGER_SERVER,
     tools: asJson(tools),
+    unservedTools: installation =>
+      takesToolApproval(installation) ? [] : APPROVAL_TOOLS,
     inputSchemas: {
       [AGENT_MANAGER_TOOLS.createAgent]: agentWriteSchema,
-      [AGENT_MANAGER_TOOLS.updateAgent]: agentWriteSchema,
+      [AGENT_MANAGER_TOOLS.updateAgent]: updateSchema,
+      [AGENT_MANAGER_TOOLS.updateAgentAccess]: accessSchema,
       [AGENT_MANAGER_TOOLS.setOrganizationModel]: installation => ({
         type: 'object',
         properties: Object.fromEntries(

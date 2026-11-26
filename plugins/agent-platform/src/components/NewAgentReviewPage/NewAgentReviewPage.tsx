@@ -32,6 +32,12 @@ import {
   type CommitAgentResult,
 } from '../../lib/agentManager';
 import { agentSpecOf } from '../../lib/agentSpec';
+import {
+  approvalCounts,
+  approvalSummary,
+  createApprovalSplit,
+} from '../../lib/agentApproval';
+import { useWizardApproval } from '../../hooks/useWizardApproval';
 import { ORGANIZATION_CONNECTORS_LABEL } from '../../lib/organizationConnectors';
 import { PrivateSkillsNote } from '../PrivateSkillsNote';
 import {
@@ -147,15 +153,50 @@ function CreateAgentReview() {
     state.installation,
   );
   const tagsSupported = supportsTags(info);
-  const spec = useMemo(
-    () =>
-      agentSpecOf(state, {
-        toolset: declared,
-        iconUrl: buildIconUrl(state.installation, state.slug),
-        tags: tagsSupported,
-      }),
-    [state, declared, buildIconUrl, tagsSupported],
+  // The approval settings, where agent-manager takes them: `create_agent`
+  // takes all but an Allow over a connector's Ask and an allowing default,
+  // which `set_agent_approval` sets right after (`followUp`).
+  const approval = useWizardApproval(
+    state.installation,
+    toolset,
+    state.approval,
+    resolution,
   );
+  const approvalSplit = useMemo(
+    () =>
+      approval.supported
+        ? createApprovalSplit(
+            approval.tools,
+            approval.default,
+            approval.report.status === 'ready'
+              ? approval.report.tools
+              : undefined,
+          )
+        : undefined,
+    [approval.supported, approval.tools, approval.default, approval.report],
+  );
+  const approvalPending =
+    approval.support === 'reading' ||
+    approval.coveragePending ||
+    approval.report.status === 'loading';
+  const spec = useMemo(() => {
+    const composed = agentSpecOf(state, {
+      toolset: declared,
+      iconUrl: buildIconUrl(state.installation, state.slug),
+      tags: tagsSupported,
+    });
+    if (!approvalSplit) {
+      return composed;
+    }
+    const { toolset: _declared, ...rest } = composed;
+    return {
+      ...rest,
+      tools: approvalSplit.tools,
+      ...(approvalSplit.default && { default: approvalSplit.default }),
+    };
+  }, [state, declared, buildIconUrl, tagsSupported, approvalSplit]);
+  const followUp = approvalSplit?.followUp;
+  const [approvalFailure, setApprovalFailure] = useState<string>();
   const namespace = spec.namespace;
 
   // The platform Harness the runtime field shows, for its summary row.
@@ -166,7 +207,11 @@ function CreateAgentReview() {
   // whether it takes tags: the spec would differ from what Create sends.
   const validation = useValidateAgent(
     state.installation,
-    isComplete && isToolsetValid && !signIn.isLoading && !isInfoLoading
+    isComplete &&
+      isToolsetValid &&
+      !signIn.isLoading &&
+      !isInfoLoading &&
+      !approvalPending
       ? spec
       : undefined,
   );
@@ -180,6 +225,7 @@ function CreateAgentReview() {
   const notes = dryRun?.notes ?? [];
   const canWrite =
     !signIn.isLoading &&
+    !approvalPending &&
     Boolean(dryRun) &&
     violations.length === 0 &&
     !validation.failure;
@@ -198,9 +244,16 @@ function CreateAgentReview() {
     creation.reset();
     let result;
     try {
-      result = await creation.deploy(spec);
+      result = await creation.deploy(spec, followUp);
     } catch {
       // Left to `creation.failure`, rendered inline below.
+      return;
+    }
+    if (result.approvalFailure) {
+      // The agent exists without the settings that were refused: said here,
+      // with the way to it, rather than lost in a navigation.
+      setApprovalFailure(result.approvalFailure);
+      clearSavedDraft();
       return;
     }
     const target = agentDetailLink?.({
@@ -232,6 +285,7 @@ function CreateAgentReview() {
   }, [
     creation,
     spec,
+    followUp,
     agentDetailLink,
     state.installation,
     namespace,
@@ -283,7 +337,9 @@ function CreateAgentReview() {
         {proposeInFooter && (
           <Button
             variant="tertiary"
-            isDisabled={isBusy || !canWrite}
+            // A pull request carries no exceptions (set_agent_approval
+            // grants them on a live agent only).
+            isDisabled={isBusy || !canWrite || Boolean(followUp)}
             onPress={onCommit}
           >
             {proposeLabel}
@@ -301,6 +357,7 @@ function CreateAgentReview() {
     [
       isBusy,
       canWrite,
+      followUp,
       proposeInFooter,
       onCommit,
       onDeploy,
@@ -389,6 +446,11 @@ function CreateAgentReview() {
               <SignInToolChange change="added" signIn={signIn} />
             )}
           </PlainRow>
+          {approval.supported && approval.report.status === 'ready' && (
+            <PlainRow label="Approval">
+              {approvalSummary(approvalCounts(approval.report.tools))}
+            </PlainRow>
+          )}
           {/* Beside the muster servers above, which "Tools" sums up. */}
           {state.connectors.length > 0 && (
             <PlainRow label={ORGANIZATION_CONNECTORS_LABEL}>
@@ -472,6 +534,22 @@ function CreateAgentReview() {
           />
         )}
         {commitResult && <CommitOutcome result={commitResult} />}
+        {approvalFailure && (
+          <Alert
+            status="warning"
+            title="The agent was created without some of its approval settings"
+            description={`${approvalFailure.replace(
+              /\.$/,
+              '',
+            )}. Until they are saved, the connectors' settings apply to those tools. Open the agent and edit its tools to try again.`}
+          />
+        )}
+        {canCommit && followUp && (
+          <Text variant="body-small" color="secondary">
+            A pull request carries no exceptions, so this agent can only be
+            created live while it skips a connector's Ask.
+          </Text>
+        )}
 
         {canCommit && isPhone && (
           <Flex direction="column" align="start" gap="1">
@@ -480,7 +558,7 @@ function CreateAgentReview() {
             </Text>
             <Button
               variant="secondary"
-              isDisabled={isBusy || !canWrite}
+              isDisabled={isBusy || !canWrite || Boolean(followUp)}
               onPress={onCommit}
             >
               {proposeLabel}

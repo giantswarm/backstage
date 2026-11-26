@@ -3,6 +3,7 @@ import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 
 import {
   AGENT_MANAGER_TOOLS,
+  AgentManagerError,
   agentManagerToolName,
   classifyAgentManagerError,
   type AgentManagerAgent,
@@ -13,6 +14,10 @@ import {
   type AgentSpec,
   type AgentStatus,
   type AgentUpdate,
+  type AgentApprovalChange,
+  type AgentApprovalGrant,
+  type SetAgentApprovalResult,
+  splitAgentUpdate,
   type WriteMode,
   type CommitAgentResult,
   type CreateAgentResult,
@@ -50,6 +55,21 @@ function toolchainArgs(toolchains: StartSessionRequest['toolchains']) {
 }
 
 /**
+ * A refusal of the second write of an update, after the first landed: said
+ * so, keeping agent-manager's code and words.
+ */
+function partialWriteError(error: unknown): Error {
+  if (error instanceof AgentManagerError) {
+    return new AgentManagerError(
+      error.code,
+      `The agent's name, description, instructions and model were saved; the rest was not: ${error.message}`,
+      { cause: error },
+    );
+  }
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+/**
  * The tools that may prepare a credential request. Their calls declare no URL
  * elicitation: agent-manager then answers the request's id
  * (`credentialOperation`) as its result, and the portal opens its own
@@ -83,6 +103,31 @@ export class AgentManagerClient {
     private readonly musterApi: MusterApi,
     readonly installation: string,
   ) {}
+
+  private splitUpdates?: Promise<boolean>;
+
+  /**
+   * Whether this agent-manager splits an update over `update_agent` (what an
+   * agent is) and `update_agent_access` (what it can reach), as it does
+   * since tool approval: `update_agent_access` can be described. Read once
+   * per client. A failed read is an older agent-manager (one `update_agent`
+   * takes everything), or a transient failure, after which a new one refuses
+   * the single update in its own words before writing anything.
+   */
+  takesSplitUpdates(): Promise<boolean> {
+    this.splitUpdates ??= Promise.resolve()
+      .then(() =>
+        this.musterApi.describeTool(
+          agentManagerToolName(AGENT_MANAGER_TOOLS.updateAgentAccess),
+          this.installation,
+        ),
+      )
+      .then(
+        detail => Boolean(detail),
+        () => false,
+      );
+    return this.splitUpdates;
+  }
 
   private async call<T>(
     tool: AgentManagerTool,
@@ -205,23 +250,131 @@ export class AgentManagerClient {
     });
   }
 
-  /** Merges `update` into the release's values and writes it, as the person. */
-  updateAgent(update: AgentUpdate): Promise<UpdateAgentResult> {
-    return this.call<UpdateAgentResult>(AGENT_MANAGER_TOOLS.updateAgent, {
-      ...update,
-    });
+  /**
+   * The writes of one update, in order: `update_agent` with everything on an
+   * older agent-manager; on one with tool approval, `update_agent` with what
+   * the agent is, then `update_agent_access` with what it can reach, each
+   * only when it carries a field.
+   */
+  private async updateWrites(
+    update: AgentUpdate,
+  ): Promise<{ tool: AgentManagerTool; args: AgentUpdate }[]> {
+    if (!(await this.takesSplitUpdates())) {
+      return [{ tool: AGENT_MANAGER_TOOLS.updateAgent, args: update }];
+    }
+    const { describe, access } = splitAgentUpdate(update);
+    const writes: { tool: AgentManagerTool; args: AgentUpdate }[] = [];
+    if (describe) {
+      writes.push({ tool: AGENT_MANAGER_TOOLS.updateAgent, args: describe });
+    }
+    if (access) {
+      writes.push({
+        tool: AGENT_MANAGER_TOOLS.updateAgentAccess,
+        args: access,
+      });
+    }
+    // Nothing to change still answers the agent as it is.
+    return writes.length > 0
+      ? writes
+      : [{ tool: AGENT_MANAGER_TOOLS.updateAgent, args: update }];
+  }
+
+  /**
+   * Merges `update` into the release's values and writes it, as the person:
+   * one write, or two on an agent-manager with tool approval. When the
+   * second is refused after the first landed, the refusal says so.
+   */
+  async updateAgent(update: AgentUpdate): Promise<UpdateAgentResult> {
+    const writes = await this.updateWrites(update);
+    let merged: UpdateAgentResult | undefined;
+    for (const write of writes) {
+      let result: UpdateAgentResult;
+      try {
+        result = await this.call<UpdateAgentResult>(write.tool, {
+          ...write.args,
+        });
+      } catch (error) {
+        throw merged ? partialWriteError(error) : error;
+      }
+      merged = merged
+        ? {
+            ...result,
+            before: merged.before,
+            changed: [...new Set([...merged.changed, ...result.changed])],
+            dropped: [...(merged.dropped ?? []), ...(result.dropped ?? [])],
+          }
+        : result;
+    }
+    return merged!;
   }
 
   /**
    * Lands the update as a pull request in the owning GitOps repository instead
    * (`mode: commit`, giantswarm/agent-manager#24). Offered only when `get_info`
-   * reports the `commit` capability.
+   * reports the `commit` capability. On an agent-manager with tool approval a
+   * change to what the agent is and to what it can reach are a pull request
+   * each: the earlier one is in `earlier`.
    */
-  commitUpdateAgent(update: AgentUpdate): Promise<CommitAgentResult> {
-    return this.call<CommitAgentResult>(AGENT_MANAGER_TOOLS.updateAgent, {
-      ...update,
-      mode: 'commit',
-    });
+  async commitUpdateAgent(update: AgentUpdate): Promise<CommitAgentResult> {
+    const writes = await this.updateWrites(update);
+    const results: CommitAgentResult[] = [];
+    for (const write of writes) {
+      try {
+        results.push(
+          await this.call<CommitAgentResult>(write.tool, {
+            ...write.args,
+            mode: 'commit',
+          }),
+        );
+      } catch (error) {
+        throw results.length > 0 ? partialWriteError(error) : error;
+      }
+    }
+    const last = results[results.length - 1];
+    return results.length > 1
+      ? { ...last, earlier: results.slice(0, -1) }
+      : last;
+  }
+
+  /**
+   * `set_agent_approval`: the settings on entries of the agent's tool list
+   * and its default — the only write that lets the agent skip a connector's
+   * `Ask` (agent-manager checks the person is that connector's admin and
+   * records the grant). Live only for a grant: a release in git carries none.
+   */
+  setAgentApproval(
+    namespace: string,
+    name: string,
+    change: AgentApprovalChange,
+    mode: WriteMode = 'apply',
+  ): Promise<SetAgentApprovalResult & CommitAgentResult> {
+    return this.call<SetAgentApprovalResult & CommitAgentResult>(
+      AGENT_MANAGER_TOOLS.setAgentApproval,
+      {
+        namespace,
+        name,
+        ...change,
+        ...(mode === 'commit' ? { mode } : {}),
+      },
+    );
+  }
+
+  /**
+   * `list_approval_grants`: the agents of a namespace that may skip a
+   * connector's `Ask`, and who let them. Read as the person.
+   */
+  async listApprovalGrants(options: {
+    namespace?: string;
+    server?: string;
+  }): Promise<AgentApprovalGrant[]> {
+    const result = await this.call<{ grants?: AgentApprovalGrant[] }>(
+      AGENT_MANAGER_TOOLS.listApprovalGrants,
+      {
+        ...(options.namespace && { namespace: options.namespace }),
+        ...(options.server && { server: options.server }),
+      },
+    );
+    return result.grants ?? [];
   }
 
   /**
@@ -231,11 +384,15 @@ export class AgentManagerClient {
    * commit would, such as a release whose file is not in agent-manager's
    * directory.
    */
-  dryRunCommitUpdateAgent(
+  async dryRunCommitUpdateAgent(
     update: AgentUpdate,
   ): Promise<UpdateAgentCommitDryRun> {
-    return this.call<UpdateAgentCommitDryRun>(AGENT_MANAGER_TOOLS.updateAgent, {
-      ...update,
+    // On an agent-manager with tool approval, the write that carries what the
+    // agent can reach (skills, Harness) is the one that would be refused.
+    const writes = await this.updateWrites(update);
+    const write = writes[writes.length - 1];
+    return this.call<UpdateAgentCommitDryRun>(write.tool, {
+      ...write.args,
       mode: 'commit',
       dryRun: true,
     });

@@ -657,3 +657,21 @@ export function agentManagerCredentialOperationQueryKey(
     operation,
   ] as const;
 }
+
+/**
+ * What muster reports for an agent's tool list (`filter_tools` with
+ * `agentTools`), keyed by the list as sent; under `['muster']`, so a sign-in
+ * reads it again.
+ */
+export function musterAgentApprovalReportQueryKey(
+  installation: string,
+  agentTools: string,
+) {
+  return [
+    'muster',
+    'agent-platform',
+    'agent-approval-report',
+    installation,
+    agentTools,
+  ] as const;
+}

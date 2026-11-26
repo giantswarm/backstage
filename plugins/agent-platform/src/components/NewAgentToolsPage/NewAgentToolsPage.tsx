@@ -32,6 +32,9 @@ import { useSignInTool } from '../../hooks/useSignInTool';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { useToolsetPresets } from '../../hooks/useToolsetPresets';
 import { useToolsetResolution } from '../../hooks/useToolsetResolution';
+import { useWizardApproval } from '../../hooks/useWizardApproval';
+import { approvalNotEnforced } from '../../lib/agentApproval';
+import { AgentApprovalSettings } from '../AgentApprovalSettings';
 import { filterCatalogue } from '../../lib/filterCatalogue';
 import { SIGN_IN_TOOL_SELECTOR } from '../../lib/signInTool';
 import {
@@ -243,6 +246,8 @@ export function NewAgentToolsPage() {
     setToolsChatOnly,
     setToolsetBase: setKeptBase,
     setSignInToolDeclined,
+    setApprovalSetting,
+    setApprovalDefault,
     isComplete,
     isToolsetValid,
     toolsetProblems,
@@ -255,8 +260,11 @@ export function NewAgentToolsPage() {
   const musterApi = useMusterPluginApi();
   const presets = useToolsetPresets(installation);
   const catalogue = useMusterToolCatalogue(installation);
-  const { servers: installationServers, isLoading: isLoadingServers } =
-    useMusterServers(installation);
+  const {
+    servers: installationServers,
+    isLoading: isLoadingServers,
+    labels,
+  } = useMusterServers(installation);
   // The connectors follow the agent's organization: another one's servers
   // are not offered. Editing, the agent's own namespace.
   const tenant = edit ? edit.agent.namespace : state.tenant;
@@ -289,6 +297,21 @@ export function NewAgentToolsPage() {
     Boolean(state.signInToolDeclined),
   );
   const resolution = useToolsetResolution(installation, signIn.toolset);
+  // The agent's approval settings on the list as it will be saved, and what
+  // muster reports for it (tool approval).
+  const approval = useWizardApproval(
+    installation,
+    signIn.toolset,
+    state.approval,
+    resolution,
+    edit?.agent.grants,
+  );
+  const offersApproval =
+    approval.supported &&
+    !state.toolsChatOnly &&
+    signIn.toolset.length > 0 &&
+    // An agent whose chart takes no settings keeps the connectors' ones.
+    !(edit && edit.agent.approvalSettings === false);
   // A removal stands while a connector needs the tool; once none does, the
   // next one that does gets it again.
   const signInNeeded = signIn.isLoading || signIn.connectors.length > 0;
@@ -890,6 +913,20 @@ export function NewAgentToolsPage() {
             </div>
           </Flex>
         </section>
+
+        {offersApproval && (
+          <AgentApprovalSettings
+            selection={signIn.toolset}
+            draft={approval.draft}
+            report={approval.report}
+            servers={servers}
+            labelOf={server => labels.get(server) ?? server}
+            onSetting={setApprovalSetting}
+            onDefault={setApprovalDefault}
+            viaGit={edit?.writeMode === 'commit'}
+            notEnforced={approvalNotEnforced(edit?.agent)}
+          />
+        )}
 
         {individualOpen && (
           <Card>

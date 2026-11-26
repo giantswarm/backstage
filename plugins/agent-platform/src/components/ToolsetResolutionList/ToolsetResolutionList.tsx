@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Alert, Button, Flex, SearchField, Text } from '@backstage/ui';
 import {
   ToolTable,
@@ -39,10 +39,12 @@ export const AUTO_EXPAND_MAX = 20;
 function ToolRows({
   tools,
   toolHref,
+  trailingOf,
   noun = 'tool',
 }: {
   tools: ToolSummary[];
   toolHref?: (name: string) => string | undefined;
+  trailingOf?: (tool: ToolSummary) => ReactNode;
   noun?: 'tool' | 'workflow';
 }) {
   return (
@@ -56,6 +58,7 @@ function ToolRows({
             const href = toolHref?.(tool.name);
             return toolTableItem(tool, {
               mode: href ? { kind: 'link', href } : { kind: 'static' },
+              ...(trailingOf && { trailing: trailingOf(tool) }),
             });
           })}
         />
@@ -74,15 +77,24 @@ function Workflows({
   query,
   defaultExpanded,
   toolHref,
+  trailingOf,
 }: {
   workflows: ToolSummary[];
   query: string;
   defaultExpanded: boolean;
   toolHref?: (name: string) => string | undefined;
+  trailingOf?: (tool: ToolSummary) => ReactNode;
 }) {
   const groups = groupWorkflows(workflows);
   if (!groups) {
-    return <ToolRows tools={workflows} toolHref={toolHref} noun="workflow" />;
+    return (
+      <ToolRows
+        tools={workflows}
+        toolHref={toolHref}
+        trailingOf={trailingOf}
+        noun="workflow"
+      />
+    );
   }
   return (
     <Disclosures
@@ -99,6 +111,7 @@ function Workflows({
           <ToolRows
             tools={group.workflows}
             toolHref={toolHref}
+            trailingOf={trailingOf}
             noun="workflow"
           />
         ),
@@ -135,6 +148,7 @@ function groupEntries(
   query: string,
   defaultExpanded: boolean,
   toolHref?: (name: string) => string | undefined,
+  trailingOf?: (tool: ToolSummary) => ReactNode,
 ): DisclosureEntry[] {
   return groups.map(group => ({
     key: group.key,
@@ -153,7 +167,11 @@ function groupEntries(
                 'tool',
               )}`,
               panel: () => (
-                <ToolRows tools={bucket.tools} toolHref={toolHref} />
+                <ToolRows
+                  tools={bucket.tools}
+                  toolHref={toolHref}
+                  trailingOf={trailingOf}
+                />
               ),
             }))}
           />
@@ -180,6 +198,7 @@ function groupEntries(
                     <ToolRows
                       tools={group.platformAdministration}
                       toolHref={toolHref}
+                      trailingOf={trailingOf}
                     />
                   </>
                 ),
@@ -193,6 +212,7 @@ function groupEntries(
             query={query}
             defaultExpanded={defaultExpanded}
             toolHref={toolHref}
+            trailingOf={trailingOf}
           />
         )}
       </>
@@ -208,6 +228,11 @@ export type ToolsetResolutionListProps = {
   toolHref?: (name: string) => string | undefined;
   /** What to say when the toolset resolves to nothing at all. */
   emptyText?: string;
+  /**
+   * A cell at each row's end: the agent's approval of the tool (its pills on
+   * the Tools step, its badge on the agent's page).
+   */
+  trailingOf?: (tool: ToolSummary) => ReactNode;
 };
 
 /**
@@ -233,6 +258,7 @@ export function ToolsetResolutionList({
   servers,
   toolHref,
   emptyText = 'This toolset resolves to no tools for you right now.',
+  trailingOf,
 }: ToolsetResolutionListProps) {
   const [query, setQuery] = useState('');
   const trimmed = query.trim();
@@ -395,6 +421,7 @@ export function ToolsetResolutionList({
                 activeQuery,
                 isShort,
                 toolHref,
+                trailingOf,
               )}
             />
           )}

@@ -50,6 +50,14 @@ import { ConnectAgentManagerAlert } from '../ConnectAgentManagerAlert';
 import { useRuntimeChoices } from '../HarnessPicker';
 import { type AgentWizardEdit, useNewAgentForm } from '../NewAgentFormProvider';
 import { ToolsetResolutionList } from '../ToolsetResolutionList';
+import { ExceptionsNote } from '../AgentApprovalSettings';
+import { useWizardApproval } from '../../hooks/useWizardApproval';
+import {
+  agentToolListOf,
+  droppedExceptions,
+  editApprovalPlan,
+  isApprovalSetting,
+} from '../../lib/agentApproval';
 import { PrivateSkillsNote } from '../PrivateSkillsNote';
 import { pickedSourcesOf } from '../../lib/agentSpec';
 import { agentSkillsSecretOf } from '../../lib/privateSkills';
@@ -169,9 +177,68 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
     () => changedFields(agent, editState),
     [agent, editState],
   );
-  const update = useMemo(() => updateOf(agent, editState), [agent, editState]);
-  const dirty = hasChanges(update);
-  const signature = useMemo(() => JSON.stringify(update), [update]);
+  // The approval settings (tool approval), where agent-manager and the
+  // agent's chart take them: the list's entries go with what the agent can
+  // reach (`update_agent_access`), an Allow over a connector's Ask and the
+  // default with `set_agent_approval` after it.
+  const approvalResolution = useToolsetResolution(
+    installation,
+    declaredToolset(toolset),
+  );
+  const approval = useWizardApproval(
+    installation,
+    toolset,
+    state.approval,
+    approvalResolution,
+    agent.grants,
+  );
+  const approvalActive = approval.supported && agent.approvalSettings === true;
+  const approvalPending =
+    approvalActive &&
+    (approval.coveragePending || approval.report.status === 'loading');
+  const reported =
+    approval.report.status === 'ready' ? approval.report.tools : undefined;
+  const plan = useMemo(() => {
+    if (!approvalActive) {
+      return {};
+    }
+    const fallback = agent.defaultApproval;
+    return editApprovalPlan(
+      {
+        tools: agentToolListOf(agent) ?? agent.toolset ?? [],
+        default: isApprovalSetting(fallback) ? fallback : undefined,
+      },
+      { tools: approval.tools, default: approval.default },
+      reported,
+    );
+  }, [approvalActive, agent, approval.tools, approval.default, reported]);
+  const update = useMemo(() => {
+    const base = updateOf(agent, editState);
+    if (!approvalActive) {
+      return base;
+    }
+    const { toolset: _selection, ...rest } = base;
+    return plan.tools ? { ...rest, tools: plan.tools } : rest;
+  }, [agent, editState, approvalActive, plan.tools]);
+  const save = useMemo(
+    () => (plan.approval ? { ...update, approval: plan.approval } : update),
+    [update, plan.approval],
+  );
+  const updates = hasChanges(update);
+  const dirty = updates || Boolean(plan.approval);
+  const signature = useMemo(() => JSON.stringify(save), [save]);
+  // The exceptions the save drops that the person did not change themselves.
+  const dropped = useMemo(
+    () =>
+      droppedExceptions(
+        agent.grants ?? [],
+        { tools: approval.tools, default: approval.default },
+        server =>
+          reported?.find(tool => tool.server === server)?.connectorAdmin,
+        viaPullRequest,
+      ),
+    [agent.grants, approval.tools, approval.default, reported, viaPullRequest],
+  );
   const isReady = isComplete && isToolsetValid;
 
   // agent-manager's dry run of exactly the update Save sends; nothing is
@@ -180,7 +247,11 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
     installation,
     // Not before the sign-in tool is decided, nor before agent-manager says
     // whether it takes tags: the update would differ from what Save sends.
-    isReady && dirty && !signIn.isLoading && !isInfoLoading
+    isReady &&
+      updates &&
+      !signIn.isLoading &&
+      !isInfoLoading &&
+      !approvalPending
       ? update
       : undefined,
     writeMode,
@@ -189,8 +260,10 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
   const notes = dryRun.result?.notes ?? [];
   const canWrite =
     !signIn.isLoading &&
+    !approvalPending &&
     dirty &&
-    Boolean(dryRun.result) &&
+    // Settings alone are not dry-run: validate_agent has none of them.
+    (!updates || Boolean(dryRun.result)) &&
     violations.length === 0 &&
     !dryRun.failure;
 
@@ -222,7 +295,7 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
     updating.reset();
     let result;
     try {
-      result = await updating.update(update);
+      result = await updating.update(save);
     } catch {
       // Left to `updating.failure`, rendered inline below.
       return;
@@ -243,17 +316,17 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
         },
       });
     }
-  }, [updating, update, detailHref, navigate, installation, agent]);
+  }, [updating, save, detailHref, navigate, installation, agent]);
 
   const onCommit = useCallback(async () => {
     updating.reset();
     try {
-      const result = await updating.commit(update);
+      const result = await updating.commit(save);
       setCommitted({ signature, result });
     } catch {
       // Left to `updating.failure`, rendered inline below.
     }
-  }, [updating, update, signature]);
+  }, [updating, save, signature]);
 
   const isBusy = updating.isUpdating || updating.isCommitting;
   const isPhone = usePhoneLayout();
@@ -379,6 +452,11 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
               What changes
             </Text>
             <ul className={classes.violations} aria-label="Changed fields">
+              {plan.approval && !changed.includes('toolset') && (
+                <li>
+                  <Text variant="body-small">Approval settings</Text>
+                </li>
+              )}
               {changed.map(field => (
                 <li key={field}>
                   <Text variant="body-small">{EDIT_FIELD_LABELS[field]}</Text>
@@ -391,6 +469,14 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
           </Flex>
         ) : (
           <Text color="secondary">Nothing changed yet.</Text>
+        )}
+
+        {dirty && (
+          <ExceptionsNote
+            notAdmin={dropped.notAdmin}
+            viaGit={dropped.viaGit}
+            labelOf={server => labels.get(server) ?? server}
+          />
         )}
 
         {shape === 'full' && !keepsImplicitAccess && (
@@ -441,9 +527,11 @@ export function EditAgentReview({ edit }: { edit: AgentWizardEdit }) {
             }
           />
         )}
-        {committed && committed.signature === signature && (
-          <CommitOutcome result={committed.result} />
-        )}
+        {committed &&
+          committed.signature === signature &&
+          [...(committed.result.earlier ?? []), committed.result].map(
+            (result, index) => <CommitOutcome key={index} result={result} />,
+          )}
 
         <details className={classes.technical}>
           <summary className={classes.technicalSummary}>
