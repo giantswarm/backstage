@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import SecurityIcon from '@material-ui/icons/Security';
-import WarningIcon from '@material-ui/icons/ReportProblemOutlined';
+import { ApprovalShieldIcon, ApprovalWarningIcon } from '../ApprovalIcons';
 import type {
   ApprovalDecisionResult,
   ApprovalLookup,
@@ -127,8 +126,10 @@ const useStyles = makeStyles(theme => ({
     display: 'flex',
     alignItems: 'flex-start',
     gap: theme.spacing(1.5),
-    '& > svg': { marginTop: 2 },
+    '& > svg': { marginTop: 2, flexShrink: 0 },
   },
+  // Giant Swarm's vivid blue for the pictogram.
+  headerIcon: { color: 'var(--bui-fg-info, #009fff)' },
 }));
 
 function Value({ value }: { value: ApprovalValue }) {
@@ -196,7 +197,7 @@ function RequestDetails({
           role="note"
           data-testid="approval-other-agent"
         >
-          <WarningIcon fontSize="small" aria-hidden />
+          <ApprovalWarningIcon />
           <span>
             Asked by another agent, {asker}, not the agent of this conversation.
           </span>
@@ -478,7 +479,7 @@ export function InlineApproval({
   return (
     <Flex direction="column" gap="2">
       <div className={classes.header}>
-        <SecurityIcon aria-hidden fontSize="small" />
+        <ApprovalShieldIcon className={classes.headerIcon} />
         <Text as="p" variant="body-medium" weight="bold">
           {view.heading}
         </Text>

@@ -7,8 +7,8 @@ import {
   NewTabLabel,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { makeStyles } from '@material-ui/core';
-import InfoOutlinedIcon from '@material-ui/icons/InfoOutlined';
 
+import { SignInKeyIcon } from '../ApprovalIcons';
 import type { ConfirmationAnswer } from '../../hooks/useAnswerConfirmation';
 import type { PendingConfirmation } from '../../lib/kagentHitl';
 import {
@@ -184,8 +184,10 @@ const useStyles = makeStyles(theme => ({
     display: 'flex',
     alignItems: 'flex-start',
     gap: theme.spacing(1.5),
-    '& > svg': { marginTop: 2 },
+    '& > svg': { marginTop: 2, flexShrink: 0 },
   },
+  // Giant Swarm's vivid blue for the pictogram.
+  headerIcon: { color: 'var(--bui-fg-info, #009fff)' },
   heading: {
     overflowWrap: 'anywhere',
   },
@@ -449,7 +451,7 @@ export function UrlElicitationPanel({
       data-testid="url-elicitation-card"
     >
       <div className={classes.header}>
-        <InfoOutlinedIcon aria-hidden fontSize="small" />
+        <SignInKeyIcon className={classes.headerIcon} />
         <Text
           as="p"
           variant="body-medium"
