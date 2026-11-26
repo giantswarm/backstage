@@ -34,6 +34,10 @@ export type {
   ToolKind,
   ToolSummary,
   ToolsetPreset,
+  ToolApproval,
+  ToolApprovalSource,
+  AgentToolsArgument,
+  ToolConnectorRef,
 } from './apis';
 export {
   MCPServer,
@@ -65,6 +69,15 @@ export {
 } from './lib/toolAnnotations';
 export type { ToolEffect } from './lib/toolAnnotations';
 export { serverPageResolver } from './lib/toolGrouping';
+export {
+  APPROVAL_SETTINGS,
+  APPROVAL_SETTING_HINTS,
+  BUILT_IN_HINT,
+  approvalSourceLabel,
+  reportedSetting,
+  storedSetting,
+} from './lib/toolApproval';
+export type { ApprovalSetting } from './lib/toolApproval';
 export {
   ORGANIZATION_CONNECTOR_SEGMENT,
   connectorPageHref,
@@ -126,6 +139,9 @@ export {
   toolTableItem,
   ToolMarkers,
   hasMarkers,
+  ApprovalBadge,
+  ApprovalPills,
+  MarkerBadge,
   ServerSignIn,
   useConnectorLabel,
   useConnectorLabels,
@@ -146,6 +162,9 @@ export type {
   ToolTableItem,
   ToolRowMode,
   ToolMarkersProps,
+  ApprovalBadgeProps,
+  ApprovalPillsProps,
+  MarkerBadgeProps,
   ServerSignInProps,
   ServerSignInState,
   SignedIn,

@@ -47,7 +47,9 @@ import type {
 } from '../types';
 import {
   authStatusOf,
+  connectorKeyOf,
   connectorNameOf,
+  connectorRefOf,
   connectorPromptsOf,
   connectorResourcesOf,
   executionOf,
@@ -71,6 +73,7 @@ import {
 } from './musterFixtureState';
 import { musterCoreToolHandlers } from './musterCoreTools';
 import { presetsOf, resolveToolset } from './toolsetFixtures';
+import { reportForAgent } from './agentApprovalFixtures';
 
 const coreToolHandlers = new Map(Object.entries(musterCoreToolHandlers));
 
@@ -168,6 +171,8 @@ type Tool = {
   server: string;
   handler: FixtureToolHandler;
   inputSchema?: JsonSchema | ((installation: string) => JsonSchema);
+  /** Whether an installation's release serves it; every one when absent. */
+  servedOn?: (installation: string) => boolean;
 };
 
 /** `*` matches any run of characters, like muster's `filter_tools` pattern. */
@@ -230,11 +235,18 @@ export class MusterFixtureApi implements MusterApi {
   constructor(servers: FixtureMcpServer[]) {
     this.servers = servers.map(server => server.server);
     this.tools = new Map(
-      servers.flatMap(({ server, tools, inputSchemas }) =>
+      servers.flatMap(({ server, tools, inputSchemas, unservedTools }) =>
         Object.entries(tools).map(([tool, handler]) => {
           const name = fixtureToolName(server, tool);
           const inputSchema = inputSchemas?.[tool];
-          return [name, { name, server, handler, inputSchema }] as const;
+          const servedOn = unservedTools
+            ? (installation: string) =>
+                !unservedTools(installation).includes(tool)
+            : undefined;
+          return [
+            name,
+            { name, server, handler, inputSchema, servedOn },
+          ] as const;
         }),
       ),
     );
@@ -274,17 +286,19 @@ export class MusterFixtureApi implements MusterApi {
       const { served: servedTools, workflows } = snapshot;
       catalogue = [
         ...servedTools.values(),
-        ...[...this.tools.values()].map(tool => ({
-          name: tool.name,
-          server: tool.server,
-          kind: 'tool' as const,
-          ...(tool.inputSchema && {
-            inputSchema:
-              typeof tool.inputSchema === 'function'
-                ? tool.inputSchema(installation)
-                : tool.inputSchema,
-          }),
-        })),
+        ...[...this.tools.values()]
+          .filter(tool => tool.servedOn?.(installation) ?? true)
+          .map(tool => ({
+            name: tool.name,
+            server: tool.server,
+            kind: 'tool' as const,
+            ...(tool.inputSchema && {
+              inputSchema:
+                typeof tool.inputSchema === 'function'
+                  ? tool.inputSchema(installation)
+                  : tool.inputSchema,
+            }),
+          })),
         ...workflows
           .filter(workflow => isWorkflowAvailable(workflow, servedTools))
           .map(workflow => workflowToolOf(workflow, servedTools)),
@@ -306,8 +320,14 @@ export class MusterFixtureApi implements MusterApi {
     installation: string | undefined,
     signal: AbortSignal | undefined,
   ): Promise<unknown> {
-    const tool = this.tools.get(name);
-    const target = this.reachable(installation, tool?.server ?? 'muster');
+    const registered = this.tools.get(name);
+    const target = this.reachable(installation, registered?.server ?? 'muster');
+    // A release that does not serve the tool answers as muster does.
+    const tool =
+      registered?.servedOn?.(target) === false ? undefined : registered;
+    if (registered && !tool) {
+      throw new Error(`Tool not found: ${name}`);
+    }
     const handler = tool?.handler ?? coreToolHandlers.get(name);
     if (!handler) {
       const error = new FixtureToolMissingError(name);
@@ -480,10 +500,26 @@ export class MusterFixtureApi implements MusterApi {
     const installation = this.reachable(options.installation);
     const { presets } = this.snapshot(installation);
     const catalogue = this.catalogue(installation);
-    const resolution = options.toolset
-      ? resolveToolset(options.toolset, catalogue, presets)
+    if (options.toolset && options.agentTools) {
+      throw Object.assign(
+        new Error(
+          "pass toolset or agentTools, not both: agentTools.tools is the agent's toolset",
+        ),
+        { status: 422 },
+      );
+    }
+    // An agent's tool list narrows like a toolset and reports its approvals.
+    const selectors = options.agentTools
+      ? options.agentTools.tools.map(item =>
+          typeof item === 'string' ? item : Object.keys(item)[0],
+        )
+      : options.toolset;
+    const resolution = selectors
+      ? resolveToolset(selectors, catalogue, presets)
       : undefined;
-    const scope = resolution?.tools ?? catalogue;
+    const scope = options.agentTools
+      ? this.agentReport(installation, catalogue, options.agentTools)
+      : (resolution?.tools ?? catalogue);
     const needle = options.query?.toLowerCase();
     const all = scope
       .filter(tool => matchesPattern(tool.name, options.pattern))
@@ -506,14 +542,40 @@ export class MusterFixtureApi implements MusterApi {
       filtered_count: all.length,
       truncated,
       tools: items,
-      ...(options.toolset && {
-        toolset: [...options.toolset],
+      ...(selectors && {
+        toolset: [...selectors],
         toolset_unmatched: resolution?.unmatched ?? [],
       }),
-      ...((options.includePresets || options.toolset) && {
+      ...((options.includePresets || selectors) && {
         presets: presetsOf(presets),
       }),
     };
+  }
+
+  /**
+   * The catalogue as an agent's tool list sees it (`agentTools`): muster's
+   * agent approvals and, per connector tool, the MCPServer behind it.
+   */
+  private agentReport(
+    installation: string,
+    catalogue: ToolSummary[],
+    agentTools: NonNullable<FilterToolsOptions['agentTools']>,
+  ): ToolSummary[] {
+    const connectors = new Map(
+      this.liveConnectors(installation).map(connector => [
+        connectorKeyOf(connector),
+        connector,
+      ]),
+    );
+    return reportForAgent(
+      catalogue,
+      agentTools,
+      this.snapshot(installation).presets,
+      tool => {
+        const connector = tool.server ? connectors.get(tool.server) : undefined;
+        return connector ? [connectorRefOf(connector)] : undefined;
+      },
+    );
   }
 
   async filterResources(

@@ -893,6 +893,21 @@ describe('MusterApiClient.filterTools toolset arguments', () => {
     });
   });
 
+  it("sends an agent's tool list as agentTools in the JSON body", async () => {
+    const t = setup();
+    const agentTools = {
+      tools: ['server:github', { 'tool:x_github_merge': 'Block' }],
+      default: 'Ask',
+    };
+    await t.client.filterTools({ installation: 'gazelle', agentTools });
+    const [url, options] = t.fetchMock.mock.calls[0];
+    expect(new URL(String(url)).pathname).toBe('/api/muster/tools/filter');
+    expect((options as RequestInit).method).toBe('POST');
+    expect(JSON.parse((options as RequestInit).body as string)).toEqual({
+      agentTools,
+    });
+  });
+
   it('sends neither parameter when the caller gives no toolset', async () => {
     const t = setup();
 

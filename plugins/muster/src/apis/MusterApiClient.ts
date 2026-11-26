@@ -393,6 +393,7 @@ export class MusterApiClient implements MusterApi {
       offset,
       toolset,
       includePresets,
+      agentTools,
     } = options;
     const searchParams = new URLSearchParams();
     if (pattern) {
@@ -414,10 +415,13 @@ export class MusterApiClient implements MusterApi {
       searchParams.set('include_presets', String(includePresets));
     }
     const qs = searchParams.toString();
-    if (toolset !== undefined) {
+    if (toolset !== undefined || agentTools !== undefined) {
       return this.post<FilterToolsResponse>(
         `/tools/filter${qs ? `?${qs}` : ''}`,
-        { toolset },
+        {
+          ...(toolset !== undefined && { toolset }),
+          ...(agentTools !== undefined && { agentTools }),
+        },
         installation,
       );
     }

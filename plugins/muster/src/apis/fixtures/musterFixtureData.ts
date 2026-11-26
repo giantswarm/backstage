@@ -163,6 +163,34 @@ export function connectorKeyOf(connector: FixtureConnector): string {
     : connector.name;
 }
 
+/**
+ * The `metadata.uid` of a connector's MCPServer in fixture mode: made up,
+ * stable per installation and server key, so a grant agent-manager's
+ * fixture records matches what muster's fixture reports (tool approval).
+ */
+export function fixtureMcpServerUid(
+  installation: string,
+  serverKey: string,
+): string {
+  return `fixture-uid-${installation}-${serverKey.replace(/[^a-z0-9-]/g, '-')}`;
+}
+
+/** The MCPServer behind a connector's tools, as `filter_tools` reports it with `agentTools`. */
+export function connectorRefOf(connector: MusterFixtureConnector): {
+  server: string;
+  namespace: string;
+  name: string;
+  uid: string;
+} {
+  const server = connectorKeyOf(connector);
+  return {
+    server,
+    namespace: connector.namespace ?? FIXTURE_MUSTER_NAMESPACE,
+    name: connector.name,
+    uid: fixtureMcpServerUid(connector.installation, server),
+  };
+}
+
 /** Whether a connector serves this session tools, resources and prompts. */
 export function isServing(connector: FixtureConnector): boolean {
   return CONNECTED.has(connector.state);

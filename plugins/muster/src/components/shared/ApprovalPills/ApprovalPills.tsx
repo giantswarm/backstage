@@ -23,8 +23,15 @@ export type ApprovalPillsProps<T extends ApprovalSetting> = {
   'aria-label': string;
   /** The choices, in order: every setting, or a rule's Allow and Ask. */
   options: readonly T[];
-  value: T;
+  /** The chosen setting; none chosen while undefined. */
+  value: T | undefined;
   onChange: (value: T) => void;
+  /**
+   * Options shown but not choosable, each said why next to the group (an
+   * agent's *Allow* over a connector's *Ask* for someone who is not its
+   * connector admin, say).
+   */
+  disabledOptions?: readonly T[];
   /**
    * The id of the element that says what each setting means (the editor's
    * legend), the pill's accessible description (`aria-describedby`).
@@ -48,6 +55,7 @@ export function ApprovalPills<T extends ApprovalSetting>({
   value,
   onChange,
   hintIds,
+  disabledOptions,
 }: ApprovalPillsProps<T>) {
   const classes = useStyles();
   return (
@@ -56,7 +64,7 @@ export function ApprovalPills<T extends ApprovalSetting>({
       className={classes.group}
       selectionMode="single"
       disallowEmptySelection
-      selectedKeys={[value]}
+      selectedKeys={value === undefined ? [] : [value]}
       onSelectionChange={keys => {
         const next = [...keys][0] as T | undefined;
         if (next && next !== value) {
@@ -81,6 +89,7 @@ export function ApprovalPills<T extends ApprovalSetting>({
             size="small"
             iconStart={icon}
             aria-describedby={hintIds[option]}
+            isDisabled={disabledOptions?.includes(option)}
             className={option === 'Block' ? classes.block : undefined}
           >
             {option}

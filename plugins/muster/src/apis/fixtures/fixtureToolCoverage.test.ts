@@ -14,7 +14,13 @@ import { fixtureToolNames } from './fixtureToolNames';
  * muster's own tools the pages call that fixture mode does not answer, each
  * with the reason. None today: list one here rather than leave it unchecked.
  */
-const NOT_SERVED = new Set<string>();
+const NOT_SERVED = new Set<string>([
+  // The connector Tools tab's *Allowed for* reads agent-manager's grants:
+  // agent-manager is the agent-platform plugin's fixture server, whose drift
+  // guard covers these.
+  'x_agent-manager_get_info',
+  'x_agent-manager_list_approval_grants',
+]);
 
 /**
  * The calls whose tool name is only known at runtime. Fixture mode lists the

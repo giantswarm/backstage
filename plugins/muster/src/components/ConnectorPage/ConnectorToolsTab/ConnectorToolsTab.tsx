@@ -22,6 +22,11 @@ import {
 } from '../../../lib/toolAnnotations';
 import { toolMatchesQuery } from '../../../lib/toolSearch';
 import {
+  grantLabel,
+  useApprovalGrants,
+  type ApprovalGrant,
+} from '../../../hooks/useApprovalGrants';
+import {
   approvalSourceLabel,
   APPROVAL_SETTINGS,
   connectorAdminOf,
@@ -239,6 +244,13 @@ export function ConnectorToolsTab({
   const navigate = useNavigate();
 
   const { tools: listed, shortName } = tools;
+  // The agents that may skip the connector's Asks (tool approval): by
+  // muster's server key, which its tools carry.
+  const serverKey = listed?.find(tool => tool.server)?.server;
+  const grants = useApprovalGrants(installation, serverKey);
+  // Exceptions by a broader entry (the whole connector, a preset, the
+  // default) cover more than one tool: said once, above the list.
+  const broadGrants = grants.filter(grant => !grant.entry.startsWith('tool:'));
   const all = useMemo<ToolSummary[]>(() => {
     const known = new Set((listed ?? []).map(tool => tool.name));
     return [
@@ -383,6 +395,12 @@ export function ConnectorToolsTab({
     <Flex direction="column" gap="0">
       {signInGate}
       {approvalNote}
+      {broadGrants.length > 0 && (
+        <Text variant="body-small" color="secondary" className={classes.note}>
+          Allowed for every asking tool its exception covers:{' '}
+          {broadGrants.map(grantLabel).join(', ')}
+        </Text>
+      )}
       {searchable && (
         <div className={classes.toolbar}>
           <Box className={classes.search}>
@@ -434,7 +452,7 @@ export function ConnectorToolsTab({
                       reviewed={reviewed}
                     />
                   ),
-                  facts: approvalFacts(tool, reviewed),
+                  facts: approvalFacts(tool, reviewed, grants),
                   description: blocked.has(tool.name)
                     ? 'Hidden from everyone, so muster lists it nowhere else.'
                     : (tool.description ?? tool.summary),
@@ -475,16 +493,24 @@ function ToolStatus({
 }
 
 /**
- * Where a tool's setting comes from. Nothing for a connector nobody
- * reviewed: the note above the list says it once. (*Allowed for: …*, the
- * agents that may skip an *Ask*, waits for agent-manager's grants, PRD
- * slices 3 and 5; it is not drawn before there is data for it.)
+ * Where a tool's setting comes from — nothing for a connector nobody
+ * reviewed: the note above the list says it once — and *Allowed for*: the
+ * agents that may skip its *Ask* (agent-manager's grants for that tool).
  */
-function approvalFacts(tool: ToolSummary, reviewed: boolean): string[] {
+function approvalFacts(
+  tool: ToolSummary,
+  reviewed: boolean,
+  grants: readonly ApprovalGrant[] = [],
+): string[] {
   const facts: string[] = [];
   const source = tool.approval?.source;
   if (reviewed && source && source !== 'unreviewed' && source !== 'builtin') {
     facts.push(approvalSourceLabel(source));
+  }
+  // The agents that may skip its Ask, by an exception for exactly this tool.
+  const allowed = grants.filter(grant => grant.entry === `tool:${tool.name}`);
+  if (tool.approval?.setting === 'ask' && allowed.length > 0) {
+    facts.push(`Allowed for: ${allowed.map(grantLabel).join(', ')}`);
   }
   return facts;
 }

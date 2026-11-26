@@ -290,9 +290,15 @@ export class MusterFixtureState {
       ];
       // One connector starts reviewed, so the Tools tab and the edit's Test &
       // Tools step show settings, a blocked tool and a New one.
-      const reviewed = connectors.find(
+      const reviewedOwn = connectors.find(
         connector => !connector.namespace && connector.state === 'Connected',
       );
+      // And every organization's own connector, which the guest is no admin
+      // of: an agent of the organization shows an exception only its admins
+      // grant (tool approval, milestone 2).
+      const isReviewed = (connector: MusterFixtureConnector) =>
+        connector === reviewedOwn ||
+        (Boolean(connector.namespace) && connector.state === 'Connected');
       store = {
         connectors: new Map(
           served.map(connector => [
@@ -301,7 +307,7 @@ export class MusterFixtureState {
               connector,
               spec: {
                 ...mcpServerObjectOf(connector).spec,
-                ...(connector === reviewed && {
+                ...(isReviewed(connector) && {
                   approval: reviewedApprovalOf(connector),
                 }),
               },

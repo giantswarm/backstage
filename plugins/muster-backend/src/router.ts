@@ -668,6 +668,20 @@ export async function createRouter(
     if (includePresets !== undefined) {
       args.include_presets = includePresets === 'true';
     }
+    // An agent's tool list to report approvals for (reporting only; muster
+    // checks its shape and refuses it beside a toolset).
+    const agentTools = req.method === 'POST' ? req.body?.agentTools : undefined;
+    if (agentTools !== undefined) {
+      if (
+        typeof agentTools !== 'object' ||
+        agentTools === null ||
+        Array.isArray(agentTools) ||
+        !Array.isArray((agentTools as { tools?: unknown }).tools)
+      ) {
+        throw new InputError('agentTools must be an object with a tools list');
+      }
+      args.agentTools = agentTools;
+    }
 
     const result = await client.filterTools(
       args,

@@ -327,6 +327,37 @@ export interface ToolApproval {
    * could not be read.
    */
   unavailable?: string;
+  /**
+   * Reported for an agent's tool list (`filter_tools` with `agentTools`, a
+   * Session's bound list): the entry of the list that decided the agent's
+   * setting (`default` for the list's default). Absent when no entry with a
+   * setting selects the tool.
+   */
+  entry?: string;
+  /** With {@link entry}: the connector's own setting, before the agent's. */
+  admin?: { setting: 'allow' | 'ask' | 'block'; source: ToolApprovalSource };
+}
+
+/**
+ * An agent's tool list as `filter_tools` and `describe_tool` take it for
+ * reporting (`agentTools`, tool approval milestone 2): the entries in the
+ * agent chart's shape (a selector, or `{selector: Allow|Ask|Block}`), the
+ * list's default and the agent's grants. It never changes what runs.
+ */
+export interface AgentToolsArgument {
+  tools: Array<string | Record<string, string>>;
+  default?: string;
+  grants?: Array<{ entry: string; server: string; uid?: string }>;
+}
+
+/** The MCPServer behind a server tool, as `filter_tools` reports it with `agentTools`. */
+export interface ToolConnectorRef {
+  /** muster's server key. */
+  server: string;
+  namespace?: string;
+  name?: string;
+  /** The MCPServer's `metadata.uid`; empty in muster's filesystem mode. */
+  uid?: string;
 }
 
 /**
@@ -411,6 +442,11 @@ export interface ToolSummary {
    * and from older musters.
    */
   connectorAdmin?: boolean;
+  /**
+   * With `agentTools`: the connectors behind a server tool (its server, or
+   * every member of a family tool).
+   */
+  connectors?: ToolConnectorRef[];
 }
 
 /** `tool` = an aggregated server's tool, `workflow` = `workflow_<name>`, `core` = `core_*`. */
@@ -456,6 +492,8 @@ export interface FilterToolsResponse {
   toolset_unmatched?: string[];
   /** The presets muster knows, when `include_presets` or a `toolset` was given. */
   presets?: ToolsetPreset[];
+  /** The installation's governance mode (tool approval): `trusted` or `governed`. */
+  governance?: string;
 }
 
 export interface FilterToolsOptions {
@@ -474,6 +512,11 @@ export interface FilterToolsOptions {
   toolset?: string[];
   /** Ask muster to list the presets it knows in the response. */
   includePresets?: boolean;
+  /**
+   * Report approvals as this agent's tool list would see them (reporting
+   * only). Its selectors narrow the listing like `toolset`; never both.
+   */
+  agentTools?: AgentToolsArgument;
 }
 
 /**

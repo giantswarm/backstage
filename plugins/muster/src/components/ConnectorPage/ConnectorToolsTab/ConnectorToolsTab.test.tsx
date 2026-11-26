@@ -7,11 +7,21 @@ import {
   useNavigate,
   useParams,
 } from 'react-router-dom';
-import { renderInTestApp } from '@backstage/frontend-test-utils';
-import type { ToolSummary } from '../../../apis';
+import { renderInTestApp as renderInBackstage } from '@backstage/frontend-test-utils';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { musterApiRef, type MusterApi, type ToolSummary } from '../../../apis';
 import { mcpServersRouteRef } from '../../../routes';
 import type { NoToolsExplanation } from '../../McpServersPage/serverDetail';
 import { ConnectorToolsTab } from './ConnectorToolsTab';
+
+/** The tab as a page renders it: inside the query client its grants read with. */
+const renderInTestApp: typeof renderInBackstage = (element, options) =>
+  renderInBackstage(
+    <QueryClientProvider client={new QueryClient()}>
+      {element}
+    </QueryClientProvider>,
+    options,
+  );
 
 /** Every third tool reads; the rest change things. */
 function makeTools(count: number): ToolSummary[] {
@@ -542,5 +552,79 @@ describe('ConnectorToolsTab: tool approval', () => {
     expect(screen.queryByText('Allow')).toBeNull();
     expect(screen.queryByText(/not reviewed/)).toBeNull();
     expect(screen.queryByRole('link', { name: /tool settings/ })).toBeNull();
+  });
+});
+
+describe('ConnectorToolsTab: Allowed for', () => {
+  it("names the agents that may skip a tool's Ask, read from agent-manager's grants", async () => {
+    const callTool = jest.fn(
+      async (name: string, args: Record<string, unknown>) => {
+        if (name === 'x_agent-manager_get_info') {
+          return { namespaces: { managed: ['kagent', 'org-a'] } };
+        }
+        return {
+          grants:
+            args.namespace === 'org-a'
+              ? [
+                  {
+                    agent: { namespace: 'org-a', name: 'alert-review' },
+                    entry: 'tool:x_jira_close',
+                    server: 'jira',
+                    grantedBy: 'dana@example.com',
+                  },
+                  {
+                    agent: { namespace: 'org-a', name: 'triage' },
+                    entry: 'server:jira',
+                    server: 'jira',
+                  },
+                ]
+              : [],
+        };
+      },
+    );
+    await renderInTestApp(
+      <ConnectorToolsTab
+        server="jira"
+        installation="gazelle"
+        tools={{
+          tools: [
+            {
+              name: 'x_jira_close',
+              server: 'jira',
+              approval: { setting: 'ask', source: 'tool' },
+            },
+            {
+              name: 'x_jira_list',
+              server: 'jira',
+              approval: { setting: 'allow', source: 'tool' },
+            },
+          ],
+          truncated: false,
+          isLoading: false,
+          shortName: name => name.replace(/^x_jira_/, ''),
+        }}
+        emptyExplanation={{ text: 'No tools.', tone: 'neutral' }}
+      />,
+      {
+        initialRouteEntries: ['/connector'],
+        mountedRoutes: { '/customize/connectors': mcpServersRouteRef },
+        apis: [[musterApiRef, { callTool } as unknown as MusterApi]],
+      },
+    );
+    expect(
+      await screen.findByText(
+        'Allowed for: alert-review (by dana@example.com)',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Allowed for every asking tool its exception covers: triage/,
+      ),
+    ).toBeInTheDocument();
+    expect(callTool).toHaveBeenCalledWith(
+      'x_agent-manager_list_approval_grants',
+      { namespace: 'org-a', server: 'jira' },
+      'gazelle',
+    );
   });
 });
