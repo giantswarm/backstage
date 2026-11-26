@@ -1,6 +1,7 @@
 import type { LoggerService } from '@backstage/backend-plugin-api';
 import type { MusterInstallationConfig } from '@giantswarm/backstage-plugin-gs-node';
 import { isOnMusterPages, musterPagesBase } from './handoff';
+import { workloadHeaders } from './workloadToken';
 
 /**
  * muster's decision API for a trusted client (contract-muster-approval.md
@@ -8,7 +9,9 @@ import { isOnMusterPages, musterPagesBase } from './handoff';
  * approval (what muster's page shows, made safe the same way, and its
  * digest); `POST /approvals/<id>/decision` `{decision, digest}` decides it.
  * muster takes them only from its `approval.trustedClients` (the portal's own
- * OAuth client), only with the person's own token, only for their request.
+ * OAuth client), only with the person's own token together with the portal
+ * backend's workload token (`X-Muster-Approval-Client`), only for their
+ * request.
  */
 export const MUSTER_APPROVALS_PATH = '/approvals/';
 
@@ -87,6 +90,7 @@ async function call(options: {
   installation: MusterInstallationConfig;
   target: string;
   token: string;
+  workloadToken?: string;
   logger: LoggerService;
   init: RequestInit;
   fetchFn?: typeof fetch;
@@ -95,6 +99,7 @@ async function call(options: {
     installation,
     target,
     token,
+    workloadToken,
     logger,
     init,
     fetchFn = fetch,
@@ -106,6 +111,7 @@ async function call(options: {
         Authorization: `Bearer ${token}`,
         Accept: 'application/json',
         ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        ...workloadHeaders(workloadToken),
       },
       signal: AbortSignal.timeout(APPROVAL_TIMEOUT_MS),
       redirect: 'error',
@@ -126,6 +132,7 @@ export async function fetchApproval(options: {
   installation: MusterInstallationConfig;
   id: string;
   token: string;
+  workloadToken?: string;
   logger: LoggerService;
   fetchFn?: typeof fetch;
 }): Promise<ApprovalViewAnswer> {
@@ -162,6 +169,7 @@ export async function postApprovalDecision(options: {
   decision: 'approve' | 'decline';
   digest: string;
   token: string;
+  workloadToken?: string;
   logger: LoggerService;
   fetchFn?: typeof fetch;
 }): Promise<ApprovalDecisionAnswer> {

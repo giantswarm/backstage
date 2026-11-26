@@ -1004,6 +1004,10 @@ export type ApprovalView = {
   why: { setting: string; source: string };
   actsFor: { name?: string; subject: string; issuer: string };
   callerKind: string;
+  /** The asking session's id, truncated. */
+  session?: string;
+  /** The OAuth client the asking session signed in through. */
+  client?: string;
   installation?: string;
   canonicalArguments: string;
   argumentsHash: string;
@@ -1016,8 +1020,9 @@ export type ApprovalRefusal = {
   /** muster's HTTP status; 502 when it could not be reached. */
   status: number;
   /**
-   * `untrusted_client`, `acting_party`, `foreign`, `not_found`, `decided`,
-   * `expired`, `changed`, `bad_request`, `unavailable`, `unreachable`.
+   * `untrusted_client`, `untrusted_workload`, `acting_party`, `foreign`,
+   * `not_found`, `decided`, `expired`, `changed`, `bad_request`,
+   * `unavailable`, `unreachable`.
    */
   error: string;
   message: string;

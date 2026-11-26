@@ -589,6 +589,23 @@ describe('UrlElicitationPanel, approval decided inline', () => {
   const approveButton = () => screen.getByRole('button', { name: 'Approve' });
   const declineButton = () => screen.getByRole('button', { name: 'Decline' });
 
+  /**
+   * What a person does before deciding: opens every collapsed value (the
+   * long note), and the buttons arm a second after the request is in view
+   * (jsdom has no IntersectionObserver: the card counts as in view).
+   */
+  const readyToDecide = async (user: ReturnType<typeof userEvent.setup>) => {
+    await screen.findByText('Approve this action?');
+    for (const summary of screen
+      .queryAllByTestId('approval-collapsed-value')
+      .map(details => details.querySelector('summary')!)) {
+      await user.click(summary);
+    }
+    await waitFor(() => expect(approveButton()).toBeEnabled(), {
+      timeout: 3_000,
+    });
+  };
+
   it('shows everything the person needs to judge the request before Approve and Decline', async () => {
     const approvals = inlineApprovals();
     await renderPanel({ approvals, sessionAgent: SESSION_AGENT });
@@ -608,9 +625,10 @@ describe('UrlElicitationPanel, approval decided inline', () => {
     expect(screen.getByTestId('approval-argument-incident')).toHaveTextContent(
       '"P1⟨U+202E⟩2" (string)',
     );
-    // A long value starts collapsed, and is all there.
+    // A long value starts collapsed, says so, and is all there.
     const note = screen.getByTestId('approval-argument-note');
     expect(note.querySelector('details')).not.toBeNull();
+    expect(note).toHaveTextContent('Show all 302 characters');
     expect(note).toHaveTextContent('x'.repeat(300));
     // The agent's reason, marked as its own words.
     const says = screen.getByTestId('approval-agent-says');
@@ -621,14 +639,38 @@ describe('UrlElicitationPanel, approval decided inline', () => {
     expect(screen.getByTestId('approval-why')).toHaveTextContent(
       "Asks because of the connector's setting for its tools · Expires in 4 min",
     );
-    // The agent and the person are the conversation's own: not shown.
+    // The agent is the conversation's own: no warning, but who asks, as
+    // what and for whom is always shown.
     expect(
       screen.queryByTestId('approval-other-agent'),
     ).not.toBeInTheDocument();
-    expect(screen.queryByText(/alert-review/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/ada@example.com/)).not.toBeInTheDocument();
-    expect(approveButton()).toBeEnabled();
-    expect(declineButton()).toBeEnabled();
+    expect(
+      screen.queryByTestId('approval-unconfirmed-agent'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('approval-agent')).toHaveTextContent(
+      'team-a/alert-review',
+    );
+    expect(screen.getByTestId('approval-caller-kind')).toHaveTextContent(
+      'actor JWT',
+    );
+    expect(screen.getByTestId('approval-acts-for')).toHaveTextContent(
+      'ada@example.com ada at https://dex.example.io',
+    );
+    // Approve and Decline come after all of it, inert at first; Approve
+    // waits for the collapsed note to be opened.
+    const details = screen.getByTestId('approval-details');
+    const actions = screen.getByTestId('approval-actions');
+    expect(
+      details.compareDocumentPosition(actions) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(approveButton()).toBeDisabled();
+    expect(declineButton()).toBeDisabled();
+    await waitFor(() => expect(declineButton()).toBeEnabled(), {
+      timeout: 3_000,
+    });
+    expect(approveButton()).toBeDisabled();
+    expect(screen.getByTestId('approval-open-all')).toHaveTextContent('1 left');
     // Muster's page stays a secondary way; Done is not needed here.
     expect(
       screen.getByRole('button', {
@@ -686,7 +728,8 @@ describe('UrlElicitationPanel, approval decided inline', () => {
       sessionAgent: SESSION_AGENT,
     });
 
-    await user.click(await screen.findByRole('button', { name: 'Approve' }));
+    await readyToDecide(user);
+    await user.click(approveButton());
 
     expect(approvals.decide).toHaveBeenCalledWith(
       `${MUSTER}/approvals/0f3c9a`,
@@ -711,7 +754,8 @@ describe('UrlElicitationPanel, approval decided inline', () => {
     const user = userEvent.setup();
     const { onAnswer } = await renderPanel({ approvals });
 
-    await user.click(await screen.findByRole('button', { name: 'Decline' }));
+    await readyToDecide(user);
+    await user.click(declineButton());
 
     expect(approvals.decide).toHaveBeenCalledWith(
       `${MUSTER}/approvals/0f3c9a`,
@@ -749,7 +793,8 @@ describe('UrlElicitationPanel, approval decided inline', () => {
     const user = userEvent.setup();
     const { onAnswer } = await renderPanel({ approvals });
 
-    await user.click(await screen.findByRole('button', { name: 'Approve' }));
+    await readyToDecide(user);
+    await user.click(approveButton());
 
     expect(await screen.findByText('Nothing was decided')).toBeInTheDocument();
     expect(
@@ -784,7 +829,8 @@ describe('UrlElicitationPanel, approval decided inline', () => {
     const user = userEvent.setup();
     const { onAnswer } = await renderPanel({ approvals });
 
-    await user.click(await screen.findByRole('button', { name: 'Approve' }));
+    await readyToDecide(user);
+    await user.click(approveButton());
 
     expect(
       await screen.findByText(
@@ -796,6 +842,9 @@ describe('UrlElicitationPanel, approval decided inline', () => {
       screen.queryByTestId('approval-argument-note'),
     ).not.toBeInTheDocument();
 
+    // Shown again, the request is armed anew before it can be approved.
+    expect(approveButton()).toBeDisabled();
+    await readyToDecide(user);
     await user.click(approveButton());
     expect(approvals.decide).toHaveBeenLastCalledWith(
       `${MUSTER}/approvals/0f3c9a`,
@@ -846,7 +895,8 @@ describe('UrlElicitationPanel, approval decided inline', () => {
     const user = userEvent.setup();
     const { onAnswer } = await renderPanel({ approvals });
 
-    await user.click(await screen.findByRole('button', { name: 'Approve' }));
+    await readyToDecide(user);
+    await user.click(approveButton());
 
     await waitFor(() =>
       expect(onAnswer).toHaveBeenCalledWith(

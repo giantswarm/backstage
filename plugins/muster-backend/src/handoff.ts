@@ -1,12 +1,14 @@
 import type { LoggerService } from '@backstage/backend-plugin-api';
 import type { MusterInstallationConfig } from '@giantswarm/backstage-plugin-gs-node';
+import { workloadHeaders } from './workloadToken';
 
 /**
  * muster's endpoint that issues a one-time sign-in handoff ticket for one of
  * its pages (contract-muster-approval.md §5a): POST with the person's bearer
  * and `{"url": "<page>"}`, answered 201 `{"ticket", "expiresIn"}`. muster
  * issues one only to its `approval.trustedClients` (the portal's own OAuth
- * client), only for the person the page is bound to.
+ * client), with the portal backend's own workload token beside the person's
+ * (`X-Muster-Approval-Client`), only for the person the page is bound to.
  */
 export const MUSTER_HANDOFF_PATH = '/handoff-tickets';
 
@@ -63,6 +65,8 @@ export async function requestHandoffTicket(options: {
   installation: MusterInstallationConfig;
   url: string;
   token: string;
+  /** The portal backend's workload token for muster (`workloadToken.ts`). */
+  workloadToken?: string;
   logger: LoggerService;
   fetchFn?: typeof fetch;
   timeoutMs?: number;
@@ -71,6 +75,7 @@ export async function requestHandoffTicket(options: {
     installation,
     url,
     token,
+    workloadToken,
     logger,
     fetchFn = fetch,
     timeoutMs = HANDOFF_TIMEOUT_MS,
@@ -81,6 +86,7 @@ export async function requestHandoffTicket(options: {
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
+        ...workloadHeaders(workloadToken),
       },
       body: JSON.stringify({ url }),
       signal: AbortSignal.timeout(timeoutMs),

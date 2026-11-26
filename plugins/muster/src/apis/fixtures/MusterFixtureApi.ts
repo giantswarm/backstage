@@ -820,6 +820,8 @@ export class MusterFixtureApi implements MusterApi {
           issuer: 'https://dex.example.com',
         },
         callerKind: 'actor JWT',
+        session: 'a1b2c3d4…',
+        client: 'agent-platform',
         canonicalArguments: '{"owner":"giantswarm","pr":42}',
         argumentsHash: '0'.repeat(64),
         expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),

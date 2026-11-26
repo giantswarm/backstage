@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { ShieldCheck, TriangleAlert } from 'lucide-react';
@@ -6,6 +13,7 @@ import type {
   ApprovalDecisionResult,
   ApprovalLookup,
   ApprovalRefusal,
+  ApprovalStepView,
   ApprovalValue,
   ApprovalView,
 } from '@giantswarm/backstage-plugin-muster';
@@ -25,6 +33,46 @@ export type SessionAgent = { namespace: string; name: string };
 
 /** A value longer than this, or on several lines, starts collapsed. */
 const LONG_VALUE = 160;
+
+/**
+ * How long Approve and Decline stay inert after the request, with them below
+ * it, came into view on a visible page: as muster's own page, so a click
+ * meant for something else, or one before the request was read, decides
+ * nothing.
+ */
+export const ARM_AFTER_MS = 1_000;
+
+/** Whether a value starts collapsed. */
+export function isCollapsed(value: ApprovalValue): boolean {
+  return value.value.length > LONG_VALUE || value.value.includes('\n');
+}
+
+/** The id of a value on the card, unique across arguments, preset and steps. */
+function valueId(section: string, key: string): string {
+  return `${section}\u0000${key}`;
+}
+
+function stepSection(step: ApprovalStepView): string {
+  return `step:${step.workflow ?? ''}/${step.id}`;
+}
+
+/**
+ * The collapsed values of a request: Approve waits until the person opened
+ * each of them, so nothing the decision covers stays unseen.
+ */
+export function collapsedValues(view: ApprovalView): string[] {
+  const ids: string[] = [];
+  const add = (section: string, values: ApprovalValue[] = []) =>
+    values.forEach(value => {
+      if (isCollapsed(value)) {
+        ids.push(valueId(section, value.key));
+      }
+    });
+  add('arguments', view.arguments);
+  add('preset', view.preset);
+  (view.steps ?? []).forEach(step => add(stepSection(step), step.arguments));
+  return ids;
+}
 
 /** Why an approval asks, by muster's `source`, in plain words. */
 const WHY: Record<string, string> = {
@@ -91,13 +139,118 @@ export function otherAgent(
   };
 }
 
+/** `namespace/name` of the asking agent, as muster names it. */
+function technicalName(agent: NonNullable<ApprovalView['agent']>): string {
+  return agent.namespace ? `${agent.namespace}/${agent.name}` : agent.name;
+}
+
+/**
+ * Why the card warns about the asking agent, unless muster positively names
+ * this conversation's agent (same namespace and name):
+ * - `other`: muster names another agent;
+ * - `unnamed`: muster names no agent (a delegated token, a binding without
+ *   an approval sender, a person's own call);
+ * - `unverified`: muster names an agent, but not its namespace, or this
+ *   conversation's agent is not known here.
+ */
+export type AskerNotice =
+  | { kind: 'other'; asker: AskingAgent }
+  | { kind: 'unnamed' }
+  | { kind: 'unverified'; asker: AskingAgent };
+
+export function askerNotice(
+  view: ApprovalView,
+  sessionAgent: SessionAgent | undefined,
+): AskerNotice | undefined {
+  if (!view.agent) {
+    return { kind: 'unnamed' };
+  }
+  const technical = technicalName(view.agent);
+  const displayName = view.agent.displayName?.trim();
+  const asker = {
+    name: displayName || technical,
+    technical,
+    hasDisplayName: Boolean(displayName),
+  };
+  if (!sessionAgent) {
+    return { kind: 'unverified', asker };
+  }
+  if (view.agent.name !== sessionAgent.name) {
+    return { kind: 'other', asker };
+  }
+  if (!view.agent.namespace) {
+    return { kind: 'unverified', asker };
+  }
+  return view.agent.namespace === sessionAgent.namespace
+    ? undefined
+    : { kind: 'other', asker };
+}
+
+/**
+ * Arms the decision: false until `target` has been in view, with the page
+ * visible, for `delayMs` without a break; then true until `key` changes (a
+ * new request, or the same one shown again after it changed). Without
+ * IntersectionObserver the element counts as in view.
+ */
+export function useArmed(
+  target: RefObject<Element>,
+  key: string,
+  delayMs: number,
+): boolean {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    setArmed(false);
+    const element = target.current;
+    if (!element) {
+      return undefined;
+    }
+    let done = false;
+    let inView = typeof IntersectionObserver === 'undefined';
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const update = () => {
+      if (done) {
+        return;
+      }
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+      if (inView && document.visibilityState === 'visible') {
+        timer = setTimeout(() => {
+          done = true;
+          setArmed(true);
+        }, delayMs);
+      }
+    };
+    const observer =
+      typeof IntersectionObserver === 'undefined'
+        ? undefined
+        : new IntersectionObserver(entries => {
+            inView = entries.some(entry => entry.isIntersecting);
+            update();
+          });
+    observer?.observe(element);
+    document.addEventListener('visibilitychange', update);
+    update();
+    return () => {
+      done = true;
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
+      observer?.disconnect();
+      document.removeEventListener('visibilitychange', update);
+    };
+  }, [target, key, delayMs]);
+  return armed;
+}
+
 const useStyles = makeStyles(theme => ({
+  // No inner scroll box: the card grows with the request, and Approve and
+  // Decline come after all of it.
   body: {
     display: 'flex',
     flexDirection: 'column',
     gap: theme.spacing(1),
-    maxHeight: 'min(45dvh, 400px)',
-    overflowY: 'auto',
     overflowWrap: 'anywhere',
   },
   fields: {
@@ -152,7 +305,22 @@ const useStyles = makeStyles(theme => ({
   },
 }));
 
-function Value({ value }: { value: ApprovalValue }) {
+type Opened = {
+  /** Whether the collapsed value `id` was opened. */
+  isOpen: (id: string) => boolean;
+  /** The person opened the collapsed value `id`. */
+  open: (id: string) => void;
+};
+
+function Value({
+  value,
+  id,
+  opened,
+}: {
+  value: ApprovalValue;
+  id: string;
+  opened: Opened;
+}) {
   const classes = useStyles();
   const text = (
     <>
@@ -165,20 +333,44 @@ function Value({ value }: { value: ApprovalValue }) {
       )}
     </>
   );
-  if (value.value.length <= LONG_VALUE && !value.value.includes('\n')) {
+  if (!isCollapsed(value)) {
     return text;
   }
+  // Collapsed, never cut: the summary says it is collapsed and how long it
+  // is, the whole value is behind "Show all", and Approve waits until it
+  // was opened.
+  const open = opened.isOpen(id);
   return (
-    <details>
+    <details
+      data-testid="approval-collapsed-value"
+      onToggle={event => {
+        if ((event.currentTarget as HTMLDetailsElement).open) {
+          opened.open(id);
+        }
+      }}
+    >
       <summary>
-        {value.value.slice(0, 60)}… ({value.value.length} characters)
+        <span className={classes.code}>{value.value.slice(0, 60)}…</span>{' '}
+        <Text as="span" variant="body-small" weight="bold">
+          {open ? 'Showing all' : 'Show all'} {value.value.length} characters
+        </Text>
       </summary>
       {text}
     </details>
   );
 }
 
-function Values({ values }: { values: ApprovalValue[] }) {
+function Values({
+  values,
+  section,
+  opened,
+  testIdPrefix = 'approval-argument',
+}: {
+  values: ApprovalValue[];
+  section: string;
+  opened: Opened;
+  testIdPrefix?: string;
+}) {
   const classes = useStyles();
   return (
     <dl className={classes.fields}>
@@ -190,8 +382,12 @@ function Values({ values }: { values: ApprovalValue[] }) {
               {value.key}
             </span>
           </dt>
-          <dd data-testid={`approval-argument-${value.key}`}>
-            <Value value={value} />
+          <dd data-testid={`${testIdPrefix}-${value.key}`}>
+            <Value
+              value={value}
+              id={valueId(section, value.key)}
+              opened={opened}
+            />
           </dd>
         </div>
       ))}
@@ -199,44 +395,83 @@ function Values({ values }: { values: ApprovalValue[] }) {
   );
 }
 
-/** What the request shows: everything muster's page shows, as text. */
+function AskerWarning({ notice }: { notice: AskerNotice }) {
+  const classes = useStyles();
+  const named = (asker: AskingAgent) => (
+    <>
+      <span title={asker.technical} data-testid="approval-asker-name">
+        {asker.name}
+      </span>
+      {asker.hasDisplayName && (
+        <>
+          {' '}
+          (<code data-testid="approval-asker-technical">{asker.technical}</code>
+          )
+        </>
+      )}
+    </>
+  );
+  let text;
+  switch (notice.kind) {
+    case 'other':
+      text = (
+        <>
+          Asked by another agent, {named(notice.asker)}, not the agent of this
+          conversation.
+        </>
+      );
+      break;
+    case 'unverified':
+      text = (
+        <>
+          Asked by {named(notice.asker)}: the portal cannot confirm it is the
+          agent of this conversation.
+        </>
+      );
+      break;
+    default:
+      text = (
+        <>
+          muster does not know which agent asks: this request may not come from
+          the agent of this conversation.
+        </>
+      );
+  }
+  return (
+    <div
+      className={classes.warning}
+      role="note"
+      data-testid={
+        notice.kind === 'other'
+          ? 'approval-other-agent'
+          : 'approval-unconfirmed-agent'
+      }
+    >
+      <TriangleAlert size="1.25em" aria-hidden />
+      <span>{text}</span>
+    </div>
+  );
+}
+
+/**
+ * What the request shows: everything muster's page shows and the decision's
+ * digest covers, as text. A field of the view is either rendered here or
+ * named in the test that guards this (`InlineApproval.test.tsx`).
+ */
 function RequestDetails({
   view,
   sessionAgent,
+  opened,
 }: {
   view: ApprovalView;
   sessionAgent?: SessionAgent;
+  opened: Opened;
 }) {
   const classes = useStyles();
-  const asker = otherAgent(view, sessionAgent);
+  const notice = askerNotice(view, sessionAgent);
   return (
     <div className={classes.body} data-testid="approval-details">
-      {asker && (
-        <div
-          className={classes.warning}
-          role="note"
-          data-testid="approval-other-agent"
-        >
-          <TriangleAlert size="1.25em" aria-hidden />
-          <span>
-            Asked by another agent,{' '}
-            <span title={asker.technical} data-testid="approval-asker-name">
-              {asker.name}
-            </span>
-            {asker.hasDisplayName && (
-              <>
-                {' '}
-                (
-                <code data-testid="approval-asker-technical">
-                  {asker.technical}
-                </code>
-                )
-              </>
-            )}
-            , not the agent of this conversation.
-          </span>
-        </div>
-      )}
+      {notice && <AskerWarning notice={notice} />}
       <Text as="p" variant="body-medium">
         {view.message}
       </Text>
@@ -253,9 +488,7 @@ function RequestDetails({
         <dt>{view.tool.kind === 'workflow' ? 'Workflow' : 'Tool'}</dt>
         <dd data-testid="approval-tool">
           {view.tool.title}{' '}
-          {view.tool.kind !== 'workflow' && (
-            <span className={classes.code}>{view.tool.name}</span>
-          )}
+          <span className={classes.code}>{view.tool.name}</span>
           {view.changesData && (
             <span className={classes.tag}>Changes data</span>
           )}
@@ -266,7 +499,7 @@ function RequestDetails({
           <Text as="p" variant="body-small" weight="bold">
             Arguments
           </Text>
-          <Values values={view.arguments} />
+          <Values values={view.arguments} section="arguments" opened={opened} />
         </>
       ) : (
         <Text as="p" variant="body-small" color="secondary">
@@ -295,7 +528,12 @@ function RequestDetails({
           <Text as="p" variant="body-small" weight="bold">
             Approval settings written
           </Text>
-          <Values values={view.preset} />
+          <Values
+            values={view.preset}
+            section="preset"
+            opened={opened}
+            testIdPrefix="approval-preset"
+          />
         </>
       )}
       {view.steps && view.steps.length > 0 && (
@@ -307,10 +545,21 @@ function RequestDetails({
             {view.steps.map(step => (
               <li
                 key={`${step.workflow ?? ''}/${step.id}`}
-                style={step.asks ? { fontWeight: 600 } : undefined}
+                data-testid={`approval-step-${step.id}`}
               >
-                {step.workflow && `in workflow ${step.workflow}: `}
-                {step.label} <span className={classes.code}>{step.tool}</span>
+                <span style={step.asks ? { fontWeight: 600 } : undefined}>
+                  {step.workflow && `in workflow ${step.workflow}: `}
+                  {step.label} <span className={classes.code}>{step.tool}</span>
+                  {step.asks && <span className={classes.tag}>Asks</span>}
+                </span>
+                {step.arguments && step.arguments.length > 0 && (
+                  <Values
+                    values={step.arguments}
+                    section={stepSection(step)}
+                    opened={opened}
+                    testIdPrefix={`approval-step-${step.id}-argument`}
+                  />
+                )}
               </li>
             ))}
           </ol>
@@ -338,6 +587,70 @@ function RequestDetails({
         {expiresIn(view.expiresAt)}
         {view.installation ? ` · ${view.installation}` : ''}
       </Text>
+      <Text as="p" variant="body-small" weight="bold">
+        About this request
+      </Text>
+      <dl className={classes.fields} data-testid="approval-about">
+        <dt>Agent</dt>
+        <dd data-testid="approval-agent">
+          {view.agent ? (
+            <>
+              {view.agent.displayName?.trim() || technicalName(view.agent)}
+              {view.agent.displayName?.trim() && (
+                <>
+                  {' '}
+                  <span className={classes.code}>
+                    {technicalName(view.agent)}
+                  </span>
+                </>
+              )}
+            </>
+          ) : (
+            'Not named by muster'
+          )}
+        </dd>
+        <dt>Caller</dt>
+        <dd data-testid="approval-caller-kind">{view.callerKind}</dd>
+        <dt>Acts for</dt>
+        <dd data-testid="approval-acts-for">
+          {view.actsFor.name ? `${view.actsFor.name} ` : ''}
+          <span className={classes.code}>
+            {view.actsFor.subject} at {view.actsFor.issuer}
+          </span>
+        </dd>
+        {view.tool.exposed && (
+          <>
+            <dt>Called as</dt>
+            <dd className={classes.code} data-testid="approval-exposed">
+              {view.tool.exposed}
+            </dd>
+          </>
+        )}
+        <dt>Setting</dt>
+        <dd data-testid="approval-setting">
+          {view.why.setting} ({view.why.source})
+        </dd>
+        {view.session && (
+          <>
+            <dt>Session</dt>
+            <dd className={classes.code} data-testid="approval-session">
+              {view.session}
+            </dd>
+          </>
+        )}
+        {view.client && (
+          <>
+            <dt>Client</dt>
+            <dd className={classes.code} data-testid="approval-client">
+              {view.client}
+            </dd>
+          </>
+        )}
+        <dt>Expires</dt>
+        <dd data-testid="approval-expires">
+          {new Date(view.expiresAt).toLocaleString()}
+        </dd>
+      </dl>
       <details>
         <summary>
           <Text as="span" variant="body-small" color="secondary">
@@ -372,6 +685,11 @@ export type InlineApprovalProps = {
   onUnavailable?: (refusal: ApprovalRefusal) => void;
   /** Whether the chat is sending an answer now. */
   isAnswering: boolean;
+  /**
+   * How long Approve and Decline stay inert once the request is in view
+   * (`ARM_AFTER_MS`). Tests only.
+   */
+  armAfterMs?: number;
 };
 
 type State =
@@ -385,15 +703,22 @@ type State =
  * decision goes to muster with the person's token and the digest of exactly
  * what is shown here, and muster refuses it if the request is not that one.
  */
-export function InlineApproval({
+export function InlineApproval(props: InlineApprovalProps) {
+  // One card per request: a card reused for the next approval would keep the
+  // previous request's view, live buttons and "decided" mark until the new
+  // one loads.
+  return <InlineApprovalCard key={props.url} {...props} />;
+}
+
+function InlineApprovalCard({
   url,
   approvals,
   sessionAgent,
   onDecided,
   onUnavailable,
   isAnswering,
+  armAfterMs = ARM_AFTER_MS,
 }: InlineApprovalProps) {
-  const classes = useStyles();
   const [state, setState] = useState<State>({ phase: 'loading' });
   const [deciding, setDeciding] = useState<'approve' | 'decline'>();
   const [error, setError] = useState<string>();
@@ -508,8 +833,65 @@ export function InlineApproval({
     );
   }
 
-  const { view, notice } = state;
+  return (
+    <ShownApproval
+      key={state.view.digest}
+      view={state.view}
+      notice={state.notice}
+      error={error}
+      deciding={deciding}
+      isAnswering={isAnswering}
+      sessionAgent={sessionAgent}
+      armAfterMs={armAfterMs}
+      onDecide={decision => void decide(state.view, decision)}
+      onContinue={finish}
+    />
+  );
+}
+
+/**
+ * One shown view of a request. Keyed by its digest: shown again after it
+ * changed, it starts unarmed with every collapsed value closed.
+ */
+function ShownApproval({
+  view,
+  notice,
+  error,
+  deciding,
+  isAnswering,
+  sessionAgent,
+  armAfterMs,
+  onDecide,
+  onContinue,
+}: {
+  view: ApprovalView;
+  notice?: string;
+  error?: string;
+  deciding?: 'approve' | 'decline';
+  isAnswering: boolean;
+  sessionAgent?: SessionAgent;
+  armAfterMs: number;
+  onDecide: (decision: 'approve' | 'decline') => void;
+  onContinue: (status: 'approved' | 'declined') => void;
+}) {
+  const classes = useStyles();
+  const actions = useRef<HTMLDivElement>(null);
+  const armed = useArmed(actions, view.digest, armAfterMs);
+  const collapsed = useMemo(() => collapsedValues(view), [view]);
+  const [openedIds, setOpenedIds] = useState<ReadonlySet<string>>(new Set());
+  const opened = useMemo<Opened>(
+    () => ({
+      isOpen: id => openedIds.has(id),
+      open: id =>
+        setOpenedIds(previous =>
+          previous.has(id) ? previous : new Set([...previous, id]),
+        ),
+    }),
+    [openedIds],
+  );
+  const unopened = collapsed.filter(id => !openedIds.has(id)).length;
   const pending = view.status === 'pending';
+  const busy = Boolean(deciding) || isAnswering;
   return (
     <Flex direction="column" gap="2">
       <div className={classes.header}>
@@ -519,6 +901,7 @@ export function InlineApproval({
         </Text>
       </div>
       {notice && <Alert status="warning" description={notice} />}
+      <RequestDetails view={view} sessionAgent={sessionAgent} opened={opened} />
       {error && (
         <Alert
           status="danger"
@@ -526,25 +909,42 @@ export function InlineApproval({
           description={error}
         />
       )}
-      <RequestDetails view={view} sessionAgent={sessionAgent} />
       {pending ? (
-        <Flex gap="2" style={{ flexWrap: 'wrap' }}>
-          <Button
-            variant="primary"
-            size="small"
-            isDisabled={Boolean(deciding) || isAnswering}
-            onPress={() => void decide(view, 'approve')}
-          >
-            {deciding === 'approve' ? 'Approving…' : 'Approve'}
-          </Button>
-          <Button
-            variant="secondary"
-            size="small"
-            isDisabled={Boolean(deciding) || isAnswering}
-            onPress={() => void decide(view, 'decline')}
-          >
-            {deciding === 'decline' ? 'Declining…' : 'Decline'}
-          </Button>
+        <Flex
+          ref={actions}
+          direction="column"
+          gap="1"
+          data-testid="approval-actions"
+        >
+          {unopened > 0 && (
+            <Text
+              as="p"
+              variant="body-small"
+              color="secondary"
+              data-testid="approval-open-all"
+            >
+              Open every collapsed value above ({unopened} left) to approve: the
+              approval covers all of it.
+            </Text>
+          )}
+          <Flex gap="2" style={{ flexWrap: 'wrap' }}>
+            <Button
+              variant="primary"
+              size="small"
+              isDisabled={!armed || busy || unopened > 0}
+              onPress={() => onDecide('approve')}
+            >
+              {deciding === 'approve' ? 'Approving…' : 'Approve'}
+            </Button>
+            <Button
+              variant="secondary"
+              size="small"
+              isDisabled={!armed || busy}
+              onPress={() => onDecide('decline')}
+            >
+              {deciding === 'decline' ? 'Declining…' : 'Decline'}
+            </Button>
+          </Flex>
         </Flex>
       ) : (
         <Flex gap="2" align="center" style={{ flexWrap: 'wrap' }}>
@@ -556,7 +956,7 @@ export function InlineApproval({
               variant="primary"
               size="small"
               isDisabled={isAnswering}
-              onPress={() => finish(view.status as 'approved' | 'declined')}
+              onPress={() => onContinue(view.status as 'approved' | 'declined')}
             >
               Continue
             </Button>

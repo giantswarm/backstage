@@ -9,6 +9,19 @@ export interface Config {
     serverName?: string;
 
     /**
+     * File holding the portal backend's own projected ServiceAccount token
+     * for muster (audience `muster`), sent beside the person's token to
+     * muster's decision API and sign-in handoff endpoint
+     * (`X-Muster-Approval-Client`): muster takes a person's approval decision
+     * from the portal only with it. Read on every request (the kubelet
+     * rotates it). Defaults to
+     * `/var/run/secrets/muster.giantswarm.io/serviceaccount/token`, where the
+     * Agent Platform chart projects it; `agentlab portal dev` points it at a
+     * token it mints for the lab portal's ServiceAccount.
+     */
+    workloadTokenFile?: string;
+
+    /**
      * Overrides of, and additions to, the derived muster installations.
      *
      * The proxy derives one installation per `gs.installations` entry with a

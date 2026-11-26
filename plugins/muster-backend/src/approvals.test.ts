@@ -50,7 +50,11 @@ describe('approval helpers', () => {
 });
 
 describe('approval routes', () => {
-  async function buildApp(fetchFn: typeof fetch, authProvider = 'dex') {
+  async function buildApp(
+    fetchFn: typeof fetch,
+    authProvider = 'dex',
+    workload: string | null = 'portal-workload-token',
+  ) {
     const logger = mockServices.logger.mock();
     const config = mockServices.rootConfig({
       data: {
@@ -74,6 +78,7 @@ describe('approval routes', () => {
         probe: async () => ({ reachable: true, checkedAt: 0 }),
       }),
       handoffFetch: fetchFn,
+      workloadToken: async () => workload ?? undefined,
     });
     const app = express();
     app.use(router);
@@ -99,6 +104,30 @@ describe('approval routes', () => {
       expect.objectContaining({ method: 'GET', redirect: 'error' }),
     );
     expect(init.headers.Authorization).toBe('Bearer person-token');
+    expect(init.headers['X-Muster-Approval-Client']).toBe(
+      'portal-workload-token',
+    );
+  });
+
+  it('sends no workload header without a workload token, and muster refuses', async () => {
+    const fetchFn = jest.fn().mockResolvedValue(
+      answer(403, {
+        error: 'untrusted_workload',
+        message: 'This client did not prove its own identity',
+      }),
+    );
+    const { app } = await buildApp(fetchFn, 'dex', null);
+
+    const response = await request(app)
+      .post('/approvals/decision?installation=gazelle')
+      .set(MUSTER_AUTH_HEADER, 'person-token')
+      .send({ url: PAGE, decision: 'approve', digest: 'd1' });
+
+    const [, init] = fetchFn.mock.calls[0];
+    expect(init.headers).not.toHaveProperty('X-Muster-Approval-Client');
+    expect(response.body.refusal).toEqual(
+      expect.objectContaining({ status: 403, error: 'untrusted_workload' }),
+    );
   });
 
   it("passes muster's refusal on", async () => {
@@ -140,6 +169,9 @@ describe('approval routes', () => {
       digest: 'd1',
     });
     expect(init.headers.Authorization).toBe('Bearer person-token');
+    expect(init.headers['X-Muster-Approval-Client']).toBe(
+      'portal-workload-token',
+    );
   });
 
   it('says what stands when the request was already decided', async () => {

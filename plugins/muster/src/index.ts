@@ -27,6 +27,7 @@ export type {
   ApprovalRefusal,
   ApprovalView,
   ApprovalValue,
+  ApprovalStepView,
   MusterAuthProvidersApi,
   MusterUnauthorizedReason,
   McpServerRuntime,

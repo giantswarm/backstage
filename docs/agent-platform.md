@@ -3284,25 +3284,41 @@ approval epic). A link to the session installation's muster approval page
 reads it from muster's decision API with the person's token (`GET
 /approvals/<id>`, contract §5b), and the card shows what muster's page shows:
 the connector (display name and server), the tool (display name and raw
-name, "Changes data"), every argument (long values collapsed, muster's
-`⟨U+XXXX⟩` marking of invisible and bidi characters kept), what changes, a
-preset's settings, a workflow's steps, the agent's stated reason under
-"Agent says" (marked as the agent's own words), why it asks (the connector's
-setting, the agent's setting, governance, a built-in floor) and when it
-expires, plus the canonical arguments and their SHA-256 under "Show details".
-Who asks and for whom are not shown in the normal case: it is the
-conversation's agent, acting for the person. When the asking agent is not the
-session's (a sub-agent the session's agent invoked, another agent), a warning
-line names it; a request made for someone else is refused by muster and the
-card says so. Everything is rendered as text.
+name, "Changes data"), every argument in full (a long or multi-line value is
+collapsed behind _Show all N characters_, never cut; muster's `⟨U+XXXX⟩`
+marking of invisible and bidi characters kept), what changes, a preset's
+settings, a workflow's steps with each step's arguments, the agent's stated
+reason under "Agent says" (marked as the agent's own words), why it asks (the
+connector's setting, the agent's setting, governance, a built-in floor) and
+when it expires, and under "About this request" the asking agent, the caller
+kind, the person it acts for, the name the tool is called as, the setting,
+the session, the client and the expiry time; the canonical arguments and
+their SHA-256 are under "Show details". Every field of muster's view, which
+the decision's digest covers, is on the card (a test fails when a field is
+neither rendered nor named as deliberately left out). A warning line names
+the asking agent unless muster positively names the conversation's agent:
+when another agent asks (a sub-agent the session's agent invoked, another
+agent), when muster names no agent ("muster does not know which agent
+asks"), or when it names one the portal cannot match. A request made for
+someone else is refused by muster and the card says so. Everything is
+rendered as text, with no inner scroll box.
 
-_Approve_ and _Decline_ are the only things that decide, and only on the
-person's click: the muster backend posts the decision with the person's token
-and the digest of the view that is shown (`POST /api/muster/approvals/decision`,
+_Approve_ and _Decline_ come after all of it and are the only things that
+decide, and only on the person's click. They are inert until they have been
+in view, on a visible page, for a second (as on muster's own page), anew each
+time the request is shown again; _Approve_ also waits until every collapsed
+value was opened, since the approval covers all of it. A card belongs to one
+approval link: the next approval gets a new card, never the previous view or
+its decided state. The muster backend posts the decision with the person's
+token, the portal backend's own workload token (its projected ServiceAccount
+token, audience `muster`, `X-Muster-Approval-Client`: muster takes a
+person's token of the portal's client only together with it) and the digest
+of the view that is shown (`POST /api/muster/approvals/decision`,
 muster `POST /approvals/<id>/decision`), and muster refuses it if the request
 is not that one (the card then shows the request again and says so), if the
 token is not the person's own (an agent's credential), if the portal's OAuth
-client is not on muster's `approval.trustedClients`, if the request is someone
+client is not on muster's `approval.trustedClients`, if the portal backend's
+workload token is missing or not allowed to `decide`, if the request is someone
 else's, expired, used or already decided. On success the chat answers the
 elicitation at once, `accept` ("Approved.") or `decline` ("Declined."), and the
 agent goes on; muster's answer to the retried call is the outcome the timeline

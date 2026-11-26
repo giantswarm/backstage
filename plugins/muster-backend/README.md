@@ -134,9 +134,20 @@ otherwise).
 muster issues tickets and takes decisions only from the OAuth clients its
 `approval.trustedClients` lists (formerly `approval.handoffClients`): list the
 portal's own Dex client there (the `azp` of the token the portal forwards),
-never a client a CLI or an agent signs in through. Whoever holds the person's
-token of that client can approve without muster's browser sign-in; the portal
-does so only on the person's click.
+never a client a CLI or an agent signs in through. The person's token alone is
+not enough: it also reaches the browser and the servers muster forwards it to.
+All three routes send the portal backend's own workload token beside it, in
+`X-Muster-Approval-Client`: the projected ServiceAccount token (audience
+`muster`) read from `muster.workloadTokenFile`, default
+`/var/run/secrets/muster.giantswarm.io/serviceaccount/token`, where the Agent
+Platform chart mounts it, on every request (it rotates). muster reviews it
+(TokenReview, then verb `decide` on `toolapprovals.muster.giantswarm.io`,
+granted only to the portal's ServiceAccount). Without the file the portal
+logs it once and sends none; muster then refuses (`untrusted_workload`) and
+the chat opens muster's own pages instead. `agentlab portal dev` writes a
+token it mints for the lab portal's ServiceAccount and points
+`muster.workloadTokenFile` at it. The portal backend decides only on the
+person's click.
 
 `GET /api/muster/installations` reports each installation with its `source`
 (`derived` or `configured`), whether it requires the person's token

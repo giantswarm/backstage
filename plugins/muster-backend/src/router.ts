@@ -49,6 +49,7 @@ import {
 } from './mcpUsage';
 import { UsageCache, usageCacheKey } from './usageCache';
 import { isOnMusterPages, requestHandoffTicket } from './handoff';
+import { type WorkloadTokenSource, workloadTokenSource } from './workloadToken';
 import { approvalIdOf, fetchApproval, postApprovalDecision } from './approvals';
 
 const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
@@ -104,6 +105,12 @@ export interface RouterOptions {
    * reach muster.
    */
   handoffFetch?: typeof fetch;
+  /**
+   * Overridable for tests: the portal backend's workload token for muster
+   * (`workloadToken.ts`); defaults to the file `muster.workloadTokenFile`
+   * names.
+   */
+  workloadToken?: WorkloadTokenSource;
 }
 
 /**
@@ -364,6 +371,8 @@ export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
   const { logger, config } = options;
+  const workloadToken =
+    options.workloadToken ?? workloadTokenSource(config, logger);
 
   // The installations this proxy can target: one derived from every
   // `gs.installations` entry with a base domain (`https://muster.<baseDomain>/
@@ -1094,6 +1103,7 @@ export async function createRouter(
           installation,
           url,
           token: authToken,
+          workloadToken: await workloadToken(),
           logger,
           ...(options.handoffFetch && { fetchFn: options.handoffFetch }),
         })
@@ -1124,6 +1134,7 @@ export async function createRouter(
         installation,
         id,
         token: authToken,
+        workloadToken: await workloadToken(),
         logger,
         ...(options.handoffFetch && { fetchFn: options.handoffFetch }),
       }),
@@ -1160,6 +1171,7 @@ export async function createRouter(
         decision,
         digest,
         token: authToken,
+        workloadToken: await workloadToken(),
         logger,
         ...(options.handoffFetch && { fetchFn: options.handoffFetch }),
       }),

@@ -137,6 +137,7 @@ describe('POST /handoff', () => {
         probe: async () => ({ reachable: true, checkedAt: 0 }),
       }),
       handoffFetch: fetchFn,
+      workloadToken: async () => 'portal-workload-token',
     });
     const app = express();
     app.use(router);
@@ -158,6 +159,9 @@ describe('POST /handoff', () => {
     expect(response.headers['cache-control']).toBe('no-store');
     expect(fetchFn.mock.calls[0][1].headers.Authorization).toBe(
       'Bearer person-token',
+    );
+    expect(fetchFn.mock.calls[0][1].headers['X-Muster-Approval-Client']).toBe(
+      'portal-workload-token',
     );
     expect(
       JSON.stringify([
