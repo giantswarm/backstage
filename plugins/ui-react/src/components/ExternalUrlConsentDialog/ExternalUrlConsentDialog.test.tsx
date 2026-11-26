@@ -33,6 +33,9 @@ describe('ExternalUrlConsentDialogHost', () => {
       'https://login.github.com.evil.example/oauth?state=abc',
     );
     expect(address.querySelector('mark')).toHaveTextContent('evil.example');
+    expect(screen.getByTestId('external-url-host')).toHaveTextContent(
+      'login.github.com.evil.example',
+    );
     expect(screen.getByRole('dialog')).toHaveTextContent(
       'Sign in to GitHub to continue.',
     );
@@ -48,6 +51,19 @@ describe('ExternalUrlConsentDialogHost', () => {
       'tab',
     );
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('names the full host on a wildcard-DNS domain, not just its registrable domain', async () => {
+    const { manager } = await renderHost();
+
+    manager.open({
+      url: 'https://muster.127.0.0.1.nip.io:8443/approvals/ABC',
+      requester: 'default-agent',
+    });
+
+    expect(await screen.findByTestId('external-url-host')).toHaveTextContent(
+      /^muster\.127\.0\.0\.1\.nip\.io$/,
+    );
   });
 
   it('warns about a punycode domain', async () => {
