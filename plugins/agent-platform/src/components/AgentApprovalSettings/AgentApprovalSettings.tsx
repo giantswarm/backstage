@@ -258,7 +258,7 @@ function liftsConnectorAsk(tools: readonly ToolSummary[]): boolean {
 }
 
 /**
- * *How it asks* on the Tools step (tool approval, milestone 2): the list's
+ * *How it asks* on the Tools step (tool approval): the list's
  * default on top, then each whole connector the agent has and each tool it
  * resolves to, with `Allow · Ask · Block` pills showing what applies now.
  * The words are muster's settings' everywhere; muster decides. *Allow* over

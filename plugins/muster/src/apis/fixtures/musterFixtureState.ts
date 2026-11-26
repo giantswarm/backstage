@@ -296,7 +296,7 @@ export class MusterFixtureState {
       );
       // And every organization's own connector, which the guest is no admin
       // of: an agent of the organization shows an exception only its admins
-      // grant (tool approval, milestone 2).
+      // grant (tool approval).
       const isReviewed = (connector: MusterFixtureConnector) =>
         connector === reviewedOwn ||
         (Boolean(connector.namespace) && connector.state === 'Connected');

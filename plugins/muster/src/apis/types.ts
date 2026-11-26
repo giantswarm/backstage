@@ -312,7 +312,7 @@ export type ToolApprovalSource =
 
 /**
  * A tool's effective approval for the caller, as `filter_tools` and
- * `describe_tool` report it (muster's tool approval, slice 1).
+ * `describe_tool` report it (muster's tool approval).
  */
 export interface ToolApproval {
   setting: 'allow' | 'ask' | 'block';
@@ -340,7 +340,7 @@ export interface ToolApproval {
 
 /**
  * An agent's tool list as `filter_tools` and `describe_tool` take it for
- * reporting (`agentTools`, tool approval milestone 2): the entries in the
+ * reporting (`agentTools`, tool approval): the entries in the
  * agent chart's shape (a selector, or `{selector: Allow|Ask|Block}`), the
  * list's default and the agent's grants. It never changes what runs.
  */

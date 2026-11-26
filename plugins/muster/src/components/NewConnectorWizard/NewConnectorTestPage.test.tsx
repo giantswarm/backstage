@@ -35,14 +35,14 @@ jest.mock('../MusterSubPage', () => ({
 
 jest.mock('../MusterInstanceProvider', () => ({
   useMusterInstance: () => ({
-    installations: ['gazelle'],
+    installations: ['example'],
     isLoadingInstallations: false,
     isSingleInstallation: true,
     installationInfos: [],
-    activeInstallation: 'gazelle',
+    activeInstallation: 'example',
     activeInstallationInfo: {
-      name: 'gazelle',
-      endpoint: 'https://muster.gazelle.example.com/mcp',
+      name: 'example',
+      endpoint: 'https://muster.example.example.com/mcp',
       requiresAuth: true,
     },
     setActiveInstallation: jest.fn(),
@@ -515,7 +515,7 @@ describe('NewConnectorTestPage: Test & Tools', () => {
           },
         },
       },
-      'gazelle',
+      'example',
     ]);
   });
 

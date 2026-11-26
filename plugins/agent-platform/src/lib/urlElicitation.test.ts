@@ -7,9 +7,9 @@ import {
   returnedElicitation,
 } from './urlElicitation';
 
-const MUSTER = 'https://muster.gazelle.example.io';
+const MUSTER = 'https://muster.example.example.io';
 const PAGES = { origin: MUSTER, basePath: '' };
-const BACK = 'https://portal.example.io/agents/sessions/gazelle/s1';
+const BACK = 'https://portal.example.io/agents/sessions/example/s1';
 
 describe('urlElicitation', () => {
   it('reads where muster serves its pages off its public URL or endpoint', () => {
@@ -25,7 +25,7 @@ describe('urlElicitation', () => {
 
   it('names the host a link leads to, for http(s) only', () => {
     expect(linkHost(`${MUSTER}/approvals/0f3c9a`)).toBe(
-      'muster.gazelle.example.io',
+      'muster.example.example.io',
     );
     expect(linkHost('https://muster.example.io:8443/x')).toBe(
       'muster.example.io:8443',

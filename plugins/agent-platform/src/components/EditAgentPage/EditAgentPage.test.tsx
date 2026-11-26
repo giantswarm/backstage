@@ -245,7 +245,7 @@ type Scenario = {
   notConnected?: boolean;
   info?: Partial<AgentManagerInfo>;
   violations?: string[];
-  /** What `/installations` reports for gazelle; true unless said otherwise. */
+  /** What `/installations` reports for example; true unless said otherwise. */
   requiresAuth?: boolean;
   /** What the empty commit dry run fails with; it passes otherwise. */
   commitDryRunError?: string;
@@ -304,7 +304,7 @@ const APPROVAL_REPORT = [
 // agent-manager's answers in mode `commit`, as they come over MCP (see
 // `missingReleaseFile`'s test for the first).
 const MISSING_RELEASE_FILE =
-  "conflict: conflict: HelmRelease flux-giantswarm/pr-reviewer is not in agent-manager's directory management-clusters/gazelle/extras/agent-manager of giantswarm/giantswarm-management-clusters (no management-clusters/gazelle/extras/agent-manager/pr-reviewer.yaml there): change it in the file that defines it";
+  "conflict: conflict: HelmRelease flux-giantswarm/pr-reviewer is not in agent-manager's directory management-clusters/example/extras/agent-manager of giantswarm/giantswarm-management-clusters (no management-clusters/example/extras/agent-manager/pr-reviewer.yaml there): change it in the file that defines it";
 const AUTH_REQUIRED =
   'auth_required: commit mode opens the pull request with your GitHub authorization, and this call carries none: connect agent-manager in muster (core_auth_login server=agent-manager), then call again';
 const TOKEN_REFUSED =
@@ -421,7 +421,7 @@ function makeMusterApi(scenario: Scenario = {}) {
   });
   const listInstallations = jest.fn(async () => ({
     installations: [
-      { name: 'gazelle', requiresAuth: scenario.requiresAuth ?? true },
+      { name: 'example', requiresAuth: scenario.requiresAuth ?? true },
     ],
   }));
   return {
@@ -444,7 +444,7 @@ function makeMusterApi(scenario: Scenario = {}) {
   };
 }
 
-const BASE = '/customize/agents/gazelle/kagent/pr-reviewer/edit';
+const BASE = '/customize/agents/example/kagent/pr-reviewer/edit';
 
 function DetailProbe() {
   const location = useLocation();
@@ -531,7 +531,7 @@ function grafanaCloud() {
       },
       spec: { type: 'streamable-http', auth: { type: 'oauth' } },
     } as never,
-    'gazelle',
+    'example',
   );
 }
 
@@ -674,7 +674,7 @@ describe('EditAgentPage', () => {
           "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
           'server_sign_in_required',
           'agent-manager',
-          'gazelle',
+          'example',
         );
       }
       return scripted(name, args);
@@ -1310,7 +1310,7 @@ describe('EditAgentPage', () => {
     scenario.agentManagerAuth = 'connected';
     await act(() =>
       queryClient.invalidateQueries({
-        queryKey: ['muster', 'auth-status', 'gazelle'],
+        queryKey: ['muster', 'auth-status', 'example'],
       }),
     );
 
@@ -1328,7 +1328,7 @@ describe('EditAgentPage', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        /muster on gazelle has no per-user sign-in in this portal/i,
+        /muster on example has no per-user sign-in in this portal/i,
       ),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
@@ -1360,7 +1360,7 @@ describe('EditAgentPage', () => {
             mode: 'commit',
             dryRun: true,
           },
-          'gazelle',
+          'example',
         ],
       ]);
     });
@@ -1372,7 +1372,7 @@ describe('EditAgentPage', () => {
         defaultOptions: { queries: { retry: false } },
       });
       queryClient.setQueryData(
-        musterAgentManagerAgentQueryKey('gazelle', 'kagent', 'pr-reviewer'),
+        musterAgentManagerAgentQueryKey('example', 'kagent', 'pr-reviewer'),
         GITOPS_AGENT,
       );
       const { callTool } = await renderEdit(
@@ -1395,7 +1395,7 @@ describe('EditAgentPage', () => {
       });
       queryClient.setQueryData(
         musterCommitAgentUpdateDryRunQueryKey(
-          'gazelle',
+          'example',
           JSON.stringify({ namespace: 'kagent', name: 'pr-reviewer' }),
         ),
         { skills: undefined },
@@ -1447,7 +1447,7 @@ describe('EditAgentPage', () => {
       // What agent-manager checked is technical: folded away.
       expect(
         screen.getByText(
-          'management-clusters/gazelle/extras/agent-manager/pr-reviewer.yaml',
+          'management-clusters/example/extras/agent-manager/pr-reviewer.yaml',
         ),
       ).not.toBeVisible();
       expect(
@@ -1471,7 +1471,7 @@ describe('EditAgentPage', () => {
       ).toBeVisible();
       expect(
         screen.getByText(
-          'management-clusters/gazelle/extras/agent-manager/pr-reviewer.yaml',
+          'management-clusters/example/extras/agent-manager/pr-reviewer.yaml',
         ),
       ).toBeVisible();
     });
@@ -1619,7 +1619,7 @@ describe('EditAgentPage: tool approval', () => {
           description: 'Reviews every pull request.',
           expectedGeneration: 7,
         },
-        'gazelle',
+        'example',
       ],
     ]);
     expect(callsOf(callTool, 'x_agent-manager_update_agent_access')).toEqual(

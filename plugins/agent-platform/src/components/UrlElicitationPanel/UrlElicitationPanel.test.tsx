@@ -13,13 +13,12 @@ import {
   useUrlElicitationReturn,
 } from './UrlElicitationPanel';
 
-const MUSTER = 'https://muster.gazelle.example.io';
+const MUSTER = 'https://muster.example.example.io';
 const PAGES = { origin: MUSTER, basePath: '' };
 const PERSON = 'user:default/ada';
 
 /**
- * muster's answer to a tool call that asks (slice 2 of the tool-approval
- * plan), as kagent relays it to the page: a URL elicitation to muster's
+ * muster's answer to a tool call that asks (tool approval), as kagent relays it to the page: a URL elicitation to muster's
  * approval page, with muster's elicitationId.
  */
 const APPROVAL: PendingConfirmation = {
@@ -98,7 +97,7 @@ async function renderPanel({
   error,
   isAnswering = false,
   user = PERSON,
-  route = '/sessions/gazelle/s1',
+  route = '/sessions/example/s1',
 }: {
   pending?: PendingConfirmation;
   /** `null`: not known. */
@@ -156,7 +155,7 @@ describe('UrlElicitationPanel', () => {
       ),
     ).toBeInTheDocument();
     expect(openButton()).toBeInTheDocument();
-    expect(screen.getByText('muster.gazelle.example.io')).toBeInTheDocument();
+    expect(screen.getByText('muster.example.example.io')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Not now' })).toBeInTheDocument();
     // Nothing sign-in or approval specific: the prompt is the same for all.
@@ -171,7 +170,7 @@ describe('UrlElicitationPanel', () => {
       screen.getByText('Sign in to github to continue.'),
     ).toBeInTheDocument();
     expect(openButton()).toBeInTheDocument();
-    expect(screen.getByText('muster.gazelle.example.io')).toBeInTheDocument();
+    expect(screen.getByText('muster.example.example.io')).toBeInTheDocument();
   });
 
   it('names the server when it sent no message', async () => {
@@ -200,7 +199,7 @@ describe('UrlElicitationPanel', () => {
     expect(`${href.origin}${href.pathname}`).toBe(`${MUSTER}/approvals/0f3c9a`);
     const back = returnPage(openedUrl());
     expect(back.origin).toBe(window.location.origin);
-    expect(back.pathname).toBe('/sessions/gazelle/s1');
+    expect(back.pathname).toBe('/sessions/example/s1');
     // muster's approval page names the elicitation on its return; the
     // return never carries a decision.
     expect([...back.searchParams.keys()]).toEqual(['elicitationReturn']);
@@ -283,7 +282,7 @@ describe('UrlElicitationPanel', () => {
     const other = await renderPanel({ user: 'user:default/eve' });
     await returned('el-9b1d', nonce);
     other.unmount();
-    const elsewhere = await renderPanel({ route: '/sessions/gazelle/s2' });
+    const elsewhere = await renderPanel({ route: '/sessions/example/s2' });
     await returned('el-9b1d', nonce);
 
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -309,7 +308,7 @@ describe('UrlElicitationPanel', () => {
     ['on another origin', `https://approvals.example.org/approvals/0f3c9a`],
     [
       'on a look-alike host',
-      `https://muster.gazelle.example.io.evil.example/approvals/0f3c9a`,
+      `https://muster.example.example.io.evil.example/approvals/0f3c9a`,
     ],
     ["on muster's origin, another path", `${MUSTER}/oauth/authorize?x=1`],
     ["on muster's origin, any page", `${MUSTER}/anything/else`],
@@ -420,7 +419,7 @@ describe('useUrlElicitationReturn', () => {
 
     await renderInTestApp(<ReturnPage />, {
       initialRouteEntries: [
-        '/sessions/gazelle/s1?tab=chat&elicitationReturn=n-1&elicitationId=el-9b1d',
+        '/sessions/example/s1?tab=chat&elicitationReturn=n-1&elicitationId=el-9b1d',
       ],
     });
 
@@ -435,10 +434,10 @@ describe('useUrlElicitationReturn', () => {
   });
 
   it.each([
-    ['muster did not return to', '/sessions/gazelle/s1'],
+    ['muster did not return to', '/sessions/example/s1'],
     [
       'that names an elicitation but no open',
-      '/sessions/gazelle/s1?elicitationId=el-9b1d',
+      '/sessions/example/s1?elicitationId=el-9b1d',
     ],
   ])('does nothing on a page %s', async (_, route) => {
     const heard = jest.fn();

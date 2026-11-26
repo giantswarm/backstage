@@ -1,6 +1,6 @@
 /**
  * An MCP server's URL elicitation the agent waits on, handled the same way
- * whatever it asks for (giantswarm/giantswarm#38902, slice 6): muster's sign-in
+ * whatever it asks for: muster's sign-in
  * to a connector, its approval page for a tool call, or any later page.
  *
  * Every link opens through the consent dialog. Only a link to one of

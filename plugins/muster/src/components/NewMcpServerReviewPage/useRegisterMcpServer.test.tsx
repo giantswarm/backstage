@@ -46,7 +46,7 @@ const definition: McpServerDefinition = {
 
 const registration: McpServerRegistration = {
   definition,
-  installation: 'gazelle',
+  installation: 'example',
   authMode: 'own-account',
   isEdit: false,
   startedFromEdit: false,
@@ -190,7 +190,7 @@ describe('useRegisterMcpServer', () => {
           [
             'core_mcpserver_validate',
             { ...definition, auth: sentAuth },
-            'gazelle',
+            'example',
           ],
           [
             tool,
@@ -202,7 +202,7 @@ describe('useRegisterMcpServer', () => {
                 clientSecret: SECRET,
               },
             },
-            'gazelle',
+            'example',
           ],
         ]);
         // What the caller keeps as the base of later saves has no values.
@@ -281,8 +281,8 @@ describe('useRegisterMcpServer', () => {
     await act(() => result.current.mutateAsync(registration));
 
     expect(callTool.mock.calls).toEqual([
-      ['core_mcpserver_validate', definition, 'gazelle'],
-      ['core_mcpserver_create', definition, 'gazelle'],
+      ['core_mcpserver_validate', definition, 'example'],
+      ['core_mcpserver_create', definition, 'example'],
     ]);
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['muster'] });
     expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
@@ -304,7 +304,7 @@ describe('useRegisterMcpServer', () => {
     expect(callTool).toHaveBeenLastCalledWith(
       'core_mcpserver_update',
       definition,
-      'gazelle',
+      'example',
     );
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
@@ -323,7 +323,7 @@ describe('useRegisterMcpServer', () => {
     expect(callTool).toHaveBeenLastCalledWith(
       'core_mcpserver_update',
       definition,
-      'gazelle',
+      'example',
     );
     expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
@@ -348,11 +348,11 @@ describe('useRegisterMcpServer', () => {
 
     expect(describeTool).toHaveBeenCalledWith(
       'core_mcpserver_create',
-      'gazelle',
+      'example',
     );
     expect(callTool.mock.calls).toEqual([
-      ['core_mcpserver_validate', named, 'gazelle'],
-      ['core_mcpserver_create', named, 'gazelle'],
+      ['core_mcpserver_validate', named, 'example'],
+      ['core_mcpserver_create', named, 'example'],
     ]);
     expect(sent).toEqual(named);
   });
@@ -372,11 +372,11 @@ describe('useRegisterMcpServer', () => {
 
     expect(describeTool).toHaveBeenCalledWith(
       'core_mcpserver_update',
-      'gazelle',
+      'example',
     );
     expect(callTool.mock.calls).toEqual([
-      ['core_mcpserver_validate', definition, 'gazelle'],
-      ['core_mcpserver_update', definition, 'gazelle'],
+      ['core_mcpserver_validate', definition, 'example'],
+      ['core_mcpserver_update', definition, 'example'],
     ]);
     expect(sent).toEqual(definition);
   });
@@ -394,8 +394,8 @@ describe('useRegisterMcpServer', () => {
     );
 
     expect(callTool.mock.calls).toEqual([
-      ['core_mcpserver_validate', definition, 'gazelle'],
-      ['core_mcpserver_create', named, 'gazelle'],
+      ['core_mcpserver_validate', definition, 'example'],
+      ['core_mcpserver_create', named, 'example'],
     ]);
   });
 
@@ -448,8 +448,8 @@ describe('useRegisterMcpServer', () => {
     );
 
     expect(callTool.mock.calls).toEqual([
-      ['core_mcpserver_validate', definition, 'gazelle'],
-      ['core_mcpserver_create', tagged, 'gazelle'],
+      ['core_mcpserver_validate', definition, 'example'],
+      ['core_mcpserver_create', tagged, 'example'],
     ]);
   });
 
@@ -585,7 +585,7 @@ describe('useRegisterMcpServer', () => {
   });
 
   describe('tool approval preset on create', () => {
-    /** A muster whose create takes `preset` (tool approval, slice 2). */
+    /** A muster whose create takes `preset` (tool approval). */
     const withPreset = (name: string) =>
       Promise.resolve({
         name,
@@ -635,11 +635,11 @@ describe('useRegisterMcpServer', () => {
       });
 
       expect(callTool.mock.calls).toEqual([
-        ['core_mcpserver_validate', definition, 'gazelle'],
+        ['core_mcpserver_validate', definition, 'example'],
         [
           'core_mcpserver_create',
           { ...definition, preset: 'allow-all' },
-          'gazelle',
+          'example',
         ],
       ]);
       // Later saves (updates) take no preset.
@@ -663,7 +663,7 @@ describe('useRegisterMcpServer', () => {
       expect(callTool).toHaveBeenLastCalledWith(
         'core_mcpserver_create',
         { ...definition, preset: 'recommended' },
-        'gazelle',
+        'example',
       );
     });
 
@@ -684,7 +684,7 @@ describe('useRegisterMcpServer', () => {
       expect(callTool).toHaveBeenLastCalledWith(
         'core_mcpserver_create',
         { ...definition, preset: 'allow-all' },
-        'gazelle',
+        'example',
       );
     });
 
@@ -695,12 +695,12 @@ describe('useRegisterMcpServer', () => {
 
       expect(describeTool).toHaveBeenCalledWith(
         'core_mcpserver_create',
-        'gazelle',
+        'example',
       );
       expect(callTool).toHaveBeenLastCalledWith(
         'core_mcpserver_create',
         definition,
-        'gazelle',
+        'example',
       );
     });
   });

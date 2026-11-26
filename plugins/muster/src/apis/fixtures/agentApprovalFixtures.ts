@@ -10,13 +10,13 @@ import { resolveToolset } from './toolsetFixtures';
 
 /**
  * An agent's tool list reported the way muster's `filter_tools` reports it
- * with `agentTools` (tool approval, milestone 2; `contract-slice-3.md` §5):
+ * with `agentTools` (tool approval):
  * the list's selectors narrow the catalogue, each tool carries the approval
  * that agent would get, with the deciding `entry` and the connector's own
  * setting (`admin`), and each server tool the connectors behind it. muster's
  * resolution, kept to what the data set needs: a grant lifts only an `ask`
  * the connector set (a tool's entry or its rule), never a built-in or a
- * governance one (decision #79).
+ * governance one.
  */
 
 const SETTINGS = ['Allow', 'Ask', 'Block'] as const;

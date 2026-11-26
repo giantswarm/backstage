@@ -340,7 +340,7 @@ function Seed({
     if (egressText) {
       setEgressText(egressText);
     }
-    setInstallation('gazelle');
+    setInstallation('example');
     setTenantChoices([tenant]);
     selectModelConfig('opus-4-7', tenant);
     selectHarness(harness);
@@ -458,7 +458,7 @@ function grafanaCloud() {
       },
       spec: { type: 'streamable-http', auth: { type: 'oauth' } },
     } as never,
-    'gazelle',
+    'example',
   );
 }
 
@@ -505,7 +505,7 @@ describe('NewAgentReviewPage', () => {
       expect(callTool).toHaveBeenCalledWith(
         'x_agent-manager_validate_agent',
         expect.anything(),
-        'gazelle',
+        'example',
       ),
     );
     expect(
@@ -532,7 +532,7 @@ describe('NewAgentReviewPage', () => {
     const item = within(technical).getByText('Underlying model').parentElement;
     expect(item).toHaveTextContent('claude-sonnet-4-6 · Anthropic');
     expect(mockUseUnderlyingModel).toHaveBeenCalledWith(
-      'gazelle',
+      'example',
       'opus-4-7',
       'kagent',
     );
@@ -546,7 +546,7 @@ describe('NewAgentReviewPage', () => {
       expect(callTool).toHaveBeenCalledWith(
         'x_agent-manager_validate_agent',
         expect.anything(),
-        'gazelle',
+        'example',
       ),
     );
     expect(
@@ -595,13 +595,13 @@ describe('NewAgentReviewPage', () => {
       expect(callTool).toHaveBeenCalledWith(
         'x_agent-manager_create_agent',
         expect.anything(),
-        'gazelle',
+        'example',
       ),
     );
     expect(callTool).not.toHaveBeenCalledWith(
       'x_agent-manager_set_agent_approval',
       expect.anything(),
-      'gazelle',
+      'example',
     );
   });
 
@@ -697,7 +697,7 @@ describe('NewAgentReviewPage', () => {
           name: expect.any(String),
           settings: { 'tool:x_github_merge': 'Allow' },
         },
-        'gazelle',
+        'example',
       ),
     );
     expect(specSentTo(callTool, 'x_agent-manager_create_agent').tools).toEqual([
@@ -733,7 +733,7 @@ describe('NewAgentReviewPage', () => {
       expect(callTool).toHaveBeenCalledWith(
         'x_agent-manager_create_agent',
         expect.anything(),
-        'gazelle',
+        'example',
       ),
     );
     expect(
@@ -756,7 +756,7 @@ describe('NewAgentReviewPage', () => {
           metadata: { name: 'wiki', namespace: 'agents-payments-x7k2q' },
           spec: { type: 'streamable-http', auth: { type: 'oauth' } },
         } as never,
-        'gazelle',
+        'example',
       ),
     ];
     const user = userEvent.setup();
@@ -771,7 +771,7 @@ describe('NewAgentReviewPage', () => {
       expect(callTool).toHaveBeenCalledWith(
         'x_agent-manager_create_agent',
         expect.anything(),
-        'gazelle',
+        'example',
       ),
     );
     const spec = specSentTo(callTool, 'x_agent-manager_create_agent');
@@ -801,7 +801,7 @@ describe('NewAgentReviewPage', () => {
       expect(callTool).toHaveBeenCalledWith(
         'x_agent-manager_create_agent',
         expect.anything(),
-        'gazelle',
+        'example',
       ),
     );
     expect(
@@ -851,7 +851,7 @@ describe('NewAgentReviewPage', () => {
       expect(callTool).toHaveBeenCalledWith(
         'x_agent-manager_validate_agent',
         expect.anything(),
-        'gazelle',
+        'example',
       ),
     );
     const spec = specSentTo(callTool, 'x_agent-manager_validate_agent');
@@ -863,7 +863,7 @@ describe('NewAgentReviewPage', () => {
       tags: ['review', 'go'],
       systemMessage: 'You review pull requests.',
       modelConfig: 'opus-4-7',
-      iconUrl: 'https://avatars.gazelle.example/v1/go-service-reviewer.png',
+      iconUrl: 'https://avatars.example.example/v1/go-service-reviewer.png',
       skills: [
         {
           name: 'Incident responder',
@@ -924,7 +924,7 @@ describe('NewAgentReviewPage', () => {
             workload: { image: 'registry.example/kagent-harness@sha256:0123' },
           },
         },
-        'gazelle',
+        'example',
       ),
     ];
     await renderReview();
@@ -1085,7 +1085,7 @@ describe('NewAgentReviewPage', () => {
       expect(callTool).toHaveBeenCalledWith(
         'x_agent-manager_create_agent',
         expect.anything(),
-        'gazelle',
+        'example',
       ),
     );
     const created = specSentTo(callTool, 'x_agent-manager_create_agent');
@@ -1097,11 +1097,11 @@ describe('NewAgentReviewPage', () => {
 
     await waitFor(() =>
       expect(mockNavigate).toHaveBeenCalledWith(
-        '/customize/agents/gazelle/kagent/go-service-reviewer',
+        '/customize/agents/example/kagent/go-service-reviewer',
         {
           state: {
             [AGENT_CREATED_STATE_KEY]: {
-              installation: 'gazelle',
+              installation: 'example',
               namespace: 'kagent',
               name: 'go-service-reviewer',
               requestedBy: 'admin@lab.local',
@@ -1201,7 +1201,7 @@ describe('NewAgentReviewPage', () => {
         "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
         'server_sign_in_required',
         'agent-manager',
-        'gazelle',
+        'example',
       ),
     });
     await screen.findByTestId('code-agent.yaml');
@@ -1246,7 +1246,7 @@ describe('NewAgentReviewPage', () => {
       expect(callTool).toHaveBeenCalledWith(
         'x_agent-manager_create_agent',
         expect.objectContaining({ mode: 'commit' }),
-        'gazelle',
+        'example',
       ),
     );
     expect(
@@ -1313,7 +1313,7 @@ describe('NewAgentReviewPage', () => {
         expect(callTool).toHaveBeenCalledWith(
           'x_agent-manager_create_agent',
           expect.objectContaining({ mode: 'commit' }),
-          'gazelle',
+          'example',
         ),
       );
     } finally {

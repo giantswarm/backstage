@@ -95,7 +95,7 @@ describe('readPendingConfirmation', () => {
   });
 
   it("reads muster's approval request the same way, with its elicitationId", () => {
-    // The wire shape slice 2 of the tool-approval plan answers an asking call
+    // The wire shape muster answers an asking call
     // with, as kagent relays it: a URL elicitation to muster's approval page.
     const approval = {
       ...task('task-2', 'input-required', [

@@ -16,8 +16,7 @@ import { SELECTOR_PATTERN } from '../../lib/toolset';
 import { FIXTURE_USER } from './fixtureIdentity';
 
 /**
- * agent-manager's tool approval in fixture mode (tool approval, milestone 2;
- * `contract-slice-3.md` §2–3): the checks its write tools make on an agent's
+ * agent-manager's tool approval in fixture mode (tool approval): the checks its write tools make on an agent's
  * tool list, the connector-admin check behind `set_agent_approval`, and the
  * grants a save keeps or drops. Which connectors an `Allow` lifts an `Ask`
  * of comes from muster's fixture, as agent-manager asks muster's

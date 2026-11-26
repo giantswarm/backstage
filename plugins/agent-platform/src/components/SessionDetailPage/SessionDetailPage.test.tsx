@@ -141,7 +141,7 @@ jest.mock('../../hooks/useMusterServers', () => ({
 // from (`UrlElicitationPanel`).
 jest.mock('../../hooks/useMusterPages', () => ({
   useMusterPages: () => ({
-    origin: 'https://muster.gazelle.example.com',
+    origin: 'https://muster.example.example.com',
     basePath: '',
   }),
 }));
@@ -2535,7 +2535,7 @@ describe('SessionDetailPage', () => {
             server: 'muster',
             message:
               'Alert Review wants to acknowledge an incident in PagerDuty.',
-            url: 'https://muster.gazelle.example.com/approvals/0f3c9a',
+            url: 'https://muster.example.example.com/approvals/0f3c9a',
             elicitationId: 'el-9b1d',
           },
           askedIn: 'status-1',
@@ -2549,7 +2549,7 @@ describe('SessionDetailPage', () => {
       expect(card).toHaveTextContent(
         'Alert Review wants to acknowledge an incident in PagerDuty.',
       );
-      expect(card).toHaveTextContent('muster.gazelle.example.com');
+      expect(card).toHaveTextContent('muster.example.example.com');
       await user.click(
         within(card).getByRole('button', {
           name: 'Open (opens in a new tab)',

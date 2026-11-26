@@ -19,23 +19,23 @@ function renderPages(installations: object[]) {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </TestApiProvider>
   );
-  return renderHook(() => useMusterPages('gazelle'), { wrapper });
+  return renderHook(() => useMusterPages('example'), { wrapper });
 }
 
 describe('useMusterPages', () => {
   it("trusts muster's configured public URL over an endpoint on another host", async () => {
     const { result } = renderPages([
       {
-        name: 'gazelle',
+        name: 'example',
         endpoint: 'http://muster.muster.svc:8090/mcp',
-        publicUrl: 'https://muster.gazelle.example.test',
+        publicUrl: 'https://muster.example.example.test',
         requiresAuth: true,
       },
     ]);
 
     await waitFor(() =>
       expect(result.current).toEqual({
-        origin: 'https://muster.gazelle.example.test',
+        origin: 'https://muster.example.example.test',
         basePath: '',
       }),
     );
@@ -44,15 +44,15 @@ describe('useMusterPages', () => {
   it("falls back to the endpoint's host", async () => {
     const { result } = renderPages([
       {
-        name: 'gazelle',
-        endpoint: 'https://muster.gazelle.example.test/mcp',
+        name: 'example',
+        endpoint: 'https://muster.example.example.test/mcp',
         requiresAuth: true,
       },
     ]);
 
     await waitFor(() =>
       expect(result.current).toEqual({
-        origin: 'https://muster.gazelle.example.test',
+        origin: 'https://muster.example.example.test',
         basePath: '',
       }),
     );

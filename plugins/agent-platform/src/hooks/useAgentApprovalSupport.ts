@@ -10,7 +10,7 @@ export type AgentApprovalSupport =
 
 /**
  * Whether agent-manager takes an agent's tool list with approval settings
- * (tool approval, milestone 2): its `create_agent` declares `tools`.
+ * (tool approval): its `create_agent` declares `tools`.
  * agent-manager announces no capability for it, so the schema tells an
  * agent-manager with tool approval (which also splits its update tools)
  * from an older one, which takes `toolset` and nothing else. `unread` when

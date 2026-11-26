@@ -455,7 +455,7 @@ settings; it decides nothing.
 #### An agent's tool approval
 
 Where agent-manager takes approval settings (its `create_agent` schema
-declares `tools`; giantswarm/giantswarm#38902, milestone 2), an agent's tools
+declares `tools`), an agent's tools
 carry settings too (`lib/agentApproval.ts`). muster decides; the portal
 composes the agent's tool list, reads what muster reports for it and writes
 through agent-manager:
@@ -492,8 +492,8 @@ through agent-manager:
   with a link to the Tools tab. Both from `get_agent`'s tool list, default
   and grants, reported by muster for the viewer.
 - `get_agent` keeps `tools` for the kagent bindings; the tool list with
-  settings is read from one field (`TOOL_LIST_FIELD`, `toolSettings`,
-  decision #86) next to `defaultApproval`, `grants` (each with the `tools`
+  settings is read from one field (`TOOL_LIST_FIELD`, `toolSettings`)
+  next to `defaultApproval`, `grants` (each with the `tools`
   it covers, forwarded to muster), `approvalSettings`, `approvalEnforced`
   and `generation`. Where the settings are not enforced
   (`approvalEnforcement: not-enforced`), the step, the review and the agent
@@ -3274,8 +3274,8 @@ sent choices first.
 A `url_elicitation_request` is read off the status message's metadata
 (`readUrlElicitationRequest` in `agent-platform-common`) and renders as one
 generic prompt (`UrlElicitationPanel`) in place of the question card, whatever
-it asks for: muster's sign-in, its approval page for a tool call
-(giantswarm/giantswarm#38902), or any later page. The server's `message` is the
+it asks for: muster's sign-in, its approval page for a tool call,
+or any later page. The server's `message` is the
 heading ("Alert Review wants to acknowledge an incident in PagerDuty."), or
 "<server> asks you to open a page so the agent can continue." without one;
 _Open_ (new-tab icon) goes through the external URL consent dialog and names the

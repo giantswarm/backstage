@@ -47,7 +47,7 @@ function renderTab(
     <>
       <ConnectorToolsTab
         server="jira"
-        installation="gazelle"
+        installation="example"
         tools={{
           tools,
           truncated: false,
@@ -86,11 +86,11 @@ function renderRoundTrip(tools: ToolSummary[]) {
   return renderInTestApp(
     <Routes>
       <Route
-        path="/customize/connectors/gazelle/jira"
+        path="/customize/connectors/example/jira"
         element={
           <ConnectorToolsTab
             server="jira"
-            installation="gazelle"
+            installation="example"
             tools={{
               tools,
               truncated: false,
@@ -102,12 +102,12 @@ function renderRoundTrip(tools: ToolSummary[]) {
         }
       />
       <Route
-        path="/customize/connectors/gazelle/jira/tools/:tool"
+        path="/customize/connectors/example/jira/tools/:tool"
         element={<ToolPageProbe />}
       />
     </Routes>,
     {
-      initialRouteEntries: ['/customize/connectors/gazelle/jira'],
+      initialRouteEntries: ['/customize/connectors/example/jira'],
       mountedRoutes: { '/customize/connectors': mcpServersRouteRef },
     },
   );
@@ -139,7 +139,7 @@ describe('ConnectorToolsTab', () => {
       within(first).getByRole('link', { name: 'tool_000' }),
     ).toHaveAttribute(
       'href',
-      '/customize/connectors/gazelle/jira/tools/x_jira_tool_000',
+      '/customize/connectors/example/jira/tools/x_jira_tool_000',
     );
     expect(within(first).getByText('Tool number 0')).toBeInTheDocument();
     expect(within(first).getByText('Reads')).toBeInTheDocument();
@@ -156,7 +156,7 @@ describe('ConnectorToolsTab', () => {
     );
     expect(toolRows()[0]).toHaveAttribute(
       'href',
-      '/customize/connectors/gazelle/jira/tools/x_jira_tool_299?q=tool_299',
+      '/customize/connectors/example/jira/tools/x_jira_tool_299?q=tool_299',
     );
   });
 
@@ -168,7 +168,7 @@ describe('ConnectorToolsTab', () => {
     expect(screen.getByText('20 tools shown, 180 more')).toBeInTheDocument();
     expect(toolRows()[0]).toHaveAttribute(
       'href',
-      '/customize/connectors/gazelle/jira/tools/x_jira_tool_001?effect=changes',
+      '/customize/connectors/example/jira/tools/x_jira_tool_001?effect=changes',
     );
   });
 
@@ -342,7 +342,7 @@ describe('ConnectorToolsTab: tool approval', () => {
     return renderInTestApp(
       <ConnectorToolsTab
         server="jira"
-        installation="gazelle"
+        installation="example"
         tools={{
           tools,
           truncated: false,
@@ -350,7 +350,7 @@ describe('ConnectorToolsTab: tool approval', () => {
           shortName: name => name.replace(/^x_jira_/, ''),
         }}
         emptyExplanation={{ text: 'No tools.', tone: 'neutral' }}
-        settingsHref="/customize/connectors/gazelle/jira/edit/verify"
+        settingsHref="/customize/connectors/example/jira/edit/verify"
         {...props}
       />,
       {
@@ -455,7 +455,7 @@ describe('ConnectorToolsTab: tool approval', () => {
     expect(screen.getByText('Allow — not reviewed')).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: 'Review tool settings' }),
-    ).toHaveAttribute('href', '/customize/connectors/gazelle/jira/edit/verify');
+    ).toHaveAttribute('href', '/customize/connectors/example/jira/edit/verify');
     // Said once above the list, not on every row.
     expect(screen.queryByText('Not reviewed')).toBeNull();
   });
@@ -578,7 +578,7 @@ describe('ConnectorToolsTab: Allowed for', () => {
     return renderInTestApp(
       <ConnectorToolsTab
         server="jira"
-        installation="gazelle"
+        installation="example"
         tools={{
           tools,
           truncated: false,
@@ -627,7 +627,7 @@ describe('ConnectorToolsTab: Allowed for', () => {
     expect(callTool).toHaveBeenCalledWith(
       'x_agent-manager_list_approval_grants',
       { server: 'jira' },
-      'gazelle',
+      'example',
     );
     expect(screen.queryByText(/Could not read which agents/)).toBeNull();
   });

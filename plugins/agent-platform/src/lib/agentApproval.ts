@@ -1,5 +1,5 @@
 /**
- * An agent's tool approval (giantswarm/giantswarm#38902, milestone 2): the
+ * An agent's tool approval: the
  * settings on its tool list's entries (`Allow`, `Ask`, `Block`) and the
  * list's default, as the portal edits and shows them. muster decides and
  * enforces; agent-manager stores the list and the exceptions (grants). The
@@ -79,7 +79,7 @@ function isToolEntry(item: unknown): item is AgentToolEntry {
 
 /**
  * The field of `get_agent` / `list_agents` that carries the agent's tool list
- * with its settings (decision #86: `tools` stays the kagent bindings). One
+ * with its settings (`tools` stays the kagent bindings). One
  * name here, so a rename in the contract is a one-line change.
  */
 export const TOOL_LIST_FIELD = 'toolSettings' as const;
@@ -475,7 +475,7 @@ export function exceptionsNote(
 
 /**
  * Why a tool's *Allow* pill cannot be picked, or undefined when it can. An
- * `Allow` never lifts a built-in or a governance `Ask` (decision #79), and
+ * `Allow` never lifts a built-in or a governance `Ask`, and
  * over a connector's `Ask` it is an exception only that connector's admins
  * grant, live (a release in git carries none).
  */

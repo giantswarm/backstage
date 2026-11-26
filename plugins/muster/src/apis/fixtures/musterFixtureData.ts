@@ -741,8 +741,7 @@ function approvalToolKeyOf(
 }
 
 /**
- * A served tool with its approval as muster reports it (tool approval,
- * slice 1): its own entry, else the connector's rule (*New*), else `allow`,
+ * A served tool with its approval as muster reports it (tool approval): its own entry, else the connector's rule (*New*), else `allow`,
  * not reviewed. The guest administers muster's own connectors, never an
  * organization's.
  */

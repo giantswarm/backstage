@@ -6,7 +6,7 @@ import { musterApiRef, type MusterApi } from '../apis';
 
 /**
  * One agent that may skip an `Ask` of the connector, as agent-manager
- * records it (`list_approval_grants`, tool approval milestone 2).
+ * records it (`list_approval_grants`, tool approval).
  */
 export type ApprovalGrant = {
   agent?: { namespace: string; name: string };

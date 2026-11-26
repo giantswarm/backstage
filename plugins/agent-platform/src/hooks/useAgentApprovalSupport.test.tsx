@@ -26,7 +26,7 @@ describe('useAgentApprovalSupport', () => {
       .mockResolvedValueOnce({ inputSchema: { properties: { tools: {} } } })
       .mockRejectedValue(new Error('muster answered 503'));
     const client = new QueryClient();
-    const { result } = renderHook(() => useAgentApprovalSupport('gazelle'), {
+    const { result } = renderHook(() => useAgentApprovalSupport('example'), {
       wrapper: wrapperFor({ describeTool }, client),
     });
     await waitFor(() => expect(result.current).toBe('supported'));
@@ -46,7 +46,7 @@ describe('useAgentApprovalReport', () => {
       agentTools: { entries: ['server:x'], settings: [] },
     }));
     const { result } = renderHook(
-      () => useAgentApprovalReport('gazelle', { tools: ['server:x'] }),
+      () => useAgentApprovalReport('example', { tools: ['server:x'] }),
       { wrapper: wrapperFor({ filterTools } as never, new QueryClient()) },
     );
     await waitFor(() => expect(result.current.status).toBe('ready'));
@@ -65,7 +65,7 @@ describe('useAgentApprovalReport', () => {
       toolset: ['server:x'],
     }));
     const { result } = renderHook(
-      () => useAgentApprovalReport('gazelle', { tools: ['server:x'] }),
+      () => useAgentApprovalReport('example', { tools: ['server:x'] }),
       { wrapper: wrapperFor({ filterTools } as never, new QueryClient()) },
     );
     await waitFor(() => expect(result.current.status).toBe('unsupported'));

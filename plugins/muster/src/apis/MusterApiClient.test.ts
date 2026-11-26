@@ -25,7 +25,7 @@ import type { ExternalUrlConsentApi } from '@giantswarm/backstage-plugin-ui-reac
 
 const HEADER = 'backstage-muster-authorization';
 
-// gazelle is the home installation: its cluster entry mints through the main
+// example is the home installation: its cluster entry mints through the main
 // provider. golem is another installation with its own Dex. wombat is
 // configured for muster but unknown to the kubernetes API. `open` needs no
 // token at all.
@@ -33,10 +33,10 @@ const CLUSTERS: Record<
   string,
   { name: string; authProvider: string; oidcTokenProvider?: string }
 > = {
-  gazelle: {
-    name: 'gazelle',
+  example: {
+    name: 'example',
     authProvider: 'oidc',
-    oidcTokenProvider: 'oidc-gazelle',
+    oidcTokenProvider: 'oidc-example',
   },
   golem: {
     name: 'golem',
@@ -63,7 +63,7 @@ function signedInConfigData(legacy: boolean) {
       : {}),
     muster: {
       installations: [
-        { name: 'gazelle', authProvider: 'mcp-muster' },
+        { name: 'example', authProvider: 'mcp-muster' },
         { name: 'golem', authProvider: 'mcp-muster' },
         { name: 'wombat', authProvider: 'mcp-muster' },
         { name: 'open' },
@@ -373,7 +373,7 @@ function setup(options: SetupOptions = {}) {
       data: configData(
         options.mainProvider === null
           ? undefined
-          : (options.mainProvider ?? 'oidc-gazelle'),
+          : (options.mainProvider ?? 'oidc-example'),
       ),
     }),
     authProvidersApi,
@@ -413,12 +413,12 @@ describe('MusterApiClient token selection', () => {
   it('sends the main-login token to the home installation', async () => {
     const t = setup();
 
-    await t.client.filterTools({ installation: 'gazelle', limit: 1 });
+    await t.client.filterTools({ installation: 'example', limit: 1 });
 
     expect(t.sentHeaders()?.[HEADER]).toBe('main-id-token');
-    expect(t.getCluster).toHaveBeenCalledWith('gazelle');
+    expect(t.getCluster).toHaveBeenCalledWith('example');
     expect(t.getBrokeredCredentials).not.toHaveBeenCalled();
-    expect(t.fetchMock.mock.calls[0][0]).toContain('installation=gazelle');
+    expect(t.fetchMock.mock.calls[0][0]).toContain('installation=example');
   });
 
   it("sends the installation's brokered token to any other installation", async () => {
@@ -512,11 +512,11 @@ describe('MusterApiClient token selection', () => {
     const t = setup({ main: {} });
 
     await expect(
-      t.client.filterTools({ installation: 'gazelle', limit: 1 }),
+      t.client.filterTools({ installation: 'example', limit: 1 }),
     ).rejects.toMatchObject({
       name: 'MusterTokenMintError',
       reason: 'session-expired',
-      installation: 'gazelle',
+      installation: 'example',
     });
     expect(t.fetchMock).not.toHaveBeenCalled();
   });
@@ -525,7 +525,7 @@ describe('MusterApiClient token selection', () => {
     const valid = idToken(Date.now() / 1000 + 600);
     const t = setup({ main: { token: valid } });
 
-    await t.client.filterTools({ installation: 'gazelle', limit: 1 });
+    await t.client.filterTools({ installation: 'example', limit: 1 });
 
     expect(t.sentHeaders()?.[HEADER]).toBe(valid);
   });
@@ -534,11 +534,11 @@ describe('MusterApiClient token selection', () => {
     const t = setup({ main: { token: idToken(Date.now() / 1000 - 1) } });
 
     await expect(
-      t.client.filterTools({ installation: 'gazelle', limit: 1 }),
+      t.client.filterTools({ installation: 'example', limit: 1 }),
     ).rejects.toMatchObject({
       name: 'MusterTokenMintError',
       reason: 'session-expired',
-      installation: 'gazelle',
+      installation: 'example',
       message: SESSION_EXPIRED_MESSAGE,
     });
     expect(t.fetchMock).not.toHaveBeenCalled();
@@ -547,7 +547,7 @@ describe('MusterApiClient token selection', () => {
   it('reports a main-login token that is expired after the auth API answered as a gone session to signIn', async () => {
     const t = setup({ main: { token: idToken(Date.now() / 1000 - 1) } });
 
-    await expect(t.client.signIn('gazelle')).resolves.toBe(false);
+    await expect(t.client.signIn('example')).resolves.toBe(false);
   });
 
   it("turns muster's expired-token answer into the sign-in prompt, never its raw text", async () => {
@@ -563,11 +563,11 @@ describe('MusterApiClient token selection', () => {
     );
 
     await expect(
-      t.client.callTool('x_workspace-manager_list_workspaces', {}, 'gazelle'),
+      t.client.callTool('x_workspace-manager_list_workspaces', {}, 'example'),
     ).rejects.toMatchObject({
       name: 'MusterTokenMintError',
       reason: 'session-expired',
-      installation: 'gazelle',
+      installation: 'example',
       message: SESSION_EXPIRED_MESSAGE,
     });
   });
@@ -585,7 +585,7 @@ describe('MusterApiClient token selection', () => {
       t.client.callToolWithProgress(
         'x_agent-manager_create_agent',
         {},
-        { installation: 'gazelle', onProgress: () => {} },
+        { installation: 'example', onProgress: () => {} },
       ),
     ).rejects.toMatchObject({
       name: 'MusterTokenMintError',
@@ -622,7 +622,7 @@ describe('MusterApiClient.getAuthStatus', () => {
     const t = setup();
     t.fetchMock.mockResolvedValue(okResponse(status));
 
-    await expect(t.client.getAuthStatus('gazelle')).resolves.toEqual(status);
+    await expect(t.client.getAuthStatus('example')).resolves.toEqual(status);
     expect(t.getMainCredentials).toHaveBeenCalledWith('mcp-muster', {
       optional: true,
     });
@@ -632,10 +632,10 @@ describe('MusterApiClient.getAuthStatus', () => {
   it('fails as a gone session, before any request, once the portal session has expired', async () => {
     const t = setup({ main: {} });
 
-    await expect(t.client.getAuthStatus('gazelle')).rejects.toMatchObject({
+    await expect(t.client.getAuthStatus('example')).rejects.toMatchObject({
       name: 'MusterTokenMintError',
       reason: 'session-expired',
-      installation: 'gazelle',
+      installation: 'example',
     });
     expect(t.fetchMock).not.toHaveBeenCalled();
     // Only the optional read: a plain one is what opens the login dialog.
@@ -648,7 +648,7 @@ describe('MusterApiClient.getAuthStatus', () => {
   it('treats a main-login token past its exp as a gone session', async () => {
     const t = setup({ main: { token: idToken(Date.now() / 1000 - 1) } });
 
-    await expect(t.client.getAuthStatus('gazelle')).rejects.toMatchObject({
+    await expect(t.client.getAuthStatus('example')).rejects.toMatchObject({
       reason: 'session-expired',
     });
     expect(t.fetchMock).not.toHaveBeenCalled();
@@ -681,11 +681,11 @@ describe('MusterApiClient.getAuthStatus', () => {
         getBaseUrl: jest.fn().mockResolvedValue('http://backend/api/muster'),
       },
       fetchApi: { fetch: fetchMock },
-      configApi: mockApis.config({ data: configData('oidc-gazelle') }),
+      configApi: mockApis.config({ data: configData('oidc-example') }),
       authProvidersApi: new MusterAuthProviders({}, { getIdToken }),
     });
 
-    await expect(client.getAuthStatus('gazelle')).rejects.toMatchObject({
+    await expect(client.getAuthStatus('example')).rejects.toMatchObject({
       reason: 'session-expired',
     });
     expect(getIdToken).toHaveBeenCalledTimes(1);
@@ -698,7 +698,7 @@ describe('MusterApiClient.signIn', () => {
   it('mints the main-login token for the home installation', async () => {
     const t = setup();
 
-    await expect(t.client.signIn('gazelle')).resolves.toBe(true);
+    await expect(t.client.signIn('example')).resolves.toBe(true);
     expect(t.getMainCredentials).toHaveBeenCalledWith('mcp-muster');
     expect(t.getBrokeredCredentials).not.toHaveBeenCalled();
   });
@@ -722,7 +722,7 @@ describe('MusterApiClient.signIn', () => {
   it('reports a gone main session as false', async () => {
     const t = setup({ main: {} });
 
-    await expect(t.client.signIn('gazelle')).resolves.toBe(false);
+    await expect(t.client.signIn('example')).resolves.toBe(false);
   });
 
   it('succeeds without minting when the installation needs no token', async () => {
@@ -761,7 +761,7 @@ describe('MusterApiClient token selection for derived installations', () => {
         return {
           name,
           authProvider: 'oidc',
-          oidcTokenProvider: 'oidc-gazelle',
+          oidcTokenProvider: 'oidc-example',
         };
       }
       return CLUSTERS[name];
@@ -793,7 +793,7 @@ describe('MusterApiClient token selection for derived installations', () => {
     await t.client.listServers('home2');
 
     expect(t.headersOf('/servers')?.[HEADER]).toBe('main-id-token');
-    expect(t.getMainCredentials).toHaveBeenCalledWith('oidc-gazelle');
+    expect(t.getMainCredentials).toHaveBeenCalledWith('oidc-example');
     expect(t.getBrokeredCredentials).not.toHaveBeenCalled();
   });
 
@@ -863,7 +863,7 @@ describe('MusterApiClient.filterTools toolset arguments', () => {
     const t = setup();
 
     await t.client.filterTools({
-      installation: 'gazelle',
+      installation: 'example',
       toolset: ['preset:read-only', 'workflow:incident-triage'],
       includePresets: true,
       limit: 1000,
@@ -885,7 +885,7 @@ describe('MusterApiClient.filterTools toolset arguments', () => {
     const t = setup();
     const toolset = [`tool:${'é'.repeat(4093)}x`];
     expect(encodeURIComponent(toolset[0]).length).toBeGreaterThan(16 * 1024);
-    await t.client.filterTools({ installation: 'gazelle', toolset });
+    await t.client.filterTools({ installation: 'example', toolset });
     const [url, options] = t.fetchMock.mock.calls[0];
     expect(String(url)).not.toContain('toolset=');
     expect(JSON.parse((options as RequestInit).body as string)).toEqual({
@@ -899,7 +899,7 @@ describe('MusterApiClient.filterTools toolset arguments', () => {
       tools: ['server:github', { 'tool:x_github_merge': 'Block' }],
       default: 'Ask',
     };
-    await t.client.filterTools({ installation: 'gazelle', agentTools });
+    await t.client.filterTools({ installation: 'example', agentTools });
     const [url, options] = t.fetchMock.mock.calls[0];
     expect(new URL(String(url)).pathname).toBe('/api/muster/tools/filter');
     expect((options as RequestInit).method).toBe('POST');
@@ -911,7 +911,7 @@ describe('MusterApiClient.filterTools toolset arguments', () => {
   it('sends neither parameter when the caller gives no toolset', async () => {
     const t = setup();
 
-    await t.client.filterTools({ installation: 'gazelle', limit: 1 });
+    await t.client.filterTools({ installation: 'example', limit: 1 });
 
     const url = new URL(String(t.fetchMock.mock.calls[0][0]));
     expect(url.searchParams.has('toolset')).toBe(false);
@@ -935,7 +935,7 @@ function lifetimeToken(
       .replace(/\//g, '_')
       .replace(/=+$/, '');
   return `${b64url({ alg: 'RS256' })}.${b64url({
-    iss: 'https://dex.gazelle.example.io',
+    iss: 'https://dex.example.example.io',
     sub,
     iat: Math.floor(iat),
     exp: Math.floor(exp),
@@ -973,7 +973,7 @@ describe('MusterApiClient 401 answers', () => {
     );
 
     const error: unknown = await t.client
-      .callTool('x_cluster-manager_list_clusters', {}, 'gazelle')
+      .callTool('x_cluster-manager_list_clusters', {}, 'example')
       .catch(e => e);
 
     expect(error).toBeInstanceOf(MusterUnauthorizedError);
@@ -981,11 +981,11 @@ describe('MusterApiClient 401 answers', () => {
       name: 'UnauthorizedError',
       reason: 'server_sign_in_required',
       server: 'cluster-manager',
-      installation: 'gazelle',
+      installation: 'example',
     });
     expect(musterSignInRequiredOf(error)).toEqual({
       server: 'cluster-manager',
-      installation: 'gazelle',
+      installation: 'example',
     });
     expect(t.fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -1008,7 +1008,7 @@ describe('MusterApiClient 401 answers', () => {
       .mockResolvedValueOnce(okResponse({ clusters: [] }));
 
     await expect(
-      t.client.callTool('x_cluster-manager_list_clusters', {}, 'gazelle'),
+      t.client.callTool('x_cluster-manager_list_clusters', {}, 'example'),
     ).resolves.toEqual({ clusters: [] });
 
     expect(sentTokens(t.fetchMock)).toEqual([old, fresh]);
@@ -1059,7 +1059,7 @@ describe('MusterApiClient 401 answers', () => {
     );
 
     const error: unknown = await t.client
-      .callTool('x_cluster-manager_list_clusters', {}, 'gazelle')
+      .callTool('x_cluster-manager_list_clusters', {}, 'example')
       .catch(e => e);
 
     expect(error).toMatchObject({
@@ -1078,7 +1078,7 @@ describe('MusterApiClient 401 answers', () => {
     );
 
     await expect(
-      t.client.callTool('x_cluster-manager_list_clusters', {}, 'gazelle'),
+      t.client.callTool('x_cluster-manager_list_clusters', {}, 'example'),
     ).rejects.toMatchObject({
       name: 'MusterTokenMintError',
       reason: 'session-expired',
@@ -1096,7 +1096,7 @@ describe('MusterApiClient 401 answers', () => {
       }),
     );
 
-    await t.client.filterTools({ installation: 'gazelle', limit: 1 });
+    await t.client.filterTools({ installation: 'example', limit: 1 });
 
     expect(sentTokens(t.fetchMock)).toEqual([fresh]);
     expect(t.getMainCredentials).toHaveBeenCalledWith('mcp-muster', {
@@ -1115,9 +1115,9 @@ describe('MusterApiClient 401 answers', () => {
       }),
     );
 
-    await t.client.filterTools({ installation: 'gazelle', limit: 1 });
-    await t.client.filterTools({ installation: 'gazelle', limit: 1 });
-    await t.client.listServers('gazelle');
+    await t.client.filterTools({ installation: 'example', limit: 1 });
+    await t.client.filterTools({ installation: 'example', limit: 1 });
+    await t.client.listServers('example');
 
     expect(sentTokens(t.fetchMock)).toEqual([fresh, fresh, fresh]);
     const refreshes = t.getMainCredentials.mock.calls.filter(
@@ -1131,8 +1131,8 @@ describe('MusterApiClient 401 answers', () => {
     const closing = lifetimeToken(now() - 1600, now() + 200, 'closing');
     const t = setup({ main: { token: closing } });
 
-    await t.client.filterTools({ installation: 'gazelle', limit: 1 });
-    await t.client.filterTools({ installation: 'gazelle', limit: 1 });
+    await t.client.filterTools({ installation: 'example', limit: 1 });
+    await t.client.filterTools({ installation: 'example', limit: 1 });
 
     expect(sentTokens(t.fetchMock)).toEqual([closing, closing]);
     const refreshes = t.getMainCredentials.mock.calls.filter(
@@ -1161,8 +1161,8 @@ describe('MusterApiClient 401 answers', () => {
       .mockResolvedValueOnce({ token: other })
       .mockResolvedValueOnce({ token: otherFresh });
 
-    await t.client.filterTools({ installation: 'gazelle', limit: 1 });
-    await t.client.filterTools({ installation: 'gazelle', limit: 1 });
+    await t.client.filterTools({ installation: 'example', limit: 1 });
+    await t.client.filterTools({ installation: 'example', limit: 1 });
 
     expect(sentTokens(t.fetchMock)).toEqual([fresh, otherFresh]);
   });
@@ -1202,7 +1202,7 @@ describe('isMusterAuthFailure', () => {
     });
     expect(
       isMusterAuthFailure(
-        new MusterTokenMintError('gazelle', 'session-expired', 'expired'),
+        new MusterTokenMintError('example', 'session-expired', 'expired'),
       ),
     ).toBe(true);
     // A broker hiccup may well pass the next time.

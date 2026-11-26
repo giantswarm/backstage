@@ -155,8 +155,7 @@ export type AgentSpec = {
    */
   toolset?: string[];
   /**
-   * The agent's tool list with its approval settings (tool approval,
-   * milestone 2): each entry a selector, or `{selector: Allow|Ask|Block}`.
+   * The agent's tool list with its approval settings (tool approval): each entry a selector, or `{selector: Allow|Ask|Block}`.
    * `create_agent` refuses an `Allow` over a connector's `Ask`; those are
    * granted afterwards with `set_agent_approval`.
    */
@@ -814,7 +813,7 @@ export type AgentManagerAgent = {
   tools?: AgentToolBinding[];
   /**
    * The agent's tool list as stored, with its approval settings (tool
-   * approval; working name of decision #86). Read through `agentToolListOf`,
+   * approval). Read through `agentToolListOf`,
    * which names the field once.
    */
   toolSettings?: unknown;
@@ -823,8 +822,7 @@ export type AgentManagerAgent = {
   /** The agent's grants that hold. */
   grants?: AgentApprovalGrant[];
   /**
-   * The HelmRelease's `metadata.generation` as read (working name, slice 3
-   * fix round): what a write's `expectedGeneration` names. Read through
+   * The HelmRelease's `metadata.generation` as read: what a write's `expectedGeneration` names. Read through
    * `agentGenerationOf`.
    */
   generation?: number;
