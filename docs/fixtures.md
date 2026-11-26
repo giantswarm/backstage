@@ -217,8 +217,13 @@ arguments and refuse each other's in muster's words before writing
   `tools` and `default` on `create_agent`, splits `update_agent` (what an
   agent is) from `update_agent_access` (what it can reach) in its words,
   refuses an `Allow` over a connector's `Ask` there, and grants one with
-  `set_agent_approval` only for a connector the guest is admin of. Every
-  save drops the grants of connectors the guest is no admin of. The last
+  `set_agent_approval` only for a connector the guest is admin of, recording
+  the tools a grant covers. Every save drops the grants of connectors the
+  guest is no admin of. `get_agent` reports the release `generation`; the
+  write tools refuse a stale `expectedGeneration` with agent-manager's
+  `conflict`. `list_approval_grants` without a namespace lists every
+  namespace the guest manages agents in and names the others `unreadable`;
+  muster lifts a grant only for the tools it names. The last
   ready agent of an organization starts with an exception on its
   organization's `wiki` connector granted by `dana@example.com`, so its
   Tools step, its page, the connector's _Allowed for_ and the pre-save note

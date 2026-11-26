@@ -435,9 +435,11 @@ settings; it decides nothing.
   "Connector's rule"), _New_, and an _Approval_ filter (a blocked tool's row
   counts under no effect in _What it does_, as it shows none). _Allowed for:
   agent (by person)_ names the agents that may skip a tool's Ask, from
-  agent-manager's `list_approval_grants` with the connector's server key, per
-  namespace `get_info` reports as managed; an exception on a broader entry
-  (the whole connector, a preset, the default) is named once above the list.
+  agent-manager's `list_approval_grants` with the connector's server key and
+  no namespace (every namespace the person may read; a grant's `tools` say
+  which tools it covers, names are `agentDisplayName`). Unreadable namespaces
+  or a failed read say that agents may be allowed without being named here,
+  never "nobody".
   A connector nobody reviewed
   (no settings, or a create's rule alone, where muster reports every tool
   _New_) says once above the list what every tool does until then (_Allow —
@@ -489,10 +491,23 @@ through agent-manager:
   with a link to the Tools tab. Both from `get_agent`'s tool list, default
   and grants, reported by muster for the viewer.
 - `get_agent` keeps `tools` for the kagent bindings; the tool list with
-  settings is read from one field (`TOOL_LIST_FIELD`, working name
-  `toolSettings`, decision #86) next to `defaultApproval`, `grants` and
-  `approvalSettings`. Where agent-manager says the settings are not enforced
-  (`approvalEnforced: false`), the step and the page say so.
+  settings is read from one field (`TOOL_LIST_FIELD`, `toolSettings`,
+  decision #86) next to `defaultApproval`, `grants` (each with the `tools`
+  it covers, forwarded to muster), `approvalSettings`, `approvalEnforced`
+  and `generation`. Where the settings are not enforced, the step, the
+  review and the agent page say so.
+- **Stale saves**: every write carries `expectedGeneration` from the read;
+  right before a save the review reads the agent again and saves nothing
+  when its list, default, grants or generation moved ("This agent changed
+  since you opened it", with a reload). agent-manager's `conflict` reads the
+  same. The pre-save note uses the grants as read now.
+- **Unknown support**: a failed re-read of agent-manager's schema keeps the
+  answer read before; with no answer at all, an agent with settings (or a
+  draft with settings) is not saved rather than written as a bare list.
+- **Partial saves** say what landed and what did not, per write; after a
+  save agent-manager could not finish (`sessionsUpdated: false`,
+  `warnings`) the review stays and says so. A create whose exceptions are
+  refused offers the created agent, never a second create.
 
 ### Models
 
