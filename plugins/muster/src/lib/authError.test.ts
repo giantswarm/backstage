@@ -60,7 +60,19 @@ describe('connectorSaveErrorMessage', () => {
     expect(isForbiddenError(rbac)).toBe(true);
     expect(connectorSaveErrorMessage(rbac)).toBe(NO_EDIT_RIGHTS_MESSAGE);
     expect(NO_EDIT_RIGHTS_MESSAGE).toMatch(/don't have rights to edit/);
-    expect(isForbiddenError(new Error('forbidden: nope'))).toBe(true);
+  });
+
+  it('reads only the apiserver RBAC refusal as no rights, not other refusals that say forbidden', () => {
+    for (const other of [
+      'forbidden: nope',
+      'HTTP 403: governance is not configured for this server',
+      'admission webhook "approval.muster.io" denied the request: tool approval is forbidden here',
+      'Failed to update MCP server: spec.approval is forbidden: approval settings need muster 5.66 or later',
+      'cannot update resource while the server is being deleted',
+    ]) {
+      expect(isForbiddenError(new Error(other))).toBe(false);
+      expect(connectorSaveErrorMessage(new Error(other))).toBe(other);
+    }
   });
 
   it('keeps other errors, and a missing session, as they were', () => {

@@ -35,13 +35,15 @@ export function mutationErrorMessage(error: unknown): string {
 
 /**
  * Whether muster refused a write because the person may not make it: the
- * apiserver's RBAC refusal (`… is forbidden: User "x" cannot update resource
- * "mcpservers" …`, which muster passes on), a `forbidden:` prefix or an HTTP
- * 403. A 401 is a missing session, not this.
+ * apiserver's RBAC refusal, which muster passes on (`… is forbidden: User "x"
+ * cannot update resource "mcpservers" …`), and nothing looser. A refusal for
+ * another reason that happens to say "forbidden" or carry a 403 (a governance
+ * or approval prerequisite, an admission webhook's denial) is not it and keeps
+ * its own message, as does a 401, which is a missing session.
  */
 export function isForbiddenError(error: unknown): boolean {
   const message = (error as { message?: string } | null | undefined)?.message;
-  return /\bis forbidden\b|^forbidden:|\bHTTP 403\b|\bcannot (?:update|patch|create|delete) resource\b/im.test(
+  return /\bis forbidden: User "[^"]*" cannot (?:update|patch|create|delete) resource\b/.test(
     message ?? '',
   );
 }

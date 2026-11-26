@@ -1149,7 +1149,11 @@ describe('NewConnectorTestPage: Test & Tools', () => {
     connectedWith(approvalTools());
     callTool.mockImplementation((name: string) =>
       name === 'core_mcpserver_set_approval'
-        ? Promise.reject(new Error('mcpservers "jira" is forbidden.'))
+        ? Promise.reject(
+            new Error(
+              'mcpservers.muster.giantswarm.io "jira" is forbidden: User "dev@lab.local" cannot update resource "mcpservers" in API group "muster.giantswarm.io" in the namespace "muster"',
+            ),
+          )
         : Promise.resolve({}),
     );
 
@@ -1170,6 +1174,31 @@ describe('NewConnectorTestPage: Test & Tools', () => {
       expect(screen.queryByText('Test the connection')).not.toBeInTheDocument(),
     );
     expect(setApprovalCalls()).toHaveLength(2);
+  });
+
+  it('keeps the reason of a save refused for another cause, forbidden or not, as muster gave it', async () => {
+    connectedWith(approvalTools());
+    callTool.mockImplementation((name: string) =>
+      name === 'core_mcpserver_set_approval'
+        ? Promise.reject(
+            new Error(
+              'spec.approval is forbidden: approval settings need muster 5.66 or later',
+            ),
+          )
+        : Promise.resolve({}),
+    );
+
+    await renderTestStep();
+    await screen.findByText('Everything runs.');
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+    expect(
+      await screen.findByText(/approval settings need muster 5\.66 or later/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/don't have rights to edit/)).toBeNull();
+    expect(
+      screen.getByText(/Nothing changed; press Done to try again/),
+    ).toBeInTheDocument();
   });
 
   it('shows the settings as they are where muster cannot save them yet', async () => {

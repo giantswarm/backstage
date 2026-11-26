@@ -44,7 +44,7 @@ describe('MoreActionsMenu', () => {
     expect(onEdit).toHaveBeenCalled();
   });
 
-  it('says why a disabled item is unavailable, on hover and to a screen reader', async () => {
+  it('says why a disabled item is unavailable, as visible text and as its one accessible description', async () => {
     await renderInTestApp(
       <MoreActionsMenu
         items={[
@@ -64,9 +64,7 @@ describe('MoreActionsMenu', () => {
     expect(item).toHaveAccessibleDescription(
       "You don't have rights to edit it.",
     );
-    expect(screen.getByText('Change settings')).toHaveAttribute(
-      'title',
-      "You don't have rights to edit it.",
-    );
+    expect(screen.getByText("You don't have rights to edit it.")).toBeVisible();
+    expect(item).not.toHaveAttribute('aria-description');
   });
 });

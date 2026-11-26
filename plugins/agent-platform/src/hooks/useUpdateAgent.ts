@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import {
+  APPROVAL_AFTER_SAVE_PREFIX,
   AgentManagerError,
   AgentManagerNotConnectedError,
   agentGenerationOf,
@@ -94,7 +95,7 @@ function approvalAfterSaveError(
   if (error instanceof AgentManagerError) {
     return new AgentManagerError(
       error.code,
-      `Saved: every other change, the tool list included. Not saved (set_agent_approval refused it): ${approvalChangeLine(
+      `${APPROVAL_AFTER_SAVE_PREFIX} Not saved (set_agent_approval refused it): ${approvalChangeLine(
         approval,
       )}. ${error.message} Reload the agent before trying again.`,
       { cause: error },
@@ -209,10 +210,35 @@ export function useUpdateAgent(
         : undefined;
       if (approval) {
         try {
+          // After a write whose answer carries no generation, read it again:
+          // the settings must not go out unconditioned over a save by someone
+          // else in between.
+          let generation = agentGenerationOf(result?.agent);
+          if (
+            result &&
+            update.expectedGeneration !== undefined &&
+            generation === undefined
+          ) {
+            const after = await agentManager.getAgentStatus(
+              update.namespace,
+              update.name,
+            );
+            generation = agentGenerationOf(after.agent);
+            if (generation === undefined) {
+              throw new AgentManagerError(
+                'conflict',
+                "The agent's generation could not be read after the write, so the settings were not written over a possible change by someone else.",
+              );
+            }
+          }
           const set = await agentManager.setAgentApproval(
             update.namespace,
             update.name,
-            withGeneration(approval, update, result),
+            withGeneration(
+              approval,
+              update,
+              generation === undefined ? result : { agent: { generation } },
+            ),
           );
           return {
             ...result,

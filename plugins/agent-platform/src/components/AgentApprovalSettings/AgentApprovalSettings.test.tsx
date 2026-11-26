@@ -241,6 +241,24 @@ describe('ApprovalChartRefusal', () => {
   });
 });
 
+describe('ApprovalChartRefusal after the tool list was saved', () => {
+  it('says the settings were not saved but the rest of the edit was, not that nothing was', async () => {
+    await renderInTestApp(
+      <ApprovalChartRefusal
+        failure={{
+          code: 'unsupported',
+          message:
+            'Saved: every other change, the tool list included. Not saved (set_agent_approval refused it): github merge Allow. the agent chart 1.4.0 has no tool approval settings (tools, default); use a chart that has them Reload the agent before trying again.',
+        }}
+      />,
+    );
+    expect(
+      screen.getByText(/Every other change, the tool list included, was saved/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/so nothing was saved/)).not.toBeInTheDocument();
+  });
+});
+
 describe('AgentApprovalSettings while the settings wait for the rollout', () => {
   it('says they apply once the agent has rolled out, as information', async () => {
     await renderInTestApp(

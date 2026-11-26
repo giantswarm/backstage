@@ -1138,3 +1138,21 @@ export function noApprovalChartRefusal(
   );
   return match ? { chart: match[1] } : undefined;
 }
+
+/**
+ * What an approval refusal after the rest of an edit landed begins with
+ * (`useUpdateAgent`): the tool list and every other change were written, only
+ * the approval settings were not.
+ */
+export const APPROVAL_AFTER_SAVE_PREFIX =
+  'Saved: every other change, the tool list included.';
+
+/**
+ * Whether a refusal of the approval settings came after the rest of the edit
+ * landed, so the agent is changed and only the settings are missing.
+ */
+export function approvalRefusedAfterSave(
+  failure: { message: string } | undefined,
+): boolean {
+  return failure?.message.startsWith(APPROVAL_AFTER_SAVE_PREFIX) ?? false;
+}

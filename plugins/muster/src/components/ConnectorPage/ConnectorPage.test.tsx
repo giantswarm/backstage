@@ -854,10 +854,7 @@ describe('ConnectorPage', () => {
       expect(item).not.toHaveAttribute('href');
       expect(item).toHaveAccessibleDescription(/don't have rights to edit/);
 
-      expect(within(item).getByText('Change tool settings')).toHaveAttribute(
-        'title',
-        expect.stringMatching(/Ask a connector admin/),
-      );
+      expect(within(item).getByText(/Ask a connector admin/)).toBeVisible();
     });
 
     it('leaves Edit enabled where muster does not say, and a refused save explains', async () => {
@@ -868,9 +865,31 @@ describe('ConnectorPage', () => {
       await userEvent.click(
         screen.getByRole('button', { name: 'More actions' }),
       );
+      // Enabled, leading to the step, where Edit is: a refused save says why.
+      const item = screen.getByRole('menuitem', {
+        name: 'Change tool settings',
+      });
+      expect(item).not.toHaveAttribute('aria-disabled', 'true');
+      expect(item).toHaveAttribute('href', `${BASE}/jira/edit/verify`);
+    });
+
+    it('offers Change tool settings, enabled, for a connector that lists no tool (a Block rule hides them all)', async () => {
+      const api = makeApi();
+      api.filterTools.mockResolvedValue({
+        total: 0,
+        filtered_count: 0,
+        truncated: false,
+        tools: [],
+      });
+      await renderAt(`${BASE}/jira`, { api });
+
+      expect(await screen.findByRole('button', { name: 'Edit' })).toBeEnabled();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'More actions' }),
+      );
       expect(
-        screen.queryByRole('menuitem', { name: 'Change tool settings' }),
-      ).not.toBeInTheDocument();
+        screen.getByRole('menuitem', { name: 'Change tool settings' }),
+      ).toHaveAttribute('href', `${BASE}/jira/edit/verify`);
     });
   });
 

@@ -1698,6 +1698,28 @@ describe('EditAgentPage: tool approval saves', () => {
     expect(screen.queryByText(/agent detail/)).toBeNull();
   });
 
+  it('does not say nothing was saved when the chart takes no settings and the tool list already landed', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE, {
+      approval: true,
+      approvalError:
+        'unsupported: the agent chart 1.4.0 has no tool approval settings (tools, default); use a chart that has them',
+    });
+    await changeAllAndReview(user);
+    const save = screen.getByRole('button', { name: 'Save changes' });
+    await waitFor(() => expect(save).toBeEnabled());
+    await user.click(save);
+    expect(
+      await screen.findByText(
+        /Every other change, the tool list included, was saved/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/so nothing was saved/)).toBeNull();
+    expect(
+      callsOf(callTool, 'x_agent-manager_update_agent_access'),
+    ).toHaveLength(1);
+  });
+
   it('saves nothing over a change someone else saved meanwhile, and offers a reload', async () => {
     const user = userEvent.setup();
     const { callTool } = await renderEdit(BASE, {

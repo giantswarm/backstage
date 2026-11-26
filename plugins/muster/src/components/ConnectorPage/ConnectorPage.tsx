@@ -431,7 +431,11 @@ function ConnectorPageContent({
       onAction: () => setJsonOpen(true),
     });
   }
-  if (singular && settingsHref && canEdit !== undefined) {
+  // Offered whenever the connector can be edited, enabled unless muster said
+  // the person may not (as Edit is): where that is not known yet (tools
+  // loading, none listed, an older muster) a refused save explains itself, and
+  // the settings step says when muster takes no tool settings.
+  if (singular && settingsHref) {
     menu.push({
       id: 'change-tool-settings',
       label: 'Change tool settings',

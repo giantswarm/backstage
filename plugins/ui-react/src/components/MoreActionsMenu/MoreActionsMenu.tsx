@@ -13,8 +13,9 @@ export type MoreActionsMenuItem = {
   newTab?: boolean;
   isDisabled?: boolean;
   /**
-   * Why a disabled item is unavailable: the tooltip on hover (a native title,
-   * as a disabled item takes no focus) and its accessible description.
+   * Why a disabled item is unavailable: shown as small text under its label
+   * (a disabled item takes no focus, so a hover tooltip would not reach a
+   * keyboard user) and read as its one accessible description.
    */
   disabledReason?: string;
   /** The destructive treatment, for a removal. */
@@ -53,17 +54,23 @@ export function MoreActionsMenu({ items }: MoreActionsMenuProps) {
             rel={item.href && item.newTab ? 'noopener noreferrer' : undefined}
             onAction={item.onAction}
             isDisabled={item.isDisabled}
-            aria-description={item.isDisabled ? item.disabledReason : undefined}
             color={item.danger ? 'danger' : undefined}
           >
             {item.isDisabled && item.disabledReason ? (
-              <span title={item.disabledReason}>
-                {item.label}
-                {/* The menu item's description slot: read as its description, apart from the name. */}
-                <RacText slot="description" style={{ display: 'none' }}>
+              <>
+                <RacText slot="label">{item.label}</RacText>
+                {/* The menu item's description slot: read as its description, apart from the name, and visible. */}
+                <RacText
+                  slot="description"
+                  style={{
+                    display: 'block',
+                    fontSize: '0.75rem',
+                    whiteSpace: 'normal',
+                  }}
+                >
                   {item.disabledReason}
                 </RacText>
-              </span>
+              </>
             ) : (
               item.label
             )}
