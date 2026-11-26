@@ -167,10 +167,15 @@ test('organization create and delete: the create writes one Organization, the di
 
   try {
     await open(admin, '/organizations');
-    await admin.getByRole('button', { name: 'Create organization' }).click();
+    // Exact names: "Name" is also in "Display name (optional)".
+    await admin
+      .getByRole('button', { name: 'Create organization', exact: true })
+      .click();
     const create = admin.getByRole('dialog');
-    await create.getByRole('textbox', { name: 'Name' }).fill(NAME);
-    await create.getByRole('button', { name: 'Create organization' }).click();
+    await create.getByRole('textbox', { name: 'Name', exact: true }).fill(NAME);
+    await create
+      .getByRole('button', { name: 'Create organization', exact: true })
+      .click();
     // The page opens at once, before the operator reports it ready.
     await expect(admin).toHaveURL(new RegExp(`${BASE}$`), { timeout: 60_000 });
     expect(
@@ -182,16 +187,21 @@ test('organization create and delete: the create writes one Organization, the di
     const namespace = await organizationNamespace();
 
     await open(admin, BASE);
-    await admin.getByRole('button', { name: 'Delete organization' }).click();
+    await admin
+      .getByRole('button', { name: 'Delete organization', exact: true })
+      .click();
     const dialog = admin.getByRole('dialog');
-    await expect(dialog.getByText('This erases')).toBeVisible({
+    await expect(dialog.getByText('This erases', { exact: true })).toBeVisible({
       timeout: 60_000,
     });
     await expect(dialog.getByText(/^Kept: /)).toBeVisible();
     await expect(dialog.getByText(/^Running sessions: /)).toBeVisible();
 
-    const confirm = dialog.getByRole('button', { name: 'Delete organization' });
-    const field = dialog.getByLabel(`Type ${NAME} to confirm`);
+    const confirm = dialog.getByRole('button', {
+      name: 'Delete organization',
+      exact: true,
+    });
+    const field = dialog.getByLabel(`Type ${NAME} to confirm`, { exact: true });
     await expect(confirm).toBeDisabled();
     await field.fill(`${NAME}-other`);
     await expect(confirm).toBeDisabled();

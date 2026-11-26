@@ -425,11 +425,16 @@ function fact(page: Page, term: string) {
     .locator('xpath=following-sibling::dd[1]');
 }
 
-/** The Organizations list's row of an organization: its name, then its namespace. */
+/**
+ * The Organizations list's row of an organization, by the link to its page:
+ * a row shows the organization's display name where it has one (the lab's
+ * `default` shows as "Lab"), so its name alone does not find it.
+ */
 function organizationRow(page: Page, name: string) {
   return page
     .getByRole('grid', { name: `Your organizations on ${lab.installation}` })
-    .getByRole('row', { name: new RegExp(`^${name} `) });
+    .getByRole('row')
+    .filter({ has: page.locator(`a[href$="${organizationPath(name)}"]`) });
 }
 
 test.describe('agents per organization', () => {
@@ -524,7 +529,14 @@ test.describe('agents per organization', () => {
       await open(alice, organizationAgent, users.alice);
       await expectAgentRendered(alice);
       await expect(fact(alice, 'Owner')).toHaveText(organization);
-      await expect(fact(alice, 'Created by')).toHaveText(users.alice.email);
+      // The creator's name, with the e-mail it stands for under it.
+      const createdBy = fact(alice, 'Created by');
+      await expect(
+        createdBy.getByText(users.alice.name, { exact: true }),
+      ).toBeVisible();
+      await expect(
+        createdBy.getByText(users.alice.email, { exact: true }),
+      ).toBeVisible();
       await expect(editButton(alice), 'its editor may edit it').toBeVisible();
       await alice.getByRole('button', { name: 'Agent actions' }).click();
       await expect(
