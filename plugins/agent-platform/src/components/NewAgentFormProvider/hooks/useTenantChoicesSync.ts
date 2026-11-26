@@ -53,13 +53,15 @@ export function useTenantChoicesSync(): TenantChoicesSync {
     byOrganization && installation
       ? organizations.organizationsOf(installation)
       : undefined;
-  // The directory keeps its answers for a minute. A step that opens reads
-  // again each answer it holds from before the step opened, into the same
-  // entries, on every installation, picked or not: an organization the
-  // person was added to a moment ago is then a choice, and its models are
-  // read (`useNamespacedResources` reads the same entries), also where they
-  // decide which environments the form offers. An answer read since the step
-  // opened is kept; a read that failed is read again on Check again.
+  // The directory keeps its answers for a minute. When the form opens, it
+  // reads again each answer the directory holds from before it opened, into
+  // the same entries, on every installation, picked or not: an organization
+  // the person was added to a moment ago is then a choice, and its models
+  // are read (`useNamespacedResources` reads the same entries), also where
+  // they decide which environments the form offers. The wizard's steps share
+  // one mount of this hook (`NewAgentStep` is not keyed by step), so a step
+  // change reads nothing again. An answer read since the form opened is
+  // kept; a read that failed is read again on Check again.
   const musterApi = useMusterPluginApi();
   const queryClient = useContext(QueryClientContext);
   const [openedAt] = useState(() => Date.now());

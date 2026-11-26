@@ -124,10 +124,11 @@ nothing either way, so no owner is asked for and the create call gets its own
 answer. The form takes the answer in one place (`useTenantChoicesSync`,
 mounted by every step). Where agent-manager serves organizations, the answer
 is the person's organizations (`list_organizations`, the directory's read,
-kept a minute). A step that opens reads again each answer from before it
-opened, on every installation, picked or not, so an organization the person
-was just added to is offered, and its models count for the environments the
-form offers. Every step starts `get_info` for the likely
+kept a minute). When the form opens, it reads again each answer from before
+it opened, on every installation, picked or not, so an organization the
+person was just added to is offered, and its models count for the
+environments the form offers. A step change reads nothing again: the steps
+share one mount. Every step starts `get_info` for the likely
 environment (the only one configured, or the home installation) beside the
 reads that pick it (`useWarmNewAgentForm`), as the agents list does, so the
 owner does not arrive after the environment. Warnings about environments that
