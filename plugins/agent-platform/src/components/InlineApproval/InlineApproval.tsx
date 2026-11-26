@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Button, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { ApprovalShieldIcon, ApprovalWarningIcon } from '../ApprovalIcons';
+import { ShieldCheck, TriangleAlert } from 'lucide-react';
 import type {
   ApprovalDecisionResult,
   ApprovalLookup,
@@ -128,8 +128,11 @@ const useStyles = makeStyles(theme => ({
     gap: theme.spacing(1.5),
     '& > svg': { marginTop: 2, flexShrink: 0 },
   },
-  // Giant Swarm's vivid blue for the pictogram.
-  headerIcon: { color: '#009fff' },
+  // The text token: #009fff is only 2.9:1 on white, the text colour clears 3:1
+  // in light and dark.
+  headerIcon: {
+    color: `var(--bui-fg-primary, ${theme.palette.text.primary})`,
+  },
 }));
 
 function Value({ value }: { value: ApprovalValue }) {
@@ -197,7 +200,7 @@ function RequestDetails({
           role="note"
           data-testid="approval-other-agent"
         >
-          <ApprovalWarningIcon />
+          <TriangleAlert size="1.25em" aria-hidden />
           <span>
             Asked by another agent, {asker}, not the agent of this conversation.
           </span>
@@ -479,7 +482,7 @@ export function InlineApproval({
   return (
     <Flex direction="column" gap="2">
       <div className={classes.header}>
-        <ApprovalShieldIcon className={classes.headerIcon} />
+        <ShieldCheck size="1.25em" aria-hidden className={classes.headerIcon} />
         <Text as="p" variant="body-medium" weight="bold">
           {view.heading}
         </Text>

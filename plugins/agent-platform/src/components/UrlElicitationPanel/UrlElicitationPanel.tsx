@@ -8,7 +8,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 import { makeStyles } from '@material-ui/core';
 
-import { SignInKeyIcon } from '../ApprovalIcons';
+import { KeyRound } from 'lucide-react';
 import type { ConfirmationAnswer } from '../../hooks/useAnswerConfirmation';
 import type { PendingConfirmation } from '../../lib/kagentHitl';
 import {
@@ -186,8 +186,11 @@ const useStyles = makeStyles(theme => ({
     gap: theme.spacing(1.5),
     '& > svg': { marginTop: 2, flexShrink: 0 },
   },
-  // Giant Swarm's vivid blue for the pictogram.
-  headerIcon: { color: '#009fff' },
+  // The text token: #009fff is only 2.9:1 on white, the text colour clears 3:1
+  // in light and dark.
+  headerIcon: {
+    color: `var(--bui-fg-primary, ${theme.palette.text.primary})`,
+  },
   heading: {
     overflowWrap: 'anywhere',
   },
@@ -451,7 +454,7 @@ export function UrlElicitationPanel({
       data-testid="url-elicitation-card"
     >
       <div className={classes.header}>
-        <SignInKeyIcon className={classes.headerIcon} />
+        <KeyRound size="1.25em" aria-hidden className={classes.headerIcon} />
         <Text
           as="p"
           variant="body-medium"
