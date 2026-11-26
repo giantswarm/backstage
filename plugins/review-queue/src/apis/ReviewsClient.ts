@@ -71,6 +71,7 @@ export class ReviewsClient {
   private async call<T>(
     tool: GithubTool,
     args: Record<string, unknown>,
+    signal?: AbortSignal,
   ): Promise<T> {
     let result: unknown;
     try {
@@ -78,6 +79,7 @@ export class ReviewsClient {
         githubToolName(tool),
         args,
         this.installation,
+        signal ? { signal } : undefined,
       );
     } catch (error) {
       // muster-backend's 401: the sign-in to `github` (or a refused token,
@@ -117,16 +119,27 @@ export class ReviewsClient {
     );
   }
 
-  private read<T>(ref: PrRef, method: string): Promise<T> {
-    return this.limit(() =>
-      this.call<T>(GITHUB_TOOLS.pullRequestRead, {
-        method,
-        owner: ref.owner,
-        repo: ref.repo,
-        pullNumber: ref.number,
-        ...(method === 'get' ? {} : { perPage: 100 }),
-      }),
-    );
+  private read<T>(
+    ref: PrRef,
+    method: string,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    return this.limit(() => {
+      // A read whose query was cancelled while it waited its turn (a second
+      // Refresh) is not sent at all.
+      signal?.throwIfAborted();
+      return this.call<T>(
+        GITHUB_TOOLS.pullRequestRead,
+        {
+          method,
+          owner: ref.owner,
+          repo: ref.repo,
+          pullNumber: ref.number,
+          ...(method === 'get' ? {} : { perPage: 100 }),
+        },
+        signal,
+      );
+    });
   }
 
   /**
@@ -135,17 +148,17 @@ export class ReviewsClient {
    * every PR of the tab. A `mergeable_state` GitHub is still computing is
    * read once more a moment later.
    */
-  async prState(ref: PrRef): Promise<PrState> {
+  async prState(ref: PrRef, signal?: AbortSignal): Promise<PrState> {
     const [pull, checkRuns, status, reviews] = await Promise.all([
-      this.read<PullAnswer>(ref, 'get'),
-      this.read<CheckRunsAnswer>(ref, 'get_check_runs'),
-      this.read<CombinedStatusAnswer>(ref, 'get_status'),
-      this.read<Review[]>(ref, 'get_reviews'),
+      this.read<PullAnswer>(ref, 'get', signal),
+      this.read<CheckRunsAnswer>(ref, 'get_check_runs', signal),
+      this.read<CombinedStatusAnswer>(ref, 'get_status', signal),
+      this.read<Review[]>(ref, 'get_reviews', signal),
     ]);
     let merge = mergeStateOf(pull.mergeable_state);
     if (merge.state === 'checking') {
       await sleep(this.mergeableRetryMs);
-      const again = await this.read<PullAnswer>(ref, 'get');
+      const again = await this.read<PullAnswer>(ref, 'get', signal);
       merge = mergeStateOf(again.mergeable_state);
     }
     return {

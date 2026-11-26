@@ -304,6 +304,7 @@ describe('github', () => {
       ['[rate reset in 42s]', 42_000],
       ['[rate reset in 1m30s]', 90_000],
       ['[rate reset in 1h0m2.5s]', 3_602_500],
+      ['[rate reset in 500ms]', 500],
     ])('reads go-github\'s reset "%s"', (tail, ms) => {
       const error = rateLimitOf(
         `403 API rate limit of 30 still exceeded, not making remote request. ${tail}`,
@@ -333,6 +334,13 @@ describe('github', () => {
       expect(classifyGithubError(new Error(message))).toBeInstanceOf(
         GithubNotConnectedError,
       );
+    });
+
+    it('does not take a PR numbered 401 for a sign-in', () => {
+      const error = new Error(
+        'GET https://api.github.com/repos/giantswarm/x/pulls/401: 502 Bad Gateway',
+      );
+      expect(classifyGithubError(error)).toBe(error);
     });
 
     it('keeps any other error as it is', () => {

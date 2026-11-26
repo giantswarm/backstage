@@ -31,7 +31,7 @@ muster as the person with their own grants.
 CI (check runs and CircleCI's commit statuses, the latest run of each check),
 Review (each reviewer's latest decision) and Merge (`mergeable_state`, read
 once more when GitHub is still computing it), each with a tooltip saying why.
-That is four reads per PR on GitHub's general budget, six at a time, shared
+That is four reads per PR on GitHub's general budget, two at a time, shared
 by the sections and kept as long as the searches (about two minutes).
 Collapsed sections read nothing. A row opens the PR on GitHub in a new tab.
 

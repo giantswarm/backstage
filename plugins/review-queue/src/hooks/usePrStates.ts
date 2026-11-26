@@ -7,6 +7,14 @@ import { reviewQueueQueryKey, SEARCH_STALE_MS } from './useReviewSections';
 /** How often a row reads again after GitHub's rate refusal, and from when. */
 const RATE_LIMIT_RETRIES = 3;
 const RATE_LIMIT_RETRY_MS = 15_000;
+const SHORT_RESET_MS = 60_000;
+
+function isShortRateLimit(error: Error): boolean {
+  return (
+    error instanceof GithubRateLimitError &&
+    (!error.resetAt || error.resetAt.getTime() - Date.now() <= SHORT_RESET_MS)
+  );
+}
 
 export type PrStateEntry = {
   state: PrState | undefined;
@@ -29,13 +37,14 @@ export function usePrStates(
   const results = useQueries({
     queries: rows.map(row => ({
       queryKey: [...reviewQueueQueryKey(client?.installation), 'state', row.id],
-      queryFn: () => client!.prState(row),
+      queryFn: ({ signal }) => client!.prState(row, signal),
       enabled: Boolean(client) && enabled,
       staleTime: SEARCH_STALE_MS,
-      // GitHub's secondary limit passes: the row keeps loading and reads
-      // again a little later, at most three times.
+      // GitHub's secondary limit (no reset time, or one within a minute)
+      // passes soon: the row keeps loading and reads again, at most three
+      // times. A spent hourly budget does not: the row shows why at once.
       retry: (failures: number, error: Error) =>
-        error instanceof GithubRateLimitError && failures < RATE_LIMIT_RETRIES,
+        isShortRateLimit(error) && failures < RATE_LIMIT_RETRIES,
       retryDelay: (failures: number, error: Error) =>
         error instanceof GithubRateLimitError && error.resetAt
           ? Math.max(error.resetAt.getTime() - Date.now(), 1_000)

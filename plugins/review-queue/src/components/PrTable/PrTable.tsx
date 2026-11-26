@@ -120,9 +120,14 @@ export function sortPrRows(rows: TableRow[], sort: SortDescriptor): TableRow[] {
         return a.createdAt.localeCompare(b.createdAt);
     }
   };
-  return [...rows].sort(
-    (a, b) => factor * compare(a, b) || a.id.localeCompare(b.id),
-  );
+  const isStateColumn = ['ci', 'review', 'merge'].includes(column);
+  return [...rows].sort((a, b) => {
+    // Rows whose state is not read yet, or failed, go last either way.
+    if (isStateColumn && !a.state?.state !== !b.state?.state) {
+      return a.state?.state ? -1 : 1;
+    }
+    return factor * compare(a, b) || a.id.localeCompare(b.id);
+  });
 }
 
 function requestedLabel(requested: string[]): string {

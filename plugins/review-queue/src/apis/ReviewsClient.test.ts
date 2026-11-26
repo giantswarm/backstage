@@ -177,6 +177,20 @@ describe('ReviewsClient', () => {
   });
 });
 
+describe('ReviewsClient and a cancelled read', () => {
+  it('does not send the reads of a query cancelled while they waited', async () => {
+    const { musterApi, calls } = musterWith(({ args }) =>
+      args.method === 'get_reviews' ? [] : { mergeable_state: 'clean' },
+    );
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      new ReviewsClient(musterApi, 'gazelle').prState(REF, controller.signal),
+    ).rejects.toThrow();
+    expect(calls).toHaveLength(0);
+  });
+});
+
 describe('createLimiter', () => {
   it('runs the next task when one ends, failed or not', async () => {
     const limit = createLimiter(1);

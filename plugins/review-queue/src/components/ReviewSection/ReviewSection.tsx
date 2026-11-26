@@ -61,6 +61,8 @@ export type ReviewSectionProps = {
  */
 export function ReviewSection(props: ReviewSectionProps) {
   const { section, isExpanded } = props;
+  // The ticked PRs outlive a collapse of the section.
+  const [ticked, setTicked] = useState<Set<string>>(new Set());
   const shown = section.rows?.length ?? 0;
   let summary: React.ReactNode = <Skeleton width={32} height={16} />;
   if (section.rows) {
@@ -90,7 +92,13 @@ export function ReviewSection(props: ReviewSectionProps) {
         </Flex>
       </AccordionTrigger>
       <AccordionPanel>
-        {isExpanded ? <ReviewSectionBody {...props} /> : null}
+        {isExpanded ? (
+          <ReviewSectionBody
+            {...props}
+            ticked={ticked}
+            onTickedChange={setTicked}
+          />
+        ) : null}
       </AccordionPanel>
     </Accordion>
   );
@@ -105,11 +113,15 @@ function ReviewSectionBody({
   sort,
   onSortChange,
   slackPost,
-}: ReviewSectionProps) {
+  ticked,
+  onTickedChange: setTicked,
+}: ReviewSectionProps & {
+  ticked: Set<string>;
+  onTickedChange: (ticked: Set<string>) => void;
+}) {
   const rows = section.rows ?? [];
   const showState = section.eagerState || statusOn;
   const states = usePrStates(client, rows, showState);
-  const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [isSlackPostOpen, setIsSlackPostOpen] = useState(false);
   // Only rows the section still lists count as ticked.
   const tickedRows = rows.filter(row => ticked.has(row.id));

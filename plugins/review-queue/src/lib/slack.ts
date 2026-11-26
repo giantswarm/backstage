@@ -63,25 +63,53 @@ const CHANNEL_ID_PATTERN = /\b([CG][A-Z0-9]{8,})\b/g;
 /**
  * The ID of the channel named `name` in a `search_channels` answer, which
  * Slack's MCP server words as it likes: JSON with `id` and `name` fields, or
- * text that names each channel and its ID on one line. Only an exact name
- * counts, so `team-shield` never resolves to `team-shield-alerts`.
+ * text that lists each channel as `#name` or `Name: name` with its ID on the
+ * same line. Only
+ * the channel's own name counts, never a word of its topic or purpose, so
+ * `team-shield` never resolves to a channel that mentions it.
  */
 export function channelIdIn(answer: unknown, name: string): string | undefined {
   const wanted = name.toLowerCase();
-  const found = findInJson(answer, wanted);
-  if (found) {
-    return found;
+  const json = parsedJson(answer);
+  if (json !== undefined) {
+    return findInJson(json, wanted);
   }
-  const text = typeof answer === 'string' ? answer : JSON.stringify(answer);
-  for (const line of (text ?? '').split(/\n|},\s*{/)) {
-    const names: string[] =
-      line.toLowerCase().match(/[a-z0-9][a-z0-9._-]*/g) ?? [];
-    if (!names.includes(wanted)) {
+  if (typeof answer !== 'string') {
+    return undefined;
+  }
+  // The channel's own name: `#team-shield`, or a name field
+  // (`Name: team-shield`, `name="team-shield"`), never a word of its purpose.
+  const exact = `${escapeRegExp(wanted)}(?![a-z0-9._-])`;
+  const ownName = new RegExp(
+    `(^|[^a-z0-9._-])#${exact}|\\bname["']?\\s*[:=]\\s*["']?#?${exact}`,
+  );
+  for (const line of answer.split('\n')) {
+    if (!ownName.test(line.toLowerCase())) {
       continue;
     }
     const ids = [...line.matchAll(CHANNEL_ID_PATTERN)].map(match => match[1]);
     if (ids.length === 1) {
       return ids[0];
+    }
+  }
+  return undefined;
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** The answer as JSON: an object as it is, a string that parses; else undefined. */
+function parsedJson(answer: unknown): unknown {
+  if (answer && typeof answer === 'object') {
+    return answer;
+  }
+  if (typeof answer === 'string') {
+    try {
+      const parsed = JSON.parse(answer);
+      return parsed && typeof parsed === 'object' ? parsed : undefined;
+    } catch {
+      return undefined;
     }
   }
   return undefined;

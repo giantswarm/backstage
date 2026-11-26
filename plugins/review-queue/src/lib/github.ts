@@ -461,7 +461,9 @@ const NOT_CONNECTED_PATTERNS = [
   /requires authentication/i,
   /not signed in/i,
   /sign_in_required/i,
-  /\b401\b/,
+  /\b401 Unauthorized\b/i,
+  /\bstatus(?: code)?:? 401\b/i,
+  /: 401\b/,
 ];
 
 function messageOf(error: unknown): string {
@@ -469,14 +471,19 @@ function messageOf(error: unknown): string {
   return typeof message === 'string' ? message : String(error);
 }
 
-/** A Go duration as go-github prints it: `39s`, `1m30s`, `1h2m3.5s`. */
+/** A Go duration as go-github prints it: `39s`, `1m30s`, `1h2m3.5s`, `500ms`. */
 function goDurationMs(text: string): number | undefined {
-  const match = text.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+(?:\.\d+)?)s)?$/);
+  const match = text.match(
+    /^(?:(\d+)h)?(?:(\d+)m(?!s))?(?:(\d+(?:\.\d+)?)s)?(?:(\d+(?:\.\d+)?)ms)?$/,
+  );
   if (!match || text === '') {
     return undefined;
   }
-  const [, h, m, s] = match;
-  return ((Number(h ?? 0) * 60 + Number(m ?? 0)) * 60 + Number(s ?? 0)) * 1000;
+  const [, h, m, s, ms] = match;
+  return (
+    ((Number(h ?? 0) * 60 + Number(m ?? 0)) * 60 + Number(s ?? 0)) * 1000 +
+    Number(ms ?? 0)
+  );
 }
 
 /**

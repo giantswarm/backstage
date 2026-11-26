@@ -1,5 +1,9 @@
 import { useCallback, useMemo } from 'react';
-import { useQueries, useQueryClient } from '@tanstack/react-query';
+import {
+  useIsFetching,
+  useQueries,
+  useQueryClient,
+} from '@tanstack/react-query';
 
 import type { ReviewsClient } from '../apis/ReviewsClient';
 import {
@@ -226,6 +230,10 @@ export function useReviewSections(
     undefined,
   );
 
+  // PR states still being read count as refreshing too, so a second click
+  // does not queue the same reads again.
+  const readingStates = useIsFetching({ queryKey: [...baseKey, 'state'] }) > 0;
+
   const readTimes = results
     .map(result => result.dataUpdatedAt)
     .filter(time => time > 0);
@@ -242,9 +250,9 @@ export function useReviewSections(
     notConnected,
     rateLimit,
     readAt: readTimes.length > 0 ? Math.min(...readTimes) : undefined,
-    isRefreshing: [...results, ...requestResults].some(
-      result => result.isFetching,
-    ),
+    isRefreshing:
+      readingStates ||
+      [...results, ...requestResults].some(result => result.isFetching),
     refresh,
   };
 }

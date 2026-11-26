@@ -100,6 +100,35 @@ describe('slack', () => {
       ).toBe('C0SHIELD01');
     });
 
+    it('finds it in a name field of a text answer', () => {
+      expect(
+        channelIdIn(
+          'Name: team-shield-alerts, ID: C0ALERTS01\nName: team-shield, ID: C0SHIELD01',
+          'team-shield',
+        ),
+      ).toBe('C0SHIELD01');
+    });
+
+    it('never takes a channel whose topic or purpose mentions the name', () => {
+      const answer = [
+        {
+          id: 'C0ALERTS01',
+          name: 'team-shield-alerts',
+          purpose: 'Pages team-shield on alerts',
+        },
+      ];
+      expect(channelIdIn(answer, 'team-shield')).toBeUndefined();
+      expect(
+        channelIdIn(JSON.stringify(answer), 'team-shield'),
+      ).toBeUndefined();
+      expect(
+        channelIdIn(
+          '- #team-shield-alerts (C0ALERTS01): pages team-shield',
+          'team-shield',
+        ),
+      ).toBeUndefined();
+    });
+
     it('finds nothing for a name that only starts the same', () => {
       expect(
         channelIdIn('- #team-shield-alerts (C0ALERTS01)', 'team-shield'),

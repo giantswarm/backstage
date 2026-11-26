@@ -10,15 +10,25 @@ import {
   type Filters,
 } from '../lib/github';
 
-/** Where Hive keeps the team the reader picked (plans' `useHiveTeam`). */
-const HIVE_TEAM_STORAGE_KEY = 'plans.hive.team.chosen';
+/**
+ * Where Hive keeps the reader's team (plans' `useHiveTeam`): the pick under
+ * `plans.hive.team.chosen`, or, from a plans plugin that saves the team the
+ * header shows, under `plans.hive.team`.
+ */
+const HIVE_TEAM_STORAGE_KEYS = ['plans.hive.team.chosen', 'plans.hive.team'];
 
 function pickedHiveTeam(): string | undefined {
   try {
-    return window.localStorage.getItem(HIVE_TEAM_STORAGE_KEY) ?? undefined;
+    for (const key of HIVE_TEAM_STORAGE_KEYS) {
+      const team = window.localStorage.getItem(key);
+      if (team) {
+        return team;
+      }
+    }
   } catch {
-    return undefined;
+    // No storage: the URL and the reader's own team decide.
   }
+  return undefined;
 }
 
 /**

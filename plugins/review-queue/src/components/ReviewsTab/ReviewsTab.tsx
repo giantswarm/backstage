@@ -144,9 +144,14 @@ function ReviewsLists({
         className={spacing.group}
         expandedKeys={expanded}
         onExpandedChange={keys => {
+          // Only the section the person opened or closed: the others keep
+          // opening by themselves once their PRs arrive.
           const next = new Map(toggled);
           for (const section of state.sections) {
-            next.set(section.key, (keys as Set<string>).has(section.key));
+            const isOpen = (keys as Set<string>).has(section.key);
+            if (isOpen !== expanded.has(section.key)) {
+              next.set(section.key, isOpen);
+            }
           }
           setToggled(next);
         }}
