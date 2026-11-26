@@ -3222,8 +3222,9 @@ warning names the asking agent unless muster positively names the
 conversation's agent.
 
 - _Approve_ and _Decline_ come last and decide only on click. They are inert
-  until in view for a second, _Approve_ also until every collapsed value was
-  opened. Each approval link gets its own card.
+  until in view for a second; _Approve_ does not wait for collapsed values to be
+  opened (the person is responsible for what they approve, and the audit
+  records it), and the digest covers the full request. Each approval link gets its own card.
 - The muster backend posts the decision (`POST /api/muster/approvals/decision`)
   with the person's token, the portal's workload token
   (`X-Muster-Approval-Client`) and the digest of the shown view. muster refuses

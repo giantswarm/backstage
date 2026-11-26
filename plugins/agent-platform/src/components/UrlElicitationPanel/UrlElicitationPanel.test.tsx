@@ -656,8 +656,8 @@ describe('UrlElicitationPanel, approval decided inline', () => {
     expect(screen.getByTestId('approval-acts-for')).toHaveTextContent(
       'ada@example.com ada at https://dex.example.io',
     );
-    // Approve and Decline come after all of it, inert at first; Approve
-    // waits for the collapsed note to be opened.
+    // Approve and Decline come after all of it, inert at first; both arm
+    // after the delay, collapsed values need not be opened.
     const details = screen.getByTestId('approval-details');
     const actions = screen.getByTestId('approval-actions');
     expect(
@@ -669,8 +669,7 @@ describe('UrlElicitationPanel, approval decided inline', () => {
     await waitFor(() => expect(declineButton()).toBeEnabled(), {
       timeout: 3_000,
     });
-    expect(approveButton()).toBeDisabled();
-    expect(screen.getByTestId('approval-open-all')).toHaveTextContent('1 left');
+    expect(approveButton()).toBeEnabled();
     // Muster's page stays a secondary way; Done is not needed here.
     expect(
       screen.getByRole('button', {
