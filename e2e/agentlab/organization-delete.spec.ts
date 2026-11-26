@@ -1,6 +1,11 @@
 import { expect, open, test } from './fixtures';
 import { lab } from './lab';
-import { KUBECONFIG, kubectl, NEEDS_KUBECONFIG } from './kubectl';
+import {
+  AGENT_PLATFORM_NAMESPACE_PATH,
+  KUBECONFIG,
+  kubectl,
+  NEEDS_KUBECONFIG,
+} from './kubectl';
 
 /**
  * Creating an organization on the Organizations page, then deleting it from
@@ -41,7 +46,7 @@ async function organizationField(path: string): Promise<string> {
 }
 
 function organizationNamespace(): Promise<string> {
-  return organizationField('.status.agentPlatform.namespace');
+  return organizationField(AGENT_PLATFORM_NAMESPACE_PATH);
 }
 
 /**
@@ -168,7 +173,9 @@ test('organization create and delete: the create writes one Organization, the di
     await create.getByRole('button', { name: 'Create organization' }).click();
     // The page opens at once, before the operator reports it ready.
     await expect(admin).toHaveURL(new RegExp(`${BASE}$`), { timeout: 60_000 });
-    expect(await organizationField('.spec.agentPlatform.enabled')).toBe('true');
+    expect(
+      await organizationField('.spec.capabilities.agentPlatform.enabled'),
+    ).toBe('true');
     await expect
       .poll(organizationNamespace, { timeout: 3 * 60_000 })
       .not.toBe('');

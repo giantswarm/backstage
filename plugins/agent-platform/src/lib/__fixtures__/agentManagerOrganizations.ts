@@ -307,7 +307,7 @@ function namespaceOf(
     }
     if (!organization.namespace) {
       throw new Error(
-        `conflict: organization ${args.organization} is not ready yet: agent-platform-operator has not reported its namespace (status.agentPlatform.namespace); nothing was written, try again shortly`,
+        `conflict: organization ${args.organization} is not ready yet: agent-platform-operator has not reported its namespace (the agentPlatform entry of status.namespaces); nothing was written, try again shortly`,
       );
     }
     return organization.namespace;

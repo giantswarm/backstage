@@ -807,7 +807,7 @@ export class AgentManagerFixtureState {
     if (!organization.namespace) {
       throw refusal(
         'conflict',
-        `organization ${name} is not ready yet: agent-platform-operator has not reported its namespace (status.agentPlatform.namespace); nothing was written, try again shortly`,
+        `organization ${name} is not ready yet: agent-platform-operator has not reported its namespace (the agentPlatform entry of status.namespaces); nothing was written, try again shortly`,
       );
     }
     return organization.namespace;

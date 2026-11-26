@@ -14,7 +14,12 @@ import {
   signIn,
   test as base,
 } from './fixtures';
-import { KUBECONFIG, kubectl, NEEDS_KUBECONFIG } from './kubectl';
+import {
+  AGENT_PLATFORM_NAMESPACE_PATH,
+  KUBECONFIG,
+  kubectl,
+  NEEDS_KUBECONFIG,
+} from './kubectl';
 import { RUN, contextOptionsFor, lab, type LabUser } from './lab';
 
 /**
@@ -250,10 +255,10 @@ async function deleteOrganization() {
 /**
  * The spec's organization, made as its creator makes one and applied again as
  * it is: the `Organization` with the Agent Platform on (the platform
- * Harness, one worker),
- * Ready with its namespace; then there its editor (alice's group) and user
- * (the developer) and its model, the lab's default (`lab.defaultModel`) on
- * the lab's `aiModel`, marked the namespace's default. Its key is a
+ * Harness, one worker), `AgentPlatformReady` with its namespace; then there
+ * its editor (alice's group) and user (the developer) and its model, the
+ * lab's default (`lab.defaultModel`) on the lab's `aiModel`, marked the
+ * namespace's default. Its key is a
  * placeholder in a tenant credential (the only Secret the chart admits a
  * ModelConfig's key from): the spec runs no turn. Returns the organization's
  * namespace.
@@ -279,7 +284,7 @@ async function applyOrganization(): Promise<string> {
     ...organizationRef,
     '--ignore-not-found',
     '-o',
-    'jsonpath={.status.agentPlatform.namespace}',
+    `jsonpath={${AGENT_PLATFORM_NAMESPACE_PATH}}`,
   ]);
   for (const [user, group] of [
     [users.alice, 'tenant-a'],
@@ -299,17 +304,19 @@ async function applyOrganization(): Promise<string> {
       kind: 'Organization',
       metadata: { name: organization },
       spec: {
-        agentPlatform: {
-          enabled: true,
-          harnesses: ['kagent'],
-          workers: { replicas: 1 },
+        capabilities: {
+          agentPlatform: {
+            enabled: true,
+            harnesses: ['kagent'],
+            workers: { replicas: 1 },
+          },
         },
       },
     }),
   );
   await kubectl([
     'wait',
-    '--for=condition=Ready',
+    '--for=condition=AgentPlatformReady',
     ...organizationRef,
     '--timeout=3m',
   ]);
@@ -317,11 +324,11 @@ async function applyOrganization(): Promise<string> {
     'get',
     ...organizationRef,
     '-o',
-    'jsonpath={.status.agentPlatform.namespace}',
+    `jsonpath={${AGENT_PLATFORM_NAMESPACE_PATH}}`,
   ]);
   if (!namespace) {
     throw new Error(
-      `the organization ${organization} is Ready without status.agentPlatform.namespace`,
+      `the organization ${organization} is AgentPlatformReady without the agentPlatform entry of status.namespaces`,
     );
   }
   const { stdout: model } = await kubectl([
