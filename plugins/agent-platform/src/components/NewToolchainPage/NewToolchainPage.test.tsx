@@ -1,11 +1,13 @@
 import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
+import { TestApiProvider } from '@backstage/test-utils';
+import { externalUrlConsentApiRef } from '@giantswarm/backstage-plugin-ui-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import type { CreateToolchainResult } from '../../lib/toolchainManager';
 import { toolchainsRouteRef } from '../../routes';
-import { NewToolchainPage } from './NewToolchainPage';
+import { buildPollInterval, NewToolchainPage } from './NewToolchainPage';
 
 const mockClient = {
   searchPackages: jest.fn(),
@@ -47,6 +49,20 @@ jest.mock('../../hooks/useToolchainWrites', () => ({
     return mockCreate;
   },
 }));
+/** muster's sign-in for an App, as the test moves it along. */
+const mockSignIn = {
+  isWaiting: false,
+  isConnected: false,
+  isPending: false,
+  signInTabOpened: false,
+  authUrl: 'https://muster.example/sign-in',
+  error: undefined as string | undefined,
+  signIn: jest.fn(),
+};
+jest.mock('@giantswarm/backstage-plugin-muster', () => ({
+  ...jest.requireActual('@giantswarm/backstage-plugin-muster'),
+  useServerSignIn: () => mockSignIn,
+}));
 jest.mock('@giantswarm/backstage-plugin-ui-react', () => ({
   ...jest.requireActual('@giantswarm/backstage-plugin-ui-react'),
   FileView: (props: { content: string; filename: string }) => (
@@ -61,15 +77,18 @@ function renderPage() {
     defaultOptions: { queries: { retry: false } },
   });
   return renderInTestApp(
-    <QueryClientProvider client={queryClient}>
-      <NewToolchainPage />
-    </QueryClientProvider>,
+    <TestApiProvider apis={[[externalUrlConsentApiRef, { open: jest.fn() }]]}>
+      <QueryClientProvider client={queryClient}>
+        <NewToolchainPage />
+      </QueryClientProvider>
+    </TestApiProvider>,
     { mountedRoutes: { '/customize/toolchains': toolchainsRouteRef } },
   );
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockSignIn.isConnected = false;
   mockScope = { installations: ['gazelle'], hasToolchains: true };
   mockCreate.data = undefined;
   mockClient.searchPackages.mockResolvedValue({
@@ -148,6 +167,46 @@ describe('NewToolchainPage', () => {
       name: 'helm-tools',
       source: 'agent-toolchains',
     });
+  });
+
+  it('asks for the App grant when the Dockerfile is written without it, then writes it', async () => {
+    mockClient.addPackages.mockResolvedValueOnce({
+      status: 'grant_required',
+      apps: ['toolchain-manager'],
+    });
+    await renderPage();
+
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /Name/ }),
+      'helm-tools',
+    );
+    await userEvent.type(
+      screen.getByRole('searchbox', { name: /Search packages/ }),
+      'helm',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Add' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Write Dockerfile' }),
+    );
+
+    expect(
+      await screen.findByTestId('provider-connect-toolchain-manager'),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('file-view')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Open pull request' }),
+    ).not.toBeInTheDocument();
+
+    // muster reports the grant the prompt started: the write goes again.
+    mockSignIn.isConnected = true;
+    await userEvent.click(
+      screen.getByRole('button', { name: /Continue with GitHub/ }),
+    );
+    expect(
+      await screen.findByText('# toolchain-manager: helm-tools'),
+    ).toBeInTheDocument();
+    expect(mockClient.addPackages).toHaveBeenCalledTimes(2);
   });
 
   it("shows a failed build's log under its own heading, scrolling inside a cap", async () => {
@@ -261,5 +320,25 @@ describe('NewToolchainPage', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByText('Add at least one package')).toBeInTheDocument();
+  });
+});
+
+describe('buildPollInterval', () => {
+  const query = (data: unknown) =>
+    ({ state: { data } }) as Parameters<typeof buildPollInterval>[0];
+
+  it('stops on a grant answer, and polls again once the build is read', () => {
+    expect(
+      buildPollInterval(
+        query({ status: 'grant_required', apps: ['toolchain-manager'] }),
+      ),
+    ).toBe(false);
+    expect(
+      buildPollInterval(query({ build: { state: 'checking' } })),
+    ).toBeGreaterThan(0);
+    expect(buildPollInterval(query({ build: { state: 'published' } }))).toBe(
+      false,
+    );
+    expect(buildPollInterval(query(undefined))).toBeGreaterThan(0);
   });
 });
