@@ -60,7 +60,8 @@ export interface Config {
        * How long, in milliseconds, to wait for an agent to finish one turn before
        * answering "still running". Separate from `timeoutMs` because the A2A
        * `SendMessage` call answers only once the agent is done — and it is also
-       * the budget of a Stop (`CancelTask`), which waits for the run to drain.
+       * the budget of a Stop (`CancelTask`), which waits for the run to drain,
+       * and of a stream's first event, including runtime startup or restore.
        *
        * Not a limit on how long a turn may take: the turn continues regardless,
        * and the outcome arrives through the conversation poll. Exceeding this is
