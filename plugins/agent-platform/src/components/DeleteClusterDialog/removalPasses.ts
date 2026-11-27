@@ -1,3 +1,4 @@
+import { formatLocalTimeWithSeconds } from '@giantswarm/backstage-plugin-ui-react';
 import { countNoun, joinNames } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
@@ -204,11 +205,7 @@ export function judgeNextPass(
 
 /** `14:03:12`, in the person's locale. */
 export function formatClock(at: Date): string {
-  return at.toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+  return formatLocalTimeWithSeconds(at);
 }
 
 /** `HelmRelease org-acme/demo1`, with the action a dry run names when it is not a delete: `(would-update)`. */

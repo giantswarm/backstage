@@ -26,6 +26,8 @@ import {
   CatalogNoMatch,
   EmptyStateCard,
   getRelativeDate,
+  formatLocalDateFull,
+  useNow,
   INITIAL_ROWS,
   LoadingIndicator,
   MENU_WIDTH,
@@ -107,7 +109,7 @@ function StoredCell({ row }: { row: WorkspaceRow }) {
  * and behind the info hint when it happened and the manager's words. The
  * workspace's page and its Synchronize button say the same (`syncState`).
  */
-function SyncStatus({ row }: { row: WorkspaceRow }) {
+function SyncStatus({ row, now }: { row: WorkspaceRow; now: number }) {
   const state = syncState(row, row.awaitedSync);
   return (
     <span
@@ -123,7 +125,7 @@ function SyncStatus({ row }: { row: WorkspaceRow }) {
         explanation={[
           ...(state.when
             ? [
-                `${state.when.verb} ${getRelativeDate(state.when.at, new Date())}.`,
+                `${state.when.verb} ${getRelativeDate(state.when.at, new Date(now))}. ${formatLocalDateFull(state.when.at)}`,
               ]
             : []),
           ...(state.detail ? [state.detail] : []),
@@ -134,10 +136,10 @@ function SyncStatus({ row }: { row: WorkspaceRow }) {
 }
 
 /** The sync's state as the table's cell. */
-function LastSyncCell({ row }: { row: WorkspaceRow }) {
+function LastSyncCell({ row, now }: { row: WorkspaceRow; now: number }) {
   return (
     <Cell>
-      <SyncStatus row={row} />
+      <SyncStatus row={row} now={now} />
     </Cell>
   );
 }
@@ -338,6 +340,7 @@ export function CustomizeWorkspacesPanel({
     () => searchWorkspaces(allRows, search),
     [allRows, search],
   );
+  const now = useNow(60_000, allRows.length > 0);
   const showInstallation =
     new Set(allRows.map(row => row.installation)).size > 1;
   const detailRoute = useRouteRef(workspaceDetailRouteRef);
@@ -385,7 +388,7 @@ export function CustomizeWorkspacesPanel({
       defaultWidth: '2fr',
       // Fits its header, and "Not synchronized yet" with its dot.
       minWidth: WORKSPACE_COLUMN_MIN_WIDTHS.lastSync,
-      cell: row => <LastSyncCell row={row} />,
+      cell: row => <LastSyncCell row={row} now={now} />,
     },
     {
       id: 'sessions',
@@ -481,7 +484,7 @@ export function CustomizeWorkspacesPanel({
                     organization: row.organization,
                     name: row.name,
                   }),
-                  status: <SyncStatus row={row} />,
+                  status: <SyncStatus row={row} now={now} />,
                   facts: [
                     row.lastSync
                       ? countNoun(

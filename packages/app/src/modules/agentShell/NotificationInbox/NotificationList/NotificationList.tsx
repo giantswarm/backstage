@@ -1,23 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Button, Flex, Switch, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core/styles';
-import { LoadingIndicator } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  LoadingIndicator,
+  useNow,
+} from '@giantswarm/backstage-plugin-ui-react';
 import { MarkFailureAlert } from '../MarkFailureAlert';
 import { NotificationRow } from '../NotificationRow';
 import { useNotificationInbox } from '../NotificationInboxProvider';
 
 /** How often the rows' ages are told again while the overlay is open. */
 const AGE_TICK_MS = 30_000;
-
-/** Now, again every {@link AGE_TICK_MS}: one timer for every row. */
-function useNow(): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), AGE_TICK_MS);
-    return () => window.clearInterval(id);
-  }, []);
-  return now;
-}
 
 const useStyles = makeStyles({
   root: {
@@ -100,7 +93,7 @@ export function NotificationList({
   const classes = useStyles();
   const inbox = useNotificationInbox();
   const [marking, setMarking] = useState(false);
-  const now = useNow();
+  const now = useNow(AGE_TICK_MS);
   if (!inbox) {
     return null;
   }

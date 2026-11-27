@@ -1,5 +1,7 @@
+import { formatLocalDateFull } from '@giantswarm/backstage-plugin-ui-react';
 import { Flex, Text } from '@backstage/ui';
 import { Link } from '@backstage/core-components';
+// eslint-disable-next-line @typescript-eslint/no-restricted-imports -- BUI has no progress indicator for an active lifecycle step.
 import { CircularProgress } from '@material-ui/core';
 import CheckCircleIcon from '@material-ui/icons/CheckCircle';
 import ErrorIcon from '@material-ui/icons/Error';
@@ -20,19 +22,30 @@ export type LifecycleStepsProps = {
 
 const ICON_SIZE = 18;
 
+/** `Started …. Finished ….`, in the browser's zone, for the timing's hover. */
+function exactTimes(step: LifecycleStep): string | undefined {
+  const parts = [
+    step.since ? `Started ${formatLocalDateFull(step.since)}.` : undefined,
+    step.finishedAt
+      ? `Finished ${formatLocalDateFull(step.finishedAt)}.`
+      : undefined,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(' ') : undefined;
+}
+
 function StateIcon({ state }: { state: LifecycleStepState }) {
   switch (state) {
     case 'done':
       return (
         <CheckCircleIcon
-          style={{ fontSize: ICON_SIZE, color: 'var(--bui-fg-success)' }}
+          style={{ fontSize: ICON_SIZE, color: 'var(--bui-fg-positive)' }}
           aria-hidden
         />
       );
     case 'failed':
       return (
         <ErrorIcon
-          style={{ fontSize: ICON_SIZE, color: 'var(--bui-fg-danger)' }}
+          style={{ fontSize: ICON_SIZE, color: 'var(--bui-fg-negative)' }}
           aria-hidden
         />
       );
@@ -121,7 +134,12 @@ export function LifecycleSteps({
                   </Text>
                 )}
                 {timing && (
-                  <Text as="span" variant="body-small" color="secondary">
+                  <Text
+                    as="span"
+                    variant="body-small"
+                    color="secondary"
+                    title={exactTimes(step)}
+                  >
                     {timing}
                   </Text>
                 )}
