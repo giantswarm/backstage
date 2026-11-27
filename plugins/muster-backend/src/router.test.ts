@@ -2171,6 +2171,28 @@ describe('createRouter', () => {
       expect(response.body.error.reason).toBe('server_sign_in_required');
     });
 
+    it('passes on the provider Apps muster asks the person to grant', async () => {
+      callTool.mockRejectedValue(
+        new MusterAuthRequiredError(
+          'workspace-manager',
+          'https://muster.example/start?s=1',
+          [
+            "auth_required: server 'workspace-manager' needs your grant of a provider App for this call.",
+          ],
+          [{ app: 'github', authUrl: 'https://muster.example/start?s=1' }],
+        ),
+      );
+
+      const response = await create();
+
+      expect(response.status).toBe(401);
+      expect(response.body.error).toMatchObject({
+        reason: 'server_sign_in_required',
+        server: 'workspace-manager',
+        apps: [{ app: 'github', authUrl: 'https://muster.example/start?s=1' }],
+      });
+    });
+
     it("keeps muster's expired-token answer a 401", async () => {
       callTool.mockRejectedValue(
         new MusterToolError(

@@ -334,6 +334,39 @@ const openNodePool = want => async ({ page, skip }) => {
 
 export default [
   { name: 'Home', path: '/' },
+  {
+    // A start in a workspace whose provider App the person has not granted:
+    // muster's auth_required answer, read as the sign-in card above the box.
+    name: 'Home, start in a workspace not granted',
+    path: '/',
+    states: [
+      {
+        name: 'agent and workspace picked',
+        run: async ({ page, skip }) => {
+          const recent = page.getByRole('button', { name: 'Alder Vetch' });
+          if (!(await shows(recent))) skip('no recent agent on meadow');
+          await recent.click();
+          const picker = page.getByRole('button', { name: /Workspace$/ });
+          if (!(await shows(picker))) skip('the agent offers no workspace');
+          await picker.click();
+          const option = page.getByRole('option', { name: /^mallow-chicory/ });
+          if (!(await shows(option))) skip('no workspace mallow-chicory');
+          await option.click();
+          await page.getByRole('textbox', { name: 'Prompt' }).fill('List it');
+        },
+        // The agent picker takes the agent's name in place of its prompt.
+        shift: false,
+      },
+      {
+        name: 'sign-in card',
+        run: async ({ page }) => {
+          await page.getByRole('button', { name: 'Start', exact: true }).click();
+          await page.getByTestId(/^provider-connect-/).first().waitFor();
+        },
+        shift: false,
+      },
+    ],
+  },
   { name: 'Sessions', path: '/sessions' },
   {
     name: 'Session',

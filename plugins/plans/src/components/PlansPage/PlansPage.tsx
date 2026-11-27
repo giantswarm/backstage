@@ -24,7 +24,7 @@ import { PlansErrorAlert } from '../PlansErrorAlert';
  */
 export function PlansPage() {
   const plansApi = useApi(plansApiRef);
-  const [team] = useHiveTeam();
+  const [team, , isTeamResolved] = useHiveTeam();
   // The selected repository lives in `?repo=` (the same param the review
   // page uses), so it survives navigating into a PR and back and the list
   // URL is shareable.
@@ -87,7 +87,8 @@ export function PlansPage() {
   );
   useProvidePageHeaderActions(headerActions);
 
-  if (isAwaitingData(repos)) {
+  // Not before the reader's own team is known: it picks the repository.
+  if (isAwaitingData(repos) || !isTeamResolved) {
     return (
       <Content>
         <Progress />

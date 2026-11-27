@@ -54,14 +54,14 @@ import {
 } from '../../lib/messageImages';
 import { DROP_LABEL, useComposerImages } from '../../hooks/useComposerImages';
 import { ComposerImageList } from '../ComposerImageList';
-import {
-  WorkspaceManagerError,
-  type Workspace,
-} from '../../lib/workspaceManager';
+import type { Workspace } from '../../lib/workspaceManager';
 import { WorkspacePicker } from '../WorkspacePicker';
 import { ToolchainPicker } from '../ToolchainPicker';
 import { toolchainEntry, type ToolchainPick } from '../../lib/toolchainManager';
-import { WorkspaceStartNotice } from '../WorkspaceStartNotice';
+import {
+  WorkspaceStartNotice,
+  workspaceStartNoticeSays,
+} from '../WorkspaceStartNotice';
 
 /** What the picker says on the installation's default agent (`leadingAgentId`). */
 const DEFAULT_AGENT_TAG = 'Default';
@@ -1159,7 +1159,8 @@ export function NewSessionComposer({
   );
 
   // A start in a workspace says its access check, its sign-ins and its
-  // refusal above the box; any other failure stays the alert below.
+  // refusal above the box; any other failure, of the workspace's too, is the
+  // alert below.
   const workspaceNotice =
     startedIn && selectedAgent ? (
       <WorkspaceStartNotice
@@ -1176,7 +1177,7 @@ export function NewSessionComposer({
       />
     ) : null;
   const workspaceSaysError =
-    Boolean(startedIn) && error instanceof WorkspaceManagerError;
+    Boolean(startedIn) && workspaceStartNoticeSays(error);
 
   return (
     <form ref={formRef} onSubmit={handleSubmit}>

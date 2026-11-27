@@ -247,23 +247,22 @@ export const BUILD_STATE_LABEL: Record<ToolchainBuildState, string> = {
 };
 
 /**
- * The muster App the answer asks the person to grant, as the provider the
- * shared sign-in prompt takes; `undefined` unless the answer is
+ * The muster Apps the answer asks the person to grant, each as the provider
+ * the shared sign-in prompt takes; none unless the answer is
  * `grant_required`.
  */
-export function grantProvider(
+export function grantProviders(
   answer: ToolchainAnswer | undefined,
-): WorkspaceProvider | undefined {
-  const app = answer?.status === 'grant_required' ? answer.apps?.[0] : '';
-  if (!app) {
-    return undefined;
+): WorkspaceProvider[] {
+  if (answer?.status !== 'grant_required') {
+    return [];
   }
-  return {
+  return [...new Set(answer.apps ?? [])].filter(Boolean).map(app => ({
     name: app,
     kind: 'github',
     connected: false,
     signIn: `core_auth_login app=${app}`,
-  };
+  }));
 }
 
 /** `v0.2.0` as the version a Session names: the image's tag, `0.2.0`. */

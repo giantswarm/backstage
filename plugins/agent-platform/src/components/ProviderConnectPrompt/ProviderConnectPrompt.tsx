@@ -25,6 +25,11 @@ export type ProviderConnectActionProps = {
   onConnected?: () => void;
   /** What happens once the person is back, said while muster waits. */
   waitingNote?: string;
+  /**
+   * The host's own actions (start without, cancel): beside the sign-in
+   * button, in its row, with what the sign-in says under both.
+   */
+  actions?: ReactNode;
 };
 
 export type ProviderConnectPromptProps = ProviderConnectActionProps & {
@@ -32,8 +37,6 @@ export type ProviderConnectPromptProps = ProviderConnectActionProps & {
   title?: string;
   /** The host's own explanation; what granting means by default. */
   lead?: string;
-  /** The host's own actions beside the sign-in (start without, cancel). */
-  actions?: ReactNode;
 };
 
 /**
@@ -75,7 +78,6 @@ function signInCopy(provider: WorkspaceProvider) {
 export function ProviderConnectPrompt({
   title,
   lead,
-  actions,
   ...props
 }: ProviderConnectPromptProps) {
   const copy = signInCopy(props.provider);
@@ -96,10 +98,7 @@ export function ProviderConnectPrompt({
               ))}
             </ol>
           )}
-          <Flex gap="2" align="start" style={{ flexWrap: 'wrap' }}>
-            <ProviderConnectAction {...props} />
-            {actions}
-          </Flex>
+          <ProviderConnectAction {...props} />
         </Flex>
       }
     />
@@ -118,15 +117,27 @@ export function ProviderConnectAction(props: ProviderConnectActionProps) {
   const target = providerSignInTarget(props.provider.signIn);
   if (!target) {
     return (
-      <Text variant="body-small" color="secondary">
-        {props.provider.signIn ??
-          `Ask your platform team to let the Agent Platform use ${providerDisplayName(
-            props.provider,
-          )}.`}
-      </Text>
+      <Flex direction="column" gap="2">
+        <Text variant="body-small" color="secondary">
+          {props.provider.signIn ??
+            `Ask your platform team to let the Agent Platform use ${providerDisplayName(
+              props.provider,
+            )}.`}
+        </Text>
+        {props.actions && <ActionRow>{props.actions}</ActionRow>}
+      </Flex>
     );
   }
   return <MusterGrant {...props} target={target} />;
+}
+
+/** A row of buttons: the sign-in's, then the host's, side by side. */
+function ActionRow({ children }: { children: ReactNode }) {
+  return (
+    <Flex gap="2" align="center" style={{ flexWrap: 'wrap' }}>
+      {children}
+    </Flex>
+  );
 }
 
 function MusterGrant({
@@ -135,6 +146,7 @@ function MusterGrant({
   target,
   onConnected,
   waitingNote = 'Finish in the other tab. The owners and repositories appear here as soon as you are back.',
+  actions,
 }: ProviderConnectActionProps & { target: { name: string; app: boolean } }) {
   const kind = providerKindName(provider.kind) || providerDisplayName(provider);
   const signIn = useServerSignIn(target.name, installation, {
@@ -171,6 +183,7 @@ function MusterGrant({
           You will not be asked again in this environment until you sign out in
           your profile.
         </Text>
+        {actions && <ActionRow>{actions}</ActionRow>}
       </Flex>
     );
   }
@@ -184,8 +197,8 @@ function MusterGrant({
         <Text variant="body-small" color="secondary">
           {waitingNote}
         </Text>
-        {signIn.signInTabOpened || !signIn.authUrl ? (
-          <div>
+        <ActionRow>
+          {signIn.signInTabOpened || !signIn.authUrl ? (
             <Button
               variant="secondary"
               size="small"
@@ -194,9 +207,7 @@ function MusterGrant({
             >
               Open the tab again
             </Button>
-          </div>
-        ) : (
-          <div>
+          ) : (
             <Button
               variant="secondary"
               size="small"
@@ -204,17 +215,21 @@ function MusterGrant({
             >
               <NewTabLabel>Open the {kind} sign-in</NewTabLabel>
             </Button>
-          </div>
-        )}
+          )}
+          {actions}
+        </ActionRow>
       </Flex>
     );
   }
 
   if (signIn.signInRefusal) {
     return (
-      <Text variant="body-small" color="danger">
-        {signIn.signInRefusal}
-      </Text>
+      <Flex direction="column" gap="2">
+        <Text variant="body-small" color="danger">
+          {signIn.signInRefusal}
+        </Text>
+        {actions && <ActionRow>{actions}</ActionRow>}
+      </Flex>
     );
   }
 
@@ -225,7 +240,7 @@ function MusterGrant({
           Could not start the sign-in: {signIn.error}
         </Text>
       )}
-      <div>
+      <ActionRow>
         <Button
           variant="primary"
           size="small"
@@ -238,7 +253,8 @@ function MusterGrant({
             <NewTabLabel>{copy.cta}</NewTabLabel>
           )}
         </Button>
-      </div>
+        {actions}
+      </ActionRow>
       <Text variant="body-small" color="secondary">
         Opens a new tab. What you entered here stays.
       </Text>

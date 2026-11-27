@@ -208,9 +208,8 @@ The origin is **derived**, not configured per installation:
 route hostname (`kagent.controllerRoute.hostname`, default
 `agentgateway.<domain>`), on which its `GRPCRoute` serves the controller's
 services through agentgateway — and the origin the chart itself writes as
-`apiBaseUrl` when it renders the Backstage app-config. `kagent.<baseDomain>` is
-the kagent UI behind oauth2-proxy and carries no gRPC. No path: gRPC is matched
-by service, not by prefix.
+`apiBaseUrl` when it renders the Backstage app-config. It is the only route the
+portal uses to reach kagent. No path: gRPC is matched by service, not by prefix.
 
 `agentPlatform.kagent.installations` overrides this. When present it also acts
 as the **allowlist**, which is worth setting since kagent is only deployed on

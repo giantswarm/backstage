@@ -3,13 +3,11 @@ import { KAGENT_SHARED_SUBJECTS } from '@giantswarm/backstage-plugin-agent-platf
 /**
  * Per-installation kagent capabilities.
  *
- * Deliberately *not* derived from a version number. kagent serves `/version` at
- * its server root, and neither door we reach it through routes the root to the
- * controller (the derived door's nginx sends `/` to the kagent UI; the
- * agentgateway override only matches the `/kagent` prefix), and nothing under
- * `/api` reports the controller version either. So a version probe would fail on
- * every healthy installation — see the comment in agent-platform-backend's
- * KagentClient.
+ * Deliberately *not* derived from a version number. The portal reaches kagent
+ * only through the agentgateway controller route, over gRPC, and the backend
+ * offers no version route: `SystemService/GetVersion` serves only its
+ * reachability probe, and nothing here gates on a version string — see the
+ * comment in agent-platform-backend's router.
  *
  * Version *tolerance* does not depend on version detection: it lives in the
  * permissive parsing in `kagentSchema.ts` / `kagentSessions.ts`, which absorbs
