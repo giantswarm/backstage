@@ -12,7 +12,7 @@ const context = {
 };
 
 function map(error: ConnectError): Error {
-  return mapConnectError(error, context, 'gazelle', logger, 1000);
+  return mapConnectError(error, context, 'gazelle', logger);
 }
 
 describe('mapConnectError', () => {
@@ -98,7 +98,6 @@ describe('the failure an upstream error carries', () => {
       { ...context, requestId: 'req-7' },
       'gazelle',
       logger,
-      1000,
     );
     expect(error.name).toBe('UpstreamError');
     expect(kagentFailureOf(error)).toEqual({

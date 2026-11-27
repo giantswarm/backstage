@@ -99,21 +99,13 @@ export function isUpstreamError(error: unknown): boolean {
   return (error as Error | undefined)?.name === 'UpstreamError';
 }
 
-/** Name of the error thrown when an A2A turn outlives its timeout. */
+/** Name of the error for a recorded message whose send lost its transport. */
 export const TURN_PENDING_ERROR_NAME = 'KagentTurnPendingError';
 
 /**
- * The turn was dispatched and is still running.
- *
- * Deliberately not an upstream failure. `SendMessage` answers only once the
- * agent finishes, so losing that connection — to our own timeout, or to a
- * gateway's — says "nobody waited long enough", not "broken". The turn is
- * already recorded against the instance, which is what the client confirms
- * before reporting this, and the conversation poll will show it finish.
- *
- * The router turns this into a 202 rather than a 5xx, which
- * `MiddlewareFactory.error()` would forward to Sentry: one issue per long turn,
- * for the thing an agent is supposed to do.
+ * The client verified the outbound message in the task history after its
+ * send lost the transport. The router answers 202, and the conversation
+ * poll supplies the task's outcome.
  */
 export function turnPendingError(message: string): Error {
   const error = new Error(message);
@@ -246,11 +238,6 @@ export interface ErrorContext {
   missingResource: string;
   /** Short name of the RPC, used when kagent does not implement it. */
   endpoint: string;
-  /**
-   * Report a timeout as {@link turnPendingError}, for a call whose work
-   * continues after we stop waiting.
-   */
-  timeoutIsPending?: boolean;
   /** What a rejected request means for this call; the generic upstream failure otherwise. */
   invalidArgument?: (reason: string) => Error;
   /** What a `FailedPrecondition` means for this call; a generic conflict otherwise. */
@@ -276,9 +263,8 @@ export interface ErrorContext {
  *   which a2a-go reports under that code.
  * - `InvalidArgument` is a rejected request; each caller says what that means.
  * - `AlreadyExists` / `FailedPrecondition` / `Aborted` are conflicts.
- * - `DeadlineExceeded` / `Canceled` is our own timeout: a pending turn for a
- *   send, an upstream failure otherwise (kagent is deployed and unwell, not
- *   absent).
+ * - `DeadlineExceeded` / `Canceled` is a timeout. A send verifies that its
+ *   message was recorded before reporting it pending.
  * - A socket-level cause (nothing listening, no such host, a TLS refusal),
  *   whatever code it arrived under, is "kagent is not deployed here" — a 404
  *   the frontend silences, marked transport-borne so a send verifies rather
@@ -291,7 +277,6 @@ export function mapConnectError(
   context: ErrorContext,
   installationName: string,
   logger: LoggerService,
-  turnTimeoutMs: number,
 ): Error {
   // A Backstage error thrown by our own code inside an RPC callback (a
   // validation failure while building a reply) must pass through untouched.
@@ -376,11 +361,6 @@ export function mapConnectError(
         `kagent request timed out for installation '${installationName}'`,
         { endpoint: context.endpoint },
       );
-      if (context.timeoutIsPending) {
-        return turnPendingError(
-          `The agent on installation '${installationName}' has not finished within ${turnTimeoutMs}ms; the turn is still running.`,
-        );
-      }
       return upstream(
         `The kagent API for installation '${installationName}' did not respond in time.`,
         'timeout',

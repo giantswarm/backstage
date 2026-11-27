@@ -28,6 +28,7 @@ describe('KagentClient over native gRPC (h2c)', () => {
   let origin: string;
   /** The raw HTTP/2 request headers, per request, as the socket saw them. */
   const rawHeaders: http2.IncomingHttpHeaders[] = [];
+  const connections = new Set<http2.ServerHttp2Session>();
 
   beforeAll(async () => {
     const handler = connectNodeAdapter({ routes: fake.routes });
@@ -35,11 +36,16 @@ describe('KagentClient over native gRPC (h2c)', () => {
       rawHeaders.push({ ...request.headers });
       handler(request, response);
     });
+    server.on('session', connection => {
+      connections.add(connection);
+      connection.on('close', () => connections.delete(connection));
+    });
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
     origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   });
 
   afterAll(async () => {
+    connections.forEach(connection => connection.destroy());
     await new Promise<void>(resolve => server.close(() => resolve()));
   });
 
