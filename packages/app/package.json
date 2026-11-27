@@ -72,6 +72,7 @@
     "@giantswarm/backstage-plugin-plans": "workspace:^",
     "@giantswarm/backstage-plugin-platform-capabilities": "workspace:^",
     "@giantswarm/backstage-plugin-repositories": "workspace:^",
+    "@giantswarm/backstage-plugin-review-queue": "workspace:^",
     "@giantswarm/backstage-plugin-roadmap": "workspace:^",
     "@giantswarm/backstage-plugin-ui-react": "workspace:^",
     "@material-ui/core": "^4.12.2",

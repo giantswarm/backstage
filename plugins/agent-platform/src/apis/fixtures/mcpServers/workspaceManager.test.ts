@@ -304,6 +304,9 @@ describe('the fixture workspace-manager', () => {
       expect(authorizationError(answer)).toBeUndefined();
     }
     for (const answer of withOutcome('connect_required')) {
+      // What muster turns into its auth_required error (MusterFixtureApi).
+      expect(answer.status).toBe('grant_required');
+      expect(answer.apps).toEqual(answer.connect?.map(c => c.provider));
       const error = authorizationError(answer);
       expect(error?.kind).toBe('not_connected');
       expect(error?.connect[0].signIn).toMatch(/core_auth_login app=/);

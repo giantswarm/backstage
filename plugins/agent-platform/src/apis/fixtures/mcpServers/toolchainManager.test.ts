@@ -150,10 +150,14 @@ describe('the fixture toolchain-manager', () => {
     ]);
     expect(search.branches).toEqual(['stable', 'unstable']);
 
-    const written = await client.addPackages({
+    const answer = await client.addPackages({
       name: 'cluster-tools',
       packages: ['kubectl', 'jq'],
     });
+    if (!('dockerfile' in answer)) {
+      throw new Error(`no Dockerfile written: ${JSON.stringify(answer)}`);
+    }
+    const written = answer;
     expect(written.dockerfile).toContain('kubectl jq');
 
     const input = {

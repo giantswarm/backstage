@@ -2,9 +2,11 @@ import { magazineTarget } from '../components/HiveRedirect';
 import {
   ALL_TEAMS,
   historyForTeam,
+  hiveTeamSlug,
   matchesSearch,
   nowFigures,
   nowForTeam,
+  ownHiveTeamOf,
   plansRepositoriesForTeam,
   sameTeam,
   statusIntent,
@@ -156,5 +158,20 @@ describe('hive', () => {
   it('orders the tabs, unknown ones last', () => {
     const ids = ['x', ...[...HIVE_TAB_ORDER].reverse()];
     expect(orderHiveTabs(ids, id => id)).toEqual([...HIVE_TAB_ORDER, 'x']);
+  });
+});
+
+describe("the reader's own Hive team", () => {
+  it.each([
+    ['Bumblebee🐝', 'team-bumblebee'],
+    ['Honey Badger 🦡', 'team-honeybadger'],
+    ['Shield 🛡️', 'team-shield'],
+  ])('names %s by its group %s', (team, slug) => {
+    expect(hiveTeamSlug(team)).toBe(slug);
+  });
+
+  it('is the Hive team of their groups, else none', () => {
+    expect(ownHiveTeamOf(['team-shield', 'chapter-se'])).toBe('Shield 🛡️');
+    expect(ownHiveTeamOf(['chapter-se', 'sa'])).toBeUndefined();
   });
 });

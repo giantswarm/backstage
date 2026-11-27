@@ -1,5 +1,6 @@
 import {
   MUSTER_TOKEN_EXPIRED_TEXT,
+  type MusterProviderAppGrant,
   readJwtLifetimeClaims,
   type MusterUnauthorizedReason,
 } from '@giantswarm/backstage-plugin-gs-common';
@@ -13,7 +14,8 @@ export type { MusterUnauthorizedReason } from '@giantswarm/backstage-plugin-gs-c
  * proxy answers it with the reason and the server in the body; the message
  * never carries a token, an identity or muster's own text, which may name the
  * person. Arguments in the order of the muster frontend's error of the same
- * name.
+ * name. `apps`: the provider Apps a `server_sign_in_required` asks the person
+ * to grant, when that is what muster asks for.
  */
 export class MusterUnauthorizedError extends Error {
   override readonly name = 'MusterUnauthorizedError';
@@ -23,6 +25,7 @@ export class MusterUnauthorizedError extends Error {
     message: string,
     readonly reason: MusterUnauthorizedReason,
     readonly server?: string,
+    readonly apps: MusterProviderAppGrant[] = [],
   ) {
     super(message);
   }
@@ -72,10 +75,16 @@ export function toMusterUnauthorizedError(
   if (error instanceof MusterAuthRequiredError) {
     return new MusterUnauthorizedError(
       // muster's own wording, which frontends from before `reason` match
-      // on (a tab left open across a deploy runs one).
-      `auth_required: server '${error.server}' requires authentication; sign in to it to use its tools.`,
+      // on (a tab left open across a deploy runs one): "requires
+      // authentication" for a provider App grant too.
+      error.apps.length > 0
+        ? `auth_required: server '${error.server}' requires authentication: it needs your grant of a provider App (${error.apps
+            .map(grant => grant.app)
+            .join(', ')}) for this call.`
+        : `auth_required: server '${error.server}' requires authentication; sign in to it to use its tools.`,
       'server_sign_in_required',
       error.server,
+      error.apps,
     );
   }
   const expiredText =
