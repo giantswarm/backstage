@@ -1,6 +1,7 @@
 import {
   inputRequiredBodyOf,
   isMusterInputAnswer,
+  toolInputRequiredOf,
 } from './musterInputRequired';
 
 const elicitation = {
@@ -54,6 +55,37 @@ describe('inputRequiredBodyOf', () => {
     ['no body', undefined],
   ])('reads nothing from %s', (_, body) => {
     expect(inputRequiredBodyOf(body)).toBeUndefined();
+  });
+});
+
+describe('toolInputRequiredOf', () => {
+  const inputRequired = {
+    tool: 'x_github_search',
+    arguments: { query: 'q' },
+    elicitations: [elicitation],
+    requestState: 'opaque',
+  };
+
+  it('reads the input_required answer of a tool output', () => {
+    expect(toolInputRequiredOf({ inputRequired, content: [] })).toEqual(
+      inputRequired,
+    );
+  });
+
+  it.each([
+    ['a tool result', { content: [{ type: 'text', text: 'ok' }] }],
+    ['no tool', { inputRequired: { ...inputRequired, tool: undefined } }],
+    [
+      'no arguments',
+      { inputRequired: { ...inputRequired, arguments: undefined } },
+    ],
+    [
+      'no elicitation',
+      { inputRequired: { ...inputRequired, elicitations: [] } },
+    ],
+    ['no output', undefined],
+  ])('reads nothing from %s', (_, output) => {
+    expect(toolInputRequiredOf(output)).toBeUndefined();
   });
 });
 

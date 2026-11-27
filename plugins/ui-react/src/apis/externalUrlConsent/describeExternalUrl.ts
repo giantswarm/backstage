@@ -31,6 +31,23 @@ export type DescribedExternalUrl = {
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
+/** The warning shown before navigating to an ambiguous or insecure address. */
+export function externalUrlWarningText(
+  warning: ExternalUrlWarning,
+  domain: string,
+): string {
+  switch (warning) {
+    case 'punycode':
+      return 'The domain is an internationalized name, shown in its punycode form (xn--…). Such names can imitate a familiar site: make sure it is the one you expect.';
+    case 'insecure':
+      return 'The page is not served over HTTPS: what you enter on it can be read on the way.';
+    case 'userinfo':
+      return `The address has a user name before the domain. It leads to ${domain}, not to the name before the @.`;
+    default:
+      throw new Error(`Unknown external URL warning: ${warning}`);
+  }
+}
+
 /**
  * Parses an address for the consent dialog, or returns `undefined` for one
  * that is no absolute http(s) address and must not be opened at all.
