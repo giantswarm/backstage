@@ -83,6 +83,9 @@ plans:
 roadmap:
   fixtures: true
 
+# Hive's Reviews tab follows Hive and reads GitHub through muster, so
+# `muster.fixtures` above serves it.
+
 agentPlatform:
   fixtures: true
   # The skill repositories of the data set, served by the fixture

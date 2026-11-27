@@ -1530,7 +1530,13 @@ describe('SessionDetailPage', () => {
       expect(
         screen.queryByRole('button', { name: 'Send answer' }),
       ).not.toBeInTheDocument();
-      expect(screen.getByText(/request could not be read/)).toBeInTheDocument();
+      // The whole sentence: the page has no way to answer here, so the note
+      // states the problem and sends nobody outside the portal.
+      expect(
+        screen.getByText(
+          'The agent is waiting for your answer, but its request could not be read.',
+        ),
+      ).toBeInTheDocument();
     });
 
     it('submits an answer naming the task it resumes', async () => {

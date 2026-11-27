@@ -249,9 +249,9 @@ export interface Config {
        * `baseDomain` is derived as `https://agentgateway.<baseDomain>` — the
        * connectivity chart's controller route hostname
        * (`kagent.controllerRoute.hostname`, default `agentgateway.<domain>`),
-       * on which its `GRPCRoute` serves the controller; `kagent.<baseDomain>`
-       * is the kagent UI behind oauth2-proxy and carries no gRPC — and
-       * installations without kagent simply fail per request
+       * on which its `GRPCRoute` serves the controller, the only route the
+       * portal uses to reach kagent — and installations without kagent simply
+       * fail per request
        * and are treated as "not installed". Set this to restrict the fan-out to
        * the installations that actually run kagent, or to point one at a
        * non-default origin. An entry with no fields (`{}`) means "enabled, use

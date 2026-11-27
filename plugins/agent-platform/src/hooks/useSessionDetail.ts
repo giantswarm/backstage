@@ -355,8 +355,8 @@ export function useSessionDetail(
   // read together, the mark winning — see `readRuntimeLoss`.
 
   // The last session we read successfully. `getSessionDetail` resolves `undefined`
-  // for any 200 whose body does not parse — an expired oauth2-proxy answering with
-  // an HTML sign-in page is the realistic case — and react-query stores that
+  // for any 200 whose body does not parse — a proxy or gateway in front answering
+  // with an HTML page is the realistic case — and react-query stores that
   // `undefined` as the query's data, discarding what we had. Holding the previous
   // value means one malformed poll degrades to a staleness notice instead of
   // erasing a live conversation.
