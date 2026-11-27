@@ -243,10 +243,11 @@ export function NewConnectorConnectPage() {
     registeredInstallation,
   ]);
   // Problems no field on this step can show: the installation comes from the
-  // section, request metadata has no field in this wizard. Named in a summary.
+  // section, and request metadata has no field of its own (only its
+  // AWS_REGION entry does, on the sigv4 step). Named in a summary.
   const unanchoredErrors = [
     inStepWords(fieldErrors.installation),
-    fieldErrors.meta,
+    fieldErrors.requestMeta,
   ].filter((error): error is string => Boolean(error));
 
   // Memoized so the frame's footer slot only updates when the handler does,

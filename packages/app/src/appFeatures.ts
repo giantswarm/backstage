@@ -28,6 +28,7 @@ import roadmapPlugin from '@giantswarm/backstage-plugin-roadmap';
 import repositoriesPlugin from '@giantswarm/backstage-plugin-repositories';
 import platformCapabilitiesPlugin from '@giantswarm/backstage-plugin-platform-capabilities';
 import botPrsPlugin from '@giantswarm/backstage-plugin-bot-prs';
+import reviewQueuePlugin from '@giantswarm/backstage-plugin-review-queue';
 
 // Upstream NFS plugins:
 import catalogPlugin from '@backstage/plugin-catalog/alpha';
@@ -97,6 +98,7 @@ export const appFeatures: FrontendFeature[] = [
   repositoriesPlugin,
   platformCapabilitiesPlugin,
   botPrsPlugin,
+  reviewQueuePlugin,
 
   // Upstream NFS plugins:
   catalogPlugin,

@@ -1,3 +1,4 @@
+import { useNow, DateComponent } from '@giantswarm/backstage-plugin-ui-react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
@@ -15,7 +16,6 @@ import {
   type Fact,
   FactList,
   FileView,
-  getRelativeDate,
   PageSection,
   ShellPage,
   ShellPageFactsSkeleton,
@@ -185,6 +185,7 @@ export function ToolchainDetailPage({
   installation,
   name,
 }: ToolchainDetailPageProps) {
+  const now = useNow(60_000);
   const frame = useToolchainFrame(name);
   const { isAvailable, isLoading } =
     useToolchainManagerAvailability(installation);
@@ -252,11 +253,18 @@ export function ToolchainDetailPage({
     <ShellPage
       title={name}
       {...frame}
-      meta={`${installation} · ${toolchain.source}${
-        toolchain.publishedAt
-          ? ` · published ${getRelativeDate(toolchain.publishedAt, new Date())}`
-          : ''
-      }`}
+      meta={
+        <>
+          {installation} · {toolchain.source}
+          {toolchain.publishedAt && (
+            <>
+              {' '}
+              · published{' '}
+              <DateComponent value={toolchain.publishedAt} relative now={now} />
+            </>
+          )}
+        </>
+      }
       actions={
         <Select
           label="Version"

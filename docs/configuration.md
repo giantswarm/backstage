@@ -295,8 +295,8 @@ set it to `[]`.
 
 A `giantswarm-ad` sign-in is looked up in the catalog by email, and a
 `giantswarm-github` sign-in by GitHub login, or by email when the token has no
-`preferred_username`. The `giantswarm-simple-oidc`, `giantswarm-gazelle-oidc`
-and `giantswarm-graveler-oidc` connectors federate to the Dex of gazelle and
+`preferred_username`. The `giantswarm-gazelle-oidc` and
+`giantswarm-graveler-oidc` connectors federate to the Dex of gazelle and
 graveler. Their sign-ins are looked up as if made through the connector the
 person used on that Dex, which the federated `user_id` names, so a person who
 signs in there with GitHub and a personal email still finds their catalog

@@ -10507,6 +10507,36 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@giantswarm/backstage-plugin-review-queue@workspace:^, @giantswarm/backstage-plugin-review-queue@workspace:plugins/review-queue":
+  version: 0.0.0-use.local
+  resolution: "@giantswarm/backstage-plugin-review-queue@workspace:plugins/review-queue"
+  dependencies:
+    "@backstage/cli": "backstage:^"
+    "@backstage/core-components": "backstage:^"
+    "@backstage/core-plugin-api": "backstage:^"
+    "@backstage/frontend-plugin-api": "backstage:^"
+    "@backstage/frontend-test-utils": "backstage:^"
+    "@backstage/plugin-catalog-react": "backstage:^"
+    "@backstage/test-utils": "backstage:^"
+    "@backstage/ui": "backstage:^"
+    "@giantswarm/backstage-plugin-analytics-react": "workspace:^"
+    "@giantswarm/backstage-plugin-gs": "workspace:^"
+    "@giantswarm/backstage-plugin-gs-common": "workspace:^"
+    "@giantswarm/backstage-plugin-muster": "workspace:^"
+    "@giantswarm/backstage-plugin-ui-react": "workspace:^"
+    "@material-ui/core": "npm:^4.12.4"
+    "@material-ui/icons": "npm:^4.11.3"
+    "@tanstack/react-query": "npm:^5.82.0"
+    "@testing-library/jest-dom": "npm:^7.0.0"
+    "@testing-library/react": "npm:^16.0.0"
+    "@testing-library/user-event": "npm:^14.0.0"
+    react: "npm:^16.13.1 || ^17.0.0 || ^18.0.0"
+  peerDependencies:
+    react: ^16.13.1 || ^17.0.0 || ^18.0.0
+    react-router-dom: "*"
+  languageName: unknown
+  linkType: soft
+
 "@giantswarm/backstage-plugin-roadmap-backend@workspace:^, @giantswarm/backstage-plugin-roadmap-backend@workspace:plugins/roadmap-backend":
   version: 0.0.0-use.local
   resolution: "@giantswarm/backstage-plugin-roadmap-backend@workspace:plugins/roadmap-backend"
@@ -23965,6 +23995,7 @@ __metadata:
     "@giantswarm/backstage-plugin-plans": "workspace:^"
     "@giantswarm/backstage-plugin-platform-capabilities": "workspace:^"
     "@giantswarm/backstage-plugin-repositories": "workspace:^"
+    "@giantswarm/backstage-plugin-review-queue": "workspace:^"
     "@giantswarm/backstage-plugin-roadmap": "workspace:^"
     "@giantswarm/backstage-plugin-ui-react": "workspace:^"
     "@material-ui/core": "npm:^4.12.2"

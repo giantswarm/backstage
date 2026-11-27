@@ -56,3 +56,28 @@
   --bui-font-size-1: var(--bui-font-size-2);
   --gs-font-size-exception: 0.625rem;
 }
+
+/*
+ * A plugin header's tabs (Hive's six, a page built from `PageBlueprint`
+ * sub-pages) stay one row and scroll sideways when the row is longer than
+ * the header, as the agent shell's `RouteTabs` strips do, instead of making
+ * the whole page scroll sideways on a phone. The focus ring is drawn inside
+ * the tab, since the row clips what sticks out.
+ */
+.bui-PluginHeaderTabsWrapper {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.bui-PluginHeaderTabsWrapper .bui-TabList {
+  flex-wrap: nowrap;
+}
+
+.bui-PluginHeaderTabsWrapper .bui-Tab {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.bui-PluginHeaderTabsWrapper .bui-Tab:focus-visible {
+  outline-offset: -2px;
+}

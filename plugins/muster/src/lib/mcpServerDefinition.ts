@@ -72,17 +72,18 @@ export type McpServerAuthMode =
  *
  * The other three modes all resolve to the *calling user's* identity; this one
  * does not, and nothing else in the composed definition says so. CloudTrail
- * records muster (STS session name `muster-aggregator`), never a named
- * engineer, so anyone who can reach the server's tools acts as everyone else.
+ * records muster (STS session name `muster-aggregator.<connector name>`), never
+ * a named engineer, so anyone who can reach the server's tools acts as
+ * everyone else.
  */
 export const SIGV4_SHARED_IDENTITY_WARNING =
   'Every request is signed as Muster itself, never as the user making the ' +
   'call. All users of this connector share one AWS identity, and CloudTrail ' +
-  'attributes their actions to Muster (STS session name muster-aggregator), ' +
-  'not to a named engineer.';
+  'attributes their actions to Muster (STS session name ' +
+  'muster-aggregator.<connector name>), not to a named engineer.';
 
-/** One `spec.meta` entry, kept as a list so the editor can round-trip order. */
-export type McpServerMetaEntry = { key: string; value: string };
+/** One `spec.requestMeta` entry, kept as a list so an edit round-trips order. */
+export type McpServerRequestMetaEntry = { key: string; value: string };
 
 export type NewMcpServerFormState = {
   /**
@@ -158,11 +159,12 @@ export type NewMcpServerFormState = {
   /** `sigv4` only: IAM role assumed before signing. Empty signs as muster. */
   sigv4RoleArn: string;
   /**
-   * `spec.meta`: entries merged into `params._meta` of every outbound request.
-   * Not an auth field — it belongs to the endpoint and applies to every remote
-   * transport — but it is what carries `AWS_REGION` to the AWS-hosted server.
+   * `spec.requestMeta`: entries added to `params._meta` of every outbound
+   * request. Not an auth field — it belongs to the endpoint and applies to
+   * every remote transport — but it is what carries `AWS_REGION` to the
+   * AWS-hosted server, which the sigv4 step edits as its operating region.
    */
-  meta: McpServerMetaEntry[];
+  requestMeta: McpServerRequestMetaEntry[];
 };
 
 /** The flat definition muster's `core_mcpserver_*` tools take. */
@@ -183,6 +185,11 @@ export type McpServerDefinition = {
   autoStart: boolean;
   description?: string;
   auth?: MCPServerAuth;
+  requestMeta?: Record<string, string>;
+  /**
+   * The former name of `requestMeta`, sent instead of it to a muster whose
+   * tools do not take `requestMeta` (see {@link withRequestMetaArgument}).
+   */
   meta?: Record<string, string>;
 };
 
@@ -213,7 +220,7 @@ export const emptyFormState: NewMcpServerFormState = {
   sigv4Region: '',
   sigv4Service: '',
   sigv4RoleArn: '',
-  meta: [],
+  requestMeta: [],
 };
 
 /**
@@ -247,10 +254,40 @@ export function isCompleteMcpUrl(url: string): boolean {
 const ISSUER_PATTERN = /^https:\/\/[^/?#]+(\/[^?#]*[^/?#])?$/;
 
 /**
- * The `spec.meta` entry the AWS-hosted MCP server reads its *operating* region
- * from. Distinct from the sigv4 signing region even when the two strings match.
+ * The `spec.requestMeta` entry the AWS-hosted MCP server reads its *operating*
+ * region from. Distinct from the sigv4 signing region even when the two
+ * strings match; muster refuses a sigv4 server without it.
  */
-export const AWS_REGION_META_KEY = 'AWS_REGION';
+export const AWS_REGION_REQUEST_META_KEY = 'AWS_REGION';
+
+/** The operating region the request metadata holds, or `''`. */
+export function operatingRegion(state: NewMcpServerFormState): string {
+  return (
+    state.requestMeta.find(
+      entry => entry.key.trim() === AWS_REGION_REQUEST_META_KEY,
+    )?.value ?? ''
+  );
+}
+
+/**
+ * `entries` with the operating region set to `region`: the existing
+ * `AWS_REGION` entry is replaced in place, or one is appended. The other
+ * entries are kept as they are.
+ */
+export function withOperatingRegion(
+  entries: McpServerRequestMetaEntry[],
+  region: string,
+): McpServerRequestMetaEntry[] {
+  const index = entries.findIndex(
+    entry => entry.key.trim() === AWS_REGION_REQUEST_META_KEY,
+  );
+  if (index === -1) {
+    return [...entries, { key: AWS_REGION_REQUEST_META_KEY, value: region }];
+  }
+  return entries.map((entry, i) =>
+    i === index ? { key: AWS_REGION_REQUEST_META_KEY, value: region } : entry,
+  );
+}
 
 /**
  * Why sigv4 and the SSE transport cannot be combined — the CRD's spec-level
@@ -339,7 +376,7 @@ export function tagsArgument(
  */
 export function takesArgument(
   inputSchema: { properties?: Record<string, unknown> } | undefined,
-  argument: 'displayName' | 'tags' | 'clientCredentials',
+  argument: 'displayName' | 'tags' | 'clientCredentials' | 'requestMeta',
 ): boolean {
   return Boolean(inputSchema?.properties?.[argument]);
 }
@@ -613,21 +650,21 @@ function composeAuth(state: NewMcpServerFormState): MCPServerAuth | undefined {
 }
 
 /**
- * `spec.meta` from the entry list, dropping entries with no key. Later entries
- * win on a duplicate key, which validation flags separately rather than
- * silently resolving.
+ * `spec.requestMeta` from the entry list, dropping entries with no key. Later
+ * entries win on a duplicate key, which validation flags separately rather
+ * than silently resolving.
  */
-function composeMeta(
+function composeRequestMeta(
   state: NewMcpServerFormState,
 ): Record<string, string> | undefined {
-  const meta: Record<string, string> = {};
-  for (const entry of state.meta) {
+  const requestMeta: Record<string, string> = {};
+  for (const entry of state.requestMeta) {
     const key = entry.key.trim();
     if (key) {
-      meta[key] = entry.value.trim();
+      requestMeta[key] = entry.value.trim();
     }
   }
-  return Object.keys(meta).length ? meta : undefined;
+  return Object.keys(requestMeta).length ? requestMeta : undefined;
 }
 
 /**
@@ -669,11 +706,11 @@ export function composeMcpServerDefinition(
   if (auth) {
     definition.auth = auth;
   }
-  // `meta` needs no transport guard: the CRD only forbids it for `stdio`, which
-  // the wizard never offers.
-  const meta = composeMeta(state);
-  if (meta) {
-    definition.meta = meta;
+  // `requestMeta` needs no transport guard: the CRD only forbids it for
+  // `stdio`, which the wizard never offers.
+  const requestMeta = composeRequestMeta(state);
+  if (requestMeta) {
+    definition.requestMeta = requestMeta;
   }
   return definition;
 }
@@ -686,7 +723,7 @@ export type McpServerField =
   | 'tags'
   | 'installation'
   | 'url'
-  | 'meta'
+  | 'requestMeta'
   | 'issuer'
   | 'scopes'
   | 'authorizationEndpoint'
@@ -698,7 +735,8 @@ export type McpServerField =
   | 'clientId'
   | 'clientSecret'
   | 'transport'
-  | 'sigv4Region';
+  | 'sigv4Region'
+  | 'operatingRegion';
 
 /** One validation problem and the field that shows it. */
 export type McpServerProblem = { field: McpServerField; message: string };
@@ -779,8 +817,8 @@ export function mcpServerDetailsProblems(
     });
   }
   problems.push(
-    ...validateMeta(state.meta).map(message => ({
-      field: 'meta' as const,
+    ...validateRequestMetaEntries(state.requestMeta).map(message => ({
+      field: 'requestMeta' as const,
       message,
     })),
   );
@@ -798,15 +836,47 @@ export function validateMcpServerDetails(
   return mcpServerDetailsProblems(state).map(problem => problem.message);
 }
 
+/** The MCP `_meta` key format, as muster's CRD checks it. */
+const REQUEST_META_KEY_PATTERN =
+  /^([a-zA-Z]([a-zA-Z0-9-]*[a-zA-Z0-9])?([.][a-zA-Z]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*\/)?[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$/;
+/** A prefix whose second label is `modelcontextprotocol` or `mcp`. */
+const RESERVED_REQUEST_META_PREFIX =
+  /^[^./]+[.](modelcontextprotocol|mcp)([.][^/]*)?\//i;
+/** Keys muster or OpenTelemetry set on each request. */
+const RESERVED_REQUEST_META_KEYS = [
+  'progressToken',
+  'traceparent',
+  'tracestate',
+  'baggage',
+];
+
 /**
- * Problems in the request-metadata entries. The CRD accepts any string map, so
- * these are the two ways an entry list can mean something the map cannot
- * express: a value whose key was never typed (silently dropped) and a key typed
- * twice (silently last-wins).
+ * Problems in the request-metadata entries, in the order muster's CRD rules
+ * report them, plus the two ways an entry list can mean something the map
+ * cannot express: a value whose key was never typed (silently dropped) and a
+ * key typed twice (silently last-wins).
  */
-function validateMeta(entries: McpServerMetaEntry[]): string[] {
+function validateRequestMetaEntries(
+  entries: McpServerRequestMetaEntry[],
+): string[] {
   const errors: string[] = [];
   const keys = entries.map(entry => entry.key.trim());
+
+  for (const key of keys.filter(Boolean)) {
+    if (!REQUEST_META_KEY_PATTERN.test(key)) {
+      errors.push(
+        `Request metadata name ${key} must be an optional dot-separated prefix ending in /, then a name that begins and ends with a letter or digit`,
+      );
+    } else if (RESERVED_REQUEST_META_PREFIX.test(key)) {
+      errors.push(
+        `Request metadata name ${key} uses a prefix reserved for MCP`,
+      );
+    } else if (RESERVED_REQUEST_META_KEYS.includes(key)) {
+      errors.push(
+        `Request metadata name ${key} is set by Muster and OpenTelemetry on each request`,
+      );
+    }
+  }
 
   if (entries.some((entry, i) => !keys[i] && entry.value.trim())) {
     errors.push('Request metadata needs a name for every value');
@@ -1018,6 +1088,16 @@ export function mcpServerAuthProblems(
         message: 'Enter the signing region for AWS SigV4, e.g. eu-central-1.',
       });
     }
+    // muster refuses a sigv4 server without it: the AWS-hosted server would
+    // otherwise run every call in us-east-1 and answer about the wrong region
+    // without an error.
+    if (!operatingRegion(state).trim()) {
+      problems.push({
+        field: 'operatingRegion',
+        message:
+          'Enter the region the AWS MCP server operates in, e.g. eu-central-1.',
+      });
+    }
   }
 
   return problems;
@@ -1054,18 +1134,6 @@ export function sigv4Advisories(state: NewMcpServerFormState): string[] {
   if (region && url && !url.includes(region)) {
     advisories.push(
       `The URL does not mention ${region}. The signing region must match the region of the endpoint, or the endpoint rejects the signature.`,
-    );
-  }
-
-  // The trap the muster docs call out: without it the AWS-hosted server falls
-  // back to its own region and returns a correct-looking answer about the
-  // wrong one, so nothing errors and nobody notices.
-  const hasOperatingRegion = state.meta.some(
-    entry => entry.key.trim() === AWS_REGION_META_KEY && entry.value.trim(),
-  );
-  if (!hasOperatingRegion) {
-    advisories.push(
-      `No ${AWS_REGION_META_KEY} in request metadata. An AWS-hosted connector reads the region it operates in from there — a different value from the signing region — and without it answers about its own default region instead of failing. Add it on the Details step.`,
     );
   }
 
@@ -1383,10 +1451,9 @@ export function formStateFromServer(server: MCPServer): NewMcpServerFormState {
     sigv4Region: auth?.sigv4?.region ?? '',
     sigv4Service: auth?.sigv4?.service ?? '',
     sigv4RoleArn: auth?.sigv4?.roleArn ?? '',
-    meta: Object.entries(server.getMeta() ?? {}).map(([key, value]) => ({
-      key,
-      value,
-    })),
+    requestMeta: Object.entries(server.getRequestMeta() ?? {}).map(
+      ([key, value]) => ({ key, value }),
+    ),
   };
 }
 
@@ -1399,6 +1466,7 @@ const WIZARD_FIELDS = [
   'url',
   'description',
   'auth',
+  'requestMeta',
   'meta',
 ];
 
@@ -1410,11 +1478,11 @@ const WIZARD_FIELDS = [
  * is a merge onto the stored CR, with per-field rules this mirrors so the
  * definition shown on the review step is what the server ends up with:
  *
- * - An omitted `auth`, `meta`, `headers`, `env`, `toolPrefix`, `timeout`, ...
- *   keeps the stored value. What the wizard does not model is carried over
- *   anyway, so the definition reads complete. A wizard answer that *clears*
- *   `auth` or `meta` is sent explicitly (`{ type: 'none' }`, `{}`) — omitting
- *   it would keep the old value.
+ * - An omitted `auth`, `requestMeta`, `headers`, `env`, `toolPrefix`,
+ *   `timeout`, ... keeps the stored value. What the wizard does not model is
+ *   carried over anyway, so the definition reads complete. A wizard answer that
+ *   *clears* `auth` or `requestMeta` is sent explicitly (`{ type: 'none' }`,
+ *   `{}`) — omitting it would keep the old value.
  * - `description` is only replaced by a non-empty value; muster cannot clear
  *   it through an update, so a cleared description keeps the stored one.
  * - `displayName` is tri-state like `suspended` (omitted keeps the annotation,
@@ -1483,8 +1551,26 @@ export function mergeOntoExisting(
       };
     }
   }
-  if (!merged.meta && existing.meta) {
-    merged.meta = {};
+  if (!merged.requestMeta && (existing.requestMeta || existing.meta)) {
+    merged.requestMeta = {};
   }
   return merged;
+}
+
+/**
+ * `definition` with its request metadata under the argument name the muster
+ * it goes to takes: `requestMeta`, or its former name `meta` on a muster whose
+ * create and update tools do not list `requestMeta`. Every muster takes
+ * `meta`; only one released with the rename takes `requestMeta`, and muster
+ * refuses a definition that sets both.
+ */
+export function withRequestMetaArgument(
+  definition: McpServerDefinition,
+  takesRequestMeta: boolean,
+): McpServerDefinition {
+  if (takesRequestMeta || definition.requestMeta === undefined) {
+    return definition;
+  }
+  const { requestMeta, ...rest } = definition;
+  return { ...rest, meta: requestMeta };
 }

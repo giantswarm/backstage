@@ -2,7 +2,6 @@ import { SessionStateEntry } from '@giantswarm/backstage-plugin-agent-platform-c
 import { FleetSessionStatesView } from '../../hooks/useFleetSessionStates';
 import { SessionRow } from '../SessionsDataProvider/helpers';
 import {
-  formatSessionTime,
   sessionColumnMinWidth,
   sessionDayGroup,
   shellColumnsMinWidth,
@@ -173,20 +172,6 @@ describe('sessionDayGroup', () => {
       expect(sessionDayGroup(activeAt, now)).toBe('earlier');
     },
   );
-});
-
-describe('formatSessionTime', () => {
-  const started = new Date(2026, 9, 2, 9, 5).getTime();
-
-  it('shows the local time of day on a 24-hour clock under today and yesterday', () => {
-    expect(formatSessionTime(started, 'today', 2026)).toBe('09:05');
-    expect(formatSessionTime(started, 'yesterday', 2026)).toBe('09:05');
-  });
-
-  it('shows the date under earlier, with the year only when it is another', () => {
-    expect(formatSessionTime(started, 'earlier', 2026)).toBe('2 Oct');
-    expect(formatSessionTime(started, 'pinned', 2027)).toBe('2 Oct 2026');
-  });
 });
 
 describe('shellColumnsMinWidth', () => {

@@ -47,6 +47,7 @@ import {
   BUILD_STATE_LABEL,
   isFinalBuildState,
   type ToolchainBuild,
+  type ToolchainAnswer,
   type WrittenToolchain,
   TOOLCHAINS_BLOCKED,
   TOOLCHAINS_VIA,
@@ -100,6 +101,21 @@ function buildTone(build: ToolchainBuild) {
   }
 }
 
+/**
+ * How often the build state is read again: until it is final, and not while
+ * the answer has a status (a grant to give), which waits for the person; the
+ * prompt's sign-in reads it again, and a build state polls again.
+ */
+export function buildPollInterval(
+  query: PollingQuery<{ build?: ToolchainBuild; status?: string }>,
+): number | false {
+  if (query.state.data?.status) {
+    return false;
+  }
+  const state = query.state.data?.build?.state;
+  return state && isFinalBuildState(state) ? false : BUILD_POLL_MS;
+}
+
 /** The pull request's way from its checks to the published image. */
 function BuildStatus({
   installation,
@@ -122,12 +138,7 @@ function BuildStatus({
     retry: false,
     // Until the build is final; not from a hidden tab, not after muster
     // answered that the person is not signed in to the toolchain-manager.
-    ...musterPollingOptions(
-      (query: PollingQuery<{ build?: ToolchainBuild }>) => {
-        const state = query.state.data?.build?.state;
-        return state && isFinalBuildState(state) ? false : BUILD_POLL_MS;
-      },
-    ),
+    ...musterPollingOptions(buildPollInterval),
   });
   const build = status.data?.build;
   if (status.error) {
@@ -314,6 +325,8 @@ function NewToolchainForm({ installation }: { installation: string }) {
   const [searched, setSearched] = useState('');
   const [picked, setPicked] = useState<string[]>([]);
   const [written, setWritten] = useState<WrittenToolchain>();
+  // The manager's answer in place of the Dockerfile: a grant to give first.
+  const [writeAnswer, setWriteAnswer] = useState<ToolchainAnswer>();
   const [writeError, setWriteError] = useState<string>();
   const [isWriting, setWriting] = useState(false);
   const create = useCreateToolchain(installation);
@@ -349,6 +362,7 @@ function NewToolchainForm({ installation }: { installation: string }) {
     apply();
     writeRun.current += 1;
     setWritten(undefined);
+    setWriteAnswer(undefined);
     create.reset();
   };
 
@@ -360,10 +374,15 @@ function NewToolchainForm({ installation }: { installation: string }) {
     const run = ++writeRun.current;
     setWriting(true);
     setWriteError(undefined);
+    setWriteAnswer(undefined);
     try {
       const answer = await client!.addPackages({ name, packages: picked });
       if (run === writeRun.current) {
-        setWritten(answer);
+        if ('dockerfile' in answer) {
+          setWritten(answer);
+        } else {
+          setWriteAnswer(answer);
+        }
       }
     } catch (error) {
       if (run === writeRun.current) {
@@ -557,6 +576,14 @@ function NewToolchainForm({ installation }: { installation: string }) {
             description={writeError}
           />
         )}
+        {writeAnswer?.status && !written && (
+          <ToolchainGrantPrompt
+            installation={installation}
+            answer={writeAnswer}
+            // With the grant given, the Dockerfile is written.
+            onConnected={write}
+          />
+        )}
         {written ? (
           <FileView
             content={written.dockerfile}
@@ -564,9 +591,11 @@ function NewToolchainForm({ installation }: { installation: string }) {
             path={written.path.replace(/\/Dockerfile$/, '')}
           />
         ) : (
-          <Text variant="body-small" color="secondary">
-            Pick the packages, then write the Dockerfile to review it.
-          </Text>
+          !writeAnswer?.status && (
+            <Text variant="body-small" color="secondary">
+              Pick the packages, then write the Dockerfile to review it.
+            </Text>
+          )
         )}
       </PageSection>
 

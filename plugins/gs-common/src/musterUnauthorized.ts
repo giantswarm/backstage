@@ -44,3 +44,39 @@ export function isMusterUnauthorizedReason(
  */
 export const MUSTER_TOKEN_EXPIRED_TEXT =
   /token has expired\b.*\bre-authenticate/i;
+
+/**
+ * One provider App a `server_sign_in_required` 401 asks the person to grant
+ * (body's `error.apps`): muster's answer to a call of a server that receives
+ * the person's App grants, made without that grant. `authUrl` is muster's
+ * sign-in link for it, absent when muster could not start one (a device-code
+ * App, its sign-in rate limit).
+ */
+export type MusterProviderAppGrant = { app: string; authUrl?: string };
+
+/**
+ * The Apps of muster's provider-App answer (`structuredContent.apps`, or a
+ * 401 body's `error.apps`), the malformed entries left out; none when it is
+ * not a list.
+ */
+export function musterProviderAppGrantsOf(
+  value: unknown,
+): MusterProviderAppGrant[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap(entry => {
+    const { app, authUrl } = (entry ?? {}) as {
+      app?: unknown;
+      authUrl?: unknown;
+    };
+    if (typeof app !== 'string' || app === '') {
+      return [];
+    }
+    return [
+      typeof authUrl === 'string' && authUrl !== ''
+        ? { app, authUrl }
+        : { app },
+    ];
+  });
+}

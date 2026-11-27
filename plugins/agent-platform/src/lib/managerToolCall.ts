@@ -1,4 +1,8 @@
-import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
+import {
+  musterUnauthorizedInfoOf,
+  type MusterApi,
+  type MusterProviderAppGrant,
+} from '@giantswarm/backstage-plugin-muster';
 import { portalSessionError, PortalSessionEndedError } from './portalSession';
 
 /** How a platform manager's client turns muster's failures into its errors. */
@@ -42,4 +46,26 @@ export async function callManagerTool<T>(
     }
   }
   return result as T;
+}
+
+/**
+ * The provider Apps a failed manager call needs the person's grant of, when
+ * that is why it failed: muster answers a call of a server that receives the
+ * person's App grants, made without them, with its `auth_required` tool error
+ * instead of the manager's own `grant_required` answer, and muster-backend
+ * passes the Apps on in its 401. `undefined` for any other failure.
+ */
+export function providerAppGrantsOf(
+  error: unknown,
+): MusterProviderAppGrant[] | undefined {
+  const unauthorized = musterUnauthorizedInfoOf(error);
+  return unauthorized?.reason === 'server_sign_in_required' &&
+    unauthorized.apps?.length
+    ? unauthorized.apps
+    : undefined;
+}
+
+/** muster's sign-in for a provider App, as a manager's `signIn` sentence says it. */
+export function providerAppSignIn(app: string): string {
+  return `Grant the ${app} App in muster first: core_auth_login app=${app}`;
 }

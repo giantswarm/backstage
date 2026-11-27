@@ -134,6 +134,48 @@ function scenarioError(installation: string, server?: string): Error {
       );
 }
 
+/**
+ * The provider Apps a server's answer asks the person to grant
+ * (`status: "grant_required"`, `apps: [name]`), or none.
+ */
+function grantRequiredApps(answer: unknown): string[] {
+  const { status, apps } = (answer ?? {}) as {
+    status?: unknown;
+    apps?: unknown;
+  };
+  if (status !== 'grant_required' || !Array.isArray(apps)) {
+    return [];
+  }
+  return apps.filter(
+    (app): app is string => typeof app === 'string' && app !== '',
+  );
+}
+
+/**
+ * muster's answer in place of a server's `grant_required`: its auth_required
+ * tool error with a sign-in link per App (`structuredContent.apps`), as
+ * muster-backend passes it on, a 401 naming the Apps.
+ */
+function providerAppGrantError(
+  server: string,
+  apps: string[],
+  installation: string,
+): MusterUnauthorizedError {
+  return new MusterUnauthorizedError(
+    `auth_required: server '${server}' requires authentication: it needs your grant of a provider App (${apps.join(
+      ', ',
+    )}) for this call.`,
+    'server_sign_in_required',
+    server,
+    installation,
+    'MusterUnauthorizedError',
+    apps.map(app => ({
+      app,
+      authUrl: `https://muster.${installation}.fixtures.invalid/oauth/proxy/start?app=${app}`,
+    })),
+  );
+}
+
 /** Whether calls to a reachable installation fail, as in `error`. */
 function failsInScenario(installation: string): boolean {
   return fixtureScenario() === 'error' && !isUnreachable(installation);
@@ -315,7 +357,14 @@ export class MusterFixtureApi implements MusterApi {
       console.error(error.message, { args, installation });
       throw error;
     }
-    return handler(args, { installation: target, signal });
+    const answer = await handler(args, { installation: target, signal });
+    // muster answers a server's grant_required with its own error, naming
+    // the Apps; it never passes the answer on.
+    const apps = tool ? grantRequiredApps(answer) : [];
+    if (tool && apps.length > 0) {
+      throw providerAppGrantError(tool.server, apps, target);
+    }
+    return answer;
   }
 
   /**

@@ -220,9 +220,13 @@ function HistoryView(props: {
  * each with the issues that moved it, folded until opened.
  */
 export function HiveHistoryTab() {
-  const [team] = useHiveTeam();
+  const [team, , isTeamResolved] = useHiveTeam();
   const [query] = useHiveSearch();
-  const { data, isFetching, error, refetch } = useHiveHistory(team);
+  // Not before the reader's own team is known: the default is no one's pick.
+  const { data, isFetching, error, refetch } = useHiveHistory(
+    team,
+    isTeamResolved,
+  );
 
   if (data && !data.view) {
     return <HiveTeamEmptyState team={team} what="what moved" />;

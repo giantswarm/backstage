@@ -23,6 +23,7 @@ export type {
   ConnectorNamesResponse,
   MusterApi,
   MusterAuthProvidersApi,
+  MusterProviderAppGrant,
   MusterUnauthorizedReason,
   McpServerRuntime,
   MusterToolProgress,

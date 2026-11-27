@@ -5,6 +5,7 @@ import type { AgentRow } from '../AgentsDataProvider';
 import {
   WorkspaceManagerError,
   type Workspace,
+  type WorkspaceProvider,
 } from '../../lib/workspaceManager';
 import { NewSessionComposer } from './NewSessionComposer';
 
@@ -63,9 +64,7 @@ jest.mock('../../hooks/useWorkspaceManager', () => ({
   useWorkspaceManagerClient: () => undefined,
 }));
 /** `list_providers` as the test moves it along. */
-const mockProviders = {
-  data: [{ name: 'github', kind: 'github', connected: false }],
-};
+const mockProviders: { data: WorkspaceProvider[] } = { data: [] };
 jest.mock('../../hooks/useWorkspaceEditor', () => ({
   useWorkspaceProviders: () => mockProviders,
 }));
@@ -128,6 +127,7 @@ const workspacePicker = () => screen.getByRole('button', { name: /Workspace/ });
 
 beforeEach(() => {
   jest.useFakeTimers({ now: NOW, advanceTimers: true });
+  mockProviders.data = [{ name: 'github', kind: 'github', connected: false }];
   window.localStorage.clear();
   onStart.mockReset();
   mockWorkspacesOf.mockReset();
@@ -486,6 +486,86 @@ describe('NewSessionComposer workspaces', () => {
     expect(onStart).toHaveBeenCalledTimes(2);
   });
 
+  it("names the App's provider from list_providers, and the App alone where none matches", async () => {
+    mockWorkspacesOf.mockReturnValue([mix]);
+    window.localStorage.setItem(
+      'gs-agent-platform-last-workspace',
+      JSON.stringify({ [claude.id]: 'platform-mix' }),
+    );
+    mockProviders.data = [
+      {
+        name: 'github-com',
+        kind: 'github',
+        connected: false,
+        signIn: 'core_auth_login app=agent-platform-github',
+      },
+    ];
+    const { rerenderWith } = renderComposer();
+    await userEvent.type(field(), 'List the repositories');
+    await userEvent.click(startButton());
+    const fromMuster = (app: string) =>
+      new WorkspaceManagerError(
+        'not_connected',
+        `auth_required: server 'workspace-manager' requires authentication: it needs your grant of a provider App (${app}) for this call.`,
+        [],
+        [
+          {
+            provider: app,
+            app,
+            signIn: `Grant the ${app} App in muster first: core_auth_login app=${app}`,
+          },
+        ],
+      );
+
+    rerenderWith({ error: fromMuster('agent-platform-github') });
+    expect(screen.getByTestId('provider-connect-github-com')).toHaveTextContent(
+      'Sign in to github-com (GitHub) to use platform-mix',
+    );
+
+    // No instance signs in with this App: its name, no provider's kind.
+    rerenderWith({ error: fromMuster('github') });
+    const card = screen.getByTestId('provider-connect-github');
+    expect(card).toHaveTextContent('Sign in to github to use platform-mix');
+    expect(card).not.toHaveTextContent('GitHub');
+  });
+
+  it("sets the sign-in card's Start without workspace beside its sign-in button, the hint under both", async () => {
+    mockWorkspacesOf.mockReturnValue([mix]);
+    window.localStorage.setItem(
+      'gs-agent-platform-last-workspace',
+      JSON.stringify({ [claude.id]: 'platform-mix' }),
+    );
+    const { rerenderWith } = renderComposer();
+    await userEvent.type(field(), 'List the repositories');
+    await userEvent.click(startButton());
+    rerenderWith({
+      error: new WorkspaceManagerError(
+        'not_connected',
+        'sign in first',
+        [],
+        [{ provider: 'github', signIn: 'core_auth_login app=github' }],
+      ),
+    });
+
+    const card = screen.getByTestId('provider-connect-github');
+    const signIn = within(card).getByRole('button', {
+      name: /Continue with GitHub/,
+    });
+    const without = within(card).getByRole('button', {
+      name: 'Start without workspace',
+    });
+    // One row of buttons; what the sign-in says follows the row.
+    expect(without.parentElement).toBe(signIn.parentElement);
+    const hint = within(card).getByText(
+      'Opens a new tab. What you entered here stays.',
+    );
+    expect(
+      signIn.parentElement!.compareDocumentPosition(hint) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(signIn.parentElement).not.toContainElement(hint);
+  });
+
   it('starts nothing by itself without a sign-in made here', async () => {
     mockWorkspacesOf.mockReturnValue([mix]);
     window.localStorage.setItem(
@@ -517,4 +597,29 @@ describe('NewSessionComposer workspaces', () => {
     ).toBeInTheDocument();
     expect(onStart).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['failed', 'workspace-manager: connection reset by peer'],
+    ['unavailable', 'tool not found: x_workspace-manager_authorize_workspace'],
+    ['not_connected', 'sign in first'],
+  ] as const)(
+    'says a %s start once, below the box, rather than nothing',
+    async (kind, message) => {
+      mockWorkspacesOf.mockReturnValue([mix]);
+      window.localStorage.setItem(
+        'gs-agent-platform-last-workspace',
+        JSON.stringify({ [claude.id]: 'platform-mix' }),
+      );
+      const { rerenderWith } = renderComposer();
+      await userEvent.type(field(), 'List the repositories');
+      await userEvent.click(startButton());
+      // not_connected without a provider to sign in to has no card either.
+      rerenderWith({ error: new WorkspaceManagerError(kind, message) });
+
+      expect(screen.getAllByText('Session not started')).toHaveLength(1);
+      expect(screen.getByText(message)).toBeInTheDocument();
+      expect(screen.queryByTestId(/^provider-connect-/)).toBeNull();
+      expect(field()).toHaveValue('List the repositories');
+    },
+  );
 });

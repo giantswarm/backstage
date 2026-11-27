@@ -19,6 +19,7 @@ import {
   WORKSPACE_MANAGER_SERVER,
 } from '@giantswarm/backstage-plugin-gs-common';
 import { looksNotConnected } from './agentManager';
+import { providerAppGrantsOf, providerAppSignIn } from './managerToolCall';
 
 /** The MCPServer name muster registers workspace-manager under. */
 export { WORKSPACE_MANAGER_SERVER };
@@ -466,7 +467,32 @@ export type ProviderConnect = {
    * manager is pinned to, or that muster holds no grant for this one.
    */
   signIn: string;
+  /**
+   * The muster App to grant, where muster named it in place of the manager's
+   * answer: `provider` is then that App's name, not an instance's, until
+   * {@link providerOfConnect} finds the instance.
+   */
+  app?: string;
 };
+
+/**
+ * The provider instance of `list_providers` an entry asks to grant: for an
+ * App muster named, the instance whose sign-in is that App's; otherwise the
+ * instance of the entry's name. None where none matches: the card then
+ * names the App alone, never another instance's kind or host.
+ */
+export function providerOfConnect(
+  providers: readonly WorkspaceProvider[] | undefined,
+  entry: ProviderConnect,
+): WorkspaceProvider | undefined {
+  if (entry.app === undefined) {
+    return providers?.find(p => p.name === entry.provider);
+  }
+  return providers?.find(p => {
+    const target = providerSignInTarget(p.signIn);
+    return target?.app === true && target.name === entry.app;
+  });
+}
 
 /**
  * `authorize_workspace`: may the person start a Session on the workspace?
@@ -488,6 +514,13 @@ export type WorkspaceAuthorization = {
   changed?: string[];
   unreadable?: string[];
   connect?: ProviderConnect[];
+  /**
+   * connect_required: `grant_required` and the Apps to grant, which muster
+   * reads to answer its own `auth_required` error in place of this answer
+   * (`classifyWorkspaceManagerError`).
+   */
+  status?: 'grant_required';
+  apps?: string[];
 };
 
 /**
@@ -531,10 +564,11 @@ export class WorkspaceManagerError extends Error {
 }
 
 /**
- * Classifies what a tool call threw: workspace-manager's refusals become
- * {@link WorkspaceManagerError} of their kind; muster's "not connected"
- * answers (the tool missing from the person's session) are `unavailable`;
- * anything else is `failed`, verbatim.
+ * Classifies what a tool call threw: muster's answer that the call needs
+ * the person's grant of provider Apps is `not_connected` with those Apps;
+ * workspace-manager's refusals become {@link WorkspaceManagerError} of their
+ * kind; muster's "not connected" answers (the tool missing from the person's
+ * session) are `unavailable`; anything else is `failed`, verbatim.
  */
 export function classifyWorkspaceManagerError(
   error: unknown,
@@ -543,6 +577,22 @@ export function classifyWorkspaceManagerError(
     return error;
   }
   const message = error instanceof Error ? error.message : String(error);
+  // muster's answer in place of the manager's connect_required: the Apps to
+  // grant, each signed in to as the manager's own answer names it.
+  const apps = providerAppGrantsOf(error);
+  if (apps) {
+    return new WorkspaceManagerError(
+      'not_connected',
+      message,
+      [],
+      apps.map(({ app }) => ({
+        provider: app,
+        app,
+        signIn: providerAppSignIn(app),
+      })),
+      { cause: error },
+    );
+  }
   // Shared with gs-node, which answers these refusals 4xx.
   const match = WORKSPACE_MANAGER_REFUSALS.find(([, pattern]) =>
     pattern.test(message),
