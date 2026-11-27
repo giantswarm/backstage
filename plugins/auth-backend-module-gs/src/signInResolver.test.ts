@@ -65,120 +65,123 @@ describe('customSignInResolver', () => {
     });
   });
 
-  describe.each([
-    'giantswarm-graveler-oidc',
-    'giantswarm-gazelle-oidc',
-  ])('a person federated through %s', federatingConnector => {
-    function federated(upstreamSubject: string, userinfo: object) {
-      return {
-        sub: dexSubject(upstreamSubject, federatingConnector),
-        federated_claims: {
-          connector_id: federatingConnector,
-          user_id: upstreamSubject,
-        },
-        ...userinfo,
-      };
-    }
+  describe.each(['giantswarm-graveler-oidc', 'giantswarm-gazelle-oidc'])(
+    'a person federated through %s',
+    federatingConnector => {
+      function federated(upstreamSubject: string, userinfo: object) {
+        return {
+          sub: dexSubject(upstreamSubject, federatingConnector),
+          federated_claims: {
+            connector_id: federatingConnector,
+            user_id: upstreamSubject,
+          },
+          ...userinfo,
+        };
+      }
 
-    it('is looked up by email after giantswarm-ad upstream', async () => {
-      const ctx = makeContext();
-
-      await resolve(
-        federated(dexSubject('u6', 'giantswarm-ad'), {
-          email: 'user@giantswarm.io',
-          email_verified: true,
-        }),
-        ctx,
-      );
-
-      expect(ctx.signInWithCatalogUser).toHaveBeenCalledWith({
-        filter: { 'spec.profile.email': 'user@giantswarm.io' },
-      });
-      expect(ctx.issueToken).not.toHaveBeenCalled();
-    });
-
-    it('is looked up by username after giantswarm-github upstream, whatever the email', async () => {
-      const ctx = makeContext();
-
-      await resolve(
-        federated(dexSubject('1234567', 'giantswarm-github'), {
-          email: 'someone@gmail.com',
-          preferred_username: 'someone',
-        }),
-        ctx,
-      );
-
-      expect(ctx.signInWithCatalogUser).toHaveBeenCalledWith({
-        filter: { 'metadata.name': 'someone' },
-      });
-      expect(ctx.issueToken).not.toHaveBeenCalled();
-    });
-
-    it('reads an upstream subject longer than 127 bytes', async () => {
-      const ctx = makeContext();
-
-      await resolve(
-        federated(dexSubject('u'.repeat(200), 'giantswarm-ad'), {
-          email: 'user@giantswarm.io',
-          email_verified: true,
-        }),
-        ctx,
-      );
-
-      expect(ctx.signInWithCatalogUser).toHaveBeenCalledWith({
-        filter: { 'spec.profile.email': 'user@giantswarm.io' },
-      });
-    });
-
-    it.each(['giantswarm-ad', 'giantswarm-github'])(
-      'refuses an unverified email without a username after %s upstream',
-      async upstreamConnector => {
+      it('is looked up by email after giantswarm-ad upstream', async () => {
         const ctx = makeContext();
 
-        await expect(
-          resolve(
-            federated(dexSubject('u7', upstreamConnector), {
-              email: 'user@giantswarm.io',
-              email_verified: false,
-            }),
-            ctx,
-          ),
-        ).rejects.toThrow(NotAllowedError);
-        expect(ctx.signInWithCatalogUser).not.toHaveBeenCalled();
-        expect(ctx.issueToken).not.toHaveBeenCalled();
-      },
-    );
-
-    it('refuses a staff identity absent from the catalog', async () => {
-      const ctx = makeContext();
-      const error = new NotFoundError('User not found');
-      ctx.signInWithCatalogUser.mockRejectedValue(error);
-
-      await expect(
-        resolve(
-          federated(dexSubject('u8', 'giantswarm-ad'), {
+        await resolve(
+          federated(dexSubject('u6', 'giantswarm-ad'), {
             email: 'user@giantswarm.io',
             email_verified: true,
           }),
           ctx,
-        ),
-      ).rejects.toBe(error);
-      expect(ctx.issueToken).not.toHaveBeenCalled();
-    });
+        );
 
-    it.each([
-      ['another upstream connector', dexSubject('a1', 'customer-ad')],
-      ['an upstream subject that is not a Dex subject', 'not a dex subject'],
-    ])('is not looked up in the catalog after %s', async (_, upstream) => {
-      const ctx = makeContext();
+        expect(ctx.signInWithCatalogUser).toHaveBeenCalledWith({
+          filter: { 'spec.profile.email': 'user@giantswarm.io' },
+        });
+        expect(ctx.issueToken).not.toHaveBeenCalled();
+      });
 
-      await resolve(federated(upstream, { email: 'user@giantswarm.io' }), ctx);
+      it('is looked up by username after giantswarm-github upstream, whatever the email', async () => {
+        const ctx = makeContext();
 
-      expect(ctx.signInWithCatalogUser).not.toHaveBeenCalled();
-      const { claims } = ctx.issueToken.mock.calls[0][0];
-      expect(parseEntityRef(claims.sub).namespace).toBe('oidc');
-    });
-  });
+        await resolve(
+          federated(dexSubject('1234567', 'giantswarm-github'), {
+            email: 'someone@gmail.com',
+            preferred_username: 'someone',
+          }),
+          ctx,
+        );
+
+        expect(ctx.signInWithCatalogUser).toHaveBeenCalledWith({
+          filter: { 'metadata.name': 'someone' },
+        });
+        expect(ctx.issueToken).not.toHaveBeenCalled();
+      });
+
+      it('reads an upstream subject longer than 127 bytes', async () => {
+        const ctx = makeContext();
+
+        await resolve(
+          federated(dexSubject('u'.repeat(200), 'giantswarm-ad'), {
+            email: 'user@giantswarm.io',
+            email_verified: true,
+          }),
+          ctx,
+        );
+
+        expect(ctx.signInWithCatalogUser).toHaveBeenCalledWith({
+          filter: { 'spec.profile.email': 'user@giantswarm.io' },
+        });
+      });
+
+      it.each(['giantswarm-ad', 'giantswarm-github'])(
+        'refuses an unverified email without a username after %s upstream',
+        async upstreamConnector => {
+          const ctx = makeContext();
+
+          await expect(
+            resolve(
+              federated(dexSubject('u7', upstreamConnector), {
+                email: 'user@giantswarm.io',
+                email_verified: false,
+              }),
+              ctx,
+            ),
+          ).rejects.toThrow(NotAllowedError);
+          expect(ctx.signInWithCatalogUser).not.toHaveBeenCalled();
+          expect(ctx.issueToken).not.toHaveBeenCalled();
+        },
+      );
+
+      it('refuses a staff identity absent from the catalog', async () => {
+        const ctx = makeContext();
+        const error = new NotFoundError('User not found');
+        ctx.signInWithCatalogUser.mockRejectedValue(error);
+
+        await expect(
+          resolve(
+            federated(dexSubject('u8', 'giantswarm-ad'), {
+              email: 'user@giantswarm.io',
+              email_verified: true,
+            }),
+            ctx,
+          ),
+        ).rejects.toBe(error);
+        expect(ctx.issueToken).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['another upstream connector', dexSubject('a1', 'customer-ad')],
+        ['an upstream subject that is not a Dex subject', 'not a dex subject'],
+      ])('is not looked up in the catalog after %s', async (_, upstream) => {
+        const ctx = makeContext();
+
+        await resolve(
+          federated(upstream, { email: 'user@giantswarm.io' }),
+          ctx,
+        );
+
+        expect(ctx.signInWithCatalogUser).not.toHaveBeenCalled();
+        const { claims } = ctx.issueToken.mock.calls[0][0];
+        expect(parseEntityRef(claims.sub).namespace).toBe('oidc');
+      });
+    },
+  );
 
   it('looks a Dex giantswarm-github user up by username', async () => {
     const ctx = makeContext();
