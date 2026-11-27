@@ -73,7 +73,13 @@ export function inputRequiredBodyOf(
   if (!isRecord(error) || error.name !== MUSTER_INPUT_REQUIRED_ERROR) {
     return undefined;
   }
-  const { elicitations, requestState } = error;
+  return musterInputRequiredOf(error);
+}
+
+function musterInputRequiredOf(
+  value: Record<string, unknown>,
+): MusterInputRequiredBody | undefined {
+  const { elicitations, requestState } = value;
   if (
     !Array.isArray(elicitations) ||
     elicitations.length === 0 ||
@@ -83,6 +89,42 @@ export function inputRequiredBodyOf(
     return undefined;
   }
   return { elicitations, requestState };
+}
+
+/**
+ * The `input_required` answer to a call of `tool` that the AI chat hands
+ * the page as the call's tool output, under {@link toolInputRequiredOf}'s
+ * `inputRequired` key: the person answers the elicitations, and the page
+ * sends the call of `tool` with `arguments` again with their answer.
+ */
+export interface MusterToolInputRequired extends MusterInputRequiredBody {
+  tool: string;
+  arguments: Record<string, unknown>;
+}
+
+/**
+ * The {@link MusterToolInputRequired} of a tool output
+ * (`{inputRequired: {...}}`); undefined for any other output.
+ */
+export function toolInputRequiredOf(
+  output: unknown,
+): MusterToolInputRequired | undefined {
+  const inputRequired = isRecord(output) ? output.inputRequired : undefined;
+  if (
+    !isRecord(inputRequired) ||
+    typeof inputRequired.tool !== 'string' ||
+    !isRecord(inputRequired.arguments)
+  ) {
+    return undefined;
+  }
+  const body = musterInputRequiredOf(inputRequired);
+  return body
+    ? {
+        tool: inputRequired.tool,
+        arguments: inputRequired.arguments,
+        ...body,
+      }
+    : undefined;
 }
 
 /** Whether a request body's `input` is a well-formed {@link MusterInputAnswer}. */

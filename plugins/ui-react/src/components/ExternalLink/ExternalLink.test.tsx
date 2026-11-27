@@ -1,7 +1,19 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ExternalLink } from './ExternalLink';
 
 describe('ExternalLink', () => {
+  it('reports consent when the person follows the link', async () => {
+    const onClick = jest.fn();
+    render(
+      <ExternalLink href="https://example.com" onClick={onClick}>
+        Open page
+      </ExternalLink>,
+    );
+    expect(onClick).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('link', { name: /Open page/ }));
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
   it('opens in a new tab and says so to a screen reader', () => {
     render(
       <ExternalLink href="/customize/connectors?installation=beta">

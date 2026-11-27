@@ -8,6 +8,7 @@ import {
 import {
   CLIENT_CAPABILITIES_META_KEY,
   type CallToolRequest,
+  type CallToolResult,
   Client as SdkClient,
   type InputRequiredResult,
   isInputRequiredResult,
@@ -1294,6 +1295,21 @@ export class MusterMcpClient {
     });
     this.noteAuthTool(toolName, args, options, {});
     return content;
+  }
+
+  /** The complete call_tool result, including its envelope and native media. */
+  async callToolResult(
+    toolName: string,
+    args: Record<string, unknown>,
+    options?: MusterCallOptions,
+  ): Promise<CallToolResult> {
+    const result = await this.gated(toolName, options, async () => {
+      const answer = await this.executeCallTool(toolName, args, options);
+      this.unwrapCallTool(answer, toolName);
+      return answer as CallToolResult;
+    });
+    this.noteAuthTool(toolName, args, options, {});
+    return result;
   }
 
   /**
