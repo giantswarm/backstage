@@ -32,6 +32,15 @@ class MusterGateway {
   private server?: Server;
   url = '';
   unfinishedAccepts = 0;
+  completedResult?: {
+    content: unknown[];
+    structuredContent?: { answer: number };
+  };
+  nativeContent: Array<{
+    type: 'image' | 'audio';
+    data: string;
+    mimeType: string;
+  }> = [];
   calls: Array<{ tool: unknown; requestState?: string; answer?: string }> = [];
 
   async start(): Promise<void> {
@@ -86,6 +95,18 @@ class MusterGateway {
           }
           if (answer.kind === 'missing' && capabilities?.elicitation?.url) {
             return signIn();
+          }
+          if (this.completedResult) {
+            return {
+              structuredContent: this.completedResult.structuredContent,
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify(this.completedResult),
+                },
+                ...this.nativeContent,
+              ],
+            };
           }
           return {
             content: [
@@ -156,6 +177,8 @@ describe('muster calls of the AI chat', () => {
   beforeEach(() => {
     gateway.calls = [];
     gateway.unfinishedAccepts = 0;
+    gateway.completedResult = undefined;
+    gateway.nativeContent = [];
     client = new MusterMcpClient(
       { name: 'muster', url: gateway.url },
       mockServices.logger.mock(),
@@ -165,6 +188,43 @@ describe('muster calls of the AI chat', () => {
   afterEach(() => client.dispose());
 
   const call = { tool: 'x_github_get_me', arguments: { login: 'me' } };
+
+  it('preserves structured tool output after URL elicitation', async () => {
+    gateway.completedResult = {
+      content: [],
+      structuredContent: { answer: 42 },
+    };
+    const output = await callMusterTool(client, {
+      ...call,
+      input: {
+        inputResponses: { muster_sign_in: { action: 'accept' } },
+        requestState: REQUEST_STATE,
+      },
+    });
+    expect(output).toMatchObject({ structuredContent: { answer: 42 } });
+    expect(JSON.parse(output.content[0].text!)).toMatchObject({
+      structuredContent: { answer: 42 },
+    });
+  });
+
+  it.each(['image', 'audio'] as const)(
+    'preserves native %s data alongside the muster envelope',
+    async type => {
+      const mimeType = type === 'image' ? 'image/png' : 'audio/wav';
+      gateway.completedResult = {
+        content: [{ type, mimeType, dataSize: 8 }],
+      };
+      gateway.nativeContent = [{ type, mimeType, data: 'aGVsbG8=' }];
+      const output = await callMusterTool(client, {
+        ...call,
+        input: {
+          inputResponses: { muster_sign_in: { action: 'accept' } },
+          requestState: REQUEST_STATE,
+        },
+      });
+      expect(output.content).toContainEqual(gateway.nativeContent[0]);
+    },
+  );
 
   it('hands the sign-in to the page and runs the tool on the accepted retry', async () => {
     const first = await callMusterTool(client, call);
@@ -188,7 +248,16 @@ describe('muster calls of the AI chat', () => {
       },
     });
 
-    expect(retry).toEqual({ content: [{ type: 'text', text: 'octocat' }] });
+    expect(retry).toMatchObject({
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            content: [{ type: 'text', text: 'octocat' }],
+          }),
+        },
+      ],
+    });
     expect(gateway.calls).toEqual([
       { tool: 'x_github_get_me', requestState: undefined, answer: undefined },
       {
@@ -211,8 +280,17 @@ describe('muster calls of the AI chat', () => {
     ).resolves.toMatchObject({
       inputRequired: { elicitations: [signInElicitation] },
     });
-    await expect(callMusterTool(client, { ...call, input })).resolves.toEqual({
-      content: [{ type: 'text', text: 'octocat' }],
+    await expect(
+      callMusterTool(client, { ...call, input }),
+    ).resolves.toMatchObject({
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            content: [{ type: 'text', text: 'octocat' }],
+          }),
+        },
+      ],
     });
   });
 

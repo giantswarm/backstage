@@ -19,6 +19,7 @@ import { useMcpAuthHeaders } from './useMcpAuthHeaders';
 export type MusterRetry = (
   inputRequired: MusterToolInputRequired,
   input: MusterInputAnswer,
+  signal?: AbortSignal,
 ) => Promise<unknown>;
 
 export function useMusterRetry(): MusterRetry {
@@ -27,10 +28,11 @@ export function useMusterRetry(): MusterRetry {
   const getMcpAuthHeaders = useMcpAuthHeaders();
 
   return useCallback(
-    async (inputRequired, input) => {
+    async (inputRequired, input, signal) => {
       const baseUrl = await discoveryApi.getBaseUrl('ai-chat');
       const response = await fetchApi.fetch(`${baseUrl}/muster/retry`, {
         method: 'POST',
+        signal,
         headers: {
           'Content-Type': 'application/json',
           ...(await getMcpAuthHeaders()),

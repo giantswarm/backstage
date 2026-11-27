@@ -5,14 +5,12 @@ import {
 } from '@assistant-ui/react';
 import { toolInputRequiredOf } from '@giantswarm/backstage-plugin-gs-common';
 import { useMusterRetry } from '../../hooks/useMusterRetry';
-import { MusterSignInPrompt } from './MusterSignInPrompt';
+import { MusterUrlElicitationPrompt } from '../MusterUrlElicitationPrompt';
 
 /**
- * A tool call of the chat: the sign-in prompt while muster waits for the
- * person to sign in before the tool runs, `Fallback` (nothing without one)
- * otherwise.
+ * A tool call's URL elicitation prompt, or its supplied fallback renderer.
  */
-export function MusterSignInToolCall({
+export function MusterUrlElicitationToolCall({
   Fallback,
   ...props
 }: ToolCallMessagePartProps & { Fallback?: ToolCallMessagePartComponent }) {
@@ -22,7 +20,7 @@ export function MusterSignInToolCall({
 
   if (inputRequired) {
     return (
-      <MusterSignInPrompt
+      <MusterUrlElicitationPrompt
         key={props.toolCallId}
         inputRequired={inputRequired}
         retry={retry}

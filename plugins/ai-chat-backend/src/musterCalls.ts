@@ -22,6 +22,7 @@ export const MUSTER_CALL_TOOL = 'call_tool';
 export interface MusterCallOutput {
   content: McpContentItem[];
   isError?: boolean;
+  structuredContent?: unknown;
   inputRequired?: MusterToolInputRequired;
 }
 
@@ -49,13 +50,12 @@ export async function callMusterTool(
   call: MusterCall,
 ): Promise<MusterCallOutput> {
   try {
-    const content = await client.callToolContent(call.tool, call.arguments, {
+    return await client.callToolResult(call.tool, call.arguments, {
       authToken: call.authToken,
       urlElicitation: true,
       input: call.input,
       signal: call.signal,
     });
-    return { content };
   } catch (error) {
     if (error instanceof MusterInputRequiredError) {
       return {

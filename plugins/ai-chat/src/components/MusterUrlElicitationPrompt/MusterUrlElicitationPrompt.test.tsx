@@ -3,9 +3,9 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { MusterToolInputRequired } from '@giantswarm/backstage-plugin-gs-common';
 import {
-  MusterSignInPrompt,
-  type MusterSignInPromptProps,
-} from './MusterSignInPrompt';
+  MusterUrlElicitationPrompt,
+  type MusterUrlElicitationPromptProps,
+} from './MusterUrlElicitationPrompt';
 
 const SIGN_IN_URL = 'https://dex.example.io/auth?state=abc';
 
@@ -16,7 +16,7 @@ const inputRequired: MusterToolInputRequired = {
     {
       key: 'muster_sign_in',
       url: SIGN_IN_URL,
-      message: 'Sign in to github to continue.',
+      message: 'github asks you to open a page.',
     },
   ],
   requestState: 'opaque',
@@ -24,11 +24,13 @@ const inputRequired: MusterToolInputRequired = {
 
 const ran = { content: [{ type: 'text', text: 'octocat' }] };
 
-async function renderPrompt(props: Partial<MusterSignInPromptProps> = {}) {
+async function renderPrompt(
+  props: Partial<MusterUrlElicitationPromptProps> = {},
+) {
   const retry = jest.fn().mockResolvedValue(ran);
   const onResult = jest.fn();
   await renderInTestApp(
-    <MusterSignInPrompt
+    <MusterUrlElicitationPrompt
       inputRequired={inputRequired}
       retry={retry}
       onResult={onResult}
@@ -39,12 +41,77 @@ async function renderPrompt(props: Partial<MusterSignInPromptProps> = {}) {
   return { retry, onResult };
 }
 
-describe('MusterSignInPrompt', () => {
+describe('MusterUrlElicitationPrompt', () => {
+  it('warns about punycode destinations', async () => {
+    await renderPrompt({
+      inputRequired: {
+        ...inputRequired,
+        elicitations: [
+          {
+            key: 'payment',
+            message: 'Approve payment',
+            url: 'https://xn--pple-43d.example/pay',
+          },
+        ],
+      },
+    });
+    expect(screen.getByText(/shown in its punycode form/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Open page/ })).toBeInTheDocument();
+    expect(screen.queryByText(/I've signed in/)).not.toBeInTheDocument();
+  });
+
+  it('stops a pending retry without claiming its effects were undone', async () => {
+    const retry = jest.fn().mockImplementation(
+      (_required, _input, signal: AbortSignal) =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () =>
+            reject(new DOMException('Stopped', 'AbortError')),
+          );
+        }),
+    );
+    const onResult = jest.fn();
+    await renderPrompt({ retry, onResult });
+    await userEvent.click(screen.getByRole('link', { name: /Open page/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Stop waiting' }));
+    expect(retry.mock.calls[0][2].aborted).toBe(true);
+    expect(onResult).toHaveBeenCalledTimes(1);
+    expect(onResult.mock.calls[0][0].content[0].text).toContain(
+      'may already have run',
+    );
+  });
+
+  it('aborts the retry when the prompt unmounts and ignores late results', async () => {
+    let resolveRetry: (output: unknown) => void = () => {};
+    const retry = jest.fn().mockImplementation(
+      () =>
+        new Promise(resolve => {
+          resolveRetry = resolve;
+        }),
+    );
+    const onResult = jest.fn();
+    const { unmount } = await renderInTestApp(
+      <MusterUrlElicitationPrompt
+        inputRequired={inputRequired}
+        retry={retry}
+        onResult={onResult}
+        isActive
+      />,
+    );
+    await userEvent.click(screen.getByRole('link', { name: /Open page/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    unmount();
+    expect(retry.mock.calls[0][2].aborted).toBe(true);
+    resolveRetry(ran);
+    await waitFor(() => expect(onResult).not.toHaveBeenCalled());
+  });
+
   it('names the server, the destination host and the full https address as a link', async () => {
     await renderPrompt();
 
     expect(
-      screen.getByRole('heading', { name: 'Sign in to github to continue' }),
+      screen.getByRole('heading', { name: 'github asks you to open a page' }),
     ).toBeInTheDocument();
     expect(screen.getByText('dex.example.io')).toBeInTheDocument();
     const link = screen.getByRole('link', {
@@ -71,7 +138,7 @@ describe('MusterSignInPrompt', () => {
     });
 
     expect(
-      screen.getByRole('heading', { name: 'Sign in to jira to continue' }),
+      screen.getByRole('heading', { name: 'jira asks you to open a page' }),
     ).toBeInTheDocument();
     expect(
       screen.getByText('“Connect your Jira account.”'),
@@ -81,18 +148,18 @@ describe('MusterSignInPrompt', () => {
   it('sends the call again with accept and the echoed requestState once the person has signed in', async () => {
     const { retry, onResult } = await renderPrompt();
 
-    await userEvent.click(
-      screen.getByRole('link', { name: /Open sign-in page/ }),
-    );
-    await userEvent.click(
-      screen.getByRole('button', { name: "I've signed in" }),
-    );
+    await userEvent.click(screen.getByRole('link', { name: /Open page/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
     await waitFor(() => expect(onResult).toHaveBeenCalledWith(ran));
-    expect(retry).toHaveBeenCalledWith(inputRequired, {
-      inputResponses: { muster_sign_in: { action: 'accept' } },
-      requestState: 'opaque',
-    });
+    expect(retry).toHaveBeenCalledWith(
+      inputRequired,
+      {
+        inputResponses: { muster_sign_in: { action: 'accept' } },
+        requestState: 'opaque',
+      },
+      expect.any(AbortSignal),
+    );
   });
 
   it('asks again when muster asks again after an accept', async () => {
@@ -103,21 +170,15 @@ describe('MusterSignInPrompt', () => {
       inputRequired: { ...inputRequired, requestState: 'second' },
     });
 
-    await userEvent.click(
-      screen.getByRole('link', { name: /Open sign-in page/ }),
-    );
-    await userEvent.click(
-      screen.getByRole('button', { name: "I've signed in" }),
-    );
+    await userEvent.click(screen.getByRole('link', { name: /Open page/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
     expect(
-      await screen.findByText(/The sign-in has not finished yet/),
+      await screen.findByText(/The server still needs this interaction/),
     ).toBeInTheDocument();
     expect(onResult).not.toHaveBeenCalled();
 
-    await userEvent.click(
-      screen.getByRole('button', { name: "I've signed in" }),
-    );
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
     await waitFor(() => expect(onResult).toHaveBeenCalledWith(ran));
     expect(retry).toHaveBeenLastCalledWith(
@@ -126,11 +187,12 @@ describe('MusterSignInPrompt', () => {
         inputResponses: { muster_sign_in: { action: 'accept' } },
         requestState: 'second',
       },
+      expect.any(AbortSignal),
     );
   });
 
   it.each([
-    ["Don't sign in", 'decline'],
+    ['Decline', 'decline'],
     ['Cancel', 'cancel'],
   ])(
     'answers %s with %s and hands the result to the model',
@@ -145,10 +207,14 @@ describe('MusterSignInPrompt', () => {
       await userEvent.click(screen.getByRole('button', { name: label }));
 
       await waitFor(() => expect(onResult).toHaveBeenCalledWith(declined));
-      expect(retry).toHaveBeenCalledWith(inputRequired, {
-        inputResponses: { muster_sign_in: { action } },
-        requestState: 'opaque',
-      });
+      expect(retry).toHaveBeenCalledWith(
+        inputRequired,
+        {
+          inputResponses: { muster_sign_in: { action } },
+          requestState: 'opaque',
+        },
+        expect.any(AbortSignal),
+      );
     },
   );
 
@@ -156,16 +222,14 @@ describe('MusterSignInPrompt', () => {
     const { retry, onResult } = await renderPrompt();
     retry.mockRejectedValueOnce(new Error('offline'));
 
-    await userEvent.click(
-      screen.getByRole('button', { name: "Don't sign in" }),
-    );
+    await userEvent.click(screen.getByRole('button', { name: 'Decline' }));
 
     await waitFor(() =>
       expect(onResult).toHaveBeenCalledWith({
         content: [
           {
             type: 'text',
-            text: 'The tool did not run: the person answered decline to signing in.',
+            text: 'The person answered decline to the URL elicitation. Do not retry this tool call.',
           },
         ],
         isError: true,
@@ -177,20 +241,14 @@ describe('MusterSignInPrompt', () => {
     const { retry, onResult } = await renderPrompt();
     retry.mockRejectedValueOnce(new Error('Bad gateway'));
 
-    await userEvent.click(
-      screen.getByRole('link', { name: /Open sign-in page/ }),
-    );
-    await userEvent.click(
-      screen.getByRole('button', { name: "I've signed in" }),
-    );
+    await userEvent.click(screen.getByRole('link', { name: /Open page/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
     expect(
       await screen.findByText(/could not be sent again: Bad gateway/),
     ).toBeInTheDocument();
     expect(onResult).not.toHaveBeenCalled();
-    expect(
-      screen.getByRole('button', { name: "I've signed in" }),
-    ).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
   });
 
   it.each([
@@ -212,18 +270,16 @@ describe('MusterSignInPrompt', () => {
     expect(screen.getByText(refusal)).toBeInTheDocument();
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: "I've signed in" }),
+      screen.queryByRole('button', { name: 'Continue' }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: "Don't sign in" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Decline' })).toBeInTheDocument();
   });
 
   it('offers no answer on an older message, whose output no longer reaches the model', async () => {
     await renderPrompt({ isActive: false });
 
     expect(
-      screen.getByText('Not answered, so the tool did not run.'),
+      screen.getByText('This request is no longer active.'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });

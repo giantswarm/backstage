@@ -17,8 +17,8 @@ import {
   externalUrlConsentApiRef,
 } from '../../apis/externalUrlConsent';
 import {
-  type ExternalUrlWarning,
   describeExternalUrl,
+  externalUrlWarningText,
 } from '../../apis/externalUrlConsent/describeExternalUrl';
 
 const useStyles = makeStyles({
@@ -37,15 +37,6 @@ const useStyles = makeStyles({
     backgroundColor: 'var(--bui-warning-bg-subdued)',
   },
 });
-
-const WARNING_TEXT: Record<ExternalUrlWarning, (domain: string) => string> = {
-  punycode: () =>
-    'The domain is an internationalized name, shown in its punycode form (xn--…). Such names can imitate a familiar site: make sure it is the one you expect.',
-  insecure: () =>
-    'The page is not served over HTTPS: what you enter on it can be read on the way.',
-  userinfo: domain =>
-    `The address has a user name before the domain. It leads to ${domain}, not to the name before the @.`,
-};
 
 export type ExternalUrlConsentDialogProps = {
   request: PendingExternalUrlConsent;
@@ -107,7 +98,10 @@ export function ExternalUrlConsentDialog({
                 <Alert
                   key={warning}
                   status="warning"
-                  description={WARNING_TEXT[warning](described.domain)}
+                  description={externalUrlWarningText(
+                    warning,
+                    described.domain,
+                  )}
                 />
               ))}
             </>

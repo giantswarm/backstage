@@ -51,7 +51,7 @@ import {
 } from './assistant-ui-components';
 import classNames from 'classnames';
 import { AnimateContext } from './AnimateContext';
-import { MusterSignInToolCall } from '../MusterSignInPrompt';
+import { MusterUrlElicitationToolCall } from '../MusterUrlElicitationToolCall';
 
 const DEFAULT_WELCOME_TITLE = 'How can I help you today?';
 const DEFAULT_WELCOME_SUBTITLE =
@@ -211,11 +211,11 @@ const UserMessage = () => {
 };
 
 const ToolCall: ToolCallMessagePartComponent = props => (
-  <MusterSignInToolCall {...props} />
+  <MusterUrlElicitationToolCall {...props} />
 );
 
 const VerboseToolCall: ToolCallMessagePartComponent = props => (
-  <MusterSignInToolCall {...props} Fallback={ToolFallback} />
+  <MusterUrlElicitationToolCall {...props} Fallback={ToolFallback} />
 );
 
 const AssistantMessage = () => {

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Alert, Box, Button, Flex, Link, Text } from '@backstage/ui';
+import { useEffect, useRef, useState } from 'react';
+import { Alert, Box, Button, Flex, Text } from '@backstage/ui';
 import {
   type MusterElicitationAction,
   type MusterInputAnswer,
@@ -10,8 +10,9 @@ import {
 } from '@giantswarm/backstage-plugin-gs-common';
 import {
   describeExternalUrl,
+  externalUrlWarningText,
   ExternalButtonLink,
-  WithNewTabHint,
+  ExternalLink,
 } from '@giantswarm/backstage-plugin-ui-react';
 
 /** muster's mark of a message it passes on from one of its servers. */
@@ -26,6 +27,7 @@ type DescribedElicitation = {
   href?: string;
   hostname?: string;
   refusal?: string;
+  warning?: string;
 };
 
 /**
@@ -56,7 +58,14 @@ function describeElicitation(
       refusal: `${server} sent an address with a user name before the host, which can disguise where it leads, so it is not opened from here.`,
     };
   }
-  return { ...base, href: described.href, hostname: described.hostname };
+  return {
+    ...base,
+    href: described.href,
+    hostname: described.hostname,
+    warning: described.warnings.includes('punycode')
+      ? externalUrlWarningText('punycode', described.domain)
+      : undefined,
+  };
 }
 
 function answerOf(
@@ -79,7 +88,7 @@ function refusedOutput(action: MusterElicitationAction) {
     content: [
       {
         type: 'text',
-        text: `The tool did not run: the person answered ${action} to signing in.`,
+        text: `The person answered ${action} to the URL elicitation. Do not retry this tool call.`,
       },
     ],
     isError: true,
@@ -90,13 +99,14 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export type MusterSignInPromptProps = {
+export type MusterUrlElicitationPromptProps = {
   /** muster's ask, as the chat backend handed it as the call's output. */
   inputRequired: MusterToolInputRequired;
   /** Sends the call again with the person's answer; resolves to its output. */
   retry: (
     inputRequired: MusterToolInputRequired,
     input: MusterInputAnswer,
+    signal?: AbortSignal,
   ) => Promise<unknown>;
   /** The call's output for the model, once muster no longer asks. */
   onResult: (output: unknown) => void;
@@ -107,25 +117,27 @@ export type MusterSignInPromptProps = {
   isActive: boolean;
 };
 
-/**
- * A sign-in muster asks for before a tool of the chat runs: who asks, the
- * host and full address of the page, and the person's answer. Opening the
- * page and then "I've signed in" accepts, and the call is sent again; muster
- * runs it once the sign-in is done, or asks again. "Don't sign in" declines
- * and "Cancel" cancels: the call is sent with that answer, and the model
- * reads that the tool did not run.
- */
-export function MusterSignInPrompt({
+/** A URL elicitation and the person's answer, with cancellation of pending retries. */
+export function MusterUrlElicitationPrompt({
   inputRequired: initial,
   retry,
   onResult,
   isActive,
-}: MusterSignInPromptProps) {
+}: MusterUrlElicitationPromptProps) {
   const [inputRequired, setInputRequired] = useState(initial);
   const [opened, setOpened] = useState(false);
   const [askedAgain, setAskedAgain] = useState(false);
   const [pending, setPending] = useState<MusterElicitationAction>();
   const [error, setError] = useState<string>();
+  const controller = useRef<AbortController>();
+
+  useEffect(() => {
+    if (!isActive) controller.current?.abort();
+    return () => {
+      controller.current?.abort();
+      controller.current = undefined;
+    };
+  }, [isActive]);
 
   const elicitations = inputRequired.elicitations.map(elicitation =>
     describeElicitation(elicitation, inputRequired.tool),
@@ -135,13 +147,17 @@ export function MusterSignInPrompt({
   const single = elicitations.length === 1 ? elicitations[0] : undefined;
 
   const answer = async (action: MusterElicitationAction) => {
+    const requestController = new AbortController();
+    controller.current = requestController;
     setPending(action);
     setError(undefined);
     try {
       const output = await retry(
         inputRequired,
         answerOf(inputRequired, action),
+        requestController.signal,
       );
+      if (requestController.signal.aborted) return;
       const again = toolInputRequiredOf(output);
       if (again) {
         const sameUrls =
@@ -155,13 +171,32 @@ export function MusterSignInPrompt({
       }
       onResult(output);
     } catch (e) {
+      if (requestController.signal.aborted) return;
       if (action !== 'accept') {
         onResult(refusedOutput(action));
         return;
       }
       setError(messageOf(e));
       setPending(undefined);
+    } finally {
+      if (controller.current === requestController) {
+        controller.current = undefined;
+      }
     }
+  };
+
+  const stopWaiting = () => {
+    controller.current?.abort();
+    controller.current = undefined;
+    onResult({
+      content: [
+        {
+          type: 'text',
+          text: 'Waiting was cancelled. The tool may already have run. Check its outcome before retrying; do not retry automatically.',
+        },
+      ],
+      isError: true,
+    });
   };
 
   const busy = pending !== undefined;
@@ -176,11 +211,11 @@ export function MusterSignInPrompt({
         borderRadius: 'var(--bui-radius-3)',
         backgroundColor: 'var(--bui-bg-neutral-1)',
       }}
-      data-testid="muster-sign-in-prompt"
+      data-testid="muster-url-elicitation-prompt"
     >
       <Flex direction="column" gap="3">
         <Text as="h3" variant="title-x-small">
-          Sign in to {servers.join(', ')} to continue
+          {servers.join(', ')} asks you to open a page
         </Text>
         {elicitations.map(elicitation => (
           <Flex key={elicitation.key} direction="column" gap="2">
@@ -191,6 +226,13 @@ export function MusterSignInPrompt({
             ) : null}
             {elicitation.href ? (
               <>
+                {elicitation.warning ? (
+                  <Alert
+                    status="warning"
+                    icon
+                    description={elicitation.warning}
+                  />
+                ) : null}
                 <Text variant="body-medium">
                   Destination:{' '}
                   <Text as="span" variant="body-medium" weight="bold">
@@ -201,14 +243,13 @@ export function MusterSignInPrompt({
                   variant="body-medium"
                   style={{ overflowWrap: 'anywhere' }}
                 >
-                  <Link
+                  <ExternalLink
                     href={elicitation.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onPress={() => setOpened(true)}
+                    display="inline"
+                    onClick={() => setOpened(true)}
                   >
-                    <WithNewTabHint>{elicitation.href}</WithNewTabHint>
-                  </Link>
+                    <span>{elicitation.href}</span>
+                  </ExternalLink>
                 </Text>
               </>
             ) : (
@@ -232,20 +273,19 @@ export function MusterSignInPrompt({
                 <Alert
                   status="info"
                   isPending
-                  description="Waiting for the sign-in to finish…"
+                  description="Waiting for the tool to continue…"
                 />
               ) : null}
               {!busy && askedAgain ? (
                 <Alert
                   status="warning"
                   icon
-                  description="The sign-in has not finished yet. Finish it on the sign-in page, then select I've signed in again."
+                  description="The server still needs this interaction. Finish on the external page, then select Continue again."
                 />
               ) : null}
               {!busy && !askedAgain && opened ? (
                 <Text variant="body-medium">
-                  Finish signing in on the page that opened, then select I've
-                  signed in.
+                  Finish on the page that opened, then select Continue.
                 </Text>
               ) : null}
             </div>
@@ -261,20 +301,22 @@ export function MusterSignInPrompt({
               {openable && opened ? (
                 <Button
                   variant="primary"
+                  style={{ minWidth: 136 }}
                   isDisabled={busy}
                   onPress={() => answer('accept')}
                 >
-                  I've signed in
+                  Continue
                 </Button>
               ) : null}
               {openable && !opened && single?.href ? (
                 <ExternalButtonLink
                   variant="primary"
+                  style={{ minWidth: 136 }}
                   href={single.href}
                   isDisabled={busy}
                   onPress={() => setOpened(true)}
                 >
-                  Open sign-in page
+                  Open page
                 </ExternalButtonLink>
               ) : null}
               <Button
@@ -282,20 +324,19 @@ export function MusterSignInPrompt({
                 isDisabled={busy}
                 onPress={() => answer('decline')}
               >
-                Don't sign in
+                Decline
               </Button>
               <Button
                 variant="tertiary"
-                isDisabled={busy}
-                onPress={() => answer('cancel')}
+                onPress={() => (busy ? stopWaiting() : answer('cancel'))}
               >
-                Cancel
+                {busy ? 'Stop waiting' : 'Cancel'}
               </Button>
             </Flex>
           </>
         ) : (
           <Text variant="body-medium" color="secondary">
-            Not answered, so the tool did not run.
+            This request is no longer active.
           </Text>
         )}
       </Flex>
