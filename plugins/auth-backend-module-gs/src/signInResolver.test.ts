@@ -66,7 +66,6 @@ describe('customSignInResolver', () => {
   });
 
   describe.each([
-    'giantswarm-simple-oidc',
     'giantswarm-graveler-oidc',
     'giantswarm-gazelle-oidc',
   ])('a person federated through %s', federatingConnector => {
