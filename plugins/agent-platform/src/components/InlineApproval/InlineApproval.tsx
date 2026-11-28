@@ -596,7 +596,7 @@ function RequestDetails({
                   {view.agent.displayName?.trim() && (
                     <>
                       {' '}
-                      <span className={classes.code}>
+                      <span data-testid="approval-agent-technical-name">
                         {technicalName(view.agent)}
                       </span>
                     </>
@@ -620,9 +620,7 @@ function RequestDetails({
             {view.tool.exposed && (
               <>
                 <dt>Called as</dt>
-                <dd className={classes.code} data-testid="approval-exposed">
-                  {view.tool.exposed}
-                </dd>
+                <dd data-testid="approval-exposed">{view.tool.exposed}</dd>
               </>
             )}
             <dt>Setting</dt>
@@ -632,17 +630,13 @@ function RequestDetails({
             {view.session && (
               <>
                 <dt>Session</dt>
-                <dd className={classes.code} data-testid="approval-session">
-                  {view.session}
-                </dd>
+                <dd data-testid="approval-session">{view.session}</dd>
               </>
             )}
             {view.client && (
               <>
                 <dt>Client</dt>
-                <dd className={classes.code} data-testid="approval-client">
-                  {view.client}
-                </dd>
+                <dd data-testid="approval-client">{view.client}</dd>
               </>
             )}
             <dt>Expires</dt>
@@ -654,13 +648,7 @@ function RequestDetails({
             canonical={view.canonicalArguments}
             onOpen={() => opened.open(valueId('input', ''))}
           />
-          <Text
-            as="p"
-            variant="body-small"
-            color="secondary"
-            className={classes.code}
-            data-testid="approval-fingerprint"
-          >
+          <Text as="p" variant="body-small" data-testid="approval-fingerprint">
             Fingerprint: SHA-256 {view.argumentsHash}
           </Text>
         </div>

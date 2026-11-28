@@ -372,26 +372,110 @@ describe('InlineApproval card', () => {
     expect(text).toContain(String.raw`"a\u0000b"`);
   });
 
-  it('never cuts a long input: it is collapsed with Show all and a hidden-characters marker, and Approve is active after the delay without opening it', async () => {
+  // What the person sees: the block without its collapsed rest.
+  const visibleText = async () => {
+    const clone = (await inputBlock()).cloneNode(true) as HTMLElement;
+    clone.querySelectorAll('[hidden]').forEach(node => node.remove());
+    return clone.textContent!;
+  };
+  const showAll = () => screen.getAllByTestId('approval-input-show-all');
+
+  it('never cuts a long input: a long value collapses with Show all and a hidden-characters marker, and Approve is active after the delay without opening it', async () => {
     const user = userEvent.setup();
     const approvals = inputOf(`{"arg-long":"${'y'.repeat(700)}"}`);
     await renderCard(approvals);
     await openDetails();
     const input = await screen.findByTestId('approval-input');
-    expect(input).toHaveTextContent('Show all 720 characters');
-    expect(input).toHaveTextContent('(420 characters hidden)');
+    expect(input).toHaveTextContent('"arg-long"');
+    expect(input).toHaveTextContent('Show all 702 characters');
+    expect(input).toHaveTextContent('(622 characters hidden)');
+    expect(await visibleText()).not.toContain('y'.repeat(700));
     expect(input).toHaveTextContent('y'.repeat(700));
-    expect(input.querySelector('details')).not.toHaveAttribute('open');
 
     await waitFor(() => expect(approve()).toBeEnabled());
     expect(decline()).toBeEnabled();
-    expect(input.querySelector('details')).not.toHaveAttribute('open');
     await user.click(approve());
     expect(approvals.decide).toHaveBeenCalledWith(
       'https://muster.example.io/approvals/a',
       'approve',
       'digest-1',
     );
+  });
+
+  it('a long early value does not hide later keys or values', async () => {
+    await renderCard(
+      inputOf(
+        `{"body":"${'x'.repeat(500)}","owner":"acme","repo":"widgets","title":"Fix it"}`,
+      ),
+    );
+    await openDetails();
+    const text = await visibleText();
+    for (const part of [
+      '"owner": "acme"',
+      '"repo": "widgets"',
+      '"title": "Fix it"',
+    ]) {
+      expect(text).toContain(part);
+    }
+    expect(text).not.toContain('x'.repeat(500));
+    expect(showAll()).toHaveLength(1);
+  });
+
+  it('collapses each long value on its own and opens one at a time', async () => {
+    const user = userEvent.setup();
+    const approvals = inputOf(
+      `{"a":"${'a'.repeat(300)}","b":"short","c":"${'c'.repeat(400)}"}`,
+    );
+    await renderCard(approvals);
+    await openDetails();
+    expect(showAll()).toHaveLength(2);
+    expect(await screen.findByTestId('approval-input')).toHaveTextContent(
+      'Show all 302 characters',
+    );
+    expect(screen.getByTestId('approval-input')).toHaveTextContent(
+      'Show all 402 characters',
+    );
+    await user.click(showAll()[1]);
+    const text = await visibleText();
+    expect(text).toContain('c'.repeat(400));
+    expect(text).not.toContain('a'.repeat(300));
+    expect(text).toContain('"b": "short"');
+    expect(showAll()).toHaveLength(1);
+  });
+
+  it('keeps nested keys visible and collapses only a very large nested array', async () => {
+    const items = Array.from({ length: 60 }, (_, n) => n).join(',');
+    await renderCard(
+      inputOf(
+        `{"cfg":{"name":"n","tags":[${items}],"after":"kept"},"z":"last"}`,
+      ),
+    );
+    await openDetails();
+    const text = await visibleText();
+    for (const part of [
+      '"cfg": {',
+      '"name": "n"',
+      '"tags": [',
+      '"after": "kept"',
+      '"z": "last"',
+    ]) {
+      expect(text).toContain(part);
+    }
+    expect(text).not.toContain('      59');
+    expect(showAll()).toHaveLength(1);
+    await userEvent.click(showAll()[0]);
+    expect(await visibleText()).toContain('      59');
+  });
+
+  it('uses the text style of the other detail rows, not a code font', async () => {
+    await renderCard(inputOf('{"a":"b"}'));
+    await openDetails();
+    for (const id of ['approval-session', 'approval-fingerprint']) {
+      expect(screen.getByTestId(id).className).not.toMatch(/code/);
+    }
+    const style = getComputedStyle(await inputBlock());
+    expect(style.fontFamily).not.toMatch(/mono/i);
+    expect(style.whiteSpace).toBe('pre-wrap');
   });
 
   it('arms Approve and Decline only after they have been in view for a while', async () => {
