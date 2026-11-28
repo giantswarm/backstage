@@ -1,5 +1,34 @@
 # @giantswarm/backstage-plugin-gs-react
 
+## 0.1.2
+
+### Patch Changes
+
+- Updated dependencies [c0113f8]
+- Updated dependencies [f100bad]
+- Updated dependencies [4536f3d]
+- Updated dependencies [c775cfb]
+- Updated dependencies [b3c8677]
+- Updated dependencies [4536f3d]
+- Updated dependencies [371fda2]
+- Updated dependencies [d97c11d]
+- Updated dependencies [859651d]
+- Updated dependencies [3b65ce4]
+- Updated dependencies [959b908]
+- Updated dependencies [694e2ae]
+- Updated dependencies [a7ecd9d]
+- Updated dependencies [b0fc821]
+- Updated dependencies [b623ab3]
+- Updated dependencies [06dfa3d]
+- Updated dependencies [a05070d]
+- Updated dependencies [20e6659]
+- Updated dependencies [416b463]
+- Updated dependencies [8949a13]
+- Updated dependencies [d29861d]
+- Updated dependencies [3627dfd]
+- Updated dependencies [f37a3f1]
+  - @giantswarm/backstage-plugin-gs-common@0.24.0
+
 ## 0.1.1
 
 ### Patch Changes
