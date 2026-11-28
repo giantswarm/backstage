@@ -11,10 +11,10 @@ import { getRelativeDate } from '@giantswarm/backstage-plugin-ui-react';
  */
 export function formatRelativeTime(
   iso?: string,
-  { strict = false }: { strict?: boolean } = {},
+  { strict = false, now = Date.now() }: { strict?: boolean; now?: number } = {},
 ): string | undefined {
   if (!iso || Number.isNaN(new Date(iso).getTime())) {
     return undefined;
   }
-  return getRelativeDate(iso, new Date(), { strict });
+  return getRelativeDate(iso, new Date(now), { strict });
 }

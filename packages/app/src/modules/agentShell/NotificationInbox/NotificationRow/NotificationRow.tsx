@@ -16,6 +16,7 @@ import NotificationsNoneIcon from '@material-ui/icons/NotificationsNone';
 import VpnKeyOutlinedIcon from '@material-ui/icons/VpnKeyOutlined';
 import { AgentAvatar } from '@giantswarm/backstage-plugin-agent-platform';
 import {
+  formatLocalDateFull,
   getRelativeDate,
   StatusDot,
 } from '@giantswarm/backstage-plugin-ui-react';
@@ -192,6 +193,8 @@ export function NotificationRow({
     row.at === undefined
       ? undefined
       : getRelativeDate(new Date(row.at), new Date(now));
+  const exact =
+    row.at === undefined ? undefined : formatLocalDateFull(new Date(row.at));
   const meta = [row.context, age, row.detail].filter(Boolean);
 
   const Icon = row.icon ? ICONS[row.icon] : undefined;
@@ -239,11 +242,16 @@ export function NotificationRow({
             <span className={classes.description} title={row.context}>
               {row.context}
             </span>
-            {age && <span>&nbsp;·&nbsp;{age}</span>}
+            {age && <span title={exact}>&nbsp;·&nbsp;{age}</span>}
           </Text>
         ) : (
           meta.length > 0 && (
-            <Text as="span" variant="body-x-small" color="secondary">
+            <Text
+              as="span"
+              variant="body-x-small"
+              color="secondary"
+              title={exact}
+            >
               {meta.join(' · ')}
             </Text>
           )

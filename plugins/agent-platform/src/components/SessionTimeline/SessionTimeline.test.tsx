@@ -509,26 +509,22 @@ describe('SessionTimeline', () => {
     expect(screen.getByText('3.1k tokens')).toBeInTheDocument();
   });
 
-  it('shows one absolute timestamp per turn, not per item', async () => {
+  it('shows one relative timestamp per turn, not per item', async () => {
     // A2A messages carry no time of their own and kagent's events cannot be
     // correlated with them, so a task's timestamp is the finest granularity there
-    // is. Two turns in the fixture means two markers, not one per item.
-    //
-    // Absolute rather than relative, because every turn of a session usually falls
-    // on the same day: the relative form printed "1 day ago" for both of these and
-    // hid the four minutes between them.
+    // is. Two turns in the fixture means two markers, not one per item. The
+    // exact time is the marker's hover.
     await render(tasksV099);
 
-    const markers = screen.getAllByText(/UTC$/);
-    expect(markers.map(m => m.textContent)).toEqual([
-      '23 Jul 2026, 16:05 UTC',
-      '23 Jul 2026, 16:09 UTC',
-    ]);
+    const markers = screen.getAllByText(/ ago$/);
+    expect(markers).toHaveLength(2);
     // Labelled, so the first one under the header's "Started …" does not read
     // as an unexplained second timestamp.
-    expect(markers.map(m => m.parentElement?.textContent)).toEqual([
-      'Turn 1 · 23 Jul 2026, 16:05 UTC',
-      'Turn 2 · 23 Jul 2026, 16:09 UTC',
+    expect(
+      markers.map(m => m.closest('[class*="turnTime"]')?.textContent),
+    ).toEqual([
+      expect.stringMatching(/^Turn 1 · .+ ago$/),
+      expect.stringMatching(/^Turn 2 · .+ ago$/),
     ]);
   });
 
@@ -701,7 +697,7 @@ describe('SessionTimeline', () => {
     expect(screen.getByText('first turn')).toBeInTheDocument();
     expect(screen.getByText('second turn')).toBeInTheDocument();
     expect(screen.getByText('back to the first index')).toBeInTheDocument();
-    expect(screen.getAllByText(/UTC$/)).toHaveLength(3);
+    expect(screen.getAllByText(/ ago$/)).toHaveLength(3);
 
     // Filtered to the duplicate-key warning: rendering here also trips MUI v4's
     // pre-existing `findDOMNode` deprecation notice, which is not ours.

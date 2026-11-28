@@ -26,10 +26,12 @@ import {
   StackedRowList,
   type FittingTier,
   useFittingColumns,
+  useNow,
   useVisibleSort,
   type StackedRowItem,
 } from '@giantswarm/backstage-plugin-ui-react';
 
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- Connector sign-in uses muster's shared alert.
 import {
   ConnectorSignInAlert,
   type ConnectorSignIn,
@@ -162,10 +164,12 @@ export function modelCacheStackedRow(
     removable,
     onRemove,
     showInstallation,
+    now,
   }: {
     removable: boolean;
     onRemove: (row: ModelCacheRow) => void;
     showInstallation: boolean;
+    now?: number;
   },
 ): StackedRowItem {
   const { claim } = row;
@@ -188,7 +192,7 @@ export function modelCacheStackedRow(
       price ?? 'no price',
       claim.created ? (
         <>
-          created <DateComponent value={claim.created} relative />
+          created <DateComponent value={claim.created} relative now={now} />
         </>
       ) : undefined,
     ],
@@ -266,6 +270,7 @@ const CACHE_COLUMNS_DROPPED_FIRST = ['installation', 'cluster'];
 function getColumnConfig(
   removable: string[],
   onRemove: (row: ModelCacheRow) => void,
+  now: number,
   {
     isNarrow,
     showInstallation,
@@ -365,7 +370,7 @@ function getColumnConfig(
         row.claim.created ? (
           <Cell>
             <Text variant="body-medium" style={{ whiteSpace: 'nowrap' }}>
-              <DateComponent value={row.claim.created} relative />
+              <DateComponent value={row.claim.created} relative now={now} />
             </Text>
           </Cell>
         ) : (
@@ -428,14 +433,18 @@ export function ModelCachePanel({
   hideColumns,
   signIns = [],
 }: ModelCachePanelProps) {
+  const now = useNow(
+    60_000,
+    rows.some(row => Boolean(row.claim.created)),
+  );
   const showInstallation = !hideColumns?.includes('installation');
   const columnsFor = useCallback(
     (tier: FittingTier) =>
-      getColumnConfig(removable, onRemove, {
+      getColumnConfig(removable, onRemove, now, {
         isNarrow: tier !== 'full',
         showInstallation,
       }).filter(column => !hideColumns?.includes(column.id as 'installation')),
-    [removable, onRemove, hideColumns, showInstallation],
+    [removable, onRemove, hideColumns, showInstallation, now],
   );
   // Too narrow for every column, the table names where a claim is under its
   // name instead of in Environment and Cluster; too narrow for the rest, and
@@ -490,6 +499,7 @@ export function ModelCachePanel({
                 aria-label="Model cache claims"
                 rows={visible.map(row =>
                   modelCacheStackedRow(row, {
+                    now,
                     removable: removable.includes(row.installation),
                     onRemove,
                     showInstallation,

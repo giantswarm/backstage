@@ -21,7 +21,6 @@ const GIANT_SWARM_CONNECTORS = new Set(['giantswarm-ad', 'giantswarm-github']);
  * signed in with there.
  */
 const FEDERATING_CONNECTORS = new Set([
-  'giantswarm-simple-oidc',
   'giantswarm-graveler-oidc',
   'giantswarm-gazelle-oidc',
 ]);

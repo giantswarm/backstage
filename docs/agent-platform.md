@@ -2638,10 +2638,12 @@ enough to answer before a 60 s proxy in front of Backstage fires a 502/504.
 
 On a timeout or transport failure the backend **checks instead of guessing**:
 it reads the tasks (`A2AService/ListTasks`, `hasMessageLanded`) for the
-`messageId` it generated. Present answers **202** (dispatched, running); absent
+`messageId` it generated. Present answers **202** (message recorded); absent
 or unreadable keeps the original failure. Only transport failures
 (`mapConnectError`) are verified; kagent's own answers (`NotFound`, 401, 403, a
-rejection) are decisions. 202 also keeps long turns out of Sentry.
+rejection) are decisions. This applies to unary sends and streams that fail
+before their first event, including answers to a confirmation. 202 also keeps
+accepted messages out of Sentry when their transport ends early.
 
 **A failed turn is still a 200**, with the reason in `status.message` (for
 example an unreachable MCP server, or a provider's `404 … model_not_found`). The
@@ -2682,7 +2684,7 @@ on gazelle on 2026-09-15 (giantswarm/giantswarm#37795).
   `readSendTimeoutRuntimeLoss`). A runtime that crashes on every restore
   (giantswarm/kagent-upstream#858, giantswarm/giantswarm#38771) leaves no trace
   kagent shows: the session stays ready, and the sends never become turns. The
-  backend gives up on a send after its 10 s wait for the first event and
+  backend gives up on a send after its 30 s wait for the first event and
   answers 500 `UpstreamError` with `reason: "timeout"`, which the client keeps
   on the `StreamTransportError` (`isFirstEventTimeout`). `useSendMessage`
   counts such sends in a row whose message the history read confirms did not
@@ -2697,8 +2699,8 @@ on gazelle on 2026-09-15 (giantswarm/giantswarm#37795).
   later (about a minute after the first crash) takes the reported path. The
   count is page state: a reload starts it over, and the second timeout after
   it shows the way out again.
-  Waiting longer for the first event is no fix: the gateway in front of the
-  portal cuts a silent stream at 15 s.
+  The portal's Gateway must allow this startup budget; the chart's default
+  `BackendTrafficPolicy` disables the request and stream duration limits.
 
 `RuntimeLostNotice` explains the loss in the portal's words, with the runtime's
 text as evidence only; the failed-turn entry does the same.
@@ -2752,8 +2754,11 @@ details are load-bearing:
 
 - Backstage's global `compression()` buffers `res.write()` until `res.end()`, so
   the relay flush-wraps `res.write`, as `ai-chat-backend`'s router does.
-- The first event is awaited under the ordinary request timeout, since the
-  gateway sends the `task` snapshot before the agent works. After it, only a
+- A send's first event is awaited under `turnTimeoutMs` (30 s), including
+  runtime startup or restore. A timeout answers 202 only when the outbound
+  message is found in the task history; an absent message or unreadable
+  history keeps the transport failure. Subscriptions use the ordinary read
+  timeout (10 s). After the first event, only a
   generous duration cap and a client hang-up abort the read; neither stops the
   turn. A stream that dies mid-turn ends with one `{error}` frame.
 - `POST /kagent/sessions/:sessionId/tasks/:taskId/subscribe` relays
@@ -2859,10 +2864,10 @@ once the history read finds the message, since that read names the task.
 `POST …/answer/stream` (`useAnswerConfirmation`).
 
 **Gateway timeouts.** agent-platform-standalone's backstage and kagent
-controller routes set `timeouts.request: "0s"`. An internal installation's
-`agent-platform-connectivity-ui` route has a 60 s Envoy `BackendTrafficPolicy`,
-so a long turn's stream ends at 60 s and the page resubscribes to the turn.
-Streaming is strictly additive.
+controller routes set `timeouts.request: "0s"`. The Backstage chart's default
+`BackendTrafficPolicy` disables request and stream duration limits. A custom
+policy must allow the startup budget. A gateway that cuts an established
+stream makes the page resubscribe to the turn.
 
 **The sent message appears at once and vanishes by recognition.** The composer
 generates the `messageId`, so the optimistic copy is dropped when a poll returns
@@ -3159,12 +3164,11 @@ or more than one leave the question open, and the action says why.
 
 #### An answer kagent does not take
 
-The streaming answer route answers `202 pending` when the resumed turn sends no
-event within the request timeout (`timeoutMs`, 10 s): an approved tool can run
-that long before the agent speaks. kagent answers the same way when it cannot
-resume the session at all, and the answer then never reaches the task. Observed
-on a session left waiting for three days: the task stayed `input-required`
-with no answer in its history, and the session carried no failure.
+The streaming answer route waits up to `turnTimeoutMs` (30 s) for the resumed
+turn's first event. If that wait or the transport fails, the backend checks
+the answer's message ID in the task history. A recorded answer returns
+`202 pending`; an absent answer or unreadable history keeps the original
+transport failure. An approved tool can run before the agent speaks.
 
 So an answer whose stream says nothing (a 202, or a stream that ends without an
 event) is checked against the history (`useAnswerConfirmation`,
