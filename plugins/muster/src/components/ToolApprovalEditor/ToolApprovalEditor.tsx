@@ -374,7 +374,14 @@ export function ToolApprovalEditor({
         <span>Tool</span>
         <span>Setting</span>
       </div>
-      {visibleRows.length === 0 && (
+      {rows.length === 0 && (
+        <Text as="p" variant="body-small" color="secondary">
+          {editing
+            ? 'Muster lists no tools for this connector right now: blocked tools are hidden from every listing. The rule for new tools applies to each tool it lists later.'
+            : 'Muster lists no tools for this connector right now: blocked tools are hidden from every listing.'}
+        </Text>
+      )}
+      {rows.length > 0 && visibleRows.length === 0 && (
         <CatalogNoMatch
           plural="tools"
           search={query}

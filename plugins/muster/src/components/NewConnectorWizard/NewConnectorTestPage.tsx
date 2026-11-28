@@ -33,6 +33,7 @@ import {
   GOVERNANCE_MODE_UNKNOWN_NOTE,
   isSettingsUnreadable,
   ruleOptionsOf,
+  storedRule,
 } from '../../lib/toolApproval';
 import { useGovernanceMode } from '../../hooks/useGovernanceMode';
 import { useMusterInstance, useMusterSession } from '../MusterInstanceProvider';
@@ -233,9 +234,16 @@ export function NewConnectorTestPage() {
   const { mode, settled: modeSettled } = useGovernanceMode(installation);
   const stored = runtime?.approval ?? cr?.getApproval();
   const approval = useToolApprovalDraft({ tools, prefix, stored, mode });
+  // The settings are offered once the tools are read and there is something
+  // to set: tools muster lists, or stored settings. Not on the visible count
+  // alone: muster hides blocked tools, so a connector whose every tool is
+  // blocked, or whose rule alone is Block, lists none and still needs its
+  // settings to unblock them.
+  const settingsOffered =
+    toolsQuery.isSuccess && (tools.length > 0 || stored !== undefined);
   const setApprovalSchema = useQuery({
     ...toolArgumentsQuery(musterApi, SET_APPROVAL_TOOL, installation),
-    enabled: Boolean(authenticated && installation && tools.length > 0),
+    enabled: Boolean(authenticated && installation && settingsOffered),
   });
   // Unknown while muster is asked; a muster without the tool cannot save.
   let canSave: boolean | undefined;
@@ -251,11 +259,16 @@ export function NewConnectorTestPage() {
   const view = canSave && admin !== false ? 'edit' : 'read';
   const save = useSaveToolApproval();
 
+  // With no row to write (every tool hidden, none stored), a save holds the
+  // rule alone, and only a changed rule is worth one.
+  const savesSomething =
+    approval.rows.length > 0 ||
+    (stored !== undefined && approval.draft.rule !== storedRule(stored.rule));
   const onDone = useCallback(async () => {
     if (
       view === 'edit' &&
       !unavailable &&
-      approval.rows.length > 0 &&
+      savesSomething &&
       approval.dirty &&
       serverName
     ) {
@@ -280,6 +293,7 @@ export function NewConnectorTestPage() {
   }, [
     view,
     unavailable,
+    savesSomething,
     approval,
     serverName,
     save,
@@ -419,7 +433,7 @@ export function NewConnectorTestPage() {
         </Flex>
       )}
 
-      {tools.length > 0 && (
+      {settingsOffered && (
         <ToolsSection
           installation={installation}
           loading={canSave === undefined}

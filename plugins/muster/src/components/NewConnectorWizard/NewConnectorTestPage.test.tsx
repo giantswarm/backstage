@@ -935,6 +935,65 @@ describe('NewConnectorTestPage: Test & Tools', () => {
     expect(new Set(Object.values(approval.tools))).toEqual(new Set(['Block']));
   });
 
+  it('keeps the settings when every tool is blocked and none is listed, and Done restores one', async () => {
+    // muster hides blocked tools: the connector lists none.
+    connectedWith([], {
+      rule: 'Ask',
+      tools: { add_comment: 'Block', create_issue: 'Block' },
+    });
+
+    await renderTestStep();
+    expect(
+      await screen.findByRole('radiogroup', { name: 'Rule for new tools' }),
+    ).toBeInTheDocument();
+    expect(chosen(pills('add_comment'))).toBe('Block');
+    expect(chosen(pills('create_issue'))).toBe('Block');
+
+    await userEvent.click(
+      within(pills('add_comment')).getByRole('radio', { name: 'Ask' }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await waitFor(() => expect(setApprovalCalls()).toHaveLength(1));
+    expect(
+      (setApprovalCalls()[0][1] as { approval: unknown }).approval,
+    ).toEqual({
+      rule: 'Ask',
+      tools: { add_comment: 'Ask', create_issue: 'Block' },
+    });
+  });
+
+  it('keeps the rule when a Block rule alone hides every tool, says why none is listed, and saves the changed rule', async () => {
+    connectedWith([], { rule: 'Block' });
+
+    await renderTestStep();
+    const rule = await screen.findByRole('radiogroup', {
+      name: 'Rule for new tools',
+    });
+    expect(chosen(rule)).toBe('Block');
+    expect(
+      screen.getByText(/Muster lists no tools for this connector right now/),
+    ).toBeInTheDocument();
+
+    await userEvent.click(within(rule).getByRole('radio', { name: 'Ask' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await waitFor(() => expect(setApprovalCalls()).toHaveLength(1));
+    expect(
+      (setApprovalCalls()[0][1] as { approval: unknown }).approval,
+    ).toEqual({ rule: 'Ask', tools: {} });
+  });
+
+  it('saves nothing when a Block rule alone is left unchanged', async () => {
+    connectedWith([], { rule: 'Block' });
+
+    await renderTestStep();
+    await screen.findByRole('radiogroup', { name: 'Rule for new tools' });
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await waitFor(() =>
+      expect(screen.queryByText('Test the connection')).not.toBeInTheDocument(),
+    );
+    expect(setApprovalCalls()).toHaveLength(0);
+  });
+
   it('saves nothing when a reviewed connector is left unchanged', async () => {
     connectedWith(approvalTools({}, 'tool'), {
       rule: 'Allow',
