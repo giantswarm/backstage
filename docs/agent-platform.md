@@ -1637,6 +1637,18 @@ Neither Sessions nor Agents renders an empty table. Sessions shows
 - **Something must have been queried.** At least one scoped installation must
   be outside `notReachableInstallations`. Every installation need not be
   reachable, since a local portal almost always has unreachable ones.
+- **Only a person who may create is invited.** The first-run card of an empty
+  fleet (`FirstAgentCard`, on Agents and Sessions) offers **Create your first
+  agent** unless agent-manager lets the person create on none of the
+  environments; then it says who grants access (`useCreatesAgentsNowhere`).
+  Where agent-manager serves organizations, that is the organizations the
+  person belongs to (`list_organizations`), as the New agent form offers
+  them: one where they may create agents is enough. An answer from before the
+  card showed is read again, and the card waits for it, so an organization
+  the person was just added to counts. Elsewhere it is `get_info`'s
+  `namespaces.managed`. An environment whose answer failed, or names no
+  `managed` list, says nothing either way and counts as one the person may
+  create on.
 
 ### Why it needs a backend
 

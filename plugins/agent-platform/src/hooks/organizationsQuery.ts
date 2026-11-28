@@ -4,6 +4,9 @@ import { AgentManagerClient } from '../apis/AgentManagerClient';
 import { musterOrganizationsQueryKey } from '../lib/queryKeys';
 import type { useMusterPluginApi } from './useMusterPluginApi';
 
+/** How long a `list_organizations` answer stays fresh: a minute. */
+export const ORGANIZATIONS_STALE_TIME = 60_000;
+
 /**
  * `list_organizations` of one installation as a query, the entry the
  * organization pages read: a minute of staleness is fine. A module of its
@@ -17,7 +20,7 @@ export function organizationsQuery(
     queryKey: musterOrganizationsQueryKey(installation),
     queryFn: () =>
       new AgentManagerClient(musterApi!, installation).listOrganizations(),
-    staleTime: 60_000,
+    staleTime: ORGANIZATIONS_STALE_TIME,
     retry: false,
   });
 }

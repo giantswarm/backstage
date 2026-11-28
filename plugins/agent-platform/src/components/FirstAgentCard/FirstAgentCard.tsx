@@ -20,7 +20,10 @@ import { newAgentRouteRef } from '../../routes';
  * callers decide that, and say so instead.
  *
  * A person agent-manager lets create in no tenant on any of `installations`
- * is not invited: the card says who grants access instead (D6).
+ * is not invited: the card says who grants access instead (D6). Where
+ * agent-manager serves organizations, the tenants are the organizations the
+ * person belongs to, as the New agent form offers them
+ * (`useCreatesAgentsNowhere`).
  */
 export function FirstAgentCard({ installations }: { installations: string[] }) {
   const newAgentLink = useRouteRef(newAgentRouteRef);
