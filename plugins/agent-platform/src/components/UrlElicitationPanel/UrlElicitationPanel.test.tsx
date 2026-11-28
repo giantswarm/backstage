@@ -621,12 +621,6 @@ describe('UrlElicitationPanel, approval decided inline', () => {
       'Acknowledge incident acknowledge_incident',
     );
     expect(screen.getByText('Changes data')).toBeInTheDocument();
-    // The full input as one block, with muster's marking of invisible
-    // characters.
-    const input = screen.getByTestId('approval-input');
-    expect(input).toHaveTextContent('Input:');
-    expect(input).toHaveTextContent('"incident": "P1⟨U+202E⟩2"');
-    expect(input).toHaveTextContent(`"note": "${'x'.repeat(300)}"`);
     // The agent's reason, marked as its own words.
     const says = screen.getByTestId('approval-agent-says');
     expect(says).toHaveTextContent('Agent says');
@@ -646,6 +640,12 @@ describe('UrlElicitationPanel, approval decided inline', () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByTestId('approval-about')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Show details' }));
+    // The full input as one block in the details, with muster's marking of
+    // invisible characters.
+    const input = screen.getByTestId('approval-input');
+    expect(input).toHaveTextContent('Input:');
+    expect(input).toHaveTextContent('"incident": "P1⟨U+202E⟩2"');
+    expect(input).toHaveTextContent(`"note": "${'x'.repeat(300)}"`);
     expect(screen.getByTestId('approval-agent')).toHaveTextContent(
       'team-a/alert-review',
     );
@@ -653,7 +653,11 @@ describe('UrlElicitationPanel, approval decided inline', () => {
       'actor JWT',
     );
     expect(screen.getByTestId('approval-acts-for')).toHaveTextContent(
-      'ada@example.com ada at https://dex.example.io',
+      'ada@example.com',
+    );
+    expect(screen.getByTestId('approval-acts-for-name')).toHaveAttribute(
+      'title',
+      'ada at https://dex.example.io',
     );
     // Approve and Decline come after all of it, inert at first; both arm
     // after the delay, collapsed values need not be opened.
@@ -837,6 +841,7 @@ describe('UrlElicitationPanel, approval decided inline', () => {
       ),
     ).toBeInTheDocument();
     expect(onAnswer).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Show details' }));
     expect(screen.getByTestId('approval-input')).not.toHaveTextContent(
       '"note"',
     );
