@@ -20,6 +20,7 @@ import {
   useAuiState,
   useThreadViewportStore,
   useAuiEvent,
+  type ToolCallMessagePartComponent,
 } from '@assistant-ui/react';
 import { flushTapSync } from '@assistant-ui/tap';
 import { useApi, featureFlagsApiRef } from '@backstage/core-plugin-api';
@@ -50,6 +51,7 @@ import {
 } from './assistant-ui-components';
 import classNames from 'classnames';
 import { AnimateContext } from './AnimateContext';
+import { MusterUrlElicitationToolCall } from '../MusterUrlElicitationToolCall';
 
 const DEFAULT_WELCOME_TITLE = 'How can I help you today?';
 const DEFAULT_WELCOME_SUBTITLE =
@@ -208,6 +210,14 @@ const UserMessage = () => {
   );
 };
 
+const ToolCall: ToolCallMessagePartComponent = props => (
+  <MusterUrlElicitationToolCall {...props} />
+);
+
+const VerboseToolCall: ToolCallMessagePartComponent = props => (
+  <MusterUrlElicitationToolCall {...props} Fallback={ToolFallback} />
+);
+
 const AssistantMessage = () => {
   const classes = useStyles();
   const featureFlagsApi = useApi(featureFlagsApiRef);
@@ -234,7 +244,7 @@ const AssistantMessage = () => {
                     by_name: {
                       getContextUsage: ContextUsageDisplay,
                     },
-                    Fallback: ToolFallback,
+                    Fallback: VerboseToolCall,
                   },
                 }
               : {
@@ -242,6 +252,7 @@ const AssistantMessage = () => {
                     by_name: {
                       getContextUsage: ContextUsageDisplay,
                     },
+                    Fallback: ToolCall,
                   },
                 }),
           }}

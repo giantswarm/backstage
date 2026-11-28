@@ -23,6 +23,7 @@ export type ExternalLinkProps = {
   variant?: LinkProps['variant'];
   /** A tooltip, e.g. the whole text of a truncated link. */
   title?: string;
+  onClick?: LinkProps['onClick'];
 };
 
 const useStyles = makeStyles(theme => ({
@@ -66,6 +67,7 @@ export const ExternalLink = ({
   display = 'inline-flex',
   variant,
   title,
+  onClick,
 }: ExternalLinkProps) => {
   const classes = useStyles();
   return (
@@ -75,6 +77,7 @@ export const ExternalLink = ({
       rel="noopener noreferrer"
       variant={variant}
       title={title}
+      onClick={onClick}
       className={classNames(
         classes.root,
         classes[display],

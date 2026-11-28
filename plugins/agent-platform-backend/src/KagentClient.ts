@@ -47,7 +47,6 @@ import {
   ErrorContext,
   httpStatusOf,
   isTransportFailure,
-  isTurnPendingError,
   isSocketFailure,
   isUnsupportedOperation,
   isUpstreamError,
@@ -97,18 +96,11 @@ export const KAGENT_AUTH_HEADER = 'backstage-kagent-authorization';
 export const DEFAULT_KAGENT_TIMEOUT_MS = 10_000;
 
 /**
- * How long to wait for an A2A turn before answering "still running".
- *
- * `SendMessage` answers only once the agent has finished, so this is not "how
- * long a turn may take" — it is how long we are willing to hold a response open
- * before reporting the turn as dispatched. **The turn survives us stopping**, so
- * waiting longer buys nothing except a held-open socket.
- *
- * **It must stay below the timeout of whatever fronts Backstage**, and that is the
- * whole reason it is short: at 30 s we always win the race against a 60 s door,
- * and a genuine immediate rejection still surfaces inline rather than as a pending
- * turn that never appears. Exceeding it is not a failure: see
- * {@link turnPendingError}.
+ * How long to await a unary turn or a streaming send's first event, including
+ * runtime startup or restore. This bounds the response wait, not the turn.
+ * A message recorded in the task history can be followed through the poll
+ * after its transport fails. The budget must stay below the front proxy's
+ * request timeout so the backend can answer before that proxy does.
  */
 export const DEFAULT_KAGENT_TURN_TIMEOUT_MS = 30_000;
 
@@ -470,7 +462,7 @@ export class KagentClient {
     /** Overridable for tests (`createRouterTransport`); defaults to native gRPC toward `apiBaseUrl`. */
     transport?: Transport,
     private readonly timeoutMs: number = DEFAULT_KAGENT_TIMEOUT_MS,
-    /** Separate budget for {@link sendMessage}, which waits out a whole turn. */
+    /** Budget for a unary turn or a stream's first event, including runtime startup. */
     private readonly turnTimeoutMs: number = DEFAULT_KAGENT_TURN_TIMEOUT_MS,
     /** Overridable for tests; see {@link DELETE_SETTLE_RETRY_DELAYS_MS}. */
     private readonly deleteRetryDelaysMs: readonly number[] = DELETE_SETTLE_RETRY_DELAYS_MS,
@@ -719,11 +711,10 @@ export class KagentClient {
    * Each `StreamResponse` is relayed as one SSE `data:` frame carrying its JSON
    * (`{task}`, `{message}`, `{statusUpdate}`, `{artifactUpdate}`), so the router
    * relays bytes and the frontend interprets. The returned {@link Response} has
-   * been opened (its first event awaited under the ordinary request timeout, as
-   * the gateway answers a `task` snapshot the moment the turn is accepted) so a
-   * rejection before the turn starts surfaces as an error here rather than as an
-   * empty stream; the caller relays its body and owns its lifetime through
-   * `signal`.
+   * been opened (its first event awaited under the turn timeout, including
+   * runtime startup) so a rejection before the turn starts surfaces as an error
+   * here rather than as an empty stream; the caller relays its body and owns
+   * its lifetime through `signal`.
    *
    * A stream that dies mid-turn — a gateway's request timeout, an Envoy drain —
    * ends with one `{error}` frame and closes. The turn survives that as it
@@ -802,6 +793,7 @@ export class KagentClient {
           signal,
         }),
         signal,
+        this.turnTimeoutMs,
       );
     } catch (error) {
       if (signal.aborted) {
@@ -809,11 +801,13 @@ export class KagentClient {
         // anyone — rethrown for the router to swallow as a closed connection.
         throw error;
       }
-      throw this.mapError(
+      const failure = this.mapError(
         error,
-        this.sendContext(A2AService.method.sendStreamingMessage, true),
+        this.sendContext(A2AService.method.sendStreamingMessage),
         options,
       );
+      await this.verifySendFailure(failure, target, message.messageId, options);
+      throw failure;
     }
 
     return this.relayAsSse(opened, signal);
@@ -919,20 +913,16 @@ export class KagentClient {
 
   /**
    * Open an A2A server stream as far as its first event, awaited under the
-   * ordinary request timeout: a slow start means kagent is unwell, not that
-   * the agent is thinking. Rejects as the stream does; each caller reads the
-   * failure its own way.
+   * caller's startup budget. Rejects as the stream does; each caller reads
+   * the failure its own way.
    */
   private async openFirst(
     stream: AsyncIterable<StreamResponse>,
     signal: AbortSignal,
+    timeoutMs = this.timeoutMs,
   ): Promise<OpenedStream> {
     const iterator = stream[Symbol.asyncIterator]();
-    const first = await this.withTimeout(
-      iterator.next(),
-      this.timeoutMs,
-      signal,
-    );
+    const first = await this.withTimeout(iterator.next(), timeoutMs, signal);
     return { iterator, first };
   }
 
@@ -1416,36 +1406,32 @@ export class KagentClient {
             headers: this.turnHeaders(options),
             timeoutMs: this.turnTimeoutMs,
           }),
-        this.sendContext(A2AService.method.sendMessage, false),
+        this.sendContext(A2AService.method.sendMessage),
         options,
       );
     } catch (error) {
-      // A lost connection is not a failed message. The gateway in front of the
-      // controller cuts the request off long before an agent is done, and the
-      // turn keeps running regardless. So the only honest way to report this is
-      // to go and look: if the message reached the session's tasks, it was
-      // dispatched and the conversation poll will show it finish; if it did
-      // not, the failure was real. A decision — a 401, a 403, a rejected
-      // request, an unknown session — is not verified.
-      if (
-        !isUpstreamError(error) &&
-        !isTurnPendingError(error) &&
-        !isTransportFailure(error)
-      ) {
-        throw error;
-      }
-      if (!(await this.hasMessageLanded(target, message.messageId, options))) {
-        throw error;
-      }
-      this.logger.debug(
-        `A kagent turn outlived its transport on installation '${this.installation.name}'; the message was dispatched and is still running`,
-      );
-      throw turnPendingError(
-        `The agent on installation '${this.installation.name}' is still working on the message; the connection closed before it finished.`,
-      );
+      await this.verifySendFailure(error, target, message.messageId, options);
+      throw error;
     }
 
     return toJson(SendMessageResponseSchema, response);
+  }
+
+  private async verifySendFailure(
+    error: unknown,
+    target: Target,
+    messageId: string,
+    options: KagentRequestOptions,
+  ): Promise<void> {
+    if (!isUpstreamError(error) && !isTransportFailure(error)) {
+      return;
+    }
+    if (!(await this.hasMessageLanded(target, messageId, options))) {
+      return;
+    }
+    throw turnPendingError(
+      `The message on installation '${this.installation.name}' was recorded; follow the session for its outcome.`,
+    );
   }
 
   /**
@@ -1472,18 +1458,12 @@ export class KagentClient {
 
   /**
    * How a send's failures read: the session is gone, or busy, or refused it.
-   * `timeoutIsPending` for a send whose turn runs on after we stop waiting
-   * (the stream); the unary send verifies a lost connection itself.
    */
-  private sendContext(
-    rpc: DescMethod,
-    timeoutIsPending: boolean,
-  ): ErrorContext {
+  private sendContext(rpc: DescMethod): ErrorContext {
     return {
       call: rpcName(rpc),
       endpoint: 'agent messaging',
       missingResource: `That session does not exist on installation '${this.installation.name}'. It may have been deleted, or it may belong to another user.`,
-      timeoutIsPending: timeoutIsPending || undefined,
       invalidArgument: reason =>
         new InputError(
           `The agent on installation '${this.installation.name}' did not accept the message: ${reason}`,
@@ -1823,7 +1803,6 @@ export class KagentClient {
       { ...context, requestId: options.requestId },
       this.installation.name,
       this.logger,
-      this.turnTimeoutMs,
     );
   }
 

@@ -364,6 +364,7 @@ describe('CommandPalette', () => {
   });
 
   it('dates a session by its local creation day, with the year only when it is another', async () => {
+    const oldDay = new Date(2025, 9, 3, 12);
     mockSessions = {
       ...mockSessions,
       rows: [
@@ -373,7 +374,7 @@ describe('CommandPalette', () => {
         },
         {
           ...session('s-old', 'Audit the SSO groups'),
-          createdAt: new Date(2025, 9, 3, 12).toISOString(),
+          createdAt: oldDay.toISOString(),
         },
       ],
     };
@@ -389,7 +390,13 @@ describe('CommandPalette', () => {
       within(optionOf('Rotate the SSO keys')).getByText('Today'),
     ).toBeVisible();
     expect(
-      within(optionOf('Audit the SSO groups')).getByText('3 Oct 2025'),
+      within(optionOf('Audit the SSO groups')).getByText(
+        new Intl.DateTimeFormat(undefined, {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        }).format(oldDay),
+      ),
     ).toBeVisible();
   });
 
