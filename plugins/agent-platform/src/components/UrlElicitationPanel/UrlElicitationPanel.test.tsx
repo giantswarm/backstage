@@ -639,14 +639,16 @@ describe('UrlElicitationPanel, approval decided inline', () => {
     expect(screen.getByTestId('approval-why')).toHaveTextContent(
       "Asks because of the connector's setting for its tools · Expires in 4 min",
     );
-    // The agent is the conversation's own: no warning, but who asks, as
-    // what and for whom is always shown.
+    // The agent is the conversation's own: no warning. Who asks, as what
+    // and for whom is behind Show details.
     expect(
       screen.queryByTestId('approval-other-agent'),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByTestId('approval-unconfirmed-agent'),
     ).not.toBeInTheDocument();
+    expect(screen.queryByTestId('approval-about')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Show details' }));
     expect(screen.getByTestId('approval-agent')).toHaveTextContent(
       'team-a/alert-review',
     );

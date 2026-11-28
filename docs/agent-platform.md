@@ -3216,9 +3216,10 @@ reads it with the person's token (`POST /api/muster/approvals/view`) and the
 card shows everything muster's view and the decision's digest cover (a test
 fails when a field is neither rendered nor deliberately left out): connector,
 tool, arguments in full (long values collapsed behind _Show all N characters_,
-never cut), what changes, the agent's stated reason, why it asks, expiry and
-"About this request"; canonical arguments and SHA-256 under "Show details". A
-warning names the asking agent unless muster positively names the
+never cut), what changes, the agent's stated reason, why it asks and expiry.
+"About this request" (agent, caller kind, acts for, setting, session, client)
+and the canonical arguments with their SHA-256 stay hidden until _Show details_
+is clicked. A warning names the asking agent unless muster positively names the
 conversation's agent.
 
 - _Approve_ and _Decline_ come last and decide only on click. They are inert

@@ -2,6 +2,7 @@ import {
   type RefObject,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -457,6 +458,8 @@ function RequestDetails({
 }) {
   const classes = useStyles();
   const notice = askerNotice(view, sessionAgent);
+  const [showDetails, setShowDetails] = useState(false);
+  const moreId = useId();
   return (
     <div className={classes.body} data-testid="approval-details">
       {notice && <AskerWarning notice={notice} />}
@@ -575,86 +578,98 @@ function RequestDetails({
         {expiresIn(view.expiresAt)}
         {view.installation ? ` · ${view.installation}` : ''}
       </Text>
-      <Text as="p" variant="body-small" weight="bold">
-        About this request
-      </Text>
-      <dl className={classes.fields} data-testid="approval-about">
-        <dt>Agent</dt>
-        <dd data-testid="approval-agent">
-          {view.agent ? (
-            <>
-              {view.agent.displayName?.trim() || technicalName(view.agent)}
-              {view.agent.displayName?.trim() && (
-                <>
-                  {' '}
-                  <span className={classes.code}>
-                    {technicalName(view.agent)}
-                  </span>
-                </>
-              )}
-            </>
-          ) : (
-            'Not named by muster'
-          )}
-        </dd>
-        <dt>Caller</dt>
-        <dd data-testid="approval-caller-kind">{view.callerKind}</dd>
-        <dt>Acts for</dt>
-        <dd data-testid="approval-acts-for">
-          {view.actsFor.name ? `${view.actsFor.name} ` : ''}
-          <span className={classes.code}>
-            {view.actsFor.subject} at {view.actsFor.issuer}
-          </span>
-        </dd>
-        {view.tool.exposed && (
-          <>
-            <dt>Called as</dt>
-            <dd className={classes.code} data-testid="approval-exposed">
-              {view.tool.exposed}
-            </dd>
-          </>
-        )}
-        <dt>Setting</dt>
-        <dd data-testid="approval-setting">
-          {view.why.setting} ({view.why.source})
-        </dd>
-        {view.session && (
-          <>
-            <dt>Session</dt>
-            <dd className={classes.code} data-testid="approval-session">
-              {view.session}
-            </dd>
-          </>
-        )}
-        {view.client && (
-          <>
-            <dt>Client</dt>
-            <dd className={classes.code} data-testid="approval-client">
-              {view.client}
-            </dd>
-          </>
-        )}
-        <dt>Expires</dt>
-        <dd data-testid="approval-expires">
-          {new Date(view.expiresAt).toLocaleString()}
-        </dd>
-      </dl>
-      <details>
-        <summary>
-          <Text as="span" variant="body-small" color="secondary">
-            Show details
-          </Text>
-        </summary>
-        <pre
-          className={classes.code}
-          style={{ whiteSpace: 'pre-wrap', margin: 0 }}
+      {/*
+        Who asks and how, and the canonical arguments: behind Show details,
+        hidden until the person opens them. Approve does not wait for it.
+      */}
+      <div>
+        <Button
+          variant="tertiary"
+          size="small"
+          aria-expanded={showDetails}
+          aria-controls={moreId}
+          onPress={() => setShowDetails(open => !open)}
         >
-          {view.canonicalArguments}
-        </pre>
-        <Text as="p" variant="body-small" color="secondary">
-          SHA-256 {view.argumentsHash}
-        </Text>
-      </details>
+          {showDetails ? 'Hide details' : 'Show details'}
+        </Button>
+      </div>
+      {showDetails && (
+        <div id={moreId} data-testid="approval-more">
+          <Text as="p" variant="body-small" weight="bold">
+            About this request
+          </Text>
+          <dl className={classes.fields} data-testid="approval-about">
+            <dt>Agent</dt>
+            <dd data-testid="approval-agent">
+              {view.agent ? (
+                <>
+                  {view.agent.displayName?.trim() || technicalName(view.agent)}
+                  {view.agent.displayName?.trim() && (
+                    <>
+                      {' '}
+                      <span className={classes.code}>
+                        {technicalName(view.agent)}
+                      </span>
+                    </>
+                  )}
+                </>
+              ) : (
+                'Not named by muster'
+              )}
+            </dd>
+            <dt>Caller</dt>
+            <dd data-testid="approval-caller-kind">{view.callerKind}</dd>
+            <dt>Acts for</dt>
+            <dd data-testid="approval-acts-for">
+              {view.actsFor.name ? `${view.actsFor.name} ` : ''}
+              <span className={classes.code}>
+                {view.actsFor.subject} at {view.actsFor.issuer}
+              </span>
+            </dd>
+            {view.tool.exposed && (
+              <>
+                <dt>Called as</dt>
+                <dd className={classes.code} data-testid="approval-exposed">
+                  {view.tool.exposed}
+                </dd>
+              </>
+            )}
+            <dt>Setting</dt>
+            <dd data-testid="approval-setting">
+              {view.why.setting} ({view.why.source})
+            </dd>
+            {view.session && (
+              <>
+                <dt>Session</dt>
+                <dd className={classes.code} data-testid="approval-session">
+                  {view.session}
+                </dd>
+              </>
+            )}
+            {view.client && (
+              <>
+                <dt>Client</dt>
+                <dd className={classes.code} data-testid="approval-client">
+                  {view.client}
+                </dd>
+              </>
+            )}
+            <dt>Expires</dt>
+            <dd data-testid="approval-expires">
+              {new Date(view.expiresAt).toLocaleString()}
+            </dd>
+          </dl>
+          <pre
+            className={classes.code}
+            style={{ whiteSpace: 'pre-wrap', margin: 0 }}
+          >
+            {view.canonicalArguments}
+          </pre>
+          <Text as="p" variant="body-small" color="secondary">
+            SHA-256 {view.argumentsHash}
+          </Text>
+        </div>
+      )}
     </div>
   );
 }

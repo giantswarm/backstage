@@ -270,9 +270,13 @@ describe('InlineApproval card', () => {
   const approve = () => screen.getByRole('button', { name: 'Approve' });
   const decline = () => screen.getByRole('button', { name: 'Decline' });
 
+  const showDetails = () =>
+    userEvent.click(screen.getByRole('button', { name: 'Show details' }));
+
   it('renders every field of the view the digest covers (IA-03)', async () => {
     await renderCard(approvalsFor(FULL));
     await screen.findByText('heading-Approve this workflow?');
+    await showDetails();
     const card = document.body.textContent ?? '';
     const missing = leaves(FULL)
       .filter(([path]) => !(path in NOT_RENDERED_AS_IS))
@@ -368,11 +372,60 @@ describe('InlineApproval card', () => {
     expect(onDecided).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps who asks and how behind Show details, and Approve does not wait for it', async () => {
+    const user = userEvent.setup();
+    const approvals = approvalsFor(FULL);
+    await renderCard(approvals);
+    await screen.findByText('heading-Approve this workflow?');
+    // The main view: connector, tool, arguments, the agent's reason, why it
+    // asks and expiry.
+    expect(screen.getByTestId('approval-connector')).toBeVisible();
+    expect(screen.getByTestId('approval-tool')).toBeVisible();
+    expect(screen.getByTestId('approval-argument-arg-long')).toBeVisible();
+    expect(screen.getByTestId('approval-agent-says')).toBeVisible();
+    expect(screen.getByTestId('approval-why')).toBeVisible();
+    // About this request and the canonical arguments are not there yet.
+    expect(screen.queryByText('About this request')).not.toBeInTheDocument();
+    for (const id of [
+      'approval-about',
+      'approval-caller-kind',
+      'approval-session',
+      'approval-client',
+    ]) {
+      expect(screen.queryByTestId(id)).not.toBeInTheDocument();
+    }
+    expect(screen.queryByText('canonical-arguments')).not.toBeInTheDocument();
+    const toggle = screen.getByRole('button', { name: 'Show details' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(toggle);
+    expect(screen.getByText('About this request')).toBeVisible();
+    expect(screen.getByTestId('approval-caller-kind')).toHaveTextContent(
+      'caller-kind',
+    );
+    expect(screen.getByTestId('approval-session')).toBeVisible();
+    expect(screen.getByTestId('approval-client')).toBeVisible();
+    expect(screen.getByText('canonical-arguments')).toBeVisible();
+    const hide = screen.getByRole('button', { name: 'Hide details' });
+    expect(hide).toHaveAttribute('aria-expanded', 'true');
+    await user.click(hide);
+    expect(screen.queryByTestId('approval-about')).not.toBeInTheDocument();
+
+    await waitFor(() => expect(approve()).toBeEnabled());
+    await user.click(approve());
+    expect(approvals.decide).toHaveBeenCalledWith(
+      'https://muster.example.io/approvals/a',
+      'approve',
+      'digest-1',
+    );
+  });
+
   it('warns when muster names no agent (IA-05)', async () => {
     await renderCard(approvalsFor({ ...FULL, agent: undefined }));
     expect(
       await screen.findByTestId('approval-unconfirmed-agent'),
     ).toHaveTextContent('muster does not know which agent asks');
+    await showDetails();
     expect(screen.getByTestId('approval-agent')).toHaveTextContent(
       'Not named by muster',
     );
