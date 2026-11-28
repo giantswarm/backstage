@@ -183,6 +183,9 @@ const FULL: ApprovalView = {
  * digest covers all of it.
  */
 const NOT_RENDERED_AS_IS: Record<string, string> = {
+  'actsFor.subject': "the tooltip of the person's name (Acts for)",
+  'actsFor.issuer': "the tooltip of the person's name (Acts for)",
+  canonicalArguments: 'the Input block lays it out, every character kept',
   id: 'the request is the link the card was opened for',
   status: 'decides which buttons the card offers',
   digest: 'sent with the decision, the proof of what was shown',
@@ -298,11 +301,16 @@ describe('InlineApproval card', () => {
 
   const inputOf = (canonicalArguments: string) =>
     approvalsFor({ ...FULL, canonicalArguments });
+  const openDetails = async () =>
+    userEvent.click(
+      await screen.findByRole('button', { name: 'Show details' }),
+    );
   const inputBlock = async () =>
     (await screen.findByTestId('approval-input')).querySelector('pre')!;
 
   it('shows the input as one pretty-printed block, nested objects and arrays included', async () => {
     await renderCard(inputOf('{"a":{"b":[1,{"c":null}],"d":[]},"e":true}'));
+    await openDetails();
     expect(await screen.findByText('Input:')).toBeVisible();
     expect((await inputBlock()).textContent).toBe(
       [
@@ -326,6 +334,7 @@ describe('InlineApproval card', () => {
     await renderCard(
       inputOf(String.raw`{"script":"echo hi\n  \"admin\": true"}`),
     );
+    await openDetails();
     const block = await inputBlock();
     expect(block.textContent).toBe(
       [
@@ -346,6 +355,7 @@ describe('InlineApproval card', () => {
 
   it('says Input: none without arguments', async () => {
     await renderCard(inputOf('{}'));
+    await openDetails();
     expect(await screen.findByTestId('approval-input')).toHaveTextContent(
       'Input: none',
     );
@@ -356,6 +366,7 @@ describe('InlineApproval card', () => {
 
   it('keeps marked characters as muster marked them', async () => {
     await renderCard(inputOf('{"name":"evil⟨U+202E⟩txt","nul":"a\\u0000b"}'));
+    await openDetails();
     const text = (await inputBlock()).textContent;
     expect(text).toContain('"evil⟨U+202E⟩txt"');
     expect(text).toContain(String.raw`"a\u0000b"`);
@@ -365,6 +376,7 @@ describe('InlineApproval card', () => {
     const user = userEvent.setup();
     const approvals = inputOf(`{"arg-long":"${'y'.repeat(700)}"}`);
     await renderCard(approvals);
+    await openDetails();
     const input = await screen.findByTestId('approval-input');
     expect(input).toHaveTextContent('Show all 720 characters');
     expect(input).toHaveTextContent('(420 characters hidden)');
@@ -388,6 +400,7 @@ describe('InlineApproval card', () => {
       await renderCard(approvalsFor({ ...FULL, arguments: [] }), {
         armAfterMs: 50,
       });
+      await openDetails();
       await screen.findByText('heading-Approve this workflow?');
       // Below the fold: the person has not scrolled through the request.
       act(() => observer.report('below'));
@@ -418,6 +431,7 @@ describe('InlineApproval card', () => {
         'https://muster.example.io/approvals/second',
       ],
     });
+    await openDetails();
     await waitFor(() => expect(approve()).toBeEnabled());
     await user.click(approve());
     await waitFor(() => expect(onDecided).toHaveBeenCalledWith('approved'));
@@ -446,20 +460,21 @@ describe('InlineApproval card', () => {
     const approvals = approvalsFor(FULL);
     await renderCard(approvals);
     await screen.findByText('heading-Approve this workflow?');
-    // The main view: connector, tool, arguments, the agent's reason, why it
-    // asks and expiry.
+    // The main view: connector, tool, the agent's reason, why it asks and
+    // expiry.
     expect(screen.getByTestId('approval-connector')).toBeVisible();
     expect(screen.getByTestId('approval-tool')).toBeVisible();
-    expect(screen.getByTestId('approval-input')).toBeVisible();
     expect(screen.getByTestId('approval-agent-says')).toBeVisible();
     expect(screen.getByTestId('approval-why')).toBeVisible();
-    // About this request and the canonical arguments are not there yet.
+    // About this request and the input are not there yet.
     expect(screen.queryByText('About this request')).not.toBeInTheDocument();
     for (const id of [
       'approval-about',
       'approval-caller-kind',
       'approval-session',
       'approval-client',
+      'approval-input',
+      'approval-fingerprint',
     ]) {
       expect(screen.queryByTestId(id)).not.toBeInTheDocument();
     }
@@ -474,7 +489,20 @@ describe('InlineApproval card', () => {
     );
     expect(screen.getByTestId('approval-session')).toBeVisible();
     expect(screen.getByTestId('approval-client')).toBeVisible();
-    expect(screen.getByText(FULL.canonicalArguments)).toBeVisible();
+    expect(screen.getByText('Input:')).toBeVisible();
+    expect(screen.getByTestId('approval-input')).toBeVisible();
+    expect(screen.getByTestId('approval-acts-for-name')).toHaveTextContent(
+      'acts-name',
+    );
+    expect(screen.getByTestId('approval-acts-for-name')).toHaveAttribute(
+      'title',
+      'acts-subject at acts-issuer',
+    );
+    expect(screen.getByTestId('approval-fingerprint')).toHaveTextContent(
+      'Fingerprint: SHA-256 arguments-hash',
+    );
+    // No raw, unlabelled arguments next to the Input block.
+    expect(screen.queryByText(FULL.canonicalArguments)).not.toBeInTheDocument();
     const hide = screen.getByRole('button', { name: 'Hide details' });
     expect(hide).toHaveAttribute('aria-expanded', 'true');
     await user.click(hide);

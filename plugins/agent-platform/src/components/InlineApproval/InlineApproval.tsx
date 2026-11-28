@@ -486,10 +486,6 @@ function RequestDetails({
           )}
         </dd>
       </dl>
-      <InputBlock
-        canonical={view.canonicalArguments}
-        onOpen={() => opened.open(valueId('input', ''))}
-      />
       {view.changes && view.changes.length > 0 && (
         <>
           <Text as="p" variant="body-small" weight="bold">
@@ -572,7 +568,7 @@ function RequestDetails({
         {view.installation ? ` · ${view.installation}` : ''}
       </Text>
       {/*
-        Who asks and how, and the canonical arguments: behind Show details,
+        Who asks and how, and the input: behind Show details,
         hidden until the person opens them. Approve does not wait for it.
       */}
       <div>
@@ -614,9 +610,11 @@ function RequestDetails({
             <dd data-testid="approval-caller-kind">{view.callerKind}</dd>
             <dt>Acts for</dt>
             <dd data-testid="approval-acts-for">
-              {view.actsFor.name ? `${view.actsFor.name} ` : ''}
-              <span className={classes.code}>
-                {view.actsFor.subject} at {view.actsFor.issuer}
+              <span
+                title={`${view.actsFor.subject} at ${view.actsFor.issuer}`}
+                data-testid="approval-acts-for-name"
+              >
+                {view.actsFor.name || view.actsFor.subject}
               </span>
             </dd>
             {view.tool.exposed && (
@@ -652,14 +650,18 @@ function RequestDetails({
               {new Date(view.expiresAt).toLocaleString()}
             </dd>
           </dl>
-          <pre
+          <InputBlock
+            canonical={view.canonicalArguments}
+            onOpen={() => opened.open(valueId('input', ''))}
+          />
+          <Text
+            as="p"
+            variant="body-small"
+            color="secondary"
             className={classes.code}
-            style={{ whiteSpace: 'pre-wrap', margin: 0 }}
+            data-testid="approval-fingerprint"
           >
-            {view.canonicalArguments}
-          </pre>
-          <Text as="p" variant="body-small" color="secondary">
-            SHA-256 {view.argumentsHash}
+            Fingerprint: SHA-256 {view.argumentsHash}
           </Text>
         </div>
       )}
