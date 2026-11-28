@@ -1,5 +1,19 @@
 # @giantswarm/backstage-plugin-scaffolder-backend-module-gs
 
+## 0.13.2
+
+### Patch Changes
+
+- Updated dependencies [f100bad]
+- Updated dependencies [b0fc821]
+- Updated dependencies [b623ab3]
+- Updated dependencies [06dfa3d]
+- Updated dependencies [a05070d]
+- Updated dependencies [3bcb127]
+- Updated dependencies [ae00960]
+- Updated dependencies [f37a3f1]
+  - @giantswarm/backstage-plugin-gs-node@0.6.0
+
 ## 0.13.1
 
 ### Patch Changes

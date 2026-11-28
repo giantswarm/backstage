@@ -1,5 +1,49 @@
 # @giantswarm/backstage-plugin-flux-react
 
+## 0.15.2
+
+### Patch Changes
+
+- d29861d: The launch icon of a link or button that opens a new tab stays on the line of its text's last word instead of wrapping onto a line of its own (`ExternalLink`, `ExternalButtonLink`, `NewTabLabel`, through the new `WithNewTabHint`). flux-react's `useGitOpsSource` also returns the Kustomization and GitRepository it read, as `resources`.
+- d29861d: Where `gs.features.platformSection.enabled` is set, each row of the Platform section's clusters list opens the cluster's page at `/platform/clusters/<installation>/<namespace>/<name>`: its state, facts and tool links, and an Overview tab with its release and Kubernetes version, friendly labels and annotations, GitOps source, login command and technical details. The gs plugin exports `PlatformClusterRoute`, `PlatformLinksProvider` and the `PlatformLinks` type; the classic cluster page's readers take an address (`useCluster`, `ClusterProvider`), unchanged in what they read. The fixture clusters have an App each and, for the GitOps-managed ones, a Flux Kustomization and GitRepository. Coming back from a cluster's page, the list is as it was left, without reading the clusters again. The Flux resources table keeps its Source Cluster, Target Cluster and Status Details headers on one line. kubernetes-react's `ControlPlane` has `getReplicas()`.
+- Updated dependencies [bd5f42a]
+- Updated dependencies [f100bad]
+- Updated dependencies [d553603]
+- Updated dependencies [77d1c12]
+- Updated dependencies [77d1c12]
+- Updated dependencies [2f03302]
+- Updated dependencies [01a63aa]
+- Updated dependencies [0f3570e]
+- Updated dependencies [dbd826c]
+- Updated dependencies [2f03302]
+- Updated dependencies [168ca66]
+- Updated dependencies [c775cfb]
+- Updated dependencies [cefb9d4]
+- Updated dependencies [e8c5832]
+- Updated dependencies [3b4a31f]
+- Updated dependencies [269c67b]
+- Updated dependencies [a7ecd9d]
+- Updated dependencies [e36a91c]
+- Updated dependencies [5dac044]
+- Updated dependencies [d29861d]
+- Updated dependencies [172b3de]
+- Updated dependencies [daa939d]
+- Updated dependencies [164b2e4]
+- Updated dependencies [8949a13]
+- Updated dependencies [d29861d]
+- Updated dependencies [3627dfd]
+- Updated dependencies [7e12f91]
+- Updated dependencies [b905271]
+- Updated dependencies [671372c]
+- Updated dependencies [f5615a0]
+- Updated dependencies [f1e56fe]
+- Updated dependencies [35f1cdd]
+- Updated dependencies [249a84a]
+  - @giantswarm/backstage-plugin-kubernetes-react@1.2.0
+  - @giantswarm/backstage-plugin-ui-react@0.11.0
+  - @giantswarm/backstage-plugin-ai-chat-react@0.6.1
+  - @giantswarm/backstage-plugin-gs-react@0.1.2
+
 ## 0.15.1
 
 ### Patch Changes

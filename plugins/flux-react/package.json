@@ -1,6 +1,6 @@
 {
   "name": "@giantswarm/backstage-plugin-flux-react",
-  "version": "0.15.1",
+  "version": "0.15.2",
   "license": "Apache-2.0",
   "description": "Web library for the Flux plugin",
   "main": "src/index.ts",

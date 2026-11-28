@@ -1,5 +1,149 @@
 # @giantswarm/backstage-plugin-gs
 
+## 0.73.0
+
+### Minor Changes
+
+- 4536f3d: The HTTPRoutes table on a cluster's Gateways tab shows the backends of each route, with the namespace when it differs from the route's and the weights of an uneven traffic split, and the search finds routes by backend name. The data comes from the `gatewayapi_httproute_rule_backend_info` metric of the Gateway API bundle, which exports the first three backends of each rule. On clusters with an older bundle the column says the backends are not available. gs-common adds the `GatewayApiHttprouteRuleBackendInfo` metric. The HTTPRoutes table keeps its headers and condition labels whole and cuts long hostnames and backends with an ellipsis, the full name on hover; narrower, the parent moves into the route's description, and at phone width or beside the side rail on a tablet the routes stack, each with its failing condition first.
+- b6f1f17: Add `SharedInstallationScope`. Only below it does `useInstallationScope` read the environment chosen in an Environment selector. There is one choice for Customize (the default, stored as `muster-installation`) and one for Usage (`id="usage"`, stored as `usage-installation`), and neither reads the other. Elsewhere `useInstallationScope` reads every environment, so pages without a selector, such as Bot PRs, no longer follow a choice made on Customize.
+- 694e2ae: Fixture mode for the muster and agent-platform plugins, outside production builds only. `muster.fixtures` serves one signed-in installation from memory, its tool calls answered by the fixture MCP servers that plugins attach to `api:muster/muster` (`fixtureMcpServersDataRef`); a tool no fixture handles fails with an error. `agentPlatform.fixtures` serves kagent, model-manager and agent-manager's credential operations from memory. With `gs.fixtures` the app serves a Kubernetes API without a cluster for the installations, and their cluster access reads as healthy; `gs.authProvider` is optional in the config schema, as the code already treated it. `yarn fixtures start` runs the portal in fixture mode on free ports of its own. `gs-common` exports `FIXTURE_INSTALLATION` and `FIXTURE_MCP_SERVERS`, which every fixture reads.
+- b0fc821: `gs.installations.<name>.mimir` points an installation's metrics at another Mimir (`url`, `tenant`) and limits every query of the installation to its `matchers`, for a platform on a workload cluster whose series land in its management cluster's Mimir. `MimirService` adds the matchers to every vector and matrix selector of the PromQL and refuses a query it cannot limit: one about another cluster shows as no data, one that doesn't parse as an error. An invalid `mimir` block is logged once at startup and makes only that installation's metrics unavailable. Installations without `mimir` are queried as before. gs-common exports the rewriter, `enforceMatchers`.
+- 416b463: Where `gs.features.platformSection.enabled` is set and the installation has Mimir, a Platform cluster's page has a Gateways tab (`/platform/clusters/<installation>/<namespace>/<name>/gateways`), after Node pools: a table of the cluster's Gateway API Gateways with one status each, one selected (`?gateway=<namespace>/<name>`, the first by default) with its listeners, HTTP routes and Envoy Gateway policies below, the routes and policies no Gateway takes in a section of their own, and a finder that finds a Gateway by a hostname, route, backend or policy on it. Without Mimir there is no such tab, and its address opens Overview. Fixture mode serves three Gateways per ready workload cluster, one of them not programmed, and a route on two Gateways.
+- 8949a13: Where `gs.features.platformSection.enabled` is set, a Platform cluster's page has a Node pools tab (`/platform/clusters/<installation>/<namespace>/<name>/node-pools`) with the number of pools on it: a row per AWS machine pool, Karpenter pool or Azure machine pool, with nodes ready, machines, zones, scaling and age. Selecting a pool (`?name=<pool>`, as on the classic page) shows its nodes with their CPU and memory requests and pods, for a machine pool, and its technical details, read as the classic cluster page reads them. The facts column is on Overview only. The Karpenter details' running summary draws CPU in blue and memory in violet on a visible track, an excluded requirement's dashed chip has a stronger border, and a taint wraps only after a `/`, `=` or `:`; these show on the classic page too. On the classic cluster page, the Karpenter node template gives the root volume in GiB, and the nodes table its CPU and memory as the rest of the portal does ("9.1 GiB", not "9.1 Gi"). kubernetes-react's `MachineDeployment` has `getAutoscalerRange()`. Fixture mode serves Karpenter and Azure node pools, every pool's nodes and their Mimir series, and narrows Kubernetes lists by their label selector.
+- d29861d: Where `gs.features.platformSection.enabled` is set, each row of the Platform section's clusters list opens the cluster's page at `/platform/clusters/<installation>/<namespace>/<name>`: its state, facts and tool links, and an Overview tab with its release and Kubernetes version, friendly labels and annotations, GitOps source, login command and technical details. The gs plugin exports `PlatformClusterRoute`, `PlatformLinksProvider` and the `PlatformLinks` type; the classic cluster page's readers take an address (`useCluster`, `ClusterProvider`), unchanged in what they read. The fixture clusters have an App each and, for the GitOps-managed ones, a Flux Kustomization and GitRepository. Coming back from a cluster's page, the list is as it was left, without reading the clusters again. The Flux resources table keeps its Source Cluster, Target Cluster and Status Details headers on one line. kubernetes-react's `ControlPlane` has `getReplicas()`.
+- cac2070: Where `gs.features.platformSection.enabled` is set, a Platform management cluster's page has an RBAC tab (`/platform/clusters/<installation>/<namespace>/<name>/rbac`), after Node pools: the classic cluster page's RBAC tab in the shell's style, a table of the users, groups and service accounts the cluster's RoleBindings and ClusterRoleBindings grant roles, with their kind, roles and access scope, a switch that shows the system subjects, a search over the subjects and their bindings' names, and each row opening to its bindings. A workload cluster has no such tab, and its address opens Overview. Fixture mode serves RBAC bindings for each management cluster.
+- 7577ea2: Where `gs.features.platformSection.enabled` is set, a Platform cluster's page has an SSH access tab (`/platform/clusters/<installation>/<namespace>/<name>/ssh-access`) for Giant Swarm staff, after Node pools: the classic cluster page's SSH access tab in the shell's style, with the Teleport commands for the control plane nodes, the worker nodes and a specific node, each with a copy button, and a link to the cluster's nodes in Teleport. A person known not to be staff has no such tab, and its address opens Overview. A person whose installation token has no `groups` claim counts as not staff instead of breaking the cluster page. In fixture mode the guest is Giant Swarm staff.
+- 3627dfd: The Agent Platform shell has a Platform section at `/platform`, off unless `gs.features.platformSection.enabled` is set: a rail item and a page whose Clusters tab lists every cluster the person can read, with search, Environment, Organization, Status and Release filters, a column picker and sortable headers. The gs plugin exports `PlatformClustersPanel`, `PlatformClustersProvider` and `usePlatformClustersCount`, and its fixtures serve Cluster API clusters (`gsKubernetesObjectsOf`); ui-react exports `ColumnPicker` and `UnreachableInstallationsAlert`, which moved there from agent-platform unchanged but for an `actions` slot; kubernetes-react's `useClustersInfo` returns `error` and `retry`; the fixture data set has clusters.
+- 7e12f91: `/profile`'s Environments section lists every environment as a toggle chip with its access health, with All on, All off and Undo, and Sign in again while a session has expired, sharing its state with the classic sidebar's Cluster access widget. gs exports `useClusterAccessStatus`, `useMutedInstallations`, `useSignInAgain` and the shared access state labels and tones (`CLUSTER_ACCESS_STATE_LABELS` and its neighbours), and `MutedInstallationsApi` gains `setMutedMany`; ui-react's `StatusDot` takes `ring`.
+- 3099a22: The cluster page no longer links to the old web UI (happa): the default links of its tools card are now the Grafana cluster overview dashboard alone. An instance that lists its own links in `gs.clusterDetails.resources` keeps them.
+
+### Patch Changes
+
+- 4536f3d: The Gateways and Envoy Gateway policies tables on a cluster's Gateways tab fit their width like the HTTPRoutes table: every header and status label (True, Not reported) stays whole, a listener's route count is never cut or wrapped, and listener and ancestor names wrap where the column is too narrow rather than being cut. The listeners and the status get the larger share of the width, so a listener stays on one line at 1280px. Narrower, a policy's kind moves into its description, and where the columns no longer fit both become lists of stacked rows that name the condition shown and list every condition, listener and ancestor. In the condition columns, a failing condition's reason wraps between its words, not inside one.
+- d29861d: CPU counts read "CPU" instead of "vCPU" or "vCPUs": the clusters' worker capacity, machine type tooltips, the Karpenter node pool requirement label, and the GPU node pool sizes. The reasons cluster-manager gives keep its own wording.
+- dbd826c: Every link and button that opens a new tab marks it the same way: the launch icon after its text and "(opens in a new tab)" for a screen reader, in place of the "↗" some of them ended in (Review pull request, Edit on GitHub, View on GitHub, the sign-in buttons, All portal settings, the release line, How it works, How alignment works, Workflow runs, the repository phase links). `ui-react`'s `ExternalLink` is now bui's `Link` (always underlined, bui's focus ring) and takes an optional `variant` and `title`; without a `variant` it keeps taking the surrounding font, and off the agent shell it keeps the classic link colour. `ui-react` adds `ExternalButtonLink` (bui's `ButtonLink` with that treatment) and exports `NewTabHint` and `NewTabLabel` (a button label followed by the hint). `ExternalCellText` and `GSReleaseInfo` are built on `ExternalLink`. A skill page's Path links to the SKILL.md on GitHub at the latest commit, and the Instructions file viewer links a file at the commit it was read at, naming no commit when there is none.
+
+  Every text link to outside the portal now opens in a new tab and shows the icon, including the ones that showed nothing before or another external-link icon: docs, GitHub pull requests, commits, releases and issues, Grafana dashboards and endpoints, hostnames, Teleport, PagerDuty, sign-in pages, and the links in rendered markdown (`GSMarkdownContent` renders an `http(s)` link to another origin as an `ExternalLink`). `ui-react` exports `isExternalHref` for telling such a link apart.
+
+- 2f03302: Every address a server provides (a connector sign-in, a device-code page, a
+  GitHub or manager connect, a sign-in an agent asks for) opens only after the
+  person agrees in one dialog that shows the full address with its domain
+  highlighted and warns about a punycode domain, plain http and a user name
+  before the domain.
+
+  - ui-react: `externalUrlConsentApiRef` with `ExternalUrlConsentManager`, and
+    `ExternalUrlConsentDialogHost`.
+  - app: registers the consent API and mounts `ExternalUrlConsentDialogHost` at
+    the app root. A desktop notification whose link leads out of the portal
+    asks before it opens.
+  - muster: `useServerSignIn` no longer opens a tab on the Sign in click; it asks
+    to open the sign-in page once muster answers. `ServerSignInState` gains
+    `openSignInPage` and loses `isPreparing`; the hook's options gain
+    `displayName` and lose `tabWaitMs`. A device code's page is a button, not a
+    link.
+  - gs: the GitHub auth API asks before it navigates to muster's connect; a
+    connect not opened is a `no_grant` error and is not asked again for two
+    minutes. Concurrent token requests share one prompt and its answer.
+  - plans, roadmap, repositories, platform-capabilities: a missing grant offers
+    Connect instead of navigating on first sight.
+  - agent-platform: an agent's sign-in, a provider sign-in, a connector
+    sign-in link in a message and the toolchain-manager's App install page are
+    buttons that ask first.
+
+- c775cfb: Fixture mode's data, outside production builds only. `@giantswarm/backstage-plugin-gs-common/fixtures` builds a seeded data set of installations, organizations, agents, connectors, sessions, workflows and executions, with a count, a least name length and the states for each list; the base data set has every state, and only made-up names. muster and agent-platform map its records onto the types their clients read. Fixture mode serves three made-up installations, `FIXTURE_INSTALLATIONS` in gs-common, instead of one. kubernetes-react exports `AGENT_BLOCKED_REASON`.
+- b3c8677: Fixture mode serves the agent gateway's metrics, outside production builds only: with `gs.fixtures`, a fixture `MimirApi` evaluates the pages' PromQL over gateway series derived from the base data set (the agents with sessions, their default model, the person and two teammates), so Usage · Overview, Cost and Your sessions show spend, tokens, calls and gateway health without an observability stack. A query it cannot evaluate answers no series, with a console warning. The person's model cost on Your sessions runs the backend's queries through it, and the backend and fixture mode decide from the answers with the same code, now in `@giantswarm/backstage-plugin-agent-platform-common` (`modelCostQueries`, `modelCostOf`, `callerEmail`). `MimirClient` refuses to query without a token itself, instead of the Mimir hooks, and `@giantswarm/backstage-plugin-gs/fixtures` exports `MimirFixtureApi` for tests.
+- 4536f3d: Fixture mode serves the Gateway API and Envoy Gateway series of the fixture clusters, outside production builds only, so a cluster's Gateways tab shows its Gateway, listeners, routes, backends and policies without an observability stack. Every ready workload cluster has the bundle's Gateway and routes in each state the tab shows (an uneven split, a backend the route may not reference, a route without status, a route a ListenerSet rejects, a rule with three backends, a redirect); every third ready one runs older bundles, without the route conditions, policy status and backends; the management cluster and clusters being created or deleted have none. `many` gives the first ready workload cluster 150 routes; on a cluster with a name of 60 characters or more, `long-names` gives the routes, their namespaces and backends, and the policies on those routes names of up to 63 characters. `@giantswarm/backstage-plugin-gs-common/fixtures` exports `gatewayApiSeries` and `gatewayApiSeriesOf`.
+- 959b908: Fixture mode serves scenarios, outside production builds only: `?fixtures=empty`, `many`, `long-names`, `loading` or `error` on any page switches the data set of the Agent Platform's and the Kubernetes fixture APIs without a restart, and `?fixtures=base` goes back. In `error`, muster fails with its own signed-out, unauthorised and unreachable errors. The persisted query caches of another scenario are never restored.
+
+  The Toolchains tab and the New toolchain page say "Toolchains could not be checked" when no environment's Muster could say whether it runs the toolchain-manager, with why (a refused sign-in, an ended session, no answer) and a Retry, instead of reading forever. muster's `useMusterServerAvailability` reports each installation's error (`errorOf`).
+
+- 3b4a31f: Set no text below 12px in the muster workflow pages and state badges, and drop the local 12px overrides of `FactsColumn`, `TagList`, `TagsField` and `MarkerBadge`: the app now sets bui's 10px token to 12px everywhere. A problem under the New agent tools selection now shows an error icon beside its text. The 10px that stays uses the app's `--gs-font-size-exception` token. `ui-react/testUtils` adds `applyBuiStylesheets` and `resolvedFontSize` for tests of rendered text sizes.
+- 22f9eaf: When a sign-in elsewhere ends the portal session in this browser (Dex refuses the refresh with "already been claimed by another client"), the Agent Platform shows "You signed in somewhere else" with a "Sign in again" button. Meanwhile the Customize tabs leave their counts out, the Connectors and Workflows tabs say they could not read the list instead of "None of your environments runs muster", and the sessions rail asks for a sign-in instead of "No sessions yet". After a reload, the sign-in page (shell-style and classic) shows the same notice above the sign-in options. The gs plugin adds `useMainSessionEnd` and `GSAuthProvidersApi.getMainSessionEnd`.
+- f5615a0: Polling stops from hidden tabs and after a permanent error. `ui-react` adds
+  `pollingQueryOptions`, `isPermanentReadError` and `causeChain`: a query
+  spreads the options and polls only while the tab is visible, reads again as
+  it becomes visible where its data is stale, and stops after a 401, a 403 or a
+  "not connected" answer until a read succeeds again; a stopped query is not
+  read on becoming visible either. `inBackground` keeps a poll going from a
+  hidden tab while the caller has a reason, and `refetchOnVisible: false`
+  leaves the read on becoming visible to the next tick. `muster` adds
+  `musterPollingOptions` and `isPermanentMusterReadError`, which also stop on
+  muster's `server_sign_in_required` and a portal session that is gone. The
+  retry policies of the gs, flux, repositories and muster clients and of the
+  Mimir queries build on the same classifier.
+
+  The model-manager reads of the Serving view (`list_backends`, `list_models`,
+  `list_nodes`), the pull jobs, the GPU node pools, workspaces, toolchain
+  builds, session reads, the Kubernetes and Mimir polls, muster's status and
+  connector reads and the repositories watches follow the rule. The GPU node
+  pools read polls from a hidden tab only while a pool is being deployed, and
+  the inventory only while a served model is on its way in, so a pool's serve
+  intent still loads its model meanwhile. Where muster asks the person to sign
+  in to model-manager, the Serving view offers the sign-in, and polling resumes
+  once it lands.
+
+- Updated dependencies [c0113f8]
+- Updated dependencies [bd5f42a]
+- Updated dependencies [f100bad]
+- Updated dependencies [d553603]
+- Updated dependencies [77d1c12]
+- Updated dependencies [77d1c12]
+- Updated dependencies [2f03302]
+- Updated dependencies [4536f3d]
+- Updated dependencies [01a63aa]
+- Updated dependencies [0f3570e]
+- Updated dependencies [dbd826c]
+- Updated dependencies [2f03302]
+- Updated dependencies [168ca66]
+- Updated dependencies [c775cfb]
+- Updated dependencies [cefb9d4]
+- Updated dependencies [b3c8677]
+- Updated dependencies [4536f3d]
+- Updated dependencies [371fda2]
+- Updated dependencies [d97c11d]
+- Updated dependencies [859651d]
+- Updated dependencies [3b65ce4]
+- Updated dependencies [959b908]
+- Updated dependencies [694e2ae]
+- Updated dependencies [e8c5832]
+- Updated dependencies [3b4a31f]
+- Updated dependencies [269c67b]
+- Updated dependencies [a7ecd9d]
+- Updated dependencies [e36a91c]
+- Updated dependencies [b0fc821]
+- Updated dependencies [5dac044]
+- Updated dependencies [b623ab3]
+- Updated dependencies [06dfa3d]
+- Updated dependencies [a05070d]
+- Updated dependencies [d29861d]
+- Updated dependencies [a02eb7e]
+- Updated dependencies [99b5956]
+- Updated dependencies [20e6659]
+- Updated dependencies [172b3de]
+- Updated dependencies [daa939d]
+- Updated dependencies [164b2e4]
+- Updated dependencies [416b463]
+- Updated dependencies [8949a13]
+- Updated dependencies [d29861d]
+- Updated dependencies [3627dfd]
+- Updated dependencies [7e12f91]
+- Updated dependencies [b905271]
+- Updated dependencies [671372c]
+- Updated dependencies [f5615a0]
+- Updated dependencies [f1e56fe]
+- Updated dependencies [35f1cdd]
+- Updated dependencies [249a84a]
+- Updated dependencies [f37a3f1]
+  - @giantswarm/backstage-plugin-gs-common@0.24.0
+  - @giantswarm/backstage-plugin-kubernetes-react@1.2.0
+  - @giantswarm/backstage-plugin-ui-react@0.11.0
+  - @giantswarm/backstage-plugin-ai-chat-react@0.6.1
+  - @giantswarm/backstage-plugin-platform-capabilities@0.1.2
+  - @giantswarm/backstage-plugin-flux@0.10.2
+  - @giantswarm/backstage-plugin-flux-react@0.15.2
+  - @giantswarm/backstage-plugin-analytics-react@0.4.0
+  - @giantswarm/backstage-plugin-gs-react@0.1.2
+
 ## 0.72.0
 
 ### Minor Changes

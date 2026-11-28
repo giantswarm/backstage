@@ -1,5 +1,74 @@
 # @giantswarm/backstage-plugin-kubernetes-react
 
+## 1.2.0
+
+### Minor Changes
+
+- bd5f42a: The agent wizard handles skills from private repositories: the skills step marks a private repository and its skills, and the skills step and the review say which credential the agent fetches them with (the installation's, as agent-manager reports it, or the agent's own) or warn, without blocking, when the installation has none or its token fails to refresh. An agent whose skills credential Secret is missing says so and that it recovers once the Secret exists, apart from an agent that has not booted yet, which points at the boot log.
+- 3627dfd: The Agent Platform shell has a Platform section at `/platform`, off unless `gs.features.platformSection.enabled` is set: a rail item and a page whose Clusters tab lists every cluster the person can read, with search, Environment, Organization, Status and Release filters, a column picker and sortable headers. The gs plugin exports `PlatformClustersPanel`, `PlatformClustersProvider` and `usePlatformClustersCount`, and its fixtures serve Cluster API clusters (`gsKubernetesObjectsOf`); ui-react exports `ColumnPicker` and `UnreachableInstallationsAlert`, which moved there from agent-platform unchanged but for an `actions` slot; kubernetes-react's `useClustersInfo` returns `error` and `retry`; the fixture data set has clusters.
+
+### Patch Changes
+
+- c775cfb: Fixture mode's data, outside production builds only. `@giantswarm/backstage-plugin-gs-common/fixtures` builds a seeded data set of installations, organizations, agents, connectors, sessions, workflows and executions, with a count, a least name length and the states for each list; the base data set has every state, and only made-up names. muster and agent-platform map its records onto the types their clients read. Fixture mode serves three made-up installations, `FIXTURE_INSTALLATIONS` in gs-common, instead of one. kubernetes-react exports `AGENT_BLOCKED_REASON`.
+- 8949a13: Where `gs.features.platformSection.enabled` is set, a Platform cluster's page has a Node pools tab (`/platform/clusters/<installation>/<namespace>/<name>/node-pools`) with the number of pools on it: a row per AWS machine pool, Karpenter pool or Azure machine pool, with nodes ready, machines, zones, scaling and age. Selecting a pool (`?name=<pool>`, as on the classic page) shows its nodes with their CPU and memory requests and pods, for a machine pool, and its technical details, read as the classic cluster page reads them. The facts column is on Overview only. The Karpenter details' running summary draws CPU in blue and memory in violet on a visible track, an excluded requirement's dashed chip has a stronger border, and a taint wraps only after a `/`, `=` or `:`; these show on the classic page too. On the classic cluster page, the Karpenter node template gives the root volume in GiB, and the nodes table its CPU and memory as the rest of the portal does ("9.1 GiB", not "9.1 Gi"). kubernetes-react's `MachineDeployment` has `getAutoscalerRange()`. Fixture mode serves Karpenter and Azure node pools, every pool's nodes and their Mimir series, and narrows Kubernetes lists by their label selector.
+- d29861d: Where `gs.features.platformSection.enabled` is set, each row of the Platform section's clusters list opens the cluster's page at `/platform/clusters/<installation>/<namespace>/<name>`: its state, facts and tool links, and an Overview tab with its release and Kubernetes version, friendly labels and annotations, GitOps source, login command and technical details. The gs plugin exports `PlatformClusterRoute`, `PlatformLinksProvider` and the `PlatformLinks` type; the classic cluster page's readers take an address (`useCluster`, `ClusterProvider`), unchanged in what they read. The fixture clusters have an App each and, for the GitOps-managed ones, a Flux Kustomization and GitRepository. Coming back from a cluster's page, the list is as it was left, without reading the clusters again. The Flux resources table keeps its Source Cluster, Target Cluster and Status Details headers on one line. kubernetes-react's `ControlPlane` has `getReplicas()`.
+- f5615a0: Polling stops from hidden tabs and after a permanent error. `ui-react` adds
+  `pollingQueryOptions`, `isPermanentReadError` and `causeChain`: a query
+  spreads the options and polls only while the tab is visible, reads again as
+  it becomes visible where its data is stale, and stops after a 401, a 403 or a
+  "not connected" answer until a read succeeds again; a stopped query is not
+  read on becoming visible either. `inBackground` keeps a poll going from a
+  hidden tab while the caller has a reason, and `refetchOnVisible: false`
+  leaves the read on becoming visible to the next tick. `muster` adds
+  `musterPollingOptions` and `isPermanentMusterReadError`, which also stop on
+  muster's `server_sign_in_required` and a portal session that is gone. The
+  retry policies of the gs, flux, repositories and muster clients and of the
+  Mimir queries build on the same classifier.
+
+  The model-manager reads of the Serving view (`list_backends`, `list_models`,
+  `list_nodes`), the pull jobs, the GPU node pools, workspaces, toolchain
+  builds, session reads, the Kubernetes and Mimir polls, muster's status and
+  connector reads and the repositories watches follow the rule. The GPU node
+  pools read polls from a hidden tab only while a pool is being deployed, and
+  the inventory only while a served model is on its way in, so a pool's serve
+  intent still loads its model meanwhile. Where muster asks the person to sign
+  in to model-manager, the Serving view offers the sign-in, and polling resumes
+  once it lands.
+
+- Updated dependencies [f100bad]
+- Updated dependencies [d553603]
+- Updated dependencies [77d1c12]
+- Updated dependencies [2f03302]
+- Updated dependencies [01a63aa]
+- Updated dependencies [0f3570e]
+- Updated dependencies [dbd826c]
+- Updated dependencies [2f03302]
+- Updated dependencies [168ca66]
+- Updated dependencies [cefb9d4]
+- Updated dependencies [e8c5832]
+- Updated dependencies [3b4a31f]
+- Updated dependencies [269c67b]
+- Updated dependencies [a7ecd9d]
+- Updated dependencies [e36a91c]
+- Updated dependencies [5dac044]
+- Updated dependencies [d29861d]
+- Updated dependencies [a02eb7e]
+- Updated dependencies [99b5956]
+- Updated dependencies [20e6659]
+- Updated dependencies [172b3de]
+- Updated dependencies [daa939d]
+- Updated dependencies [164b2e4]
+- Updated dependencies [3627dfd]
+- Updated dependencies [7e12f91]
+- Updated dependencies [b905271]
+- Updated dependencies [671372c]
+- Updated dependencies [f5615a0]
+- Updated dependencies [f1e56fe]
+- Updated dependencies [35f1cdd]
+- Updated dependencies [249a84a]
+  - @giantswarm/backstage-plugin-ui-react@0.11.0
+  - @giantswarm/backstage-plugin-analytics-react@0.4.0
+
 ## 1.1.0
 
 ### Minor Changes
