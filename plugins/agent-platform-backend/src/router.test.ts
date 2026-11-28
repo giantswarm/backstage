@@ -2223,18 +2223,15 @@ describe('createRouter', () => {
       });
     });
 
-    it('keeps a new turn silent past the first-event wait an error, never a 202', async () => {
-      // Unlike a resumed one, a new turn is answered with a task snapshot at
-      // once; silence is a failure the frontend checks against the history
-      // (whether the message landed), which a 202 would skip.
+    it('answers 202 when the client verified the message after a stream startup timeout', async () => {
       streamMessage.mockRejectedValue(
         turnPendingError('The agent on gazelle has not finished.'),
       );
 
       const response = await post();
 
-      expect(response.status).toBe(500);
-      expect(response.body.error.name).toBe('KagentTurnPendingError');
+      expect(response.status).toBe(202);
+      expect(response.body).toEqual({ status: 'pending' });
     });
 
     it('ends the relay cleanly when the upstream body dies mid-stream', async () => {

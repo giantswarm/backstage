@@ -384,9 +384,10 @@ function FigureCard(props: {
  */
 export function HiveNowTab() {
   const classes = useStyles();
-  const [team] = useHiveTeam();
+  const [team, , isTeamResolved] = useHiveTeam();
   const [query] = useHiveSearch();
-  const { data, isFetching, error, refetch } = useHiveNow(team);
+  // Not before the reader's own team is known: the default is no one's pick.
+  const { data, isFetching, error, refetch } = useHiveNow(team, isTeamResolved);
 
   if (!data) {
     return (

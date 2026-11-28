@@ -41,6 +41,24 @@ export function teamName(team: string): string {
   return team.replace(/[^\p{L}\p{N}\s-]/gu, '').trim();
 }
 
+/** `Honey Badger 🦡` → `team-honeybadger`, the GitHub team and catalog group. */
+export function hiveTeamSlug(team: string): string {
+  return `team-${teamName(team)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')}`;
+}
+
+/** `group:default/team-shield` → `team-shield`; undefined for other groups. */
+export function teamSlugOfGroupRef(ref: string): string | undefined {
+  const match = ref.match(/^group:(?:[^/]+\/)?(team-[a-z0-9-]+)$/i);
+  return match ? match[1].toLowerCase() : undefined;
+}
+
+/** The first Hive team, in the header's order, whose group the reader is in. */
+export function ownHiveTeamOf(slugs: readonly string[]): string | undefined {
+  return HIVE_TEAMS.find(team => slugs.includes(hiveTeamSlug(team)));
+}
+
 /**
  * Whether two names are the same team, emoji and case aside: the magazine
  * writes "Phoenix" where the board's option is "Phoenix 🔥".

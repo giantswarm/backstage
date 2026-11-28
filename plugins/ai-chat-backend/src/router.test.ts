@@ -3,6 +3,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { mockServices } from '@backstage/backend-test-utils';
 import type { JsonObject } from '@backstage/types';
+import { MiddlewareFactory } from '@backstage/backend-defaults/rootHttpRouter';
 import express from 'express';
 import request from 'supertest';
 import type { ConversationStore } from './services/ConversationStore';
@@ -264,4 +265,72 @@ describe('createRouter with Claude on Google Vertex AI', () => {
       });
     }),
   );
+});
+
+describe('POST /muster/retry', () => {
+  async function retryApp(configData: JsonObject) {
+    const { router, logger } = await createTestRouter(configData);
+    const config = mockServices.rootConfig({ data: configData });
+    return express()
+      .use(router)
+      .use(MiddlewareFactory.create({ config, logger }).error());
+  }
+
+  const musterConfig = {
+    aiChat: {
+      mcp: [
+        {
+          name: 'muster',
+          url: 'http://127.0.0.1:1/mcp',
+          authProvider: 'dex',
+        },
+      ],
+    },
+  };
+
+  const answer = {
+    tool: 'x_github_get_me',
+    arguments: {},
+    input: {
+      inputResponses: { muster_sign_in: { action: 'accept' } },
+      requestState: 'opaque',
+    },
+  };
+
+  it('answers 404 without a muster the person reaches with their own token', async () => {
+    const app = await retryApp({
+      aiChat: { mcp: [{ name: 'muster', url: 'http://127.0.0.1:1/mcp' }] },
+    });
+
+    const response = await request(app).post('/muster/retry').send(answer);
+
+    expect(response.status).toBe(404);
+  });
+
+  it("answers 401 without the person's muster token", async () => {
+    const app = await retryApp(musterConfig);
+
+    const response = await request(app).post('/muster/retry').send(answer);
+
+    expect(response.status).toBe(401);
+  });
+
+  it.each([
+    ['no tool', { ...answer, tool: undefined }],
+    ['arguments that are no object', { ...answer, arguments: [] }],
+    ['no answer', { ...answer, input: undefined }],
+    [
+      'an answer that is no elicitation action',
+      { ...answer, input: { inputResponses: { k: { action: 'open' } } } },
+    ],
+  ])('answers 400 to a retry with %s', async (_, body) => {
+    const app = await retryApp(musterConfig);
+
+    const response = await request(app)
+      .post('/muster/retry')
+      .set('backstage-ai-chat-authorization-dex', 'token')
+      .send(body);
+
+    expect(response.status).toBe(400);
+  });
 });

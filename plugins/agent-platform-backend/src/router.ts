@@ -1162,15 +1162,22 @@ export async function createRouter(
         images,
       );
 
-      await relayEventStream(res, logger, signal =>
-        client.streamMessage(
-          sessionId,
-          agent,
-          { messageId, text, images },
-          { userToken },
-          signal,
-        ),
-      );
+      try {
+        await relayEventStream(res, logger, signal =>
+          client.streamMessage(
+            sessionId,
+            agent,
+            { messageId, text, images },
+            { userToken },
+            signal,
+          ),
+        );
+      } catch (error) {
+        if (!isTurnPendingError(error)) {
+          throw error;
+        }
+        res.status(202).json({ status: 'pending' });
+      }
     },
   );
 
@@ -1301,11 +1308,8 @@ export async function createRouter(
    * the turn — and if the turn never lands, the page has nothing to show. Over a
    * stream the events arrive as they happen and a cut stream is visible as such.
    *
-   * A resumed turn that says nothing within the wait for its first event — the
-   * approved tool runs before the agent speaks — is still running: a 202, as on
-   * the unary answer route, and the page follows the poll. Only here: on the
-   * messages stream a silent start stays an error, which the frontend checks
-   * against the history.
+   * A send whose stream could not open answers 202 only after the client
+   * verifies its message in the task history; the page follows the poll.
    */
   router.post('/kagent/sessions/:sessionId/answer/stream', async (req, res) => {
     const { client } = resolveInstallation(req);

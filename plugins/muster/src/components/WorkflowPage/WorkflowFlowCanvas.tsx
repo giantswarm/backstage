@@ -1,4 +1,8 @@
 import {
+  useNow,
+  formatLocalDateFull,
+} from '@giantswarm/backstage-plugin-ui-react';
+import {
   ReactNode,
   RefObject,
   useCallback,
@@ -792,6 +796,7 @@ export function WorkflowFlowCanvas({
   installation,
   hasSession,
 }: WorkflowFlowCanvasProps) {
+  const now = useNow(60_000);
   const classes = useStyles();
   const musterApi = useApi(musterApiRef);
   const isPhone = usePhoneLayout();
@@ -961,12 +966,16 @@ export function WorkflowFlowCanvas({
     runCaption = 'No runs recorded yet — the flow shows the definition only.';
   } else if (latest && execution.data) {
     const outcome = executionOutcome(execution.data.status);
-    const when = formatRelativeTime(latest.started_at) ?? latest.started_at;
+    const when =
+      formatRelativeTime(latest.started_at, { now }) ?? latest.started_at;
     runCaption = hasOverlay
       ? `Last run ${when} · ${outcome.label} — each step shows how it went.`
       : `Last run ${when} · ${outcome.label} — Muster recorded no per-step results for it.`;
   }
 
+  const runTitle = latest?.started_at
+    ? formatLocalDateFull(latest.started_at)
+    : undefined;
   const overlayOf = (key: string) => (hasOverlay ? overlay[key] : undefined);
   const detailsId = (key: string) => `${idPrefix}-details-${key}`;
 
@@ -989,7 +998,12 @@ export function WorkflowFlowCanvas({
     return (
       <figure className={classes.figure} data-testid="workflow-step-list">
         <figcaption className={classes.caption}>
-          <Text as="span" variant="body-small" color="secondary">
+          <Text
+            as="span"
+            variant="body-small"
+            color="secondary"
+            title={runTitle}
+          >
             {runCaption ? `${runCaption} ` : ''}
             {isTouch ? 'Tap' : 'Select'} a step to see its details.
           </Text>
@@ -1008,7 +1022,7 @@ export function WorkflowFlowCanvas({
 
   const caption = (
     <figcaption className={classes.caption}>
-      <Text as="span" variant="body-small" color="secondary">
+      <Text as="span" variant="body-small" color="secondary" title={runTitle}>
         {runCaption ? `${runCaption} ` : ''}
         {isTouch ? 'Tap' : 'Select'} a step to see its details.
       </Text>

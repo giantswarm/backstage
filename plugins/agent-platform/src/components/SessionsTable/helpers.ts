@@ -2,11 +2,7 @@ import {
   describeSessionState,
   SessionState,
 } from '@giantswarm/backstage-plugin-agent-platform-common';
-import {
-  formatLocalDay,
-  formatLocalTime,
-  TABLE_NAME_COLUMN_MIN_WIDTH,
-} from '@giantswarm/backstage-plugin-ui-react';
+import { TABLE_NAME_COLUMN_MIN_WIDTH } from '@giantswarm/backstage-plugin-ui-react';
 import { FleetSessionStatesView } from '../../hooks/useFleetSessionStates';
 import {
   byLastActive,
@@ -155,23 +151,6 @@ export function sessionDayGroup(
   now: Date,
 ): SessionDayGroup {
   return dayBucket(activeAt, now, SESSION_DAY_BUCKETS, 'earlier');
-}
-
-/**
- * A session's time (when it was last active), as short as its group allows:
- * the time of day under Today and Yesterday, the date under Earlier and Pinned
- * (whose rows can be from any day), with the year only when it is not the
- * current one.
- */
-export function formatSessionTime(
-  at: number,
-  group: SessionListGroup,
-  currentYear: number,
-): string {
-  const date = new Date(at);
-  return group === 'today' || group === 'yesterday'
-    ? formatLocalTime(date)
-    : formatLocalDay(date, currentYear);
 }
 
 /** How wide the session's badges are beside its title, px, with their gap. */

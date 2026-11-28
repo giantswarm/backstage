@@ -1,7 +1,11 @@
 import { useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Flex, SearchField, Select } from '@backstage/ui';
-import { useHiveSearch, useHiveTeam } from '../../hooks/useHive';
+import {
+  useHiveSearch,
+  useHiveTeam,
+  useShowHiveTeamInUrl,
+} from '../../hooks/useHive';
 import { ALL_TEAMS, HIVE_TEAMS, teamName } from '../../lib/hive';
 
 const TEAM_OPTIONS = [
@@ -16,19 +20,21 @@ const TEAM_OPTIONS = [
  * tabs change underneath.
  */
 export function HiveHeaderControls() {
-  const [team, setTeam] = useHiveTeam();
+  const [team, setTeam, isResolved] = useHiveTeam();
+  const showTeamInUrl = useShowHiveTeamInUrl();
   const [query, setQuery] = useHiveSearch();
   const [searchParams] = useSearchParams();
 
   // A tab opened from the header's tab row carries no `?team=`: write the
-  // chosen team back, so the tab (the roadmap's board too) reads the scope
-  // from the URL and a copied link carries it.
+  // shown team back, once the reader's own team is known, so the tab (the
+  // roadmap's board and the Reviews tab too) reads the scope from the URL
+  // and a copied link carries it. Shown, not picked: nothing is saved.
   const urlHasTeam = searchParams.has('team');
   useEffect(() => {
-    if (!urlHasTeam) {
-      setTeam(team);
+    if (!urlHasTeam && isResolved) {
+      showTeamInUrl(team);
     }
-  }, [urlHasTeam, team, setTeam]);
+  }, [urlHasTeam, isResolved, team, showTeamInUrl]);
 
   return (
     <Flex align="center" gap="2">

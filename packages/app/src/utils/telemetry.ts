@@ -1028,6 +1028,11 @@ export function getTelemetryPageViewPayload(rawPathname: string): {
       route = '/hive/knowledge';
       break;
 
+    case pathname === '/hive/reviews':
+      payload = { page: 'Hive reviews' };
+      route = '/hive/reviews';
+      break;
+
     // Backstage's API explorer (`/api-docs`), a list without sub-routes.
     case pathname === '/api-docs' || pathname.startsWith('/api-docs/'):
       payload = { page: 'API docs' };

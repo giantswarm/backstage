@@ -1,7 +1,10 @@
 import type { ReactNode } from 'react';
 import { Flex, Link, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
-import { SimpleAccordion } from '@giantswarm/backstage-plugin-ui-react';
+import {
+  formatLocalTime,
+  SimpleAccordion,
+} from '@giantswarm/backstage-plugin-ui-react';
 
 import {
   egressOriginFor,
@@ -49,10 +52,7 @@ function timeOf(at: string | undefined): string | undefined {
   if (!at) {
     return undefined;
   }
-  return new Date(at).toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatLocalTime(at);
 }
 
 /** A sentence, then its links in one line after it. */

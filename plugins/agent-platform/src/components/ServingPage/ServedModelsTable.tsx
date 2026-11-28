@@ -11,6 +11,7 @@ import {
   Text,
   useTable,
 } from '@backstage/ui';
+// eslint-disable-next-line @typescript-eslint/no-restricted-imports -- BUI has no determinate download progress indicator.
 import { LinearProgress } from '@material-ui/core';
 import ReportProblemIcon from '@material-ui/icons/ReportProblem';
 import { Link } from '@backstage/core-components';
@@ -30,6 +31,7 @@ import {
   StatusHint,
   stopRowPress,
   useFittingColumns,
+  useNow,
 } from '@giantswarm/backstage-plugin-ui-react';
 import {
   describeServedModel,
@@ -536,11 +538,14 @@ export function downloadLine(download: ServedModelDownload): string {
  * (the scheduler's text): that is the status hint
  * ({@link servedModelStatusExplanation}).
  */
-export function servedModelStatusLines(row: ServedModelRow): string[] {
+export function servedModelStatusLines(
+  row: ServedModelRow,
+  now = new Date(),
+): string[] {
   if (isDownloadRow(row)) {
     return [downloadLine(row.download)];
   }
-  const memory = hasFootprint(row.readiness) ? memoryLine(row) : undefined;
+  const memory = hasFootprint(row.readiness) ? memoryLine(row, now) : undefined;
   return memory ? [memory] : [];
 }
 
@@ -624,9 +629,10 @@ export type ServedModelStatusCellProps = {
  * `Download failed`, the error in the hint).
  */
 export function ServedModelStatusCell({ row }: ServedModelStatusCellProps) {
-  const lines = servedModelStatusLines(row);
-  const memory = hasFootprint(row.readiness) ? memoryLine(row) : undefined;
-  const memoryTitle = memoryLineTitle(row);
+  const now = new Date(useNow(60_000));
+  const lines = servedModelStatusLines(row, now);
+  const memory = hasFootprint(row.readiness) ? memoryLine(row, now) : undefined;
+  const memoryTitle = memoryLineTitle(row, now);
   const download = isDownloadRow(row) ? row.download : undefined;
   const percent = download ? downloadPercent(download) : undefined;
   return (
@@ -1135,8 +1141,11 @@ export function describePlacement(row: ServedModelRow): string | undefined {
  * lives in the label's `title=`, which a phone never shows (T22 B13). A
  * troubled state's explanation is the label's hint, as on the table.
  */
-export function phoneStatusLines(row: ServedModelRow): string[] {
-  const lines = servedModelStatusLines(row);
+export function phoneStatusLines(
+  row: ServedModelRow,
+  now = new Date(),
+): string[] {
+  const lines = servedModelStatusLines(row, now);
   const message = servedReadinessMessage(row);
   if (
     !isDownloadRow(row) &&
@@ -1270,18 +1279,20 @@ function PhoneUsedBy({
 export function servedModelStackedRow(
   row: ServedModelRow,
   {
+    now = new Date(),
     columns,
     sharedEndpoint,
     hrefFor,
     renderActions,
   }: {
+    now?: Date;
     columns: ServedModelColumns;
     sharedEndpoint: string | undefined;
     hrefFor: (consumer: ServedModelConsumer) => string | undefined;
     renderActions?: (row: ServedModelRow) => ReactNode;
   },
 ): StackedRowItem {
-  const lines = phoneStatusLines(row);
+  const lines = phoneStatusLines(row, now);
   const download = isDownloadRow(row) ? row.download : undefined;
   const percent = download ? downloadPercent(download) : undefined;
   const description = describeRow(row);
@@ -1383,6 +1394,7 @@ function ServedModelsGroupTable({
   } = useFittingColumns(columnsFor, {
     minWidths: SERVED_MODEL_COLUMN_MIN_WIDTHS,
   });
+  const now = useNow(60_000, isCompact);
 
   const { tableProps } = useTable<ServedModelRow>({
     mode: 'complete',
@@ -1409,6 +1421,7 @@ function ServedModelsGroupTable({
               aria-label={`Models on ${group.installation}, ${describeGroup(group)}`}
               rows={visible.map(row =>
                 servedModelStackedRow(row, {
+                  now: new Date(now),
                   columns,
                   sharedEndpoint: group.endpoint,
                   hrefFor,
