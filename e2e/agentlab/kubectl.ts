@@ -32,20 +32,27 @@ export async function kubectl(args: string[], input?: string) {
 }
 
 /**
+ * An `Organization`'s Agent Platform namespace, as a kubectl JSONPath without
+ * its braces: the `name` of the `status.namespaces` entry whose `capability`
+ * is `agentPlatform`, which agent-platform-operator writes. Empty until the
+ * operator reports it.
+ */
+export const AGENT_PLATFORM_NAMESPACE_PATH =
+  '.status.namespaces[?(@.capability=="agentPlatform")].name';
+
+/**
  * The namespace of the lab's organization ({@link lab.organization}), its
- * `AgentPlatformOrganization`'s `status.namespace`; undefined on a lab without
- * organizations, where the wizard offers Platform and reads `kagent`.
+ * `Organization`'s {@link AGENT_PLATFORM_NAMESPACE_PATH}; undefined on a lab
+ * without organizations, where the wizard offers Platform and reads `kagent`.
  */
 export async function labOrganizationNamespace(): Promise<string | undefined> {
   const { stdout } = await kubectl([
     'get',
-    'agentplatformorganizations.agent-platform.giantswarm.io',
-    '-n',
-    lab.organization.parent,
+    'organizations.security.giantswarm.io',
     lab.organization.name,
     '--ignore-not-found',
     '-o',
-    'jsonpath={.status.namespace}',
+    `jsonpath={${AGENT_PLATFORM_NAMESPACE_PATH}}`,
   ]).catch(() => ({ stdout: '' }));
   return stdout.trim() || undefined;
 }

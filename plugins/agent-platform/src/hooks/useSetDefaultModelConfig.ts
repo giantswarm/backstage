@@ -3,7 +3,6 @@ import { useRouteRef } from '@backstage/frontend-plugin-api';
 import type { ModelConfig } from '@giantswarm/backstage-plugin-kubernetes-react';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
-import { AgentManagerClient } from '../apis/AgentManagerClient';
 import { useOrganizationDirectory } from '../components/OrganizationDirectoryProvider';
 import {
   credentialFormOf,
@@ -15,7 +14,7 @@ import { modelCredentialsRouteRef } from '../routes';
 import { invalidateModelReads } from './defaultModelWrites';
 import { modelScopeRefusal } from './modelScope';
 import { useEnsureModelOperations } from './useEnsureModelOperations';
-import { useMusterPluginApi } from './useMusterPluginApi';
+import { useAgentManagerClients } from './useAgentManager';
 import { useOrganizationContentMode } from './useOrganizationContentMode';
 
 export type SetDefaultModelConfigResult = {
@@ -37,7 +36,7 @@ export type SetDefaultModelConfigInput = {
  */
 export function useSetDefaultModelConfig() {
   const queryClient = useQueryClient();
-  const musterApi = useMusterPluginApi();
+  const agentManagerOf = useAgentManagerClients();
   const ensureModelOperations = useEnsureModelOperations();
   const contentMode = useOrganizationContentMode();
   const organizations = useOrganizationDirectory();
@@ -52,7 +51,7 @@ export function useSetDefaultModelConfig() {
         ? null
         : { name: 'AgentPlatform.defaultModelSet', attributes: {} },
     mutationFn: async ({ modelConfig }) => {
-      if (!musterApi)
+      if (!agentManagerOf)
         throw new Error('agent-manager is not reachable on this installation.');
       const installation = modelConfig.cluster;
       const namespace = modelConfig.getNamespace() ?? '';
@@ -65,11 +64,9 @@ export function useSetDefaultModelConfig() {
       try {
         await ensureModelOperations(installation);
         const mode = await contentMode(installation, namespace);
-        const result = await new AgentManagerClient(
-          musterApi,
-          installation,
-        ).setOrganizationModel({
+        const result = await agentManagerOf(installation).setOrganizationModel({
           namespace,
+          organization: organizations.directory.get(namespace)?.organization,
           name: modelConfig.getName(),
           default: true,
           requestId: crypto.randomUUID(),

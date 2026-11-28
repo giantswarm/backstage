@@ -580,7 +580,7 @@ export function ConnectorsTab({
 }: WritingTabProps) {
   const connectors = useOrganizationConnectors(
     installation,
-    organization.namespace,
+    organization.organization,
   );
   const request = useOrganizationCredentialRequest(installation, organization);
   const access = useOrganizationAccess(installation, organization.namespace);

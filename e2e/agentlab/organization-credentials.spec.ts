@@ -24,20 +24,20 @@ test.use({ trace: 'off', video: 'off', screenshot: 'off' });
  *
  * Needs the lab's agent-manager 2.22 with `credentials.uiURL` set to this
  * portal's `/customize/models/credentials/<installation>/{namespace}/{operation}`
- * or `/organizations/<installation>/{parent}/{organization}/credentials/{operation}`,
+ * or `/organizations/<installation>/{organization}/credentials/{operation}`,
  * `agentManager.route` on (the portal's backend reaches agent-manager there),
- * and the lab's first organization, `AGENTLAB_ORGANIZATION` as
- * `<parent>/<name>` (default `agentlab-organizations/default`), whose
- * `organization-admins` binds the admin's group.
+ * and the lab's first organization, `AGENTLAB_ORGANIZATION` as its name
+ * (default `default`), whose admins (`spec.admins`, bound in
+ * `organization-admins`) hold the admin's group.
  */
 
-const { parent: PARENT, name: ORGANIZATION } = lab.organization;
+const { name: ORGANIZATION } = lab.organization;
 const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(4, 12);
 const MODEL = `e2e-cred-${stamp}`;
 const SECRET = `tenant-credential-${MODEL}`;
 const KEY = `sk-ant-e2e-${stamp}-never-shown`;
 const LARGE_KEY_PREFIX = `e2e-large-credential-${stamp}-never-shown-`;
-const BASE = `/organizations/${lab.installation}/${PARENT}/${ORGANIZATION}`;
+const BASE = `/organizations/${lab.installation}/${ORGANIZATION}`;
 
 test.afterEach(async () => {
   if (!KUBECONFIG) return;
@@ -75,7 +75,7 @@ async function organizationNamespace(): Promise<string> {
   const namespace = await labOrganizationNamespace();
   if (!namespace) {
     throw new Error(
-      `the lab has no organization ${PARENT}/${ORGANIZATION} (AGENTLAB_ORGANIZATION)`,
+      `the lab has no organization ${ORGANIZATION} (AGENTLAB_ORGANIZATION)`,
     );
   }
   return namespace;
@@ -542,9 +542,7 @@ test('organization credentials: a model key is entered on the form, saved as the
       admin.getByText(`Model ${MODEL} (new)`, { exact: false }),
     ).toBeVisible();
     await expect(
-      admin.getByText(
-        new RegExp(`^${ORGANIZATION} · ${PARENT} · ${namespace}`),
-      ),
+      admin.getByText(new RegExp(`^${ORGANIZATION} · ${namespace}`)),
     ).toBeVisible();
 
     // The request is bound to who prepared it: another person's link is gone.

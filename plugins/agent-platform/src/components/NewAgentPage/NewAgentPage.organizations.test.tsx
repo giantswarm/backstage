@@ -13,6 +13,8 @@ import {
   type OrganizationsScenario,
 } from '../../lib/__fixtures__/agentManagerOrganizations';
 import type { AgentManagerModelConfig } from '../../lib/agentManager';
+import type { OrganizationListing } from '../../lib/organizations';
+import { musterOrganizationsQueryKey } from '../../lib/queryKeys';
 import {
   NewAgentFormProvider,
   useNewAgentForm,
@@ -57,12 +59,10 @@ jest.mock('../ModelConfigsProvider', () => ({
 const PAYMENTS = {
   namespace: 'agents-payments-x7k2q',
   organization: 'payments',
-  parent: 'org-acme',
 };
 const RISK = {
   namespace: 'agents-risk-p3m9z',
   organization: 'risk',
-  parent: 'org-acme',
 };
 
 function model(
@@ -83,15 +83,25 @@ function model(
 /**
  * The Organization field and the model picker, as step 1 places them, and
  * what the form holds. `preselect` is picked before agent-manager answers,
- * as a page or a restored draft brings one.
+ * as a page or a restored draft brings one. `unpicked`: no environment is
+ * picked, as before the form knows which ones have models.
  */
-function Step({ preselect }: { preselect?: string }) {
+function Step({
+  preselect,
+  unpicked = false,
+}: {
+  preselect?: string;
+  unpicked?: boolean;
+}) {
   const { state, setInstallation, selectTenant, fieldErrors } =
     useNewAgentForm();
   useTenantChoicesSync();
   // Every problem shows at once, as after a blocked Continue.
   const owner = useOwnerField({ errorFor: (_field, problem) => problem });
   useEffect(() => {
+    if (unpicked) {
+      return;
+    }
     if (!state.installation) {
       setInstallation('gazelle');
     } else if (preselect && state.tenant === undefined) {
@@ -103,6 +113,7 @@ function Step({ preselect }: { preselect?: string }) {
     setInstallation,
     selectTenant,
     preselect,
+    unpicked,
   ]);
   return state.installation ? (
     <>
@@ -115,21 +126,40 @@ function Step({ preselect }: { preselect?: string }) {
   ) : null;
 }
 
+/**
+ * `cached`: a `list_organizations` answer the portal read `age` ms before the
+ * form opens, as another page left it.
+ */
 async function renderStep(
   scenario: OrganizationsScenario,
-  { preselect }: { preselect?: string } = {},
+  {
+    preselect,
+    unpicked,
+    cached,
+  }: {
+    preselect?: string;
+    unpicked?: boolean;
+    cached?: { listing: OrganizationListing; age: number };
+  } = {},
 ) {
   mockListed = Object.values(scenario.models ?? {}).flat();
   const { api, callTool } = fakeOrganizationsMuster(scenario);
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  if (cached) {
+    queryClient.setQueryData(
+      musterOrganizationsQueryKey('gazelle'),
+      cached.listing,
+      { updatedAt: Date.now() - cached.age },
+    );
+  }
   await renderInTestApp(
     <TestApiProvider apis={[[musterApiRef, api]]}>
       <QueryClientProvider client={queryClient}>
         <OrganizationDirectoryProvider>
           <NewAgentFormProvider>
-            <Step preselect={preselect} />
+            <Step preselect={preselect} unpicked={unpicked} />
           </NewAgentFormProvider>
         </OrganizationDirectoryProvider>
       </QueryClientProvider>
@@ -192,8 +222,8 @@ describe('New agent: the organization picker', () => {
     expect(screen.queryByText('sonnet')).toBeNull();
     await waitFor(() =>
       expect(toolCalls(callTool, 'list_model_configs')).toEqual([
-        { namespace: PAYMENTS.namespace },
-        { namespace: RISK.namespace },
+        { organization: PAYMENTS.organization },
+        { organization: RISK.organization },
       ]),
     );
   });
@@ -228,6 +258,44 @@ describe('New agent: the organization picker', () => {
         /^You belong to no organization: an admin of an organization adds you/,
       ),
     ).toBeInTheDocument();
+  });
+
+  it('reads the person’s organizations again when the form opens on an answer from before, so an organization they were just added to is offered', async () => {
+    // Another page read the organizations a few seconds ago, before an
+    // admin added the person to payments.
+    const { callTool } = await renderStep(
+      {
+        mine: { organizations: [PAYMENTS] },
+        models: {
+          [PAYMENTS.namespace]: [model('sonnet', PAYMENTS.namespace, true)],
+        },
+      },
+      { cached: { listing: { organizations: [] }, age: 5_000 } },
+    );
+
+    expect(
+      await screen.findByText(/the only organization you belong to on gazelle/),
+    ).toHaveTextContent(/^Organization: payments,/);
+    expect(
+      await screen.findByRole('radio', {
+        name: 'Select model sonnet-model, default',
+      }),
+    ).toHaveAttribute('aria-checked', 'true');
+    expect(toolCalls(callTool, 'list_organizations')).toHaveLength(1);
+  });
+
+  it('reads the person’s organizations again before an environment is picked, where they decide which environments have models', async () => {
+    const { callTool } = await renderStep(
+      { mine: { organizations: [PAYMENTS] } },
+      {
+        unpicked: true,
+        cached: { listing: { organizations: [] }, age: 5_000 },
+      },
+    );
+
+    await waitFor(() =>
+      expect(toolCalls(callTool, 'list_organizations')).toHaveLength(1),
+    );
   });
 
   it("reads the person's organizations again on Check again after that read failed", async () => {

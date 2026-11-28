@@ -35,7 +35,6 @@ function OrganizationLink({
   const organizationRoute = useRouteRef(organizationDetailRouteRef);
   const href = organizationRoute?.({
     installation,
-    parent: organization.parent,
     name: organization.organization,
   });
   return href ? <Link href={href}>{label}</Link> : <>{label}</>;

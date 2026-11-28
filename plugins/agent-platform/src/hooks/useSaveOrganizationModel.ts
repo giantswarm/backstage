@@ -146,6 +146,11 @@ export function useSaveOrganizationModel(installation: string | undefined) {
       }
       const namespace =
         organization?.namespace ?? requestedNamespace ?? MODEL_CONFIG_NAMESPACE;
+      // The organization, by its name, as the model tools take it: the one
+      // given, or the one the listing names for the namespace.
+      const organizationName =
+        organization?.organization ??
+        organizations.directory.get(namespace)?.organization;
       const scopeRefusal = organization
         ? undefined
         : modelScopeRefusal(organizations, installation, namespace);
@@ -169,6 +174,7 @@ export function useSaveOrganizationModel(installation: string | undefined) {
         return client
           .setOrganizationModel({
             ...request,
+            ...(organizationName ? { organization: organizationName } : {}),
             // Only a new model's write, and only where the tool takes it: an
             // older agent-manager refuses an argument it does not know.
             ...(create && createOnly ? { create: true } : {}),
@@ -306,6 +312,7 @@ export function useSaveOrganizationModel(installation: string | undefined) {
         const { secret, key } = modelKeyReference(original);
         const result = await client.replaceOrganizationCredential({
           namespace,
+          ...(organizationName ? { organization: organizationName } : {}),
           secret,
           key,
           requestId: crypto.randomUUID(),

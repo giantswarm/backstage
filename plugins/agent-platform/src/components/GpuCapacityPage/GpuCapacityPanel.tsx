@@ -26,6 +26,7 @@ import {
   type FittingTier,
   useFittingColumns,
   usePhoneColumns,
+  useNow,
   useVisibleSort,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { formatBytes } from '../../lib/formatNumbers';
@@ -438,6 +439,7 @@ function CacheCell({
   node: GpuNode;
   noCacheHint: boolean;
 }) {
+  const now = useNow(60_000, Boolean(node.cache?.scannedAt));
   const cache = node.cache;
   if (!cache) {
     return noCacheHint ? (
@@ -461,7 +463,7 @@ function CacheCell({
   const scannedAt = cache.scannedAt ? new Date(cache.scannedAt) : undefined;
   const scanned =
     scannedAt && !Number.isNaN(scannedAt.getTime())
-      ? `scanned ${getRelativeDate(scannedAt, new Date())} (${formatLocalDateFull(
+      ? `scanned ${getRelativeDate(scannedAt, new Date(now))} (${formatLocalDateFull(
           scannedAt,
         )})`
       : undefined;

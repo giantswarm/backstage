@@ -48,7 +48,6 @@ const CONFIRMATION: CredentialOperation = {
   mode: 'apply',
   organization: {
     namespace: 'agents-payments-x7k2q',
-    parent: 'org-acme',
     organization: 'payments',
   },
   changes: [
@@ -164,7 +163,6 @@ async function renderForm(
           ) : (
             <CredentialFormPage
               installation="gazelle"
-              parent="org-acme"
               name={name}
               operation={operation}
             />
@@ -427,7 +425,7 @@ describe('CredentialFormPage', () => {
       await screen.findByText(/Model claude-sonnet \(new\)/),
     ).toBeInTheDocument();
     expect(
-      screen.getByText('payments · org-acme · agents-payments-x7k2q · gazelle'),
+      screen.getByText('payments · agents-payments-x7k2q · gazelle'),
     ).toBeInTheDocument();
     expect(
       screen.getByText(/Egress policy anthropic-egress, key api-key/),
@@ -518,9 +516,8 @@ describe('CredentialFormPage', () => {
       ).toBeInTheDocument();
       expect(screen.getByText('Organization')).toBeInTheDocument();
       expect(
-        screen.getAllByText(
-          'payments · org-acme · agents-payments-x7k2q · gazelle',
-        ).length,
+        screen.getAllByText('payments · agents-payments-x7k2q · gazelle')
+          .length,
       ).toBeGreaterThan(0);
       expect(screen.getByLabelText(/^Value/)).toBeEnabled();
     });

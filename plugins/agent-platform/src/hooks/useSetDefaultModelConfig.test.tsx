@@ -88,8 +88,8 @@ it('sets the installation default through agent-manager without a credential val
   });
   expect(mockCallTool).toHaveBeenCalledWith(
     'x_agent-manager_set_organization_model',
+    // The installation's models: no organization.
     {
-      namespace: 'kagent',
       name: 'sonnet',
       default: true,
       requestId: expect.any(String),
@@ -217,7 +217,6 @@ describe('in an organization applied from git, where agent-manager opens pull re
             organizations: [
               {
                 name: 'payments',
-                parent: 'org-acme',
                 namespace: NAMESPACE,
                 ...(orphaned ? { orphaned } : {}),
                 permissions: { manage: false, member: true },

@@ -173,7 +173,7 @@ function renderPage(edit?: ModelEdit) {
           element={<p>The model's page</p>}
         />
         <Route
-          path="/organizations/golem/org-parent/acme/credentials/:operation"
+          path="/organizations/golem/acme/credentials/:operation"
           element={<p>The credential form</p>}
         />
       </Routes>
@@ -205,7 +205,7 @@ beforeEach(() => {
   mockOrganizationSave.mockReset();
   mockOrganizationSave.mockResolvedValue({
     isDefault: false,
-    form: `/organizations/golem/org-parent/acme/credentials/${'b2'.repeat(24)}`,
+    form: `/organizations/golem/acme/credentials/${'b2'.repeat(24)}`,
   });
   mockOrganizationError = null;
   mockSettingsSupport = true;
@@ -631,7 +631,7 @@ describe("NewModelPage · editing an organization's model", () => {
         pullRequest: 'https://github.com/giantswarm/golem-configs/pull/7',
         number: 7,
       },
-      form: `/organizations/golem/org-parent/acme/credentials/${'b2'.repeat(24)}`,
+      form: `/organizations/golem/acme/credentials/${'b2'.repeat(24)}`,
     });
     await renderPage(editOf());
 

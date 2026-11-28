@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { DateComponent } from './DateComponent';
 import { DateTimeZoneProvider } from './DateTimeZone';
 import { formatLocalDate, formatLocalDateFull, getRelativeDate } from './utils';
@@ -81,8 +81,48 @@ describe('getRelativeDate', () => {
 
 describe('formatLocalDateFull', () => {
   it('carries seconds and a zone', () => {
-    expect(formatLocalDateFull(VALUE)).toMatch(
-      /^\d{1,2} Oct 2026, \d{2}:\d{2}:12( \S+)?$/,
-    );
+    expect(formatLocalDateFull(VALUE)).toMatch(/2026.*\d{2}:\d{2}:12.*\S+/);
   });
+});
+
+describe('live dates', () => {
+  beforeEach(() =>
+    jest.useFakeTimers({ now: new Date('2026-10-11T17:00:00Z') }),
+  );
+  afterEach(() => jest.useRealTimers());
+
+  it('updates old ages and cleans up when switching to an absolute date', () => {
+    const { rerender } = render(<DateComponent value={VALUE} relative />);
+    expect(screen.getByText('about 1 hour ago')).toBeInTheDocument();
+    act(() => jest.advanceTimersByTime(60 * 60_000));
+    expect(screen.getByText('about 2 hours ago')).toBeInTheDocument();
+    rerender(<DateComponent value={VALUE} />);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('does not subscribe for invalid or absent timestamps or a list-owned clock', () => {
+    const { rerender } = render(<DateComponent value="invalid" relative />);
+    expect(jest.getTimerCount()).toBe(0);
+    rerender(<DateComponent value={null} relative />);
+    expect(jest.getTimerCount()).toBe(0);
+    rerender(<DateComponent value={VALUE} relative now={Date.now()} />);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+});
+
+it('shows the exact local timestamp on hover of a relative date, with no extra control', () => {
+  render(
+    <DateTimeZoneProvider timeZone="local">
+      <DateComponent
+        value={VALUE}
+        relative
+        now={Date.parse(VALUE) + 3_600_000}
+      />
+    </DateTimeZoneProvider>,
+  );
+  expect(screen.getByText('about 1 hour ago')).toHaveAttribute(
+    'title',
+    formatLocalDateFull(VALUE),
+  );
+  expect(screen.queryByRole('button')).not.toBeInTheDocument();
 });

@@ -7,6 +7,10 @@ import {
 import { parseTransportDetection } from '../../lib/transportDetection';
 import { fixtureToolNames } from './fixtureToolNames';
 import { FixtureToolMissingError, MusterFixtureApi } from './MusterFixtureApi';
+import {
+  MusterUnauthorizedError,
+  musterUnauthorizedInfoOf,
+} from '../musterUnauthorized';
 import { connectorKeyOf } from './musterFixtureData';
 
 describe('MusterFixtureApi', () => {
@@ -33,6 +37,36 @@ describe('MusterFixtureApi', () => {
       ).resolves.toEqual(expect.objectContaining({ tools: expect.any(Array) }));
     }
     await expect(api.signIn()).resolves.toBe(true);
+  });
+
+  it("answers a server's grant_required with muster's 401 naming the Apps", async () => {
+    const granting = new MusterFixtureApi([
+      {
+        server: 'workspace-manager',
+        tools: {
+          authorize_workspace: () => ({
+            outcome: 'connect_required',
+            status: 'grant_required',
+            apps: ['github'],
+          }),
+          list_providers: () => ({ providers: [] }),
+        },
+      },
+    ]);
+
+    const error = await granting
+      .callTool('x_workspace-manager_authorize_workspace', {}, 'meadow')
+      .catch(e => e);
+    expect(error).toBeInstanceOf(MusterUnauthorizedError);
+    expect(musterUnauthorizedInfoOf(error)).toEqual({
+      reason: 'server_sign_in_required',
+      server: 'workspace-manager',
+      installation: 'meadow',
+      apps: [{ app: 'github', authUrl: expect.stringContaining('app=github') }],
+    });
+    await expect(
+      granting.callTool('x_workspace-manager_list_providers', {}, 'meadow'),
+    ).resolves.toEqual({ providers: [] });
   });
 
   it('refuses the unreachable installation’s reads, as muster-backend does', async () => {

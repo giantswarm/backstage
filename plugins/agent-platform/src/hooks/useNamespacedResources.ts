@@ -17,10 +17,15 @@ import { kagentApiRef } from '../apis';
 import { AgentManagerClient } from '../apis/AgentManagerClient';
 import type { AgentManagerInfo } from '../lib/agentManager';
 import {
+  ORGANIZATIONS_CAPABILITY,
+  organizationNamespacesOf,
+} from '../lib/organizations';
+import {
   kagentAgentNamespacesQueryKey,
   musterAgentManagerInfoQueryKey,
 } from '../lib/queryKeys';
 import { PLATFORM_TENANT_NAMESPACE } from '../lib/tenants';
+import { organizationsQuery } from './organizationsQuery';
 import { useAgentManagerAvailability } from './useAgentManager';
 import { useMusterPluginApi } from './useMusterPluginApi';
 
@@ -78,12 +83,15 @@ export type NamespacedResources<R> = {
  * The namespaces to read an installation's kagent resources in: the platform
  * namespace, where the platform's own agents and models live,
  * agent-manager's default and managed namespaces, where agents land (managed:
- * the ones the person may create in), and the namespaces of the Agents the
- * controller lets the person list (`listed`, their tenants that hold one).
+ * the ones the person may create in), the namespaces of the Agents the
+ * controller lets the person list (`listed`, their tenants that hold one),
+ * and the namespaces of the person's organizations (`organizations`, as
+ * `list_organizations` names them).
  */
 export function agentNamespacesOf(
   info: AgentManagerInfo | undefined,
   listed: readonly string[] = [],
+  organizations: readonly string[] = [],
 ) {
   const namespaces = info?.namespaces;
   return Array.from(
@@ -92,6 +100,7 @@ export function agentNamespacesOf(
       namespaces?.default,
       ...(namespaces?.managed ?? []),
       ...listed,
+      ...organizations,
     ]),
   ).filter((namespace): namespace is string => Boolean(namespace));
 }
@@ -188,16 +197,39 @@ export function useNamespacedResources<R extends KubeObject<any>>(
   });
   const listedOf = (index: number) => listed[index]?.data ?? [];
 
-  // An installation's namespaces are known once agent-manager and the
-  // controller answered, or once they are known not to answer: then the
-  // platform namespace alone.
+  // The namespaces of the person's organizations, from `list_organizations`
+  // (the entry the organization directory reads), where agent-manager serves
+  // organizations. A new organization, or one the person was just added to,
+  // is in no other source: `get_info`'s managed namespaces lag (agent-manager
+  // keeps that list for a few seconds, the portal its answer for a minute),
+  // and it holds no Agent for the controller to list. A not-ready
+  // organization has no namespace yet; a failure adds none.
+  const servesOrganizations = (index: number) =>
+    infos[index]?.data?.capabilities?.[ORGANIZATIONS_CAPABILITY] === true;
+  const listings = useQueries({
+    queries: installations.map((installation, index) => ({
+      ...organizationsQuery(musterApi, installation),
+      enabled: Boolean(musterApi) && servesOrganizations(index),
+    })),
+  });
+  const organizationsOf = (index: number) =>
+    servesOrganizations(index)
+      ? organizationNamespacesOf(listings[index]?.data).map(
+          ({ namespace }) => namespace,
+        )
+      : [];
+
+  // An installation's namespaces are known once agent-manager (its
+  // `get_info`, and its `list_organizations` where it serves organizations)
+  // and the controller answered, or once they are known not to answer: then
+  // the platform namespace alone.
   const namespacesKnown = (index: number) => {
     if (kagentApi && isAwaitingData(listed[index])) {
       return false;
     }
     const presence = agentManager.presenceOf(installations[index]);
     if (presence === 'available') {
-      return !isAwaitingData(infos[index]);
+      return !isAwaitingData(infos[index]) && !isAwaitingData(listings[index]);
     }
     return presence !== 'unknown' || !agentManager.isLoading;
   };
@@ -220,12 +252,14 @@ export function useNamespacedResources<R extends KubeObject<any>>(
 
   const targets = installations.flatMap((installation, index) =>
     namespacesKnown(index)
-      ? agentNamespacesOf(infos[index].data, listedOf(index)).map(
-          namespace => ({
-            installation,
-            namespace,
-          }),
-        )
+      ? agentNamespacesOf(
+          infos[index].data,
+          listedOf(index),
+          organizationsOf(index),
+        ).map(namespace => ({
+          installation,
+          namespace,
+        }))
       : [],
   );
 
@@ -264,6 +298,10 @@ export function useNamespacedResources<R extends KubeObject<any>>(
   const signature = [
     ...infos.map(info => `${info.status}:${info.dataUpdatedAt}`),
     ...listed.map(list => `${list.status}:${list.dataUpdatedAt}`),
+    ...listings.map(
+      listing =>
+        `${listing.status}:${listing.fetchStatus}:${listing.dataUpdatedAt}`,
+    ),
     ...lists.map(list => `${list.status}:${list.dataUpdatedAt}`),
   ].join(',');
   const targetsKey = targets

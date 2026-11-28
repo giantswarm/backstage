@@ -1,5 +1,10 @@
-import { useMemo } from 'react';
-import { queryOptions, useQueries, useQuery } from '@tanstack/react-query';
+import { useContext, useMemo, useState } from 'react';
+import {
+  QueryClientContext,
+  queryOptions,
+  useQueries,
+  useQuery,
+} from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AgentManagerClient } from '../apis/AgentManagerClient';
@@ -7,7 +12,16 @@ import {
   AGENT_MANAGER_SERVER,
   type AgentManagerInfo,
 } from '../lib/agentManager';
+import {
+  ORGANIZATIONS_CAPABILITY,
+  organizationTenantChoices,
+  type OrganizationReads,
+} from '../lib/organizations';
 import { musterAgentManagerInfoQueryKey } from '../lib/queryKeys';
+import {
+  ORGANIZATIONS_STALE_TIME,
+  organizationsQuery,
+} from './organizationsQuery';
 import { useMusterPluginApi } from './useMusterPluginApi';
 import {
   useMusterServerAvailability,
@@ -23,14 +37,46 @@ import {
 export function useAgentManagerClient(
   installation: string | undefined,
 ): AgentManagerClient | undefined {
-  const musterApi = useMusterPluginApi();
+  const clientOf = useAgentManagerClients();
   return useMemo(
-    () =>
-      musterApi && installation
-        ? new AgentManagerClient(musterApi, installation)
-        : undefined,
-    [musterApi, installation],
+    () => (clientOf && installation ? clientOf(installation) : undefined),
+    [clientOf, installation],
   );
+}
+
+/**
+ * Makes agent-manager clients for any installation, as
+ * {@link useAgentManagerClient} makes one: each tells an organization's
+ * namespace by the cached `get_info` and `list_organizations`, the entries
+ * the organization pages and the directory share. `undefined` without the
+ * muster plugin.
+ */
+export function useAgentManagerClients():
+  ((installation: string) => AgentManagerClient) | undefined {
+  const musterApi = useMusterPluginApi();
+  // Outside a QueryClientProvider (a page header's actions) the client
+  // reads the organizations itself, uncached.
+  const queryClient = useContext(QueryClientContext);
+  return useMemo(() => {
+    if (!musterApi) {
+      return undefined;
+    }
+    return (installation: string) => {
+      const reads: OrganizationReads | undefined = queryClient
+        ? {
+            info: () =>
+              queryClient.fetchQuery(
+                agentManagerInfoQuery(musterApi, installation),
+              ),
+            listing: () =>
+              queryClient.fetchQuery(
+                organizationsQuery(musterApi, installation),
+              ),
+          }
+        : undefined;
+      return new AgentManagerClient(musterApi, installation, reads);
+    };
+  }, [musterApi, queryClient]);
 }
 
 /**
@@ -105,12 +151,19 @@ export function useAgentManagerAvailability(
 }
 
 /**
- * Whether the person may create an agent on none of `installations`: on each,
- * agent-manager answered `get_info` as them with no namespace in
- * `namespaces.managed` (it checks each with a `SelfSubjectAccessReview`). An
+ * Whether the person may create an agent on none of `installations`. Where
+ * agent-manager serves organizations (`get_info`'s `organizations`
+ * capability), the answer is the organizations the person belongs to
+ * (`list_organizations`), taken as the New agent form takes it
+ * (`organizationTenantChoices`): none they may create agents in is nowhere
+ * there. An answer read before the hook first rendered is read again, and
+ * waited for, so an organization the person was just added to counts.
+ * Elsewhere it is `get_info`'s `namespaces.managed` (agent-manager checks
+ * each with a `SelfSubjectAccessReview`): an empty list is nowhere. An
  * installation whose agent-manager is not reached as the person, whose
- * `get_info` failed, or whose answer names no `managed` list says nothing
- * either way and counts as one the person may create on.
+ * `get_info` or `list_organizations` failed, or whose answer names no
+ * `managed` list says nothing either way and counts as one the person may
+ * create on.
  */
 export function useCreatesAgentsNowhere(installations: string[]): {
   createsNowhere: boolean;
@@ -130,21 +183,59 @@ export function useCreatesAgentsNowhere(installations: string[]): {
   });
   const isAvailable = (index: number) =>
     availability.presenceOf(installations[index]) === 'available';
-  const isLoading = installations.some((installation, index) =>
-    isAvailable(index)
-      ? isAwaitingData(infos[index])
-      : availability.presenceOf(installation) === 'unknown' &&
-        availability.isLoading,
-  );
+  const servesOrganizations = (index: number) =>
+    infos[index].data?.capabilities?.[ORGANIZATIONS_CAPABILITY] === true;
+  // The directory's entries, read again here when their answer predates
+  // the first render: stale for this reader only, so it reads on mount (or
+  // once `get_info` enables it), and the directory keeps its minute.
+  const [shownAt] = useState(() => Date.now());
+  const listings = useQueries({
+    queries: installations.map((installation, index) => ({
+      ...organizationsQuery(musterApi, installation),
+      enabled:
+        Boolean(musterApi) && isAvailable(index) && servesOrganizations(index),
+      staleTime: ({ state }: { state: { dataUpdatedAt: number } }) =>
+        state.dataUpdatedAt < shownAt ? 0 : ORGANIZATIONS_STALE_TIME,
+    })),
+  });
+  const isLoading = installations.some((installation, index) => {
+    if (!isAvailable(index)) {
+      return (
+        availability.presenceOf(installation) === 'unknown' &&
+        availability.isLoading
+      );
+    }
+    if (isAwaitingData(infos[index])) {
+      return true;
+    }
+    const listing = listings[index];
+    // An answer from before the first render decides nothing while it is
+    // read again: a person just added would see "may not create" first.
+    return (
+      servesOrganizations(index) &&
+      (isAwaitingData(listing) ||
+        (listing.isFetching && listing.dataUpdatedAt < shownAt))
+    );
+  });
+  const createsNowhereOn = (index: number) => {
+    if (!isAvailable(index)) {
+      return false;
+    }
+    if (servesOrganizations(index)) {
+      const { data, isError } = listings[index];
+      return (
+        !isError &&
+        data !== undefined &&
+        organizationTenantChoices(data).choices.length === 0
+      );
+    }
+    return infos[index].data?.namespaces?.managed?.length === 0;
+  };
   return {
     createsNowhere:
       !isLoading &&
       installations.length > 0 &&
-      installations.every(
-        (_, index) =>
-          isAvailable(index) &&
-          infos[index].data?.namespaces?.managed?.length === 0,
-      ),
+      installations.every((_, index) => createsNowhereOn(index)),
     isLoading,
   };
 }

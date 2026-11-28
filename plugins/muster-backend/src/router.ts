@@ -1713,7 +1713,9 @@ export async function createRouter(
 
   /**
    * Every 401 a route answers says why, in `error.reason` (and the server
-   * that needs the person's sign-in, in `error.server`), so the frontend can
+   * that needs the person's sign-in, in `error.server`, and the provider
+   * Apps to grant with their sign-in links, in `error.apps`, when muster asks
+   * for those), so the frontend can
    * pick its action: offer the sign-in, or refresh the token and send the
    * call once more. Logged at info: each is an expected state of the
    * person's session that the page acts on, not a fault. Neither the body nor
@@ -1751,6 +1753,7 @@ export async function createRouter(
           message: unauthorized.message,
           reason: unauthorized.reason,
           ...(unauthorized.server ? { server: unauthorized.server } : {}),
+          ...(unauthorized.apps.length > 0 ? { apps: unauthorized.apps } : {}),
         },
         request: { method: req.method, url: req.originalUrl },
         response: { statusCode: 401 },

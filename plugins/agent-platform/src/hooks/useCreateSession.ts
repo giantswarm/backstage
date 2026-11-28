@@ -4,7 +4,6 @@ import {
   useTrackedMutation,
   type PortalEventAttributes,
 } from '@giantswarm/backstage-plugin-analytics-react';
-import { AgentManagerClient } from '../apis/AgentManagerClient';
 import { WorkspaceManagerClient } from '../apis/WorkspaceManagerClient';
 import { authorizationError } from '../lib/workspaceManager';
 import { parseToolErrorCode } from '@giantswarm/backstage-plugin-gs-common';
@@ -16,6 +15,7 @@ import { tenantInSentence } from '../lib/tenants';
 import type { AgentRow } from '../components/AgentsDataProvider';
 import { sessionsQueryKey, sessionStatesQueryKey } from '../lib/queryKeys';
 import { deriveSessionTitle } from '../lib/sessionTitle';
+import { useAgentManagerClients } from './useAgentManager';
 import { useMusterPluginApi } from './useMusterPluginApi';
 import { usePortalStartedRecorder } from './useSessionNotificationRecord';
 import type { OrganizationDirectory } from '../lib/organizations';
@@ -147,6 +147,7 @@ export function useCreateSession(
   { titleMaxLength }: UseCreateSessionOptions = {},
 ) {
   const musterApi = useMusterPluginApi();
+  const agentManagerOf = useAgentManagerClients();
   const queryClient = useQueryClient();
   const markPortalStarted = usePortalStartedRecorder();
   const { directory } = useOrganizationDirectory();
@@ -164,7 +165,7 @@ export function useCreateSession(
       toolchains,
       requestId,
     }: NewSessionRequest) => {
-      if (!musterApi) {
+      if (!musterApi || !agentManagerOf) {
         // agent-manager is reached through muster only; a portal without the
         // muster plugin has no way to start a session.
         throw new AgentManagerNotConnectedError(
@@ -194,8 +195,7 @@ export function useCreateSession(
         workspaceGrant = authorization.grant;
       }
       try {
-        const { sessionId } = await new AgentManagerClient(
-          musterApi,
+        const { sessionId } = await agentManagerOf(
           agent.installation,
         ).startSession({
           // The agent's *technical* name, the `Agent` object's name. `name` is

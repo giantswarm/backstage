@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AgentManagerClient } from '../apis/AgentManagerClient';
 import { MODEL_CONFIG_NAMESPACE } from '../lib/modelConfigs';
 import {
-  ORGANIZATIONS_CAPABILITY,
+  offersOrganizationPullRequests,
   organizationContentMode,
   organizationModeUnknown,
   type OrganizationWriteMode,
@@ -41,10 +41,7 @@ export function useOrganizationContentMode(): (
       const info = await queryClient.fetchQuery(
         agentManagerInfoQuery(musterApi, installation),
       );
-      if (
-        info.capabilities?.commit !== true ||
-        info.capabilities?.[ORGANIZATIONS_CAPABILITY] !== true
-      ) {
+      if (!offersOrganizationPullRequests(info.capabilities)) {
         return 'apply';
       }
       const listing = await queryClient.fetchQuery({
@@ -86,9 +83,7 @@ export function useOrganizationContentModeOf(
     ...agentManagerInfoQuery(musterApi, installation ?? ''),
     enabled: relevant,
   });
-  const commitMode =
-    info.data?.capabilities?.commit === true &&
-    info.data?.capabilities?.[ORGANIZATIONS_CAPABILITY] === true;
+  const commitMode = offersOrganizationPullRequests(info.data?.capabilities);
   const listing = useQuery({
     queryKey: musterOrganizationsQueryKey(installation ?? ''),
     queryFn: () =>

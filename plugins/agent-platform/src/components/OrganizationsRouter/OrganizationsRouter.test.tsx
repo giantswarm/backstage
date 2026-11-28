@@ -15,6 +15,8 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
+  CONTENT_PULL_REQUEST,
+  CREATED_NEXT,
   fakeOrganizationAccess,
   fakeOrganizationsMuster,
   toolCalls,
@@ -55,11 +57,47 @@ jest.mock('../QueryClientProvider', () => {
 // created: its delete erases it at once, before the list is read again.
 const PAYMENTS = {
   name: 'payments',
-  parent: 'org-acme',
   displayName: 'Payments',
   harnesses: ['kagent'],
   workerReplicas: 0,
 };
+
+/** The Organizations page with Create organization open on gazelle. */
+async function openCreateDialog(
+  scenario: OrganizationsScenario,
+  analyticsApi = mockApis.analytics.mock(),
+) {
+  const { api, callTool } = fakeOrganizationsMuster(scenario);
+  await renderInTestApp(
+    <TestApiProvider
+      apis={[
+        [musterApiRef, api],
+        [kubernetesApiRef, fakeOrganizationAccess()],
+        [analyticsApiRef, analyticsApi],
+        [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
+      ]}
+    >
+      <Routes>
+        <Route path="/organizations/*" element={<OrganizationsRouter />} />
+      </Routes>
+    </TestApiProvider>,
+    {
+      initialRouteEntries: ['/organizations'],
+      mountedRoutes: { '/organizations': organizationsRouteRef },
+    },
+  );
+  await userEvent.click(
+    await screen.findByRole('button', { name: 'Create organization' }),
+  );
+  const dialog = await screen.findByRole('dialog');
+  // The dialog knows how organizations are created there once get_info answers.
+  await waitFor(() =>
+    expect(
+      within(dialog).queryByText(/^Reading how organizations are created/),
+    ).toBeNull(),
+  );
+  return { dialog, callTool };
+}
 
 describe('OrganizationsRouter', () => {
   it.each(['pending', 'saved', 'cancelled', 'stale'] as const)(
@@ -81,7 +119,6 @@ describe('OrganizationsRouter', () => {
               state: 'pending',
               mode: 'apply',
               organization: {
-                parent: 'org-acme',
                 organization:
                   operation === firstOperation ? 'payments' : 'billing',
               },
@@ -143,7 +180,7 @@ describe('OrganizationsRouter', () => {
                 <>
                   <OrganizationsRouter />
                   <RouterLink
-                    to={`/organizations/gazelle/org-acme/billing/credentials/${nextOperation}`}
+                    to={`/organizations/gazelle/billing/credentials/${nextOperation}`}
                   >
                     Open next request
                   </RouterLink>
@@ -154,7 +191,7 @@ describe('OrganizationsRouter', () => {
         </TestApiProvider>,
         {
           initialRouteEntries: [
-            `/organizations/gazelle/org-acme/payments/credentials/${firstOperation}`,
+            `/organizations/gazelle/payments/credentials/${firstOperation}`,
           ],
           mountedRoutes: { '/organizations': organizationsRouteRef },
         },
@@ -213,7 +250,7 @@ describe('OrganizationsRouter', () => {
                 <OrganizationsRouter />
                 {/* Another organization the person is no member of, opened
                     in the same mounted router (a link, the history). */}
-                <RouterLink to="/organizations/gazelle/org-acme/billing">
+                <RouterLink to="/organizations/gazelle/billing">
                   Open billing
                 </RouterLink>
               </>
@@ -222,7 +259,7 @@ describe('OrganizationsRouter', () => {
         </Routes>
       </TestApiProvider>,
       {
-        initialRouteEntries: ['/organizations/gazelle/org-acme/payments'],
+        initialRouteEntries: ['/organizations/gazelle/payments'],
         mountedRoutes: { '/organizations': organizationsRouteRef },
       },
     );
@@ -232,8 +269,8 @@ describe('OrganizationsRouter', () => {
     );
     const dialog = await screen.findByRole('dialog');
     await user.type(
-      await within(dialog).findByLabelText('Type org-acme/payments to confirm'),
-      'org-acme/payments',
+      await within(dialog).findByLabelText('Type payments to confirm'),
+      'payments',
     );
     const confirm = within(dialog).getByRole('button', {
       name: 'Delete organization',
@@ -250,5 +287,184 @@ describe('OrganizationsRouter', () => {
       await screen.findByText('You are not a member of billing'),
     ).toBeInTheDocument();
     expect(screen.queryByText('billing is erased')).toBeNull();
+  });
+
+  it('creates an organization with its admins and opens its page at once, not ready yet', async () => {
+    const user = userEvent.setup();
+    const analyticsApi = mockApis.analytics.mock();
+    // agent-manager lists the new organization only on a later read.
+    const { dialog, callTool } = await openCreateDialog(
+      { mine: { organizations: [] } },
+      analyticsApi,
+    );
+    // agent-manager opens no pull requests here: no choice, a direct create.
+    expect(within(dialog).queryByRole('radiogroup')).toBeNull();
+    // The one installation is named as an installation, not as the product,
+    // and each field shows its mark once, as the label reads on screen.
+    expect(
+      within(dialog).getByText(
+        'The organization is created on the installation gazelle.',
+      ),
+    ).toBeInTheDocument();
+    const labelText = (name: RegExp) =>
+      (within(dialog).getByRole('textbox', { name }) as HTMLInputElement)
+        .labels?.[0]?.textContent;
+    expect(labelText(/^Name/)).toBe('Name(Required)');
+    expect(labelText(/^Display name/)).toBe('Display name(optional)');
+    expect(labelText(/^Admin groups/)).toBe('Admin groups(optional)');
+    expect(labelText(/^Admin people/)).toBe('Admin people(optional)');
+    // A name that cannot name an Organization is caught before agent-manager.
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /^Name/ }),
+      'Payments',
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Create organization' }),
+    );
+    expect(
+      await within(dialog).findByText(
+        /^Use lowercase letters, digits and hyphens/,
+      ),
+    ).toBeInTheDocument();
+    expect(toolCalls(callTool, 'create_organization')).toEqual([]);
+
+    await user.clear(within(dialog).getByRole('textbox', { name: /^Name/ }));
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /^Name/ }),
+      'payments',
+    );
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /^Admin groups/ }),
+      'payments-leads\n\nplatform-team',
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Create organization' }),
+    );
+
+    await waitFor(() =>
+      expect(toolCalls(callTool, 'create_organization')).toEqual([
+        {
+          name: 'payments',
+          adminGroups: ['payments-leads', 'platform-team'],
+        },
+      ]),
+    );
+    expect(
+      await screen.findByText('payments is not ready yet'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(CREATED_NEXT))).toBeInTheDocument();
+    expect(screen.queryByText(/You are not a member/)).toBeNull();
+    // Not ready is a state, not an error: no tool is asked for its content,
+    // which agent-manager would refuse as not ready yet.
+    for (const tool of [
+      'list_organization_members',
+      'list_model_configs',
+      'list_organization_connectors',
+      'list_egress_policies',
+    ]) {
+      expect(toolCalls(callTool, tool)).toEqual([]);
+    }
+    expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'AgentPlatform.organizationCreated' }),
+    );
+  });
+
+  it('offers a pull request first where agent-manager opens them, and shows it without opening a page', async () => {
+    const user = userEvent.setup();
+    const { dialog, callTool } = await openCreateDialog({
+      mine: { organizations: [] },
+      commitMode: true,
+    });
+    const how = within(dialog).getByRole('radiogroup', {
+      name: /^How to create it/,
+    });
+    expect(
+      within(how).getByRole('radio', { name: /^With a pull request/ }),
+    ).toBeChecked();
+    expect(
+      within(dialog).getByText(/^You cannot change this later\./),
+    ).toBeInTheDocument();
+
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /^Name/ }),
+      'payments',
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Open pull request' }),
+    );
+
+    expect(
+      await within(dialog).findByTestId('organization-create-pull-request'),
+    ).toHaveTextContent(/is created once the pull request is merged/);
+    expect(
+      within(dialog).getByRole('link', { name: /Review pull request/ }),
+    ).toHaveAttribute('href', CONTENT_PULL_REQUEST.pullRequest);
+    expect(toolCalls(callTool, 'create_organization')).toEqual([
+      { name: 'payments', mode: 'commit' },
+    ]);
+    // No organization exists yet: the dialog stays, no page opens, and the
+    // Organizations page shows no error for it.
+    // The footer's Close, not the dialog's icon button of the same name.
+    await user.click(
+      within(dialog)
+        .getAllByRole('button', { name: 'Close' })
+        .find(button => button.textContent === 'Close')!,
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.queryByText('payments is not ready yet')).toBeNull();
+    expect(screen.queryByText(/^Could not/)).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Create organization' }),
+    ).toBeInTheDocument();
+  });
+
+  it('creates directly where agent-manager opens pull requests when the person chooses it', async () => {
+    const user = userEvent.setup();
+    const { dialog, callTool } = await openCreateDialog({
+      mine: { organizations: [] },
+      commitMode: true,
+    });
+    await user.click(within(dialog).getByRole('radio', { name: /^Directly/ }));
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /^Name/ }),
+      'payments',
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Create organization' }),
+    );
+
+    expect(
+      await screen.findByText('payments is not ready yet'),
+    ).toBeInTheDocument();
+    expect(toolCalls(callTool, 'create_organization')).toEqual([
+      { name: 'payments' },
+    ]);
+  });
+
+  it("shows agent-manager's refusal of a pull request in its words", async () => {
+    const user = userEvent.setup();
+    const refusal =
+      'unsupported: mode commit is not configured for organizations on this installation (no organizations repository): use mode apply';
+    const { dialog } = await openCreateDialog({
+      mine: { organizations: [] },
+      commitMode: true,
+      createError: refusal,
+    });
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /^Name/ }),
+      'payments',
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Open pull request' }),
+    );
+
+    expect(
+      await within(dialog).findByText(
+        /mode commit is not configured for organizations on this installation \(no organizations repository\): use mode apply/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByTestId('organization-create-pull-request'),
+    ).toBeNull();
   });
 });

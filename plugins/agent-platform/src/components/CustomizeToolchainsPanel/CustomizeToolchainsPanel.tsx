@@ -1,3 +1,4 @@
+import { useNow, DateComponent } from '@giantswarm/backstage-plugin-ui-react';
 import { useMemo } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
 import {
@@ -13,7 +14,6 @@ import {
   CatalogNoMatch,
   EmptyStateCard,
   ExternalCellText,
-  getRelativeDate,
   INITIAL_ROWS,
   LoadingIndicator,
   matchesQuery,
@@ -98,18 +98,25 @@ export function shortVersionsLabel(toolchain: Toolchain): string {
 }
 
 /** A toolchain's versions, newest first, and how long ago the newest came. */
-function VersionsCell({ toolchain }: { toolchain: Toolchain }) {
+function VersionsCell({
+  toolchain,
+  now,
+}: {
+  toolchain: Toolchain;
+  now: number;
+}) {
   return (
-    <CellText
-      title={shortVersionsLabel(toolchain)}
-      description={
-        toolchain.publishedAt
-          ? `Latest ${getRelativeDate(toolchain.publishedAt, new Date(), {
-              strict: true,
-            })}`
-          : undefined
-      }
-    />
+    <Cell>
+      <Text as="p" variant="body-medium">
+        {shortVersionsLabel(toolchain)}
+      </Text>
+      {toolchain.publishedAt && (
+        <Text as="p" variant="body-small" color="secondary">
+          Latest{' '}
+          <DateComponent value={toolchain.publishedAt} relative now={now} />
+        </Text>
+      )}
+    </Cell>
   );
 }
 
@@ -135,6 +142,7 @@ function ToolchainsTable({
   installation: string;
   toolchains: Toolchain[];
 }) {
+  const now = useNow(60_000);
   const detailRoute = useRouteRef(toolchainDetailRouteRef);
   // A name two offered sources publish opens the page of the row's source.
   const shared = useMemo(() => sharedToolchainNames(toolchains), [toolchains]);
@@ -165,7 +173,7 @@ function ToolchainsTable({
       defaultWidth: '1fr',
       // "0.6.1 · 12 older", and "Latest 59 minutes ago" under it.
       minWidth: 170,
-      cell: row => <VersionsCell toolchain={row} />,
+      cell: row => <VersionsCell toolchain={row} now={now} />,
     },
     {
       id: 'tools',

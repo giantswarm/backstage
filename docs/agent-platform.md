@@ -122,7 +122,13 @@ again**; where the person may create nowhere, the field's warning names who
 grants access. An agent-manager that answers without a `managed` list says
 nothing either way, so no owner is asked for and the create call gets its own
 answer. The form takes the answer in one place (`useTenantChoicesSync`,
-mounted by every step), and every step starts `get_info` for the likely
+mounted by every step). Where agent-manager serves organizations, the answer
+is the person's organizations (`list_organizations`, the directory's read,
+kept a minute). When the form opens, it reads again each answer from before
+it opened, on every installation, picked or not, so an organization the
+person was just added to is offered, and its models count for the
+environments the form offers. A step change reads nothing again: the steps
+share one mount. Every step starts `get_info` for the likely
 environment (the only one configured, or the home installation) beside the
 reads that pick it (`useWarmNewAgentForm`), as the agents list does, so the
 owner does not arrive after the environment. Warnings about environments that
@@ -971,6 +977,15 @@ one `ModelConfig`, resolved incrementally.
   listing across all namespaces is admin-only) become
   `unreachableInstallations` and a warning, so an empty result is told apart
   from a failed one.
+- **A refused cluster-wide list is read namespace by namespace**
+  (`useNamespacedFallback`, which the agents list's reads use too): the platform
+  namespace, `get_info`'s `namespaces.default` and `namespaces.managed`, the
+  namespaces of the Agents the controller lists for the person, and the
+  namespaces of the person's organizations as `list_organizations` names them.
+  The last source is the one that names a new organization, or one the person
+  was just added to: agent-manager keeps its `managed` list for a few seconds
+  and the portal its `get_info` for a minute, and the organization holds no
+  Agent yet. A namespace that refuses the list is skipped.
 
 ### Model management (the Models tab)
 
@@ -1029,7 +1044,7 @@ The model form (`NewModelPage`, `ModelConfigFormFields`, `EditModelPage`) collec
 
 **Every model write goes through agent-manager.** Installation and organization models use `set_organization_model`, `replace_organization_credential` and `delete_organization_object` as the person. The portal checks the manager tool schema and refuses an incompatible version. It never creates, patches or deletes model credential Secrets through its Kubernetes client. A new model's write (New model, and an organization's Add model) sends `create: true`, so a model of that name made since the form's list read is refused with `already_exists` instead of changed; the page then says the name is taken. Every agent-manager release with the model fields the schema check requires (3.1.0 and later) takes `create`; the portal still sends it only where the tool schema lists it, so a release without it is never sent an argument it would refuse. Installation writes require cluster-admin authorization; organization writes require the organization admin role. Helm and Flux ownership guards still apply. Deleting a model retains its credential Secret.
 
-**Credentials belong to the shared credential form.** A new model, or Replace key and Replace credential on an organization's Models, Connectors and Egress tabs, opens the manager operation. Organization operations use `/organizations/<installation>/<parent>/<name>/credentials/<operation>`; installation operations use `/customize/models/credentials/<installation>/<namespace>/<operation>`. The operation declares its target, consumers and input format. `google-service-account-json` presents the JSON uploader, while `text` or an omitted format presents the ordinary value field. JSON and API keys never enter the model form, MCP arguments, browser storage or analytics. The manager validates a Google service-account key and its project before saving; the browser displays only its project and email. The old inline key form and direct Kubernetes write hook are removed.
+**Credentials belong to the shared credential form.** A new model, or Replace key and Replace credential on an organization's Models, Connectors and Egress tabs, opens the manager operation. Organization operations use `/organizations/<installation>/<name>/credentials/<operation>`; installation operations use `/customize/models/credentials/<installation>/<namespace>/<operation>`. The operation declares its target, consumers and input format. `google-service-account-json` presents the JSON uploader, while `text` or an omitted format presents the ordinary value field. JSON and API keys never enter the model form, MCP arguments, browser storage or analytics. The manager validates a Google service-account key and its project before saving; the browser displays only its project and email. The old inline key form and direct Kubernetes write hook are removed.
 
 A replacement writes only the referenced Secret, after confirming every consumer and destination. `credential_consumers_changed` refuses a stale request without writing; prepare another with a fresh `requestId`. `already_exists` at a save means the object the request creates exists by then: the form says the name is taken, takes no value, and cancels the request when it is still pending. Reads and saves recheck the current identity and authorization. Strong ETags, expiry, recovery and GitOps ownership checks apply to both scopes. Commit mode requires an explicit installation model directory; it never constructs an organization for the installation.
 
@@ -1083,6 +1098,73 @@ only its name shows.
 **Delete refuses while referenced.** The mutation lists the namespace's
 `Agent`s fresh and refuses while any references the model. A failed read also
 refuses, because deleting a referenced model breaks every agent on it.
+
+### Organizations
+
+An organization is one `Organization` (`security.giantswarm.io`,
+cluster-scoped) with the Agent Platform on, identified by its name alone:
+its page is `/organizations/<installation>/<name>`. The Organizations page
+lists what agent-manager's `list_organizations` answers, each organization
+one time. agent-platform-operator keeps the organization's namespace and
+reports it in the object's status; the portal reads it from agent-manager's
+answers and never computes it.
+
+**Create organization** (in the page header, where the person may create an
+`Organization` on an installation) asks for the name, a display name and
+the admins: identity provider groups and people, one per line, both
+optional. agent-manager writes the object with its admins in `spec.admins`
+and does not wait for the operator, so the new organization's page opens at
+once and says that it is not ready until the operator reports its
+namespace. The list marks such an organization "not ready yet"; its page
+reads it again every 10 seconds, for five minutes at most, until it is.
+
+Where the installation's agent-manager opens pull requests for organizations
+(`get_info` reports `commit` and `organizations`), the dialog also asks how
+to create it: **with a pull request** in the installation's repository
+(`create_organization` with `mode: commit`), or **directly**. The pull
+request is shown first and selected (`ORGANIZATION_CREATE_MODES` in
+`lib/organizations.ts` holds the order). The choice stays, and the dialog
+says so: agent-manager changes an organization created with a pull request
+with pull requests from then on, also its models, members and connectors,
+and one created directly directly. After a pull request the dialog shows it
+and opens no page: the organization is created once the pull request is
+merged and Flux applies it, and only then does the Organizations page list
+it. Until `get_info` answers, the dialog creates nothing. A refusal, also the one of an
+installation where agent-manager has no organizations repository, shows in
+agent-manager's words.
+
+**Admins.** The admins are the `Organization`'s `spec.admins`; the operator
+binds them to `agent-platform:admin` in `organization-admins`. The Members
+tab shows them, to a person who manages the organization, in an Admins
+section with Change admins (`update_organization`'s `adminGroups` and
+`adminUsers`, each replacing that kind). The member list marks an admin
+that comes from `spec.admins`. Add a member offers the editor and user
+roles only, and an admin has no Remove: admins change in the Admins section
+alone.
+
+**Delete** asks for the organization's name, and lists what the delete
+erases as `get_organization` answers it, the organization namespace and
+organization-operator's `org-<name>` namespace included where it runs.
+
+**The tools take the organization's name.** agent-manager's tools address
+an organization by its name (`organization`), never by its namespace:
+the member tools and `list_organization_connectors` take it alone, the
+model tools (`set_organization_model`, `replace_organization_credential`,
+`delete_organization_object`) take it or none for the installation's
+models, and the agent tools (`get_agent`, `create_agent`, `start_session`
+and the others) take it for an organization's agent and `namespace` for the
+installation's own platform namespace. `AgentManagerClient` sends it: the
+organization page passes the name it shows, and a call that starts from a
+namespace (an agent or a model read from the cluster) finds the
+organization in the cached `list_organizations`. A model write in a
+namespace that is neither the installation's models' nor a listed
+organization's is refused before the call. The answers carry
+`organization`; the namespace is a detail. agent-manager answers an
+organization it cannot use in its own words: not found, the Agent Platform
+not enabled for it, or not ready yet. A new organization's page asks for
+none of its content until the operator reports its namespace. The
+credential form's HTTP API and the Kubernetes proxy still take the
+namespace.
 
 ### The serving layer (Model hosting)
 
@@ -1654,6 +1736,18 @@ Neither Sessions nor Agents renders an empty table. Sessions shows
 - **Something must have been queried.** At least one scoped installation must
   be outside `notReachableInstallations`. Every installation need not be
   reachable, since a local portal almost always has unreachable ones.
+- **Only a person who may create is invited.** The first-run card of an empty
+  fleet (`FirstAgentCard`, on Agents and Sessions) offers **Create your first
+  agent** unless agent-manager lets the person create on none of the
+  environments; then it says who grants access (`useCreatesAgentsNowhere`).
+  Where agent-manager serves organizations, that is the organizations the
+  person belongs to (`list_organizations`), as the New agent form offers
+  them: one where they may create agents is enough. An answer from before the
+  card showed is read again, and the card waits for it, so an organization
+  the person was just added to counts. Elsewhere it is `get_info`'s
+  `namespaces.managed`. An environment whose answer failed, or names no
+  `managed` list, says nothing either way and counts as one the person may
+  create on.
 
 ### Why it needs a backend
 
@@ -1679,8 +1773,8 @@ controller route (`kagent.controllerRoute.hostname`, default
 `agentgateway.<domain>`), whose `GRPCRoute` serves the controller's services and
 which the chart itself writes as `apiBaseUrl`. It has no path (gRPC matches by
 service) and is overridable in
-`agentPlatform.kagent.installations`. `kagent.<baseDomain>` is the kagent UI's
-`HTTPRoute` and carries no gRPC. An `http://` origin is plaintext h2c, for
+`agentPlatform.kagent.installations`. It is the only route the portal uses to
+reach kagent. An `http://` origin is plaintext h2c, for
 in-cluster Service URLs only.
 
 ### Prerequisite: the connectivity chart's controller route
@@ -1919,8 +2013,8 @@ no `ErrorsProvider`). Three cases needed their own answer:
 - **A 200 with no readable session.** `getSessionDetail` resolves `undefined`,
   which react-query rejects, so the query function coerces it to `null`. An
   empty read means "no such session" only before one was read; afterwards it
-  means unreadable (for example an expired oauth2-proxy answering HTML with a
-  200). A genuine 404 counts at any time.
+  means unreadable (for example a proxy or gateway in front answering HTML with
+  a 200). A genuine 404 counts at any time.
 - **A delete in flight.** An interval tick could 404 between kagent accepting
   the delete and navigation, so the page passes
   `enabled: !isDeleting && !isDeleted` and stops both reads.
@@ -2737,10 +2831,12 @@ enough to answer before a 60 s proxy in front of Backstage fires a 502/504.
 
 On a timeout or transport failure the backend **checks instead of guessing**:
 it reads the tasks (`A2AService/ListTasks`, `hasMessageLanded`) for the
-`messageId` it generated. Present answers **202** (dispatched, running); absent
+`messageId` it generated. Present answers **202** (message recorded); absent
 or unreadable keeps the original failure. Only transport failures
 (`mapConnectError`) are verified; kagent's own answers (`NotFound`, 401, 403, a
-rejection) are decisions. 202 also keeps long turns out of Sentry.
+rejection) are decisions. This applies to unary sends and streams that fail
+before their first event, including answers to a confirmation. 202 also keeps
+accepted messages out of Sentry when their transport ends early.
 
 **A failed turn is still a 200**, with the reason in `status.message` (for
 example an unreachable MCP server, or a provider's `404 … model_not_found`). The
@@ -2781,7 +2877,7 @@ on gazelle on 2026-09-15 (giantswarm/giantswarm#37795).
   `readSendTimeoutRuntimeLoss`). A runtime that crashes on every restore
   (giantswarm/kagent-upstream#858, giantswarm/giantswarm#38771) leaves no trace
   kagent shows: the session stays ready, and the sends never become turns. The
-  backend gives up on a send after its 10 s wait for the first event and
+  backend gives up on a send after its 30 s wait for the first event and
   answers 500 `UpstreamError` with `reason: "timeout"`, which the client keeps
   on the `StreamTransportError` (`isFirstEventTimeout`). `useSendMessage`
   counts such sends in a row whose message the history read confirms did not
@@ -2796,8 +2892,8 @@ on gazelle on 2026-09-15 (giantswarm/giantswarm#37795).
   later (about a minute after the first crash) takes the reported path. The
   count is page state: a reload starts it over, and the second timeout after
   it shows the way out again.
-  Waiting longer for the first event is no fix: the gateway in front of the
-  portal cuts a silent stream at 15 s.
+  The portal's Gateway must allow this startup budget; the chart's default
+  `BackendTrafficPolicy` disables the request and stream duration limits.
 
 `RuntimeLostNotice` explains the loss in the portal's words, with the runtime's
 text as evidence only; the failed-turn entry does the same.
@@ -2851,8 +2947,11 @@ details are load-bearing:
 
 - Backstage's global `compression()` buffers `res.write()` until `res.end()`, so
   the relay flush-wraps `res.write`, as `ai-chat-backend`'s router does.
-- The first event is awaited under the ordinary request timeout, since the
-  gateway sends the `task` snapshot before the agent works. After it, only a
+- A send's first event is awaited under `turnTimeoutMs` (30 s), including
+  runtime startup or restore. A timeout answers 202 only when the outbound
+  message is found in the task history; an absent message or unreadable
+  history keeps the transport failure. Subscriptions use the ordinary read
+  timeout (10 s). After the first event, only a
   generous duration cap and a client hang-up abort the read; neither stops the
   turn. A stream that dies mid-turn ends with one `{error}` frame.
 - `POST /kagent/sessions/:sessionId/tasks/:taskId/subscribe` relays
@@ -2958,10 +3057,10 @@ once the history read finds the message, since that read names the task.
 `POST …/answer/stream` (`useAnswerConfirmation`).
 
 **Gateway timeouts.** agent-platform-standalone's backstage and kagent
-controller routes set `timeouts.request: "0s"`. An internal installation's
-`agent-platform-connectivity-ui` route has a 60 s Envoy `BackendTrafficPolicy`,
-so a long turn's stream ends at 60 s and the page resubscribes to the turn.
-Streaming is strictly additive.
+controller routes set `timeouts.request: "0s"`. The Backstage chart's default
+`BackendTrafficPolicy` disables request and stream duration limits. A custom
+policy must allow the startup budget. A gateway that cuts an established
+stream makes the page resubscribe to the turn.
 
 **The sent message appears at once and vanishes by recognition.** The composer
 generates the `messageId`, so the optimistic copy is dropped when a poll returns
@@ -3304,12 +3403,11 @@ or more than one leave the question open, and the action says why.
 
 #### An answer kagent does not take
 
-The streaming answer route answers `202 pending` when the resumed turn sends no
-event within the request timeout (`timeoutMs`, 10 s): an approved tool can run
-that long before the agent speaks. kagent answers the same way when it cannot
-resume the session at all, and the answer then never reaches the task. Observed
-on a session left waiting for three days: the task stayed `input-required`
-with no answer in its history, and the session carried no failure.
+The streaming answer route waits up to `turnTimeoutMs` (30 s) for the resumed
+turn's first event. If that wait or the transport fails, the backend checks
+the answer's message ID in the task history. A recorded answer returns
+`202 pending`; an absent answer or unreadable history keeps the original
+transport failure. An approved tool can run before the agent speaks.
 
 So an answer whose stream says nothing (a 202, or a stream that ends without an
 event) is checked against the history (`useAnswerConfirmation`,

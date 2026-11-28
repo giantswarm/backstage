@@ -29,6 +29,8 @@ import {
   tagsFacet,
   useCatalogFilters,
   useFittingColumns,
+  useNow,
+  formatLocalDateFull,
 } from '@giantswarm/backstage-plugin-ui-react';
 import { musterApiRef } from '../../apis';
 import type {
@@ -78,16 +80,21 @@ type Row = {
   /** Derived read-only hint of `workflow_<name>`; absent while unknown. */
   effect?: ToolEffect;
   runs?: string;
+  lastRunAt?: string;
   source: string;
 };
 
 /** "12 runs · 2 days ago", "No runs yet": the age in full, never "about". */
-export function runsLabel(response: WorkflowExecutionListResponse): string {
+export function runsLabel(
+  response: WorkflowExecutionListResponse,
+  now = Date.now(),
+): string {
   if (response.total === 0) {
     return 'No runs yet';
   }
   const latest = formatRelativeTime(response.executions?.[0]?.started_at, {
     strict: true,
+    now,
   });
   const runs = countNoun(response.total, 'run');
   return latest ? `${runs} · ${latest}` : runs;
@@ -193,6 +200,7 @@ function WorkflowRows({
 }) {
   const musterApi = useApi(musterApiRef);
   const workflowLinks = useWorkflowPageLinks();
+  const now = useNow(60_000, hasSession);
   const hrefOf = useCallback(
     (row: Row) => workflowLinks.workflow(row.name, installation),
     [workflowLinks, installation],
@@ -228,7 +236,12 @@ function WorkflowRows({
       // The steps at every depth: a loop's steps count, not only the loop.
       steps: workflowShapeLabel(workflow.getSteps()),
       ...(effect ? { effect } : {}),
-      ...(response ? { runs: runsLabel(response) } : {}),
+      ...(response
+        ? {
+            runs: runsLabel(response, now),
+            lastRunAt: response.executions?.[0]?.started_at,
+          }
+        : {}),
       source: SOURCE_LABELS[isGitOpsManaged(workflow) ? 'gitops' : 'manual'],
     };
   });
@@ -296,7 +309,17 @@ function WorkflowRows({
         id: 'runs',
         label: 'Runs',
         defaultWidth: '1.5fr',
-        cell: row => <CellText title={row.runs ?? ''} />,
+        cell: row => (
+          <Cell>
+            <span
+              title={
+                row.lastRunAt ? formatLocalDateFull(row.lastRunAt) : undefined
+              }
+            >
+              {row.runs}
+            </span>
+          </Cell>
+        ),
       },
       {
         id: 'source',

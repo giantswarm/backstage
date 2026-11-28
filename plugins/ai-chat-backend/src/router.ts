@@ -5,7 +5,11 @@ import {
   resolvePackagePath,
 } from '@backstage/backend-plugin-api';
 import { Config } from '@backstage/config';
-import { InputError } from '@backstage/errors';
+import {
+  AuthenticationError,
+  InputError,
+  NotFoundError,
+} from '@backstage/errors';
 import {
   convertToModelMessages,
   stepCountIs,
@@ -24,7 +28,13 @@ import express from 'express';
 import Router from 'express-promise-router';
 import { existsSync, readFileSync } from 'fs';
 import { getMcpTools } from './getMcpTools';
-import { McpClientCache } from '@giantswarm/backstage-plugin-gs-node';
+import {
+  isMusterInputAnswer,
+  McpClientCache,
+  MusterMcpClient,
+  readMusterServerFromConfig,
+} from '@giantswarm/backstage-plugin-gs-node';
+import { callMusterTool, musterInputRequired } from './musterCalls';
 import { frontendTools } from './frontendTools';
 import {
   createSkillTools,
@@ -81,6 +91,17 @@ export async function createRouter(
   const { auth, httpAuth, logger, config, conversationStore } = options;
 
   const mcpClientCache = new McpClientCache(logger);
+
+  // muster's tool calls declare URL elicitation through this client; it is
+  // only made for a muster the person's own token reaches.
+  const musterServerName =
+    config.getOptionalString('muster.serverName') ?? 'muster';
+  const musterServer = readMusterServerFromConfig(config, logger);
+  const musterAuthProvider = musterServer?.authProvider;
+  const musterClient =
+    musterServer && musterAuthProvider
+      ? new MusterMcpClient({ name: musterServerName, ...musterServer }, logger)
+      : undefined;
 
   const skillTools = createSkillTools(config, logger);
 
@@ -421,6 +442,7 @@ export async function createRouter(
       backstageUser,
       chatLogger,
       mcpClientCache,
+      musterClient,
     );
     chatLogger.debug(`MCP tools available: ${Object.keys(mcpTools).length}`);
     chatLogger.debug(`MCP tool names: ${Object.keys(mcpTools).join(', ')}`);
@@ -566,7 +588,7 @@ export async function createRouter(
         // pass the prompt via the top-level `system` field and never put a
         // system message in the array.
         allowSystemInMessages: true,
-        stopWhen: stepCountIs(maxSteps),
+        stopWhen: [stepCountIs(maxSteps), musterInputRequired],
         tools: allTools as ToolSet,
         ...samplingParams,
         providerOptions: anthropicProviderOptions
@@ -703,6 +725,54 @@ export async function createRouter(
       chatLogger.error('Error in chat endpoint', error as Error);
       throw error;
     }
+  });
+
+  // The retry of a muster call that asked the person to open a page, with
+  // their answer: the page sends it, and hands its output to the model as
+  // the call's result.
+  router.post('/muster/retry', async (req, res) => {
+    await httpAuth.credentials(req, { allow: ['user'] });
+    if (!musterClient || !musterAuthProvider) {
+      throw new NotFoundError('No muster is configured for the AI chat');
+    }
+    const authToken = extractMcpAuthTokens(req.headers)[musterAuthProvider];
+    if (!authToken) {
+      throw new AuthenticationError(
+        `The request carries no ${musterAuthProvider} token for muster`,
+      );
+    }
+    const {
+      tool,
+      arguments: args,
+      input,
+    } = (req.body ?? {}) as {
+      tool?: unknown;
+      arguments?: unknown;
+      input?: unknown;
+    };
+    if (typeof tool !== 'string' || tool === '') {
+      throw new InputError('tool must be the name of the tool to call');
+    }
+    if (args === null || typeof args !== 'object' || Array.isArray(args)) {
+      throw new InputError('arguments must be an object');
+    }
+    if (!isMusterInputAnswer(input)) {
+      throw new InputError(
+        "input must answer the call's elicitations: {inputResponses, requestState?}",
+      );
+    }
+    // muster holds an accepted retry until the sign-in completes; a page
+    // that goes away stops the wait.
+    const gone = new AbortController();
+    res.once('close', () => gone.abort());
+    const output = await callMusterTool(musterClient, {
+      tool,
+      arguments: args as Record<string, unknown>,
+      authToken,
+      input,
+      signal: gone.signal,
+    });
+    res.json({ output });
   });
 
   // Conversation history CRUD routes

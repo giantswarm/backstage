@@ -18,7 +18,7 @@ const unknown = { agent_namespace: 'unknown', agent: 'unknown' };
 
 // The organization agent-manager names the namespace as.
 const organizations = organizationDirectory([
-  { namespace: 'org-alpha', organization: 'alpha', parent: 'org-parent' },
+  { namespace: 'org-alpha', organization: 'alpha' },
 ]);
 const options = { unknownLabel: 'Unattributed', organizations };
 

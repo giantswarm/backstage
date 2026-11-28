@@ -345,7 +345,16 @@ there.
 `start_session` honour their idempotency key (`requestId`): a retry answers
 what the first call answered. This agent-manager writes live only: it reports
 no `commit` capability, and a write in mode `commit` is refused as
-`unsupported`.
+`unsupported`. On `fennel` it reports the `commit` capability, so the Create
+organization dialog and the New agent review offer a pull request there:
+`create_organization`, `create_agent`, `update_agent` and `delete_agent` in
+mode `commit` answer a pull request and write nothing live, since the pull
+request is never merged. `validate_agent` in mode `commit` answers as it does
+live, and the dry run of `update_agent` in mode `commit` answers the values
+and the pull request's files, without a pull request. Edit agent, Delete agent
+and Update agents of a skill offer a pull request only for an agent applied
+from git, and no fixture agent is, so they write live on `fennel` too. Every
+other write in mode `commit` is refused there too.
 
 `start_session` creates the session in kagent's fixture (see "kagent"), so
 the session page it leads to opens it and sends the first prompt.
@@ -421,7 +430,9 @@ agent-manager.
   the person granted and one they have not, which one workspace of each
   installation selects from; the access check before a Session answers
   granted, refused (a repository the person cannot read, a workspace not
-  synced yet or being deleted) or connect_required (that workspace). The
+  synced yet or being deleted) or connect_required (that workspace), which
+  the fixture muster answers as the real one does: its `auth_required` 401
+  naming the Apps to grant, never the manager's answer. The
   repository picker pages, searches and filters the owners' repositories
   from the manager's own listing, whatever the person's grant, and the
   preview resolves a selection as workspace-manager does. Creating, editing,
@@ -657,6 +668,32 @@ A status move changes the board until the page reloads; linking or unlinking
 a sub-issue fails. The layout check's spec for the pages is
 `.agents/skills/layout-check/specs/roadmap.mjs`.
 
+### Reviews
+
+Hive's Reviews tab (the review-queue plugin) reads GitHub through muster's
+`github` server, so it has no flag of its own: with `muster.fixtures`, the
+fixture `MusterApi` answers its `x_github_search_pull_requests` and
+`x_github_pull_request_read` calls, and the Post to Slack dialog's
+`x_slack_search_channels` and `x_slack_send_message`, from the plugin's
+fixture servers (`plugins/review-queue/src/apis/fixtures/`). The fixture Slack
+knows `#team-bumblebee`, `#team-shield`, `#team-shield-alerts` and
+`#standup-shield`, and refuses a send to any other channel as Slack does
+(`channel_not_found`). The tab follows Hive; turn
+Hive on with its extensions:
+
+```bash
+yarn fixtures start --enable page:plans --enable api:plans
+```
+
+| Scenario     | The PRs                                                                                                                                                                                                                                                                               |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `base`       | Twelve PRs across the sections with every CI, review and merge value (a merge state GitHub is still computing stays "Checking"), a GitHub App and a Giant Swarm bot, a draft, and a request that names you. Hive's Up team answers GitHub's rate refusal, for the rate-limited state. |
+| `empty`      | No PRs: every section is collapsed and says why.                                                                                                                                                                                                                                      |
+| `many`       | 143 PRs waiting on you (one page of 100 and a link to the rest), 120 on Team Bumblebee, 60 you reviewed and 40 of yours.                                                                                                                                                              |
+| `long-names` | The base PRs with GitHub's longest title (256 characters), login (39) and repository name (100), and a long label.                                                                                                                                                                    |
+| `loading`    | No call answers.                                                                                                                                                                                                                                                                      |
+| `error`      | muster's errors (see "Scenarios"): on `meadow`, where the tab reads, the sign-in to GitHub.                                                                                                                                                                                           |
+
 ### Objects in the Kubernetes API
 
 The pages read some objects from the installation's Kubernetes API, not from
@@ -682,6 +719,12 @@ handler of a fixture MCP server, and lists those servers as connected and their
 tools in the catalogue. A call no handler answers fails with "Fixture mode has
 no handler for the tool …", in the console and as the page's error state, never
 as an empty result: add the handler.
+
+A handler answers as the MCP server does, and the fixture `MusterApi` answers
+as muster does: an answer of `status: "grant_required"` with `apps` (a manager
+that needs the person's grant of a provider App) never reaches the page, but
+fails the call with muster-backend's 401, `server_sign_in_required` with
+`error.apps`, as muster's `auth_required` error does on an installation.
 
 A plugin contributes its servers with an extension that attaches to
 `FIXTURE_MCP_SERVERS.attachTo` (`api:muster/muster`, input `fixtureServers`)
@@ -719,7 +762,8 @@ them. A test fails:
   resolves.
 
 A pull request that calls a new tool adds its handler, or lists it. The guard
-covers the Agent Platform and muster pages only. bot-prs also calls tools
+covers the Agent Platform and muster pages only; review-queue's own test
+(`mcpServers.test.ts`) holds its fixture server to the tools it calls. bot-prs also calls tools
 through muster (`MargeClient`), but it has no fixture mode and is outside the
 first scope of fixture mode (giantswarm/giantswarm#39251), so nothing checks
 its calls.

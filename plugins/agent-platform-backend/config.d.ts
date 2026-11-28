@@ -60,7 +60,8 @@ export interface Config {
        * How long, in milliseconds, to wait for an agent to finish one turn before
        * answering "still running". Separate from `timeoutMs` because the A2A
        * `SendMessage` call answers only once the agent is done — and it is also
-       * the budget of a Stop (`CancelTask`), which waits for the run to drain.
+       * the budget of a Stop (`CancelTask`), which waits for the run to drain,
+       * and of a stream's first event, including runtime startup or restore.
        *
        * Not a limit on how long a turn may take: the turn continues regardless,
        * and the outcome arrives through the conversation poll. Exceeding this is
@@ -249,9 +250,9 @@ export interface Config {
        * `baseDomain` is derived as `https://agentgateway.<baseDomain>` — the
        * connectivity chart's controller route hostname
        * (`kagent.controllerRoute.hostname`, default `agentgateway.<domain>`),
-       * on which its `GRPCRoute` serves the controller; `kagent.<baseDomain>`
-       * is the kagent UI behind oauth2-proxy and carries no gRPC — and
-       * installations without kagent simply fail per request
+       * on which its `GRPCRoute` serves the controller, the only route the
+       * portal uses to reach kagent — and installations without kagent simply
+       * fail per request
        * and are treated as "not installed". Set this to restrict the fan-out to
        * the installations that actually run kagent, or to point one at a
        * non-default origin. An entry with no fields (`{}`) means "enabled, use

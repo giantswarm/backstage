@@ -6,91 +6,25 @@ import {
   discoveryApiRef,
   featureFlagsApiRef,
 } from '@backstage/core-plugin-api';
-import { getSignedInConfig } from '@giantswarm/backstage-plugin-gs-react';
 import {
   useChatRuntime,
   AssistantChatTransport,
 } from '@assistant-ui/react-ai-sdk';
-import {
-  lastAssistantMessageIsCompleteWithToolCalls,
-  isToolUIPart,
-  getToolName,
-  UIMessage,
-} from 'ai';
+import type { UIMessage } from 'ai';
 import { useQuery } from '@tanstack/react-query';
 import { errorReporterApiRef } from '@giantswarm/backstage-plugin-error-reporter-react';
-import { mcpAuthProvidersApiRef } from '../api';
+import { useMcpAuthHeaders } from './useMcpAuthHeaders';
 import { createDebugFetch } from './createDebugFetch';
-
-/**
- * Tools whose results are rendered as self-contained UI cards.
- * When the last assistant step contains ONLY these tools, we skip the
- * automatic re-send so the model does not generate redundant prose.
- */
-const SELF_RENDERING_TOOLS = new Set(['getContextUsage']);
-
-function shouldSendAutomatically({
-  messages,
-}: {
-  messages: UIMessage[];
-}): boolean {
-  if (!lastAssistantMessageIsCompleteWithToolCalls({ messages })) {
-    return false;
-  }
-
-  const lastMessage = messages[messages.length - 1];
-  if (!lastMessage || lastMessage.role !== 'assistant') return false;
-
-  const lastStepStart = lastMessage.parts.reduce(
-    (idx, part, i) => (part.type === 'step-start' ? i : idx),
-    -1,
-  );
-
-  const toolParts = lastMessage.parts
-    .slice(lastStepStart + 1)
-    .filter(isToolUIPart);
-
-  if (
-    toolParts.length > 0 &&
-    toolParts.every(part => SELF_RENDERING_TOOLS.has(getToolName(part)))
-  ) {
-    return false;
-  }
-
-  return true;
-}
+import { shouldSendAutomatically } from './shouldSendAutomatically';
 
 export interface UseChatSetupOptions {
   initialMessages?: UIMessage[];
   conversationId?: string;
 }
 
-/**
- * The distinct `authProvider` names of `aiChat.mcp` in the signed-in config:
- * the providers whose tokens ride along with every chat request.
- */
-async function mcpAuthProvidersFromConfig(): Promise<string[]> {
-  const config = await getSignedInConfig();
-  const mcpServers = config.getOptionalConfigArray('aiChat.mcp');
-  if (!mcpServers) {
-    return [];
-  }
-
-  const providers: string[] = [];
-  for (const serverConfig of mcpServers) {
-    const authProvider = serverConfig.getOptionalString('authProvider');
-    if (authProvider && !providers.includes(authProvider)) {
-      providers.push(authProvider);
-    }
-  }
-
-  return providers;
-}
-
 export function useChatSetup(options?: UseChatSetupOptions) {
   const identityApi = useApi(identityApiRef);
   const discoveryApi = useApi(discoveryApiRef);
-  const mcpAuthProvidersApi = useApi(mcpAuthProvidersApiRef);
   const featureFlagsApi = useApi(featureFlagsApiRef);
   // Optional: the error reporter is only registered when
   // `app.errorReporter.sentry` is configured. Use the api holder so the
@@ -150,36 +84,7 @@ export function useChatSetup(options?: UseChatSetupOptions) {
     staleTime: Infinity,
   });
 
-  const getMCPAuthHeaders = useCallback(async () => {
-    const mcpHeaders: { [key: string]: string } = {};
-
-    // The MCP server list is part of the signed-in config, which has loaded
-    // by the time a message is sent; awaiting it (rather than reading a
-    // snapshot) means the first message can never go out without its tokens.
-    const mcpAuthProviders = await mcpAuthProvidersFromConfig();
-
-    const results = await Promise.allSettled(
-      mcpAuthProviders.map(async authProvider => {
-        const credentials =
-          await mcpAuthProvidersApi.getCredentials(authProvider);
-        if (credentials.token) {
-          return { authProvider, authToken: credentials.token };
-        }
-
-        return null;
-      }),
-    );
-
-    results.forEach(result => {
-      if (result.status === 'fulfilled' && result.value) {
-        const { authProvider, authToken } = result.value;
-        mcpHeaders[`backstage-ai-chat-authorization-${authProvider}`] =
-          authToken;
-      }
-    });
-
-    return mcpHeaders;
-  }, [mcpAuthProvidersApi]);
+  const getMCPAuthHeaders = useMcpAuthHeaders();
 
   const getHeaders = useCallback(async () => {
     const { token } = await identityApi.getCredentials();

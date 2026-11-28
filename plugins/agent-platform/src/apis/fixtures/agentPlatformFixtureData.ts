@@ -37,9 +37,10 @@ import { DEFAULT_WORKSPACE_ANNOTATION } from '../../lib/defaultWorkspace';
 import { MUSTER_MCP_SERVER_NAME, TOOLSET_HEADER } from '../../lib/toolset';
 import {
   ORPHANED_DELETE_MERGED,
-  type AgentPlatformOrganization,
+  type OrganizationSummary,
   type ListedOrganization,
   type OrganizationPermissions,
+  type OrganizationSubject,
 } from '../../lib/organizations';
 import { FIXTURE_USER } from './fixtureIdentity';
 import { runtimeLostFailure } from './kagentConversations';
@@ -352,17 +353,45 @@ export function agentManagerAgentOf(
 const LAST_APPLIED_REVISION =
   'main@sha1:4f9c2e1a7b3d8e6f0a5c9b2d1e7f3a8c6b4d2e0f';
 
+/** The admins group of a fixture organization, in its `spec.admins`. */
+export function fixtureAdminGroupOf(name: string): string {
+  return `${name}-admins`;
+}
+
+/**
+ * A fixture organization's `spec.admins`: its admins group, and the
+ * signed-in person where they are an admin of it.
+ */
+export function fixtureAdminsOf(
+  organization: FixtureOrganization,
+): OrganizationSubject[] {
+  return [
+    { kind: 'Group', name: fixtureAdminGroupOf(organization.name) },
+    ...(organization.role === 'admin'
+      ? [{ kind: 'User', name: FIXTURE_USER.email }]
+      : []),
+  ];
+}
+
+/**
+ * A fixture organization as fixture mode keeps it: its admins once a write
+ * changed them (`update_organization`), the data set's otherwise.
+ */
+export type FixtureOrganizationState = FixtureOrganization & {
+  admins?: OrganizationSubject[];
+};
+
 /** An organization as `get_organization` answers it. */
 function platformOrganizationOf(
-  organization: FixtureOrganization,
-): AgentPlatformOrganization {
+  organization: FixtureOrganizationState,
+): OrganizationSummary {
   const { state } = organization;
   const orphaned = state === 'orphaned' || state === 'pendingErase';
   return {
     name: organization.name,
-    parent: organization.parent,
     displayName: organization.displayName,
     ...(organization.namespace && { namespace: organization.namespace }),
+    admins: organization.admins ?? fixtureAdminsOf(organization),
     harnesses: [FIXTURE_HARNESS],
     workerReplicas: 2,
     ready:
@@ -412,13 +441,12 @@ export function permissionsOf(role: OrganizationRole): OrganizationPermissions {
  * otherwise.
  */
 export function listedOrganizationOf(
-  organization: FixtureOrganization,
+  organization: FixtureOrganizationState,
 ): ListedOrganization {
   const details = platformOrganizationOf(organization);
   const permissions = permissionsOf(organization.role);
   return {
     name: organization.name,
-    parent: organization.parent,
     displayName: organization.displayName,
     ...(organization.namespace && { namespace: organization.namespace }),
     ...(details.orphaned && { orphaned: details.orphaned }),

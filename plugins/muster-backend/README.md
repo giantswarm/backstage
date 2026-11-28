@@ -66,6 +66,11 @@ muster's own text.
 | `token_expired`           | The forwarded token's `exp` has passed (checked before muster is called), or muster said it expired         | The same                                          |
 | `token_rejected`          | muster refused a forwarded token that has not expired                                                       | The same                                          |
 
+Where muster asks for the person's grant of provider Apps rather than a sign-in
+to the server (its `auth_required` answer with `structuredContent.apps`), the
+`server_sign_in_required` body also carries `error.apps`, one `{app, authUrl?}`
+per App, and the Agent Platform pages offer each App's sign-in.
+
 Each is refused before a tool runs, so sending a write again with a new token
 cannot run it twice. The frontend never retries a `401` with backoff.
 

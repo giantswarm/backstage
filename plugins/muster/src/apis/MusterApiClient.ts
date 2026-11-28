@@ -1177,7 +1177,7 @@ export class MusterApiClient implements MusterApi {
           };
         }
       )?.error ?? {};
-      const { reason, server } = unauthorizedBodyOf(errorData);
+      const { reason, server, apps } = unauthorizedBodyOf(errorData);
       if (
         reason === 'token_expired' ||
         (message && MUSTER_TOKEN_EXPIRED_TEXT.test(message))
@@ -1205,6 +1205,7 @@ export class MusterApiClient implements MusterApi {
               server,
               installation,
               typeof errorName === 'string' ? errorName : undefined,
+              apps,
             )
           : Object.assign(new Error(text), { status: response.status });
       if (response.status === 403) error.name = 'ForbiddenError';

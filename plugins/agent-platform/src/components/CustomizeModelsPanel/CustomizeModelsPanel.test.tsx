@@ -79,7 +79,6 @@ let mockDirectory = new Map<
   {
     namespace: string;
     organization: string;
-    parent: string;
     displayName?: string;
   }
 >();
@@ -144,7 +143,6 @@ const labDirectory = () =>
       {
         namespace: LAB_NAMESPACE,
         organization: 'default',
-        parent: 'org-gs',
         displayName: 'Lab',
       },
     ],
@@ -358,7 +356,6 @@ describe('CustomizeModelsPanel', () => {
         {
           namespace: other,
           organization: 'lab',
-          parent: 'org-other',
           displayName: 'Lab',
         },
       ],
